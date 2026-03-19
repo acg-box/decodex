@@ -1,0 +1,62 @@
+# AI
+.codex
+
+# Editor
+.vscode
+.zed
+
+# General Ignores
+*.bak
+*.log
+.env*
+.turbo
+model
+tmp
+
+# Kubernetes
+.kube
+
+# Language Specifics
+
+## JavaScript/TypeScript
+*.tsbuildinfo
+.next
+.pnp
+.pnp.*
+.pnpm-debug.log*
+.vercel
+.vite
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+build
+coverage
+dist
+next-env.d.ts
+node_modules
+npm-debug.log*
+out/
+yarn-debug.log*
+yarn-error.log*
+
+## Python
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+
+## Rust
+target
+
+## Swift
+.build
+xcuserdata
+
+# System
+.DS_Store
+
+# Work Dirs
+.workspaces
+.worktrees
