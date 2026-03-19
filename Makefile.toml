@@ -1,0 +1,186 @@
+# Rust workspace tasks.
+
+# Lint
+# | task            | type      | cwd |
+# | --------------- | --------- | --- |
+# | lint            | composite |     |
+# | lint-fix        | composite |     |
+# | lint-rust       | command   |     |
+# | lint-fix-rust   | extend    |     |
+# | lint-vstyle     | command   |     |
+# | lint-fix-vstyle | command   |     |
+
+[tasks.lint]
+workspace = false
+dependencies = [
+	"lint-rust",
+	"lint-vstyle",
+]
+
+[tasks.lint-fix]
+workspace = false
+dependencies = [
+	"lint-fix-rust",
+	"lint-fix-vstyle",
+]
+
+[tasks.lint-rust]
+workspace = false
+command = "cargo"
+args = [
+	"clippy",
+	"--all-features",
+	"--all-targets",
+	"--workspace",
+	"--",
+	"-D",
+	"clippy::all",
+	"-D",
+	"clippy::too_many_lines",
+	"-D",
+	"clippy::unwrap_used",
+	"-D",
+	"clippy::use_self",
+	"-D",
+	"clippy::wildcard_imports",
+	"-D",
+	"missing-docs",
+	"-D",
+	"unused-crate-dependencies",
+	"-D",
+	"warnings",
+]
+
+[tasks.lint-fix-rust]
+extend = "lint-rust"
+args = [
+	"clippy",
+	"--fix",
+	"--allow-dirty",
+	"--all-features",
+	"--all-targets",
+	"--workspace",
+	"--",
+	"-D",
+	"clippy::all",
+	"-D",
+	"clippy::too_many_lines",
+	"-D",
+	"clippy::unwrap_used",
+	"-D",
+	"clippy::use_self",
+	"-D",
+	"clippy::wildcard_imports",
+	"-D",
+	"missing-docs",
+	"-D",
+	"unused-crate-dependencies",
+	"-D",
+	"warnings",
+]
+
+[tasks.lint-vstyle]
+workspace = false
+command = "cargo"
+args = [
+	"vstyle",
+	"curate",
+	"--workspace",
+	"--all-features"
+]
+
+[tasks.lint-fix-vstyle]
+workspace = false
+command = "cargo"
+args = [
+	"vstyle",
+	"tune",
+	"--workspace",
+	"--all-features",
+	"--strict",
+]
+
+
+# Test
+# | task      | type      | cwd |
+# | --------- | --------- | --- |
+# | test      | composite |     |
+# | test-rust | command   |     |
+
+[tasks.test]
+workspace = false
+dependencies = [
+	"test-rust",
+]
+
+[tasks.test-rust]
+workspace = false
+command = "cargo"
+args = [
+	"nextest",
+	"run",
+	"--workspace",
+	"--all-targets",
+	"--all-features",
+]
+
+
+# Format
+# | task           | type      | cwd |
+# | -------------- | --------- | --- |
+# | fmt            | composite |     |
+# | fmt-check      | composite |     |
+# | fmt-rust       | command   |     |
+# | fmt-rust-check | extend    |     |
+# | fmt-toml       | command   |     |
+# | fmt-toml-check | extend    |     |
+
+[tasks.fmt]
+workspace = false
+dependencies = [
+	"fmt-rust",
+	"fmt-toml",
+]
+
+[tasks.fmt-check]
+workspace = false
+dependencies = [
+	"fmt-rust-check",
+	"fmt-toml-check",
+]
+
+[tasks.fmt-rust]
+workspace = false
+script = "cargo +nightly fmt --all"
+
+[tasks.fmt-rust-check]
+extend = "fmt-rust"
+script = "cargo +nightly fmt --all -- --check"
+
+[tasks.fmt-toml]
+workspace = false
+command = "taplo"
+args = [
+	"fmt",
+]
+
+[tasks.fmt-toml-check]
+extend = "fmt-toml"
+args = [
+	"fmt",
+	"--check",
+]
+
+
+# Meta
+# | task   | type      | cwd |
+# | ------ | --------- | --- |
+# | checks | composite |     |
+
+[tasks.checks]
+workspace = false
+dependencies = [
+	"lint",
+	"test",
+	"fmt-check",
+]
