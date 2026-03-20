@@ -178,6 +178,7 @@ args = [
 # | checks | composite |     |
 # | decodex-checks | composite | |
 # | github-content-check | script | |
+# | reset-status-check | script | |
 # | site-build | command | site |
 # | site-check | command | site |
 
@@ -214,11 +215,18 @@ script = [
 	"python3 tools/github/validate_signal_entry.py site/src/content/signals",
 ]
 
+[tasks.reset-status-check]
+workspace = false
+script = [
+	"python3 tools/status/validate_reset_status.py site/src/content/reset-status",
+]
+
 [tasks.decodex-checks]
 workspace = false
 dependencies = [
 	"fmt-check",
 	"github-content-check",
+	"reset-status-check",
 	"site-build",
 	"site-check",
 ]

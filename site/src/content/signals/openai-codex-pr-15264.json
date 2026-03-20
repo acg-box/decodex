@@ -34,6 +34,20 @@
       "https://github.com/openai/codex/commit/56c33c2a7e363341b83f0a45f9bef8d9068103af",
       "https://github.com/openai/codex/commit/0754d11aa8df020e2efa6cc7fe186da5ece3f2db"
     ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15264",
+        "title": "feat: Add One-Time Startup Remote Plugin Sync",
+        "url": "https://github.com/openai/codex/pull/15264"
+      },
+      {
+        "kind": "commit",
+        "meta": "56c33c2",
+        "title": "feat: Add One-Time Startup Remote Plugin Sync",
+        "url": "https://github.com/openai/codex/commit/56c33c2a7e363341b83f0a45f9bef8d9068103af"
+      }
+    ],
     "pr_url": "https://github.com/openai/codex/pull/15264",
     "repo": "openai/codex"
   },

@@ -27,7 +27,7 @@ Outputs:
 
 1. Build a normalized GitHub change bundle under `tools/github/bundles/`.
 2. Review the bundle and decide whether the change is signal-worthy.
-3. Run local Codex analysis against the bundle and save the editorial draft JSON.
+3. Run local Codex analysis against the bundle with `skills/decodex-github-signal/` and save the editorial draft JSON.
 4. Render the resulting signal entry into `site/src/content/signals/`.
 5. Validate the signal entry shape and collection consistency.
 6. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
@@ -85,6 +85,10 @@ The repository already includes a real sample for this flow:
 - bundle: `tools/github/bundles/openai-codex-pr-15222.json`
 - editorial draft: `tools/github/analysis/openai-codex-pr-15222.analysis.json`
 - rendered signal: `site/src/content/signals/openai-codex-pr-15222.json`
+
+Repo-local skill entrypoint:
+
+- `skills/decodex-github-signal/SKILL.md`
 
 ## Editorial gate
 
