@@ -1,0 +1,181 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "owenlin0",
+      "committed_at": "2026-03-19T20:16:19Z",
+      "message": "feat(app-server): add mcpServer/status/updated notification",
+      "sha": "9c0fdb49b71fccffc5fcadf247369067e441b902",
+      "url": "https://github.com/openai/codex/commit/9c0fdb49b71fccffc5fcadf247369067e441b902"
+    },
+    {
+      "author": "owenlin0",
+      "committed_at": "2026-03-19T20:33:51Z",
+      "message": "mcpServer/startupStatus/updated",
+      "sha": "ba1d7436f867c1febcbb2a51bcfc6ddeb24c8ba0",
+      "url": "https://github.com/openai/codex/commit/ba1d7436f867c1febcbb2a51bcfc6ddeb24c8ba0"
+    },
+    {
+      "author": "owenlin0",
+      "committed_at": "2026-03-19T20:48:30Z",
+      "message": "fix random bug",
+      "sha": "c58e46d2fa269d38367c1281998aac4e79494157",
+      "url": "https://github.com/openai/codex/commit/c58e46d2fa269d38367c1281998aac4e79494157"
+    },
+    {
+      "author": "owenlin0",
+      "committed_at": "2026-03-19T21:37:29Z",
+      "message": "fix",
+      "sha": "660b395c5176bbf807748e253f2da2d9a40ed0bb",
+      "url": "https://github.com/openai/codex/commit/660b395c5176bbf807748e253f2da2d9a40ed0bb"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND",
+    "MCP",
+    "JSON",
+    "JSONRPCE",
+    "JSONRPCM",
+    "JSONRPCR",
+    "DEFAULT_READ_TIMEOUT"
+  ],
+  "files": [
+    {
+      "additions": 50,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1435,6 +1435,36 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"McpServerStartupState\": {\n+      \"enum\": [\n+        \"starting\",\n+        \"ready\",\n+        \"failed\",\n+        \"cancelled\"\n+      ],\n+      \"type\": \"string\"\n+    },\n+    \"McpServerStatusUpdatedNotification\": {\n+      \"properties\": {\n+        \"error\": {\n+          \"type\": [\n+            \"string\",\n+            \"null\"\n+          ]\n+        },\n+        \"name\": {\n+          \"type\": \"string\"\n+        },\n+        \"status\": {\n+          \"$ref\": \"#/definitions/McpServerStartupState\"\n+        }\n+      },\n+      \"required\": [\n+        \"name\",\n+        \"status\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -4214,6 +4244,26 @@\n       \"title\": \"McpServer/oauthLogin/completedNotification\",\n       \"type\": \"object\"\n     },\n+    {\n+      \"properties\": {\n+        \"met...",
+      "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 52,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3973,6 +3973,26 @@\n           \"title\": \"McpServer/oauthLogin/completedNotification\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"method\": {\n+              \"enum\": [\n+                \"mcpServer/startupStatus/updated\"\n+              ],\n+              \"title\": \"McpServer/startupStatus/updatedNotificationMethod\",\n+              \"type\": \"string\"\n+            },\n+            \"params\": {\n+              \"$ref\": \"#/definitions/v2/McpServerStatusUpdatedNotification\"\n+            }\n+          },\n+          \"required\": [\n+            \"method\",\n+            \"params\"\n+          ],\n+          \"title\": \"McpServer/startupStatus/updatedNotification\",\n+          \"type\": \"object\"\n+        },\n         {\n           \"properties\": {\n             \"method\": {\n@@ -8566,6 +8586,15 @@\n         \"title\": \"McpServerRefreshResponse\",\n         \"type\": \"object\"\n       },...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 52,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5354,6 +5354,15 @@\n       \"title\": \"McpServerRefreshResponse\",\n       \"type\": \"object\"\n     },\n+    \"McpServerStartupState\": {\n+      \"enum\": [\n+        \"starting\",\n+        \"ready\",\n+        \"failed\",\n+        \"cancelled\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"McpServerStatus\": {\n       \"properties\": {\n         \"authStatus\": {\n@@ -5390,6 +5399,29 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"McpServerStatusUpdatedNotification\": {\n+      \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n+      \"properties\": {\n+        \"error\": {\n+          \"type\": [\n+            \"string\",\n+            \"null\"\n+          ]\n+        },\n+        \"name\": {\n+          \"type\": \"string\"\n+        },\n+        \"status\": {\n+          \"$ref\": \"#/definitions/McpServerStartupState\"\n+        }\n+      },\n+      \"required\": [\n+        \"name\",\n+        \"status\"\n+      ],\n+      \"title\": \"McpServerStat...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 34,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,34 @@\n+{\n+  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n+  \"definitions\": {\n+    \"McpServerStartupState\": {\n+      \"enum\": [\n+        \"starting\",\n+        \"ready\",\n+        \"failed\",\n+        \"cancelled\"\n+      ],\n+      \"type\": \"string\"\n+    }\n+  },\n+  \"properties\": {\n+    \"error\": {\n+      \"type\": [\n+        \"string\",\n+        \"null\"\n+      ]\n+    },\n+    \"name\": {\n+      \"type\": \"string\"\n+    },\n+    \"status\": {\n+      \"$ref\": \"#/definitions/McpServerStartupState\"\n+    }\n+  },\n+  \"required\": [\n+    \"name\",\n+    \"status\"\n+  ],\n+  \"title\": \"McpServerStatusUpdatedNotification\",\n+  \"type\": \"object\"\n+}\n\\ No newline at end of file",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/McpServerStatusUpdatedNotification.json",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -22,6 +22,7 @@ import type { ItemGuardianApprovalReviewCompletedNotification } from \"./v2/ItemG\n import type { ItemGuardianApprovalReviewStartedNotification } from \"./v2/ItemGuardianApprovalReviewStartedNotification\";\n import type { ItemStartedNotification } from \"./v2/ItemStartedNotification\";\n import type { McpServerOauthLoginCompletedNotification } from \"./v2/McpServerOauthLoginCompletedNotification\";\n+import type { McpServerStatusUpdatedNotification } from \"./v2/McpServerStatusUpdatedNotification\";\n import type { McpToolCallProgressNotification } from \"./v2/McpToolCallProgressNotification\";\n import type { ModelReroutedNotification } from \"./v2/ModelReroutedNotification\";\n import type { PlanDeltaNotification } from \"./v2/PlanDeltaNotification\";\n@@ -54,4 +55,4 @@ import type { WindowsWorldWritableWarningNotification } from \"./v2/WindowsWorldW\n /**\n  * Notification sent from the serv...",
+      "path": "codex-rs/app-server-protocol/schema/typescript/ServerNotification.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,5 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type McpServerStartupState = \"starting\" | \"ready\" | \"failed\" | \"cancelled\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/McpServerStartupState.ts",
+      "status": "added"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,6 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+import type { McpServerStartupState } from \"./McpServerStartupState\";\n+\n+export type McpServerStatusUpdatedNotification = { name: string, status: McpServerStartupState, error: string | null, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/McpServerStatusUpdatedNotification.ts",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -171,7 +171,9 @@ export type { McpServerOauthLoginCompletedNotification } from \"./McpServerOauthL\n export type { McpServerOauthLoginParams } from \"./McpServerOauthLoginParams\";\n export type { McpServerOauthLoginResponse } from \"./McpServerOauthLoginResponse\";\n export type { McpServerRefreshResponse } from \"./McpServerRefreshResponse\";\n+export type { McpServerStartupState } from \"./McpServerStartupState\";\n export type { McpServerStatus } from \"./McpServerStatus\";\n+export type { McpServerStatusUpdatedNotification } from \"./McpServerStatusUpdatedNotification\";\n export type { McpToolCallError } from \"./McpToolCallError\";\n export type { McpToolCallProgressNotification } from \"./McpToolCallProgressNotification\";\n export type { McpToolCallResult } from \"./McpToolCallResult\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -905,6 +905,7 @@ server_notification_definitions! {\n     ServerRequestResolved => \"serverRequest/resolved\" (v2::ServerRequestResolvedNotification),\n     McpToolCallProgress => \"item/mcpToolCall/progress\" (v2::McpToolCallProgressNotification),\n     McpServerOauthLoginCompleted => \"mcpServer/oauthLogin/completed\" (v2::McpServerOauthLoginCompletedNotification),\n+    McpServerStatusUpdated => \"mcpServer/startupStatus/updated\" (v2::McpServerStatusUpdatedNotification),\n     AccountUpdated => \"account/updated\" (v2::AccountUpdatedNotification),\n     AccountRateLimitsUpdated => \"account/rateLimits/updated\" (v2::AccountRateLimitsUpdatedNotification),\n     AppListUpdated => \"app/list/updated\" (v2::AppListUpdatedNotification),",
+      "path": "codex-rs/app-server-protocol/src/protocol/common.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 19,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5000,6 +5000,25 @@ pub struct McpServerOauthLoginCompletedNotification {\n     pub error: Option<String>,\n }\n \n+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub enum McpServerStartupState {\n+    Starting,\n+    Ready,\n+    Failed,\n+    Cancelled,\n+}\n+\n+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct McpServerStatusUpdatedNotification {\n+    pub name: String,\n+    pub status: McpServerStartupState,\n+    pub error: Option<String>,\n+}\n+\n #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]\n #[serde(rename_all = \"camelCase\")]\n #[ts(export_to = \"v2/\")]",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -836,6 +836,10 @@ Because audio is intentionally separate from `ThreadItem`, clients can opt out o\n \n - `windowsSandbox/setupCompleted` \u2014 `{ mode, success, error }` after a `windowsSandbox/setupStart` request finishes.\n \n+### MCP server startup events\n+\n+- `mcpServer/startupStatus/updated` \u2014 `{ name, status, error }` when app-server observes an MCP server startup transition. `status` is one of `starting`, `ready`, `failed`, or `cancelled`. `error` is `null` except for `failed`.\n+\n ### Turn events\n \n The app-server streams JSON-RPC notifications while a turn is running. Each turn emits `turn/started` when it begins running and ends with `turn/completed` (final `turn` status). Token usage events stream separately via `thread/tokenUsage/updated`. Clients subscribe to the events they care about, rendering each item incrementally as updates arrive. The per-item lifecycle is always: `item/s...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 30,
+      "deletions": 0,
+      "patch_excerpt": "@@ -57,6 +57,8 @@ use codex_app_server_protocol::JSONRPCErrorError;\n use codex_app_server_protocol::McpServerElicitationAction;\n use codex_app_server_protocol::McpServerElicitationRequestParams;\n use codex_app_server_protocol::McpServerElicitationRequestResponse;\n+use codex_app_server_protocol::McpServerStartupState;\n+use codex_app_server_protocol::McpServerStatusUpdatedNotification;\n use codex_app_server_protocol::McpToolCallError;\n use codex_app_server_protocol::McpToolCallResult;\n use codex_app_server_protocol::McpToolCallStatus;\n@@ -310,6 +312,34 @@ pub(crate) async fn apply_bespoke_event_handling(\n                     .await;\n             }\n         }\n+        EventMsg::McpStartupUpdate(update) => {\n+            if let ApiVersion::V2 = api_version {\n+                let (status, error) = match update.status {\n+                    codex_protocol::protocol::McpStartupStatus::Starting ...",
+      "path": "codex-rs/app-server/src/bespoke_event_handling.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 129,
+      "deletions": 0,
+      "patch_excerpt": "@@ -7,7 +7,10 @@ use app_test_support::write_chatgpt_auth;\n use codex_app_server_protocol::JSONRPCError;\n use codex_app_server_protocol::JSONRPCMessage;\n use codex_app_server_protocol::JSONRPCResponse;\n+use codex_app_server_protocol::McpServerStartupState;\n+use codex_app_server_protocol::McpServerStatusUpdatedNotification;\n use codex_app_server_protocol::RequestId;\n+use codex_app_server_protocol::ServerNotification;\n use codex_app_server_protocol::ThreadStartParams;\n use codex_app_server_protocol::ThreadStartResponse;\n use codex_app_server_protocol::ThreadStartedNotification;\n@@ -328,6 +331,103 @@ async fn thread_start_fails_when_required_mcp_server_fails_to_initialize() -> Re\n     Ok(())\n }\n \n+#[tokio::test]\n+async fn thread_start_emits_mcp_server_status_updated_notifications() -> Result<()> {\n+    let server = create_mock_responses_server_repeating_assistant(\"Done\").await;\n+\n+    let c...",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_start.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -36,7 +36,7 @@ pub(crate) struct ExecServerFileSystem {\n impl Default for ExecServerFileSystem {\n     fn default() -> Self {\n         Self {\n-            file_system: Arc::new(Environment.get_filesystem()),\n+            file_system: Arc::new(Environment::default().get_filesystem()),\n         }\n     }\n }",
+      "path": "codex-rs/exec-server/src/server/filesystem.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -492,6 +492,7 @@ fn server_notification_thread_target(\n             Some(notification.thread_id.as_str())\n         }\n         ServerNotification::SkillsChanged(_)\n+        | ServerNotification::McpServerStatusUpdated(_)\n         | ServerNotification::McpServerOauthLoginCompleted(_)\n         | ServerNotification::AccountUpdated(_)\n         | ServerNotification::AccountRateLimitsUpdated(_)",
+      "path": "codex-rs/tui_app_server/src/app/app_server_adapter.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -6045,6 +6045,7 @@ impl ChatWidget {\n             | ServerNotification::RawResponseItemCompleted(_)\n             | ServerNotification::CommandExecOutputDelta(_)\n             | ServerNotification::McpToolCallProgress(_)\n+            | ServerNotification::McpServerStatusUpdated(_)\n             | ServerNotification::McpServerOauthLoginCompleted(_)\n             | ServerNotification::AppListUpdated(_)\n             | ServerNotification::ContextCompacted(_)",
+      "path": "codex-rs/tui_app_server/src/chatwidget.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "Exposes the legacy `codex/event/mcp_startup_update` event as an API v2 notification.\r\n\r\nThe legacy event has this shape:\r\n```\r\n#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]\r\npub struct McpStartupUpdateEvent {\r\n    /// Server name being started.\r\n    pub server: String,\r\n    /// Current startup status.\r\n    pub status: McpStartupStatus,\r\n}\r\n\r\n#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]\r\n#[serde(rename_all = \"snake_case\", tag = \"state\")]\r\n#[ts(rename_all = \"snake_case\", tag = \"state\")]\r\npub enum McpStartupStatus {\r\n    Starting,\r\n    Ready,\r\n    Failed { error: String },\r\n    Cancelled,\r\n}\r\n```",
+    "labels": [],
+    "merged_at": "2026-03-19T22:09:59Z",
+    "number": 15220,
+    "state": "merged",
+    "title": "feat(app-server): add mcpServer/startupStatus/updated notification",
+    "url": "https://github.com/openai/codex/pull/15220"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

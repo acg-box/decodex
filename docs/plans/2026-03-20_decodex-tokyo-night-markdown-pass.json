@@ -1,0 +1,119 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "decodex-tokyo-night-markdown-pass-2026-03-20",
+    "goal": "Refresh the Decodex homepage to a flatter Tokyo Night-inspired palette and render trusted signal copy as markdown so inline code and related formatting show correctly.",
+    "success_criteria": [
+      "The homepage palette reads flatter and more modern, with Tokyo Night-inspired dark surfaces and reduced decorative gradients.",
+      "Signal title-adjacent copy, why-it-matters, and action text render trusted markdown so backticks become inline code.",
+      "The feed still preserves the simplified changelog structure from the previous cleanup pass.",
+      "The site builds and checks cleanly, and a fresh screenshot captures the new palette and markdown rendering."
+    ],
+    "constraints": [
+      "Keep the one-page MVP structure intact.",
+      "Do not reintroduce heavy chrome or nested card surfaces.",
+      "Only render trusted local signal markdown through Astro HTML injection.",
+      "Prefer a minimal dependency footprint if an additional markdown parser is needed."
+    ],
+    "defaults": {
+      "markdown_scope": [
+        "summary",
+        "why_it_matters",
+        "how_to_try",
+        "expected_effect"
+      ],
+      "palette": "tokyo-night-flat",
+      "routes": [
+        "/"
+      ]
+    },
+    "tasks": [
+      {
+        "id": "task-01-shift-palette",
+        "title": "Shift the homepage palette to a flatter Tokyo Night direction",
+        "status": "done",
+        "objective": "Replace the current pale blue gradient surface system with a flatter Tokyo Night-inspired dark palette and simpler borders.",
+        "inputs": [
+          "Current global CSS",
+          "Tokyo Night palette reference"
+        ],
+        "outputs": [
+          "A darker, flatter, more modern visual baseline"
+        ],
+        "verification": [
+          "The rebuilt homepage reads as a darker Tokyo Night-inspired page with less decorative background noise."
+        ],
+        "depends_on": []
+      },
+      {
+        "id": "task-02-render-markdown",
+        "title": "Render trusted signal copy as markdown",
+        "status": "done",
+        "objective": "Introduce markdown rendering for trusted local signal text so inline code markers and related formatting display correctly in the feed.",
+        "inputs": [
+          "Current signal-card rendering",
+          "Astro HTML injection guidance"
+        ],
+        "outputs": [
+          "A shared markdown renderer and markdown-aware signal sections"
+        ],
+        "verification": [
+          "Backticks in signal copy render as inline code instead of literal characters."
+        ],
+        "depends_on": [
+          "task-01-shift-palette"
+        ]
+      },
+      {
+        "id": "task-03-verify-and-capture",
+        "title": "Verify and capture the Tokyo Night markdown pass",
+        "status": "done",
+        "objective": "Run the site checks and capture a fresh screenshot of the revised homepage.",
+        "inputs": [
+          "Task 02 markdown rendering"
+        ],
+        "outputs": [
+          "Passing build and check evidence",
+          "A screenshot of the Tokyo Night markdown feed"
+        ],
+        "verification": [
+          "`npm run build` passes from site/",
+          "`npm run check` passes from site/",
+          "The screenshot shows the darker palette and markdown-rendered inline code."
+        ],
+        "depends_on": [
+          "task-02-render-markdown"
+        ]
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "The darker Tokyo Night palette hurts readability too much",
+        "Markdown rendering needs to expand beyond trusted local content strings",
+        "The site needs a light/dark switch instead of a single palette"
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "Shifted the site to a flatter Tokyo Night-inspired dark palette with reduced background decoration and darker border-only surfaces.",
+      "Added the `marked` dependency and a shared inline markdown renderer for trusted local signal strings.",
+      "Rendered signal title, summary, why-it-matters, action text, expected effect, and proof points with markdown-aware inline HTML so backticks become inline code.",
+      "`npm run build` passed from site/ on 2026-03-20.",
+      "`npm run check` passed from site/ on 2026-03-20.",
+      "Captured /tmp/decodex-homepage-tokyo-night.png from the rebuilt local site served at http://127.0.0.1:4411/."
+    ],
+    "last_updated": "2026-03-20T06:05:00Z",
+    "replan_reason": null,
+    "context_snapshot": {
+      "current_problem": "The cleaned feed layout is calmer, but the color system still feels too soft and the signal copy shows literal backticks instead of inline code.",
+      "direction": "Adopt a flatter Tokyo Night-inspired dark palette and render trusted signal strings as markdown.",
+      "lane": "Reuse .workspaces/feat-decodex-github-first for the visual and content-rendering pass."
+    }
+  }
+}

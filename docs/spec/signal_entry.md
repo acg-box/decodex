@@ -1,0 +1,82 @@
+# Signal Entry
+
+Purpose: Define the published Decodex signal-entry schema for the GitHub-first MVP.
+
+Status: normative
+
+Read this when:
+- You are generating or validating signal content.
+- You are rendering signal cards or detail views.
+- You need to know which fields are required for publication.
+
+Not this document:
+- The GitHub input bundle schema.
+- The site route contract.
+- The manual publishing workflow.
+
+Defines:
+- The canonical `signal_entry/v1` shape.
+- Required publication fields.
+- Field-level rules for confidence, impact, proof, and try paths.
+
+## Entry identity
+
+The canonical schema identifier is:
+
+- `signal_entry/v1`
+
+## Required fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `schema` | string | Must be `signal_entry/v1`. |
+| `slug` | string | URL-safe identifier unique within the collection. |
+| `lane` | string | Must be `github` for the MVP. |
+| `kind` | string | `capability`, `behavior_change`, or `try_now`. |
+| `title` | string | User-facing title. |
+| `published_at` | string | Publication timestamp. |
+| `summary` | string | Short description of what changed. |
+| `why_it_matters` | string | Concrete explanation of the user-facing importance. |
+| `confidence` | string | `confirmed`, `likely`, or `weak`. |
+| `impact` | string | `low`, `medium`, or `high`. |
+| `proof_points` | array | Non-empty list of evidence-backed points. |
+| `source_refs` | object | Source links back to GitHub evidence. |
+
+## Conditional fields
+
+`how_to_try` is required when:
+
+- `kind = "try_now"`, or
+- `config_flags` is non-empty
+
+`expected_effect` is required when `how_to_try` is present.
+
+## Supporting fields
+
+These fields are optional but expected when available:
+
+- `config_flags`
+- `caveats`
+- `watch_state`
+
+## Source references
+
+`source_refs` must contain:
+
+- `repo`
+- at least one commit or PR reference
+
+PR-first signals should include:
+
+- `pr_url`
+
+Commit-only signals should include:
+
+- one or more `commit_urls`
+
+## Publication rules
+
+- `proof_points` must be evidence-backed and must not be empty.
+- `why_it_matters` must describe user value, not internal implementation mechanics alone.
+- `confidence = "weak"` is allowed only when the entry clearly signals uncertainty.
+- `impact` and `confidence` must be rendered on the homepage card.

@@ -176,6 +176,10 @@ args = [
 # | task   | type      | cwd |
 # | ------ | --------- | --- |
 # | checks | composite |     |
+# | decodex-checks | composite | |
+# | github-content-check | script | |
+# | site-build | command | site |
+# | site-check | command | site |
 
 [tasks.checks]
 workspace = false
@@ -183,4 +187,38 @@ dependencies = [
 	"lint",
 	"test",
 	"fmt-check",
+]
+
+[tasks.site-build]
+workspace = false
+cwd = "site"
+command = "npm"
+args = [
+	"run",
+	"build",
+]
+
+[tasks.site-check]
+workspace = false
+cwd = "site"
+command = "npm"
+args = [
+	"run",
+	"check",
+]
+
+[tasks.github-content-check]
+workspace = false
+script = [
+	"python3 tools/github/validate_change_bundle.py tools/github/bundles",
+	"python3 tools/github/validate_signal_entry.py site/src/content/signals",
+]
+
+[tasks.decodex-checks]
+workspace = false
+dependencies = [
+	"fmt-check",
+	"github-content-check",
+	"site-build",
+	"site-check",
 ]
