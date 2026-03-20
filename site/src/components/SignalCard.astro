@@ -4,6 +4,7 @@ import {
   formatPublishedAt,
   impactLabel,
   kindLabel,
+  type SourceRefItem,
   type SignalCardData,
 } from "@/lib/signal-feed";
 import { renderMarkdownInline } from "@/lib/render-markdown";
@@ -25,22 +26,29 @@ const renderedExpectedEffect = signal.expected_effect
 const visibleFlags = signal.config_flags.filter(
   (flag) => flag.startsWith("--") || flag.includes("="),
 );
-const sourceLinks = [
-  {
-    label: signal.source_refs.repo,
-    url: `https://github.com/${signal.source_refs.repo}`,
-  },
-  ...(signal.source_refs.pr_url
-    ? [{ label: "Pull request", url: signal.source_refs.pr_url }]
-    : []),
-  ...signal.source_refs.commit_urls.map((url, index) => ({
-    label: `Commit ${index + 1}`,
-    url,
-  })),
-];
+const sourceItems: SourceRefItem[] =
+  signal.source_refs.items && signal.source_refs.items.length > 0
+    ? signal.source_refs.items
+    : [
+        ...(signal.source_refs.pr_url
+          ? [{ kind: "pull_request" as const, title: "Open pull request", url: signal.source_refs.pr_url }]
+          : []),
+        ...signal.source_refs.commit_urls.map((url, index) => ({
+          kind: "commit" as const,
+          title: `Open commit ${index + 1}`,
+          url,
+        })),
+      ];
 ---
 
-<article class="signal-card" id={signal.slug}>
+<article
+  class="signal-card"
+  id={signal.slug}
+  data-signal-card
+  data-filter-lane={signal.lane}
+  data-filter-try={signal.kind === "try_now" || Boolean(signal.how_to_try) ? "true" : "false"}
+  data-filter-impact={signal.impact}
+>
   <aside class="signal-entry__rail">
     <span class="signal-entry-date">
       {formatPublishedAt(signal.published_at)}
@@ -127,15 +135,19 @@ const sourceLinks = [
           ))}
         </ul>
 
-        <ul class="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[0.85rem] leading-6">
-          {sourceLinks.map((source) => (
-            <li>
-              <a class="signal-link" href={source.url} target="_blank" rel="noreferrer">
-                {source.label}
+        <ol class="signal-source-timeline">
+          {sourceItems.map((source) => (
+            <li class="signal-source-timeline__item">
+              <span class={`signal-source-timeline__kind signal-source-timeline__kind--${source.kind}`}>
+                {source.kind === "pull_request" ? "PR" : "Commit"}
+              </span>
+              <a class="signal-source-timeline__title signal-link" href={source.url} target="_blank" rel="noreferrer">
+                {source.title}
               </a>
+              {source.meta ? <span class="signal-source-timeline__meta">{source.meta}</span> : null}
             </li>
           ))}
-        </ul>
+        </ol>
       </div>
     </details>
   </div>

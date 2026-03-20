@@ -66,6 +66,13 @@ These fields are optional but expected when available:
 - `repo`
 - at least one commit or PR reference
 
+`source_refs.items` may contain titled source entries for rendering. Each item must include:
+
+- `kind` (`pull_request` or `commit`)
+- `title`
+- `url`
+- optional `meta`
+
 PR-first signals should include:
 
 - `pr_url`

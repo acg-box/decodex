@@ -30,6 +30,20 @@
       "https://github.com/openai/codex/commit/49edd6bfc227df69272e5669c1ae7ac3fe66818e",
       "https://github.com/openai/codex/commit/5504f1300fc9b5f6cc7eba2d08154f78811a47ec"
     ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15195",
+        "title": "[plugins] Install MCPs when calling plugin/install",
+        "url": "https://github.com/openai/codex/pull/15195"
+      },
+      {
+        "kind": "commit",
+        "meta": "1a910fd",
+        "title": "update",
+        "url": "https://github.com/openai/codex/commit/1a910fd874e5d88d2ecd372e47b4f81835b15850"
+      }
+    ],
     "pr_url": "https://github.com/openai/codex/pull/15195",
     "repo": "openai/codex"
   },

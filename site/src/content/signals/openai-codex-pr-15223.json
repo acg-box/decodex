@@ -28,6 +28,80 @@
       "https://github.com/openai/codex/commit/6e7d37205eca1e7f2f9915b9306163d4bd7dbbdd",
       "https://github.com/openai/codex/commit/0552a98268e50d0397f6fcde32020648a530ebb1"
     ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15223",
+        "title": "Feat/restore image generation history",
+        "url": "https://github.com/openai/codex/pull/15223"
+      },
+      {
+        "kind": "commit",
+        "meta": "f065885",
+        "title": "Restore image generation items in resumed thread history",
+        "url": "https://github.com/openai/codex/commit/f065885e2c82c85a3f62148571ca52a0a26e3f8f"
+      },
+      {
+        "kind": "commit",
+        "meta": "005e6fc",
+        "title": "Persist image generation end events for history replay",
+        "url": "https://github.com/openai/codex/commit/005e6fc0cfe750bcf8c6d98130fcb5e854aefd4f"
+      },
+      {
+        "kind": "commit",
+        "meta": "e870aae",
+        "title": "Restore saved image paths in resumed history",
+        "url": "https://github.com/openai/codex/commit/e870aae4dbb47ee7e65daa46031bebc272d9b865"
+      },
+      {
+        "kind": "commit",
+        "meta": "85464fb",
+        "title": "Add copy guidance for generated images",
+        "url": "https://github.com/openai/codex/commit/85464fb6329466858d26c7646e5362121baa6287"
+      },
+      {
+        "kind": "commit",
+        "meta": "f1a6367",
+        "title": "Fix tui app server image generation adapter",
+        "url": "https://github.com/openai/codex/commit/f1a6367e2d0514887f96b001b6a236c178654bbd"
+      },
+      {
+        "kind": "commit",
+        "meta": "ace552c",
+        "title": "Add tests for resumed image history preservation",
+        "url": "https://github.com/openai/codex/commit/ace552c658ff7c118523c4a37c72a4d088868968"
+      },
+      {
+        "kind": "commit",
+        "meta": "b1ed4a7",
+        "title": "Remove temporary image history proof tests",
+        "url": "https://github.com/openai/codex/commit/b1ed4a7cb50fedd801033ba1532586548249606b"
+      },
+      {
+        "kind": "commit",
+        "meta": "050a478",
+        "title": "Avoid duplicating saved image blobs in limited rollouts",
+        "url": "https://github.com/openai/codex/commit/050a4783b9da451f169a9fafb76e05efa90daa34"
+      },
+      {
+        "kind": "commit",
+        "meta": "66aa6d1",
+        "title": "Remove rollout image persistence test",
+        "url": "https://github.com/openai/codex/commit/66aa6d19363847463f3283d9462a03583b1ad2f1"
+      },
+      {
+        "kind": "commit",
+        "meta": "6e7d372",
+        "title": "Revert rollout image blob clearing",
+        "url": "https://github.com/openai/codex/commit/6e7d37205eca1e7f2f9915b9306163d4bd7dbbdd"
+      },
+      {
+        "kind": "commit",
+        "meta": "0552a98",
+        "title": "Trim restore image history branch scope",
+        "url": "https://github.com/openai/codex/commit/0552a98268e50d0397f6fcde32020648a530ebb1"
+      }
+    ],
     "pr_url": "https://github.com/openai/codex/pull/15223",
     "repo": "openai/codex"
   },

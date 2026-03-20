@@ -1,0 +1,189 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "2026-03-21_decodex-iteration-two",
+    "goal": "Capture the second Decodex product iteration as one cohesive plan covering the GitHub-first homepage polish, reset status integration, release preview refinement, source clarity, runtime filter UX, and the repo-local GitHub signal skill.",
+    "success_criteria": [
+      "The homepage presents a cleaner GitHub-first signal feed with working runtime filters, clearer targeted-entry highlighting, and improved header/status handling.",
+      "The reset status pipeline exists as a static-site widget backed by deterministic refresh tooling and a scheduled workflow.",
+      "The release preview module is more concise and useful, with richer preview summaries and clearer version-comparison cards.",
+      "Signal source evidence is clearer through titled PR/commit timeline items instead of generic link labels.",
+      "The local Codex GitHub analysis workflow exists as a formal repo-local skill."
+    ],
+    "constraints": [
+      "Preserve the existing GitHub-first static-site architecture.",
+      "Keep AI analysis local and deterministic build/deploy logic in scripts/CI.",
+      "Treat this plan as the compressed record for the current 2026-03-21 iteration; earlier committed plan history remains untouched."
+    ],
+    "defaults": {
+      "workdir": "/Users/xavier/code/trusted/y/hack-ink/decodex/.workspaces/feat-decodex-github-first"
+    },
+    "tasks": [
+      {
+        "id": "task-01-reset-status-widget",
+        "title": "Integrate reset-status data and widget flow",
+        "status": "completed",
+        "objective": "Add the reset-status content contract, deterministic builders/validators, scheduled refresh workflow, and homepage widget integration.",
+        "inputs": [
+          "docs/spec/reset_status.md",
+          "tools/status/",
+          ".github/workflows/refresh-reset-status.yml",
+          "site/src/content/reset-status/",
+          "site/src/lib/reset-status.ts",
+          "site/src/components/ResetStatusWidget.astro"
+        ],
+        "outputs": [
+          "Static reset-status data pipeline and homepage widget."
+        ],
+        "verification": [
+          "cargo make decodex-checks"
+        ],
+        "depends_on": []
+      },
+      {
+        "id": "task-02-theme-and-header-polish",
+        "title": "Add system and manual theme support and polish header utilities",
+        "status": "completed",
+        "objective": "Add Tokyo Night light/dark theming with system-following and manual override, then refine topbar placement for theme controls, signal summary, and reset status.",
+        "inputs": [
+          "site/src/layouts/BaseLayout.astro",
+          "site/src/components/ThemeToggle.astro",
+          "site/src/components/SignalSummaryTile.astro",
+          "site/src/components/ResetStatusWidget.astro",
+          "site/src/pages/index.astro",
+          "site/src/styles/global.css"
+        ],
+        "outputs": [
+          "Working theme controls and a more coherent header/status area."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": [
+          "task-01-reset-status-widget"
+        ]
+      },
+      {
+        "id": "task-03-release-preview-refine",
+        "title": "Refine the release preview module",
+        "status": "completed",
+        "objective": "Make the stable-vs-preview section more useful by improving copy, cards, title, and preview summaries without duplicating the full feed below.",
+        "inputs": [
+          "docs/spec/release_delta.md",
+          "site/src/content/release-deltas/openai-codex-latest.json",
+          "site/src/components/ReleaseDeltaPanel.astro",
+          "site/src/styles/global.css"
+        ],
+        "outputs": [
+          "A tighter preview-comparison module with clearer cards and richer preview summaries."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": [
+          "task-02-theme-and-header-polish"
+        ]
+      },
+      {
+        "id": "task-04-source-timeline-clarity",
+        "title": "Clarify signal source evidence",
+        "status": "completed",
+        "objective": "Replace generic repo/PR/Commit N link lists with titled source timeline items derived from PR and commit metadata, then backfill existing signals.",
+        "inputs": [
+          "docs/spec/signal_entry.md",
+          "tools/github/contracts.py",
+          "tools/github/render_signal_entry.py",
+          "site/src/content.config.ts",
+          "site/src/lib/signal-feed.ts",
+          "site/src/components/SignalCard.astro",
+          "site/src/content/signals/"
+        ],
+        "outputs": [
+          "Titled source timelines in signal cards and updated signal JSON payloads."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": [
+          "task-03-release-preview-refine"
+        ]
+      },
+      {
+        "id": "task-05-runtime-filter-and-target-ux",
+        "title": "Upgrade runtime filter and direct-link UX",
+        "status": "completed",
+        "objective": "Enhance filters to update at runtime with active state and light transitions while preserving static fallback, and highlight hash-targeted signal cards.",
+        "inputs": [
+          "site/src/components/FilterBar.astro",
+          "site/src/components/EmptyFeedState.astro",
+          "site/src/components/SignalCard.astro",
+          "site/src/pages/index.astro",
+          "site/src/styles/global.css"
+        ],
+        "outputs": [
+          "Client-enhanced filters and targeted-signal highlighting."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": [
+          "task-04-source-timeline-clarity"
+        ]
+      },
+      {
+        "id": "task-06-formalize-github-signal-skill",
+        "title": "Formalize the local GitHub signal workflow as a repo-local skill",
+        "status": "completed",
+        "objective": "Add a repo-local skill entrypoint for the GitHub signal drafting workflow and wire repo docs to that skill surface.",
+        "inputs": [
+          "skills/decodex-github-signal/",
+          "docs/guide/local_github_signal_workflow.md",
+          "docs/spec/repo_layout.md",
+          "README.md"
+        ],
+        "outputs": [
+          "A repo-local Decodex GitHub signal skill plus updated documentation."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": [
+          "task-05-runtime-filter-and-target-ux"
+        ]
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "The homepage shifts from progressive enhancement into a broader client-app architecture.",
+        "The release preview module expands into a full multi-version compare system with new data requirements.",
+        "The GitHub signal workflow moves from local/editorial operation into fully automated CI analysis."
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "Reset-status tooling, content, homepage widget, and scheduled refresh workflow were added.",
+      "Theme support now includes system-following Tokyo Night light/dark plus manual override and header integration.",
+      "The release preview module was rewritten to be shorter, clearer, and more directly informative for impatient readers.",
+      "Signal source links are now rendered as titled PR/commit timelines backed by updated signal-entry schema and regenerated signal JSON.",
+      "Homepage filters now enhance to runtime filtering with active state and light transitions, and hash-targeted signal cards visibly highlight.",
+      "The local Codex GitHub analysis loop is now formalized as a repo-local skill under skills/decodex-github-signal/."
+    ],
+    "last_updated": "2026-03-21T17:05:00+08:00",
+    "replan_reason": null,
+    "context_snapshot": {
+      "focus": "compressed second iteration record",
+      "lane": "feat-decodex-github-first"
+    }
+  }
+}

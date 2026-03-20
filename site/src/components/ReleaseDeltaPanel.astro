@@ -22,17 +22,13 @@ const untrackedCommitCount = Math.max(
   0,
   delta.compare.total_commits - trackedSignals.length,
 );
+const featuredSignals = trackedSignals.slice(0, 3);
+const hiddenSignalCount = Math.max(0, trackedSignals.length - featuredSignals.length);
 ---
 
 <section class="release-delta" aria-labelledby="release-delta-heading">
   <div class="release-delta__intro">
-    <p class="release-delta__eyebrow">Release Delta</p>
-    <h2 class="release-delta__headline" id="release-delta-heading">
-      Preview <code>{prereleaseLabel}</code> is ahead of stable <code>{stableLabel}</code>.
-    </h2>
-    <p class="release-delta__copy">
-      This module maps the latest prerelease back to tracked GitHub signals, so you can see what the preview unlocks before it lands in stable.
-    </p>
+    <h2 class="release-delta__headline" id="release-delta-heading">Preview changes</h2>
   </div>
 
   <div class="release-delta__stats">
@@ -52,7 +48,7 @@ const untrackedCommitCount = Math.max(
         {prereleaseLabel}
       </a>
       <p class="release-delta__panel-copy">
-        Published {formatPublishedAt(delta.prerelease.published_at)}
+        Live since {formatPublishedAt(delta.prerelease.published_at)}
       </p>
     </section>
 
@@ -62,23 +58,23 @@ const untrackedCommitCount = Math.max(
         {delta.compare.total_commits} commits
       </a>
       <p class="release-delta__panel-copy">
-        {trackedSignals.length} tracked signals, {untrackedCommitCount} additional internal commits
+        {trackedSignals.length} tracked signals · {untrackedCommitCount} internal-only
       </p>
     </section>
   </div>
 
   <div class="release-delta__highlights">
     <div class="release-delta__highlights-header">
-      <p class="release-delta__panel-label">What the preview unlocks</p>
+      <p class="release-delta__panel-label">Try these first</p>
       <p class="release-delta__highlights-copy">
-        These items are already backed by published signal entries in the feed below.
+        Quick scan only. Open the full signal below when you want steps and evidence.
       </p>
     </div>
 
     {
-      trackedSignals.length > 0 ? (
+      featuredSignals.length > 0 ? (
         <ol class="release-delta__highlight-list">
-          {trackedSignals.map((signal) => (
+          {featuredSignals.map((signal) => (
             <li class="release-highlight">
               <div class="release-highlight__meta">
                 <span>{kindLabel(signal.kind)}</span>
@@ -91,18 +87,25 @@ const untrackedCommitCount = Math.max(
                   set:html={renderMarkdownInline(signal.title)}
                 />
                 <p
-                  class="release-highlight__copy signal-markdown signal-markdown--inline"
-                  set:html={renderMarkdownInline(signal.why_it_matters)}
+                  class="release-highlight__summary signal-markdown signal-markdown--inline"
+                  set:html={renderMarkdownInline(signal.summary)}
                 />
-                {signal.how_to_try ? (
-                  <p class="release-highlight__try">
-                    <span class="release-highlight__try-label">Try</span>
-                    <span
-                      class="signal-markdown signal-markdown--inline"
-                      set:html={renderMarkdownInline(signal.how_to_try)}
-                    />
-                  </p>
-                ) : null}
+                <div class="release-highlight__actions">
+                  {signal.how_to_try ? (
+                    <p class="release-highlight__try">
+                      <span class="release-highlight__try-label">Try</span>
+                      <span
+                        class="signal-markdown signal-markdown--inline"
+                        set:html={renderMarkdownInline(signal.how_to_try)}
+                      />
+                    </p>
+                  ) : (
+                    <span class="release-highlight__hint">Watch-only update</span>
+                  )}
+                  <a class="release-highlight__action signal-link" href={`#${signal.slug}`}>
+                    Full signal
+                  </a>
+                </div>
               </div>
             </li>
           ))}
@@ -117,5 +120,11 @@ const untrackedCommitCount = Math.max(
         </p>
       )
     }
+
+    {hiddenSignalCount > 0 ? (
+      <p class="release-delta__more">
+        {hiddenSignalCount} more tracked preview signal{hiddenSignalCount === 1 ? "" : "s"} continue in the feed below.
+      </p>
+    ) : null}
   </div>
 </section>

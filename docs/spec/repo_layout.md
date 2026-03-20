@@ -28,12 +28,14 @@ The repository has these canonical roots:
 | `docs/` | Authoritative documentation, including specs, guides, and saved plans. |
 | `site/` | Static-site application code and site-owned content. |
 | `tools/` | Deterministic automation used to collect, normalize, render, and validate Decodex content. |
+| `skills/` | Repo-local AI workflow entrypoints that point at Decodex-specific procedures and tooling. |
 | `src/` | Legacy Rust template surface retained only until the template cleanup is explicitly executed. |
 
 ## Root layout invariants
 
 - All new user-facing site code must live under `site/`.
 - All new GitHub collection, normalization, render, and validation scripts must live under `tools/`.
+- All repo-local Decodex skills must live under `skills/`.
 - All normative contracts must live under `docs/spec/`.
 - All procedural runbooks must live under `docs/guide/`.
 - The root Rust template surface is not the target location for new Decodex product features.
@@ -83,6 +85,7 @@ site/
   src/content/signals/
 tools/
   github/
+skills/
 src/                # legacy template surface
 Cargo.toml          # legacy template surface
 ```

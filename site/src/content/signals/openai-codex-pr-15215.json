@@ -26,6 +26,26 @@
       "https://github.com/openai/codex/commit/170481c1648c7c07f5e51c82c193b5bcea6b5ec0",
       "https://github.com/openai/codex/commit/cfa0a57805a8535742ad745751167157318f851f"
     ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15215",
+        "title": "Initial plugins TUI menu - list and read only. tui + tui_app_server",
+        "url": "https://github.com/openai/codex/pull/15215"
+      },
+      {
+        "kind": "commit",
+        "meta": "ff5efc8",
+        "title": "Initial plugins TUI - list and read only. tui + tui_app_server",
+        "url": "https://github.com/openai/codex/commit/ff5efc86c9e2f54c718fc914a8eeef5ae6f88e4d"
+      },
+      {
+        "kind": "commit",
+        "meta": "a101165",
+        "title": "Combine marketplace_path and plugin_name into PluginReadParams",
+        "url": "https://github.com/openai/codex/commit/a1011659d71c82d7dc6586ad43d816627c3147c9"
+      }
+    ],
     "pr_url": "https://github.com/openai/codex/pull/15215",
     "repo": "openai/codex"
   },
