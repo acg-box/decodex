@@ -1,0 +1,99 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "won-openai",
+      "committed_at": "2026-03-19T19:03:54Z",
+      "message": "changed save directory to codex_home",
+      "sha": "5d11650edcafe0db97b685a6428777bc7f7a0b72",
+      "url": "https://github.com/openai/codex/commit/5d11650edcafe0db97b685a6428777bc7f7a0b72"
+    },
+    {
+      "author": "won-openai",
+      "committed_at": "2026-03-19T20:33:55Z",
+      "message": "flaky syntax",
+      "sha": "c5bfcdcac131c70f0ec849eb94e2f29bd5d3fe8e",
+      "url": "https://github.com/openai/codex/commit/c5bfcdcac131c70f0ec849eb94e2f29bd5d3fe8e"
+    },
+    {
+      "author": "won-openai",
+      "committed_at": "2026-03-19T21:10:05Z",
+      "message": "Collapse generated image artifact helpers",
+      "sha": "6cd6f496d0ecde564e0ca313ea06d787eb39cdb3",
+      "url": "https://github.com/openai/codex/commit/6cd6f496d0ecde564e0ca313ea06d787eb39cdb3"
+    },
+    {
+      "author": "won-openai",
+      "committed_at": "2026-03-19T21:39:35Z",
+      "message": "Avoid expect in image artifact path handling",
+      "sha": "f8b89207c2e373bd25310bb80d784bb471b4b068",
+      "url": "https://github.com/openai/codex/commit/f8b89207c2e373bd25310bb80d784bb471b4b068"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "GENERATED_IMAGE_ARTIFACTS_DIR",
+    "BASE64_STANDARD"
+  ],
+  "files": [
+    {
+      "additions": 20,
+      "deletions": 4,
+      "patch_excerpt": "@@ -3709,7 +3709,11 @@ async fn handle_output_item_done_records_image_save_history_message() {\n     let session = Arc::new(session);\n     let turn_context = Arc::new(turn_context);\n     let call_id = \"ig_history_records_message\";\n-    let expected_saved_path = std::env::temp_dir().join(format!(\"{call_id}.png\"));\n+    let expected_saved_path = crate::stream_events_utils::image_generation_artifact_path(\n+        turn_context.config.codex_home.as_path(),\n+        &session.conversation_id.to_string(),\n+        call_id,\n+    );\n     let _ = std::fs::remove_file(&expected_saved_path);\n     let item = ResponseItem::ImageGenerationCall {\n         id: call_id.to_string(),\n@@ -3729,10 +3733,18 @@ async fn handle_output_item_done_records_image_save_history_message() {\n         .expect(\"image generation item should succeed\");\n \n     let history = session.clone_history().await;\n+    let image_output_...",
+      "path": "codex-rs/core/src/codex_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 66,
+      "deletions": 18,
+      "patch_excerpt": "@@ -1,3 +1,4 @@\n+use std::path::Path;\n use std::path::PathBuf;\n use std::pin::Pin;\n use std::sync::Arc;\n@@ -30,6 +31,36 @@ use futures::Future;\n use tracing::debug;\n use tracing::instrument;\n \n+const GENERATED_IMAGE_ARTIFACTS_DIR: &str = \"generated_images\";\n+\n+pub(crate) fn image_generation_artifact_path(\n+    codex_home: &Path,\n+    session_id: &str,\n+    call_id: &str,\n+) -> PathBuf {\n+    let sanitize = |value: &str| {\n+        let mut sanitized: String = value\n+            .chars()\n+            .map(|ch| {\n+                if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {\n+                    ch\n+                } else {\n+                    '_'\n+                }\n+            })\n+            .collect();\n+        if sanitized.is_empty() {\n+            sanitized = \"generated_image\".to_string();\n+        }\n+        sanitized\n+    };\n+\n+    codex_home\n+        .join(GENERATED_IM...",
+      "path": "codex-rs/core/src/stream_events_utils.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 19,
+      "patch_excerpt": "@@ -1,4 +1,5 @@\n use super::handle_non_tool_response_item;\n+use super::image_generation_artifact_path;\n use super::last_assistant_message_from_item;\n use super::save_image_generation_result;\n use crate::codex::make_session_and_context;\n@@ -80,13 +81,16 @@ fn last_assistant_message_from_item_returns_none_for_plan_only_hidden_message()\n }\n \n #[tokio::test]\n-async fn save_image_generation_result_saves_base64_to_png_in_temp_dir() {\n-    let expected_path = std::env::temp_dir().join(\"ig_save_base64.png\");\n+async fn save_image_generation_result_saves_base64_to_png_in_codex_home() {\n+    let codex_home = tempfile::tempdir().expect(\"create codex home\");\n+    let expected_path =\n+        image_generation_artifact_path(codex_home.path(), \"session-1\", \"ig_save_base64\");\n     let _ = std::fs::remove_file(&expected_path);\n \n-    let saved_path = save_image_generation_result(\"ig_save_base64\", \"Zm9v\")\n...",
+      "path": "codex-rs/core/src/stream_events_utils_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 48,
+      "deletions": 4,
+      "patch_excerpt": "@@ -35,6 +35,32 @@ use core_test_support::test_codex::test_codex;\n use core_test_support::wait_for_event;\n use core_test_support::wait_for_event_match;\n use pretty_assertions::assert_eq;\n+use std::path::Path;\n+use std::path::PathBuf;\n+\n+fn image_generation_artifact_path(codex_home: &Path, session_id: &str, call_id: &str) -> PathBuf {\n+    fn sanitize(value: &str) -> String {\n+        let mut sanitized: String = value\n+            .chars()\n+            .map(|ch| {\n+                if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {\n+                    ch\n+                } else {\n+                    '_'\n+                }\n+            })\n+            .collect();\n+        if sanitized.is_empty() {\n+            sanitized = \"generated_image\".to_string();\n+        }\n+        sanitized\n+    }\n+\n+    codex_home\n+        .join(\"generated_images\")\n+        .join(sanitize(session_id))\n+   ...",
+      "path": "codex-rs/core/tests/suite/items.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 44,
+      "deletions": 9,
+      "patch_excerpt": "@@ -32,8 +32,34 @@ use core_test_support::skip_if_no_network;\n use core_test_support::test_codex::test_codex;\n use core_test_support::wait_for_event;\n use pretty_assertions::assert_eq;\n+use std::path::Path;\n+use std::path::PathBuf;\n use wiremock::MockServer;\n \n+fn image_generation_artifact_path(codex_home: &Path, session_id: &str, call_id: &str) -> PathBuf {\n+    fn sanitize(value: &str) -> String {\n+        let mut sanitized: String = value\n+            .chars()\n+            .map(|ch| {\n+                if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {\n+                    ch\n+                } else {\n+                    '_'\n+                }\n+            })\n+            .collect();\n+        if sanitized.is_empty() {\n+            sanitized = \"generated_image\".to_string();\n+        }\n+        sanitized\n+    }\n+\n+    codex_home\n+        .join(\"generated_images\")\n+        .join(s...",
+      "path": "codex-rs/core/tests/suite/model_switching.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -36,7 +36,7 @@ pub(crate) struct ExecServerFileSystem {\n impl Default for ExecServerFileSystem {\n     fn default() -> Self {\n         Self {\n-            file_system: Arc::new(Environment.get_filesystem()),\n+            file_system: Arc::new(Environment::default().get_filesystem()),\n         }\n     }\n }",
+      "path": "codex-rs/exec-server/src/server/filesystem.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "saving image gen default save directory to codex_home/imagegen/thread_id/\r\n",
+    "labels": [],
+    "merged_at": "2026-03-19T22:16:26Z",
+    "number": 15222,
+    "state": "merged",
+    "title": "changed save directory to codex_home",
+    "url": "https://github.com/openai/codex/pull/15222"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

@@ -1,0 +1,125 @@
+---
+import { getCollection } from "astro:content";
+import EmptyFeedState from "@/components/EmptyFeedState.astro";
+import FilterBar from "@/components/FilterBar.astro";
+import ReleaseDeltaPanel from "@/components/ReleaseDeltaPanel.astro";
+import SignalCard from "@/components/SignalCard.astro";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { trackedSignalsForDelta, type ReleaseDeltaData } from "@/lib/release-delta";
+import {
+  filterSignals,
+  groupSignalsByMonth,
+  isFilterId,
+  sortSignals,
+  type FilterId,
+  type SignalCardData,
+} from "@/lib/signal-feed";
+
+const rawFilter = Astro.url.searchParams.get("filter");
+const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
+const collectionEntries = await getCollection("signals");
+const releaseDeltaEntries = await getCollection("releaseDeltas");
+const signals: SignalCardData[] = sortSignals(
+  collectionEntries.map((entry) => ({
+    id: entry.id,
+    ...entry.data,
+  })),
+);
+const releaseDelta: ReleaseDeltaData | null =
+  releaseDeltaEntries
+    .map((entry) => entry.data as ReleaseDeltaData)
+    .find((entry) => entry.repo === "openai/codex") ?? null;
+const filteredSignals = filterSignals(signals, activeFilter);
+const hasPublishedSignals = signals.length > 0;
+const groupedSignals = groupSignalsByMonth(filteredSignals);
+const showGroupLabels = groupedSignals.length > 1;
+const deltaSignals = trackedSignalsForDelta(releaseDelta, signals);
+
+const previewSignal: SignalCardData = {
+  id: "preview-shell",
+  schema: "signal_entry/v1",
+  slug: "preview-shell",
+  lane: "github",
+  kind: "capability",
+  title: "GitHub-first signal cards are ready for the first PR-backed entry",
+  published_at: "2026-03-20T00:00:00Z",
+  summary:
+    "The site scaffold now has the one-page feed shell, filter bar, utility slot, and signal-card anatomy needed for the GitHub lane.",
+  why_it_matters:
+    "This keeps the MVP focused on one strong page while making the next step obvious: publish real bundle-backed signal entries instead of layering more navigation.",
+  confidence: "likely",
+  impact: "medium",
+  config_flags: [],
+  how_to_try:
+    "Add the first validated signal entry under `site/src/content/signals/` once the PR bundle tooling lands.",
+  expected_effect:
+    "The homepage feed will render real GitHub signals without another route-level refactor.",
+  proof_points: [
+    "The homepage already exposes title, published date, impact, confidence, summary, and why-it-matters on card.",
+    "The filter bar is constrained to all, github, try-now, and high-impact.",
+    "The utility slot is visually present but intentionally subordinate to the feed.",
+  ],
+  source_refs: {
+    repo: "openai/codex",
+    commit_urls: ["https://docs.astro.build/en/guides/content-collections/"],
+    pr_url: "https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages",
+  },
+  previewLabel: "Scaffold Preview",
+};
+
+---
+
+<BaseLayout
+  title="Decodex"
+  description="The signal layer for Codex changes worth tracking."
+>
+  <main class="site-frame">
+    <header class="site-topbar">
+      <div class="site-brand">
+        <a class="site-brand__wordmark" href="/">Decodex</a>
+        <p class="site-brand__note">
+          Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
+        </p>
+      </div>
+
+      <div class="site-status">
+        <span class="site-status__chip">
+          {signals.length} live signal{signals.length === 1 ? "" : "s"}
+        </span>
+      </div>
+    </header>
+
+    {releaseDelta ? (
+      <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={deltaSignals} />
+    ) : null}
+
+    <section class="feed-toolbar">
+      <p class="feed-toolbar__label">
+        Latest signals
+      </p>
+
+      <FilterBar activeFilter={activeFilter} />
+    </section>
+
+    <section class="feed-region">
+      {!hasPublishedSignals ? <SignalCard signal={previewSignal} /> : null}
+      {hasPublishedSignals && filteredSignals.length === 0 ? (
+        <EmptyFeedState activeFilter={activeFilter} />
+      ) : null}
+
+      {groupedSignals.map((group) => (
+        <section class="feed-group">
+          {showGroupLabels ? (
+            <div class="feed-group__label">
+              <span>{group.label}</span>
+            </div>
+          ) : null}
+
+          <div class="space-y-4">
+            {group.items.map((signal) => <SignalCard signal={signal} />)}
+          </div>
+        </section>
+      ))}
+    </section>
+  </main>
+</BaseLayout>

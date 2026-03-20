@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "release_delta/v1"
+    },
+    "repo": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tag_prefix": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stable_release": {
+      "type": "object",
+      "properties": {
+        "tag_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prerelease": {
+          "type": "boolean",
+          "const": false
+        },
+        "published_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https:\\/\\/"
+        }
+      },
+      "required": [
+        "tag_name",
+        "name",
+        "prerelease",
+        "published_at",
+        "url"
+      ]
+    },
+    "prerelease": {
+      "type": "object",
+      "properties": {
+        "tag_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prerelease": {
+          "type": "boolean",
+          "const": true
+        },
+        "published_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https:\\/\\/"
+        }
+      },
+      "required": [
+        "tag_name",
+        "name",
+        "prerelease",
+        "published_at",
+        "url"
+      ]
+    },
+    "compare": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ahead_by": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "total_commits": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https:\\/\\/"
+        },
+        "commit_shas": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "pr_numbers": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "required": [
+        "status",
+        "ahead_by",
+        "total_commits",
+        "url"
+      ]
+    },
+    "tracked_signal_slugs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "$schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "repo",
+    "tag_prefix",
+    "generated_at",
+    "stable_release",
+    "prerelease",
+    "compare",
+    "tracked_signal_slugs"
+  ]
+}

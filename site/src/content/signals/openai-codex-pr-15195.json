@@ -1,0 +1,39 @@
+{
+  "confidence": "confirmed",
+  "config_flags": [
+    "MCP",
+    "JSONRPCE",
+    "INTERNAL_ERROR_CODE",
+    "DEFAULT_TIMEOUT",
+    "JSONRPCR",
+    "HTTP"
+  ],
+  "expected_effect": "A plugin install that bundles MCP servers should make those servers available immediately after install, with auth surfaced as part of the install flow when needed.",
+  "how_to_try": "Enable plugins, call `plugin/install` for a plugin that ships an `.mcp.json`, then issue a follow-up plugin or MCP read in the same session.",
+  "impact": "medium",
+  "kind": "try_now",
+  "lane": "github",
+  "proof_points": [
+    "The app-server README now documents `plugin/install` as installing bundled MCPs in addition to returning auth policy information.",
+    "The new `plugin_mcp_oauth.rs` path wires OAuth login handling for MCP servers discovered during plugin installation.",
+    "The integration test `plugin_install_makes_bundled_mcp_servers_available_to_followup_requests` verifies that bundled MCP servers become usable right after install."
+  ],
+  "published_at": "2026-03-20T02:36:59Z",
+  "schema": "signal_entry/v1",
+  "slug": "plugin-install-now-installs-bundled-mcps",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/1a910fd874e5d88d2ecd372e47b4f81835b15850",
+      "https://github.com/openai/codex/commit/3067fcdabc109264135c5b0b721c568862731d58",
+      "https://github.com/openai/codex/commit/663387989c49f696d3727431f8388866a6e692a5",
+      "https://github.com/openai/codex/commit/824d265d6d8821d5bd7a8a54646b7428003f8cc9",
+      "https://github.com/openai/codex/commit/49edd6bfc227df69272e5669c1ae7ac3fe66818e",
+      "https://github.com/openai/codex/commit/5504f1300fc9b5f6cc7eba2d08154f78811a47ec"
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15195",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15195 extends `plugin/install` so marketplace plugins can install their bundled MCP servers during the install flow instead of leaving that as a separate manual step.",
+  "title": "`plugin/install` now installs bundled MCP servers",
+  "why_it_matters": "Plugin setup becomes much closer to one step. Users and client builders get fewer post-install surprises when a plugin depends on MCP servers or requires OAuth to complete setup."
+}

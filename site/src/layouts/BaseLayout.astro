@@ -1,0 +1,38 @@
+---
+import "@/styles/global.css";
+
+type Props = {
+  title?: string;
+  description?: string;
+};
+
+const {
+  title = "Decodex",
+  description = "The signal layer for Codex changes worth tracking.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta
+      name="theme-color"
+      content="#f7f8fc"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#1a1b26"
+      media="(prefers-color-scheme: dark)"
+    />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div class="site-shell">
+      <slot />
+    </div>
+  </body>
+</html>

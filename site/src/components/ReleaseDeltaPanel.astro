@@ -1,0 +1,121 @@
+---
+import { renderMarkdownInline } from "@/lib/render-markdown";
+import {
+  formatPublishedAt,
+  kindLabel,
+  type SignalCardData,
+} from "@/lib/signal-feed";
+import {
+  releaseLabel,
+  type ReleaseDeltaData,
+} from "@/lib/release-delta";
+
+type Props = {
+  delta: ReleaseDeltaData;
+  trackedSignals: SignalCardData[];
+};
+
+const { delta, trackedSignals } = Astro.props;
+const stableLabel = releaseLabel(delta.stable_release, delta.tag_prefix);
+const prereleaseLabel = releaseLabel(delta.prerelease, delta.tag_prefix);
+const untrackedCommitCount = Math.max(
+  0,
+  delta.compare.total_commits - trackedSignals.length,
+);
+---
+
+<section class="release-delta" aria-labelledby="release-delta-heading">
+  <div class="release-delta__intro">
+    <p class="release-delta__eyebrow">Release Delta</p>
+    <h2 class="release-delta__headline" id="release-delta-heading">
+      Preview <code>{prereleaseLabel}</code> is ahead of stable <code>{stableLabel}</code>.
+    </h2>
+    <p class="release-delta__copy">
+      This module maps the latest prerelease back to tracked GitHub signals, so you can see what the preview unlocks before it lands in stable.
+    </p>
+  </div>
+
+  <div class="release-delta__stats">
+    <section class="release-delta__panel">
+      <p class="release-delta__panel-label">Stable</p>
+      <a class="release-delta__version" href={delta.stable_release.url} target="_blank" rel="noreferrer">
+        {stableLabel}
+      </a>
+      <p class="release-delta__panel-copy">
+        Published {formatPublishedAt(delta.stable_release.published_at)}
+      </p>
+    </section>
+
+    <section class="release-delta__panel release-delta__panel--accent">
+      <p class="release-delta__panel-label">Preview</p>
+      <a class="release-delta__version" href={delta.prerelease.url} target="_blank" rel="noreferrer">
+        {prereleaseLabel}
+      </a>
+      <p class="release-delta__panel-copy">
+        Published {formatPublishedAt(delta.prerelease.published_at)}
+      </p>
+    </section>
+
+    <section class="release-delta__panel">
+      <p class="release-delta__panel-label">Difference</p>
+      <a class="release-delta__metric" href={delta.compare.url} target="_blank" rel="noreferrer">
+        {delta.compare.total_commits} commits
+      </a>
+      <p class="release-delta__panel-copy">
+        {trackedSignals.length} tracked signals, {untrackedCommitCount} additional internal commits
+      </p>
+    </section>
+  </div>
+
+  <div class="release-delta__highlights">
+    <div class="release-delta__highlights-header">
+      <p class="release-delta__panel-label">What the preview unlocks</p>
+      <p class="release-delta__highlights-copy">
+        These items are already backed by published signal entries in the feed below.
+      </p>
+    </div>
+
+    {
+      trackedSignals.length > 0 ? (
+        <ol class="release-delta__highlight-list">
+          {trackedSignals.map((signal) => (
+            <li class="release-highlight">
+              <div class="release-highlight__meta">
+                <span>{kindLabel(signal.kind)}</span>
+              </div>
+
+              <div class="release-highlight__body">
+                <a
+                  class="release-highlight__title signal-markdown signal-markdown--title"
+                  href={`#${signal.slug}`}
+                  set:html={renderMarkdownInline(signal.title)}
+                />
+                <p
+                  class="release-highlight__copy signal-markdown signal-markdown--inline"
+                  set:html={renderMarkdownInline(signal.why_it_matters)}
+                />
+                {signal.how_to_try ? (
+                  <p class="release-highlight__try">
+                    <span class="release-highlight__try-label">Try</span>
+                    <span
+                      class="signal-markdown signal-markdown--inline"
+                      set:html={renderMarkdownInline(signal.how_to_try)}
+                    />
+                  </p>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p class="release-delta__empty">
+          No tracked signals currently intersect this prerelease delta yet. The compare is still live at
+          {" "}
+          <a class="signal-link" href={delta.compare.url} target="_blank" rel="noreferrer">
+            GitHub compare
+          </a>.
+        </p>
+      )
+    }
+  </div>
+</section>

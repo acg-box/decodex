@@ -1,0 +1,21 @@
+{
+  "name": "decodex-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.8",
+    "@tailwindcss/vite": "^4.2.2",
+    "astro": "^6.0.7",
+    "marked": "^17.0.4",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.3"
+  }
+}
