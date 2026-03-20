@@ -26,7 +26,15 @@ export type SignalKind = "capability" | "behavior_change" | "try_now";
 export type SignalImpact = "low" | "medium" | "high";
 export type SignalConfidence = "confirmed" | "likely" | "weak";
 
+export type SourceRefItem = {
+  kind: "pull_request" | "commit";
+  title: string;
+  url: string;
+  meta?: string;
+};
+
 export type SourceRefs = {
+  items?: SourceRefItem[];
   repo: string;
   pr_url?: string;
   commit_urls: string[];

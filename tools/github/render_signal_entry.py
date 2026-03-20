@@ -13,8 +13,10 @@ if str(SCRIPT_HOME) not in sys.path:
     sys.path.insert(0, str(SCRIPT_HOME))
 
 from contracts import (  # noqa: E402
+    GENERIC_COMMIT_TITLES,
     SIGNAL_SCHEMA,
     dump_json,
+    first_line,
     load_json,
     slugify,
     utc_now_iso,
@@ -33,10 +35,55 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def short_sha(value: str) -> str:
+    return value[:7]
+
+
+def rendered_source_items(bundle: dict[str, Any]) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    primary_pr = bundle.get("primary_pr")
+    if isinstance(primary_pr, dict) and primary_pr.get("url") and primary_pr.get("title"):
+        meta = primary_pr.get("number")
+        item: dict[str, str] = {
+            "kind": "pull_request",
+            "title": first_line(primary_pr["title"]),
+            "url": primary_pr["url"],
+        }
+        if isinstance(meta, int):
+            item["meta"] = f"#{meta}"
+        items.append(item)
+
+    fallback_items: list[dict[str, str]] = []
+    picked_items: list[dict[str, str]] = []
+    seen_titles: set[str] = set()
+
+    for commit in bundle["commits"]:
+        title = first_line(commit.get("message", ""))
+        if not title or title in seen_titles:
+            continue
+        seen_titles.add(title)
+        entry = {
+            "kind": "commit",
+            "title": title,
+            "url": commit["url"],
+            "meta": short_sha(commit["sha"]),
+        }
+        if title.startswith("Merge branch "):
+            continue
+        fallback_items.append(entry)
+        if title.lower() in GENERIC_COMMIT_TITLES:
+            continue
+        picked_items.append(entry)
+
+    items.extend(picked_items or fallback_items)
+    return items
+
+
 def rendered_source_refs(bundle: dict[str, Any]) -> dict[str, Any]:
     refs: dict[str, Any] = {
         "repo": bundle["repo"],
         "commit_urls": [commit["url"] for commit in bundle["commits"]],
+        "items": rendered_source_items(bundle),
     }
     primary_pr = bundle.get("primary_pr")
     if isinstance(primary_pr, dict) and primary_pr.get("url"):

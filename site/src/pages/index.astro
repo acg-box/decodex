@@ -3,11 +3,16 @@ import { getCollection } from "astro:content";
 import EmptyFeedState from "@/components/EmptyFeedState.astro";
 import FilterBar from "@/components/FilterBar.astro";
 import ReleaseDeltaPanel from "@/components/ReleaseDeltaPanel.astro";
+import ResetStatusWidget from "@/components/ResetStatusWidget.astro";
 import SignalCard from "@/components/SignalCard.astro";
+import SignalSummaryTile from "@/components/SignalSummaryTile.astro";
+import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
+import { type ResetStatusData } from "@/lib/reset-status";
 import { trackedSignalsForDelta, type ReleaseDeltaData } from "@/lib/release-delta";
 import {
-  filterSignals,
+  FILTERS,
+  formatPublishedAt,
   groupSignalsByMonth,
   isFilterId,
   sortSignals,
@@ -19,6 +24,7 @@ const rawFilter = Astro.url.searchParams.get("filter");
 const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
 const collectionEntries = await getCollection("signals");
 const releaseDeltaEntries = await getCollection("releaseDeltas");
+const resetStatusEntries = await getCollection("resetStatuses");
 const signals: SignalCardData[] = sortSignals(
   collectionEntries.map((entry) => ({
     id: entry.id,
@@ -29,11 +35,18 @@ const releaseDelta: ReleaseDeltaData | null =
   releaseDeltaEntries
     .map((entry) => entry.data as ReleaseDeltaData)
     .find((entry) => entry.repo === "openai/codex") ?? null;
-const filteredSignals = filterSignals(signals, activeFilter);
+const resetStatus: ResetStatusData | null =
+  resetStatusEntries
+    .map((entry) => entry.data as ResetStatusData)
+    .find((entry) => entry.source_kind === "community") ?? null;
 const hasPublishedSignals = signals.length > 0;
-const groupedSignals = groupSignalsByMonth(filteredSignals);
+const tryCount = signals.filter((signal) => signal.kind === "try_now" || Boolean(signal.how_to_try)).length;
+const behaviorCount = signals.filter((signal) => signal.kind === "behavior_change").length;
+const latestLabel = signals[0] ? formatPublishedAt(signals[0].published_at) : "n/a";
+const groupedSignals = groupSignalsByMonth(signals);
 const showGroupLabels = groupedSignals.length > 1;
 const deltaSignals = trackedSignalsForDelta(releaseDelta, signals);
+const clientFilterIds = FILTERS.map((filter) => filter.id);
 
 const previewSignal: SignalCardData = {
   id: "preview-shell",
@@ -67,6 +80,119 @@ const previewSignal: SignalCardData = {
   previewLabel: "Scaffold Preview",
 };
 
+const filterRuntimeScript = `(function () {
+  var validFilters = ${JSON.stringify(clientFilterIds)};
+  var defaultFilter = "all";
+
+  function isFilter(value) {
+    return validFilters.indexOf(value) !== -1;
+  }
+
+  function readFilter() {
+    var params = new URLSearchParams(window.location.search);
+    var value = params.get("filter");
+    return isFilter(value) ? value : defaultFilter;
+  }
+
+  function matchCard(card, filter) {
+    if (filter === "all") return true;
+    if (filter === "github") return card.dataset.filterLane === "github";
+    if (filter === "try-now") return card.dataset.filterTry === "true";
+    if (filter === "high-impact") return card.dataset.filterImpact === "high";
+    return true;
+  }
+
+  function updateEmptyState(filter, visibleCount) {
+    var empty = document.querySelector("[data-empty-state]");
+    if (!empty) return;
+    if (visibleCount > 0) {
+      empty.hidden = true;
+      return;
+    }
+    var title = empty.querySelector("[data-empty-title]");
+    var body = empty.querySelector("[data-empty-body]");
+    var payload = empty.getAttribute("data-empty-messages");
+    if (payload && title && body) {
+      try {
+        var messages = JSON.parse(payload);
+        var message = messages[filter] || messages.all;
+        title.textContent = message.title;
+        body.textContent = message.body;
+      } catch (_) {}
+    }
+    empty.hidden = false;
+  }
+
+  function updateGroups() {
+    document.querySelectorAll("[data-feed-group]").forEach(function (group) {
+      var anyVisible = group.querySelector("[data-signal-card]:not([hidden])");
+      group.hidden = !anyVisible;
+    });
+  }
+
+  function syncActiveFilter(filter) {
+    document.querySelectorAll("[data-filter-option]").forEach(function (link) {
+      var active = link.getAttribute("data-filter-option") === filter;
+      link.setAttribute("data-active", active ? "true" : "false");
+      if (active) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    });
+  }
+
+  function animateRegion() {
+    var region = document.querySelector("[data-feed-region]");
+    if (!region) return;
+    region.classList.remove("feed-region--filtering");
+    void region.offsetWidth;
+    region.classList.add("feed-region--filtering");
+  }
+
+  function applyFilter(filter, options) {
+    var opts = options || {};
+    var visibleCount = 0;
+    document.querySelectorAll("[data-signal-card]").forEach(function (card) {
+      var visible = matchCard(card, filter);
+      card.hidden = !visible;
+      if (visible) visibleCount += 1;
+    });
+    updateGroups();
+    updateEmptyState(filter, visibleCount);
+    syncActiveFilter(filter);
+
+    if (opts.animate) {
+      animateRegion();
+    }
+
+    if (opts.updateHistory) {
+      var url = new URL(window.location.href);
+      if (filter === "all") url.searchParams.delete("filter");
+      else url.searchParams.set("filter", filter);
+      history.pushState({ filter: filter }, "", url);
+    }
+  }
+
+  function bind() {
+    document.querySelectorAll("[data-filter-option]").forEach(function (link) {
+      if (link.dataset.filterBound === "true") return;
+      link.dataset.filterBound = "true";
+      link.addEventListener("click", function (event) {
+        var filter = link.getAttribute("data-filter-option");
+        if (!isFilter(filter)) return;
+        event.preventDefault();
+        applyFilter(filter, { updateHistory: true, animate: true });
+      });
+    });
+
+    applyFilter(readFilter(), { updateHistory: false, animate: false });
+  }
+
+  document.addEventListener("astro:page-load", bind);
+  document.addEventListener("DOMContentLoaded", bind);
+  window.addEventListener("popstate", function () {
+    applyFilter(readFilter(), { updateHistory: false, animate: false });
+  });
+})();`;
+
 ---
 
 <BaseLayout
@@ -75,17 +201,29 @@ const previewSignal: SignalCardData = {
 >
   <main class="site-frame">
     <header class="site-topbar">
-      <div class="site-brand">
-        <a class="site-brand__wordmark" href="/">Decodex</a>
-        <p class="site-brand__note">
-          Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
-        </p>
+      <div class="site-topbar__head">
+        <div class="site-brand">
+          <div class="site-brand__bar">
+            <a class="site-brand__wordmark" href="/">Decodex</a>
+
+            <div class="site-chrome">
+              <ThemeToggle />
+            </div>
+          </div>
+
+          <p class="site-brand__note">
+            Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
+          </p>
+        </div>
       </div>
 
       <div class="site-status">
-        <span class="site-status__chip">
-          {signals.length} live signal{signals.length === 1 ? "" : "s"}
-        </span>
+        <SignalSummaryTile
+          tryCount={tryCount}
+          behaviorCount={behaviorCount}
+          latestLabel={latestLabel}
+        />
+        {resetStatus ? <ResetStatusWidget entry={resetStatus} variant="stack" /> : null}
       </div>
     </header>
 
@@ -93,22 +231,22 @@ const previewSignal: SignalCardData = {
       <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={deltaSignals} />
     ) : null}
 
-    <section class="feed-toolbar">
-      <p class="feed-toolbar__label">
-        Latest signals
-      </p>
+    <section class="feed-toolbar" id="latest-signals">
+      <div class="feed-toolbar__intro">
+        <p class="feed-toolbar__label">Latest signals</p>
+      </div>
 
-      <FilterBar activeFilter={activeFilter} />
+      <div class="feed-toolbar__controls">
+        <FilterBar activeFilter={activeFilter} />
+      </div>
     </section>
 
-    <section class="feed-region">
+    <section class="feed-region" data-feed-region>
       {!hasPublishedSignals ? <SignalCard signal={previewSignal} /> : null}
-      {hasPublishedSignals && filteredSignals.length === 0 ? (
-        <EmptyFeedState activeFilter={activeFilter} />
-      ) : null}
+      {hasPublishedSignals ? <EmptyFeedState activeFilter={activeFilter} /> : null}
 
       {groupedSignals.map((group) => (
-        <section class="feed-group">
+        <section class="feed-group" data-feed-group>
           {showGroupLabels ? (
             <div class="feed-group__label">
               <span>{group.label}</span>
@@ -122,4 +260,5 @@ const previewSignal: SignalCardData = {
       ))}
     </section>
   </main>
+  {hasPublishedSignals ? <script is:inline set:html={filterRuntimeScript}></script> : null}
 </BaseLayout>
