@@ -1,0 +1,44 @@
+{
+  "caveats": [
+    "No direct user-visible behavior is documented in the PR body; impact is primarily architectural and should be treated as internal technical debt reduction.",
+    "Some features-related call sites changed import paths (`codex-core` to `codex-features`), so regressions in behavior are unlikely but should be monitored during integration."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly states the intent: \"Split the feature system into a new `codex-features` crate\" and migrate `codex-core` and workspace consumers to new config and warning APIs.",
+    "Primary PR metadata includes commit `dc4350ff7d118af85cb2eff28447ce9c440f0610` with title `Split features into codex-features crate` and merged state.",
+    "New crate wiring was added in `codex-rs/features/Cargo.toml` plus `codex-rs/features/BUILD.bazel`, and the workspace now references it from `codex-rs/Cargo.toml` and multiple component `Cargo.toml` files.",
+    "File-level patches repeatedly replace imports like `codex_core::features::...` with `codex_features::...` across app server, core, CLI, TUI, and MCP crates, confirming the migration is system-wide rather than localized."
+  ],
+  "published_at": "2026-03-20T03:12:07Z",
+  "schema": "signal_entry/v1",
+  "slug": "openai-codex-pr-15253",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/dc4350ff7d118af85cb2eff28447ce9c440f0610"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15253",
+        "title": "Split features into codex-features crate",
+        "url": "https://github.com/openai/codex/pull/15253"
+      },
+      {
+        "kind": "commit",
+        "meta": "dc4350f",
+        "title": "Split features into codex-features crate",
+        "url": "https://github.com/openai/codex/commit/dc4350ff7d118af85cb2eff28447ce9c440f0610"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15253",
+    "repo": "openai/codex"
+  },
+  "summary": "This PR reorganizes feature flag definitions and APIs into a new `codex-features` crate and rewires existing binaries, libraries, and tests to consume that crate instead of feature symbols from `codex-core`. The change also updates workspace dependencies so `features` participates as a first-class workspace member and dependency across the Rust workspace.",
+  "title": "Refactor: move feature-flag plumbing into a dedicated `codex-features` crate",
+  "why_it_matters": "Decoupling feature gating from `codex-core` reduces cross-crate coupling and creates a cleaner ownership boundary for feature control, which improves maintainability as feature definitions and warning behavior can evolve without being tied to core runtime changes. It also helps avoid broad feature-related churn inside core, making future CLI/server/TUI edits safer and easier to release."
+}

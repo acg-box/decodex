@@ -1,0 +1,20 @@
+{
+  "caveats": [],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body states three user-visible objectives: use requirement-resolved `config.features` as the plugin gate, guard plugin list/read flows behind that gate, and skip bad `marketplace.json` files instead of failing the entire list.",
+    "`codex-rs/core/src/plugins/marketplace.rs` now wraps marketplace loading in a match that warns and continues on failure, and adds a test for skipping failing marketplaces.",
+    "`codex-rs/app-server/src/codex_message_processor.rs` changes plugin request handling to load latest config (`load_latest_config`) before continuing and treats plugin-disabled as a distinct case instead of treating marketplace/config issues as a hard plugin failure.",
+    "`codex-rs/core/src/skills/manager.rs` and call sites in `codex-rs/core/src/codex.rs`, `codex-rs/core/src/codex_tests.rs`, and `codex-rs/core/src/tools/runtimes/shell/unix_escalation.rs` now pass config into `skills_for_cwd`, making behavior follow the active config state."
+  ],
+  "slug": "openai-codex-pr-15104",
+  "summary": "PR #15104 updates plugin-related flows to use requirement-resolved config for the plugin feature gate, passes config-aware context through skill loading, and makes marketplace discovery tolerate malformed files instead of failing hard.",
+  "title": "Harden plugin listing/read behavior with resolved feature gating",
+  "watch_state": null,
+  "why_it_matters": "This change makes plugin commands more reliable for users by preventing a single broken marketplace file from breaking plugin list/read operations, while ensuring plugin enablement is consistently driven by resolved configuration."
+}

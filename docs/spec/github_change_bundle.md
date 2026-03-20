@@ -12,7 +12,11 @@ Read this when:
 Not this document:
 - The rendered site contract.
 - The published signal-entry schema.
-- The local manual workflow.
+- The local or CI workflow orchestration.
+
+Bundle generation remains deterministic whether it is run locally or on a
+trusted automation runner. The bundle itself must not depend on Codex output or
+other non-deterministic editorial state.
 
 Defines:
 - The canonical `github_change_bundle/v1` shape.

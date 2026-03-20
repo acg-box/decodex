@@ -1,0 +1,72 @@
+{
+  "caveats": [
+    "The bundle provides architectural evidence but does not include a direct user-facing demo or runtime benchmark, so effects are inferred from implementation/test structure rather than explicit end-user behavior docs."
+  ],
+  "confidence": "likely",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR body states the new structure explicitly: `LocalProcess` is the real implementation, `RemoteProcess` is a thin network proxy, and `Environment` now exposes `ExecProcess`.",
+    "`local_backend.rs` is removed and replaced by new `process.rs`, `local_process.rs`, and `remote_process.rs`, indicating a concrete local/remote split behind a shared `ExecProcess` trait.",
+    "`environment.rs` is changed to hold an `Arc<dyn ExecProcess>` and initialize an execution strategy (local default with optional remote override), so consumers depend on a common process API.",
+    "Server wiring adds `process_handler.rs` and updates `server/handler.rs` to delegate execution handling through that adapter, centralizing execution semantics.",
+    "The new `exec_process.rs` test exercises process behavior for both local and remote modes, directly validating parity across backends."
+  ],
+  "published_at": "2026-03-20T03:13:08Z",
+  "schema": "signal_entry/v1",
+  "slug": "exec-process-layer-now-uses-a-shared-local-remote-abstraction",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/1cb24257691875788c77da7afe84996a8ab65c71",
+      "https://github.com/openai/codex/commit/23b8169fed1b56552c924ad781bdc2cb33e5c481",
+      "https://github.com/openai/codex/commit/c23d879e26b5162107121070f403b1edb0173936",
+      "https://github.com/openai/codex/commit/63333b07e51546ca2679d7f546ebe80f2449c891",
+      "https://github.com/openai/codex/commit/25585b9aed8884ccab1b6f04c1289821761e9a79"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15233",
+        "title": "Split exec process into local and remote implementations",
+        "url": "https://github.com/openai/codex/pull/15233"
+      },
+      {
+        "kind": "commit",
+        "meta": "1cb2425",
+        "title": "Split exec process into local and remote implementations",
+        "url": "https://github.com/openai/codex/commit/1cb24257691875788c77da7afe84996a8ab65c71"
+      },
+      {
+        "kind": "commit",
+        "meta": "23b8169",
+        "title": "Initialize default local exec process",
+        "url": "https://github.com/openai/codex/commit/23b8169fed1b56552c924ad781bdc2cb33e5c481"
+      },
+      {
+        "kind": "commit",
+        "meta": "c23d879",
+        "title": "Avoid expect in default environment setup",
+        "url": "https://github.com/openai/codex/commit/c23d879e26b5162107121070f403b1edb0173936"
+      },
+      {
+        "kind": "commit",
+        "meta": "63333b0",
+        "title": "Address exec process review comments",
+        "url": "https://github.com/openai/codex/commit/63333b07e51546ca2679d7f546ebe80f2449c891"
+      },
+      {
+        "kind": "commit",
+        "meta": "25585b9",
+        "title": "Fix environment test after accessor cleanup",
+        "url": "https://github.com/openai/codex/commit/25585b9aed8884ccab1b6f04c1289821761e9a79"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15233",
+    "repo": "openai/codex"
+  },
+  "summary": "PR #15233 refactors the exec-server process stack by extracting a shared process interface, wiring `Environment` and handlers to it, and adding explicit local and remote implementations plus shared execution tests.",
+  "title": "Exec process layer now uses a shared local/remote abstraction",
+  "why_it_matters": "The change reduces the chance of local and remote command-execution behavior diverging by enforcing a single process contract for both backends. That gives users more reliable command execution behavior and makes future runtime backend changes safer and less likely to introduce regressions."
+}

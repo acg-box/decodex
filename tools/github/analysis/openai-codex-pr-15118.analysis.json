@@ -1,0 +1,21 @@
+{
+  "caveats": [
+    "The new field is a Codex-specific extension and only applies to the Stop and UserPromptSubmit hook payloads covered by this PR."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "Each Stop and UserPromptSubmit invocation should include a `turn_id` string, and the value should differ between separate turns so your hook can correlate events within the same turn.",
+  "how_to_try": "Enable Stop or UserPromptSubmit hooks in a build that includes PR #15118, print the incoming JSON payload in your hook script, and run two prompts in the same session.",
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "The PR title and body explicitly frame the change as exposing `turn_id` to hook scripts so runs can be connected to particular turns.",
+    "The generated hook input schemas for `stop.command.input` and `user-prompt-submit.command.input` now require a string `turn_id` field.",
+    "The Rust hook event code now serializes `request.turn_id` into both Stop and UserPromptSubmit payloads, and the test suite was expanded to log hook inputs and verify turn-scoped behavior."
+  ],
+  "slug": "hooks-stop-userpromptsubmit-turn-id",
+  "summary": "Merged PR #15118 adds a Codex-specific `turn_id` field to the Stop and UserPromptSubmit hook payloads so hook scripts can tie each invocation to a specific conversation turn.",
+  "title": "Stop and UserPromptSubmit hooks now receive the active `turn_id`",
+  "watch_state": null,
+  "why_it_matters": "This makes hook automation more precise. If you log, correlate, or enforce turn-scoped behavior in custom hooks, you can now distinguish one turn from the next instead of inferring that from prompt text or timestamps."
+}

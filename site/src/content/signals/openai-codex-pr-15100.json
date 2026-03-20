@@ -1,0 +1,50 @@
+{
+  "caveats": [
+    "This is a narrow behavioral change for code-mode automation, not a broad end-user feature or UI change."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR-level narrative is explicit: `openai/codex#15100` is titled \"Add apply_patch code mode result\" and shipped as a merged PR-first change on 2026-03-18.",
+    "`codex-rs/core/src/tools/context.rs` adds `ApplyPatchToolOutput`, including a dedicated `code_mode_result` implementation that returns an empty JSON object for code-mode callers.",
+    "`codex-rs/core/src/tools/handlers/apply_patch.rs` switches `ApplyPatchHandler` from `FunctionToolOutput` to `ApplyPatchToolOutput`, wiring the new result behavior into the actual tool handler.",
+    "`codex-rs/core/tests/suite/code_mode.rs` adds an integration assertion that the nested tool's second text item is `{}`, confirming the new result shape is intentional and tested."
+  ],
+  "published_at": "2026-03-18T23:11:11Z",
+  "schema": "signal_entry/v1",
+  "slug": "apply-patch-code-mode-result-object",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/dd3790452f7adf7a23f0cf35112fa77c7f992084",
+      "https://github.com/openai/codex/commit/fa4e5951a55070d545d5bfcde0a398fed9298f74"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15100",
+        "title": "Add apply_patch code mode result",
+        "url": "https://github.com/openai/codex/pull/15100"
+      },
+      {
+        "kind": "commit",
+        "meta": "dd37904",
+        "title": "Implement apply_patch code mode",
+        "url": "https://github.com/openai/codex/commit/dd3790452f7adf7a23f0cf35112fa77c7f992084"
+      },
+      {
+        "kind": "commit",
+        "meta": "fa4e595",
+        "title": "test(core): assert apply_patch code mode result in integration",
+        "url": "https://github.com/openai/codex/commit/fa4e5951a55070d545d5bfcde0a398fed9298f74"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15100",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15100 changes Codex's code-mode `apply_patch` path to return a dedicated result object instead of flowing through the generic function-tool output path.",
+  "title": "Code-mode `apply_patch` now returns an explicit result object",
+  "why_it_matters": "This makes nested `apply_patch` calls easier to handle programmatically in code mode. Automation can treat a successful patch as a deterministic tool result rather than relying only on side effects or generic output handling."
+}

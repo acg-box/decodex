@@ -1,0 +1,64 @@
+{
+  "caveats": [
+    "This is primarily guidance-level metadata and tests; it improves documented behavior contracts but does not itself hard-enforce all destructive-command prevention at runtime."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR\u2019s main narrative is a documentation-focused change: `primary_pr.body` adds explicit Windows destructive command rules for `exec_command`, `shell`, and `shell_command` (avoid cross-shell composition, prefer native PowerShell cmdlets, validate absolute workspace-local targets before recursive delete/move).",
+    "In `codex-rs/core/src/tools/spec.rs`, the bundle shows a new `windows_destructive_filesystem_guidance()` helper plus `windows_shell_safety_description()` integration, indicating the safety guidance is part of tool-spec text generation.",
+    "`codex-rs/core/src/tools/spec_tests.rs` was updated to include the revised Windows text in expected shell spec output, tying the change to public-facing schema/help behavior and protecting against regression.",
+    "`codex-rs/exec-server/src/server/filesystem.rs` includes `Environment::default().get_filesystem()` and the commit sequence includes compile/test fixes, supporting the same PR as a cohesive maintenance pass around rollout stability."
+  ],
+  "published_at": "2026-03-19T21:09:35Z",
+  "schema": "signal_entry/v1",
+  "slug": "openai-codex-pr-15207",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/4151776de0adf6ddc5940125b0d42cf5bddef08b",
+      "https://github.com/openai/codex/commit/5c8adebb02266094d5017fd30f3b576645e28e49",
+      "https://github.com/openai/codex/commit/58ab27ff592e1a7723d07c56862f15ad9584a7b5",
+      "https://github.com/openai/codex/commit/503fc5670f9cfc2d58954a821f658b260c982df6"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15207",
+        "title": "add specific tool guidance for Windows destructive commands",
+        "url": "https://github.com/openai/codex/pull/15207"
+      },
+      {
+        "kind": "commit",
+        "meta": "4151776",
+        "title": "add specific tool guidance for Windows destructive commands",
+        "url": "https://github.com/openai/codex/commit/4151776de0adf6ddc5940125b0d42cf5bddef08b"
+      },
+      {
+        "kind": "commit",
+        "meta": "5c8adeb",
+        "title": "fix test compile error",
+        "url": "https://github.com/openai/codex/commit/5c8adebb02266094d5017fd30f3b576645e28e49"
+      },
+      {
+        "kind": "commit",
+        "meta": "58ab27f",
+        "title": "fix environment compile error",
+        "url": "https://github.com/openai/codex/commit/58ab27ff592e1a7723d07c56862f15ad9584a7b5"
+      },
+      {
+        "kind": "commit",
+        "meta": "503fc56",
+        "title": "fix failing test",
+        "url": "https://github.com/openai/codex/commit/503fc5670f9cfc2d58954a821f658b260c982df6"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15207",
+    "repo": "openai/codex"
+  },
+  "summary": "This PR updates Codex tool descriptions and related tests to give stronger, consistent Windows safety guidance for filesystem-destructive commands, while a small supporting server change fixes construction/default behavior for filesystem access.",
+  "title": "Windows shell guidance now includes explicit destructive-command safety rules",
+  "why_it_matters": "It reduces the chance of dangerous cross-shell command patterns on Windows by clearly documenting safer practices in the tool specs users see before execution, which helps prevent accidental deletes or moves from mis-composed shell pipelines."
+}

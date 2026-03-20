@@ -1,0 +1,21 @@
+{
+  "caveats": [
+    "No direct user-visible behavior changes; value appears only in exported telemetry/observability consumers"
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "PR #15180 is titled `chore: add metrics for profile` and has a committed change set tied to a single merged commit (`959dc2a4d88ebe8caad796b05e5a76096ba20f2e`)",
+    "`codex-rs/otel/src/metrics/names.rs` now defines `PROFILE_USAGE_METRIC` as `codex.profile.usage`, establishing a new named metric in the shared telemetry namespace",
+    "`codex-rs/otel/src/events/session_telemetry.rs` imports `PROFILE_USAGE_METRIC` and increments it via `self.counter(..., 1, &[])` whenever `active_profile.is_some()` is true"
+  ],
+  "slug": "add-profile-usage-metric",
+  "summary": "PR #15180 adds a new OpenTelemetry counter that increments when a session starts with an active profile, enabling explicit tracking of profile usage in telemetry pipelines.",
+  "title": "Added `codex.profile.usage` metric for active profile sessions",
+  "watch_state": null,
+  "why_it_matters": "This gives operators and maintainers a direct signal for how often active coding profiles are used in live sessions. It helps with visibility into feature adoption and debugging profile-related behavior without changing runtime user flows."
+}

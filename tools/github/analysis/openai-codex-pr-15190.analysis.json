@@ -1,0 +1,24 @@
+{
+  "caveats": [
+    "No explicit user action path is introduced in the PR; impact is primarily on downstream analytics/tracing that consumes MCP `_meta`."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body explicitly states the goal: group MCP tool calls with Codex sessions/turns and switch from header-based assumptions to `_meta` for `tools/call` due to shared rmcp-client concurrency constraints.",
+    "`codex-rs/core/src/mcp_tool_call.rs` now builds MCP request metadata via `build_mcp_tool_call_request_meta(turn_context, ...)`, explicitly plumbing turn/session context into request metadata while preserving existing `_codex_apps` handling.",
+    "`codex-rs/core/src/turn_metadata.rs` adds `session_id` to the metadata bag and wires it through metadata construction, and `codex-rs/core/src/codex.rs` passes `conversation_id` into turn-context creation.",
+    "`codex-rs/rmcp-client/src/rmcp_client.rs` updates `CallToolRequestParams` transport to send per-request metadata explicitly through RMCP request options instead of relying on mutable shared client header state.",
+    "`codex-rs/core/src/mcp_tool_call_tests.rs` and `codex-rs/core/tests/suite/search_tool.rs` add assertions confirming `_meta` includes expected turn/session info (including existing `resource_uri`/`_codex_apps` expectations) for custom MCP and codex-apps flows.",
+    "The file changes are mostly additive metadata/transport plumbing with no removal of prior user-facing tool-call features, matching an incremental internal behavior update for observability and traceability."
+  ],
+  "slug": null,
+  "summary": "This PR shifts MCP `tools/call` metadata handling so MCP tool calls now carry both session and turn context in the request `_meta` payload, restoring end-to-end traceability across MCP interactions that previously lacked it.",
+  "title": "Propagate MCP tool-call context through `_meta`",
+  "watch_state": null,
+  "why_it_matters": "By putting turn/session identifiers into MCP call metadata, the change enables better correlation of tool calls with user turns and sessions in downstream processing and observability systems, which improves debugging and incident triage for multi-step MCP workflows without changing user-facing command behavior."
+}
