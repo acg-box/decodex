@@ -1,0 +1,277 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T08:32:27Z",
+      "message": "Support featured plugins",
+      "sha": "39be8e1ead7782405919b907f159d3c9ee0524d9",
+      "url": "https://github.com/openai/codex/commit/39be8e1ead7782405919b907f159d3c9ee0524d9"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T18:57:45Z",
+      "message": "Merge branch 'main' into alexs/plugins-featured",
+      "sha": "76cb1c09e91dcd767f96c01ab76e2789f7f40890",
+      "url": "https://github.com/openai/codex/commit/76cb1c09e91dcd767f96c01ab76e2789f7f40890"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T21:21:44Z",
+      "message": "add cache",
+      "sha": "a553a10574f6160d757b2f5054f890ffbd45ad0a",
+      "url": "https://github.com/openai/codex/commit/a553a10574f6160d757b2f5054f890ffbd45ad0a"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T21:28:29Z",
+      "message": "fmt",
+      "sha": "63aa14e9162d17cb5a1752aad0f97c9b26447f46",
+      "url": "https://github.com/openai/codex/commit/63aa14e9162d17cb5a1752aad0f97c9b26447f46"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T21:46:13Z",
+      "message": "minor",
+      "sha": "d0ba77e6d924ca23479bf225bc07570c01888566",
+      "url": "https://github.com/openai/codex/commit/d0ba77e6d924ca23479bf225bc07570c01888566"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T21:58:05Z",
+      "message": "remove unrelated",
+      "sha": "9e938052528ff38f6f11eb09478833ea7c06c795",
+      "url": "https://github.com/openai/codex/commit/9e938052528ff38f6f11eb09478833ea7c06c795"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T22:00:26Z",
+      "message": "remove py",
+      "sha": "9236f69c95d34febf25e93248e5ed51a3e5a588d",
+      "url": "https://github.com/openai/codex/commit/9236f69c95d34febf25e93248e5ed51a3e5a588d"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T22:06:23Z",
+      "message": "revert unrelated",
+      "sha": "03d7d85aa7b3aeed97df6866f7fcf3eec0e966d8",
+      "url": "https://github.com/openai/codex/commit/03d7d85aa7b3aeed97df6866f7fcf3eec0e966d8"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T22:24:10Z",
+      "message": "minor",
+      "sha": "37487f9f064339c31f4eca102d7e02f6f8088c33",
+      "url": "https://github.com/openai/codex/commit/37487f9f064339c31f4eca102d7e02f6f8088c33"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T23:01:24Z",
+      "message": "merge startup",
+      "sha": "e605d012dfb17c554a9b21996d68ed14abde634f",
+      "url": "https://github.com/openai/codex/commit/e605d012dfb17c554a9b21996d68ed14abde634f"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T23:05:54Z",
+      "message": "Merge branch 'main' into alexs/plugins-featured",
+      "sha": "9dd1676aa2fc8fcf51b954983f740e1c3fbe40cc",
+      "url": "https://github.com/openai/codex/commit/9dd1676aa2fc8fcf51b954983f740e1c3fbe40cc"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T23:08:11Z",
+      "message": "minor",
+      "sha": "2e1c40c88af2b424e2e4a1497bddd7e4ed8ada3a",
+      "url": "https://github.com/openai/codex/commit/2e1c40c88af2b424e2e4a1497bddd7e4ed8ada3a"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T23:24:08Z",
+      "message": "minor",
+      "sha": "5d854d48c72d442103dd0f7b632209ea2bce6ea7",
+      "url": "https://github.com/openai/codex/commit/5d854d48c72d442103dd0f7b632209ea2bce6ea7"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-19T00:07:09Z",
+      "message": "Merge branch 'main' into alexs/plugins-featured",
+      "sha": "a93899c10e621f31ca3ad15fb35d8703563cf80a",
+      "url": "https://github.com/openai/codex/commit/a93899c10e621f31ca3ad15fb35d8703563cf80a"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-18T23:49:00Z",
+      "message": "pass clone",
+      "sha": "0d58db1a14b26e3e1dbde63b7e923d4b3db95fe0",
+      "url": "https://github.com/openai/codex/commit/0d58db1a14b26e3e1dbde63b7e923d4b3db95fe0"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-19T00:08:36Z",
+      "message": "fmt",
+      "sha": "5e275ecfbee8b7ea7ff580dd53c951e29a5b42ac",
+      "url": "https://github.com/openai/codex/commit/5e275ecfbee8b7ea7ff580dd53c951e29a5b42ac"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-19T00:16:43Z",
+      "message": "fix",
+      "sha": "1e0a7f2f622baad80cf7d9be6b88cfc2ba0fa43a",
+      "url": "https://github.com/openai/codex/commit/1e0a7f2f622baad80cf7d9be6b88cfc2ba0fa43a"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP",
+    "OPENAI_CURATED_MARKETPLACE_NAME",
+    "TODO",
+    "DEFAULT_TIMEOUT",
+    "POST",
+    "GET",
+    "JSONRPCR",
+    "DEFAULT_PLUGIN_VERSION",
+    "DEFAULT_APP_CONFIG_FILE",
+    "CURATED_REPO_SYNC_STARTED",
+    "MAX_CAPABILITY_SUMMARY_DESCRIPTION_LEN",
+    "FEATURED_PLUGIN_IDS_CACHE_TTL",
+    "DEFAULT_REMOTE_MARKETPLACE_NAME",
+    "REMOTE_PLUGIN_FETCH_TIMEOUT",
+    "REMOTE_FEATURED_PLUGIN_FETCH_TIMEOUT",
+    "REMOTE_PLUGIN_MUTATION_TIMEOUT"
+  ],
+  "files": [
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -9340,6 +9340,13 @@\n       \"PluginListResponse\": {\n         \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n         \"properties\": {\n+          \"featuredPluginIds\": {\n+            \"default\": [],\n+            \"items\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": \"array\"\n+          },\n           \"marketplaces\": {\n             \"items\": {\n               \"$ref\": \"#/definitions/v2/PluginMarketplaceEntry\"",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -6128,6 +6128,13 @@\n     \"PluginListResponse\": {\n       \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n       \"properties\": {\n+        \"featuredPluginIds\": {\n+          \"default\": [],\n+          \"items\": {\n+            \"type\": \"string\"\n+          },\n+          \"type\": \"array\"\n+        },\n         \"marketplaces\": {\n           \"items\": {\n             \"$ref\": \"#/definitions/PluginMarketplaceEntry\"",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -239,6 +239,13 @@\n     }\n   },\n   \"properties\": {\n+    \"featuredPluginIds\": {\n+      \"default\": [],\n+      \"items\": {\n+        \"type\": \"string\"\n+      },\n+      \"type\": \"array\"\n+    },\n     \"marketplaces\": {\n       \"items\": {\n         \"$ref\": \"#/definitions/PluginMarketplaceEntry\"",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/PluginListResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -3,4 +3,4 @@\n // This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n import type { PluginMarketplaceEntry } from \"./PluginMarketplaceEntry\";\n \n-export type PluginListResponse = { marketplaces: Array<PluginMarketplaceEntry>, remoteSyncError: string | null, };\n+export type PluginListResponse = { marketplaces: Array<PluginMarketplaceEntry>, remoteSyncError: string | null, featuredPluginIds: Array<string>, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/PluginListResponse.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3093,6 +3093,8 @@ pub struct PluginListParams {\n pub struct PluginListResponse {\n     pub marketplaces: Vec<PluginMarketplaceEntry>,\n     pub remote_sync_error: Option<String>,\n+    #[serde(default)]\n+    pub featured_plugin_ids: Vec<String>,\n }\n \n #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -162,7 +162,7 @@ Example with notification opt-out:\n - `experimentalFeature/list` \u2014 list feature flags with stage metadata (`beta`, `underDevelopment`, `stable`, etc.), enabled/default-enabled state, and cursor pagination. For non-beta flags, `displayName`/`description`/`announcement` are `null`.\n - `collaborationMode/list` \u2014 list available collaboration mode presets (experimental, no pagination). This response omits built-in developer instructions; clients should either pass `settings.developer_instructions: null` when setting a mode to use Codex's built-in instructions, or provide their own instructions explicitly.\n - `skills/list` \u2014 list skills for one or more `cwd` values (optional `forceReload`).\n-- `plugin/list` \u2014 list discovered plugin marketplaces and plugin state, including effective marketplace install/auth policy metadata. `interface.category` uses the marketplace category ...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 32,
+      "deletions": 3,
+      "patch_excerpt": "@@ -221,6 +221,7 @@ use codex_core::models_manager::collaboration_mode_presets::CollaborationModesCo\n use codex_core::parse_cursor;\n use codex_core::plugins::MarketplaceError;\n use codex_core::plugins::MarketplacePluginSource;\n+use codex_core::plugins::OPENAI_CURATED_MARKETPLACE_NAME;\n use codex_core::plugins::PluginInstallError as CorePluginInstallError;\n use codex_core::plugins::PluginInstallRequest;\n use codex_core::plugins::PluginReadRequest;\n@@ -424,7 +425,10 @@ impl CodexMessageProcessor {\n             Ok(config) => self\n                 .thread_manager\n                 .plugins_manager()\n-                .maybe_start_curated_repo_sync_for_config(&config),\n+                .maybe_start_curated_repo_sync_for_config(\n+                    &config,\n+                    self.thread_manager.auth_manager(),\n+                ),\n             Err(err) => warn!(\"failed to load latest config f...",
+      "path": "codex-rs/app-server/src/codex_message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 4,
+      "patch_excerpt": "@@ -228,10 +228,7 @@ impl MessageProcessor {\n         thread_manager\n             .plugins_manager()\n             .set_analytics_events_client(analytics_events_client.clone());\n-        // TODO(xl): Move into PluginManager once this no longer depends on config feature gating.\n-        thread_manager\n-            .plugins_manager()\n-            .maybe_start_curated_repo_sync_for_config(&config);\n+\n         let cloud_requirements = Arc::new(RwLock::new(cloud_requirements));\n         let codex_message_processor = CodexMessageProcessor::new(CodexMessageProcessorArgs {\n             auth_manager: auth_manager.clone(),\n@@ -244,6 +241,11 @@ impl MessageProcessor {\n             feedback,\n             log_db,\n         });\n+        // Keep plugin startup warmups aligned at app-server startup.\n+        // TODO(xl): Move into PluginManager once this no longer depends on config feature gating.\n+      ...",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 5,
+      "patch_excerpt": "@@ -261,21 +261,22 @@ async fn plugin_install_tracks_analytics_event() -> Result<()> {\n     let response: PluginInstallResponse = to_response(response)?;\n     assert_eq!(response.apps_needing_auth, Vec::<AppSummary>::new());\n \n-    let payloads = timeout(DEFAULT_TIMEOUT, async {\n+    let payload = timeout(DEFAULT_TIMEOUT, async {\n         loop {\n             let Some(requests) = analytics_server.received_requests().await else {\n                 tokio::time::sleep(Duration::from_millis(25)).await;\n                 continue;\n             };\n-            if !requests.is_empty() {\n-                break requests;\n+            if let Some(request) = requests.iter().find(|request| {\n+                request.method == \"POST\" && request.url.path() == \"/codex/analytics-events/events\"\n+            }) {\n+                break request.body.clone();\n             }\n             tokio::time::sleep(Dura...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_install.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 126,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use std::time::Duration;\n \n use anyhow::Result;\n+use anyhow::bail;\n use app_test_support::ChatGptAuthFixture;\n use app_test_support::McpProcess;\n use app_test_support::to_response;\n@@ -674,6 +675,16 @@ async fn plugin_list_force_remote_sync_reconciles_curated_plugin_state() -> Resu\n         ))\n         .mount(&server)\n         .await;\n+    Mock::given(method(\"GET\"))\n+        .and(path(\"/backend-api/plugins/featured\"))\n+        .and(header(\"authorization\", \"Bearer chatgpt-token\"))\n+        .and(header(\"chatgpt-account-id\", \"account-123\"))\n+        .respond_with(\n+            ResponseTemplate::new(200)\n+                .set_body_string(r#\"[\"linear@openai-curated\",\"calendar@openai-curated\"]\"#),\n+        )\n+        .mount(&server)\n+        .await;\n \n     let mut mcp = McpProcess::new(codex_home.path()).await?;\n     timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;\n@@ -692,...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 5,
+      "patch_excerpt": "@@ -183,21 +183,22 @@ async fn plugin_uninstall_tracks_analytics_event() -> Result<()> {\n     let response: PluginUninstallResponse = to_response(response)?;\n     assert_eq!(response, PluginUninstallResponse {});\n \n-    let payloads = timeout(DEFAULT_TIMEOUT, async {\n+    let payload = timeout(DEFAULT_TIMEOUT, async {\n         loop {\n             let Some(requests) = analytics_server.received_requests().await else {\n                 tokio::time::sleep(Duration::from_millis(25)).await;\n                 continue;\n             };\n-            if !requests.is_empty() {\n-                break requests;\n+            if let Some(request) = requests.iter().find(|request| {\n+                request.method == \"POST\" && request.url.path() == \"/codex/analytics-events/events\"\n+            }) {\n+                break request.body.clone();\n             }\n             tokio::time::sleep(Duration::from_m...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 135,
+      "deletions": 1,
+      "patch_excerpt": "@@ -15,6 +15,7 @@ use super::read_curated_plugins_sha;\n use super::remote::RemotePluginFetchError;\n use super::remote::RemotePluginMutationError;\n use super::remote::enable_remote_plugin;\n+use super::remote::fetch_remote_featured_plugin_ids;\n use super::remote::fetch_remote_plugin_status;\n use super::remote::uninstall_remote_plugin;\n use super::store::DEFAULT_PLUGIN_VERSION;\n@@ -24,6 +25,7 @@ use super::store::PluginInstallResult as StorePluginInstallResult;\n use super::store::PluginStore;\n use super::store::PluginStoreError;\n use super::sync_openai_plugins_repo;\n+use crate::AuthManager;\n use crate::analytics_client::AnalyticsEventsClient;\n use crate::auth::CodexAuth;\n use crate::config::Config;\n@@ -55,6 +57,8 @@ use std::sync::Arc;\n use std::sync::RwLock;\n use std::sync::atomic::AtomicBool;\n use std::sync::atomic::Ordering;\n+use std::time::Duration;\n+use std::time::Instant;\n use toml_ed...",
+      "path": "codex-rs/core/src/plugins/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -46,6 +46,8 @@ pub use marketplace::MarketplacePluginAuthPolicy;\n pub use marketplace::MarketplacePluginInstallPolicy;\n pub use marketplace::MarketplacePluginPolicy;\n pub use marketplace::MarketplacePluginSource;\n+pub use remote::RemotePluginFetchError;\n+pub use remote::fetch_remote_featured_plugin_ids;\n pub(crate) use render::render_explicit_plugin_instructions;\n pub(crate) use render::render_plugins_section;\n pub use store::PluginId;",
+      "path": "codex-rs/core/src/plugins/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 1,
+      "patch_excerpt": "@@ -7,6 +7,7 @@ use url::Url;\n \n const DEFAULT_REMOTE_MARKETPLACE_NAME: &str = \"openai-curated\";\n const REMOTE_PLUGIN_FETCH_TIMEOUT: Duration = Duration::from_secs(30);\n+const REMOTE_FEATURED_PLUGIN_FETCH_TIMEOUT: Duration = Duration::from_secs(10);\n const REMOTE_PLUGIN_MUTATION_TIMEOUT: Duration = Duration::from_secs(30);\n \n #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]\n@@ -80,7 +81,7 @@ pub enum RemotePluginMutationError {\n }\n \n #[derive(Debug, thiserror::Error)]\n-pub(crate) enum RemotePluginFetchError {\n+pub enum RemotePluginFetchError {\n     #[error(\"chatgpt authentication required to sync remote plugins\")]\n     AuthRequired,\n \n@@ -158,6 +159,46 @@ pub(crate) async fn fetch_remote_plugin_status(\n     })\n }\n \n+pub async fn fetch_remote_featured_plugin_ids(\n+    config: &Config,\n+    auth: Option<&CodexAuth>,\n+) -> Result<Vec<String>, RemotePluginFetchError> {\n+    let base_url =...",
+      "path": "codex-rs/core/src/plugins/remote.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -270,6 +270,10 @@ impl ThreadManager {\n         self.state.session_source.clone()\n     }\n \n+    pub fn auth_manager(&self) -> Arc<AuthManager> {\n+        self.state.auth_manager.clone()\n+    }\n+\n     pub fn skills_manager(&self) -> Arc<SkillsManager> {\n         self.state.skills_manager.clone()\n     }",
+      "path": "codex-rs/core/src/thread_manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -2018,7 +2018,7 @@ impl App {\n         // TODO(xl): Move into PluginManager once this no longer depends on config feature gating.\n         thread_manager\n             .plugins_manager()\n-            .maybe_start_curated_repo_sync_for_config(&config);\n+            .maybe_start_curated_repo_sync_for_config(&config, auth_manager.clone());\n         let mut model = thread_manager\n             .get_models_manager()\n             .get_default_model(&config.model, RefreshStrategy::Offline)",
+      "path": "codex-rs/tui/src/app.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "",
+    "labels": [],
+    "merged_at": "2026-03-19T00:45:31Z",
+    "number": 15042,
+    "state": "merged",
+    "title": "Support featured plugins",
+    "url": "https://github.com/openai/codex/pull/15042"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

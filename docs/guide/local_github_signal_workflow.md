@@ -1,6 +1,6 @@
 # Local GitHub Signal Workflow
 
-Goal: Define the repeatable local workflow for collecting GitHub change bundles, running Codex analysis locally, validating signal entries, and publishing content to the site.
+Goal: Define the repeatable workflow for collecting GitHub change bundles, running Codex analysis locally or on a trusted CI runner, validating signal entries, and publishing content to the site.
 
 Read this when:
 - You are preparing the first GitHub-backed Decodex signal entries.
@@ -27,7 +27,7 @@ Outputs:
 
 1. Build a normalized GitHub change bundle under `tools/github/bundles/`.
 2. Review the bundle and decide whether the change is signal-worthy.
-3. Run local Codex analysis against the bundle with `skills/decodex-github-signal/` and save the editorial draft JSON.
+3. Run Codex analysis against the bundle with `skills/decodex-github-signal/` and save the editorial draft JSON.
 4. Render the resulting signal entry into `site/src/content/signals/`.
 5. Validate the signal entry shape and collection consistency.
 6. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
@@ -90,6 +90,10 @@ Repo-local skill entrypoint:
 
 - `skills/decodex-github-signal/SKILL.md`
 
+Automated hourly sync entrypoint:
+
+- `tools/github/sync_latest_signals.py`
+
 ## Editorial gate
 
 Publish only when the change meets at least one of these tests:
@@ -112,10 +116,16 @@ For the release-delta artifact:
 
 ## CI boundary
 
-The MVP boundary is:
+The current Decodex boundary is:
 
-- local Codex run: bundle review, AI analysis, and editorial approval
-- local deterministic scripts: bundle fetch, render, and validation
-- CI: build and deploy only
+- local Codex run: manual editorial review, batch backfills, and prompt iteration
+- deterministic scripts: bundle fetch, Codex analysis execution, render, and validation
+- trusted CI runner: hourly refresh of recent merged PRs plus normal site validation and commit/push of changed content
 
-Do not run AI analysis in CI for the MVP.
+The hourly GitHub Actions path assumes:
+
+- Codex CLI is installed on the runner
+- a full `auth.json` payload is injected into `CODEX_HOME`
+- `CODEX_AUTH_JSON` is treated as a sensitive secret and never logged
+- `GITHUB_PAT_Y` is available when you want authenticated GitHub API requests for the routed `y` identity; otherwise the sync falls back to unauthenticated reads for public data
+- `cargo make decodex-checks` remains the final gate before a content refresh commit

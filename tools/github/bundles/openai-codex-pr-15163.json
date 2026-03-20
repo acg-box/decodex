@@ -1,0 +1,48 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-03-19T10:27:23Z",
+      "message": "fix: case where agent is already closed",
+      "sha": "17fb3262d4c25605c97b28298ef7dcacaca7d400",
+      "url": "https://github.com/openai/codex/commit/17fb3262d4c25605c97b28298ef7dcacaca7d400"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [],
+  "files": [
+    {
+      "additions": 9,
+      "deletions": 3,
+      "patch_excerpt": "@@ -444,11 +444,17 @@ impl AgentControl {\n     /// persisted spawn-edge state.\n     pub(crate) async fn shutdown_live_agent(&self, agent_id: ThreadId) -> CodexResult<String> {\n         let state = self.upgrade()?;\n-        if let Ok(thread) = state.get_thread(agent_id).await {\n+        let result = if let Ok(thread) = state.get_thread(agent_id).await {\n             thread.codex.session.ensure_rollout_materialized().await;\n             thread.codex.session.flush_rollout().await;\n-        }\n-        let result = state.send_op(agent_id, Op::Shutdown {}).await;\n+            if matches!(thread.agent_status().await, AgentStatus::Shutdown) {\n+                Ok(String::new())\n+            } else {\n+                state.send_op(agent_id, Op::Shutdown {}).await\n+            }\n+        } else {\n+            state.send_op(agent_id, Op::Shutdown {}).await\n+        };\n         let _ = state.remove_t...",
+      "path": "codex-rs/core/src/agent/control.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 11,
+      "patch_excerpt": "@@ -68,17 +68,13 @@ impl ToolHandler for Handler {\n                 return Err(collab_agent_error(agent_id, err));\n             }\n         };\n-        let result = if !matches!(status, AgentStatus::Shutdown) {\n-            session\n-                .services\n-                .agent_control\n-                .close_agent(agent_id)\n-                .await\n-                .map_err(|err| collab_agent_error(agent_id, err))\n-                .map(|_| ())\n-        } else {\n-            Ok(())\n-        };\n+        let result = session\n+            .services\n+            .agent_control\n+            .close_agent(agent_id)\n+            .await\n+            .map_err(|err| collab_agent_error(agent_id, err))\n+            .map(|_| ());\n         session\n             .send_event(\n                 &turn,",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents/close_agent.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "",
+    "labels": [],
+    "merged_at": "2026-03-19T12:12:51Z",
+    "number": 15163,
+    "state": "merged",
+    "title": "fix: case where agent is already closed",
+    "url": "https://github.com/openai/codex/pull/15163"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

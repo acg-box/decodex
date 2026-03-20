@@ -1,0 +1,69 @@
+{
+  "caveats": [
+    "There is no direct end-to-end runtime trace in the bundle, so the evidence is limited to the PR description, changed files, and commit history.",
+    "The PR notes mention unrelated pre-existing `codex-core` test failures elsewhere, so confidence should stay below `confirmed` even though the MCP-specific changes are well supported."
+  ],
+  "confidence": "likely",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly says the change forwards task headers through MCP metadata lookups and tool calls, including streamable HTTP `initialize`, `tools/list`, and `tools/call` requests.",
+    "The diff evidence in `codex.rs` and `tasks/mod.rs` adds turn-lifecycle header sync and cleanup hooks, showing the headers are scoped to the active turn instead of left ambient.",
+    "The MCP client stack files (`mcp_connection_manager.rs`, `rmcp_client.rs`, and related tests) add request-header plumbing and updated test setup, which supports this as a real behavior change rather than a docs-only update.",
+    "The commit trail includes follow-up fixes for turn scoping and CI regressions before the PR merged on 2026-03-19, indicating an incremental rollout of the new header propagation behavior."
+  ],
+  "published_at": "2026-03-19T04:29:37Z",
+  "schema": "signal_entry/v1",
+  "slug": "openai-codex-pr-15011",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/bccce0f2d8e94a961dfb90c47ed7855010118136",
+      "https://github.com/openai/codex/commit/fb27c2058161762864921b5a6a482a766269c2c0",
+      "https://github.com/openai/codex/commit/de9864340312e1c60307a8c55a965676c6d3db56",
+      "https://github.com/openai/codex/commit/2321532dec64b5bf499df8a23e236220c7f68c85",
+      "https://github.com/openai/codex/commit/52fdfbcfb889ece9662a9818218e6a30f72fc9f3",
+      "https://github.com/openai/codex/commit/1f3ec4172c78175d3ae3ea6b671a3c8e4d83d4ba",
+      "https://github.com/openai/codex/commit/732d7ac81fd1ef112dd21714055cc6fc83feb316",
+      "https://github.com/openai/codex/commit/1a2536d12bcdb6eefefdd0897d3fe93b93bbbb45"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15011",
+        "title": "Forward session and turn headers to MCP HTTP requests",
+        "url": "https://github.com/openai/codex/pull/15011"
+      },
+      {
+        "kind": "commit",
+        "meta": "bccce0f",
+        "title": "Forward tool call task headers to MCP HTTP requests",
+        "url": "https://github.com/openai/codex/commit/bccce0f2d8e94a961dfb90c47ed7855010118136"
+      },
+      {
+        "kind": "commit",
+        "meta": "fb27c20",
+        "title": "codex: fix CI failure on PR #15011",
+        "url": "https://github.com/openai/codex/commit/fb27c2058161762864921b5a6a482a766269c2c0"
+      },
+      {
+        "kind": "commit",
+        "meta": "732d7ac",
+        "title": "codex: scope MCP request headers to turn lifecycle",
+        "url": "https://github.com/openai/codex/commit/732d7ac81fd1ef112dd21714055cc6fc83feb316"
+      },
+      {
+        "kind": "commit",
+        "meta": "1a2536d",
+        "title": "codex: fix MCP header CI regressions",
+        "url": "https://github.com/openai/codex/commit/1a2536d12bcdb6eefefdd0897d3fe93b93bbbb45"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15011",
+    "repo": "openai/codex"
+  },
+  "summary": "PR #15011 updates Codex's MCP HTTP flow to forward request-scoped headers from the current session/turn into MCP tool metadata lookups and tool calls, with turn-bound lifecycle cleanup and fixes for regressions introduced during rollout.",
+  "title": "MCP HTTP requests now carry turn- and session-scoped headers",
+  "why_it_matters": "This improves the correctness of MCP interactions that depend on per-turn or per-session context, reducing cross-turn header leakage and making tool calls and recovery behavior more predictable in streamable HTTP MCP clients."
+}

@@ -1,0 +1,110 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-03-20T03:44:42Z",
+      "message": "refactor: move curated plugin sync into startup_sync",
+      "sha": "7a7d7a3ac5be9bbaf3f50a4030fabb472c6e61f1",
+      "url": "https://github.com/openai/codex/commit/7a7d7a3ac5be9bbaf3f50a4030fabb472c6e61f1"
+    },
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-03-20T03:45:11Z",
+      "message": "feat: prefer git for curated plugin sync",
+      "sha": "fa898ba62b3e013d37d7aa8f08742a91e017fba1",
+      "url": "https://github.com/openai/codex/commit/fa898ba62b3e013d37d7aa8f08742a91e017fba1"
+    },
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-03-20T04:49:18Z",
+      "message": "fallback in all errors",
+      "sha": "5af451390a8df947fcd672b1540ed4bb6ed856f1",
+      "url": "https://github.com/openai/codex/commit/5af451390a8df947fcd672b1540ed4bb6ed856f1"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "GITHUB_API_BASE_URL",
+    "GITHUB_API_ACCEPT_HEADER",
+    "GITHUB_API_VERSION_HEADER",
+    "OPENAI_PLUGINS_OWNER",
+    "OPENAI_PLUGINS_REPO",
+    "CURATED_PLUGINS_RELATIVE_DIR",
+    "CURATED_PLUGINS_SHA_FILE",
+    "CURATED_PLUGINS_HTTP_TIMEOUT",
+    "HEAD",
+    "GET",
+    "CURATED_PLUGINS_GIT_TIMEOUT",
+    "STARTUP_REMOTE_PLUGIN_SYNC_MARKER_FILE",
+    "STARTUP_REMOTE_PLUGIN_SYNC_PREREQUISITE_TIMEOUT",
+    "HTTP",
+    "GIT_OPTIONAL_LOCKS",
+    "--depth",
+    "CONFIG_TOML_FILE",
+    "TEST_CURATED_PLUGIN_SHA",
+    "EOF"
+  ],
+  "files": [
+    {
+      "additions": 0,
+      "deletions": 356,
+      "patch_excerpt": "@@ -1,356 +0,0 @@\n-use crate::default_client::build_reqwest_client;\n-use reqwest::Client;\n-use serde::Deserialize;\n-use std::fs;\n-use std::io::Cursor;\n-#[cfg(unix)]\n-use std::os::unix::fs::PermissionsExt;\n-use std::path::Component;\n-use std::path::Path;\n-use std::path::PathBuf;\n-use std::time::Duration;\n-use zip::ZipArchive;\n-\n-const GITHUB_API_BASE_URL: &str = \"https://api.github.com\";\n-const GITHUB_API_ACCEPT_HEADER: &str = \"application/vnd.github+json\";\n-const GITHUB_API_VERSION_HEADER: &str = \"2022-11-28\";\n-const OPENAI_PLUGINS_OWNER: &str = \"openai\";\n-const OPENAI_PLUGINS_REPO: &str = \"plugins\";\n-const CURATED_PLUGINS_RELATIVE_DIR: &str = \".tmp/plugins\";\n-const CURATED_PLUGINS_SHA_FILE: &str = \".tmp/plugins.sha\";\n-const CURATED_PLUGINS_HTTP_TIMEOUT: Duration = Duration::from_secs(30);\n-\n-#[derive(Debug, Deserialize)]\n-struct GitHubRepositorySummary {\n-    default_branch: String,\n-}\n...",
+      "path": "codex-rs/core/src/plugins/curated_repo.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 159,
+      "patch_excerpt": "@@ -1,159 +0,0 @@\n-use super::*;\n-use pretty_assertions::assert_eq;\n-use std::io::Write;\n-use tempfile::tempdir;\n-use wiremock::Mock;\n-use wiremock::MockServer;\n-use wiremock::ResponseTemplate;\n-use wiremock::matchers::method;\n-use wiremock::matchers::path;\n-use zip::ZipWriter;\n-use zip::write::SimpleFileOptions;\n-\n-#[test]\n-fn curated_plugins_repo_path_uses_codex_home_tmp_dir() {\n-    let tmp = tempdir().expect(\"tempdir\");\n-    assert_eq!(\n-        curated_plugins_repo_path(tmp.path()),\n-        tmp.path().join(\".tmp/plugins\")\n-    );\n-}\n-\n-#[test]\n-fn read_curated_plugins_sha_reads_trimmed_sha_file() {\n-    let tmp = tempdir().expect(\"tempdir\");\n-    fs::create_dir_all(tmp.path().join(\".tmp\")).expect(\"create tmp\");\n-    fs::write(tmp.path().join(\".tmp/plugins.sha\"), \"abc123\\n\").expect(\"write sha\");\n-\n-    assert_eq!(\n-        read_curated_plugins_sha(tmp.path()).as_deref(),\n-        So...",
+      "path": "codex-rs/core/src/plugins/curated_repo_tests.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -60,6 +60,7 @@ use std::sync::RwLock;\n use std::sync::atomic::AtomicBool;\n use std::sync::atomic::Ordering;\n use std::time::Instant;\n+use tokio::sync::Mutex;\n use toml_edit::value;\n use tracing::info;\n use tracing::warn;\n@@ -463,6 +464,7 @@ pub struct PluginsManager {\n     store: PluginStore,\n     featured_plugin_ids_cache: RwLock<Option<CachedFeaturedPluginIds>>,\n     cached_enabled_outcome: RwLock<Option<PluginLoadOutcome>>,\n+    remote_sync_lock: Mutex<()>,\n     restriction_product: Option<Product>,\n     analytics_events_client: RwLock<Option<AnalyticsEventsClient>>,\n }\n@@ -488,6 +490,7 @@ impl PluginsManager {\n             store: PluginStore::new(codex_home),\n             featured_plugin_ids_cache: RwLock::new(None),\n             cached_enabled_outcome: RwLock::new(None),\n+            remote_sync_lock: Mutex::new(()),\n             restriction_product,\n             analytics_events...",
+      "path": "codex-rs/core/src/plugins/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 4,
+      "patch_excerpt": "@@ -1,4 +1,3 @@\n-mod curated_repo;\n mod discoverable;\n mod injection;\n mod manager;\n@@ -12,9 +11,6 @@ mod store;\n pub(crate) mod test_support;\n mod toggles;\n \n-pub(crate) use curated_repo::curated_plugins_repo_path;\n-pub(crate) use curated_repo::read_curated_plugins_sha;\n-pub(crate) use curated_repo::sync_openai_plugins_repo;\n pub(crate) use discoverable::list_tool_suggest_discoverable_plugins;\n pub(crate) use injection::build_plugin_injections;\n pub use manager::AppConnectorId;\n@@ -52,5 +48,8 @@ pub use remote::RemotePluginFetchError;\n pub use remote::fetch_remote_featured_plugin_ids;\n pub(crate) use render::render_explicit_plugin_instructions;\n pub(crate) use render::render_plugins_section;\n+pub(crate) use startup_sync::curated_plugins_repo_path;\n+pub(crate) use startup_sync::read_curated_plugins_sha;\n+pub(crate) use startup_sync::sync_openai_plugins_repo;\n pub use store::PluginId;\n pu...",
+      "path": "codex-rs/core/src/plugins/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 552,
+      "deletions": 83,
+      "patch_excerpt": "@@ -1,19 +1,143 @@\n+use crate::default_client::build_reqwest_client;\n use std::path::Path;\n use std::path::PathBuf;\n+use std::process::Command;\n+use std::process::Output;\n+use std::process::Stdio;\n use std::sync::Arc;\n use std::time::Duration;\n \n+use reqwest::Client;\n+use serde::Deserialize;\n use tracing::info;\n use tracing::warn;\n+use zip::ZipArchive;\n \n use crate::AuthManager;\n use crate::config::Config;\n \n use super::PluginsManager;\n \n+const GITHUB_API_BASE_URL: &str = \"https://api.github.com\";\n+const GITHUB_API_ACCEPT_HEADER: &str = \"application/vnd.github+json\";\n+const GITHUB_API_VERSION_HEADER: &str = \"2022-11-28\";\n+const OPENAI_PLUGINS_OWNER: &str = \"openai\";\n+const OPENAI_PLUGINS_REPO: &str = \"plugins\";\n+const CURATED_PLUGINS_RELATIVE_DIR: &str = \".tmp/plugins\";\n+const CURATED_PLUGINS_SHA_FILE: &str = \".tmp/plugins.sha\";\n+const CURATED_PLUGINS_GIT_TIMEOUT: Duration = Duration::fr...",
+      "path": "codex-rs/core/src/plugins/startup_sync.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 383,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,383 @@\n+use super::*;\n+use crate::auth::CodexAuth;\n+use crate::config::CONFIG_TOML_FILE;\n+use crate::plugins::test_support::TEST_CURATED_PLUGIN_SHA;\n+use crate::plugins::test_support::write_curated_plugin_sha;\n+use crate::plugins::test_support::write_file;\n+use crate::plugins::test_support::write_openai_curated_marketplace;\n+use pretty_assertions::assert_eq;\n+use std::io::Write;\n+use tempfile::tempdir;\n+use wiremock::Mock;\n+use wiremock::MockServer;\n+use wiremock::ResponseTemplate;\n+use wiremock::matchers::header;\n+use wiremock::matchers::method;\n+use wiremock::matchers::path;\n+use zip::ZipWriter;\n+use zip::write::SimpleFileOptions;\n+\n+#[test]\n+fn curated_plugins_repo_path_uses_codex_home_tmp_dir() {\n+    let tmp = tempdir().expect(\"tempdir\");\n+    assert_eq!(\n+        curated_plugins_repo_path(tmp.path()),\n+        tmp.path().join(\".tmp/plugins\")\n+    );\n+}\n+\n+#[test]\n+fn rea...",
+      "path": "codex-rs/core/src/plugins/startup_sync_tests.rs",
+      "status": "added"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "start with git clone, fallback to http.\r\n",
+    "labels": [],
+    "merged_at": "2026-03-20T07:06:24Z",
+    "number": 15275,
+    "state": "merged",
+    "title": "feat: prefer git for curated plugin sync ",
+    "url": "https://github.com/openai/codex/pull/15275"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

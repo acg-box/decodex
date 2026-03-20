@@ -1,0 +1,100 @@
+{
+  "caveats": [
+    "No explicit user action path is introduced in the PR; impact is primarily on downstream analytics/tracing that consumes MCP `_meta`."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly states the goal: group MCP tool calls with Codex sessions/turns and switch from header-based assumptions to `_meta` for `tools/call` due to shared rmcp-client concurrency constraints.",
+    "`codex-rs/core/src/mcp_tool_call.rs` now builds MCP request metadata via `build_mcp_tool_call_request_meta(turn_context, ...)`, explicitly plumbing turn/session context into request metadata while preserving existing `_codex_apps` handling.",
+    "`codex-rs/core/src/turn_metadata.rs` adds `session_id` to the metadata bag and wires it through metadata construction, and `codex-rs/core/src/codex.rs` passes `conversation_id` into turn-context creation.",
+    "`codex-rs/rmcp-client/src/rmcp_client.rs` updates `CallToolRequestParams` transport to send per-request metadata explicitly through RMCP request options instead of relying on mutable shared client header state.",
+    "`codex-rs/core/src/mcp_tool_call_tests.rs` and `codex-rs/core/tests/suite/search_tool.rs` add assertions confirming `_meta` includes expected turn/session info (including existing `resource_uri`/`_codex_apps` expectations) for custom MCP and codex-apps flows.",
+    "The file changes are mostly additive metadata/transport plumbing with no removal of prior user-facing tool-call features, matching an incremental internal behavior update for observability and traceability."
+  ],
+  "published_at": "2026-03-19T22:05:14Z",
+  "schema": "signal_entry/v1",
+  "slug": "propagate-mcp-tool-call-context-through-meta",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/bab2a28f26223da6a3a6f61bb9656d2f8d6cc4ee",
+      "https://github.com/openai/codex/commit/7df3c80f25f8fe27ad26e4788fa6336043079686",
+      "https://github.com/openai/codex/commit/9124fe9cbc405bde42d244d27ddf31fdbc6be106",
+      "https://github.com/openai/codex/commit/edc8e17c5c30439f70575a2aca479996762f5b84",
+      "https://github.com/openai/codex/commit/fb816b13221f1bb7ef8dbbef8d8b54c32a12f09a",
+      "https://github.com/openai/codex/commit/e84f54294aa2f05fffd616e28293070a58383e02",
+      "https://github.com/openai/codex/commit/98f97df37fdbc59afb69e9acad434475017951a8",
+      "https://github.com/openai/codex/commit/88653c9245444c06747da275d812ec04998a82e9",
+      "https://github.com/openai/codex/commit/db3ddeae35b13a91d19788da3a23ad5ea0984782",
+      "https://github.com/openai/codex/commit/cbd07008379354b09034fd9ee1eec591f83f0a05",
+      "https://github.com/openai/codex/commit/b679c7596bd330ab5d66658d6f0d03c47a1670d8",
+      "https://github.com/openai/codex/commit/6bf3961d66fff5ae75283374b1d8fea83c045162",
+      "https://github.com/openai/codex/commit/656d2f57246876df9a64283e1d071478fa7e6b05",
+      "https://github.com/openai/codex/commit/5305a38085d1f9bff1266b69f77a4c02cc7a6c3a"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15190",
+        "title": "Plumb MCP turn metadata through _meta",
+        "url": "https://github.com/openai/codex/pull/15190"
+      },
+      {
+        "kind": "commit",
+        "meta": "bab2a28",
+        "title": "Revert \"Forward session and turn headers to MCP HTTP requests (#15011)\"",
+        "url": "https://github.com/openai/codex/commit/bab2a28f26223da6a3a6f61bb9656d2f8d6cc4ee"
+      },
+      {
+        "kind": "commit",
+        "meta": "9124fe9",
+        "title": "Plumb MCP turn metadata through _meta",
+        "url": "https://github.com/openai/codex/commit/9124fe9cbc405bde42d244d27ddf31fdbc6be106"
+      },
+      {
+        "kind": "commit",
+        "meta": "edc8e17",
+        "title": "Merge RMCP tool call _meta entries",
+        "url": "https://github.com/openai/codex/commit/edc8e17c5c30439f70575a2aca479996762f5b84"
+      },
+      {
+        "kind": "commit",
+        "meta": "e84f542",
+        "title": "Include session id in MCP turn metadata",
+        "url": "https://github.com/openai/codex/commit/e84f54294aa2f05fffd616e28293070a58383e02"
+      },
+      {
+        "kind": "commit",
+        "meta": "98f97df",
+        "title": "Skip non-JSON apps requests in search tool test",
+        "url": "https://github.com/openai/codex/commit/98f97df37fdbc59afb69e9acad434475017951a8"
+      },
+      {
+        "kind": "commit",
+        "meta": "88653c9",
+        "title": "Simplify RMCP tool call _meta plumbing",
+        "url": "https://github.com/openai/codex/commit/88653c9245444c06747da275d812ec04998a82e9"
+      },
+      {
+        "kind": "commit",
+        "meta": "db3ddea",
+        "title": "Restore RMCP meta local variable name",
+        "url": "https://github.com/openai/codex/commit/db3ddeae35b13a91d19788da3a23ad5ea0984782"
+      },
+      {
+        "kind": "commit",
+        "meta": "cbd0700",
+        "title": "Restore explicit RMCP tools/call request path",
+        "url": "https://github.com/openai/codex/commit/cbd07008379354b09034fd9ee1eec591f83f0a05"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15190",
+    "repo": "openai/codex"
+  },
+  "summary": "This PR shifts MCP `tools/call` metadata handling so MCP tool calls now carry both session and turn context in the request `_meta` payload, restoring end-to-end traceability across MCP interactions that previously lacked it.",
+  "title": "Propagate MCP tool-call context through `_meta`",
+  "why_it_matters": "By putting turn/session identifiers into MCP call metadata, the change enables better correlation of tool calls with user turns and sessions in downstream processing and observability systems, which improves debugging and incident triage for multi-step MCP workflows without changing user-facing command behavior."
+}

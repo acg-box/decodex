@@ -1,0 +1,170 @@
+{
+  "caveats": [
+    "No direct user-facing application behavior changes are shown; impact is primarily build/release infrastructure."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly says the approach is to use `rusty_v8` everywhere possible and to build a musl V8 from source for x86/aarch64, with a release step for consumption.",
+    "Added `.github/scripts/rusty_v8_bazel.py` introduces the musl-oriented Bazel build orchestration and packaging metadata used by the new release path.",
+    "Added `.github/workflows/v8-canary.yml` and `.github/workflows/rusty-v8-release.yml`, creating a dedicated canary/release lane (including optional GitHub release publishing) for V8 artifacts instead of coupling them to standard CI.",
+    "Updated build metadata in `MODULE.bazel`, `MODULE.bazel.lock`, and new Bazel patches under `patches/` to pin/use V8 14.6.202.9 plus required dependency/workspace overrides.",
+    "Adjusted `.github/workflows/bazel.yml` to exclude `//third_party/v8:all` from ordinary Bazel test runs, matching the PR\u2019s \u201ckeep V8 out of ordinary CI\u201d intent and evidence trail in commit history."
+  ],
+  "published_at": "2026-03-20T01:05:24Z",
+  "schema": "signal_entry/v1",
+  "slug": "openai-codex-pr-15021",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/d317180dc2f417f1c9db80012aeadb39554ba516",
+      "https://github.com/openai/codex/commit/6c2e61f810939ae228caf7521015bfd3c72c4688",
+      "https://github.com/openai/codex/commit/ca8204a0d08db305547312905dc19d86b7a946b1",
+      "https://github.com/openai/codex/commit/cef4b7715dd828920074e14d05eaee2099ff0ce9",
+      "https://github.com/openai/codex/commit/f49672657e2ece0a989337ee53f8016628a8b12e",
+      "https://github.com/openai/codex/commit/d040eda677b4a253e2d78e21c751911048eb1ea4",
+      "https://github.com/openai/codex/commit/dc98f8e77c501282670dc4555c09ba49ff762cf6",
+      "https://github.com/openai/codex/commit/4809cd10763964578fdb3cbc45d9418aae8f9437",
+      "https://github.com/openai/codex/commit/1ab65666bc7a5e18f3e45350da604937f4a97595",
+      "https://github.com/openai/codex/commit/2d05604751793517db54b8c3517ed873d2e451d4",
+      "https://github.com/openai/codex/commit/93dbe4852cb49fec48bdc0e8e9b1f7bedb7ad56d",
+      "https://github.com/openai/codex/commit/3b573d19c837d19d927d51753ec2de34bf03b7e9",
+      "https://github.com/openai/codex/commit/e35858585c85884c20c4ddac864a61dc6bbe5fdd",
+      "https://github.com/openai/codex/commit/b9f276129e7cc51ad9d51a86c86eab2998be74cd",
+      "https://github.com/openai/codex/commit/abc472b79a81b88b90a58d9cbc28abbb9537c928",
+      "https://github.com/openai/codex/commit/d0289aa1a207fade6efff0b2374d08edf778d904",
+      "https://github.com/openai/codex/commit/14f4bd9e9b023ec7dd44a10e1b70bdd07bdf8a50",
+      "https://github.com/openai/codex/commit/f92d13094c3819239c1c182419ebaca489464825",
+      "https://github.com/openai/codex/commit/cef0a87eb78aac31eee5a1debfef087503e6f6db"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15021",
+        "title": "V8 Bazel Build",
+        "url": "https://github.com/openai/codex/pull/15021"
+      },
+      {
+        "kind": "commit",
+        "meta": "d317180",
+        "title": "Setup a new v8-poc package",
+        "url": "https://github.com/openai/codex/commit/d317180dc2f417f1c9db80012aeadb39554ba516"
+      },
+      {
+        "kind": "commit",
+        "meta": "6c2e61f",
+        "title": "Merge the v8 building for musl",
+        "url": "https://github.com/openai/codex/commit/6c2e61f810939ae228caf7521015bfd3c72c4688"
+      },
+      {
+        "kind": "commit",
+        "meta": "ca8204a",
+        "title": "Update v8 version",
+        "url": "https://github.com/openai/codex/commit/ca8204a0d08db305547312905dc19d86b7a946b1"
+      },
+      {
+        "kind": "commit",
+        "meta": "cef4b77",
+        "title": "Link in the missing llvm runtime archives",
+        "url": "https://github.com/openai/codex/commit/cef4b7715dd828920074e14d05eaee2099ff0ce9"
+      },
+      {
+        "kind": "commit",
+        "meta": "f496726",
+        "title": "Version match",
+        "url": "https://github.com/openai/codex/commit/f49672657e2ece0a989337ee53f8016628a8b12e"
+      },
+      {
+        "kind": "commit",
+        "meta": "d040eda",
+        "title": "Do not test this package by default",
+        "url": "https://github.com/openai/codex/commit/d040eda677b4a253e2d78e21c751911048eb1ea4"
+      },
+      {
+        "kind": "commit",
+        "meta": "dc98f8e",
+        "title": "Add canary workflow for now",
+        "url": "https://github.com/openai/codex/commit/dc98f8e77c501282670dc4555c09ba49ff762cf6"
+      },
+      {
+        "kind": "commit",
+        "meta": "4809cd1",
+        "title": "I swear no v8",
+        "url": "https://github.com/openai/codex/commit/4809cd10763964578fdb3cbc45d9418aae8f9437"
+      },
+      {
+        "kind": "commit",
+        "meta": "1ab6566",
+        "title": "Split v8-poc consumer to follow-up branch",
+        "url": "https://github.com/openai/codex/commit/1ab65666bc7a5e18f3e45350da604937f4a97595"
+      },
+      {
+        "kind": "commit",
+        "meta": "2d05604",
+        "title": "rename to v8-canary",
+        "url": "https://github.com/openai/codex/commit/2d05604751793517db54b8c3517ed873d2e451d4"
+      },
+      {
+        "kind": "commit",
+        "meta": "93dbe48",
+        "title": "Remove v8 from cargo.toml for now",
+        "url": "https://github.com/openai/codex/commit/93dbe4852cb49fec48bdc0e8e9b1f7bedb7ad56d"
+      },
+      {
+        "kind": "commit",
+        "meta": "3b573d1",
+        "title": "Fix build",
+        "url": "https://github.com/openai/codex/commit/3b573d19c837d19d927d51753ec2de34bf03b7e9"
+      },
+      {
+        "kind": "commit",
+        "meta": "e358585",
+        "title": "Hermetic python + cleanup",
+        "url": "https://github.com/openai/codex/commit/e35858585c85884c20c4ddac864a61dc6bbe5fdd"
+      },
+      {
+        "kind": "commit",
+        "meta": "b9f2761",
+        "title": "skylib",
+        "url": "https://github.com/openai/codex/commit/b9f276129e7cc51ad9d51a86c86eab2998be74cd"
+      },
+      {
+        "kind": "commit",
+        "meta": "abc472b",
+        "title": "Build opt for release",
+        "url": "https://github.com/openai/codex/commit/abc472b79a81b88b90a58d9cbc28abbb9537c928"
+      },
+      {
+        "kind": "commit",
+        "meta": "d0289aa",
+        "title": "Release fixes",
+        "url": "https://github.com/openai/codex/commit/d0289aa1a207fade6efff0b2374d08edf778d904"
+      },
+      {
+        "kind": "commit",
+        "meta": "14f4bd9",
+        "title": "Stronger lean in to opt",
+        "url": "https://github.com/openai/codex/commit/14f4bd9e9b023ec7dd44a10e1b70bdd07bdf8a50"
+      },
+      {
+        "kind": "commit",
+        "meta": "f92d130",
+        "title": "Address PR feedback",
+        "url": "https://github.com/openai/codex/commit/f92d13094c3819239c1c182419ebaca489464825"
+      },
+      {
+        "kind": "commit",
+        "meta": "cef0a87",
+        "title": "Drop patch to prebuilt v8",
+        "url": "https://github.com/openai/codex/commit/cef0a87eb78aac31eee5a1debfef087503e6f6db"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15021",
+    "repo": "openai/codex"
+  },
+  "summary": "PR #15021 adds a new Bazel-based workflow for building and packaging `rusty_v8`, including musl targets for x86_64/aarch64, while removing `third_party/v8` from the default CI test path so V8 work is handled by dedicated canary/release flows.",
+  "title": "Add a dedicated Bazel pipeline for building and releasing rusty_v8 artifacts",
+  "why_it_matters": "This gives the project a reliable way to produce and publish prebuilt V8 artifacts for additional toolchains (notably musl), improving build reproducibility for dependents and reducing pressure on normal CI by isolating heavy V8 builds into explicit workflows."
+}

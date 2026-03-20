@@ -1,0 +1,41 @@
+{
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "PR #15163 is titled \"fix: case where agent is already closed\", matching the observed behavior correction.",
+    "In `codex-rs/core/src/agent/control.rs`, `shutdown_live_agent` now checks `thread.agent_status()` and returns `Ok(String::new())` when already `Shutdown`, instead of always sending `Op::Shutdown {}`.",
+    "The same function still materializes/flushes rollout state before returning, preserving teardown-side effects while avoiding duplicate shutdown operations.",
+    "In `codex-rs/core/src/tools/handlers/multi_agents/close_agent.rs`, the pre-check that skipped close handling when status was already `Shutdown` was removed, so close requests now consistently delegate to control-layer shutdown logic that now safely handles already-closed threads.",
+    "The change is a single-commit update touching two core agent lifecycle paths (`agent/control.rs` and `tools/handlers/multi_agents/close_agent.rs`) with `9` insertions and `14` deletions, indicating a focused behavioral fix."
+  ],
+  "published_at": "2026-03-19T12:12:51Z",
+  "schema": "signal_entry/v1",
+  "slug": "openai-codex-pr-15163",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/17fb3262d4c25605c97b28298ef7dcacaca7d400"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15163",
+        "title": "fix: case where agent is already closed",
+        "url": "https://github.com/openai/codex/pull/15163"
+      },
+      {
+        "kind": "commit",
+        "meta": "17fb326",
+        "title": "fix: case where agent is already closed",
+        "url": "https://github.com/openai/codex/commit/17fb3262d4c25605c97b28298ef7dcacaca7d400"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15163",
+    "repo": "openai/codex"
+  },
+  "summary": "This PR fixes the close/shutdown path for agents by making shutdown operations idempotent when an agent thread is already closed, preventing unnecessary follow-up op dispatch in already-finished states.",
+  "title": "Agent shutdown now handles already-closed sessions safely",
+  "why_it_matters": "Users and orchestrators can issue close/shutdown actions without triggering avoidable shutdown failures or noisy errors if an agent is already in the shutdown state, which improves robustness for repeated or race-prone multi-agent workflows."
+}

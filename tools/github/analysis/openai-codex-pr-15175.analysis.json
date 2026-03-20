@@ -1,0 +1,21 @@
+{
+  "caveats": [
+    "No direct user interface behavior is shown in the bundle; this is an internal control-flow change inferred from code/config updates."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "PR #15175 is explicitly framed as \"morpheus does not generate memories\" and is merged in `openai/codex` as a PR-first bundle (`analysis_mode: pr_first`).",
+    "`codex-rs/core/src/memories/phase2.rs` adds `agent_config.memories.generate_memories = false` when creating the consolidation sub-agent config, directly changing runtime behavior for that path.",
+    "`codex-rs/core/src/memories/tests.rs` now binds the consolidation thread id before fetching the thread and reads its `config_snapshot`, indicating test-level verification tied to the consolidation thread behavior."
+  ],
+  "slug": null,
+  "summary": "The PR updates phase-2 memory consolidation so the internal sub-agent is configured with `generate_memories` disabled, and test coverage is adjusted to validate the configured consolidation thread path.",
+  "title": "Disable memory generation during consolidation runs",
+  "watch_state": null,
+  "why_it_matters": "This prevents consolidation workers from writing memory entries while they are meant to consolidate context only, reducing the chance of recursive or noisy memory writes and helping keep stored memory cleaner and more stable across runs."
+}

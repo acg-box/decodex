@@ -1,0 +1,109 @@
+{
+  "caveats": [
+    "The evidence points to a ChatGPT-authenticated remote fetch path, so unauthenticated or offline environments may still return an empty featured list."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "The response should include a `featuredPluginIds` array alongside the normal marketplace data, giving clients a machine-readable set of plugins to highlight.",
+  "how_to_try": "Call `plugin/list` from a Codex build that includes PR #15042 while remote plugin sync is available and the session is authenticated, then inspect the response payload.",
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "The PR title is `Support featured plugins`, and the protocol schema, Rust type, and generated TypeScript type for `PluginListResponse` all add a `featuredPluginIds` array.",
+    "The core plugin remote layer adds a dedicated `fetch_remote_featured_plugin_ids` path with a separate featured-plugin fetch timeout, showing this is backed by a distinct remote data source rather than local-only metadata.",
+    "The app-server plugin-list test now mocks an authenticated `GET /backend-api/plugins/featured` call returning IDs like `linear@openai-curated` and `calendar@openai-curated`, which ties the new response field to real plugin-list behavior."
+  ],
+  "published_at": "2026-03-19T00:45:31Z",
+  "schema": "signal_entry/v1",
+  "slug": "featured-plugin-ids-in-plugin-list",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/39be8e1ead7782405919b907f159d3c9ee0524d9",
+      "https://github.com/openai/codex/commit/76cb1c09e91dcd767f96c01ab76e2789f7f40890",
+      "https://github.com/openai/codex/commit/a553a10574f6160d757b2f5054f890ffbd45ad0a",
+      "https://github.com/openai/codex/commit/63aa14e9162d17cb5a1752aad0f97c9b26447f46",
+      "https://github.com/openai/codex/commit/d0ba77e6d924ca23479bf225bc07570c01888566",
+      "https://github.com/openai/codex/commit/9e938052528ff38f6f11eb09478833ea7c06c795",
+      "https://github.com/openai/codex/commit/9236f69c95d34febf25e93248e5ed51a3e5a588d",
+      "https://github.com/openai/codex/commit/03d7d85aa7b3aeed97df6866f7fcf3eec0e966d8",
+      "https://github.com/openai/codex/commit/37487f9f064339c31f4eca102d7e02f6f8088c33",
+      "https://github.com/openai/codex/commit/e605d012dfb17c554a9b21996d68ed14abde634f",
+      "https://github.com/openai/codex/commit/9dd1676aa2fc8fcf51b954983f740e1c3fbe40cc",
+      "https://github.com/openai/codex/commit/2e1c40c88af2b424e2e4a1497bddd7e4ed8ada3a",
+      "https://github.com/openai/codex/commit/5d854d48c72d442103dd0f7b632209ea2bce6ea7",
+      "https://github.com/openai/codex/commit/a93899c10e621f31ca3ad15fb35d8703563cf80a",
+      "https://github.com/openai/codex/commit/0d58db1a14b26e3e1dbde63b7e923d4b3db95fe0",
+      "https://github.com/openai/codex/commit/5e275ecfbee8b7ea7ff580dd53c951e29a5b42ac",
+      "https://github.com/openai/codex/commit/1e0a7f2f622baad80cf7d9be6b88cfc2ba0fa43a"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15042",
+        "title": "Support featured plugins",
+        "url": "https://github.com/openai/codex/pull/15042"
+      },
+      {
+        "kind": "commit",
+        "meta": "39be8e1",
+        "title": "Support featured plugins",
+        "url": "https://github.com/openai/codex/commit/39be8e1ead7782405919b907f159d3c9ee0524d9"
+      },
+      {
+        "kind": "commit",
+        "meta": "a553a10",
+        "title": "add cache",
+        "url": "https://github.com/openai/codex/commit/a553a10574f6160d757b2f5054f890ffbd45ad0a"
+      },
+      {
+        "kind": "commit",
+        "meta": "63aa14e",
+        "title": "fmt",
+        "url": "https://github.com/openai/codex/commit/63aa14e9162d17cb5a1752aad0f97c9b26447f46"
+      },
+      {
+        "kind": "commit",
+        "meta": "d0ba77e",
+        "title": "minor",
+        "url": "https://github.com/openai/codex/commit/d0ba77e6d924ca23479bf225bc07570c01888566"
+      },
+      {
+        "kind": "commit",
+        "meta": "9e93805",
+        "title": "remove unrelated",
+        "url": "https://github.com/openai/codex/commit/9e938052528ff38f6f11eb09478833ea7c06c795"
+      },
+      {
+        "kind": "commit",
+        "meta": "9236f69",
+        "title": "remove py",
+        "url": "https://github.com/openai/codex/commit/9236f69c95d34febf25e93248e5ed51a3e5a588d"
+      },
+      {
+        "kind": "commit",
+        "meta": "03d7d85",
+        "title": "revert unrelated",
+        "url": "https://github.com/openai/codex/commit/03d7d85aa7b3aeed97df6866f7fcf3eec0e966d8"
+      },
+      {
+        "kind": "commit",
+        "meta": "e605d01",
+        "title": "merge startup",
+        "url": "https://github.com/openai/codex/commit/e605d012dfb17c554a9b21996d68ed14abde634f"
+      },
+      {
+        "kind": "commit",
+        "meta": "0d58db1",
+        "title": "pass clone",
+        "url": "https://github.com/openai/codex/commit/0d58db1a14b26e3e1dbde63b7e923d4b3db95fe0"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15042",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15042 adds a `featuredPluginIds` array to `plugin/list` responses and wires it to the curated remote plugin service.",
+  "title": "Codex plugin listings now expose featured plugin IDs",
+  "watch_state": "Whether downstream UIs actually use `featuredPluginIds` to rank or badge plugins; this PR adds the metadata path, not a visible marketplace redesign.",
+  "why_it_matters": "Clients can separate recommended plugins from the full marketplace list without hardcoding picks. That makes plugin discovery and onboarding easier, especially for curated marketplaces."
+}

@@ -1,0 +1,22 @@
+{
+  "caveats": [
+    "The PR describes this as a dummy proof-of-concept crate reserved for future V8 experiments, not a shipped user feature.",
+    "The PR body notes likely compatibility drift in the Windows Bazel builder and says Windows Bazel support still needs follow-up work."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "The PR body explicitly says the new dummy `v8-poc` project demonstrates that Codex can successfully link and use V8 on the platforms it wants to target.",
+    "`codex-rs/Cargo.toml` adds a new `v8-poc` workspace member and pins `v8 = =146.4.0`, while `codex-rs/v8-poc/src/lib.rs` adds a proof-of-concept crate with tests that initialize V8 and evaluate an expression.",
+    "`MODULE.bazel`, `third_party/v8/BUILD.bazel`, and the Rust CI and release workflows add target-specific V8 artifact wiring, including musl overrides and Bazel-side source-built archives for shipped platforms."
+  ],
+  "slug": "codex-adds-cross-platform-v8-proof-of-concept",
+  "summary": "Merged PR #15203 adds a `v8-poc` crate plus Bazel and CI wiring that proves Codex can link and run V8 across the main supported non-Windows target platforms.",
+  "title": "Codex adds a cross-platform V8 integration proof of concept",
+  "watch_state": "Watch for follow-up PRs that replace the dummy crate with a real V8-backed feature or re-enable the Windows Bazel path.",
+  "why_it_matters": "This does not expose a new end-user feature yet, but it gives Codex a verified integration path for embedding V8 in future runtime or tooling work without treating cross-platform linking as an open risk."
+}
