@@ -1,0 +1,21 @@
+{
+  "caveats": [
+    "This is scoped to code mode and the `view_image` tool path; it is not a broad change to every image-related API in Codex."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "`view_image` should return a structured payload that `image()` accepts directly, so the image is attached successfully and any returned detail hint can flow through with it.",
+  "how_to_try": "Run a Codex build that includes PR #15072 in code mode, call `const img = await tools.view_image({ path: \"/absolute/path/to/local-image.png\" }); image(img);`, and confirm the script can attach the local image without manually pulling out `img.image_url`.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR title and body frame the change as a semantic cleanup: `view_image` now returns an object with `image_url`, and `image()` now accepts either a string or that structured object.",
+    "The changed tool docs and spec add a typed `view_image` output schema with `image_url` and `detail`, and update the code-mode helper signature from `image(string)` to `image(string | { image_url, detail? })`.",
+    "The bundle includes a dedicated test, `code_mode_can_use_view_image_result_with_image_helper`, which verifies the direct handoff path, and companion `view_image` test updates switch non-image inputs from placeholder output to an error, tightening the behavior around invalid files."
+  ],
+  "slug": "code-mode-image-helper-accepts-view-image-results",
+  "summary": "Merged PR #15072 makes Codex code mode treat `view_image` as a structured image producer, so scripts can hand its result directly to `image()` instead of manually extracting a URL string.",
+  "title": "Code mode can now pass `view_image` results straight into `image()`",
+  "watch_state": null,
+  "why_it_matters": "This removes glue code from image-handling scripts and makes local-image flows more predictable. Users can reuse a `view_image` result directly, with detail metadata preserved when available, instead of reformatting the tool output by hand."
+}

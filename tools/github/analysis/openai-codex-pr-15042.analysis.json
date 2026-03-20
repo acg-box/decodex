@@ -1,0 +1,21 @@
+{
+  "caveats": [
+    "The evidence points to a ChatGPT-authenticated remote fetch path, so unauthenticated or offline environments may still return an empty featured list."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "The response should include a `featuredPluginIds` array alongside the normal marketplace data, giving clients a machine-readable set of plugins to highlight.",
+  "how_to_try": "Call `plugin/list` from a Codex build that includes PR #15042 while remote plugin sync is available and the session is authenticated, then inspect the response payload.",
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "The PR title is `Support featured plugins`, and the protocol schema, Rust type, and generated TypeScript type for `PluginListResponse` all add a `featuredPluginIds` array.",
+    "The core plugin remote layer adds a dedicated `fetch_remote_featured_plugin_ids` path with a separate featured-plugin fetch timeout, showing this is backed by a distinct remote data source rather than local-only metadata.",
+    "The app-server plugin-list test now mocks an authenticated `GET /backend-api/plugins/featured` call returning IDs like `linear@openai-curated` and `calendar@openai-curated`, which ties the new response field to real plugin-list behavior."
+  ],
+  "slug": "featured-plugin-ids-in-plugin-list",
+  "summary": "Merged PR #15042 adds a `featuredPluginIds` array to `plugin/list` responses and wires it to the curated remote plugin service.",
+  "title": "Codex plugin listings now expose featured plugin IDs",
+  "watch_state": "Whether downstream UIs actually use `featuredPluginIds` to rank or badge plugins; this PR adds the metadata path, not a visible marketplace redesign.",
+  "why_it_matters": "Clients can separate recommended plugins from the full marketplace list without hardcoding picks. That makes plugin discovery and onboarding easier, especially for curated marketplaces."
+}

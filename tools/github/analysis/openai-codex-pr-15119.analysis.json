@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "Integrations still using `stdio://`, local spawn helpers, or stdio connect APIs will need to migrate to websocket URLs.",
+    "The new coverage is websocket-focused, so this PR narrows the supported operational model rather than expanding capability."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR title and body explicitly frame the change as deleting deprecated stdio transport plumbing and replacing it with websocket-oriented test utilities.",
+    "`codex-rs/exec-server/src/bin/codex-exec-server.rs` changes `--listen` from a transport enum to a raw URL string and documents only `ws://IP:PORT` as supported.",
+    "`codex-rs/exec-server/src/server/transport.rs` replaces the old transport enum with listen-URL parsing centered on `DEFAULT_LISTEN_URL = \"ws://127.0.0.1:0\"`.",
+    "The bundle shows stdio-specific public/client paths being removed, including `src/local.rs`, stdio smoke tests, and stdio connect helpers, while new websocket tests are added for initialize, process, and malformed JSON handling."
+  ],
+  "slug": "openai-codex-pr-15119",
+  "summary": "Merged PR #15119 removes deprecated stdio transport support from Codex exec-server and standardizes the binary, library surface, docs, and tests around websocket listen URLs.",
+  "title": "Exec server switches from stdio plumbing to websocket-only transport",
+  "watch_state": null,
+  "why_it_matters": "This is a user-visible contract change for anyone integrating with exec-server. The transport story is simpler and more consistent, but setups that depended on `stdio://` or local stdio spawn helpers now need to move to websocket-based usage."
+}

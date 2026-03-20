@@ -1,0 +1,44 @@
+{
+  "caveats": [
+    "The PR does not yet switch `just clippy` or other routine CI/dev hooks to use this package automatically, so behavior in existing daily commands is not fully transitioned yet."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "Primary PR context states the previous linter flow required building from source and that PRs commonly failed later in CI because violations were not checked until later, motivating a prebuilt artifact distribution.",
+    "The new `.github/dotslash-argument-comment-lint-config.json` defines packaged outputs for `macos-aarch64`, `linux-x86_64`, `linux-aarch64`, and `windows-x86_64`, each pointing to `argument-comment-lint` executables under a packaged `bin/` path.",
+    "A new `.github/workflows/rust-release-argument-comment-lint.yml` workflow is added to build host-specific release artifacts (archives/zips), and `rust-release.yml` is updated to invoke it and publish the new DotSlash manifest on releases.",
+    "`tools/argument-comment-lint/src/bin/argument-comment-lint.rs` adds a dedicated runner binary that resolves sibling packaged binaries/libraries and invokes `cargo-dylint` with the bundled library path, making the release artifact directly runnable.",
+    "Docs were updated (`tools/argument-comment-lint/README.md`) to describe the released `argument-comment-lint` DotSlash package layout and target coverage."
+  ],
+  "published_at": "2026-03-19T18:59:03Z",
+  "schema": "signal_entry/v1",
+  "slug": "openai-codex-pr-15198",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/5afbcf6136ed7bddd7bf074567491d660c212896"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15198",
+        "title": "Publish runnable DotSlash package for argument-comment lint",
+        "url": "https://github.com/openai/codex/pull/15198"
+      },
+      {
+        "kind": "commit",
+        "meta": "5afbcf6",
+        "title": "Publish runnable DotSlash package for argument-comment lint",
+        "url": "https://github.com/openai/codex/commit/5afbcf6136ed7bddd7bf074567491d660c212896"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15198",
+    "repo": "openai/codex"
+  },
+  "summary": "The PR adds cross-platform release packaging for the argument-comment linter so teams can use a runnable artifact instead of building the linting tool from source.",
+  "title": "argument-comment lint is now shipped as a runnable DotSlash package",
+  "why_it_matters": "This changes the developer workflow from rebuild-required to consume-ready, which reduces setup time and makes the lint more likely to be run earlier in day-to-day development and review loops."
+}

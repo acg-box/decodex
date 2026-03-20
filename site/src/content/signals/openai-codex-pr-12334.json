@@ -1,0 +1,52 @@
+{
+  "caveats": [
+    "Behavior depends on terminal/OS support for OSC title sequences; some terminals or environments may ignore title updates.",
+    "Feature changes terminal metadata only, so session distinction is improved in terminal tabs/windows but not in contexts that hide or override title rendering."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "The PR description explicitly frames the change as solving multi-session identification and documents `/title` as a new, separate terminal-title surface.",
+    "`codex-rs/core/src/config/types.rs` and `codex-rs/core/src/config/mod.rs` add `tui.terminal_title` mapped into runtime config, with defaults in docs/schema (`config.schema.json`) to `spinner` and `project` when unset.",
+    "`codex-rs/tui/src/slash_command.rs` adds the `/title` command, and `codex-rs/tui/src/bottom_pane/title_setup.rs` introduces the in-TUI selection/reordering UI, wired through `bottom_pane/mod.rs` and `app_event.rs`.",
+    "`codex-rs/tui/src/terminal_title.rs` adds dedicated OSC terminal-title output and sanitization logic, while `codex-rs/tui/src/chatwidget/status_surfaces.rs` and `chatwidget.rs` integrate title refresh with the existing status pipeline.",
+    "The bundle includes added/updated tests and snapshots (`title_setup` snapshot + chatwidget/config tests), indicating behavior verification for the new user-facing flow rather than purely internal cleanup."
+  ],
+  "published_at": "2026-03-19T19:26:37Z",
+  "schema": "signal_entry/v1",
+  "slug": "feat-tui-title-terminal-title-configuration",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/db4b7fe0be3d777a14f75f5db585aa52c7bfd3a2",
+      "https://github.com/openai/codex/commit/5d242724a75a97c1fc5ab0770ca880cda93c4432"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#12334",
+        "title": "feat(tui): add /title terminal title configuration",
+        "url": "https://github.com/openai/codex/pull/12334"
+      },
+      {
+        "kind": "commit",
+        "meta": "db4b7fe",
+        "title": "feat(tui): add /title terminal title configuration",
+        "url": "https://github.com/openai/codex/commit/db4b7fe0be3d777a14f75f5db585aa52c7bfd3a2"
+      },
+      {
+        "kind": "commit",
+        "meta": "5d24272",
+        "title": "codex: fix CI failure on PR #12334",
+        "url": "https://github.com/openai/codex/commit/5d242724a75a97c1fc5ab0770ca880cda93c4432"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/12334",
+    "repo": "openai/codex"
+  },
+  "summary": "PR #12334 introduces a new TUI `/title` command and config path so users can control which compact items appear in the terminal window/tab title, with a default `spinner,project` layout when unset.",
+  "title": "`/title` adds configurable terminal-title support in the TUI",
+  "why_it_matters": "This gives users a practical way to distinguish multiple active Codex sessions at the terminal level, improving session visibility and reducing \u201cwhich tab is which\u201d confusion without requiring app focus."
+}

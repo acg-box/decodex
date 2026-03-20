@@ -1,0 +1,92 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-18T23:30:35Z",
+      "message": "turn_id extension for stop/userpromptsubmit",
+      "sha": "9647be07b7f8f4435569f0f3ba0ef428647b31c3",
+      "url": "https://github.com/openai/codex/commit/9647be07b7f8f4435569f0f3ba0ef428647b31c3"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-19T00:31:52Z",
+      "message": "codex: fix CI failure on PR #15118",
+      "sha": "524f3aa437ea9e6f7a70077e18fa6c323ac42604",
+      "url": "https://github.com/openai/codex/commit/524f3aa437ea9e6f7a70077e18fa6c323ac42604"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "STOP_OUTPUT_FIXTURE",
+    "GENERATED_DIR",
+    "SESSION_START_OUTPUT_FIXTURE",
+    "STOP_INPUT_FIXTURE",
+    "USER_PROMPT_SUBMIT_INPUT_FIXTURE",
+    "USER_PROMPT_SUBMIT_OUTPUT_FIXTURE"
+  ],
+  "files": [
+    {
+      "additions": 107,
+      "deletions": 0,
+      "patch_excerpt": "@@ -88,15 +88,20 @@ fn write_user_prompt_submit_hook(\n     additional_context: &str,\n ) -> Result<()> {\n     let script_path = home.join(\"user_prompt_submit_hook.py\");\n+    let log_path = home.join(\"user_prompt_submit_hook_log.jsonl\");\n+    let log_path = log_path.display();\n     let blocked_prompt_json =\n         serde_json::to_string(blocked_prompt).context(\"serialize blocked prompt for test\")?;\n     let additional_context_json = serde_json::to_string(additional_context)\n         .context(\"serialize user prompt submit additional context for test\")?;\n     let script = format!(\n         r#\"import json\n+from pathlib import Path\n import sys\n \n payload = json.load(sys.stdin)\n+with Path(r\"{log_path}\").open(\"a\", encoding=\"utf-8\") as handle:\n+    handle.write(json.dumps(payload) + \"\\n\")\n \n if payload.get(\"prompt\") == {blocked_prompt_json}:\n     print(json.dumps({{\n@@ -202,6 +207,15 @@ fn read_...",
+      "path": "codex-rs/core/tests/suite/hooks.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 1,
+      "patch_excerpt": "@@ -41,6 +41,10 @@\n     },\n     \"transcript_path\": {\n       \"$ref\": \"#/definitions/NullableString\"\n+    },\n+    \"turn_id\": {\n+      \"description\": \"Codex extension: expose the active turn id to internal turn-scoped hooks.\",\n+      \"type\": \"string\"\n     }\n   },\n   \"required\": [\n@@ -51,7 +55,8 @@\n     \"permission_mode\",\n     \"session_id\",\n     \"stop_hook_active\",\n-    \"transcript_path\"\n+    \"transcript_path\",\n+    \"turn_id\"\n   ],\n   \"title\": \"stop.command.input\",\n   \"type\": \"object\"",
+      "path": "codex-rs/hooks/schema/generated/stop.command.input.schema.json",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 1,
+      "patch_excerpt": "@@ -38,6 +38,10 @@\n     },\n     \"transcript_path\": {\n       \"$ref\": \"#/definitions/NullableString\"\n+    },\n+    \"turn_id\": {\n+      \"description\": \"Codex extension: expose the active turn id to internal turn-scoped hooks.\",\n+      \"type\": \"string\"\n     }\n   },\n   \"required\": [\n@@ -47,7 +51,8 @@\n     \"permission_mode\",\n     \"prompt\",\n     \"session_id\",\n-    \"transcript_path\"\n+    \"transcript_path\",\n+    \"turn_id\"\n   ],\n   \"title\": \"user-prompt-submit.command.input\",\n   \"type\": \"object\"",
+      "path": "codex-rs/hooks/schema/generated/user-prompt-submit.command.input.schema.json",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 9,
+      "patch_excerpt": "@@ -14,6 +14,7 @@ use crate::engine::ConfiguredHandler;\n use crate::engine::command_runner::CommandRunResult;\n use crate::engine::dispatcher;\n use crate::engine::output_parser;\n+use crate::schema::NullableString;\n use crate::schema::StopCommandInput;\n \n #[derive(Debug, Clone)]\n@@ -75,15 +76,17 @@ pub(crate) async fn run(\n         };\n     }\n \n-    let input_json = match serde_json::to_string(&StopCommandInput::new(\n-        request.session_id.to_string(),\n-        request.transcript_path.clone(),\n-        request.cwd.display().to_string(),\n-        request.model.clone(),\n-        request.permission_mode.clone(),\n-        request.stop_hook_active,\n-        request.last_assistant_message.clone(),\n-    )) {\n+    let input_json = match serde_json::to_string(&StopCommandInput {\n+        session_id: request.session_id.to_string(),\n+        turn_id: request.turn_id.clone(),\n+        transcript_p...",
+      "path": "codex-rs/hooks/src/events/stop.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 8,
+      "patch_excerpt": "@@ -14,6 +14,7 @@ use crate::engine::ConfiguredHandler;\n use crate::engine::command_runner::CommandRunResult;\n use crate::engine::dispatcher;\n use crate::engine::output_parser;\n+use crate::schema::NullableString;\n use crate::schema::UserPromptSubmitCommandInput;\n \n #[derive(Debug, Clone)]\n@@ -75,14 +76,16 @@ pub(crate) async fn run(\n         };\n     }\n \n-    let input_json = match serde_json::to_string(&UserPromptSubmitCommandInput::new(\n-        request.session_id.to_string(),\n-        request.transcript_path.clone(),\n-        request.cwd.display().to_string(),\n-        request.model.clone(),\n-        request.permission_mode.clone(),\n-        request.prompt.clone(),\n-    )) {\n+    let input_json = match serde_json::to_string(&UserPromptSubmitCommandInput {\n+        session_id: request.session_id.to_string(),\n+        turn_id: request.turn_id.clone(),\n+        transcript_path: NullableSt...",
+      "path": "codex-rs/hooks/src/events/user_prompt_submit.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 35,
+      "deletions": 46,
+      "patch_excerpt": "@@ -25,11 +25,11 @@ const STOP_OUTPUT_FIXTURE: &str = \"stop.command.output.schema.json\";\n pub(crate) struct NullableString(Option<String>);\n \n impl NullableString {\n-    fn from_path(path: Option<PathBuf>) -> Self {\n+    pub(crate) fn from_path(path: Option<PathBuf>) -> Self {\n         Self(path.map(|path| path.display().to_string()))\n     }\n \n-    fn from_string(value: Option<String>) -> Self {\n+    pub(crate) fn from_string(value: Option<String>) -> Self {\n         Self(value)\n     }\n }\n@@ -178,6 +178,8 @@ impl SessionStartCommandInput {\n #[schemars(rename = \"user-prompt-submit.command.input\")]\n pub(crate) struct UserPromptSubmitCommandInput {\n     pub session_id: String,\n+    /// Codex extension: expose the active turn id to internal turn-scoped hooks.\n+    pub turn_id: String,\n     pub transcript_path: NullableString,\n     pub cwd: String,\n     #[schemars(schema_with = \"user_prompt_s...",
+      "path": "codex-rs/hooks/src/schema.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#15118"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "## Description\r\n\r\nAdding an extension to the spec that exposes the turn_id to hook scripts. This is a codex-specific mechanic that allows connecting the hook runs with particular turns\r\n\r\n## Testing\r\n\r\nhooks config / sample hooks to use. Extract this, rename codex -> .codex, and place this into a repo or your home folder. It includes: config.toml that enables hooks, hooks.json, and sample python hooks:\r\n\r\n[codex.zip](https://github.com/user-attachments/files/26102671/codex.zip)\r\n\r\nexample run (note the turn_ids change between turns):\r\n\r\n```\r\n\u203a hello\r\n\r\n\r\n\u2022 Running SessionStart hook: lighting the observatory\r\n\r\nSessionStart hook (completed)\r\n  warning: Hi, I'm a session start hook for wizard-tower (startup).\r\n  hook context: Startup context: A wimboltine stonpet is an exotic cuisine from hyperspace\r\n\r\n\u2022 Running UserPromptSubmit hook: lighting the observatory lanterns\r\n\r\nUserPromptSubmit hook (completed)\r\n  warning: wizard-tower UserPromptSubmit demo inspected: hello for turn: 019d036d-c7fa-72d2-b6fd-\r\n78878bfe34e4\r\n  hook context: Wizard Tower UserPromptSubmit demo fired. For this reply only, include the exact\r\nphrase 'observatory lanterns lit' near the end.\r\n\r\n\u2022 Aloha! Grateful to be here and ready to build with you. Show me what you want to tackle in wizard-\r\n  tower, and we\u2019ll surf the next wave together. observatory lanterns lit\r\n\r\n\u2022 Running Stop hook: back to shore\r\n\r\nStop hook (completed)\r\n  warning: Wizard Tower Stop hook reviewed the completed reply (170 chars) for turn: 019d036d-c7fa-\r\n72d2-b6fd-78878bfe34e4\r\n\r\n\r\n\u203a what's a stonpet?\r\n\r\n\r\n\u2022 Running UserPromptSubmit hook: lighting the observatory lanterns\r\n\r\nUserPromptSubmit hook (completed)\r\n  warning: wizard-tower UserPromptSubmit demo inspected: what's a stonpet? for turn: 019d036e-3164-\r\n72c3-a170-98925564c4fc\r\n  hook context: Wizard Tower UserPromptSubmit demo fired. For this reply only, include the exact\r\nphrase 'observatory lanterns lit' near the end.\r\n\r\n\u2022 A stonpet isn\u2019t a standard real-world word, brah. In our shared context here, a wimboltine stonpet\r\n  is an exotic cuisine from hyperspace, so \u201cstonpet\u201d sounds like the dish or food itself.\r\n\r\n  If you want, we can totally invent the lore for it next. observatory lanterns lit\r\n\r\n\u2022 Running Stop hook: back to shore\r\n\r\nStop hook (completed)\r\n  warning: Wizard Tower Stop hook reviewed the completed reply (271 chars) for turn: 019d036e-3164-\r\n72c3-a170-98925564c4fc\r\n```",
+    "labels": [],
+    "merged_at": "2026-03-19T04:48:31Z",
+    "number": 15118,
+    "state": "merged",
+    "title": "[hooks] turn_id extension for Stop & UserPromptSubmit",
+    "url": "https://github.com/openai/codex/pull/15118"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

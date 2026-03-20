@@ -1,0 +1,137 @@
+{
+  "caveats": [
+    "The PR intentionally stops at transport, protocol, and initialize-handshake scaffolding; exec and filesystem RPC methods are still stubbed.",
+    "The new server is not yet wired into the main Codex CLI or unified execution path, so immediate end-user impact is limited."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "The PR title and body explicitly frame this as an \"initialize-only\" exec-server stub slice with protocol docs, not a full execution feature.",
+    "`codex-rs/Cargo.toml`, `codex-rs/exec-server/Cargo.toml`, and `codex-rs/Cargo.lock` add a new `codex-exec-server` workspace crate and binary target.",
+    "`codex-rs/exec-server/README.md` documents a standalone server, shared JSON-RPC wire protocol, and two supported transports: `ws://IP:PORT` and `stdio://`.",
+    "`codex-rs/exec-server/src/bin/codex-exec-server.rs`, `src/protocol.rs`, `src/rpc.rs`, and `src/server/transport.rs` provide the new server entrypoint, initialize protocol types, RPC plumbing, and transport parsing/runtime support.",
+    "Smoke tests in `codex-rs/exec-server/tests/stdio_smoke.rs` and `codex-rs/exec-server/tests/websocket_smoke.rs` verify the initialize flow over both transport modes, which confirms the stub is functional at the protocol layer."
+  ],
+  "published_at": "2026-03-19T00:30:05Z",
+  "schema": "signal_entry/v1",
+  "slug": "standalone-exec-server-json-rpc-scaffolding",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/144c3593dbd3bc2ccdc6906f2afbc4cfc2f069b2",
+      "https://github.com/openai/codex/commit/949932ca110e5c4211fc9e2f73f24d79d38ebb19",
+      "https://github.com/openai/codex/commit/40cc199757b1665fef748ed762e9ee9d142d2cbc",
+      "https://github.com/openai/codex/commit/2958067cf9579c022eb14fca67001867147fe2ad",
+      "https://github.com/openai/codex/commit/76071974bb36af24188b1bff81585f57dc51df33",
+      "https://github.com/openai/codex/commit/16ff474725b011aea5c9e78f56319e0c055b3490",
+      "https://github.com/openai/codex/commit/0a846a2625a56d2a913e516c476abd5a1d71c0e1",
+      "https://github.com/openai/codex/commit/c5dbe421bb606d8bfa154c6c5cdd1eb89ab6a8a2",
+      "https://github.com/openai/codex/commit/66f49ea604315574d0b8a92d75dc196d5470df0a",
+      "https://github.com/openai/codex/commit/43b112c263c5d99e77d5dc9231ae2a6312b1c8ab",
+      "https://github.com/openai/codex/commit/2661dc53309b75e3d817362599af730e93c555c2",
+      "https://github.com/openai/codex/commit/3b4a5229113ccd0ea14ed46a9a8e204457aa2baf",
+      "https://github.com/openai/codex/commit/2ed509ddd33c3001e5ef50d84766b97ab5bf0d83",
+      "https://github.com/openai/codex/commit/866743de96e8051adcd7db1c7df4875e1d984213"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15089",
+        "title": "Add exec-server stub server and protocol docs",
+        "url": "https://github.com/openai/codex/pull/15089"
+      },
+      {
+        "kind": "commit",
+        "meta": "144c359",
+        "title": "Add codex-exec-server crate",
+        "url": "https://github.com/openai/codex/commit/144c3593dbd3bc2ccdc6906f2afbc4cfc2f069b2"
+      },
+      {
+        "kind": "commit",
+        "meta": "949932c",
+        "title": "docs(exec-server): add protocol README",
+        "url": "https://github.com/openai/codex/commit/949932ca110e5c4211fc9e2f73f24d79d38ebb19"
+      },
+      {
+        "kind": "commit",
+        "meta": "40cc199",
+        "title": "Add Bazel package for exec-server",
+        "url": "https://github.com/openai/codex/commit/40cc199757b1665fef748ed762e9ee9d142d2cbc"
+      },
+      {
+        "kind": "commit",
+        "meta": "2958067",
+        "title": "Trim exec-server PR to stub server slice",
+        "url": "https://github.com/openai/codex/commit/2958067cf9579c022eb14fca67001867147fe2ad"
+      },
+      {
+        "kind": "commit",
+        "meta": "7607197",
+        "title": "Keep first exec-server PR initialize-only",
+        "url": "https://github.com/openai/codex/commit/76071974bb36af24188b1bff81585f57dc51df33"
+      },
+      {
+        "kind": "commit",
+        "meta": "16ff474",
+        "title": "Add generic RPC server glue to exec-server stub",
+        "url": "https://github.com/openai/codex/commit/16ff474725b011aea5c9e78f56319e0c055b3490"
+      },
+      {
+        "kind": "commit",
+        "meta": "0a846a2",
+        "title": "Add generic exec-server RPC foundation",
+        "url": "https://github.com/openai/codex/commit/0a846a2625a56d2a913e516c476abd5a1d71c0e1"
+      },
+      {
+        "kind": "commit",
+        "meta": "c5dbe42",
+        "title": "Wire notification sender into exec-server RPC foundation",
+        "url": "https://github.com/openai/codex/commit/c5dbe421bb606d8bfa154c6c5cdd1eb89ab6a8a2"
+      },
+      {
+        "kind": "commit",
+        "meta": "66f49ea",
+        "title": "Remove outer handler mutex from exec-server RPC base",
+        "url": "https://github.com/openai/codex/commit/66f49ea604315574d0b8a92d75dc196d5470df0a"
+      },
+      {
+        "kind": "commit",
+        "meta": "43b112c",
+        "title": "Test generic exec-server RPC response matching",
+        "url": "https://github.com/openai/codex/commit/43b112c263c5d99e77d5dc9231ae2a6312b1c8ab"
+      },
+      {
+        "kind": "commit",
+        "meta": "2661dc5",
+        "title": "exec-server: simplify stub json-rpc transport shape",
+        "url": "https://github.com/openai/codex/commit/2661dc53309b75e3d817362599af730e93c555c2"
+      },
+      {
+        "kind": "commit",
+        "meta": "3b4a522",
+        "title": "exec-server: address transport review feedback",
+        "url": "https://github.com/openai/codex/commit/3b4a5229113ccd0ea14ed46a9a8e204457aa2baf"
+      },
+      {
+        "kind": "commit",
+        "meta": "2ed509d",
+        "title": "exec-server: keep malformed-json connections alive",
+        "url": "https://github.com/openai/codex/commit/2ed509ddd33c3001e5ef50d84766b97ab5bf0d83"
+      },
+      {
+        "kind": "commit",
+        "meta": "866743d",
+        "title": "exec-server: trim unused stub dependencies",
+        "url": "https://github.com/openai/codex/commit/866743de96e8051adcd7db1c7df4875e1d984213"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15089",
+    "repo": "openai/codex"
+  },
+  "summary": "PR #15089 adds a new `codex-exec-server` crate and standalone binary with shared protocol types, Rust client APIs, and stdio/websocket transport support, while keeping exec and filesystem methods stubbed for later PRs.",
+  "title": "Added a standalone exec-server binary with JSON-RPC protocol scaffolding",
+  "watch_state": "Watch follow-up PRs for actual exec/filesystem method implementation and integration into the main Codex execution flow.",
+  "why_it_matters": "This creates a separate execution-server boundary that future Codex integrations can build on without coupling everything to the main CLI process. It is a real new capability, but still an early one: the transport and handshake are in place before the full remote execution surface lands."
+}

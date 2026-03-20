@@ -1,0 +1,44 @@
+{
+  "caveats": [
+    "Because this is a revert of an accidentally merged change, the same area may change again in a follow-up PR with a narrower design."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR title and body explicitly mark this as a revert of PR #15020 because changes were merged before review was finished.",
+    "The protocol and generated schemas remove `SessionSource::Custom(...)`, drop the `custom` thread source kind, and delete the `--session-source` app-server CLI argument.",
+    "App-server docs now say the default interactive `sourceKinds` set is only `cli` and `vscode`, no longer including custom product sources.",
+    "Core and app-server changes remove session-source-based skill and curated-plugin filtering helpers, and related plugin-list/plugin-install tests are deleted."
+  ],
+  "published_at": "2026-03-18T22:19:29Z",
+  "schema": "signal_entry/v1",
+  "slug": "custom-app-server-session-sources-rolled-back",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/c5281d1f5a729fa3648c09813441bd0a704f9416"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15102",
+        "title": "Revert \"fix: harden plugin feature gating\"",
+        "url": "https://github.com/openai/codex/pull/15102"
+      },
+      {
+        "kind": "commit",
+        "meta": "c5281d1",
+        "title": "Revert \"fix: harden plugin feature gating (#15020)\"",
+        "url": "https://github.com/openai/codex/commit/c5281d1f5a729fa3648c09813441bd0a704f9416"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15102",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15102 removes the newly introduced custom `session_source` path from Codex's app-server, protocol schemas, and plugin/skill filtering flow.",
+  "title": "Custom app-server session sources were rolled back",
+  "watch_state": "Watch for a replacement PR that reintroduces product-aware plugin or skill gating without the reverted custom session-source plumbing.",
+  "why_it_matters": "This closes off a just-landed integration path for tagging app-server threads as custom products and using that product identity to filter plugins or skills. Most users will see no change, but anyone testing custom app-server product sources loses that behavior for now."
+}

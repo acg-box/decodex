@@ -1,0 +1,51 @@
+{
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly states that it carries surviving `exec-server` process and filesystem RPC implementation on top of existing websocket-based scaffolding and calls out the macOS SCCACHE regression workaround.",
+    "Primary PR narrative + commits show a feature rollout: initial implementation (`Add exec-server process and filesystem RPCs`) plus follow-up lifecycle fix (`exec-server: report false after retained exit`).",
+    "`codex-rs/exec-server/src/protocol.rs` adds method constants for process (`process/start`, `process/read`, `process/write`, `process/terminate`, `process/output`, `process/exited`) and filesystem RPCs (`fs/readFile`, `fs/writeFile`, `fs/createDirectory`, etc.).",
+    "Server-side expansion is added in `codex-rs/exec-server/src/server/filesystem.rs` and `codex-rs/exec-server/src/server/registry.rs`, with substantial handler updates, indicating the new RPC surface is actually dispatched and handled.",
+    "Client-facing layers were updated (`client.rs`, `client_api.rs`, `lib.rs`, `local_backend.rs`) to expose/read new RPC/notification types, while transport/routing internals in `rpc.rs`/`processor.rs` were refactored to support the new request/notification paths.",
+    "Regression-hardening is included via `.github/workflows/rust-ci.yml`: SCCACHE is disabled for `windows` and `macos-15-xlarge` + `x86_64-apple-darwin` to avoid mixed-architecture `ring/cc-rs` cache failures.",
+    "New/updated tests in `codex-rs/exec-server/src/server/handler/tests.rs` and `codex-rs/exec-server/tests/process.rs` show validation of the new behavior path.",
+    "Build metadata changes (`base64` and `codex-utils-pty` dependencies) and `Cargo.lock` updates support the newly added process and FS implementation paths."
+  ],
+  "published_at": "2026-03-19T19:00:37Z",
+  "schema": "signal_entry/v1",
+  "slug": "exec-server-adds-process-and-filesystem-json-rpc-capabilities",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/dd1416a5ccce5bf9f05193c41045f61d6f771d9f",
+      "https://github.com/openai/codex/commit/ab89fdf2a7f4c08865a297734185f2f059cff216"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15090",
+        "title": "Add exec-server process and filesystem RPCs",
+        "url": "https://github.com/openai/codex/pull/15090"
+      },
+      {
+        "kind": "commit",
+        "meta": "dd1416a",
+        "title": "Add exec-server process and filesystem RPCs (#15090)",
+        "url": "https://github.com/openai/codex/commit/dd1416a5ccce5bf9f05193c41045f61d6f771d9f"
+      },
+      {
+        "kind": "commit",
+        "meta": "ab89fdf",
+        "title": "exec-server: report false after retained exit",
+        "url": "https://github.com/openai/codex/commit/ab89fdf2a7f4c08865a297734185f2f059cff216"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15090",
+    "repo": "openai/codex"
+  },
+  "summary": "PR #15090 expands exec-server from a stub-oriented shape into a real process and filesystem RPC implementation, adding protocol methods, routing, client/server event plumbing, and tests. It also includes a CI cache guard for a specific macOS cross-target build issue.",
+  "title": "exec-server adds process and filesystem JSON-RPC capabilities",
+  "why_it_matters": "This is a user-facing capability increase: clients can now drive process lifecycle and file operations through exec-server with structured RPCs and event notifications (`output`/`exited`), which is a prerequisite for richer automation and tool integration workflows. The CI tweak reduces environment-specific instability during release/integration builds."
+}

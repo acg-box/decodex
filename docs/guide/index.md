@@ -58,3 +58,5 @@ Then structure the body for execution:
 
 - `local_github_signal_workflow.md` defines the MVP local loop for GitHub bundle
   collection, Codex analysis, validation, and publish-to-Pages handoff.
+- `github_pages_deploy.md` defines the GitHub Pages Actions deployment path and the
+  manual `decodex.space` custom-domain setup.

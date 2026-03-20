@@ -1,0 +1,50 @@
+{
+  "caveats": [
+    "The bundle contains truncated patch excerpts, so implementation detail is summarized from available hunks and test intent rather than a full raw diff.",
+    "This is an incremental internal-API behavior fix with no user-facing UI changes, so operational impact is limited to code-mode automation."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [
+    "PLAN_UPDATED_MESSAGE",
+    "PLAN_TOOL",
+    "JSON"
+  ],
+  "expected_effect": "If the behavior is present, code-mode workflows can consume `update_plan` return data programmatically instead of only relying on side effects.",
+  "how_to_try": "In code mode, run an update_plan call like `const result = await tools.update_plan({ plan: [{ step: 'Run update_plan', status: 'in_progress' }] }); text(JSON.stringify(result));` and check the response parses as JSON.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "PR `openai/codex#15103` is explicitly titled \"Add update_plan code mode result\" and the sole commit is message \"Implement code-mode plan result,\" indicating a focused behavioral change.",
+    "`codex-rs/core/src/tools/handlers/plan.rs` changed imports and added `PlanToolOutput`, with new payload/output/model types (`FunctionCallOutputPayload`, `ResponseInputItem`, `ToolOutput`, `serde_json::Value`) tied to plan/update handling.",
+    "`codex-rs/core/tests/suite/code_mode.rs` adds `code_mode_update_plan_nested_tool_result_is_empty_object`, explicitly executing `tools.update_plan(...)` from code mode and asserting the nested tool call is successful plus parseable JSON handling.",
+    "The change is confined to plan-tool and code-mode test surfaces, matching the PR title and no unrelated files in the bundle."
+  ],
+  "published_at": "2026-03-18T23:10:51Z",
+  "schema": "signal_entry/v1",
+  "slug": "openai-codex-pr-15103",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/e1b3f11bf13af18c7bc06ead8902fb6436dfdbdd"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15103",
+        "title": "Add update_plan code mode result",
+        "url": "https://github.com/openai/codex/pull/15103"
+      },
+      {
+        "kind": "commit",
+        "meta": "e1b3f11",
+        "title": "Implement code-mode plan result",
+        "url": "https://github.com/openai/codex/commit/e1b3f11bf13af18c7bc06ead8902fb6436dfdbdd"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15103",
+    "repo": "openai/codex"
+  },
+  "summary": "This merged PR updates the plan tool path so code-mode calls to `tools.update_plan` now yield a parseable result payload, and adds a regression test for the nested call shape.",
+  "title": "Code-mode `update_plan` now returns a structured result",
+  "why_it_matters": "It makes scripted workflow updates in code mode more reliable by allowing the caller to inspect and act on `update_plan` output instead of treating the call as opaque."
+}

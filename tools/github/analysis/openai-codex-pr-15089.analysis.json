@@ -1,0 +1,24 @@
+{
+  "caveats": [
+    "The PR intentionally stops at transport, protocol, and initialize-handshake scaffolding; exec and filesystem RPC methods are still stubbed.",
+    "The new server is not yet wired into the main Codex CLI or unified execution path, so immediate end-user impact is limited."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "The PR title and body explicitly frame this as an \"initialize-only\" exec-server stub slice with protocol docs, not a full execution feature.",
+    "`codex-rs/Cargo.toml`, `codex-rs/exec-server/Cargo.toml`, and `codex-rs/Cargo.lock` add a new `codex-exec-server` workspace crate and binary target.",
+    "`codex-rs/exec-server/README.md` documents a standalone server, shared JSON-RPC wire protocol, and two supported transports: `ws://IP:PORT` and `stdio://`.",
+    "`codex-rs/exec-server/src/bin/codex-exec-server.rs`, `src/protocol.rs`, `src/rpc.rs`, and `src/server/transport.rs` provide the new server entrypoint, initialize protocol types, RPC plumbing, and transport parsing/runtime support.",
+    "Smoke tests in `codex-rs/exec-server/tests/stdio_smoke.rs` and `codex-rs/exec-server/tests/websocket_smoke.rs` verify the initialize flow over both transport modes, which confirms the stub is functional at the protocol layer."
+  ],
+  "slug": "standalone-exec-server-json-rpc-scaffolding",
+  "summary": "PR #15089 adds a new `codex-exec-server` crate and standalone binary with shared protocol types, Rust client APIs, and stdio/websocket transport support, while keeping exec and filesystem methods stubbed for later PRs.",
+  "title": "Added a standalone exec-server binary with JSON-RPC protocol scaffolding",
+  "watch_state": "Watch follow-up PRs for actual exec/filesystem method implementation and integration into the main Codex execution flow.",
+  "why_it_matters": "This creates a separate execution-server boundary that future Codex integrations can build on without coupling everything to the main CLI process. It is a real new capability, but still an early one: the transport and handshake are in place before the full remote execution surface lands."
+}

@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "The new setting is marked \"Experimental / do not use,\" so behavior and stability are intentionally less guaranteed than stable config fields."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "The PR metadata identifies the change as \"Add experimental exec server URL handling\" and documents it as merged in `openai/codex` PR 15196, with commit `1f0ed50a125c758bb8d4d2f71e425e9eef3519f4`.",
+    "`codex-rs/core/src/config/mod.rs` adds `experimental_exec_server_url: Option<String>` to both `Config` and `ConfigToml`, with doc text explicitly describing it as an override for the remote exec server URL.",
+    "`codex-rs/core/src/config.schema.json` adds `experimental_exec_server_url` as a schema field, exposing it as a configurable runtime input.",
+    "`codex-rs/core/src/codex.rs` now constructs `environment` via `Environment::create(config.experimental_exec_server_url.clone()).await?`, directly consuming the new config value during session setup.",
+    "`codex-rs/exec-server/src/environment.rs` replaces a unit `Environment` with a stateful struct that stores the optional override URL and a possible `remote_exec_server_client`, supporting the configurable connection path."
+  ],
+  "slug": "openai-codex-pr-15196",
+  "summary": "PR #15196 introduces an experimental `experimental_exec_server_url` configuration key and wires it into environment/session creation, allowing the remote exec server endpoint to be overridden from defaults.",
+  "title": "Add experimental exec server URL override for Codex sessions",
+  "watch_state": null,
+  "why_it_matters": "It gives operators a configurable escape hatch for deployment-specific or proxied exec-server setups without requiring code changes, improving flexibility while keeping existing behavior unchanged by default."
+}

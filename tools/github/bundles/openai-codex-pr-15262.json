@@ -1,0 +1,72 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-20T02:00:04Z",
+      "message": "Add guardian follow-up reminder",
+      "sha": "0c5c63fd5301f54de042b4635cf5d12690ff90e6",
+      "url": "https://github.com/openai/codex/commit/0c5c63fd5301f54de042b4635cf5d12690ff90e6"
+    },
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-20T02:58:18Z",
+      "message": "Update guardian followup reminder wording",
+      "sha": "69569008a3ea3f03b981e2e6c92f9a1b85525a75",
+      "url": "https://github.com/openai/codex/commit/69569008a3ea3f03b981e2e6c92f9a1b85525a75"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "GUARDIAN_REVIEWER_NAME",
+    "GUARDIAN_INTERRUPT_DRAIN_TIMEOUT",
+    "GUARDIAN_FOLLOWUP_REVIEW_REMINDER",
+    "APPROVAL",
+    "REQUEST",
+    "END",
+    "JSON",
+    "TRANSCRIPT",
+    "START"
+  ],
+  "files": [
+    {
+      "additions": 38,
+      "deletions": 1,
+      "patch_excerpt": "@@ -2,11 +2,15 @@ use std::collections::HashMap;\n use std::future::Future;\n use std::path::PathBuf;\n use std::sync::Arc;\n+use std::sync::atomic::AtomicBool;\n+use std::sync::atomic::Ordering;\n use std::time::Duration;\n \n use anyhow::anyhow;\n use codex_protocol::config_types::Personality;\n use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;\n+use codex_protocol::models::DeveloperInstructions;\n+use codex_protocol::models::ResponseItem;\n use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;\n use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::EventMsg;\n@@ -40,6 +44,12 @@ use super::GUARDIAN_REVIEWER_NAME;\n use super::prompt::guardian_policy_prompt;\n \n const GUARDIAN_INTERRUPT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);\n+const GUARDIAN_FOLLOWUP_REVIEW_REMINDER: &str = concat!(\n+    \"Use prior reviews as context, no...",
+      "path": "codex-rs/core/src/guardian/review_session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -49,7 +49,8 @@ Scenario: Guardian follow-up review request layout\n     [15] >>> APPROVAL REQUEST END\\n\n     [16] You may use read-only tool checks to gather any additional context you need to make a high-confidence determination.\\n\\nYour final message must be strict JSON with this exact schema:\\n{\\n  \"risk_level\": \"low\" | \"medium\" | \"high\",\\n  \"risk_score\": 0-100,\\n  \"rationale\": string,\\n  \"evidence\": [{\"message\": string, \"why\": string}]\\n}\\n\n 04:message/assistant:{\"risk_level\":\"low\",\"risk_score\":5,\"rationale\":\"first guardian rationale from the prior review\",\"evidence\":[]}\n-05:message/user[16]:\n+05:message/developer:Use prior reviews as context, not binding precedent. Follow the Workspace Policy. If the user explicitly approves a previously rejected action after being informed of the concrete risks, treat the action as authorized and assign low/medium risk.\n+06:message/user[16]:\n    ...",
+      "path": "codex-rs/core/src/guardian/snapshots/codex_core__guardian__tests__guardian_followup_review_request_layout.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -677,6 +677,16 @@ async fn guardian_reuses_prompt_cache_key_and_appends_prior_reviews() -> anyhow:\n         first_body[\"prompt_cache_key\"],\n         second_body[\"prompt_cache_key\"]\n     );\n+    assert!(\n+        second_body.to_string().contains(concat!(\n+            \"Use prior reviews as context, not binding precedent. \",\n+            \"Follow the Workspace Policy. \",\n+            \"If the user explicitly approves a previously rejected action after being \",\n+            \"informed of the concrete risks, treat the action as authorized and assign \",\n+            \"low/medium risk.\"\n+        )),\n+        \"follow-up guardian request should include the follow-up reminder\"\n+    );\n     assert!(\n         second_body.to_string().contains(first_rationale),\n         \"guardian session should append earlier reviews into the follow-up request\"",
+      "path": "codex-rs/core/src/guardian/tests.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "## Summary\r\n- add a short guardian follow-up developer reminder before reused reviews\r\n- cache prior-review state on the guardian session instead of rescanning full history on each request\r\n- update guardian follow-up coverage and snapshot expectations",
+    "labels": [],
+    "merged_at": "2026-03-20T05:35:52Z",
+    "number": 15262,
+    "state": "merged",
+    "title": "Add guardian follow-up reminder",
+    "url": "https://github.com/openai/codex/pull/15262"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

@@ -1,0 +1,44 @@
+{
+  "caveats": [
+    "This is a CI-only maintenance change, not a new CLI or runtime capability for Codex users.",
+    "The workflow still depends on a hardcoded retained release artifact, so a similar refresh may be needed again later if that source ages out."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly says the failing CI step is fixed by switching from release `0.74.0` to `0.115.0` because the older workflow history was likely reaped.",
+    "The only changed file is `.github/workflows/ci.yml`, where `CODEX_VERSION` for the \"Stage npm package\" step is bumped from `0.74.0` to `0.115.0`.",
+    "The bundle contains a single merged commit and no product-code changes, which supports reading this as a scoped CI behavior fix rather than a broader feature update."
+  ],
+  "published_at": "2026-03-18T20:52:33Z",
+  "schema": "signal_entry/v1",
+  "slug": "ci-stage-npm-package-uses-newer-release-artifacts",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/ee651d1af43aa2962bd144b4f3b4a37952e95cac"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15092",
+        "title": "fix: try to fix \"Stage npm package\" step in ci.yml",
+        "url": "https://github.com/openai/codex/pull/15092"
+      },
+      {
+        "kind": "commit",
+        "meta": "ee651d1",
+        "title": "fix: try to fix \"Stage npm package\" step in ci.yml",
+        "url": "https://github.com/openai/codex/commit/ee651d1af43aa2962bd144b4f3b4a37952e95cac"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15092",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15092 updates the PR CI workflow so the \"Stage npm package\" step pulls artifacts from Codex `0.115.0` instead of the older `0.74.0` release whose workflow history appears to have aged out.",
+  "title": "Codex CI now stages npm packages from a newer retained release artifact",
+  "watch_state": "Watch for follow-up PRs that remove or automate this pinned release-artifact dependency in the npm-package staging job.",
+  "why_it_matters": "This is mainly a contributor-facing reliability fix: PRs should be less likely to fail in the npm-package staging check just because the workflow was pinned to an older release artifact that GitHub no longer retains."
+}

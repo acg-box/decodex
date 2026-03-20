@@ -1,0 +1,19 @@
+{
+  "caveats": null,
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "The handoff text payload should begin with `\"Agent Final Message\":` followed by a blank line before the assistant's actual message content.",
+  "how_to_try": "Run a Codex build that includes PR #15077, trigger a realtime conversation handoff, and inspect the emitted `conversation.handoff.append` payload in either the v1 or Realtime v2 websocket stream.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR title and body explicitly say realtime handoff output should be prefixed with the agent final message label for both realtime v1 and v2.",
+    "`methods_common.rs` adds a shared `AGENT_FINAL_MESSAGE_PREFIX` constant and prepends it inside `conversation_handoff_append_message`, which is the code path that builds the outbound handoff message.",
+    "Realtime websocket and core conversation tests were updated to expect `\"Agent Final Message\":\\n\\n...` in both `output_text` and delegated output fields, confirming this is an intentional behavior change rather than a test-only refactor."
+  ],
+  "slug": "realtime-handoff-output-labels-agent-final-message",
+  "summary": "Merged PR #15077 changes realtime handoff payloads so the emitted assistant text is prefixed with an `\"Agent Final Message\":` label instead of sending the raw message body alone.",
+  "title": "Realtime handoff output now labels the agent's final message",
+  "watch_state": null,
+  "why_it_matters": "Clients that display or post-process realtime handoff output now get an explicit label marking the delegated agent's final response. This is a small but user-visible protocol change, and integrations that expect the old raw string format may need to adjust."
+}

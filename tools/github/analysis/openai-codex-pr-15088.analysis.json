@@ -1,0 +1,22 @@
+{
+  "caveats": [
+    "`final_response` is optional and may be `null` when the turn completes without a final-answer style assistant message.",
+    "The lower-level `thread.turn(...)` path still matters for streaming, steering, interrupting, and direct access to the raw `Turn` object."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "The call should return a `RunResult` object with the collected thread items, optional token usage, and a `final_response` string when the turn produces a final-answer or phase-less assistant message.",
+  "how_to_try": "In a Codex build that includes PR #15088, start a Python SDK thread with `codex.thread_start(...)` and call `thread.run(\"Say hello in one sentence.\")` or `await thread.run(\"Say hello in one sentence.\")` in the async API.",
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "The PR title and body explicitly frame this as new Python SDK convenience methods: `thread.run(...)` and `async thread.run(...)` for the common case.",
+    "The code adds new `_inputs.py` and `_run.py` helpers, including `RunInput` and a `RunResult` dataclass with `final_response`, collected `items`, and optional `usage`.",
+    "The README, getting-started guide, quickstart examples, and runtime/signature tests were updated to use `thread.run(...)`, which shows the new flow is intended for public use rather than internal refactoring."
+  ],
+  "slug": "python-sdk-thread-run-convenience-methods",
+  "summary": "Merged PR #15088 adds `thread.run(...)` and `async thread.run(...)` to the Python SDK, giving users a simpler path for common prompt-response flows without manually creating and running a turn handle.",
+  "title": "Python SDK adds `thread.run()` convenience methods for one-shot turns",
+  "watch_state": null,
+  "why_it_matters": "This lowers the amount of SDK code needed for basic request-response usage. Python users can now send a string or input bundle directly from a thread and get a compact result object back, while the lower-level turn API remains available for streaming and more advanced control."
+}
