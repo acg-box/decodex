@@ -1,0 +1,63 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "2026-03-21_decodex-preview-typography-polish",
+    "goal": "Improve the headline hierarchy and top-of-page typography so Preview changes reads like a real section title and the surrounding top content feels more intentional, without changing the Decodex logo or the page structure.",
+    "success_criteria": [
+      "Preview changes has stronger title weight and clearer supporting copy hierarchy.",
+      "The top-of-page supporting copy and status summary text sizes feel more balanced against the unchanged logo.",
+      "The redesign remains restrained and does not reintroduce a heavy hero.",
+      "Site build and check pass after the typography adjustments."
+    ],
+    "constraints": [
+      "Do not change the Decodex wordmark size or styling in this pass.",
+      "Do not change the information architecture of the top area or the Preview changes module."
+    ],
+    "defaults": {
+      "workdir": "/Users/xavier/code/trusted/y/hack-ink/decodex/.workspaces/feat-decodex-github-first"
+    },
+    "tasks": [
+      {
+        "id": "task-01-typography-polish",
+        "title": "Polish Preview changes and top content typography",
+        "status": "done",
+        "objective": "Tune the typography and spacing for the Preview changes headline, chooser, and the top-page supporting text so the hierarchy feels cleaner and more premium.",
+        "inputs": [
+          "site/src/styles/global.css"
+        ],
+        "outputs": [
+          "Updated typography and spacing for the preview section and top status area."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": []
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "Typography-only adjustments prove insufficient and the layout itself needs another structural pass.",
+        "Making the preview section more prominent starts to compete with the main feed too strongly."
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "Raised the Preview changes title and chooser typography so the module reads more like a first-class section instead of secondary copy.",
+      "Increased supporting text and status summary typography in the top area without changing the Decodex wordmark itself.",
+      "Verification passed: npm run build --prefix site and npm run check --prefix site."
+    ],
+    "last_updated": "2026-03-21T20:06:00+08:00",
+    "replan_reason": null,
+    "context_snapshot": {
+      "focus": "top hierarchy and preview typography",
+      "lane": "feat-decodex-github-first"
+    }
+  }
+}
