@@ -1,0 +1,117 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "2026-03-21_decodex-preview-comparator",
+    "goal": "Upgrade the Preview changes module from a single latest-compare summary into a compact version comparator that lets readers switch stable and preview versions without displacing the main signal feed.",
+    "success_criteria": [
+      "The release-delta artifact supports a bounded set of stable and preview release options plus precomputed compare entries.",
+      "The Preview changes module lets the reader switch stable and preview versions client-side and immediately updates summary metrics and highlighted tracked signals.",
+      "The module remains compact and scan-first: the top section gives fast compare facts while featured preview items stay readable without forcing the user into the full feed.",
+      "Specs and repo docs describe the new bounded comparator behavior and artifact shape.",
+      "Repo-native checks pass after the change."
+    ],
+    "constraints": [
+      "Keep the homepage static-first and avoid turning the module into a heavy client application.",
+      "Preserve the main feed as the primary analysis surface; the comparator stays a compact summary module.",
+      "Bound the amount of precomputed compare data so release-delta generation remains reasonable.",
+      "Reuse existing published signals as the evidence-backed highlight set for compare entries."
+    ],
+    "defaults": {
+      "workdir": "/Users/xavier/code/trusted/y/hack-ink/decodex/.workspaces/feat-decodex-github-first"
+    },
+    "tasks": [
+      {
+        "id": "task-01-expand-release-delta-contract",
+        "title": "Expand the release-delta artifact and spec for bounded version comparison",
+        "status": "done",
+        "objective": "Extend the release-delta schema, generator, and docs so the artifact can ship a limited stable/preview release set and precomputed compare entries instead of only one latest pair.",
+        "inputs": [
+          "docs/spec/release_delta.md",
+          "site/src/content.config.ts",
+          "site/src/lib/release-delta.ts",
+          "tools/github/build_release_delta.py",
+          "tools/github/contracts.py",
+          "site/src/content/release-deltas/openai-codex-latest.json"
+        ],
+        "outputs": [
+          "A validated release_delta/v1 artifact that includes release options and compare entries for the homepage comparator."
+        ],
+        "verification": [
+          "python3 tools/github/build_release_delta.py --repo openai/codex --signals-dir site/src/content/signals --out site/src/content/release-deltas/openai-codex-latest.json",
+          "cargo make decodex-checks"
+        ],
+        "depends_on": []
+      },
+      {
+        "id": "task-02-build-preview-comparator-ui",
+        "title": "Turn Preview changes into a compact version comparator",
+        "status": "done",
+        "objective": "Replace the one-pair release summary with a compact comparator that exposes stable and preview selection, updates metrics client-side, and keeps featured preview items readable for impatient readers.",
+        "inputs": [
+          "site/src/components/ReleaseDeltaPanel.astro",
+          "site/src/styles/global.css",
+          "site/src/pages/index.astro",
+          "site/src/content/release-deltas/openai-codex-latest.json",
+          "site/src/lib/release-delta.ts"
+        ],
+        "outputs": [
+          "A homepage Preview changes module with bounded client-side stable/preview switching and refreshed card styling."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": [
+          "task-01-expand-release-delta-contract"
+        ]
+      },
+      {
+        "id": "task-03-sync-docs-and-close-state",
+        "title": "Sync docs and close the iteration cleanly",
+        "status": "done",
+        "objective": "Update docs and plan state so the new comparator behavior is discoverable and the plan captures the implementation evidence.",
+        "inputs": [
+          "docs/spec/release_delta.md",
+          "site/src/content/release-deltas/README.md",
+          "docs/plans/2026-03-21_decodex-preview-comparator.json"
+        ],
+        "outputs": [
+          "Updated docs plus a done state with implementation evidence."
+        ],
+        "verification": [
+          "cargo make decodex-checks"
+        ],
+        "depends_on": [
+          "task-02-build-preview-comparator-ui"
+        ]
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "The compare matrix becomes too large for a bounded static artifact and needs a different data strategy.",
+        "The homepage module needs server-backed live compare queries instead of precomputed local data.",
+        "The release-delta module needs to support multiple repos or channels beyond the current Codex lane."
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "release_delta/v1 now carries bounded stable and preview release options plus 12 precomputed compare entries while preserving a default top-level pair.",
+      "Preview changes now renders as a compact version comparator with stable and preview selectors, pre-rendered compare panels, and lightweight client-side switching.",
+      "The current openai/codex release-delta artifact now tracks 3 stable options, 6 preview options, and defaults to rust-v0.116.0 -> rust-v0.117.0-alpha.5.",
+      "Docs now describe the bounded comparator model in docs/spec/release_delta.md and site/src/content/release-deltas/README.md.",
+      "Verification passed: npm run build --prefix site, npm run check --prefix site, cargo make decodex-checks."
+    ],
+    "last_updated": "2026-03-21T19:12:00+08:00",
+    "replan_reason": null,
+    "context_snapshot": {
+      "focus": "preview changes comparator",
+      "lane": "feat-decodex-github-first"
+    }
+  }
+}

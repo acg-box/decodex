@@ -1,0 +1,64 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "2026-03-21_decodex-stable-floor",
+    "goal": "Limit the homepage preview comparator so stable-version support starts at 0.116.0 and older stable releases are not exposed in the UI or generated compare matrix.",
+    "success_criteria": [
+      "The release-delta builder excludes stable releases older than rust-v0.116.0 by default.",
+      "The generated artifact no longer exposes stable options older than 0.116.0.",
+      "Site build and repo-native checks still pass after regenerating the artifact."
+    ],
+    "constraints": [
+      "Keep the current bounded compare model and UI structure.",
+      "Apply the floor as a deterministic generation rule rather than a front-end-only filter."
+    ],
+    "defaults": {
+      "workdir": "/Users/xavier/code/trusted/y/hack-ink/decodex/.workspaces/feat-decodex-github-first"
+    },
+    "tasks": [
+      {
+        "id": "task-01-apply-stable-floor",
+        "title": "Apply a stable-version floor to the comparator data",
+        "status": "done",
+        "objective": "Add a minimum stable release boundary to release-delta generation, rebuild the artifact, and verify the homepage still works with the narrowed option set.",
+        "inputs": [
+          "tools/github/build_release_delta.py",
+          "site/src/content/release-deltas/openai-codex-latest.json",
+          "docs/spec/release_delta.md"
+        ],
+        "outputs": [
+          "A release-delta artifact whose stable options start at rust-v0.116.0."
+        ],
+        "verification": [
+          "python3 tools/github/build_release_delta.py --repo openai/codex --signals-dir site/src/content/signals --out site/src/content/release-deltas/openai-codex-latest.json",
+          "cargo make decodex-checks"
+        ],
+        "depends_on": []
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "The comparator later needs broader historical support than 0.116.0 onward.",
+        "Version-floor semantics need to vary by repo or release channel."
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "build_release_delta.py now applies a minimum stable tag floor of rust-v0.116.0 by default during option selection.",
+      "The regenerated release-delta artifact now exposes only stable option 0.116.0, with preview options unchanged and comparison entries reduced to 3 bounded pairs.",
+      "Verification passed: cargo make decodex-checks."
+    ],
+    "last_updated": "2026-03-21T19:54:00+08:00",
+    "replan_reason": null,
+    "context_snapshot": {
+      "focus": "stable version floor",
+      "lane": "feat-decodex-github-first"
+    }
+  }
+}
