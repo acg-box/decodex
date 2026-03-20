@@ -1,0 +1,42 @@
+{
+  "caveats": [
+    "No direct user-visible behavior changes; value appears only in exported telemetry/observability consumers"
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "PR #15180 is titled `chore: add metrics for profile` and has a committed change set tied to a single merged commit (`959dc2a4d88ebe8caad796b05e5a76096ba20f2e`)",
+    "`codex-rs/otel/src/metrics/names.rs` now defines `PROFILE_USAGE_METRIC` as `codex.profile.usage`, establishing a new named metric in the shared telemetry namespace",
+    "`codex-rs/otel/src/events/session_telemetry.rs` imports `PROFILE_USAGE_METRIC` and increments it via `self.counter(..., 1, &[])` whenever `active_profile.is_some()` is true"
+  ],
+  "published_at": "2026-03-19T15:48:02Z",
+  "schema": "signal_entry/v1",
+  "slug": "add-profile-usage-metric",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/959dc2a4d88ebe8caad796b05e5a76096ba20f2e"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15180",
+        "title": "chore: add metrics for profile",
+        "url": "https://github.com/openai/codex/pull/15180"
+      },
+      {
+        "kind": "commit",
+        "meta": "959dc2a",
+        "title": "chore: add metrics for profile",
+        "url": "https://github.com/openai/codex/commit/959dc2a4d88ebe8caad796b05e5a76096ba20f2e"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15180",
+    "repo": "openai/codex"
+  },
+  "summary": "PR #15180 adds a new OpenTelemetry counter that increments when a session starts with an active profile, enabling explicit tracking of profile usage in telemetry pipelines.",
+  "title": "Added `codex.profile.usage` metric for active profile sessions",
+  "why_it_matters": "This gives operators and maintainers a direct signal for how often active coding profiles are used in live sessions. It helps with visibility into feature adoption and debugging profile-related behavior without changing runtime user flows."
+}

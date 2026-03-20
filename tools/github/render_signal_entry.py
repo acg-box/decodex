@@ -39,6 +39,35 @@ def short_sha(value: str) -> str:
     return value[:7]
 
 
+def normalized_config_flags(raw_flags: Any) -> list[str]:
+    if not isinstance(raw_flags, list):
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for flag in raw_flags:
+        if not isinstance(flag, str):
+            continue
+        value = flag.strip()
+        if not value or value in seen:
+            continue
+
+        actionable = (
+            value.startswith("--")
+            or "_" in value
+            or "=" in value
+            or value.endswith(".json")
+            or value.endswith(".toml")
+        )
+        if not actionable:
+            continue
+
+        seen.add(value)
+        normalized.append(value)
+
+    return normalized
+
+
 def rendered_source_items(bundle: dict[str, Any]) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     primary_pr = bundle.get("primary_pr")
@@ -119,6 +148,7 @@ def main() -> None:
     config_flags = analysis.get("config_flags")
     if config_flags is None:
         config_flags = bundle.get("extracted_flags", [])
+    config_flags = normalized_config_flags(config_flags)
 
     signal = {
         "schema": SIGNAL_SCHEMA,
@@ -132,12 +162,14 @@ def main() -> None:
         "confidence": analysis["confidence"],
         "impact": analysis["impact"],
         "config_flags": config_flags,
-        "how_to_try": analysis.get("how_to_try"),
-        "expected_effect": analysis.get("expected_effect"),
         "proof_points": analysis["proof_points"],
         "source_refs": rendered_source_refs(bundle),
     }
 
+    if analysis.get("how_to_try"):
+        signal["how_to_try"] = analysis["how_to_try"]
+    if analysis.get("expected_effect"):
+        signal["expected_effect"] = analysis["expected_effect"]
     if analysis.get("caveats"):
         signal["caveats"] = analysis["caveats"]
     if analysis.get("watch_state"):

@@ -1,0 +1,245 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T18:43:42Z",
+      "message": "Move terminal module to its own crate",
+      "sha": "df7a5872916053eab788ed158eb738d4472153bf",
+      "url": "https://github.com/openai/codex/commit/df7a5872916053eab788ed158eb738d4472153bf"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T20:13:26Z",
+      "message": "Rename terminal crate to terminal-detection",
+      "sha": "3661c085ded4aa30083d374fc786681eeea044b0",
+      "url": "https://github.com/openai/codex/commit/3661c085ded4aa30083d374fc786681eeea044b0"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T20:39:49Z",
+      "message": "codex: fix CI failure on PR #15216",
+      "sha": "9e6c4040126f6c977c099716ff1135b9f0638747",
+      "url": "https://github.com/openai/codex/commit/9e6c4040126f6c977c099716ff1135b9f0638747"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "CLI",
+    "USER_AGENT_SUFFIX",
+    "DEFAULT_PROJECT_DOC_FILENAME",
+    "FEATURES"
+  ],
+  "files": [
+    {
+      "additions": 13,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1664,6 +1664,7 @@ dependencies = [\n  \"codex-rmcp-client\",\n  \"codex-state\",\n  \"codex-stdio-to-uds\",\n+ \"codex-terminal-detection\",\n  \"codex-tui\",\n  \"codex-tui-app-server\",\n  \"codex-utils-cargo-bin\",\n@@ -1858,6 +1859,7 @@ dependencies = [\n  \"codex-shell-escalation\",\n  \"codex-skills\",\n  \"codex-state\",\n+ \"codex-terminal-detection\",\n  \"codex-test-macros\",\n  \"codex-utils-absolute-path\",\n  \"codex-utils-cache\",\n@@ -2507,6 +2509,14 @@ dependencies = [\n  \"uds_windows\",\n ]\n \n+[[package]]\n+name = \"codex-terminal-detection\"\n+version = \"0.0.0\"\n+dependencies = [\n+ \"pretty_assertions\",\n+ \"tracing\",\n+]\n+\n [[package]]\n name = \"codex-test-macros\"\n version = \"0.0.0\"\n@@ -2542,6 +2552,7 @@ dependencies = [\n  \"codex-protocol\",\n  \"codex-shell-command\",\n  \"codex-state\",\n+ \"codex-terminal-detection\",\n  \"codex-tui-app-server\",\n  \"codex-utils-absolute-path\",\n  \"codex-utils-approval-presets\",\n@@ -2633,6 +2644,7 @...",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -66,6 +66,7 @@ members = [\n     \"codex-client\",\n     \"codex-api\",\n     \"state\",\n+    \"terminal-detection\",\n     \"codex-experimental-api-macros\",\n     \"test-macros\",\n     \"package-manager\",\n@@ -131,6 +132,7 @@ codex-skills = { path = \"skills\" }\n codex-state = { path = \"state\" }\n codex-stdio-to-uds = { path = \"stdio-to-uds\" }\n codex-test-macros = { path = \"test-macros\" }\n+codex-terminal-detection = { path = \"terminal-detection\" }\n codex-tui = { path = \"tui\" }\n codex-tui-app-server = { path = \"tui_app_server\" }\n codex-utils-absolute-path = { path = \"utils/absolute-path\" }",
+      "path": "codex-rs/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -37,6 +37,7 @@ codex-responses-api-proxy = { workspace = true }\n codex-rmcp-client = { workspace = true }\n codex-state = { workspace = true }\n codex-stdio-to-uds = { workspace = true }\n+codex-terminal-detection = { workspace = true }\n codex-tui = { workspace = true }\n codex-tui-app-server = { workspace = true }\n libc = { workspace = true }",
+      "path": "codex-rs/cli/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -50,7 +50,7 @@ use codex_core::config::edit::ConfigEditsBuilder;\n use codex_core::config::find_codex_home;\n use codex_core::features::Stage;\n use codex_core::features::is_known_feature_key;\n-use codex_core::terminal::TerminalName;\n+use codex_terminal_detection::TerminalName;\n \n /// Codex CLI\n ///\n@@ -1049,7 +1049,7 @@ async fn run_interactive_tui(\n         interactive.prompt = Some(prompt.replace(\"\\r\\n\", \"\\n\").replace('\\r', \"\\n\"));\n     }\n \n-    let terminal_info = codex_core::terminal::terminal_info();\n+    let terminal_info = codex_terminal_detection::terminal_info();\n     if terminal_info.name == TerminalName::Dumb {\n         if !(std::io::stdin().is_terminal() && std::io::stderr().is_terminal()) {\n             return Ok(AppExitInfo::fatal(",
+      "path": "codex-rs/cli/src/main.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -48,6 +48,7 @@ codex-artifacts = { workspace = true }\n codex-protocol = { workspace = true }\n codex-rmcp-client = { workspace = true }\n codex-state = { workspace = true }\n+codex-terminal-detection = { workspace = true }\n codex-utils-absolute-path = { workspace = true }\n codex-utils-cache = { workspace = true }\n codex-utils-image = { workspace = true }",
+      "path": "codex-rs/core/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -49,7 +49,6 @@ use crate::stream_events_utils::handle_output_item_done;\n use crate::stream_events_utils::last_assistant_message_from_item;\n use crate::stream_events_utils::raw_assistant_output_text_from_item;\n use crate::stream_events_utils::record_completed_response_item;\n-use crate::terminal;\n use crate::truncate::TruncationPolicy;\n use crate::turn_metadata::TurnMetadataState;\n use crate::util::error_or_panic;\n@@ -117,6 +116,7 @@ use codex_protocol::request_user_input::RequestUserInputArgs;\n use codex_protocol::request_user_input::RequestUserInputResponse;\n use codex_rmcp_client::ElicitationResponse;\n use codex_rmcp_client::OAuthCredentialsStoreMode;\n+use codex_terminal_detection::user_agent;\n use codex_utils_stream_parser::AssistantTextChunk;\n use codex_utils_stream_parser::AssistantTextStreamParser;\n use codex_utils_stream_parser::ProposedPlanSegment;\n@@ -1581,7 +1581,7 @@ impl Se...",
+      "path": "codex-rs/core/src/codex.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use codex_client::BuildCustomCaTransportError;\n use codex_client::CodexHttpClient;\n pub use codex_client::CodexRequestBuilder;\n use codex_client::build_reqwest_client_with_custom_ca;\n+use codex_terminal_detection::user_agent;\n use reqwest::header::HeaderMap;\n use reqwest::header::HeaderValue;\n use std::sync::LazyLock;\n@@ -130,7 +131,7 @@ pub fn get_codex_user_agent() -> String {\n         os_info.os_type(),\n         os_info.version(),\n         os_info.architecture().unwrap_or(\"unknown\"),\n-        crate::terminal::user_agent()\n+        user_agent()\n     );\n     let suffix = USER_AGENT_SUFFIX\n         .lock()",
+      "path": "codex-rs/core/src/default_client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -120,7 +120,6 @@ pub mod shell_snapshot;\n pub mod skills;\n pub mod spawn;\n pub mod state_db;\n-pub mod terminal;\n mod tools;\n pub mod turn_diff_tracker;\n mod turn_metadata;",
+      "path": "codex-rs/core/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -36,7 +36,7 @@ pub(crate) struct ExecServerFileSystem {\n impl Default for ExecServerFileSystem {\n     fn default() -> Self {\n         Self {\n-            file_system: Arc::new(Environment.get_filesystem()),\n+            file_system: Arc::new(Environment::default().get_filesystem()),\n         }\n     }\n }",
+      "path": "codex-rs/exec-server/src/server/filesystem.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -11,6 +11,7 @@ path = \"lib.rs\"\n anyhow = { workspace = true }\n codex-core = { workspace = true }\n codex-mcp-server = { workspace = true }\n+codex-terminal-detection = { workspace = true }\n codex-utils-cargo-bin = { workspace = true }\n rmcp = { workspace = true }\n os_info = { workspace = true }",
+      "path": "codex-rs/mcp-server/tests/common/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -11,6 +11,7 @@ use tokio::process::ChildStdout;\n \n use anyhow::Context;\n use codex_mcp_server::CodexToolCallParam;\n+use codex_terminal_detection::user_agent;\n \n use pretty_assertions::assert_eq;\n use rmcp::model::CallToolRequestParams;\n@@ -156,7 +157,7 @@ impl McpProcess {\n             os_info.os_type(),\n             os_info.version(),\n             os_info.architecture().unwrap_or(\"unknown\"),\n-            codex_core::terminal::user_agent()\n+            user_agent()\n         );\n         let JsonRpcMessage::Response(JsonRpcResponse {\n             jsonrpc,",
+      "path": "codex-rs/mcp-server/tests/common/mcp_process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,6 @@\n+load(\"//:defs.bzl\", \"codex_rust_crate\")\n+\n+codex_rust_crate(\n+    name = \"terminal-detection\",\n+    crate_name = \"codex_terminal_detection\",\n+)",
+      "path": "codex-rs/terminal-detection/BUILD.bazel",
+      "status": "added"
+    },
+    {
+      "additions": 18,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,18 @@\n+[package]\n+name = \"codex-terminal-detection\"\n+version.workspace = true\n+edition.workspace = true\n+license.workspace = true\n+\n+[lib]\n+name = \"codex_terminal_detection\"\n+path = \"src/lib.rs\"\n+\n+[lints]\n+workspace = true\n+\n+[dependencies]\n+tracing = { workspace = true }\n+\n+[dev-dependencies]\n+pretty_assertions = { workspace = true }",
+      "path": "codex-rs/terminal-detection/Cargo.toml",
+      "status": "added"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/terminal-detection/src/lib.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/terminal-detection/src/terminal_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -43,6 +43,7 @@ codex-otel = { workspace = true }\n codex-protocol = { workspace = true }\n codex-shell-command = { workspace = true }\n codex-state = { workspace = true }\n+codex-terminal-detection = { workspace = true }\n codex-tui-app-server = { workspace = true }\n codex-utils-approval-presets = { workspace = true }\n codex-utils-absolute-path = { workspace = true }",
+      "path": "codex-rs/tui/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -80,6 +80,7 @@ use codex_protocol::protocol::SessionConfiguredEvent;\n use codex_protocol::protocol::SessionSource;\n use codex_protocol::protocol::SkillErrorInfo;\n use codex_protocol::protocol::TokenUsage;\n+use codex_terminal_detection::user_agent;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use color_eyre::eyre::Result;\n use color_eyre::eyre::WrapErr;\n@@ -2079,7 +2080,7 @@ impl App {\n             auth_mode,\n             codex_core::default_client::originator().value,\n             config.otel.log_user_prompt,\n-            codex_core::terminal::user_agent(),\n+            user_agent(),\n             SessionSource::Cli,\n         );\n         if config",
+      "path": "codex-rs/tui/src/app.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -76,8 +76,6 @@ use codex_core::models_manager::manager::ModelsManager;\n use codex_core::plugins::PluginsManager;\n use codex_core::project_doc::DEFAULT_PROJECT_DOC_FILENAME;\n use codex_core::skills::model::SkillMetadata;\n-use codex_core::terminal::TerminalName;\n-use codex_core::terminal::terminal_info;\n #[cfg(target_os = \"windows\")]\n use codex_core::windows_sandbox::WindowsSandboxLevelExt;\n use codex_otel::RuntimeMetricsSummary;\n@@ -155,6 +153,8 @@ use codex_protocol::request_permissions::RequestPermissionsEvent;\n use codex_protocol::request_user_input::RequestUserInputEvent;\n use codex_protocol::user_input::TextElement;\n use codex_protocol::user_input::UserInput;\n+use codex_terminal_detection::TerminalName;\n+use codex_terminal_detection::terminal_info;\n use codex_utils_sleep_inhibitor::SleepInhibitor;\n use crossterm::event::KeyCode;\n use crossterm::event::KeyEvent;",
+      "path": "codex-rs/tui/src/chatwidget.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -38,7 +38,6 @@ use codex_core::features::Feature;\n use codex_core::models_manager::collaboration_mode_presets::CollaborationModesConfig;\n use codex_core::models_manager::manager::ModelsManager;\n use codex_core::skills::model::SkillMetadata;\n-use codex_core::terminal::TerminalName;\n use codex_otel::RuntimeMetricsSummary;\n use codex_otel::SessionTelemetry;\n use codex_protocol::ThreadId;\n@@ -121,6 +120,7 @@ use codex_protocol::request_user_input::RequestUserInputQuestion;\n use codex_protocol::request_user_input::RequestUserInputQuestionOption;\n use codex_protocol::user_input::TextElement;\n use codex_protocol::user_input::UserInput;\n+use codex_terminal_detection::TerminalName;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use codex_utils_approval_presets::builtin_approval_presets;\n use crossterm::event::KeyCode;",
+      "path": "codex-rs/tui/src/chatwidget/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -93,9 +93,9 @@ use crate::terminal_palette::indexed_color;\n use crate::terminal_palette::rgb_color;\n use crate::terminal_palette::stdout_color_level;\n use codex_core::git_info::get_git_repo_root;\n-use codex_core::terminal::TerminalName;\n-use codex_core::terminal::terminal_info;\n use codex_protocol::protocol::FileChange;\n+use codex_terminal_detection::TerminalName;\n+use codex_terminal_detection::terminal_info;\n \n /// Classifies a diff line for gutter sign rendering and style selection.\n ///",
+      "path": "codex-rs/tui/src/diff_render.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 2,
+      "patch_excerpt": "@@ -33,7 +33,6 @@ use codex_core::format_exec_policy_error_with_source;\n use codex_core::path_utils;\n use codex_core::read_session_meta_line;\n use codex_core::state_db::get_state_db;\n-use codex_core::terminal::Multiplexer;\n use codex_core::windows_sandbox::WindowsSandboxLevelExt;\n use codex_protocol::ThreadId;\n use codex_protocol::config_types::AltScreenMode;\n@@ -43,6 +42,8 @@ use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::RolloutItem;\n use codex_protocol::protocol::RolloutLine;\n use codex_state::log_db;\n+use codex_terminal_detection::Multiplexer;\n+use codex_terminal_detection::terminal_info;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use codex_utils_oss::ensure_oss_provider_ready;\n use codex_utils_oss::get_default_model_for_oss_provider;\n@@ -1138,7 +1139,7 @@ fn determine_alt_screen_mode(no_alt_screen: bool, tui_alternate_screen: AltScree\n           ...",
+      "path": "codex-rs/tui/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -48,6 +48,7 @@ codex-otel = { workspace = true }\n codex-protocol = { workspace = true }\n codex-shell-command = { workspace = true }\n codex-state = { workspace = true }\n+codex-terminal-detection = { workspace = true }\n codex-utils-approval-presets = { workspace = true }\n codex-utils-absolute-path = { workspace = true }\n codex-utils-cli = { workspace = true }",
+      "path": "codex-rs/tui_app_server/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -96,6 +96,7 @@ use codex_protocol::protocol::SandboxPolicy;\n use codex_protocol::protocol::SessionSource;\n use codex_protocol::protocol::SkillErrorInfo;\n use codex_protocol::protocol::TokenUsage;\n+use codex_terminal_detection::user_agent;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use color_eyre::eyre::Result;\n use color_eyre::eyre::WrapErr;\n@@ -2965,7 +2966,7 @@ impl App {\n             auth_mode,\n             codex_core::default_client::originator().value,\n             config.otel.log_user_prompt,\n-            codex_core::terminal::user_agent(),\n+            user_agent(),\n             SessionSource::Cli,\n         );\n         if config",
+      "path": "codex-rs/tui_app_server/src/app.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -94,8 +94,6 @@ use codex_core::git_info::local_git_branches;\n use codex_core::plugins::PluginsManager;\n use codex_core::project_doc::DEFAULT_PROJECT_DOC_FILENAME;\n use codex_core::skills::model::SkillMetadata;\n-use codex_core::terminal::TerminalName;\n-use codex_core::terminal::terminal_info;\n #[cfg(target_os = \"windows\")]\n use codex_core::windows_sandbox::WindowsSandboxLevelExt;\n use codex_otel::RuntimeMetricsSummary;\n@@ -199,6 +197,8 @@ use codex_protocol::request_user_input::RequestUserInputEvent;\n use codex_protocol::request_user_input::RequestUserInputQuestionOption;\n use codex_protocol::user_input::TextElement;\n use codex_protocol::user_input::UserInput;\n+use codex_terminal_detection::TerminalName;\n+use codex_terminal_detection::terminal_info;\n use codex_utils_sleep_inhibitor::SleepInhibitor;\n use crossterm::event::KeyCode;\n use crossterm::event::KeyEvent;",
+      "path": "codex-rs/tui_app_server/src/chatwidget.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -61,7 +61,6 @@ use codex_core::features::FEATURES;\n use codex_core::features::Feature;\n use codex_core::models_manager::collaboration_mode_presets::CollaborationModesConfig;\n use codex_core::skills::model::SkillMetadata;\n-use codex_core::terminal::TerminalName;\n use codex_otel::RuntimeMetricsSummary;\n use codex_otel::SessionTelemetry;\n use codex_protocol::ThreadId;\n@@ -144,6 +143,7 @@ use codex_protocol::request_user_input::RequestUserInputQuestion;\n use codex_protocol::request_user_input::RequestUserInputQuestionOption;\n use codex_protocol::user_input::TextElement;\n use codex_protocol::user_input::UserInput;\n+use codex_terminal_detection::TerminalName;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use codex_utils_approval_presets::builtin_approval_presets;\n use crossterm::event::KeyCode;",
+      "path": "codex-rs/tui_app_server/src/chatwidget/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -93,9 +93,9 @@ use crate::terminal_palette::indexed_color;\n use crate::terminal_palette::rgb_color;\n use crate::terminal_palette::stdout_color_level;\n use codex_core::git_info::get_git_repo_root;\n-use codex_core::terminal::TerminalName;\n-use codex_core::terminal::terminal_info;\n use codex_protocol::protocol::FileChange;\n+use codex_terminal_detection::TerminalName;\n+use codex_terminal_detection::terminal_info;\n \n /// Classifies a diff line for gutter sign rendering and style selection.\n ///",
+      "path": "codex-rs/tui_app_server/src/diff_render.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 2,
+      "patch_excerpt": "@@ -38,7 +38,6 @@ use codex_core::format_exec_policy_error_with_source;\n use codex_core::path_utils;\n use codex_core::read_session_meta_line;\n use codex_core::state_db::get_state_db;\n-use codex_core::terminal::Multiplexer;\n use codex_core::windows_sandbox::WindowsSandboxLevelExt;\n use codex_protocol::ThreadId;\n use codex_protocol::config_types::AltScreenMode;\n@@ -49,6 +48,8 @@ use codex_protocol::protocol::RolloutItem;\n use codex_protocol::protocol::RolloutLine;\n use codex_protocol::protocol::TurnContextItem;\n use codex_state::log_db;\n+use codex_terminal_detection::Multiplexer;\n+use codex_terminal_detection::terminal_info;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use codex_utils_oss::ensure_oss_provider_ready;\n use codex_utils_oss::get_default_model_for_oss_provider;\n@@ -1485,7 +1486,7 @@ fn determine_alt_screen_mode(no_alt_screen: bool, tui_alternate_screen: AltScree\n          ...",
+      "path": "codex-rs/tui_app_server/src/lib.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#15216"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "- Move core/src/terminal.rs and its tests into a standalone terminal-detection workspace crate.\n- Update direct consumers to depend on codex-terminal-detection and import terminal APIs directly.",
+    "labels": [],
+    "merged_at": "2026-03-19T21:08:05Z",
+    "number": 15216,
+    "state": "merged",
+    "title": "Move terminal module to terminal-detection crate",
+    "url": "https://github.com/openai/codex/pull/15216"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

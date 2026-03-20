@@ -1,0 +1,81 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "iceweasel-oai",
+      "committed_at": "2026-03-19T18:39:48Z",
+      "message": "add specific tool guidance for Windows destructive commands",
+      "sha": "4151776de0adf6ddc5940125b0d42cf5bddef08b",
+      "url": "https://github.com/openai/codex/commit/4151776de0adf6ddc5940125b0d42cf5bddef08b"
+    },
+    {
+      "author": "iceweasel-oai",
+      "committed_at": "2026-03-19T19:09:35Z",
+      "message": "fix test compile error",
+      "sha": "5c8adebb02266094d5017fd30f3b576645e28e49",
+      "url": "https://github.com/openai/codex/commit/5c8adebb02266094d5017fd30f3b576645e28e49"
+    },
+    {
+      "author": "iceweasel-oai",
+      "committed_at": "2026-03-19T20:00:31Z",
+      "message": "fix environment compile error",
+      "sha": "58ab27ff592e1a7723d07c56862f15ad9584a7b5",
+      "url": "https://github.com/openai/codex/commit/58ab27ff592e1a7723d07c56862f15ad9584a7b5"
+    },
+    {
+      "author": "iceweasel-oai",
+      "committed_at": "2026-03-19T20:44:00Z",
+      "message": "fix failing test",
+      "sha": "503fc5670f9cfc2d58954a821f658b260c982df6",
+      "url": "https://github.com/openai/codex/commit/503fc5670f9cfc2d58954a821f658b260c982df6"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "PTY",
+    "TODO",
+    "FOO='bar';",
+    "FOO"
+  ],
+  "files": [
+    {
+      "additions": 35,
+      "deletions": 11,
+      "patch_excerpt": "@@ -587,6 +587,12 @@ fn create_request_permissions_schema() -> JsonSchema {\n     }\n }\n \n+fn windows_destructive_filesystem_guidance() -> &'static str {\n+    r#\"Windows safety rules:\n+- Do not compose destructive filesystem commands across shells. Do not enumerate paths in PowerShell and then pass them to `cmd /c`, batch builtins, or another shell for deletion or moving. Use one shell end-to-end, prefer native PowerShell cmdlets such as `Remove-Item` / `Move-Item` with `-LiteralPath`, and avoid string-built shell commands for file operations.\n+- Before any recursive delete or move on Windows, verify the resolved absolute target paths stay within the intended workspace or explicitly named target directory. Never issue a recursive delete or move against a computed path if the final target has not been checked.\"#\n+}\n+\n fn create_approval_parameters(\n     exec_permission_approvals_enabled: bo...",
+      "path": "codex-rs/core/src/tools/spec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 37,
+      "deletions": 5,
+      "patch_excerpt": "@@ -50,6 +50,10 @@ fn discoverable_connector(id: &str, name: &str, description: &str) -> Discoverab\n     }))\n }\n \n+fn windows_shell_safety_description() -> String {\n+    format!(\"\\n\\n{}\", super::windows_destructive_filesystem_guidance())\n+}\n+\n fn search_capable_model_info() -> ModelInfo {\n     let config = test_config();\n     let mut model_info =\n@@ -2363,7 +2367,7 @@ fn test_shell_tool() {\n     assert_eq!(name, \"shell\");\n \n     let expected = if cfg!(windows) {\n-            r#\"Runs a Powershell command (Windows) and returns its output. Arguments to `shell` will be passed to CreateProcessW(). Most commands should be prefixed with [\"powershell.exe\", \"-Command\"].\n+        r#\"Runs a Powershell command (Windows) and returns its output. Arguments to `shell` will be passed to CreateProcessW(). Most commands should be prefixed with [\"powershell.exe\", \"-Command\"].\n \n Examples of valid command st...",
+      "path": "codex-rs/core/src/tools/spec_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -36,7 +36,7 @@ pub(crate) struct ExecServerFileSystem {\n impl Default for ExecServerFileSystem {\n     fn default() -> Self {\n         Self {\n-            file_system: Arc::new(Environment.get_filesystem()),\n+            file_system: Arc::new(Environment::default().get_filesystem()),\n         }\n     }\n }",
+      "path": "codex-rs/exec-server/src/server/filesystem.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "updated Windows shell/unified_exec tool descriptions:\r\n\r\n`exec_command`\r\n```text\r\nRuns a command in a PTY, returning output or a session ID for ongoing interaction.\r\n\r\nWindows safety rules:\r\n- Do not compose destructive filesystem commands across shells. Do not enumerate paths in PowerShell and then pass them to `cmd /c`, batch builtins, or another shell for deletion or moving. Use one shell end-to-end, prefer native PowerShell cmdlets such as `Remove-Item` / `Move-Item` with `-LiteralPath`, and avoid string-built shell commands for file operations.\r\n- Before any recursive delete or move on Windows, verify the resolved absolute target paths stay within the intended workspace or explicitly named target directory. Never issue a recursive delete or move against a computed path if the final target has not been checked.\r\n```\r\n\r\n`shell`\r\n```text\r\nRuns a Powershell command (Windows) and returns its output. Arguments to `shell` will be passed to CreateProcessW(). Most commands should be prefixed with [\"powershell.exe\", \"-Command\"].\r\n\r\nExamples of valid command strings:\r\n\r\n- ls -a (show hidden): [\"powershell.exe\", \"-Command\", \"Get-ChildItem -Force\"]\r\n- recursive find by name: [\"powershell.exe\", \"-Command\", \"Get-ChildItem -Recurse -Filter *.py\"]\r\n- recursive grep: [\"powershell.exe\", \"-Command\", \"Get-ChildItem -Path C:\\\\myrepo -Recurse | Select-String -Pattern 'TODO' -CaseSensitive\"]\r\n- ps aux | grep python: [\"powershell.exe\", \"-Command\", \"Get-Process | Where-Object { $_.ProcessName -like '*python*' }\"]\r\n- setting an env var: [\"powershell.exe\", \"-Command\", \"$env:FOO='bar'; echo $env:FOO\"]\r\n- running an inline Python script: [\"powershell.exe\", \"-Command\", \"@'\\nprint('Hello, world!')\\n'@ | python -\"]\r\n\r\nWindows safety rules:\r\n- Do not compose destructive filesystem commands across shells. Do not enumerate paths in PowerShell and then pass them to `cmd /c`, batch builtins, or another shell for deletion or moving. Use one shell end-to-end, prefer native PowerShell cmdlets such as `Remove-Item` / `Move-Item` with `-LiteralPath`, and avoid string-built shell commands for file operations.\r\n- Before any recursive delete or move on Windows, verify the resolved absolute target paths stay within the intended workspace or explicitly named target directory. Never issue a recursive delete or move against a computed path if the final target has not been checked.\r\n```\r\n\r\n`shell_command`\r\n```text\r\nRuns a Powershell command (Windows) and returns its output.\r\n\r\nExamples of valid command strings:\r\n\r\n- ls -a (show hidden): \"Get-ChildItem -Force\"\r\n- recursive find by name: \"Get-ChildItem -Recurse -Filter *.py\"\r\n- recursive grep: \"Get-ChildItem -Path C:\\\\myrepo -Recurse | Select-String -Pattern 'TODO' -CaseSensitive\"\r\n- ps aux | grep python: \"Get-Process | Where-Object { $_.ProcessName -like '*python*' }\"\r\n- setting an env var: \"$env:FOO='bar'; echo $env:FOO\"\r\n- running an inline Python script: \"@'\\nprint('Hello, world!')\\n'@ | python -\"\r\n\r\nWindows safety rules:\r\n- Do not compose destructive filesystem commands across shells. Do not enumerate paths in PowerShell and then pass them to `cmd /c`, batch builtins, or another shell for deletion or moving. Use one shell end-to-end, prefer native PowerShell cmdlets such as `Remove-Item` / `Move-Item` with `-LiteralPath`, and avoid string-built shell commands for file operations.\r\n- Before any recursive delete or move on Windows, verify the resolved absolute target paths stay within the intended workspace or explicitly named target directory. Never issue a recursive delete or move against a computed path if the final target has not been checked.\r\n```\r\n",
+    "labels": [],
+    "merged_at": "2026-03-19T21:09:35Z",
+    "number": 15207,
+    "state": "merged",
+    "title": "add specific tool guidance for Windows destructive commands",
+    "url": "https://github.com/openai/codex/pull/15207"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

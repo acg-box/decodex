@@ -1,0 +1,468 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T18:43:42Z",
+      "message": "Move terminal module to its own crate",
+      "sha": "df7a5872916053eab788ed158eb738d4472153bf",
+      "url": "https://github.com/openai/codex/commit/df7a5872916053eab788ed158eb738d4472153bf"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T20:13:26Z",
+      "message": "Rename terminal crate to terminal-detection",
+      "sha": "3661c085ded4aa30083d374fc786681eeea044b0",
+      "url": "https://github.com/openai/codex/commit/3661c085ded4aa30083d374fc786681eeea044b0"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T20:39:49Z",
+      "message": "codex: fix CI failure on PR #15216",
+      "sha": "9e6c4040126f6c977c099716ff1135b9f0638747",
+      "url": "https://github.com/openai/codex/commit/9e6c4040126f6c977c099716ff1135b9f0638747"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T20:26:08Z",
+      "message": "Move auth code into login crate",
+      "sha": "4b9dde5ebbb4e4f41769ab77f2797c09efb81a35",
+      "url": "https://github.com/openai/codex/commit/4b9dde5ebbb4e4f41769ab77f2797c09efb81a35"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T20:46:37Z",
+      "message": "codex: clean up auth import style on PR #15150",
+      "sha": "a7173968c60fb1086bdc1a7d7e52682734c1fcfd",
+      "url": "https://github.com/openai/codex/commit/a7173968c60fb1086bdc1a7d7e52682734c1fcfd"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T20:52:08Z",
+      "message": "codex: fix CI failure on PR #15150",
+      "sha": "905255deff1d503ce1e72f48292c2881ba5b1234",
+      "url": "https://github.com/openai/codex/commit/905255deff1d503ce1e72f48292c2881ba5b1234"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T20:58:16Z",
+      "message": "codex: avoid default_client imports in login on PR #15150",
+      "sha": "59c056e43d84d950abcdbb3d02b1082bf3ab8844",
+      "url": "https://github.com/openai/codex/commit/59c056e43d84d950abcdbb3d02b1082bf3ab8844"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T21:05:58Z",
+      "message": "codex: restore login auth API surface on PR #15150",
+      "sha": "499c3190e0a6cccbf1c3cab824b31f040beb6a77",
+      "url": "https://github.com/openai/codex/commit/499c3190e0a6cccbf1c3cab824b31f040beb6a77"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T21:08:24Z",
+      "message": "Merge branch 'main' into auth-crate-split",
+      "sha": "cfbec84964d4b2492daba415ab0da1457de73c2c",
+      "url": "https://github.com/openai/codex/commit/cfbec84964d4b2492daba415ab0da1457de73c2c"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T21:48:19Z",
+      "message": "fix",
+      "sha": "e2cd38a787890ebad801f28742ed9ce4845705e8",
+      "url": "https://github.com/openai/codex/commit/e2cd38a787890ebad801f28742ed9ce4845705e8"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T21:53:41Z",
+      "message": "fix",
+      "sha": "5c3bdad1a8b6ce471b82cf72dc6ccb2d8a2ed70f",
+      "url": "https://github.com/openai/codex/commit/5c3bdad1a8b6ce471b82cf72dc6ccb2d8a2ed70f"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T21:54:26Z",
+      "message": "fix",
+      "sha": "589fe5ffd9da8ff2b50fb5ffbddfe40a6237264d",
+      "url": "https://github.com/openai/codex/commit/589fe5ffd9da8ff2b50fb5ffbddfe40a6237264d"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T21:56:52Z",
+      "message": "fix",
+      "sha": "e73bd633525e723eed5529316ac5cd49742b7db1",
+      "url": "https://github.com/openai/codex/commit/e73bd633525e723eed5529316ac5cd49742b7db1"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T21:58:47Z",
+      "message": "fix",
+      "sha": "c13f83d8dee18a273693ca4df0b7872b25903a34",
+      "url": "https://github.com/openai/codex/commit/c13f83d8dee18a273693ca4df0b7872b25903a34"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T22:04:45Z",
+      "message": "fix",
+      "sha": "019ab69ee533ec45252e885dccfc22d2094b4dc6",
+      "url": "https://github.com/openai/codex/commit/019ab69ee533ec45252e885dccfc22d2094b4dc6"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T22:06:27Z",
+      "message": "fix",
+      "sha": "b6c3ecfd8b2e9a059dd3f44020ca6083d7b55e61",
+      "url": "https://github.com/openai/codex/commit/b6c3ecfd8b2e9a059dd3f44020ca6083d7b55e61"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T22:14:24Z",
+      "message": "fix",
+      "sha": "37e4e55475c5cc13f2bbd759b6f3ec18afa2af3f",
+      "url": "https://github.com/openai/codex/commit/37e4e55475c5cc13f2bbd759b6f3ec18afa2af3f"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T22:18:21Z",
+      "message": "fix",
+      "sha": "7c374c18e0105a71920886c336e60f38126f4243",
+      "url": "https://github.com/openai/codex/commit/7c374c18e0105a71920886c336e60f38126f4243"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T22:19:41Z",
+      "message": "fix",
+      "sha": "7c9e4b492fd8dd1bdebd10dbfd819dc98c3fa56e",
+      "url": "https://github.com/openai/codex/commit/7c9e4b492fd8dd1bdebd10dbfd819dc98c3fa56e"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-19T22:27:47Z",
+      "message": "fix",
+      "sha": "fa2b69dc7800fdee33cdda9443fad8e2896cb64a",
+      "url": "https://github.com/openai/codex/commit/fa2b69dc7800fdee33cdda9443fad8e2896cb64a"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-20T00:10:01Z",
+      "message": "fix",
+      "sha": "e57552f3e9bd00ea87d9ecabed7188733f15c4da",
+      "url": "https://github.com/openai/codex/commit/e57552f3e9bd00ea87d9ecabed7188733f15c4da"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-20T00:10:18Z",
+      "message": "fix",
+      "sha": "d3c83a408ae2de157034c673086df969904a25ae",
+      "url": "https://github.com/openai/codex/commit/d3c83a408ae2de157034c673086df969904a25ae"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-20T00:17:02Z",
+      "message": "fix",
+      "sha": "178a0dc31caac49158d5dca91cb3b28a93c8e4b0",
+      "url": "https://github.com/openai/codex/commit/178a0dc31caac49158d5dca91cb3b28a93c8e4b0"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-20T01:01:35Z",
+      "message": "unify",
+      "sha": "112d231f8535d5d41f66e85963003b8968e0726e",
+      "url": "https://github.com/openai/codex/commit/112d231f8535d5d41f66e85963003b8968e0726e"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-03-20T01:03:53Z",
+      "message": "unify",
+      "sha": "0461e2a98b2a389abd3127c440f15d0d1ac2e2b3",
+      "url": "https://github.com/openai/codex/commit/0461e2a98b2a389abd3127c440f15d0d1ac2e2b3"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "CLIENT_ID",
+    "HTTP",
+    "LMSTUDIO_OSS_PROVIDER_ID",
+    "OLLAMA_OSS_PROVIDER_ID",
+    "CODEX_SANDBOX_ENV_VAR",
+    "DEFAULT_ORIGINATOR",
+    "CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR",
+    "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
+    "RESIDENCY_HEADER_NAME",
+    "CODEX_SANDBOX",
+    "URL",
+    "CODEX_API_KEY_ENV_VAR",
+    "OPENAI_API_KEY_ENV_VAR",
+    "REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR",
+    "URL_SAFE_NO_PAD",
+    "INTERACTIVE_SESSION_SOURCES"
+  ],
+  "files": [
+    {
+      "additions": 14,
+      "deletions": 6,
+      "patch_excerpt": "@@ -1841,15 +1841,14 @@ dependencies = [\n  \"codex-arg0\",\n  \"codex-artifacts\",\n  \"codex-async-utils\",\n- \"codex-client\",\n  \"codex-config\",\n  \"codex-connectors\",\n  \"codex-exec-server\",\n  \"codex-execpolicy\",\n  \"codex-file-search\",\n  \"codex-git\",\n  \"codex-hooks\",\n- \"codex-keyring-store\",\n+ \"codex-login\",\n  \"codex-network-proxy\",\n  \"codex-otel\",\n  \"codex-protocol\",\n@@ -1886,7 +1885,6 @@ dependencies = [\n  \"image\",\n  \"indexmap 2.13.0\",\n  \"insta\",\n- \"keyring\",\n  \"landlock\",\n  \"libc\",\n  \"maplit\",\n@@ -1895,7 +1893,6 @@ dependencies = [\n  \"openssl-sys\",\n  \"opentelemetry\",\n  \"opentelemetry_sdk\",\n- \"os_info\",\n  \"predicates\",\n  \"pretty_assertions\",\n  \"rand 0.9.2\",\n@@ -1909,7 +1906,6 @@ dependencies = [\n  \"serde_yaml\",\n  \"serial_test\",\n  \"sha1\",\n- \"sha2\",\n  \"shlex\",\n  \"similar\",\n  \"tempfile\",\n@@ -2172,19 +2168,30 @@ name = \"codex-login\"\n version = \"0.0.0\"\n dependencies = [\n  \"anyhow\",\n+ \"async-trait\",\n...",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -191,7 +191,6 @@ use codex_core::ThreadSortKey as CoreThreadSortKey;\n use codex_core::auth::AuthMode as CoreAuthMode;\n use codex_core::auth::CLIENT_ID;\n use codex_core::auth::login_with_api_key;\n-use codex_core::auth::login_with_chatgpt_auth_tokens;\n use codex_core::config::Config;\n use codex_core::config::ConfigOverrides;\n use codex_core::config::NetworkProxyAuditMetadata;\n@@ -242,6 +241,7 @@ use codex_core::windows_sandbox::WindowsSandboxSetupRequest;\n use codex_feedback::CodexFeedback;\n use codex_login::ServerOptions as LoginServerOptions;\n use codex_login::ShutdownHandle;\n+use codex_login::auth::login_with_chatgpt_auth_tokens;\n use codex_login::run_login_server;\n use codex_protocol::ThreadId;\n use codex_protocol::config_types::CollaborationMode;\n@@ -1411,7 +1411,7 @@ impl CodexMessageProcessor {\n         let account = match self.auth_manager.auth_cached() {\n             Some(auth)...",
+      "path": "codex-rs/app-server/src/codex_message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 4,
+      "patch_excerpt": "@@ -50,10 +50,6 @@ use codex_arg0::Arg0DispatchPaths;\n use codex_core::AnalyticsEventsClient;\n use codex_core::AuthManager;\n use codex_core::ThreadManager;\n-use codex_core::auth::ExternalAuthRefreshContext;\n-use codex_core::auth::ExternalAuthRefreshReason;\n-use codex_core::auth::ExternalAuthRefresher;\n-use codex_core::auth::ExternalAuthTokens;\n use codex_core::config::Config;\n use codex_core::config_loader::CloudRequirementsLoader;\n use codex_core::config_loader::LoaderOverrides;\n@@ -64,6 +60,10 @@ use codex_core::default_client::set_default_client_residency_requirement;\n use codex_core::default_client::set_default_originator;\n use codex_core::models_manager::collaboration_mode_presets::CollaborationModesConfig;\n use codex_feedback::CodexFeedback;\n+use codex_login::auth::ExternalAuthRefreshContext;\n+use codex_login::auth::ExternalAuthRefreshReason;\n+use codex_login::auth::ExternalAuthRef...",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -328,7 +328,7 @@ pub async fn run_login_status(cli_config_overrides: CliConfigOverrides) -> ! {\n                     std::process::exit(1);\n                 }\n             },\n-            AuthMode::Chatgpt => {\n+            AuthMode::Chatgpt | AuthMode::ChatgptAuthTokens => {\n                 eprintln!(\"Logged in using ChatGPT\");\n                 std::process::exit(0);\n             }",
+      "path": "codex-rs/cli/src/login.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 11,
+      "patch_excerpt": "@@ -31,17 +31,16 @@ codex-api = { workspace = true }\n codex-app-server-protocol = { workspace = true }\n codex-apply-patch = { workspace = true }\n codex-async-utils = { workspace = true }\n-codex-client = { workspace = true }\n codex-connectors = { workspace = true }\n codex-config = { workspace = true }\n codex-exec-server = { workspace = true }\n+codex-login = { workspace = true }\n codex-shell-command = { workspace = true }\n codex-skills = { workspace = true }\n codex-execpolicy = { workspace = true }\n codex-file-search = { workspace = true }\n codex-git = { workspace = true }\n codex-hooks = { workspace = true }\n-codex-keyring-store = { workspace = true }\n codex-network-proxy = { workspace = true }\n codex-otel = { workspace = true }\n codex-artifacts = { workspace = true }\n@@ -70,11 +69,9 @@ http = { workspace = true }\n iana-time-zone = { workspace = true }\n image = { workspace = true, features...",
+      "path": "codex-rs/core/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1530,7 +1530,7 @@ impl AuthRequestTelemetryContext {\n         Self {\n             auth_mode: auth_mode.map(|mode| match mode {\n                 AuthMode::ApiKey => \"ApiKey\",\n-                AuthMode::Chatgpt => \"Chatgpt\",\n+                AuthMode::Chatgpt | AuthMode::ChatgptAuthTokens => \"Chatgpt\",\n             }),\n             auth_header_attached: api_auth.auth_header_attached(),\n             auth_header_name: api_auth.auth_header_name(),",
+      "path": "codex-rs/core/src/client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,2 @@\n+// Re-exported as `crate::default_client` from `lib.rs`.\n+pub use codex_login::default_client::*;",
+      "path": "codex-rs/core/src/default_client_forwarding.rs",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 24,
+      "patch_excerpt": "@@ -9,6 +9,8 @@ use chrono::Datelike;\n use chrono::Local;\n use chrono::Utc;\n use codex_async_utils::CancelErr;\n+pub use codex_login::auth::RefreshTokenFailedError;\n+pub use codex_login::auth::RefreshTokenFailedReason;\n use codex_protocol::ThreadId;\n use codex_protocol::protocol::CodexErrorInfo;\n use codex_protocol::protocol::ErrorEvent;\n@@ -261,30 +263,6 @@ impl std::fmt::Display for ResponseStreamFailed {\n     }\n }\n \n-#[derive(Debug, Clone, PartialEq, Eq, Error)]\n-#[error(\"{message}\")]\n-pub struct RefreshTokenFailedError {\n-    pub reason: RefreshTokenFailedReason,\n-    pub message: String,\n-}\n-\n-impl RefreshTokenFailedError {\n-    pub fn new(reason: RefreshTokenFailedReason, message: impl Into<String>) -> Self {\n-        Self {\n-            reason,\n-            message: message.into(),\n-        }\n-    }\n-}\n-\n-#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n-pub enum RefreshTokenFailedReas...",
+      "path": "codex-rs/core/src/error.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 3,
+      "patch_excerpt": "@@ -10,7 +10,7 @@ pub mod api_bridge;\n mod apply_patch;\n mod apps;\n mod arc_monitor;\n-pub mod auth;\n+pub use codex_login as auth;\n mod auth_env_telemetry;\n mod client;\n mod client_common;\n@@ -76,7 +76,7 @@ mod shell_detect;\n mod stream_events_utils;\n pub mod test_support;\n mod text_encoding;\n-pub mod token_data;\n+pub use codex_login::token_data;\n mod truncate;\n mod unified_exec;\n pub mod windows_sandbox;\n@@ -110,7 +110,15 @@ pub type CodexConversation = CodexThread;\n pub use analytics_client::AnalyticsEventsClient;\n pub use auth::AuthManager;\n pub use auth::CodexAuth;\n-pub mod default_client;\n+mod default_client_forwarding;\n+\n+/// Default Codex HTTP client headers and reqwest construction.\n+///\n+/// Implemented in [`codex_login::default_client`]; this module re-exports that API for crates\n+/// that import `codex_core::default_client`.\n+pub mod default_client {\n+    pub use super::default...",
+      "path": "codex-rs/core/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 16,
+      "patch_excerpt": "@@ -4,7 +4,6 @@ use std::time::Duration;\n \n use codex_protocol::ThreadId;\n use rand::Rng;\n-use tracing::debug;\n use tracing::error;\n \n use crate::auth_env_telemetry::AuthEnvTelemetry;\n@@ -217,21 +216,6 @@ pub(crate) fn error_or_panic(message: impl std::string::ToString) {\n     }\n }\n \n-pub(crate) fn try_parse_error_message(text: &str) -> String {\n-    debug!(\"Parsing server error response: {}\", text);\n-    let json = serde_json::from_str::<serde_json::Value>(text).unwrap_or_default();\n-    if let Some(error) = json.get(\"error\")\n-        && let Some(message) = error.get(\"message\")\n-        && let Some(message_str) = message.as_str()\n-    {\n-        return message_str.to_string();\n-    }\n-    if text.is_empty() {\n-        return \"Unknown error\".to_string();\n-    }\n-    text.to_string()\n-}\n-\n pub fn resolve_path(base: &Path, path: &PathBuf) -> PathBuf {\n     if path.is_absolute() {\n         ...",
+      "path": "codex-rs/core/src/util.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 24,
+      "patch_excerpt": "@@ -12,30 +12,6 @@ use tracing_subscriber::layer::SubscriberExt;\n use tracing_subscriber::registry::LookupSpan;\n use tracing_subscriber::util::SubscriberInitExt;\n \n-#[test]\n-fn test_try_parse_error_message() {\n-    let text = r#\"{\n-  \"error\": {\n-    \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\",\n-    \"type\": \"invalid_request_error\",\n-    \"param\": null,\n-    \"code\": \"refresh_token_reused\"\n-  }\n-}\"#;\n-    let message = try_parse_error_message(text);\n-    assert_eq!(\n-        message,\n-        \"Your refresh token has already been used to generate a new access token. Please try signing in again.\"\n-    );\n-}\n-\n-#[test]\n-fn test_try_parse_error_message_no_error() {\n-    let text = r#\"{\"message\": \"test\"}\"#;\n-    let message = try_parse_error_message(text);\n-    assert_eq!(message, r#\"{\"message\": \"test\"}\"#);\n-}\n-\n #[test]\n fn f...",
+      "path": "codex-rs/core/src/util_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 2,
+      "patch_excerpt": "@@ -789,8 +789,10 @@ fn minimal_jwt() -> String {\n }\n \n fn build_tokens(access_token: &str, refresh_token: &str) -> TokenData {\n-    let mut id_token = IdTokenInfo::default();\n-    id_token.raw_jwt = minimal_jwt();\n+    let id_token = IdTokenInfo {\n+        raw_jwt: minimal_jwt(),\n+        ..Default::default()\n+    };\n     TokenData {\n         id_token,\n         access_token: access_token.to_string(),",
+      "path": "codex-rs/core/tests/suite/auth_refresh.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 1,
+      "patch_excerpt": "@@ -45,6 +45,7 @@ use codex_cloud_requirements::cloud_requirements_loader;\n use codex_core::AuthManager;\n use codex_core::LMSTUDIO_OSS_PROVIDER_ID;\n use codex_core::OLLAMA_OSS_PROVIDER_ID;\n+use codex_core::auth::AuthConfig;\n use codex_core::auth::enforce_login_restrictions;\n use codex_core::check_execpolicy_for_warnings;\n use codex_core::config::Config;\n@@ -381,7 +382,12 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result\n \n     set_default_client_residency_requirement(config.enforce_residency.value());\n \n-    if let Err(err) = enforce_login_restrictions(&config) {\n+    if let Err(err) = enforce_login_restrictions(&AuthConfig {\n+        codex_home: config.codex_home.clone(),\n+        auth_credentials_store_mode: config.cli_auth_credentials_store_mode,\n+        forced_login_method: config.forced_login_method,\n+        forced_chatgpt_workspace_id: config.for...",
+      "path": "codex-rs/exec/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 2,
+      "patch_excerpt": "@@ -8,16 +8,24 @@ license.workspace = true\n workspace = true\n \n [dependencies]\n+async-trait = { workspace = true }\n base64 = { workspace = true }\n chrono = { workspace = true, features = [\"serde\"] }\n-codex-client = { workspace = true }\n-codex-core = { workspace = true }\n codex-app-server-protocol = { workspace = true }\n+codex-client = { workspace = true }\n+codex-config = { workspace = true }\n+codex-keyring-store = { workspace = true }\n+codex-protocol = { workspace = true }\n+codex-terminal-detection = { workspace = true }\n+once_cell = { workspace = true }\n+os_info = { workspace = true }\n rand = { workspace = true }\n reqwest = { workspace = true, features = [\"json\", \"blocking\"] }\n+schemars = { workspace = true }\n serde = { workspace = true, features = [\"derive\"] }\n serde_json = { workspace = true }\n sha2 = { workspace = true }\n+thiserror = { workspace = true }\n tiny_http = { workspace = tr...",
+      "path": "codex-rs/login/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 13,
+      "patch_excerpt": "@@ -1,8 +1,6 @@\n use super::*;\n use crate::auth::storage::FileAuthStorage;\n use crate::auth::storage::get_auth_file;\n-use crate::config::Config;\n-use crate::config::ConfigBuilder;\n use crate::token_data::IdTokenInfo;\n use crate::token_data::KnownPlan as InternalKnownPlan;\n use crate::token_data::PlanType as InternalPlanType;\n@@ -103,7 +101,7 @@ async fn pro_account_with_no_api_key_uses_chatgpt_auth() {\n         .unwrap()\n         .unwrap();\n     assert_eq!(None, auth.api_key());\n-    assert_eq!(AuthMode::Chatgpt, auth.auth_mode());\n+    assert_eq!(crate::AuthMode::Chatgpt, auth.auth_mode());\n     assert_eq!(auth.get_chatgpt_user_id().as_deref(), Some(\"user-12345\"));\n \n     let auth_dot_json = auth\n@@ -149,7 +147,7 @@ async fn loads_api_key_from_auth_json() {\n     let auth = super::load_auth(dir.path(), false, AuthCredentialsStoreMode::File)\n         .unwrap()\n         .unwrap();\n-    ass...",
+      "path": "codex-rs/login/src/auth/auth_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 9,
+      "deletions": 3,
+      "patch_excerpt": "@@ -1,5 +1,9 @@\n-use crate::config_loader::ResidencyRequirement;\n-use crate::spawn::CODEX_SANDBOX_ENV_VAR;\n+//! Default Codex HTTP client: shared `User-Agent`, `originator`, optional residency header, and\n+//! reqwest/`CodexHttpClient` construction.\n+//!\n+//! Use [`crate::default_client`] or [`codex_login::default_client`] from other crates in this\n+//! workspace.\n+\n use codex_client::BuildCustomCaTransportError;\n use codex_client::CodexHttpClient;\n pub use codex_client::CodexRequestBuilder;\n@@ -31,6 +35,8 @@ pub const DEFAULT_ORIGINATOR: &str = \"codex_cli_rs\";\n pub const CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR: &str = \"CODEX_INTERNAL_ORIGINATOR_OVERRIDE\";\n pub const RESIDENCY_HEADER_NAME: &str = \"x-openai-internal-codex-residency\";\n \n+pub use codex_config::ResidencyRequirement;\n+\n #[derive(Debug, Clone)]\n pub struct Originator {\n     pub value: String,\n@@ -232,7 +238,7 @@ pub fn defa...",
+      "path": "codex-rs/login/src/auth/default_client.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,3 +1,4 @@\n+use super::sanitize_user_agent;\n use super::*;\n use core_test_support::skip_if_no_network;\n use pretty_assertions::assert_eq;",
+      "path": "codex-rs/login/src/auth/default_client_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 25,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,25 @@\n+use thiserror::Error;\n+\n+#[derive(Debug, Clone, PartialEq, Eq, Error)]\n+#[error(\"{message}\")]\n+pub struct RefreshTokenFailedError {\n+    pub reason: RefreshTokenFailedReason,\n+    pub message: String,\n+}\n+\n+impl RefreshTokenFailedError {\n+    pub fn new(reason: RefreshTokenFailedReason, message: impl Into<String>) -> Self {\n+        Self {\n+            reason,\n+            message: message.into(),\n+        }\n+    }\n+}\n+\n+#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n+pub enum RefreshTokenFailedReason {\n+    Expired,\n+    Exhausted,\n+    Revoked,\n+    Other,\n+}",
+      "path": "codex-rs/login/src/auth/error.rs",
+      "status": "added"
+    },
+    {
+      "additions": 37,
+      "deletions": 63,
+      "patch_excerpt": "@@ -1,5 +1,3 @@\n-mod storage;\n-\n use async_trait::async_trait;\n use chrono::Utc;\n use reqwest::StatusCode;\n@@ -16,46 +14,25 @@ use std::sync::Mutex;\n use std::sync::RwLock;\n \n use codex_app_server_protocol::AuthMode as ApiAuthMode;\n-use codex_otel::TelemetryAuthMode;\n use codex_protocol::config_types::ForcedLoginMethod;\n \n+use crate::auth::error::RefreshTokenFailedError;\n+use crate::auth::error::RefreshTokenFailedReason;\n pub use crate::auth::storage::AuthCredentialsStoreMode;\n pub use crate::auth::storage::AuthDotJson;\n use crate::auth::storage::AuthStorageBackend;\n use crate::auth::storage::create_auth_storage;\n-use crate::config::Config;\n-use crate::error::RefreshTokenFailedError;\n-use crate::error::RefreshTokenFailedReason;\n+use crate::auth::util::try_parse_error_message;\n+use crate::default_client::create_client;\n use crate::token_data::KnownPlan as InternalKnownPlan;\n use crate::to...",
+      "path": "codex-rs/login/src/auth/manager.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,10 @@\n+pub mod default_client;\n+pub mod error;\n+mod storage;\n+mod util;\n+\n+mod manager;\n+\n+pub use error::RefreshTokenFailedError;\n+pub use error::RefreshTokenFailedReason;\n+pub use manager::*;",
+      "path": "codex-rs/login/src/auth/mod.rs",
+      "status": "added"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/login/src/auth/storage.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/login/src/auth/storage_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 45,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,45 @@\n+use tracing::debug;\n+\n+pub(crate) fn try_parse_error_message(text: &str) -> String {\n+    debug!(\"Parsing server error response: {}\", text);\n+    let json = serde_json::from_str::<serde_json::Value>(text).unwrap_or_default();\n+    if let Some(error) = json.get(\"error\")\n+        && let Some(message) = error.get(\"message\")\n+        && let Some(message_str) = message.as_str()\n+    {\n+        return message_str.to_string();\n+    }\n+    if text.is_empty() {\n+        return \"Unknown error\".to_string();\n+    }\n+    text.to_string()\n+}\n+\n+#[cfg(test)]\n+mod tests {\n+    use super::try_parse_error_message;\n+\n+    #[test]\n+    fn try_parse_error_message_extracts_openai_error_message() {\n+        let text = r#\"{\n+  \"error\": {\n+    \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\",\n+    \"type\": \"invalid_request_error\",...",
+      "path": "codex-rs/login/src/auth/util.rs",
+      "status": "added"
+    },
+    {
+      "additions": 22,
+      "deletions": 11,
+      "patch_excerpt": "@@ -1,3 +1,6 @@\n+pub mod auth;\n+pub mod token_data;\n+\n mod device_code_auth;\n mod pkce;\n mod server;\n@@ -12,15 +15,23 @@ pub use server::ServerOptions;\n pub use server::ShutdownHandle;\n pub use server::run_login_server;\n \n-// Re-export commonly used auth types and helpers from codex-core for compatibility\n+pub use auth::AuthConfig;\n+pub use auth::AuthCredentialsStoreMode;\n+pub use auth::AuthDotJson;\n+pub use auth::AuthManager;\n+pub use auth::CLIENT_ID;\n+pub use auth::CODEX_API_KEY_ENV_VAR;\n+pub use auth::CodexAuth;\n+pub use auth::OPENAI_API_KEY_ENV_VAR;\n+pub use auth::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;\n+pub use auth::RefreshTokenError;\n+pub use auth::UnauthorizedRecovery;\n+pub use auth::default_client;\n+pub use auth::enforce_login_restrictions;\n+pub use auth::load_auth_dot_json;\n+pub use auth::login_with_api_key;\n+pub use auth::logout;\n+pub use auth::read_openai_api_key_from_env;\n+pub u...",
+      "path": "codex-rs/login/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 10,
+      "patch_excerpt": "@@ -23,18 +23,18 @@ use std::sync::Arc;\n use std::thread;\n use std::time::Duration;\n \n+use crate::auth::AuthCredentialsStoreMode;\n+use crate::auth::AuthDotJson;\n+use crate::auth::save_auth;\n+use crate::default_client::originator;\n use crate::pkce::PkceCodes;\n use crate::pkce::generate_pkce;\n+use crate::token_data::TokenData;\n+use crate::token_data::parse_chatgpt_jwt_claims;\n use base64::Engine;\n use chrono::Utc;\n use codex_app_server_protocol::AuthMode;\n use codex_client::build_reqwest_client_with_custom_ca;\n-use codex_core::auth::AuthCredentialsStoreMode;\n-use codex_core::auth::AuthDotJson;\n-use codex_core::auth::save_auth;\n-use codex_core::default_client::originator;\n-use codex_core::token_data::TokenData;\n-use codex_core::token_data::parse_chatgpt_jwt_claims;\n use rand::RngCore;\n use serde_json::Value as JsonValue;\n use tiny_http::Header;\n@@ -484,10 +484,7 @@ fn build_authorize_url(\n ...",
+      "path": "codex-rs/login/src/server.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 4,
+      "patch_excerpt": "@@ -27,7 +27,7 @@ pub struct IdTokenInfo {\n     /// The ChatGPT subscription plan type\n     /// (e.g., \"free\", \"plus\", \"pro\", \"business\", \"enterprise\", \"edu\").\n     /// (Note: values may vary by backend.)\n-    pub(crate) chatgpt_plan_type: Option<PlanType>,\n+    pub chatgpt_plan_type: Option<PlanType>,\n     /// ChatGPT user identifier associated with the token, if present.\n     pub chatgpt_user_id: Option<String>,\n     /// Organization/workspace identifier associated with the token, if present.\n@@ -55,13 +55,13 @@ impl IdTokenInfo {\n \n #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]\n #[serde(untagged)]\n-pub(crate) enum PlanType {\n+pub enum PlanType {\n     Known(KnownPlan),\n     Unknown(String),\n }\n \n impl PlanType {\n-    pub(crate) fn from_raw_value(raw: &str) -> Self {\n+    pub fn from_raw_value(raw: &str) -> Self {\n         match raw.to_ascii_lowercase().as_str() {\n     ...",
+      "path": "codex-rs/login/src/token_data.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/login/src/token_data_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -3,9 +3,9 @@\n use anyhow::Context;\n use base64::Engine;\n use base64::engine::general_purpose::URL_SAFE_NO_PAD;\n-use codex_core::auth::AuthCredentialsStoreMode;\n-use codex_core::auth::load_auth_dot_json;\n use codex_login::ServerOptions;\n+use codex_login::auth::AuthCredentialsStoreMode;\n+use codex_login::auth::load_auth_dot_json;\n use codex_login::run_device_code_login;\n use serde_json::json;\n use std::sync::Arc;",
+      "path": "codex-rs/login/tests/suite/device_code_login.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -7,8 +7,8 @@ use std::time::Duration;\n \n use anyhow::Result;\n use base64::Engine;\n-use codex_core::auth::AuthCredentialsStoreMode;\n use codex_login::ServerOptions;\n+use codex_login::auth::AuthCredentialsStoreMode;\n use codex_login::run_login_server;\n use core_test_support::skip_if_no_network;\n use tempfile::tempdir;",
+      "path": "codex-rs/login/tests/suite/login_server_e2e.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -24,6 +24,7 @@ chrono = { workspace = true }\n codex-utils-absolute-path = { workspace = true }\n codex-utils-string = { workspace = true }\n codex-api = { workspace = true }\n+codex-app-server-protocol = { workspace = true }\n codex-protocol = { workspace = true }\n eventsource-stream = { workspace = true }\n gethostname = { workspace = true }",
+      "path": "codex-rs/otel/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 1,
+      "patch_excerpt": "@@ -36,13 +36,23 @@ pub enum ToolDecisionSource {\n     User,\n }\n \n-/// Maps to core AuthMode to avoid a circular dependency on codex-core.\n+/// Maps to API/auth `AuthMode` to avoid a circular dependency on codex-core.\n #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]\n pub enum TelemetryAuthMode {\n     ApiKey,\n     Chatgpt,\n }\n \n+impl From<codex_app_server_protocol::AuthMode> for TelemetryAuthMode {\n+    fn from(mode: codex_app_server_protocol::AuthMode) -> Self {\n+        match mode {\n+            codex_app_server_protocol::AuthMode::ApiKey => Self::ApiKey,\n+            codex_app_server_protocol::AuthMode::Chatgpt\n+            | codex_app_server_protocol::AuthMode::ChatgptAuthTokens => Self::Chatgpt,\n+        }\n+    }\n+}\n+\n /// Start a metrics timer using the globally installed metrics client.\n pub fn start_global_timer(name: &str, tags: &[(&str, &str)]) -> MetricsResult<Timer> {\n  ...",
+      "path": "codex-rs/otel/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 1,
+      "patch_excerpt": "@@ -13,6 +13,7 @@ use codex_core::CodexAuth;\n use codex_core::INTERACTIVE_SESSION_SOURCES;\n use codex_core::RolloutRecorder;\n use codex_core::ThreadSortKey;\n+use codex_core::auth::AuthConfig;\n use codex_core::auth::AuthMode;\n use codex_core::auth::enforce_login_restrictions;\n use codex_core::check_execpolicy_for_warnings;\n@@ -454,7 +455,12 @@ pub async fn run_main(\n     }\n \n     #[allow(clippy::print_stderr)]\n-    if let Err(err) = enforce_login_restrictions(&config) {\n+    if let Err(err) = enforce_login_restrictions(&AuthConfig {\n+        codex_home: config.codex_home.clone(),\n+        auth_credentials_store_mode: config.cli_auth_credentials_store_mode,\n+        forced_login_method: config.forced_login_method,\n+        forced_chatgpt_workspace_id: config.forced_chatgpt_workspace_id.clone(),\n+    }) {\n         eprintln!(\"{err}\");\n         std::process::exit(1);\n     }",
+      "path": "codex-rs/tui/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -92,7 +92,7 @@ pub(crate) fn compose_account_display(\n \n     match auth.auth_mode() {\n         CoreAuthMode::ApiKey => Some(StatusAccountDisplay::ApiKey),\n-        CoreAuthMode::Chatgpt => {\n+        CoreAuthMode::Chatgpt | CoreAuthMode::ChatgptAuthTokens => {\n             let email = auth.get_account_email();\n             let plan = plan\n                 .map(|plan_type| title_case(format!(\"{plan_type:?}\").as_str()))",
+      "path": "codex-rs/tui/src/status/helpers.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 1,
+      "patch_excerpt": "@@ -21,6 +21,7 @@ use codex_app_server_protocol::ThreadListParams;\n use codex_app_server_protocol::ThreadSortKey as AppServerThreadSortKey;\n use codex_app_server_protocol::ThreadSourceKind;\n use codex_cloud_requirements::cloud_requirements_loader_for_storage;\n+use codex_core::auth::AuthConfig;\n use codex_core::auth::enforce_login_restrictions;\n use codex_core::check_execpolicy_for_warnings;\n use codex_core::config::Config;\n@@ -777,7 +778,12 @@ pub async fn run_main(\n \n     if matches!(app_server_target, AppServerTarget::Embedded) {\n         #[allow(clippy::print_stderr)]\n-        if let Err(err) = enforce_login_restrictions(&config) {\n+        if let Err(err) = enforce_login_restrictions(&AuthConfig {\n+            codex_home: config.codex_home.clone(),\n+            auth_credentials_store_mode: config.cli_auth_credentials_store_mode,\n+            forced_login_method: config.forced_login_m...",
+      "path": "codex-rs/tui_app_server/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -70,9 +70,9 @@ mod tests {\n     use chrono::Utc;\n     use codex_app_server_protocol::AuthMode;\n     use codex_core::auth::AuthDotJson;\n-    use codex_core::auth::login_with_chatgpt_auth_tokens;\n     use codex_core::auth::save_auth;\n     use codex_core::token_data::TokenData;\n+    use codex_login::auth::login_with_chatgpt_auth_tokens;\n     use pretty_assertions::assert_eq;\n     use serde::Serialize;\n     use serde_json::json;",
+      "path": "codex-rs/tui_app_server/src/local_chatgpt_auth.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#15216",
+    "#15150"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "- Move the auth implementation and token data into codex-login.\n- Keep codex-core re-exporting that surface from codex-login for existing callers.",
+    "labels": [],
+    "merged_at": "2026-03-20T01:58:18Z",
+    "number": 15150,
+    "state": "merged",
+    "title": "Move auth code into login crate",
+    "url": "https://github.com/openai/codex/pull/15150"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

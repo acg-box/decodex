@@ -1,0 +1,181 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-17T18:19:14Z",
+      "message": "Simple folder mentions",
+      "sha": "a4277b0b92ff0cf793a41879f051d0912c30d34f",
+      "url": "https://github.com/openai/codex/commit/a4277b0b92ff0cf793a41879f051d0912c30d34f"
+    },
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-17T18:55:40Z",
+      "message": "Use trailing slash",
+      "sha": "df3a8b403d87c047663741ffe0c901a73ba77897",
+      "url": "https://github.com/openai/codex/commit/df3a8b403d87c047663741ffe0c901a73ba77897"
+    },
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-17T20:56:16Z",
+      "message": "Add match type",
+      "sha": "385be6b39574ec76e04bd9f35494e16fefdd908c",
+      "url": "https://github.com/openai/codex/commit/385be6b39574ec76e04bd9f35494e16fefdd908c"
+    },
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-17T22:08:28Z",
+      "message": "Added match_type to indicate file/directory mentions",
+      "sha": "c0617a57700f2dbf19a3b2301683afcb6d808d53",
+      "url": "https://github.com/openai/codex/commit/c0617a57700f2dbf19a3b2301683afcb6d808d53"
+    },
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-18T20:28:13Z",
+      "message": "Merge conflicts",
+      "sha": "f9634cb19921f2d3ffac486c1afe7cc0252ea1c3",
+      "url": "https://github.com/openai/codex/commit/f9634cb19921f2d3ffac486c1afe7cc0252ea1c3"
+    },
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-18T21:42:27Z",
+      "message": "Merge branch 'main' into canvrno/folder_mentions_v2",
+      "sha": "bbdfbb91a2baaea670862c39e837815681d7203e",
+      "url": "https://github.com/openai/codex/commit/bbdfbb91a2baaea670862c39e837815681d7203e"
+    },
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-19T00:53:17Z",
+      "message": "Fix test in windows envs",
+      "sha": "0dbfa40452624b4e0119a4f346362c239405cb34",
+      "url": "https://github.com/openai/codex/commit/0dbfa40452624b4e0119a4f346362c239405cb34"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "TUI",
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND"
+  ],
+  "files": [
+    {
+      "additions": 11,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,13 @@\n {\n   \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n   \"definitions\": {\n+    \"FuzzyFileSearchMatchType\": {\n+      \"enum\": [\n+        \"file\",\n+        \"directory\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"FuzzyFileSearchResult\": {\n       \"description\": \"Superset of [`codex_file_search::FileMatch`]\",\n       \"properties\": {\n@@ -18,6 +25,9 @@\n             \"null\"\n           ]\n         },\n+        \"match_type\": {\n+          \"$ref\": \"#/definitions/FuzzyFileSearchMatchType\"\n+        },\n         \"path\": {\n           \"type\": \"string\"\n         },\n@@ -32,6 +42,7 @@\n       },\n       \"required\": [\n         \"file_name\",\n+        \"match_type\",\n         \"path\",\n         \"root\",\n         \"score\"",
+      "path": "codex-rs/app-server-protocol/schema/json/FuzzyFileSearchResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,13 @@\n {\n   \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n   \"definitions\": {\n+    \"FuzzyFileSearchMatchType\": {\n+      \"enum\": [\n+        \"file\",\n+        \"directory\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"FuzzyFileSearchResult\": {\n       \"description\": \"Superset of [`codex_file_search::FileMatch`]\",\n       \"properties\": {\n@@ -18,6 +25,9 @@\n             \"null\"\n           ]\n         },\n+        \"match_type\": {\n+          \"$ref\": \"#/definitions/FuzzyFileSearchMatchType\"\n+        },\n         \"path\": {\n           \"type\": \"string\"\n         },\n@@ -32,6 +42,7 @@\n       },\n       \"required\": [\n         \"file_name\",\n+        \"match_type\",\n         \"path\",\n         \"root\",\n         \"score\"",
+      "path": "codex-rs/app-server-protocol/schema/json/FuzzyFileSearchSessionUpdatedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 0,
+      "patch_excerpt": "@@ -964,6 +964,13 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"FuzzyFileSearchMatchType\": {\n+      \"enum\": [\n+        \"file\",\n+        \"directory\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"FuzzyFileSearchResult\": {\n       \"description\": \"Superset of [`codex_file_search::FileMatch`]\",\n       \"properties\": {\n@@ -981,6 +988,9 @@\n             \"null\"\n           ]\n         },\n+        \"match_type\": {\n+          \"$ref\": \"#/definitions/FuzzyFileSearchMatchType\"\n+        },\n         \"path\": {\n           \"type\": \"string\"\n         },\n@@ -995,6 +1005,7 @@\n       },\n       \"required\": [\n         \"file_name\",\n+        \"match_type\",\n         \"path\",\n         \"root\",\n         \"score\"",
+      "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2034,6 +2034,13 @@\n       \"title\": \"FileChangeRequestApprovalResponse\",\n       \"type\": \"object\"\n     },\n+    \"FuzzyFileSearchMatchType\": {\n+      \"enum\": [\n+        \"file\",\n+        \"directory\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"FuzzyFileSearchParams\": {\n       \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n       \"properties\": {\n@@ -2093,6 +2100,9 @@\n             \"null\"\n           ]\n         },\n+        \"match_type\": {\n+          \"$ref\": \"#/definitions/FuzzyFileSearchMatchType\"\n+        },\n         \"path\": {\n           \"type\": \"string\"\n         },\n@@ -2107,6 +2117,7 @@\n       },\n       \"required\": [\n         \"file_name\",\n+        \"match_type\",\n         \"path\",\n         \"root\",\n         \"score\"",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 0,
+      "patch_excerpt": "@@ -4327,6 +4327,13 @@\n         }\n       ]\n     },\n+    \"FuzzyFileSearchMatchType\": {\n+      \"enum\": [\n+        \"file\",\n+        \"directory\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"FuzzyFileSearchParams\": {\n       \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n       \"properties\": {\n@@ -4370,6 +4377,9 @@\n             \"null\"\n           ]\n         },\n+        \"match_type\": {\n+          \"$ref\": \"#/definitions/FuzzyFileSearchMatchType\"\n+        },\n         \"path\": {\n           \"type\": \"string\"\n         },\n@@ -4384,6 +4394,7 @@\n       },\n       \"required\": [\n         \"file_name\",\n+        \"match_type\",\n         \"path\",\n         \"root\",\n         \"score\"",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,5 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type FuzzyFileSearchMatchType = \"file\" | \"directory\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/FuzzyFileSearchMatchType.ts",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,8 +1,9 @@\n // GENERATED CODE! DO NOT MODIFY BY HAND!\n \n // This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+import type { FuzzyFileSearchMatchType } from \"./FuzzyFileSearchMatchType\";\n \n /**\n  * Superset of [`codex_file_search::FileMatch`]\n  */\n-export type FuzzyFileSearchResult = { root: string, path: string, file_name: string, score: number, indices: Array<number> | null, };\n+export type FuzzyFileSearchResult = { root: string, path: string, match_type: FuzzyFileSearchMatchType, file_name: string, score: number, indices: Array<number> | null, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/FuzzyFileSearchResult.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -18,6 +18,7 @@ export type { FileChange } from \"./FileChange\";\n export type { ForcedLoginMethod } from \"./ForcedLoginMethod\";\n export type { FunctionCallOutputBody } from \"./FunctionCallOutputBody\";\n export type { FunctionCallOutputContentItem } from \"./FunctionCallOutputContentItem\";\n+export type { FuzzyFileSearchMatchType } from \"./FuzzyFileSearchMatchType\";\n export type { FuzzyFileSearchParams } from \"./FuzzyFileSearchParams\";\n export type { FuzzyFileSearchResponse } from \"./FuzzyFileSearchResponse\";\n export type { FuzzyFileSearchResult } from \"./FuzzyFileSearchResult\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/index.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 0,
+      "patch_excerpt": "@@ -800,11 +800,20 @@ pub struct FuzzyFileSearchParams {\n pub struct FuzzyFileSearchResult {\n     pub root: String,\n     pub path: String,\n+    pub match_type: FuzzyFileSearchMatchType,\n     pub file_name: String,\n     pub score: u32,\n     pub indices: Option<Vec<u32>>,\n }\n \n+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(rename_all = \"camelCase\")]\n+pub enum FuzzyFileSearchMatchType {\n+    File,\n+    Directory,\n+}\n+\n #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]\n pub struct FuzzyFileSearchResponse {\n     pub files: Vec<FuzzyFileSearchResult>,",
+      "path": "codex-rs/app-server-protocol/src/protocol/common.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5,6 +5,7 @@ use std::sync::Mutex;\n use std::sync::atomic::AtomicBool;\n use std::sync::atomic::Ordering;\n \n+use codex_app_server_protocol::FuzzyFileSearchMatchType;\n use codex_app_server_protocol::FuzzyFileSearchResult;\n use codex_app_server_protocol::FuzzyFileSearchSessionCompletedNotification;\n use codex_app_server_protocol::FuzzyFileSearchSessionUpdatedNotification;\n@@ -60,6 +61,10 @@ pub(crate) async fn run_fuzzy_file_search(\n                 FuzzyFileSearchResult {\n                     root: m.root.to_string_lossy().to_string(),\n                     path: m.path.to_string_lossy().to_string(),\n+                    match_type: match m.match_type {\n+                        file_search::MatchType::File => FuzzyFileSearchMatchType::File,\n+                        file_search::MatchType::Directory => FuzzyFileSearchMatchType::Directory,\n+                    },\n                     file_...",
+      "path": "codex-rs/app-server/src/fuzzy_file_search.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -257,20 +257,23 @@ async fn test_fuzzy_file_search_sorts_and_includes_indices() -> Result<()> {\n                 {\n                     \"root\": root_path.clone(),\n                     \"path\": \"abexy\",\n+                    \"match_type\": \"file\",\n                     \"file_name\": \"abexy\",\n                     \"score\": 84,\n                     \"indices\": [0, 1, 2],\n                 },\n                 {\n                     \"root\": root_path.clone(),\n                     \"path\": sub_abce_rel,\n+                    \"match_type\": \"file\",\n                     \"file_name\": \"abce\",\n                     \"score\": expected_score,\n                     \"indices\": [4, 5, 7],\n                 },\n                 {\n                     \"root\": root_path.clone(),\n                     \"path\": \"abcde\",\n+                    \"match_type\": \"file\",\n                     \"file_name\": \"abcde\",\n                  ...",
+      "path": "codex-rs/app-server/tests/suite/fuzzy_file_search.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 45,
+      "deletions": 5,
+      "patch_excerpt": "@@ -41,7 +41,9 @@ pub use cli::Cli;\n /// A single match result returned from the search.\n ///\n /// * `score` \u2013 Relevance score returned by `nucleo`.\n-/// * `path`  \u2013 Path to the matched file (relative to the search directory).\n+/// * `path`  \u2013 Path to the matched entry (file or directory), relative to the\n+///   search directory.\n+/// * `match_type` \u2013 Whether this match is a file or directory.\n /// * `indices` \u2013 Optional list of character indices that matched the query.\n ///   These are only filled when the caller of [`run`] sets\n ///   `options.compute_indices` to `true`. The indices vector follows the\n@@ -52,11 +54,19 @@ pub use cli::Cli;\n pub struct FileMatch {\n     pub score: u32,\n     pub path: PathBuf,\n+    pub match_type: MatchType,\n     pub root: PathBuf,\n     #[serde(skip_serializing_if = \"Option::is_none\")]\n     pub indices: Option<Vec<u32>>, // Sorted & deduplicated when prese...",
+      "path": "codex-rs/file-search/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -7253,6 +7253,7 @@ mod tests {\n             vec![FileMatch {\n                 score: 1,\n                 path: PathBuf::from(\"src/main.rs\"),\n+                match_type: codex_file_search::MatchType::File,\n                 root: PathBuf::from(\"/tmp\"),\n                 indices: None,\n             }],",
+      "path": "codex-rs/tui/src/bottom_pane/chat_composer.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -7268,6 +7268,7 @@ mod tests {\n             vec![FileMatch {\n                 score: 1,\n                 path: PathBuf::from(\"src/main.rs\"),\n+                match_type: codex_file_search::MatchType::File,\n                 root: PathBuf::from(\"/tmp\"),\n                 indices: None,\n             }],",
+      "path": "codex-rs/tui_app_server/src/bottom_pane/chat_composer.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "- Adds simple support for directory mentions in the TUI.\r\n- Codex App/VS Code will require minor change to recognize a directory mention as such and change the link behavior.\r\n- Directory mentions have a trailing slash to differentiate from extensionless files\r\n\r\n\r\n<img width=\"972\" height=\"382\" alt=\"image\" src=\"https://github.com/user-attachments/assets/8035b1eb-0978-465b-8d7a-4db2e5feca39\" />\r\n<img width=\"978\" height=\"228\" alt=\"image\" src=\"https://github.com/user-attachments/assets/af22cf0b-dd10-4440-9bee-a09915f6ba52\" />\r\n\r\n\r\n\r\n",
+    "labels": [],
+    "merged_at": "2026-03-19T05:24:10Z",
+    "number": 14970,
+    "state": "merged",
+    "title": "Simple directory mentions",
+    "url": "https://github.com/openai/codex/pull/14970"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

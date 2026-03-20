@@ -39,9 +39,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out", required=True, help="Path to write the release-delta JSON artifact.")
     parser.add_argument("--tag-prefix", default="rust-v", help="Release tag prefix to scope the tracked channel.")
     parser.add_argument("--token-env", help="Environment variable name holding a GitHub token.")
-    parser.add_argument("--stable-limit", type=int, default=3, help="Maximum number of recent stable releases to include.")
-    parser.add_argument("--preview-limit", type=int, default=6, help="Maximum number of recent prereleases to include.")
-    parser.add_argument("--pair-limit", type=int, default=12, help="Maximum number of precomputed stable->preview compare entries.")
+    parser.add_argument(
+        "--stable-limit",
+        type=int,
+        default=0,
+        help="Maximum number of recent stable releases to include. Use 0 for all releases at or above the floor.",
+    )
+    parser.add_argument(
+        "--preview-limit",
+        type=int,
+        default=0,
+        help="Maximum number of recent prereleases to include. Use 0 for all supported prereleases.",
+    )
+    parser.add_argument(
+        "--pair-limit",
+        type=int,
+        default=0,
+        help="Maximum number of precomputed stable->preview compare entries. Use 0 for all valid pairs.",
+    )
     parser.add_argument(
         "--min-stable-tag",
         default="rust-v0.116.0",
@@ -135,8 +150,12 @@ def select_release_options(
         for release in relevant
         if not release.get("prerelease")
         and stable_version_key(release["tag_name"], tag_prefix) >= min_stable_key
-    ][:stable_limit]
-    preview = [release for release in relevant if release.get("prerelease")][:preview_limit]
+    ]
+    preview = [release for release in relevant if release.get("prerelease")]
+    if stable_limit > 0:
+        stable = stable[:stable_limit]
+    if preview_limit > 0:
+        preview = preview[:preview_limit]
     if not stable:
         raise SystemExit(
             f"No stable releases found for tag prefix {tag_prefix!r} at or above {min_stable_tag!r}"
@@ -181,7 +200,7 @@ def compare_candidates(
         ),
         reverse=True,
     )
-    return candidates[:pair_limit]
+    return candidates[:pair_limit] if pair_limit > 0 else candidates
 
 
 def extract_signal_commit_shas(signal: dict[str, Any]) -> set[str]:
@@ -240,6 +259,11 @@ def main() -> None:
         for pair in release_pairs
     ):
         release_pairs = [default_pair, *release_pairs[: max(args.pair_limit - 1, 0)]]
+
+    allowed_stable_tags = {stable["tag_name"] for stable, _ in release_pairs}
+    allowed_preview_tags = {preview["tag_name"] for _, preview in release_pairs}
+    stable_releases = [release for release in stable_releases if release["tag_name"] in allowed_stable_tags]
+    preview_releases = [release for release in preview_releases if release["tag_name"] in allowed_preview_tags]
 
     signal_entries = load_signals(args.signals_dir, args.repo)
     comparison_entries: list[dict[str, Any]] = []

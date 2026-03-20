@@ -1,0 +1,87 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "bolinfest",
+      "committed_at": "2026-03-19T17:57:34Z",
+      "message": "Publish runnable DotSlash package for argument-comment lint",
+      "sha": "5afbcf6136ed7bddd7bf074567491d660c212896",
+      "url": "https://github.com/openai/codex/commit/5afbcf6136ed7bddd7bf074567491d660c212896"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "tools/argument-comment-lint/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "--lib-path",
+    "RUNNER_TEMP",
+    "--locked",
+    "--root",
+    "INSTALL_ROOT=$install_root\"",
+    "GITHUB_ENV",
+    "--release",
+    "--target",
+    "INSTALL_ROOT",
+    "GITHUB_WORKSPACE",
+    "GITHUB_TOKEN",
+    "--all",
+    "--lib",
+    "DYLINT_RUSTFLAGS",
+    "CARGO_INCREMENTAL"
+  ],
+  "files": [
+    {
+      "additions": 24,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,24 @@\n+{\n+  \"outputs\": {\n+    \"argument-comment-lint\": {\n+      \"platforms\": {\n+        \"macos-aarch64\": {\n+          \"regex\": \"^argument-comment-lint-aarch64-apple-darwin\\\\.tar\\\\.gz$\",\n+          \"path\": \"argument-comment-lint/bin/argument-comment-lint\"\n+        },\n+        \"linux-x86_64\": {\n+          \"regex\": \"^argument-comment-lint-x86_64-unknown-linux-gnu\\\\.tar\\\\.gz$\",\n+          \"path\": \"argument-comment-lint/bin/argument-comment-lint\"\n+        },\n+        \"linux-aarch64\": {\n+          \"regex\": \"^argument-comment-lint-aarch64-unknown-linux-gnu\\\\.tar\\\\.gz$\",\n+          \"path\": \"argument-comment-lint/bin/argument-comment-lint\"\n+        },\n+        \"windows-x86_64\": {\n+          \"regex\": \"^argument-comment-lint-x86_64-pc-windows-msvc\\\\.zip$\",\n+          \"path\": \"argument-comment-lint/bin/argument-comment-lint.exe\"\n+        }\n+      }\n+    }\n+  }\n+}",
+      "path": ".github/dotslash-argument-comment-lint-config.json",
+      "status": "added"
+    },
+    {
+      "additions": 103,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,103 @@\n+name: rust-release-argument-comment-lint\n+\n+on:\n+  workflow_call:\n+    inputs:\n+      publish:\n+        required: true\n+        type: boolean\n+\n+jobs:\n+  skip:\n+    if: ${{ !inputs.publish }}\n+    runs-on: ubuntu-latest\n+    steps:\n+      - run: echo \"Skipping argument-comment-lint release assets for prerelease tag\"\n+\n+  build:\n+    if: ${{ inputs.publish }}\n+    name: Build - ${{ matrix.runner }} - ${{ matrix.target }}\n+    runs-on: ${{ matrix.runs_on || matrix.runner }}\n+    timeout-minutes: 60\n+\n+    strategy:\n+      fail-fast: false\n+      matrix:\n+        include:\n+          - runner: macos-15-xlarge\n+            target: aarch64-apple-darwin\n+            archive_name: argument-comment-lint-aarch64-apple-darwin.tar.gz\n+            lib_name: libargument_comment_lint@nightly-2025-09-18-aarch64-apple-darwin.dylib\n+            runner_binary: argument-comment-lint\n+    ...",
+      "path": ".github/workflows/rust-release-argument-comment-lint.yml",
+      "status": "added"
+    },
+    {
+      "additions": 15,
+      "deletions": 0,
+      "patch_excerpt": "@@ -380,11 +380,19 @@ jobs:\n       publish: true\n     secrets: inherit\n \n+  argument-comment-lint-release-assets:\n+    name: argument-comment-lint release assets\n+    needs: tag-check\n+    uses: ./.github/workflows/rust-release-argument-comment-lint.yml\n+    with:\n+      publish: true\n+\n   release:\n     needs:\n       - build\n       - build-windows\n       - shell-tool-mcp\n+      - argument-comment-lint-release-assets\n     name: release\n     runs-on: ubuntu-latest\n     permissions:\n@@ -521,6 +529,13 @@ jobs:\n           tag: ${{ github.ref_name }}\n           config: .github/dotslash-config.json\n \n+      - uses: facebook/dotslash-publish-release@v2\n+        env:\n+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n+        with:\n+          tag: ${{ github.ref_name }}\n+          config: .github/dotslash-argument-comment-lint-config.json\n+\n       - name: Trigger developers.openai.com deploy\n  ...",
+      "path": ".github/workflows/rust-release.yml",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -68,6 +68,11 @@ cd tools/argument-comment-lint\n cargo test\n ```\n \n+GitHub releases also publish a DotSlash file named\n+`argument-comment-lint` for macOS arm64, Linux arm64, Linux x64, and Windows\n+x64. The published package contains a small runner executable, a bundled\n+`cargo-dylint`, and the prebuilt lint library.\n+\n Run the lint against `codex-rs` from the repo root:\n \n ```bash",
+      "path": "tools/argument-comment-lint/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 164,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,164 @@\n+use std::env;\n+use std::ffi::OsString;\n+use std::fs;\n+use std::path::Path;\n+use std::path::PathBuf;\n+use std::process::Command;\n+use std::process::ExitCode;\n+\n+fn main() -> ExitCode {\n+    match run() {\n+        Ok(code) => code,\n+        Err(err) => {\n+            eprintln!(\"{err}\");\n+            ExitCode::from(1)\n+        }\n+    }\n+}\n+\n+fn run() -> Result<ExitCode, String> {\n+    let exe_path =\n+        env::current_exe().map_err(|err| format!(\"failed to locate current executable: {err}\"))?;\n+    let bin_dir = exe_path.parent().ok_or_else(|| {\n+        format!(\n+            \"failed to locate parent directory for executable {}\",\n+            exe_path.display()\n+        )\n+    })?;\n+    let package_root = bin_dir.parent().ok_or_else(|| {\n+        format!(\n+            \"failed to locate package root for executable {}\",\n+            exe_path.display()\n+        )\n+    })?...",
+      "path": "tools/argument-comment-lint/src/bin/argument-comment-lint.rs",
+      "status": "added"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "## Why\r\n\r\nTo date, the argument-comment linter introduced in https://github.com/openai/codex/pull/14651 had to be built from source to run, which can be a bit slow (both for local dev and when it is run in CI). Because of the potential slowness, I did not wire it up to run as part of `just clippy` or anything like that. As a result, I have seen a number of occasions where folks put up PRs that violate the lint, see it fail in CI, and then have to put up their PR again.\r\n\r\nThe goal of this PR is to pre-build a runnable version of the linter and then make it available via a DotSlash file. Once it is available, I will update `just clippy` and other touchpoints to make it a natural part of the dev cycle so lint violations should get flagged _before_ putting up a PR for review.\r\n\r\nTo get things started, we will build the DotSlash file as part of an alpha release. Though I don't expect the linter to change often, so I'll probably change this to only build as part of mainline releases once we have a working DotSlash file. (Ultimately, we should probably move the linter into its own repo so it can have its own release cycle.)\r\n\r\n## What Changed\r\n- add a reusable `rust-release-argument-comment-lint.yml` workflow that builds host-specific archives for macOS arm64, Linux arm64/x64, and Windows x64\r\n- wire `rust-release.yml` to publish the `argument-comment-lint` DotSlash manifest on all releases for now, including alpha tags\r\n- package a runnable layout instead of a bare library\r\n\r\nThe Unix archive layout is:\r\n\r\n```text\r\nargument-comment-lint/\r\n  bin/\r\n    argument-comment-lint\r\n    cargo-dylint\r\n  lib/\r\n    libargument_comment_lint@nightly-2025-09-18-<target>.dylib|so\r\n```\r\n\r\nOn Windows the same layout is published as a `.zip`, with `.exe` and `.dll` filenames instead.\r\n\r\nDotSlash resolves the package entrypoint to `argument-comment-lint/bin/argument-comment-lint`. That runner finds the sibling bundled `cargo-dylint` binary plus the single packaged Dylint library under `lib/`, then invokes `cargo-dylint dylint --lib-path <that-library>` with the repo's default lint settings.",
+    "labels": [],
+    "merged_at": "2026-03-19T18:59:03Z",
+    "number": 15198,
+    "state": "merged",
+    "title": "Publish runnable DotSlash package for argument-comment lint",
+    "url": "https://github.com/openai/codex/pull/15198"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

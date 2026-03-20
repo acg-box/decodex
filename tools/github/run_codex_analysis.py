@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Run Codex against a GitHub bundle and persist a validated analysis draft."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+SCRIPT_HOME = Path(__file__).resolve().parent
+if str(SCRIPT_HOME) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_HOME))
+
+from contracts import dump_json, load_json, validate_analysis_draft, validate_bundle  # noqa: E402
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bundle", required=True, help="Path to github_change_bundle/v1 JSON.")
+    parser.add_argument("--out", required=True, help="Path to write the validated analysis JSON.")
+    parser.add_argument("--repo-root", help="Repository root for codex exec. Defaults to the current repo root.")
+    parser.add_argument("--codex-bin", default="codex", help="Codex executable to invoke.")
+    parser.add_argument("--model", help="Optional Codex model override.")
+    return parser.parse_args()
+
+
+def repo_root_from(bundle_path: Path) -> Path:
+    root = bundle_path.resolve().parents[2]
+    if not (root / "skills" / "decodex-github-signal" / "SKILL.md").exists():
+        raise SystemExit(f"Unable to resolve repo root from {bundle_path}")
+    return root
+
+
+def build_prompt(bundle_path: Path, repo_root: Path) -> str:
+    relative_bundle = bundle_path.resolve().relative_to(repo_root)
+    return "\n".join(
+        [
+            "Read and follow these repo-local instructions before drafting:",
+            "- skills/decodex-github-signal/SKILL.md",
+            "- docs/spec/github_change_bundle.md",
+            "- docs/spec/signal_entry.md",
+            "- docs/guide/local_github_signal_workflow.md",
+            "",
+            f"Analyze the bundle at `{relative_bundle}`.",
+            "",
+            "Return exactly one JSON object matching the provided output schema.",
+            "Treat the pull request as the main narrative container and the commits/files as evidence.",
+            "Do not summarize every commit independently.",
+            "Keep the output publishable for Decodex: concise, user-facing, and evidence-backed.",
+            "Include every schema field. Use null when an optional string field does not apply, and use [] when no config flags apply.",
+            "If `how_to_try` is not null, `expected_effect` must also be non-null.",
+            "Use `impact=low` rather than overstating significance when the change is mostly incremental.",
+        ]
+    )
+
+
+def extract_json_payload(raw: str) -> dict[str, Any]:
+    candidate = raw.strip()
+    if candidate.startswith("```"):
+        parts = candidate.split("```")
+        if len(parts) >= 3:
+            candidate = parts[1]
+            if candidate.startswith("json"):
+                candidate = candidate[4:]
+            candidate = candidate.strip()
+    try:
+        payload = json.loads(candidate)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Codex output was not valid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise SystemExit("Codex output must decode to a JSON object")
+    return payload
+
+
+def main() -> None:
+    args = parse_args()
+    bundle_path = Path(args.bundle)
+    bundle = load_json(bundle_path)
+    bundle_validation = validate_bundle(bundle)
+    if not bundle_validation.ok:
+        raise SystemExit("Bundle validation failed:\n- " + "\n- ".join(bundle_validation.errors))
+
+    repo_root = Path(args.repo_root).resolve() if args.repo_root else repo_root_from(bundle_path)
+    output_schema = SCRIPT_HOME / "analysis_draft.schema.json"
+    prompt = build_prompt(bundle_path, repo_root)
+
+    with tempfile.NamedTemporaryFile(prefix="decodex-analysis-", suffix=".json", delete=False) as handle:
+        tmp_output = Path(handle.name)
+
+    cmd = [
+        args.codex_bin,
+        "exec",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "--color",
+        "never",
+        "--output-schema",
+        str(output_schema),
+        "-C",
+        str(repo_root),
+        "-o",
+        str(tmp_output),
+        prompt,
+    ]
+    if args.model:
+        cmd[2:2] = ["--model", args.model]
+
+    completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        details = stderr or stdout or "unknown error"
+        raise SystemExit(f"codex exec failed: {details}")
+
+    payload = extract_json_payload(tmp_output.read_text(encoding="utf-8"))
+    validation = validate_analysis_draft(payload)
+    if not validation.ok:
+        raise SystemExit("Analysis draft validation failed:\n- " + "\n- ".join(validation.errors))
+
+    dump_json(args.out, payload)
+    print(args.out)
+
+
+if __name__ == "__main__":
+    main()

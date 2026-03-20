@@ -1,0 +1,65 @@
+{
+  "caveats": [
+    "Behavior is explicitly scoped to VSCode Terminal per PR body; other terminals may not auto-handle `file://` links the same way.",
+    "The change is primarily a UX/path-format improvement, not a new image generation capability.",
+    "A small unrelated filesystem initialization change (`Environment::default().get_filesystem()`) is present but not the user-facing headline."
+  ],
+  "confidence": "likely",
+  "config_flags": [],
+  "expected_effect": "Generated-image entries now present `Saved to` values as URI links, enabling easier direct opening of files in supported terminals and reducing manual path-copy steps.",
+  "how_to_try": "Generate an image in the TUI workflow and inspect the resulting history row; verify the saved location is shown as a `file://...` path (e.g., `file:///tmp/ig-1.png`) in place of `/tmp/...`, then open it in VSCode Terminal.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "Primary PR title/body says it adds full image paths so generated images are open-able in TUI, currently limited to VSCode Terminal.",
+    "In `codex-rs/tui/src/chatwidget.rs` and `codex-rs/tui_app_server/src/chatwidget.rs`, image generation end handling now maps saved paths through `url::Url::from_file_path(...).to_string()`, producing URI-formatted paths.",
+    "In both `codex-rs/tui/src/history_cell.rs` and `codex-rs/tui_app_server/src/history_cell.rs`, rendering changed from `saved_to` to `saved_path` and directly displays the formatted path string after `Saved to:`.",
+    "Snapshot and test updates in TUI history outputs/tests replace `/tmp/ig-1.png` with `file:///tmp/ig-1.png`, showing the visible output change.",
+    "Additional identical updates in both `codex-rs/tui` and `codex-rs/tui_app_server` indicate the behavior applies to both terminal UI variants."
+  ],
+  "published_at": "2026-03-19T21:29:23Z",
+  "schema": "signal_entry/v1",
+  "slug": "tui-image-history-now-shows-generated-files-as-file-uris",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/51153bef7ffce98b014a916904f2ed8795376f29",
+      "https://github.com/openai/codex/commit/8ca6ef3d5ebb717d632375e99b3f6965489a8480",
+      "https://github.com/openai/codex/commit/f27a4e92151050f703a0e375d50af7b1b5b08eeb",
+      "https://github.com/openai/codex/commit/809df3f7655b04598551ebd48cfac24082a9ccca",
+      "https://github.com/openai/codex/commit/436f73bf550d07d8ca9f7d314c6b27212573ce98",
+      "https://github.com/openai/codex/commit/49a76f44cc103e3b1eb707fe8f8d078ace4dc6d0"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15154",
+        "title": "adding full imagepath to tui",
+        "url": "https://github.com/openai/codex/pull/15154"
+      },
+      {
+        "kind": "commit",
+        "meta": "51153be",
+        "title": "adding full imagepath to tui",
+        "url": "https://github.com/openai/codex/commit/51153bef7ffce98b014a916904f2ed8795376f29"
+      },
+      {
+        "kind": "commit",
+        "meta": "8ca6ef3",
+        "title": "added snapshots",
+        "url": "https://github.com/openai/codex/commit/8ca6ef3d5ebb717d632375e99b3f6965489a8480"
+      },
+      {
+        "kind": "commit",
+        "meta": "f27a4e9",
+        "title": "flaky code",
+        "url": "https://github.com/openai/codex/commit/f27a4e92151050f703a0e375d50af7b1b5b08eeb"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15154",
+    "repo": "openai/codex"
+  },
+  "summary": "PR #15154 updates Codex TUI output so image-generation history entries render saved image locations as full `file://` URIs (for example `file:///tmp/...`) instead of plain local paths, across both TUI binaries.",
+  "title": "TUI image history now shows generated files as file URIs",
+  "why_it_matters": "This makes generated images easier to open directly from the terminal history in environments that treat `file://` links as clickable resources, improving discoverability right after generation."
+}

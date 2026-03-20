@@ -642,6 +642,46 @@ code {
   gap: 0.22rem;
 }
 
+.release-delta__highlights-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1rem;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.release-delta__mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+}
+
+.release-delta__mode-button {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.42rem 0.72rem;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.release-delta__mode-button:hover {
+  color: var(--ink);
+}
+
+.release-delta__mode-button.is-active {
+  background: var(--surface);
+  color: var(--ink);
+}
+
 .release-delta__highlight-list {
   margin: 0;
   padding: 0;

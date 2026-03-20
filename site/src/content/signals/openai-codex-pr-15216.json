@@ -1,0 +1,58 @@
+{
+  "caveats": [
+    "Evidence points to significant internal modularity work, but no explicit user-facing behavioral delta is documented in the PR body.",
+    "Patch excerpts are partial for some file moves, so end-to-end semantic equivalence is inferred from import/manifest rewiring rather than full method-by-method diff parity."
+  ],
+  "confidence": "likely",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "Primary PR body states the refactor goal: move `core/src/terminal.rs` and tests into a standalone `terminal-detection` crate and update direct consumers to depend on `codex-terminal-detection`.",
+    "`codex-rs/Cargo.toml`, `codex-rs/Cargo.lock`, and multiple crate manifests (`codex-rs/cli/Cargo.toml`, `codex-rs/core/Cargo.toml`, `codex-rs/tui/Cargo.toml`, `codex-rs/tui_app_server/Cargo.toml`) now include `terminal-detection` as a workspace member/dependency.",
+    "`codex-rs/core/src/lib.rs` removes the previous `pub mod terminal`, while `cli`, `core`, `tui`, `tui_app_server`, and MCP test code replace `codex_core::terminal::*` imports with `codex_terminal_detection::*`.",
+    "`codex-rs/terminal-detection/BUILD.bazel` and `codex-rs/terminal-detection/Cargo.toml` are added, and terminal-related source/tests are moved (`src/lib.rs`, `src/terminal_tests.rs`) indicating the new crate boundary is active in repository structure."
+  ],
+  "published_at": "2026-03-19T21:08:05Z",
+  "schema": "signal_entry/v1",
+  "slug": "openai-codex-pr-15216",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/df7a5872916053eab788ed158eb738d4472153bf",
+      "https://github.com/openai/codex/commit/3661c085ded4aa30083d374fc786681eeea044b0",
+      "https://github.com/openai/codex/commit/9e6c4040126f6c977c099716ff1135b9f0638747"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15216",
+        "title": "Move terminal module to terminal-detection crate",
+        "url": "https://github.com/openai/codex/pull/15216"
+      },
+      {
+        "kind": "commit",
+        "meta": "df7a587",
+        "title": "Move terminal module to its own crate",
+        "url": "https://github.com/openai/codex/commit/df7a5872916053eab788ed158eb738d4472153bf"
+      },
+      {
+        "kind": "commit",
+        "meta": "3661c08",
+        "title": "Rename terminal crate to terminal-detection",
+        "url": "https://github.com/openai/codex/commit/3661c085ded4aa30083d374fc786681eeea044b0"
+      },
+      {
+        "kind": "commit",
+        "meta": "9e6c404",
+        "title": "codex: fix CI failure on PR #15216",
+        "url": "https://github.com/openai/codex/commit/9e6c4040126f6c977c099716ff1135b9f0638747"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15216",
+    "repo": "openai/codex"
+  },
+  "summary": "This PR refactors terminal-related code by extracting `core/src/terminal.rs` and its tests into a new `terminal-detection` workspace crate, then rewires CLI, core, TUI, TUI app server, and MCP-related code to consume the new crate through existing imports and dependency entries.",
+  "title": "Move terminal utilities into a dedicated terminal-detection crate",
+  "why_it_matters": "The change centralizes terminal detection and user-agent/terminal-type logic behind a single shared crate, which reduces duplicate terminal dependencies across binaries and should make terminal behavior updates easier to maintain consistently across the CLI and UI stacks. User-visible behavior is expected to remain unchanged, so the practical impact is mostly engineering hygiene and modularity."
+}

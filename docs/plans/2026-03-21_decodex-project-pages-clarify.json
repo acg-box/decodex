@@ -1,0 +1,83 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "2026-03-21_decodex-project-pages-clarify",
+    "goal": "Clarify that decodex.space is served as the repository's project Pages site, not the organization root site, and align the deployment guide with GitHub's custom-domain rules.",
+    "success_criteria": [
+      "The deployment guide explicitly describes Decodex as a repository-scoped project Pages site.",
+      "The guide distinguishes between repo-level custom-domain ownership and the underlying GitHub Pages DNS targets.",
+      "The preferred DNS path avoids unnecessary references to the organization root site when apex-only hosting is sufficient."
+    ],
+    "constraints": [
+      "Do not change the actual deploy workflow unless the official docs require it.",
+      "Keep decodex.space as the production URL.",
+      "Base the clarification on current official GitHub Pages documentation."
+    ],
+    "defaults": {
+      "guide_path": "docs/guide/github_pages_deploy.md",
+      "workflow_path": ".github/workflows/deploy-pages.yml",
+      "astro_config_path": "site/astro.config.mjs"
+    },
+    "tasks": [
+      {
+        "id": "task-1",
+        "title": "Confirm the official GitHub Pages model for project sites and custom domains",
+        "status": "done",
+        "objective": "Verify whether repo Pages plus a custom domain still relies on the owner or organization github.io target under the hood.",
+        "inputs": [
+          "GitHub Docs: What is GitHub Pages?",
+          "GitHub Docs: About custom domains and GitHub Pages",
+          "GitHub Docs: Managing a custom domain for your GitHub Pages site"
+        ],
+        "outputs": [
+          "A precise statement of what can and cannot be made repo-specific"
+        ],
+        "verification": [
+          "Official docs reviewed"
+        ],
+        "depends_on": []
+      },
+      {
+        "id": "task-2",
+        "title": "Revise the repo deployment guide",
+        "status": "done",
+        "objective": "Update the runbook so it describes Decodex as a project Pages site and recommends the least confusing DNS setup.",
+        "inputs": [
+          "docs/guide/github_pages_deploy.md",
+          "Official GitHub Pages docs"
+        ],
+        "outputs": [
+          "A corrected deployment guide"
+        ],
+        "verification": [
+          "Guide text matches the official Pages model"
+        ],
+        "depends_on": [
+          "task-1"
+        ]
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "Official Pages guidance requires a workflow or config change rather than a docs clarification"
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "GitHub Docs review for project Pages and custom-domain behavior"
+    ],
+    "last_updated": "2026-03-21T04:38:00Z",
+    "replan_reason": null,
+    "context_snapshot": {
+      "site_url": "https://decodex.space",
+      "pages_type": "project site",
+      "default_project_url": "https://hack-ink.github.io/decodex"
+    }
+  }
+}

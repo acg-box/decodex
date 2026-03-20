@@ -1,0 +1,161 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "bolinfest",
+      "committed_at": "2026-03-20T01:22:32Z",
+      "message": "core: add an exec capture policy for full output",
+      "sha": "90cb67e93ecb87a903014e8769bfeccc6bcd0f01",
+      "url": "https://github.com/openai/codex/commit/90cb67e93ecb87a903014e8769bfeccc6bcd0f01"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "EOF",
+    "IO_DRAIN_TIMEOUT_MS",
+    "EXEC_OUTPUT_MAX_BYTES",
+    "TODO",
+    "EXIT_CODE_SIGNAL_BASE",
+    "TIMEOUT_CODE",
+    "AGGREGATE_BUFFER_INITIAL_CAPACITY",
+    "READ_CHUNK_SIZE",
+    "USER_SHELL_TIMEOUT_MS",
+    "--codex-run-as-apply-patch",
+    "DNS",
+    "NETWORK_TIMEOUT_MS"
+  ],
+  "files": [
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -204,6 +204,7 @@ use codex_core::config_loader::CloudRequirementsLoader;\n use codex_core::default_client::set_default_client_residency_requirement;\n use codex_core::error::CodexErr;\n use codex_core::error::Result as CodexResult;\n+use codex_core::exec::ExecCapturePolicy;\n use codex_core::exec::ExecExpiration;\n use codex_core::exec::ExecParams;\n use codex_core::exec_env::create_env;\n@@ -1672,11 +1673,17 @@ impl CodexMessageProcessor {\n                 None => ExecExpiration::DefaultTimeout,\n             }\n         };\n+        let capture_policy = if disable_output_cap {\n+            ExecCapturePolicy::FullBuffer\n+        } else {\n+            ExecCapturePolicy::ShellTool\n+        };\n         let sandbox_cwd = self.config.cwd.clone();\n         let exec_params = ExecParams {\n             command,\n             cwd: cwd.clone(),\n             expiration,\n+            capture_policy,\n        ...",
+      "path": "codex-rs/app-server/src/codex_message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -733,6 +733,7 @@ mod tests {\n             env: HashMap::new(),\n             network: None,\n             expiration: ExecExpiration::DefaultTimeout,\n+            capture_policy: codex_core::exec::ExecCapturePolicy::ShellTool,\n             sandbox: SandboxType::WindowsRestrictedToken,\n             windows_sandbox_level: WindowsSandboxLevel::Disabled,\n             windows_sandbox_private_desktop: false,\n@@ -845,6 +846,7 @@ mod tests {\n                     env: HashMap::new(),\n                     network: None,\n                     expiration: ExecExpiration::Cancellation(CancellationToken::new()),\n+                    capture_policy: codex_core::exec::ExecCapturePolicy::ShellTool,\n                     sandbox: SandboxType::None,\n                     windows_sandbox_level: WindowsSandboxLevel::Disabled,\n                     windows_sandbox_private_desktop: false,",
+      "path": "codex-rs/app-server/src/command_exec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -7,6 +7,7 @@ use crate::config_loader::ConfigLayerStackOrdering;\n use crate::config_loader::NetworkConstraints;\n use crate::config_loader::RequirementSource;\n use crate::config_loader::Sourced;\n+use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecToolCallOutput;\n use crate::function_tool::FunctionCallError;\n use crate::mcp_connection_manager::ToolInfo;\n@@ -4788,6 +4789,7 @@ async fn rejects_escalated_permissions_when_policy_not_on_request() {\n         },\n         cwd: turn_context.cwd.clone(),\n         expiration: timeout_ms.into(),\n+        capture_policy: ExecCapturePolicy::ShellTool,\n         env: HashMap::new(),\n         network: None,\n         sandbox_permissions,\n@@ -4805,6 +4807,7 @@ async fn rejects_escalated_permissions_when_policy_not_on_request() {\n         command: params.command.clone(),\n         cwd: params.cwd.clone(),\n         expiration: timeout_ms.into(),\n+    ...",
+      "path": "codex-rs/core/src/codex_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3,6 +3,7 @@ use crate::compact::InitialContextInjection;\n use crate::config_loader::ConfigLayerEntry;\n use crate::config_loader::ConfigRequirements;\n use crate::config_loader::ConfigRequirementsToml;\n+use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecParams;\n use crate::exec_policy::ExecPolicyManager;\n use crate::features::Feature;\n@@ -124,6 +125,7 @@ async fn guardian_allows_shell_additional_permissions_requests_past_policy_valid\n         },\n         cwd: turn_context.cwd.clone(),\n         expiration: expiration_ms.into(),\n+        capture_policy: ExecCapturePolicy::ShellTool,\n         env: HashMap::new(),\n         network: None,\n         sandbox_permissions: SandboxPermissions::WithAdditionalPermissions,",
+      "path": "codex-rs/core/src/codex_tests_guardian.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 98,
+      "deletions": 29,
+      "patch_excerpt": "@@ -78,6 +78,7 @@ pub struct ExecParams {\n     pub command: Vec<String>,\n     pub cwd: PathBuf,\n     pub expiration: ExecExpiration,\n+    pub capture_policy: ExecCapturePolicy,\n     pub env: HashMap<String, String>,\n     pub network: Option<NetworkProxy>,\n     pub sandbox_permissions: SandboxPermissions,\n@@ -87,6 +88,16 @@ pub struct ExecParams {\n     pub arg0: Option<String>,\n }\n \n+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]\n+pub enum ExecCapturePolicy {\n+    /// Shell-like execs keep the historical output cap and timeout behavior.\n+    #[default]\n+    ShellTool,\n+    /// Trusted internal helpers can buffer the full child output in memory\n+    /// without the shell-oriented output cap or exec-expiration behavior.\n+    FullBuffer,\n+}\n+\n fn select_process_exec_tool_sandbox_type(\n     file_system_sandbox_policy: &FileSystemSandboxPolicy,\n     network_sandbox_policy: NetworkSandbo...",
+      "path": "codex-rs/core/src/exec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 197,
+      "deletions": 6,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use super::*;\n use codex_protocol::config_types::WindowsSandboxLevel;\n use pretty_assertions::assert_eq;\n+use std::collections::HashMap;\n use std::time::Duration;\n use tokio::io::AsyncWriteExt;\n \n@@ -91,14 +92,16 @@ fn sandbox_detection_ignores_network_policy_text_with_zero_exit_code() {\n }\n \n #[tokio::test]\n-async fn read_capped_limits_retained_bytes() {\n+async fn read_output_limits_retained_bytes_for_shell_capture() {\n     let (mut writer, reader) = tokio::io::duplex(1024);\n     let bytes = vec![b'a'; EXEC_OUTPUT_MAX_BYTES.saturating_add(128 * 1024)];\n     tokio::spawn(async move {\n         writer.write_all(&bytes).await.expect(\"write\");\n     });\n \n-    let out = read_capped(reader, None, false).await.expect(\"read\");\n+    let out = read_output(reader, None, false, Some(EXEC_OUTPUT_MAX_BYTES))\n+        .await\n+        .expect(\"read\");\n     assert_eq!(out.text.len(), EXE...",
+      "path": "codex-rs/core/src/exec_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -8,6 +8,7 @@ ready\u2011to\u2011spawn environment.\n \n pub(crate) mod macos_permissions;\n \n+use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecExpiration;\n use crate::exec::ExecToolCallOutput;\n use crate::exec::SandboxType;\n@@ -55,6 +56,7 @@ pub struct CommandSpec {\n     pub cwd: PathBuf,\n     pub env: HashMap<String, String>,\n     pub expiration: ExecExpiration,\n+    pub capture_policy: ExecCapturePolicy,\n     pub sandbox_permissions: SandboxPermissions,\n     pub additional_permissions: Option<PermissionProfile>,\n     pub justification: Option<String>,\n@@ -67,6 +69,7 @@ pub struct ExecRequest {\n     pub env: HashMap<String, String>,\n     pub network: Option<NetworkProxy>,\n     pub expiration: ExecExpiration,\n+    pub capture_policy: ExecCapturePolicy,\n     pub sandbox: SandboxType,\n     pub windows_sandbox_level: WindowsSandboxLevel,\n     pub windows_sandbox_private_desktop: bool,\n@@ -70...",
+      "path": "codex-rs/core/src/sandboxing/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -158,6 +158,7 @@ fn transform_preserves_unrestricted_file_system_policy_for_restricted_network()\n                 cwd: cwd.clone(),\n                 env: HashMap::new(),\n                 expiration: crate::exec::ExecExpiration::DefaultTimeout,\n+                capture_policy: crate::exec::ExecCapturePolicy::ShellTool,\n                 sandbox_permissions: super::SandboxPermissions::UseDefault,\n                 additional_permissions: None,\n                 justification: None,\n@@ -518,6 +519,7 @@ fn transform_additional_permissions_enable_network_for_external_sandbox() {\n                 cwd: cwd.clone(),\n                 env: HashMap::new(),\n                 expiration: crate::exec::ExecExpiration::DefaultTimeout,\n+                capture_policy: crate::exec::ExecCapturePolicy::ShellTool,\n                 sandbox_permissions: super::SandboxPermissions::WithAdditionalPermissions,\n    ...",
+      "path": "codex-rs/core/src/sandboxing/mod_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -10,6 +10,7 @@ use tracing::error;\n use uuid::Uuid;\n \n use crate::codex::TurnContext;\n+use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecToolCallOutput;\n use crate::exec::SandboxType;\n use crate::exec::StdoutStream;\n@@ -165,6 +166,7 @@ pub(crate) async fn execute_user_shell_command(\n         // TODO(zhao-oai): Now that we have ExecExpiration::Cancellation, we\n         // should use that instead of an \"arbitrarily large\" timeout here.\n         expiration: USER_SHELL_TIMEOUT_MS.into(),\n+        capture_policy: ExecCapturePolicy::ShellTool,\n         sandbox: SandboxType::None,\n         windows_sandbox_level: turn_context.windows_sandbox_level,\n         windows_sandbox_private_desktop: turn_context",
+      "path": "codex-rs/core/src/tasks/user_shell.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5,6 +5,7 @@ use codex_protocol::models::ShellToolCallParams;\n use std::sync::Arc;\n \n use crate::codex::TurnContext;\n+use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecParams;\n use crate::exec_env::create_env;\n use crate::exec_policy::ExecApprovalRequest;\n@@ -70,6 +71,7 @@ impl ShellHandler {\n             command: params.command.clone(),\n             cwd: turn_context.resolve_path(params.workdir.clone()),\n             expiration: params.timeout_ms.into(),\n+            capture_policy: ExecCapturePolicy::ShellTool,\n             env: create_env(&turn_context.shell_environment_policy, Some(thread_id)),\n             network: turn_context.network.clone(),\n             sandbox_permissions: params.sandbox_permissions.unwrap_or_default(),\n@@ -124,6 +126,7 @@ impl ShellCommandHandler {\n             command,\n             cwd: turn_context.resolve_path(params.workdir.clone()),\n           ...",
+      "path": "codex-rs/core/src/tools/handlers/shell.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -34,6 +34,7 @@ use uuid::Uuid;\n use crate::client_common::tools::ToolSpec;\n use crate::codex::Session;\n use crate::codex::TurnContext;\n+use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecExpiration;\n use crate::exec_env::create_env;\n use crate::function_tool::FunctionCallError;\n@@ -1037,6 +1038,7 @@ impl JsReplManager {\n             cwd: turn.cwd.clone(),\n             env,\n             expiration: ExecExpiration::DefaultTimeout,\n+            capture_policy: ExecCapturePolicy::ShellTool,\n             sandbox_permissions: SandboxPermissions::UseDefault,\n             additional_permissions: None,\n             justification: None,",
+      "path": "codex-rs/core/src/tools/js_repl/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -4,6 +4,7 @@\n //! decision to avoid re-prompting, builds the self-invocation command for\n //! `codex --codex-run-as-apply-patch`, and runs under the current\n //! `SandboxAttempt` with a minimal environment.\n+use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecToolCallOutput;\n use crate::guardian::GuardianApprovalRequest;\n use crate::guardian::review_approval_request;\n@@ -93,6 +94,7 @@ impl ApplyPatchRuntime {\n             ],\n             cwd: req.action.cwd.clone(),\n             expiration: req.timeout_ms.into(),\n+            capture_policy: ExecCapturePolicy::ShellTool,\n             // Run apply_patch with a minimal environment for determinism and to avoid leaks.\n             env: HashMap::new(),\n             sandbox_permissions: req.sandbox_permissions,",
+      "path": "codex-rs/core/src/tools/runtimes/apply_patch.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ Module: runtimes\n Concrete ToolRuntime implementations for specific tools. Each runtime stays\n small and focused and reuses the orchestrator for approvals + sandbox + retry.\n */\n+use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecExpiration;\n use crate::path_utils;\n use crate::sandboxing::CommandSpec;\n@@ -47,6 +48,7 @@ pub(crate) fn build_command_spec(\n         cwd: cwd.to_path_buf(),\n         env: env.clone(),\n         expiration,\n+        capture_policy: ExecCapturePolicy::ShellTool,\n         sandbox_permissions,\n         additional_permissions,\n         justification,",
+      "path": "codex-rs/core/src/tools/runtimes/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use super::ShellRequest;\n use crate::error::CodexErr;\n use crate::error::SandboxErr;\n+use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecExpiration;\n use crate::exec::ExecToolCallOutput;\n use crate::exec::SandboxType;\n@@ -124,6 +125,7 @@ pub(super) async fn try_run_zsh_fork(\n         env: sandbox_env,\n         network: sandbox_network,\n         expiration: _sandbox_expiration,\n+        capture_policy: _capture_policy,\n         sandbox,\n         windows_sandbox_level,\n         windows_sandbox_private_desktop: _windows_sandbox_private_desktop,\n@@ -903,6 +905,7 @@ impl ShellCommandExecutor for CoreShellCommandExecutor {\n                 env: exec_env,\n                 network: self.network.clone(),\n                 expiration: ExecExpiration::Cancellation(cancel_rx),\n+                capture_policy: ExecCapturePolicy::ShellTool,\n                 sandbox: self.sandbox...",
+      "path": "codex-rs/core/src/tools/runtimes/shell/unix_escalation.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3,6 +3,7 @@\n use std::collections::HashMap;\n use std::string::ToString;\n \n+use codex_core::exec::ExecCapturePolicy;\n use codex_core::exec::ExecParams;\n use codex_core::exec::ExecToolCallOutput;\n use codex_core::exec::SandboxType;\n@@ -37,6 +38,7 @@ async fn run_test_cmd(tmp: TempDir, cmd: Vec<&str>) -> Result<ExecToolCallOutput\n         command: cmd.iter().map(ToString::to_string).collect(),\n         cwd: tmp.path().to_path_buf(),\n         expiration: 1000.into(),\n+        capture_policy: ExecCapturePolicy::ShellTool,\n         env: HashMap::new(),\n         network: None,\n         sandbox_permissions: SandboxPermissions::UseDefault,",
+      "path": "codex-rs/core/tests/suite/exec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use codex_core::config::types::ShellEnvironmentPolicy;\n use codex_core::error::CodexErr;\n use codex_core::error::Result;\n use codex_core::error::SandboxErr;\n+use codex_core::exec::ExecCapturePolicy;\n use codex_core::exec::ExecParams;\n use codex_core::exec::process_exec_tool_call;\n use codex_core::exec_env::create_env;\n@@ -116,6 +117,7 @@ async fn run_cmd_result_with_policies(\n         command: cmd.iter().copied().map(str::to_owned).collect(),\n         cwd,\n         expiration: timeout_ms.into(),\n+        capture_policy: ExecCapturePolicy::ShellTool,\n         env: create_env_from_core_vars(),\n         network: None,\n         sandbox_permissions: SandboxPermissions::UseDefault,\n@@ -375,6 +377,7 @@ async fn assert_network_blocked(cmd: &[&str]) {\n         // Give the tool a generous 2-second timeout so even slow DNS timeouts\n         // do not stall the suite.\n         expira...",
+      "path": "codex-rs/linux-sandbox/tests/suite/landlock.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#14989"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "## Why\r\n\r\nUpcoming sandbox-backed filesystem helpers (see #14989) need to run through `exec()` so the sandbox remains the enforcement boundary. The existing exec path is intentionally tuned for shell-style tool calls: it caps retained output and enforces exec expiration. That behavior is correct for `shell`, but it is the wrong default for trusted internal helpers that need the full child output buffered in memory.\r\n\r\nAt the same time, those helpers still need the existing post-exit stdout/stderr drain guard. If a child exits after spawning a descendant that inherited its pipes, dropping that guard can hang the caller forever while it waits for EOF.\r\n\r\n## What Changed\r\n\r\n- add `ExecCapturePolicy` to the exec request/params flow so output capture semantics are explicit instead of being implied by the call path\r\n- keep the historical shell behavior under `ExecCapturePolicy::ShellTool`, and add `ExecCapturePolicy::FullBuffer` for internal callers that need uncapped buffered output without exec expiration\r\n- teach both `exec()` and the Windows sandbox capture path to honor the capture policy when applying retained-byte caps and exec-expiration handling\r\n- preserve the existing `IO_DRAIN_TIMEOUT_MS` guard for `FullBuffer` execs so inherited stdout/stderr pipes cannot hang the caller forever after child exit\r\n- update the affected exec-request construction sites and tests to make the capture policy explicit and cover the inherited-pipe case",
+    "labels": [],
+    "merged_at": "2026-03-20T02:38:12Z",
+    "number": 15254,
+    "state": "merged",
+    "title": "core: add a full-buffer exec capture policy",
+    "url": "https://github.com/openai/codex/pull/15254"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

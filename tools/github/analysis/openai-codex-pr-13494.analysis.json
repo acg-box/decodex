@@ -1,0 +1,21 @@
+{
+  "caveats": [],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "PR body explains the core behavior change: store a pre-rendered `feedback_log_body` in SQLite so `/feedback` exports keep span prefixes and structured event fields, and perform SQL-side budgeted loading followed by whole-line Rust truncation.",
+    "`codex-rs/state/logs_migrations/0002_logs_feedback_log_body.sql` renames the old `logs` table, creates a new schema with `feedback_log_body`, backfills from existing `message` values, and reinserts rows into the updated layout.",
+    "`codex-rs/state/src/runtime/logs.rs` begins writing `feedback_log_body` and bases `estimated_bytes` on persisted export-facing content for partition retention accounting.",
+    "`codex-rs/state/src/log_db.rs` and `codex-rs/state/src/model/log.rs` expand log persistence structures to keep formatter-relevant fields (rendered names/fields and `feedback_log_body`) available for export workflows.",
+    "Tests and client-side handling (`codex-rs/core/tests/suite/sqlite_state.rs`, `codex-rs/state/src/bin/logs_client.rs`) were updated to match rendered-body matching/assertions and wording, confirming behavior-level alignment rather than backend-only refactoring only."
+  ],
+  "slug": "openai-codex-pr-13494",
+  "summary": "The PR updates Codex\u2019s SQLite logging path so feedback exports persist a rendered log body and apply retention/truncation against that rendered content, aligning exported log output with existing in-memory formatting semantics.",
+  "title": "SQLite feedback logs now preserve rendered output behavior",
+  "watch_state": null,
+  "why_it_matters": "Users relying on `/feedback` now get clearer, more consistent exports: structured log fields and span prefixes are retained, newlines are preserved, and truncation works on export content rather than silently cutting useful context from retained rows."
+}

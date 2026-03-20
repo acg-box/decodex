@@ -1,0 +1,24 @@
+{
+  "caveats": [
+    "There is no explicit user-facing feature or flag introduced in the PR body; impact is inferred from code structure changes.",
+    "The refactor appears mostly internal, so user-visible behavior is expected to stay the same for now."
+  ],
+  "confidence": "likely",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "The PR body states the goal explicitly: the `Environment` abstraction now lives behind `codex-exec-server`, with construction-time differences hidden from `core`.",
+    "`codex-rs/environment` is removed (crate file + Bazel target + source deletion) while `codex-exec-server` gains exports for `Environment` and filesystem types.",
+    "Dependencies in `codex-rs/Cargo.toml`, `app-server/Cargo.toml`, and `core/Cargo.toml` were updated from `codex-environment` to `codex-exec-server`, and imports in app-server/core moved accordingly.",
+    "Filesystem and environment usage sites such as `app-server/src/fs_api.rs` and `core/src/codex.rs` now pull `Environment`/`ExecutorFileSystem` APIs from `codex_exec_server`, showing behavior is now mediated through the exec-server crate boundary.",
+    "`Cargo.lock` changes replace `codex-environment` with `codex-exec-server` dependencies and move execution-related deps into the latter, confirming the migration at the workspace dependency graph level."
+  ],
+  "slug": "openai-codex-pr-15125",
+  "summary": "PR #15125 migrates Codex\u2019s environment abstraction from the standalone `codex-environment` crate into `codex-exec-server`, rewiring core and server crates to import `Environment`, `ExecutorFileSystem`, and related helpers from the exec-server boundary instead.",
+  "title": "Move environment abstraction into the exec server crate",
+  "watch_state": null,
+  "why_it_matters": "This is mainly an architectural refactor that reduces cross-crate coupling: execution environment concerns are now centralized in the exec-server API surface, which makes it easier to support different execution backends (local vs remote) without changing core/app-server logic."
+}

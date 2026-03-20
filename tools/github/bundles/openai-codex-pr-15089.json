@@ -1,0 +1,305 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-16T23:10:50Z",
+      "message": "Add codex-exec-server crate",
+      "sha": "144c3593dbd3bc2ccdc6906f2afbc4cfc2f069b2",
+      "url": "https://github.com/openai/codex/commit/144c3593dbd3bc2ccdc6906f2afbc4cfc2f069b2"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-17T00:37:34Z",
+      "message": "docs(exec-server): add protocol README",
+      "sha": "949932ca110e5c4211fc9e2f73f24d79d38ebb19",
+      "url": "https://github.com/openai/codex/commit/949932ca110e5c4211fc9e2f73f24d79d38ebb19"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T19:29:54Z",
+      "message": "Add Bazel package for exec-server",
+      "sha": "40cc199757b1665fef748ed762e9ee9d142d2cbc",
+      "url": "https://github.com/openai/codex/commit/40cc199757b1665fef748ed762e9ee9d142d2cbc"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T19:48:00Z",
+      "message": "Trim exec-server PR to stub server slice",
+      "sha": "2958067cf9579c022eb14fca67001867147fe2ad",
+      "url": "https://github.com/openai/codex/commit/2958067cf9579c022eb14fca67001867147fe2ad"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T20:01:16Z",
+      "message": "Keep first exec-server PR initialize-only",
+      "sha": "76071974bb36af24188b1bff81585f57dc51df33",
+      "url": "https://github.com/openai/codex/commit/76071974bb36af24188b1bff81585f57dc51df33"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T20:59:41Z",
+      "message": "Add generic RPC server glue to exec-server stub",
+      "sha": "16ff474725b011aea5c9e78f56319e0c055b3490",
+      "url": "https://github.com/openai/codex/commit/16ff474725b011aea5c9e78f56319e0c055b3490"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T21:30:57Z",
+      "message": "Add generic exec-server RPC foundation",
+      "sha": "0a846a2625a56d2a913e516c476abd5a1d71c0e1",
+      "url": "https://github.com/openai/codex/commit/0a846a2625a56d2a913e516c476abd5a1d71c0e1"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T21:32:35Z",
+      "message": "Wire notification sender into exec-server RPC foundation",
+      "sha": "c5dbe421bb606d8bfa154c6c5cdd1eb89ab6a8a2",
+      "url": "https://github.com/openai/codex/commit/c5dbe421bb606d8bfa154c6c5cdd1eb89ab6a8a2"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T21:34:21Z",
+      "message": "Remove outer handler mutex from exec-server RPC base",
+      "sha": "66f49ea604315574d0b8a92d75dc196d5470df0a",
+      "url": "https://github.com/openai/codex/commit/66f49ea604315574d0b8a92d75dc196d5470df0a"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T21:43:39Z",
+      "message": "Test generic exec-server RPC response matching",
+      "sha": "43b112c263c5d99e77d5dc9231ae2a6312b1c8ab",
+      "url": "https://github.com/openai/codex/commit/43b112c263c5d99e77d5dc9231ae2a6312b1c8ab"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T23:30:10Z",
+      "message": "exec-server: simplify stub json-rpc transport shape",
+      "sha": "2661dc53309b75e3d817362599af730e93c555c2",
+      "url": "https://github.com/openai/codex/commit/2661dc53309b75e3d817362599af730e93c555c2"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T23:41:24Z",
+      "message": "exec-server: address transport review feedback",
+      "sha": "3b4a5229113ccd0ea14ed46a9a8e204457aa2baf",
+      "url": "https://github.com/openai/codex/commit/3b4a5229113ccd0ea14ed46a9a8e204457aa2baf"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-18T23:53:24Z",
+      "message": "exec-server: keep malformed-json connections alive",
+      "sha": "2ed509ddd33c3001e5ef50d84766b97ab5bf0d83",
+      "url": "https://github.com/openai/codex/commit/2ed509ddd33c3001e5ef50d84766b97ab5bf0d83"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-19T00:04:44Z",
+      "message": "exec-server: trim unused stub dependencies",
+      "sha": "866743de96e8051adcd7db1c7df4875e1d984213",
+      "url": "https://github.com/openai/codex/commit/866743de96e8051adcd7db1c7df4875e1d984213"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/exec-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "JSON",
+    "CLI",
+    "README",
+    "RPC",
+    "API",
+    "PORT",
+    "PATH",
+    "PTY",
+    "DEFAULT_OUTPUT_BYTES_CAP",
+    "IFS",
+    "ZWN",
+    "URL",
+    "DEFAULT_LISTEN_URL",
+    "INITIALIZE_METHOD",
+    "INITIALIZED_METHOD",
+    "CONNECT_TIMEOUT",
+    "INITIALIZE_TIMEOUT",
+    "JSONRPCM",
+    "CHANNEL_CAPACITY",
+    "--listen",
+    "JSONRPCE",
+    "JSONRPCN",
+    "JSONRPCR"
+  ],
+  "files": [
+    {
+      "additions": 20,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2003,6 +2003,26 @@ dependencies = [\n  \"wiremock\",\n ]\n \n+[[package]]\n+name = \"codex-exec-server\"\n+version = \"0.0.0\"\n+dependencies = [\n+ \"anyhow\",\n+ \"base64 0.22.1\",\n+ \"clap\",\n+ \"codex-app-server-protocol\",\n+ \"codex-utils-cargo-bin\",\n+ \"codex-utils-pty\",\n+ \"futures\",\n+ \"pretty_assertions\",\n+ \"serde\",\n+ \"serde_json\",\n+ \"thiserror 2.0.18\",\n+ \"tokio\",\n+ \"tokio-tungstenite\",\n+ \"tracing\",\n+]\n+\n [[package]]\n name = \"codex-execpolicy\"\n version = \"0.0.0\"",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -26,6 +26,7 @@ members = [\n     \"hooks\",\n     \"secrets\",\n     \"exec\",\n+    \"exec-server\",\n     \"execpolicy\",\n     \"execpolicy-legacy\",\n     \"keyring-store\",",
+      "path": "codex-rs/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,7 @@\n+load(\"//:defs.bzl\", \"codex_rust_crate\")\n+\n+codex_rust_crate(\n+    name = \"exec-server\",\n+    crate_name = \"codex_exec_server\",\n+    test_tags = [\"no-sandbox\"],\n+)",
+      "path": "codex-rs/exec-server/BUILD.bazel",
+      "status": "added"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,40 @@\n+[package]\n+name = \"codex-exec-server\"\n+version.workspace = true\n+edition.workspace = true\n+license.workspace = true\n+\n+[lib]\n+doctest = false\n+\n+[[bin]]\n+name = \"codex-exec-server\"\n+path = \"src/bin/codex-exec-server.rs\"\n+\n+[lints]\n+workspace = true\n+\n+[dependencies]\n+clap = { workspace = true, features = [\"derive\"] }\n+codex-app-server-protocol = { workspace = true }\n+futures = { workspace = true }\n+serde = { workspace = true, features = [\"derive\"] }\n+serde_json = { workspace = true }\n+thiserror = { workspace = true }\n+tokio = { workspace = true, features = [\n+    \"io-std\",\n+    \"io-util\",\n+    \"macros\",\n+    \"net\",\n+    \"process\",\n+    \"rt-multi-thread\",\n+    \"sync\",\n+    \"time\",\n+] }\n+tokio-tungstenite = { workspace = true }\n+tracing = { workspace = true }\n+\n+[dev-dependencies]\n+anyhow = { workspace = true }\n+codex-utils-cargo-bin = { workspace = true }\n+pretty_asserti...",
+      "path": "codex-rs/exec-server/Cargo.toml",
+      "status": "added"
+    },
+    {
+      "additions": 282,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,282 @@\n+# codex-exec-server\n+\n+`codex-exec-server` is a small standalone JSON-RPC server for spawning\n+and controlling subprocesses through `codex-utils-pty`.\n+\n+This PR intentionally lands only the standalone binary, client, wire protocol,\n+and docs. Exec and filesystem methods are stubbed server-side here and are\n+implemented in follow-up PRs.\n+\n+It currently provides:\n+\n+- a standalone binary: `codex-exec-server`\n+- a Rust client: `ExecServerClient`\n+- a small protocol module with shared request/response types\n+\n+This crate is intentionally narrow. It is not wired into the main Codex CLI or\n+unified-exec in this PR; it is only the standalone transport layer.\n+\n+## Transport\n+\n+The server speaks the shared `codex-app-server-protocol` message envelope on\n+the wire.\n+\n+The standalone binary supports:\n+\n+- `ws://IP:PORT` (default)\n+- `stdio://`\n+\n+Wire framing:\n+\n+- websocket: ...",
+      "path": "codex-rs/exec-server/README.md",
+      "status": "added"
+    },
+    {
+      "additions": 20,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,20 @@\n+use clap::Parser;\n+use codex_exec_server::ExecServerTransport;\n+\n+#[derive(Debug, Parser)]\n+struct ExecServerArgs {\n+    /// Transport endpoint URL. Supported values: `ws://IP:PORT` (default),\n+    /// `stdio://`.\n+    #[arg(\n+        long = \"listen\",\n+        value_name = \"URL\",\n+        default_value = ExecServerTransport::DEFAULT_LISTEN_URL\n+    )]\n+    listen: ExecServerTransport,\n+}\n+\n+#[tokio::main]\n+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {\n+    let args = ExecServerArgs::parse();\n+    codex_exec_server::run_main_with_transport(args.listen).await\n+}",
+      "path": "codex-rs/exec-server/src/bin/codex-exec-server.rs",
+      "status": "added"
+    },
+    {
+      "additions": 267,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,267 @@\n+use std::sync::Arc;\n+use std::time::Duration;\n+\n+use tokio::io::AsyncRead;\n+use tokio::io::AsyncWrite;\n+use tokio::time::timeout;\n+use tokio_tungstenite::connect_async;\n+use tracing::warn;\n+\n+use crate::client_api::ExecServerClientConnectOptions;\n+use crate::client_api::RemoteExecServerConnectArgs;\n+use crate::connection::JsonRpcConnection;\n+use crate::protocol::INITIALIZE_METHOD;\n+use crate::protocol::INITIALIZED_METHOD;\n+use crate::protocol::InitializeParams;\n+use crate::protocol::InitializeResponse;\n+use crate::rpc::RpcCallError;\n+use crate::rpc::RpcClient;\n+use crate::rpc::RpcClientEvent;\n+\n+mod local_backend;\n+use local_backend::LocalBackend;\n+\n+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);\n+const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);\n+\n+impl Default for ExecServerClientConnectOptions {\n+    fn default() -> Self {\n+        Self {\n+  ...",
+      "path": "codex-rs/exec-server/src/client.rs",
+      "status": "added"
+    },
+    {
+      "additions": 38,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,38 @@\n+use std::sync::Arc;\n+\n+use crate::protocol::InitializeResponse;\n+use crate::server::ExecServerHandler;\n+\n+use super::ExecServerError;\n+\n+#[derive(Clone)]\n+pub(super) struct LocalBackend {\n+    handler: Arc<ExecServerHandler>,\n+}\n+\n+impl LocalBackend {\n+    pub(super) fn new(handler: ExecServerHandler) -> Self {\n+        Self {\n+            handler: Arc::new(handler),\n+        }\n+    }\n+\n+    pub(super) async fn shutdown(&self) {\n+        self.handler.shutdown().await;\n+    }\n+\n+    pub(super) async fn initialize(&self) -> Result<InitializeResponse, ExecServerError> {\n+        self.handler\n+            .initialize()\n+            .map_err(|error| ExecServerError::Server {\n+                code: error.code,\n+                message: error.message,\n+            })\n+    }\n+\n+    pub(super) async fn initialized(&self) -> Result<(), ExecServerError> {\n+        self.handler\n+  ...",
+      "path": "codex-rs/exec-server/src/client/local_backend.rs",
+      "status": "added"
+    },
+    {
+      "additions": 17,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,17 @@\n+use std::time::Duration;\n+\n+/// Connection options for any exec-server client transport.\n+#[derive(Debug, Clone, PartialEq, Eq)]\n+pub struct ExecServerClientConnectOptions {\n+    pub client_name: String,\n+    pub initialize_timeout: Duration,\n+}\n+\n+/// WebSocket connection arguments for a remote exec-server.\n+#[derive(Debug, Clone, PartialEq, Eq)]\n+pub struct RemoteExecServerConnectArgs {\n+    pub websocket_url: String,\n+    pub client_name: String,\n+    pub connect_timeout: Duration,\n+    pub initialize_timeout: Duration,\n+}",
+      "path": "codex-rs/exec-server/src/client_api.rs",
+      "status": "added"
+    },
+    {
+      "additions": 275,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,275 @@\n+use codex_app_server_protocol::JSONRPCMessage;\n+use futures::SinkExt;\n+use futures::StreamExt;\n+use tokio::io::AsyncBufReadExt;\n+use tokio::io::AsyncRead;\n+use tokio::io::AsyncWrite;\n+use tokio::io::AsyncWriteExt;\n+use tokio::io::BufReader;\n+use tokio::io::BufWriter;\n+use tokio::sync::mpsc;\n+use tokio_tungstenite::WebSocketStream;\n+use tokio_tungstenite::tungstenite::Message;\n+\n+pub(crate) const CHANNEL_CAPACITY: usize = 128;\n+\n+#[derive(Debug)]\n+pub(crate) enum JsonRpcConnectionEvent {\n+    Message(JSONRPCMessage),\n+    MalformedMessage { reason: String },\n+    Disconnected { reason: Option<String> },\n+}\n+\n+pub(crate) struct JsonRpcConnection {\n+    outgoing_tx: mpsc::Sender<JSONRPCMessage>,\n+    incoming_rx: mpsc::Receiver<JsonRpcConnectionEvent>,\n+    task_handles: Vec<tokio::task::JoinHandle<()>>,\n+}\n+\n+impl JsonRpcConnection {\n+    pub(crate) fn from_stdio<R, W>(r...",
+      "path": "codex-rs/exec-server/src/connection.rs",
+      "status": "added"
+    },
+    {
+      "additions": 21,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,21 @@\n+mod client;\n+mod client_api;\n+mod connection;\n+mod local;\n+mod protocol;\n+mod rpc;\n+mod server;\n+\n+pub use client::ExecServerClient;\n+pub use client::ExecServerError;\n+pub use client_api::ExecServerClientConnectOptions;\n+pub use client_api::RemoteExecServerConnectArgs;\n+pub use local::ExecServerLaunchCommand;\n+pub use local::SpawnedExecServer;\n+pub use local::spawn_local_exec_server;\n+pub use protocol::InitializeParams;\n+pub use protocol::InitializeResponse;\n+pub use server::ExecServerTransport;\n+pub use server::ExecServerTransportParseError;\n+pub use server::run_main;\n+pub use server::run_main_with_transport;",
+      "path": "codex-rs/exec-server/src/lib.rs",
+      "status": "added"
+    },
+    {
+      "additions": 71,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,71 @@\n+use std::path::PathBuf;\n+use std::process::Stdio;\n+use std::sync::Mutex as StdMutex;\n+\n+use tokio::process::Child;\n+use tokio::process::Command;\n+\n+use crate::client::ExecServerClient;\n+use crate::client::ExecServerError;\n+use crate::client_api::ExecServerClientConnectOptions;\n+\n+#[derive(Debug, Clone, PartialEq, Eq)]\n+pub struct ExecServerLaunchCommand {\n+    pub program: PathBuf,\n+    pub args: Vec<String>,\n+}\n+\n+pub struct SpawnedExecServer {\n+    client: ExecServerClient,\n+    child: StdMutex<Option<Child>>,\n+}\n+\n+impl SpawnedExecServer {\n+    pub fn client(&self) -> &ExecServerClient {\n+        &self.client\n+    }\n+}\n+\n+impl Drop for SpawnedExecServer {\n+    fn drop(&mut self) {\n+        if let Ok(mut child_guard) = self.child.lock()\n+            && let Some(child) = child_guard.as_mut()\n+        {\n+            let _ = child.start_kill();\n+        }\n+    }\n+}\n+\n+pu...",
+      "path": "codex-rs/exec-server/src/local.rs",
+      "status": "added"
+    },
+    {
+      "additions": 15,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,15 @@\n+use serde::Deserialize;\n+use serde::Serialize;\n+\n+pub const INITIALIZE_METHOD: &str = \"initialize\";\n+pub const INITIALIZED_METHOD: &str = \"initialized\";\n+\n+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]\n+#[serde(rename_all = \"camelCase\")]\n+pub struct InitializeParams {\n+    pub client_name: String,\n+}\n+\n+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]\n+#[serde(rename_all = \"camelCase\")]\n+pub struct InitializeResponse {}",
+      "path": "codex-rs/exec-server/src/protocol.rs",
+      "status": "added"
+    },
+    {
+      "additions": 347,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,347 @@\n+use std::collections::HashMap;\n+use std::sync::Arc;\n+use std::sync::atomic::AtomicI64;\n+use std::sync::atomic::Ordering;\n+\n+use codex_app_server_protocol::JSONRPCError;\n+use codex_app_server_protocol::JSONRPCErrorError;\n+use codex_app_server_protocol::JSONRPCMessage;\n+use codex_app_server_protocol::JSONRPCNotification;\n+use codex_app_server_protocol::JSONRPCRequest;\n+use codex_app_server_protocol::JSONRPCResponse;\n+use codex_app_server_protocol::RequestId;\n+use serde::Serialize;\n+use serde::de::DeserializeOwned;\n+use serde_json::Value;\n+use tokio::sync::Mutex;\n+use tokio::sync::mpsc;\n+use tokio::sync::oneshot;\n+use tokio::task::JoinHandle;\n+use tracing::warn;\n+\n+use crate::connection::JsonRpcConnection;\n+use crate::connection::JsonRpcConnectionEvent;\n+\n+type PendingRequest = oneshot::Sender<Result<Value, JSONRPCErrorError>>;\n+\n+#[derive(Debug)]\n+pub(crate) enum RpcClie...",
+      "path": "codex-rs/exec-server/src/rpc.rs",
+      "status": "added"
+    },
+    {
+      "additions": 18,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,18 @@\n+mod handler;\n+mod jsonrpc;\n+mod processor;\n+mod transport;\n+\n+pub(crate) use handler::ExecServerHandler;\n+pub use transport::ExecServerTransport;\n+pub use transport::ExecServerTransportParseError;\n+\n+pub async fn run_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {\n+    run_main_with_transport(ExecServerTransport::Stdio).await\n+}\n+\n+pub async fn run_main_with_transport(\n+    transport: ExecServerTransport,\n+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {\n+    transport::run_transport(transport).await\n+}",
+      "path": "codex-rs/exec-server/src/server.rs",
+      "status": "added"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,40 @@\n+use std::sync::atomic::AtomicBool;\n+use std::sync::atomic::Ordering;\n+\n+use codex_app_server_protocol::JSONRPCErrorError;\n+\n+use crate::protocol::InitializeResponse;\n+use crate::server::jsonrpc::invalid_request;\n+\n+pub(crate) struct ExecServerHandler {\n+    initialize_requested: AtomicBool,\n+    initialized: AtomicBool,\n+}\n+\n+impl ExecServerHandler {\n+    pub(crate) fn new() -> Self {\n+        Self {\n+            initialize_requested: AtomicBool::new(false),\n+            initialized: AtomicBool::new(false),\n+        }\n+    }\n+\n+    pub(crate) async fn shutdown(&self) {}\n+\n+    pub(crate) fn initialize(&self) -> Result<InitializeResponse, JSONRPCErrorError> {\n+        if self.initialize_requested.swap(true, Ordering::SeqCst) {\n+            return Err(invalid_request(\n+                \"initialize may only be sent once per connection\".to_string(),\n+            ));\n+       ...",
+      "path": "codex-rs/exec-server/src/server/handler.rs",
+      "status": "added"
+    },
+    {
+      "additions": 53,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,53 @@\n+use codex_app_server_protocol::JSONRPCError;\n+use codex_app_server_protocol::JSONRPCErrorError;\n+use codex_app_server_protocol::JSONRPCMessage;\n+use codex_app_server_protocol::JSONRPCResponse;\n+use codex_app_server_protocol::RequestId;\n+use serde_json::Value;\n+\n+pub(crate) fn invalid_request(message: String) -> JSONRPCErrorError {\n+    JSONRPCErrorError {\n+        code: -32600,\n+        data: None,\n+        message,\n+    }\n+}\n+\n+pub(crate) fn invalid_params(message: String) -> JSONRPCErrorError {\n+    JSONRPCErrorError {\n+        code: -32602,\n+        data: None,\n+        message,\n+    }\n+}\n+\n+pub(crate) fn method_not_found(message: String) -> JSONRPCErrorError {\n+    JSONRPCErrorError {\n+        code: -32601,\n+        data: None,\n+        message,\n+    }\n+}\n+\n+pub(crate) fn response_message(\n+    request_id: RequestId,\n+    result: Result<Value, JSONRPCErrorError>,\n+)...",
+      "path": "codex-rs/exec-server/src/server/jsonrpc.rs",
+      "status": "added"
+    },
+    {
+      "additions": 121,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,121 @@\n+use codex_app_server_protocol::JSONRPCMessage;\n+use codex_app_server_protocol::JSONRPCNotification;\n+use codex_app_server_protocol::JSONRPCRequest;\n+use tracing::debug;\n+\n+use crate::connection::JsonRpcConnection;\n+use crate::connection::JsonRpcConnectionEvent;\n+use crate::protocol::INITIALIZE_METHOD;\n+use crate::protocol::INITIALIZED_METHOD;\n+use crate::protocol::InitializeParams;\n+use crate::server::ExecServerHandler;\n+use crate::server::jsonrpc::invalid_params;\n+use crate::server::jsonrpc::invalid_request_message;\n+use crate::server::jsonrpc::method_not_found;\n+use crate::server::jsonrpc::response_message;\n+use tracing::warn;\n+\n+pub(crate) async fn run_connection(connection: JsonRpcConnection) {\n+    let (json_outgoing_tx, mut incoming_rx, _connection_tasks) = connection.into_parts();\n+    let handler = ExecServerHandler::new();\n+\n+    while let Some(event) = incomi...",
+      "path": "codex-rs/exec-server/src/server/processor.rs",
+      "status": "added"
+    },
+    {
+      "additions": 118,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,118 @@\n+use std::net::SocketAddr;\n+use std::str::FromStr;\n+\n+use tokio::net::TcpListener;\n+use tokio_tungstenite::accept_async;\n+use tracing::warn;\n+\n+use crate::connection::JsonRpcConnection;\n+use crate::server::processor::run_connection;\n+\n+#[derive(Clone, Copy, Debug, Eq, PartialEq)]\n+pub enum ExecServerTransport {\n+    Stdio,\n+    WebSocket { bind_address: SocketAddr },\n+}\n+\n+#[derive(Debug, Clone, Eq, PartialEq)]\n+pub enum ExecServerTransportParseError {\n+    UnsupportedListenUrl(String),\n+    InvalidWebSocketListenUrl(String),\n+}\n+\n+impl std::fmt::Display for ExecServerTransportParseError {\n+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n+        match self {\n+            ExecServerTransportParseError::UnsupportedListenUrl(listen_url) => write!(\n+                f,\n+                \"unsupported --listen URL `{listen_url}`; expected `stdio://` or...",
+      "path": "codex-rs/exec-server/src/server/transport.rs",
+      "status": "added"
+    },
+    {
+      "additions": 54,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,54 @@\n+use pretty_assertions::assert_eq;\n+\n+use super::ExecServerTransport;\n+\n+#[test]\n+fn exec_server_transport_parses_default_websocket_listen_url() {\n+    let transport = ExecServerTransport::from_listen_url(ExecServerTransport::DEFAULT_LISTEN_URL)\n+        .expect(\"default listen URL should parse\");\n+    assert_eq!(\n+        transport,\n+        ExecServerTransport::WebSocket {\n+            bind_address: \"127.0.0.1:0\".parse().expect(\"valid socket address\"),\n+        }\n+    );\n+}\n+\n+#[test]\n+fn exec_server_transport_parses_stdio_listen_url() {\n+    let transport =\n+        ExecServerTransport::from_listen_url(\"stdio://\").expect(\"stdio listen URL should parse\");\n+    assert_eq!(transport, ExecServerTransport::Stdio);\n+}\n+\n+#[test]\n+fn exec_server_transport_parses_websocket_listen_url() {\n+    let transport = ExecServerTransport::from_listen_url(\"ws://127.0.0.1:1234\")\n+       ...",
+      "path": "codex-rs/exec-server/src/server/transport_tests.rs",
+      "status": "added"
+    },
+    {
+      "additions": 129,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,129 @@\n+#![cfg(unix)]\n+\n+use std::process::Stdio;\n+use std::time::Duration;\n+\n+use codex_app_server_protocol::JSONRPCMessage;\n+use codex_app_server_protocol::JSONRPCNotification;\n+use codex_app_server_protocol::JSONRPCRequest;\n+use codex_app_server_protocol::JSONRPCResponse;\n+use codex_app_server_protocol::RequestId;\n+use codex_exec_server::InitializeParams;\n+use codex_exec_server::InitializeResponse;\n+use codex_utils_cargo_bin::cargo_bin;\n+use pretty_assertions::assert_eq;\n+use tokio::io::AsyncBufReadExt;\n+use tokio::io::AsyncWriteExt;\n+use tokio::io::BufReader;\n+use tokio::process::Command;\n+use tokio::time::timeout;\n+\n+#[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n+async fn exec_server_accepts_initialize_over_stdio() -> anyhow::Result<()> {\n+    let binary = cargo_bin(\"codex-exec-server\")?;\n+    let mut child = Command::new(binary);\n+    child.args([\"--listen\"...",
+      "path": "codex-rs/exec-server/tests/stdio_smoke.rs",
+      "status": "added"
+    },
+    {
+      "additions": 229,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,229 @@\n+#![cfg(unix)]\n+\n+use std::process::Stdio;\n+use std::time::Duration;\n+\n+use codex_app_server_protocol::JSONRPCError;\n+use codex_app_server_protocol::JSONRPCMessage;\n+use codex_app_server_protocol::JSONRPCNotification;\n+use codex_app_server_protocol::JSONRPCRequest;\n+use codex_app_server_protocol::JSONRPCResponse;\n+use codex_app_server_protocol::RequestId;\n+use codex_exec_server::InitializeParams;\n+use codex_exec_server::InitializeResponse;\n+use codex_utils_cargo_bin::cargo_bin;\n+use pretty_assertions::assert_eq;\n+use tokio::process::Command;\n+use tokio_tungstenite::connect_async;\n+use tokio_tungstenite::tungstenite::Message;\n+\n+#[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n+async fn exec_server_accepts_initialize_over_websocket() -> anyhow::Result<()> {\n+    let binary = cargo_bin(\"codex-exec-server\")?;\n+    let websocket_url = reserve_websocket_url()?;\n+ ...",
+      "path": "codex-rs/exec-server/tests/websocket_smoke.rs",
+      "status": "added"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "Stacked PR 1/3.\n\nThis is the initialize-only exec-server stub slice: binary/client scaffolding and protocol docs, without exec/filesystem implementation.",
+    "labels": [],
+    "merged_at": "2026-03-19T00:30:05Z",
+    "number": 15089,
+    "state": "merged",
+    "title": "Add exec-server stub server and protocol docs",
+    "url": "https://github.com/openai/codex/pull/15089"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

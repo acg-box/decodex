@@ -1,0 +1,21 @@
+{
+  "caveats": [
+    "This warning is scoped to the TUI startup path and only appears when Codex detects custom prompts in `$CODEX_HOME/prompts`."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "The TUI should show a startup warning only when one or more custom prompts are present, including the detected prompt count and migration guidance toward skills.",
+  "how_to_try": "Run a Codex build that includes PR #15076, place at least one custom prompt file under `$CODEX_HOME/prompts`, start the TUI, and confirm a deprecation notice appears at startup telling you to convert prompts into skills with `$skill-creator`.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR title and body explicitly frame the change as a startup deprecation warning for custom prompts, shown only when prompts are detected in `$CODEX_HOME/prompts`.",
+    "The main code change is in `tui/src/app.rs`, where startup now counts discovered custom prompts and inserts a deprecation notice that tells users to use the `$skill-creator` skill.",
+    "The bundle includes a new snapshot showing the rendered warning text, and the PR body says tests were added for present, missing, and empty prompts directories, which supports this as an intentional user-visible behavior change."
+  ],
+  "slug": "custom-prompts-show-startup-deprecation-warning",
+  "summary": "Merged PR #15076 adds a startup deprecation notice in the Codex TUI when it finds custom prompts under `$CODEX_HOME/prompts`, with guidance to migrate them to skills.",
+  "title": "Codex TUI now warns at startup when legacy custom prompts are present",
+  "watch_state": "Watch for the follow-up release that actually removes custom prompt support, since this PR is an advance warning rather than the removal itself.",
+  "why_it_matters": "Users still relying on legacy custom prompts now get an explicit migration warning before that path disappears. That reduces surprise from the deprecation and points them at the supported replacement instead of leaving the breakage to a later release."
+}

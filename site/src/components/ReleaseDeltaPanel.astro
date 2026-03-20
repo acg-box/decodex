@@ -21,6 +21,11 @@ const previewOptions = delta.release_options.preview;
 const stableByTag = new Map(stableOptions.map((release) => [release.tag_name, release]));
 const previewByTag = new Map(previewOptions.map((release) => [release.tag_name, release]));
 const activeComparison = defaultComparison(delta);
+
+function isFocusedSignal(signal: SignalCardData): boolean {
+  return signal.impact !== "low" || signal.kind === "try_now" || Boolean(signal.how_to_try);
+}
+
 const comparisonEntries = delta.comparisons
   .map((comparison) => {
     const stable = stableByTag.get(comparison.stable_tag_name);
@@ -28,14 +33,14 @@ const comparisonEntries = delta.comparisons
     if (!stable || !preview) {
       return null;
     }
-    const featuredSignals = trackedSignalsForSlugs(comparison.tracked_signal_slugs, trackedSignals).slice(0, 3);
+    const featuredSignals = trackedSignalsForSlugs(comparison.tracked_signal_slugs, trackedSignals);
+    const focusedSignals = featuredSignals.filter(isFocusedSignal);
     return {
       ...comparison,
       stable,
       preview,
       featuredSignals,
-      hiddenSignalCount: Math.max(0, comparison.tracked_signal_slugs.length - featuredSignals.length),
-      untrackedCommitCount: Math.max(0, comparison.compare.total_commits - comparison.tracked_signal_slugs.length),
+      focusedSignals,
       key: comparisonKey(comparison.stable_tag_name, comparison.prerelease_tag_name),
     };
   })
@@ -56,6 +61,7 @@ const comparisonKeysByStable = Object.fromEntries(
   aria-labelledby="release-delta-heading"
   data-release-comparator
   data-compare-map={JSON.stringify(comparisonKeysByStable)}
+  data-highlight-mode="focus"
 >
   <div class="release-delta__intro">
     <h2 class="release-delta__headline" id="release-delta-heading">Preview changes</h2>
@@ -114,17 +120,49 @@ const comparisonKeysByStable = Object.fromEntries(
 
       <div class="release-delta__highlights">
         <div class="release-delta__highlights-header">
-          <p class="release-delta__panel-label">Worth trying first</p>
-          <p class="release-delta__highlights-copy">
-            The clearest preview-only changes for this version pair.
-          </p>
+          <div class="release-delta__highlights-heading">
+            <div>
+              <p class="release-delta__panel-label">Tracked changes</p>
+              <p class="release-delta__highlights-copy">
+                <span data-highlight-copy-focus>
+                  {entry.focusedSignals.length} changes stand out first for this version pair.
+                </span>
+                <span data-highlight-copy-all hidden>
+                  {entry.featuredSignals.length} tracked changes for this version pair.
+                </span>
+              </p>
+            </div>
+            <div class="release-delta__mode-switch" role="tablist" aria-label="Preview change visibility">
+              <button
+                class="release-delta__mode-button is-active"
+                type="button"
+                data-highlight-toggle="focus"
+                aria-pressed="true"
+              >
+                Focus
+              </button>
+              <button
+                class="release-delta__mode-button"
+                type="button"
+                data-highlight-toggle="all"
+                aria-pressed="false"
+              >
+                All
+              </button>
+            </div>
+          </div>
         </div>
 
         {
           entry.featuredSignals.length > 0 ? (
             <ol class="release-delta__highlight-list">
               {entry.featuredSignals.map((signal) => (
-                <li class="release-highlight">
+                <li
+                  class="release-highlight"
+                  data-highlight-item
+                  data-highlight-focus={isFocusedSignal(signal) ? "true" : "false"}
+                  hidden={!isFocusedSignal(signal)}
+                >
                   <div class="release-highlight__meta">
                     <span>{kindLabel(signal.kind)}</span>
                   </div>
@@ -169,11 +207,6 @@ const comparisonKeysByStable = Object.fromEntries(
           )
         }
 
-        {entry.hiddenSignalCount > 0 ? (
-          <p class="release-delta__more">
-            {entry.hiddenSignalCount} more tracked preview signal{entry.hiddenSignalCount === 1 ? "" : "s"} continue in the feed below.
-          </p>
-        ) : null}
       </div>
     </div>
   ))}
@@ -207,13 +240,43 @@ const comparisonKeysByStable = Object.fromEntries(
           });
         }
 
+        function syncHighlightMode() {
+          var mode = root.getAttribute("data-highlight-mode") || "focus";
+          root.querySelectorAll("[data-highlight-toggle]").forEach(function (button) {
+            var active = button.getAttribute("data-highlight-toggle") === mode;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+          });
+          root.querySelectorAll("[data-highlight-copy-focus]").forEach(function (node) {
+            node.hidden = mode !== "focus";
+          });
+          root.querySelectorAll("[data-highlight-copy-all]").forEach(function (node) {
+            node.hidden = mode !== "all";
+          });
+          root.querySelectorAll("[data-compare-panel]").forEach(function (panel) {
+            var focusedItems = panel.querySelectorAll('[data-highlight-item][data-highlight-focus="true"]');
+            var hasFocused = focusedItems.length > 0;
+            panel.querySelectorAll("[data-highlight-item]").forEach(function (item) {
+              var focusOnly = item.getAttribute("data-highlight-focus") === "true";
+              item.hidden = mode === "focus" ? (hasFocused ? !focusOnly : false) : false;
+            });
+          });
+        }
+
         function apply() {
           syncPreviewOptions(stableSelect.value);
           syncPanels();
+          syncHighlightMode();
         }
 
         stableSelect.addEventListener("change", apply);
-        previewSelect.addEventListener("change", syncPanels);
+        previewSelect.addEventListener("change", apply);
+        root.querySelectorAll("[data-highlight-toggle]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            root.setAttribute("data-highlight-mode", button.getAttribute("data-highlight-toggle") || "focus");
+            syncHighlightMode();
+          });
+        });
         apply();
       }
 

@@ -5,6 +5,8 @@ This directory owns the deterministic GitHub-first Decodex pipeline.
 Current scripts:
 
 - `build_change_bundle.py`
+- `run_codex_analysis.py`
+- `sync_latest_signals.py`
 - `validate_change_bundle.py`
 - `render_signal_entry.py`
 - `validate_signal_entry.py`
@@ -32,5 +34,6 @@ python3 tools/github/validate_signal_entry.py \
 ```
 
 These scripts stay deterministic on purpose. Local Codex analysis produces the
-editorial draft JSON consumed by `render_signal_entry.py`; CI should not call the
-AI step.
+editorial draft JSON consumed by `render_signal_entry.py`. Trusted automation may
+invoke the Codex analysis step as long as `auth.json` is injected into
+`CODEX_HOME` and no credentials are logged or persisted into the repo.

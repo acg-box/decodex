@@ -1,0 +1,21 @@
+{
+  "caveats": [
+    "The PR body says Codex App and VS Code need a minor follow-up change to recognize directory mentions and adjust link behavior, so downstream client UX may lag the protocol change."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "Directory matches should be marked distinctly from file matches, with folder mentions rendered using a trailing slash and available for client-specific link behavior.",
+  "how_to_try": "On a build that includes PR #14970, trigger fuzzy file search or mention completion for a known folder and a similarly named file, then inspect the returned mention/search result payloads or UI labels for directory-specific handling.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR title and body explicitly frame the change as adding simple directory-mention support in the TUI, with trailing slashes used to distinguish directories from extensionless files.",
+    "The Rust search model in `codex-rs/file-search` adds a `MatchType` on search results, and the app-server mapping forwards that as `FuzzyFileSearchMatchType` with `file` and `directory` variants.",
+    "Generated JSON/TypeScript protocol schemas now require `match_type` on `FuzzyFileSearchResult`, and fuzzy-file-search tests were updated to expect the new field, confirming this is a real behavior-contract change rather than internal cleanup."
+  ],
+  "slug": "directory-mentions-distinguish-files-and-folders",
+  "summary": "Merged PR #14970 adds basic directory-mention support by carrying directory vs. file match metadata through fuzzy file search results and related protocol schemas.",
+  "title": "Codex now distinguishes directory mentions from file mentions",
+  "watch_state": "Watch for follow-up client updates that consume `match_type` and fully differentiate folder links outside the TUI.",
+  "why_it_matters": "This makes path mentions less ambiguous in the TUI and gives clients enough information to treat folders differently from files. For users, that should reduce mistaken links for extensionless paths and make folder references clearer."
+}
