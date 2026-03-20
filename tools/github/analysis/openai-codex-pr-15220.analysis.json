@@ -1,0 +1,16 @@
+{
+  "confidence": "confirmed",
+  "expected_effect": "API v2 clients should receive `starting`, `ready`, `failed`, or `cancelled` MCP startup updates, including the server name and optional error details.",
+  "how_to_try": "Connect to the app-server v2 notification stream, trigger an MCP server startup or refresh, and listen for `mcpServer/startupStatus/updated` events.",
+  "impact": "medium",
+  "kind": "try_now",
+  "proof_points": [
+    "The PR body explicitly says the legacy MCP startup update event is now exposed as an API v2 notification.",
+    "The protocol schemas add both `McpServerStartupState` and `McpServerStatusUpdatedNotification`, which defines the new event contract.",
+    "The server notification schema now registers `mcpServer/startupStatus/updated` as a first-class v2 notification method."
+  ],
+  "slug": "mcp-startup-status-updated-notification",
+  "summary": "Merged PR #15220 promotes MCP startup progress to a first-class API v2 notification instead of leaving it as a legacy internal event.",
+  "title": "`mcpServer/startupStatus/updated` lands in API v2",
+  "why_it_matters": "Clients can track MCP readiness without scraping legacy events. That makes plugin UIs, status surfaces, and startup diagnostics easier to build and less brittle."
+}

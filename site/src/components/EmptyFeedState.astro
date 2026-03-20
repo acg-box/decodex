@@ -1,0 +1,42 @@
+---
+import type { FilterId } from "@/lib/signal-feed";
+
+type Props = {
+  activeFilter: FilterId;
+};
+
+const { activeFilter } = Astro.props;
+
+const messages: Record<FilterId, { title: string; body: string }> = {
+  all: {
+    title: "No GitHub signals have been published yet.",
+    body: "The feed shell is live, but no validated signal entries have landed in the collection.",
+  },
+  github: {
+    title: "No GitHub signals match this view yet.",
+    body: "The current collection is empty or still waiting for the first rendered GitHub-backed signal.",
+  },
+  "try-now": {
+    title: "No try-now entries match yet.",
+    body: "This filter only shows signals with a concrete user test path.",
+  },
+  "high-impact": {
+    title: "No high-impact entries yet.",
+    body: "High-impact is reserved for the smaller set of changes that clearly alter how users should think about Codex.",
+  },
+};
+
+const message = messages[activeFilter];
+---
+
+<section class="border border-dashed border-[color:var(--border-strong)] bg-[color:var(--panel)] px-5 py-6">
+  <p class="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-[color:var(--muted-soft)]">
+    Empty feed state
+  </p>
+  <h2 class="mt-3 text-[1.7rem] leading-tight text-[color:var(--ink)]">
+    {message.title}
+  </h2>
+  <p class="mt-3 max-w-2xl text-[0.96rem] leading-7 text-[color:var(--ink-soft)]">
+    {message.body}
+  </p>
+</section>

@@ -1,0 +1,37 @@
+{
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "Resumed threads should show earlier image-generation items and preserve saved image paths instead of dropping that part of the history.",
+  "how_to_try": "Resume a thread that previously generated images, then inspect the thread history and completed items for restored image entries and saved paths.",
+  "impact": "medium",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly says image-generation items should be restored in resumed thread history.",
+    "The protocol schemas add a `savedPath` field to image-related notifications and thread responses so image history can carry the persisted file location.",
+    "The commit sequence includes `Persist image generation end events for history replay` and `Add tests for resumed image history preservation`, which confirms this is an intended behavior change."
+  ],
+  "published_at": "2026-03-20T05:57:17Z",
+  "schema": "signal_entry/v1",
+  "slug": "resumed-threads-restore-image-history",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/f065885e2c82c85a3f62148571ca52a0a26e3f8f",
+      "https://github.com/openai/codex/commit/005e6fc0cfe750bcf8c6d98130fcb5e854aefd4f",
+      "https://github.com/openai/codex/commit/e870aae4dbb47ee7e65daa46031bebc272d9b865",
+      "https://github.com/openai/codex/commit/85464fb6329466858d26c7646e5362121baa6287",
+      "https://github.com/openai/codex/commit/f1a6367e2d0514887f96b001b6a236c178654bbd",
+      "https://github.com/openai/codex/commit/ace552c658ff7c118523c4a37c72a4d088868968",
+      "https://github.com/openai/codex/commit/b1ed4a7cb50fedd801033ba1532586548249606b",
+      "https://github.com/openai/codex/commit/050a4783b9da451f169a9fafb76e05efa90daa34",
+      "https://github.com/openai/codex/commit/66aa6d19363847463f3283d9462a03583b1ad2f1",
+      "https://github.com/openai/codex/commit/6e7d37205eca1e7f2f9915b9306163d4bd7dbbdd",
+      "https://github.com/openai/codex/commit/0552a98268e50d0397f6fcde32020648a530ebb1"
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15223",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15223 restores image-generation items in resumed thread history and preserves the saved paths tied to those earlier outputs.",
+  "title": "Resumed threads now restore generated image history",
+  "why_it_matters": "Image work no longer disappears when you come back to an older thread. That makes long-running image sessions easier to resume, audit, and copy from without losing the earlier generation context."
+}
