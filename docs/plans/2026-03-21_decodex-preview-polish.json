@@ -1,0 +1,63 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "2026-03-21_decodex-preview-polish",
+    "goal": "Polish the redesigned Preview changes module by removing the inline selector arrow chrome and making in-page Full signal jumps scroll smoothly instead of snapping.",
+    "success_criteria": [
+      "Inline stable/preview selectors no longer show the decorative dropdown arrow treatment.",
+      "Clicking Full signal animates to the target card smoothly instead of snapping abruptly.",
+      "Site build and check still pass."
+    ],
+    "constraints": [
+      "Do not change the current preview comparator information architecture.",
+      "Keep the polish limited to styling and in-page scroll behavior."
+    ],
+    "defaults": {
+      "workdir": "/Users/xavier/code/trusted/y/hack-ink/decodex/.workspaces/feat-decodex-github-first"
+    },
+    "tasks": [
+      {
+        "id": "task-01-preview-polish",
+        "title": "Polish selector chrome and in-page scrolling",
+        "status": "done",
+        "objective": "Adjust CSS so the inline version selectors feel cleaner in the Tokyo Night layout and enable smooth scrolling for in-page signal links.",
+        "inputs": [
+          "site/src/styles/global.css",
+          "site/src/components/ReleaseDeltaPanel.astro"
+        ],
+        "outputs": [
+          "Cleaner inline selectors and smooth in-page Full signal navigation."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": []
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "The scroll behavior needs JavaScript control beyond CSS smooth scrolling.",
+        "Removing the selector arrow makes the control ambiguous or inaccessible."
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "Removed the decorative dropdown arrow treatment from the inline stable/preview selectors so they read as cleaner text-like controls.",
+      "Enabled smooth in-page scrolling via CSS so Full signal navigation animates to target cards instead of snapping abruptly.",
+      "Verification passed: npm run build --prefix site and npm run check --prefix site."
+    ],
+    "last_updated": "2026-03-21T19:43:00+08:00",
+    "replan_reason": null,
+    "context_snapshot": {
+      "focus": "preview module polish",
+      "lane": "feat-decodex-github-first"
+    }
+  }
+}

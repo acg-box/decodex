@@ -18,6 +18,8 @@ Defines:
 - The canonical `release_delta/v1` shape.
 - Required stable and prerelease release metadata.
 - The compare summary between the selected tags.
+- The bounded release options available to the homepage comparator.
+- The precomputed compare entries used for client-side switching.
 - The mapping from compare commits to existing signal entries.
 
 ## Entry identity
@@ -36,8 +38,10 @@ The canonical schema identifier is:
 | `generated_at` | string | UTC timestamp for artifact generation. |
 | `stable_release` | object | Latest non-prerelease release for the scoped channel. |
 | `prerelease` | object | Latest prerelease release for the scoped channel. |
-| `compare` | object | GitHub compare summary from stable tag to prerelease tag. |
-| `tracked_signal_slugs` | array | Slugs of already-published signal entries whose source commits appear in the compare set. |
+| `compare` | object | GitHub compare summary for the default homepage stable/prerelease pair. |
+| `release_options` | object | Bounded stable and preview release sets exposed by the homepage comparator. |
+| `comparisons` | array | Precomputed stable-to-preview compare entries available for client-side switching. |
+| `tracked_signal_slugs` | array | Slugs of already-published signal entries whose source commits appear in the default compare set. |
 
 ## Release objects
 
@@ -72,9 +76,36 @@ If `commit_shas` is present, it must contain the compare commit SHAs that define
 
 If `pr_numbers` is present, it must contain the GitHub pull-request numbers referenced by the compare commits for the chosen delta.
 
+## Release options
+
+`release_options` must contain:
+
+- `stable`: a non-empty list of compact stable release objects
+- `preview`: a non-empty list of compact prerelease objects
+
+These lists are intentionally bounded. They exist to power homepage version
+selection, not to mirror the full release history forever.
+
+The current Decodex homepage policy is to expose stable support starting at
+`0.116.0`. Older stable releases should not appear in the homepage comparator
+unless that floor is intentionally changed in generation policy.
+
+## Comparisons
+
+Each entry in `comparisons` must contain:
+
+- `stable_tag_name`
+- `prerelease_tag_name`
+- `compare`
+- `tracked_signal_slugs`
+
+The artifact must include at least one comparison matching the default
+`stable_release` and `prerelease` pair exposed at the top level.
+
 ## Signal reuse rule
 
-`tracked_signal_slugs` must only include published `signal_entry/v1` items whose:
+`tracked_signal_slugs` and each `comparisons[*].tracked_signal_slugs` entry must
+only include published `signal_entry/v1` items whose:
 
 - `lane = "github"`
 - `source_refs.repo` matches `repo`
@@ -87,9 +118,8 @@ Signal reuse must be evidence-backed. A release-delta artifact must not claim a 
 
 When a valid `release_delta/v1` artifact exists for the homepage lane, the homepage must render:
 
-- the latest stable version
-- the latest prerelease version
-- the compare magnitude, such as commit count
-- the tracked signals that explain what the prerelease unlocks beyond stable
+- a compact stable-versus-preview comparator using the bounded release options
+- the compare magnitude, such as commit count, for the selected pair
+- the tracked signals that explain what the selected preview unlocks beyond the selected stable release
 
 The release-delta module must remain subordinate to the overall page hierarchy. It may summarize the delta, but it must not replace the main signal feed.
