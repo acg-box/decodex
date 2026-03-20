@@ -1,14 +1,13 @@
 ---
 import { renderMarkdownInline } from "@/lib/render-markdown";
 import {
-  formatPublishedAt,
-  kindLabel,
-  type SignalCardData,
-} from "@/lib/signal-feed";
-import {
+  comparisonKey,
+  defaultComparison,
   releaseLabel,
+  trackedSignalsForSlugs,
   type ReleaseDeltaData,
 } from "@/lib/release-delta";
+import { formatPublishedAt, kindLabel, type SignalCardData } from "@/lib/signal-feed";
 
 type Props = {
   delta: ReleaseDeltaData;
@@ -16,115 +15,214 @@ type Props = {
 };
 
 const { delta, trackedSignals } = Astro.props;
-const stableLabel = releaseLabel(delta.stable_release, delta.tag_prefix);
-const prereleaseLabel = releaseLabel(delta.prerelease, delta.tag_prefix);
-const untrackedCommitCount = Math.max(
-  0,
-  delta.compare.total_commits - trackedSignals.length,
+
+const stableOptions = delta.release_options.stable;
+const previewOptions = delta.release_options.preview;
+const stableByTag = new Map(stableOptions.map((release) => [release.tag_name, release]));
+const previewByTag = new Map(previewOptions.map((release) => [release.tag_name, release]));
+const activeComparison = defaultComparison(delta);
+const comparisonEntries = delta.comparisons
+  .map((comparison) => {
+    const stable = stableByTag.get(comparison.stable_tag_name);
+    const preview = previewByTag.get(comparison.prerelease_tag_name);
+    if (!stable || !preview) {
+      return null;
+    }
+    const featuredSignals = trackedSignalsForSlugs(comparison.tracked_signal_slugs, trackedSignals).slice(0, 3);
+    return {
+      ...comparison,
+      stable,
+      preview,
+      featuredSignals,
+      hiddenSignalCount: Math.max(0, comparison.tracked_signal_slugs.length - featuredSignals.length),
+      untrackedCommitCount: Math.max(0, comparison.compare.total_commits - comparison.tracked_signal_slugs.length),
+      key: comparisonKey(comparison.stable_tag_name, comparison.prerelease_tag_name),
+    };
+  })
+  .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+const comparisonKeysByStable = Object.fromEntries(
+  stableOptions.map((stable) => [
+    stable.tag_name,
+    comparisonEntries
+      .filter((entry) => entry.stable_tag_name === stable.tag_name)
+      .map((entry) => entry.prerelease_tag_name),
+  ]),
 );
-const featuredSignals = trackedSignals.slice(0, 3);
-const hiddenSignalCount = Math.max(0, trackedSignals.length - featuredSignals.length);
 ---
 
-<section class="release-delta" aria-labelledby="release-delta-heading">
+<section
+  class="release-delta"
+  aria-labelledby="release-delta-heading"
+  data-release-comparator
+  data-compare-map={JSON.stringify(comparisonKeysByStable)}
+>
   <div class="release-delta__intro">
     <h2 class="release-delta__headline" id="release-delta-heading">Preview changes</h2>
-  </div>
-
-  <div class="release-delta__stats">
-    <section class="release-delta__panel">
-      <p class="release-delta__panel-label">Stable</p>
-      <a class="release-delta__version" href={delta.stable_release.url} target="_blank" rel="noreferrer">
-        {stableLabel}
-      </a>
-      <p class="release-delta__panel-copy">
-        Published {formatPublishedAt(delta.stable_release.published_at)}
-      </p>
-    </section>
-
-    <section class="release-delta__panel release-delta__panel--accent">
-      <p class="release-delta__panel-label">Preview</p>
-      <a class="release-delta__version" href={delta.prerelease.url} target="_blank" rel="noreferrer">
-        {prereleaseLabel}
-      </a>
-      <p class="release-delta__panel-copy">
-        Live since {formatPublishedAt(delta.prerelease.published_at)}
-      </p>
-    </section>
-
-    <section class="release-delta__panel">
-      <p class="release-delta__panel-label">Difference</p>
-      <a class="release-delta__metric" href={delta.compare.url} target="_blank" rel="noreferrer">
-        {delta.compare.total_commits} commits
-      </a>
-      <p class="release-delta__panel-copy">
-        {trackedSignals.length} tracked signals · {untrackedCommitCount} internal-only
-      </p>
-    </section>
-  </div>
-
-  <div class="release-delta__highlights">
-    <div class="release-delta__highlights-header">
-      <p class="release-delta__panel-label">Try these first</p>
-      <p class="release-delta__highlights-copy">
-        Quick scan only. Open the full signal below when you want steps and evidence.
-      </p>
-    </div>
-
-    {
-      featuredSignals.length > 0 ? (
-        <ol class="release-delta__highlight-list">
-          {featuredSignals.map((signal) => (
-            <li class="release-highlight">
-              <div class="release-highlight__meta">
-                <span>{kindLabel(signal.kind)}</span>
-              </div>
-
-              <div class="release-highlight__body">
-                <a
-                  class="release-highlight__title signal-markdown signal-markdown--title"
-                  href={`#${signal.slug}`}
-                  set:html={renderMarkdownInline(signal.title)}
-                />
-                <p
-                  class="release-highlight__summary signal-markdown signal-markdown--inline"
-                  set:html={renderMarkdownInline(signal.summary)}
-                />
-                <div class="release-highlight__actions">
-                  {signal.how_to_try ? (
-                    <p class="release-highlight__try">
-                      <span class="release-highlight__try-label">Try</span>
-                      <span
-                        class="signal-markdown signal-markdown--inline"
-                        set:html={renderMarkdownInline(signal.how_to_try)}
-                      />
-                    </p>
-                  ) : (
-                    <span class="release-highlight__hint">Watch-only update</span>
-                  )}
-                  <a class="release-highlight__action signal-link" href={`#${signal.slug}`}>
-                    Full signal
-                  </a>
-                </div>
-              </div>
-            </li>
+    <p class="release-delta__chooser">
+      From
+      <label class="release-delta__inline-select">
+        <span class="sr-only">Stable release</span>
+        <select class="release-delta__select release-delta__select--inline" data-compare-stable>
+          {stableOptions.map((release) => (
+            <option
+              value={release.tag_name}
+              selected={release.tag_name === activeComparison.stable_tag_name}
+            >
+              {releaseLabel(release, delta.tag_prefix)}
+            </option>
           ))}
-        </ol>
-      ) : (
-        <p class="release-delta__empty">
-          No tracked signals currently intersect this prerelease delta yet. The compare is still live at
-          {" "}
-          <a class="signal-link" href={delta.compare.url} target="_blank" rel="noreferrer">
-            GitHub compare
-          </a>.
-        </p>
-      )
-    }
-
-    {hiddenSignalCount > 0 ? (
-      <p class="release-delta__more">
-        {hiddenSignalCount} more tracked preview signal{hiddenSignalCount === 1 ? "" : "s"} continue in the feed below.
-      </p>
-    ) : null}
+        </select>
+      </label>
+      to
+      <label class="release-delta__inline-select">
+        <span class="sr-only">Preview release</span>
+        <select class="release-delta__select release-delta__select--inline" data-compare-preview>
+          {previewOptions.map((release) => (
+            <option
+              value={release.tag_name}
+              selected={release.tag_name === activeComparison.prerelease_tag_name}
+            >
+              {releaseLabel(release, delta.tag_prefix)}
+            </option>
+          ))}
+        </select>
+      </label>
+    </p>
   </div>
+
+  {comparisonEntries.map((entry) => (
+    <div
+      class="release-delta__comparison"
+      data-compare-panel={entry.key}
+      hidden={entry.key !== comparisonKey(activeComparison.stable_tag_name, activeComparison.prerelease_tag_name)}
+    >
+      <div class="release-delta__summary-rail">
+        <span class="release-delta__summary-item">
+          <strong>{entry.compare.total_commits}</strong> commits ahead
+        </span>
+        <span class="release-delta__summary-item">
+          <strong>{entry.tracked_signal_slugs.length}</strong> tracked signals
+        </span>
+        <span class="release-delta__summary-item">
+          Preview live since <strong>{formatPublishedAt(entry.preview.published_at)}</strong>
+        </span>
+        <a class="release-delta__summary-link signal-link" href={entry.compare.url} target="_blank" rel="noreferrer">
+          GitHub compare
+        </a>
+      </div>
+
+      <div class="release-delta__highlights">
+        <div class="release-delta__highlights-header">
+          <p class="release-delta__panel-label">Worth trying first</p>
+          <p class="release-delta__highlights-copy">
+            The clearest preview-only changes for this version pair.
+          </p>
+        </div>
+
+        {
+          entry.featuredSignals.length > 0 ? (
+            <ol class="release-delta__highlight-list">
+              {entry.featuredSignals.map((signal) => (
+                <li class="release-highlight">
+                  <div class="release-highlight__meta">
+                    <span>{kindLabel(signal.kind)}</span>
+                  </div>
+
+                  <div class="release-highlight__body">
+                    <a
+                      class="release-highlight__title signal-markdown signal-markdown--title"
+                      href={`#${signal.slug}`}
+                      set:html={renderMarkdownInline(signal.title)}
+                    />
+                    <p
+                      class="release-highlight__summary signal-markdown signal-markdown--inline"
+                      set:html={renderMarkdownInline(signal.summary)}
+                    />
+                    <div class="release-highlight__actions">
+                      {signal.how_to_try ? (
+                        <p class="release-highlight__try">
+                          <span class="release-highlight__try-label">Try</span>
+                          <span
+                            class="signal-markdown signal-markdown--inline"
+                            set:html={renderMarkdownInline(signal.how_to_try)}
+                          />
+                        </p>
+                      ) : (
+                        <span class="release-highlight__hint">Watch-only update</span>
+                      )}
+                      <a class="release-highlight__action signal-link" href={`#${signal.slug}`}>
+                        Full signal
+                      </a>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p class="release-delta__empty">
+              No published signals intersect this version pair yet. The compare is still live at{" "}
+              <a class="signal-link" href={entry.compare.url} target="_blank" rel="noreferrer">
+                GitHub compare
+              </a>.
+            </p>
+          )
+        }
+
+        {entry.hiddenSignalCount > 0 ? (
+          <p class="release-delta__more">
+            {entry.hiddenSignalCount} more tracked preview signal{entry.hiddenSignalCount === 1 ? "" : "s"} continue in the feed below.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  ))}
+  <script is:inline>
+    (function () {
+      function bind(root) {
+        if (!root || root.dataset.comparatorBound === "true") return;
+        root.dataset.comparatorBound = "true";
+
+        var stableSelect = root.querySelector("[data-compare-stable]");
+        var previewSelect = root.querySelector("[data-compare-preview]");
+        if (!stableSelect || !previewSelect) return;
+
+        var validPreviewMap = JSON.parse(root.getAttribute("data-compare-map") || "{}");
+
+        function syncPreviewOptions(stableTag) {
+          var validPreviewTags = validPreviewMap[stableTag] || [];
+          var hasCurrent = validPreviewTags.indexOf(previewSelect.value) !== -1;
+          Array.prototype.forEach.call(previewSelect.options, function (option) {
+            option.disabled = validPreviewTags.indexOf(option.value) === -1;
+          });
+          if (!hasCurrent && validPreviewTags.length > 0) {
+            previewSelect.value = validPreviewTags[0];
+          }
+        }
+
+        function syncPanels() {
+          var key = stableSelect.value + "::" + previewSelect.value;
+          root.querySelectorAll("[data-compare-panel]").forEach(function (panel) {
+            panel.hidden = panel.getAttribute("data-compare-panel") !== key;
+          });
+        }
+
+        function apply() {
+          syncPreviewOptions(stableSelect.value);
+          syncPanels();
+        }
+
+        stableSelect.addEventListener("change", apply);
+        previewSelect.addEventListener("change", syncPanels);
+        apply();
+      }
+
+      function ready() {
+        document.querySelectorAll("[data-release-comparator]").forEach(bind);
+      }
+
+      document.addEventListener("astro:page-load", ready);
+      document.addEventListener("DOMContentLoaded", ready);
+    })();
+  </script>
 </section>

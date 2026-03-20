@@ -76,6 +76,15 @@ const releaseRefSchema = z.object({
   url: z.string().regex(/^https:\/\//, "release url must be an https URL"),
 });
 
+const compareSummarySchema = z.object({
+  status: z.string().min(1),
+  ahead_by: z.number().int().nonnegative(),
+  total_commits: z.number().int().nonnegative(),
+  url: z.string().regex(/^https:\/\//, "compare url must be an https URL"),
+  commit_shas: z.array(z.string().min(1)).default([]),
+  pr_numbers: z.array(z.number().int().positive()).default([]),
+});
+
 const releaseDeltaSchema = z
   .object({
     schema: z.literal("release_delta/v1"),
@@ -88,14 +97,17 @@ const releaseDeltaSchema = z
     prerelease: releaseRefSchema.extend({
       prerelease: z.literal(true),
     }),
-    compare: z.object({
-      status: z.string().min(1),
-      ahead_by: z.number().int().nonnegative(),
-      total_commits: z.number().int().nonnegative(),
-      url: z.string().regex(/^https:\/\//, "compare url must be an https URL"),
-      commit_shas: z.array(z.string().min(1)).default([]),
-      pr_numbers: z.array(z.number().int().positive()).default([]),
+    compare: compareSummarySchema,
+    release_options: z.object({
+      stable: z.array(releaseRefSchema.extend({ prerelease: z.literal(false) })).min(1),
+      preview: z.array(releaseRefSchema.extend({ prerelease: z.literal(true) })).min(1),
     }),
+    comparisons: z.array(z.object({
+      stable_tag_name: z.string().min(1),
+      prerelease_tag_name: z.string().min(1),
+      compare: compareSummarySchema,
+      tracked_signal_slugs: z.array(z.string().min(1)),
+    })),
     tracked_signal_slugs: z.array(z.string().min(1)),
   })
   .superRefine((entry, ctx) => {
@@ -113,6 +125,36 @@ const releaseDeltaSchema = z
         path: ["prerelease", "tag_name"],
       });
     }
+    const stableTags = new Set(entry.release_options.stable.map((release) => release.tag_name));
+    const previewTags = new Set(entry.release_options.preview.map((release) => release.tag_name));
+    const hasDefaultComparison = entry.comparisons.some(
+      (comparison) =>
+        comparison.stable_tag_name === entry.stable_release.tag_name &&
+        comparison.prerelease_tag_name === entry.prerelease.tag_name,
+    );
+    if (!hasDefaultComparison) {
+      ctx.addIssue({
+        code: "custom",
+        message: "comparisons must include the default stable/prerelease pair.",
+        path: ["comparisons"],
+      });
+    }
+    entry.comparisons.forEach((comparison, index) => {
+      if (!stableTags.has(comparison.stable_tag_name)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "comparison stable_tag_name must exist in release_options.stable.",
+          path: ["comparisons", index, "stable_tag_name"],
+        });
+      }
+      if (!previewTags.has(comparison.prerelease_tag_name)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "comparison prerelease_tag_name must exist in release_options.preview.",
+          path: ["comparisons", index, "prerelease_tag_name"],
+        });
+      }
+    });
   });
 
 const resetStatusSchema = z.object({

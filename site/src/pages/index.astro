@@ -9,7 +9,7 @@ import SignalSummaryTile from "@/components/SignalSummaryTile.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import { type ResetStatusData } from "@/lib/reset-status";
-import { trackedSignalsForDelta, type ReleaseDeltaData } from "@/lib/release-delta";
+import { type ReleaseDeltaData } from "@/lib/release-delta";
 import {
   FILTERS,
   formatPublishedAt,
@@ -45,7 +45,6 @@ const behaviorCount = signals.filter((signal) => signal.kind === "behavior_chang
 const latestLabel = signals[0] ? formatPublishedAt(signals[0].published_at) : "n/a";
 const groupedSignals = groupSignalsByMonth(signals);
 const showGroupLabels = groupedSignals.length > 1;
-const deltaSignals = trackedSignalsForDelta(releaseDelta, signals);
 const clientFilterIds = FILTERS.map((filter) => filter.id);
 
 const previewSignal: SignalCardData = {
@@ -204,16 +203,39 @@ const filterRuntimeScript = `(function () {
       <div class="site-topbar__head">
         <div class="site-brand">
           <div class="site-brand__bar">
-            <a class="site-brand__wordmark" href="/">Decodex</a>
+            <a class="site-brand__wordmark" href="/" aria-label="Decodex home">
+              <img
+                class="site-brand__wordmark-image"
+                src="/assets/logo.png"
+                alt="Decodex"
+                width="801"
+                height="293"
+              />
+            </a>
 
             <div class="site-chrome">
               <ThemeToggle />
             </div>
           </div>
 
-          <p class="site-brand__note">
-            Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
-          </p>
+          <div class="site-brand__meta">
+            <p class="site-brand__note">
+              Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
+            </p>
+
+            <a
+              class="site-brand__social"
+              href="https://x.com/YvetteCipher"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Follow YvetteCipher on X"
+            >
+              <span class="site-brand__social-handle">@YvetteCipher on X</span>
+              <span class="site-brand__social-copy">
+                Follow to help cover ops and unlock creator rewards.
+              </span>
+            </a>
+          </div>
         </div>
       </div>
 
@@ -228,7 +250,7 @@ const filterRuntimeScript = `(function () {
     </header>
 
     {releaseDelta ? (
-      <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={deltaSignals} />
+      <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={signals} />
     ) : null}
 
     <section class="feed-toolbar" id="latest-signals">

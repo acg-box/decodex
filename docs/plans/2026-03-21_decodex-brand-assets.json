@@ -1,0 +1,86 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "2026-03-21_decodex-brand-assets",
+    "goal": "Process the provided local images into usable Decodex brand assets, wire one into the site favicon, and replace the text wordmark in the header with the supplied logo image.",
+    "success_criteria": [
+      "The favicon uses a processed version of the provided icon image.",
+      "The header wordmark is replaced by a processed version of the provided Decodex logo image.",
+      "The processed assets avoid obvious white-box artifacts in the current Tokyo Night and light themes.",
+      "Site build and check pass after the asset integration."
+    ],
+    "constraints": [
+      "Use the provided local files as the source assets.",
+      "Keep asset processing external to repo dependencies; do not add runtime packages to the site project just to process the PNG files."
+    ],
+    "defaults": {
+      "workdir": "/Users/xavier/code/trusted/y/hack-ink/decodex/.workspaces/feat-decodex-github-first"
+    },
+    "tasks": [
+      {
+        "id": "task-01-process-assets",
+        "title": "Process icon and logo images into site assets",
+        "status": "done",
+        "objective": "Create cropped, background-cleaned logo and icon files from the provided PNGs and store them under the site public assets path.",
+        "inputs": [
+          "/Users/xavier/Downloads/grok-image-04bb254e-b6ff-4330-a12a-a5e076e24531.png",
+          "/Users/xavier/Downloads/grok-image-1da33251-9bd3-438b-bfed-752eed3c1260.png"
+        ],
+        "outputs": [
+          "Processed favicon asset under site/public/",
+          "Processed logo asset under site/public/"
+        ],
+        "verification": [
+          "File inspection of generated asset sizes"
+        ],
+        "depends_on": []
+      },
+      {
+        "id": "task-02-wire-assets",
+        "title": "Wire brand assets into layout and header",
+        "status": "done",
+        "objective": "Update the layout and header to use the processed favicon and header logo while preserving the current overall topbar hierarchy.",
+        "inputs": [
+          "site/src/layouts/BaseLayout.astro",
+          "site/src/pages/index.astro",
+          "site/src/styles/global.css"
+        ],
+        "outputs": [
+          "Site favicon link tags and image-based header wordmark."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": [
+          "task-01-process-assets"
+        ]
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "The provided images cannot be cleaned enough for dark mode without manual redesign.",
+        "Replacing the wordmark with the supplied logo breaks the header layout beyond a small CSS pass."
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "Backed up the original provided images under assets/icon-source.png and assets/logo-source.png with simple stable names.",
+      "Generated processed site assets under site/public/assets as logo.png, icon.png, logo.ico, and logo-touch.png and wired them into the header wordmark and favicon links.",
+      "After user feedback, rebuilt the assets with stronger background removal and increased the rendered wordmark height so the header logo is closer to the original Decodex wordmark weight.",
+      "Verification passed: npm run build --prefix site, npm run check --prefix site, and cargo make decodex-checks."
+    ],
+    "last_updated": "2026-03-21T20:41:00+08:00",
+    "replan_reason": null,
+    "context_snapshot": {
+      "focus": "favicon and header logo asset processing",
+      "lane": "feat-decodex-github-first"
+    }
+  }
+}

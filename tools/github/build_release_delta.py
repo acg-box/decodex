@@ -39,6 +39,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out", required=True, help="Path to write the release-delta JSON artifact.")
     parser.add_argument("--tag-prefix", default="rust-v", help="Release tag prefix to scope the tracked channel.")
     parser.add_argument("--token-env", help="Environment variable name holding a GitHub token.")
+    parser.add_argument("--stable-limit", type=int, default=3, help="Maximum number of recent stable releases to include.")
+    parser.add_argument("--preview-limit", type=int, default=6, help="Maximum number of recent prereleases to include.")
+    parser.add_argument("--pair-limit", type=int, default=12, help="Maximum number of precomputed stable->preview compare entries.")
+    parser.add_argument(
+        "--min-stable-tag",
+        default="rust-v0.116.0",
+        help="Minimum stable tag to include in the comparator option set.",
+    )
     return parser.parse_args()
 
 
@@ -95,6 +103,49 @@ def select_release_pair(releases: list[dict[str, Any]], tag_prefix: str) -> tupl
     return stable, prerelease
 
 
+def relevant_releases(releases: list[dict[str, Any]], tag_prefix: str) -> list[dict[str, Any]]:
+    return [
+        release
+        for release in releases
+        if not release.get("draft") and isinstance(release.get("tag_name"), str) and release["tag_name"].startswith(tag_prefix)
+    ]
+
+
+def stable_version_key(tag_name: str, tag_prefix: str) -> tuple[int, ...]:
+    raw = tag_name.removeprefix(tag_prefix)
+    parts = raw.split(".")
+    key: list[int] = []
+    for part in parts:
+        digits = "".join(ch for ch in part if ch.isdigit())
+        key.append(int(digits or "0"))
+    return tuple(key)
+
+
+def select_release_options(
+    releases: list[dict[str, Any]],
+    tag_prefix: str,
+    stable_limit: int,
+    preview_limit: int,
+    min_stable_tag: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    relevant = relevant_releases(releases, tag_prefix)
+    min_stable_key = stable_version_key(min_stable_tag, tag_prefix)
+    stable = [
+        release
+        for release in relevant
+        if not release.get("prerelease")
+        and stable_version_key(release["tag_name"], tag_prefix) >= min_stable_key
+    ][:stable_limit]
+    preview = [release for release in relevant if release.get("prerelease")][:preview_limit]
+    if not stable:
+        raise SystemExit(
+            f"No stable releases found for tag prefix {tag_prefix!r} at or above {min_stable_tag!r}"
+        )
+    if not preview:
+        raise SystemExit(f"No prereleases found for tag prefix {tag_prefix!r}")
+    return stable, preview
+
+
 def compact_release(release: dict[str, Any]) -> dict[str, Any]:
     return {
         "tag_name": release["tag_name"],
@@ -103,6 +154,34 @@ def compact_release(release: dict[str, Any]) -> dict[str, Any]:
         "published_at": release["published_at"],
         "url": release["html_url"],
     }
+
+
+def release_sort_key(release: dict[str, Any]) -> str:
+    published_at = release.get("published_at")
+    return published_at if isinstance(published_at, str) else ""
+
+
+def compare_candidates(
+    stable_releases: list[dict[str, Any]],
+    preview_releases: list[dict[str, Any]],
+    pair_limit: int,
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    candidates: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for stable in stable_releases:
+        stable_key = release_sort_key(stable)
+        for preview in preview_releases:
+            preview_key = release_sort_key(preview)
+            if preview_key <= stable_key:
+                continue
+            candidates.append((stable, preview))
+    candidates.sort(
+        key=lambda pair: (
+            release_sort_key(pair[1]),
+            release_sort_key(pair[0]),
+        ),
+        reverse=True,
+    )
+    return candidates[:pair_limit]
 
 
 def extract_signal_commit_shas(signal: dict[str, Any]) -> set[str]:
@@ -147,34 +226,80 @@ def main() -> None:
     if not isinstance(releases, list):
         raise SystemExit("Expected releases list payload from GitHub API")
     stable_release, prerelease = select_release_pair(releases, args.tag_prefix)
-
-    compare = github_request(
-        f"https://api.github.com/repos/{args.repo}/compare/{stable_release['tag_name']}...{prerelease['tag_name']}",
-        token,
+    stable_releases, preview_releases = select_release_options(
+        releases,
+        args.tag_prefix,
+        args.stable_limit,
+        args.preview_limit,
+        args.min_stable_tag,
     )
-    commits = compare.get("commits")
-    if not isinstance(commits, list):
-        raise SystemExit("Expected compare.commits from GitHub API")
-    compare_commit_shas = [commit["sha"] for commit in commits if isinstance(commit.get("sha"), str)]
-    compare_commit_set = set(compare_commit_shas)
-    compare_pr_numbers = sorted(
-        {
-            int(match.group(1))
-            for commit in commits
-            for match in PR_IN_MESSAGE_RE.finditer((commit.get("commit") or {}).get("message", ""))
-        }
-    )
-    compare_pr_number_set = set(compare_pr_numbers)
+    release_pairs = compare_candidates(stable_releases, preview_releases, args.pair_limit)
+    default_pair = (stable_release, prerelease)
+    if not any(
+        pair[0]["tag_name"] == default_pair[0]["tag_name"] and pair[1]["tag_name"] == default_pair[1]["tag_name"]
+        for pair in release_pairs
+    ):
+        release_pairs = [default_pair, *release_pairs[: max(args.pair_limit - 1, 0)]]
 
     signal_entries = load_signals(args.signals_dir, args.repo)
-    tracked_signal_slugs: list[str] = []
-    for signal in sorted(signal_entries, key=lambda item: item["published_at"], reverse=True):
-        signal_shas = extract_signal_commit_shas(signal)
-        signal_pr_number = extract_signal_pr_number(signal)
-        if signal_shas.intersection(compare_commit_set) or (
-            signal_pr_number is not None and signal_pr_number in compare_pr_number_set
+    comparison_entries: list[dict[str, Any]] = []
+    default_tracked_signal_slugs: list[str] = []
+    default_compare_payload: dict[str, Any] | None = None
+
+    for stable_candidate, preview_candidate in release_pairs:
+        compare = github_request(
+            f"https://api.github.com/repos/{args.repo}/compare/{stable_candidate['tag_name']}...{preview_candidate['tag_name']}",
+            token,
+        )
+        commits = compare.get("commits")
+        if not isinstance(commits, list):
+            raise SystemExit("Expected compare.commits from GitHub API")
+        compare_commit_shas = [commit["sha"] for commit in commits if isinstance(commit.get("sha"), str)]
+        compare_commit_set = set(compare_commit_shas)
+        compare_pr_numbers = sorted(
+            {
+                int(match.group(1))
+                for commit in commits
+                for match in PR_IN_MESSAGE_RE.finditer((commit.get("commit") or {}).get("message", ""))
+            }
+        )
+        compare_pr_number_set = set(compare_pr_numbers)
+
+        tracked_signal_slugs: list[str] = []
+        for signal in sorted(signal_entries, key=lambda item: item["published_at"], reverse=True):
+            signal_shas = extract_signal_commit_shas(signal)
+            signal_pr_number = extract_signal_pr_number(signal)
+            if signal_shas.intersection(compare_commit_set) or (
+                signal_pr_number is not None and signal_pr_number in compare_pr_number_set
+            ):
+                tracked_signal_slugs.append(signal["slug"])
+
+        compare_payload = {
+            "status": compare["status"],
+            "ahead_by": compare["ahead_by"],
+            "total_commits": compare["total_commits"],
+            "url": compare["html_url"],
+            "commit_shas": compare_commit_shas,
+            "pr_numbers": compare_pr_numbers,
+        }
+        comparison_entries.append(
+            {
+                "stable_tag_name": stable_candidate["tag_name"],
+                "prerelease_tag_name": preview_candidate["tag_name"],
+                "compare": compare_payload,
+                "tracked_signal_slugs": tracked_signal_slugs,
+            }
+        )
+
+        if (
+            stable_candidate["tag_name"] == stable_release["tag_name"]
+            and preview_candidate["tag_name"] == prerelease["tag_name"]
         ):
-            tracked_signal_slugs.append(signal["slug"])
+            default_compare_payload = compare_payload
+            default_tracked_signal_slugs = tracked_signal_slugs
+
+    if default_compare_payload is None:
+        raise SystemExit("Default stable/prerelease pair was not included in comparison entries")
 
     payload = {
         "schema": RELEASE_DELTA_SCHEMA,
@@ -183,15 +308,13 @@ def main() -> None:
         "generated_at": utc_now_iso(),
         "stable_release": compact_release(stable_release),
         "prerelease": compact_release(prerelease),
-        "compare": {
-            "status": compare["status"],
-            "ahead_by": compare["ahead_by"],
-            "total_commits": compare["total_commits"],
-            "url": compare["html_url"],
-            "commit_shas": compare_commit_shas,
-            "pr_numbers": compare_pr_numbers,
+        "compare": default_compare_payload,
+        "release_options": {
+            "stable": [compact_release(release) for release in stable_releases],
+            "preview": [compact_release(release) for release in preview_releases],
         },
-        "tracked_signal_slugs": tracked_signal_slugs,
+        "comparisons": comparison_entries,
+        "tracked_signal_slugs": default_tracked_signal_slugs,
     }
 
     validation = validate_release_delta(payload)
