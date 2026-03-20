@@ -1,0 +1,65 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "2026-03-21_decodex-header-social-cta",
+    "goal": "Add a lightweight X follow call-to-action beside the header description so the site can point readers to YvetteCipher without disrupting the existing top-of-page hierarchy.",
+    "success_criteria": [
+      "The header description gains a right-side X follow CTA on wider screens and stacks cleanly on smaller screens.",
+      "The CTA copy clearly asks readers to follow YvetteCipher and explains that it helps cover Decodex operating costs and supports creator incentives.",
+      "The Decodex wordmark and existing header structure remain visually stable.",
+      "Site build and check pass after the header update."
+    ],
+    "constraints": [
+      "Do not change the Decodex wordmark size or styling in this pass.",
+      "Keep the CTA within the description row instead of introducing a new standalone hero card or header module."
+    ],
+    "defaults": {
+      "workdir": "/Users/xavier/code/trusted/y/hack-ink/decodex/.workspaces/feat-decodex-github-first"
+    },
+    "tasks": [
+      {
+        "id": "task-01-add-social-cta",
+        "title": "Add X follow CTA beside the header description",
+        "status": "done",
+        "objective": "Update the header markup and styles so the description row can carry a subtle X follow link and support copy for YvetteCipher.",
+        "inputs": [
+          "site/src/pages/index.astro",
+          "site/src/styles/global.css"
+        ],
+        "outputs": [
+          "Header description row with a responsive X follow CTA."
+        ],
+        "verification": [
+          "npm run build --prefix site",
+          "npm run check --prefix site"
+        ],
+        "depends_on": []
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "Adding the CTA makes the topbar feel crowded enough that the entire header layout needs a structural redesign.",
+        "The CTA copy cannot fit cleanly without collapsing the current desktop hierarchy."
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "Added a responsive header CTA that links to https://x.com/YvetteCipher and keeps the ask compact as a two-line @YvetteCipher on X block with an ops-and-creator-support message.",
+      "Kept the existing wordmark and topbar structure intact by placing the CTA in a shared description row that aligns right on desktop and stacks on mobile.",
+      "Verification passed: npm run build --prefix site and npm run check --prefix site."
+    ],
+    "last_updated": "2026-03-21T20:28:00+08:00",
+    "replan_reason": null,
+    "context_snapshot": {
+      "focus": "header description right-side X CTA",
+      "lane": "feat-decodex-github-first",
+      "handle": "YvetteCipher"
+    }
+  }
+}
