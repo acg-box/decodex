@@ -34,6 +34,32 @@
       "https://github.com/openai/codex/commit/c58e46d2fa269d38367c1281998aac4e79494157",
       "https://github.com/openai/codex/commit/660b395c5176bbf807748e253f2da2d9a40ed0bb"
     ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15220",
+        "title": "feat(app-server): add mcpServer/startupStatus/updated notification",
+        "url": "https://github.com/openai/codex/pull/15220"
+      },
+      {
+        "kind": "commit",
+        "meta": "9c0fdb4",
+        "title": "feat(app-server): add mcpServer/status/updated notification",
+        "url": "https://github.com/openai/codex/commit/9c0fdb49b71fccffc5fcadf247369067e441b902"
+      },
+      {
+        "kind": "commit",
+        "meta": "ba1d743",
+        "title": "mcpServer/startupStatus/updated",
+        "url": "https://github.com/openai/codex/commit/ba1d7436f867c1febcbb2a51bcfc6ddeb24c8ba0"
+      },
+      {
+        "kind": "commit",
+        "meta": "c58e46d",
+        "title": "fix random bug",
+        "url": "https://github.com/openai/codex/commit/c58e46d2fa269d38367c1281998aac4e79494157"
+      }
+    ],
     "pr_url": "https://github.com/openai/codex/pull/15220",
     "repo": "openai/codex"
   },

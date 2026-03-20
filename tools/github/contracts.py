@@ -17,10 +17,20 @@ ANALYSIS_MODES = {"pr_first", "commit_only"}
 SIGNAL_KINDS = {"capability", "behavior_change", "try_now"}
 SIGNAL_CONFIDENCE = {"confirmed", "likely", "weak"}
 SIGNAL_IMPACT = {"low", "medium", "high"}
+SOURCE_ITEM_KINDS = {"pull_request", "commit"}
 ISSUE_REF_RE = re.compile(r"(?:^|[^\w])((?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+)")
 FLAG_RE = re.compile(
     r"(?<![\w-])(--[a-zA-Z0-9][\w-]*|[A-Z][A-Z0-9_]{2,}(?:=[^\s,`]+)?)"
 )
+GENERIC_COMMIT_TITLES = {
+    "update",
+    "fix",
+    "fix.",
+    "fix tests",
+    "fix tests.",
+    "merge fixes",
+    "flaky syntax",
+}
 
 
 @dataclass
@@ -199,10 +209,25 @@ def validate_signal(entry: dict[str, Any]) -> ValidationResult:
         repo = refs.get("repo")
         if not isinstance(repo, str) or "/" not in repo:
             errors.append("source_refs.repo must be owner/name")
+        items = refs.get("items", [])
+        if items and (
+            not isinstance(items, list)
+            or not all(
+                isinstance(item, dict)
+                and item.get("kind") in SOURCE_ITEM_KINDS
+                and isinstance(item.get("title"), str)
+                and item["title"]
+                and isinstance(item.get("url"), str)
+                and item["url"].startswith("https://")
+                and ("meta" not in item or isinstance(item.get("meta"), str))
+                for item in items
+            )
+        ):
+            errors.append("source_refs.items must be a list of titled source entries")
         pr_url = refs.get("pr_url")
         commit_urls = refs.get("commit_urls", [])
-        if pr_url is None and not commit_urls:
-            errors.append("source_refs must include pr_url or at least one commit URL")
+        if pr_url is None and not commit_urls and not items:
+            errors.append("source_refs must include pr_url, commit URLs, or source_refs.items")
         if pr_url is not None and (not isinstance(pr_url, str) or not pr_url.startswith("https://")):
             errors.append("source_refs.pr_url must be an https URL when present")
         if commit_urls and (

@@ -1,0 +1,52 @@
+---
+import {
+  resetStatusAnswer,
+  resetStatusQuestion,
+  resetStatusTone,
+  type ResetStatusData,
+} from "@/lib/reset-status";
+
+type Props = {
+  entry: ResetStatusData;
+  variant?: "inline" | "stack";
+};
+
+const { entry } = Astro.props;
+const variant = Astro.props.variant ?? "inline";
+const question = resetStatusQuestion();
+const answer = resetStatusAnswer(entry);
+const tone = resetStatusTone(entry);
+const incidentUrl =
+  "https://status.openai.com/incidents/01KK9JA8JKQKDW1W24T09NHBYH";
+---
+
+<a
+  class:list={[
+    variant === "stack" ? "reset-stack" : "reset-inline",
+    variant === "stack" ? `reset-stack--${tone}` : `reset-inline--${tone}`,
+  ]}
+  href={incidentUrl}
+  target="_blank"
+  rel="noreferrer"
+  aria-label={`${question} ${answer}`}
+>
+  {
+    variant === "stack" ? (
+      <>
+        <span class="reset-stack__question">{question}</span>
+        <span class="reset-stack__answer">
+          <span class="reset-stack__dot" aria-hidden="true"></span>
+          {answer}
+        </span>
+      </>
+    ) : (
+      <>
+        <span class="reset-inline__question">{question}</span>
+        <span class="reset-inline__answer">
+          <span class="reset-inline__dot" aria-hidden="true"></span>
+          {answer}
+        </span>
+      </>
+    )
+  }
+</a>

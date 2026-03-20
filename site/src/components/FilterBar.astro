@@ -8,7 +8,7 @@ type Props = {
 const { activeFilter } = Astro.props;
 ---
 
-<div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+<nav class="filter-bar" aria-label="Signal filters">
   {
     FILTERS.map((filter) => {
       const isActive = filter.id === activeFilter;
@@ -16,12 +16,9 @@ const { activeFilter } = Astro.props;
       return (
         <a
           href={filter.id === "all" ? "/" : `/?filter=${filter.id}`}
-          class:list={[
-            "border-b-2 px-0 pb-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] transition",
-            isActive
-              ? "border-[color:var(--ink)] text-[color:var(--ink)]"
-              : "border-transparent text-[color:var(--muted)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--ink)]",
-          ]}
+          class="filter-chip"
+          data-filter-option={filter.id}
+          data-active={isActive ? "true" : "false"}
           aria-current={isActive ? "page" : undefined}
           title={filter.description}
         >
@@ -30,4 +27,4 @@ const { activeFilter } = Astro.props;
       );
     })
   }
-</div>
+</nav>
