@@ -1,0 +1,40 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-20T00:34:47Z",
+      "message": "disable hooks on windows for now",
+      "sha": "933ef3ccbdeb1877f2f9ba45d1379826f4c63088",
+      "url": "https://github.com/openai/codex/commit/933ef3ccbdeb1877f2f9ba45d1379826f4c63088"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [],
+  "files": [
+    {
+      "additions": 11,
+      "deletions": 0,
+      "patch_excerpt": "@@ -74,6 +74,17 @@ impl ClaudeHooksEngine {\n             };\n         }\n \n+        if cfg!(windows) {\n+            return Self {\n+                handlers: Vec::new(),\n+                warnings: vec![\n+                    \"Disabled `codex_hooks` for this session because `hooks.json` lifecycle hooks are not supported on Windows yet.\"\n+                        .to_string(),\n+                ],\n+                shell,\n+            };\n+        }\n+\n         let _ = schema_loader::generated_hook_schemas();\n         let discovered = discovery::discover_handlers(config_layer_stack);\n         Self {",
+      "path": "codex-rs/hooks/src/engine/mod.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "We'll verify a bit later that all of this works correctly and re-enable",
+    "labels": [],
+    "merged_at": "2026-03-20T04:31:57Z",
+    "number": 15252,
+    "state": "merged",
+    "title": "Disable hooks on windows for now",
+    "url": "https://github.com/openai/codex/pull/15252"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

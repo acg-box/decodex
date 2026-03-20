@@ -1,0 +1,16 @@
+{
+  "confidence": "confirmed",
+  "expected_effect": "Resumed threads should show earlier image-generation items and preserve saved image paths instead of dropping that part of the history.",
+  "how_to_try": "Resume a thread that previously generated images, then inspect the thread history and completed items for restored image entries and saved paths.",
+  "impact": "medium",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body explicitly says image-generation items should be restored in resumed thread history.",
+    "The protocol schemas add a `savedPath` field to image-related notifications and thread responses so image history can carry the persisted file location.",
+    "The commit sequence includes `Persist image generation end events for history replay` and `Add tests for resumed image history preservation`, which confirms this is an intended behavior change."
+  ],
+  "slug": "resumed-threads-restore-image-history",
+  "summary": "Merged PR #15223 restores image-generation items in resumed thread history and preserves the saved paths tied to those earlier outputs.",
+  "title": "Resumed threads now restore generated image history",
+  "why_it_matters": "Image work no longer disappears when you come back to an older thread. That makes long-running image sessions easier to resume, audit, and copy from without losing the earlier generation context."
+}

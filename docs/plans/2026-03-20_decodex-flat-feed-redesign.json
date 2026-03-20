@@ -1,0 +1,141 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "decodex-flat-feed-redesign-2026-03-20",
+    "goal": "Redesign the Decodex homepage from a nested-card dashboard into a flatter changelog-style feed inspired by GitHub, Linear, and Vercel while preserving the one-page GitHub-first MVP contract.",
+    "success_criteria": [
+      "The homepage reads as a flat changelog feed rather than a dashboard of competing cards.",
+      "Each signal renders as one coherent entry with clear scanning order: metadata, title, body, action, and footer.",
+      "The utility area is lightweight and does not compete with the main feed.",
+      "The resulting page still builds and checks cleanly, and a fresh screenshot shows the flatter feed structure."
+    ],
+    "constraints": [
+      "Do not add public routes or expand beyond the current one-page MVP.",
+      "Keep the GitHub-first signal content model and required signal-card fields intact.",
+      "Use GitHub for list architecture, Linear for rhythm and grouping, and Vercel for actionable entry content, without copying any one site verbatim.",
+      "Prefer flatter surfaces, fewer nested boxes, and lighter chrome over additional decorative effects."
+    ],
+    "defaults": {
+      "feed_model": "flat changelog entries",
+      "routes": [
+        "/"
+      ],
+      "filters": [
+        "all",
+        "github",
+        "try-now",
+        "high-impact"
+      ]
+    },
+    "tasks": [
+      {
+        "id": "task-01-lock-flat-feed-structure",
+        "title": "Lock the flat-feed structure",
+        "status": "done",
+        "objective": "Translate the GitHub, Linear, and Vercel changelog research into a Decodex-specific homepage structure with fewer containers and a clearer entry rhythm.",
+        "inputs": [
+          "Current homepage implementation",
+          "Site contract",
+          "Recent changelog research"
+        ],
+        "outputs": [
+          "A flat-feed layout model embedded in the saved plan and implementation choices"
+        ],
+        "verification": [
+          "The chosen structure makes clear what belongs to the page chrome versus what belongs to each signal entry."
+        ],
+        "depends_on": []
+      },
+      {
+        "id": "task-02-flatten-homepage-chrome",
+        "title": "Flatten the homepage chrome",
+        "status": "done",
+        "objective": "Reduce the homepage framing into a simpler header, lighter filter area, and compact utility strip so the feed itself is the dominant surface.",
+        "inputs": [
+          "Task 01 flat-feed structure",
+          "Current homepage and utility components"
+        ],
+        "outputs": [
+          "A flatter page shell with less dashboard-like chrome"
+        ],
+        "verification": [
+          "The homepage no longer has competing hero, sidebar, and feed surfaces."
+        ],
+        "depends_on": [
+          "task-01-lock-flat-feed-structure"
+        ]
+      },
+      {
+        "id": "task-03-rebuild-signal-entry-layout",
+        "title": "Rebuild the signal entry layout",
+        "status": "done",
+        "objective": "Turn each signal from nested sub-cards into a single changelog-style entry with one reading flow and an inline action/evidence footer.",
+        "inputs": [
+          "Task 02 flattened homepage chrome",
+          "Current signal entry rendering"
+        ],
+        "outputs": [
+          "A flatter signal entry component and any feed-grouping helpers needed for the homepage"
+        ],
+        "verification": [
+          "Each signal is visibly one entry rather than a set of stacked mini-cards.",
+          "The required summary, why-it-matters, and action state remain visible without a click."
+        ],
+        "depends_on": [
+          "task-02-flatten-homepage-chrome"
+        ]
+      },
+      {
+        "id": "task-04-verify-and-capture-redesign",
+        "title": "Verify and capture the flat-feed redesign",
+        "status": "done",
+        "objective": "Run the site checks and capture a fresh screenshot showing the flatter feed structure in the built output.",
+        "inputs": [
+          "Task 03 rebuilt signal entry layout"
+        ],
+        "outputs": [
+          "Passing build and check evidence",
+          "A fresh screenshot of the redesigned homepage"
+        ],
+        "verification": [
+          "`npm run build` passes from site/",
+          "`npm run check` passes from site/",
+          "The screenshot clearly shows the page as a flatter changelog feed."
+        ],
+        "depends_on": [
+          "task-03-rebuild-signal-entry-layout"
+        ]
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "The flatter feed model no longer satisfies the required signal-card contract",
+        "The user wants to prioritize a dedicated archive route as part of the redesign",
+        "The utility area still needs to behave like a sidebar rather than a compact strip"
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "Locked the redesign around a flatter changelog-feed model: GitHub-style list architecture, Linear-style rhythm and grouping, and Vercel-style try-now/action copy inside each signal.",
+      "Flattened the homepage chrome in site/src/pages/index.astro by removing the competing hero/sidebar layout, switching to a single-column feed shell, and turning the utility area into a compact inline status strip.",
+      "Rebuilt site/src/components/SignalCard.astro into a single changelog-style entry with one reading flow for metadata, title, summary, why-it-matters, action, evidence, and source refs instead of nested sub-cards.",
+      "Updated feed helpers and shared styles in site/src/lib/signal-feed.ts and site/src/styles/global.css to support month grouping, flatter surfaces, lighter tabs, and simpler feed-oriented spacing.",
+      "`npm run build` passed from site/ on 2026-03-20 and produced the static output successfully, with the same non-blocking Astro/Vite warning still present.",
+      "`npm run check` passed from site/ on 2026-03-20 with 0 errors, 0 warnings, and 0 hints.",
+      "Captured a fresh built-page screenshot at /tmp/decodex-homepage-flat-feed.png after serving site/dist locally on 127.0.0.1:4411."
+    ],
+    "last_updated": "2026-03-20T04:21:59Z",
+    "replan_reason": null,
+    "context_snapshot": {
+      "current_problem": "The homepage still feels like a set of cards inside cards, which makes it harder to scan like the changelog pages the user prefers.",
+      "direction": "Use GitHub for flat list architecture, Linear for entry rhythm, and Vercel for how-to-try style content within a simpler single-column feed.",
+      "lane": "Reuse .workspaces/feat-decodex-github-first for the feed redesign."
+    }
+  }
+}

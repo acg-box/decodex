@@ -51,3 +51,15 @@ Then keep the body explicit:
 - Do not require fixed filename prefixes up front.
 - Choose names for topic clarity and retrieval quality, not visual uniformity.
 - If a guide depends on a spec, the guide links back to the governing spec.
+
+## Current specs
+
+- `repo_layout.md` defines the canonical top-level layout during the transition away
+  from the Rust-only template surface.
+- `site_contract.md` defines the MVP page budget, homepage obligations, and card
+  rendering contract.
+- `github_change_bundle.md` defines the normalized GitHub input model for PR-first
+  analysis.
+- `signal_entry.md` defines the published signal-entry schema used by the site.
+- `release_delta.md` defines the stable-versus-prerelease summary artifact used by
+  the homepage release-delta module.

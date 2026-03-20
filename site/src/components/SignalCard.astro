@@ -1,0 +1,142 @@
+---
+import {
+  confidenceLabel,
+  formatPublishedAt,
+  impactLabel,
+  kindLabel,
+  type SignalCardData,
+} from "@/lib/signal-feed";
+import { renderMarkdownInline } from "@/lib/render-markdown";
+
+type Props = {
+  signal: SignalCardData;
+};
+
+const { signal } = Astro.props;
+const renderedTitle = renderMarkdownInline(signal.title);
+const renderedSummary = renderMarkdownInline(signal.summary);
+const renderedWhyItMatters = renderMarkdownInline(signal.why_it_matters);
+const renderedHowToTry = signal.how_to_try
+  ? renderMarkdownInline(signal.how_to_try)
+  : null;
+const renderedExpectedEffect = signal.expected_effect
+  ? renderMarkdownInline(signal.expected_effect)
+  : null;
+const visibleFlags = signal.config_flags.filter(
+  (flag) => flag.startsWith("--") || flag.includes("="),
+);
+const sourceLinks = [
+  {
+    label: signal.source_refs.repo,
+    url: `https://github.com/${signal.source_refs.repo}`,
+  },
+  ...(signal.source_refs.pr_url
+    ? [{ label: "Pull request", url: signal.source_refs.pr_url }]
+    : []),
+  ...signal.source_refs.commit_urls.map((url, index) => ({
+    label: `Commit ${index + 1}`,
+    url,
+  })),
+];
+---
+
+<article class="signal-card" id={signal.slug}>
+  <aside class="signal-entry__rail">
+    <span class="signal-entry-date">
+      {formatPublishedAt(signal.published_at)}
+    </span>
+
+    <div class="signal-entry__taxonomy">
+      <span class="signal-entry__taxonomy-item signal-entry__taxonomy-item--accent">
+        {kindLabel(signal.kind)}
+      </span>
+      <span class="signal-entry__taxonomy-item">{impactLabel(signal.impact)}</span>
+      <span class="signal-entry__taxonomy-item">{confidenceLabel(signal.confidence)}</span>
+    </div>
+  </aside>
+
+  <div class="signal-entry__content">
+    <div class="space-y-3">
+      {signal.previewLabel ? (
+        <p class="signal-entry__preview">
+          {signal.previewLabel}
+        </p>
+      ) : null}
+
+      <h2
+        class="signal-markdown signal-markdown--title signal-entry__title"
+        set:html={renderedTitle}
+      />
+
+      <p
+        class="signal-markdown signal-entry__summary"
+        set:html={renderedSummary}
+      />
+
+      <p class="signal-entry__why">
+        <span class="signal-entry-label">Why it matters</span>
+        <span class="signal-markdown signal-markdown--inline" set:html={renderedWhyItMatters} />
+      </p>
+    </div>
+
+    <section class="signal-entry-action">
+      <p class="signal-entry-action__row">
+        <span class="signal-entry-label">Action</span>
+        <span class="signal-entry-action__body">
+          {renderedHowToTry ? (
+            <>
+              <span class="terminal-inline">Try now</span>{" "}
+              <span class="signal-markdown signal-markdown--inline" set:html={renderedHowToTry} />
+            </>
+          ) : (
+            "Watch only. No safe try path is published for this signal yet."
+          )}
+        </span>
+      </p>
+
+      {signal.expected_effect ? (
+        <p class="signal-entry-action__effect">
+          <span class="signal-entry-label">Expected effect</span>
+          <span class="signal-markdown signal-markdown--inline" set:html={renderedExpectedEffect ?? ""} />
+        </p>
+      ) : null}
+
+      {visibleFlags.length > 0 ? (
+        <div class="mt-3 flex flex-wrap gap-2">
+          {visibleFlags.map((flag) => (
+            <code class="signal-flag">
+              {flag}
+            </code>
+          ))}
+        </div>
+      ) : null}
+    </section>
+
+    <details class="signal-entry-details">
+      <summary class="signal-entry-details__summary">
+        <span>Sources and evidence</span>
+        <span>{signal.proof_points.length} proof point{signal.proof_points.length === 1 ? "" : "s"}</span>
+      </summary>
+
+      <div class="signal-entry-details__body">
+        <ul class="space-y-2 text-[0.88rem] leading-6 text-[color:var(--ink-soft)]">
+          {signal.proof_points.map((point) => (
+            <li class="signal-proof-item">
+              <span class="signal-markdown signal-markdown--inline" set:html={renderMarkdownInline(point)} />
+            </li>
+          ))}
+        </ul>
+
+        <ul class="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[0.85rem] leading-6">
+          {sourceLinks.map((source) => (
+            <li>
+              <a class="signal-link" href={source.url} target="_blank" rel="noreferrer">
+                {source.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
+  </div>
+</article>

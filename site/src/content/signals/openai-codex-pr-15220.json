@@ -1,0 +1,43 @@
+{
+  "confidence": "confirmed",
+  "config_flags": [
+    "API",
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND",
+    "MCP",
+    "JSON",
+    "JSONRPCE",
+    "JSONRPCM",
+    "JSONRPCR",
+    "DEFAULT_READ_TIMEOUT"
+  ],
+  "expected_effect": "API v2 clients should receive `starting`, `ready`, `failed`, or `cancelled` MCP startup updates, including the server name and optional error details.",
+  "how_to_try": "Connect to the app-server v2 notification stream, trigger an MCP server startup or refresh, and listen for `mcpServer/startupStatus/updated` events.",
+  "impact": "medium",
+  "kind": "try_now",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly says the legacy MCP startup update event is now exposed as an API v2 notification.",
+    "The protocol schemas add both `McpServerStartupState` and `McpServerStatusUpdatedNotification`, which defines the new event contract.",
+    "The server notification schema now registers `mcpServer/startupStatus/updated` as a first-class v2 notification method."
+  ],
+  "published_at": "2026-03-19T22:09:59Z",
+  "schema": "signal_entry/v1",
+  "slug": "mcp-startup-status-updated-notification",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/9c0fdb49b71fccffc5fcadf247369067e441b902",
+      "https://github.com/openai/codex/commit/ba1d7436f867c1febcbb2a51bcfc6ddeb24c8ba0",
+      "https://github.com/openai/codex/commit/c58e46d2fa269d38367c1281998aac4e79494157",
+      "https://github.com/openai/codex/commit/660b395c5176bbf807748e253f2da2d9a40ed0bb"
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15220",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15220 promotes MCP startup progress to a first-class API v2 notification instead of leaving it as a legacy internal event.",
+  "title": "`mcpServer/startupStatus/updated` lands in API v2",
+  "why_it_matters": "Clients can track MCP readiness without scraping legacy events. That makes plugin UIs, status surfaces, and startup diagnostics easier to build and less brittle."
+}

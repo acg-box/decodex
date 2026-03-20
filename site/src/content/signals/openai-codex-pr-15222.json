@@ -1,0 +1,30 @@
+{
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "New image-generation outputs should land under `codex_home/generated_images/<thread_id>/...` instead of an OS temp directory.",
+  "how_to_try": "Generate an image from a Codex build that includes PR #15222, then inspect the active `codex_home` directory for a `generated_images/<thread_id>/` subtree.",
+  "impact": "medium",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly says the default image-generation save directory now points at `codex_home` with a per-thread path.",
+    "The Rust helper in `stream_events_utils.rs` now builds image artifact paths from `codex_home` and a dedicated `generated_images` directory instead of `std::env::temp_dir()`.",
+    "Tests in `codex_tests.rs` and `stream_events_utils_tests.rs` were updated to expect the new codex-home path, which confirms this is a behavior change rather than a comment-only cleanup."
+  ],
+  "published_at": "2026-03-19T22:16:26Z",
+  "schema": "signal_entry/v1",
+  "slug": "generated-images-save-under-codex-home",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/5d11650edcafe0db97b685a6428777bc7f7a0b72",
+      "https://github.com/openai/codex/commit/c5bfcdcac131c70f0ec849eb94e2f29bd5d3fe8e",
+      "https://github.com/openai/codex/commit/6cd6f496d0ecde564e0ca313ea06d787eb39cdb3",
+      "https://github.com/openai/codex/commit/f8b89207c2e373bd25310bb80d784bb471b4b068"
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15222",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15222 moves generated-image artifacts out of transient temp paths and into a predictable location under `codex_home`.",
+  "title": "Generated images now save under `codex_home` instead of a temp directory",
+  "why_it_matters": "This makes image outputs easier to find, persist, and script against. Users who rely on generated artifacts no longer have to guess where a temp file landed or whether it will disappear between runs."
+}

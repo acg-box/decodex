@@ -1,0 +1,147 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "decodex-visual-refresh-2026-03-20",
+    "goal": "Refresh the Decodex homepage from a warm editorial prototype into a colder, more modern product-intelligence terminal while preserving the one-page GitHub-first MVP contract.",
+    "success_criteria": [
+      "The homepage no longer reads as a paper-like editorial page; typography, palette, and surfaces feel closer to a modern product signal terminal.",
+      "The redesign preserves the one-page route contract, the required filter set, and the visible signal-card fields.",
+      "Signal cards, filters, and the utility rail have stronger product hierarchy and better scan speed than the previous prototype.",
+      "The refreshed site still builds and checks cleanly, and a new screenshot confirms the visual shift on the live page."
+    ],
+    "constraints": [
+      "Do not add new public routes or expand beyond the current one-page MVP.",
+      "Keep the GitHub-first feed structure and seeded signal content intact while changing presentation.",
+      "Prefer a modern sans-led system with a cooler palette and harder geometry over the warm editorial aesthetic.",
+      "Keep the utility rail subordinate to the feed.",
+      "Do not introduce client-side complexity that changes the static-site model."
+    ],
+    "defaults": {
+      "visual_direction": {
+        "accent_family": "cool blue-cyan",
+        "layout_model": "product-intelligence terminal",
+        "surface_tone": "cool graphite on pale steel",
+        "typography": "modern sans with mono metadata"
+      },
+      "routes": [
+        "/"
+      ],
+      "filters": [
+        "all",
+        "github",
+        "try-now",
+        "high-impact"
+      ]
+    },
+    "tasks": [
+      {
+        "id": "task-01-lock-visual-direction",
+        "title": "Lock the visual direction for the refresh",
+        "status": "done",
+        "objective": "Translate the changelog and product-feed research into concrete design constraints for this homepage refresh.",
+        "inputs": [
+          "Current Decodex homepage implementation",
+          "Prior research conclusions about Linear, Raycast, Vercel, and similar product surfaces",
+          "The site contract for the one-page MVP"
+        ],
+        "outputs": [
+          "A concrete visual direction embedded in the saved plan and implementation choices"
+        ],
+        "verification": [
+          "The chosen direction is explicit enough to guide typography, palette, component geometry, and hierarchy."
+        ],
+        "depends_on": []
+      },
+      {
+        "id": "task-02-refresh-shared-visual-system",
+        "title": "Refresh the shared visual system",
+        "status": "done",
+        "objective": "Replace the warm editorial base theme with a cooler modern system across the layout shell, background, typography, and shared CSS tokens.",
+        "inputs": [
+          "Task 01 visual direction",
+          "Current BaseLayout and global styles"
+        ],
+        "outputs": [
+          "Updated global CSS tokens, typography, and surface system",
+          "Any shared layout adjustments needed for the new direction"
+        ],
+        "verification": [
+          "The refreshed visual system applies consistently across the homepage and supporting components."
+        ],
+        "depends_on": [
+          "task-01-lock-visual-direction"
+        ]
+      },
+      {
+        "id": "task-03-rebuild-homepage-components",
+        "title": "Rebuild the homepage hierarchy and components",
+        "status": "done",
+        "objective": "Rework the hero, filter bar, signal cards, utility rail, and empty state so the page reads as a compact product signal terminal.",
+        "inputs": [
+          "Task 02 shared visual system",
+          "Existing homepage route and components"
+        ],
+        "outputs": [
+          "A redesigned homepage that still honors the current feed contract and filters"
+        ],
+        "verification": [
+          "The primary signal feed remains scan-first on desktop and mobile.",
+          "The utility rail remains visually subordinate to the main feed."
+        ],
+        "depends_on": [
+          "task-02-refresh-shared-visual-system"
+        ]
+      },
+      {
+        "id": "task-04-verify-and-capture-refresh",
+        "title": "Verify the redesign and capture a live preview",
+        "status": "done",
+        "objective": "Run the repo-native checks, rebuild the site, and capture a fresh screenshot that proves the redesign landed in the built output.",
+        "inputs": [
+          "Task 03 redesigned homepage"
+        ],
+        "outputs": [
+          "Passing build and check evidence",
+          "A refreshed live screenshot for review"
+        ],
+        "verification": [
+          "`npm run build` passes from the site root",
+          "`npm run check` passes from the site root",
+          "The live screenshot reflects the new visual direction"
+        ],
+        "depends_on": [
+          "task-03-rebuild-homepage-components"
+        ]
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "The one-page contract is no longer sufficient for the visual goals",
+        "The redesign requires changes to the content model rather than presentation only",
+        "The user rejects the modern product-terminal direction and wants a different design language"
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "Locked the redesign direction as a colder product-intelligence terminal, informed by the earlier Linear, Raycast, and Vercel changelog research while preserving the one-page GitHub-first contract.",
+      "Rebuilt the shared visual system in site/src/styles/global.css with a cool steel-and-graphite palette, new modern sans and mono typography, harder panel geometry, and a darker utility rail treatment.",
+      "Refreshed the homepage hierarchy and components in site/src/pages/index.astro plus the feed, filter, empty-state, and utility components so the page now reads as a compact signal terminal instead of a warm editorial landing page.",
+      "`npm run build` passed from site/ on 2026-03-20 and produced the static output successfully, with the previously noted non-blocking Astro/Vite warning still present.",
+      "`npm run check` passed from site/ on 2026-03-20 with 0 errors, 0 warnings, and 0 hints.",
+      "Captured a fresh live screenshot of the built site at /tmp/decodex-homepage-refresh.png after serving site/dist locally on 127.0.0.1:4411."
+    ],
+    "last_updated": "2026-03-20T03:18:23Z",
+    "replan_reason": null,
+    "context_snapshot": {
+      "current_problem": "The existing homepage reads as a warm editorial page rather than a modern signal terminal.",
+      "direction": "Shift toward a Linear x Raycast x Vercel visual language while preserving the current one-page GitHub-first MVP.",
+      "lane": "Reuse .workspaces/feat-decodex-github-first for the redesign."
+    }
+  }
+}

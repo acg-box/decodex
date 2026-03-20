@@ -1,0 +1,20 @@
+{
+  "config_flags": [
+    "--enable plugins",
+    "--enable tui_app_server"
+  ],
+  "confidence": "confirmed",
+  "expected_effect": "The TUI should expose a searchable `/plugins` flow with loading states, plugin detail views, and back navigation, and the same flow should work under `tui_app_server`.",
+  "how_to_try": "Launch Codex CLI with `--enable plugins`, run `/plugins`, search the curated marketplace, and open a plugin detail view. Optionally repeat with `--enable tui_app_server`.",
+  "impact": "medium",
+  "kind": "try_now",
+  "proof_points": [
+    "The PR body explicitly describes a preliminary `/plugins` menu in both `tui` and `tui_app_server`, including loading, search, and detail-view behavior.",
+    "The testing section in the PR body documents the exact `/plugins` flow to verify, including disabled behavior when plugins are not enabled.",
+    "The patch adds plugin list and plugin read wiring in `tui/src/app.rs` and `tui/src/app_event.rs`, which is the concrete UI plumbing for the new menu."
+  ],
+  "slug": "plugins-browser-lands-in-tui",
+  "summary": "Merged PR #15215 adds a first `/plugins` browser to both `tui` and `tui_app_server`, with listing, search, and read-only plugin detail views.",
+  "title": "A first `/plugins` browser lands in the TUI",
+  "why_it_matters": "Plugin discovery moves into the terminal itself. Early users no longer need to hunt for plugin metadata outside Codex just to browse what is available and inspect what a plugin contains."
+}

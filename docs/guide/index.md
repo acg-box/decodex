@@ -53,3 +53,8 @@ Then structure the body for execution:
 - Prefer titles that encode the task or outcome, such as `validate_release.md` or
   `rerun_ingest_job.md`.
 - Keep the guide index as a router, not a dumping ground for long explanations.
+
+## Current guides
+
+- `local_github_signal_workflow.md` defines the MVP local loop for GitHub bundle
+  collection, Codex analysis, validation, and publish-to-Pages handoff.
