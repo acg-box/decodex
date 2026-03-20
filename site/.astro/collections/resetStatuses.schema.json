@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "reset_status/v1"
+    },
+    "source_label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_kind": {
+      "type": "string",
+      "const": "community"
+    },
+    "source_url": {
+      "type": "string",
+      "pattern": "^https:\\/\\/"
+    },
+    "source_api_url": {
+      "type": "string",
+      "pattern": "^https:\\/\\/"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "reset",
+        "not_reset",
+        "unknown"
+      ]
+    },
+    "stale": {
+      "type": "boolean"
+    },
+    "configured": {
+      "type": "boolean"
+    },
+    "upstream_state": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "auto_reset_hours": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reset_at": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "updated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "$schema": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "source_label",
+    "source_kind",
+    "source_url",
+    "source_api_url",
+    "status",
+    "stale",
+    "configured",
+    "updated_at"
+  ]
+}

@@ -4,6 +4,16 @@ import { z } from "astro/zod";
 
 const sourceRefSchema = z
   .object({
+    items: z
+      .array(
+        z.object({
+          kind: z.enum(["pull_request", "commit"]),
+          title: z.string().min(1),
+          url: z.string().regex(/^https:\/\//, "source item url must be an https URL"),
+          meta: z.string().min(1).optional(),
+        }),
+      )
+      .default([]),
     repo: z.string().min(1),
     pr_url: z.string().regex(/^https:\/\//, "pr_url must be an https URL").optional(),
     commit_urls: z
@@ -11,10 +21,10 @@ const sourceRefSchema = z
       .default([]),
   })
   .superRefine((entry, ctx) => {
-    if (!entry.pr_url && entry.commit_urls.length === 0) {
+    if (!entry.pr_url && entry.commit_urls.length === 0 && entry.items.length === 0) {
       ctx.addIssue({
         code: "custom",
-        message: "source_refs must include pr_url or at least one commit URL.",
+        message: "source_refs must include a PR, commit URL, or titled source item.",
         path: ["commit_urls"],
       });
     }
@@ -105,6 +115,21 @@ const releaseDeltaSchema = z
     }
   });
 
+const resetStatusSchema = z.object({
+  schema: z.literal("reset_status/v1"),
+  source_label: z.string().min(1),
+  source_kind: z.literal("community"),
+  source_url: z.string().regex(/^https:\/\//, "source_url must be an https URL"),
+  source_api_url: z.string().regex(/^https:\/\//, "source_api_url must be an https URL"),
+  status: z.enum(["reset", "not_reset", "unknown"]),
+  stale: z.boolean(),
+  configured: z.boolean(),
+  upstream_state: z.string().min(1).nullable().optional(),
+  auto_reset_hours: z.number().int().positive().nullable().optional(),
+  reset_at: z.string().min(1).nullable().optional(),
+  updated_at: z.string().min(1),
+});
+
 const signals = defineCollection({
   loader: glob({
     pattern: "**/*.json",
@@ -121,7 +146,16 @@ const releaseDeltas = defineCollection({
   schema: releaseDeltaSchema,
 });
 
+const resetStatuses = defineCollection({
+  loader: glob({
+    pattern: "**/*.json",
+    base: "./src/content/reset-status",
+  }),
+  schema: resetStatusSchema,
+});
+
 export const collections = {
   signals,
   releaseDeltas,
+  resetStatuses,
 };

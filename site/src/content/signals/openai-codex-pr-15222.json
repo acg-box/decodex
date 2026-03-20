@@ -21,6 +21,32 @@
       "https://github.com/openai/codex/commit/6cd6f496d0ecde564e0ca313ea06d787eb39cdb3",
       "https://github.com/openai/codex/commit/f8b89207c2e373bd25310bb80d784bb471b4b068"
     ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15222",
+        "title": "changed save directory to codex_home",
+        "url": "https://github.com/openai/codex/pull/15222"
+      },
+      {
+        "kind": "commit",
+        "meta": "5d11650",
+        "title": "changed save directory to codex_home",
+        "url": "https://github.com/openai/codex/commit/5d11650edcafe0db97b685a6428777bc7f7a0b72"
+      },
+      {
+        "kind": "commit",
+        "meta": "6cd6f49",
+        "title": "Collapse generated image artifact helpers",
+        "url": "https://github.com/openai/codex/commit/6cd6f496d0ecde564e0ca313ea06d787eb39cdb3"
+      },
+      {
+        "kind": "commit",
+        "meta": "f8b8920",
+        "title": "Avoid expect in image artifact path handling",
+        "url": "https://github.com/openai/codex/commit/f8b89207c2e373bd25310bb80d784bb471b4b068"
+      }
+    ],
     "pr_url": "https://github.com/openai/codex/pull/15222",
     "repo": "openai/codex"
   },
