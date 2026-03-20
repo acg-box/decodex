@@ -1,0 +1,179 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-03-19T00:59:10Z",
+      "message": "Move environment into exec server",
+      "sha": "b3807c51ef81557391a199a9b0bb0686bdb949e4",
+      "url": "https://github.com/openai/codex/commit/b3807c51ef81557391a199a9b0bb0686bdb949e4"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-03-19T01:03:14Z",
+      "message": "Move environment module into exec",
+      "sha": "46eb5f49fdb7975fd49186220dbe8f7365d1adbc",
+      "url": "https://github.com/openai/codex/commit/46eb5f49fdb7975fd49186220dbe8f7365d1adbc"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-03-19T01:05:11Z",
+      "message": "Merge origin/main",
+      "sha": "7dd923d986f731a9280910955e687f4b64ffafb3",
+      "url": "https://github.com/openai/codex/commit/7dd923d986f731a9280910955e687f4b64ffafb3"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-03-19T01:10:31Z",
+      "message": "Align exec server build deps",
+      "sha": "86b0538d5a99c60df6d066179ff954a8ad992acc",
+      "url": "https://github.com/openai/codex/commit/86b0538d5a99c60df6d066179ff954a8ad992acc"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-03-19T01:16:52Z",
+      "message": "codex: fix CI failure on PR #15125",
+      "sha": "8902a180f66d60caac58da2e7a60ce609f6c1f06",
+      "url": "https://github.com/openai/codex/commit/8902a180f66d60caac58da2e7a60ce609f6c1f06"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "JSONRPCE",
+    "DEFAULT_LISTEN_URL"
+  ],
+  "files": [
+    {
+      "additions": 5,
+      "deletions": 13,
+      "patch_excerpt": "@@ -1427,7 +1427,7 @@ dependencies = [\n  \"codex-chatgpt\",\n  \"codex-cloud-requirements\",\n  \"codex-core\",\n- \"codex-environment\",\n+ \"codex-exec-server\",\n  \"codex-feedback\",\n  \"codex-file-search\",\n  \"codex-login\",\n@@ -1843,7 +1843,7 @@ dependencies = [\n  \"codex-client\",\n  \"codex-config\",\n  \"codex-connectors\",\n- \"codex-environment\",\n+ \"codex-exec-server\",\n  \"codex-execpolicy\",\n  \"codex-file-search\",\n  \"codex-git\",\n@@ -1947,17 +1947,6 @@ dependencies = [\n  \"serde_json\",\n ]\n \n-[[package]]\n-name = \"codex-environment\"\n-version = \"0.0.0\"\n-dependencies = [\n- \"async-trait\",\n- \"codex-utils-absolute-path\",\n- \"pretty_assertions\",\n- \"tempfile\",\n- \"tokio\",\n-]\n-\n [[package]]\n name = \"codex-exec\"\n version = \"0.0.0\"\n@@ -2008,13 +1997,16 @@ name = \"codex-exec-server\"\n version = \"0.0.0\"\n dependencies = [\n  \"anyhow\",\n+ \"async-trait\",\n  \"clap\",\n  \"codex-app-server-protocol\",\n+ \"codex-utils-absolute-path\",\n  \"co...",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 2,
+      "patch_excerpt": "@@ -22,7 +22,6 @@ members = [\n     \"shell-escalation\",\n     \"skills\",\n     \"core\",\n-    \"environment\",\n     \"hooks\",\n     \"secrets\",\n     \"exec\",\n@@ -105,8 +104,8 @@ codex-cloud-requirements = { path = \"cloud-requirements\" }\n codex-connectors = { path = \"connectors\" }\n codex-config = { path = \"config\" }\n codex-core = { path = \"core\" }\n-codex-environment = { path = \"environment\" }\n codex-exec = { path = \"exec\" }\n+codex-exec-server = { path = \"exec-server\" }\n codex-execpolicy = { path = \"execpolicy\" }\n codex-experimental-api-macros = { path = \"codex-experimental-api-macros\" }\n codex-feedback = { path = \"feedback\" }",
+      "path": "codex-rs/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -32,7 +32,7 @@ axum = { workspace = true, default-features = false, features = [\n codex-arg0 = { workspace = true }\n codex-cloud-requirements = { workspace = true }\n codex-core = { workspace = true }\n-codex-environment = { workspace = true }\n+codex-exec-server = { workspace = true }\n codex-otel = { workspace = true }\n codex-shell-command = { workspace = true }\n codex-utils-cli = { workspace = true }",
+      "path": "codex-rs/app-server/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 5,
+      "patch_excerpt": "@@ -18,11 +18,11 @@ use codex_app_server_protocol::FsRemoveResponse;\n use codex_app_server_protocol::FsWriteFileParams;\n use codex_app_server_protocol::FsWriteFileResponse;\n use codex_app_server_protocol::JSONRPCErrorError;\n-use codex_environment::CopyOptions;\n-use codex_environment::CreateDirectoryOptions;\n-use codex_environment::Environment;\n-use codex_environment::ExecutorFileSystem;\n-use codex_environment::RemoveOptions;\n+use codex_exec_server::CopyOptions;\n+use codex_exec_server::CreateDirectoryOptions;\n+use codex_exec_server::Environment;\n+use codex_exec_server::ExecutorFileSystem;\n+use codex_exec_server::RemoveOptions;\n use std::io;\n use std::sync::Arc;",
+      "path": "codex-rs/app-server/src/fs_api.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -34,7 +34,7 @@ codex-async-utils = { workspace = true }\n codex-client = { workspace = true }\n codex-connectors = { workspace = true }\n codex-config = { workspace = true }\n-codex-environment = { workspace = true }\n+codex-exec-server = { workspace = true }\n codex-shell-command = { workspace = true }\n codex-skills = { workspace = true }\n codex-execpolicy = { workspace = true }",
+      "path": "codex-rs/core/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -59,7 +59,7 @@ use chrono::Local;\n use chrono::Utc;\n use codex_app_server_protocol::McpServerElicitationRequest;\n use codex_app_server_protocol::McpServerElicitationRequestParams;\n-use codex_environment::Environment;\n+use codex_exec_server::Environment;\n use codex_hooks::HookEvent;\n use codex_hooks::HookEventAfterAgent;\n use codex_hooks::HookPayload;",
+      "path": "codex-rs/core/src/codex.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -2465,7 +2465,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {\n         true,\n     ));\n     let network_approval = Arc::new(NetworkApprovalService::default());\n-    let environment = Arc::new(codex_environment::Environment);\n+    let environment = Arc::new(codex_exec_server::Environment);\n \n     let file_watcher = Arc::new(FileWatcher::noop());\n     let services = SessionServices {\n@@ -3259,7 +3259,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(\n         true,\n     ));\n     let network_approval = Arc::new(NetworkApprovalService::default());\n-    let environment = Arc::new(codex_environment::Environment);\n+    let environment = Arc::new(codex_exec_server::Environment);\n \n     let file_watcher = Arc::new(FileWatcher::noop());\n     let services = SessionServices {",
+      "path": "codex-rs/core/src/codex_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -20,7 +20,7 @@ use crate::tools::network_approval::NetworkApprovalService;\n use crate::tools::runtimes::ExecveSessionApproval;\n use crate::tools::sandboxing::ApprovalStore;\n use crate::unified_exec::UnifiedExecProcessManager;\n-use codex_environment::Environment;\n+use codex_exec_server::Environment;\n use codex_hooks::Hooks;\n use codex_otel::SessionTelemetry;\n use codex_utils_absolute_path::AbsolutePathBuf;",
+      "path": "codex-rs/core/src/state/service.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,5 +1,5 @@\n use async_trait::async_trait;\n-use codex_environment::ExecutorFileSystem;\n+use codex_exec_server::ExecutorFileSystem;\n use codex_protocol::models::FunctionCallOutputBody;\n use codex_protocol::models::FunctionCallOutputContentItem;\n use codex_protocol::models::FunctionCallOutputPayload;",
+      "path": "codex-rs/core/src/tools/handlers/view_image.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 6,
+      "patch_excerpt": "@@ -1,6 +0,0 @@\n-load(\"//:defs.bzl\", \"codex_rust_crate\")\n-\n-codex_rust_crate(\n-    name = \"environment\",\n-    crate_name = \"codex_environment\",\n-)",
+      "path": "codex-rs/environment/BUILD.bazel",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 21,
+      "patch_excerpt": "@@ -1,21 +0,0 @@\n-[package]\n-name = \"codex-environment\"\n-version.workspace = true\n-edition.workspace = true\n-license.workspace = true\n-\n-[lib]\n-name = \"codex_environment\"\n-path = \"src/lib.rs\"\n-\n-[lints]\n-workspace = true\n-\n-[dependencies]\n-async-trait = { workspace = true }\n-codex-utils-absolute-path = { workspace = true }\n-tokio = { workspace = true, features = [\"fs\", \"io-util\", \"rt\"] }\n-\n-[dev-dependencies]\n-pretty_assertions = { workspace = true }\n-tempfile = { workspace = true }",
+      "path": "codex-rs/environment/Cargo.toml",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 18,
+      "patch_excerpt": "@@ -1,18 +0,0 @@\n-pub mod fs;\n-\n-pub use fs::CopyOptions;\n-pub use fs::CreateDirectoryOptions;\n-pub use fs::ExecutorFileSystem;\n-pub use fs::FileMetadata;\n-pub use fs::FileSystemResult;\n-pub use fs::ReadDirectoryEntry;\n-pub use fs::RemoveOptions;\n-\n-#[derive(Clone, Debug, Default)]\n-pub struct Environment;\n-\n-impl Environment {\n-    pub fn get_filesystem(&self) -> impl ExecutorFileSystem + use<> {\n-        fs::LocalFileSystem\n-    }\n-}",
+      "path": "codex-rs/environment/src/lib.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -15,13 +15,16 @@ path = \"src/bin/codex-exec-server.rs\"\n workspace = true\n \n [dependencies]\n+async-trait = { workspace = true }\n clap = { workspace = true, features = [\"derive\"] }\n codex-app-server-protocol = { workspace = true }\n+codex-utils-absolute-path = { workspace = true }\n futures = { workspace = true }\n serde = { workspace = true, features = [\"derive\"] }\n serde_json = { workspace = true }\n thiserror = { workspace = true }\n tokio = { workspace = true, features = [\n+    \"fs\",\n     \"io-std\",\n     \"io-util\",\n     \"macros\",\n@@ -38,3 +41,4 @@ tracing = { workspace = true }\n anyhow = { workspace = true }\n codex-utils-cargo-bin = { workspace = true }\n pretty_assertions = { workspace = true }\n+tempfile = { workspace = true }",
+      "path": "codex-rs/exec-server/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,11 @@\n+use crate::fs;\n+use crate::fs::ExecutorFileSystem;\n+\n+#[derive(Clone, Debug, Default)]\n+pub struct Environment;\n+\n+impl Environment {\n+    pub fn get_filesystem(&self) -> impl ExecutorFileSystem + use<> {\n+        fs::LocalFileSystem\n+    }\n+}",
+      "path": "codex-rs/exec-server/src/environment.rs",
+      "status": "added"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/exec-server/src/fs.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,8 @@\n mod client;\n mod client_api;\n mod connection;\n+mod environment;\n+mod fs;\n mod protocol;\n mod rpc;\n mod server;\n@@ -9,6 +11,14 @@ pub use client::ExecServerClient;\n pub use client::ExecServerError;\n pub use client_api::ExecServerClientConnectOptions;\n pub use client_api::RemoteExecServerConnectArgs;\n+pub use environment::Environment;\n+pub use fs::CopyOptions;\n+pub use fs::CreateDirectoryOptions;\n+pub use fs::ExecutorFileSystem;\n+pub use fs::FileMetadata;\n+pub use fs::FileSystemResult;\n+pub use fs::ReadDirectoryEntry;\n+pub use fs::RemoveOptions;\n pub use protocol::InitializeParams;\n pub use protocol::InitializeResponse;\n pub use server::DEFAULT_LISTEN_URL;",
+      "path": "codex-rs/exec-server/src/lib.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#15125"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "The idea is that codex-exec exposes an Environment struct with services on it. Each of those is a trait. \r\n\r\nDepending on construction parameters passed to Environment they are either backed by local or remote server but core doesn't see these differences.",
+    "labels": [],
+    "merged_at": "2026-03-19T15:31:15Z",
+    "number": 15125,
+    "state": "merged",
+    "title": "Move environment abstraction into exec server",
+    "url": "https://github.com/openai/codex/pull/15125"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

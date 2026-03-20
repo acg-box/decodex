@@ -1,0 +1,82 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "shijie-oai",
+      "committed_at": "2026-03-16T22:31:42Z",
+      "message": "Reuse persisted model and reasoning effort on thread resume",
+      "sha": "0c30c52556b4a44425a644dbd0bc30e7a643773c",
+      "url": "https://github.com/openai/codex/commit/0c30c52556b4a44425a644dbd0bc30e7a643773c"
+    },
+    {
+      "author": "shijie-oai",
+      "committed_at": "2026-03-17T15:57:01Z",
+      "message": "cleanup",
+      "sha": "ed07087b4cca63164a89e2ace3d776d58abefa50",
+      "url": "https://github.com/openai/codex/commit/ed07087b4cca63164a89e2ace3d776d58abefa50"
+    },
+    {
+      "author": "shijie-oai",
+      "committed_at": "2026-03-18T03:08:01Z",
+      "message": "Address review comments",
+      "sha": "719028d9640274c4a80d5467e09dd23b8e5792ad",
+      "url": "https://github.com/openai/codex/commit/719028d9640274c4a80d5467e09dd23b8e5792ad"
+    },
+    {
+      "author": "shijie-oai",
+      "committed_at": "2026-03-18T17:34:02Z",
+      "message": "Address review comments",
+      "sha": "634de340246b2492ccef59e01b3c1a2a9c0d3289",
+      "url": "https://github.com/openai/codex/commit/634de340246b2492ccef59e01b3c1a2a9c0d3289"
+    },
+    {
+      "author": "shijie-oai",
+      "committed_at": "2026-03-18T18:20:20Z",
+      "message": "Address review comment",
+      "sha": "82375e834f88d6fb106ad9265cb018d9ee369b8e",
+      "url": "https://github.com/openai/codex/commit/82375e834f88d6fb106ad9265cb018d9ee369b8e"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "SQL",
+    "README",
+    "MAX_USER_INPUT_TEXT_CHARS"
+  ],
+  "files": [
+    {
+      "additions": 13,
+      "deletions": 14,
+      "patch_excerpt": "@@ -115,10 +115,7 @@ Example with notification opt-out:\n     },\n     \"capabilities\": {\n       \"experimentalApi\": true,\n-      \"optOutNotificationMethods\": [\n-        \"thread/started\",\n-        \"item/agentMessage/delta\"\n-      ]\n+      \"optOutNotificationMethods\": [\"thread/started\", \"item/agentMessage/delta\"]\n     }\n   }\n }\n@@ -228,7 +225,11 @@ Start a fresh thread when you need a new Codex conversation.\n \n Valid `personality` values are `\"friendly\"`, `\"pragmatic\"`, and `\"none\"`. When `\"none\"` is selected, the personality placeholder is replaced with an empty string.\n \n-To continue a stored session, call `thread/resume` with the `thread.id` you previously recorded. The response shape matches `thread/start`, and no additional notifications are emitted. You can also pass the same configuration overrides supported by `thread/start`, including `approvalsReviewer`:\n+To continue a stored sessio...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 279,
+      "deletions": 43,
+      "patch_excerpt": "@@ -271,6 +271,7 @@ use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;\n use codex_protocol::user_input::UserInput as CoreInputItem;\n use codex_rmcp_client::perform_oauth_login_return_url;\n use codex_state::StateRuntime;\n+use codex_state::ThreadMetadata;\n use codex_state::ThreadMetadataBuilder;\n use codex_state::log_db::LogDbLayer;\n use codex_utils_json_to_toml::json_to_toml;\n@@ -3349,7 +3350,7 @@ impl CodexMessageProcessor {\n             approval_policy,\n             approvals_reviewer,\n             sandbox,\n-            config: request_overrides,\n+            config: mut request_overrides,\n             base_instructions,\n             developer_instructions,\n             personality,\n@@ -3375,7 +3376,7 @@ impl CodexMessageProcessor {\n         };\n \n         let history_cwd = thread_history.session_cwd();\n-        let typesafe_overrides = self.build_thread_config_overrides(\n+      ...",
+      "path": "codex-rs/app-server/src/codex_message_processor.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "## Summary\r\n\r\nThis PR makes `thread/resume` reuse persisted thread model metadata when the caller does not explicitly override it.\r\n\r\nChanges:\r\n- read persisted thread metadata from SQLite during `thread/resume`\r\n- reuse persisted `model` and `model_reasoning_effort` as resume-time defaults\r\n- fetch persisted metadata once and reuse it later in the resume response path\r\n- keep thread summary loading on the existing rollout path, while reusing persisted metadata when available\r\n- document the resume fallback behavior in the app-server README\r\n\r\n## Why\r\n\r\nBefore this change, resuming a thread without explicit overrides derived `model` and `model_reasoning_effort` from current config, which could drift from the thread\u2019s last persisted values. That meant a resumed thread could report and run with different model settings than the ones it previously used.\r\n\r\n## Behavior\r\n\r\nPrecedence on `thread/resume` is now:\r\n1. explicit resume overrides\r\n2. persisted SQLite metadata for the thread\r\n3. normal config resolution for the resumed cwd",
+    "labels": [],
+    "merged_at": "2026-03-18T22:45:17Z",
+    "number": 14888,
+    "state": "merged",
+    "title": "Feat: reuse persisted model and reasoning effort on thread resume",
+    "url": "https://github.com/openai/codex/pull/14888"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

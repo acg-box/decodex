@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "Merged protocol and README text describe `thread/shellCommand` as running unsandboxed with full access, which is stricter and more consequential than the PR body's earlier sandbox wording."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "The PR title and body frame the change around a new `thread/shellCommand` API plus TUI support for `!` shell commands, making the PR itself a clear user-facing capability addition.",
+    "Protocol/schema files add a dedicated `ThreadShellCommand` request shape and `ThreadShellCommandParams`, while command items gain a `CommandExecutionSource` field, showing this is a first-class app-server surface rather than an internal workaround.",
+    "`codex_message_processor.rs`, `app_server_session.rs`, and `tui_app_server/src/app.rs` wire request handling and submission for `thread/shellCommand`, connecting the new API to the app-server-backed TUI path.",
+    "`tui_app_server/src/chatwidget.rs` removes the prior disabled-error behavior for `!` commands and instead dispatches `run_user_shell_command`, while `core/src/tasks/user_shell.rs` adds rollout materialization for standalone shell-output persistence.",
+    "The new test suite `app-server/tests/suite/v2/thread_shell_command.rs` and updated `chatwidget` tests provide direct evidence that the request path and TUI behavior were intentionally added and verified."
+  ],
+  "slug": null,
+  "summary": "Merged PR #14988 adds a new `thread/shellCommand` app-server request and wires app-server-backed TUI `!` shell commands through that API, with command execution persisted into thread history.",
+  "title": "App server adds `thread/shellCommand` support for TUI `!` commands",
+  "watch_state": null,
+  "why_it_matters": "This turns app-server-backed `!` shell commands from a blocked path into a supported workflow. Users on the app-server TUI can run shell shortcuts again and have the command activity show up in the same thread history and execution-event flow as other command items."
+}

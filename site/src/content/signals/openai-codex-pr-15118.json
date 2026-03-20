@@ -1,0 +1,51 @@
+{
+  "caveats": [
+    "The new field is a Codex-specific extension and only applies to the Stop and UserPromptSubmit hook payloads covered by this PR."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "Each Stop and UserPromptSubmit invocation should include a `turn_id` string, and the value should differ between separate turns so your hook can correlate events within the same turn.",
+  "how_to_try": "Enable Stop or UserPromptSubmit hooks in a build that includes PR #15118, print the incoming JSON payload in your hook script, and run two prompts in the same session.",
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "The PR title and body explicitly frame the change as exposing `turn_id` to hook scripts so runs can be connected to particular turns.",
+    "The generated hook input schemas for `stop.command.input` and `user-prompt-submit.command.input` now require a string `turn_id` field.",
+    "The Rust hook event code now serializes `request.turn_id` into both Stop and UserPromptSubmit payloads, and the test suite was expanded to log hook inputs and verify turn-scoped behavior."
+  ],
+  "published_at": "2026-03-19T04:48:31Z",
+  "schema": "signal_entry/v1",
+  "slug": "hooks-stop-userpromptsubmit-turn-id",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/9647be07b7f8f4435569f0f3ba0ef428647b31c3",
+      "https://github.com/openai/codex/commit/524f3aa437ea9e6f7a70077e18fa6c323ac42604"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15118",
+        "title": "[hooks] turn_id extension for Stop & UserPromptSubmit",
+        "url": "https://github.com/openai/codex/pull/15118"
+      },
+      {
+        "kind": "commit",
+        "meta": "9647be0",
+        "title": "turn_id extension for stop/userpromptsubmit",
+        "url": "https://github.com/openai/codex/commit/9647be07b7f8f4435569f0f3ba0ef428647b31c3"
+      },
+      {
+        "kind": "commit",
+        "meta": "524f3aa",
+        "title": "codex: fix CI failure on PR #15118",
+        "url": "https://github.com/openai/codex/commit/524f3aa437ea9e6f7a70077e18fa6c323ac42604"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15118",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15118 adds a Codex-specific `turn_id` field to the Stop and UserPromptSubmit hook payloads so hook scripts can tie each invocation to a specific conversation turn.",
+  "title": "Stop and UserPromptSubmit hooks now receive the active `turn_id`",
+  "why_it_matters": "This makes hook automation more precise. If you log, correlate, or enforce turn-scoped behavior in custom hooks, you can now distinguish one turn from the next instead of inferring that from prompt text or timestamps."
+}

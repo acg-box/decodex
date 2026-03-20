@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "There is no direct end-to-end runtime trace in the bundle, so the evidence is limited to the PR description, changed files, and commit history.",
+    "The PR notes mention unrelated pre-existing `codex-core` test failures elsewhere, so confidence should stay below `confirmed` even though the MCP-specific changes are well supported."
+  ],
+  "confidence": "likely",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body explicitly says the change forwards task headers through MCP metadata lookups and tool calls, including streamable HTTP `initialize`, `tools/list`, and `tools/call` requests.",
+    "The diff evidence in `codex.rs` and `tasks/mod.rs` adds turn-lifecycle header sync and cleanup hooks, showing the headers are scoped to the active turn instead of left ambient.",
+    "The MCP client stack files (`mcp_connection_manager.rs`, `rmcp_client.rs`, and related tests) add request-header plumbing and updated test setup, which supports this as a real behavior change rather than a docs-only update.",
+    "The commit trail includes follow-up fixes for turn scoping and CI regressions before the PR merged on 2026-03-19, indicating an incremental rollout of the new header propagation behavior."
+  ],
+  "slug": "openai-codex-pr-15011",
+  "summary": "PR #15011 updates Codex's MCP HTTP flow to forward request-scoped headers from the current session/turn into MCP tool metadata lookups and tool calls, with turn-bound lifecycle cleanup and fixes for regressions introduced during rollout.",
+  "title": "MCP HTTP requests now carry turn- and session-scoped headers",
+  "watch_state": null,
+  "why_it_matters": "This improves the correctness of MCP interactions that depend on per-turn or per-session context, reducing cross-turn header leakage and making tool calls and recovery behavior more predictable in streamable HTTP MCP clients."
+}

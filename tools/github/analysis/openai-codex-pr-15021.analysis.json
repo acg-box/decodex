@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "No direct user-facing application behavior changes are shown; impact is primarily build/release infrastructure."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "The PR body explicitly says the approach is to use `rusty_v8` everywhere possible and to build a musl V8 from source for x86/aarch64, with a release step for consumption.",
+    "Added `.github/scripts/rusty_v8_bazel.py` introduces the musl-oriented Bazel build orchestration and packaging metadata used by the new release path.",
+    "Added `.github/workflows/v8-canary.yml` and `.github/workflows/rusty-v8-release.yml`, creating a dedicated canary/release lane (including optional GitHub release publishing) for V8 artifacts instead of coupling them to standard CI.",
+    "Updated build metadata in `MODULE.bazel`, `MODULE.bazel.lock`, and new Bazel patches under `patches/` to pin/use V8 14.6.202.9 plus required dependency/workspace overrides.",
+    "Adjusted `.github/workflows/bazel.yml` to exclude `//third_party/v8:all` from ordinary Bazel test runs, matching the PR\u2019s \u201ckeep V8 out of ordinary CI\u201d intent and evidence trail in commit history."
+  ],
+  "slug": "openai-codex-pr-15021",
+  "summary": "PR #15021 adds a new Bazel-based workflow for building and packaging `rusty_v8`, including musl targets for x86_64/aarch64, while removing `third_party/v8` from the default CI test path so V8 work is handled by dedicated canary/release flows.",
+  "title": "Add a dedicated Bazel pipeline for building and releasing rusty_v8 artifacts",
+  "watch_state": null,
+  "why_it_matters": "This gives the project a reliable way to produce and publish prebuilt V8 artifacts for additional toolchains (notably musl), improving build reproducibility for dependents and reducing pressure on normal CI by isolating heavy V8 builds into explicit workflows."
+}

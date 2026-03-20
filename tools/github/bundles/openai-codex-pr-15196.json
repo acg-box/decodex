@@ -70,7 +70,8 @@
   ],
   "linked_issues": [],
   "notes": [
-    "Built from GitHub pull-request, commits, files, and repo endpoints."
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
   ],
   "primary_pr": {
     "body": "Add a config and attempt to start the server.",

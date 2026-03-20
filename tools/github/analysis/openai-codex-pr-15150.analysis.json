@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "Primary value is architectural; no clear new end-user feature is introduced directly in this PR.",
+    "The observable behavior should remain mostly stable because compatibility re-exports and updated matches were added for auth mode handling."
+  ],
+  "confidence": "likely",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "capability",
+  "proof_points": [
+    "PR body explicitly states the intent: move auth implementation and token data into `codex-login`, while keeping `codex-core` re-exporting that surface.",
+    "New auth-focused files were added under `codex-rs/login/src/auth` (including `error.rs` and `util.rs`), and logic previously in `core` files (for example `core/src/error.rs` and `core/src/util.rs`) was moved to those modules.",
+    "`codex-rs/core/src/lib.rs` now re-exports `codex_login` auth/default-client modules so downstream crates can continue using core-facing auth APIs after the move.",
+    "Consumers were updated across `app-server`, `exec`, `tui`, and `cli` to import auth structures from `codex_login` compatibility paths, showing an intentional dependency re-alignment rather than a feature addition."
+  ],
+  "slug": "move-auth-stack-to-codex-login",
+  "summary": "PR #15150 refactors auth ownership in `openai/codex` by relocating auth implementation details into `codex-login` and making `codex-core` re-export a compatibility surface for existing callers.",
+  "title": "Auth stack moved into dedicated `codex-login` crate",
+  "watch_state": null,
+  "why_it_matters": "The split reduces cross-crate coupling around authentication and keeps legacy call sites working, which makes future auth changes and maintenance less risky while preserving current CLI/TUI/app-server behavior."
+}

@@ -1,0 +1,127 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-03-18T18:18:39Z",
+      "message": "Handle code-mode tool errors",
+      "sha": "b2f2dc2e1b20db8cd41136ae21c8af690db2c918",
+      "url": "https://github.com/openai/codex/commit/b2f2dc2e1b20db8cd41136ae21c8af690db2c918"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-03-18T18:29:55Z",
+      "message": "Update tool call error handling",
+      "sha": "e62bd04746b4f633d8cc373d25c035275ec1fb64",
+      "url": "https://github.com/openai/codex/commit/e62bd04746b4f633d8cc373d25c035275ec1fb64"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-03-18T19:03:37Z",
+      "message": "Merge remote-tracking branch 'origin/main' into pakrym/add-tests-for-respondtomodel-errors",
+      "sha": "a07b1c75e77da40960603115b5d83e88deb8eba8",
+      "url": "https://github.com/openai/codex/commit/a07b1c75e77da40960603115b5d83e88deb8eba8"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-03-18T19:30:39Z",
+      "message": "Fix post-merge code mode worker and custom output shape",
+      "sha": "68f228c770d8d11979bd1095e4fbb8433ee33fec",
+      "url": "https://github.com/openai/codex/commit/68f228c770d8d11979bd1095e4fbb8433ee33fec"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "PUBLIC_TOOL_NAME"
+  ],
+  "files": [
+    {
+      "additions": 3,
+      "deletions": 2,
+      "patch_excerpt": "@@ -4557,15 +4557,16 @@ async fn fatal_tool_error_stops_turn_and_reports_error() {\n         .expect(\"tool call present\");\n     let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));\n     let err = router\n-        .dispatch_tool_call(\n+        .dispatch_tool_call_with_code_mode_result(\n             Arc::clone(&session),\n             Arc::clone(&turn_context),\n             tracker,\n             call,\n             ToolCallSource::Direct,\n         )\n         .await\n-        .expect_err(\"expected fatal error\");\n+        .err()\n+        .expect(\"expected fatal error\");\n \n     match err {\n         FunctionCallError::Fatal(message) => {",
+      "path": "codex-rs/core/src/codex_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 10,
+      "patch_excerpt": "@@ -14,6 +14,7 @@ use serde_json::Value as JsonValue;\n use crate::client_common::tools::ToolSpec;\n use crate::codex::Session;\n use crate::codex::TurnContext;\n+use crate::function_tool::FunctionCallError;\n use crate::tools::ToolRouter;\n use crate::tools::code_mode_description::augment_tool_spec_for_code_mode;\n use crate::tools::code_mode_description::code_mode_tool_reference;\n@@ -303,9 +304,11 @@ async fn call_nested_tool(\n     tool_name: String,\n     input: Option<JsonValue>,\n     cancellation_token: tokio_util::sync::CancellationToken,\n-) -> JsonValue {\n+) -> Result<JsonValue, FunctionCallError> {\n     if tool_name == PUBLIC_TOOL_NAME {\n-        return JsonValue::String(format!(\"{PUBLIC_TOOL_NAME} cannot invoke itself\"));\n+        return Err(FunctionCallError::RespondToModel(format!(\n+            \"{PUBLIC_TOOL_NAME} cannot invoke itself\"\n+        )));\n     }\n \n     let payload =\n@@ -316...",
+      "path": "codex-rs/core/src/tools/code_mode/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -70,6 +70,8 @@ pub(super) enum HostToNodeMessage {\n         request_id: String,\n         id: String,\n         code_mode_result: JsonValue,\n+        #[serde(default)]\n+        error_text: Option<String>,\n     },\n }",
+      "path": "codex-rs/core/src/tools/code_mode/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -595,6 +595,10 @@ function createProtocol() {\n         return;\n       }\n       pending.delete(message.request_id + ':' + message.id);\n+      if (typeof message.error_text === 'string') {\n+        entry.reject(new Error(message.error_text));\n+        return;\n+      }\n       entry.resolve(message.code_mode_result ?? '');\n       return;\n     }",
+      "path": "codex-rs/core/src/tools/code_mode/runner.cjs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 8,
+      "patch_excerpt": "@@ -14,6 +14,7 @@ use super::process::write_message;\n use super::protocol::HostToNodeMessage;\n use super::protocol::NodeToHostMessage;\n use crate::tools::parallel::ToolCallRuntime;\n+\n pub(crate) struct CodeModeWorker {\n     shutdown_tx: Option<oneshot::Sender<()>>,\n }\n@@ -53,17 +54,23 @@ impl CodeModeProcess {\n                         let tool_runtime = tool_runtime.clone();\n                         let stdin = stdin.clone();\n                         tokio::spawn(async move {\n+                            let result = call_nested_tool(\n+                                exec,\n+                                tool_runtime,\n+                                tool_call.name,\n+                                tool_call.input,\n+                                CancellationToken::new(),\n+                            )\n+                            .await;\n+                            let (code_mode_res...",
+      "path": "codex-rs/core/src/tools/code_mode/worker.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 3,
+      "patch_excerpt": "@@ -1607,16 +1607,17 @@ impl JsReplManager {\n         let tracker = Arc::clone(&exec.tracker);\n \n         match router\n-            .dispatch_tool_call(\n-                session.clone(),\n+            .dispatch_tool_call_with_code_mode_result(\n+                session,\n                 turn,\n                 tracker,\n                 call,\n                 crate::tools::router::ToolCallSource::JsRepl,\n             )\n             .await\n         {\n-            Ok(response) => {\n+            Ok(result) => {\n+                let response = result.into_response();\n                 let summary = Self::summarize_tool_call_response(&response);\n                 match serde_json::to_value(response) {\n                     Ok(value) => {",
+      "path": "codex-rs/core/src/tools/js_repl/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 11,
+      "patch_excerpt": "@@ -16,6 +16,7 @@ use crate::error::CodexErr;\n use crate::function_tool::FunctionCallError;\n use crate::tools::context::AbortedToolOutput;\n use crate::tools::context::SharedTurnDiffTracker;\n+use crate::tools::context::ToolPayload;\n use crate::tools::registry::AnyToolResult;\n use crate::tools::router::ToolCall;\n use crate::tools::router::ToolCallSource;\n@@ -57,9 +58,17 @@ impl ToolCallRuntime {\n         call: ToolCall,\n         cancellation_token: CancellationToken,\n     ) -> impl std::future::Future<Output = Result<ResponseInputItem, CodexErr>> {\n+        let error_call = call.clone();\n         let future =\n             self.handle_tool_call_with_source(call, ToolCallSource::Direct, cancellation_token);\n-        async move { future.await.map(AnyToolResult::into_response) }.in_current_span()\n+        async move {\n+            match future.await {\n+                Ok(response) => Ok(respon...",
+      "path": "codex-rs/core/src/tools/parallel.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 75,
+      "patch_excerpt": "@@ -5,11 +5,9 @@ use crate::function_tool::FunctionCallError;\n use crate::mcp_connection_manager::ToolInfo;\n use crate::sandboxing::SandboxPermissions;\n use crate::tools::code_mode::is_code_mode_nested_tool;\n-use crate::tools::context::FunctionToolOutput;\n use crate::tools::context::SharedTurnDiffTracker;\n use crate::tools::context::ToolInvocation;\n use crate::tools::context::ToolPayload;\n-use crate::tools::context::ToolSearchOutput;\n use crate::tools::discoverable::DiscoverableTool;\n use crate::tools::registry::AnyToolResult;\n use crate::tools::registry::ConfiguredToolSpec;\n@@ -18,7 +16,6 @@ use crate::tools::spec::ToolsConfig;\n use crate::tools::spec::build_specs_with_discoverable_tools;\n use codex_protocol::dynamic_tools::DynamicToolSpec;\n use codex_protocol::models::LocalShellAction;\n-use codex_protocol::models::ResponseInputItem;\n use codex_protocol::models::ResponseItem;\n use codex...",
+      "path": "codex-rs/core/src/tools/router.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 32,
+      "deletions": 29,
+      "patch_excerpt": "@@ -1,9 +1,9 @@\n use std::sync::Arc;\n \n use crate::codex::make_session_and_context;\n+use crate::function_tool::FunctionCallError;\n use crate::tools::context::ToolPayload;\n use crate::turn_diff_tracker::TurnDiffTracker;\n-use codex_protocol::models::ResponseInputItem;\n use codex_protocol::models::ResponseItem;\n \n use super::ToolCall;\n@@ -50,20 +50,21 @@ async fn js_repl_tools_only_blocks_direct_tool_calls() -> anyhow::Result<()> {\n         },\n     };\n     let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));\n-    let response = router\n-        .dispatch_tool_call(session, turn, tracker, call, ToolCallSource::Direct)\n-        .await?;\n-\n-    match response {\n-        ResponseInputItem::FunctionCallOutput { output, .. } => {\n-            let content = output.text_content().unwrap_or_default();\n-            assert!(\n-                content.contains(\"direct tool calls are d...",
+      "path": "codex-rs/core/src/tools/router_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -537,6 +537,46 @@ Error:\\ boom\\n\n     Ok(())\n }\n \n+#[cfg_attr(windows, ignore = \"no exec_command on Windows\")]\n+#[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n+async fn code_mode_exec_surfaces_handler_errors_as_exceptions() -> Result<()> {\n+    skip_if_no_network!(Ok(()));\n+\n+    let server = responses::start_mock_server().await;\n+    let (_test, second_mock) = run_code_mode_turn(\n+        &server,\n+        \"surface nested tool handler failures as script exceptions\",\n+        r#\"\n+try {\n+  await tools.exec_command({});\n+  text(\"no-exception\");\n+} catch (error) {\n+  text(`caught:${error?.message ?? String(error)}`);\n+}\n+\"#,\n+        false,\n+    )\n+    .await?;\n+\n+    let request = second_mock.single_request();\n+    let (output, success) = custom_tool_output_body_and_success(&request, \"call-1\");\n+    assert_ne!(\n+        success,\n+        Some(false),\n+        \"script shoul...",
+      "path": "codex-rs/core/tests/suite/code_mode.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "Clean up error flow to push the FunctionCallError all the way up to dispatcher and allow code mode to surface as exception.\r\n",
+    "labels": [],
+    "merged_at": "2026-03-18T20:57:56Z",
+    "number": 15075,
+    "state": "merged",
+    "title": "Propagate tool errors to code mode",
+    "url": "https://github.com/openai/codex/pull/15075"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

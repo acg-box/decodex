@@ -1,0 +1,144 @@
+{
+  "caveats": [
+    "Integrations still using `stdio://`, local spawn helpers, or stdio connect APIs will need to migrate to websocket URLs.",
+    "The new coverage is websocket-focused, so this PR narrows the supported operational model rather than expanding capability."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR title and body explicitly frame the change as deleting deprecated stdio transport plumbing and replacing it with websocket-oriented test utilities.",
+    "`codex-rs/exec-server/src/bin/codex-exec-server.rs` changes `--listen` from a transport enum to a raw URL string and documents only `ws://IP:PORT` as supported.",
+    "`codex-rs/exec-server/src/server/transport.rs` replaces the old transport enum with listen-URL parsing centered on `DEFAULT_LISTEN_URL = \"ws://127.0.0.1:0\"`.",
+    "The bundle shows stdio-specific public/client paths being removed, including `src/local.rs`, stdio smoke tests, and stdio connect helpers, while new websocket tests are added for initialize, process, and malformed JSON handling."
+  ],
+  "published_at": "2026-03-19T01:00:36Z",
+  "schema": "signal_entry/v1",
+  "slug": "openai-codex-pr-15119",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/144c3593dbd3bc2ccdc6906f2afbc4cfc2f069b2",
+      "https://github.com/openai/codex/commit/949932ca110e5c4211fc9e2f73f24d79d38ebb19",
+      "https://github.com/openai/codex/commit/40cc199757b1665fef748ed762e9ee9d142d2cbc",
+      "https://github.com/openai/codex/commit/2958067cf9579c022eb14fca67001867147fe2ad",
+      "https://github.com/openai/codex/commit/76071974bb36af24188b1bff81585f57dc51df33",
+      "https://github.com/openai/codex/commit/16ff474725b011aea5c9e78f56319e0c055b3490",
+      "https://github.com/openai/codex/commit/0a846a2625a56d2a913e516c476abd5a1d71c0e1",
+      "https://github.com/openai/codex/commit/c5dbe421bb606d8bfa154c6c5cdd1eb89ab6a8a2",
+      "https://github.com/openai/codex/commit/66f49ea604315574d0b8a92d75dc196d5470df0a",
+      "https://github.com/openai/codex/commit/43b112c263c5d99e77d5dc9231ae2a6312b1c8ab",
+      "https://github.com/openai/codex/commit/2661dc53309b75e3d817362599af730e93c555c2",
+      "https://github.com/openai/codex/commit/3b4a5229113ccd0ea14ed46a9a8e204457aa2baf",
+      "https://github.com/openai/codex/commit/2ed509ddd33c3001e5ef50d84766b97ab5bf0d83",
+      "https://github.com/openai/codex/commit/866743de96e8051adcd7db1c7df4875e1d984213",
+      "https://github.com/openai/codex/commit/a2feb4bc64a8c06029ef383b2db7e43d9e41039e",
+      "https://github.com/openai/codex/commit/a979f03531ef8dca143709ac502410db0a927e8d",
+      "https://github.com/openai/codex/commit/18e7c53082aa40108eadd89173a8b70c9658e4dd"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15119",
+        "title": "Remove stdio transport from exec server",
+        "url": "https://github.com/openai/codex/pull/15119"
+      },
+      {
+        "kind": "commit",
+        "meta": "144c359",
+        "title": "Add codex-exec-server crate",
+        "url": "https://github.com/openai/codex/commit/144c3593dbd3bc2ccdc6906f2afbc4cfc2f069b2"
+      },
+      {
+        "kind": "commit",
+        "meta": "949932c",
+        "title": "docs(exec-server): add protocol README",
+        "url": "https://github.com/openai/codex/commit/949932ca110e5c4211fc9e2f73f24d79d38ebb19"
+      },
+      {
+        "kind": "commit",
+        "meta": "40cc199",
+        "title": "Add Bazel package for exec-server",
+        "url": "https://github.com/openai/codex/commit/40cc199757b1665fef748ed762e9ee9d142d2cbc"
+      },
+      {
+        "kind": "commit",
+        "meta": "2958067",
+        "title": "Trim exec-server PR to stub server slice",
+        "url": "https://github.com/openai/codex/commit/2958067cf9579c022eb14fca67001867147fe2ad"
+      },
+      {
+        "kind": "commit",
+        "meta": "7607197",
+        "title": "Keep first exec-server PR initialize-only",
+        "url": "https://github.com/openai/codex/commit/76071974bb36af24188b1bff81585f57dc51df33"
+      },
+      {
+        "kind": "commit",
+        "meta": "16ff474",
+        "title": "Add generic RPC server glue to exec-server stub",
+        "url": "https://github.com/openai/codex/commit/16ff474725b011aea5c9e78f56319e0c055b3490"
+      },
+      {
+        "kind": "commit",
+        "meta": "0a846a2",
+        "title": "Add generic exec-server RPC foundation",
+        "url": "https://github.com/openai/codex/commit/0a846a2625a56d2a913e516c476abd5a1d71c0e1"
+      },
+      {
+        "kind": "commit",
+        "meta": "c5dbe42",
+        "title": "Wire notification sender into exec-server RPC foundation",
+        "url": "https://github.com/openai/codex/commit/c5dbe421bb606d8bfa154c6c5cdd1eb89ab6a8a2"
+      },
+      {
+        "kind": "commit",
+        "meta": "66f49ea",
+        "title": "Remove outer handler mutex from exec-server RPC base",
+        "url": "https://github.com/openai/codex/commit/66f49ea604315574d0b8a92d75dc196d5470df0a"
+      },
+      {
+        "kind": "commit",
+        "meta": "43b112c",
+        "title": "Test generic exec-server RPC response matching",
+        "url": "https://github.com/openai/codex/commit/43b112c263c5d99e77d5dc9231ae2a6312b1c8ab"
+      },
+      {
+        "kind": "commit",
+        "meta": "2661dc5",
+        "title": "exec-server: simplify stub json-rpc transport shape",
+        "url": "https://github.com/openai/codex/commit/2661dc53309b75e3d817362599af730e93c555c2"
+      },
+      {
+        "kind": "commit",
+        "meta": "3b4a522",
+        "title": "exec-server: address transport review feedback",
+        "url": "https://github.com/openai/codex/commit/3b4a5229113ccd0ea14ed46a9a8e204457aa2baf"
+      },
+      {
+        "kind": "commit",
+        "meta": "2ed509d",
+        "title": "exec-server: keep malformed-json connections alive",
+        "url": "https://github.com/openai/codex/commit/2ed509ddd33c3001e5ef50d84766b97ab5bf0d83"
+      },
+      {
+        "kind": "commit",
+        "meta": "866743d",
+        "title": "exec-server: trim unused stub dependencies",
+        "url": "https://github.com/openai/codex/commit/866743de96e8051adcd7db1c7df4875e1d984213"
+      },
+      {
+        "kind": "commit",
+        "meta": "a2feb4b",
+        "title": "Remove stdio transport add harness",
+        "url": "https://github.com/openai/codex/commit/a2feb4bc64a8c06029ef383b2db7e43d9e41039e"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15119",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15119 removes deprecated stdio transport support from Codex exec-server and standardizes the binary, library surface, docs, and tests around websocket listen URLs.",
+  "title": "Exec server switches from stdio plumbing to websocket-only transport",
+  "why_it_matters": "This is a user-visible contract change for anyone integrating with exec-server. The transport story is simpler and more consistent, but setups that depended on `stdio://` or local stdio spawn helpers now need to move to websocket-based usage."
+}

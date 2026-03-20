@@ -1,0 +1,190 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-19T17:56:47Z",
+      "message": "Add exec-server process and filesystem RPCs (#15090)",
+      "sha": "dd1416a5ccce5bf9f05193c41045f61d6f771d9f",
+      "url": "https://github.com/openai/codex/commit/dd1416a5ccce5bf9f05193c41045f61d6f771d9f"
+    },
+    {
+      "author": "starr-openai",
+      "committed_at": "2026-03-19T17:58:47Z",
+      "message": "exec-server: report false after retained exit",
+      "sha": "ab89fdf2a7f4c08865a297734185f2f059cff216",
+      "url": "https://github.com/openai/codex/commit/ab89fdf2a7f4c08865a297734185f2f059cff216"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "RPC",
+    "USE_SCCACHE",
+    "CARGO_INCREMENTAL",
+    "SCCACHE_CACHE_SIZE",
+    "LTO",
+    "JSONRPCN",
+    "EXEC_EXITED_METHOD",
+    "EXEC_METHOD",
+    "EXEC_OUTPUT_DELTA_METHOD",
+    "EXEC_READ_METHOD",
+    "EXEC_TERMINATE_METHOD",
+    "EXEC_WRITE_METHOD",
+    "FS_COPY_METHOD",
+    "FS_CREATE_DIRECTORY_METHOD",
+    "FS_GET_METADATA_METHOD",
+    "FS_READ_DIRECTORY_METHOD",
+    "FS_READ_FILE_METHOD",
+    "FS_REMOVE_METHOD",
+    "FS_WRITE_FILE_METHOD",
+    "INITIALIZE_METHOD",
+    "INITIALIZED_METHOD",
+    "DEFAULT_LISTEN_URL",
+    "STANDARD",
+    "BASE64_STANDARD",
+    "JSONRPCE",
+    "JSONRPCR",
+    "JSONRPCM",
+    "JSON",
+    "RETAINED_OUTPUT_BYTES_PER_PROCESS",
+    "EXITED_PROCESS_RETENTION",
+    "MAX",
+    "PATH",
+    "CHANNEL_CAPACITY"
+  ],
+  "files": [
+    {
+      "additions": 8,
+      "deletions": 4,
+      "patch_excerpt": "@@ -141,8 +141,10 @@ jobs:\n       run:\n         working-directory: codex-rs\n     env:\n-      # Speed up repeated builds across CI runs by caching compiled objects (non-Windows).\n-      USE_SCCACHE: ${{ startsWith(matrix.runner, 'windows') && 'false' || 'true' }}\n+      # Speed up repeated builds across CI runs by caching compiled objects, except on\n+      # arm64 macOS runners cross-targeting x86_64 where ring/cc-rs can produce\n+      # mixed-architecture archives under sccache.\n+      USE_SCCACHE: ${{ (startsWith(matrix.runner, 'windows') || (matrix.runner == 'macos-15-xlarge' && matrix.target == 'x86_64-apple-darwin')) && 'false' || 'true' }}\n       CARGO_INCREMENTAL: \"0\"\n       SCCACHE_CACHE_SIZE: 10G\n       # In rust-ci, representative release-profile checks use thin LTO for faster feedback.\n@@ -506,8 +508,10 @@ jobs:\n       run:\n         working-directory: codex-rs\n     env:\n-      ...",
+      "path": ".github/workflows/rust-ci.yml",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1998,10 +1998,12 @@ version = \"0.0.0\"\n dependencies = [\n  \"anyhow\",\n  \"async-trait\",\n+ \"base64 0.22.1\",\n  \"clap\",\n  \"codex-app-server-protocol\",\n  \"codex-utils-absolute-path\",\n  \"codex-utils-cargo-bin\",\n+ \"codex-utils-pty\",\n  \"futures\",\n  \"pretty_assertions\",\n  \"serde\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -16,9 +16,11 @@ workspace = true\n \n [dependencies]\n async-trait = { workspace = true }\n+base64 = { workspace = true }\n clap = { workspace = true, features = [\"derive\"] }\n codex-app-server-protocol = { workspace = true }\n codex-utils-absolute-path = { workspace = true }\n+codex-utils-pty = { workspace = true }\n futures = { workspace = true }\n serde = { workspace = true, features = [\"derive\"] }\n serde_json = { workspace = true }",
+      "path": "codex-rs/exec-server/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 328,
+      "deletions": 23,
+      "patch_excerpt": "@@ -1,20 +1,65 @@\n use std::sync::Arc;\n use std::time::Duration;\n \n+use codex_app_server_protocol::FsCopyParams;\n+use codex_app_server_protocol::FsCopyResponse;\n+use codex_app_server_protocol::FsCreateDirectoryParams;\n+use codex_app_server_protocol::FsCreateDirectoryResponse;\n+use codex_app_server_protocol::FsGetMetadataParams;\n+use codex_app_server_protocol::FsGetMetadataResponse;\n+use codex_app_server_protocol::FsReadDirectoryParams;\n+use codex_app_server_protocol::FsReadDirectoryResponse;\n+use codex_app_server_protocol::FsReadFileParams;\n+use codex_app_server_protocol::FsReadFileResponse;\n+use codex_app_server_protocol::FsRemoveParams;\n+use codex_app_server_protocol::FsRemoveResponse;\n+use codex_app_server_protocol::FsWriteFileParams;\n+use codex_app_server_protocol::FsWriteFileResponse;\n+use codex_app_server_protocol::JSONRPCNotification;\n+use serde_json::Value;\n+use tokio::sync::broa...",
+      "path": "codex-rs/exec-server/src/client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 162,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,7 +1,29 @@\n use std::sync::Arc;\n \n+use crate::protocol::ExecParams;\n+use crate::protocol::ExecResponse;\n use crate::protocol::InitializeResponse;\n+use crate::protocol::ReadParams;\n+use crate::protocol::ReadResponse;\n+use crate::protocol::TerminateParams;\n+use crate::protocol::TerminateResponse;\n+use crate::protocol::WriteParams;\n+use crate::protocol::WriteResponse;\n use crate::server::ExecServerHandler;\n+use codex_app_server_protocol::FsCopyParams;\n+use codex_app_server_protocol::FsCopyResponse;\n+use codex_app_server_protocol::FsCreateDirectoryParams;\n+use codex_app_server_protocol::FsCreateDirectoryResponse;\n+use codex_app_server_protocol::FsGetMetadataParams;\n+use codex_app_server_protocol::FsGetMetadataResponse;\n+use codex_app_server_protocol::FsReadDirectoryParams;\n+use codex_app_server_protocol::FsReadDirectoryResponse;\n+use codex_app_server_protocol::FsReadFileParams;\n+use co...",
+      "path": "codex-rs/exec-server/src/client/local_backend.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,5 +1,8 @@\n use std::time::Duration;\n \n+use crate::protocol::ExecExitedNotification;\n+use crate::protocol::ExecOutputDeltaNotification;\n+\n /// Connection options for any exec-server client transport.\n #[derive(Debug, Clone, PartialEq, Eq)]\n pub struct ExecServerClientConnectOptions {\n@@ -15,3 +18,10 @@ pub struct RemoteExecServerConnectArgs {\n     pub connect_timeout: Duration,\n     pub initialize_timeout: Duration,\n }\n+\n+/// Connection-level server events.\n+#[derive(Debug, Clone, PartialEq, Eq)]\n+pub enum ExecServerEvent {\n+    OutputDelta(ExecOutputDeltaNotification),\n+    Exited(ExecExitedNotification),\n+}",
+      "path": "codex-rs/exec-server/src/client_api.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 27,
+      "deletions": 0,
+      "patch_excerpt": "@@ -10,7 +10,23 @@ mod server;\n pub use client::ExecServerClient;\n pub use client::ExecServerError;\n pub use client_api::ExecServerClientConnectOptions;\n+pub use client_api::ExecServerEvent;\n pub use client_api::RemoteExecServerConnectArgs;\n+pub use codex_app_server_protocol::FsCopyParams;\n+pub use codex_app_server_protocol::FsCopyResponse;\n+pub use codex_app_server_protocol::FsCreateDirectoryParams;\n+pub use codex_app_server_protocol::FsCreateDirectoryResponse;\n+pub use codex_app_server_protocol::FsGetMetadataParams;\n+pub use codex_app_server_protocol::FsGetMetadataResponse;\n+pub use codex_app_server_protocol::FsReadDirectoryEntry;\n+pub use codex_app_server_protocol::FsReadDirectoryParams;\n+pub use codex_app_server_protocol::FsReadDirectoryResponse;\n+pub use codex_app_server_protocol::FsReadFileParams;\n+pub use codex_app_server_protocol::FsReadFileResponse;\n+pub use codex_app_server_pro...",
+      "path": "codex-rs/exec-server/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 151,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,8 +1,41 @@\n+use std::collections::HashMap;\n+use std::path::PathBuf;\n+\n+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;\n use serde::Deserialize;\n use serde::Serialize;\n \n pub const INITIALIZE_METHOD: &str = \"initialize\";\n pub const INITIALIZED_METHOD: &str = \"initialized\";\n+pub const EXEC_METHOD: &str = \"process/start\";\n+pub const EXEC_READ_METHOD: &str = \"process/read\";\n+pub const EXEC_WRITE_METHOD: &str = \"process/write\";\n+pub const EXEC_TERMINATE_METHOD: &str = \"process/terminate\";\n+pub const EXEC_OUTPUT_DELTA_METHOD: &str = \"process/output\";\n+pub const EXEC_EXITED_METHOD: &str = \"process/exited\";\n+pub const FS_READ_FILE_METHOD: &str = \"fs/readFile\";\n+pub const FS_WRITE_FILE_METHOD: &str = \"fs/writeFile\";\n+pub const FS_CREATE_DIRECTORY_METHOD: &str = \"fs/createDirectory\";\n+pub const FS_GET_METADATA_METHOD: &str = \"fs/getMetadata\";\n+pub const FS_READ_DIRECTORY_ME...",
+      "path": "codex-rs/exec-server/src/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 227,
+      "deletions": 8,
+      "patch_excerpt": "@@ -1,4 +1,6 @@\n use std::collections::HashMap;\n+use std::future::Future;\n+use std::pin::Pin;\n use std::sync::Arc;\n use std::sync::atomic::AtomicI64;\n use std::sync::atomic::Ordering;\n@@ -23,13 +25,151 @@ use crate::connection::JsonRpcConnection;\n use crate::connection::JsonRpcConnectionEvent;\n \n type PendingRequest = oneshot::Sender<Result<Value, JSONRPCErrorError>>;\n+type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;\n+type RequestRoute<S> =\n+    Box<dyn Fn(Arc<S>, JSONRPCRequest) -> BoxFuture<RpcServerOutboundMessage> + Send + Sync>;\n+type NotificationRoute<S> =\n+    Box<dyn Fn(Arc<S>, JSONRPCNotification) -> BoxFuture<Result<(), String>> + Send + Sync>;\n \n #[derive(Debug)]\n pub(crate) enum RpcClientEvent {\n     Notification(JSONRPCNotification),\n     Disconnected { reason: Option<String> },\n }\n \n+#[derive(Debug, Clone, PartialEq)]\n+pub(crate) enum RpcServerOutbound...",
+      "path": "codex-rs/exec-server/src/rpc.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n+mod filesystem;\n mod handler;\n-mod jsonrpc;\n mod processor;\n+mod registry;\n mod transport;\n \n pub(crate) use handler::ExecServerHandler;",
+      "path": "codex-rs/exec-server/src/server.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 170,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,170 @@\n+use std::io;\n+use std::sync::Arc;\n+\n+use base64::Engine as _;\n+use base64::engine::general_purpose::STANDARD;\n+use codex_app_server_protocol::FsCopyParams;\n+use codex_app_server_protocol::FsCopyResponse;\n+use codex_app_server_protocol::FsCreateDirectoryParams;\n+use codex_app_server_protocol::FsCreateDirectoryResponse;\n+use codex_app_server_protocol::FsGetMetadataParams;\n+use codex_app_server_protocol::FsGetMetadataResponse;\n+use codex_app_server_protocol::FsReadDirectoryEntry;\n+use codex_app_server_protocol::FsReadDirectoryParams;\n+use codex_app_server_protocol::FsReadDirectoryResponse;\n+use codex_app_server_protocol::FsReadFileParams;\n+use codex_app_server_protocol::FsReadFileResponse;\n+use codex_app_server_protocol::FsRemoveParams;\n+use codex_app_server_protocol::FsRemoveResponse;\n+use codex_app_server_protocol::FsWriteFileParams;\n+use codex_app_server_protocol::FsWr...",
+      "path": "codex-rs/exec-server/src/server/filesystem.rs",
+      "status": "added"
+    },
+    {
+      "additions": 480,
+      "deletions": 3,
+      "patch_excerpt": "@@ -1,25 +1,112 @@\n+use std::collections::HashMap;\n+use std::collections::VecDeque;\n+use std::sync::Arc;\n use std::sync::atomic::AtomicBool;\n use std::sync::atomic::Ordering;\n+use std::time::Duration;\n \n+use codex_app_server_protocol::FsCopyParams;\n+use codex_app_server_protocol::FsCopyResponse;\n+use codex_app_server_protocol::FsCreateDirectoryParams;\n+use codex_app_server_protocol::FsCreateDirectoryResponse;\n+use codex_app_server_protocol::FsGetMetadataParams;\n+use codex_app_server_protocol::FsGetMetadataResponse;\n+use codex_app_server_protocol::FsReadDirectoryParams;\n+use codex_app_server_protocol::FsReadDirectoryResponse;\n+use codex_app_server_protocol::FsReadFileParams;\n+use codex_app_server_protocol::FsReadFileResponse;\n+use codex_app_server_protocol::FsRemoveParams;\n+use codex_app_server_protocol::FsRemoveResponse;\n+use codex_app_server_protocol::FsWriteFileParams;\n+use codex_app_s...",
+      "path": "codex-rs/exec-server/src/server/handler.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 102,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,102 @@\n+use std::collections::HashMap;\n+use std::sync::Arc;\n+use std::time::Duration;\n+\n+use pretty_assertions::assert_eq;\n+use tokio::sync::mpsc;\n+\n+use super::ExecServerHandler;\n+use crate::protocol::ExecParams;\n+use crate::protocol::InitializeResponse;\n+use crate::protocol::TerminateParams;\n+use crate::protocol::TerminateResponse;\n+use crate::rpc::RpcNotificationSender;\n+\n+fn exec_params(process_id: &str) -> ExecParams {\n+    let mut env = HashMap::new();\n+    if let Some(path) = std::env::var_os(\"PATH\") {\n+        env.insert(\"PATH\".to_string(), path.to_string_lossy().into_owned());\n+    }\n+    ExecParams {\n+        process_id: process_id.to_string(),\n+        argv: vec![\n+            \"bash\".to_string(),\n+            \"-lc\".to_string(),\n+            \"sleep 0.1\".to_string(),\n+        ],\n+        cwd: std::env::current_dir().expect(\"cwd\"),\n+        env,\n+        tty: false,\n+ ...",
+      "path": "codex-rs/exec-server/src/server/handler/tests.rs",
+      "status": "added"
+    },
+    {
+      "additions": 92,
+      "deletions": 90,
+      "patch_excerpt": "@@ -1,53 +1,109 @@\n-use codex_app_server_protocol::JSONRPCMessage;\n-use codex_app_server_protocol::JSONRPCNotification;\n-use codex_app_server_protocol::JSONRPCRequest;\n+use std::sync::Arc;\n+\n+use tokio::sync::mpsc;\n use tracing::debug;\n+use tracing::warn;\n \n+use crate::connection::CHANNEL_CAPACITY;\n use crate::connection::JsonRpcConnection;\n use crate::connection::JsonRpcConnectionEvent;\n-use crate::protocol::INITIALIZE_METHOD;\n-use crate::protocol::INITIALIZED_METHOD;\n-use crate::protocol::InitializeParams;\n+use crate::rpc::RpcNotificationSender;\n+use crate::rpc::RpcServerOutboundMessage;\n+use crate::rpc::encode_server_message;\n+use crate::rpc::invalid_request;\n+use crate::rpc::method_not_found;\n use crate::server::ExecServerHandler;\n-use crate::server::jsonrpc::invalid_params;\n-use crate::server::jsonrpc::invalid_request_message;\n-use crate::server::jsonrpc::method_not_found;\n-use crat...",
+      "path": "codex-rs/exec-server/src/server/processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 110,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,110 @@\n+use std::sync::Arc;\n+\n+use crate::protocol::EXEC_METHOD;\n+use crate::protocol::EXEC_READ_METHOD;\n+use crate::protocol::EXEC_TERMINATE_METHOD;\n+use crate::protocol::EXEC_WRITE_METHOD;\n+use crate::protocol::ExecParams;\n+use crate::protocol::FS_COPY_METHOD;\n+use crate::protocol::FS_CREATE_DIRECTORY_METHOD;\n+use crate::protocol::FS_GET_METADATA_METHOD;\n+use crate::protocol::FS_READ_DIRECTORY_METHOD;\n+use crate::protocol::FS_READ_FILE_METHOD;\n+use crate::protocol::FS_REMOVE_METHOD;\n+use crate::protocol::FS_WRITE_FILE_METHOD;\n+use crate::protocol::INITIALIZE_METHOD;\n+use crate::protocol::INITIALIZED_METHOD;\n+use crate::protocol::InitializeParams;\n+use crate::protocol::ReadParams;\n+use crate::protocol::TerminateParams;\n+use crate::protocol::WriteParams;\n+use crate::rpc::RpcRouter;\n+use crate::server::ExecServerHandler;\n+use codex_app_server_protocol::FsCopyParams;\n+use codex_...",
+      "path": "codex-rs/exec-server/src/server/registry.rs",
+      "status": "added"
+    },
+    {
+      "additions": 14,
+      "deletions": 8,
+      "patch_excerpt": "@@ -2,15 +2,15 @@\n \n mod common;\n \n-use codex_app_server_protocol::JSONRPCError;\n use codex_app_server_protocol::JSONRPCMessage;\n use codex_app_server_protocol::JSONRPCResponse;\n+use codex_exec_server::ExecResponse;\n use codex_exec_server::InitializeParams;\n use common::exec_server::exec_server;\n use pretty_assertions::assert_eq;\n \n #[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n-async fn exec_server_stubs_process_start_over_websocket() -> anyhow::Result<()> {\n+async fn exec_server_starts_process_over_websocket() -> anyhow::Result<()> {\n     let mut server = exec_server().await?;\n     let initialize_id = server\n         .send_request(\n@@ -29,6 +29,10 @@ async fn exec_server_stubs_process_start_over_websocket() -> anyhow::Result<()>\n         })\n         .await?;\n \n+    server\n+        .send_notification(\"initialized\", serde_json::json!({}))\n+        .await?;\n+\n     let proces...",
+      "path": "codex-rs/exec-server/tests/process.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#15091",
+    "#15090"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "Rebased onto current `main` after #15091 landed separately.\n\nThis PR now carries the surviving exec-server process RPC and filesystem RPC implementation on top of the current exec-server stub / websocket-only / environment-abstraction shape on `main`.\n\nIt also includes the `rust-ci` sccache guard for `macos-15-xlarge` + `x86_64-apple-darwin` so this branch does not reproduce the same mixed-architecture `ring` failure that hit the earlier stack.",
+    "labels": [],
+    "merged_at": "2026-03-19T19:00:37Z",
+    "number": 15090,
+    "state": "merged",
+    "title": "Add exec-server process and filesystem RPCs",
+    "url": "https://github.com/openai/codex/pull/15090"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

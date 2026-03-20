@@ -1,0 +1,71 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "owenlin0",
+      "committed_at": "2026-03-19T18:38:47Z",
+      "message": "feat(tracing): tag app-server turn spans with turn_id",
+      "sha": "7f9f93e057d7c73a84ea071aabcc88ddfe743150",
+      "url": "https://github.com/openai/codex/commit/7f9f93e057d7c73a84ea071aabcc88ddfe743150"
+    },
+    {
+      "author": "owenlin0",
+      "committed_at": "2026-03-19T18:46:29Z",
+      "message": "also record turn id for turn/steer and turn/interrupt",
+      "sha": "8e042a093cceac78a48d1d8cabd6f6247e51532f",
+      "url": "https://github.com/openai/codex/commit/8e042a093cceac78a48d1d8cabd6f6247e51532f"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API"
+  ],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -107,6 +107,7 @@ fn app_server_request_span_template(\n         app_server.api_version = \"v2\",\n         app_server.client_name = field::Empty,\n         app_server.client_version = field::Empty,\n+        turn.id = field::Empty,\n     )\n }",
+      "path": "codex-rs/app-server/src/app_server_tracing.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 1,
+      "patch_excerpt": "@@ -6024,6 +6024,9 @@ impl CodexMessageProcessor {\n \n         match turn_id {\n             Ok(turn_id) => {\n+                self.outgoing\n+                    .record_request_turn_id(&request_id, &turn_id)\n+                    .await;\n                 let turn = Turn {\n                     id: turn_id.clone(),\n                     items: vec![],\n@@ -6076,6 +6079,9 @@ impl CodexMessageProcessor {\n             .await;\n             return;\n         }\n+        self.outgoing\n+            .record_request_turn_id(&request_id, &params.expected_turn_id)\n+            .await;\n         if let Err(error) = Self::validate_v2_input_limit(&params.input) {\n             self.outgoing.send_error(request_id, error).await;\n             return;\n@@ -6556,7 +6562,10 @@ impl CodexMessageProcessor {\n         request_id: ConnectionRequestId,\n         params: TurnInterruptParams,\n     ) {\n-        let TurnInterrup...",
+      "path": "codex-rs/app-server/src/codex_message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 1,
+      "patch_excerpt": "@@ -580,7 +580,7 @@ async fn turn_start_jsonrpc_span_parents_core_turn_spans() -> Result<()> {\n         parent_span_id: remote_parent_span_id,\n         context: remote_trace,\n     } = RemoteTrace::new(\"00000000000000000000000000000077\", \"0000000000000088\");\n-    let _: TurnStartResponse = harness\n+    let turn_start_response: TurnStartResponse = harness\n         .request(\n             ClientRequest::TurnStart {\n                 request_id: RequestId::Integer(3),\n@@ -628,6 +628,10 @@ async fn turn_start_jsonrpc_span_parents_core_turn_spans() -> Result<()> {\n     assert_eq!(server_request_span.parent_span_id, remote_parent_span_id);\n     assert!(server_request_span.parent_span_is_remote);\n     assert_eq!(server_request_span.span_context.trace_id(), remote_trace_id);\n+    assert_eq!(\n+        span_attr(server_request_span, \"turn.id\"),\n+        Some(turn_start_response.turn.id.as_str())\n+   ...",
+      "path": "codex-rs/app-server/src/message_processor/tracing_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 0,
+      "patch_excerpt": "@@ -75,6 +75,10 @@ impl RequestContext {\n     pub(crate) fn span(&self) -> Span {\n         self.span.clone()\n     }\n+\n+    fn record_turn_id(&self, turn_id: &str) {\n+        self.span.record(\"turn.id\", turn_id);\n+    }\n }\n \n #[derive(Debug, Clone)]\n@@ -217,6 +221,17 @@ impl OutgoingMessageSender {\n             .and_then(RequestContext::request_trace)\n     }\n \n+    pub(crate) async fn record_request_turn_id(\n+        &self,\n+        request_id: &ConnectionRequestId,\n+        turn_id: &str,\n+    ) {\n+        let request_contexts = self.request_contexts.lock().await;\n+        if let Some(request_context) = request_contexts.get(request_id) {\n+            request_context.record_turn_id(turn_id);\n+        }\n+    }\n+\n     async fn take_request_context(\n         &self,\n         request_id: &ConnectionRequestId,",
+      "path": "codex-rs/app-server/src/outgoing_message.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "So we can find and filter spans by `turn.id`.\r\n\r\nWe do this for the `turn/start`, `turn/steer`, and `turn/interrupt` APIs.\r\n",
+    "labels": [],
+    "merged_at": "2026-03-19T20:07:19Z",
+    "number": 15206,
+    "state": "merged",
+    "title": "feat(tracing): tag app-server turn spans with turn_id",
+    "url": "https://github.com/openai/codex/pull/15206"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

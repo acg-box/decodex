@@ -1,0 +1,44 @@
+{
+  "caveats": [
+    "The PR description in the bundle body is boilerplate and does not add extra context, so the conclusion relies on patch semantics plus the PR title and commit diff.",
+    "No behavioral test evidence is included in the bundle, so runtime impact is inferred from code-level change rather than validated execution traces."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "Primary PR metadata shows the intent explicitly: #15111 is titled \u201cdon't add transcript for v2 realtime\u201d and was merged on 2026-03-18.",
+    "The changed file is `codex-rs/codex-api/src/endpoint/realtime_websocket/methods.rs`, in the `RealtimeEvent::HandoffRequested` branch that previously always moved `active_transcript.entries` into `handoff.active_transcript`.",
+    "Patch logic now wraps that move in `if self.event_parser == RealtimeEventParser::V1`, so the transcript move is conditional on V1 instead of always happening.",
+    "The bundle contains a single small commit (`e8232d32911ee5d246ecc482010c748021bc065e`) and no other changed files, which supports this as a narrow behavior fix rather than a broader feature."
+  ],
+  "published_at": "2026-03-18T22:54:13Z",
+  "schema": "signal_entry/v1",
+  "slug": "realtime-v2-handoff-now-skips-transcript-handoff",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/e8232d32911ee5d246ecc482010c748021bc065e"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15111",
+        "title": "don't add transcript for v2 realtime",
+        "url": "https://github.com/openai/codex/pull/15111"
+      },
+      {
+        "kind": "commit",
+        "meta": "e8232d3",
+        "title": "don't add tranacript",
+        "url": "https://github.com/openai/codex/commit/e8232d32911ee5d246ecc482010c748021bc065e"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15111",
+    "repo": "openai/codex"
+  },
+  "summary": "This PR changes realtime handoff handling so transcript entries are only assigned during V1 handoff flow, leaving V2 handoff events to preserve existing transcript state.",
+  "title": "Realtime V2 handoff now skips transcript handoff",
+  "why_it_matters": "It prevents v2 realtime sessions from clearing transcript buffers when a handoff is requested, reducing the chance of transcript disruptions during handoff transitions and keeping message context more stable for applications that consume realtime events."
+}

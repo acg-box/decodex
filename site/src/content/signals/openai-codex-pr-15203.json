@@ -1,0 +1,123 @@
+{
+  "caveats": [
+    "The PR describes this as a dummy proof-of-concept crate reserved for future V8 experiments, not a shipped user feature.",
+    "The PR body notes likely compatibility drift in the Windows Bazel builder and says Windows Bazel support still needs follow-up work."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "The PR body explicitly says the new dummy `v8-poc` project demonstrates that Codex can successfully link and use V8 on the platforms it wants to target.",
+    "`codex-rs/Cargo.toml` adds a new `v8-poc` workspace member and pins `v8 = =146.4.0`, while `codex-rs/v8-poc/src/lib.rs` adds a proof-of-concept crate with tests that initialize V8 and evaluate an expression.",
+    "`MODULE.bazel`, `third_party/v8/BUILD.bazel`, and the Rust CI and release workflows add target-specific V8 artifact wiring, including musl overrides and Bazel-side source-built archives for shipped platforms."
+  ],
+  "published_at": "2026-03-20T19:08:25Z",
+  "schema": "signal_entry/v1",
+  "slug": "codex-adds-cross-platform-v8-proof-of-concept",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/733e86887874527c37c2464fb0ecef7b0635609e",
+      "https://github.com/openai/codex/commit/20ce3015e6504f7284306cc6419fc6027e4f3cfd",
+      "https://github.com/openai/codex/commit/9ae2f06755be6657101c8882dd2573677bc7b28b",
+      "https://github.com/openai/codex/commit/1fb916af19f7d5bff96a034dfeedc6960bb61cfa",
+      "https://github.com/openai/codex/commit/f8a239e0c070b9f351d2595550f3408fdda21ddf",
+      "https://github.com/openai/codex/commit/b6b58e185058acdd7f66a0cf2ad3b97433abb2f7",
+      "https://github.com/openai/codex/commit/7b806611e2bde64a7a0ef2b2fbc85f5c203ea12a",
+      "https://github.com/openai/codex/commit/393b5603d192146cb5c27ba9e84e07cea9eac044",
+      "https://github.com/openai/codex/commit/6c0deb2808c38167474b25637f1d7b0fbd61866e",
+      "https://github.com/openai/codex/commit/ffbe9423df3b633637be0b61c4408da2f6352979",
+      "https://github.com/openai/codex/commit/118540bf65977714fdcb1826f20d97f885bdad54",
+      "https://github.com/openai/codex/commit/e43c0f6f2b5e5ca1fc444db8ba30aac3db2e36a6",
+      "https://github.com/openai/codex/commit/9edd9a394964c559751caff0c1a61a1735621778",
+      "https://github.com/openai/codex/commit/0285917c3bb3decc635ef5473c174a43027dc155"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15203",
+        "title": "Add v8-poc consumer of our new built v8",
+        "url": "https://github.com/openai/codex/pull/15203"
+      },
+      {
+        "kind": "commit",
+        "meta": "733e868",
+        "title": "Add v8-poc consumer of our new built v8",
+        "url": "https://github.com/openai/codex/commit/733e86887874527c37c2464fb0ecef7b0635609e"
+      },
+      {
+        "kind": "commit",
+        "meta": "20ce301",
+        "title": "Build v8-poc as part of CI",
+        "url": "https://github.com/openai/codex/commit/20ce3015e6504f7284306cc6419fc6027e4f3cfd"
+      },
+      {
+        "kind": "commit",
+        "meta": "9ae2f06",
+        "title": "Working on all platforms",
+        "url": "https://github.com/openai/codex/commit/9ae2f06755be6657101c8882dd2573677bc7b28b"
+      },
+      {
+        "kind": "commit",
+        "meta": "1fb916a",
+        "title": "Ignore codex-v8-poc",
+        "url": "https://github.com/openai/codex/commit/1fb916af19f7d5bff96a034dfeedc6960bb61cfa"
+      },
+      {
+        "kind": "commit",
+        "meta": "f8a239e",
+        "title": "Prepull our artifacts for musl",
+        "url": "https://github.com/openai/codex/commit/f8a239e0c070b9f351d2595550f3408fdda21ddf"
+      },
+      {
+        "kind": "commit",
+        "meta": "b6b58e1",
+        "title": "Path",
+        "url": "https://github.com/openai/codex/commit/b6b58e185058acdd7f66a0cf2ad3b97433abb2f7"
+      },
+      {
+        "kind": "commit",
+        "meta": "7b80661",
+        "title": "Fix bazel build for v8-poc",
+        "url": "https://github.com/openai/codex/commit/7b806611e2bde64a7a0ef2b2fbc85f5c203ea12a"
+      },
+      {
+        "kind": "commit",
+        "meta": "393b560",
+        "title": "Repatch rusty_v8",
+        "url": "https://github.com/openai/codex/commit/393b5603d192146cb5c27ba9e84e07cea9eac044"
+      },
+      {
+        "kind": "commit",
+        "meta": "6c0deb2",
+        "title": "Always link v8",
+        "url": "https://github.com/openai/codex/commit/6c0deb2808c38167474b25637f1d7b0fbd61866e"
+      },
+      {
+        "kind": "commit",
+        "meta": "ffbe942",
+        "title": "Build v8 for our bazel platforms",
+        "url": "https://github.com/openai/codex/commit/ffbe9423df3b633637be0b61c4408da2f6352979"
+      },
+      {
+        "kind": "commit",
+        "meta": "e43c0f6",
+        "title": "Remove local=1",
+        "url": "https://github.com/openai/codex/commit/e43c0f6f2b5e5ca1fc444db8ba30aac3db2e36a6"
+      },
+      {
+        "kind": "commit",
+        "meta": "9edd9a3",
+        "title": "darwin exception",
+        "url": "https://github.com/openai/codex/commit/9edd9a394964c559751caff0c1a61a1735621778"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15203",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15203 adds a `v8-poc` crate plus Bazel and CI wiring that proves Codex can link and run V8 across the main supported non-Windows target platforms.",
+  "title": "Codex adds a cross-platform V8 integration proof of concept",
+  "watch_state": "Watch for follow-up PRs that replace the dummy crate with a real V8-backed feature or re-enable the Windows Bazel path.",
+  "why_it_matters": "This does not expose a new end-user feature yet, but it gives Codex a verified integration path for embedding V8 in future runtime or tooling work without treating cross-platform linking as an open risk."
+}

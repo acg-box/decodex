@@ -1,0 +1,153 @@
+{
+  "spec": {
+    "schema": "plan/1",
+    "plan_id": "2026-03-21_decodex-116-backfill",
+    "goal": "Backfill Decodex GitHub signals for the full default comparison range from stable 0.116.0 to the latest tracked preview by running the content-generation loop locally once.",
+    "success_criteria": [
+      "The repo has a deterministic backfill entrypoint that reads the selected stable-to-preview compare set and targets unpublished PRs in that range.",
+      "A local run covers the missing PR backlog for the current default compare pair, producing bundles, analysis drafts, rendered signals, and a refreshed release-delta artifact.",
+      "Repo-native verification passes after the backfill run and the resulting coverage can be summarized concretely."
+    ],
+    "constraints": [
+      "Use the active GitHub-first lane and existing signal/release-delta contracts unless a compatible extension is strictly required.",
+      "Run the backfill locally with the user's Codex auth rather than depending on GitHub Actions for this one-off catch-up.",
+      "Preserve existing published signals and regenerate only missing content in the selected compare range."
+    ],
+    "defaults": {
+      "repo": "openai/codex",
+      "stable_tag_name": "rust-v0.116.0",
+      "release_delta_path": "site/src/content/release-deltas/openai-codex-latest.json",
+      "signals_dir": "site/src/content/signals",
+      "bundles_dir": "tools/github/bundles",
+      "analysis_dir": "tools/github/analysis"
+    },
+    "tasks": [
+      {
+        "id": "task-1",
+        "title": "Define the compare-driven backfill contract",
+        "status": "done",
+        "objective": "Ground the backfill work in current release-delta evidence and record the need for a compare-driven unpublished-PR runner.",
+        "inputs": [
+          "site/src/content/release-deltas/openai-codex-latest.json",
+          "site/src/content/signals",
+          "tools/github/sync_latest_signals.py"
+        ],
+        "outputs": [
+          "A validated plan/1 contract for the 0.116 backfill pass",
+          "A clear implementation direction for compare-based backlog replay"
+        ],
+        "verification": [
+          "python3 /Users/xavier/.codex/skills/plan-writing/scripts/validate_plan_contract.py --path docs/plans/2026-03-21_decodex-116-backfill.json"
+        ],
+        "depends_on": []
+      },
+      {
+        "id": "task-2",
+        "title": "Implement the local backfill runner",
+        "status": "done",
+        "objective": "Add a deterministic script that reads the chosen compare pair, finds unpublished PRs in that compare set, and runs the existing bundle-analysis-render pipeline for them.",
+        "inputs": [
+          "tools/github/sync_latest_signals.py",
+          "tools/github/run_codex_analysis.py",
+          "site/src/content/release-deltas/openai-codex-latest.json"
+        ],
+        "outputs": [
+          "A local backfill command for 0.116-to-latest unpublished PRs"
+        ],
+        "verification": [
+          "python3 tools/github/backfill_release_range.py --repo openai/codex --stable-tag rust-v0.116.0 --dry-run"
+        ],
+        "depends_on": [
+          "task-1"
+        ]
+      },
+      {
+        "id": "task-3",
+        "title": "Run the local 0.116 backfill pass",
+        "status": "done",
+        "objective": "Execute the new backfill runner locally against the default 0.116.0 -> latest preview compare until the unpublished backlog for that pair is generated.",
+        "inputs": [
+          "Local Codex auth",
+          "The new compare-driven backfill runner"
+        ],
+        "outputs": [
+          "New bundles, analysis drafts, and signal entries for the missing PR backlog"
+        ],
+        "verification": [
+          "python3 tools/github/backfill_release_range.py --repo openai/codex --stable-tag rust-v0.116.0"
+        ],
+        "depends_on": [
+          "task-2"
+        ]
+      },
+      {
+        "id": "task-4",
+        "title": "Rebuild artifacts and run repo-native verification",
+        "status": "done",
+        "objective": "Refresh the release-delta artifact against the expanded signal set and run the repo-native validation gate.",
+        "inputs": [
+          "Backfilled signal corpus",
+          "tools/github/build_release_delta.py",
+          "Makefile.toml"
+        ],
+        "outputs": [
+          "An updated release-delta artifact and passing verification evidence"
+        ],
+        "verification": [
+          "cargo make decodex-checks"
+        ],
+        "depends_on": [
+          "task-3"
+        ]
+      },
+      {
+        "id": "task-5",
+        "title": "Summarize the backfill coverage",
+        "status": "done",
+        "objective": "Measure how much of the 0.116.0 -> latest preview compare is now represented in published signals and record any remaining gap.",
+        "inputs": [
+          "Updated signal corpus",
+          "Updated release-delta artifact"
+        ],
+        "outputs": [
+          "Concrete coverage counts and any residual missing PR list"
+        ],
+        "verification": [
+          "python3 -c \"import json, pathlib, re; rd=json.loads(pathlib.Path('site/src/content/release-deltas/openai-codex-latest.json').read_text()); print(len(rd['tracked_signal_slugs']))\""
+        ],
+        "depends_on": [
+          "task-4"
+        ]
+      }
+    ],
+    "replan_policy": {
+      "owner": "plan-writing",
+      "triggers": [
+        "The compare-driven backfill runner cannot finish because the default compare contains too many PRs for one local pass",
+        "Codex analysis needs a skip/non-publish mode to avoid flooding the feed with clearly low-value PRs",
+        "The default release-delta pair changes while the backfill is running"
+      ]
+    }
+  },
+  "state": {
+    "phase": "done",
+    "current_task_id": null,
+    "next_task_id": null,
+    "blockers": [],
+    "evidence": [
+      "python3 tools/github/backfill_release_range.py --repo openai/codex --stable-tag rust-v0.116.0 --dry-run",
+      "CODEX_HOME=<temp> python3 tools/github/backfill_release_range.py --repo openai/codex --stable-tag rust-v0.116.0 --model gpt-5.3-codex-spark",
+      "cargo make decodex-checks"
+    ],
+    "last_updated": "2026-03-21T04:28:20Z",
+    "replan_reason": null,
+    "context_snapshot": {
+      "lane": "feat/decodex-github-first",
+      "default_compare": "rust-v0.116.0 -> rust-v0.117.0-alpha.5",
+      "compare_pr_count": 58,
+      "published_pr_count_in_compare": 58,
+      "missing_pr_count_in_compare": 0,
+      "signal_count": 59
+    }
+  }
+}

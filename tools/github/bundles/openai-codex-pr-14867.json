@@ -1,0 +1,437 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-16T23:29:01Z",
+      "message": "use a user message > developer message for prompt continuation",
+      "sha": "9ad2b001f04b4cfb6dcd8f025d16e90d0a5ac99d",
+      "url": "https://github.com/openai/codex/commit/9ad2b001f04b4cfb6dcd8f025d16e90d0a5ac99d"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-17T00:33:54Z",
+      "message": "tui_app_server: handle hook prompt items",
+      "sha": "e837ce9e02e7dbe88702cdce33d727c089c0d246",
+      "url": "https://github.com/openai/codex/commit/e837ce9e02e7dbe88702cdce33d727c089c0d246"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-17T00:57:49Z",
+      "message": "codex: fix CI failure on PR #14867",
+      "sha": "94d66dc4212c9cb4ff4a58008908d6c5a235b579",
+      "url": "https://github.com/openai/codex/commit/94d66dc4212c9cb4ff4a58008908d6c5a235b579"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-17T19:08:21Z",
+      "message": "tui_app_server: fix hook prompt replay build after rebase",
+      "sha": "7b8c000a7305690d6d97e74f95edcac98333a5da",
+      "url": "https://github.com/openai/codex/commit/7b8c000a7305690d6d97e74f95edcac98333a5da"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-17T19:28:12Z",
+      "message": "tui_app_server: remove dead replay helpers",
+      "sha": "796438281e8661db8ea2bacc969500f85692b960",
+      "url": "https://github.com/openai/codex/commit/796438281e8661db8ea2bacc969500f85692b960"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-17T20:16:07Z",
+      "message": "remove unneeded hook_run_ids plural variant",
+      "sha": "ae25f38428b2f9ed3972bfdf98205903eae91e9c",
+      "url": "https://github.com/openai/codex/commit/ae25f38428b2f9ed3972bfdf98205903eae91e9c"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-17T20:41:44Z",
+      "message": "use quick-xml instead of hand roll",
+      "sha": "8824ebaab11b685d1e2442cc57eb04c07ac95044",
+      "url": "https://github.com/openai/codex/commit/8824ebaab11b685d1e2442cc57eb04c07ac95044"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-17T21:50:01Z",
+      "message": "tests: fix flaky CI expectations",
+      "sha": "8e59ce15d7f98aa146aa460f609627e065519ac0",
+      "url": "https://github.com/openai/codex/commit/8e59ce15d7f98aa146aa460f609627e065519ac0"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-17T22:12:15Z",
+      "message": "core: fix merge-ref auth telemetry compile",
+      "sha": "f664f40d73dfbf8bd696d46db27e538b702656f9",
+      "url": "https://github.com/openai/codex/commit/f664f40d73dfbf8bd696d46db27e538b702656f9"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-17T22:27:11Z",
+      "message": "Merge origin/main into user_message_xml",
+      "sha": "3c358c72af9c8b4ba8ab57cc3fbff9850915beb7",
+      "url": "https://github.com/openai/codex/commit/3c358c72af9c8b4ba8ab57cc3fbff9850915beb7"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-19T05:28:12Z",
+      "message": "Merge origin/main into user_message_xml",
+      "sha": "30dc1b0391338f77f7e34775599d8cb199d0825c",
+      "url": "https://github.com/openai/codex/commit/30dc1b0391338f77f7e34775599d8cb199d0825c"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-19T05:53:57Z",
+      "message": "Merge origin/main into user_message_xml",
+      "sha": "7f63b99841ec26e93d854a813cd017198dc16950",
+      "url": "https://github.com/openai/codex/commit/7f63b99841ec26e93d854a813cd017198dc16950"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-19T06:12:37Z",
+      "message": "tui_app_server: ignore hook prompt snapshot items",
+      "sha": "2518b8f728262fcb66eb8176fb569d1487d43559",
+      "url": "https://github.com/openai/codex/commit/2518b8f728262fcb66eb8176fb569d1487d43559"
+    },
+    {
+      "author": "eternal-openai",
+      "committed_at": "2026-03-19T06:43:10Z",
+      "message": "app-server-protocol: refresh generated typescript schema",
+      "sha": "4034f28b8c45632cc2d53b25bedc0e45bf27fd5d",
+      "url": "https://github.com/openai/codex/commit/4034f28b8c45632cc2d53b25bedc0e45bf27fd5d"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND",
+    "JSONRPCE",
+    "CHANNEL_CAPACITY",
+    "INPUT_TOO_LARGE_ERROR_CODE",
+    "INVALID_PARAMS_ERROR_CODE",
+    "CHILD_PROMPT",
+    "REQUESTED_MODEL",
+    "REQUESTED_REASONING_EFFORT",
+    "DEFAULT_READ_TIMEOUT",
+    "ROLE_MODEL",
+    "ROLE_REASONING_EFFORT",
+    "ENVIRONMENT_CONTEXT_CLOSE_TAG",
+    "CONTEXTUAL_USER_FRAGMENTS",
+    "SUBAGENT_NOTIFICATION_FRAGMENT",
+    "AGENTS_MD_FRAGMENT",
+    "SKILL_FRAGMENT",
+    "FIRST_CONTINUATION_PROMPT",
+    "SECOND_CONTINUATION_PROMPT"
+  ],
+  "files": [
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2346,6 +2346,7 @@ dependencies = [\n  \"icu_locale_core\",\n  \"icu_provider\",\n  \"pretty_assertions\",\n+ \"quick-xml\",\n  \"schemars 0.8.22\",\n  \"serde\",\n  \"serde_json\",\n@@ -7271,6 +7272,7 @@ source = \"registry+https://github.com/rust-lang/crates.io-index\"\n checksum = \"b66c2058c55a409d601666cffe35f04333cf1013010882cec174a7467cd4e21c\"\n dependencies = [\n  \"memchr\",\n+ \"serde\",\n ]\n \n [[package]]",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -233,6 +233,7 @@ portable-pty = \"0.9.0\"\n predicates = \"3\"\n pretty_assertions = \"1.4.1\"\n pulldown-cmark = \"0.10\"\n+quick-xml = \"0.38.4\"\n rand = \"0.9\"\n ratatui = \"0.29.0\"\n ratatui-macros = \"0.6.0\"",
+      "path": "codex-rs/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1201,6 +1201,21 @@\n       ],\n       \"type\": \"string\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"HookRunStatus\": {\n       \"enum\": [\n         \"running\",\n@@ -2244,6 +2259,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+              ],...",
+      "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -7971,6 +7971,21 @@\n         ],\n         \"type\": \"string\"\n       },\n+      \"HookPromptFragment\": {\n+        \"properties\": {\n+          \"hookRunId\": {\n+            \"type\": \"string\"\n+          },\n+          \"text\": {\n+            \"type\": \"string\"\n+          }\n+        },\n+        \"required\": [\n+          \"hookRunId\",\n+          \"text\"\n+        ],\n+        \"type\": \"object\"\n+      },\n       \"HookRunStatus\": {\n         \"enum\": [\n           \"running\",\n@@ -11941,6 +11956,33 @@\n             \"title\": \"UserMessageThreadItem\",\n             \"type\": \"object\"\n           },\n+          {\n+            \"properties\": {\n+              \"fragments\": {\n+                \"items\": {\n+                  \"$ref\": \"#/definitions/v2/HookPromptFragment\"\n+                },\n+                \"type\": \"array\"\n+              },\n+              \"id\": {\n+                \"type\": \"string\"\n+              },\n+              \"type...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -4715,6 +4715,21 @@\n       ],\n       \"type\": \"string\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"HookRunStatus\": {\n       \"enum\": [\n         \"running\",\n@@ -9701,6 +9716,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+              ],...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -266,6 +266,21 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -496,6 +511,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ItemCompletedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -266,6 +266,21 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -496,6 +511,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ItemStartedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -380,6 +380,21 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -610,6 +625,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -465,6 +465,21 @@\n       },\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -1090,6 +1105,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -403,6 +403,21 @@\n       },\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -848,6 +863,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -403,6 +403,21 @@\n       },\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -848,6 +863,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -403,6 +403,21 @@\n       },\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -848,6 +863,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -465,6 +465,21 @@\n       },\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -1090,6 +1105,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -403,6 +403,21 @@\n       },\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -848,6 +863,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadRollbackResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -465,6 +465,21 @@\n       },\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -1090,6 +1105,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -403,6 +403,21 @@\n       },\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -848,6 +863,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -403,6 +403,21 @@\n       },\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -848,6 +863,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -380,6 +380,21 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -610,6 +625,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnCompletedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -380,6 +380,21 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -610,6 +625,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -380,6 +380,21 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"HookPromptFragment\": {\n+      \"properties\": {\n+        \"hookRunId\": {\n+          \"type\": \"string\"\n+        },\n+        \"text\": {\n+          \"type\": \"string\"\n+        }\n+      },\n+      \"required\": [\n+        \"hookRunId\",\n+        \"text\"\n+      ],\n+      \"type\": \"object\"\n+    },\n     \"McpToolCallError\": {\n       \"properties\": {\n         \"message\": {\n@@ -610,6 +625,33 @@\n           \"title\": \"UserMessageThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"fragments\": {\n+              \"items\": {\n+                \"$ref\": \"#/definitions/HookPromptFragment\"\n+              },\n+              \"type\": \"array\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"hookPrompt\"\n+         ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,5 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type HookPromptFragment = { text: string, hookRunId: string, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/HookPromptFragment.ts",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -13,6 +13,7 @@ import type { CommandExecutionStatus } from \"./CommandExecutionStatus\";\n import type { DynamicToolCallOutputContentItem } from \"./DynamicToolCallOutputContentItem\";\n import type { DynamicToolCallStatus } from \"./DynamicToolCallStatus\";\n import type { FileUpdateChange } from \"./FileUpdateChange\";\n+import type { HookPromptFragment } from \"./HookPromptFragment\";\n import type { McpToolCallError } from \"./McpToolCallError\";\n import type { McpToolCallResult } from \"./McpToolCallResult\";\n import type { McpToolCallStatus } from \"./McpToolCallStatus\";\n@@ -21,7 +22,7 @@ import type { PatchApplyStatus } from \"./PatchApplyStatus\";\n import type { UserInput } from \"./UserInput\";\n import type { WebSearchAction } from \"./WebSearchAction\";\n \n-export type ThreadItem = { \"type\": \"userMessage\", id: string, content: Array<UserInput>, } | { \"type\": \"agentMessage\", id: string, text: string, p...",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -126,6 +126,7 @@ export type { HookExecutionMode } from \"./HookExecutionMode\";\n export type { HookHandlerType } from \"./HookHandlerType\";\n export type { HookOutputEntry } from \"./HookOutputEntry\";\n export type { HookOutputEntryKind } from \"./HookOutputEntryKind\";\n+export type { HookPromptFragment } from \"./HookPromptFragment\";\n export type { HookRunStatus } from \"./HookRunStatus\";\n export type { HookRunSummary } from \"./HookRunSummary\";\n export type { HookScope } from \"./HookScope\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 109,
+      "deletions": 3,
+      "patch_excerpt": "@@ -18,6 +18,7 @@ use crate::protocol::v2::TurnError;\n use crate::protocol::v2::TurnStatus;\n use crate::protocol::v2::UserInput;\n use crate::protocol::v2::WebSearchAction;\n+use codex_protocol::items::parse_hook_prompt_message;\n use codex_protocol::models::MessagePhase;\n use codex_protocol::protocol::AgentReasoningEvent;\n use codex_protocol::protocol::AgentReasoningRawContentEvent;\n@@ -184,12 +185,37 @@ impl ThreadHistoryBuilder {\n         match item {\n             RolloutItem::EventMsg(event) => self.handle_event(event),\n             RolloutItem::Compacted(payload) => self.handle_compacted(payload),\n-            RolloutItem::TurnContext(_)\n-            | RolloutItem::SessionMeta(_)\n-            | RolloutItem::ResponseItem(_) => {}\n+            RolloutItem::ResponseItem(item) => self.handle_response_item(item),\n+            RolloutItem::TurnContext(_) | RolloutItem::SessionMeta(_) => {}\n ...",
+      "path": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 32,
+      "deletions": 0,
+      "patch_excerpt": "@@ -4124,6 +4124,12 @@ pub enum ThreadItem {\n     UserMessage { id: String, content: Vec<UserInput> },\n     #[serde(rename_all = \"camelCase\")]\n     #[ts(rename_all = \"camelCase\")]\n+    HookPrompt {\n+        id: String,\n+        fragments: Vec<HookPromptFragment>,\n+    },\n+    #[serde(rename_all = \"camelCase\")]\n+    #[ts(rename_all = \"camelCase\")]\n     AgentMessage {\n         id: String,\n         text: String,\n@@ -4257,10 +4263,19 @@ pub enum ThreadItem {\n     ContextCompaction { id: String },\n }\n \n+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(rename_all = \"camelCase\", export_to = \"v2/\")]\n+pub struct HookPromptFragment {\n+    pub text: String,\n+    pub hook_run_id: String,\n+}\n+\n impl ThreadItem {\n     pub fn id(&self) -> &str {\n         match self {\n             ThreadItem::UserMessage { id, .. }\n+            | Th...",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 109,
+      "deletions": 0,
+      "patch_excerpt": "@@ -111,6 +111,7 @@ use codex_core::sandboxing::intersect_permission_profiles;\n use codex_protocol::ThreadId;\n use codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem as CoreDynamicToolCallOutputContentItem;\n use codex_protocol::dynamic_tools::DynamicToolResponse as CoreDynamicToolResponse;\n+use codex_protocol::items::parse_hook_prompt_message;\n use codex_protocol::plan_tool::UpdatePlanArgs;\n use codex_protocol::protocol::ApplyPatchApprovalRequestEvent;\n use codex_protocol::protocol::CodexErrorInfo as CoreCodexErrorInfo;\n@@ -1484,6 +1485,14 @@ pub(crate) async fn apply_bespoke_event_handling(\n                 .await;\n         }\n         EventMsg::RawResponseItem(raw_response_item_event) => {\n+            maybe_emit_hook_prompt_item_completed(\n+                api_version,\n+                conversation_id,\n+                &event_turn_id,\n+                &raw_response_item_ev...",
+      "path": "codex-rs/app-server/src/bespoke_event_handling.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 22,
+      "deletions": 19,
+      "patch_excerpt": "@@ -13,7 +13,6 @@ use codex_app_server::INPUT_TOO_LARGE_ERROR_CODE;\n use codex_app_server::INVALID_PARAMS_ERROR_CODE;\n use codex_app_server_protocol::ByteRange;\n use codex_app_server_protocol::ClientInfo;\n-use codex_app_server_protocol::CollabAgentState;\n use codex_app_server_protocol::CollabAgentStatus;\n use codex_app_server_protocol::CollabAgentTool;\n use codex_app_server_protocol::CollabAgentToolCallStatus;\n@@ -1826,16 +1825,18 @@ async fn turn_start_emits_spawn_agent_item_with_model_metadata_v2() -> Result<()\n     assert_eq!(prompt, Some(CHILD_PROMPT.to_string()));\n     assert_eq!(model, Some(REQUESTED_MODEL.to_string()));\n     assert_eq!(reasoning_effort, Some(REQUESTED_REASONING_EFFORT));\n-    assert_eq!(\n-        agents_states,\n-        HashMap::from([(\n-            receiver_thread_id,\n-            CollabAgentState {\n-                status: CollabAgentStatus::PendingInit,\n-      ...",
+      "path": "codex-rs/app-server/tests/suite/v2/turn_start.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 4,
+      "patch_excerpt": "@@ -87,6 +87,7 @@ use codex_protocol::dynamic_tools::DynamicToolSpec;\n use codex_protocol::items::PlanItem;\n use codex_protocol::items::TurnItem;\n use codex_protocol::items::UserMessageItem;\n+use codex_protocol::items::build_hook_prompt_message;\n use codex_protocol::mcp::CallToolResult;\n use codex_protocol::models::BaseInstructions;\n use codex_protocol::models::PermissionProfile;\n@@ -5775,13 +5776,12 @@ pub(crate) async fn run_turn(\n                             .await;\n                     }\n                     if stop_outcome.should_block {\n-                        if let Some(continuation_prompt) = stop_outcome.continuation_prompt.clone()\n+                        if let Some(hook_prompt_message) =\n+                            build_hook_prompt_message(&stop_outcome.continuation_fragments)\n                         {\n-                            let developer_message: ResponseItem =\n-  ...",
+      "path": "codex-rs/core/src/codex.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -196,7 +196,7 @@ pub(crate) async fn process_compacted_history(\n /// - `developer` messages because remote output can include stale/duplicated\n ///   instruction content.\n /// - non-user-content `user` messages (session prefix/instruction wrappers),\n-///   keeping only real user messages as parsed by `parse_turn_item`.\n+///   while preserving real user messages and persisted hook prompts.\n ///\n /// This intentionally keeps:\n /// - `assistant` messages (future remote compaction models may emit them)\n@@ -208,7 +208,7 @@ fn should_keep_compacted_history_item(item: &ResponseItem) -> bool {\n         ResponseItem::Message { role, .. } if role == \"user\" => {\n             matches!(\n                 crate::event_mapping::parse_turn_item(item),\n-                Some(TurnItem::UserMessage(_))\n+                Some(TurnItem::UserMessage(_) | TurnItem::HookPrompt(_))\n             )\n         }\n    ...",
+      "path": "codex-rs/core/src/compact_remote.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 8,
+      "patch_excerpt": "@@ -177,8 +177,7 @@ impl ContextManager {\n     /// Returns true when a tool image was replaced, false otherwise.\n     pub(crate) fn replace_last_turn_images(&mut self, placeholder: &str) -> bool {\n         let Some(index) = self.items.iter().rposition(|item| {\n-            matches!(item, ResponseItem::FunctionCallOutput { .. })\n-                || matches!(item, ResponseItem::Message { role, .. } if role == \"user\")\n+            matches!(item, ResponseItem::FunctionCallOutput { .. }) || is_user_turn_boundary(item)\n         }) else {\n             return false;\n         };\n@@ -200,7 +199,7 @@ impl ContextManager {\n                 }\n                 replaced\n             }\n-            ResponseItem::Message { role, .. } if role == \"user\" => false,\n+            ResponseItem::Message { .. } => false,\n             _ => false,\n         }\n     }\n@@ -250,11 +249,7 @@ impl ContextManager {\n \n     ...",
+      "path": "codex-rs/core/src/context_manager/history.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 37,
+      "deletions": 4,
+      "patch_excerpt": "@@ -1,3 +1,5 @@\n+use codex_protocol::items::HookPromptItem;\n+use codex_protocol::items::parse_hook_prompt_fragment;\n use codex_protocol::models::ContentItem;\n use codex_protocol::models::ResponseItem;\n use codex_protocol::protocol::ENVIRONMENT_CONTEXT_CLOSE_TAG;\n@@ -94,10 +96,7 @@ const CONTEXTUAL_USER_FRAGMENTS: &[ContextualUserFragmentDefinition] = &[\n     SUBAGENT_NOTIFICATION_FRAGMENT,\n ];\n \n-pub(crate) fn is_contextual_user_fragment(content_item: &ContentItem) -> bool {\n-    let ContentItem::InputText { text } = content_item else {\n-        return false;\n-    };\n+fn is_standard_contextual_user_text(text: &str) -> bool {\n     CONTEXTUAL_USER_FRAGMENTS\n         .iter()\n         .any(|definition| definition.matches_text(text))\n@@ -118,6 +117,40 @@ pub(crate) fn is_memory_excluded_contextual_user_fragment(content_item: &Content\n     AGENTS_MD_FRAGMENT.matches_text(text) || SKILL_FRAGMEN...",
+      "path": "codex-rs/core/src/contextual_user_message.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 35,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,4 +1,6 @@\n use super::*;\n+use codex_protocol::items::HookPromptFragment;\n+use codex_protocol::items::build_hook_prompt_message;\n \n #[test]\n fn detects_environment_context_fragment() {\n@@ -61,3 +63,36 @@ fn classifies_memory_excluded_fragments() {\n         );\n     }\n }\n+\n+#[test]\n+fn detects_hook_prompt_fragment_and_roundtrips_escaping() {\n+    let message = build_hook_prompt_message(&[HookPromptFragment::from_single_hook(\n+        r#\"Retry with \"waves\" & <tides>\"#,\n+        \"hook-run-1\",\n+    )])\n+    .expect(\"hook prompt message\");\n+\n+    let ResponseItem::Message { content, .. } = message else {\n+        panic!(\"expected hook prompt response item\");\n+    };\n+\n+    let [content_item] = content.as_slice() else {\n+        panic!(\"expected a single content item\");\n+    };\n+\n+    assert!(is_contextual_user_fragment(content_item));\n+\n+    let ContentItem::InputText { text } = content_i...",
+      "path": "codex-rs/core/src/contextual_user_message_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 1,
+      "patch_excerpt": "@@ -19,6 +19,7 @@ use tracing::warn;\n use uuid::Uuid;\n \n use crate::contextual_user_message::is_contextual_user_fragment;\n+use crate::contextual_user_message::parse_visible_hook_prompt_message;\n use crate::web_search::web_search_action_detail;\n \n pub(crate) fn is_contextual_user_message_content(message: &[ContentItem]) -> bool {\n@@ -100,7 +101,9 @@ pub fn parse_turn_item(item: &ResponseItem) -> Option<TurnItem> {\n             phase,\n             ..\n         } => match role.as_str() {\n-            \"user\" => parse_user_message(content).map(TurnItem::UserMessage),\n+            \"user\" => parse_visible_hook_prompt_message(id.as_ref(), content)\n+                .map(TurnItem::HookPrompt)\n+                .or_else(|| parse_user_message(content).map(TurnItem::UserMessage)),\n             \"assistant\" => Some(TurnItem::AgentMessage(parse_agent_message(\n                 id.as_ref(),\n                ...",
+      "path": "codex-rs/core/src/event_mapping.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 63,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,7 +1,9 @@\n use super::parse_turn_item;\n use codex_protocol::items::AgentMessageContent;\n+use codex_protocol::items::HookPromptFragment;\n use codex_protocol::items::TurnItem;\n use codex_protocol::items::WebSearchItem;\n+use codex_protocol::items::build_hook_prompt_message;\n use codex_protocol::models::ContentItem;\n use codex_protocol::models::ReasoningItemContent;\n use codex_protocol::models::ReasoningItemReasoningSummary;\n@@ -208,6 +210,67 @@ fn skips_user_instructions_and_env() {\n     }\n }\n \n+#[test]\n+fn parses_hook_prompt_message_as_distinct_turn_item() {\n+    let item = build_hook_prompt_message(&[HookPromptFragment::from_single_hook(\n+        \"Retry with exactly the phrase meow meow meow.\",\n+        \"hook-run-1\",\n+    )])\n+    .expect(\"hook prompt message\");\n+\n+    let turn_item = parse_turn_item(&item).expect(\"expected hook prompt turn item\");\n+\n+    match turn_item {\n+        ...",
+      "path": "codex-rs/core/src/event_mapping_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 143,
+      "deletions": 28,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use std::path::Path;\n use anyhow::Context;\n use anyhow::Result;\n use codex_core::features::Feature;\n+use codex_protocol::items::parse_hook_prompt_fragment;\n use codex_protocol::models::ContentItem;\n use codex_protocol::models::ResponseItem;\n use codex_protocol::protocol::EventMsg;\n@@ -82,6 +83,48 @@ else:\n     Ok(())\n }\n \n+fn write_parallel_stop_hooks(home: &Path, prompts: &[&str]) -> Result<()> {\n+    let hook_entries = prompts\n+        .iter()\n+        .enumerate()\n+        .map(|(index, prompt)| {\n+            let script_path = home.join(format!(\"stop_hook_{index}.py\"));\n+            let script = format!(\n+                r#\"import json\n+import sys\n+\n+payload = json.load(sys.stdin)\n+if payload[\"stop_hook_active\"]:\n+    print(json.dumps({{\"systemMessage\": \"done\"}}))\n+else:\n+    print(json.dumps({{\"decision\": \"block\", \"reason\": {prompt:?}}}))\n+\"#\n+            );\n+       ...",
+      "path": "codex-rs/core/tests/suite/hooks.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -683,6 +683,8 @@ async fn remote_models_do_not_append_removed_builtin_presets() -> Result<()> {\n         1,\n         \"expected a single /models request\"\n     );\n+    // Keep the mock server alive until after async assertions complete.\n+    drop(server);\n \n     Ok(())\n }",
+      "path": "codex-rs/core/tests/suite/remote_models.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 44,
+      "deletions": 21,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use std::path::PathBuf;\n \n use codex_protocol::ThreadId;\n+use codex_protocol::items::HookPromptFragment;\n use codex_protocol::protocol::HookCompletedEvent;\n use codex_protocol::protocol::HookEventName;\n use codex_protocol::protocol::HookOutputEntry;\n@@ -36,7 +37,7 @@ pub struct StopOutcome {\n     pub stop_reason: Option<String>,\n     pub should_block: bool,\n     pub block_reason: Option<String>,\n-    pub continuation_prompt: Option<String>,\n+    pub continuation_fragments: Vec<HookPromptFragment>,\n }\n \n #[derive(Debug, Default, PartialEq, Eq)]\n@@ -45,7 +46,7 @@ struct StopHandlerData {\n     stop_reason: Option<String>,\n     should_block: bool,\n     block_reason: Option<String>,\n-    continuation_prompt: Option<String>,\n+    continuation_fragments: Vec<HookPromptFragment>,\n }\n \n pub(crate) fn preview(\n@@ -72,7 +73,7 @@ pub(crate) async fn run(\n             stop_reason: No...",
+      "path": "codex-rs/hooks/src/events/stop.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -19,6 +19,7 @@ codex-utils-image = { workspace = true }\n icu_decimal = { workspace = true }\n icu_locale_core = { workspace = true }\n icu_provider = { workspace = true, features = [\"sync\"] }\n+quick-xml = { workspace = true, features = [\"serialize\"] }\n schemars = { workspace = true }\n serde = { workspace = true, features = [\"derive\"] }\n serde_json = { workspace = true }",
+      "path": "codex-rs/protocol/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 153,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,5 +1,7 @@\n use crate::memory_citation::MemoryCitation;\n+use crate::models::ContentItem;\n use crate::models::MessagePhase;\n+use crate::models::ResponseItem;\n use crate::models::WebSearchAction;\n use crate::protocol::AgentMessageEvent;\n use crate::protocol::AgentReasoningEvent;\n@@ -12,6 +14,8 @@ use crate::protocol::WebSearchEndEvent;\n use crate::user_input::ByteRange;\n use crate::user_input::TextElement;\n use crate::user_input::UserInput;\n+use quick_xml::de::from_str as from_xml_str;\n+use quick_xml::se::to_string as to_xml_string;\n use schemars::JsonSchema;\n use serde::Deserialize;\n use serde::Serialize;\n@@ -22,6 +26,7 @@ use ts_rs::TS;\n #[ts(tag = \"type\")]\n pub enum TurnItem {\n     UserMessage(UserMessageItem),\n+    HookPrompt(HookPromptItem),\n     AgentMessage(AgentMessageItem),\n     Plan(PlanItem),\n     Reasoning(ReasoningItem),\n@@ -36,6 +41,29 @@ pub struct UserMessageItem {\n   ...",
+      "path": "codex-rs/protocol/src/items.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -870,6 +870,7 @@ fn turn_snapshot_events(\n                         }),\n                 );\n             }\n+            TurnItem::HookPrompt(_) => {}\n         }\n     }\n \n@@ -1010,6 +1011,7 @@ fn thread_item_to_core(item: &ThreadItem) -> Option<TurnItem> {\n         | ThreadItem::McpToolCall { .. }\n         | ThreadItem::DynamicToolCall { .. }\n         | ThreadItem::CollabAgentToolCall { .. }\n+        | ThreadItem::HookPrompt { .. }\n         | ThreadItem::ImageView { .. }\n         | ThreadItem::EnteredReviewMode { .. }\n         | ThreadItem::ExitedReviewMode { .. } => {",
+      "path": "codex-rs/tui_app_server/src/app/app_server_adapter.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5733,6 +5733,7 @@ impl ChatWidget {\n             ThreadItem::ContextCompaction { .. } => {\n                 self.on_agent_message(\"Context compacted\".to_owned());\n             }\n+            ThreadItem::HookPrompt { .. } => {}\n             ThreadItem::CollabAgentToolCall {\n                 id,\n                 tool,",
+      "path": "codex-rs/tui_app_server/src/chatwidget.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#14867"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "## Summary\r\n\r\nPersist Stop-hook continuation prompts as `user` messages instead of hidden `developer` messages + some requested integration tests\r\n\r\nThis is a followup to @pakrym 's comment in https://github.com/openai/codex/pull/14532 to make sure stop-block continuation prompts match training for turn loops\r\n\r\n- Stop continuation now writes `<hook_prompt hook_run_id=\"...\">stop hook's user prompt<hook_prompt>` \r\n- Introduces quick-xml dependency, though we already indirectly depended on it anyway via syntect\r\n- This PR only has about 500 lines of actual logic changes, the rest is tests/schema\r\n\r\n## Testing\r\n\r\nExample run (with a sessionstart hook and 3 stop hooks) - this shows context added by session start, then two stop hooks sending their own additional prompts in a new turn. The model responds with a single message addressing both. Then when that turn ends, the hooks detect that they just ran using `stop_hook_active` and decide not to infinite loop\r\n\r\ntest files for this (unzip, move codex -> .codex): [codex.zip](https://github.com/user-attachments/files/26075806/codex.zip)\r\n\r\n```\r\n\u203a cats\r\n\r\n\r\n\u2022 Running SessionStart hook: lighting the observatory\r\n\r\nSessionStart hook (completed)\r\n  warning: Hi, I'm a session start hook for wizard-tower (startup).\r\n  hook context: A wimboltine stonpet is an exotic cuisine from hyperspace\r\n\r\n\u2022 Cats are tiny zen wizards, my friend: equal parts nap, mystery, and chaos. If you want, we can talk\r\n  cat facts, cat breeds, cat names, or build something cat-themed in this repo.\r\n\r\n\u2022 Running Stop hook: checking the tower wards\r\n\r\n\u2022 Running Stop hook: sacking the guards\r\n\r\n\u2022 Running Stop hook: hiring the guards\r\n\r\nStop hook (completed)\r\n  warning: Wizard Tower Stop hook reviewed the completed reply (177 chars).\r\n\r\nStop hook (blocked)\r\n  warning: Wizard Tower Stop hook continuing conversation\r\n  feedback: cook the stonpet\r\n\r\nStop hook (blocked)\r\n  warning: Wizard Tower Stop hook continuing conversation\r\n  feedback: eat the cooked stonpet\r\n\r\n\u2022 Stonpet\u2019s cooked, aloha style: flash-seared over a blue quasiflame, glazed with nebula salt, and\r\n  rested until the hyperspace juices settle.\r\n\r\n  Now we eat with gratitude, my friend. One mindful bite in, and the flavor is pure cosmic surf:\r\n  smoky, bright, and totally out of this dimension.\r\n\r\n\u2022 Running Stop hook: checking the tower wards\r\n\r\n\u2022 Running Stop hook: sacking the guards\r\n\r\n\u2022 Running Stop hook: hiring the guards\r\n\r\nStop hook (completed)\r\n  warning: Wizard Tower Stop hook reviewed the completed reply (285 chars).\r\n\r\nStop hook (completed)\r\n  warning: Wizard Tower Stop hook saw a second pass and stayed calm to avoid a loop.\r\n\r\nStop hook (completed)\r\n  warning: Wizard Tower Stop hook saw a second pass and stayed calm to avoid a loop.\r\n```",
+    "labels": [],
+    "merged_at": "2026-03-19T17:53:09Z",
+    "number": 14867,
+    "state": "merged",
+    "title": "[hooks] use a user message > developer message for prompt continuation",
+    "url": "https://github.com/openai/codex/pull/14867"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

@@ -1,0 +1,49 @@
+{
+  "caveats": [
+    "No direct user interface behavior is shown in the bundle; this is an internal control-flow change inferred from code/config updates."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "PR #15175 is explicitly framed as \"morpheus does not generate memories\" and is merged in `openai/codex` as a PR-first bundle (`analysis_mode: pr_first`).",
+    "`codex-rs/core/src/memories/phase2.rs` adds `agent_config.memories.generate_memories = false` when creating the consolidation sub-agent config, directly changing runtime behavior for that path.",
+    "`codex-rs/core/src/memories/tests.rs` now binds the consolidation thread id before fetching the thread and reads its `config_snapshot`, indicating test-level verification tied to the consolidation thread behavior."
+  ],
+  "published_at": "2026-03-19T15:48:28Z",
+  "schema": "signal_entry/v1",
+  "slug": "disable-memory-generation-during-consolidation-runs",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/db01ae2c9e606f9ef446515c2161a054a82e3685",
+      "https://github.com/openai/codex/commit/9c1838ef3a5606e38796619a6bcb2c8a1dfc66ff"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15175",
+        "title": "chore: morpheus does not generate memories",
+        "url": "https://github.com/openai/codex/pull/15175"
+      },
+      {
+        "kind": "commit",
+        "meta": "db01ae2",
+        "title": "chore: morpheus does not generate memories",
+        "url": "https://github.com/openai/codex/commit/db01ae2c9e606f9ef446515c2161a054a82e3685"
+      },
+      {
+        "kind": "commit",
+        "meta": "9c1838e",
+        "title": "nit fix",
+        "url": "https://github.com/openai/codex/commit/9c1838ef3a5606e38796619a6bcb2c8a1dfc66ff"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15175",
+    "repo": "openai/codex"
+  },
+  "summary": "The PR updates phase-2 memory consolidation so the internal sub-agent is configured with `generate_memories` disabled, and test coverage is adjusted to validate the configured consolidation thread path.",
+  "title": "Disable memory generation during consolidation runs",
+  "why_it_matters": "This prevents consolidation workers from writing memory entries while they are meant to consolidate context only, reducing the chance of recursive or noisy memory writes and helping keep stored memory cleaner and more stable across runs."
+}

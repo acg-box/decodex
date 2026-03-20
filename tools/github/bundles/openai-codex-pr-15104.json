@@ -1,0 +1,161 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-03-18T04:19:13Z",
+      "message": "fix: read plugin feature flag from requirement-resolved config.",
+      "sha": "62b5fbceec22f9530a389ba2eb2ede9902535ae7",
+      "url": "https://github.com/openai/codex/commit/62b5fbceec22f9530a389ba2eb2ede9902535ae7"
+    },
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-03-18T07:31:00Z",
+      "message": "guard plugin/*** with the feature flag.",
+      "sha": "fdd9ab96a5b82385042dc98a3419d3ab4a0331c8",
+      "url": "https://github.com/openai/codex/commit/fdd9ab96a5b82385042dc98a3419d3ab4a0331c8"
+    },
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-03-18T07:34:59Z",
+      "message": "Fail open to marketplace.json fail.",
+      "sha": "2f834baff6670f65bc8fd8d1f37d01f89478d698",
+      "url": "https://github.com/openai/codex/commit/2f834baff6670f65bc8fd8d1f37d01f89478d698"
+    },
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-03-18T08:36:24Z",
+      "message": "Cleanup configured_plugin_states",
+      "sha": "801f8345b86a0ddf10afb9b3b8c3c2dd3752a660",
+      "url": "https://github.com/openai/codex/commit/801f8345b86a0ddf10afb9b3b8c3c2dd3752a660"
+    },
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-03-18T22:13:04Z",
+      "message": "fix tests.",
+      "sha": "fdb355c92326f9954a4db16f2bdfc88b59f87414",
+      "url": "https://github.com/openai/codex/commit/fdb355c92326f9954a4db16f2bdfc88b59f87414"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "DEFAULT_TIMEOUT",
+    "TEST_CURATED_PLUGIN_SHA",
+    "JSONRPCR",
+    "CONFIG_TOML_FILE",
+    "SKILL",
+    "MARKETPLACE_RELATIVE_PATH",
+    "API"
+  ],
+  "files": [
+    {
+      "additions": 9,
+      "deletions": 1,
+      "patch_excerpt": "@@ -4842,6 +4842,7 @@ impl CodexMessageProcessor {\n             MarketplaceError::InvalidMarketplaceFile { .. }\n             | MarketplaceError::PluginNotFound { .. }\n             | MarketplaceError::PluginNotAvailable { .. }\n+            | MarketplaceError::PluginsDisabled\n             | MarketplaceError::InvalidPlugin(_) => {\n                 self.send_invalid_request_error(request_id, err.to_string())\n                     .await;\n@@ -5363,14 +5364,21 @@ impl CodexMessageProcessor {\n                 .extend(valid_extra_roots);\n         }\n \n+        let config = match self.load_latest_config(/*fallback_cwd*/ None).await {\n+            Ok(config) => config,\n+            Err(error) => {\n+                self.outgoing.send_error(request_id, error).await;\n+                return;\n+            }\n+        };\n         let skills_manager = self.thread_manager.skills_manager();\n         let mut ...",
+      "path": "codex-rs/app-server/src/codex_message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 27,
+      "deletions": 5,
+      "patch_excerpt": "@@ -28,12 +28,22 @@ use wiremock::matchers::path;\n const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);\n const TEST_CURATED_PLUGIN_SHA: &str = \"0123456789abcdef0123456789abcdef01234567\";\n \n+fn write_plugins_enabled_config(codex_home: &std::path::Path) -> std::io::Result<()> {\n+    std::fs::write(\n+        codex_home.join(\"config.toml\"),\n+        r#\"[features]\n+plugins = true\n+\"#,\n+    )\n+}\n+\n #[tokio::test]\n-async fn plugin_list_returns_invalid_request_for_invalid_marketplace_file() -> Result<()> {\n+async fn plugin_list_skips_invalid_marketplace_file() -> Result<()> {\n     let codex_home = TempDir::new()?;\n     let repo_root = TempDir::new()?;\n     std::fs::create_dir_all(repo_root.path().join(\".git\"))?;\n     std::fs::create_dir_all(repo_root.path().join(\".agents/plugins\"))?;\n+    write_plugins_enabled_config(codex_home.path())?;\n     std::fs::write(\n         repo_root.path().join(...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 0,
+      "patch_excerpt": "@@ -232,6 +232,7 @@ async fn plugin_read_accepts_legacy_string_default_prompt() -> Result<()> {\n   }\n }\"##,\n     )?;\n+    write_plugins_enabled_config(&codex_home)?;\n \n     let mut mcp = McpProcess::new(codex_home.path()).await?;\n     timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;\n@@ -285,6 +286,7 @@ async fn plugin_read_returns_invalid_request_when_plugin_is_missing() -> Result<\n   ]\n }\"#,\n     )?;\n+    write_plugins_enabled_config(&codex_home)?;\n \n     let mut mcp = McpProcess::new(codex_home.path()).await?;\n     timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;\n@@ -336,6 +338,7 @@ async fn plugin_read_returns_invalid_request_when_plugin_manifest_is_missing() -\n   ]\n }\"#,\n     )?;\n+    write_plugins_enabled_config(&codex_home)?;\n \n     let mut mcp = McpProcess::new(codex_home.path()).await?;\n     timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;\n@@ -382,3 +385,13 @@ fn write_i...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_read.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 5,
+      "patch_excerpt": "@@ -148,7 +148,9 @@ impl ConfigLayerStack {\n         })\n     }\n \n-    /// Returns the user config layer, if any.\n+    /// Returns the raw user config layer, if any.\n+    ///\n+    /// This does not merge other config layers or apply any requirements.\n     pub fn get_user_layer(&self) -> Option<&ConfigLayerEntry> {\n         self.user_layer_index\n             .and_then(|index| self.layers.get(index))\n@@ -209,6 +211,10 @@ impl ConfigLayerStack {\n         }\n     }\n \n+    /// Returns the merged config-layer view.\n+    ///\n+    /// This only merges ordinary config layers and does not apply requirements\n+    /// such as cloud requirements.\n     pub fn effective_config(&self) -> TomlValue {\n         let mut merged = TomlValue::Table(toml::map::Map::new());\n         for layer in self.get_layers(\n@@ -220,6 +226,9 @@ impl ConfigLayerStack {\n         merged\n     }\n \n+    /// Returns field origins for...",
+      "path": "codex-rs/config/src/state.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 1,
+      "patch_excerpt": "@@ -4781,9 +4781,12 @@ mod handlers {\n         };\n \n         let skills_manager = &sess.services.skills_manager;\n+        let config = sess.get_config().await;\n         let mut skills = Vec::new();\n         for cwd in cwds {\n-            let outcome = skills_manager.skills_for_cwd(&cwd, force_reload).await;\n+            let outcome = skills_manager\n+                .skills_for_cwd(&cwd, config.as_ref(), force_reload)\n+                .await;\n             let errors = super::errors_to_info(&outcome.errors);\n             let skills_metadata = super::skills_to_info(&outcome.skills, &outcome.disabled_paths);\n             skills.push(SkillsListEntry {",
+      "path": "codex-rs/core/src/codex.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -2187,7 +2187,7 @@ async fn new_default_turn_uses_config_aware_skills_for_role_overrides() {\n     let parent_outcome = session\n         .services\n         .skills_manager\n-        .skills_for_cwd(&parent_config.cwd, true)\n+        .skills_for_cwd(&parent_config.cwd, &parent_config, true)\n         .await;\n     let parent_skill = parent_outcome\n         .skills",
+      "path": "codex-rs/core/src/codex_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 44,
+      "deletions": 68,
+      "patch_excerpt": "@@ -29,16 +29,12 @@ use crate::auth::CodexAuth;\n use crate::config::Config;\n use crate::config::ConfigService;\n use crate::config::ConfigServiceError;\n-use crate::config::ConfigToml;\n use crate::config::edit::ConfigEdit;\n use crate::config::edit::ConfigEditsBuilder;\n-use crate::config::profile::ConfigProfile;\n use crate::config::types::McpServerConfig;\n use crate::config::types::PluginConfig;\n use crate::config_loader::ConfigLayerStack;\n use crate::features::Feature;\n-use crate::features::FeatureOverrides;\n-use crate::features::Features;\n use crate::skills::SkillMetadata;\n use crate::skills::loader::SkillRoot;\n use crate::skills::loader::load_skills_from_roots;\n@@ -421,7 +417,7 @@ impl From<RemotePluginFetchError> for PluginRemoteSyncError {\n pub struct PluginsManager {\n     codex_home: PathBuf,\n     store: PluginStore,\n-    cache_by_cwd: RwLock<HashMap<PathBuf, PluginLoadOutcome>>,\n+   ...",
+      "path": "codex-rs/core/src/plugins/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 131,
+      "deletions": 18,
+      "patch_excerpt": "@@ -59,18 +59,8 @@ fn plugin_config_toml(enabled: bool, plugins_feature_enabled: bool) -> String {\n \n fn load_plugins_from_config(config_toml: &str, codex_home: &Path) -> PluginLoadOutcome {\n     write_file(&codex_home.join(CONFIG_TOML_FILE), config_toml);\n-    let stack = ConfigLayerStack::new(\n-        vec![ConfigLayerEntry::new(\n-            ConfigLayerSource::User {\n-                file: AbsolutePathBuf::try_from(codex_home.join(CONFIG_TOML_FILE)).unwrap(),\n-            },\n-            toml::from_str(config_toml).expect(\"plugin test config should parse\"),\n-        )],\n-        ConfigRequirements::default(),\n-        ConfigRequirementsToml::default(),\n-    )\n-    .expect(\"config layer stack should build\");\n-    PluginsManager::new(codex_home.to_path_buf()).plugins_for_layer_stack(codex_home, &stack, false)\n+    let config = load_config_blocking(codex_home, codex_home);\n+    PluginsMa...",
+      "path": "codex-rs/core/src/plugins/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 1,
+      "patch_excerpt": "@@ -14,6 +14,7 @@ use std::io;\n use std::path::Component;\n use std::path::Path;\n use std::path::PathBuf;\n+use tracing::warn;\n \n const MARKETPLACE_RELATIVE_PATH: &str = \".agents/plugins/marketplace.json\";\n \n@@ -127,6 +128,9 @@ pub enum MarketplaceError {\n         marketplace_name: String,\n     },\n \n+    #[error(\"plugins feature is disabled\")]\n+    PluginsDisabled,\n+\n     #[error(\"{0}\")]\n     InvalidPlugin(String),\n }\n@@ -238,7 +242,16 @@ fn list_marketplaces_with_home(\n     let mut marketplaces = Vec::new();\n \n     for marketplace_path in discover_marketplace_paths_from_roots(additional_roots, home_dir) {\n-        marketplaces.push(load_marketplace(&marketplace_path)?);\n+        match load_marketplace(&marketplace_path) {\n+            Ok(marketplace) => marketplaces.push(marketplace),\n+            Err(err) => {\n+                warn!(\n+                    path = %marketplace_path.display(...",
+      "path": "codex-rs/core/src/plugins/marketplace.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 56,
+      "deletions": 0,
+      "patch_excerpt": "@@ -403,6 +403,62 @@ fn list_marketplaces_reads_marketplace_display_name() {\n     );\n }\n \n+#[test]\n+fn list_marketplaces_skips_marketplaces_that_fail_to_load() {\n+    let tmp = tempdir().unwrap();\n+    let valid_repo_root = tmp.path().join(\"valid-repo\");\n+    let invalid_repo_root = tmp.path().join(\"invalid-repo\");\n+\n+    fs::create_dir_all(valid_repo_root.join(\".git\")).unwrap();\n+    fs::create_dir_all(valid_repo_root.join(\".agents/plugins\")).unwrap();\n+    fs::create_dir_all(invalid_repo_root.join(\".git\")).unwrap();\n+    fs::create_dir_all(invalid_repo_root.join(\".agents/plugins\")).unwrap();\n+    fs::write(\n+        valid_repo_root.join(\".agents/plugins/marketplace.json\"),\n+        r#\"{\n+  \"name\": \"valid-marketplace\",\n+  \"plugins\": [\n+    {\n+      \"name\": \"valid-plugin\",\n+      \"source\": {\n+        \"source\": \"local\",\n+        \"path\": \"./plugin\"\n+      }\n+    }\n+  ]\n+}\"#,\n+    )\n+    .u...",
+      "path": "codex-rs/core/src/plugins/marketplace_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 5,
+      "patch_excerpt": "@@ -92,18 +92,24 @@ impl SkillsManager {\n         roots\n     }\n \n-    pub async fn skills_for_cwd(&self, cwd: &Path, force_reload: bool) -> SkillLoadOutcome {\n+    pub async fn skills_for_cwd(\n+        &self,\n+        cwd: &Path,\n+        config: &Config,\n+        force_reload: bool,\n+    ) -> SkillLoadOutcome {\n         if !force_reload && let Some(outcome) = self.cached_outcome_for_cwd(cwd) {\n             return outcome;\n         }\n \n-        self.skills_for_cwd_with_extra_user_roots(cwd, force_reload, &[])\n+        self.skills_for_cwd_with_extra_user_roots(cwd, config, force_reload, &[])\n             .await\n     }\n \n     pub async fn skills_for_cwd_with_extra_user_roots(\n         &self,\n         cwd: &Path,\n+        config: &Config,\n         force_reload: bool,\n         extra_user_roots: &[PathBuf],\n     ) -> SkillLoadOutcome {\n@@ -147,9 +153,9 @@ impl SkillsManager {\n             }\n ...",
+      "path": "codex-rs/core/src/skills/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 2,
+      "patch_excerpt": "@@ -93,6 +93,7 @@ async fn skills_for_cwd_reuses_cached_entry_even_when_entry_has_extra_roots() {\n     let outcome_with_extra = skills_manager\n         .skills_for_cwd_with_extra_user_roots(\n             cwd.path(),\n+            &config,\n             true,\n             std::slice::from_ref(&extra_root_path),\n         )\n@@ -112,7 +113,9 @@ async fn skills_for_cwd_reuses_cached_entry_even_when_entry_has_extra_roots() {\n \n     // The cwd-only API returns the current cached entry for this cwd, even when that entry\n     // was produced with extra roots.\n-    let outcome_without_extra = skills_manager.skills_for_cwd(cwd.path(), false).await;\n+    let outcome_without_extra = skills_manager\n+        .skills_for_cwd(cwd.path(), &config, false)\n+        .await;\n     assert_eq!(outcome_without_extra.skills, outcome_with_extra.skills);\n     assert_eq!(outcome_without_extra.errors, outcome_with_extra...",
+      "path": "codex-rs/core/src/skills/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -489,7 +489,7 @@ impl CoreShellActionProvider {\n             .session\n             .services\n             .skills_manager\n-            .skills_for_cwd(&self.turn.cwd, force_reload)\n+            .skills_for_cwd(&self.turn.cwd, self.turn.config.as_ref(), force_reload)\n             .await;\n \n         let program_path = program.as_path();",
+      "path": "codex-rs/core/src/tools/runtimes/shell/unix_escalation.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Backfilled from compare range rust-v0.116.0...rust-v0.117.0-alpha.5"
+  ],
+  "primary_pr": {
+    "body": "Resubmit https://github.com/openai/codex/pull/15020 with correct content.\r\n\r\n1. Use requirement-resolved config.features as the plugin gate.\r\n2. Guard plugin/list, plugin/read, and related flows behind that gate.\r\n3. Skip bad marketplace.json files instead of failing the whole list.\r\n4. Simplify plugin state and caching.",
+    "labels": [],
+    "merged_at": "2026-03-19T00:03:37Z",
+    "number": 15104,
+    "state": "merged",
+    "title": "fix: harden plugin feature gating",
+    "url": "https://github.com/openai/codex/pull/15104"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
