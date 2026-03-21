@@ -5,14 +5,12 @@ import FilterBar from "@/components/FilterBar.astro";
 import ReleaseDeltaPanel from "@/components/ReleaseDeltaPanel.astro";
 import ResetStatusWidget from "@/components/ResetStatusWidget.astro";
 import SignalCard from "@/components/SignalCard.astro";
-import SignalSummaryTile from "@/components/SignalSummaryTile.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
 import { type ResetStatusData } from "@/lib/reset-status";
 import { type ReleaseDeltaData } from "@/lib/release-delta";
 import {
   FILTERS,
-  formatPublishedAt,
   groupSignalsByMonth,
   isFilterId,
   sortSignals,
@@ -24,6 +22,7 @@ const rawFilter = Astro.url.searchParams.get("filter");
 const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
 const collectionEntries = await getCollection("signals");
 const releaseDeltaEntries = await getCollection("releaseDeltas");
+const recommendedConfigEntries = await getCollection("recommendedConfigs");
 const resetStatusEntries = await getCollection("resetStatuses");
 const signals: SignalCardData[] = sortSignals(
   collectionEntries.map((entry) => ({
@@ -35,17 +34,24 @@ const releaseDelta: ReleaseDeltaData | null =
   releaseDeltaEntries
     .map((entry) => entry.data as ReleaseDeltaData)
     .find((entry) => entry.repo === "openai/codex") ?? null;
+const recommendedConfig =
+  recommendedConfigEntries
+    .map((entry) => entry.data)
+    .find((entry) => entry.repo === "openai/codex") ?? null;
 const resetStatus: ResetStatusData | null =
   resetStatusEntries
     .map((entry) => entry.data as ResetStatusData)
     .find((entry) => entry.source_kind === "community") ?? null;
 const hasPublishedSignals = signals.length > 0;
-const tryCount = signals.filter((signal) => signal.kind === "try_now" || Boolean(signal.how_to_try)).length;
-const behaviorCount = signals.filter((signal) => signal.kind === "behavior_change").length;
-const latestLabel = signals[0] ? formatPublishedAt(signals[0].published_at) : "n/a";
 const groupedSignals = groupSignalsByMonth(signals);
 const showGroupLabels = groupedSignals.length > 1;
 const clientFilterIds = FILTERS.map((filter) => filter.id);
+const tryPathCount = signals.filter((signal) => Boolean(signal.how_to_try)).length;
+const sourceLinkedCount = signals.filter((signal) => {
+  const refs = signal.source_refs;
+  return Boolean(refs.pr_url || refs.items?.length || refs.commit_urls.length);
+}).length;
+const highImpactCount = signals.filter((signal) => signal.impact === "high").length;
 
 const previewSignal: SignalCardData = {
   id: "preview-shell",
@@ -201,56 +207,66 @@ const filterRuntimeScript = `(function () {
   <main class="site-frame">
     <header class="site-topbar">
       <div class="site-topbar__head">
-        <div class="site-brand">
-          <div class="site-brand__bar">
-            <a class="site-brand__wordmark" href="/" aria-label="Decodex home">
-              <img
-                class="site-brand__wordmark-image"
-                src="/assets/logo.png"
-                alt="Decodex"
-                width="801"
-                height="293"
-              />
-            </a>
-
-            <div class="site-chrome">
-              <ThemeToggle />
-            </div>
-          </div>
-
-          <div class="site-brand__meta">
-            <p class="site-brand__note">
-              Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
-            </p>
-
-            <a
-              class="site-brand__social"
-              href="https://x.com/YvetteCipher"
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Follow YvetteCipher on X"
-            >
-              <span class="site-brand__social-handle">@YvetteCipher on X</span>
-              <span class="site-brand__social-copy">
-                Follow to help cover ops and unlock creator rewards.
-              </span>
-            </a>
-          </div>
+        <div class="site-head__logo">
+          <a class="site-brand__wordmark" href="/" aria-label="Decodex home">
+            <img
+              class="site-brand__wordmark-image"
+              src="/assets/logo.png"
+              alt="Decodex"
+              width="801"
+              height="293"
+            />
+          </a>
         </div>
-      </div>
 
-      <div class="site-status">
-        <SignalSummaryTile
-          tryCount={tryCount}
-          behaviorCount={behaviorCount}
-          latestLabel={latestLabel}
-        />
-        {resetStatus ? <ResetStatusWidget entry={resetStatus} variant="stack" /> : null}
+        <div class="site-head__theme">
+          <ThemeToggle />
+        </div>
+
+        <p class="site-brand__note">
+          Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
+        </p>
+
+        <div class="site-head__cues">
+          <ul class="site-brand__cues" aria-label="Decodex promises">
+            <li class="site-brand__cue">
+              <span class="site-brand__cue-label">Try paths</span>
+              <span class="site-brand__cue-value">{tryPathCount}</span>
+            </li>
+            <li class="site-brand__cue">
+              <span class="site-brand__cue-label">Source links</span>
+              <span class="site-brand__cue-value">{sourceLinkedCount}/{signals.length}</span>
+            </li>
+            <li class="site-brand__cue">
+              <span class="site-brand__cue-label">High impact</span>
+              <span class="site-brand__cue-value">{highImpactCount}</span>
+            </li>
+          </ul>
+        </div>
+
+        <a
+          class="site-brand__social"
+          href="https://x.com/YvetteCipher"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Follow YvetteCipher on X"
+        >
+          <span class="site-brand__social-handle">@YvetteCipher on X</span>
+          <span class="site-brand__social-copy">
+            Follow to help cover ops and unlock creator rewards.
+          </span>
+        </a>
+
+        {resetStatus ? (
+          <div class="site-head__status">
+            <ResetStatusWidget entry={resetStatus} variant="inline" />
+          </div>
+        ) : null}
       </div>
     </header>
 
     {releaseDelta ? (
-      <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={signals} />
+      <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={signals} recommendedConfig={recommendedConfig} />
     ) : null}
 
     <section class="feed-toolbar" id="latest-signals">
