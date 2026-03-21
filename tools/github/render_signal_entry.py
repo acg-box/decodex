@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+import json
+import re
 from pathlib import Path
 from typing import Any
 
 SCRIPT_HOME = Path(__file__).resolve().parent
+REPO_HOME = SCRIPT_HOME.parent.parent
+CONFIG_FEATURE_CATALOG_PATH = REPO_HOME / "site/src/generated/codex-config-features.json"
 if str(SCRIPT_HOME) not in sys.path:
     sys.path.insert(0, str(SCRIPT_HOME))
 
@@ -24,6 +28,9 @@ from contracts import (  # noqa: E402
     validate_bundle,
     validate_signal,
 )
+
+ENABLE_FEATURE_RE = re.compile(r"^--enable\s+([a-z0-9_]+)$", re.IGNORECASE)
+FEATURE_PATH_RE = re.compile(r"^(?:features\.)?([a-z0-9_]+)(?:\s*=\s*true)?$", re.IGNORECASE)
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,6 +50,7 @@ def normalized_config_flags(raw_flags: Any) -> list[str]:
     if not isinstance(raw_flags, list):
         return []
 
+    known_features = load_known_feature_names()
     normalized: list[str] = []
     seen: set[str] = set()
     for flag in raw_flags:
@@ -52,9 +60,12 @@ def normalized_config_flags(raw_flags: Any) -> list[str]:
         if not value or value in seen:
             continue
 
+        feature_name = normalize_feature_flag(value, known_features)
+        if feature_name:
+            value = f"features.{feature_name} = true"
+
         actionable = (
             value.startswith("--")
-            or "_" in value
             or "=" in value
             or value.endswith(".json")
             or value.endswith(".toml")
@@ -66,6 +77,42 @@ def normalized_config_flags(raw_flags: Any) -> list[str]:
         normalized.append(value)
 
     return normalized
+
+
+def load_known_feature_names() -> set[str]:
+    if not CONFIG_FEATURE_CATALOG_PATH.exists():
+        return set()
+    try:
+        payload = json.loads(CONFIG_FEATURE_CATALOG_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return set()
+
+    items = payload.get("features")
+    if not isinstance(items, list):
+        return set()
+
+    names: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        if isinstance(name, str) and name:
+            names.add(name)
+    return names
+
+
+def normalize_feature_flag(value: str, known_features: set[str]) -> str | None:
+    enable_match = ENABLE_FEATURE_RE.fullmatch(value)
+    if enable_match:
+        candidate = enable_match.group(1).lower()
+        return candidate if candidate in known_features else None
+
+    feature_match = FEATURE_PATH_RE.fullmatch(value)
+    if feature_match:
+        candidate = feature_match.group(1).lower()
+        return candidate if candidate in known_features else None
+
+    return None
 
 
 def rendered_source_items(bundle: dict[str, Any]) -> list[dict[str, str]]:

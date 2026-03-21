@@ -59,6 +59,8 @@ These fields are optional but expected when available:
 - `caveats`
 - `watch_state`
 
+When `config_flags` are schema-backed feature toggles, prefer canonical user-facing config entries such as `features.plugins = true` rather than transient PR-local constants. Decodex should optimize these entries for what a user would actually add to `$CODEX_HOME/config.toml`.
+
 ## Source references
 
 `source_refs` must contain:

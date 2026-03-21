@@ -1,0 +1,78 @@
+{
+  "schema": "recommended_config/v1",
+  "repo": "openai/codex",
+  "id": "xavier-prerelease-profile",
+  "title": "Recommended profile",
+  "curator_name": "Yvette",
+  "curator_url": "https://x.com/YvetteCipher",
+  "subtitle": "Hand-picked for adventurous preview users.",
+  "audience_note": "Not AI-generated.",
+  "warning": "Pre-release only; not for stable.",
+  "config_toml": "[features]\napply_patch_freeform = true\nartifact = true\ncodex_hooks = true\ncode_mode = true\nenable_fanout = true\nmemories = true\nmulti_agent_v2 = true\nplugins = true\nrealtime_conversation = true\nresponses_websockets_v2 = true\nruntime_metrics = true\ntool_call_mcp_elicitation = true\ntool_suggest = true\ntui_app_server = true\nundo = true\nvoice_transcription = true\n",
+  "flags": [
+    {
+      "name": "apply_patch_freeform",
+      "description": "Use the freeform apply-patch path so pre-release editing behavior stays on."
+    },
+    {
+      "name": "artifact",
+      "description": "Turn on artifact outputs and file-producing flows."
+    },
+    {
+      "name": "codex_hooks",
+      "description": "Enable hook execution support."
+    },
+    {
+      "name": "code_mode",
+      "description": "Keep the code-focused interaction mode available."
+    },
+    {
+      "name": "enable_fanout",
+      "description": "Allow fanout-style multi-lane agent execution."
+    },
+    {
+      "name": "memories",
+      "description": "Enable memory creation and recall."
+    },
+    {
+      "name": "multi_agent_v2",
+      "description": "Use the newer multi-agent implementation."
+    },
+    {
+      "name": "plugins",
+      "description": "Enable plugin discovery and plugin-backed tooling."
+    },
+    {
+      "name": "realtime_conversation",
+      "description": "Enable realtime conversation surfaces."
+    },
+    {
+      "name": "responses_websockets_v2",
+      "description": "Use the newer websocket-backed Responses transport."
+    },
+    {
+      "name": "runtime_metrics",
+      "description": "Expose runtime metrics and instrumentation surfaces."
+    },
+    {
+      "name": "tool_call_mcp_elicitation",
+      "description": "Allow MCP elicitation during tool calls."
+    },
+    {
+      "name": "tool_suggest",
+      "description": "Enable tool suggestion UX."
+    },
+    {
+      "name": "tui_app_server",
+      "description": "Enable the app-server-backed TUI path."
+    },
+    {
+      "name": "undo",
+      "description": "Enable undo support."
+    },
+    {
+      "name": "voice_transcription",
+      "description": "Enable voice transcription input."
+    }
+  ]
+}
