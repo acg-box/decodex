@@ -1,5 +1,6 @@
 ---
 import { renderMarkdownInline } from "@/lib/render-markdown";
+import { resolveFeatureToggleByName } from "@/lib/config-flags";
 import {
   comparisonKey,
   defaultComparison,
@@ -12,9 +13,25 @@ import { formatPublishedAt, kindLabel, type SignalCardData } from "@/lib/signal-
 type Props = {
   delta: ReleaseDeltaData;
   trackedSignals: SignalCardData[];
+  recommendedConfig: {
+    schema: "recommended_config/v1";
+    repo: string;
+    id: string;
+    title: string;
+    curator_name: string;
+    curator_url: string;
+    subtitle: string;
+    audience_note: string;
+    warning: string;
+    config_toml: string;
+    flags: Array<{
+      name: string;
+      description: string;
+    }>;
+  } | null;
 };
 
-const { delta, trackedSignals } = Astro.props;
+const { delta, trackedSignals, recommendedConfig } = Astro.props;
 
 const stableOptions = delta.release_options.stable;
 const previewOptions = delta.release_options.preview;
@@ -22,9 +39,82 @@ const stableByTag = new Map(stableOptions.map((release) => [release.tag_name, re
 const previewByTag = new Map(previewOptions.map((release) => [release.tag_name, release]));
 const activeComparison = defaultComparison(delta);
 
-function isFocusedSignal(signal: SignalCardData): boolean {
-  return signal.impact !== "low" || signal.kind === "try_now" || Boolean(signal.how_to_try);
+function hasConcreteTryPath(signal: SignalCardData): boolean {
+  return Boolean(signal.how_to_try && signal.expected_effect);
 }
+
+function isHomepageHighlightSignal(signal: SignalCardData): boolean {
+  if (!hasConcreteTryPath(signal)) return false;
+  if (signal.confidence !== "confirmed") return false;
+  if (signal.kind === "try_now") return true;
+  return signal.kind === "behavior_change" && signal.impact !== "low";
+}
+
+type RecommendedConfigToggle = {
+  name: string;
+  display: string;
+  configPath: string;
+  cliEnableFlag?: string;
+  description: string;
+  schemaUrl?: string;
+  referenceUrl?: string;
+  referenceDescription?: string | null;
+  githubSearchUrl?: string;
+};
+
+function buildRecommendedConfig(profile: Props["recommendedConfig"]): {
+  title: string;
+  curatorName: string;
+  curatorUrl: string;
+  subtitle: string;
+  audienceNote: string;
+  warning: string;
+  toggles: RecommendedConfigToggle[];
+  tomlSnippet: string | null;
+} {
+  if (!profile) {
+    return {
+      title: "",
+      curatorName: "",
+      curatorUrl: "",
+      subtitle: "",
+      audienceNote: "",
+      warning: "",
+      toggles: [],
+      tomlSnippet: null,
+    };
+  }
+
+  const toggles: RecommendedConfigToggle[] = [];
+  for (const flag of profile.flags) {
+    const resolved = resolveFeatureToggleByName(flag.name);
+    if (!resolved || !resolved.configPath) continue;
+    toggles.push({
+      name: flag.name,
+      display: resolved.display,
+      configPath: resolved.configPath,
+      cliEnableFlag: resolved.cliEnableFlag,
+      description: flag.description,
+      schemaUrl: resolved.schemaUrl,
+      referenceUrl: resolved.referenceUrl,
+      referenceDescription: resolved.referenceDescription,
+      githubSearchUrl: resolved.githubSearchUrl,
+    });
+  }
+
+  return {
+    title: profile.title,
+    curatorName: profile.curator_name,
+    curatorUrl: profile.curator_url,
+    subtitle: profile.subtitle,
+    audienceNote: profile.audience_note,
+    warning: profile.warning,
+    toggles,
+    tomlSnippet: profile.config_toml.trimEnd(),
+  };
+}
+
+const manualRecommendedConfig = buildRecommendedConfig(recommendedConfig);
 
 const comparisonEntries = delta.comparisons
   .map((comparison) => {
@@ -34,13 +124,18 @@ const comparisonEntries = delta.comparisons
       return null;
     }
     const featuredSignals = trackedSignalsForSlugs(comparison.tracked_signal_slugs, trackedSignals);
-    const focusedSignals = featuredSignals.filter(isFocusedSignal);
+    const highlightSignals = featuredSignals.filter(isHomepageHighlightSignal);
+    const latestTrackedAt = featuredSignals.reduce<string | null>((latest, signal) => {
+      if (!latest || signal.published_at > latest) return signal.published_at;
+      return latest;
+    }, null);
     return {
       ...comparison,
       stable,
       preview,
       featuredSignals,
-      focusedSignals,
+      highlightSignals,
+      latestTrackedAt,
       key: comparisonKey(comparison.stable_tag_name, comparison.prerelease_tag_name),
     };
   })
@@ -58,156 +153,253 @@ const comparisonKeysByStable = Object.fromEntries(
 
 <section
   class="release-delta"
-  aria-labelledby="release-delta-heading"
+  aria-label="Preview changes"
   data-release-comparator
   data-compare-map={JSON.stringify(comparisonKeysByStable)}
-  data-highlight-mode="focus"
 >
-  <div class="release-delta__intro">
-    <h2 class="release-delta__headline" id="release-delta-heading">Preview changes</h2>
-    <p class="release-delta__chooser">
-      From
-      <label class="release-delta__inline-select">
-        <span class="sr-only">Stable release</span>
-        <select class="release-delta__select release-delta__select--inline" data-compare-stable>
-          {stableOptions.map((release) => (
-            <option
-              value={release.tag_name}
-              selected={release.tag_name === activeComparison.stable_tag_name}
-            >
-              {releaseLabel(release, delta.tag_prefix)}
-            </option>
-          ))}
-        </select>
-      </label>
-      to
-      <label class="release-delta__inline-select">
-        <span class="sr-only">Preview release</span>
-        <select class="release-delta__select release-delta__select--inline" data-compare-preview>
-          {previewOptions.map((release) => (
-            <option
-              value={release.tag_name}
-              selected={release.tag_name === activeComparison.prerelease_tag_name}
-            >
-              {releaseLabel(release, delta.tag_prefix)}
-            </option>
-          ))}
-        </select>
-      </label>
-    </p>
-  </div>
-
   {comparisonEntries.map((entry) => (
     <div
       class="release-delta__comparison"
       data-compare-panel={entry.key}
       hidden={entry.key !== comparisonKey(activeComparison.stable_tag_name, activeComparison.prerelease_tag_name)}
     >
-      <div class="release-delta__summary-rail">
-        <span class="release-delta__summary-item">
-          <strong>{entry.compare.total_commits}</strong> commits ahead
-        </span>
-        <span class="release-delta__summary-item">
-          <strong>{entry.tracked_signal_slugs.length}</strong> tracked signals
-        </span>
-        <span class="release-delta__summary-item">
-          Preview live since <strong>{formatPublishedAt(entry.preview.published_at)}</strong>
-        </span>
-        <a class="release-delta__summary-link signal-link" href={entry.compare.url} target="_blank" rel="noreferrer">
-          GitHub compare
-        </a>
-      </div>
-
-      <div class="release-delta__highlights">
-        <div class="release-delta__highlights-header">
-          <div class="release-delta__highlights-heading">
-            <div>
-              <p class="release-delta__panel-label">Tracked changes</p>
-              <p class="release-delta__highlights-copy">
-                <span data-highlight-copy-focus>
-                  {entry.focusedSignals.length} changes stand out first for this version pair.
-                </span>
-                <span data-highlight-copy-all hidden>
-                  {entry.featuredSignals.length} tracked changes for this version pair.
-                </span>
-              </p>
-            </div>
-            <div class="release-delta__mode-switch" role="tablist" aria-label="Preview change visibility">
-              <button
-                class="release-delta__mode-button is-active"
-                type="button"
-                data-highlight-toggle="focus"
-                aria-pressed="true"
-              >
-                Focus
-              </button>
-              <button
-                class="release-delta__mode-button"
-                type="button"
-                data-highlight-toggle="all"
-                aria-pressed="false"
-              >
-                All
-              </button>
-            </div>
+      <div class="release-delta__hero">
+        <div class="release-delta__hero-head">
+          <div class="release-delta__hero-copy">
+            <p class="release-delta__eyebrow">Preview changes</p>
           </div>
         </div>
 
-        {
-          entry.featuredSignals.length > 0 ? (
-            <ol class="release-delta__highlight-list">
-              {entry.featuredSignals.map((signal) => (
-                <li
-                  class="release-highlight"
-                  data-highlight-item
-                  data-highlight-focus={isFocusedSignal(signal) ? "true" : "false"}
-                  hidden={!isFocusedSignal(signal)}
-                >
-                  <div class="release-highlight__meta">
-                    <span>{kindLabel(signal.kind)}</span>
-                  </div>
+        <div class="release-delta__summary-rail release-delta__summary-rail--hero">
+          <span class="release-delta__summary-item release-delta__summary-item--pair">
+            <span class="release-delta__chooser">
+              From
+              <label class="release-delta__inline-select">
+                <span class="sr-only">Stable release</span>
+                <select class="release-delta__select release-delta__select--inline" data-compare-stable>
+                  {stableOptions.map((release) => (
+                    <option
+                      value={release.tag_name}
+                      selected={release.tag_name === activeComparison.stable_tag_name}
+                    >
+                      {releaseLabel(release, delta.tag_prefix)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              to
+              <label class="release-delta__inline-select">
+                <span class="sr-only">Preview release</span>
+                <select class="release-delta__select release-delta__select--inline" data-compare-preview>
+                  {previewOptions.map((release) => (
+                    <option
+                      value={release.tag_name}
+                      selected={release.tag_name === activeComparison.prerelease_tag_name}
+                    >
+                      {releaseLabel(release, delta.tag_prefix)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </span>
+          </span>
+          <span class="release-delta__summary-item">
+            <strong>{entry.compare.total_commits}</strong> commits ahead
+          </span>
+          <span class="release-delta__summary-item">
+            <strong>{entry.tracked_signal_slugs.length}</strong> tracked signals
+          </span>
+          <span class="release-delta__summary-item">
+            Last updated <strong>{formatPublishedAt(entry.latestTrackedAt ?? entry.preview.published_at)}</strong>
+          </span>
+          <a class="release-delta__summary-link signal-link" href={entry.compare.url} target="_blank" rel="noreferrer">
+            Open GitHub compare
+          </a>
+        </div>
+      </div>
 
-                  <div class="release-highlight__body">
-                    <a
-                      class="release-highlight__title signal-markdown signal-markdown--title"
-                      href={`#${signal.slug}`}
-                      set:html={renderMarkdownInline(signal.title)}
-                    />
-                    <p
-                      class="release-highlight__summary signal-markdown signal-markdown--inline"
-                      set:html={renderMarkdownInline(signal.summary)}
-                    />
-                    <div class="release-highlight__actions">
-                      {signal.how_to_try ? (
-                        <p class="release-highlight__try">
-                          <span class="release-highlight__try-label">Try</span>
-                          <span
-                            class="signal-markdown signal-markdown--inline"
-                            set:html={renderMarkdownInline(signal.how_to_try)}
+      <div class="release-delta__content-grid">
+        {
+          manualRecommendedConfig.toggles.length > 0 ? (
+            <section class="release-delta__config" aria-label="Recommended pre-release config">
+              <div class="release-delta__config-head">
+                <p class="release-delta__panel-label">Pre-release config</p>
+              </div>
+
+              <p class="release-delta__config-warning">
+                <a
+                  class="signal-link"
+                  href={manualRecommendedConfig.curatorUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {`${manualRecommendedConfig.curatorName}'s`}
+                </a>
+                {" recommended pre-release config. "}
+                {manualRecommendedConfig.audienceNote} {manualRecommendedConfig.warning}{" "}
+                {manualRecommendedConfig.toggles.length} toggles for <code>$CODEX_HOME/config.toml</code>.
+              </p>
+
+              <div class="release-delta__config-toolbar">
+                <p class="release-delta__config-sources">
+                  Refs:
+                  {" "}
+                  <a
+                    class="signal-link"
+                    href="https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    config.schema.json
+                  </a>
+                  {" · "}
+                  <a
+                    class="signal-link"
+                    href="https://developers.openai.com/codex/config-reference"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    config reference
+                  </a>
+                </p>
+                <div class="release-delta__config-actions">
+                  <button
+                    type="button"
+                    class="release-delta__copy-button"
+                    data-copy-config
+                    data-copy-text={manualRecommendedConfig.tomlSnippet ?? ""}
+                    data-copy-default="COPY"
+                    data-copy-success="COPIED"
+                    data-copy-failure="COPY FAILED"
+                    aria-live="polite"
+                  >
+                    COPY
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="release-delta__config-divider-toggle"
+                data-config-toggle
+                aria-expanded="true"
+                aria-controls={`config-features-${entry.key}`}
+                aria-label="Collapse features table"
+              >
+                <span class="release-delta__config-divider-rule" aria-hidden="true"></span>
+              </button>
+
+              <div class="release-delta__config-table-shell" data-config-shell id={`config-features-${entry.key}`}>
+                <table class="release-delta__config-table" aria-label="Recommended pre-release feature toggles">
+                  <thead class="release-delta__config-table-head">
+                    <tr>
+                      <th class="release-delta__config-table-label release-delta__config-col--feature" scope="col">
+                        Feature
+                      </th>
+                      <th class="release-delta__config-table-label" scope="col">Why this is on</th>
+                      <th class="release-delta__config-table-label release-delta__config-col--ref" scope="col">Ref</th>
+                    </tr>
+                  </thead>
+                  <tbody class="release-delta__config-list">
+                    {manualRecommendedConfig.toggles.map((toggle) => (
+                      <tr class="release-delta__config-item">
+                        <td class="release-delta__config-cell release-delta__config-cell--feature">
+                          <p class="release-delta__config-meta">
+                            <span class="release-delta__config-meta-label">CONF</span>
+                            <code class="release-delta__config-meta-code" title={toggle.display}>{toggle.display}</code>
+                          </p>
+                          <p class="release-delta__config-meta">
+                            <span class="release-delta__config-meta-label">CLI</span>
+                            <code
+                              class="release-delta__config-meta-code"
+                              title={toggle.cliEnableFlag ?? `--enable ${toggle.name}`}
+                            >
+                              {toggle.cliEnableFlag ?? `--enable ${toggle.name}`}
+                            </code>
+                          </p>
+                        </td>
+                        <td class="release-delta__config-cell">
+                          <p
+                            class="release-delta__config-item-copy signal-markdown signal-markdown--inline"
+                            set:html={renderMarkdownInline(toggle.description)}
                           />
-                        </p>
-                      ) : (
-                        <span class="release-highlight__hint">Watch-only update</span>
-                      )}
-                      <a class="release-highlight__action signal-link" href={`#${signal.slug}`}>
-                        Full signal
-                      </a>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p class="release-delta__empty">
-              No published signals intersect this version pair yet. The compare is still live at{" "}
-              <a class="signal-link" href={entry.compare.url} target="_blank" rel="noreferrer">
-                GitHub compare
-              </a>.
-            </p>
-          )
+                        </td>
+                        <td class="release-delta__config-cell release-delta__config-cell--ref">
+                          {toggle.githubSearchUrl ? (
+                            <p class="release-delta__config-item-links">
+                              <a class="signal-link" href={toggle.githubSearchUrl} target="_blank" rel="noreferrer">
+                                GitHub
+                              </a>
+                            </p>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null
         }
 
+        <div class="release-delta__overview">
+          <div class="release-delta__overview-head">
+            <div>
+              <p class="release-delta__panel-label">Highlights</p>
+              <h3 class="release-delta__overview-title">Most worth trying in this preview</h3>
+            </div>
+          </div>
+
+          {
+            entry.highlightSignals.length > 0 ? (
+              <ol class="release-delta__overview-list">
+                {entry.highlightSignals.map((signal) => (
+                  <li class="release-overview-card">
+                    <div class="release-overview-card__body">
+                      <div class="release-overview-card__meta">
+                        <span>{kindLabel(signal.kind)}</span>
+                      </div>
+                      <a
+                        class="release-overview-card__title signal-markdown signal-markdown--title"
+                        href={`#${signal.slug}`}
+                        set:html={renderMarkdownInline(signal.title)}
+                      />
+                      <p
+                        class="release-overview-card__why signal-markdown signal-markdown--inline"
+                        set:html={renderMarkdownInline(signal.why_it_matters)}
+                      />
+                      <div class="release-overview-card__details">
+                        <div class="release-overview-card__detail">
+                          <p class="release-overview-card__label">How to try</p>
+                          <p
+                            class="release-overview-card__detail-body signal-markdown signal-markdown--inline"
+                            set:html={renderMarkdownInline(signal.how_to_try ?? "")}
+                          />
+                        </div>
+                        <div class="release-overview-card__detail">
+                          <p class="release-overview-card__label">What you should notice</p>
+                          <p
+                            class="release-overview-card__detail-body signal-markdown signal-markdown--inline"
+                            set:html={renderMarkdownInline(signal.expected_effect ?? "")}
+                          />
+                        </div>
+                      </div>
+                      <a class="release-overview-card__action signal-link" href={`#${signal.slug}`}>
+                        Read the full evidence
+                      </a>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p class="release-delta__empty">
+                No published signals in this version pair currently clear the highlight bar.
+              </p>
+            )
+          }
+        </div>
       </div>
+
     </div>
   ))}
   <script is:inline>
@@ -240,43 +432,90 @@ const comparisonKeysByStable = Object.fromEntries(
           });
         }
 
-        function syncHighlightMode() {
-          var mode = root.getAttribute("data-highlight-mode") || "focus";
-          root.querySelectorAll("[data-highlight-toggle]").forEach(function (button) {
-            var active = button.getAttribute("data-highlight-toggle") === mode;
-            button.classList.toggle("is-active", active);
-            button.setAttribute("aria-pressed", active ? "true" : "false");
-          });
-          root.querySelectorAll("[data-highlight-copy-focus]").forEach(function (node) {
-            node.hidden = mode !== "focus";
-          });
-          root.querySelectorAll("[data-highlight-copy-all]").forEach(function (node) {
-            node.hidden = mode !== "all";
-          });
-          root.querySelectorAll("[data-compare-panel]").forEach(function (panel) {
-            var focusedItems = panel.querySelectorAll('[data-highlight-item][data-highlight-focus="true"]');
-            var hasFocused = focusedItems.length > 0;
-            panel.querySelectorAll("[data-highlight-item]").forEach(function (item) {
-              var focusOnly = item.getAttribute("data-highlight-focus") === "true";
-              item.hidden = mode === "focus" ? (hasFocused ? !focusOnly : false) : false;
-            });
-          });
-        }
-
         function apply() {
           syncPreviewOptions(stableSelect.value);
           syncPanels();
-          syncHighlightMode();
         }
+
+        function copyText(value) {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(value);
+          }
+
+          return Promise.reject(new Error("Clipboard API unavailable"));
+        }
+
+        root.querySelectorAll("[data-copy-config]").forEach(function (button) {
+          if (button.dataset.copyBound === "true") return;
+          button.dataset.copyBound = "true";
+          button.addEventListener("click", function () {
+            var text = button.getAttribute("data-copy-text") || "";
+            var defaultLabel = button.getAttribute("data-copy-default") || "COPY TOML";
+            var successLabel = button.getAttribute("data-copy-success") || "COPIED";
+            var failureLabel = button.getAttribute("data-copy-failure") || "COPY FAILED";
+            if (!text) return;
+            copyText(text)
+              .then(function () {
+                button.textContent = successLabel;
+              })
+              .catch(function () {
+                button.textContent = failureLabel;
+              });
+            window.setTimeout(function () {
+              button.textContent = defaultLabel;
+            }, 1600);
+          });
+        });
+
+        root.querySelectorAll("[data-config-toggle]").forEach(function (button) {
+          if (button.dataset.toggleBound === "true") return;
+          button.dataset.toggleBound = "true";
+
+          var shell = button.closest(".release-delta__config") && button.closest(".release-delta__config").querySelector("[data-config-shell]");
+          if (!shell) return;
+
+          function setExpanded(expanded, immediate) {
+            button.setAttribute("aria-expanded", expanded ? "true" : "false");
+            button.setAttribute("aria-label", expanded ? "Collapse features table" : "Expand features table");
+
+            if (expanded) {
+              shell.dataset.collapsed = "false";
+              shell.style.opacity = "1";
+              if (immediate) {
+                shell.style.maxHeight = "none";
+                return;
+              }
+              shell.style.maxHeight = shell.scrollHeight + "px";
+              window.setTimeout(function () {
+                if (button.getAttribute("aria-expanded") === "true") {
+                  shell.style.maxHeight = "none";
+                }
+              }, 260);
+              return;
+            }
+
+            shell.dataset.collapsed = "true";
+            if (immediate) {
+              shell.style.maxHeight = "0px";
+              shell.style.opacity = "0";
+              return;
+            }
+            shell.style.maxHeight = shell.scrollHeight + "px";
+            shell.offsetHeight;
+            shell.style.maxHeight = "0px";
+            shell.style.opacity = "0";
+          }
+
+          setExpanded(true, true);
+
+          button.addEventListener("click", function () {
+            var expanded = button.getAttribute("aria-expanded") === "true";
+            setExpanded(!expanded, false);
+          });
+        });
 
         stableSelect.addEventListener("change", apply);
         previewSelect.addEventListener("change", apply);
-        root.querySelectorAll("[data-highlight-toggle]").forEach(function (button) {
-          button.addEventListener("click", function () {
-            root.setAttribute("data-highlight-mode", button.getAttribute("data-highlight-toggle") || "focus");
-            syncHighlightMode();
-          });
-        });
         apply();
       }
 
