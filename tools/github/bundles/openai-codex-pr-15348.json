@@ -1,0 +1,96 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-20T20:33:01Z",
+      "message": "Pass platform param to featured plugins",
+      "sha": "6ffe49c1bc285b41737b422964e535b12569908f",
+      "url": "https://github.com/openai/codex/commit/6ffe49c1bc285b41737b422964e535b12569908f"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-20T22:01:11Z",
+      "message": "fix",
+      "sha": "a27e3b5feef99ef140c488e1fedd38823652633c",
+      "url": "https://github.com/openai/codex/commit/a27e3b5feef99ef140c488e1fedd38823652633c"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-21T00:07:17Z",
+      "message": "use product",
+      "sha": "ef9876e534494f863052e28af2b64ff1be7d54a1",
+      "url": "https://github.com/openai/codex/commit/ef9876e534494f863052e28af2b64ff1be7d54a1"
+    },
+    {
+      "author": "alexsong-oai",
+      "committed_at": "2026-03-21T01:13:32Z",
+      "message": "updates",
+      "sha": "26da090c2e9ce0721302ea1a785174a07e6c73bd",
+      "url": "https://github.com/openai/codex/commit/26da090c2e9ce0721302ea1a785174a07e6c73bd"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "DEFAULT_TIMEOUT",
+    "TEST_CURATED_PLUGIN_SHA",
+    "GET",
+    "CONFIG_TOML_FILE",
+    "REMOTE_FEATURED_PLUGIN_FETCH_TIMEOUT"
+  ],
+  "files": [
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -25,6 +25,7 @@ use wiremock::ResponseTemplate;\n use wiremock::matchers::header;\n use wiremock::matchers::method;\n use wiremock::matchers::path;\n+use wiremock::matchers::query_param;\n \n const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);\n const TEST_CURATED_PLUGIN_SHA: &str = \"0123456789abcdef0123456789abcdef01234567\";\n@@ -678,6 +679,7 @@ async fn plugin_list_force_remote_sync_reconciles_curated_plugin_state() -> Resu\n         .await;\n     Mock::given(method(\"GET\"))\n         .and(path(\"/backend-api/plugins/featured\"))\n+        .and(query_param(\"platform\", \"codex\"))\n         .and(header(\"authorization\", \"Bearer chatgpt-token\"))\n         .and(header(\"chatgpt-account-id\", \"account-123\"))\n         .respond_with(\n@@ -784,6 +786,7 @@ async fn app_server_startup_remote_plugin_sync_runs_once() -> Result<()> {\n         .await;\n     Mock::given(method(\"GET\"))\n         .and(path(\"/backend-...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -622,7 +622,8 @@ impl PluginsManager {\n         if let Some(featured_plugin_ids) = self.cached_featured_plugin_ids(&cache_key) {\n             return Ok(featured_plugin_ids);\n         }\n-        let featured_plugin_ids = fetch_remote_featured_plugin_ids(config, auth).await?;\n+        let featured_plugin_ids =\n+            fetch_remote_featured_plugin_ids(config, auth, self.restriction_product).await?;\n         self.write_featured_plugin_ids_cache(cache_key, &featured_plugin_ids);\n         Ok(featured_plugin_ids)\n     }",
+      "path": "codex-rs/core/src/plugins/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 69,
+      "deletions": 0,
+      "patch_excerpt": "@@ -23,6 +23,7 @@ use wiremock::ResponseTemplate;\n use wiremock::matchers::header;\n use wiremock::matchers::method;\n use wiremock::matchers::path;\n+use wiremock::matchers::query_param;\n \n fn write_plugin(root: &Path, dir_name: &str, manifest_name: &str) {\n     let plugin_root = root.join(dir_name);\n@@ -1899,6 +1900,74 @@ plugins = true\n     );\n }\n \n+#[tokio::test]\n+async fn featured_plugin_ids_for_config_uses_restriction_product_query_param() {\n+    let tmp = tempfile::tempdir().unwrap();\n+    write_file(\n+        &tmp.path().join(CONFIG_TOML_FILE),\n+        r#\"[features]\n+plugins = true\n+\"#,\n+    );\n+\n+    let server = MockServer::start().await;\n+    Mock::given(method(\"GET\"))\n+        .and(path(\"/backend-api/plugins/featured\"))\n+        .and(query_param(\"platform\", \"chat\"))\n+        .and(header(\"authorization\", \"Bearer Access Token\"))\n+        .and(header(\"chatgpt-account-id\", \"account...",
+      "path": "codex-rs/core/src/plugins/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use crate::auth::CodexAuth;\n use crate::config::Config;\n use crate::default_client::build_reqwest_client;\n+use codex_protocol::protocol::Product;\n use serde::Deserialize;\n use std::time::Duration;\n use url::Url;\n@@ -162,12 +163,17 @@ pub(crate) async fn fetch_remote_plugin_status(\n pub async fn fetch_remote_featured_plugin_ids(\n     config: &Config,\n     auth: Option<&CodexAuth>,\n+    product: Option<Product>,\n ) -> Result<Vec<String>, RemotePluginFetchError> {\n     let base_url = config.chatgpt_base_url.trim_end_matches('/');\n     let url = format!(\"{base_url}/plugins/featured\");\n     let client = build_reqwest_client();\n     let mut request = client\n         .get(&url)\n+        .query(&[(\n+            \"platform\",\n+            product.unwrap_or(Product::Codex).to_app_platform(),\n+        )])\n         .timeout(REMOTE_FEATURED_PLUGIN_FETCH_TIMEOUT);\n \n     if let Some(aut...",
+      "path": "codex-rs/core/src/plugins/remote.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2978,6 +2978,14 @@ pub enum Product {\n     Atlas,\n }\n impl Product {\n+    pub fn to_app_platform(self) -> &'static str {\n+        match self {\n+            Self::Chatgpt => \"chat\",\n+            Self::Codex => \"codex\",\n+            Self::Atlas => \"atlas\",\n+        }\n+    }\n+\n     pub fn from_session_source_name(value: &str) -> Option<Self> {\n         let normalized = value.trim().to_ascii_lowercase();\n         match normalized.as_str() {",
+      "path": "codex-rs/protocol/src/protocol.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Discovered via hourly merged-PR sync: https://github.com/openai/codex/pull/15348"
+  ],
+  "primary_pr": {
+    "body": "",
+    "labels": [],
+    "merged_at": "2026-03-21T01:42:41Z",
+    "number": 15348,
+    "state": "merged",
+    "title": "Pass platform param to featured plugins",
+    "url": "https://github.com/openai/codex/pull/15348"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

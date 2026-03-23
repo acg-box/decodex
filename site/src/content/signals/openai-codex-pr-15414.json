@@ -1,0 +1,50 @@
+{
+  "caveats": [
+    "This is scoped to the legacy `tui_app_server` compatibility path, not a broad auth change for standard Codex CLI or TUI usage.",
+    "The bundle excerpt clearly shows the legacy handler removal, but the exact runtime failure mode for stale clients is inferred because the deleted request branch is truncated in the patch excerpt."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR title and body explicitly say `tui_app_server` is removing legacy app-server notifications and dropping the local ChatGPT auth refresh request path, and frame it as cleanup split out from the larger app-server migration.",
+    "`codex-rs/tui_app_server/src/app/app_server_adapter.rs` removes imports for `load_local_chatgpt_auth`, `ChatgptAuthTokensRefreshParams`, and `RequestId`, and the patch excerpt shows the old `AppServerEvent::ServerRequest` handling branch being deleted.",
+    "`codex-rs/tui_app_server/src/local_chatgpt_auth.rs` removes `ChatgptAuthTokensRefreshResponse` plus the `to_refresh_response` helper, which is concrete evidence that this adapter no longer builds the legacy refresh response payload."
+  ],
+  "published_at": "2026-03-21T21:06:11Z",
+  "schema": "signal_entry/v1",
+  "slug": "tui-app-server-drops-legacy-chatgpt-auth-refresh",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/263c63ab9d2ed1f8b4fa8a7c6d623ea89ceadeec",
+      "https://github.com/openai/codex/commit/e65c1371f22d86c595c1c740e1befb45c82e8851"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15414",
+        "title": "Remove legacy auth and notification handling from tui_app_server",
+        "url": "https://github.com/openai/codex/pull/15414"
+      },
+      {
+        "kind": "commit",
+        "meta": "263c63a",
+        "title": "Remove legacy auth and notification handling from tui_app_server",
+        "url": "https://github.com/openai/codex/commit/263c63ab9d2ed1f8b4fa8a7c6d623ea89ceadeec"
+      },
+      {
+        "kind": "commit",
+        "meta": "e65c137",
+        "title": "codex: fix CI failure on PR #15414",
+        "url": "https://github.com/openai/codex/commit/e65c1371f22d86c595c1c740e1befb45c82e8851"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15414",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15414 removes legacy app-server notification handling and the old local ChatGPT auth-refresh response path from `tui_app_server`, narrowing that compatibility layer as Codex moves toward the newer app-server stack.",
+  "title": "`tui_app_server` drops legacy ChatGPT auth-refresh handling",
+  "why_it_matters": "This is a low-impact contract change for anyone still depending on the older `tui_app_server` path. Legacy clients should no longer expect this TUI-side adapter to service ChatGPT token-refresh requests, while current Codex development sheds outdated auth plumbing ahead of the broader migration."
+}

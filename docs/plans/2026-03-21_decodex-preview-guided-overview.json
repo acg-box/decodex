@@ -353,16 +353,16 @@
       },
       {
         "id": "task-16",
-        "title": "Refresh release-delta data to include rust-v0.117.0-alpha.6",
+        "title": "Refresh release-delta data to include the latest upstream prerelease",
         "status": "done",
-        "objective": "Regenerate the bounded homepage release-delta artifact so the latest upstream prerelease pair includes rust-v0.117.0-alpha.6 and Decodex can compare it against the tracked stable release.",
+        "objective": "Regenerate the bounded homepage release-delta artifact so the latest upstream prerelease pair is reflected in Decodex and remains comparable against the tracked stable release.",
         "inputs": [
           "site/src/content/release-deltas/openai-codex-latest.json",
           "tools/github/build_release_delta.py",
           "https://api.github.com/repos/openai/codex/releases"
         ],
         "outputs": [
-          "An updated openai-codex-latest release-delta artifact with alpha.6 in the preview option set and compare matrix."
+          "An updated openai-codex-latest release-delta artifact with the latest prerelease in the preview option set and compare matrix."
         ],
         "verification": [
           "python3 tools/github/build_release_delta.py --repo openai/codex --signals-dir site/src/content/signals --out site/src/content/release-deltas/openai-codex-latest.json",
@@ -375,9 +375,9 @@
       },
       {
         "id": "task-17",
-        "title": "Exercise decodex-github-signal against the alpha.6 compare range",
-        "status": "pending",
-        "objective": "Use the stable->alpha.6 compare range to backfill unpublished PRs, run the local decodex-github-signal editorial workflow, and publish or explicitly screen candidate signals so the new highlights are evidence-backed.",
+        "title": "Refresh latest unpublished GitHub signals for the current prerelease window",
+        "status": "done",
+        "objective": "Use the repo-standard GitHub sync workflow to analyze recent unpublished PRs, run the local decodex-github-signal editorial workflow, and publish new evidence-backed signals so the latest prerelease window has fresh highlight candidates.",
         "inputs": [
           "tools/github/backfill_release_range.py",
           "tools/github/bundles",
@@ -389,10 +389,10 @@
           "docs/guide/local_github_signal_workflow.md"
         ],
         "outputs": [
-          "New or intentionally screened signal artifacts for unpublished alpha.6 compare-range PRs, plus an updated release-delta file that reflects any newly published signals."
+          "New or intentionally screened signal artifacts for recent unpublished PRs, plus an updated release-delta file that reflects any newly published signals."
         ],
         "verification": [
-          "python3 tools/github/backfill_release_range.py --repo openai/codex --stable-tag rust-v0.116.0 --preview-tag rust-v0.117.0-alpha.6 --dry-run",
+          "python3 tools/github/sync_latest_signals.py --repo openai/codex --search-limit 30 --max-new-prs 5",
           "python3 tools/github/validate_signal_entry.py site/src/content/signals",
           "npm run build --prefix site",
           "npm run check --prefix site"
@@ -413,9 +413,9 @@
     }
   },
   "state": {
-    "phase": "ready",
+    "phase": "done",
     "current_task_id": null,
-    "next_task_id": "task-17",
+    "next_task_id": null,
     "blockers": [],
     "evidence": [
       "Settled guided-overview structure: overview highlights first, start-here try paths second, compare metadata third, full delta last.",
@@ -451,9 +451,11 @@
       "The prerelease config table header spacing was tightened after the divider interaction pass so Feature / Why this is on / Ref sits closer to both the divider and the first data row instead of floating in extra vertical padding.",
       "The refs/copy utility row was separated slightly from the curator sentence without changing its relationship to the divider or table, so the action line reads as its own toolbar instead of attaching to the prose above.",
       "The collapsible config divider now uses a brighter link-toned shimmer in light theme only, so the always-on flow line stays visible on light backgrounds without overwriting the darker theme treatment.",
-      "The release-delta artifact was regenerated from the latest upstream releases; this refreshed the compare matrix to include rust-v0.117.0-alpha.6 and also surfaced that upstream had already published rust-v0.117.0-alpha.7 as the newest default prerelease."
+      "The release-delta artifact was regenerated from the latest upstream releases; this refreshed the compare matrix to include rust-v0.117.0-alpha.6 and also surfaced that upstream had already published rust-v0.117.0-alpha.7 as the newest default prerelease.",
+      "The latest-content sync was rerun against the public GitHub API after the routed `GITHUB_PAT_Y` proved invalid, producing eight new Decodex signals (PRs 15409, 15414, 15376, 15348, 15390, 15443, 15279, and 15259) plus matching bundle/analysis artifacts without borrowing another identity's token.",
+      "After the public-API sync completed, signal validation passed, the release-delta artifact was refreshed anonymously, and `cargo make decodex-checks` completed successfully; the refreshed release matrix now sees rust-v0.117.0-alpha.9 as the latest upstream prerelease."
     ],
-    "last_updated": "2026-03-21T18:02:05Z",
+    "last_updated": "2026-03-24T01:37:30+08:00",
     "replan_reason": null,
     "context_snapshot": {
       "branch": "main",

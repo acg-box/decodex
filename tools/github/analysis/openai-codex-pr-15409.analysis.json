@@ -1,0 +1,21 @@
+{
+  "caveats": [
+    "This is specific to hardened macOS release binaries; it does not imply a broader cross-platform behavior change."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body says hardened macOS release binaries failed to allocate executable memory for JIT-compiled JS without this entitlement, and reports that the same exec path succeeds once the entitlement is added.",
+    "The signing action in `.github/actions/macos-code-sign/action.yml` now passes `--entitlements` to `codesign` for the `codex` and `codex-responses-api-proxy` binaries.",
+    "The new `.github/actions/macos-code-sign/codex.entitlements.plist` enables Apple's `com.apple.security.cs.allow-jit` entitlement, which is the concrete behavior change introduced by the PR."
+  ],
+  "slug": null,
+  "summary": "PR #15409 updates the macOS signing flow so hardened release binaries can allocate executable memory for JIT-compiled JavaScript instead of crashing during `codex exec` runs.",
+  "title": "Signed macOS Codex binaries now include the JIT entitlement",
+  "watch_state": null,
+  "why_it_matters": "This fixes a platform-specific failure in shipped macOS builds. If you use a signed or notarized Codex binary on macOS, exec flows that rely on JIT-compiled JS should work where they previously died with a low-level CodeRange memory error."
+}

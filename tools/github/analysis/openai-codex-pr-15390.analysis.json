@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "The PR body scopes this to very old rollouts, so direct user-visible impact for current Codex users should be limited.",
+    "The lower-level app-server and app-server-client legacy plumbing is intentionally left in place for follow-up work, so this PR removes only the TUI-facing compatibility layer."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body explicitly says the removed handling was temporary, only needed for very old rollouts, and not supported by the IDE extension or app clients either.",
+    "`codex-rs/tui_app_server/src/app/app_server_adapter.rs` removes the legacy notification translation layer, including `LegacyThreadNotification` and the old `JSONRPCNotification`-based handling path.",
+    "`codex-rs/tui_app_server/src/app.rs` deletes `LegacyWarning`, `LegacyRollback`, the pending rollback queue, and related buffering/session-refresh logic, showing the TUI app-server no longer preserves or replays those events.",
+    "`codex-rs/tui_app_server/src/chatwidget.rs` removes the warning-message hook used by this path, completing the TUI-side cleanup."
+  ],
+  "slug": null,
+  "summary": "Merged PR #15390 removes the TUI app-server's compatibility handling for older `codex/event/*` notifications, deleting the warning and rollback buffering paths that were kept only for legacy rollouts.",
+  "title": "TUI app-server drops legacy warning and rollback notification support",
+  "watch_state": "Watch the follow-up work referenced in the PR body for whether the remaining lower-level legacy event plumbing is removed too.",
+  "why_it_matters": "This is mostly a low-impact cleanup rather than a new feature. For current users, the main value is that the app-server TUI now stays closer to the newer client model with less obsolete compatibility code in the way; anyone still depending on very old rollout-era warning or rollback notifications should treat that path as removed."
+}

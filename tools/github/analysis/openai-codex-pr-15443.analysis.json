@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "The bundle shows test and snapshot additions only, and the PR body explicitly says runtime logic is unchanged.",
+    "The main `codex_tests.rs` patch excerpt is truncated in the bundle, so the helper implementation details are only partially visible."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body explicitly says it adds a snapshot-style core test for fork startup context injection followed by first-turn diff injection, and that it captures current behavior without changing runtime logic.",
+    "The bundle changes only `codex-rs/core/src/codex_tests.rs` plus a new snapshot file, and the main test file's patch excerpt adds test-only imports such as `context_snapshot`, `CollaborationMode`, `ModeKind`, `Settings`, and `AskForApproval`.",
+    "The new snapshot records the first forked request sequence with duplicated `PERMISSIONS_INSTRUCTIONS` and `ENVIRONMENT_CONTEXT` entries before a fork-turn `collaboration_mode` instruction, confirming the exact behavior this PR locks down.",
+    "The commit series stays focused on narrowing, stabilizing, and snippetizing the fork snapshot fixture, which reinforces that this PR is about test coverage and behavior capture rather than a runtime feature rollout."
+  ],
+  "slug": null,
+  "summary": "Merged PR #15443 adds a core snapshot test that captures the current first request after a fork, including startup-context replay and first-turn collaboration-mode injection, without changing runtime logic.",
+  "title": "Forked-session startup context ordering is now pinned by a snapshot test",
+  "watch_state": "Watch for follow-up fork-runtime PRs that intentionally deduplicate or reorder startup context injection, since this change mainly freezes today's behavior for regression detection.",
+  "why_it_matters": "This is mainly a reliability signal rather than a new feature. Forked-session prompt assembly affects approval and planning flows, and the new snapshot makes future regressions in that ordering easier to catch before they leak into user-visible fork behavior."
+}
