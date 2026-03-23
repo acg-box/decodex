@@ -1,0 +1,19 @@
+{
+  "caveats": [],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "You should see a single plugin-labeled result instead of duplicate app/plugin entries, and the popup should show no more than eight filtered rows.",
+  "how_to_try": "On a build that includes PR #15279, trigger mention completion in the TUI or `tui_app_server` for a plugin-backed connector, especially one that would previously also appear as an app-style entry, and inspect the filtered picker list.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body explicitly says duplicate app mentions are suppressed for plugin-backed entries with the same display name, remaining connector mentions are labeled `[Plugin]` instead of `[App]` when plugin metadata exists, and mention result lists are capped to 8 rows in both `tui` and `tui_app_server`.",
+    "`chat_composer.rs` in both `codex-rs/tui` and `codex-rs/tui_app_server` now builds a set of plugin display names and checks `connector.plugin_display_names`, which is the concrete path for deduping and relabeling plugin-backed mention items.",
+    "`file_search_popup.rs` and `skill_popup.rs` in both frontends now truncate filtered results to `MAX_POPUP_ROWS`, and the added tests assert that only the first page of matches is kept after filtering."
+  ],
+  "slug": "plugin-backed-mentions-are-labeled-and-deduped",
+  "summary": "Merged PR #15279 updates mention and picker UI in both `tui` and `tui_app_server` so plugin-backed connectors are labeled as `[Plugin]`, duplicate app-style entries are suppressed, and filtered popup lists stop at eight rows.",
+  "title": "Plugin-backed mentions now show as `[Plugin]` and hide duplicate app entries",
+  "watch_state": null,
+  "why_it_matters": "Plugin-heavy pickers should be less confusing to scan. Users get more accurate labels, fewer duplicate entries for the same underlying plugin-backed connector, and a predictable first page of results instead of long filtered lists."
+}
