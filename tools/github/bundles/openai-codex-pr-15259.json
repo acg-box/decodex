@@ -1,0 +1,355 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-23T04:33:18Z",
+      "message": "steer: queue follow-ups for non-steerable turns",
+      "sha": "ff28c3b7836b8075ec8b1e665fc1401c82b9eab8",
+      "url": "https://github.com/openai/codex/commit/ff28c3b7836b8075ec8b1e665fc1401c82b9eab8"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "TUI",
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND",
+    "HTTP",
+    "API",
+    "SSE",
+    "INVALID_REQUEST_ERROR_CODE",
+    "JSONRPCE",
+    "NONE",
+    "STATUS_DETAILS_DEFAULT_MAX_LINES",
+    "DIM",
+    "ITALIC",
+    "VT100B",
+    "CODEX_CLI_VERSION"
+  ],
+  "files": [
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -514,6 +514,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5658,6 +5658,28 @@\n             ],\n             \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n             \"type\": \"object\"\n+          },\n+          {\n+            \"additionalProperties\": false,\n+            \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+            \"properties\": {\n+              \"activeTurnNotSteerable\": {\n+                \"properties\": {\n+                  \"turnKind\": {\n+                    \"$ref\": \"#/definitions/v2/NonSteerableTurnKind\"\n+                  }\n+                },\n+                \"required\": [\n+                  \"turnKind\"\n+                ],\n+                \"type\": \"object\"\n+              }\n+            },\n+            \"required\": [\n+              \"activeTurnNotSteerable\"\n+            ],\n+            \"tit...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2251,6 +2251,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+     ...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -112,9 +112,38 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ErrorNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -131,6 +131,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -196,6 +196,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -134,6 +134,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -134,6 +134,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -134,6 +134,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -196,6 +196,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -134,6 +134,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadRollbackResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -196,6 +196,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -134,6 +134,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -134,6 +134,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -131,6 +131,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnCompletedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -131,6 +131,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -131,6 +131,28 @@\n           ],\n           \"title\": \"ResponseTooManyFailedAttemptsCodexErrorInfo\",\n           \"type\": \"object\"\n+        },\n+        {\n+          \"additionalProperties\": false,\n+          \"description\": \"Returned when `turn/start` or `turn/steer` is submitted while the current active turn cannot accept same-turn steering, for example `/review` or manual `/compact`.\",\n+          \"properties\": {\n+            \"activeTurnNotSteerable\": {\n+              \"properties\": {\n+                \"turnKind\": {\n+                  \"$ref\": \"#/definitions/NonSteerableTurnKind\"\n+                }\n+              },\n+              \"required\": [\n+                \"turnKind\"\n+              ],\n+              \"type\": \"object\"\n+            }\n+          },\n+          \"required\": [\n+            \"activeTurnNotSteerable\"\n+          ],\n+          \"title\": \"ActiveTurnNotSteerableCodexErrorInfo\",\n+       ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,11 +1,12 @@\n // GENERATED CODE! DO NOT MODIFY BY HAND!\n \n // This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+import type { NonSteerableTurnKind } from \"./NonSteerableTurnKind\";\n \n /**\n  * This translation layer make sure that we expose codex error code in camel case.\n  *\n  * When an upstream HTTP status is available (for example, from the Responses API or a provider),\n  * it is forwarded in `httpStatusCode` on the relevant `codexErrorInfo` variant.\n  */\n-export type CodexErrorInfo = \"contextWindowExceeded\" | \"usageLimitExceeded\" | \"serverOverloaded\" | { \"httpConnectionFailed\": { httpStatusCode: number | null, } } | { \"responseStreamConnectionFailed\": { httpStatusCode: number | null, } } | \"internalServerError\" | \"unauthorized\" | \"badRequest\" | \"threadRollbackFailed\" | \"sandboxError\" | { \"responseStreamDisconnected\": { httpS...",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/CodexErrorInfo.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,5 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type NonSteerableTurnKind = \"review\" | \"compact\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/NonSteerableTurnKind.ts",
+      "status": "added"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -194,6 +194,7 @@ export type { NetworkApprovalProtocol } from \"./NetworkApprovalProtocol\";\n export type { NetworkPolicyAmendment } from \"./NetworkPolicyAmendment\";\n export type { NetworkPolicyRuleAction } from \"./NetworkPolicyRuleAction\";\n export type { NetworkRequirements } from \"./NetworkRequirements\";\n+export type { NonSteerableTurnKind } from \"./NonSteerableTurnKind\";\n export type { OverriddenMetadata } from \"./OverriddenMetadata\";\n export type { PatchApplyStatus } from \"./PatchApplyStatus\";\n export type { PatchChangeKind } from \"./PatchChangeKind\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 46,
+      "deletions": 0,
+      "patch_excerpt": "@@ -66,6 +66,7 @@ use codex_protocol::protocol::HookRunSummary as CoreHookRunSummary;\n use codex_protocol::protocol::HookScope as CoreHookScope;\n use codex_protocol::protocol::ModelRerouteReason as CoreModelRerouteReason;\n use codex_protocol::protocol::NetworkAccess as CoreNetworkAccess;\n+use codex_protocol::protocol::NonSteerableTurnKind as CoreNonSteerableTurnKind;\n use codex_protocol::protocol::PatchApplyStatus as CorePatchApplyStatus;\n use codex_protocol::protocol::RateLimitSnapshot as CoreRateLimitSnapshot;\n use codex_protocol::protocol::RateLimitWindow as CoreRateLimitWindow;\n@@ -128,6 +129,14 @@ macro_rules! v2_enum_from_core {\n     };\n }\n \n+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub enum NonSteerableTurnKind {\n+    Review,\n+    Compact,\n+}\n+\n /// This translation layer mak...",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 4,
+      "patch_excerpt": "@@ -140,7 +140,7 @@ Example with notification opt-out:\n - `thread/backgroundTerminals/clean` \u2014 terminate all running background terminals for a thread (experimental; requires `capabilities.experimentalApi`); returns `{}` when the cleanup request is accepted.\n - `thread/rollback` \u2014 drop the last N turns from the agent\u2019s in-memory context and persist a rollback marker in the rollout so future resumes see the pruned history; returns the updated `thread` (with `turns` populated) on success.\n - `turn/start` \u2014 add user input to a thread and begin Codex generation; responds with the initial `turn` object and streams `turn/started`, `item/*`, and `turn/completed` notifications. For `collaborationMode`, `settings.developer_instructions: null` means \"use built-in instructions for the selected mode\".\n-- `turn/steer` \u2014 add user input to an already in-flight turn without starting a new turn; returns ...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 37,
+      "deletions": 2,
+      "patch_excerpt": "@@ -32,6 +32,7 @@ use codex_app_server_protocol::CancelLoginAccountParams;\n use codex_app_server_protocol::CancelLoginAccountResponse;\n use codex_app_server_protocol::CancelLoginAccountStatus;\n use codex_app_server_protocol::ClientRequest;\n+use codex_app_server_protocol::CodexErrorInfo as AppServerCodexErrorInfo;\n use codex_app_server_protocol::CollaborationModeListParams;\n use codex_app_server_protocol::CollaborationModeListResponse;\n use codex_app_server_protocol::CommandExecParams;\n@@ -161,6 +162,7 @@ use codex_app_server_protocol::ThreadUnsubscribeParams;\n use codex_app_server_protocol::ThreadUnsubscribeResponse;\n use codex_app_server_protocol::ThreadUnsubscribeStatus;\n use codex_app_server_protocol::Turn;\n+use codex_app_server_protocol::TurnError;\n use codex_app_server_protocol::TurnInterruptParams;\n use codex_app_server_protocol::TurnStartParams;\n use codex_app_server_protocol::Tur...",
+      "path": "codex-rs/app-server/src/codex_message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 70,
+      "deletions": 13,
+      "patch_excerpt": "@@ -186,9 +186,41 @@ mod rollout_reconstruction_tests;\n pub enum SteerInputError {\n     NoActiveTurn(Vec<UserInput>),\n     ExpectedTurnMismatch { expected: String, actual: String },\n+    ActiveTurnNotSteerable { turn_kind: NonSteerableTurnKind },\n     EmptyInput,\n }\n \n+impl SteerInputError {\n+    fn to_error_event(&self) -> ErrorEvent {\n+        match self {\n+            Self::NoActiveTurn(_) => ErrorEvent {\n+                message: \"no active turn to steer\".to_string(),\n+                codex_error_info: Some(CodexErrorInfo::BadRequest),\n+            },\n+            Self::ExpectedTurnMismatch { expected, actual } => ErrorEvent {\n+                message: format!(\"expected active turn id `{expected}` but found `{actual}`\"),\n+                codex_error_info: Some(CodexErrorInfo::BadRequest),\n+            },\n+            Self::ActiveTurnNotSteerable { turn_kind } => {\n+                le...",
+      "path": "codex-rs/core/src/codex.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 38,
+      "deletions": 0,
+      "patch_excerpt": "@@ -24,6 +24,7 @@ use codex_protocol::permissions::FileSystemPath;\n use codex_protocol::permissions::FileSystemSandboxEntry;\n use codex_protocol::permissions::FileSystemSandboxPolicy;\n use codex_protocol::permissions::FileSystemSpecialPath;\n+use codex_protocol::protocol::NonSteerableTurnKind;\n use codex_protocol::protocol::ReadOnlyAccess;\n use codex_protocol::protocol::SandboxPolicy;\n use codex_protocol::request_permissions::PermissionGrantScope;\n@@ -4507,6 +4508,43 @@ async fn steer_input_enforces_expected_turn_id() {\n     }\n }\n \n+#[tokio::test]\n+async fn steer_input_rejects_non_regular_turns() {\n+    for (task_kind, turn_kind) in [\n+        (TaskKind::Review, NonSteerableTurnKind::Review),\n+        (TaskKind::Compact, NonSteerableTurnKind::Compact),\n+    ] {\n+        let (sess, _tc, _rx) = make_session_and_context_with_rx().await;\n+        let input = vec![UserInput::Text {\n+          ...",
+      "path": "codex-rs/core/src/codex_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 26,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1538,6 +1538,15 @@ pub enum AgentStatus {\n     NotFound,\n }\n \n+/// Turn kinds that reject same-turn steering.\n+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"snake_case\")]\n+#[ts(rename_all = \"snake_case\")]\n+pub enum NonSteerableTurnKind {\n+    Review,\n+    Compact,\n+}\n+\n /// Codex errors that we expose to clients.\n #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema, TS)]\n #[serde(rename_all = \"snake_case\")]\n@@ -1565,6 +1574,11 @@ pub enum CodexErrorInfo {\n     ResponseTooManyFailedAttempts {\n         http_status_code: Option<u16>,\n     },\n+    /// Returned when `turn/start` or `turn/steer` is submitted while the current active turn\n+    /// cannot accept same-turn steering, for example `/review` or manual `/compact`.\n+    ActiveTurnNotSteerable {\n+        turn_kind: NonSteerableTurnKind,\n+    },\n     T...",
+      "path": "codex-rs/protocol/src/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 4,
+      "patch_excerpt": "@@ -5008,7 +5008,7 @@ mod tests {\n         app.chat_widget\n             .apply_external_edit(\"queued follow-up\".to_string());\n         app.chat_widget\n-            .handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));\n+            .handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));\n         let input_state = app\n             .chat_widget\n             .capture_thread_input_state()\n@@ -5090,7 +5090,7 @@ mod tests {\n         app.chat_widget\n             .apply_external_edit(\"queued follow-up\".to_string());\n         app.chat_widget\n-            .handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));\n+            .handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));\n         let input_state = app\n             .chat_widget\n             .capture_thread_input_state()\n@@ -5171,7 +5171,7 @@ mod tests {\n         app.chat_widget\n           ...",
+      "path": "codex-rs/tui/src/app.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 19,
+      "deletions": 4,
+      "patch_excerpt": "@@ -825,8 +825,10 @@ impl BottomPane {\n         &mut self,\n         queued: Vec<String>,\n         pending_steers: Vec<String>,\n+        rejected_steers: Vec<String>,\n     ) {\n         self.pending_input_preview.pending_steers = pending_steers;\n+        self.pending_input_preview.rejected_steers = rejected_steers;\n         self.pending_input_preview.queued_messages = queued;\n         self.request_redraw();\n     }\n@@ -1153,7 +1155,8 @@ impl BottomPane {\n             }\n             let has_pending_thread_approvals = !self.pending_thread_approvals.is_empty();\n             let has_pending_input = !self.pending_input_preview.queued_messages.is_empty()\n-                || !self.pending_input_preview.pending_steers.is_empty();\n+                || !self.pending_input_preview.pending_steers.is_empty()\n+                || !self.pending_input_preview.rejected_steers.is_empty();\n             let has_...",
+      "path": "codex-rs/tui/src/bottom_pane/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 9,
+      "patch_excerpt": "@@ -10,17 +10,19 @@ use crate::render::renderable::Renderable;\n use crate::wrapping::RtOptions;\n use crate::wrapping::adaptive_wrap_lines;\n \n-/// Widget that displays pending steers plus user messages queued while a turn is in progress.\n+/// Widget that displays pending steers plus follow-up messages held while a turn is in progress.\n ///\n-/// The widget renders pending steers first, then queued user messages, as two\n-/// labeled sections. Pending steers explain that they will be submitted after\n-/// the next tool/result boundary unless the user presses Esc to interrupt and\n-/// send them immediately. The edit hint at the bottom only appears when there\n-/// are actual queued user messages to pop back into the composer. Because some\n-/// terminals intercept certain modifier-key combinations, the displayed\n-/// binding is configurable via [`set_edit_binding`](Self::set_edit_binding).\n+/// ...",
+      "path": "codex-rs/tui/src/bottom_pane/pending_input_preview.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 5,
+      "patch_excerpt": "@@ -3,13 +3,16 @@ source: tui/src/bottom_pane/pending_input_preview.rs\n expression: \"format!(\\\"{buf:?}\\\")\"\n ---\n Buffer {\n-    area: Rect { x: 0, y: 0, width: 52, height: 8 },\n+    area: Rect { x: 0, y: 0, width: 52, height: 11 },\n     content: [\n         \"\u2022 Messages to be submitted after next tool call     \",\n         \"  (press esc to interrupt and send immediately)     \",\n         \"  \u21b3 Please continue.                                \",\n         \"  \u21b3 Check the last command output.                  \",\n         \"                                                    \",\n+        \"\u2022 Messages to be submitted at end of turn           \",\n+        \"  \u21b3 Rejected steer that will be retried.            \",\n+        \"                                                    \",\n         \"\u2022 Queued follow-up messages                         \",\n         \"  \u21b3 Queued follow-up question                       \",\n   ...",
+      "path": "codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__pending_input_preview__tests__render_pending_steers_above_queued_messages.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 113,
+      "deletions": 31,
+      "patch_excerpt": "@@ -765,6 +765,8 @@ pub(crate) struct ChatWidget {\n     suppress_session_configured_redraw: bool,\n     // User messages queued while a turn is in progress\n     queued_user_messages: VecDeque<UserMessage>,\n+    // User messages that tried to steer a non-regular turn and must be retried first.\n+    rejected_steers_queue: VecDeque<UserMessage>,\n     // Steers already submitted to core but not yet committed into history.\n     //\n     // The bottom pane shows these above queued drafts until core records the\n@@ -925,9 +927,11 @@ impl ThreadComposerState {\n pub(crate) struct ThreadInputState {\n     composer: Option<ThreadComposerState>,\n     pending_steers: VecDeque<UserMessage>,\n+    rejected_steers_queue: VecDeque<UserMessage>,\n     queued_user_messages: VecDeque<UserMessage>,\n     current_collaboration_mode: CollaborationMode,\n     active_collaboration_mask: Option<CollaborationModeMask>,\n+ ...",
+      "path": "codex-rs/tui/src/chatwidget.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 21,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,21 @@\n+---\n+source: tui/src/chatwidget/tests.rs\n+expression: term.backend().vt100().screen().contents()\n+---\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\u2022 Working (0s \u2022 esc to interrupt)\n+\n+\u2022 Messages to be submitted at end of turn\n+  \u21b3 Steer submitted while /compact was running.\n+\n+\u203a Ask Codex to do anything\n+\n+  ? for shortcuts                                            100% context left",
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__compact_queues_user_messages_snapshot.snap",
+      "status": "added"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -11,11 +11,11 @@ expression: term.backend().vt100().screen().contents()\n \n \n \n+\n \u2022 Working (0s \u2022 esc to interrupt)\n \n-\u2022 Queued follow-up messages\n-  \u21b3 Queued while /review is running.\n-    \u2325 + \u2191 edit last queued message\n+\u2022 Messages to be submitted at end of turn\n+  \u21b3 Steer submitted while /review was running.\n \n \u203a Ask Codex to do anything",
+      "path": "codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__review_queues_user_messages_snapshot.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 334,
+      "deletions": 9,
+      "patch_excerpt": "@@ -89,6 +89,7 @@ use codex_protocol::protocol::ItemCompletedEvent;\n use codex_protocol::protocol::McpStartupCompleteEvent;\n use codex_protocol::protocol::McpStartupStatus;\n use codex_protocol::protocol::McpStartupUpdateEvent;\n+use codex_protocol::protocol::NonSteerableTurnKind;\n use codex_protocol::protocol::Op;\n use codex_protocol::protocol::PatchApplyBeginEvent;\n use codex_protocol::protocol::PatchApplyEndEvent;\n@@ -1536,6 +1537,131 @@ async fn entered_review_mode_defaults_to_current_changes_banner() {\n     assert!(chat.is_review_mode);\n }\n \n+#[tokio::test]\n+async fn steer_rejection_queues_review_follow_up_before_existing_queued_messages() {\n+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(None).await;\n+    chat.thread_id = Some(ThreadId::new());\n+    chat.handle_codex_event(Event {\n+        id: \"turn-start\".into(),\n+        msg: EventMsg::TurnStarted(TurnStartedEvent {...",
+      "path": "codex-rs/tui/src/chatwidget/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 61,
+      "deletions": 7,
+      "patch_excerpt": "@@ -48,7 +48,9 @@ use crate::update_action::UpdateAction;\n use crate::version::CODEX_CLI_VERSION;\n use codex_ansi_escape::ansi_escape_line;\n use codex_app_server_client::AppServerRequestHandle;\n+use codex_app_server_client::TypedRequestError;\n use codex_app_server_protocol::ClientRequest;\n+use codex_app_server_protocol::CodexErrorInfo as AppServerCodexErrorInfo;\n use codex_app_server_protocol::ConfigLayerSource;\n use codex_app_server_protocol::ListMcpServerStatusParams;\n use codex_app_server_protocol::ListMcpServerStatusResponse;\n@@ -63,6 +65,7 @@ use codex_app_server_protocol::ServerRequest;\n use codex_app_server_protocol::SkillsListResponse;\n use codex_app_server_protocol::ThreadRollbackResponse;\n use codex_app_server_protocol::Turn;\n+use codex_app_server_protocol::TurnError as AppServerTurnError;\n use codex_app_server_protocol::TurnStatus;\n use codex_core::config::Config;\n use codex_c...",
+      "path": "codex-rs/tui_app_server/src/app.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use codex_app_server_client::AppServerClient;\n use codex_app_server_client::AppServerEvent;\n use codex_app_server_client::AppServerRequestHandle;\n+use codex_app_server_client::TypedRequestError;\n use codex_app_server_protocol::Account;\n use codex_app_server_protocol::AuthMode;\n use codex_app_server_protocol::ClientRequest;\n@@ -429,7 +430,7 @@ impl AppServerSession {\n         thread_id: ThreadId,\n         turn_id: String,\n         items: Vec<codex_protocol::user_input::UserInput>,\n-    ) -> Result<TurnSteerResponse> {\n+    ) -> std::result::Result<TurnSteerResponse, TypedRequestError> {\n         let request_id = self.next_request_id();\n         self.client\n             .request_typed(ClientRequest::TurnSteer {\n@@ -441,7 +442,6 @@ impl AppServerSession {\n                 },\n             })\n             .await\n-            .wrap_err(\"turn/steer failed in app-server TUI\")\n  ...",
+      "path": "codex-rs/tui_app_server/src/app_server_session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 19,
+      "deletions": 4,
+      "patch_excerpt": "@@ -821,8 +821,10 @@ impl BottomPane {\n         &mut self,\n         queued: Vec<String>,\n         pending_steers: Vec<String>,\n+        rejected_steers: Vec<String>,\n     ) {\n         self.pending_input_preview.pending_steers = pending_steers;\n+        self.pending_input_preview.rejected_steers = rejected_steers;\n         self.pending_input_preview.queued_messages = queued;\n         self.request_redraw();\n     }\n@@ -1143,7 +1145,8 @@ impl BottomPane {\n             }\n             let has_pending_thread_approvals = !self.pending_thread_approvals.is_empty();\n             let has_pending_input = !self.pending_input_preview.queued_messages.is_empty()\n-                || !self.pending_input_preview.pending_steers.is_empty();\n+                || !self.pending_input_preview.pending_steers.is_empty()\n+                || !self.pending_input_preview.rejected_steers.is_empty();\n             let has_...",
+      "path": "codex-rs/tui_app_server/src/bottom_pane/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 9,
+      "patch_excerpt": "@@ -10,17 +10,19 @@ use crate::render::renderable::Renderable;\n use crate::wrapping::RtOptions;\n use crate::wrapping::adaptive_wrap_lines;\n \n-/// Widget that displays pending steers plus user messages queued while a turn is in progress.\n+/// Widget that displays pending steers plus follow-up messages held while a turn is in progress.\n ///\n-/// The widget renders pending steers first, then queued user messages, as two\n-/// labeled sections. Pending steers explain that they will be submitted after\n-/// the next tool/result boundary unless the user presses Esc to interrupt and\n-/// send them immediately. The edit hint at the bottom only appears when there\n-/// are actual queued user messages to pop back into the composer. Because some\n-/// terminals intercept certain modifier-key combinations, the displayed\n-/// binding is configurable via [`set_edit_binding`](Self::set_edit_binding).\n+/// ...",
+      "path": "codex-rs/tui_app_server/src/bottom_pane/pending_input_preview.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 5,
+      "patch_excerpt": "@@ -3,13 +3,16 @@ source: tui_app_server/src/bottom_pane/pending_input_preview.rs\n expression: \"format!(\\\"{buf:?}\\\")\"\n ---\n Buffer {\n-    area: Rect { x: 0, y: 0, width: 52, height: 8 },\n+    area: Rect { x: 0, y: 0, width: 52, height: 11 },\n     content: [\n         \"\u2022 Messages to be submitted after next tool call     \",\n         \"  (press esc to interrupt and send immediately)     \",\n         \"  \u21b3 Please continue.                                \",\n         \"  \u21b3 Check the last command output.                  \",\n         \"                                                    \",\n+        \"\u2022 Messages to be submitted at end of turn           \",\n+        \"  \u21b3 Rejected steer that will be retried.            \",\n+        \"                                                    \",\n         \"\u2022 Queued follow-up messages                         \",\n         \"  \u21b3 Queued follow-up question                  ...",
+      "path": "codex-rs/tui_app_server/src/bottom_pane/snapshots/codex_tui_app_server__bottom_pane__pending_input_preview__tests__render_pending_steers_above_queued_messages.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 124,
+      "deletions": 32,
+      "patch_excerpt": "@@ -807,6 +807,8 @@ pub(crate) struct ChatWidget {\n     suppress_initial_user_message_submit: bool,\n     // User messages queued while a turn is in progress\n     queued_user_messages: VecDeque<UserMessage>,\n+    // User messages that tried to steer a non-regular turn and must be retried first.\n+    rejected_steers_queue: VecDeque<UserMessage>,\n     // Steers already submitted to core but not yet committed into history.\n     //\n     // The bottom pane shows these above queued drafts until core records the\n@@ -958,9 +960,11 @@ impl ThreadComposerState {\n pub(crate) struct ThreadInputState {\n     composer: Option<ThreadComposerState>,\n     pending_steers: VecDeque<UserMessage>,\n+    rejected_steers_queue: VecDeque<UserMessage>,\n     queued_user_messages: VecDeque<UserMessage>,\n     current_collaboration_mode: CollaborationMode,\n     active_collaboration_mask: Option<CollaborationModeMask>,\n...",
+      "path": "codex-rs/tui_app_server/src/chatwidget.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 21,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,21 @@\n+---\n+source: tui_app_server/src/chatwidget/tests.rs\n+expression: term.backend().vt100().screen().contents()\n+---\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\u2022 Working (0s \u2022 esc to interrupt)\n+\n+\u2022 Messages to be submitted at end of turn\n+  \u21b3 Steer submitted while /compact was running.\n+\n+\u203a Ask Codex to do anything\n+\n+  ? for shortcuts                                            100% context left",
+      "path": "codex-rs/tui_app_server/src/chatwidget/snapshots/codex_tui_app_server__chatwidget__tests__compact_queues_user_messages_snapshot.snap",
+      "status": "added"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -11,11 +11,11 @@ expression: term.backend().vt100().screen().contents()\n \n \n \n+\n \u2022 Working (0s \u2022 esc to interrupt)\n \n-\u2022 Queued follow-up messages\n-  \u21b3 Queued while /review is running.\n-    \u2325 + \u2191 edit last queued message\n+\u2022 Messages to be submitted at end of turn\n+  \u21b3 Steer submitted while /review was running.\n \n \u203a Ask Codex to do anything",
+      "path": "codex-rs/tui_app_server/src/chatwidget/snapshots/codex_tui_app_server__chatwidget__tests__review_queues_user_messages_snapshot.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 344,
+      "deletions": 9,
+      "patch_excerpt": "@@ -112,6 +112,7 @@ use codex_protocol::protocol::ItemCompletedEvent;\n use codex_protocol::protocol::McpStartupCompleteEvent;\n use codex_protocol::protocol::McpStartupStatus;\n use codex_protocol::protocol::McpStartupUpdateEvent;\n+use codex_protocol::protocol::NonSteerableTurnKind;\n use codex_protocol::protocol::Op;\n use codex_protocol::protocol::PatchApplyBeginEvent;\n use codex_protocol::protocol::PatchApplyEndEvent;\n@@ -1560,6 +1561,131 @@ async fn entered_review_mode_defaults_to_current_changes_banner() {\n     assert!(chat.is_review_mode);\n }\n \n+#[tokio::test]\n+async fn steer_rejection_queues_review_follow_up_before_existing_queued_messages() {\n+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(None).await;\n+    chat.thread_id = Some(ThreadId::new());\n+    chat.handle_codex_event(Event {\n+        id: \"turn-start\".into(),\n+        msg: EventMsg::TurnStarted(TurnStartedEvent...",
+      "path": "codex-rs/tui_app_server/src/chatwidget/tests.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Discovered via hourly merged-PR sync: https://github.com/openai/codex/pull/15259"
+  ],
+  "primary_pr": {
+    "body": "## Summary\r\n- queue input after the user submits `/compact` until that manual compact turn ends\r\n- mirror the same behavior in the app-server TUI\r\n- add regressions for input queued before compact starts and while it is running",
+    "labels": [],
+    "merged_at": "2026-03-23T17:19:45Z",
+    "number": 15259,
+    "state": "merged",
+    "title": "tui: queue follow-ups during manual /compact",
+    "url": "https://github.com/openai/codex/pull/15259"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

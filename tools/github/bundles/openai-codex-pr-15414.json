@@ -1,0 +1,63 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-03-21T19:55:07Z",
+      "message": "Remove legacy auth and notification handling from tui_app_server",
+      "sha": "263c63ab9d2ed1f8b4fa8a7c6d623ea89ceadeec",
+      "url": "https://github.com/openai/codex/commit/263c63ab9d2ed1f8b4fa8a7c6d623ea89ceadeec"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-03-21T20:02:12Z",
+      "message": "codex: fix CI failure on PR #15414",
+      "sha": "e65c1371f22d86c595c1c740e1befb45c82e8851",
+      "url": "https://github.com/openai/codex/commit/e65c1371f22d86c595c1c740e1befb45c82e8851"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "JSONRPCE",
+    "TUI",
+    "JWT",
+    "URL_SAFE_NO_PAD"
+  ],
+  "files": [
+    {
+      "additions": 0,
+      "deletions": 206,
+      "patch_excerpt": "@@ -16,12 +16,9 @@ use crate::app_event::AppEvent;\n use crate::app_server_session::AppServerSession;\n use crate::app_server_session::app_server_rate_limit_snapshot_to_core;\n use crate::app_server_session::status_account_display_from_auth_mode;\n-use crate::local_chatgpt_auth::load_local_chatgpt_auth;\n use codex_app_server_client::AppServerEvent;\n use codex_app_server_protocol::AuthMode;\n-use codex_app_server_protocol::ChatgptAuthTokensRefreshParams;\n use codex_app_server_protocol::JSONRPCErrorError;\n-use codex_app_server_protocol::RequestId;\n use codex_app_server_protocol::ServerNotification;\n use codex_app_server_protocol::ServerRequest;\n #[cfg(test)]\n@@ -129,15 +126,6 @@ impl App {\n                 tracing::debug!(\"ignoring legacy app-server notification in tui_app_server\");\n             }\n             AppServerEvent::ServerRequest(request) => {\n-                if let ServerRequest::Ch...",
+      "path": "codex-rs/tui_app_server/src/app/app_server_adapter.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 11,
+      "patch_excerpt": "@@ -1,7 +1,6 @@\n use std::path::Path;\n \n use codex_app_server_protocol::AuthMode;\n-use codex_app_server_protocol::ChatgptAuthTokensRefreshResponse;\n use codex_core::auth::AuthCredentialsStoreMode;\n use codex_core::auth::load_auth_dot_json;\n \n@@ -12,16 +11,6 @@ pub(crate) struct LocalChatgptAuth {\n     pub(crate) chatgpt_plan_type: Option<String>,\n }\n \n-impl LocalChatgptAuth {\n-    pub(crate) fn to_refresh_response(&self) -> ChatgptAuthTokensRefreshResponse {\n-        ChatgptAuthTokensRefreshResponse {\n-            access_token: self.access_token.clone(),\n-            chatgpt_account_id: self.chatgpt_account_id.clone(),\n-            chatgpt_plan_type: self.chatgpt_plan_type.clone(),\n-        }\n-    }\n-}\n-\n pub(crate) fn load_local_chatgpt_auth(\n     codex_home: &Path,\n     auth_credentials_store_mode: AuthCredentialsStoreMode,",
+      "path": "codex-rs/tui_app_server/src/local_chatgpt_auth.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#15106",
+    "#15414"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Discovered via hourly merged-PR sync: https://github.com/openai/codex/pull/15414"
+  ],
+  "primary_pr": {
+    "body": "## Summary\n- remove `tui_app_server` handling for legacy app-server notifications\n- drop the local ChatGPT auth refresh request path from `tui_app_server`\n- remove the now-unused refresh response helper from local auth loading\n\nSplit out of #15106 so the `tui_app_server` cleanup can land separately from the larger `codex-exec` app-server migration.\n",
+    "labels": [],
+    "merged_at": "2026-03-21T21:06:11Z",
+    "number": 15414,
+    "state": "merged",
+    "title": "Remove legacy auth and notification handling from tui_app_server",
+    "url": "https://github.com/openai/codex/pull/15414"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
