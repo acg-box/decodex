@@ -1,0 +1,102 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-22T08:14:41Z",
+      "message": "core: snapshot fork startup context injection",
+      "sha": "e3e3f29032d2b6723419ebf3edde4ea95eb5ede1",
+      "url": "https://github.com/openai/codex/commit/e3e3f29032d2b6723419ebf3edde4ea95eb5ede1"
+    },
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-22T08:16:44Z",
+      "message": "core: narrow fork snapshot fixture",
+      "sha": "c42549daab6b5791c75f47b2c2d8c9b7d03e6044",
+      "url": "https://github.com/openai/codex/commit/c42549daab6b5791c75f47b2c2d8c9b7d03e6044"
+    },
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-22T08:42:27Z",
+      "message": "core: fix fork snapshot helper borrow",
+      "sha": "20bb56962893c17d4e1196a2207f822641677de9",
+      "url": "https://github.com/openai/codex/commit/20bb56962893c17d4e1196a2207f822641677de9"
+    },
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-22T08:56:33Z",
+      "message": "core: snapshot full first forked request",
+      "sha": "bea065b40de0cce4711f20ab45ec0bdf4c885e0a",
+      "url": "https://github.com/openai/codex/commit/bea065b40de0cce4711f20ab45ec0bdf4c885e0a"
+    },
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-22T18:38:10Z",
+      "message": "core: stabilize fork snapshot across platforms",
+      "sha": "7464ec0906c0fcf80cfff8465d3e9559b370c370",
+      "url": "https://github.com/openai/codex/commit/7464ec0906c0fcf80cfff8465d3e9559b370c370"
+    },
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-23T00:25:06Z",
+      "message": "core: snippetize fork snapshot request text",
+      "sha": "b3f203b3ff2a61b9756488feb6f97a858e3521d1",
+      "url": "https://github.com/openai/codex/commit/b3f203b3ff2a61b9756488feb6f97a858e3521d1"
+    },
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-23T00:26:32Z",
+      "message": "core: drop redundant fork snapshot normalization",
+      "sha": "f07987854316a2f9370f125fe61dee955b08433d",
+      "url": "https://github.com/openai/codex/commit/f07987854316a2f9370f125fe61dee955b08433d"
+    },
+    {
+      "author": "charley-oai",
+      "committed_at": "2026-03-23T00:31:29Z",
+      "message": "core: remove unused fork snapshot mock binding",
+      "sha": "97288e360aa532c50d2a7e991ad7aae8f5cdf63e",
+      "url": "https://github.com/openai/codex/commit/97288e360aa532c50d2a7e991ad7aae8f5cdf63e"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MAX",
+    "PERMISSIONS_INSTRUCTIONS",
+    "ENVIRONMENT_CONTEXT",
+    "CWD"
+  ],
+  "files": [
+    {
+      "additions": 119,
+      "deletions": 0,
+      "patch_excerpt": "@@ -64,17 +64,31 @@ use codex_execpolicy::NetworkRuleProtocol;\n use codex_execpolicy::Policy;\n use codex_network_proxy::NetworkProxyConfig;\n use codex_otel::TelemetryAuthMode;\n+use codex_protocol::config_types::CollaborationMode;\n+use codex_protocol::config_types::ModeKind;\n+use codex_protocol::config_types::Settings;\n use codex_protocol::models::BaseInstructions;\n use codex_protocol::models::ContentItem;\n use codex_protocol::models::DeveloperInstructions;\n use codex_protocol::models::ResponseInputItem;\n use codex_protocol::models::ResponseItem;\n use codex_protocol::openai_models::ModelsResponse;\n+use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::ConversationAudioParams;\n use codex_protocol::protocol::RealtimeAudioFrame;\n use codex_protocol::protocol::Submission;\n use codex_protocol::protocol::W3cTraceContext;\n+use core_test_support::context_snapshot;\n+use core...",
+      "path": "codex-rs/core/src/codex_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 17,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,17 @@\n+---\n+source: core/src/codex_tests.rs\n+assertion_line: 1282\n+expression: snapshot\n+---\n+Scenario: First request after fork when fork startup changes approval policy and the first forked turn changes approval policy again and enters plan mode.\n+\n+## First Forked Turn Request\n+00:message/developer:<PERMISSIONS_INSTRUCTIONS>\n+01:message/user:<ENVIRONMENT_CONTEXT:cwd=<CWD>>\n+02:message/user:fork seed\n+03:message/developer:<PERMISSIONS_INSTRUCTIONS>\n+04:message/user:<ENVIRONMENT_CONTEXT:cwd=<CWD>>\n+05:message/developer[2]:\n+    [01] <PERMISSIONS_INSTRUCTIONS>\n+    [02] <collaboration_mode>Fork turn collaboration instructions.</collaboration_mode>\n+06:message/user:after fork",
+      "path": "codex-rs/core/src/snapshots/codex_core__codex_tests__fork_startup_context_then_first_turn_diff.snap",
+      "status": "added"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Discovered via hourly merged-PR sync: https://github.com/openai/codex/pull/15443"
+  ],
+  "primary_pr": {
+    "body": "## Summary\n- add a snapshot-style core test for fork startup context injection followed by first-turn diff injection\n- capture the current duplicated startup-plus-turn context behavior without changing runtime logic\n\n## Testing\n- not run locally; relying on CI\n- just fmt",
+    "labels": [],
+    "merged_at": "2026-03-23T01:24:14Z",
+    "number": 15443,
+    "state": "merged",
+    "title": "core: snapshot fork startup context injection",
+    "url": "https://github.com/openai/codex/pull/15443"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
