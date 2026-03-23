@@ -1,0 +1,71 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-03-21T15:31:22Z",
+      "message": "codex: remove tui_app_server legacy notification handling",
+      "sha": "fcb42221528b738e0bc84a8010ebb25acd21b211",
+      "url": "https://github.com/openai/codex/commit/fcb42221528b738e0bc84a8010ebb25acd21b211"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-03-21T15:43:36Z",
+      "message": "Merge remote-tracking branch 'origin/main' into codex/pr-15106-tui-legacy-notifications",
+      "sha": "05b63be19f905bfcc8d61c5adbd31ff931669358",
+      "url": "https://github.com/openai/codex/commit/05b63be19f905bfcc8d61c5adbd31ff931669358"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "TUI",
+    "IDE",
+    "MAX",
+    "JSONRPCE",
+    "JSONRPCN",
+    "APP_SERVER_TUI_STUB_MESSAGE"
+  ],
+  "files": [
+    {
+      "additions": 10,
+      "deletions": 344,
+      "patch_excerpt": "@@ -464,8 +464,6 @@ enum ThreadBufferedEvent {\n     Notification(ServerNotification),\n     Request(ServerRequest),\n     HistoryEntryResponse(GetHistoryEntryResponseEvent),\n-    LegacyWarning(String),\n-    LegacyRollback { num_turns: u32 },\n }\n \n #[derive(Debug)]\n@@ -474,7 +472,6 @@ struct ThreadEventStore {\n     turns: Vec<Turn>,\n     buffer: VecDeque<ThreadBufferedEvent>,\n     pending_interactive_replay: PendingInteractiveReplayState,\n-    pending_local_legacy_rollbacks: VecDeque<u32>,\n     active_turn_id: Option<String>,\n     input_state: Option<ThreadInputState>,\n     capacity: usize,\n@@ -483,10 +480,7 @@ struct ThreadEventStore {\n \n impl ThreadEventStore {\n     fn event_survives_session_refresh(event: &ThreadBufferedEvent) -> bool {\n-        matches!(\n-            event,\n-            ThreadBufferedEvent::Request(_) | ThreadBufferedEvent::LegacyWarning(_)\n-        )\n+        matches!(...",
+      "path": "codex-rs/tui_app_server/src/app.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 133,
+      "patch_excerpt": "@@ -21,7 +21,6 @@ use codex_app_server_client::AppServerEvent;\n use codex_app_server_protocol::AuthMode;\n use codex_app_server_protocol::ChatgptAuthTokensRefreshParams;\n use codex_app_server_protocol::JSONRPCErrorError;\n-use codex_app_server_protocol::JSONRPCNotification;\n use codex_app_server_protocol::RequestId;\n use codex_app_server_protocol::ServerNotification;\n use codex_app_server_protocol::ServerRequest;\n@@ -106,16 +105,9 @@ use codex_protocol::protocol::TurnAbortedEvent;\n use codex_protocol::protocol::TurnCompleteEvent;\n #[cfg(test)]\n use codex_protocol::protocol::TurnStartedEvent;\n-use serde_json::Value;\n #[cfg(test)]\n use std::time::Duration;\n \n-#[derive(Debug, PartialEq, Eq)]\n-enum LegacyThreadNotification {\n-    Warning(String),\n-    Rollback { num_turns: u32 },\n-}\n-\n impl App {\n     pub(super) async fn handle_app_server_event(\n         &mut self,\n@@ -133,37 +125,8 @@ impl Ap...",
+      "path": "codex-rs/tui_app_server/src/app/app_server_adapter.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 4,
+      "patch_excerpt": "@@ -9548,10 +9548,6 @@ impl ChatWidget {\n         self.request_redraw();\n     }\n \n-    pub(crate) fn add_warning_message(&mut self, message: String) {\n-        self.on_warning(message);\n-    }\n-\n     fn add_app_server_stub_message(&mut self, feature: &str) {\n         warn!(feature, \"stubbed unsupported app-server TUI feature\");\n         self.add_error_message(format!(\"{feature}: {APP_SERVER_TUI_STUB_MESSAGE}\"));",
+      "path": "codex-rs/tui_app_server/src/chatwidget.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#15106"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Discovered via hourly merged-PR sync: https://github.com/openai/codex/pull/15390"
+  ],
+  "primary_pr": {
+    "body": "As part of moving the TUI onto the app server, we added some temporary handling of some legacy events. We've confirmed that these do not need to be supported, so this PR removes this support from the tui_app_server, allowing for additional simplifications in follow-on PRs. These events are needed only for very old rollouts. None of the other app server clients (IDE extension or app) support these either. \r\n\r\n## Summary\r\n- stop translating legacy `codex/event/*` notifications inside `tui_app_server`\r\n- remove the TUI-side legacy warning and rollback buffering/replay paths that were only fed by those notifications\r\n- keep the lower-level app-server and app-server-client legacy event plumbing intact so PR #15106 can rebase on top and handle the remaining exec/lower-layer migration separately\r\n",
+    "labels": [],
+    "merged_at": "2026-03-21T18:29:33Z",
+    "number": 15390,
+    "state": "merged",
+    "title": "Remove legacy app-server notification handling from tui_app_server",
+    "url": "https://github.com/openai/codex/pull/15390"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

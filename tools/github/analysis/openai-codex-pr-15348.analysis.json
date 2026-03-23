@@ -1,0 +1,22 @@
+{
+  "caveats": [
+    "The user-visible plugin list only changes if the backend actually serves different featured-plugin results for each platform."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR itself is titled `Pass platform param to featured plugins`, which frames the change as product-aware featured-plugin fetching rather than a refactor.",
+    "`core/src/plugins/manager.rs` now passes `self.restriction_product` into `fetch_remote_featured_plugin_ids`, so the featured-plugin request is tied to the active product context.",
+    "`core/src/plugins/remote.rs` adds a `platform` query parameter to the featured-plugin request, defaulting to `codex`, and `protocol.rs` adds explicit mappings for `chat`, `codex`, and `atlas`.",
+    "Tests in `manager_tests.rs` and `app-server/tests/suite/v2/plugin_list.rs` now assert `platform=chat` and `platform=codex`, confirming the request shape changed in both manager and app-server flows."
+  ],
+  "slug": "featured-plugin-sync-now-requests-product-specific-results",
+  "summary": "Merged PR #15348 adds a `platform` query when Codex fetches featured plugins, so curated plugin lists can now vary by product instead of using one generic request path.",
+  "title": "Featured plugin sync now requests product-specific results",
+  "watch_state": null,
+  "why_it_matters": "This reduces the chance of showing a featured plugin set that was curated for a different product surface. If the backend returns different lists for Codex, ChatGPT, or Atlas, users should get recommendations that better match the product they are actually using."
+}
