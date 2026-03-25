@@ -1,0 +1,98 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-25T21:19:22Z",
+      "message": "Change label at app instalp step, hide /apps command",
+      "sha": "c61d828dfd0d9d4c70e38df67e705598c628af2a",
+      "url": "https://github.com/openai/codex/commit/c61d828dfd0d9d4c70e38df67e705598c628af2a"
+    },
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-25T21:33:04Z",
+      "message": "Cleaner display name for OpenAI Curated plugins marketplace",
+      "sha": "9ede25dfe05c3f730b2bc87b8f78fd65d6b42c32",
+      "url": "https://github.com/openai/codex/commit/9ede25dfe05c3f730b2bc87b8f78fd65d6b42c32"
+    },
+    {
+      "author": "canvrno-oai",
+      "committed_at": "2026-03-25T21:35:04Z",
+      "message": "fmt",
+      "sha": "982b96dd911ced68a6bbb9dcff92da0a0da9fa35",
+      "url": "https://github.com/openai/codex/commit/982b96dd911ced68a6bbb9dcff92da0a0da9fa35"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "DEFAULT_SKILLS_DIR_NAME",
+    "DEFAULT_MCP_CONFIG_FILE",
+    "DEFAULT_APP_CONFIG_FILE",
+    "OPENAI_CURATED_MARKETPLACE_NAME",
+    "OPENAI_CURATED_MARKETPLACE_DISPLAY_NAME",
+    "CURATED_REPO_SYNC_STARTED",
+    "FEATURED_PLUGIN_IDS_CACHE_TTL"
+  ],
+  "files": [
+    {
+      "additions": 13,
+      "deletions": 2,
+      "patch_excerpt": "@@ -78,6 +78,7 @@ const DEFAULT_SKILLS_DIR_NAME: &str = \"skills\";\n const DEFAULT_MCP_CONFIG_FILE: &str = \".mcp.json\";\n const DEFAULT_APP_CONFIG_FILE: &str = \".app.json\";\n pub const OPENAI_CURATED_MARKETPLACE_NAME: &str = \"openai-curated\";\n+pub const OPENAI_CURATED_MARKETPLACE_DISPLAY_NAME: &str = \"OpenAI Curated\";\n static CURATED_REPO_SYNC_STARTED: AtomicBool = AtomicBool::new(false);\n const FEATURED_PLUGIN_IDS_CACHE_TTL: std::time::Duration =\n     std::time::Duration::from_secs(60 * 60 * 3);\n@@ -889,7 +890,13 @@ impl PluginsManager {\n                 (!plugins.is_empty()).then_some(ConfiguredMarketplace {\n                     name: marketplace.name,\n                     path: marketplace.path,\n-                    interface: marketplace.interface,\n+                    interface: if marketplace_name == OPENAI_CURATED_MARKETPLACE_NAME {\n+                        Some(MarketplaceInterface {...",
+      "path": "codex-rs/core/src/plugins/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1386,7 +1386,7 @@ plugins = true\n             path: AbsolutePathBuf::try_from(curated_root.join(\".agents/plugins/marketplace.json\"))\n                 .unwrap(),\n             interface: Some(MarketplaceInterface {\n-                display_name: Some(\"ChatGPT Official\".to_string()),\n+                display_name: Some(OPENAI_CURATED_MARKETPLACE_DISPLAY_NAME.to_string()),\n             }),\n             plugins: vec![ConfiguredMarketplacePlugin {\n                 id: \"linear@openai-curated\".to_string(),",
+      "path": "codex-rs/core/src/plugins/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -68,6 +68,7 @@ impl CommandPopup {\n             slash_commands::builtins_for_input(flags.into())\n                 .into_iter()\n                 .filter(|(name, _)| !name.starts_with(\"debug\"))\n+                .filter(|(_, cmd)| *cmd != SlashCommand::Apps)\n                 .collect();\n         // Exclude prompts that collide with builtin command names and sort by name.\n         let exclude: HashSet<String> = builtins.iter().map(|(n, _)| (*n).to_string()).collect();",
+      "path": "codex-rs/tui/src/bottom_pane/command_popup.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -418,7 +418,7 @@ impl ChatWidget {\n         let status_label = if is_installed {\n             \"Already installed in this session.\"\n         } else {\n-            \"Not installed yet.\"\n+            \"Install the required Apps in ChatGPT to continue:\"\n         };\n         let mut header = ColumnRenderable::new();\n         header.push(Line::from(\"Plugins\".bold()));",
+      "path": "codex-rs/tui/src/chatwidget/plugins.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -68,6 +68,7 @@ impl CommandPopup {\n             slash_commands::builtins_for_input(flags.into())\n                 .into_iter()\n                 .filter(|(name, _)| !name.starts_with(\"debug\"))\n+                .filter(|(_, cmd)| *cmd != SlashCommand::Apps)\n                 .collect();\n         // Exclude prompts that collide with builtin command names and sort by name.\n         let exclude: HashSet<String> = builtins.iter().map(|(n, _)| (*n).to_string()).collect();",
+      "path": "codex-rs/tui_app_server/src/bottom_pane/command_popup.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -418,7 +418,7 @@ impl ChatWidget {\n         let status_label = if is_installed {\n             \"Already installed in this session.\"\n         } else {\n-            \"Not installed yet.\"\n+            \"Install the required Apps in ChatGPT to continue:\"\n         };\n         let mut header = ColumnRenderable::new();\n         header.push(Line::from(\"Plugins\".bold()));",
+      "path": "codex-rs/tui_app_server/src/chatwidget/plugins.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Discovered via hourly merged-PR sync: https://github.com/openai/codex/pull/15802"
+  ],
+  "primary_pr": {
+    "body": "- Add \"OpenAI Curated\" display name for `openai-curated` marketplace\r\n- Hide /apps menu\r\n- Change app install phase display text",
+    "labels": [],
+    "merged_at": "2026-03-25T23:09:20Z",
+    "number": 15802,
+    "state": "merged",
+    "title": "TUI plugin menu polish",
+    "url": "https://github.com/openai/codex/pull/15802"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
