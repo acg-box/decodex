@@ -1,0 +1,59 @@
+{
+  "caveats": [
+    "This is limited to `tui` and `tui_app_server` polish; it does not add new plugin capabilities or change backend install mechanics."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "The UI should show `OpenAI Curated` instead of the raw `openai-curated` name, the slash-command menu should no longer surface `/apps`, and uninstalled plugin states should tell you to install the required Apps in ChatGPT.",
+  "how_to_try": "Run a build that includes PR #15802 with plugins enabled, open the TUI or `tui_app_server` plugin flow, inspect the curated marketplace label and an uninstalled plugin state, and check the slash-command picker for `/apps`.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR body frames the change as three user-facing polish items: rename the `openai-curated` marketplace to `OpenAI Curated`, hide the `/apps` menu entry, and change the app-install-phase display text.",
+    "Both `codex-rs/tui` and `codex-rs/tui_app_server` update `bottom_pane/command_popup.rs` to filter out `SlashCommand::Apps`, and both `chatwidget/plugins.rs` files replace `Not installed yet.` with `Install the required Apps in ChatGPT to continue:`.",
+    "`codex-rs/core/src/plugins/manager.rs` adds `OPENAI_CURATED_MARKETPLACE_DISPLAY_NAME = \"OpenAI Curated\"` and uses it when the marketplace name is `openai-curated`, while `manager_tests.rs` is updated to expect that display name."
+  ],
+  "published_at": "2026-03-25T23:09:20Z",
+  "schema": "signal_entry/v1",
+  "slug": "tui-plugin-ui-drops-apps-command-and-renames-curated-marketplace",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/c61d828dfd0d9d4c70e38df67e705598c628af2a",
+      "https://github.com/openai/codex/commit/9ede25dfe05c3f730b2bc87b8f78fd65d6b42c32",
+      "https://github.com/openai/codex/commit/982b96dd911ced68a6bbb9dcff92da0a0da9fa35"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15802",
+        "title": "TUI plugin menu polish",
+        "url": "https://github.com/openai/codex/pull/15802"
+      },
+      {
+        "kind": "commit",
+        "meta": "c61d828",
+        "title": "Change label at app instalp step, hide /apps command",
+        "url": "https://github.com/openai/codex/commit/c61d828dfd0d9d4c70e38df67e705598c628af2a"
+      },
+      {
+        "kind": "commit",
+        "meta": "9ede25d",
+        "title": "Cleaner display name for OpenAI Curated plugins marketplace",
+        "url": "https://github.com/openai/codex/commit/9ede25dfe05c3f730b2bc87b8f78fd65d6b42c32"
+      },
+      {
+        "kind": "commit",
+        "meta": "982b96d",
+        "title": "fmt",
+        "url": "https://github.com/openai/codex/commit/982b96dd911ced68a6bbb9dcff92da0a0da9fa35"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15802",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #15802 makes a small but visible plugin-UI cleanup in `tui` and `tui_app_server`: the curated marketplace gets a clearer name, `/apps` is hidden from the command menu, and uninstalled plugin states now show a more actionable ChatGPT install prompt.",
+  "title": "TUI plugin flows now use `OpenAI Curated` and drop the `/apps` command",
+  "watch_state": "Whether any remaining plugin surfaces or docs still reference the older `/apps` command or the raw `openai-curated` marketplace name.",
+  "why_it_matters": "This reduces terminology friction in the plugin experience. Users see a clearer curated marketplace label, less mixed app-versus-plugin wording in the TUI, and a better hint about what to do when a plugin depends on ChatGPT-side app installs."
+}

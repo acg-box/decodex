@@ -1,0 +1,109 @@
+{
+  "caveats": [
+    "Websocket transport is still described in the README as experimental and unsupported for production workloads."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "The unauthenticated websocket upgrade should be rejected, while the request carrying the configured bearer token should complete the handshake and proceed to normal app-server initialization.",
+  "how_to_try": "Start a build that includes PR #14847 with `codex app-server --listen ws://127.0.0.1:PORT --ws-auth capability-token --ws-token-file /absolute/path/token.txt`, then attempt one websocket connection without `Authorization: Bearer <token>` and one with it.",
+  "impact": "low",
+  "kind": "capability",
+  "lane": "github",
+  "proof_points": [
+    "The PR body says websocket auth is enforced before JSON-RPC `initialize`, and that unauthenticated clients are rejected during the websocket handshake rather than after a connection is already open.",
+    "The README adds a new security note and user-facing auth options: `--ws-auth capability-token --ws-token-file ...` and `--ws-auth signed-bearer-token --ws-shared-secret-file ...`, with optional issuer, audience, and clock-skew checks, and it documents `Authorization: Bearer <token>` for clients.",
+    "The change adds a dedicated `transport/auth.rs` module and expands websocket transport tests, backing the feature with real transport-layer enforcement, constant-time capability-token checks, JWT verification via `jsonwebtoken`, and `403` rejection for `Origin`-bearing browser-style handshakes."
+  ],
+  "published_at": "2026-03-25T19:35:57Z",
+  "schema": "signal_entry/v1",
+  "slug": "app-server-websocket-auth",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/22d51ec7a5a1c25854ee78245a02469d40402d5c",
+      "https://github.com/openai/codex/commit/a19f46da14dae04ea3d20acd27c2e252fa04d23d",
+      "https://github.com/openai/codex/commit/35cff1b44b0e435e9dec2889ea03b8d3b69a6f8b",
+      "https://github.com/openai/codex/commit/c9e706fce2332e4c967c2decf8331202e3ecd1e9",
+      "https://github.com/openai/codex/commit/c1f1b6d7083bcbce6783082dd4b510f7ba93eb49",
+      "https://github.com/openai/codex/commit/3b8432914eba1c8bf36e93401c1b1cf37d6044ff",
+      "https://github.com/openai/codex/commit/61baaee51e9ada1285220b635a463c0c2d6bf65d",
+      "https://github.com/openai/codex/commit/4e69aa84c935d6a7e37ee485555e1990118948f7",
+      "https://github.com/openai/codex/commit/7b79230e3a53eaef73d897827e2ae376b0cfce68",
+      "https://github.com/openai/codex/commit/a91c332189fb569579570161c556d1d92b217a12",
+      "https://github.com/openai/codex/commit/b60f64b99036972ba8354c964bbc22875f5e0912"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#14847",
+        "title": "feat: add websocket auth for app-server",
+        "url": "https://github.com/openai/codex/pull/14847"
+      },
+      {
+        "kind": "commit",
+        "meta": "22d51ec",
+        "title": "feat: add websocket auth flags for app-server",
+        "url": "https://github.com/openai/codex/commit/22d51ec7a5a1c25854ee78245a02469d40402d5c"
+      },
+      {
+        "kind": "commit",
+        "meta": "a19f46d",
+        "title": "refactor: rename transport auth module",
+        "url": "https://github.com/openai/codex/commit/a19f46da14dae04ea3d20acd27c2e252fa04d23d"
+      },
+      {
+        "kind": "commit",
+        "meta": "35cff1b",
+        "title": "fix: harden websocket auth verification",
+        "url": "https://github.com/openai/codex/commit/35cff1b44b0e435e9dec2889ea03b8d3b69a6f8b"
+      },
+      {
+        "kind": "commit",
+        "meta": "c9e706f",
+        "title": "fix: reject browser-origin websocket handshakes without auth",
+        "url": "https://github.com/openai/codex/commit/c9e706fce2332e4c967c2decf8331202e3ecd1e9"
+      },
+      {
+        "kind": "commit",
+        "meta": "c1f1b6d",
+        "title": "fix: make websocket auth opt-in during rollout",
+        "url": "https://github.com/openai/codex/commit/c1f1b6d7083bcbce6783082dd4b510f7ba93eb49"
+      },
+      {
+        "kind": "commit",
+        "meta": "3b84329",
+        "title": "fix: use jwt for signed websocket auth",
+        "url": "https://github.com/openai/codex/commit/3b8432914eba1c8bf36e93401c1b1cf37d6044ff"
+      },
+      {
+        "kind": "commit",
+        "meta": "61baaee",
+        "title": "refactor: remove insecure websocket rollout flag",
+        "url": "https://github.com/openai/codex/commit/61baaee51e9ada1285220b635a463c0c2d6bf65d"
+      },
+      {
+        "kind": "commit",
+        "meta": "4e69aa8",
+        "title": "codex: address PR review feedback (#14847)",
+        "url": "https://github.com/openai/codex/commit/4e69aa84c935d6a7e37ee485555e1990118948f7"
+      },
+      {
+        "kind": "commit",
+        "meta": "7b79230",
+        "title": "refactor: use jsonwebtoken for websocket jwt auth",
+        "url": "https://github.com/openai/codex/commit/7b79230e3a53eaef73d897827e2ae376b0cfce68"
+      },
+      {
+        "kind": "commit",
+        "meta": "a91c332",
+        "title": "Merge remote-tracking branch 'origin/main' into codex/viyatb/app-server-websocket-auth",
+        "url": "https://github.com/openai/codex/commit/a91c332189fb569579570161c556d1d92b217a12"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/14847",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #14847 adds websocket authentication for Codex app-server, so websocket clients can be challenged at upgrade time instead of being admitted first and checked later.",
+  "title": "App-server websocket mode now supports bearer-token auth",
+  "watch_state": "During rollout, non-loopback websocket listeners still remain unauthenticated by default unless `--ws-auth` is explicitly configured.",
+  "why_it_matters": "If you expose `codex app-server` over websockets beyond localhost, you now have a built-in way to require credentials at the transport boundary. That closes a meaningful security gap for remote deployments without forcing an immediate breaking default on existing clients."
+}
