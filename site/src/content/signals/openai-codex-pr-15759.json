@@ -1,0 +1,70 @@
+{
+  "caveats": [
+    "This is scoped to the app-server TUI path rather than the default legacy TUI.",
+    "The change preserves transcript integrity under backpressure, but it does not remove backpressure or address the root cause of a slow consumer."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [
+    "features.tui_app_server = true"
+  ],
+  "expected_effect": "The streamed answer should stay readable and complete instead of ending with mangled or missing paragraphs even if the app-server TUI briefly falls behind.",
+  "how_to_try": "Run a Codex build that includes PR #15759 with `features.tui_app_server = true`, trigger a response that streams a large amount of markdown or text, and watch the output while the UI is under load.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR description explicitly says `-c features.tui_app_server=true` could corrupt large streamed output because `AgentMessageDelta` and `ItemCompleted` were previously droppable under backpressure, leaving incomplete markdown on screen.",
+    "The main file change in `codex-rs/app-server-client/src/lib.rs` expands must-deliver handling from terminal-only events to shared transcript-and-terminal notification classification, with comments calling out corrupted markdown and incomplete paragraphs as the failure mode.",
+    "`codex-rs/app-server-client/src/remote.rs` now delegates to the same shared `server_notification_requires_delivery` logic, which is evidence that both in-process and remote app-server transports were aligned around the new lossless transcript policy.",
+    "The commit set includes dedicated regression coverage for backpressure preservation plus follow-up docs and test adjustments, matching the PR's claim that transcript notifications now survive saturated queues."
+  ],
+  "published_at": "2026-03-25T19:50:40Z",
+  "schema": "signal_entry/v1",
+  "slug": "app-server-tui-preserves-transcript-output-under-backpressure",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/86d0792b591c405c06af3a4c96466ec372b47f44",
+      "https://github.com/openai/codex/commit/f45919b207f35d9a05aaa35e12fbfeb625aa3982",
+      "https://github.com/openai/codex/commit/e189c1c12f4ccce1830ec12e9ad11e0fdc4db870",
+      "https://github.com/openai/codex/commit/24b166cb539fc6d199c94ec696db60ae0b833ce5",
+      "https://github.com/openai/codex/commit/b66ae15504be49bdddafe44557eb0c8be3920a6b"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#15759",
+        "title": "fix(tui_app_server): preserve transcript events under backpressure",
+        "url": "https://github.com/openai/codex/pull/15759"
+      },
+      {
+        "kind": "commit",
+        "meta": "86d0792",
+        "title": "feat(tui_app_server): preserve transcript events under backpressure",
+        "url": "https://github.com/openai/codex/commit/86d0792b591c405c06af3a4c96466ec372b47f44"
+      },
+      {
+        "kind": "commit",
+        "meta": "f45919b",
+        "title": "test(app-server-client): add backpressure regression coverage",
+        "url": "https://github.com/openai/codex/commit/f45919b207f35d9a05aaa35e12fbfeb625aa3982"
+      },
+      {
+        "kind": "commit",
+        "meta": "e189c1c",
+        "title": "docs(app-server-client): document backpressure forwarding internals",
+        "url": "https://github.com/openai/codex/commit/e189c1c12f4ccce1830ec12e9ad11e0fdc4db870"
+      },
+      {
+        "kind": "commit",
+        "meta": "b66ae15",
+        "title": "test(core): relax remote backpressure event ordering assertion",
+        "url": "https://github.com/openai/codex/commit/b66ae15504be49bdddafe44557eb0c8be3920a6b"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/15759",
+    "repo": "openai/codex"
+  },
+  "summary": "PR #15759 changes the app-server TUI transport so transcript-bearing events are treated as must-deliver under backpressure, preventing large streamed responses from degrading into corrupted or incomplete paragraphs.",
+  "title": "App-server TUI now keeps streamed transcript output intact under backpressure",
+  "why_it_matters": "If you use Codex with the app-server TUI, long streamed answers are less likely to end up visibly broken when the UI falls behind. The fix prioritizes preserving the assistant\u2019s actual transcript over dropping text fragments just to keep the queue moving."
+}
