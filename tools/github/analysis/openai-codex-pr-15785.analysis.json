@@ -1,0 +1,24 @@
+{
+  "caveats": [
+    "This is mainly relevant for remote or standalone exec-server setups; users on the default local execution path may not notice a visible difference.",
+    "Any workflow still relying on `experimental_exec_server_url` in config will need to migrate to the `CODEX_EXEC_SERVER_URL` environment variable."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "Codex should connect through the already running exec server without relying on the removed `experimental_exec_server_url` config key, and spawned or delegated work should stay pointed at that same remote execution endpoint.",
+  "how_to_try": "Run a Codex build that includes PR #15785 by starting `codex-exec-server` manually and launching the TUI or app-server path with `CODEX_EXEC_SERVER_URL=ws://...`, or use the new `scripts/run_tui_with_exec_server.sh` helper to do the handoff automatically.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body says the change adds a singleton environment manager created early in app-server startup and uses an environment variable to point Codex at a running exec server.",
+    "`codex-rs/exec-server/src/environment.rs` adds `CODEX_EXEC_SERVER_URL_ENV_VAR = \"CODEX_EXEC_SERVER_URL\"` plus an `EnvironmentManager` backed by `OnceCell`, which is direct evidence that exec-server selection is now cached and env-driven.",
+    "`codex-rs/core/src/config/mod.rs` and `codex-rs/core/config.schema.json` remove `experimental_exec_server_url`, showing the old config-surface override is no longer the supported path.",
+    "`codex-rs/app-server/src/lib.rs`, `codex-rs/app-server/src/in_process.rs`, and `codex-rs/tui/src/app.rs` now construct `EnvironmentManager::from_env()` early, while `codex-rs/core/src/codex_delegate.rs` passes the parent exec-server URL into delegated threads.",
+    "The new `scripts/run_tui_with_exec_server.sh` helper starts `codex-exec-server`, and the bundle's extracted flags include `CODEX_EXEC_SERVER_URL=\"$exec_server_url\"`, which supports the new env-based TUI handoff workflow."
+  ],
+  "slug": "remote-exec-server-routing-now-uses-codex-exec-server-url",
+  "summary": "Merged PR #15785 replaces the old experimental config-based exec-server override with a cached `EnvironmentManager` and the `CODEX_EXEC_SERVER_URL` environment variable, so app-server and TUI flows can reuse the same running exec server more consistently.",
+  "title": "Remote exec-server routing now uses `CODEX_EXEC_SERVER_URL`",
+  "watch_state": "Whether operator docs and surrounding tooling fully migrate from the removed `experimental_exec_server_url` knob to `CODEX_EXEC_SERVER_URL`, especially outside the new helper script.",
+  "why_it_matters": "If you run Codex against a separate exec server, the setup path is simpler and more reliable: the override moves out of `config.toml`, the app-server creates the environment manager early, and delegated work inherits the same exec-server URL instead of rebuilding that routing piecemeal."
+}
