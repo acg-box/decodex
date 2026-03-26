@@ -1,100 +1,75 @@
 # Reset Status
 
-Purpose: Define the published Decodex reset-status schema for a third-party,
-community-observed Codex reset signal rendered in the homepage status slot.
+Purpose: Define the runtime behavior for the homepage reset-status widget.
 
 Status: normative
 
 Read this when:
-- You are fetching or validating the upstream community reset tracker.
-- You are rendering the homepage reset-status widget.
-- You need to know how Decodex should frame a non-official reset signal.
-
-Not this document:
-- The GitHub change-bundle schema.
-- The signal-entry schema.
-- The release-delta schema.
+- You are changing the homepage reset-status widget.
+- You are changing how the client fetches OpenAI status data.
+- You need to know the current Are-we-reset heuristic.
 
 Defines:
-- The canonical `reset_status/v1` shape.
-- How upstream third-party payloads are normalized for the site.
-- The required source-framing rules so the widget does not imply official
-  OpenAI confirmation.
+- The upstream source used by the homepage widget.
+- The one-fetch-per-page-load rule.
+- The current 24-hour alert heuristic for `Yes` versus `No`.
 
-## Entry identity
+## Source
 
-The canonical schema identifier is:
+The widget uses the OpenAI public status page:
 
-- `reset_status/v1`
+- source URL: `https://status.openai.com/incidents/01KK9JA8JKQKDW1W24T09NHBYH`
+- API URL: `https://status.openai.com/api/v2/incidents.json`
+- incident id: `01KK9JA8JKQKDW1W24T09NHBYH`
 
-## Required fields
+The homepage must fetch this API directly from the browser. Do not route this
+through a repo-owned static artifact, scheduled workflow, or generated content
+collection.
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `schema` | string | Must be `reset_status/v1`. |
-| `source_label` | string | Human-readable source label, such as `Community tracker`. |
-| `source_kind` | string | Must be `community`. |
-| `source_url` | string | Public site URL for the tracker. |
-| `source_api_url` | string | API endpoint used to fetch the status. |
-| `status` | string | Normalized status: `reset`, `not_reset`, or `unknown`. |
-| `stale` | boolean | Whether the upstream observation is too old to trust as current status. |
-| `configured` | boolean | Whether the upstream tracker reports itself configured. |
-| `upstream_state` | string | Raw upstream state value when available, such as `yes` or `no`. |
-| `updated_at` | string | UTC timestamp representing the tracker-provided freshness marker. |
+## Runtime fetch rule
 
-## Optional fields
+The reset-status widget must fetch status data:
 
-The artifact may also contain:
+- once per page open
+- from the client
+- without background polling
 
-- `auto_reset_hours`
-- `reset_at`
+If multiple reset-status widgets are rendered on one page, they should share
+the same in-page request instead of issuing duplicate fetches.
 
-If `reset_at` is present, it must be a UTC timestamp string.
+## Heuristic
 
-## Normalization rules
+The homepage question remains:
 
-Decodex must normalize the upstream tracker response into these meanings:
+- `Are we reset today?`
 
-- upstream `state = "yes"` -> `status = "reset"`
-- upstream `state = "no"` -> `status = "not_reset"`
-- any other or missing upstream state -> `status = "unknown"`
+The current decision rule is:
 
-`updated_at` must be derived from the upstream freshness marker when available.
-If the upstream tracker reports timestamps as Unix milliseconds, the published
-artifact must convert them into UTC ISO 8601 strings.
+- `Yes` when the `Codex unresponsive` incident shows at least one alert within
+  the last `24` hours
+- `No` otherwise
 
-## Freshness rule
+For this purpose, the client must first select the incident with id
+`01KK9JA8JKQKDW1W24T09NHBYH`. An alert is any incident-level or update-level
+timestamp on that incident in the last 24 hours. The client should inspect:
 
-The artifact must mark the source as stale when the upstream observation age is
-older than a reasonable current-status window. The default rule is:
+- `incident.created_at`
+- `incident.updated_at`
+- `incident.monitoring_at`
+- `incident.resolved_at`
+- `incident_updates[].display_at`
+- `incident_updates[].created_at`
+- `incident_updates[].updated_at`
 
-- if `auto_reset_hours` is present, stale when the observation age exceeds
-  `auto_reset_hours * 2`
-- otherwise stale when the observation age exceeds `48` hours
+## Failure behavior
 
-Homepage rendering should treat stale data as unclear current status even if the
-raw normalized `status` is still `reset` or `not_reset`.
+If the status fetch fails or the payload is malformed:
+
+- keep the widget link pointing at the OpenAI incident page
+- render the answer as `No`
+- render the widget in the muted state
 
 ## Source framing rule
 
-The published artifact and any homepage rendering must frame this signal as:
-
-- third-party
-- community-observed
-- not an official OpenAI reset confirmation
-
-The widget may summarize the observed state, but it must not use wording that
-implies OpenAI directly confirmed a reset through an official source.
-
-## Homepage rendering rule
-
-When a valid `reset_status/v1` artifact exists, the homepage should render a
-small global reset-status slot phrased as a direct user question:
-
-- `Are we reset today?`
-- `Yes` when `status = "reset"`
-- `No` when `status = "not_reset"` or `status = "unknown"`
-
-The published artifact must still retain freshness and source fields for
-traceability, but the default homepage UI does not need to surface that extra
-metadata inline.
+The widget remains a heuristic. It must not claim that the OpenAI status page
+directly confirms a Codex quota or usage reset event.
