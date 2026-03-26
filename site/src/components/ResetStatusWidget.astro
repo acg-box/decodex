@@ -1,52 +1,143 @@
 ---
 import {
-  resetStatusAnswer,
-  resetStatusQuestion,
-  resetStatusTone,
-  type ResetStatusData,
+  RESET_STATUS_API_URL,
+  RESET_STATUS_INCIDENT_ID,
+  RESET_STATUS_QUESTION,
+  RESET_STATUS_SOURCE_URL,
+  RESET_STATUS_WINDOW_MS,
 } from "@/lib/reset-status";
 
 type Props = {
-  entry: ResetStatusData;
   variant?: "inline" | "stack";
 };
 
-const { entry } = Astro.props;
 const variant = Astro.props.variant ?? "inline";
-const question = resetStatusQuestion();
-const answer = resetStatusAnswer(entry);
-const tone = resetStatusTone(entry);
-const incidentUrl =
-  "https://status.openai.com/incidents/01KK9JA8JKQKDW1W24T09NHBYH";
+const question = RESET_STATUS_QUESTION;
+const statusUrl = RESET_STATUS_SOURCE_URL;
+const statusApiUrl = RESET_STATUS_API_URL;
+const initialTone = "muted";
+const initialAnswer = "Checking...";
 ---
 
 <a
   class:list={[
     variant === "stack" ? "reset-stack" : "reset-inline",
-    variant === "stack" ? `reset-stack--${tone}` : `reset-inline--${tone}`,
+    variant === "stack" ? `reset-stack--${initialTone}` : `reset-inline--${initialTone}`,
   ]}
-  href={incidentUrl}
+  href={statusUrl}
   target="_blank"
   rel="noreferrer"
-  aria-label={`${question} ${answer}`}
+  aria-label={`${question} ${initialAnswer}`}
+  data-reset-status-root
+  data-reset-status-api-url={statusApiUrl}
+  data-reset-status-question={question}
+  data-reset-status-variant={variant}
 >
   {
     variant === "stack" ? (
       <>
         <span class="reset-stack__question">{question}</span>
-        <span class="reset-stack__answer">
+        <span class="reset-stack__answer" data-reset-status-answer>
           <span class="reset-stack__dot" aria-hidden="true"></span>
-          {answer}
+          <span data-reset-status-answer-text>{initialAnswer}</span>
         </span>
       </>
     ) : (
       <>
         <span class="reset-inline__question">{question}</span>
-        <span class="reset-inline__answer">
+        <span class="reset-inline__answer" data-reset-status-answer>
           <span class="reset-inline__dot" aria-hidden="true"></span>
-          {answer}
+          <span data-reset-status-answer-text>{initialAnswer}</span>
         </span>
       </>
     )
   }
 </a>
+
+<script is:inline define:vars={{ resetStatusIncidentId: RESET_STATUS_INCIDENT_ID, resetStatusWindowMs: RESET_STATUS_WINDOW_MS }}>
+  function resetStatusParseDate(value) {
+    if (typeof value !== "string" || value.length === 0) return null;
+    const ms = Date.parse(value);
+    return Number.isNaN(ms) ? null : ms;
+  }
+
+  function resetStatusHasRecentAlert(payload, nowMs) {
+    if (!payload || !Array.isArray(payload.incidents)) return null;
+    const cutoff = nowMs - resetStatusWindowMs;
+    const targetIncident = payload.incidents.find((incident) => incident?.id === resetStatusIncidentId);
+    if (!targetIncident) return null;
+
+    const updates = Array.isArray(targetIncident?.incident_updates) ? targetIncident.incident_updates : [];
+    const incidentTimes = [
+      targetIncident?.created_at,
+      targetIncident?.updated_at,
+      targetIncident?.monitoring_at,
+      targetIncident?.resolved_at,
+    ];
+    const updateTimes = updates.flatMap((update) => [
+      update?.display_at,
+      update?.created_at,
+      update?.updated_at,
+    ]);
+
+    return [...incidentTimes, ...updateTimes].some((value) => {
+      const parsed = resetStatusParseDate(value);
+      return parsed !== null && parsed >= cutoff;
+    });
+  }
+
+  function resetStatusSetTone(root, tone) {
+    const variant = root.dataset.resetStatusVariant === "stack" ? "reset-stack" : "reset-inline";
+    root.classList.remove(`${variant}--positive`, `${variant}--neutral`, `${variant}--muted`);
+    root.classList.add(`${variant}--${tone}`);
+  }
+
+  async function resetStatusFetchOnce(apiUrl) {
+    if (!window.__decodexResetStatusPromise) {
+      window.__decodexResetStatusPromise = fetch(apiUrl, { mode: "cors" }).then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`reset status HTTP ${response.status}`);
+        }
+        return response.json();
+      });
+    }
+
+    return window.__decodexResetStatusPromise;
+  }
+
+  async function resetStatusApply(root) {
+    const answerNode = root.querySelector("[data-reset-status-answer]");
+    const answerTextNode = root.querySelector("[data-reset-status-answer-text]");
+    const apiUrl = root.dataset.resetStatusApiUrl;
+    const question = root.dataset.resetStatusQuestion || "Are we reset today?";
+    if (!(answerNode instanceof HTMLElement) || !(answerTextNode instanceof HTMLElement) || !apiUrl) return;
+
+    try {
+      const payload = await resetStatusFetchOnce(apiUrl);
+      const isReset = resetStatusHasRecentAlert(payload, Date.now());
+      if (isReset === null) throw new Error("reset status payload missing incidents array");
+
+      const answer = isReset ? "Yes" : "No";
+      answerTextNode.textContent = answer;
+      resetStatusSetTone(root, isReset ? "positive" : "neutral");
+      root.setAttribute("aria-label", `${question} ${answer}`);
+    } catch {
+      answerTextNode.textContent = "No";
+      resetStatusSetTone(root, "muted");
+      root.setAttribute("aria-label", `${question} No`);
+    }
+  }
+
+  function bindResetStatusWidget() {
+    document.querySelectorAll("[data-reset-status-root]").forEach((root) => {
+      if (!(root instanceof HTMLElement)) return;
+      if (root.dataset.resetStatusLoaded === "true") return;
+      root.dataset.resetStatusLoaded = "true";
+      void resetStatusApply(root);
+    });
+  }
+
+  document.addEventListener("astro:page-load", bindResetStatusWidget);
+  document.addEventListener("DOMContentLoaded", bindResetStatusWidget);
+  bindResetStatusWidget();
+</script>
