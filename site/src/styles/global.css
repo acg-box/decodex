@@ -858,6 +858,7 @@ code {
     transparent 100%
   );
   background-size: 220% 100%;
+  background-repeat: no-repeat;
   background-position: 200% 0;
   opacity: 0.82;
   animation: release-delta-divider-shimmer 2.8s linear infinite;
