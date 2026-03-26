@@ -157,21 +157,6 @@ const releaseDeltaSchema = z
     });
   });
 
-const resetStatusSchema = z.object({
-  schema: z.literal("reset_status/v1"),
-  source_label: z.string().min(1),
-  source_kind: z.literal("community"),
-  source_url: z.string().regex(/^https:\/\//, "source_url must be an https URL"),
-  source_api_url: z.string().regex(/^https:\/\//, "source_api_url must be an https URL"),
-  status: z.enum(["reset", "not_reset", "unknown"]),
-  stale: z.boolean(),
-  configured: z.boolean(),
-  upstream_state: z.string().min(1).nullable().optional(),
-  auto_reset_hours: z.number().int().positive().nullable().optional(),
-  reset_at: z.string().min(1).nullable().optional(),
-  updated_at: z.string().min(1),
-});
-
 const recommendedConfigSchema = z.object({
   schema: z.literal("recommended_config/v1"),
   repo: z.string().min(1),
@@ -205,14 +190,6 @@ const releaseDeltas = defineCollection({
   schema: releaseDeltaSchema,
 });
 
-const resetStatuses = defineCollection({
-  loader: glob({
-    pattern: "**/*.json",
-    base: "./src/content/reset-status",
-  }),
-  schema: resetStatusSchema,
-});
-
 const recommendedConfigs = defineCollection({
   loader: glob({
     pattern: "**/*.json",
@@ -224,6 +201,5 @@ const recommendedConfigs = defineCollection({
 export const collections = {
   signals,
   releaseDeltas,
-  resetStatuses,
   recommendedConfigs,
 };

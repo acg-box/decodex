@@ -1,13 +1,13 @@
 ---
 import { getCollection } from "astro:content";
 import EmptyFeedState from "@/components/EmptyFeedState.astro";
+import AppcastDownloadWidget from "@/components/AppcastDownloadWidget.astro";
 import FilterBar from "@/components/FilterBar.astro";
 import ReleaseDeltaPanel from "@/components/ReleaseDeltaPanel.astro";
 import ResetStatusWidget from "@/components/ResetStatusWidget.astro";
 import SignalCard from "@/components/SignalCard.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import { type ResetStatusData } from "@/lib/reset-status";
 import { type ReleaseDeltaData } from "@/lib/release-delta";
 import {
   FILTERS,
@@ -23,7 +23,6 @@ const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
 const collectionEntries = await getCollection("signals");
 const releaseDeltaEntries = await getCollection("releaseDeltas");
 const recommendedConfigEntries = await getCollection("recommendedConfigs");
-const resetStatusEntries = await getCollection("resetStatuses");
 const signals: SignalCardData[] = sortSignals(
   collectionEntries.map((entry) => ({
     id: entry.id,
@@ -38,10 +37,6 @@ const recommendedConfig =
   recommendedConfigEntries
     .map((entry) => entry.data)
     .find((entry) => entry.repo === "openai/codex") ?? null;
-const resetStatus: ResetStatusData | null =
-  resetStatusEntries
-    .map((entry) => entry.data as ResetStatusData)
-    .find((entry) => entry.source_kind === "community") ?? null;
 const hasPublishedSignals = signals.length > 0;
 const groupedSignals = groupSignalsByMonth(signals);
 const showGroupLabels = groupedSignals.length > 1;
@@ -219,29 +214,35 @@ const filterRuntimeScript = `(function () {
           </a>
         </div>
 
-        <div class="site-head__theme">
-          <ThemeToggle />
+        <div class="site-head__utility">
+          <div class="site-head__theme">
+            <ThemeToggle />
+          </div>
+
+          <div class="site-head__cues">
+            <ul class="site-brand__cues" aria-label="Decodex promises">
+              <li class="site-brand__cue">
+                <span class="site-brand__cue-label">Try paths</span>
+                <span class="site-brand__cue-value">{tryPathCount}</span>
+              </li>
+              <li class="site-brand__cue">
+                <span class="site-brand__cue-label">Source links</span>
+                <span class="site-brand__cue-value">{sourceLinkedCount}/{signals.length}</span>
+              </li>
+              <li class="site-brand__cue">
+                <span class="site-brand__cue-label">High impact</span>
+                <span class="site-brand__cue-value">{highImpactCount}</span>
+              </li>
+            </ul>
+          </div>
         </div>
 
         <p class="site-brand__note">
           Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
         </p>
 
-        <div class="site-head__cues">
-          <ul class="site-brand__cues" aria-label="Decodex promises">
-            <li class="site-brand__cue">
-              <span class="site-brand__cue-label">Try paths</span>
-              <span class="site-brand__cue-value">{tryPathCount}</span>
-            </li>
-            <li class="site-brand__cue">
-              <span class="site-brand__cue-label">Source links</span>
-              <span class="site-brand__cue-value">{sourceLinkedCount}/{signals.length}</span>
-            </li>
-            <li class="site-brand__cue">
-              <span class="site-brand__cue-label">High impact</span>
-              <span class="site-brand__cue-value">{highImpactCount}</span>
-            </li>
-          </ul>
+        <div class="site-head__status">
+          <ResetStatusWidget variant="inline" />
         </div>
 
         <a
@@ -257,11 +258,10 @@ const filterRuntimeScript = `(function () {
           </span>
         </a>
 
-        {resetStatus ? (
-          <div class="site-head__status">
-            <ResetStatusWidget entry={resetStatus} variant="inline" />
-          </div>
-        ) : null}
+        <div class="site-head__actions">
+          <AppcastDownloadWidget />
+        </div>
+
       </div>
     </header>
 
