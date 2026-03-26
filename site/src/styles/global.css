@@ -171,12 +171,14 @@ code {
 
 .site-topbar__head {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.54rem;
 }
 
 .site-head__logo,
+.site-head__utility,
 .site-head__theme,
 .site-head__cues,
+.site-head__actions,
 .site-head__status {
   min-width: 0;
 }
@@ -185,6 +187,13 @@ code {
   display: flex;
   justify-content: flex-start;
   align-items: flex-start;
+}
+
+.site-head__utility {
+  display: grid;
+  justify-items: end;
+  align-content: start;
+  gap: 0.45rem;
 }
 
 .site-head__theme {
@@ -197,6 +206,13 @@ code {
   display: flex;
   justify-content: flex-end;
   align-items: center;
+}
+
+.site-head__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  align-self: stretch;
 }
 
 .site-head__status {
@@ -238,14 +254,14 @@ code {
 
 .site-brand__note {
   max-width: 35rem;
-  font-size: 1rem;
-  line-height: 1.58;
+  font-size: 0.94rem;
+  line-height: 1.5;
   color: var(--ink-soft);
 }
 
 .site-brand__meta {
   display: grid;
-  gap: 0.95rem;
+  gap: 0.58rem;
 }
 
 .site-brand__signals {
@@ -258,7 +274,7 @@ code {
 .site-brand__cues {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.42rem;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -283,6 +299,7 @@ code {
   font-weight: 700;
   letter-spacing: 0.06em;
   line-height: 1.1;
+  min-height: 1.5rem;
 }
 
 .site-brand__cue-label {
@@ -308,8 +325,11 @@ code {
 
 .site-brand__social {
   display: grid;
+  align-content: center;
+  align-self: stretch;
   gap: 0.16rem;
   width: fit-content;
+  height: 100%;
   color: var(--ink-soft);
   transition: color 160ms ease;
 }
@@ -380,10 +400,11 @@ code {
   align-items: center;
   gap: 0.15rem;
   width: fit-content;
-  padding: 0.14rem;
-  border: 1px solid var(--border);
+  padding: 0.08rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
   border-radius: 999px;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--accent-soft) 78%, var(--panel));
+  min-height: 1.5rem;
 }
 
 .theme-toggle__button {
@@ -391,11 +412,19 @@ code {
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
-  padding: 0.24rem 0.5rem;
+  padding: 0.3rem 0.66rem;
   font: inherit;
   font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  font-family:
+    ui-monospace,
+    "SFMono-Regular",
+    Menlo,
+    Monaco,
+    monospace;
+  text-transform: uppercase;
   cursor: pointer;
   transition:
     background-color 180ms ease,
@@ -409,6 +438,196 @@ code {
 .theme-toggle__button[aria-pressed="true"] {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.appcast-download {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+}
+
+.appcast-download__surface {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.appcast-download__primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  transition:
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.appcast-download__body {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.1rem;
+}
+
+.appcast-download__eyebrow,
+.appcast-download__version-meta {
+  font-family:
+    ui-monospace,
+    "SFMono-Regular",
+    Menlo,
+    Monaco,
+    monospace;
+}
+
+.appcast-download__kicker {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+}
+
+.appcast-download__eyebrow {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.appcast-download__title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.appcast-download__title-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0;
+}
+
+.appcast-download__meta {
+  font-size: 0.62rem;
+  line-height: 1.05;
+  text-align: right;
+  color: var(--muted);
+}
+
+.appcast-download__surface[data-appcast-disabled="true"] .appcast-download__primary {
+  opacity: 0.72;
+}
+
+.appcast-download__primary:hover,
+.appcast-download[data-appcast-open="true"] .appcast-download__primary,
+.appcast-download__primary:focus-visible {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.appcast-download__primary:hover .appcast-download__title,
+.appcast-download[data-appcast-open="true"] .appcast-download__title,
+.appcast-download__primary:focus-visible .appcast-download__title {
+  color: var(--accent);
+}
+
+.appcast-download__panel {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  z-index: 12;
+  display: grid;
+  gap: 0.3rem;
+  width: max-content;
+  max-width: calc(100vw - 1.5rem);
+  min-width: 0;
+  padding: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--panel) 94%, var(--bg-soft));
+  box-shadow: 0 20px 45px color-mix(in srgb, var(--ink) 12%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-0.18rem);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.appcast-download[data-appcast-open="true"] .appcast-download__panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.appcast-download__panel-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: var(--muted-soft);
+  margin-bottom: 0.1rem;
+}
+
+.appcast-download__list {
+  display: grid;
+  gap: 0.12rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.appcast-download__version {
+  display: grid;
+  gap: 0.02rem;
+  padding: 0.36rem 0.42rem;
+  border-radius: 0.8rem;
+  border: 1px solid transparent;
+  background: transparent;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.appcast-download__version:hover,
+.appcast-download__version:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 82%, var(--panel));
+  transform: translateX(0.08rem);
+}
+
+.appcast-download__version-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--ink);
+}
+
+.appcast-download__version-meta {
+  font-size: 0.61rem;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.appcast-download__empty {
+  padding: 0.1rem 0.05rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 .reset-inline {
@@ -427,24 +646,23 @@ code {
 .reset-inline__question {
   min-width: 0;
   color: var(--ink);
-  font-size: 1.12rem;
+  font-size: 0.86rem;
   font-weight: 800;
-  letter-spacing: -0.035em;
-  line-height: 1.05;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 
 .reset-inline__answer {
   display: inline-flex;
   align-items: center;
-  gap: 0.42rem;
+  gap: 0.34rem;
   flex-shrink: 0;
-  padding: 0.34rem 0.72rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg-soft);
-  font-size: 0.84rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.86rem;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.03em;
   color: var(--ink);
   white-space: nowrap;
 }
@@ -458,8 +676,6 @@ code {
 }
 
 .reset-inline--positive .reset-inline__answer {
-  border-color: var(--success-border);
-  background: var(--success-soft);
   color: var(--success);
 }
 
@@ -469,8 +685,6 @@ code {
 }
 
 .reset-inline--neutral .reset-inline__answer {
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 86%, var(--panel));
   color: var(--accent);
 }
 
@@ -1685,7 +1899,7 @@ code {
 
   .site-brand__meta {
     grid-template-rows: repeat(2, auto);
-    gap: 1rem;
+    gap: 0.72rem;
   }
 
   .site-brand__note {
@@ -1694,11 +1908,20 @@ code {
 
   .site-brand__social {
     min-width: 0;
-    padding-top: 0.1rem;
+    padding-top: 0;
   }
 
   .site-brand__social-copy {
     white-space: nowrap;
+  }
+
+  .site-head__utility {
+    min-height: 3.35rem;
+    align-content: space-between;
+    justify-items: end;
+  }
+
+  .site-head__actions {
   }
 
   .site-brand__cues {
@@ -1762,9 +1985,15 @@ code {
   }
 
   .site-head__theme,
+  .site-head__utility,
   .site-head__cues,
+  .site-head__actions,
   .site-head__status {
     justify-content: flex-start;
+  }
+
+  .site-head__utility {
+    justify-items: start;
   }
 
   .site-brand__social-copy {
@@ -1778,6 +2007,30 @@ code {
   .reset-inline {
     flex-wrap: wrap;
     justify-content: flex-start;
+  }
+
+  .appcast-download {
+    width: 100%;
+  }
+
+  .appcast-download__primary {
+    align-items: flex-start;
+    width: fit-content;
+  }
+
+  .appcast-download__kicker,
+  .appcast-download__title-row {
+    justify-content: flex-start;
+  }
+
+  .appcast-download__meta {
+    text-align: left;
+  }
+
+  .appcast-download__panel {
+    left: 0;
+    right: auto;
+    min-width: min(18rem, calc(100vw - 3rem));
   }
 
   .release-overview-card__details {
