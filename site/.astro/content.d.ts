@@ -136,14 +136,6 @@ declare module 'astro:content' {
   rendered?: RenderedContent;
   filePath?: string;
 }>;
-"resetStatuses": Record<string, {
-  id: string;
-  body?: string;
-  collection: "resetStatuses";
-  data: InferEntrySchema<"resetStatuses">;
-  rendered?: RenderedContent;
-  filePath?: string;
-}>;
 "signals": Record<string, {
   id: string;
   body?: string;

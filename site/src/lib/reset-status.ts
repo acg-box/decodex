@@ -1,35 +1,5 @@
-export type ResetStatusValue = "reset" | "not_reset" | "unknown";
-
-export type ResetStatusData = {
-  schema: "reset_status/v1";
-  source_label: string;
-  source_kind: "community";
-  source_url: string;
-  source_api_url: string;
-  status: ResetStatusValue;
-  stale: boolean;
-  configured: boolean;
-  upstream_state?: string | null;
-  auto_reset_hours?: number | null;
-  reset_at?: string | null;
-  updated_at: string;
-};
-
-export function resetStatusAnswer(entry: ResetStatusData): "Yes" | "No" {
-  return entry.status === "reset" ? "Yes" : "No";
-}
-
-export function resetStatusQuestion(): string {
-  return "Are we reset today?";
-}
-
-export function resetStatusTone(entry: ResetStatusData): "positive" | "neutral" | "muted" {
-  switch (entry.status) {
-    case "reset":
-      return "positive";
-    case "not_reset":
-      return "neutral";
-    case "unknown":
-      return "muted";
-  }
-}
+export const RESET_STATUS_QUESTION = "Are we reset today?";
+export const RESET_STATUS_INCIDENT_ID = "01KK9JA8JKQKDW1W24T09NHBYH";
+export const RESET_STATUS_SOURCE_URL = `https://status.openai.com/incidents/${RESET_STATUS_INCIDENT_ID}`;
+export const RESET_STATUS_API_URL = "https://status.openai.com/api/v2/incidents.json";
+export const RESET_STATUS_WINDOW_MS = 24 * 60 * 60 * 1000;
