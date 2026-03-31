@@ -1,0 +1,68 @@
+{
+  "caveats": [
+    "This is mainly relevant to advanced multi-agent orchestration flows, not ordinary single-agent Codex usage.",
+    "The wait result is still only a completion-or-timeout summary; it does not surface the child message body itself."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "`wait_agent` should return a simple completion result once fresh mailbox traffic arrives after the wait begins, even though no target list was provided.",
+  "how_to_try": "In a Codex build that includes PR #16010 with MultiAgentV2 enabled, spawn a child agent, call `wait_agent({\"timeout_ms\":1000})` from the root, then have any child send a message back without passing `targets`.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR narrative says a mailbox now backs inter-agent communication and that `wait` no longer takes a target argument.",
+    "The `wait.rs` handler removes `targets` from `WaitArgs` and replaces per-agent status waiting with a mailbox-sequence watch, so fresh mailbox traffic becomes the completion signal.",
+    "Session/task wiring was updated to treat mailbox items as pending input, which is the runtime path that makes the new wait behavior observable.",
+    "Tests were rewritten to accept timeout-only `wait_agent` calls and to confirm that new mailbox activity after the wait starts completes the call, while already-queued mail does not."
+  ],
+  "published_at": "2026-03-30T09:47:21Z",
+  "schema": "signal_entry/v1",
+  "slug": "wait-agent-no-longer-needs-targets",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/ddcdd1a72a006d33e1b25d9e4570ef0c977592d9",
+      "https://github.com/openai/codex/commit/3670d0e1944a813c61f26b76dabb97a032f5271d",
+      "https://github.com/openai/codex/commit/2fc9d2f604e66327f0f573ff85620b10f0b38f97",
+      "https://github.com/openai/codex/commit/466a4ca32e4cf677d6ace57cd4298ca57bd542a8",
+      "https://github.com/openai/codex/commit/89fa34b83e4f7fd51b04fa696c348a36a52ab96a"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#16010",
+        "title": "feat: add mailbox concept for wait",
+        "url": "https://github.com/openai/codex/pull/16010"
+      },
+      {
+        "kind": "commit",
+        "meta": "ddcdd1a",
+        "title": "feat: add mailbox concept for wait",
+        "url": "https://github.com/openai/codex/commit/ddcdd1a72a006d33e1b25d9e4570ef0c977592d9"
+      },
+      {
+        "kind": "commit",
+        "meta": "3670d0e",
+        "title": "clippy",
+        "url": "https://github.com/openai/codex/commit/3670d0e1944a813c61f26b76dabb97a032f5271d"
+      },
+      {
+        "kind": "commit",
+        "meta": "2fc9d2f",
+        "title": "Merge remote-tracking branch 'origin/main' into jif/wait-mail-box",
+        "url": "https://github.com/openai/codex/commit/2fc9d2f604e66327f0f573ff85620b10f0b38f97"
+      },
+      {
+        "kind": "commit",
+        "meta": "89fa34b",
+        "title": "nit fixes",
+        "url": "https://github.com/openai/codex/commit/89fa34b83e4f7fd51b04fa696c348a36a52ab96a"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/16010",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #16010 changes multi-agent `wait_agent` so it wakes on new mailbox activity instead of requiring callers to name specific child targets.",
+  "title": "`wait_agent` no longer needs target lists in MultiAgentV2",
+  "why_it_matters": "This trims orchestration bookkeeping for advanced Codex users. If workers are spawned dynamically, the caller can now wait for the next inter-agent reply without first resolving thread IDs or task names."
+}
