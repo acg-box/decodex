@@ -1,0 +1,142 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-03-27T14:54:35Z",
+      "message": "feat: add mailbox concept for wait",
+      "sha": "ddcdd1a72a006d33e1b25d9e4570ef0c977592d9",
+      "url": "https://github.com/openai/codex/commit/ddcdd1a72a006d33e1b25d9e4570ef0c977592d9"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-03-27T15:12:07Z",
+      "message": "clippy",
+      "sha": "3670d0e1944a813c61f26b76dabb97a032f5271d",
+      "url": "https://github.com/openai/codex/commit/3670d0e1944a813c61f26b76dabb97a032f5271d"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-03-27T17:07:14Z",
+      "message": "Merge remote-tracking branch 'origin/main' into jif/wait-mail-box",
+      "sha": "2fc9d2f604e66327f0f573ff85620b10f0b38f97",
+      "url": "https://github.com/openai/codex/commit/2fc9d2f604e66327f0f573ff85620b10f0b38f97"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-03-30T09:12:57Z",
+      "message": "Merge remote-tracking branch 'origin/main' into jif/wait-mail-box",
+      "sha": "466a4ca32e4cf677d6ace57cd4298ca57bd542a8",
+      "url": "https://github.com/openai/codex/commit/466a4ca32e4cf677d6ace57cd4298ca57bd542a8"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-03-30T09:33:53Z",
+      "message": "nit fixes",
+      "sha": "89fa34b83e4f7fd51b04fa696c348a36a52ab96a",
+      "url": "https://github.com/openai/codex/commit/89fa34b83e4f7fd51b04fa696c348a36a52ab96a"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "TODO",
+    "DEFAULT_WAIT_TIMEOUT_MS"
+  ],
+  "files": [
+    {
+      "additions": 0,
+      "deletions": 19,
+      "patch_excerpt": "@@ -28,25 +28,6 @@ pub(crate) async fn resolve_agent_target(\n         })\n }\n \n-/// Resolves multiple tool-facing agent targets to thread ids.\n-pub(crate) async fn resolve_agent_targets(\n-    session: &Arc<Session>,\n-    turn: &Arc<TurnContext>,\n-    targets: Vec<String>,\n-) -> Result<Vec<ThreadId>, FunctionCallError> {\n-    if targets.is_empty() {\n-        return Err(FunctionCallError::RespondToModel(\n-            \"agent targets must be non-empty\".to_string(),\n-        ));\n-    }\n-\n-    let mut resolved = Vec::with_capacity(targets.len());\n-    for target in &targets {\n-        resolved.push(resolve_agent_target(session, turn, target).await?);\n-    }\n-    Ok(resolved)\n-}\n-\n fn register_session_root(session: &Arc<Session>, turn: &Arc<TurnContext>) {\n     session\n         .services",
+      "path": "codex-rs/core/src/agent/agent_resolver.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 6,
+      "patch_excerpt": "@@ -448,12 +448,7 @@ async fn send_inter_agent_communication_without_turn_queues_message_without_trig\n \n     timeout(Duration::from_secs(5), async {\n         loop {\n-            if thread\n-                .codex\n-                .session\n-                .has_queued_response_items_for_next_turn()\n-                .await\n-            {\n+            if thread.codex.session.has_pending_input().await {\n                 break;\n             }\n             sleep(Duration::from_millis(10)).await;",
+      "path": "codex-rs/core/src/agent/control_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 161,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,161 @@\n+use codex_protocol::protocol::InterAgentCommunication;\n+use std::collections::VecDeque;\n+use std::sync::atomic::AtomicU64;\n+use std::sync::atomic::Ordering;\n+use tokio::sync::mpsc;\n+use tokio::sync::watch;\n+\n+#[cfg(test)]\n+use codex_protocol::AgentPath;\n+\n+pub(crate) struct Mailbox {\n+    tx: mpsc::UnboundedSender<InterAgentCommunication>,\n+    next_seq: AtomicU64,\n+    seq_tx: watch::Sender<u64>,\n+}\n+\n+pub(crate) struct MailboxReceiver {\n+    rx: mpsc::UnboundedReceiver<InterAgentCommunication>,\n+    pending_mails: VecDeque<InterAgentCommunication>,\n+}\n+\n+impl Mailbox {\n+    pub(crate) fn new() -> (Self, MailboxReceiver) {\n+        let (tx, rx) = mpsc::unbounded_channel();\n+        let (seq_tx, _) = watch::channel(0);\n+        (\n+            Self {\n+                tx,\n+                next_seq: AtomicU64::new(0),\n+                seq_tx,\n+            },\n+            ...",
+      "path": "codex-rs/core/src/agent/mailbox.rs",
+      "status": "added"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,11 +1,14 @@\n pub(crate) mod agent_resolver;\n pub(crate) mod control;\n+pub(crate) mod mailbox;\n mod registry;\n pub(crate) mod role;\n pub(crate) mod status;\n \n pub(crate) use codex_protocol::protocol::AgentStatus;\n pub(crate) use control::AgentControl;\n+pub(crate) use mailbox::Mailbox;\n+pub(crate) use mailbox::MailboxReceiver;\n pub(crate) use registry::exceeds_thread_spawn_depth_limit;\n pub(crate) use registry::next_thread_spawn_depth;\n pub(crate) use status::agent_status_from_event;",
+      "path": "codex-rs/core/src/agent/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 54,
+      "deletions": 19,
+      "patch_excerpt": "@@ -11,6 +11,8 @@ use crate::CodexAuth;\n use crate::SandboxState;\n use crate::agent::AgentControl;\n use crate::agent::AgentStatus;\n+use crate::agent::Mailbox;\n+use crate::agent::MailboxReceiver;\n use crate::agent::agent_status_from_event;\n use crate::apps::render_apps_section;\n use crate::auth_env_telemetry::collect_auth_env_telemetry;\n@@ -97,6 +99,7 @@ use codex_protocol::permissions::FileSystemSandboxPolicy;\n use codex_protocol::permissions::NetworkSandboxPolicy;\n use codex_protocol::protocol::FileChange;\n use codex_protocol::protocol::HasLegacyEvent;\n+use codex_protocol::protocol::InterAgentCommunication;\n use codex_protocol::protocol::ItemCompletedEvent;\n use codex_protocol::protocol::ItemStartedEvent;\n use codex_protocol::protocol::RawResponseItemEvent;\n@@ -806,7 +809,9 @@ pub(crate) struct Session {\n     pending_mcp_server_refresh_config: Mutex<Option<McpServerRefreshConfig>>,\n    ...",
+      "path": "codex-rs/core/src/codex.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2737,6 +2737,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {\n         skills_outcome,\n     );\n \n+    let (mailbox, mailbox_rx) = crate::agent::Mailbox::new();\n     let session = Session {\n         conversation_id,\n         tx_event,\n@@ -2747,6 +2748,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {\n         pending_mcp_server_refresh_config: Mutex::new(None),\n         conversation: Arc::new(RealtimeConversationManager::new()),\n         active_turn: Mutex::new(None),\n+        mailbox,\n+        mailbox_rx: Mutex::new(mailbox_rx),\n         idle_pending_input: Mutex::new(Vec::new()),\n         guardian_review_session: crate::guardian::GuardianReviewSessionManager::default(),\n         services,\n@@ -3577,6 +3580,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(\n         skills_outcome,\n     ));\n \n+    l...",
+      "path": "codex-rs/core/src/codex_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 4,
+      "patch_excerpt": "@@ -180,10 +180,7 @@ impl CodexThread {\n                 .session\n                 .queue_response_items_for_next_turn(items)\n                 .await;\n-            self.codex\n-                .session\n-                .ensure_task_for_queued_response_items()\n-                .await;\n+            self.codex.session.ensure_task_for_pending_inputs().await;\n         }\n \n         Ok(submission_id)",
+      "path": "codex-rs/core/src/codex_thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 27,
+      "deletions": 4,
+      "patch_excerpt": "@@ -231,13 +231,17 @@ impl Session {\n         };\n \n         let queued_response_items = self.take_queued_response_items_for_next_turn().await;\n+        let mailbox_items = self.get_pending_input().await;\n         let mut active = self.active_turn.lock().await;\n         let mut turn = ActiveTurn::default();\n         let mut turn_state = turn.turn_state.lock().await;\n         turn_state.token_usage_at_turn_start = token_usage_at_turn_start;\n         for item in queued_response_items {\n             turn_state.push_pending_input(item);\n         }\n+        for item in mailbox_items {\n+            turn_state.push_pending_input(item);\n+        }\n         drop(turn_state);\n \n         let timer = turn_context\n@@ -258,16 +262,35 @@ impl Session {\n         *active = Some(turn);\n     }\n \n-    pub(crate) async fn ensure_task_for_queued_response_items(self: &Arc<Self>) {\n-        if !self.has_queued_r...",
+      "path": "codex-rs/core/src/tasks/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 332,
+      "deletions": 62,
+      "patch_excerpt": "@@ -940,12 +940,7 @@ async fn multi_agent_v2_send_message_interrupts_busy_child_without_triggering_tu\n \n     timeout(Duration::from_secs(5), async {\n         loop {\n-            if !thread\n-                .codex\n-                .session\n-                .has_queued_response_items_for_next_turn()\n-                .await\n-            {\n+            if !thread.codex.session.has_pending_input().await {\n                 tokio::time::sleep(Duration::from_millis(10)).await;\n                 continue;\n             }\n@@ -1788,27 +1783,78 @@ async fn wait_agent_rejects_empty_targets() {\n }\n \n #[tokio::test]\n-async fn multi_agent_v2_wait_agent_accepts_targets_argument() {\n+async fn multi_agent_v2_wait_agent_accepts_timeout_only_argument() {\n     let (mut session, mut turn) = make_session_and_context().await;\n-    let target = ThreadId::new().to_string();\n     let manager = thread_manager();\n+    ...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 4,
+      "patch_excerpt": "@@ -2,9 +2,7 @@\n \n use crate::agent::AgentStatus;\n use crate::agent::agent_resolver::resolve_agent_target;\n-use crate::agent::agent_resolver::resolve_agent_targets;\n use crate::agent::exceeds_thread_spawn_depth_limit;\n-use crate::codex::Session;\n use crate::function_tool::FunctionCallError;\n use crate::tools::context::ToolInvocation;\n use crate::tools::context::ToolOutput;\n@@ -15,12 +13,10 @@ use crate::tools::registry::ToolHandler;\n use crate::tools::registry::ToolKind;\n use async_trait::async_trait;\n use codex_protocol::AgentPath;\n-use codex_protocol::ThreadId;\n use codex_protocol::models::ResponseInputItem;\n use codex_protocol::openai_models::ReasoningEffort;\n use codex_protocol::protocol::CollabAgentInteractionBeginEvent;\n use codex_protocol::protocol::CollabAgentInteractionEndEvent;\n-use codex_protocol::protocol::CollabAgentRef;\n use codex_protocol::protocol::CollabAgentSpawnBeginEv...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 117,
+      "patch_excerpt": "@@ -1,11 +1,6 @@\n use super::*;\n-use crate::agent::status::is_final;\n-use futures::FutureExt;\n-use futures::StreamExt;\n-use futures::stream::FuturesUnordered;\n use std::collections::HashMap;\n use std::time::Duration;\n-use tokio::sync::watch::Receiver;\n use tokio::time::Instant;\n use tokio::time::timeout_at;\n \n@@ -33,21 +28,6 @@ impl ToolHandler for Handler {\n         } = invocation;\n         let arguments = function_arguments(payload)?;\n         let args: WaitArgs = parse_arguments(&arguments)?;\n-        let receiver_thread_ids = resolve_agent_targets(&session, &turn, args.targets).await?;\n-        let mut receiver_agents = Vec::with_capacity(receiver_thread_ids.len());\n-        for receiver_thread_id in &receiver_thread_ids {\n-            let agent_metadata = session\n-                .services\n-                .agent_control\n-                .get_agent_metadata(*receiver_thread_id)\n-   ...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2/wait.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints.",
+    "Discovered via hourly merged-PR sync: https://github.com/openai/codex/pull/16010"
+  ],
+  "primary_pr": {
+    "body": "Add a mailbox we can use for inter-agent communication\r\n`wait` is now based on it and don't take target anymore",
+    "labels": [],
+    "merged_at": "2026-03-30T09:47:21Z",
+    "number": 16010,
+    "state": "merged",
+    "title": "feat: add mailbox concept for wait",
+    "url": "https://github.com/openai/codex/pull/16010"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
