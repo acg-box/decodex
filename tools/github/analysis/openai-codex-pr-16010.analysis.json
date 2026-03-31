@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "This is mainly relevant to advanced multi-agent orchestration flows, not ordinary single-agent Codex usage.",
+    "The wait result is still only a completion-or-timeout summary; it does not surface the child message body itself."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "`wait_agent` should return a simple completion result once fresh mailbox traffic arrives after the wait begins, even though no target list was provided.",
+  "how_to_try": "In a Codex build that includes PR #16010 with MultiAgentV2 enabled, spawn a child agent, call `wait_agent({\"timeout_ms\":1000})` from the root, then have any child send a message back without passing `targets`.",
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR narrative says a mailbox now backs inter-agent communication and that `wait` no longer takes a target argument.",
+    "The `wait.rs` handler removes `targets` from `WaitArgs` and replaces per-agent status waiting with a mailbox-sequence watch, so fresh mailbox traffic becomes the completion signal.",
+    "Session/task wiring was updated to treat mailbox items as pending input, which is the runtime path that makes the new wait behavior observable.",
+    "Tests were rewritten to accept timeout-only `wait_agent` calls and to confirm that new mailbox activity after the wait starts completes the call, while already-queued mail does not."
+  ],
+  "slug": "wait-agent-no-longer-needs-targets",
+  "summary": "Merged PR #16010 changes multi-agent `wait_agent` so it wakes on new mailbox activity instead of requiring callers to name specific child targets.",
+  "title": "`wait_agent` no longer needs target lists in MultiAgentV2",
+  "watch_state": null,
+  "why_it_matters": "This trims orchestration bookkeeping for advanced Codex users. If workers are spawned dynamically, the caller can now wait for the next inter-agent reply without first resolving thread IDs or task names."
+}
