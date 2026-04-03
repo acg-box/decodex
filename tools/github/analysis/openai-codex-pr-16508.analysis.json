@@ -1,0 +1,23 @@
+{
+  "kind": "behavior_change",
+  "title": "Model and provider ownership moves out of codex-core",
+  "summary": "Merged PR #16508 splits `models-manager` out of `core`, moves several auth/provider/protocol helpers to owner crates, and keeps temporary re-exports so the workspace can adopt the new boundaries without one giant import rewrite.",
+  "why_it_matters": "This is primarily a contributor-facing architecture shift. Codex model metadata, provider config, auth glue, and response-debug helpers now have clearer crate ownership, which should make follow-on work in those areas less entangled with `codex-core`.",
+  "confidence": "confirmed",
+  "impact": "medium",
+  "proof_points": [
+    "The PR summary explicitly says model metadata paths stop depending on `core::Config` and lists new owners such as `codex-models-manager`, `codex-model-provider-info`, `codex-api`, `codex-protocol`, and `codex-response-debug-context`.",
+    "The patch adds new workspace members and rewires Cargo manifests plus moved source files, which matches the claim that crate ownership is being redistributed rather than just lightly renamed.",
+    "Follow-up commits in the same PR restore bundled-model fallback behavior and avoid a giant import-only rewrite, which supports reading the change as a staged ownership extraction instead of a breaking immediate surface reset.",
+    "The touched files span core, api, app-server, protocol-adjacent code, and multiple new crates, so the main value is structural decoupling across the Codex Rust workspace."
+  ],
+  "slug": "model-and-provider-ownership-moves-out-of-codex-core",
+  "config_flags": [],
+  "how_to_try": null,
+  "expected_effect": null,
+  "caveats": [
+    "Most readers will not see an immediate CLI behavior change from this PR alone; the payoff is cleaner crate boundaries for later work.",
+    "The PR intentionally keeps temporary re-exports and defers some mechanical import cleanup to follow-up changes."
+  ],
+  "watch_state": "Watch for follow-up PRs that remove the temporary re-exports and finish migrating imports to the new crate owners, since this change is deliberately staged."
+}

@@ -1,0 +1,40 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "bolinfest",
+      "committed_at": "2026-04-02T23:58:05Z",
+      "message": "fix: address unused variable on windows",
+      "sha": "14da169c4bbfc7408837edbabf9b419701ec3516",
+      "url": "https://github.com/openai/codex/commit/14da169c4bbfc7408837edbabf9b419701ec3516"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 2,
+      "patch_excerpt": "@@ -569,11 +569,10 @@ impl Tui {\n                 terminal.invalidate_viewport();\n             }\n \n-            let area = terminal.viewport_area;\n-\n             // Update the y position for suspending so Ctrl-Z can place the cursor correctly.\n             #[cfg(unix)]\n             {\n+                let area = terminal.viewport_area;\n                 let inline_area_bottom = if self.alt_screen_active.load(Ordering::Relaxed) {\n                     self.alt_saved_viewport\n                         .map(|r| r.bottom().saturating_sub(1))",
+      "path": "codex-rs/tui/src/tui.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "This slipped in during https://github.com/openai/codex/pull/16578. I am still working on getting Windows working properly with Bazel on PRs.",
+    "labels": [],
+    "merged_at": "2026-04-03T00:05:45Z",
+    "number": 16633,
+    "state": "merged",
+    "title": "fix: address unused variable on windows",
+    "url": "https://github.com/openai/codex/pull/16633"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

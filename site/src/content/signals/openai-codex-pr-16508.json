@@ -1,0 +1,66 @@
+{
+  "caveats": [
+    "Most readers will not see an immediate CLI behavior change from this PR alone; the payoff is cleaner crate boundaries for later work.",
+    "The PR intentionally keeps temporary re-exports and defers some mechanical import cleanup to follow-up changes."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "impact": "medium",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR summary explicitly says model metadata paths stop depending on `core::Config` and lists new owners such as `codex-models-manager`, `codex-model-provider-info`, `codex-api`, `codex-protocol`, and `codex-response-debug-context`.",
+    "The patch adds new workspace members and rewires Cargo manifests plus moved source files, which matches the claim that crate ownership is being redistributed rather than just lightly renamed.",
+    "Follow-up commits in the same PR restore bundled-model fallback behavior and avoid a giant import-only rewrite, which supports reading the change as a staged ownership extraction instead of a breaking immediate surface reset.",
+    "The touched files span core, api, app-server, protocol-adjacent code, and multiple new crates, so the main value is structural decoupling across the Codex Rust workspace."
+  ],
+  "published_at": "2026-04-03T06:00:02Z",
+  "schema": "signal_entry/v1",
+  "slug": "model-and-provider-ownership-moves-out-of-codex-core",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/e67d6827e55dc797c24e6aefeda505245e4599f3",
+      "https://github.com/openai/codex/commit/2e105a99ef77d6dde1530bd557cb488070920d82",
+      "https://github.com/openai/codex/commit/4dd6b8e5bf26c77582d9edde2dcc0abbb7606049",
+      "https://github.com/openai/codex/commit/22ddcb47853735c2b19b8396f05835d42023d59c"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#16508",
+        "title": "extract models manager and related ownership from core",
+        "url": "https://github.com/openai/codex/pull/16508"
+      },
+      {
+        "kind": "commit",
+        "meta": "e67d682",
+        "title": "Extract models manager ownership from core",
+        "url": "https://github.com/openai/codex/commit/e67d6827e55dc797c24e6aefeda505245e4599f3"
+      },
+      {
+        "kind": "commit",
+        "meta": "2e105a9",
+        "title": "codex: allow bundled models expect in PR #16508",
+        "url": "https://github.com/openai/codex/commit/2e105a99ef77d6dde1530bd557cb488070920d82"
+      },
+      {
+        "kind": "commit",
+        "meta": "4dd6b8e",
+        "title": "codex: restore bundled models fallback",
+        "url": "https://github.com/openai/codex/commit/4dd6b8e5bf26c77582d9edde2dcc0abbb7606049"
+      },
+      {
+        "kind": "commit",
+        "meta": "22ddcb4",
+        "title": "Address review style nits",
+        "url": "https://github.com/openai/codex/commit/22ddcb47853735c2b19b8396f05835d42023d59c"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/16508",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #16508 splits `models-manager` out of `core`, moves several auth/provider/protocol helpers to owner crates, and keeps temporary re-exports so the workspace can adopt the new boundaries without one giant import rewrite.",
+  "title": "Model and provider ownership moves out of codex-core",
+  "watch_state": "Watch for follow-up PRs that remove the temporary re-exports and finish migrating imports to the new crate owners, since this change is deliberately staged.",
+  "why_it_matters": "This is primarily a contributor-facing architecture shift. Codex model metadata, provider config, auth glue, and response-debug helpers now have clearer crate ownership, which should make follow-on work in those areas less entangled with `codex-core`."
+}
