@@ -1,0 +1,855 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-04-03T00:37:13Z",
+      "message": "Extract models manager ownership from core",
+      "sha": "e67d6827e55dc797c24e6aefeda505245e4599f3",
+      "url": "https://github.com/openai/codex/commit/e67d6827e55dc797c24e6aefeda505245e4599f3"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-04-03T00:53:30Z",
+      "message": "codex: allow bundled models expect in PR #16508",
+      "sha": "2e105a99ef77d6dde1530bd557cb488070920d82",
+      "url": "https://github.com/openai/codex/commit/2e105a99ef77d6dde1530bd557cb488070920d82"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-04-03T01:56:31Z",
+      "message": "codex: restore bundled models fallback",
+      "sha": "4dd6b8e5bf26c77582d9edde2dcc0abbb7606049",
+      "url": "https://github.com/openai/codex/commit/4dd6b8e5bf26c77582d9edde2dcc0abbb7606049"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-04-03T05:47:06Z",
+      "message": "Address review style nits",
+      "sha": "22ddcb47853735c2b19b8396f05835d42023d59c",
+      "url": "https://github.com/openai/codex/commit/22ddcb47853735c2b19b8396f05835d42023d59c"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "PLAN",
+    "DEFAULT",
+    "EXECUTE",
+    "PAIR_PROGRAMMING",
+    "ZERO",
+    "TUI",
+    "MCP_SANDBOX_STATE_CAPABILITY",
+    "MCP_SANDBOX_STATE_METHOD",
+    "X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER",
+    "DEFAULT_LMSTUDIO_PORT",
+    "DEFAULT_OLLAMA_PORT",
+    "LMSTUDIO_OSS_PROVIDER_ID",
+    "OLLAMA_OSS_PROVIDER_ID",
+    "OPENAI_PROVIDER_ID",
+    "CARGO_PKG_VERSION_MAJOR",
+    "CARGO_PKG_VERSION_MINOR",
+    "CARGO_PKG_VERSION_PATCH",
+    "TEST_MODEL_PRESETS",
+    "BIG5",
+    "EUC_KR",
+    "GBK",
+    "ISO_8859_2",
+    "ISO_8859_3",
+    "ISO_8859_4",
+    "ISO_8859_5",
+    "ISO_8859_6",
+    "ISO_8859_7",
+    "ISO_8859_8",
+    "ISO_8859_10",
+    "ISO_8859_13",
+    "SHIFT_JIS",
+    "WINDOWS_874",
+    "WINDOWS_1250",
+    "WINDOWS_1251",
+    "WINDOWS_1253",
+    "WINDOWS_1254",
+    "WINDOWS_1255",
+    "WINDOWS_1256",
+    "WINDOWS_1257",
+    "WINDOWS_1258",
+    "UTF",
+    "WSL",
+    "CP1251",
+    "KOI8",
+    "CP866",
+    "IBM866",
+    "ASCII",
+    "CP1252",
+    "ISO",
+    "WINDOWS_1252",
+    "TIS",
+    "ANSI",
+    "USER_SHELL_COMMAND_FRAGMENT",
+    "INITIAL_DELAY_MS",
+    "CODEX_SANDBOX_ENV_VAR",
+    "REMOTE_MODEL_SLUG",
+    "DISCOVERABLE_GMAIL_ID",
+    "DEFAULT_LISTEN_URL",
+    "URL",
+    "FEEDBACK_DIAGNOSTICS_ATTACHMENT_FILENAME",
+    "UPLOAD_TIMEOUT_SECS",
+    "FEEDBACK_TAGS_TARGET",
+    "MAX_FEEDBACK_TAGS",
+    "CODEX_API_KEY_ENV_VAR",
+    "OPENAI_API_KEY_ENV_VAR",
+    "REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR",
+    "CBP",
+    "DEFAULT_STREAM_IDLE_TIMEOUT_MS",
+    "DEFAULT_STREAM_MAX_RETRIES",
+    "DEFAULT_REQUEST_MAX_RETRIES",
+    "DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS",
+    "MAX_STREAM_MAX_RETRIES",
+    "MAX_REQUEST_MAX_RETRIES",
+    "OPENAI_PROVIDER_NAME",
+    "CHAT_WIRE_API_REMOVED_ERROR",
+    "LEGACY_OLLAMA_CHAT_PROVIDER_ID",
+    "OLLAMA_CHAT_PROVIDER_REMOVED_ERROR",
+    "--local-provider",
+    "HTTP",
+    "COLLABORATION_MODE_DEFAULT",
+    "COLLABORATION_MODE_PLAN",
+    "TUI_VISIBLE_COLLABORATION_MODES",
+    "KNOWN_MODE_NAMES_TEMPLATE_KEY",
+    "KNOWN_MODE_NAMES",
+    "REQUEST_USER_INPUT_AVAILABILITY_TEMPLATE_KEY",
+    "REQUEST_USER_INPUT_AVAILABILITY",
+    "ASKING_QUESTIONS_GUIDANCE_TEMPLATE_KEY",
+    "ASKING_QUESTIONS_GUIDANCE",
+    "MODELS_REFRESH_TIMEOUT",
+    "TTL",
+    "BASE_INSTRUCTIONS",
+    "DEFAULT_PERSONALITY_HEADER",
+    "GPT",
+    "LOCAL_FRIENDLY_TEMPLATE",
+    "LOCAL_PRAGMATIC_TEMPLATE",
+    "PERSONALITY_PLACEHOLDER",
+    "ERROR_MESSAGE_UI_MAX_BYTES",
+    "SIGINT",
+    "CLI",
+    "TOO_MANY_REQUESTS",
+    "WINDOWS_1252_PUNCT",
+    "VSC",
+    "AUTH_ERROR_HEADER",
+    "X_ERROR_JSON_HEADER"
+  ],
+  "files": [
+    {
+      "additions": 82,
+      "deletions": 4,
+      "patch_excerpt": "@@ -1367,7 +1367,9 @@ dependencies = [\n  \"anyhow\",\n  \"assert_matches\",\n  \"async-trait\",\n+ \"base64 0.22.1\",\n  \"bytes\",\n+ \"chrono\",\n  \"codex-client\",\n  \"codex-protocol\",\n  \"codex-utils-rustls-provider\",\n@@ -1787,6 +1789,10 @@ dependencies = [\n  \"v8\",\n ]\n \n+[[package]]\n+name = \"codex-collaboration-mode-templates\"\n+version = \"0.0.0\"\n+\n [[package]]\n name = \"codex-config\"\n version = \"0.0.0\"\n@@ -1837,7 +1843,6 @@ dependencies = [\n  \"async-trait\",\n  \"base64 0.22.1\",\n  \"bm25\",\n- \"chardetng\",\n  \"chrono\",\n  \"clap\",\n  \"codex-analytics\",\n@@ -1853,15 +1858,18 @@ dependencies = [\n  \"codex-exec-server\",\n  \"codex-execpolicy\",\n  \"codex-features\",\n+ \"codex-feedback\",\n  \"codex-git-utils\",\n  \"codex-hooks\",\n  \"codex-instructions\",\n  \"codex-login\",\n  \"codex-mcp\",\n+ \"codex-models-manager\",\n  \"codex-network-proxy\",\n  \"codex-otel\",\n  \"codex-plugin\",\n  \"codex-protocol\",\n+ \"codex-response-debug-context\",\n  \"codex-r...",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -20,6 +20,7 @@ members = [\n     \"cloud-tasks-client\",\n     \"cloud-tasks-mock-client\",\n     \"cli\",\n+    \"collaboration-mode-templates\",\n     \"connectors\",\n     \"config\",\n     \"shell-command\",\n@@ -41,13 +42,16 @@ members = [\n     \"login\",\n     \"codex-mcp\",\n     \"mcp-server\",\n+    \"model-provider-info\",\n+    \"models-manager\",\n     \"network-proxy\",\n     \"ollama\",\n     \"process-hardening\",\n     \"protocol\",\n     \"rollout\",\n     \"rmcp-client\",\n     \"responses-api-proxy\",\n+    \"response-debug-context\",\n     \"sandboxing\",\n     \"stdio-to-uds\",\n     \"otel\",\n@@ -112,6 +116,7 @@ codex-backend-client = { path = \"backend-client\" }\n codex-chatgpt = { path = \"chatgpt\" }\n codex-cli = { path = \"cli\" }\n codex-client = { path = \"codex-client\" }\n+codex-collaboration-mode-templates = { path = \"collaboration-mode-templates\" }\n codex-cloud-requirements = { path = \"cloud-requirements\" }\n codex-cloud-tasks-clie...",
+      "path": "codex-rs/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -202,6 +202,7 @@ use codex_core::config_loader::CloudRequirementsLoadErrorCode;\n use codex_core::config_loader::CloudRequirementsLoader;\n use codex_core::config_loader::LoaderOverrides;\n use codex_core::config_loader::load_config_layers_state;\n+use codex_core::default_client::set_default_client_residency_requirement;\n use codex_core::error::CodexErr;\n use codex_core::error::Result as CodexResult;\n use codex_core::exec::ExecCapturePolicy;\n@@ -244,7 +245,6 @@ use codex_login::ServerOptions as LoginServerOptions;\n use codex_login::ShutdownHandle;\n use codex_login::auth::login_with_chatgpt_auth_tokens;\n use codex_login::complete_device_code_login;\n-use codex_login::default_client::set_default_client_residency_requirement;\n use codex_login::login_with_api_key;\n use codex_login::request_device_code;\n use codex_login::run_login_server;",
+      "path": "codex-rs/app-server/src/codex_message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -6,7 +6,9 @@ license.workspace = true\n \n [dependencies]\n async-trait = { workspace = true }\n+base64 = { workspace = true }\n bytes = { workspace = true }\n+chrono = { workspace = true }\n codex-client = { workspace = true }\n codex-protocol = { workspace = true }\n codex-utils-rustls-provider = { workspace = true }",
+      "path": "codex-rs/codex-api/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 17,
+      "deletions": 53,
+      "patch_excerpt": "@@ -1,24 +1,21 @@\n+use crate::AuthProvider as ApiAuthProvider;\n+use crate::TransportError;\n+use crate::error::ApiError;\n+use crate::rate_limits::parse_promo_message;\n+use crate::rate_limits::parse_rate_limit_for_limit;\n use base64::Engine;\n use chrono::DateTime;\n use chrono::Utc;\n-use codex_api::AuthProvider as ApiAuthProvider;\n-use codex_api::TransportError;\n-use codex_api::error::ApiError;\n-use codex_api::rate_limits::parse_promo_message;\n-use codex_api::rate_limits::parse_rate_limit_for_limit;\n-use codex_login::token_data::PlanType;\n+use codex_protocol::auth::PlanType;\n+use codex_protocol::error::CodexErr;\n+use codex_protocol::error::RetryLimitReachedError;\n+use codex_protocol::error::UnexpectedResponseError;\n+use codex_protocol::error::UsageLimitReachedError;\n use http::HeaderMap;\n use serde::Deserialize;\n use serde_json::Value;\n \n-use crate::error::CodexErr;\n-use crate::error::Retry...",
+      "path": "codex-rs/codex-api/src/api_bridge.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/codex-api/src/api_bridge_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,3 +1,4 @@\n+pub mod api_bridge;\n pub mod auth;\n pub mod common;\n pub mod endpoint;",
+      "path": "codex-rs/codex-api/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,12 @@\n+load(\"//:defs.bzl\", \"codex_rust_crate\")\n+\n+codex_rust_crate(\n+    name = \"collaboration-mode-templates\",\n+    crate_name = \"codex_collaboration_mode_templates\",\n+    compile_data = glob([\"templates/*.md\"]),\n+)\n+\n+exports_files(\n+    glob([\"templates/*.md\"]),\n+    visibility = [\"//visibility:public\"],\n+)",
+      "path": "codex-rs/collaboration-mode-templates/BUILD.bazel",
+      "status": "added"
+    },
+    {
+      "additions": 13,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,13 @@\n+[package]\n+edition.workspace = true\n+license.workspace = true\n+name = \"codex-collaboration-mode-templates\"\n+version.workspace = true\n+\n+[lib]\n+doctest = false\n+name = \"codex_collaboration_mode_templates\"\n+path = \"src/lib.rs\"\n+\n+[lints]\n+workspace = true",
+      "path": "codex-rs/collaboration-mode-templates/Cargo.toml",
+      "status": "added"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,4 @@\n+pub const PLAN: &str = include_str!(\"../templates/plan.md\");\n+pub const DEFAULT: &str = include_str!(\"../templates/default.md\");\n+pub const EXECUTE: &str = include_str!(\"../templates/execute.md\");\n+pub const PAIR_PROGRAMMING: &str = include_str!(\"../templates/pair_programming.md\");",
+      "path": "codex-rs/collaboration-mode-templates/src/lib.rs",
+      "status": "added"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/collaboration-mode-templates/templates/default.md",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/collaboration-mode-templates/templates/execute.md",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/collaboration-mode-templates/templates/pair_programming.md",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/collaboration-mode-templates/templates/plan.md",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 11,
+      "patch_excerpt": "@@ -1,17 +1,8 @@\n load(\"//:defs.bzl\", \"codex_rust_crate\")\n \n-exports_files(\n-    [\n-        \"templates/collaboration_mode/default.md\",\n-        \"templates/collaboration_mode/plan.md\",\n-    ],\n-    visibility = [\"//visibility:public\"],\n-)\n-\n filegroup(\n     name = \"model_availability_nux_fixtures\",\n     srcs = [\n-        \"models.json\",\n         \"tests/cli_responses_fixture.sse\",\n     ],\n     visibility = [\"//visibility:public\"],\n@@ -38,8 +29,6 @@ codex_rust_crate(\n     },\n     integration_compile_data_extra = [\n         \"//codex-rs/apply-patch:apply_patch_tool_instructions.md\",\n-        \"models.json\",\n-        \"prompt.md\",\n     ],\n     test_data_extra = [\n         \"config.schema.json\",",
+      "path": "codex-rs/core/BUILD.bazel",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 6,
+      "patch_excerpt": "@@ -23,7 +23,6 @@ async-channel = { workspace = true }\n async-trait = { workspace = true }\n base64 = { workspace = true }\n bm25 = { workspace = true }\n-chardetng = { workspace = true }\n chrono = { workspace = true, features = [\"serde\"] }\n clap = { workspace = true, features = [\"derive\"] }\n codex-analytics = { workspace = true }\n@@ -37,8 +36,10 @@ codex-config = { workspace = true }\n codex-core-skills = { workspace = true }\n codex-exec-server = { workspace = true }\n codex-features = { workspace = true }\n+codex-feedback = { workspace = true }\n codex-login = { workspace = true }\n codex-mcp = { workspace = true }\n+codex-models-manager = { workspace = true }\n codex-shell-command = { workspace = true }\n codex-execpolicy = { workspace = true }\n codex-git-utils = { workspace = true }\n@@ -48,6 +49,7 @@ codex-network-proxy = { workspace = true }\n codex-otel = { workspace = true }\n codex-plugin = {...",
+      "path": "codex-rs/core/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -21,7 +21,7 @@ pub(crate) async fn resolve_agent_target(\n         .resolve_agent_reference(session.conversation_id, &turn.session_source, target)\n         .await\n         .map_err(|err| match err {\n-            crate::error::CodexErr::UnsupportedOperation(message) => {\n+            codex_protocol::error::CodexErr::UnsupportedOperation(message) => {\n                 FunctionCallError::RespondToModel(message)\n             }\n             other => FunctionCallError::RespondToModel(other.to_string()),",
+      "path": "codex-rs/core/src/agent/agent_resolver.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 5,
+      "patch_excerpt": "@@ -30,11 +30,6 @@ use std::sync::OnceLock;\n use std::sync::atomic::AtomicBool;\n use std::sync::atomic::Ordering;\n \n-use crate::api_bridge::CoreAuthProvider;\n-use crate::api_bridge::auth_provider_from_auth;\n-use crate::api_bridge::map_api_error;\n-use crate::auth_env_telemetry::AuthEnvTelemetry;\n-use crate::auth_env_telemetry::collect_auth_env_telemetry;\n use codex_api::CompactClient as ApiCompactClient;\n use codex_api::CompactionInput as ApiCompactionInput;\n use codex_api::MemoriesClient as ApiMemoriesClient;\n@@ -97,6 +92,11 @@ use tracing::instrument;\n use tracing::trace;\n use tracing::warn;\n \n+use crate::api_bridge::CoreAuthProvider;\n+use crate::api_bridge::auth_provider_from_auth;\n+use crate::api_bridge::map_api_error;\n+use crate::auth_env_telemetry::AuthEnvTelemetry;\n+use crate::auth_env_telemetry::collect_auth_env_telemetry;\n use crate::client_common::Prompt;\n use crate::client_comm...",
+      "path": "codex-rs/core/src/client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 2,
+      "patch_excerpt": "@@ -2,6 +2,8 @@ use super::AuthRequestTelemetryContext;\n use super::ModelClient;\n use super::PendingUnauthorizedRetry;\n use super::UnauthorizedRecoveryExecution;\n+use crate::api_bridge::CoreAuthProvider;\n+use codex_login::AuthMode;\n use codex_otel::SessionTelemetry;\n use codex_protocol::ThreadId;\n use codex_protocol::openai_models::ModelInfo;\n@@ -105,8 +107,8 @@ async fn summarize_memories_returns_empty_for_empty_input() {\n #[test]\n fn auth_request_telemetry_context_tracks_attached_auth_and_retry_phase() {\n     let auth_context = AuthRequestTelemetryContext::new(\n-        Some(codex_login::AuthMode::Chatgpt),\n-        &crate::api_bridge::CoreAuthProvider::for_test(Some(\"access-token\"), Some(\"workspace-123\")),\n+        Some(AuthMode::Chatgpt),\n+        &CoreAuthProvider::for_test(Some(\"access-token\"), Some(\"workspace-123\")),\n         PendingUnauthorizedRetry::from_recovery(UnauthorizedRec...",
+      "path": "codex-rs/core/src/client_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 4,
+      "patch_excerpt": "@@ -570,7 +570,9 @@ impl Codex {\n         // 1. config.base_instructions override\n         // 2. conversation history => session_meta.base_instructions\n         // 3. base_instructions for current model\n-        let model_info = models_manager.get_model_info(model.as_str(), &config).await;\n+        let model_info = models_manager\n+            .get_model_info(model.as_str(), &config.to_models_manager_config())\n+            .await;\n         let base_instructions = config\n             .base_instructions\n             .clone()\n@@ -903,7 +905,9 @@ impl TurnContext {\n     pub(crate) async fn with_model(&self, model: String, models_manager: &ModelsManager) -> Self {\n         let mut config = (*self.config).clone();\n         config.model = Some(model.clone());\n-        let model_info = models_manager.get_model_info(model.as_str(), &config).await;\n+        let model_info = models_manager\n+        ...",
+      "path": "codex-rs/core/src/codex.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 34,
+      "deletions": 14,
+      "patch_excerpt": "@@ -9,12 +9,12 @@ use crate::config_loader::NetworkDomainPermissionsToml;\n use crate::config_loader::RequirementSource;\n use crate::config_loader::Sourced;\n use crate::exec::ExecCapturePolicy;\n-use crate::exec::ExecToolCallOutput;\n use crate::function_tool::FunctionCallError;\n use crate::models_manager::model_info;\n use crate::shell::default_user_shell;\n use crate::tools::format_exec_output_str;\n \n+use crate::exec::ExecToolCallOutput;\n use codex_features::Features;\n use codex_login::CodexAuth;\n use codex_mcp::mcp_connection_manager::ToolInfo;\n@@ -63,7 +63,6 @@ use codex_protocol::models::ContentItem;\n use codex_protocol::models::DeveloperInstructions;\n use codex_protocol::models::ResponseInputItem;\n use codex_protocol::models::ResponseItem;\n-use codex_protocol::openai_models::ModelsResponse;\n use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::CompactedItem;\n use...",
+      "path": "codex-rs/core/src/codex_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -4242,8 +4242,8 @@ fn load_config_rejects_unsafe_agent_role_nickname_candidates() -> std::io::Resul\n fn model_catalog_json_loads_from_path() -> std::io::Result<()> {\n     let codex_home = TempDir::new()?;\n     let catalog_path = codex_home.path().join(\"catalog.json\");\n-    let mut catalog: ModelsResponse =\n-        serde_json::from_str(include_str!(\"../../models.json\")).expect(\"valid models.json\");\n+    let mut catalog = codex_models_manager::bundled_models_response()\n+        .unwrap_or_else(|err| panic!(\"bundled models.json should parse: {err}\"));\n     catalog.models = catalog.models.into_iter().take(1).collect();\n     std::fs::write(\n         &catalog_path,",
+      "path": "codex-rs/core/src/config/config_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 0,
+      "patch_excerpt": "@@ -65,6 +65,7 @@ use codex_features::FeaturesToml;\n use codex_git_utils::resolve_root_git_project_for_trust;\n use codex_login::AuthCredentialsStoreMode;\n use codex_mcp::mcp::McpConfig;\n+use codex_models_manager::ModelsManagerConfig;\n use codex_protocol::config_types::AltScreenMode;\n use codex_protocol::config_types::ForcedLoginMethod;\n use codex_protocol::config_types::Personality;\n@@ -683,6 +684,18 @@ impl ConfigBuilder {\n }\n \n impl Config {\n+    pub fn to_models_manager_config(&self) -> ModelsManagerConfig {\n+        ModelsManagerConfig {\n+            model_context_window: self.model_context_window,\n+            model_auto_compact_token_limit: self.model_auto_compact_token_limit,\n+            tool_output_token_limit: self.tool_output_token_limit,\n+            base_instructions: self.base_instructions.clone(),\n+            personality_enabled: self.features.enabled(Feature::Personality...",
+      "path": "codex-rs/core/src/config/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 67,
+      "patch_excerpt": "@@ -26,9 +26,10 @@ use crate::sandboxing::SandboxPermissions;\n use crate::spawn::SpawnChildRequest;\n use crate::spawn::StdioPolicy;\n use crate::spawn::spawn_child_async;\n-use crate::text_encoding::bytes_to_string_smart;\n use codex_network_proxy::NetworkProxy;\n use codex_protocol::config_types::WindowsSandboxLevel;\n+pub use codex_protocol::exec_output::ExecToolCallOutput;\n+pub use codex_protocol::exec_output::StreamOutput;\n use codex_protocol::permissions::FileSystemSandboxKind;\n use codex_protocol::permissions::FileSystemSandboxPolicy;\n use codex_protocol::permissions::NetworkSandboxPolicy;\n@@ -632,25 +633,6 @@ fn finalize_exec_result(\n     }\n }\n \n-pub(crate) mod errors {\n-    use super::CodexErr;\n-    use codex_sandboxing::SandboxTransformError;\n-\n-    impl From<SandboxTransformError> for CodexErr {\n-        fn from(err: SandboxTransformError) -> Self {\n-            match err {\n-       ...",
+      "path": "codex-rs/core/src/exec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 27,
+      "deletions": 18,
+      "patch_excerpt": "@@ -5,11 +5,13 @@\n // the TUI or the tracing stack).\n #![deny(clippy::print_stdout, clippy::print_stderr)]\n \n-pub mod api_bridge;\n+pub use codex_login::api_bridge;\n mod apply_patch;\n mod apps;\n mod arc_monitor;\n-mod auth_env_telemetry;\n+pub use codex_login as auth;\n+pub use codex_login::auth_env_telemetry;\n+pub use codex_login::default_client;\n mod client;\n mod client_common;\n pub mod codex;\n@@ -30,7 +32,7 @@ pub mod connectors;\n mod context_manager;\n mod contextual_user_message;\n mod environment_context;\n-pub mod error;\n+pub use codex_protocol::error;\n pub mod exec;\n pub mod exec_env;\n mod exec_policy;\n@@ -46,21 +48,24 @@ pub mod landlock;\n pub mod mcp;\n mod mcp_skill_dependencies;\n mod mcp_tool_approval_templates;\n-pub mod models_manager;\n+pub use codex_models_manager as models_manager;\n mod network_policy_decision;\n pub mod network_proxy_loader;\n mod original_image_detail;\n-pub use te...",
+      "path": "codex-rs/core/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -228,7 +228,7 @@ async fn build_request_context(session: &Arc<Session>, config: &Config) -> Reque\n     let model = session\n         .services\n         .models_manager\n-        .get_model_info(&model_name, config)\n+        .get_model_info(&model_name, &config.to_models_manager_config())\n         .await;\n     let turn_context = session.new_default_turn().await;\n     RequestContext::from_turn_context(\n@@ -466,7 +466,7 @@ mod job {\n     /// Serializes filtered stage-1 memory items for prompt inclusion.\n     pub(super) fn serialize_filtered_rollout_response_items(\n         items: &[RolloutItem],\n-    ) -> crate::error::Result<String> {\n+    ) -> codex_protocol::error::Result<String> {\n         let filtered = items\n             .iter()\n             .filter_map(|item| {",
+      "path": "codex-rs/core/src/memories/phase1.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 15,
+      "patch_excerpt": "@@ -1,15 +0,0 @@\n-pub mod cache;\n-pub mod collaboration_mode_presets;\n-pub mod manager;\n-pub mod model_info;\n-pub mod model_presets;\n-\n-/// Convert the client version string to a whole version string (e.g. \"1.2.3-alpha.4\" -> \"1.2.3\").\n-pub fn client_version_to_whole() -> String {\n-    format!(\n-        \"{}.{}.{}\",\n-        env!(\"CARGO_PKG_VERSION_MAJOR\"),\n-        env!(\"CARGO_PKG_VERSION_MINOR\"),\n-        env!(\"CARGO_PKG_VERSION_PATCH\")\n-    )\n-}",
+      "path": "codex-rs/core/src/models_manager/mod.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 1,
+      "deletions": 20,
+      "patch_excerpt": "@@ -1,25 +1,12 @@\n use codex_execpolicy::Decision as ExecPolicyDecision;\n use codex_execpolicy::NetworkRuleProtocol as ExecPolicyNetworkRuleProtocol;\n use codex_network_proxy::BlockedRequest;\n-use codex_network_proxy::NetworkDecisionSource;\n use codex_network_proxy::NetworkPolicyDecision;\n use codex_protocol::approvals::NetworkApprovalContext;\n use codex_protocol::approvals::NetworkApprovalProtocol;\n use codex_protocol::approvals::NetworkPolicyAmendment;\n use codex_protocol::approvals::NetworkPolicyRuleAction;\n-use serde::Deserialize;\n-\n-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]\n-#[serde(rename_all = \"camelCase\")]\n-pub struct NetworkPolicyDecisionPayload {\n-    pub decision: NetworkPolicyDecision,\n-    pub source: NetworkDecisionSource,\n-    #[serde(default)]\n-    pub protocol: Option<NetworkApprovalProtocol>,\n-    pub host: Option<String>,\n-    pub reason: Option<String>,\n-   ...",
+      "path": "codex-rs/core/src/network_policy_decision.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,5 +1,6 @@\n use super::*;\n use codex_network_proxy::BlockedRequest;\n+use codex_network_proxy::NetworkDecisionSource;\n use codex_protocol::approvals::NetworkPolicyAmendment;\n use codex_protocol::approvals::NetworkPolicyRuleAction;\n use pretty_assertions::assert_eq;",
+      "path": "codex-rs/core/src/network_policy_decision_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -140,14 +140,14 @@ impl ExecRequest {\n pub async fn execute_env(\n     exec_request: ExecRequest,\n     stdout_stream: Option<StdoutStream>,\n-) -> crate::error::Result<ExecToolCallOutput> {\n+) -> codex_protocol::error::Result<ExecToolCallOutput> {\n     execute_exec_request(exec_request, stdout_stream, /*after_spawn*/ None).await\n }\n \n pub async fn execute_exec_request_with_after_spawn(\n     exec_request: ExecRequest,\n     stdout_stream: Option<StdoutStream>,\n     after_spawn: Option<Box<dyn FnOnce() + Send>>,\n-) -> crate::error::Result<ExecToolCallOutput> {\n+) -> codex_protocol::error::Result<ExecToolCallOutput> {\n     execute_exec_request(exec_request, stdout_stream, after_spawn).await\n }",
+      "path": "codex-rs/core/src/sandboxing/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 6,
+      "patch_excerpt": "@@ -11,7 +11,6 @@ use codex_exec_server::EnvironmentManager;\n use codex_protocol::config_types::CollaborationModeMask;\n use codex_protocol::openai_models::ModelInfo;\n use codex_protocol::openai_models::ModelPreset;\n-use codex_protocol::openai_models::ModelsResponse;\n use once_cell::sync::Lazy;\n \n use crate::ModelProviderInfo;\n@@ -25,8 +24,7 @@ use codex_login::AuthManager;\n use codex_login::CodexAuth;\n \n static TEST_MODEL_PRESETS: Lazy<Vec<ModelPreset>> = Lazy::new(|| {\n-    let file_contents = include_str!(\"../models.json\");\n-    let mut response: ModelsResponse = serde_json::from_str(file_contents)\n+    let mut response = codex_models_manager::bundled_models_response()\n         .unwrap_or_else(|err| panic!(\"bundled models.json should parse: {err}\"));\n     response.models.sort_by(|a, b| a.priority.cmp(&b.priority));\n     let mut presets: Vec<ModelPreset> = response.models.into_iter().ma...",
+      "path": "codex-rs/core/src/test_support.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 340,
+      "patch_excerpt": "@@ -1,340 +0,0 @@\n-use super::*;\n-use encoding_rs::BIG5;\n-use encoding_rs::EUC_KR;\n-use encoding_rs::GBK;\n-use encoding_rs::ISO_8859_2;\n-use encoding_rs::ISO_8859_3;\n-use encoding_rs::ISO_8859_4;\n-use encoding_rs::ISO_8859_5;\n-use encoding_rs::ISO_8859_6;\n-use encoding_rs::ISO_8859_7;\n-use encoding_rs::ISO_8859_8;\n-use encoding_rs::ISO_8859_10;\n-use encoding_rs::ISO_8859_13;\n-use encoding_rs::SHIFT_JIS;\n-use encoding_rs::WINDOWS_874;\n-use encoding_rs::WINDOWS_1250;\n-use encoding_rs::WINDOWS_1251;\n-use encoding_rs::WINDOWS_1253;\n-use encoding_rs::WINDOWS_1254;\n-use encoding_rs::WINDOWS_1255;\n-use encoding_rs::WINDOWS_1256;\n-use encoding_rs::WINDOWS_1257;\n-use encoding_rs::WINDOWS_1258;\n-use pretty_assertions::assert_eq;\n-\n-#[test]\n-fn test_utf8_passthrough() {\n-    // Fast path: when UTF-8 is valid we should avoid copies and return as-is.\n-    let utf8_text = \"Hello, \u043c\u0438\u0440! \u4e16\u754c\";\n-    let by...",
+      "path": "codex-rs/core/src/text_encoding_tests.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -292,7 +292,7 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(\n         let selected_model_info = session\n             .services\n             .models_manager\n-            .get_model_info(&selected_model_name, config)\n+            .get_model_info(&selected_model_name, &config.to_models_manager_config())\n             .await;\n \n         config.model = Some(selected_model_name.clone());",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_common.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 3,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use crate::error::SandboxErr;\n use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecExpiration;\n use crate::exec::ExecToolCallOutput;\n+use crate::exec::StreamOutput;\n use crate::exec::is_likely_sandbox_denied;\n use crate::guardian::GuardianApprovalRequest;\n use crate::guardian::review_approval_request;\n@@ -901,9 +902,9 @@ fn map_exec_result(\n ) -> Result<ExecToolCallOutput, ToolError> {\n     let output = ExecToolCallOutput {\n         exit_code: result.exit_code,\n-        stdout: crate::exec::StreamOutput::new(result.stdout.clone()),\n-        stderr: crate::exec::StreamOutput::new(result.stderr.clone()),\n-        aggregated_output: crate::exec::StreamOutput::new(result.output.clone()),\n+        stdout: StreamOutput::new(result.stdout.clone()),\n+        stderr: StreamOutput::new(result.stderr.clone()),\n+        aggregated_output: StreamOutput::new(result.output.clone()...",
+      "path": "codex-rs/core/src/tools/runtimes/shell/unix_escalation.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 15,
+      "patch_excerpt": "@@ -1,8 +1,8 @@\n use crate::config::test_config;\n-use crate::models_manager::manager::ModelsManager;\n use crate::models_manager::model_info::with_config_overrides;\n use crate::shell::Shell;\n use crate::shell::ShellType;\n+use crate::test_support::construct_model_info_offline;\n use crate::tools::ToolRouter;\n use crate::tools::registry::tool_handler_key;\n use crate::tools::router::ToolRouterParams;\n@@ -14,7 +14,6 @@ use codex_protocol::config_types::WebSearchMode;\n use codex_protocol::config_types::WindowsSandboxLevel;\n use codex_protocol::openai_models::ConfigShellToolType;\n use codex_protocol::openai_models::ModelInfo;\n-use codex_protocol::openai_models::ModelsResponse;\n use codex_protocol::protocol::SandboxPolicy;\n use codex_protocol::protocol::SessionSource;\n use codex_tools::ConfiguredToolSpec;\n@@ -73,8 +72,7 @@ fn discoverable_connector(id: &str, name: &str, description: &str) -> Disc...",
+      "path": "codex-rs/core/src/tools/spec_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,10 +1,10 @@\n use std::time::Duration;\n \n+use crate::exec::ExecToolCallOutput;\n use codex_protocol::models::ResponseItem;\n \n use crate::codex::TurnContext;\n use crate::contextual_user_message::USER_SHELL_COMMAND_FRAGMENT;\n-use crate::exec::ExecToolCallOutput;\n use crate::tools::format_exec_output_str;\n \n fn format_duration_line(duration: Duration) -> String {",
+      "path": "codex-rs/core/src/user_shell_command.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 116,
+      "patch_excerpt": "@@ -6,7 +6,10 @@ use codex_protocol::ThreadId;\n use rand::Rng;\n use tracing::error;\n \n-use crate::auth_env_telemetry::AuthEnvTelemetry;\n+pub(crate) use codex_feedback::FeedbackRequestTags;\n+#[cfg(test)]\n+pub(crate) use codex_feedback::emit_feedback_request_tags;\n+pub(crate) use codex_feedback::emit_feedback_request_tags_with_auth_env;\n use codex_shell_command::parse_command::shlex_join;\n \n const INITIAL_DELAY_MS: u64 = 200;\n@@ -37,40 +40,6 @@ macro_rules! feedback_tags {\n     };\n }\n \n-pub(crate) struct FeedbackRequestTags<'a> {\n-    pub endpoint: &'a str,\n-    pub auth_header_attached: bool,\n-    pub auth_header_name: Option<&'a str>,\n-    pub auth_mode: Option<&'a str>,\n-    pub auth_retry_after_unauthorized: Option<bool>,\n-    pub auth_recovery_mode: Option<&'a str>,\n-    pub auth_recovery_phase: Option<&'a str>,\n-    pub auth_connection_reused: Option<bool>,\n-    pub auth_request_id: ...",
+      "path": "codex-rs/core/src/util.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,5 +1,8 @@\n use super::*;\n-use crate::auth_env_telemetry::AuthEnvTelemetry;\n+use crate::util::FeedbackRequestTags;\n+use crate::util::emit_feedback_request_tags;\n+use crate::util::emit_feedback_request_tags_with_auth_env;\n+use codex_login::AuthEnvTelemetry;\n use std::collections::BTreeMap;\n use std::sync::Arc;\n use std::sync::Mutex;",
+      "path": "codex-rs/core/src/util_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,3 +1,5 @@\n // Single integration test binary that aggregates all test modules.\n // The submodules live in `tests/all/`.\n+pub use codex_core::error;\n+\n mod suite;",
+      "path": "codex-rs/core/tests/all.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -19,6 +19,7 @@ codex-core = { workspace = true }\n codex-exec-server = { workspace = true }\n codex-features = { workspace = true }\n codex-login = { workspace = true }\n+codex-models-manager = { workspace = true }\n codex-protocol = { workspace = true }\n codex-utils-absolute-path = { workspace = true }\n codex-utils-cargo-bin = { workspace = true }",
+      "path": "codex-rs/core/tests/common/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 11,
+      "patch_excerpt": "@@ -609,17 +609,8 @@ fn ensure_test_model_catalog(config: &mut Config) -> Result<()> {\n         return Ok(());\n     }\n \n-    let bundled_models_path = codex_utils_cargo_bin::find_resource!(\"../../models.json\")\n-        .context(\"bundled models.json\")?;\n-    let bundled_models_contents =\n-        std::fs::read_to_string(&bundled_models_path).with_context(|| {\n-            format!(\n-                \"read bundled models.json from {}\",\n-                bundled_models_path.display()\n-            )\n-        })?;\n-    let bundled_models: ModelsResponse =\n-        serde_json::from_str(&bundled_models_contents).context(\"parse bundled models.json\")?;\n+    let bundled_models = codex_models_manager::bundled_models_response()\n+        .unwrap_or_else(|err| panic!(\"bundled models.json should parse: {err}\"));\n     let mut model = bundled_models\n         .models\n         .iter()",
+      "path": "codex-rs/core/tests/common/test_codex.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 6,
+      "patch_excerpt": "@@ -1,3 +1,4 @@\n+use crate::error::CodexErr;\n use codex_core::ModelClient;\n use codex_core::ModelProviderInfo;\n use codex_core::NewThread;\n@@ -6,7 +7,6 @@ use codex_core::ResponseEvent;\n use codex_core::ThreadManager;\n use codex_core::WireApi;\n use codex_core::built_in_model_providers;\n-use codex_core::error::CodexErr;\n use codex_core::models_manager::collaboration_mode_presets::CollaborationModesConfig;\n use codex_features::Feature;\n use codex_login::AuthCredentialsStoreMode;\n@@ -34,7 +34,6 @@ use codex_protocol::models::ReasoningItemContent;\n use codex_protocol::models::ReasoningItemReasoningSummary;\n use codex_protocol::models::ResponseItem;\n use codex_protocol::models::WebSearchAction;\n-use codex_protocol::openai_models::ModelsResponse;\n use codex_protocol::openai_models::ReasoningEffort;\n use codex_protocol::protocol::EventMsg;\n use codex_protocol::protocol::Op;\n@@ -1636,8 +1635,8 @...",
+      "path": "codex-rs/core/tests/suite/client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -103,8 +103,8 @@ fn non_openai_model_provider(server: &MockServer) -> ModelProviderInfo {\n }\n \n fn model_info_with_context_window(slug: &str, context_window: i64) -> ModelInfo {\n-    let models_response: ModelsResponse =\n-        serde_json::from_str(include_str!(\"../../models.json\")).expect(\"valid models.json\");\n+    let models_response = codex_models_manager::bundled_models_response()\n+        .unwrap_or_else(|err| panic!(\"bundled models.json should parse: {err}\"));\n     let mut model_info = models_response\n         .models\n         .into_iter()",
+      "path": "codex-rs/core/tests/suite/compact.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 2,
+      "patch_excerpt": "@@ -3,6 +3,7 @@\n use std::collections::HashMap;\n use std::string::ToString;\n \n+use crate::error::Result;\n use codex_core::exec::ExecCapturePolicy;\n use codex_core::exec::ExecParams;\n use codex_core::exec::ExecToolCallOutput;\n@@ -17,8 +18,6 @@ use codex_sandboxing::SandboxType;\n use codex_sandboxing::get_platform_sandbox;\n use tempfile::TempDir;\n \n-use codex_core::error::Result;\n-\n fn skip_test() -> bool {\n     if std::env::var(CODEX_SANDBOX_ENV_VAR) == Ok(\"seatbelt\".to_string()) {\n         eprintln!(\"{CODEX_SANDBOX_ENV_VAR} is set to 'seatbelt', skipping test.\");",
+      "path": "codex-rs/core/tests/suite/exec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 3,
+      "patch_excerpt": "@@ -77,7 +77,6 @@ mod agent_websocket;\n mod apply_patch_cli;\n #[cfg(not(target_os = \"windows\"))]\n mod approvals;\n-mod auth_refresh;\n mod cli_stream;\n mod client;\n mod client_websockets;\n@@ -101,7 +100,6 @@ mod json_result;\n mod live_cli;\n mod live_reload;\n mod memories;\n-mod model_info_overrides;\n mod model_overrides;\n mod model_switching;\n mod model_visible_layout;\n@@ -142,7 +140,6 @@ mod sqlite_state;\n mod stream_error_allows_next_turn;\n mod stream_no_completed;\n mod subagent_notifications;\n-mod text_encoding_fix;\n mod tool_harness;\n mod tool_parallelism;\n mod tool_suggest;",
+      "path": "codex-rs/core/tests/suite/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -961,11 +961,11 @@ async fn model_switch_to_smaller_model_updates_token_context_window() -> Result<\n         \"expected {smaller_model_slug} to be available in remote model list\"\n     );\n     let large_model_info = models_manager\n-        .get_model_info(large_model_slug, &test.config)\n+        .get_model_info(large_model_slug, &test.config.to_models_manager_config())\n         .await;\n     assert_eq!(large_model_info.context_window, Some(large_context_window));\n     let smaller_model_info = models_manager\n-        .get_model_info(smaller_model_slug, &test.config)\n+        .get_model_info(smaller_model_slug, &test.config.to_models_manager_config())\n         .await;\n     assert_eq!(\n         smaller_model_info.context_window,",
+      "path": "codex-rs/core/tests/suite/model_switching.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -139,7 +139,7 @@ async fn prompt_tools_are_consistent_across_requests() -> anyhow::Result<()> {\n                 .model\n                 .as_deref()\n                 .expect(\"test config should have a model\"),\n-            &config,\n+            &config.to_models_manager_config(),\n         )\n         .await\n         .base_instructions;",
+      "path": "codex-rs/core/tests/suite/prompt_caching.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 7,
+      "patch_excerpt": "@@ -105,7 +105,9 @@ async fn remote_models_get_model_info_uses_longest_matching_prefix() -> Result<(\n \n     manager.list_models(RefreshStrategy::OnlineIfUncached).await;\n \n-    let model_info = manager.get_model_info(\"gpt-5.3-codex-test\", &config).await;\n+    let model_info = manager\n+        .get_model_info(\"gpt-5.3-codex-test\", &config.to_models_manager_config())\n+        .await;\n \n     assert_eq!(model_info.slug, \"gpt-5.3-codex-test\");\n     assert_eq!(model_info.base_instructions, specific.base_instructions);\n@@ -348,7 +350,7 @@ async fn remote_models_remote_model_uses_unified_exec() -> Result<()> {\n     assert_eq!(requests[0].url.path(), \"/v1/models\");\n \n     let model_info = models_manager\n-        .get_model_info(REMOTE_MODEL_SLUG, &config)\n+        .get_model_info(REMOTE_MODEL_SLUG, &config.to_models_manager_config())\n         .await;\n     assert_eq!(model_info.shell_type, ConfigS...",
+      "path": "codex-rs/core/tests/suite/remote_models.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 3,
+      "patch_excerpt": "@@ -5,7 +5,6 @@ use anyhow::Result;\n use codex_core::config::Config;\n use codex_features::Feature;\n use codex_login::CodexAuth;\n-use codex_protocol::openai_models::ModelsResponse;\n use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::EventMsg;\n use codex_protocol::protocol::McpInvocation;\n@@ -94,8 +93,8 @@ fn configure_apps_without_tool_search(config: &mut Config, apps_base_url: &str)\n     config.chatgpt_base_url = apps_base_url.to_string();\n     config.model = Some(\"gpt-5-codex\".to_string());\n \n-    let mut model_catalog: ModelsResponse =\n-        serde_json::from_str(include_str!(\"../../models.json\")).expect(\"valid models.json\");\n+    let mut model_catalog = codex_models_manager::bundled_models_response()\n+        .unwrap_or_else(|err| panic!(\"bundled models.json should parse: {err}\"));\n     let model = model_catalog\n         .models\n         .iter_mut()",
+      "path": "codex-rs/core/tests/suite/search_tool.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 3,
+      "patch_excerpt": "@@ -7,7 +7,6 @@ use codex_config::types::ToolSuggestDiscoverableType;\n use codex_core::config::Config;\n use codex_features::Feature;\n use codex_login::CodexAuth;\n-use codex_protocol::openai_models::ModelsResponse;\n use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::SandboxPolicy;\n use core_test_support::apps_test_server::AppsTestServer;\n@@ -78,8 +77,8 @@ fn configure_apps_without_search_tool(config: &mut Config, apps_base_url: &str)\n         id: DISCOVERABLE_GMAIL_ID.to_string(),\n     }];\n \n-    let mut model_catalog: ModelsResponse =\n-        serde_json::from_str(include_str!(\"../../models.json\")).expect(\"valid models.json\");\n+    let mut model_catalog = codex_models_manager::bundled_models_response()\n+        .unwrap_or_else(|err| panic!(\"bundled models.json should parse: {err}\"));\n     let model = model_catalog\n         .models\n         .iter_mut()",
+      "path": "codex-rs/core/tests/suite/tool_suggest.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 2,
+      "patch_excerpt": "@@ -1,3 +1,5 @@\n+use std::net::SocketAddr;\n+\n use pretty_assertions::assert_eq;\n \n use super::DEFAULT_LISTEN_URL;\n@@ -9,7 +11,9 @@ fn parse_listen_url_accepts_default_websocket_url() {\n         parse_listen_url(DEFAULT_LISTEN_URL).expect(\"default listen URL should parse\");\n     assert_eq!(\n         bind_address,\n-        \"127.0.0.1:0\".parse().expect(\"valid socket address\")\n+        \"127.0.0.1:0\"\n+            .parse::<SocketAddr>()\n+            .expect(\"valid socket address\")\n     );\n }\n \n@@ -19,7 +23,9 @@ fn parse_listen_url_accepts_websocket_url() {\n         parse_listen_url(\"ws://127.0.0.1:1234\").expect(\"websocket listen URL should parse\");\n     assert_eq!(\n         bind_address,\n-        \"127.0.0.1:1234\".parse().expect(\"valid socket address\")\n+        \"127.0.0.1:1234\"\n+            .parse::<SocketAddr>()\n+            .expect(\"valid socket address\")\n     );\n }",
+      "path": "codex-rs/exec-server/src/server/transport_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -9,6 +9,7 @@ workspace = true\n \n [dependencies]\n anyhow = { workspace = true }\n+codex-login = { workspace = true }\n codex-protocol = { workspace = true }\n sentry = { version = \"0.46\" }\n tracing = { workspace = true }",
+      "path": "codex-rs/feedback/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 123,
+      "deletions": 0,
+      "patch_excerpt": "@@ -11,6 +11,7 @@ use std::time::Duration;\n \n use anyhow::Result;\n use anyhow::anyhow;\n+use codex_login::AuthEnvTelemetry;\n use codex_protocol::ThreadId;\n use codex_protocol::protocol::SessionSource;\n use feedback_diagnostics::FEEDBACK_DIAGNOSTICS_ATTACHMENT_FILENAME;\n@@ -32,6 +33,128 @@ const UPLOAD_TIMEOUT_SECS: u64 = 10;\n const FEEDBACK_TAGS_TARGET: &str = \"feedback_tags\";\n const MAX_FEEDBACK_TAGS: usize = 64;\n \n+/// Structured request/auth fields that should be attached to feedback uploads.\n+pub struct FeedbackRequestTags<'a> {\n+    pub endpoint: &'a str,\n+    pub auth_header_attached: bool,\n+    pub auth_header_name: Option<&'a str>,\n+    pub auth_mode: Option<&'a str>,\n+    pub auth_retry_after_unauthorized: Option<bool>,\n+    pub auth_recovery_mode: Option<&'a str>,\n+    pub auth_recovery_phase: Option<&'a str>,\n+    pub auth_connection_reused: Option<bool>,\n+    pub auth_request_...",
+      "path": "codex-rs/feedback/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,9 +12,12 @@ async-trait = { workspace = true }\n base64 = { workspace = true }\n chrono = { workspace = true, features = [\"serde\"] }\n codex-app-server-protocol = { workspace = true }\n+codex-api = { workspace = true }\n codex-client = { workspace = true }\n codex-config = { workspace = true }\n codex-keyring-store = { workspace = true }\n+codex-model-provider-info = { workspace = true }\n+codex-otel = { workspace = true }\n codex-protocol = { workspace = true }\n codex-terminal-detection = { workspace = true }\n codex-utils-template = { workspace = true }",
+      "path": "codex-rs/login/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 38,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,38 @@\n+use codex_model_provider_info::ModelProviderInfo;\n+\n+pub use codex_api::api_bridge::CoreAuthProvider;\n+pub use codex_api::api_bridge::map_api_error;\n+\n+use crate::CodexAuth;\n+\n+pub fn auth_provider_from_auth(\n+    auth: Option<CodexAuth>,\n+    provider: &ModelProviderInfo,\n+) -> codex_protocol::error::Result<CoreAuthProvider> {\n+    if let Some(api_key) = provider.api_key()? {\n+        return Ok(CoreAuthProvider {\n+            token: Some(api_key),\n+            account_id: None,\n+        });\n+    }\n+\n+    if let Some(token) = provider.experimental_bearer_token.clone() {\n+        return Ok(CoreAuthProvider {\n+            token: Some(token),\n+            account_id: None,\n+        });\n+    }\n+\n+    if let Some(auth) = auth {\n+        let token = auth.get_token()?;\n+        Ok(CoreAuthProvider {\n+            token: Some(token),\n+            account_id: auth.get_account_id(...",
+      "path": "codex-rs/login/src/api_bridge.rs",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -2,9 +2,9 @@ use super::*;\n use crate::auth::storage::FileAuthStorage;\n use crate::auth::storage::get_auth_file;\n use crate::token_data::IdTokenInfo;\n-use crate::token_data::KnownPlan as InternalKnownPlan;\n-use crate::token_data::PlanType as InternalPlanType;\n use codex_protocol::account::PlanType as AccountPlanType;\n+use codex_protocol::auth::KnownPlan as InternalKnownPlan;\n+use codex_protocol::auth::PlanType as InternalPlanType;\n \n use base64::Engine;\n use codex_protocol::config_types::ForcedLoginMethod;",
+      "path": "codex-rs/login/src/auth/auth_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 25,
+      "patch_excerpt": "@@ -1,25 +1,2 @@\n-use thiserror::Error;\n-\n-#[derive(Debug, Clone, PartialEq, Eq, Error)]\n-#[error(\"{message}\")]\n-pub struct RefreshTokenFailedError {\n-    pub reason: RefreshTokenFailedReason,\n-    pub message: String,\n-}\n-\n-impl RefreshTokenFailedError {\n-    pub fn new(reason: RefreshTokenFailedReason, message: impl Into<String>) -> Self {\n-        Self {\n-            reason,\n-            message: message.into(),\n-        }\n-    }\n-}\n-\n-#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n-pub enum RefreshTokenFailedReason {\n-    Expired,\n-    Exhausted,\n-    Revoked,\n-    Other,\n-}\n+pub use codex_protocol::auth::RefreshTokenFailedError;\n+pub use codex_protocol::auth::RefreshTokenFailedReason;",
+      "path": "codex-rs/login/src/auth/error.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 4,
+      "patch_excerpt": "@@ -19,21 +19,21 @@ use codex_protocol::config_types::ForcedLoginMethod;\n use codex_protocol::config_types::ModelProviderAuthInfo;\n \n use super::external_bearer::BearerTokenRefresher;\n-use crate::auth::error::RefreshTokenFailedError;\n-use crate::auth::error::RefreshTokenFailedReason;\n pub use crate::auth::storage::AuthCredentialsStoreMode;\n pub use crate::auth::storage::AuthDotJson;\n use crate::auth::storage::AuthStorageBackend;\n use crate::auth::storage::create_auth_storage;\n use crate::auth::util::try_parse_error_message;\n use crate::default_client::create_client;\n-use crate::token_data::KnownPlan as InternalKnownPlan;\n-use crate::token_data::PlanType as InternalPlanType;\n use crate::token_data::TokenData;\n use crate::token_data::parse_chatgpt_jwt_claims;\n use crate::token_data::parse_jwt_expiration;\n use codex_client::CodexHttpClient;\n use codex_protocol::account::PlanType as AccountP...",
+      "path": "codex-rs/login/src/auth/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 15,
+      "patch_excerpt": "@@ -1,22 +1,22 @@\n use codex_otel::AuthEnvTelemetryMetadata;\n \n-use crate::model_provider_info::ModelProviderInfo;\n-use codex_login::CODEX_API_KEY_ENV_VAR;\n-use codex_login::OPENAI_API_KEY_ENV_VAR;\n-use codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;\n+use crate::CODEX_API_KEY_ENV_VAR;\n+use crate::ModelProviderInfo;\n+use crate::OPENAI_API_KEY_ENV_VAR;\n+use crate::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;\n \n #[derive(Debug, Clone, Default, PartialEq, Eq)]\n-pub(crate) struct AuthEnvTelemetry {\n-    pub(crate) openai_api_key_env_present: bool,\n-    pub(crate) codex_api_key_env_present: bool,\n-    pub(crate) codex_api_key_env_enabled: bool,\n-    pub(crate) provider_env_key_name: Option<String>,\n-    pub(crate) provider_env_key_present: Option<bool>,\n-    pub(crate) refresh_token_url_override_present: bool,\n+pub struct AuthEnvTelemetry {\n+    pub openai_api_key_env_present: bool,\n+    pub codex_api...",
+      "path": "codex-rs/login/src/auth_env_telemetry.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 20,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,4 +1,7 @@\n+pub mod api_bridge;\n pub mod auth;\n+pub mod auth_env_telemetry;\n+pub mod provider_auth;\n pub mod token_data;\n \n mod device_code_auth;\n@@ -15,6 +18,9 @@ pub use server::ServerOptions;\n pub use server::ShutdownHandle;\n pub use server::run_login_server;\n \n+pub use api_bridge::CoreAuthProvider;\n+pub use api_bridge::auth_provider_from_auth;\n+pub use api_bridge::map_api_error;\n pub use auth::AuthConfig;\n pub use auth::AuthCredentialsStoreMode;\n pub use auth::AuthDotJson;\n@@ -38,5 +44,19 @@ pub use auth::login_with_api_key;\n pub use auth::logout;\n pub use auth::read_openai_api_key_from_env;\n pub use auth::save_auth;\n+pub use auth_env_telemetry::AuthEnvTelemetry;\n+pub use auth_env_telemetry::collect_auth_env_telemetry;\n pub use codex_app_server_protocol::AuthMode;\n+pub use codex_model_provider_info as model_provider_info;\n+pub use codex_model_provider_info::DEFAULT_LMSTUDIO_PORT...",
+      "path": "codex-rs/login/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 4,
+      "patch_excerpt": "@@ -1,12 +1,12 @@\n use std::sync::Arc;\n \n-use crate::model_provider_info::ModelProviderInfo;\n-use codex_login::AuthManager;\n+use crate::AuthManager;\n+use crate::ModelProviderInfo;\n \n /// Returns the provider-scoped auth manager when this provider uses command-backed auth.\n ///\n /// Providers without custom auth continue using the caller-supplied base manager.\n-pub(crate) fn auth_manager_for_provider(\n+pub fn auth_manager_for_provider(\n     auth_manager: Option<Arc<AuthManager>>,\n     provider: &ModelProviderInfo,\n ) -> Option<Arc<AuthManager>> {\n@@ -20,7 +20,7 @@ pub(crate) fn auth_manager_for_provider(\n ///\n /// Providers with command-backed auth get a bearer-only manager; otherwise the caller's manager\n /// is reused unchanged.\n-pub(crate) fn required_auth_manager_for_provider(\n+pub fn required_auth_manager_for_provider(\n     auth_manager: Arc<AuthManager>,\n     provider: &ModelProvide...",
+      "path": "codex-rs/login/src/provider_auth.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 1,
+      "deletions": 89,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use base64::Engine;\n use chrono::DateTime;\n use chrono::Utc;\n+use codex_protocol::auth::PlanType;\n use serde::Deserialize;\n use serde::Serialize;\n use serde::de::DeserializeOwned;\n@@ -61,95 +62,6 @@ impl IdTokenInfo {\n     }\n }\n \n-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]\n-#[serde(untagged)]\n-pub enum PlanType {\n-    Known(KnownPlan),\n-    Unknown(String),\n-}\n-\n-impl PlanType {\n-    pub fn from_raw_value(raw: &str) -> Self {\n-        match raw.to_ascii_lowercase().as_str() {\n-            \"free\" => Self::Known(KnownPlan::Free),\n-            \"go\" => Self::Known(KnownPlan::Go),\n-            \"plus\" => Self::Known(KnownPlan::Plus),\n-            \"pro\" => Self::Known(KnownPlan::Pro),\n-            \"team\" => Self::Known(KnownPlan::Team),\n-            \"self_serve_business_usage_based\" => {\n-                Self::Known(KnownPlan::SelfServeBusinessUsageBased)\n- ...",
+      "path": "codex-rs/login/src/token_data.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use super::*;\n use chrono::TimeZone;\n use chrono::Utc;\n+use codex_protocol::auth::KnownPlan;\n use pretty_assertions::assert_eq;\n use serde::Serialize;",
+      "path": "codex-rs/login/src/token_data_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -4,7 +4,6 @@ use base64::Engine;\n use chrono::Duration;\n use chrono::Utc;\n use codex_app_server_protocol::AuthMode;\n-use codex_core::error::RefreshTokenFailedReason;\n use codex_login::AuthCredentialsStoreMode;\n use codex_login::AuthDotJson;\n use codex_login::AuthManager;\n@@ -14,6 +13,7 @@ use codex_login::load_auth_dot_json;\n use codex_login::save_auth;\n use codex_login::token_data::IdTokenInfo;\n use codex_login::token_data::TokenData;\n+use codex_protocol::auth::RefreshTokenFailedReason;\n use core_test_support::skip_if_no_network;\n use pretty_assertions::assert_eq;\n use serde::Serialize;",
+      "path": "codex-rs/login/tests/suite/auth_refresh.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,3 +1,4 @@\n // Aggregates all former standalone integration tests as modules.\n+mod auth_refresh;\n mod device_code_login;\n mod login_server_e2e;",
+      "path": "codex-rs/login/tests/suite/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,6 @@\n+load(\"//:defs.bzl\", \"codex_rust_crate\")\n+\n+codex_rust_crate(\n+    name = \"model-provider-info\",\n+    crate_name = \"codex_model_provider_info\",\n+)",
+      "path": "codex-rs/model-provider-info/BUILD.bazel",
+      "status": "added"
+    },
+    {
+      "additions": 28,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,28 @@\n+[package]\n+edition.workspace = true\n+license.workspace = true\n+name = \"codex-model-provider-info\"\n+version.workspace = true\n+\n+[lib]\n+doctest = false\n+name = \"codex_model_provider_info\"\n+path = \"src/lib.rs\"\n+\n+[lints]\n+workspace = true\n+\n+[dependencies]\n+codex-api = { workspace = true }\n+codex-app-server-protocol = { workspace = true }\n+codex-protocol = { workspace = true }\n+http = { workspace = true }\n+schemars = { workspace = true }\n+serde = { workspace = true, features = [\"derive\"] }\n+\n+[dev-dependencies]\n+codex-utils-absolute-path = { workspace = true }\n+maplit = { workspace = true }\n+pretty_assertions = { workspace = true }\n+tempfile = { workspace = true }\n+toml = { workspace = true }",
+      "path": "codex-rs/model-provider-info/Cargo.toml",
+      "status": "added"
+    },
+    {
+      "additions": 13,
+      "deletions": 26,
+      "patch_excerpt": "@@ -5,11 +5,13 @@\n //!   2. User-defined entries inside `~/.codex/config.toml` under the `model_providers`\n //!      key. These override or extend the defaults at runtime.\n \n-use crate::error::EnvVarError;\n use codex_api::Provider as ApiProvider;\n use codex_api::provider::RetryConfig as ApiRetryConfig;\n-use codex_login::AuthMode;\n+use codex_app_server_protocol::AuthMode;\n use codex_protocol::config_types::ModelProviderAuthInfo;\n+use codex_protocol::error::CodexErr;\n+use codex_protocol::error::EnvVarError;\n+use codex_protocol::error::Result as CodexResult;\n use http::HeaderMap;\n use http::header::HeaderName;\n use http::header::HeaderValue;\n@@ -23,7 +25,7 @@ use std::time::Duration;\n const DEFAULT_STREAM_IDLE_TIMEOUT_MS: u64 = 300_000;\n const DEFAULT_STREAM_MAX_RETRIES: u64 = 5;\n const DEFAULT_REQUEST_MAX_RETRIES: u64 = 4;\n-pub(crate) const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS: u64 = 15_00...",
+      "path": "codex-rs/model-provider-info/src/lib.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/model-provider-info/src/model_provider_info_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,10 @@\n+load(\"//:defs.bzl\", \"codex_rust_crate\")\n+\n+codex_rust_crate(\n+    name = \"models-manager\",\n+    crate_name = \"codex_models_manager\",\n+    compile_data = [\n+        \"models.json\",\n+        \"prompt.md\",\n+    ],\n+)",
+      "path": "codex-rs/models-manager/BUILD.bazel",
+      "status": "added"
+    },
+    {
+      "additions": 41,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,41 @@\n+[package]\n+edition.workspace = true\n+license.workspace = true\n+name = \"codex-models-manager\"\n+version.workspace = true\n+\n+[lib]\n+doctest = false\n+name = \"codex_models_manager\"\n+path = \"src/lib.rs\"\n+\n+[lints]\n+workspace = true\n+\n+[dependencies]\n+chrono = { workspace = true, features = [\"serde\"] }\n+codex-api = { workspace = true }\n+codex-collaboration-mode-templates = { workspace = true }\n+codex-feedback = { workspace = true }\n+codex-login = { workspace = true }\n+codex-otel = { workspace = true }\n+codex-protocol = { workspace = true }\n+codex-response-debug-context = { workspace = true }\n+codex-utils-output-truncation = { workspace = true }\n+codex-utils-template = { workspace = true }\n+http = { workspace = true }\n+serde = { workspace = true, features = [\"derive\"] }\n+serde_json = { workspace = true }\n+tokio = { workspace = true, features = [\"fs\", \"sync\", \"time\"] }\n+tracing ...",
+      "path": "codex-rs/models-manager/Cargo.toml",
+      "status": "added"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/models-manager/models.json",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/models-manager/prompt.md",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/models-manager/src/cache.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 2,
+      "deletions": 3,
+      "patch_excerpt": "@@ -1,13 +1,12 @@\n+use codex_collaboration_mode_templates::DEFAULT as COLLABORATION_MODE_DEFAULT;\n+use codex_collaboration_mode_templates::PLAN as COLLABORATION_MODE_PLAN;\n use codex_protocol::config_types::CollaborationModeMask;\n use codex_protocol::config_types::ModeKind;\n use codex_protocol::config_types::TUI_VISIBLE_COLLABORATION_MODES;\n use codex_protocol::openai_models::ReasoningEffort;\n use codex_utils_template::Template;\n use std::sync::LazyLock;\n \n-const COLLABORATION_MODE_PLAN: &str = include_str!(\"../../templates/collaboration_mode/plan.md\");\n-const COLLABORATION_MODE_DEFAULT: &str =\n-    include_str!(\"../../templates/collaboration_mode/default.md\");\n const KNOWN_MODE_NAMES_TEMPLATE_KEY: &str = \"KNOWN_MODE_NAMES\";\n const REQUEST_USER_INPUT_AVAILABILITY_TEMPLATE_KEY: &str = \"REQUEST_USER_INPUT_AVAILABILITY\";\n const ASKING_QUESTIONS_GUIDANCE_TEMPLATE_KEY: &str = \"ASKING_QUESTION...",
+      "path": "codex-rs/models-manager/src/collaboration_mode_presets.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/models-manager/src/collaboration_mode_presets_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 12,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,12 @@\n+use codex_protocol::openai_models::ModelsResponse;\n+\n+#[derive(Debug, Clone, Default)]\n+pub struct ModelsManagerConfig {\n+    pub model_context_window: Option<i64>,\n+    pub model_auto_compact_token_limit: Option<i64>,\n+    pub tool_output_token_limit: Option<usize>,\n+    pub base_instructions: Option<String>,\n+    pub personality_enabled: bool,\n+    pub model_supports_reasoning_summaries: Option<bool>,\n+    pub model_catalog: Option<ModelsResponse>,\n+}",
+      "path": "codex-rs/models-manager/src/config.rs",
+      "status": "added"
+    },
+    {
+      "additions": 30,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,30 @@\n+pub mod cache;\n+pub mod collaboration_mode_presets;\n+pub mod config;\n+pub mod manager;\n+pub mod model_info;\n+pub mod model_presets;\n+\n+pub use codex_login::AuthCredentialsStoreMode;\n+pub use codex_login::AuthManager;\n+pub use codex_login::AuthMode;\n+pub use codex_login::CodexAuth;\n+pub use codex_login::ModelProviderInfo;\n+pub use codex_login::WireApi;\n+pub use config::ModelsManagerConfig;\n+\n+/// Load the bundled model catalog shipped with `codex-models-manager`.\n+pub fn bundled_models_response()\n+-> std::result::Result<codex_protocol::openai_models::ModelsResponse, serde_json::Error> {\n+    serde_json::from_str(include_str!(\"../models.json\"))\n+}\n+\n+/// Convert the client version string to a whole version string (e.g. \"1.2.3-alpha.4\" -> \"1.2.3\").\n+pub fn client_version_to_whole() -> String {\n+    format!(\n+        \"{}.{}.{}\",\n+        env!(\"CARGO_PKG_VERSION_MAJOR\"),\n+  ...",
+      "path": "codex-rs/models-manager/src/lib.rs",
+      "status": "added"
+    },
+    {
+      "additions": 27,
+      "deletions": 32,
+      "patch_excerpt": "@@ -1,33 +1,33 @@\n use super::cache::ModelsCacheManager;\n-use crate::api_bridge::auth_provider_from_auth;\n-use crate::api_bridge::map_api_error;\n-use crate::auth_env_telemetry::AuthEnvTelemetry;\n-use crate::auth_env_telemetry::collect_auth_env_telemetry;\n-use crate::config::Config;\n-use crate::error::CodexErr;\n-use crate::error::Result as CoreResult;\n-use crate::model_provider_info::ModelProviderInfo;\n-use crate::models_manager::collaboration_mode_presets::CollaborationModesConfig;\n-use crate::models_manager::collaboration_mode_presets::builtin_collaboration_mode_presets;\n-use crate::models_manager::model_info;\n-use crate::provider_auth::required_auth_manager_for_provider;\n-use crate::response_debug_context::extract_response_debug_context;\n-use crate::response_debug_context::telemetry_transport_error_message;\n-use crate::util::FeedbackRequestTags;\n-use crate::util::emit_feedback_request_...",
+      "path": "codex-rs/models-manager/src/manager.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 15,
+      "deletions": 28,
+      "patch_excerpt": "@@ -1,14 +1,15 @@\n use super::*;\n-use crate::config::ConfigBuilder;\n-use crate::model_provider_info::WireApi;\n+use crate::ModelsManagerConfig;\n use base64::Engine as _;\n use chrono::Utc;\n use codex_api::TransportError;\n use codex_login::AuthCredentialsStoreMode;\n use codex_login::AuthManager;\n use codex_login::CodexAuth;\n+use codex_login::WireApi;\n use codex_protocol::config_types::ModelProviderAuthInfo;\n use codex_protocol::openai_models::ModelsResponse;\n+use codex_utils_absolute_path::AbsolutePathBuf;\n use core_test_support::responses::mount_models_once;\n use http::HeaderMap;\n use http::StatusCode;\n@@ -35,6 +36,9 @@ use wiremock::matchers::header_regex;\n use wiremock::matchers::method;\n use wiremock::matchers::path;\n \n+#[path = \"model_info_overrides_tests.rs\"]\n+mod model_info_overrides_tests;\n+\n fn remote_model(slug: &str, display: &str, priority: i32) -> ModelInfo {\n     remote_model_...",
+      "path": "codex-rs/models-manager/src/manager_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 5,
+      "deletions": 6,
+      "patch_excerpt": "@@ -9,19 +9,18 @@ use codex_protocol::openai_models::TruncationPolicyConfig;\n use codex_protocol::openai_models::WebSearchToolType;\n use codex_protocol::openai_models::default_input_modalities;\n \n-use crate::config::Config;\n-use codex_features::Feature;\n+use crate::config::ModelsManagerConfig;\n use codex_utils_output_truncation::approx_bytes_for_tokens;\n use tracing::warn;\n \n-pub const BASE_INSTRUCTIONS: &str = include_str!(\"../../prompt.md\");\n+pub const BASE_INSTRUCTIONS: &str = include_str!(\"../prompt.md\");\n const DEFAULT_PERSONALITY_HEADER: &str = \"You are Codex, a coding agent based on GPT-5. You and the user share the same workspace and collaborate to achieve the user's goals.\";\n const LOCAL_FRIENDLY_TEMPLATE: &str =\n     \"You optimize for team morale and being a supportive teammate as much as code quality.\";\n const LOCAL_PRAGMATIC_TEMPLATE: &str = \"You are a deeply pragmatic, effec...",
+      "path": "codex-rs/models-manager/src/model_info.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 13,
+      "deletions": 13,
+      "patch_excerpt": "@@ -1,20 +1,21 @@\n-use codex_core::models_manager::collaboration_mode_presets::CollaborationModesConfig;\n-use codex_core::models_manager::manager::ModelsManager;\n+use codex_login::AuthManager;\n use codex_login::CodexAuth;\n+\n+use crate::ModelsManagerConfig;\n+use crate::collaboration_mode_presets::CollaborationModesConfig;\n+use crate::manager::ModelsManager;\n use codex_protocol::openai_models::TruncationPolicyConfig;\n-use core_test_support::load_default_config_for_test;\n use pretty_assertions::assert_eq;\n use tempfile::TempDir;\n \n #[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n async fn offline_model_info_without_tool_output_override() {\n     let codex_home = TempDir::new().expect(\"create temp dir\");\n-    let config = load_default_config_for_test(&codex_home).await;\n-    let auth_manager = codex_core::test_support::auth_manager_from_auth(\n-        CodexAuth::create_dummy_chatg...",
+      "path": "codex-rs/models-manager/src/model_info_overrides_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 4,
+      "deletions": 4,
+      "patch_excerpt": "@@ -1,11 +1,11 @@\n use super::*;\n-use crate::config::test_config;\n+use crate::ModelsManagerConfig;\n use pretty_assertions::assert_eq;\n \n #[test]\n fn reasoning_summaries_override_true_enables_support() {\n     let model = model_info_from_slug(\"unknown-model\");\n-    let mut config = test_config();\n+    let mut config = ModelsManagerConfig::default();\n     config.model_supports_reasoning_summaries = Some(true);\n \n     let updated = with_config_overrides(model.clone(), &config);\n@@ -19,7 +19,7 @@ fn reasoning_summaries_override_true_enables_support() {\n fn reasoning_summaries_override_false_does_not_disable_support() {\n     let mut model = model_info_from_slug(\"unknown-model\");\n     model.supports_reasoning_summaries = true;\n-    let mut config = test_config();\n+    let mut config = ModelsManagerConfig::default();\n     config.model_supports_reasoning_summaries = Some(false);\n \n     let update...",
+      "path": "codex-rs/models-manager/src/model_info_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 0,
+      "deletions": 0,
+      "patch_excerpt": null,
+      "path": "codex-rs/models-manager/src/model_presets.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 13,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,23 +12,31 @@ path = \"src/lib.rs\"\n workspace = true\n \n [dependencies]\n+chardetng = { workspace = true }\n+chrono = { workspace = true, features = [\"serde\"] }\n+codex-async-utils = { workspace = true }\n codex-execpolicy = { workspace = true }\n codex-git-utils = { workspace = true }\n+codex-network-proxy = { workspace = true }\n codex-utils-absolute-path = { workspace = true }\n codex-utils-image = { workspace = true }\n codex-utils-string = { workspace = true }\n codex-utils-template = { workspace = true }\n+encoding_rs = { workspace = true }\n icu_decimal = { workspace = true }\n icu_locale_core = { workspace = true }\n icu_provider = { workspace = true, features = [\"sync\"] }\n quick-xml = { workspace = true, features = [\"serialize\"] }\n+reqwest = { workspace = true }\n schemars = { workspace = true }\n serde = { workspace = true, features = [\"derive\"] }\n serde_json = { workspace = true }\n serde_...",
+      "path": "codex-rs/protocol/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 116,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,116 @@\n+use serde::Deserialize;\n+use serde::Serialize;\n+use thiserror::Error;\n+\n+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]\n+#[serde(untagged)]\n+pub enum PlanType {\n+    Known(KnownPlan),\n+    Unknown(String),\n+}\n+\n+impl PlanType {\n+    pub fn from_raw_value(raw: &str) -> Self {\n+        match raw.to_ascii_lowercase().as_str() {\n+            \"free\" => Self::Known(KnownPlan::Free),\n+            \"go\" => Self::Known(KnownPlan::Go),\n+            \"plus\" => Self::Known(KnownPlan::Plus),\n+            \"pro\" => Self::Known(KnownPlan::Pro),\n+            \"team\" => Self::Known(KnownPlan::Team),\n+            \"self_serve_business_usage_based\" => {\n+                Self::Known(KnownPlan::SelfServeBusinessUsageBased)\n+            }\n+            \"business\" => Self::Known(KnownPlan::Business),\n+            \"enterprise_cbp_usage_based\" => Self::Known(KnownPlan::EnterpriseCbpU...",
+      "path": "codex-rs/protocol/src/auth.rs",
+      "status": "added"
+    },
+    {
+      "additions": 86,
+      "deletions": 111,
+      "patch_excerpt": "@@ -1,20 +1,21 @@\n-use crate::exec::ExecToolCallOutput;\n-use crate::network_policy_decision::NetworkPolicyDecisionPayload;\n+use crate::ThreadId;\n+use crate::auth::KnownPlan;\n+use crate::auth::PlanType;\n+pub use crate::auth::RefreshTokenFailedError;\n+pub use crate::auth::RefreshTokenFailedReason;\n+use crate::exec_output::ExecToolCallOutput;\n+use crate::network_policy::NetworkPolicyDecisionPayload;\n+use crate::protocol::CodexErrorInfo;\n+use crate::protocol::ErrorEvent;\n+use crate::protocol::RateLimitSnapshot;\n+use crate::protocol::TruncationPolicy;\n use chrono::DateTime;\n use chrono::Datelike;\n use chrono::Local;\n use chrono::Utc;\n use codex_async_utils::CancelErr;\n-pub use codex_login::auth::RefreshTokenFailedError;\n-pub use codex_login::auth::RefreshTokenFailedReason;\n-use codex_login::token_data::KnownPlan;\n-use codex_login::token_data::PlanType;\n-use codex_protocol::ThreadId;\n-use code...",
+      "path": "codex-rs/protocol/src/error.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 4,
+      "deletions": 3,
+      "patch_excerpt": "@@ -1,10 +1,11 @@\n use super::*;\n-use crate::exec::StreamOutput;\n+use crate::exec_output::StreamOutput;\n+use crate::protocol::RateLimitWindow;\n use chrono::DateTime;\n use chrono::Duration as ChronoDuration;\n use chrono::TimeZone;\n use chrono::Utc;\n-use codex_protocol::protocol::RateLimitWindow;\n+use http::Response as HttpResponse;\n use pretty_assertions::assert_eq;\n use reqwest::Response;\n use reqwest::ResponseBuilderExt;\n@@ -123,7 +124,7 @@ fn sandbox_denied_reports_stdout_when_no_stderr() {\n \n #[test]\n fn to_error_event_handles_response_stream_failed() {\n-    let response = http::Response::builder()\n+    let response = HttpResponse::builder()\n         .status(StatusCode::TOO_MANY_REQUESTS)\n         .url(Url::parse(\"http://example.com\").unwrap())\n         .body(\"\")",
+      "path": "codex-rs/protocol/src/error_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 50,
+      "deletions": 2,
+      "patch_excerpt": "@@ -10,6 +10,54 @@ use chardetng::EncodingDetector;\n use encoding_rs::Encoding;\n use encoding_rs::IBM866;\n use encoding_rs::WINDOWS_1252;\n+use std::time::Duration;\n+\n+#[derive(Debug, Clone)]\n+pub struct StreamOutput<T: Clone> {\n+    pub text: T,\n+    pub truncated_after_lines: Option<u32>,\n+}\n+\n+impl StreamOutput<String> {\n+    pub fn new(text: String) -> Self {\n+        Self {\n+            text,\n+            truncated_after_lines: None,\n+        }\n+    }\n+}\n+\n+impl StreamOutput<Vec<u8>> {\n+    pub fn from_utf8_lossy(&self) -> StreamOutput<String> {\n+        StreamOutput {\n+            text: bytes_to_string_smart(&self.text),\n+            truncated_after_lines: self.truncated_after_lines,\n+        }\n+    }\n+}\n+\n+#[derive(Clone, Debug)]\n+pub struct ExecToolCallOutput {\n+    pub exit_code: i32,\n+    pub stdout: StreamOutput<String>,\n+    pub stderr: StreamOutput<String>,\n+    pub aggregate...",
+      "path": "codex-rs/protocol/src/exec_output.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -3,7 +3,7 @@\n //! These tests simulate VSCode's shell preview on Windows/WSL where the output\n //! may be encoded with a legacy code page before it reaches Codex.\n \n-use codex_core::exec::StreamOutput;\n+use super::StreamOutput;\n use pretty_assertions::assert_eq;\n \n #[test]",
+      "path": "codex-rs/protocol/src/exec_output_tests.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,16 +1,20 @@\n pub mod account;\n mod agent_path;\n+pub mod auth;\n mod thread_id;\n pub use agent_path::AgentPath;\n pub use thread_id::ThreadId;\n pub mod approvals;\n pub mod config_types;\n pub mod dynamic_tools;\n+pub mod error;\n+pub mod exec_output;\n pub mod items;\n pub mod mcp;\n pub mod memory_citation;\n pub mod message_history;\n pub mod models;\n+pub mod network_policy;\n pub mod num_format;\n pub mod openai_models;\n pub mod parse_command;",
+      "path": "codex-rs/protocol/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 22,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,22 @@\n+use crate::approvals::NetworkApprovalProtocol;\n+use codex_network_proxy::NetworkDecisionSource;\n+use codex_network_proxy::NetworkPolicyDecision;\n+use serde::Deserialize;\n+\n+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]\n+#[serde(rename_all = \"camelCase\")]\n+pub struct NetworkPolicyDecisionPayload {\n+    pub decision: NetworkPolicyDecision,\n+    pub source: NetworkDecisionSource,\n+    #[serde(default)]\n+    pub protocol: Option<NetworkApprovalProtocol>,\n+    pub host: Option<String>,\n+    pub reason: Option<String>,\n+    pub port: Option<u16>,\n+}\n+\n+impl NetworkPolicyDecisionPayload {\n+    pub fn is_ask_from_decider(&self) -> bool {\n+        self.decision == NetworkPolicyDecision::Ask && self.source == NetworkDecisionSource::Decider\n+    }\n+}",
+      "path": "codex-rs/protocol/src/network_policy.rs",
+      "status": "added"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,6 @@\n+load(\"//:defs.bzl\", \"codex_rust_crate\")\n+\n+codex_rust_crate(\n+    name = \"response-debug-context\",\n+    crate_name = \"codex_response_debug_context\",\n+)",
+      "path": "codex-rs/response-debug-context/BUILD.bazel",
+      "status": "added"
+    },
+    {
+      "additions": 22,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,22 @@\n+[package]\n+edition.workspace = true\n+license.workspace = true\n+name = \"codex-response-debug-context\"\n+version.workspace = true\n+\n+[lib]\n+doctest = false\n+name = \"codex_response_debug_context\"\n+path = \"src/lib.rs\"\n+\n+[lints]\n+workspace = true\n+\n+[dependencies]\n+base64 = { workspace = true }\n+codex-api = { workspace = true }\n+http = { workspace = true }\n+serde_json = { workspace = true }\n+\n+[dev-dependencies]\n+pretty_assertions = { workspace = true }",
+      "path": "codex-rs/response-debug-context/Cargo.toml",
+      "status": "added"
+    },
+    {
+      "additions": 9,
+      "deletions": 11,
+      "patch_excerpt": "@@ -9,14 +9,14 @@ const AUTH_ERROR_HEADER: &str = \"x-openai-authorization-error\";\n const X_ERROR_JSON_HEADER: &str = \"x-error-json\";\n \n #[derive(Debug, Default, Clone, PartialEq, Eq)]\n-pub(crate) struct ResponseDebugContext {\n-    pub(crate) request_id: Option<String>,\n-    pub(crate) cf_ray: Option<String>,\n-    pub(crate) auth_error: Option<String>,\n-    pub(crate) auth_error_code: Option<String>,\n+pub struct ResponseDebugContext {\n+    pub request_id: Option<String>,\n+    pub cf_ray: Option<String>,\n+    pub auth_error: Option<String>,\n+    pub auth_error_code: Option<String>,\n }\n \n-pub(crate) fn extract_response_debug_context(transport: &TransportError) -> ResponseDebugContext {\n+pub fn extract_response_debug_context(transport: &TransportError) -> ResponseDebugContext {\n     let mut context = ResponseDebugContext::default();\n \n     let TransportError::Http {\n@@ -53,16 +53,14 @@ pub(c...",
+      "path": "codex-rs/response-debug-context/src/lib.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 16,
+      "deletions": 0,
+      "patch_excerpt": "@@ -19,7 +19,23 @@ pub use manager::SandboxType;\n pub use manager::SandboxablePreference;\n pub use manager::get_platform_sandbox;\n \n+use codex_protocol::error::CodexErr;\n+\n #[cfg(not(target_os = \"linux\"))]\n pub fn system_bwrap_warning() -> Option<String> {\n     None\n }\n+\n+impl From<SandboxTransformError> for CodexErr {\n+    fn from(err: SandboxTransformError) -> Self {\n+        match err {\n+            SandboxTransformError::MissingLinuxSandboxExecutable => {\n+                CodexErr::LandlockSandboxExecutableNotProvided\n+            }\n+            #[cfg(not(target_os = \"macos\"))]\n+            SandboxTransformError::SeatbeltUnavailable => CodexErr::UnsupportedOperation(\n+                \"seatbelt sandbox is only available on macOS\".to_string(),\n+            ),\n+        }\n+    }\n+}",
+      "path": "codex-rs/sandboxing/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -12,8 +12,8 @@ codex_rust_crate(\n         ],\n         allow_empty = True,\n     ) + [\n-        \"//codex-rs/core:templates/collaboration_mode/default.md\",\n-        \"//codex-rs/core:templates/collaboration_mode/plan.md\",\n+        \"//codex-rs/collaboration-mode-templates:templates/default.md\",\n+        \"//codex-rs/collaboration-mode-templates:templates/plan.md\",\n     ],\n     test_data_extra = glob([\"src/**/snapshots/**\"]) + [\"//codex-rs/core:model_availability_nux_fixtures\"],\n     integration_compile_data_extra = [\"src/test_backend.rs\"],",
+      "path": "codex-rs/tui/BUILD.bazel",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -133,6 +133,7 @@ arboard = { workspace = true }\n codex-cli = { workspace = true }\n codex-core = { workspace = true }\n codex-mcp = { workspace = true }\n+codex-models-manager = { workspace = true }\n codex-utils-cargo-bin = { workspace = true }\n codex-utils-pty = { workspace = true }\n assert_matches = { workspace = true }",
+      "path": "codex-rs/tui/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 3,
+      "patch_excerpt": "@@ -19,9 +19,8 @@ async fn resume_startup_does_not_consume_model_availability_nux_count() -> Resul\n     let repo_root = codex_utils_cargo_bin::repo_root()?;\n     let codex_home = tempdir()?;\n \n-    let source_catalog_path = codex_utils_cargo_bin::find_resource!(\"../core/models.json\")?;\n-    let source_catalog = std::fs::read_to_string(&source_catalog_path)?;\n-    let mut source_catalog: JsonValue = serde_json::from_str(&source_catalog)?;\n+    let mut source_catalog: JsonValue =\n+        serde_json::to_value(codex_models_manager::bundled_models_response()?)?;\n     let models = source_catalog\n         .get_mut(\"models\")\n         .and_then(JsonValue::as_array_mut)",
+      "path": "codex-rs/tui/tests/suite/model_availability_nux.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#16508"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n- split `models-manager` out of `core` and add `ModelsManagerConfig` plus `Config::to_models_manager_config()` so model metadata paths stop depending on `core::Config`\n- move login-owned/auth-owned code out of `core` into `codex-login`, move model provider config into `codex-model-provider-info`, move API bridge mapping into `codex-api`, move protocol-owned types/impls into `codex-protocol`, and move response debug helpers into a dedicated `response-debug-context` crate\n- move feedback tag emission into `codex-feedback`, relocate tests to the crates that now own the code, and keep broad temporary re-exports so this PR avoids a giant import-only rewrite\n\n## Major moves and decisions\n- created `codex-models-manager` as the owner for model cache/catalog/config/model info logic, including the new `ModelsManagerConfig` struct\n- created `codex-model-provider-info` as the owner for provider config parsing/defaults and kept temporary `codex-login`/`codex-core` re-exports for old import paths\n- moved `api_bridge` error mapping + `CoreAuthProvider` into `codex-api`, while `codex-login::api_bridge` temporarily re-exports those symbols and keeps the `auth_provider_from_auth` wrapper\n- moved `auth_env_telemetry` and `provider_auth` ownership to `codex-login`\n- moved `CodexErr` ownership to `codex-protocol::error`, plus `StreamOutput`, `bytes_to_string_smart`, and network policy helpers to protocol-owned modules\n- created `codex-response-debug-context` for `extract_response_debug_context`, `telemetry_transport_error_message`, and related response-debug plumbing instead of leaving that behavior in `core`\n- moved `FeedbackRequestTags`, `emit_feedback_request_tags`, and `emit_feedback_request_tags_with_auth_env` to `codex-feedback`\n- deferred removal of temporary re-exports and the mechanical import rewrites to a stacked follow-up PR so this PR stays reviewable\n\n## Test moves\n- moved auth refresh coverage from `core/tests/suite/auth_refresh.rs` to `login/tests/suite/auth_refresh.rs`\n- moved text encoding coverage from `core/tests/suite/text_encoding_fix.rs` to `protocol/src/exec_output_tests.rs`\n- moved model info override coverage from `core/tests/suite/model_info_overrides.rs` to `models-manager/src/model_info_overrides_tests.rs`\n",
+    "labels": [],
+    "merged_at": "2026-04-03T06:00:02Z",
+    "number": 16508,
+    "state": "merged",
+    "title": "extract models manager and related ownership from core",
+    "url": "https://github.com/openai/codex/pull/16508"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
