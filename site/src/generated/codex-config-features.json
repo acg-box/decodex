@@ -1,5 +1,5 @@
 {
-  "feature_count": 61,
+  "feature_count": 62,
   "features": [
     {
       "cli_enable_flag": "--enable apply_patch_freeform",
@@ -22,17 +22,6 @@
       "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
       "toml_assignment": "apps = true",
       "toml_snippet": "[features]\napps = true"
-    },
-    {
-      "cli_enable_flag": "--enable artifact",
-      "config_path": "features.artifact",
-      "github_search_url": "https://github.com/openai/codex/search?q=%22artifact%22&type=code",
-      "name": "artifact",
-      "reference_description": null,
-      "reference_url": "https://developers.openai.com/codex/config-reference",
-      "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
-      "toml_assignment": "artifact = true",
-      "toml_snippet": "[features]\nartifact = true"
     },
     {
       "cli_enable_flag": "--enable child_agents_md",
@@ -83,7 +72,7 @@
       "config_path": "features.codex_hooks",
       "github_search_url": "https://github.com/openai/codex/search?q=%22codex_hooks%22&type=code",
       "name": "codex_hooks",
-      "reference_description": null,
+      "reference_description": "Enable lifecycle hooks loaded from `hooks.json` (under development; off by default).",
       "reference_url": "https://developers.openai.com/codex/config-reference",
       "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
       "toml_assignment": "codex_hooks = true",
@@ -231,6 +220,17 @@
       "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
       "toml_assignment": "fast_mode = true",
       "toml_snippet": "[features]\nfast_mode = true"
+    },
+    {
+      "cli_enable_flag": "--enable general_analytics",
+      "config_path": "features.general_analytics",
+      "github_search_url": "https://github.com/openai/codex/search?q=%22general_analytics%22&type=code",
+      "name": "general_analytics",
+      "reference_description": null,
+      "reference_url": "https://developers.openai.com/codex/config-reference",
+      "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
+      "toml_assignment": "general_analytics = true",
+      "toml_snippet": "[features]\ngeneral_analytics = true"
     },
     {
       "cli_enable_flag": "--enable guardian_approval",
@@ -385,6 +385,17 @@
       "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
       "toml_assignment": "realtime_conversation = true",
       "toml_snippet": "[features]\nrealtime_conversation = true"
+    },
+    {
+      "cli_enable_flag": "--enable remote_control",
+      "config_path": "features.remote_control",
+      "github_search_url": "https://github.com/openai/codex/search?q=%22remote_control%22&type=code",
+      "name": "remote_control",
+      "reference_description": null,
+      "reference_url": "https://developers.openai.com/codex/config-reference",
+      "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
+      "toml_assignment": "remote_control = true",
+      "toml_snippet": "[features]\nremote_control = true"
     },
     {
       "cli_enable_flag": "--enable remote_models",
@@ -563,6 +574,17 @@
       "toml_snippet": "[features]\ntool_call_mcp_elicitation = true"
     },
     {
+      "cli_enable_flag": "--enable tool_search",
+      "config_path": "features.tool_search",
+      "github_search_url": "https://github.com/openai/codex/search?q=%22tool_search%22&type=code",
+      "name": "tool_search",
+      "reference_description": null,
+      "reference_url": "https://developers.openai.com/codex/config-reference",
+      "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
+      "toml_assignment": "tool_search = true",
+      "toml_snippet": "[features]\ntool_search = true"
+    },
+    {
       "cli_enable_flag": "--enable tool_suggest",
       "config_path": "features.tool_suggest",
       "github_search_url": "https://github.com/openai/codex/search?q=%22tool_suggest%22&type=code",
@@ -629,17 +651,6 @@
       "toml_snippet": "[features]\nuse_linux_sandbox_bwrap = true"
     },
     {
-      "cli_enable_flag": "--enable voice_transcription",
-      "config_path": "features.voice_transcription",
-      "github_search_url": "https://github.com/openai/codex/search?q=%22voice_transcription%22&type=code",
-      "name": "voice_transcription",
-      "reference_description": null,
-      "reference_url": "https://developers.openai.com/codex/config-reference",
-      "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
-      "toml_assignment": "voice_transcription = true",
-      "toml_snippet": "[features]\nvoice_transcription = true"
-    },
-    {
       "cli_enable_flag": "--enable web_search",
       "config_path": "features.web_search",
       "github_search_url": "https://github.com/openai/codex/search?q=%22web_search%22&type=code",
@@ -673,7 +684,7 @@
       "toml_snippet": "[features]\nweb_search_request = true"
     }
   ],
-  "generated_at": "2026-03-21T16:25:54Z",
+  "generated_at": "2026-04-07T03:10:50Z",
   "schema": "codex_config_feature_catalog/v1",
   "source_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json"
 }

@@ -1,0 +1,64 @@
+{
+  "caveats": [
+    "The PR body explicitly says the current implementation starts a thread per timer, so this should be treated as functional support rather than the final scalability story.",
+    "Pending timeouts do not keep `exec` alive by themselves; the script still needs an explicit promise or other wait path if it wants to pause for the timer."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": "The script should pause briefly, then continue and emit the final output after the timeout callback fires.",
+  "how_to_try": "In code mode, run something like `await new Promise((resolve) => setTimeout(resolve, 10)); text(\"timer done\");` inside `exec` and confirm the delayed callback resumes the script.",
+  "impact": "medium",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The code-mode description string now documents `setTimeout(callback, delayMs?)` and `clearTimeout(timeoutId?)` as built-in helpers available to runtime scripts.",
+    "The runtime adds dedicated timeout callbacks, installs both globals, and introduces a new `timers.rs` module that schedules callbacks and tracks timeout IDs.",
+    "Core integration coverage adds `code_mode_can_resume_after_set_timeout`, which awaits a promise built on `setTimeout` and verifies the `exec` call returns the expected output.",
+    "The PR body notes the current implementation uses one thread per timer, which supports reading this as a real new capability with an acknowledged implementation tradeoff rather than a docs-only change."
+  ],
+  "published_at": "2026-04-07T00:46:28Z",
+  "schema": "signal_entry/v1",
+  "slug": "code-mode-now-supports-settimeout-and-cleartimeout",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/ee42b49260cdc0dbbc46207ae427a6066956c947",
+      "https://github.com/openai/codex/commit/91133138abf1675e9c845650d0c8dd3a563c254b",
+      "https://github.com/openai/codex/commit/b3ebcf1d3037b5043d611c435b585254d5cfb1d1",
+      "https://github.com/openai/codex/commit/e4a3a6fe659138d1139c451aad3d8abdf3e6cf3a",
+      "https://github.com/openai/codex/commit/9abf7ea7a348fade837626eed4ea81cc6e5ed450",
+      "https://github.com/openai/codex/commit/8764c435ed577bbe590681550c3801386f92d316"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#16153",
+        "title": "Add setTimeout support to code mode",
+        "url": "https://github.com/openai/codex/pull/16153"
+      },
+      {
+        "kind": "commit",
+        "meta": "ee42b49",
+        "title": "Add setTimeout support to code mode",
+        "url": "https://github.com/openai/codex/commit/ee42b49260cdc0dbbc46207ae427a6066956c947"
+      },
+      {
+        "kind": "commit",
+        "meta": "9113313",
+        "title": "Merge remote-tracking branch 'origin/main' into pakrym/add-settimeout-to-codemode",
+        "url": "https://github.com/openai/codex/commit/91133138abf1675e9c845650d0c8dd3a563c254b"
+      },
+      {
+        "kind": "commit",
+        "meta": "9abf7ea",
+        "title": "codex: fix CI failure on PR #16153",
+        "url": "https://github.com/openai/codex/commit/9abf7ea7a348fade837626eed4ea81cc6e5ed450"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/16153",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #16153 adds timer support to code mode by exposing `setTimeout` and `clearTimeout`, so scripts can schedule delayed callbacks inside an `exec` run.",
+  "title": "Code mode now supports `setTimeout` and `clearTimeout`",
+  "watch_state": "Watch for a follow-up runtime implementation that moves timers onto a shared async scheduler instead of per-timeout threads.",
+  "why_it_matters": "This makes code mode feel more like a real scripting runtime for lightweight orchestration. Delayed retries, timeout-backed promises, and simple event-loop style flows no longer need awkward manual polling just to wait a few milliseconds."
+}
