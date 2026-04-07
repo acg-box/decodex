@@ -1,0 +1,23 @@
+{
+  "kind": "capability",
+  "title": "App-server v2 can now read MCP resources directly",
+  "summary": "Merged PR #16082 adds the `mcpServer/resource/read` request to the app-server protocol, so clients can fetch MCP resource contents by `threadId`, server name, and URI instead of only listing servers, tools, and templates.",
+  "why_it_matters": "This fills a real MCP Apps integration gap. Client builders can now move from discovering MCP resources to actually reading them through the same app-server surface, which makes richer MCP-backed UIs and workflows easier to build.",
+  "confidence": "confirmed",
+  "impact": "medium",
+  "proof_points": [
+    "The PR body states the new goal directly: add an `mcpResource/read` method to read an MCP resource.",
+    "The protocol bundle adds `McpResourceReadParams`, `McpResourceReadResponse`, and `ResourceContent` types plus a new `mcpServer/resource/read` request shape in both JSON schema and generated TypeScript outputs.",
+    "The app-server implementation gains request handling in `codex_message_processor.rs`, and the shared test harness adds a dedicated `send_mcp_resource_read_request` helper for the new method.",
+    "A new integration suite file, `codex-rs/app-server/tests/suite/v2/mcp_resource.rs`, provides focused end-to-end coverage for reading MCP resources through the v2 app-server path."
+  ],
+  "slug": "app-server-v2-can-read-mcp-resources-directly",
+  "config_flags": [],
+  "how_to_try": "Start an app-server-backed Codex session with an MCP server that exposes resources, then issue `mcpServer/resource/read` with a live `threadId`, the MCP server name, and a known resource URI.",
+  "expected_effect": "The response should include a `contents` array with text or blob resource payloads for the requested MCP resource instead of only metadata about the server.",
+  "caveats": [
+    "This is app-server protocol work, so the immediate payoff is strongest for client and integration developers rather than ordinary chat-only usage.",
+    "The PR is labeled part 1, which suggests more MCP Apps work is expected on top of this read path."
+  ],
+  "watch_state": "Watch for follow-up MCP Apps work that builds on resource reads with richer UI wiring, resource-template flows, or higher-level client helpers."
+}

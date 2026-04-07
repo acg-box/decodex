@@ -1,0 +1,56 @@
+{
+  "caveats": [
+    "The PR is explicit that this is not a hard security boundary: a danger-full-access session may still bypass the proxy denylist through allowed sockets or other local/private paths.",
+    "Read-only and workspace-write sandbox modes keep their existing network behavior; this flag is intentionally scoped to danger-full-access only."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [
+    "experimental_network.danger_full_access_denylist_only = true"
+  ],
+  "expected_effect": "Danger-full-access sessions should retain broad network reach, but requests to managed denied domains should still be refused by the proxy policy surface.",
+  "how_to_try": "In a Codex build that includes PR #16946, add `danger_full_access_denylist_only = true` under `[experimental_network]` together with one or more denied domains, start a danger-full-access session, and verify allowed outbound access still works while the denied domains are blocked by policy.",
+  "impact": "medium",
+  "kind": "behavior_change",
+  "lane": "github",
+  "proof_points": [
+    "The PR summary explicitly introduces `experimental_network.danger_full_access_denylist_only` and says it applies only to `SandboxPolicy::DangerFullAccess` sessions.",
+    "The bundle shows the new field wired through config requirements parsing, app-server protocol/schema output, config API mapping, and the TUI debug config surface, which confirms this is a real operator-facing config addition rather than an internal constant.",
+    "The core network proxy spec changes add a wildcard allowlist path plus dedicated tests for enforcing managed denied domains in danger-full-access mode.",
+    "The PR body includes a concrete TOML example under `[experimental_network]` and repeatedly warns that the denylist remains best effort only, which is the key behavioral caveat for anyone enabling it."
+  ],
+  "published_at": "2026-04-07T02:38:51Z",
+  "schema": "signal_entry/v1",
+  "slug": "danger-full-access-can-run-under-managed-denylist-only-network-policy",
+  "source_refs": {
+    "commit_urls": [
+      "https://github.com/openai/codex/commit/9d932536967fd92c53ccd5521a259a830c0b991c",
+      "https://github.com/openai/codex/commit/4df276f319eba642876c22292f1da196ea85b2a8"
+    ],
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "#16946",
+        "title": "[codex] Add danger-full-access denylist-only network mode",
+        "url": "https://github.com/openai/codex/pull/16946"
+      },
+      {
+        "kind": "commit",
+        "meta": "9d93253",
+        "title": "feat(network): add danger-full-access denylist-only mode",
+        "url": "https://github.com/openai/codex/commit/9d932536967fd92c53ccd5521a259a830c0b991c"
+      },
+      {
+        "kind": "commit",
+        "meta": "4df276f",
+        "title": "fix(network): broaden danger-full-access denylist-only mode",
+        "url": "https://github.com/openai/codex/commit/4df276f319eba642876c22292f1da196ea85b2a8"
+      }
+    ],
+    "pr_url": "https://github.com/openai/codex/pull/16946",
+    "repo": "openai/codex"
+  },
+  "summary": "Merged PR #16946 adds `experimental_network.danger_full_access_denylist_only`, letting danger-full-access sessions keep broad network access while still enforcing centrally managed deny entries.",
+  "title": "Danger-full-access can now run under a managed denylist-only network policy",
+  "watch_state": "Watch for follow-up hardening around bypass paths and non-loopback proxy listener behavior, since this mode deliberately trades strict isolation for broader connectivity.",
+  "why_it_matters": "This is aimed at org-managed Codex deployments that want a less restrictive yolo mode without dropping network policy entirely. It gives administrators a middle ground between full allowlist enforcement and completely unmanaged network access."
+}

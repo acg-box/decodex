@@ -1,0 +1,125 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "viyatb-oai",
+      "committed_at": "2026-04-06T21:17:17Z",
+      "message": "feat(network): add danger-full-access denylist-only mode",
+      "sha": "9d932536967fd92c53ccd5521a259a830c0b991c",
+      "url": "https://github.com/openai/codex/commit/9d932536967fd92c53ccd5521a259a830c0b991c"
+    },
+    {
+      "author": "viyatb-oai",
+      "committed_at": "2026-04-06T21:36:16Z",
+      "message": "fix(network): broaden danger-full-access denylist-only mode",
+      "sha": "4df276f319eba642876c22292f1da196ea85b2a8",
+      "url": "https://github.com/openai/codex/commit/4df276f319eba642876c22292f1da196ea85b2a8"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "TUI",
+    "--check",
+    "MDM",
+    "GLOBAL_ALLOWLIST_PATTERN"
+  ],
+  "files": [
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -9473,6 +9473,12 @@\n               \"null\"\n             ]\n           },\n+          \"dangerFullAccessDenylistOnly\": {\n+            \"type\": [\n+              \"boolean\",\n+              \"null\"\n+            ]\n+          },\n           \"dangerouslyAllowAllUnixSockets\": {\n             \"type\": [\n               \"boolean\",",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -6296,6 +6296,12 @@\n             \"null\"\n           ]\n         },\n+        \"dangerFullAccessDenylistOnly\": {\n+          \"type\": [\n+            \"boolean\",\n+            \"null\"\n+          ]\n+        },\n         \"dangerouslyAllowAllUnixSockets\": {\n           \"type\": [\n             \"boolean\",",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -151,6 +151,12 @@\n             \"null\"\n           ]\n         },\n+        \"dangerFullAccessDenylistOnly\": {\n+          \"type\": [\n+            \"boolean\",\n+            \"null\"\n+          ]\n+        },\n         \"dangerouslyAllowAllUnixSockets\": {\n           \"type\": [\n             \"boolean\",",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ConfigRequirementsReadResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -29,4 +29,4 @@ unixSockets: { [key in string]?: NetworkUnixSocketPermission } | null,\n /**\n  * Legacy compatibility view derived from `unix_sockets`.\n  */\n-allowUnixSockets: Array<string> | null, allowLocalBinding: boolean | null, };\n+allowUnixSockets: Array<string> | null, allowLocalBinding: boolean | null, dangerFullAccessDenylistOnly: boolean | null, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/NetworkRequirements.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -884,6 +884,7 @@ pub struct NetworkRequirements {\n     /// Legacy compatibility view derived from `unix_sockets`.\n     pub allow_unix_sockets: Option<Vec<String>>,\n     pub allow_local_binding: Option<bool>,\n+    pub danger_full_access_denylist_only: Option<bool>,\n }\n \n #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]\n@@ -7782,6 +7783,7 @@ mod tests {\n                 dangerously_allow_all_unix_sockets: None,\n                 domains: None,\n                 managed_allowed_domains_only: None,\n+                danger_full_access_denylist_only: None,\n                 allowed_domains: Some(vec![\"api.openai.com\".to_string()]),\n                 denied_domains: Some(vec![\"blocked.example.com\".to_string()]),\n                 unix_sockets: None,\n@@ -7808,6 +7810,7 @@ mod tests {\n                 ),\n             ])),\n             managed_allowed_domains_only...",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -194,7 +194,7 @@ Example with notification opt-out:\n - `externalAgentConfig/import` \u2014 apply selected external-agent migration items by passing explicit `migrationItems` with `cwd` (`null` for home).\n - `config/value/write` \u2014 write a single config key/value to the user's config.toml on disk.\n - `config/batchWrite` \u2014 apply multiple config edits atomically to the user's config.toml on disk, with optional `reloadUserConfig: true` to hot-reload loaded threads.\n-- `configRequirements/read` \u2014 fetch loaded requirements constraints from `requirements.toml` and/or MDM (or `null` if none are configured), including allow-lists (`allowedApprovalPolicies`, `allowedSandboxModes`, `allowedWebSearchModes`), pinned feature values (`featureRequirements`), `enforceResidency`, and `network` constraints such as canonical domain/socket permissions plus `managedAllowedDomainsOnly`.\n+- `configRequirements/rea...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -449,6 +449,7 @@ fn map_network_requirements_to_api(\n                 .collect()\n         }),\n         managed_allowed_domains_only: network.managed_allowed_domains_only,\n+        danger_full_access_denylist_only: network.danger_full_access_denylist_only,\n         allowed_domains,\n         denied_domains,\n         unix_sockets: network.unix_sockets.map(|unix_sockets| {\n@@ -594,6 +595,7 @@ mod tests {\n                     ]),\n                 }),\n                 managed_allowed_domains_only: Some(false),\n+                danger_full_access_denylist_only: Some(true),\n                 unix_sockets: Some(CoreNetworkUnixSocketPermissionsToml {\n                     entries: std::collections::BTreeMap::from([(\n                         \"/tmp/proxy.sock\".to_string(),\n@@ -653,6 +655,7 @@ mod tests {\n                     (\"example.com\".to_string(), NetworkDomainPermission::Deny),\n              ...",
+      "path": "codex-rs/app-server/src/config_api.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 20,
+      "deletions": 0,
+      "patch_excerpt": "@@ -237,6 +237,8 @@ pub struct NetworkRequirementsToml {\n     /// When true, only managed `allowed_domains` are respected while managed\n     /// network enforcement is active. User allowlist entries are ignored.\n     pub managed_allowed_domains_only: Option<bool>,\n+    /// In danger-full-access mode, allow all network access and enforce managed deny entries.\n+    pub danger_full_access_denylist_only: Option<bool>,\n     pub unix_sockets: Option<NetworkUnixSocketPermissionsToml>,\n     pub allow_local_binding: Option<bool>,\n }\n@@ -255,6 +257,8 @@ struct RawNetworkRequirementsToml {\n     /// When true, only managed `allowed_domains` are respected while managed\n     /// network enforcement is active. User allowlist entries are ignored.\n     managed_allowed_domains_only: Option<bool>,\n+    /// In danger-full-access mode, allow all network access and enforce managed deny entries.\n+    danger_fu...",
+      "path": "codex-rs/config/src/config_requirements.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 55,
+      "deletions": 27,
+      "patch_excerpt": "@@ -20,6 +20,8 @@ use codex_protocol::protocol::SandboxPolicy;\n use std::collections::HashSet;\n use std::sync::Arc;\n \n+const GLOBAL_ALLOWLIST_PATTERN: &str = \"*\";\n+\n #[derive(Debug, Clone, PartialEq, Eq)]\n pub struct NetworkProxySpec {\n     config: NetworkProxyConfig,\n@@ -195,6 +197,8 @@ impl NetworkProxySpec {\n         let allowlist_expansion_enabled =\n             Self::allowlist_expansion_enabled(sandbox_policy, hard_deny_allowlist_misses);\n         let denylist_expansion_enabled = Self::denylist_expansion_enabled(sandbox_policy);\n+        let danger_full_access_denylist_only =\n+            Self::danger_full_access_denylist_only_enabled(requirements, sandbox_policy);\n \n         if let Some(enabled) = requirements.enabled {\n             config.network.enabled = enabled;\n@@ -225,37 +229,43 @@ impl NetworkProxySpec {\n             constraints.dangerously_allow_all_unix_sockets =\n         ...",
+      "path": "codex-rs/core/src/config/network_proxy_spec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 144,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,8 +1,11 @@\n use super::*;\n use crate::config_loader::NetworkDomainPermissionToml;\n use crate::config_loader::NetworkDomainPermissionsToml;\n+use crate::config_loader::NetworkUnixSocketPermissionToml;\n+use crate::config_loader::NetworkUnixSocketPermissionsToml;\n use codex_network_proxy::NetworkDomainPermission;\n use pretty_assertions::assert_eq;\n+use std::collections::BTreeMap;\n \n fn domain_permissions(\n     entries: impl IntoIterator<Item = (&'static str, NetworkDomainPermissionToml)>,\n@@ -178,6 +181,147 @@ fn danger_full_access_keeps_managed_allowlist_and_denylist_fixed() {\n     assert_eq!(spec.constraints.denylist_expansion_enabled, Some(false));\n }\n \n+#[test]\n+fn danger_full_access_denylist_only_allows_all_domains_and_enforces_managed_denies() {\n+    let mut config = NetworkProxyConfig::default();\n+    config\n+        .network\n+        .set_allowed_domains(vec![\"evil.com\".to_stri...",
+      "path": "codex-rs/core/src/config/network_proxy_spec_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 1,
+      "patch_excerpt": "@@ -337,6 +337,7 @@ fn format_network_constraints(network: &NetworkConstraints) -> String {\n         dangerously_allow_all_unix_sockets,\n         domains,\n         managed_allowed_domains_only,\n+        danger_full_access_denylist_only,\n         unix_sockets,\n         allow_local_binding,\n     } = network;\n@@ -374,6 +375,11 @@ fn format_network_constraints(network: &NetworkConstraints) -> String {\n             \"managed_allowed_domains_only={managed_allowed_domains_only}\"\n         ));\n     }\n+    if let Some(danger_full_access_denylist_only) = danger_full_access_denylist_only {\n+        parts.push(format!(\n+            \"danger_full_access_denylist_only={danger_full_access_denylist_only}\"\n+        ));\n+    }\n     if let Some(unix_sockets) = unix_sockets {\n         parts.push(format!(\n             \"unix_sockets={}\",\n@@ -557,6 +563,7 @@ mod tests {\n                             NetworkDomainP...",
+      "path": "codex-rs/tui/src/debug_config.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n\nThis adds `experimental_network.danger_full_access_denylist_only` for orgs that want yolo / danger-full-access sessions to keep full network access while still enforcing centrally managed deny rules.\n\nWhen the flag is true and the session sandbox is `danger-full-access`, the network proxy starts with:\n\n- domain allowlist set to `*`\n- managed domain `deny` entries enforced\n- upstream proxy use allowed\n- all Unix sockets allowed\n- local/private binding allowed\n\nCaveat: the denylist is best effort only. In yolo / danger-full-access mode, Codex or the model can use an allowed socket or other local/private network path to bypass the proxy denylist, so this should not be treated as a hard security boundary.\n\nThe flag is intentionally scoped to `SandboxPolicy::DangerFullAccess`. Read-only and workspace-write modes keep the existing managed/user allowlist, denylist, Unix socket, and local-binding behavior. This does not enable the non-loopback proxy listener setting; that still requires its own explicit config.\n\nThis also threads the new field through config requirements parsing, app-server protocol/schema output, config API mapping, and the TUI debug config output.\n\n## How to use\n\nAdd the flag under `[experimental_network]` in the network policy config that is delivered to Codex. The setting is not under `[permissions]`.\n\n```toml\n[experimental_network]\nenabled = true\ndanger_full_access_denylist_only = true\n\n[experimental_network.domains]\n\"blocked.example.com\" = \"deny\"\n\"*.blocked.example.com\" = \"deny\"\n```\n\nWith that configuration, yolo / danger-full-access sessions get broad network access except for the managed denied domains above. The denylist remains a best-effort proxy policy because the session may still use allowed sockets to bypass it. Other sandbox modes do not get the wildcard domain allowlist or the socket/local-binding relaxations from this flag.\n\n## Verification\n\n- `cargo test -p codex-config network_requirements`\n- `cargo test -p codex-core network_proxy_spec`\n- `cargo test -p codex-app-server map_requirements_toml_to_api`\n- `cargo test -p codex-tui debug_config_output`\n- `cargo test -p codex-app-server-protocol`\n- `just write-app-server-schema`\n- `just fmt`\n- `just fix -p codex-config -p codex-core -p codex-app-server-protocol -p codex-app-server -p codex-tui`\n- `just fix -p codex-core -p codex-config`\n- `git diff --check`\n- `cargo clean`",
+    "labels": [],
+    "merged_at": "2026-04-07T02:38:51Z",
+    "number": 16946,
+    "state": "merged",
+    "title": "[codex] Add danger-full-access denylist-only network mode",
+    "url": "https://github.com/openai/codex/pull/16946"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
