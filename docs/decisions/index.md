@@ -1,0 +1,28 @@
+# Decisions Index
+
+Purpose: Route agents to durable design choices that explain why the repository is shaped
+this way.
+
+Question this index answers: "why was it designed this way?"
+
+## Use this index when
+
+- You need the rationale behind a stable repository or packaging choice.
+- You need to understand tradeoffs that should survive implementation churn.
+- You are considering changing an existing design boundary and need the prior reasoning
+  first.
+
+## Do not use this index when
+
+- You need the current operator sequence.
+- You need the current implementation map only.
+- You need the normative contract without the rationale layer.
+
+## Current decisions
+
+- [`decodex-plugin-source.md`](./decodex-plugin-source.md) records why this repository
+  owns the canonical Decodex plugin and why generic Playbook guidance should only keep
+  portable routing.
+- [`static-public-site.md`](./static-public-site.md) records why the public Decodex site
+  remains static while runtime/operator behavior stays in the CLI and local control
+  plane.

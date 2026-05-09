@@ -1,0 +1,678 @@
+/// Active lease for one issue.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IssueLease {
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	issue_state: String,
+}
+impl IssueLease {
+	/// Local project identifier owning this lease.
+	pub fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	/// Issue identifier owning the lease.
+	pub fn issue_id(&self) -> &str {
+		&self.issue_id
+	}
+
+	/// Run identifier holding the lease.
+	pub fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	/// Tracker state representing the dispatched run.
+	pub fn issue_state(&self) -> &str {
+		&self.issue_state
+	}
+}
+
+/// Persistent run attempt metadata.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RunAttempt {
+	run_id: String,
+	issue_id: String,
+	attempt_number: i64,
+	status: String,
+	thread_id: Option<String>,
+	turn_id: Option<String>,
+}
+impl RunAttempt {
+	/// Stable run identifier.
+	pub fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	/// Issue identifier for the run.
+	pub fn issue_id(&self) -> &str {
+		&self.issue_id
+	}
+
+	/// Attempt number for this run.
+	pub fn attempt_number(&self) -> i64 {
+		self.attempt_number
+	}
+
+	/// Current local status for the run.
+	pub fn status(&self) -> &str {
+		&self.status
+	}
+
+	/// Thread identifier returned by `app-server`, when known.
+	pub fn thread_id(&self) -> Option<&str> {
+		self.thread_id.as_deref()
+	}
+
+	/// Latest turn identifier returned by `app-server`, when known.
+	pub fn turn_id(&self) -> Option<&str> {
+		self.turn_id.as_deref()
+	}
+}
+
+/// Project-scoped operator view of one run attempt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectRunStatus {
+	run_id: String,
+	issue_id: String,
+	attempt_number: i64,
+	status: String,
+	thread_id: Option<String>,
+	turn_id: Option<String>,
+	updated_at: String,
+	branch_name: Option<String>,
+	worktree_path: Option<PathBuf>,
+	active_lease: bool,
+	event_count: i64,
+	last_event_type: Option<String>,
+	last_event_at: Option<String>,
+}
+impl ProjectRunStatus {
+	/// Stable run identifier.
+	pub fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	/// Issue identifier for the run.
+	pub fn issue_id(&self) -> &str {
+		&self.issue_id
+	}
+
+	/// Attempt number for this run.
+	pub fn attempt_number(&self) -> i64 {
+		self.attempt_number
+	}
+
+	/// Current local status for the run.
+	pub fn status(&self) -> &str {
+		&self.status
+	}
+
+	/// Thread identifier returned by `app-server`, when known.
+	pub fn thread_id(&self) -> Option<&str> {
+		self.thread_id.as_deref()
+	}
+
+	/// Latest turn identifier returned by `app-server`, when known.
+	pub fn turn_id(&self) -> Option<&str> {
+		self.turn_id.as_deref()
+	}
+
+	/// Timestamp of the latest run-attempt status update.
+	pub fn updated_at(&self) -> &str {
+		&self.updated_at
+	}
+
+	/// Branch name for the retained lane, when known.
+	pub fn branch_name(&self) -> Option<&str> {
+		self.branch_name.as_deref()
+	}
+
+	/// Filesystem path to the retained worktree, when known.
+	pub fn worktree_path(&self) -> Option<&Path> {
+		self.worktree_path.as_deref()
+	}
+
+	/// Whether this run still holds the active local lease.
+	pub fn active_lease(&self) -> bool {
+		self.active_lease
+	}
+
+	/// Number of recorded protocol events for the run.
+	pub fn event_count(&self) -> i64 {
+		self.event_count
+	}
+
+	/// Latest recorded protocol event type, when one exists.
+	pub fn last_event_type(&self) -> Option<&str> {
+		self.last_event_type.as_deref()
+	}
+
+	/// Timestamp of the latest recorded protocol event, when one exists.
+	pub fn last_event_at(&self) -> Option<&str> {
+		self.last_event_at.as_deref()
+	}
+}
+
+/// Worktree mapping for one issue lane.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorktreeMapping {
+	project_id: String,
+	issue_id: String,
+	branch_name: String,
+	worktree_path: PathBuf,
+}
+impl WorktreeMapping {
+	/// Local project identifier owning this lane.
+	pub fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	/// Issue identifier for this lane.
+	pub fn issue_id(&self) -> &str {
+		&self.issue_id
+	}
+
+	/// Branch name used for the lane.
+	pub fn branch_name(&self) -> &str {
+		&self.branch_name
+	}
+
+	/// Filesystem path to the worktree checkout.
+	pub fn worktree_path(&self) -> &Path {
+		&self.worktree_path
+	}
+}
+
+/// Unix file-descriptor handoff for a daemon-planned lease adopted by a child process.
+pub struct PreacquiredLeaseGuards {
+	/// The inherited issue-claim lock fd that keeps one issue single-owned across processes.
+	pub issue_claim_fd: i32,
+	/// The inherited dispatch-slot lock fd that keeps one shared capacity slot occupied.
+	pub dispatch_slot_fd: i32,
+	/// The inherited shared dispatch-slot index used for local guard bookkeeping.
+	pub dispatch_slot_index: usize,
+}
+
+/// Registered repo target managed by the local Decodex control plane.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ProjectRegistration {
+	service_id: String,
+	config_path: PathBuf,
+	repo_root: PathBuf,
+	worktree_root: PathBuf,
+	workflow_path: PathBuf,
+	tracker_api_key_env_var: String,
+	github_token_env_var: String,
+	enabled: bool,
+	config_fingerprint: String,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl ProjectRegistration {
+	/// Build a registry row from a Decodex project config.
+	pub(crate) fn from_config(
+		service_id: &str,
+		config_path: &Path,
+		config: &ServiceConfig,
+		enabled: bool,
+		config_fingerprint: &str,
+	) -> Self {
+		let now = timestamp_parts();
+
+		Self {
+			service_id: service_id.to_owned(),
+			config_path: config_path.to_path_buf(),
+			repo_root: config.repo_root().to_path_buf(),
+			worktree_root: config.worktree_root().to_path_buf(),
+			workflow_path: config.workflow_path().to_path_buf(),
+			tracker_api_key_env_var: config.tracker().api_key_env_var().to_owned(),
+			github_token_env_var: config.github().token_env_var().to_owned(),
+			enabled,
+			config_fingerprint: config_fingerprint.to_owned(),
+			updated_at: now.text,
+			updated_at_unix: now.unix,
+		}
+	}
+
+	/// Stable service id from the project config.
+	pub(crate) fn service_id(&self) -> &str {
+		&self.service_id
+	}
+
+	/// Absolute config path registered for this project.
+	pub(crate) fn config_path(&self) -> &Path {
+		&self.config_path
+	}
+
+	/// Absolute repository root for this project.
+	pub(crate) fn repo_root(&self) -> &Path {
+		&self.repo_root
+	}
+
+	/// Absolute worktree root for this project.
+	pub(crate) fn worktree_root(&self) -> &Path {
+		&self.worktree_root
+	}
+
+	/// Absolute workflow path registered for this project.
+	pub(crate) fn workflow_path(&self) -> &Path {
+		&self.workflow_path
+	}
+
+	/// Environment variable name for the tracker API key.
+	pub(crate) fn tracker_api_key_env_var(&self) -> &str {
+		&self.tracker_api_key_env_var
+	}
+
+	/// Environment variable name for the GitHub token.
+	pub(crate) fn github_token_env_var(&self) -> &str {
+		&self.github_token_env_var
+	}
+
+	/// Whether the project participates in `decodex serve`.
+	pub(crate) fn enabled(&self) -> bool {
+		self.enabled
+	}
+
+	/// Last config fingerprint registered for this project.
+	pub(crate) fn config_fingerprint(&self) -> &str {
+		&self.config_fingerprint
+	}
+
+	/// Last registry update timestamp.
+	pub(crate) fn updated_at(&self) -> &str {
+		&self.updated_at
+	}
+
+	/// Last registry update timestamp as Unix epoch seconds.
+	pub(crate) fn updated_at_unix(&self) -> i64 {
+		self.updated_at_unix
+	}
+
+	/// Set whether the registered project is enabled.
+	fn set_enabled(&mut self, enabled: bool) {
+		self.enabled = enabled;
+
+		let now = timestamp_parts();
+
+		self.updated_at = now.text;
+		self.updated_at_unix = now.unix;
+	}
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ChildAgentActivitySummary {
+	pub(crate) buckets: Vec<ChildAgentActivityBucket>,
+	pub(crate) current_bucket: Option<String>,
+	pub(crate) current_detail: Option<String>,
+	pub(crate) current_started_unix_epoch: Option<i64>,
+	pub(crate) current_elapsed_seconds: Option<i64>,
+	pub(crate) wall_seconds: i64,
+	pub(crate) event_count: i64,
+	pub(crate) tool_call_count: i64,
+	pub(crate) input_tokens_current: Option<i64>,
+	pub(crate) input_tokens_max: Option<i64>,
+	pub(crate) input_tokens_cumulative: i64,
+	pub(crate) output_tokens_cumulative: i64,
+	pub(crate) largest_tool_output_bytes: Option<i64>,
+	pub(crate) largest_tool_output_tool: Option<String>,
+	pub(crate) large_output_warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ChildAgentActivityBucket {
+	pub(crate) name: String,
+	pub(crate) wall_seconds: i64,
+	pub(crate) event_count: i64,
+	pub(crate) tool_call_count: i64,
+	pub(crate) input_tokens: i64,
+	pub(crate) output_tokens: i64,
+	pub(crate) output_bytes: i64,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ProtocolActivitySummary {
+	pub(crate) turn_status: Option<String>,
+	pub(crate) waiting_reason: Option<String>,
+	pub(crate) rate_limit_status: Option<String>,
+	pub(crate) recent_events: Vec<ProtocolActivityEventSummary>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ProtocolActivityEventSummary {
+	pub(crate) event_type: String,
+	pub(crate) category: String,
+	pub(crate) detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct CodexAccountActivitySummary {
+	pub(crate) account_fingerprint: String,
+	pub(crate) email: Option<String>,
+	pub(crate) plan_type: Option<String>,
+	pub(crate) status: String,
+	pub(crate) refresh_status: String,
+	pub(crate) checked_at_unix_epoch: Option<i64>,
+	pub(crate) selected_at_unix_epoch: Option<i64>,
+	pub(crate) primary_window_seconds: Option<i64>,
+	pub(crate) primary_remaining_percent: Option<i64>,
+	pub(crate) primary_resets_at_unix_epoch: Option<i64>,
+	pub(crate) secondary_window_seconds: Option<i64>,
+	pub(crate) secondary_remaining_percent: Option<i64>,
+	pub(crate) secondary_resets_at_unix_epoch: Option<i64>,
+	pub(crate) credits_has_credits: Option<bool>,
+	pub(crate) credits_unlimited: Option<bool>,
+	pub(crate) credits_balance: Option<String>,
+	pub(crate) rate_limit_reached_type: Option<String>,
+	pub(crate) cooldown_until_unix_epoch: Option<i64>,
+	pub(crate) note: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RunActivityMarker {
+	run_id: String,
+	attempt_number: i64,
+	process_id: Option<u32>,
+	last_activity_unix_epoch: Option<i64>,
+	last_protocol_activity_unix_epoch: Option<i64>,
+	last_progress_unix_epoch: Option<i64>,
+	current_operation: Option<String>,
+	thread_id: Option<String>,
+	turn_id: Option<String>,
+	thread_status: Option<String>,
+	thread_active_flags: Vec<String>,
+	event_count: Option<i64>,
+	last_event_type: Option<String>,
+	effective_model: Option<String>,
+	effective_model_provider: Option<String>,
+	effective_cwd: Option<String>,
+	effective_approval_policy: Option<String>,
+	effective_approvals_reviewer: Option<String>,
+	effective_sandbox_mode: Option<String>,
+	child_agent_activity: Option<ChildAgentActivitySummary>,
+	protocol_activity: Option<ProtocolActivitySummary>,
+	account: Option<CodexAccountActivitySummary>,
+	accounts: Vec<CodexAccountActivitySummary>,
+	retry_budget_attempt_count: Option<i64>,
+	retry_kind: Option<String>,
+	retry_ready_at_unix_epoch: Option<i64>,
+	review_policy_phase: Option<String>,
+	review_policy_status: Option<String>,
+	review_policy_head_sha: Option<String>,
+	review_policy_nonclean_rounds: Option<i64>,
+}
+impl RunActivityMarker {
+	pub(crate) fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	pub(crate) fn attempt_number(&self) -> i64 {
+		self.attempt_number
+	}
+
+	pub(crate) fn process_id(&self) -> Option<u32> {
+		self.process_id
+	}
+
+	pub(crate) fn last_activity_unix_epoch(&self) -> Option<i64> {
+		self.last_activity_unix_epoch
+	}
+
+	pub(crate) fn last_protocol_activity_unix_epoch(&self) -> Option<i64> {
+		self.last_protocol_activity_unix_epoch
+	}
+
+	pub(crate) fn last_progress_unix_epoch(&self) -> Option<i64> {
+		self.last_progress_unix_epoch
+	}
+
+	pub(crate) fn current_operation(&self) -> Option<&str> {
+		self.current_operation.as_deref()
+	}
+
+	pub(crate) fn thread_id(&self) -> Option<&str> {
+		self.thread_id.as_deref()
+	}
+
+	pub(crate) fn turn_id(&self) -> Option<&str> {
+		self.turn_id.as_deref()
+	}
+
+	pub(crate) fn thread_status(&self) -> Option<&str> {
+		self.thread_status.as_deref()
+	}
+
+	pub(crate) fn thread_active_flags(&self) -> &[String] {
+		&self.thread_active_flags
+	}
+
+	pub(crate) fn event_count(&self) -> i64 {
+		self.event_count.unwrap_or(0)
+	}
+
+	pub(crate) fn last_event_type(&self) -> Option<&str> {
+		self.last_event_type.as_deref()
+	}
+
+	pub(crate) fn effective_model(&self) -> Option<&str> {
+		self.effective_model.as_deref()
+	}
+
+	pub(crate) fn effective_model_provider(&self) -> Option<&str> {
+		self.effective_model_provider.as_deref()
+	}
+
+	pub(crate) fn effective_cwd(&self) -> Option<&str> {
+		self.effective_cwd.as_deref()
+	}
+
+	pub(crate) fn effective_approval_policy(&self) -> Option<&str> {
+		self.effective_approval_policy.as_deref()
+	}
+
+	pub(crate) fn effective_approvals_reviewer(&self) -> Option<&str> {
+		self.effective_approvals_reviewer.as_deref()
+	}
+
+	pub(crate) fn effective_sandbox_mode(&self) -> Option<&str> {
+		self.effective_sandbox_mode.as_deref()
+	}
+
+	pub(crate) fn child_agent_activity(&self) -> Option<&ChildAgentActivitySummary> {
+		self.child_agent_activity.as_ref()
+	}
+
+	pub(crate) fn protocol_activity(&self) -> Option<&ProtocolActivitySummary> {
+		self.protocol_activity.as_ref()
+	}
+
+	pub(crate) fn account(&self) -> Option<&CodexAccountActivitySummary> {
+		self.account.as_ref()
+	}
+
+	pub(crate) fn accounts(&self) -> &[CodexAccountActivitySummary] {
+		&self.accounts
+	}
+
+	pub(crate) fn retry_kind(&self) -> Option<&str> {
+		self.retry_kind.as_deref()
+	}
+
+	pub(crate) fn retry_ready_at_unix_epoch(&self) -> Option<i64> {
+		self.retry_ready_at_unix_epoch
+	}
+
+	pub(crate) fn retry_budget_attempt_count(&self) -> Option<i64> {
+		self.retry_budget_attempt_count
+	}
+
+	pub(crate) fn review_policy_phase(&self) -> Option<&str> {
+		self.review_policy_phase.as_deref()
+	}
+
+	pub(crate) fn review_policy_status(&self) -> Option<&str> {
+		self.review_policy_status.as_deref()
+	}
+
+	pub(crate) fn review_policy_head_sha(&self) -> Option<&str> {
+		self.review_policy_head_sha.as_deref()
+	}
+
+	pub(crate) fn review_policy_nonclean_rounds(&self) -> Option<i64> {
+		self.review_policy_nonclean_rounds
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewHandoffMarker {
+	run_id: String,
+	attempt_number: i64,
+	branch_name: String,
+	pr_url: String,
+	target_base_ref_name: Option<String>,
+	pr_head_ref_name: String,
+	pr_head_oid: String,
+}
+impl ReviewHandoffMarker {
+	pub(crate) fn new(
+		run_id: impl Into<String>,
+		attempt_number: i64,
+		branch_name: impl Into<String>,
+		pr_url: impl Into<String>,
+		target_base_ref_name: impl Into<String>,
+		pr_head_ref_name: impl Into<String>,
+		pr_head_oid: impl Into<String>,
+	) -> Self {
+		Self {
+			run_id: run_id.into(),
+			attempt_number,
+			branch_name: branch_name.into(),
+			pr_url: pr_url.into(),
+			target_base_ref_name: Some(target_base_ref_name.into()),
+			pr_head_ref_name: pr_head_ref_name.into(),
+			pr_head_oid: pr_head_oid.into(),
+		}
+	}
+
+	pub(crate) fn branch_name(&self) -> &str {
+		&self.branch_name
+	}
+
+	pub(crate) fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	pub(crate) fn attempt_number(&self) -> i64 {
+		self.attempt_number
+	}
+
+	pub(crate) fn pr_url(&self) -> &str {
+		&self.pr_url
+	}
+
+	pub(crate) fn target_base_ref_name(&self) -> Option<&str> {
+		self.target_base_ref_name.as_deref()
+	}
+
+	pub(crate) fn pr_head_oid(&self) -> &str {
+		&self.pr_head_oid
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ReviewOrchestrationMarker {
+	run_id: String,
+	attempt_number: i64,
+	branch_name: String,
+	pr_url: String,
+	head_sha: String,
+	phase: String,
+	request_comment_database_id: Option<i64>,
+	request_created_at_unix_epoch: Option<i64>,
+	request_description_thumbs_up_count: Option<usize>,
+	request_retry_count: i64,
+	external_round_count: i64,
+	auto_merge_enabled_at_unix_epoch: Option<i64>,
+}
+impl ReviewOrchestrationMarker {
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn new(
+		run_id: impl Into<String>,
+		attempt_number: i64,
+		branch_name: impl Into<String>,
+		pr_url: impl Into<String>,
+		head_sha: impl Into<String>,
+		phase: impl Into<String>,
+		request_comment_database_id: Option<i64>,
+		request_created_at_unix_epoch: Option<i64>,
+		request_description_thumbs_up_count: Option<usize>,
+		request_retry_count: i64,
+		external_round_count: i64,
+		auto_merge_enabled_at_unix_epoch: Option<i64>,
+	) -> Self {
+		Self {
+			run_id: run_id.into(),
+			attempt_number,
+			branch_name: branch_name.into(),
+			pr_url: pr_url.into(),
+			head_sha: head_sha.into(),
+			phase: phase.into(),
+			request_comment_database_id,
+			request_created_at_unix_epoch,
+			request_description_thumbs_up_count,
+			request_retry_count,
+			external_round_count,
+			auto_merge_enabled_at_unix_epoch,
+		}
+	}
+
+	pub(crate) fn branch_name(&self) -> &str {
+		&self.branch_name
+	}
+
+	pub(crate) fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	pub(crate) fn attempt_number(&self) -> i64 {
+		self.attempt_number
+	}
+
+	pub(crate) fn pr_url(&self) -> &str {
+		&self.pr_url
+	}
+
+	pub(crate) fn head_sha(&self) -> &str {
+		&self.head_sha
+	}
+
+	pub(crate) fn phase(&self) -> &str {
+		&self.phase
+	}
+
+	pub(crate) fn request_comment_database_id(&self) -> Option<i64> {
+		self.request_comment_database_id
+	}
+
+	pub(crate) fn request_created_at_unix_epoch(&self) -> Option<i64> {
+		self.request_created_at_unix_epoch
+	}
+
+	#[cfg(test)]
+	pub(crate) fn request_description_thumbs_up_count(&self) -> Option<usize> {
+		self.request_description_thumbs_up_count
+	}
+
+	pub(crate) fn request_retry_count(&self) -> i64 {
+		self.request_retry_count
+	}
+
+	pub(crate) fn external_round_count(&self) -> i64 {
+		self.external_round_count
+	}
+
+	pub(crate) fn auto_merge_enabled_at_unix_epoch(&self) -> Option<i64> {
+		self.auto_merge_enabled_at_unix_epoch
+	}
+}

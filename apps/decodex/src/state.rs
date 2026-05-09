@@ -1,0 +1,44 @@
+//! Persistent single-machine runtime state for active Decodex execution.
+
+#[cfg(unix)] use std::os::fd::{AsRawFd, FromRawFd};
+use std::{
+	cmp::Ordering,
+	collections::{HashMap, HashSet},
+	fs::{self, File, OpenOptions, TryLockError},
+	io::{Error, ErrorKind, Read, Seek, SeekFrom, Write},
+	path::{Path, PathBuf},
+	process,
+	sync::{Mutex, MutexGuard},
+	time::Duration,
+};
+
+use rusqlite::{Connection, Transaction, params};
+use serde::{Deserialize, Serialize};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+
+use crate::{
+	config::ServiceConfig,
+	prelude::{Result, eyre},
+	tracker::records::{self, LinearExecutionEventRecord},
+};
+
+include!("state/store.rs");
+
+include!("state/models.rs");
+
+include!("state/internal.rs");
+
+pub(crate) const RUN_ACTIVITY_MARKER_FILE: &str = ".decodex-run-activity";
+pub(crate) const RUN_OPERATION_IDLE: &str = "idle";
+pub(crate) const RUN_OPERATION_GIT_CREDENTIALS: &str = "git_credentials";
+pub(crate) const RUN_OPERATION_APP_SERVER_PREFLIGHT: &str = "app_server_preflight";
+pub(crate) const RUN_OPERATION_AGENT_RUN: &str = "agent_run";
+pub(crate) const RUN_OPERATION_REPO_GATE: &str = "repo_gate";
+pub(crate) const RUN_OPERATION_REVIEW_WRITEBACK: &str = "review_writeback";
+pub(crate) const RUN_OPERATION_WAITING_EXTERNAL: &str = "waiting_external";
+pub(crate) const RUN_OPERATION_RECONCILIATION: &str = "reconciliation";
+
+const DISPATCH_SLOT_LOCK_FILE_PREFIX: &str = ".decodex-dispatch-slot";
+const ISSUE_CLAIM_LOCK_FILE_PREFIX: &str = ".decodex-issue-claim";
+
+#[cfg(test)] mod tests;

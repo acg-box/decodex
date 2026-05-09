@@ -1,0 +1,309 @@
+{
+  "schema": "research-run/2",
+  "run_id": "2026-04-03_machine-first-landing-receipt",
+  "question": "How should Decodex encode machine-readable landing authority when the repository wants LLM-first history, does not care about human readability, and does not want empty commits for fast-forward landings?",
+  "success_criteria": [
+    "Preserve machine-readable history that LLMs can inspect directly from Git.",
+    "Avoid squash-based loss of commit-level authority.",
+    "Avoid requiring empty commits when a landing can fast-forward cleanly."
+  ],
+  "constraints": [
+    "Design for repository-local Git authority rather than markdown authority.",
+    "Assume human-readable history is not a goal.",
+    "Keep the protocol aligned with fully autonomous Decodex-controlled landing."
+  ],
+  "stop_rule": "Stop once one protocol shape is decision-ready with bounded repo-grounded evidence and a skeptic pass.",
+  "primary_hypothesis": "The best protocol separates content authority from landing receipt authority: keep machine-readable commit history on normal commits and record landing as a separate machine-readable receipt attached to the landed head without forcing a merge or empty commit.",
+  "rival_hypotheses": [
+    "Always require a merge commit carrying the landing contract, even when fast-forward would otherwise be valid.",
+    "Keep squash landing and accept that landed history is not the machine authority.",
+    "Store landing receipts in git notes instead of a first-class Git object."
+  ],
+  "falsifiers": [
+    "If the receipt cannot be fetched and enumerated reliably by default Git flows, the design is insufficient.",
+    "If the protocol still forces an artificial commit on a clean fast-forward landing, the design is insufficient.",
+    "If the protocol makes landed machine history less inspectable than the current commit history, the design is insufficient."
+  ],
+  "coverage": {
+    "mode": "standard",
+    "min_source_families": 0
+  },
+  "continuation": {
+    "mode": "auto_if_not_decision_ready",
+    "attempt": 1,
+    "max_attempts": 1,
+    "session_id": "2026-04-03_machine-first-landing-receipt"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "probe_completed",
+      "remaining_option_count": 1,
+      "independent_option_questions": [
+        "Which Git-native object should carry landing receipt authority without forcing an empty commit on fast-forward landings?"
+      ],
+      "external_slices": []
+    },
+    {
+      "seq": 2,
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E1",
+          "kind": "observation",
+          "summary": "The current repository workflow now sets `[landing].merge_method = \"squash\"`, making GitHub-generated landed commit messages the effective mainline history shape instead of preserving machine-readable commit authority.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E2",
+          "kind": "observation",
+          "summary": "The merged mainline commit for PR #40 was rewritten by GitHub into a title-plus-bullets message, and the original single-line `delivery/1` JSON survived only as a bullet in the squash body rather than as the landed authority surface.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E3",
+          "kind": "observation",
+          "summary": "The repository allows merge commits, squash merges, and rebase merges, so preserving machine-readable landed history does not require squash and is not constrained to a single GitHub merge mode.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E4",
+          "kind": "inference",
+          "summary": "If landing authority is attached to the landed head as a separate first-class Git object, fast-forward landings can remain fast-forward while still carrying an explicit machine-readable receipt.",
+          "source_family": "repo_code"
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T1",
+          "summary": "Binding landing authority to a merge commit preserves everything in commit history, but it forces an otherwise unnecessary commit object whenever fast-forward landing is valid.",
+          "supporting_evidence_ids": [
+            "E2",
+            "E4"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T2",
+          "summary": "Keeping commit history as the primary authority and storing a separate landing receipt preserves fast-forward behavior, but the receipt carrier must still be Git-native and easy for Decodex to enumerate.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E3",
+            "E4"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ]
+    },
+    {
+      "seq": 4,
+      "type": "judgment_candidate_created",
+      "judgment_payload": {
+        "judgment_type": "recommend",
+        "preferred_option": "commit-history-plus-annotated-tag-receipt",
+        "rejected_options": [
+          "always-merge-commit-land-receipt",
+          "git-notes-landing-receipt",
+          "squash-based-landing"
+        ],
+        "decision_claim": "Use machine-readable per-commit history as the primary authority and represent landing as a separate receipt, preferably an annotated tag attached to the landed head. Preserve fast-forward when possible, avoid squash entirely, and never require an empty commit just to encode landing metadata.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2"
+        ]
+      },
+      "judgment_hash": "sha256:00db9e7beed46597b414e7ea5bc03bf2d6e3a9c9d7b617280b1650b3d4517051"
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "The original candidate was directionally right but not yet repo-grounded enough: this repo still sets `[landing].merge_method = \"squash\"`, and neither workflow contract nor runtime currently define receipt-tag authority or enumeration rules.",
+      "objections": [
+        {
+          "id": "O1",
+          "summary": "Current repo policy still sets `[landing].merge_method = \"squash\"`, so the recommendation cannot be adopted immediately without an explicit workflow/spec policy change."
+        },
+        {
+          "id": "O2",
+          "summary": "Annotated-tag receipts are not yet part of the repo-grounded contract; workflow/spec/runtime still need explicit receipt-tag fields, naming, fetch, and validation rules."
+        }
+      ],
+      "seq": 5,
+      "target_judgment_hash": "sha256:00db9e7beed46597b414e7ea5bc03bf2d6e3a9c9d7b617280b1650b3d4517051"
+    },
+    {
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E5",
+          "kind": "contradiction",
+          "summary": "The active repo contract still says `[landing].merge_method = \"squash\"`, so the machine-first receipt design is not an immediate description of current behavior; it is a proposed replacement contract.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E6",
+          "kind": "missing_evidence",
+          "summary": "The repository does not yet define how `decodex/land/1` receipt tags are named, fetched, enumerated, validated, or cleaned up, so those rules must be added before the design can be implemented safely.",
+          "source_family": "repo_code"
+        }
+      ],
+      "seq": 6
+    },
+    {
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T3",
+          "summary": "Annotated-tag landing receipts solve the fast-forward empty-commit problem only if the repo contract explicitly teaches Decodex where receipts live and how to fetch and validate them; otherwise the design remains under-specified.",
+          "supporting_evidence_ids": [
+            "E5",
+            "E6"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ],
+      "seq": 7
+    },
+    {
+      "type": "judgment_candidate_created",
+      "addresses_objection_ids": [
+        "O1",
+        "O2"
+      ],
+      "judgment_payload": {
+        "judgment_type": "recommend",
+        "preferred_option": "machine-first-ff-or-merge-with-annotated-tag-receipt",
+        "rejected_options": [
+          "always-merge-commit-land-receipt",
+          "git-notes-landing-receipt",
+          "squash-based-landing"
+        ],
+        "decision_claim": "Adopt a machine-first landing contract in two layers: keep machine-readable per-commit history as the primary authority, and add a separate `decodex/land/1` landing receipt attached to the landed head as an annotated tag. To make that design valid in this repo, change `[landing]` away from `squash`, add explicit workflow/spec support for receipt tags and their fetch/enumeration rules, and teach Decodex runtime to create and validate them for both fast-forward and merge landings without requiring empty commits.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T3"
+        ]
+      },
+      "judgment_hash": "sha256:7cd311b70536a0903e8d166b24089f350f98b756da8fbc1e8d7340ebb5084a08",
+      "seq": 8
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "The revised candidate still needs one more repo-owned machine-readable policy surface: current `[landing]` only models merge, squash, or rebase, so an explicit fast-forward-vs-merge rule must be added rather than inferred.",
+      "objections": [
+        {
+          "id": "O3",
+          "summary": "Add a machine-readable landing-mode field for `ff_then_merge`; current `[landing]` only models merge method, not the fast-forward-vs-merge choice."
+        }
+      ],
+      "seq": 9,
+      "target_judgment_hash": "sha256:7cd311b70536a0903e8d166b24089f350f98b756da8fbc1e8d7340ebb5084a08"
+    },
+    {
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E7",
+          "kind": "observation",
+          "summary": "The current workflow contract only exposes `[landing].merge_method = merge|squash|rebase`, so a deterministic fast-forward-when-possible policy needs a new machine-readable field instead of runtime inference.",
+          "source_family": "repo_code"
+        }
+      ],
+      "seq": 10
+    },
+    {
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T4",
+          "summary": "Supporting fast-forward without empty commits requires a separate machine-readable landing-mode field, because merge method alone cannot express 'ff when possible, otherwise merge'.",
+          "supporting_evidence_ids": [
+            "E7"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ],
+      "seq": 11
+    },
+    {
+      "type": "judgment_candidate_created",
+      "addresses_objection_ids": [
+        "O3"
+      ],
+      "judgment_payload": {
+        "judgment_type": "recommend",
+        "preferred_option": "machine-first-landing-with-ff-then-merge-and-annotated-tag-receipt",
+        "rejected_options": [
+          "always-merge-commit-land-receipt",
+          "git-notes-landing-receipt",
+          "squash-based-landing"
+        ],
+        "decision_claim": "Design the protocol in three explicit layers. First, keep machine-readable per-commit history as the primary authority. Second, add `[landing].mode = \"ff_then_merge\"` so repository policy can say 'fast-forward when possible, otherwise create a merge commit', and treat existing `merge_method` as the fallback merge style when fast-forward is not available. Third, add `decodex/land/1` as a landing receipt carried by an annotated tag attached to the landed head, with explicit workflow/spec/runtime rules for naming, fetch, enumeration, validation, and cleanup. This preserves machine-readable history, avoids squash, and never requires an empty commit for fast-forward landings.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6",
+          "E7"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T3",
+          "T4"
+        ]
+      },
+      "judgment_hash": "sha256:b50de0fb7daaf465d94cc86e6e15822ff55d9d067451a0e48be6b8f0ff91204a",
+      "seq": 12
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "The protocol direction is coherent, but two machine-authoritative contract pieces are still unspecified: the durable per-commit schema itself and the contract rules between a new fast-forward landing mode and the existing merge-method field.",
+      "objections": [
+        {
+          "id": "O4",
+          "summary": "The repository no longer defines a durable machine-readable per-commit schema, so layer 1 needs an explicit replacement contract rather than relying on an ad hoc restored `delivery/1` commit."
+        },
+        {
+          "id": "O5",
+          "summary": "A new `[landing].mode = \"ff_then_merge\"` field also needs explicit contract rules with `merge_method`, including which combinations are valid and which ones are forbidden."
+        }
+      ],
+      "seq": 13,
+      "target_judgment_hash": "sha256:b50de0fb7daaf465d94cc86e6e15822ff55d9d067451a0e48be6b8f0ff91204a"
+    },
+    {
+      "type": "finalized_not_decision_ready",
+      "reason": "Bounded research found a strong direction, but the commit-level schema and landing-mode contract matrix still need explicit contract design before the protocol is safe to adopt.",
+      "missing_evidence": [
+        "Choose the durable per-commit schema that replaces the deleted delivery contract, including required fields and authority semantics.",
+        "Define the exact contract rules between `[landing].mode` and `merge_method`, including which fallback merge styles remain valid when fast-forward is unavailable.",
+        "Specify how `decodex/land/1` annotated-tag receipts are named, fetched, enumerated, validated, and cleaned up."
+      ],
+      "seq": 14
+    }
+  ]
+}

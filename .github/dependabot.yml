@@ -12,3 +12,9 @@ updates:
       interval: 'daily'
       time: '00:00'
     labels: []
+  - package-ecosystem: 'npm'
+    directory: '/site'
+    schedule:
+      interval: 'daily'
+      time: '00:00'
+    labels: []

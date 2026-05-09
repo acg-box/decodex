@@ -1,0 +1,1024 @@
+use color_eyre::Report;
+
+use crate::{
+	agent::tracker_tool_bridge::{
+		self, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
+		ISSUE_TRANSITION_TOOL_NAME, LocalRepoDetails, PendingReviewCompletion, PullRequestDetails,
+		REVIEW_POLICY_CONVERGENCE_BUDGET, ReviewExecutionMode, ReviewHandoffContext,
+		ReviewHandoffWritebackFailed, ReviewPolicyPhase, ReviewPolicyState, ReviewPolicyStatus,
+		ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, ScopeArgs,
+		TrackerToolBridge,
+	},
+	prelude::eyre,
+	state::{self, ReviewHandoffMarker, ReviewOrchestrationMarker},
+	tracker::{
+		self, TrackerIssue,
+		records::{self},
+	},
+};
+
+enum CloseoutIssueStateValidation {
+	RefreshRequired,
+	AlreadyVerified,
+}
+
+impl<'a> TrackerToolBridge<'a> {
+	fn persist_linear_execution_event(
+		&self,
+		record: &records::LinearExecutionEventRecord,
+	) -> crate::prelude::Result<()> {
+		if let Some(state_store) = self.state_store {
+			state_store.record_linear_execution_event(record)?;
+		}
+
+		Ok(())
+	}
+
+	fn persist_review_handoff_marker(
+		&self,
+		review_context: &ReviewHandoffContext,
+		marker: &ReviewHandoffMarker,
+	) -> crate::prelude::Result<()> {
+		let state_store = self.state_store.ok_or_else(|| {
+			eyre::eyre!(
+				"Runtime state store is required to persist review handoff for issue `{}`.",
+				self.issue.identifier
+			)
+		})?;
+
+		state_store.upsert_review_handoff_marker(&review_context.service_id, &self.issue.id, marker)
+	}
+
+	fn persist_review_orchestration_marker(
+		&self,
+		review_context: &ReviewHandoffContext,
+		marker: &ReviewOrchestrationMarker,
+	) -> crate::prelude::Result<()> {
+		let state_store = self.state_store.ok_or_else(|| {
+			eyre::eyre!(
+				"Runtime state store is required to persist review orchestration for issue `{}`.",
+				self.issue.identifier
+			)
+		})?;
+
+		state_store.upsert_review_orchestration_marker(
+			&review_context.service_id,
+			&self.issue.id,
+			marker,
+		)
+	}
+
+	pub(super) fn cache_review_policy_state_best_effort(
+		&self,
+		review_context: &ReviewHandoffContext,
+		review_policy_phase: ReviewPolicyPhase,
+		review_policy_status: ReviewPolicyStatus,
+		head_sha: &str,
+		nonclean_rounds: i64,
+	) {
+		if let Err(error) = state::write_run_review_policy_state(
+			&review_context.cwd,
+			&review_context.run_id,
+			review_context.attempt_number,
+			review_policy_phase.as_str(),
+			review_policy_status.as_str(),
+			head_sha,
+			nonclean_rounds,
+		) {
+			tracing::warn!(
+				?error,
+				issue = self.issue.identifier,
+				run_id = review_context.run_id,
+				worktree_path = %review_context.cwd.display(),
+				"Review policy marker write failed; continuing with runtime state."
+			);
+		}
+	}
+
+	pub(super) fn ensure_issue_scope(&self, scope: &ScopeArgs) -> Result<(), String> {
+		if let Some(issue_id) = scope.issue_id.as_deref()
+			&& issue_id != self.issue.id
+		{
+			return Err(format!(
+				"Tool call targeted issue id `{issue_id}`, but the leased issue id is `{}`.",
+				self.issue.id
+			));
+		}
+		if let Some(issue_identifier) = scope.issue_identifier.as_deref()
+			&& issue_identifier != self.issue.identifier
+		{
+			return Err(format!(
+				"Tool call targeted issue identifier `{issue_identifier}`, but the leased issue identifier is `{}`.",
+				self.issue.identifier
+			));
+		}
+
+		Ok(())
+	}
+
+	pub(super) fn allowed_transition_states(&self) -> Vec<&str> {
+		let tracker = self.workflow.frontmatter().tracker();
+
+		if matches!(
+			self.review_context.as_ref().map(|context| context.mode),
+			Some(ReviewExecutionMode::Closeout)
+		) {
+			return vec![tracker.resolved_completed_state()];
+		}
+
+		let success_state = tracker.success_state();
+		let mut states = tracker
+			.startable_states()
+			.iter()
+			.map(String::as_str)
+			.filter(|state| *state != success_state)
+			.collect::<Vec<_>>();
+
+		for state in [tracker.in_progress_state(), tracker.failure_state()] {
+			if state != success_state && !states.iter().any(|existing| existing == &state) {
+				states.push(state);
+			}
+		}
+
+		states
+	}
+
+	pub(super) fn refreshed_issue_snapshot(&self) -> crate::prelude::Result<Option<TrackerIssue>> {
+		let issue_ids = [self.issue.id.clone()];
+		let mut refreshed_issues = self.tracker.refresh_issues(&issue_ids)?;
+
+		Ok(refreshed_issues.pop())
+	}
+
+	pub(super) fn validate_review_action_pr(
+		&self,
+		review_context: &ReviewHandoffContext,
+		pr_url: &str,
+	) -> std::result::Result<PullRequestDetails, String> {
+		let github_token =
+			tracker_tool_bridge::resolve_review_handoff_github_token(review_context)?;
+		let pull_request = self.pull_request_inspector.inspect_pull_request(
+			&review_context.cwd,
+			pr_url,
+			github_token.as_str(),
+		)?;
+		let local_repo = self.local_repo_inspector.inspect_local_repo(&review_context.cwd)?;
+
+		if pull_request.head_repository_owner != local_repo.repository_owner
+			|| pull_request.head_repository_name != local_repo.repository_name
+		{
+			return Err(format!(
+				"Pull request `{}` belongs to repository `{}/{}`, but the current lane repository is `{}/{}`.",
+				pull_request.url,
+				pull_request.head_repository_owner,
+				pull_request.head_repository_name,
+				local_repo.repository_owner,
+				local_repo.repository_name
+			));
+		}
+		if pull_request.base_ref_name != local_repo.default_branch {
+			return Err(format!(
+				"Pull request `{}` targets base branch `{}`, but retained review lanes must target the repository default branch `{}`.",
+				pull_request.url, pull_request.base_ref_name, local_repo.default_branch
+			));
+		}
+		if pull_request.head_ref_name != review_context.branch_name {
+			return Err(format!(
+				"Pull request `{}` is for branch `{}`, but the current lane branch is `{}`.",
+				pull_request.url, pull_request.head_ref_name, review_context.branch_name
+			));
+		}
+		if pull_request.head_ref_oid != local_repo.head_oid {
+			return Err(format!(
+				"Pull request `{}` points at commit `{}`, but the current lane HEAD is `{}`. Push the latest lane commit before review handoff.",
+				pull_request.url, pull_request.head_ref_oid, local_repo.head_oid
+			));
+		}
+		if pull_request.state != "OPEN" {
+			return Err(format!(
+				"Pull request `{}` is `{}`; it must be open for review handoff.",
+				pull_request.url, pull_request.state
+			));
+		}
+		if pull_request.is_draft {
+			return Err(format!(
+				"Pull request `{}` is still draft; mark it ready for review before handoff.",
+				pull_request.url
+			));
+		}
+
+		if let Some(recorded_pr_url) = review_context.recorded_pr_url.as_deref()
+			&& pull_request.url != recorded_pr_url
+		{
+			return Err(format!(
+				"Pull request `{}` does not match the retained lane PR `{}`.",
+				pull_request.url, recorded_pr_url
+			));
+		}
+
+		Ok(pull_request)
+	}
+
+	pub(super) fn validate_closeout_pr(
+		&self,
+		review_context: &ReviewHandoffContext,
+		pr_url: &str,
+	) -> std::result::Result<PullRequestDetails, String> {
+		let github_token =
+			tracker_tool_bridge::resolve_review_handoff_github_token(review_context)?;
+		let pull_request = self.pull_request_inspector.inspect_pull_request(
+			&review_context.cwd,
+			pr_url,
+			github_token.as_str(),
+		)?;
+		let local_repo = self.local_repo_inspector.inspect_local_repo(&review_context.cwd)?;
+
+		if pull_request.head_repository_owner != local_repo.repository_owner
+			|| pull_request.head_repository_name != local_repo.repository_name
+		{
+			return Err(format!(
+				"Pull request `{}` belongs to repository `{}/{}`, but the current lane repository is `{}/{}`.",
+				pull_request.url,
+				pull_request.head_repository_owner,
+				pull_request.head_repository_name,
+				local_repo.repository_owner,
+				local_repo.repository_name
+			));
+		}
+		if pull_request.base_ref_name != local_repo.default_branch {
+			return Err(format!(
+				"Pull request `{}` targets base branch `{}`, but retained closeout requires the repository default branch `{}`.",
+				pull_request.url, pull_request.base_ref_name, local_repo.default_branch
+			));
+		}
+		if pull_request.head_ref_name != review_context.branch_name {
+			return Err(format!(
+				"Pull request `{}` is for branch `{}`, but the current lane branch is `{}`.",
+				pull_request.url, pull_request.head_ref_name, review_context.branch_name
+			));
+		}
+		if pull_request.head_ref_oid != local_repo.head_oid {
+			return Err(format!(
+				"Pull request `{}` points at commit `{}`, but the current lane HEAD is `{}`. Finish closeout from the merged lane head.",
+				pull_request.url, pull_request.head_ref_oid, local_repo.head_oid
+			));
+		}
+		if pull_request.state != "MERGED" {
+			return Err(format!(
+				"Pull request `{}` is `{}`; it must be merged before closeout completes.",
+				pull_request.url, pull_request.state
+			));
+		}
+		if pull_request.is_draft {
+			return Err(format!(
+				"Pull request `{}` is still draft; closeout requires a merged non-draft PR lineage.",
+				pull_request.url
+			));
+		}
+
+		if let Some(recorded_pr_url) = review_context.recorded_pr_url.as_deref()
+			&& pull_request.url != recorded_pr_url
+		{
+			return Err(format!(
+				"Pull request `{}` does not match the retained lane PR `{}`.",
+				pull_request.url, recorded_pr_url
+			));
+		}
+
+		Ok(pull_request)
+	}
+
+	pub(super) fn record_continuation_blocking_transition(&self, state: &str) {
+		if state != self.workflow.frontmatter().tracker().in_progress_state() {
+			self.record_continuation_blocking_write(format!(
+				"`{ISSUE_TRANSITION_TOOL_NAME}` to state `{state}`"
+			));
+		}
+	}
+
+	pub(super) fn record_continuation_blocking_write(&self, reason: String) {
+		self.continuation_blocking_tracker_write.replace(Some(reason));
+	}
+
+	pub(super) fn local_issue_remains_active(&self) -> bool {
+		self.local_issue_state_name.borrow().as_str()
+			== self.workflow.frontmatter().tracker().in_progress_state()
+			&& !*self.local_opt_out_requested.borrow()
+			&& !*self.manual_attention_requested.borrow()
+	}
+
+	pub(super) fn continuation_blocking_write_reason(
+		&self,
+	) -> crate::prelude::Result<Option<String>> {
+		let Some(reason) = self.continuation_blocking_tracker_write.borrow().clone() else {
+			return Ok(None);
+		};
+		let tracker_policy = self.workflow.frontmatter().tracker();
+		let run_started_active = self.issue.state.name == tracker_policy.in_progress_state();
+
+		if run_started_active && !self.local_issue_remains_active() {
+			return Ok(Some(reason));
+		}
+
+		let issue = match self.refreshed_issue_snapshot()? {
+			Some(issue) => issue,
+			None => return Ok(Some(reason)),
+		};
+		let issue_still_active = issue.state.name == tracker_policy.in_progress_state()
+			&& !issue.has_label(tracker_policy.opt_out_label())
+			&& !issue.has_label(tracker_policy.needs_attention_label());
+
+		if issue_still_active {
+			return Ok(None);
+		}
+
+		Ok(Some(reason))
+	}
+
+	pub(crate) fn startup_transition_succeeded_locally(&self) -> bool {
+		self.local_issue_state_name.borrow().as_str()
+			== self.workflow.frontmatter().tracker().in_progress_state()
+	}
+
+	pub(crate) fn completion_disposition(
+		&self,
+	) -> crate::prelude::Result<RunCompletionDisposition> {
+		let Some(review_context) = self.review_context.as_ref() else {
+			eyre::bail!(
+				"Review handoff context is unavailable for issue `{}`.",
+				self.issue.identifier
+			);
+		};
+		let manual_attention_requested = *self.manual_attention_requested.borrow();
+		let manual_attention_comment_recorded = *self.manual_attention_comment_recorded.borrow();
+		let review_completion = self.pending_review_completion.borrow().clone();
+
+		match (manual_attention_requested, manual_attention_comment_recorded, review_completion) {
+			(false, false, Some(PendingReviewCompletion::Handoff(_))) =>
+				Ok(RunCompletionDisposition::ReviewHandoff),
+			(false, false, Some(PendingReviewCompletion::Repair(_))) =>
+				Ok(RunCompletionDisposition::ReviewRepair),
+			(false, false, Some(PendingReviewCompletion::Closeout(_))) =>
+				Ok(RunCompletionDisposition::Closeout),
+			(true, true, None) => Ok(RunCompletionDisposition::ManualAttention),
+			(true, false, None) => eyre::bail!(
+				"Run `{}` requested human attention with label `{}`, but issue `{}` never recorded the required explanatory comment.",
+				review_context.run_id,
+				self.workflow.frontmatter().tracker().needs_attention_label(),
+				self.issue.identifier
+			),
+			(true, _, Some(_)) => eyre::bail!(
+				"Run `{}` recorded both `{}` and label `{}`. Use exactly one final tracker exit path.",
+				review_context.run_id,
+				self.required_pr_completion_tool_name(),
+				self.workflow.frontmatter().tracker().needs_attention_label()
+			),
+			(false, false, None) => eyre::bail!(
+				"Run `{}` completed, but issue `{}` recorded neither `{}` nor label `{}` for human attention.",
+				review_context.run_id,
+				self.issue.identifier,
+				self.required_pr_completion_tool_name(),
+				self.workflow.frontmatter().tracker().needs_attention_label()
+			),
+			(false, true, None) | (false, true, Some(_)) => eyre::bail!(
+				"Run `{}` recorded a human-attention comment for issue `{}`, but never recorded label `{}`.",
+				review_context.run_id,
+				self.issue.identifier,
+				self.workflow.frontmatter().tracker().needs_attention_label()
+			),
+		}
+	}
+
+	pub(crate) fn apply_review_handoff(&self) -> crate::prelude::Result<()> {
+		let Some(review_context) = self.review_context.as_ref() else {
+			eyre::bail!(
+				"Review handoff context is unavailable for issue `{}`.",
+				self.issue.identifier
+			);
+		};
+		let pending_review_handoff = {
+			let pending_review_handoff = self.pending_review_completion.borrow();
+			let Some(PendingReviewCompletion::Handoff(pending_review_handoff)) =
+				pending_review_handoff.as_ref()
+			else {
+				eyre::bail!(
+					"Run `{}` completed, but issue `{}` never recorded a PR-backed review handoff.",
+					review_context.run_id,
+					self.issue.identifier
+				);
+			};
+
+			pending_review_handoff.clone()
+		};
+		let pull_request = self
+			.validate_review_action_pr(review_context, &pending_review_handoff.pr_url)
+			.map_err(|error| eyre::eyre!(error))?;
+		let completion_comment = tracker_tool_bridge::format_review_handoff_comment(
+			review_context,
+			&pending_review_handoff,
+		);
+		let handoff_record = linear_execution_review_event(
+			self.issue,
+			review_context,
+			&pull_request,
+			"review_handoff",
+			"review_handoff",
+			&pending_review_handoff.summary,
+		);
+
+		tracker_tool_bridge::validate_public_comment_body(&completion_comment)
+			.map_err(|error| eyre::eyre!(error))?;
+
+		let success_state = self.workflow.frontmatter().tracker().success_state();
+		let success_state_id = self.issue.state_id_for_name(success_state).ok_or_else(|| {
+			eyre::eyre!(
+				"State `{success_state}` does not exist on issue `{}`.",
+				self.issue.identifier
+			)
+		})?;
+		let handoff_marker = ReviewHandoffMarker::new(
+			review_context.run_id.clone(),
+			review_context.attempt_number,
+			review_context.branch_name.clone(),
+			pull_request.url.clone(),
+			pull_request.base_ref_name.clone(),
+			pull_request.head_ref_name.clone(),
+			pull_request.head_ref_oid.clone(),
+		);
+		let orchestration_marker = ReviewOrchestrationMarker::new(
+			review_context.run_id.clone(),
+			review_context.attempt_number,
+			review_context.branch_name.clone(),
+			pull_request.url.clone(),
+			pull_request.head_ref_oid.clone(),
+			"request_pending",
+			None,
+			None,
+			None,
+			0,
+			0,
+			None,
+		);
+
+		if let Err(error) = tracker::create_linear_execution_event_comment(
+			self.tracker,
+			&self.issue.id,
+			&completion_comment,
+			&handoff_record,
+		) {
+			return Err(Report::new(ReviewHandoffWritebackFailed {
+				issue_identifier: self.issue.identifier.clone(),
+				run_id: review_context.run_id.clone(),
+				pr_url: pending_review_handoff.pr_url,
+				success_state: success_state.to_owned(),
+				source: format!("failed to persist the tracker review handoff record: {error}"),
+			}));
+		}
+
+		self.persist_linear_execution_event(&handoff_record)?;
+		self.persist_review_handoff_marker(review_context, &handoff_marker)?;
+		self.persist_review_orchestration_marker(review_context, &orchestration_marker)?;
+
+		if let Err(error) = self.tracker.update_issue_state(&self.issue.id, success_state_id) {
+			if let Some(state_store) = self.state_store {
+				state_store.clear_review_markers(&self.issue.id)?;
+			}
+
+			return Err(Report::new(ReviewHandoffWritebackFailed {
+				issue_identifier: self.issue.identifier.clone(),
+				run_id: review_context.run_id.clone(),
+				pr_url: pull_request.url.clone(),
+				success_state: success_state.to_owned(),
+				source: format!("failed to move the tracker issue to `{success_state}`: {error}"),
+			}));
+		}
+
+		self.pending_review_completion.borrow_mut().take();
+
+		Ok(())
+	}
+
+	pub(crate) fn apply_review_repair(&self) -> crate::prelude::Result<()> {
+		let Some(review_context) = self.review_context.as_ref() else {
+			eyre::bail!(
+				"Review handoff context is unavailable for issue `{}`.",
+				self.issue.identifier
+			);
+		};
+		let pending_review_repair = {
+			let pending_review_repair = self.pending_review_completion.borrow();
+			let Some(PendingReviewCompletion::Repair(pending_review_repair)) =
+				pending_review_repair.as_ref()
+			else {
+				eyre::bail!(
+					"Run `{}` completed, but issue `{}` never recorded retained review repair completion.",
+					review_context.run_id,
+					self.issue.identifier
+				);
+			};
+
+			pending_review_repair.clone()
+		};
+		let pull_request = self
+			.validate_review_action_pr(review_context, &pending_review_repair.pr_url)
+			.map_err(|error| eyre::eyre!(error))?;
+		let completion_comment = tracker_tool_bridge::format_review_repair_comment(
+			review_context,
+			&pending_review_repair,
+		);
+		let handoff_record = linear_execution_review_event(
+			self.issue,
+			review_context,
+			&pull_request,
+			"repair_handoff",
+			"review_repair",
+			&pending_review_repair.summary,
+		);
+		let review_handoff = ReviewHandoffMarker::new(
+			review_context.run_id.clone(),
+			review_context.attempt_number,
+			review_context.branch_name.clone(),
+			pull_request.url.clone(),
+			pull_request.base_ref_name.clone(),
+			pull_request.head_ref_name.clone(),
+			pull_request.head_ref_oid.clone(),
+		);
+
+		tracker_tool_bridge::validate_public_comment_body(&completion_comment)
+			.map_err(|error| eyre::eyre!(error))?;
+
+		let state_store = self.state_store.ok_or_else(|| {
+			eyre::eyre!(
+				"Runtime state store is required to read review orchestration for issue `{}`.",
+				self.issue.identifier
+			)
+		})?;
+		let previous_review_handoff = state_store.review_handoff_marker(
+			&review_context.service_id,
+			&self.issue.id,
+			&review_context.branch_name,
+		)?;
+		let persisted_orchestration = previous_review_handoff
+			.as_ref()
+			.map(|marker| {
+				state_store.review_orchestration_marker(
+					&review_context.service_id,
+					&self.issue.id,
+					marker,
+				)
+			})
+			.transpose()?
+			.flatten();
+		let external_round_count = persisted_orchestration.map_or(0, |marker| {
+			if marker.external_round_count() >= 4 { 0 } else { marker.external_round_count() }
+		});
+
+		tracker::create_linear_execution_event_comment(
+			self.tracker,
+			&self.issue.id,
+			&completion_comment,
+			&handoff_record,
+		)?;
+
+		self.persist_linear_execution_event(&handoff_record)?;
+		self.persist_review_handoff_marker(review_context, &review_handoff)?;
+		self.persist_review_orchestration_marker(
+			review_context,
+			&ReviewOrchestrationMarker::new(
+				review_context.run_id.clone(),
+				review_context.attempt_number,
+				review_context.branch_name.clone(),
+				pull_request.url.clone(),
+				pull_request.head_ref_oid.clone(),
+				"request_pending",
+				None,
+				None,
+				None,
+				0,
+				external_round_count,
+				None,
+			),
+		)?;
+		self.pending_review_completion.borrow_mut().take();
+
+		Ok(())
+	}
+
+	pub(crate) fn apply_closeout(&self) -> crate::prelude::Result<()> {
+		let Some(review_context) = self.review_context.as_ref() else {
+			eyre::bail!(
+				"Review handoff context is unavailable for issue `{}`.",
+				self.issue.identifier
+			);
+		};
+		let pending_closeout = {
+			let pending_review_completion = self.pending_review_completion.borrow();
+			let Some(PendingReviewCompletion::Closeout(pending_closeout)) =
+				pending_review_completion.as_ref()
+			else {
+				eyre::bail!(
+					"Run `{}` completed, but issue `{}` never recorded retained closeout completion.",
+					review_context.run_id,
+					self.issue.identifier
+				);
+			};
+
+			pending_closeout.clone()
+		};
+
+		self.write_closeout_record(
+			review_context,
+			&pending_closeout.pr_url,
+			CloseoutIssueStateValidation::RefreshRequired,
+			&pending_closeout.summary,
+		)?;
+		self.pending_review_completion.borrow_mut().take();
+
+		Ok(())
+	}
+
+	pub(crate) fn validate_deterministic_closeout_pr(
+		&self,
+		pr_url: &str,
+	) -> crate::prelude::Result<PullRequestDetails> {
+		let Some(review_context) = self.review_context.as_ref() else {
+			eyre::bail!(
+				"Review handoff context is unavailable for issue `{}`.",
+				self.issue.identifier
+			);
+		};
+
+		self.validate_closeout_pr(review_context, pr_url).map_err(|error| eyre::eyre!(error))
+	}
+
+	pub(crate) fn apply_validated_deterministic_closeout(
+		&self,
+		pull_request: PullRequestDetails,
+	) -> crate::prelude::Result<()> {
+		let Some(review_context) = self.review_context.as_ref() else {
+			eyre::bail!(
+				"Review handoff context is unavailable for issue `{}`.",
+				self.issue.identifier
+			);
+		};
+
+		self.write_validated_closeout_record(
+			review_context,
+			pull_request,
+			CloseoutIssueStateValidation::AlreadyVerified,
+			"Validated merged PR lineage and completed retained closeout.",
+		)
+	}
+
+	fn write_closeout_record(
+		&self,
+		review_context: &ReviewHandoffContext,
+		pr_url: &str,
+		issue_state_validation: CloseoutIssueStateValidation,
+		summary: &str,
+	) -> crate::prelude::Result<()> {
+		let pull_request = self
+			.validate_closeout_pr(review_context, pr_url)
+			.map_err(|error| eyre::eyre!(error))?;
+
+		self.write_validated_closeout_record(
+			review_context,
+			pull_request,
+			issue_state_validation,
+			summary,
+		)
+	}
+
+	fn write_validated_closeout_record(
+		&self,
+		review_context: &ReviewHandoffContext,
+		pull_request: PullRequestDetails,
+		issue_state_validation: CloseoutIssueStateValidation,
+		summary: &str,
+	) -> crate::prelude::Result<()> {
+		if matches!(issue_state_validation, CloseoutIssueStateValidation::RefreshRequired) {
+			self.validate_closeout_issue_completed_state().map_err(|error| eyre::eyre!(error))?;
+		}
+
+		let closeout_record =
+			linear_execution_closeout_event(self.issue, review_context, &pull_request, summary);
+		let closeout_comment = format!(
+			"decodex closeout completed\n\n- run_id: `{}`\n- attempt: `{}`\n- finished_at: `{}`\n- branch: `{}`\n- pr_url: `{}`\n- worktree_path: `{}`\n- summary: {}",
+			review_context.run_id,
+			review_context.attempt_number,
+			tracker_tool_bridge::current_timestamp(),
+			review_context.branch_name,
+			pull_request.url,
+			review_context.worktree_path,
+			summary,
+		);
+
+		tracker_tool_bridge::validate_public_comment_body(&closeout_comment)
+			.map_err(|error| eyre::eyre!(error))?;
+		tracker::create_linear_execution_event_comment(
+			self.tracker,
+			&self.issue.id,
+			&closeout_comment,
+			&closeout_record,
+		)?;
+
+		self.persist_linear_execution_event(&closeout_record)?;
+
+		Ok(())
+	}
+
+	pub(crate) fn clear_closeout_issue_scope(&self) -> crate::prelude::Result<()> {
+		let Some(review_context) = self.review_context.as_ref() else {
+			eyre::bail!(
+				"Review handoff context is unavailable for issue `{}`.",
+				self.issue.identifier
+			);
+		};
+
+		tracker::clear_automation_lane_labels(self.tracker, self.issue, &review_context.service_id)
+	}
+
+	pub(super) fn canonicalize_current_lane_head_sha(
+		&self,
+		tool_name: &str,
+		head_sha: &str,
+		current_head_sha: &str,
+	) -> std::result::Result<String, String> {
+		let head_sha = head_sha.trim();
+
+		if head_sha.is_empty() {
+			return Err(format!("`{tool_name}` requires a non-empty `head_sha`."));
+		}
+		if head_sha == current_head_sha {
+			return Ok(current_head_sha.to_owned());
+		}
+		if head_sha.len() >= 7 && current_head_sha.starts_with(head_sha) {
+			return Ok(current_head_sha.to_owned());
+		}
+
+		Err(format!(
+			"`{tool_name}` head `{head_sha}` does not match the current lane HEAD `{current_head_sha}`."
+		))
+	}
+
+	pub(super) fn current_local_repo_details(
+		&self,
+		review_context: &ReviewHandoffContext,
+	) -> std::result::Result<LocalRepoDetails, String> {
+		self.local_repo_inspector.inspect_local_repo(&review_context.cwd)
+	}
+
+	pub(super) fn resolve_progress_checkpoint_head_sha(
+		&self,
+		head_sha: Option<String>,
+	) -> std::result::Result<Option<String>, String> {
+		let normalized_head_sha = tracker_tool_bridge::normalize_optional_progress_field(head_sha);
+		let Some(review_context) = self.review_context.as_ref() else {
+			return Ok(normalized_head_sha);
+		};
+		let local_repo = self.current_local_repo_details(review_context)?;
+
+		match normalized_head_sha {
+			Some(head_sha) => self
+				.canonicalize_current_lane_head_sha(
+					ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+					&head_sha,
+					&local_repo.head_oid,
+				)
+				.map(Some),
+			None => Ok(Some(local_repo.head_oid)),
+		}
+	}
+
+	pub(super) fn validate_closeout_issue_completed_state(
+		&self,
+	) -> std::result::Result<(), String> {
+		let completed_state = self.workflow.frontmatter().tracker().resolved_completed_state();
+		let current_issue = self.refreshed_issue_snapshot().map_err(|error| error.to_string())?
+			.ok_or_else(|| {
+				format!(
+					"Failed to refresh issue `{}` during closeout validation: tracker returned no current snapshot.",
+					self.issue.identifier
+				)
+			})?;
+
+		if current_issue.state.name != completed_state {
+			return Err(format!(
+				"Closeout for issue `{}` requires tracker state `{}`, but the refreshed issue is still `{}`. Move the issue to `{}` with `{}` before calling `{}`.",
+				self.issue.identifier,
+				completed_state,
+				current_issue.state.name,
+				completed_state,
+				ISSUE_TRANSITION_TOOL_NAME,
+				ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME
+			));
+		}
+
+		Ok(())
+	}
+
+	pub(super) fn review_policy_state_for_current_phase(
+		&self,
+		review_context: &ReviewHandoffContext,
+	) -> crate::prelude::Result<Option<ReviewPolicyState>> {
+		let Some(current_phase) = ReviewPolicyPhase::for_mode(review_context.mode) else {
+			return Ok(None);
+		};
+		let Some(marker) = state::read_run_activity_marker_snapshot(&review_context.cwd)? else {
+			return Ok(None);
+		};
+		let Some(phase) = marker.review_policy_phase() else {
+			return Ok(None);
+		};
+		let Some(status) = marker.review_policy_status() else {
+			eyre::bail!(
+				"Run activity marker for issue `{}` is missing `review_policy_status`.",
+				self.issue.identifier
+			);
+		};
+		let Some(head_sha) = marker.review_policy_head_sha() else {
+			eyre::bail!(
+				"Run activity marker for issue `{}` is missing `review_policy_head_sha`.",
+				self.issue.identifier
+			);
+		};
+		let Some(nonclean_rounds) = marker.review_policy_nonclean_rounds() else {
+			eyre::bail!(
+				"Run activity marker for issue `{}` is missing `review_policy_nonclean_rounds`.",
+				self.issue.identifier
+			);
+		};
+		let phase = ReviewPolicyPhase::parse(phase).map_err(|error| eyre::eyre!(error))?;
+		let status = ReviewPolicyStatus::parse(status).map_err(|error| eyre::eyre!(error))?;
+
+		if phase != current_phase {
+			return Ok(None);
+		}
+
+		Ok(Some(ReviewPolicyState {
+			phase,
+			status,
+			head_sha: head_sha.to_owned(),
+			nonclean_rounds,
+		}))
+	}
+
+	pub(super) fn review_policy_state_for_current_head(
+		&self,
+		review_context: &ReviewHandoffContext,
+	) -> crate::prelude::Result<Option<ReviewPolicyState>> {
+		let Some(checkpoint) = self.review_policy_state_for_current_phase(review_context)? else {
+			return Ok(None);
+		};
+		let local_repo =
+			self.current_local_repo_details(review_context).map_err(|error| eyre::eyre!(error))?;
+
+		if checkpoint.head_sha != local_repo.head_oid {
+			return Ok(None);
+		}
+
+		Ok(Some(checkpoint))
+	}
+
+	pub(super) fn require_clean_review_checkpoint(
+		&self,
+		review_context: &ReviewHandoffContext,
+	) -> std::result::Result<(), String> {
+		if !review_context.internal_review_checkpoint_enabled() {
+			return Ok(());
+		}
+
+		let Some(checkpoint) = self
+			.review_policy_state_for_current_head(review_context)
+			.map_err(|error| error.to_string())?
+		else {
+			return Err(format!(
+				"`{}` requires a current `{}` review checkpoint with status `clean` for the current lane HEAD.",
+				self.required_pr_completion_tool_name(),
+				ReviewPolicyPhase::for_mode(review_context.mode)
+					.expect("review completion should only be available during review phases")
+					.as_str(),
+			));
+		};
+
+		if checkpoint.status != ReviewPolicyStatus::Clean {
+			return Err(format!(
+				"`{}` requires the latest review checkpoint to be `clean`, not `{}`.",
+				self.required_pr_completion_tool_name(),
+				checkpoint.status.as_str(),
+			));
+		}
+
+		Ok(())
+	}
+
+	pub(super) fn review_policy_stop_requested(
+		&self,
+		review_context: &ReviewHandoffContext,
+	) -> crate::prelude::Result<Option<ReviewPolicyStopRequested>> {
+		if !review_context.internal_review_checkpoint_enabled() {
+			return Ok(None);
+		}
+
+		let Some(checkpoint) = self.review_policy_state_for_current_head(review_context)? else {
+			return Ok(None);
+		};
+		let stop_reason = match checkpoint.status {
+			ReviewPolicyStatus::Clean => return Ok(None),
+			ReviewPolicyStatus::Findings
+				if checkpoint.nonclean_rounds < REVIEW_POLICY_CONVERGENCE_BUDGET =>
+			{
+				return Ok(None);
+			},
+			ReviewPolicyStatus::Findings => ReviewPolicyStopReason::Exhausted,
+			ReviewPolicyStatus::NeedsArchitectureReview =>
+				ReviewPolicyStopReason::ArchitectureReviewRequired,
+			ReviewPolicyStatus::Blocked => ReviewPolicyStopReason::Blocked,
+		};
+
+		Ok(Some(ReviewPolicyStopRequested {
+			head_sha: checkpoint.head_sha,
+			issue_identifier: self.issue.identifier.clone(),
+			nonclean_rounds: Some(checkpoint.nonclean_rounds),
+			reason: stop_reason,
+			run_id: review_context.run_id.clone(),
+		}))
+	}
+
+	pub(super) fn required_pr_completion_tool_name(&self) -> &'static str {
+		match self.review_context.as_ref().map(|context| context.mode) {
+			Some(ReviewExecutionMode::Handoff) => ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+			Some(ReviewExecutionMode::Repair) => ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
+			Some(ReviewExecutionMode::Closeout) => ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+			None => ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		}
+	}
+}
+
+fn linear_execution_identity<'a>(
+	issue: &'a TrackerIssue,
+	review_context: &'a ReviewHandoffContext,
+) -> records::LinearExecutionEventIdentity<'a> {
+	records::LinearExecutionEventIdentity {
+		service_id: &review_context.service_id,
+		issue_id: &issue.id,
+		issue_identifier: &issue.identifier,
+		run_id: &review_context.run_id,
+		attempt_number: review_context.attempt_number,
+	}
+}
+
+fn linear_execution_review_event(
+	issue: &TrackerIssue,
+	review_context: &ReviewHandoffContext,
+	pull_request: &PullRequestDetails,
+	event_type: &str,
+	terminal_path: &str,
+	summary: &str,
+) -> records::LinearExecutionEventRecord {
+	let anchor = records::stable_event_anchor(&[&pull_request.url, &pull_request.head_ref_oid]);
+	let mut record = records::LinearExecutionEventRecord::new(
+		linear_execution_identity(issue, review_context),
+		event_type,
+		tracker_tool_bridge::current_timestamp(),
+		&anchor,
+	);
+
+	record.branch = Some(review_context.branch_name.clone());
+	record.worktree_path = Some(review_context.worktree_path.clone());
+	record.pr_url = Some(pull_request.url.clone());
+	record.pr_head_sha = Some(pull_request.head_ref_oid.clone());
+	record.pr_base_ref = Some(pull_request.base_ref_name.clone());
+	record.commit_sha = Some(pull_request.head_ref_oid.clone());
+	record.validation_result = Some(String::from("passed"));
+	record.summary = Some(summary.to_owned());
+	record.terminal_path = Some(terminal_path.to_owned());
+	record.verification = Some(vec![String::from("repo gate passed before tracker writeback")]);
+
+	record
+}
+
+fn linear_execution_closeout_event(
+	issue: &TrackerIssue,
+	review_context: &ReviewHandoffContext,
+	pull_request: &PullRequestDetails,
+	summary: &str,
+) -> records::LinearExecutionEventRecord {
+	let anchor = records::stable_event_anchor(&[&pull_request.url, &pull_request.head_ref_oid]);
+	let mut record = records::LinearExecutionEventRecord::new(
+		linear_execution_identity(issue, review_context),
+		"closeout",
+		tracker_tool_bridge::current_timestamp(),
+		&anchor,
+	);
+
+	record.branch = Some(review_context.branch_name.clone());
+	record.worktree_path = Some(review_context.worktree_path.clone());
+	record.pr_url = Some(pull_request.url.clone());
+	record.commit_sha = Some(pull_request.head_ref_oid.clone());
+	record.summary = Some(summary.to_owned());
+	record.validation_result = Some(String::from("passed"));
+
+	record
+}

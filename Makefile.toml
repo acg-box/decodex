@@ -1,30 +1,28 @@
-# Rust workspace tasks.
+# Decodex workspace tasks.
 
-# Lint
-# | task            | type      | cwd |
-# | --------------- | --------- | --- |
-# | lint            | composite |     |
-# | lint-fix        | composite |     |
-# | lint-rust       | command   |     |
-# | lint-fix-rust   | extend    |     |
-# | lint-vstyle     | command   |     |
-# | lint-fix-vstyle | command   |     |
+# Check
+# | task                | type      | cwd  |
+# | ------------------- | --------- | ---- |
+# | check               | composite |      |
+# | check-rust          | command   |      |
+# | check-site          | composite |      |
+# | check-site-content  | script    |      |
+# | check-site-types    | command   | site |
+# | check-vstyle        | composite |      |
+# | check-vstyle-rust   | command   |      |
 
-[tasks.lint]
+[tasks.check]
+clear = true
 workspace = false
 dependencies = [
-	"lint-rust",
-	"lint-vstyle",
+	"fmt-check",
+	"check-rust",
+	"check-site",
+	"check-vstyle",
+	"test",
 ]
 
-[tasks.lint-fix]
-workspace = false
-dependencies = [
-	"lint-fix-rust",
-	"lint-fix-vstyle",
-]
-
-[tasks.lint-rust]
+[tasks.check-rust]
 workspace = false
 command = "cargo"
 args = [
@@ -51,79 +49,47 @@ args = [
 	"warnings",
 ]
 
-[tasks.lint-fix-rust]
-extend = "lint-rust"
-args = [
-	"clippy",
-	"--fix",
-	"--allow-dirty",
-	"--all-features",
-	"--all-targets",
-	"--workspace",
-	"--",
-	"-D",
-	"clippy::all",
-	"-D",
-	"clippy::too_many_lines",
-	"-D",
-	"clippy::unwrap_used",
-	"-D",
-	"clippy::use_self",
-	"-D",
-	"clippy::wildcard_imports",
-	"-D",
-	"missing-docs",
-	"-D",
-	"unused-crate-dependencies",
-	"-D",
-	"warnings",
+[tasks.check-site]
+workspace = false
+dependencies = [
+	"check-site-content",
+	"build-site",
+	"check-site-types",
 ]
 
-[tasks.lint-vstyle]
+[tasks.check-site-content]
+workspace = false
+script = [
+	"python3 tools/github/validate_change_bundle.py tools/github/bundles",
+	"python3 tools/github/validate_signal_entry.py site/src/content/signals",
+]
+
+[tasks.check-site-types]
+workspace = false
+cwd = "site"
+command = "npm"
+args = [
+	"run",
+	"check",
+]
+
+[tasks.check-vstyle]
+workspace = false
+dependencies = [
+	"check-vstyle-rust",
+]
+
+[tasks.check-vstyle-rust]
 workspace = false
 command = "cargo"
 args = [
 	"vstyle",
 	"curate",
-	"--workspace",
-	"--all-features"
-]
-
-[tasks.lint-fix-vstyle]
-workspace = false
-command = "cargo"
-args = [
-	"vstyle",
-	"tune",
+	"--language",
+	"rust",
 	"--workspace",
 	"--all-features",
-	"--strict",
 ]
-
-
-# Test
-# | task      | type      | cwd |
-# | --------- | --------- | --- |
-# | test      | composite |     |
-# | test-rust | command   |     |
-
-[tasks.test]
-workspace = false
-dependencies = [
-	"test-rust",
-]
-
-[tasks.test-rust]
-workspace = false
-command = "cargo"
-args = [
-	"nextest",
-	"run",
-	"--workspace",
-	"--all-targets",
-	"--all-features",
-]
-
 
 # Format
 # | task           | type      | cwd |
@@ -171,25 +137,99 @@ args = [
 	"--check",
 ]
 
+# Lint
+# | task             | type      | cwd |
+# | ---------------- | --------- | --- |
+# | lint             | composite |     |
+# | lint-rust        | command   |     |
+# | lint-vstyle      | composite |     |
+# | lint-vstyle-rust | command   |     |
 
-# Meta
-# | task   | type      | cwd |
-# | ------ | --------- | --- |
-# | checks | composite |     |
-# | decodex-checks | composite | |
-# | github-content-check | script | |
-# | site-build | command | site |
-# | site-check | command | site |
-
-[tasks.checks]
+[tasks.lint]
 workspace = false
 dependencies = [
-	"lint",
-	"test",
-	"fmt-check",
+	"lint-rust",
+	"lint-vstyle",
 ]
 
-[tasks.site-build]
+[tasks.lint-rust]
+workspace = false
+command = "cargo"
+args = [
+	"clippy",
+	"--fix",
+	"--allow-dirty",
+	"--all-features",
+	"--all-targets",
+	"--workspace",
+	"--",
+	"-D",
+	"clippy::all",
+	"-D",
+	"clippy::too_many_lines",
+	"-D",
+	"clippy::unwrap_used",
+	"-D",
+	"clippy::use_self",
+	"-D",
+	"clippy::wildcard_imports",
+	"-D",
+	"missing-docs",
+	"-D",
+	"unused-crate-dependencies",
+	"-D",
+	"warnings",
+]
+
+[tasks.lint-vstyle]
+workspace = false
+dependencies = [
+	"lint-vstyle-rust",
+]
+
+[tasks.lint-vstyle-rust]
+workspace = false
+command = "cargo"
+args = [
+	"vstyle",
+	"tune",
+	"--language",
+	"rust",
+	"--workspace",
+	"--all-features",
+	"--strict",
+]
+
+# Test
+# | task      | type      | cwd |
+# | --------- | --------- | --- |
+# | test      | composite |     |
+# | test-rust | command   |     |
+
+[tasks.test]
+clear = true
+workspace = false
+dependencies = [
+	"test-rust",
+]
+
+[tasks.test-rust]
+workspace = false
+command = "cargo"
+args = [
+	"nextest",
+	"run",
+	"--workspace",
+	"--all-targets",
+	"--all-features",
+]
+
+# Build
+# | task       | type    | cwd  |
+# | ---------- | ------- | ---- |
+# | build-site | command | site |
+
+[tasks.build-site]
 workspace = false
 cwd = "site"
 command = "npm"
@@ -198,27 +238,21 @@ args = [
 	"build",
 ]
 
-[tasks.site-check]
-workspace = false
-cwd = "site"
-command = "npm"
-args = [
-	"run",
-	"check",
-]
+# Meta
+# | task                 | type      | cwd |
+# | -------------------- | --------- | --- |
+# | checks               | composite |     |
+# | decodex-checks       | composite |     |
 
-[tasks.github-content-check]
+[tasks.checks]
 workspace = false
-script = [
-	"python3 tools/github/validate_change_bundle.py tools/github/bundles",
-	"python3 tools/github/validate_signal_entry.py site/src/content/signals",
+dependencies = [
+	"check",
 ]
 
 [tasks.decodex-checks]
 workspace = false
 dependencies = [
 	"fmt-check",
-	"github-content-check",
-	"site-build",
-	"site-check",
+	"check-site",
 ]
