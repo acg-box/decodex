@@ -1,0 +1,345 @@
+struct RetryComment<'a> {
+	run_id: &'a str,
+	attempt_number: i64,
+	retry_budget_attempt_number: i64,
+	max_attempts: i64,
+	worktree_path: String,
+	branch_name: &'a str,
+	error_class: &'a str,
+	next_action: &'a str,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn select_issue_candidate(
+	tracker: &dyn IssueTracker,
+	issues: Vec<TrackerIssue>,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	project_id: &str,
+) -> Result<Option<TrackerIssue>> {
+	select_issue_candidate_with_exclusions(tracker, issues, workflow, state_store, project_id, &[])
+}
+
+fn select_issue_candidate_with_exclusions(
+	tracker: &dyn IssueTracker,
+	issues: Vec<TrackerIssue>,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	project_id: &str,
+	excluded_issue_ids: &[&str],
+) -> Result<Option<TrackerIssue>> {
+	let concurrency = ConcurrencySnapshot::new(project_id, state_store)?;
+
+	if !concurrency.has_global_capacity(workflow.frontmatter().execution()) {
+		return Ok(None);
+	}
+
+	let mut eligible_issues = Vec::new();
+
+	for issue in issues {
+		if excluded_issue_ids.contains(&issue.id.as_str()) {
+			continue;
+		}
+		if state_store.issue_has_active_shared_claim(project_id, &issue.id)? {
+			continue;
+		}
+		if is_issue_eligible(tracker, &issue, project_id, workflow, state_store)? {
+			eligible_issues.push(issue);
+		}
+	}
+
+	eligible_issues.sort_by(compare_issue_candidates);
+
+	Ok(eligible_issues.into_iter().next())
+}
+
+fn compare_issue_candidates(left: &TrackerIssue, right: &TrackerIssue) -> Ordering {
+	let left_priority = (left.priority.is_none(), left.priority.unwrap_or(i64::MAX));
+	let right_priority = (right.priority.is_none(), right.priority.unwrap_or(i64::MAX));
+
+	left_priority
+		.cmp(&right_priority)
+		.then_with(|| left.created_at.cmp(&right.created_at))
+		.then_with(|| left.identifier.cmp(&right.identifier))
+}
+
+fn format_no_eligible_issue_message(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+) -> String {
+	let tracker_policy = workflow.frontmatter().tracker();
+
+	format!(
+		"No eligible issue found for the configured project.\n{}",
+		format_no_eligible_issue_hint(
+			project.service_id(),
+			tracker_policy.opt_out_label(),
+			tracker_policy.needs_attention_label(),
+		)
+	)
+}
+
+fn format_status_no_eligible_issue_hint(service_id: &str) -> String {
+	format!(
+		"Hint: check `Todo`, label {}, no opt-out/manual-only or needs-attention labels, non-terminal state, no open dependency blockers, and available capacity.",
+		format_no_eligible_queue_label_hint(service_id),
+	)
+}
+
+fn format_no_eligible_issue_hint(
+	service_id: &str,
+	opt_out_label: &str,
+	needs_attention_label: &str,
+) -> String {
+	format!(
+		"Hint: check `Todo`, label {}, no `{opt_out_label}`/`{needs_attention_label}`, non-terminal state, no open dependency blockers, and available capacity.",
+		format_no_eligible_queue_label_hint(service_id),
+	)
+}
+
+fn format_no_eligible_queue_label_hint(service_id: &str) -> String {
+	let queue_label = tracker::automation_queue_label(service_id);
+
+	if service_id == "all" {
+		String::from("`decodex:queued:<service-id>`")
+	} else {
+		format!("`decodex:queued:<service-id>` (this project: `{queue_label}`)")
+	}
+}
+
+fn format_retry_comment(comment: RetryComment<'_>) -> String {
+	let RetryComment {
+		run_id,
+		attempt_number,
+		retry_budget_attempt_number,
+		max_attempts,
+		worktree_path,
+		branch_name,
+		error_class,
+		next_action,
+	} = comment;
+
+	format!(
+		"decodex run failed and will retry\n\n- run_id: `{run_id}`\n- attempt: `{attempt_number}`\n- retry_budget_attempt: `{retry_budget_attempt_number}` / `{max_attempts}`\n- failed_at: `{failed_at}`\n- branch: `{branch}`\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `Sensitive runtime details were withheld from the tracker comment; inspect the local lane for the full failure context.`",
+		failed_at = current_timestamp(),
+		branch = branch_name,
+		worktree = worktree_path,
+	)
+}
+
+fn retry_comment_details(error: &Report) -> (&'static str, String) {
+	if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
+		match repo_gate_failure.disposition() {
+			RepoGateFailureDisposition::ContinueRepair
+			| RepoGateFailureDisposition::RetryAfterBackoff => {
+				return (
+					repo_gate_failure.error_class(),
+					repo_gate_failure.retry_next_action().to_owned(),
+				);
+			},
+			RepoGateFailureDisposition::NeedsHumanAttention => {},
+		}
+	}
+
+	("retryable_execution_failure", String::from("decodex will retry automatically"))
+}
+
+fn format_terminal_failure_comment(
+	run_id: &str,
+	attempt_number: i64,
+	worktree_path: String,
+	branch_name: &str,
+	error_class: &str,
+	next_action: &str,
+) -> String {
+	format!(
+		"decodex run failed and needs attention\n\n- run_id: `{run_id}`\n- attempt: `{attempt_number}`\n- failed_at: `{failed_at}`\n- branch: `{branch}`\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `Sensitive runtime details were withheld from the tracker comment; inspect the local lane for the full failure context.`",
+		failed_at = current_timestamp(),
+		branch = branch_name,
+		worktree = worktree_path
+	)
+}
+
+fn terminal_failure_comment_details(
+	manual_attention_requested: bool,
+	error: &Report,
+	recovery_gate: &str,
+) -> (&'static str, String) {
+	if let Some(retained_review_needs_attention) =
+		error.downcast_ref::<RetainedReviewNeedsAttention>()
+	{
+		let error_class =
+			retained_review_needs_attention_error_class(&retained_review_needs_attention.reason);
+
+		(
+			error_class,
+			format!(
+				"inspect retained review orchestration reason `{}`, resolve the blocker manually, {recovery_gate}",
+				retained_review_needs_attention.reason
+			),
+		)
+	} else if manual_attention_requested {
+		(
+			"human_attention_required",
+			format!(
+				"inspect the issue comment and worktree, resolve the blocker manually, {recovery_gate}"
+			),
+		)
+	} else if error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some() {
+		(
+			"review_handoff_writeback_failed",
+			format!(
+				"inspect the tracker state, PR, and worktree, repair the incomplete review handoff manually, {recovery_gate}"
+			),
+		)
+	} else if let Some(partial_progress) = error.downcast_ref::<RetainedPartialProgress>() {
+		(
+			"partial_progress_retained",
+			format!(
+				"inspect retained worktree `{}`, finish validation and PR handoff or reset the patch manually, {recovery_gate}",
+				partial_progress.worktree_path
+			),
+		)
+	} else if error.downcast_ref::<StalledRunNeedsAttention>().is_some() {
+		(
+			"stalled_run_detected",
+			format!(
+				"inspect the worktree and app-server activity for the stalled lane, resolve the blocker manually, {recovery_gate}"
+			),
+		)
+	} else if let Some(credentials_failure) =
+		error.downcast_ref::<AgentGitCredentialsUnavailable>()
+	{
+		(
+			"github_credentials_unavailable",
+			format!(
+				"configure `{}` for the routed GitHub identity, verify noninteractive Git credentials, {recovery_gate}",
+				credentials_failure.token_env_var
+			),
+		)
+	} else if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerCapabilityPreflightFailure>()
+	{
+		(app_server_failure.error_class(), app_server_failure.terminal_next_action(recovery_gate))
+	} else if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerHomePreflightFailure>()
+	{
+		(app_server_failure.error_class(), app_server_failure.terminal_next_action(recovery_gate))
+	} else if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerTransportFailure>()
+	{
+		(app_server_failure.error_class(), app_server_failure.terminal_next_action(recovery_gate))
+	} else if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerDynamicToolFailure>()
+	{
+		(app_server_failure.error_class(), app_server_failure.terminal_next_action(recovery_gate))
+	} else if let Some(app_server_failure) = error.downcast_ref::<AppServerTurnFailure>() {
+		(app_server_failure.error_class(), app_server_failure.terminal_next_action(recovery_gate))
+	} else if let Some(review_policy_stop) = error.downcast_ref::<ReviewPolicyStopRequested>() {
+		(
+			review_policy_stop.reason.error_class(),
+			review_policy_stop_terminal_next_action(review_policy_stop.reason, recovery_gate),
+		)
+	} else if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
+		(repo_gate_failure.error_class(), repo_gate_failure.terminal_next_action(recovery_gate))
+	} else {
+		(
+			"retry_budget_exhausted",
+			format!("inspect the worktree, resolve the issue manually, {recovery_gate}"),
+		)
+	}
+}
+
+fn review_policy_stop_terminal_next_action(
+	reason: ReviewPolicyStopReason,
+	recovery_gate: &str,
+) -> String {
+	match reason {
+		ReviewPolicyStopReason::Exhausted => format!(
+			"inspect the repeated review findings and current worktree, decide the next repair or redesign manually, prepare a bounded convergence research follow-up only after the current head, review phase, non-clean round count, and validated findings are structured and machine-checkable, {recovery_gate}"
+		),
+		ReviewPolicyStopReason::ArchitectureReviewRequired => format!(
+			"inspect the current findings and worktree, perform the required architecture review manually, prepare a bounded architecture research follow-up only after the current head, review phase, stop class, and architecture concern are structured and machine-checkable, {recovery_gate}"
+		),
+		ReviewPolicyStopReason::Blocked => format!(
+			"inspect the blocking condition and worktree, resolve the blocker manually, do not dispatch research unless the blocker is reclassified as a structured architecture or convergence stop, {recovery_gate}"
+		),
+	}
+}
+
+fn retained_review_needs_attention_error_class(reason: &str) -> &'static str {
+	match reason {
+		"external_review_admin_merge_failed" => "external_review_admin_merge_failed",
+		"external_review_admin_merge_unavailable" => "external_review_admin_merge_unavailable",
+		"external_review_merge_visibility_timeout" => "external_review_merge_visibility_timeout",
+		"external_review_pass_signal_missing" => "external_review_pass_signal_missing",
+		"external_review_request_ci_red_manual_attention" =>
+			"external_review_request_ci_red_manual_attention",
+		"internal_review_only_admin_merge_failed" => "internal_review_only_admin_merge_failed",
+		"internal_review_only_admin_merge_unavailable" =>
+			"internal_review_only_admin_merge_unavailable",
+		"internal_review_only_merge_visibility_timeout" =>
+			"internal_review_only_merge_visibility_timeout",
+		"pull_request_is_draft" => "pull_request_is_draft",
+		"pull_request_merge_commit_lineage_check_failed" =>
+			"pull_request_merge_commit_lineage_check_failed",
+		"pull_request_not_open" => "pull_request_not_open",
+		"retained_admin_merge_subject_unavailable" => "retained_admin_merge_subject_unavailable",
+		"review_orchestration_branch_mismatch" => "review_orchestration_branch_mismatch",
+		"review_orchestration_head_mismatch" => "review_orchestration_head_mismatch",
+		"review_orchestration_pr_mismatch" => "review_orchestration_pr_mismatch",
+		"worktree_head_missing" => "worktree_head_missing",
+		_ => "retained_review_needs_attention",
+	}
+}
+
+fn terminal_failure_recovery_gate(
+	needs_attention_label: &str,
+	needs_attention_label_available: bool,
+	guarded_by_nonstartable_state: bool,
+	nonstartable_guard_state: &str,
+) -> String {
+	if needs_attention_label_available {
+		return format!(
+			"clear label `{needs_attention_label}`, then move the issue back to a startable state if another automated run is desired"
+		);
+	}
+	if guarded_by_nonstartable_state {
+		return format!(
+			"`{needs_attention_label}` could not be applied because it does not exist on the team; the issue remains in `{nonstartable_guard_state}` to block automatic retries, so move it back to a startable state manually if another automated run is desired"
+		);
+	}
+
+	format!(
+		"`{needs_attention_label}` could not be applied because it does not exist on the team; move the issue back to a startable state manually if another automated run is desired"
+	)
+}
+
+fn current_timestamp() -> String {
+	OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp formatting should succeed")
+}
+
+fn build_run_id(issue_identifier: &str, attempt_number: i64) -> Result<String> {
+	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+
+	Ok(format!("{}-attempt-{attempt_number}-{timestamp}", issue_identifier.to_lowercase()))
+}
+
+fn resolve_config_path(
+	explicit_path: Option<&Path>,
+	state_store: &StateStore,
+) -> Result<Option<PathBuf>> {
+	if let Some(path) = explicit_path {
+		return Ok(Some(path.to_path_buf()));
+	}
+
+	runtime::registered_config_path_for_cwd(state_store, &env::current_dir()?)
+}
+
+fn sleep_until_next_tick(poll_interval: Duration, tick_started_at: Instant) {
+	let elapsed = tick_started_at.elapsed();
+
+	if elapsed < poll_interval {
+		thread::sleep(poll_interval - elapsed);
+	}
+}

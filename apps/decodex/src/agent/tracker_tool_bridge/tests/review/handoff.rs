@@ -1,0 +1,983 @@
+use records::REVIEW_HANDOFF_RECORD_TYPE;
+use records::ReviewHandoffRecord;
+use state::RUN_ACTIVITY_MARKER_FILE;
+
+#[test]
+fn turn_completion_requires_explicit_terminal_finalize_after_review_handoff() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
+		head_ref_name: String::from("x/decodex-pub-618"),
+		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+		head_repository_name: String::from("decodex"),
+		head_repository_owner: String::from("hack-ink"),
+		is_draft: false,
+		state: String::from("OPEN"),
+		base_ref_name: String::from("main"),
+		url: String::from("https://github.com/hack-ink/decodex/pull/52"),
+	})]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
+
+	write_clean_review_checkpoint(&review_context);
+
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/52",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(response.success);
+
+	let error = DynamicToolHandler::validate_turn_completion(&bridge, "done")
+		.expect_err("review handoff should still require explicit finalization");
+
+	assert!(error.to_string().contains(ISSUE_TERMINAL_FINALIZE_TOOL_NAME));
+	assert!(error.to_string().contains("review_handoff"));
+}
+
+#[test]
+fn terminal_finalize_accepts_matching_review_handoff_path() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
+		head_ref_name: String::from("x/decodex-pub-618"),
+		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+		head_repository_name: String::from("decodex"),
+		head_repository_owner: String::from("hack-ink"),
+		is_draft: false,
+		state: String::from("OPEN"),
+		base_ref_name: String::from("main"),
+		url: String::from("https://github.com/hack-ink/decodex/pull/53"),
+	})]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
+
+	write_clean_review_checkpoint(&review_context);
+
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&inspector,
+		&local_repo_inspector,
+	);
+	let review_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/53",
+			"summary": "Ready for review."
+		}),
+	);
+	let finalize_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		serde_json::json!({ "path": "review_handoff" }),
+	);
+
+	assert!(review_response.success);
+	assert!(finalize_response.success);
+
+	DynamicToolHandler::validate_turn_completion(&bridge, "done")
+		.expect("matching finalization should allow the turn to complete");
+}
+
+#[test]
+fn terminal_finalize_rejects_mismatched_path() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![Ok(PullRequestDetails {
+		head_ref_name: String::from("x/decodex-pub-618"),
+		head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+		head_repository_name: String::from("decodex"),
+		head_repository_owner: String::from("hack-ink"),
+		is_draft: false,
+		state: String::from("OPEN"),
+		base_ref_name: String::from("main"),
+		url: String::from("https://github.com/hack-ink/decodex/pull/54"),
+	})]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
+
+	write_clean_review_checkpoint(&review_context);
+
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&inspector,
+		&local_repo_inspector,
+	);
+	let review_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/54",
+			"summary": "Ready for review."
+		}),
+	);
+	let finalize_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		serde_json::json!({ "path": "manual_attention" }),
+	);
+
+	assert!(review_response.success);
+	assert!(!finalize_response.success);
+	assert!(matches!(
+		finalize_response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText{ text }]
+			if text.contains(
+				"requested path `manual_attention`, but the recorded terminal path is `review_handoff`"
+			)
+	));
+}
+
+#[test]
+fn terminal_finalize_accepts_matching_manual_attention_path() {
+	let issue = sample_issue();
+	let tracker = tracker_with_current_issue_snapshot(&issue);
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_review_context(),
+		&inspector,
+		&local_repo_inspector,
+	);
+	let label_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_LABEL_ADD_TOOL_NAME,
+		serde_json::json!({ "label": "decodex:needs-attention" }),
+	);
+	let comment_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_COMMENT_TOOL_NAME,
+		serde_json::json!({
+			"body": "Blocked on missing tracker permission; handing off for manual repair."
+		}),
+	);
+	let finalize_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		serde_json::json!({ "path": "manual_attention" }),
+	);
+
+	assert!(label_response.success);
+	assert!(comment_response.success);
+	assert!(finalize_response.success);
+
+	DynamicToolHandler::validate_turn_completion(&bridge, "done")
+		.expect("matching manual-attention finalization should allow the turn to complete");
+}
+
+#[test]
+fn rejects_review_handoff_apply_when_lane_head_changes_after_recording() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(PullRequestDetails {
+			head_ref_name: String::from("x/decodex-pub-618"),
+			head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_repository_name: String::from("decodex"),
+			head_repository_owner: String::from("hack-ink"),
+			is_draft: false,
+			state: String::from("OPEN"),
+			base_ref_name: String::from("main"),
+			url: String::from("https://github.com/hack-ink/decodex/pull/47"),
+		}),
+		Ok(PullRequestDetails {
+			head_ref_name: String::from("x/decodex-pub-618"),
+			head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_repository_name: String::from("decodex"),
+			head_repository_owner: String::from("hack-ink"),
+			is_draft: false,
+			state: String::from("OPEN"),
+			base_ref_name: String::from("main"),
+			url: String::from("https://github.com/hack-ink/decodex/pull/47"),
+		}),
+	]);
+	let mut updated_local_repo = sample_local_repo();
+
+	updated_local_repo.head_oid = String::from("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+		Ok(updated_local_repo),
+	]);
+	let review_context = sample_review_context_in(temp_dir.path());
+
+	write_clean_review_checkpoint(&review_context);
+
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/47",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(response.success);
+
+	let error = bridge
+		.apply_review_handoff()
+		.expect_err("writeback should revalidate the current lane head");
+
+	assert!(error.to_string().contains("Push the latest lane commit before review handoff."));
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(tracker.state_updates.borrow().is_empty());
+}
+
+#[test]
+fn review_handoff_apply_writes_coarse_comment_without_replaying_existing_records() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let mut pull_request = sample_pull_request();
+
+	pull_request.url = String::from("https://github.com/hack-ink/decodex/pull/47");
+
+	let inspector =
+		FakePullRequestInspector::new(vec![Ok(pull_request.clone()), Ok(pull_request.clone())]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
+
+	write_clean_review_checkpoint(&review_context);
+
+	let existing_record = records::append_structured_comment_record(
+		"Review handoff already persisted.",
+		&ReviewHandoffRecord {
+			record_type: String::from(REVIEW_HANDOFF_RECORD_TYPE),
+			completed_at: String::from("2026-04-12T00:00:00Z"),
+			run_id: review_context.run_id.clone(),
+			attempt_number: review_context.attempt_number,
+			branch_name: review_context.branch_name.clone(),
+			pr_url: pull_request.url.clone(),
+			target_base_ref_name: pull_request.base_ref_name.clone(),
+			pr_head_ref_name: pull_request.head_ref_name.clone(),
+			pr_head_oid: pull_request.head_ref_oid.clone(),
+			summary: String::from("Ready for review."),
+		},
+	)
+	.expect("review handoff record should serialize");
+
+	tracker.issue_comments.borrow_mut().insert(
+		issue.id.clone(),
+		vec![TrackerComment {
+			body: existing_record,
+			created_at: String::from("2026-04-12T00:00:00Z"),
+		}],
+	);
+
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": pull_request.url,
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(response.success);
+
+	bridge
+		.apply_review_handoff()
+		.expect("writeback should persist runtime state and coarse tracker summary");
+
+	assert_eq!(tracker.comments.borrow().len(), 1);
+	assert_eq!(tracker.state_updates.borrow().as_slice(), [String::from("state-review")]);
+}
+
+#[test]
+fn review_handoff_apply_does_not_duplicate_existing_ledger_event() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let pull_request = sample_pull_request();
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(pull_request.clone()),
+		Ok(pull_request.clone()),
+		Ok(pull_request.clone()),
+		Ok(pull_request.clone()),
+	]);
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+	]);
+	let review_context = sample_review_context_in(temp_dir.path());
+
+	for _ in 0..2 {
+		write_clean_review_checkpoint(&review_context);
+
+		let bridge = TrackerToolBridge::with_review_handoff_for_test(
+			&tracker,
+			&issue,
+			&workflow,
+			review_context.clone(),
+			&inspector,
+			&local_repo_inspector,
+		);
+		let response = DynamicToolHandler::handle_call(
+			&bridge,
+			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+			serde_json::json!({
+				"pr_url": pull_request.url.clone(),
+				"summary": "Ready for review."
+			}),
+		);
+
+		assert!(response.success);
+
+		bridge.apply_review_handoff().expect("review handoff should apply");
+	}
+
+	assert_eq!(tracker.comments.borrow().len(), 1);
+
+	let record = records::parse_linear_execution_event_record(&tracker.comments.borrow()[0])
+		.expect("review handoff should write a Linear execution event");
+
+	assert_eq!(record.event_type, "review_handoff");
+	assert_eq!(record.idempotency_key.matches("review_handoff").count(), 1);
+}
+
+#[test]
+fn reports_partial_review_handoff_when_state_transition_fails_after_tracker_record_write() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::with_state_update_error("tracker state write failed");
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(PullRequestDetails {
+			head_ref_name: String::from("x/decodex-pub-618"),
+			head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_repository_name: String::from("decodex"),
+			head_repository_owner: String::from("hack-ink"),
+			is_draft: false,
+			state: String::from("OPEN"),
+			base_ref_name: String::from("main"),
+			url: String::from("https://github.com/hack-ink/decodex/pull/49"),
+		}),
+		Ok(PullRequestDetails {
+			head_ref_name: String::from("x/decodex-pub-618"),
+			head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_repository_name: String::from("decodex"),
+			head_repository_owner: String::from("hack-ink"),
+			is_draft: false,
+			state: String::from("OPEN"),
+			base_ref_name: String::from("main"),
+			url: String::from("https://github.com/hack-ink/decodex/pull/49"),
+		}),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_review_context_in(temp_dir.path()),
+		&inspector,
+		&local_repo_inspector,
+	);
+
+	write_clean_review_checkpoint(&sample_review_context_in(temp_dir.path()));
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/49",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(response.success);
+
+	let error = bridge.apply_review_handoff().expect_err(
+		"state transition failures must surface after the tracker handoff record write",
+	);
+
+	assert!(error.to_string().contains("tracker state write failed"));
+	assert_eq!(tracker.comments.borrow().len(), 1);
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert!(
+		bridge_state_store(&bridge)
+			.review_handoff_marker(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
+			.expect("runtime handoff marker read should succeed")
+			.is_none()
+	);
+}
+
+#[test]
+fn reports_review_handoff_writeback_failure_when_tracker_comment_write_fails() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::with_comment_error("tracker comment write failed");
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(PullRequestDetails {
+			head_ref_name: String::from("x/decodex-pub-618"),
+			head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_repository_name: String::from("decodex"),
+			head_repository_owner: String::from("hack-ink"),
+			is_draft: false,
+			state: String::from("OPEN"),
+			base_ref_name: String::from("main"),
+			url: String::from("https://github.com/hack-ink/decodex/pull/50"),
+		}),
+		Ok(PullRequestDetails {
+			head_ref_name: String::from("x/decodex-pub-618"),
+			head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_repository_name: String::from("decodex"),
+			head_repository_owner: String::from("hack-ink"),
+			is_draft: false,
+			state: String::from("OPEN"),
+			base_ref_name: String::from("main"),
+			url: String::from("https://github.com/hack-ink/decodex/pull/50"),
+		}),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_review_context_in(temp_dir.path()),
+		&inspector,
+		&local_repo_inspector,
+	);
+
+	write_clean_review_checkpoint(&sample_review_context_in(temp_dir.path()));
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/50",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(response.success);
+
+	let error = bridge.apply_review_handoff().expect_err(
+		"comment write failures after state transition must surface as partial writeback",
+	);
+	let writeback_error = error
+		.downcast_ref::<ReviewHandoffWritebackFailed>()
+		.expect("partial writeback should use dedicated error type");
+
+	assert_eq!(writeback_error.issue_identifier, "DEC-1");
+	assert_eq!(writeback_error.run_id, "pub-618-attempt-2-123");
+	assert_eq!(writeback_error.success_state, "In Review");
+	assert!(writeback_error.source.contains("failed to persist the tracker review handoff record"));
+	assert!(writeback_error.source.contains("tracker comment write failed"));
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(
+		bridge_state_store(&bridge)
+			.review_handoff_marker(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
+			.expect("runtime handoff marker read should succeed")
+			.is_none()
+	);
+}
+
+#[test]
+fn review_handoff_persists_runtime_state_without_local_marker_cache() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(PullRequestDetails {
+			head_ref_name: String::from("x/decodex-pub-618"),
+			head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_repository_name: String::from("decodex"),
+			head_repository_owner: String::from("hack-ink"),
+			is_draft: false,
+			state: String::from("OPEN"),
+			base_ref_name: String::from("main"),
+			url: String::from("https://github.com/hack-ink/decodex/pull/150"),
+		}),
+		Ok(PullRequestDetails {
+			head_ref_name: String::from("x/decodex-pub-618"),
+			head_ref_oid: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			head_repository_name: String::from("decodex"),
+			head_repository_owner: String::from("hack-ink"),
+			is_draft: false,
+			state: String::from("OPEN"),
+			base_ref_name: String::from("main"),
+			url: String::from("https://github.com/hack-ink/decodex/pull/150"),
+		}),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_review_context_in(temp_dir.path()),
+		&inspector,
+		&local_repo_inspector,
+	);
+
+	write_clean_review_checkpoint(&sample_review_context_in(temp_dir.path()));
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/150",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(response.success);
+
+	bridge
+		.apply_review_handoff()
+		.expect("runtime state persistence should not depend on local marker files");
+
+	assert_eq!(tracker.state_updates.borrow().as_slice(), ["state-review"]);
+	assert_eq!(tracker.comments.borrow().len(), 1);
+	assert_eq!(
+		persisted_review_handoff_marker(
+			&bridge,
+			&issue,
+			&sample_review_context_in(temp_dir.path())
+		)
+		.pr_url(),
+		"https://github.com/hack-ink/decodex/pull/150"
+	);
+}
+
+#[test]
+fn review_handoff_does_not_record_completion_when_review_policy_clear_fails() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let review_context = sample_review_context_in(temp_dir.path());
+
+	write_clean_review_checkpoint(&review_context);
+
+	let marker_path = temp_dir.path().join(RUN_ACTIVITY_MARKER_FILE);
+
+	fs::remove_file(&marker_path).expect("existing run activity marker should be removable");
+	fs::create_dir_all(&marker_path).expect("run activity marker path directory should write");
+
+	let inspector = FakePullRequestInspector::new(vec![Ok(sample_pull_request())]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/48",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(!response.success);
+	assert!(
+		bridge.completion_disposition().is_err(),
+		"a failed review-policy clear must not leave a pending review completion behind"
+	);
+}
+
+fn review_handoff_pr_details(
+	url: &str,
+	head_ref_name: &str,
+	head_ref_oid: &str,
+	owner: &str,
+	repository: &str,
+	base_ref_name: &str,
+	is_draft: bool,
+) -> PullRequestDetails {
+	PullRequestDetails {
+		head_ref_name: String::from(head_ref_name),
+		head_ref_oid: String::from(head_ref_oid),
+		head_repository_name: String::from(repository),
+		head_repository_owner: String::from(owner),
+		is_draft,
+		state: String::from("OPEN"),
+		base_ref_name: String::from(base_ref_name),
+		url: String::from(url),
+	}
+}
+
+#[test]
+fn rejects_invalid_pull_requests_for_review_handoff() {
+	for (case_name, pull_request, expected_error) in [
+		(
+			"another branch",
+			review_handoff_pr_details(
+				"https://github.com/hack-ink/decodex/pull/43",
+				"x/decodex-pub-999",
+				"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+				"hack-ink",
+				"decodex",
+				"main",
+				false,
+			),
+			None,
+		),
+		(
+			"draft pull request",
+			review_handoff_pr_details(
+				"https://github.com/hack-ink/decodex/pull/44",
+				"x/decodex-pub-618",
+				"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+				"hack-ink",
+				"decodex",
+				"main",
+				true,
+			),
+			None,
+		),
+		(
+			"stale PR head",
+			review_handoff_pr_details(
+				"https://github.com/hack-ink/decodex/pull/45",
+				"x/decodex-pub-618",
+				"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+				"hack-ink",
+				"decodex",
+				"main",
+				false,
+			),
+			None,
+		),
+		(
+			"another repository",
+			review_handoff_pr_details(
+				"https://github.com/someone-else/decodex-fork/pull/46",
+				"x/decodex-pub-618",
+				"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+				"someone-else",
+				"decodex-fork",
+				"main",
+				false,
+			),
+			None,
+		),
+		(
+			"non-default target branch",
+			review_handoff_pr_details(
+				"https://github.com/hack-ink/decodex/pull/47",
+				"x/decodex-pub-618",
+				"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+				"hack-ink",
+				"decodex",
+				"release/1.x",
+				false,
+			),
+			Some("retained review lanes must target the repository default branch `main`"),
+		),
+	] {
+		let tracker = FakeTracker::new();
+		let issue = sample_issue();
+		let workflow = sample_workflow();
+		let pr_url = pull_request.url.clone();
+		let inspector = FakePullRequestInspector::new(vec![Ok(pull_request)]);
+		let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+		let bridge = TrackerToolBridge::with_review_handoff_for_test(
+			&tracker,
+			&issue,
+			&workflow,
+			sample_review_context(),
+			&inspector,
+			&local_repo_inspector,
+		);
+		let response = DynamicToolHandler::handle_call(
+			&bridge,
+			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+			serde_json::json!({
+				"pr_url": pr_url,
+				"summary": "Ready for review."
+			}),
+		);
+
+		assert!(!response.success, "{case_name}");
+		assert!(tracker.comments.borrow().is_empty(), "{case_name}");
+		assert!(tracker.state_updates.borrow().is_empty(), "{case_name}");
+
+		if let Some(expected_error) = expected_error {
+			assert!(
+				matches!(
+					response.content_items.as_slice(),
+					[DynamicToolContentItem::InputText{ text }] if text.contains(expected_error)
+				),
+				"{case_name}"
+			);
+		}
+
+		assert!(bridge.apply_review_handoff().is_err(), "{case_name}");
+	}
+}
+
+#[test]
+fn parses_credentialed_https_github_remote() {
+	let repository = super::parse_github_repository_identity(
+		"https://x-access-token@github.com/hack-ink/decodex.git",
+	)
+	.expect("credentialed GitHub remote should parse");
+
+	assert_eq!(
+			repository,
+			super::RepositoryIdentity {
+				owner: String::from("hack-ink"),
+				name: String::from("decodex"),
+			}
+		);
+}
+
+#[test]
+fn parses_default_branch_from_ls_remote_symref_output() {
+	let parsed = super::parse_remote_head_symref_output(
+		"ref: refs/heads/main\tHEAD\n9c0ffee\tHEAD\n9c0ffee\trefs/heads/main\n",
+	);
+
+	assert_eq!(parsed.as_deref(), Some("main"));
+}
+
+#[test]
+fn ignores_non_head_lines_when_parsing_default_branch_from_ls_remote_output() {
+	let parsed = super::parse_remote_head_symref_output(
+		"9c0ffee\trefs/heads/main\n9c0ffee\trefs/heads/release/1.x\n",
+	);
+
+	assert_eq!(parsed, None);
+}
+
+#[test]
+fn resolve_lane_default_branch_prefers_cached_origin_head() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let remote_root = temp_dir.path().join("origin.git");
+	let repo_root = temp_dir.path().join("repo");
+
+	run_git_for_handoff(
+		temp_dir.path(),
+		&[
+			"init",
+			"--bare",
+			"--initial-branch",
+			"main",
+			remote_root.to_str().expect("remote path utf-8"),
+		],
+	);
+
+	fs::create_dir_all(&repo_root).expect("repo root should exist");
+
+	run_git_for_handoff(&repo_root, &["init", "--initial-branch", "main"]);
+	run_git_for_handoff(&repo_root, &["config", "user.name", "Decodex Tests"]);
+	run_git_for_handoff(&repo_root, &["config", "user.email", "decodex-tests@example.com"]);
+	run_git_for_handoff(
+		&repo_root,
+		&["remote", "add", "origin", remote_root.to_str().expect("remote path utf-8")],
+	);
+
+	fs::write(repo_root.join("README.md"), "seed\n").expect("seed file should write");
+
+	run_git_for_handoff(&repo_root, &["add", "README.md"]);
+	run_git_for_handoff(&repo_root, &["commit", "-m", "seed"]);
+	run_git_for_handoff(&repo_root, &["push", "-u", "origin", "main"]);
+	run_git_for_handoff(&repo_root, &["checkout", "-b", "trunk"]);
+	run_git_for_handoff(&repo_root, &["push", "origin", "trunk"]);
+	run_git_for_handoff(&remote_root, &["symbolic-ref", "HEAD", "refs/heads/trunk"]);
+	run_git_for_handoff(
+		&repo_root,
+		&["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
+	);
+	run_git_for_handoff(&repo_root, &["checkout", "main"]);
+
+	let resolved =
+		super::resolve_lane_default_branch(&repo_root).expect("default branch should resolve");
+
+	assert_eq!(resolved, "main");
+}
+
+#[test]
+fn resolve_lane_default_branch_uses_remote_head_when_local_cache_is_missing() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let remote_root = temp_dir.path().join("origin.git");
+	let repo_root = temp_dir.path().join("repo");
+
+	run_git_for_handoff(
+		temp_dir.path(),
+		&[
+			"init",
+			"--bare",
+			"--initial-branch",
+			"main",
+			remote_root.to_str().expect("remote path utf-8"),
+		],
+	);
+
+	fs::create_dir_all(&repo_root).expect("repo root should exist");
+
+	run_git_for_handoff(&repo_root, &["init", "--initial-branch", "main"]);
+	run_git_for_handoff(&repo_root, &["config", "user.name", "Decodex Tests"]);
+	run_git_for_handoff(&repo_root, &["config", "user.email", "decodex-tests@example.com"]);
+	run_git_for_handoff(
+		&repo_root,
+		&["remote", "add", "origin", remote_root.to_str().expect("remote path utf-8")],
+	);
+
+	fs::write(repo_root.join("README.md"), "seed\n").expect("seed file should write");
+
+	run_git_for_handoff(&repo_root, &["add", "README.md"]);
+	run_git_for_handoff(&repo_root, &["commit", "-m", "seed"]);
+	run_git_for_handoff(&repo_root, &["push", "-u", "origin", "main"]);
+	run_git_for_handoff(&repo_root, &["checkout", "-b", "trunk"]);
+	run_git_for_handoff(&repo_root, &["push", "origin", "trunk"]);
+	run_git_for_handoff(&remote_root, &["symbolic-ref", "HEAD", "refs/heads/trunk"]);
+	run_git_for_handoff(&repo_root, &["checkout", "main"]);
+
+	let resolved =
+		super::resolve_lane_default_branch(&repo_root).expect("default branch should resolve");
+
+	assert_eq!(resolved, "trunk");
+}
+
+#[test]
+fn resolve_lane_default_branch_uses_cached_origin_head_without_reachable_remote() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let remote_root = temp_dir.path().join("origin.git");
+	let repo_root = temp_dir.path().join("repo");
+
+	run_git_for_handoff(
+		temp_dir.path(),
+		&[
+			"init",
+			"--bare",
+			"--initial-branch",
+			"main",
+			remote_root.to_str().expect("remote path utf-8"),
+		],
+	);
+
+	fs::create_dir_all(&repo_root).expect("repo root should exist");
+
+	run_git_for_handoff(&repo_root, &["init", "--initial-branch", "main"]);
+	run_git_for_handoff(&repo_root, &["config", "user.name", "Decodex Tests"]);
+	run_git_for_handoff(&repo_root, &["config", "user.email", "decodex-tests@example.com"]);
+	run_git_for_handoff(
+		&repo_root,
+		&["remote", "add", "origin", remote_root.to_str().expect("remote path utf-8")],
+	);
+
+	fs::write(repo_root.join("README.md"), "seed\n").expect("seed file should write");
+
+	run_git_for_handoff(&repo_root, &["add", "README.md"]);
+	run_git_for_handoff(&repo_root, &["commit", "-m", "seed"]);
+	run_git_for_handoff(&repo_root, &["push", "-u", "origin", "main"]);
+	run_git_for_handoff(
+		&repo_root,
+		&["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
+	);
+	run_git_for_handoff(
+		&repo_root,
+		&[
+			"remote",
+			"set-url",
+			"origin",
+			temp_dir.path().join("missing-origin.git").to_str().expect("missing remote path utf-8"),
+		],
+	);
+
+	let resolved =
+		super::resolve_lane_default_branch(&repo_root).expect("default branch should resolve");
+
+	assert_eq!(resolved, "main");
+}
+
+fn run_git_for_handoff(cwd: &Path, args: &[&str]) {
+	let status = Command::new("git")
+		.args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
+		.arg("-C")
+		.arg(cwd)
+		.args(args)
+		.status()
+		.expect("git should run");
+
+	assert!(status.success(), "git {:?} should succeed in `{}`", args, cwd.display());
+}
+
+#[test]
+fn publishes_protocol_safe_tool_names() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_review_context(),
+		&inspector,
+		&local_repo_inspector,
+	);
+	let tool_specs = DynamicToolHandler::tool_specs(&bridge);
+
+	assert!(!tool_specs.is_empty());
+	assert!(tool_specs.into_iter().all(|tool| {
+		tool.name.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+	}));
+}

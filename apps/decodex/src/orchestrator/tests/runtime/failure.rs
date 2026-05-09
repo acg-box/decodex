@@ -1,0 +1,1211 @@
+use orchestrator::{
+	AgentGitCredentialEnvironment, AgentGitCredentialsUnavailable, RepoGateFailureKind,
+};
+
+fn git_config_value(
+	repo_root: &Path,
+	key: &str,
+	credentials: Option<&AgentGitCredentialEnvironment>,
+) -> Option<String> {
+	let mut probe = Command::new("git");
+
+	probe.arg("-C").arg(repo_root).args(["config", "--get", key]);
+
+	if let Some(credentials) = credentials {
+		credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
+	}
+
+	let output = probe.output().expect("git config probe should run");
+
+	output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn injected_git_config_keys(credentials: &AgentGitCredentialEnvironment) -> Vec<String> {
+	let mut probe = Command::new("git");
+
+	credentials.process_env().apply_to(&mut probe).expect("agent env should apply");
+
+	probe
+		.get_envs()
+		.filter_map(|(key, value)| {
+			Some((key.to_string_lossy().into_owned(), value?.to_string_lossy().into_owned()))
+		})
+		.filter(|(key, _)| key.starts_with("GIT_CONFIG_KEY_"))
+		.map(|(_, value)| value)
+		.collect()
+}
+
+#[test]
+fn terminal_failure_comments_surface_actionable_error_classes() {
+	for (error_class, next_action, expected_snippets) in [
+		(
+			"human_attention_required",
+			"inspect the issue comment and worktree, resolve the blocker manually, clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+			&["inspect the issue comment and worktree", "resolve the blocker manually"][..],
+		),
+		(
+			"review_handoff_writeback_failed",
+			"inspect the tracker state, PR, and worktree, repair the incomplete review handoff manually, clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+			&["repair the incomplete review handoff manually"][..],
+		),
+		(
+			"stalled_run_detected",
+			"inspect the worktree and app-server activity for the stalled lane, resolve the blocker manually, `decodex:needs-attention` could not be applied because it does not exist on the team; the issue remains in `In Progress` to block automatic retries, so move it back to a startable state manually if another automated run is desired",
+			&["does not exist on the team", "remains in `In Progress`"][..],
+		),
+	] {
+		let comment = orchestrator::format_terminal_failure_comment(
+			"pub-101-attempt-1-123",
+			1,
+			String::from(".worktrees/PUB-101"),
+			"x/pubfi-pub-101",
+			error_class,
+			next_action,
+		);
+
+		assert!(comment.contains(&format!("- error_class: `{error_class}`")));
+		assert!(comment.contains("Sensitive runtime details were withheld"));
+
+		for expected_snippet in expected_snippets {
+			assert!(comment.contains(expected_snippet), "{error_class} missing {expected_snippet}");
+		}
+	}
+}
+
+#[test]
+fn review_policy_terminal_failure_details_include_research_boundaries() {
+	for (reason, error_class, expected_snippet) in [
+		(
+			ReviewPolicyStopReason::Exhausted,
+			"review_policy_exhausted",
+			"bounded convergence research follow-up",
+		),
+		(
+			ReviewPolicyStopReason::ArchitectureReviewRequired,
+			"architecture_review_required",
+			"bounded architecture research follow-up",
+		),
+		(
+			ReviewPolicyStopReason::Blocked,
+			"review_policy_blocked",
+			"do not dispatch research",
+		),
+	] {
+		let error = Report::new(ReviewPolicyStopRequested {
+			head_sha: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+			issue_identifier: String::from("PUB-101"),
+			nonclean_rounds: Some(3),
+			reason,
+			run_id: String::from("pub-101-attempt-1-123"),
+		});
+		let (actual_error_class, next_action) = orchestrator::terminal_failure_comment_details(
+			false,
+			&error,
+			"clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+		);
+
+		assert_eq!(actual_error_class, error_class);
+		assert!(next_action.contains(expected_snippet), "{error_class} missing research boundary");
+		assert!(next_action.contains("clear label `decodex:needs-attention`"));
+	}
+}
+
+#[test]
+fn preserve_manual_attention_request_wraps_finalize_miss() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[]);
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: issue.state.name.clone(),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+	let error = orchestrator::preserve_manual_attention_request(
+		Ok(RunCompletionDisposition::ManualAttention),
+		&issue_run,
+		&workflow,
+		Report::msg("run completed without issue_terminal_finalize"),
+	);
+
+	assert!(error.downcast_ref::<orchestrator::ManualAttentionRequested>().is_some());
+	assert!(error.to_string().contains("run completed without issue_terminal_finalize"));
+}
+
+#[test]
+fn retained_partial_progress_uses_actionable_terminal_failure_comment() {
+	let error = Report::new(RetainedPartialProgress {
+		issue_identifier: String::from("PUB-101"),
+		run_id: String::from("pub-101-attempt-3-123"),
+		worktree_path: String::from(".worktrees/PUB-101"),
+	});
+	let (error_class, next_action) = orchestrator::terminal_failure_comment_details(
+		false,
+		&error,
+		"clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+	);
+
+	assert_eq!(error_class, "partial_progress_retained");
+	assert!(next_action.contains("inspect retained worktree `.worktrees/PUB-101`"));
+	assert!(next_action.contains("finish validation and PR handoff or reset the patch manually"));
+	assert!(next_action.contains("clear label `decodex:needs-attention`"));
+}
+
+#[test]
+fn ensure_automation_activity_label_noops_when_active_ownership_is_confirmed() {
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let mut issue = sample_issue("In Progress", &[]);
+
+	issue.labels_complete = false;
+
+	issue.labels.retain(|label| label.name != active_label.as_str());
+
+	let tracker = FakeTracker::new(vec![issue.clone()])
+		.with_label_lookup_issues(&active_label, vec![issue.clone()]);
+
+	orchestrator::ensure_automation_activity_label(&tracker, &issue, TEST_SERVICE_ID, true).expect(
+		"server-confirmed active ownership should not fail when the first label page is truncated",
+	);
+
+	assert!(
+		tracker.label_updates.borrow().is_empty()
+			&& tracker.label_additions.borrow().is_empty()
+			&& tracker.label_removals.borrow().is_empty(),
+		"server-confirmed active ownership should not trigger a label mutation"
+	);
+
+	let mut issue = sample_issue("In Progress", &[active_label.as_str()]);
+
+	issue.team.labels.retain(|label| label.name != active_label.as_str());
+
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	orchestrator::ensure_automation_activity_label(&tracker, &issue, TEST_SERVICE_ID, true)
+		.expect("existing active ownership should not require a paginated team-label lookup");
+
+	assert!(
+		tracker.label_updates.borrow().is_empty()
+			&& tracker.label_additions.borrow().is_empty()
+			&& tracker.label_removals.borrow().is_empty(),
+		"no-op active-label checks should not trigger a label mutation"
+	);
+}
+
+#[test]
+fn ensure_automation_activity_label_uses_incremental_team_label_lookup_for_mutation() {
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let mut issue = sample_issue("In Progress", &[]);
+
+	issue.labels_complete = false;
+
+	issue.team.labels.retain(|label| label.name != active_label.as_str());
+
+	let tracker = FakeTracker::new(vec![issue.clone()]).with_team_label_lookup_id(
+		&issue.team.id,
+		&active_label,
+		"label-active",
+	);
+
+	orchestrator::ensure_automation_activity_label(&tracker, &issue, TEST_SERVICE_ID, true)
+		.expect("active-label mutation should resolve the team label id server-side");
+
+	assert_eq!(
+		tracker.label_additions.borrow().as_slice(),
+		[(issue.id.clone(), vec![String::from("label-active")])],
+	);
+	assert!(tracker.label_updates.borrow().is_empty());
+}
+
+#[test]
+fn review_policy_terminal_failure_comments_use_runtime_owned_error_classes() {
+	for (error_class, next_action) in [
+		(
+			"review_policy_exhausted",
+			"inspect the repeated review findings and current worktree, decide the next repair or redesign manually, prepare a bounded convergence research follow-up only after the current head, review phase, non-clean round count, and validated findings are structured and machine-checkable, clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+		),
+		(
+			"architecture_review_required",
+			"inspect the current findings and worktree, perform the required architecture review manually, prepare a bounded architecture research follow-up only after the current head, review phase, stop class, and architecture concern are structured and machine-checkable, clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+		),
+		(
+			"review_policy_blocked",
+			"inspect the blocking condition and worktree, resolve the blocker manually, do not dispatch research unless the blocker is reclassified as a structured architecture or convergence stop, clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+		),
+	] {
+		let comment = orchestrator::format_terminal_failure_comment(
+			"pub-101-attempt-1-123",
+			1,
+			String::from(".worktrees/PUB-101"),
+			"x/pubfi-pub-101",
+			error_class,
+			next_action,
+		);
+
+		assert!(comment.contains(&format!("- error_class: `{error_class}`")));
+		assert!(comment.contains("Sensitive runtime details were withheld"));
+	}
+}
+
+#[test]
+fn retry_failure_comments_withhold_raw_error_text() {
+	let comment = orchestrator::format_retry_comment(RetryComment {
+		run_id: "pub-101-attempt-1-123",
+		attempt_number: 1,
+		retry_budget_attempt_number: 1,
+		max_attempts: 3,
+		worktree_path: String::from(".worktrees/PUB-101"),
+		branch_name: "x/pubfi-pub-101",
+		error_class: "retryable_execution_failure",
+		next_action: "decodex will retry automatically",
+	});
+
+	assert!(comment.contains("- error_class: `retryable_execution_failure`"));
+	assert!(comment.contains("Sensitive runtime details were withheld"));
+	assert!(!comment.contains("error:"));
+}
+
+#[test]
+fn repo_gate_retry_comments_preserve_continued_repair_error_class() {
+	let comment = orchestrator::format_retry_comment(RetryComment {
+		run_id: "pub-101-attempt-1-123",
+		attempt_number: 1,
+		retry_budget_attempt_number: 1,
+		max_attempts: 3,
+		worktree_path: String::from(".worktrees/PUB-101"),
+		branch_name: "x/pubfi-pub-101",
+		error_class: "repo_gate_verify_failed",
+		next_action: "additional agent repair is required before repo verification can pass; decodex will retry automatically",
+	});
+
+	assert!(comment.contains("- error_class: `repo_gate_verify_failed`"));
+	assert!(
+		comment.contains("additional agent repair is required before repo verification can pass")
+	);
+}
+
+#[test]
+fn repo_gate_lock_contention_retry_comments_preserve_specific_error_class() {
+	let error = Report::new(orchestrator::RepoGateFailure::new(
+		RepoGateFailureKind::GitLockContention,
+		String::from(
+			"Failed to inspect tracked-file cleanliness after repo gate verification in `/tmp/repo`: fatal: Unable to create '.git/index.lock': File exists.",
+		),
+	));
+	let (error_class, next_action) = orchestrator::retry_comment_details(&error);
+
+	assert_eq!(error_class, "repo_gate_git_lock_contention");
+	assert!(next_action.contains("`.git/index.lock`"));
+	assert!(next_action.contains("retry automatically"));
+}
+
+#[test]
+fn repo_gate_lock_contention_runtime_retry_writes_specific_retry_schedule_marker() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: issue.state.name.clone(),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: worktree_path.clone(),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+	let error = Report::new(orchestrator::RepoGateFailure::new(
+		RepoGateFailureKind::GitLockContention,
+		String::from(
+			"Failed to inspect tracked-file cleanliness after repo gate verification in `/tmp/repo`: fatal: Unable to create '.git/index.lock': File exists.",
+		),
+	));
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+	orchestrator::write_retry_schedule_marker_for_runtime_retry(&error, &workflow, &issue_run, 1)
+		.expect("lock contention should write a specific retry marker");
+
+	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
+		.expect("retry schedule should remain readable")
+		.expect("retry marker should exist");
+
+	assert_eq!(marker.retry_kind(), Some("git_lock_contention"));
+	assert!(
+		marker.retry_ready_at_unix_epoch().is_some_and(
+			|retry_ready_at| retry_ready_at > OffsetDateTime::now_utc().unix_timestamp()
+		)
+	);
+}
+
+#[test]
+fn retry_budget_current_failure_does_not_double_count_handed_off_base() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: issue.state.name.clone(),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 2,
+		run_id: String::from("pub-101-attempt-2-456"),
+		retry_budget_base: 1,
+	};
+
+	state_store
+		.record_run_attempt("pub-101-attempt-1-123", &issue.id, 1, "failed")
+		.expect("previous failed attempt should record");
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("current failed attempt should record");
+
+	assert_eq!(
+		orchestrator::retry_budget_attempts_for_current_failure(&state_store, &issue_run)
+			.expect("retry budget should compute"),
+		2,
+		"the daemon handoff base already includes the previous persisted failed attempt"
+	);
+}
+
+#[test]
+fn repo_gate_terminal_failures_preserve_specific_error_class_after_retry_exhaustion() {
+	let error = Report::new(orchestrator::RepoGateFailure::new(
+		RepoGateFailureKind::VerifyCommandFailed,
+		String::from("Repo verify command `cargo make test` failed in `/tmp/repo`: test failed"),
+	));
+	let (error_class, next_action) = orchestrator::terminal_failure_comment_details(
+		false,
+		&error,
+		"clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+	);
+
+	assert_eq!(error_class, "repo_gate_verify_failed");
+	assert!(next_action.contains("repair the repo verification failure manually"));
+}
+
+#[test]
+fn repo_gate_lock_contention_terminal_failures_preserve_specific_error_class_after_retry_exhaustion()
+ {
+	let error = Report::new(orchestrator::RepoGateFailure::new(
+		RepoGateFailureKind::GitLockContention,
+		String::from(
+			"Failed to inspect tracked-file cleanliness after repo gate verification in `/tmp/repo`: fatal: Unable to create '.git/index.lock': File exists.",
+		),
+	));
+	let (error_class, next_action) = orchestrator::terminal_failure_comment_details(
+		false,
+		&error,
+		"clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+	);
+
+	assert_eq!(error_class, "repo_gate_git_lock_contention");
+	assert!(next_action.contains("active or stale `.git/index.lock` holder"));
+}
+
+#[test]
+fn app_server_terminal_failures_preserve_specific_error_classes() {
+	let cases = [
+		(
+			Report::new(AppServerCapabilityPreflightFailure::blocked_for_test(
+				"model",
+				"configured model was not present in model/list.",
+			)),
+			"app_server_runtime_preflight_failed",
+			"repair the local Codex config/model/provider/skills/plugin/MCP state",
+		),
+		(
+			Report::new(AppServerHomePreflightFailure::resolution_failed(String::from(
+				"app_server_preflight_failed: HOME is not set, so Decodex cannot resolve the shared Codex home for app-server dispatch.",
+			))),
+			"app_server_codex_home_preflight_failed",
+			"keep CODEX_HOME/CODEX_SQLITE_HOME shared instead of per-account",
+		),
+		(
+			Report::new(AppServerHomePreflightFailure::initialize_mismatch(
+				String::from("/tmp/per-account-codex-home"),
+				String::from("/Users/test/.codex"),
+			)),
+			"app_server_codex_home_mismatch",
+			"restart `decodex serve`",
+		),
+		(
+			Report::new(AppServerTransportFailure::new(String::from(
+				"App-server stdout disconnected unexpectedly.",
+			))),
+			"app_server_transport_disconnected",
+			"inspect the local app-server stderr tail",
+		),
+		(
+			Report::new(AppServerTurnFailure::new(
+				"thread-1",
+				Some(String::from("turn-1")),
+				"failed",
+				"You've hit your usage limit.",
+				Some(String::from("usageLimitExceeded")),
+			)),
+			"app_server_usage_limit_exceeded",
+			"inspect Codex account usage",
+		),
+	];
+
+	for (error, expected_class, expected_action) in cases {
+		let (error_class, next_action) = orchestrator::terminal_failure_comment_details(
+			false,
+			&error,
+			"clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+		);
+
+		assert_eq!(error_class, expected_class);
+		assert!(next_action.contains(expected_action));
+		assert!(next_action.contains("clear label `decodex:needs-attention`"));
+	}
+}
+
+#[test]
+fn repo_gate_runtime_failures_require_manual_attention_without_retry_budget_wait() {
+	let error = Report::new(orchestrator::RepoGateFailure::new(
+		RepoGateFailureKind::CommandSpawnFailed,
+		String::from(
+			"Failed to spawn repo gate command `cargo make fmt` in `/tmp/repo` via `/bin/sh` `-c`: missing tool",
+		),
+	));
+	let repo_gate_failure = error
+		.downcast_ref::<orchestrator::RepoGateFailure>()
+		.expect("repo gate failure should downcast");
+
+	assert_eq!(
+		repo_gate_failure.disposition(),
+		orchestrator::RepoGateFailureDisposition::NeedsHumanAttention
+	);
+	assert_eq!(repo_gate_failure.error_class(), "repo_gate_command_spawn_failed");
+}
+
+#[test]
+fn operation_marker_write_failures_do_not_abort_completion_flow() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let occupied_path = temp_dir.path().join("occupied");
+
+	fs::write(&occupied_path, "not a directory").expect("blocking file should write");
+	orchestrator::write_run_operation_marker_best_effort(
+		&occupied_path,
+		"run-1",
+		1,
+		RUN_OPERATION_REPO_GATE,
+	);
+	orchestrator::write_run_operation_marker_best_effort(
+		&occupied_path,
+		"run-1",
+		1,
+		RUN_OPERATION_RECONCILIATION,
+	);
+
+	assert!(occupied_path.is_file());
+	assert!(!occupied_path.join(RUN_ACTIVITY_MARKER_FILE).exists());
+}
+
+#[test]
+fn validate_review_handoff_runtime_requires_gh_and_github_token_authority() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+
+	{
+		let _env_lock = TestEnvVarGuard::lock();
+		let missing_env_var = format!("DECODEX_TEST_MISSING_GITHUB_TOKEN_ENV_{}", process::id());
+		let config_missing_github =
+			service_config_with_github_token_env_var(&config, &missing_env_var);
+
+		assert!(orchestrator::validate_review_handoff_runtime(&config, true).is_ok());
+		assert!(orchestrator::validate_review_handoff_runtime(&config, false).is_ok());
+		assert!(orchestrator::validate_daemon_runtime().is_ok());
+		assert!(orchestrator::validate_command_available("git", "test preflight").is_ok());
+
+		let error = orchestrator::validate_review_handoff_runtime(&config_missing_github, false)
+			.expect_err("missing github token env-var should fail live preflight");
+
+		assert!(error.to_string().contains("github.token_env_var"));
+	}
+
+	let env_var = format!("DECODEX_TEST_BLANK_GITHUB_TOKEN_ENV_{}", process::id());
+	let _env_guard = TestEnvVarGuard::set(&env_var, "");
+	let config_blank_github = service_config_with_github_token_env_var(&config, &env_var);
+	let error = orchestrator::validate_review_handoff_runtime(&config_blank_github, false)
+		.expect_err("blank github token authority should fail live preflight");
+
+	assert!(error.to_string().contains("must not be blank"));
+
+	let error = orchestrator::validate_command_available(
+		"__decodex_missing_command__",
+		"PR-backed review handoff",
+	)
+	.expect_err("missing command should fail preflight");
+
+	assert!(
+		error.to_string().contains("Required command `__decodex_missing_command__` is unavailable")
+	);
+}
+
+#[test]
+fn agent_git_credentials_use_runtime_env_without_persisting_the_token() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let env_var = format!("DECODEX_TEST_AGENT_GITHUB_TOKEN_ENV_{}", process::id());
+	let _env_guard = TestEnvVarGuard::set(&env_var, "secret-token-value");
+	let config = service_config_with_github_token_env_var(&config, &env_var);
+	let askpass_path =
+		orchestrator::agent_git_askpass_path(config.worktree_root(), "run/with spaces");
+	let credentials =
+		orchestrator::prepare_agent_git_credentials(&config, "run/with spaces", config.repo_root())
+			.expect("agent Git credentials should prepare");
+	let script = fs::read_to_string(&askpass_path).expect("askpass script should exist");
+
+	assert!(askpass_path.exists());
+	assert!(script.contains("GH_TOKEN"));
+	assert!(!script.contains("secret-token-value"));
+
+	let inherited_signing_key = git_config_value(config.repo_root(), "user.signingkey", None);
+	let agent_signing_key =
+		git_config_value(config.repo_root(), "user.signingkey", Some(&credentials));
+
+	assert_eq!(
+		agent_signing_key, inherited_signing_key,
+		"agent git environment should preserve inherited signing keys when the repo has no local key"
+	);
+	assert_eq!(
+		git_config_value(config.repo_root(), "commit.gpgsign", Some(&credentials)).as_deref(),
+		Some("false")
+	);
+
+	let inherited_git_config_keys = injected_git_config_keys(&credentials);
+
+	assert!(
+		!inherited_git_config_keys.iter().any(|key| key == "commit.gpgsign"),
+		"agent git environment should not disable inherited commit signing"
+	);
+	assert!(
+		!inherited_git_config_keys.iter().any(|key| key == "tag.gpgsign"),
+		"agent git environment should not disable inherited tag signing"
+	);
+	assert!(
+		!inherited_git_config_keys.iter().any(|key| key == "user.signingkey"),
+		"agent git environment should not mask inherited signing keys"
+	);
+
+	#[cfg(unix)]
+	{
+		assert_eq!(
+			std::os::unix::fs::PermissionsExt::mode(
+				&fs::metadata(&askpass_path).expect("askpass metadata should load").permissions(),
+			) & 0o777,
+			0o700
+		);
+
+		let github_username = Command::new(&askpass_path)
+			.arg("Username for 'https://github.com/hack-ink/decodex.git'")
+			.env("GH_TOKEN", "secret-token-value")
+			.output()
+			.expect("askpass helper should execute");
+
+		assert!(github_username.status.success());
+		assert_eq!(String::from_utf8_lossy(&github_username.stdout).trim(), "x-access-token");
+
+		let github_password = Command::new(&askpass_path)
+			.arg("Password for 'https://x-access-token@github.com/hack-ink/decodex.git'")
+			.env("GH_TOKEN", "secret-token-value")
+			.output()
+			.expect("askpass helper should execute");
+
+		assert!(github_password.status.success());
+		assert_eq!(String::from_utf8_lossy(&github_password.stdout).trim(), "secret-token-value");
+
+		let foreign_password = Command::new(&askpass_path)
+			.arg("Password for 'https://example.com/repo.git'")
+			.env("GH_TOKEN", "secret-token-value")
+			.output()
+			.expect("askpass helper should execute");
+
+		assert!(
+			!foreign_password.status.success(),
+			"askpass helper should reject non-GitHub prompts"
+		);
+		assert!(
+			!String::from_utf8_lossy(&foreign_password.stdout).contains("secret-token-value"),
+			"askpass helper should not leak the GitHub token to non-GitHub prompts"
+		);
+
+		let lookalike_password = Command::new(&askpass_path)
+			.arg("Password for 'https://x-access-token@github.com.evil/repo.git'")
+			.env("GH_TOKEN", "secret-token-value")
+			.output()
+			.expect("askpass helper should execute");
+
+		assert!(
+			!lookalike_password.status.success(),
+			"askpass helper should reject GitHub lookalike hosts"
+		);
+		assert!(
+			!String::from_utf8_lossy(&lookalike_password.stdout).contains("secret-token-value"),
+			"askpass helper should not leak the GitHub token to lookalike hosts"
+		);
+	}
+
+	drop(credentials);
+
+	assert!(
+		!askpass_path.exists(),
+		"runtime askpass helper should be removed after the run environment drops"
+	);
+}
+
+#[test]
+fn agent_git_credentials_pin_repo_local_signing_key_when_configured() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let env_var = format!("DECODEX_TEST_AGENT_SIGNING_GITHUB_TOKEN_ENV_{}", process::id());
+	let _env_guard = TestEnvVarGuard::set(&env_var, "secret-token-value");
+	let config = service_config_with_github_token_env_var(&config, &env_var);
+
+	git_status_success(config.repo_root(), &["config", "user.signingkey", "route-y-signing-key"]);
+
+	let credentials = orchestrator::prepare_agent_git_credentials(
+		&config,
+		"run-with-signing",
+		config.repo_root(),
+	)
+	.expect("agent Git credentials should prepare");
+	let mut signing_key_probe = Command::new("git");
+
+	signing_key_probe.arg("-C").arg(config.repo_root()).args([
+		"config",
+		"--get",
+		"user.signingkey",
+	]);
+	credentials.process_env().apply_to(&mut signing_key_probe).expect("agent env should apply");
+
+	let output = signing_key_probe.output().expect("git signing key probe should run");
+
+	assert!(output.status.success());
+	assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "route-y-signing-key");
+}
+
+#[test]
+fn missing_agent_git_credentials_stop_without_retry() {
+	let _env_lock = TestEnvVarGuard::lock();
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let missing_env_var = format!("DECODEX_TEST_MISSING_AGENT_GITHUB_TOKEN_ENV_{}", process::id());
+	let config = service_config_with_github_token_env_var(&config, &missing_env_var);
+	let error = match orchestrator::prepare_agent_git_credentials(
+		&config,
+		"run-missing-token",
+		config.repo_root(),
+	) {
+		Ok(_) => panic!("missing github token should fail before app-server launch"),
+		Err(error) => error,
+	};
+	let credentials_error = error
+		.downcast_ref::<AgentGitCredentialsUnavailable>()
+		.expect("credential preflight failure should be typed");
+	let (error_class, next_action) = orchestrator::terminal_failure_comment_details(
+		false,
+		&error,
+		"clear label `decodex:needs-attention`",
+	);
+
+	assert_eq!(credentials_error.token_env_var, missing_env_var);
+	assert_eq!(error_class, "github_credentials_unavailable");
+	assert!(next_action.contains("configure"));
+	assert!(next_action.contains(&missing_env_var));
+}
+
+#[test]
+fn live_run_without_candidate_does_not_require_github_token_authority() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::with_refresh_snapshots_and_project(vec![], vec![vec![]], true);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
+		.expect("empty backlog should not require github token authority");
+
+	assert!(summary.is_none());
+}
+
+#[test]
+fn prepare_issue_run_with_candidate_does_not_require_github_token_authority_before_agent_execution()
+{
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let listed_issue = sample_issue("Todo", &[]);
+	let tracker = FakeTracker::with_refresh_snapshots(
+		vec![listed_issue.clone()],
+		vec![vec![listed_issue.clone()]],
+	);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+	let issue_run = orchestrator::prepare_issue_run(
+		PrepareIssueRunContext {
+			tracker: &tracker,
+			project: &config,
+			workflow: &workflow,
+			state_store: &state_store,
+			worktree_manager: &worktree_manager,
+			dry_run: false,
+			lease_preacquired: false,
+			dispatch_mode: IssueDispatchMode::Normal,
+			preferred_issue_state: None,
+			preferred_initial_issue_state: None,
+			preferred_run_identity: None,
+			preferred_retry_budget_base: None,
+		},
+		listed_issue.clone(),
+	)
+	.expect("candidate dispatch should prepare without github token authority")
+	.expect("candidate issue should plan a run");
+
+	assert_eq!(issue_run.issue.id, listed_issue.id);
+	assert_eq!(issue_run.issue_state, "In Progress");
+	assert!(
+		state_store.lease_for_issue(&listed_issue.id).expect("lease lookup should work").is_some()
+	);
+	assert!(
+		state_store
+			.worktree_for_issue(&listed_issue.id)
+			.expect("worktree lookup should work")
+			.is_some()
+	);
+	assert_eq!(
+		state_store
+			.latest_run_attempt_for_issue(&listed_issue.id)
+			.expect("run attempt lookup should work")
+			.expect("starting attempt should record")
+			.status(),
+		"starting"
+	);
+}
+
+#[test]
+fn execute_issue_run_clears_lease_when_active_label_setup_fails() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let mut listed_issue = sample_issue("Todo", &[]);
+	let mut refreshed_issue = listed_issue.clone();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let worktree_path = config.worktree_root().join(&listed_issue.identifier);
+
+	listed_issue.team.labels.retain(|label| label.name != active_label);
+	refreshed_issue.team.labels.retain(|label| label.name != active_label);
+
+	let tracker = FakeTracker::with_refresh_snapshots(
+		vec![listed_issue.clone()],
+		vec![vec![refreshed_issue]],
+	);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: listed_issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: listed_issue.state.name.clone(),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: listed_issue.identifier.clone(),
+			path: worktree_path.clone(),
+			reused_existing: false,
+		},
+		retry_project_slug: listed_issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(
+			&issue_run.run_id,
+			&listed_issue.id,
+			issue_run.attempt_number,
+			"starting",
+		)
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease(config.service_id(), &listed_issue.id, &issue_run.run_id, "In Progress")
+		.expect("lease should record");
+
+	let error = orchestrator::execute_issue_run(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		issue_run.clone(),
+	)
+	.expect_err("active-label setup failure should abort execution");
+
+	assert!(error.to_string().contains("required label"));
+	assert!(
+		state_store.lease_for_issue(&listed_issue.id).expect("lease lookup should work").is_none(),
+		"active-label setup failures should still release the lease"
+	);
+	assert_eq!(
+		state_store
+			.run_attempt(&issue_run.run_id)
+			.expect("run attempt lookup should work")
+			.expect("run attempt should exist")
+			.status(),
+		"failed",
+		"active-label setup failures should mark the run failed before returning"
+	);
+}
+
+#[test]
+fn reconciliation_clears_stale_leases_and_terminal_worktrees() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let issue = sample_issue("Done", &[active_label.as_str()]);
+	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
+	let tracker =
+		FakeTracker::new(vec![issue.clone()]).with_label_lookup_issues(&queue_label, vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
+		.expect("reconciliation should succeed");
+
+	assert!(summary.is_none());
+	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should work").is_none());
+	assert!(
+		state_store.worktree_for_issue(&issue.id).expect("worktree lookup should work").is_none()
+	);
+	assert_eq!(
+		state_store
+			.run_attempt("run-1")
+			.expect("run attempt lookup should work")
+			.expect("run attempt should exist")
+			.status(),
+		"terminated"
+	);
+	assert_eq!(
+		tracker.label_removals.borrow().as_slice(),
+		[
+			(issue.id.clone(), vec![String::from("label-active")]),
+			(issue.id.clone(), vec![String::from("label-queued")]),
+		]
+	);
+}
+
+#[test]
+fn reconciliation_runs_without_project_validation() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let issue = sample_issue("Done", &[active_label.as_str()]);
+	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
+	let tracker = FakeTracker::with_refresh_snapshots_and_project(
+		vec![issue.clone()],
+		vec![vec![issue.clone()]],
+		false,
+	)
+	.with_label_lookup_issues(&queue_label, vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
+		.expect("lease should record");
+
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
+		.expect("reconciliation should still succeed without any project validation");
+
+	assert!(summary.is_none(), "reconciliation-only startup should not dispatch a new lane here");
+	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should work").is_none());
+	assert_eq!(
+		state_store
+			.run_attempt("run-1")
+			.expect("run attempt lookup should work")
+			.expect("run attempt should exist")
+			.status(),
+		"terminated"
+	);
+	assert_eq!(
+		tracker.label_removals.borrow().as_slice(),
+		[
+			(issue.id.clone(), vec![String::from("label-active")]),
+			(issue.id.clone(), vec![String::from("label-queued")]),
+		]
+	);
+}
+
+#[test]
+fn exited_child_cleanup_updates_status_and_retry_budget_by_interrupt_flag() {
+	for (case_name, mark_interrupted, expected_status, expected_retry_budget) in [
+		("clean exit", false, "running", 0),
+		("interrupted exit", true, "interrupted", 1),
+	] {
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = sample_issue("In Progress", &[]);
+
+		state_store
+			.record_run_attempt("run-1", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		state_store
+			.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
+			.expect("lease should record");
+
+		orchestrator::clear_orphaned_daemon_child_state(
+			&state_store,
+			ChildRunRef {
+				issue_id: &issue.id,
+				run_id: "run-1",
+				attempt_number: 1,
+			},
+			mark_interrupted,
+		)
+		.expect(case_name);
+
+		assert!(
+			state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none()
+		);
+		assert_eq!(
+			state_store
+				.run_attempt("run-1")
+				.expect("run attempt lookup should succeed")
+				.expect("run attempt should exist")
+				.status(),
+			expected_status,
+			"{case_name}"
+		);
+		assert_eq!(
+			state_store
+				.retry_budget_attempt_count(&issue.id)
+				.expect("retry budget count should succeed"),
+			expected_retry_budget,
+			"{case_name}"
+		);
+	}
+}
+
+#[test]
+fn exited_child_cleanup_handles_worktree_mapping_ownership() {
+	{
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = sample_issue("Done", &[]);
+		let removed_worktree_path = temp_dir.path().join("removed-lane");
+
+		state_store
+			.record_run_attempt("run-1", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		state_store.update_run_status("run-1", "succeeded").expect("run status should update");
+		state_store
+			.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
+			.expect("lease should record");
+		state_store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-101",
+				&removed_worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		orchestrator::clear_orphaned_daemon_child_state(
+			&state_store,
+			ChildRunRef {
+				issue_id: &issue.id,
+				run_id: "run-1",
+				attempt_number: 1,
+			},
+			false,
+		)
+		.expect("removed worktree cleanup should succeed");
+
+		assert!(
+			state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none()
+		);
+		assert!(
+			state_store
+				.worktree_for_issue(&issue.id)
+				.expect("worktree lookup should succeed")
+				.is_none()
+		);
+		assert_eq!(
+			state_store
+				.run_attempt("run-1")
+				.expect("run attempt lookup should succeed")
+				.expect("run attempt should exist")
+				.status(),
+			"succeeded"
+		);
+	}
+	{
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let state_store = StateStore::open_in_memory().expect("state store should open");
+		let issue = sample_issue("In Review", &[]);
+		let existing_worktree_path = temp_dir.path().join("retained-lane");
+
+		fs::create_dir_all(&existing_worktree_path).expect("worktree path should exist");
+
+		state_store
+			.record_run_attempt("run-1", &issue.id, 1, "running")
+			.expect("run attempt should record");
+		state_store
+			.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
+			.expect("lease should record");
+		state_store
+			.upsert_worktree(
+				"pubfi",
+				&issue.id,
+				"x/pubfi-pub-101",
+				&existing_worktree_path.display().to_string(),
+			)
+			.expect("worktree mapping should record");
+
+		orchestrator::clear_orphaned_daemon_child_state(
+			&state_store,
+			ChildRunRef {
+				issue_id: &issue.id,
+				run_id: "run-1",
+				attempt_number: 1,
+			},
+			false,
+		)
+		.expect("existing worktree cleanup should succeed");
+
+		assert_eq!(
+			state_store
+				.worktree_for_issue(&issue.id)
+				.expect("worktree lookup should succeed")
+				.expect("worktree mapping should remain")
+				.worktree_path(),
+			existing_worktree_path.as_path()
+		);
+	}
+}
+
+#[test]
+fn exited_child_cleanup_requires_exact_run_id() {
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+
+	state_store
+		.record_run_attempt("other-run", &issue.id, 1, "running")
+		.expect("other run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, "other-run", "In Progress")
+		.expect("lease should record");
+
+	orchestrator::clear_orphaned_daemon_child_state(
+		&state_store,
+		ChildRunRef { issue_id: &issue.id, run_id: "planned-run", attempt_number: 1 },
+		true,
+	)
+	.expect("orphaned child cleanup should succeed");
+
+	assert_eq!(
+		state_store
+			.lease_for_issue(&issue.id)
+			.expect("lease lookup should succeed")
+			.expect("lease should remain attached to the other run")
+			.run_id(),
+		"other-run"
+	);
+	assert_eq!(
+		state_store
+			.run_attempt("other-run")
+			.expect("run attempt lookup should succeed")
+			.expect("run attempt should exist")
+			.status(),
+		"running"
+	);
+}
+
+#[test]
+fn exited_child_cleanup_keeps_other_run_lease_and_worktree_mapping() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+	let removed_worktree_path = temp_dir.path().join("removed-lane");
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.record_run_attempt("other-run", &issue.id, 2, "running")
+		.expect("other run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, "other-run", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&removed_worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	orchestrator::clear_orphaned_daemon_child_state(
+		&state_store,
+		ChildRunRef { issue_id: &issue.id, run_id: "run-1", attempt_number: 1 },
+		false,
+	)
+	.expect("orphaned child cleanup should succeed");
+
+	assert_eq!(
+		state_store
+			.lease_for_issue(&issue.id)
+			.expect("lease lookup should succeed")
+			.expect("lease should remain attached to the other run")
+			.run_id(),
+		"other-run"
+	);
+	assert_eq!(
+		state_store
+			.worktree_for_issue(&issue.id)
+			.expect("worktree lookup should succeed")
+			.expect("worktree mapping should remain")
+			.worktree_path(),
+		removed_worktree_path.as_path()
+	);
+}

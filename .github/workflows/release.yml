@@ -4,6 +4,7 @@ permissions:
   contents: write
 
 env:
+  BINARY_NAME: decodex
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
   CARGO_TERM_COLOR: always
 
@@ -28,14 +29,13 @@ jobs:
           [
             { name: aarch64-apple-darwin, os: macos-latest },
             { name: x86_64-unknown-linux-gnu, os: ubuntu-latest },
-            { name: x86_64-pc-windows-msvc, os: windows-latest },
           ]
     steps:
       - name: Fetch latest code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
         with:
           cache: true
           components: rustfmt, clippy
@@ -44,42 +44,26 @@ jobs:
         run: rustup target add ${{ matrix.target.name }}
 
       - name: Build
-        run: cargo build --profile final-release --locked --target ${{ matrix.target.name }}
+        run: cargo build --profile final-release --locked --package "${BINARY_NAME}" --target ${{ matrix.target.name }}
 
       - name: Pack (macOS)
         if: matrix.target.os == 'macos-latest'
         run: |
-          mv target/${{ matrix.target.name }}/final-release/name_placeholder .
-          zip name_placeholder-${{ matrix.target.name }}.zip name_placeholder
-
-      - name: Pack (Windows)
-        if: matrix.target.os == 'windows-latest'
-        run: |
-          mv target/${{ matrix.target.name }}/final-release/name_placeholder.exe .
-          Compress-Archive -Path name_placeholder.exe -DestinationPath name_placeholder-${{ matrix.target.name }}.zip
+          cp "target/${{ matrix.target.name }}/final-release/${BINARY_NAME}" .
+          zip "${BINARY_NAME}-${{ matrix.target.name }}.zip" "${BINARY_NAME}"
 
       - name: Pack (Linux)
         if: matrix.target.os == 'ubuntu-latest'
         run: |
-          mv target/${{ matrix.target.name }}/final-release/name_placeholder .
-          tar -czvf name_placeholder-${{ matrix.target.name }}.tar.gz name_placeholder
+          cp "target/${{ matrix.target.name }}/final-release/${BINARY_NAME}" .
+          tar -czvf "${BINARY_NAME}-${{ matrix.target.name }}.tar.gz" "${BINARY_NAME}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: name_placeholder-${{ matrix.target.name }}
-          path: name_placeholder-${{ matrix.target.name }}.*
+          name: ${{ env.BINARY_NAME }}-${{ matrix.target.name }}
+          path: ${{ env.BINARY_NAME }}-${{ matrix.target.name }}.*
           retention-days: 1
-
-  # release:
-  #   name: Release
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Publish
-  #       uses: softprops/action-gh-release@v2
-  #       with:
-  #         discussion_category_name: Announcements
-  #         generate_release_notes: true
 
   release:
     name: Release
@@ -87,20 +71,15 @@ jobs:
     needs: [build]
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 
-      - name: Hash
+      - name: Collect artifacts
         run: |
           mkdir -p artifacts
-          mv name_placeholder-*/* artifacts/
-          cd artifacts
-          sha256sum * | tee ../SHA256
-          md5sum * | tee ../MD5
-          mv ../SHA256 .
-          mv ../MD5 .
+          mv "${BINARY_NAME}-"*/* artifacts/
 
       - name: Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           discussion_category_name: Announcements
           generate_release_notes: true
@@ -111,10 +90,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch latest code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
         with:
           cache: true
           components: rustfmt, clippy
@@ -123,4 +102,4 @@ jobs:
         run: cargo login ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Publish
-        run: cargo publish --locked
+        run: cargo publish --locked --package "${BINARY_NAME}"
