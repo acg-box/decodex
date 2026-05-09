@@ -9,14 +9,15 @@ Question this index answers: "what must remain true?"
 - You need an invariant, contract, schema, enum, state model, interface, or required
   behavior.
 - You are deciding whether code or data is correct.
-- A guide says "see the governing spec" and you need the authoritative source.
+- A runbook says "see the governing spec" and you need the authoritative source.
 
 ## Do not use this index when
 
 - You need step-by-step instructions, maintenance actions, migrations, or incident
   response.
-- You need a planning-tool artifact or a saved execution plan under `docs/plans/`.
 - You want rationale only, without an authoritative contract.
+- You need current layout or implementation boundaries; read `docs/reference/index.md`.
+- You need design rationale or packaging tradeoffs; read `docs/decisions/index.md`.
 
 ## What belongs in `docs/spec/`
 
@@ -48,18 +49,41 @@ Then keep the body explicit:
 - Prefer shallow paths while the spec set is small.
 - Add subfolders only when they mirror stable system boundaries or materially reduce
   ambiguity.
-- Do not require fixed filename prefixes up front.
 - Choose names for topic clarity and retrieval quality, not visual uniformity.
-- If a guide depends on a spec, the guide links back to the governing spec.
+- If a runbook depends on a spec, the runbook links back to the governing spec.
 
-## Current specs
+## Current governing specs
 
-- `repo_layout.md` defines the canonical top-level layout during the transition away
-  from the Rust-only template surface.
-- `site_contract.md` defines the MVP page budget, homepage obligations, and card
-  rendering contract.
-- `github_change_bundle.md` defines the normalized GitHub input model for PR-first
-  analysis.
-- `signal_entry.md` defines the published signal-entry schema used by the site.
-- `release_delta.md` defines the stable-versus-prerelease summary artifact used by
-  the homepage release-delta module.
+- [`runtime.md`](./runtime.md) defines the runtime state model, reconciliation rules, and
+  tracker writeback boundaries.
+- [`app-server.md`](./app-server.md) defines the direct Codex `app-server` interaction
+  contract used by the runtime.
+- [`github-change-bundle.md`](./github-change-bundle.md) defines the normalized GitHub
+  input model for PR-first public signal analysis.
+- [`signal-entry.md`](./signal-entry.md) defines the published signal-entry schema used
+  by the static site.
+- [`release-delta.md`](./release-delta.md) defines the stable-versus-prerelease summary
+  artifact used by the homepage release-delta module.
+- [`site-contract.md`](./site-contract.md) defines the static-site page budget,
+  homepage obligations, and card rendering contract.
+- [`reset-status.md`](./reset-status.md) defines the reset-status artifact consumed by
+  the static site.
+- [`linear-execution-ledger.md`](./linear-execution-ledger.md) defines the versioned
+  Linear comment event-ledger schema for low-frequency Decodex lane transitions.
+- [`commit-messages.md`](./commit-messages.md) defines the machine-readable commit-message
+  contract for local history.
+- [`installable-agent-policy.md`](./installable-agent-policy.md) defines the boundary
+  between portable installable `AGENTS.md` guidance and Decodex-specific repository,
+  runtime, workflow, identity, and lifecycle policy.
+- [`owned-lane-policy.md`](./owned-lane-policy.md) defines the fallback policy for
+  Decodex-owned lanes, including manual-intervention and automatic-recovery decisions.
+- [`review-orchestration.md`](./review-orchestration.md) defines the shared
+  internal/external review loop, strict external-review signals, round accounting, and
+  direct landing entry rules.
+- [`post-review-lifecycle.md`](./post-review-lifecycle.md) defines the normative post-
+  `In Review` lane phases, transitions, and ownership boundaries through landing,
+  closeout, and cleanup.
+- [`tracker-tools.md`](./tracker-tools.md) defines the issue-scoped tracker write
+  contract.
+- [`workflow-file.md`](./workflow-file.md) defines registered project `WORKFLOW.md`
+  configuration semantics and required fields.

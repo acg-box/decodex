@@ -1,0 +1,182 @@
+{
+  "schema": "research-run/2",
+  "run_id": "2026-04-05_workspace-lifecycle-hooks-surface",
+  "question": "What is the smallest repo-owned workspace lifecycle hook surface that fits Decodex's goals without duplicating Codex host hooks or turning WORKFLOW.md into a generic plugin system?",
+  "success_criteria": [
+    "Recommend a lifecycle-hook contract that is easy for repo owners to understand and audit.",
+    "Preserve Decodex runtime ownership of lane lifecycle while allowing limited repo-specific bootstrap and cleanup behavior.",
+    "Avoid duplicating host-level Codex controls or introducing a generic script escape hatch."
+  ],
+  "constraints": [
+    "Keep the first slice aligned with the current WORKFLOW.md machine-readable style.",
+    "Prefer fail-closed behavior for destructive or state-changing phases.",
+    "Do not widen the design into a run-hook framework, plugin system, or background-service launcher."
+  ],
+  "stop_rule": "Stop once one narrow hook contract is decision-ready with repo-grounded and official-doc-backed tradeoffs.",
+  "primary_hypothesis": "The best first slice is an extensible workspace hook schema that only enables after_create and before_remove, leaving run-phase hooks out of scope until there is concrete repo pressure for them.",
+  "rival_hypotheses": [
+    "Expose a fully generic lifecycle hook surface now, including before_run and after_run, so repos do not need another schema change later.",
+    "Do not add any repo-owned lifecycle hooks because host-level Codex hooks or runtime logic should absorb the need."
+  ],
+  "falsifiers": [
+    "If current repo-specific bootstrap and cleanup needs cannot be expressed by after_create and before_remove, the proposed first slice is too narrow.",
+    "If the proposed hook surface lets repos smuggle orchestration policy, review policy, or host controls back into shell scripts, the design is too broad."
+  ],
+  "coverage": {
+    "mode": "standard",
+    "min_source_families": 0
+  },
+  "continuation": {
+    "mode": "auto_if_not_decision_ready",
+    "attempt": 1,
+    "max_attempts": 1,
+    "session_id": "2026-04-05_workspace-lifecycle-hooks-surface"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "probe_completed",
+      "remaining_option_count": 3,
+      "independent_option_questions": [
+        "Should Decodex expose only workspace bootstrap and cleanup hooks, or also run-phase hooks such as before_run and after_run?",
+        "What boundary keeps repo-owned lifecycle policy from overlapping host-level Codex controls?"
+      ],
+      "external_slices": []
+    },
+    {
+      "seq": 2,
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E1",
+          "kind": "observation",
+          "summary": "The current workflow contract already prefers narrow, explicit, fail-closed machine-readable surfaces such as named gate profiles rather than a generic execution DSL.",
+          "source_family": "repo_spec"
+        },
+        {
+          "id": "E2",
+          "kind": "observation",
+          "summary": "Decodex runtime already owns linked-worktree lane planning, creation, reuse, cleanup, retries, and reconciliation; repo policy should not replace that lifecycle authority.",
+          "source_family": "repo_spec"
+        },
+        {
+          "id": "E3",
+          "kind": "observation",
+          "summary": "The current repo has no machine-readable WORKFLOW.md surface for repo-specific worktree bootstrap or pre-removal cleanup, so those behaviors still tend to live in runtime code or ad hoc local practice.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E4",
+          "kind": "observation",
+          "summary": "Kubernetes lifecycle hooks treat startup and shutdown hooks as explicit phase-bound handlers and emphasize that handlers may run more than once, so implementations should be idempotent and should not be treated as arbitrary orchestration logic.",
+          "source_family": "official_docs"
+        },
+        {
+          "id": "E5",
+          "kind": "observation",
+          "summary": "systemd separates pre-start, start, stop, and post-stop actions explicitly, which keeps lifecycle sequencing understandable and keeps cleanup attached to shutdown semantics instead of general runtime scriptability.",
+          "source_family": "official_docs"
+        },
+        {
+          "id": "E6",
+          "kind": "observation",
+          "summary": "Dev Container lifecycle scripts provide a useful cautionary pattern: named phases are workable, but once many phases exist, users must reason about subtle ordering and re-entry behavior.",
+          "source_family": "official_docs"
+        },
+        {
+          "id": "E7",
+          "kind": "observation",
+          "summary": "npm lifecycle scripts show the downside of a broad phase matrix: once many script slots exist, repo behavior becomes harder to audit and script hooks become a catch-all escape hatch instead of a narrow contract.",
+          "source_family": "official_docs"
+        },
+        {
+          "id": "E8",
+          "kind": "observation",
+          "summary": "Local Codex configuration exposes host-level controls such as approval policy, sandbox mode, and a codex_hooks feature flag, but there is no repo-visible stable contract here for expressing repo-owned worktree lifecycle policy.",
+          "source_family": "local_env"
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T1",
+          "summary": "A generic lifecycle hook system would reduce future schema additions, but it would immediately create ambiguity around attempt boundaries, continuation turns, review repair, and whether after_run failures should affect the primary run result.",
+          "supporting_evidence_ids": [
+            "E2",
+            "E6",
+            "E7"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T2",
+          "summary": "Restricting the first slice to after_create and before_remove captures the most legitimate repo-specific needs, namely workspace bootstrap and cleanup, without reopening review, landing, or retry policy through shell hooks.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E2",
+            "E3",
+            "E5"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T3",
+          "summary": "Using an extensible schema with only two enabled phases keeps the architecture future-proof while still forcing the first release to earn additional phases through a separate design decision.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E6"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T4",
+          "summary": "Relying on Codex host hooks instead of WORKFLOW.md would hide repo policy in host configuration and make repo bootstrap or cleanup behavior non-portable and harder to audit in Git.",
+          "supporting_evidence_ids": [
+            "E3",
+            "E8"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ]
+    },
+    {
+      "seq": 4,
+      "type": "judgment_candidate_created",
+      "judgment_payload": {
+        "judgment_type": "recommend",
+        "preferred_option": "extensible-schema-with-only-after-create-and-before-remove",
+        "rejected_options": [
+          "generic-run-and-workspace-hook-system",
+          "host-hook-only-no-workflow-surface"
+        ],
+        "decision_claim": "Add a repo-owned workspace hook surface under WORKFLOW.md [execution.workspace_hooks], but only enable after_create and before_remove in the first slice. Keep runtime ownership of lane lifecycle, run hooks out of scope, hook execution serial and fail-closed, and limit the surface to lightweight idempotent bootstrap and cleanup commands rooted in the worktree.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6",
+          "E7",
+          "E8"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T3",
+          "T4"
+        ]
+      },
+      "judgment_hash": "sha256:7d9c597ea687e8c72297cde8a65057f4dc7a0c1d8db6e0705463e5eeb0b4e5de"
+    },
+    {
+      "seq": 5,
+      "type": "finalized_decision_ready",
+      "judgment_hash": "sha256:7d9c597ea687e8c72297cde8a65057f4dc7a0c1d8db6e0705463e5eeb0b4e5de",
+      "summary": "Decision-ready: use a narrow workspace bootstrap and cleanup hook contract, not a generic lifecycle hook framework."
+    }
+  ]
+}

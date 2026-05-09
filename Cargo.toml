@@ -1,34 +1,35 @@
-[package]
+[workspace]
+members  = ["apps/*"]
+resolver = "3"
+
+[workspace.package]
 authors     = ["Xavier Lau <x@acg.box>"]
-build       = "build.rs"
-categories  = []
-description = "description_placeholder"
+description = "Decodex runtime, static signal site, and repository-native automation tooling."
 edition     = "2024"
-homepage    = "https://hack.ink/name_placeholder"
-keywords    = []
+homepage    = "https://decodex.space"
 license     = "GPL-3.0"
-name        = "name_placeholder"
-readme      = "README.md"
-repository  = "https://github.com/hack-ink/name_placeholder"
-resolver    = "3"
+repository  = "https://github.com/hack-ink/decodex"
 version     = "0.1.0"
 
-[package.metadata.docs.rs]
-all-features = true
+[workspace.dependencies]
+base64             = { version = "0.22" }
+clap               = { version = "4.6", features = ["derive"] }
+color-eyre         = { version = "0.6" }
+globset            = { version = "0.4" }
+libc               = { version = "0.2" }
+reqwest            = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
+rusqlite           = { version = "0.39", features = ["bundled"] }
+serde              = { version = "1.0", features = ["derive"] }
+serde_json         = { version = "1.0" }
+sha1               = { version = "0.11" }
+tempfile           = { version = "3.27" }
+time               = { version = "0.3", features = ["formatting"] }
+toml               = { version = "1.1" }
+tracing            = { version = "0.1" }
+tracing-appender   = { version = "0.2" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+vergen-gitcl       = { version = "9.1", features = ["cargo"] }
 
 [profile.final-release]
 inherits = "release"
 lto      = true
-
-[build-dependencies]
-# crates.io
-vergen-gitcl = { version = "9.1", features = ["cargo"] }
-
-[dependencies]
-# crates.io
-clap               = { version = "4.6", features = ["derive"] }
-color-eyre         = { version = "0.6" }
-directories        = { version = "6.0" }
-tracing            = { version = "0.1" }
-tracing-appender   = { version = "0.2" }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
