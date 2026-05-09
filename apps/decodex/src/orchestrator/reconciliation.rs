@@ -1,0 +1,500 @@
+#[cfg(test)]
+fn inspect_active_run_reconciliation_at<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	active_workflow_override: Option<ActiveWorkflowOverride<'_>>,
+	now_unix_epoch: i64,
+) -> Result<Vec<ActiveRunReconciliation>>
+where
+	T: IssueTracker,
+{
+	let leases = state_store.list_leases(project.service_id())?;
+
+	if leases.is_empty() {
+		return Ok(Vec::new());
+	}
+
+	let issue_ids = leases.iter().map(|lease| lease.issue_id().to_owned()).collect::<Vec<_>>();
+	let issues = tracker.refresh_issues(&issue_ids)?;
+	let issues_by_id =
+		issues.into_iter().map(|issue| (issue.id.clone(), issue)).collect::<HashMap<_, _>>();
+	let mut actions = Vec::new();
+
+	for lease in leases {
+		let Some(issue) = issues_by_id.get(lease.issue_id()).cloned() else {
+			continue;
+		};
+		let Some(run_attempt) = state_store.run_attempt(lease.run_id())? else {
+			continue;
+		};
+		let worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
+		let action_workflow = active_reconciliation_workflow_for_lease(
+			workflow,
+			active_workflow_override,
+			&issue,
+			&run_attempt,
+		);
+	let retained_closeout =
+		terminal_issue_keeps_retained_closeout(
+			tracker,
+			&issue,
+			project,
+			action_workflow,
+			state_store,
+		)?;
+		let disposition = if !retained_closeout && is_terminal_issue(&issue, action_workflow) {
+			Some(ActiveRunDisposition::Terminal)
+		} else if !retained_closeout
+			&& is_issue_nonactive_for_run(&issue, action_workflow)
+		{
+			Some(ActiveRunDisposition::NonActive)
+		} else if let Some(idle_for) = stalled_idle_duration(
+			state_store,
+			&run_attempt,
+			worktree_mapping.as_ref(),
+			now_unix_epoch,
+		)? {
+			if retained_review_handoff_matches_run(
+				state_store,
+				&run_attempt,
+				worktree_mapping.as_ref(),
+			)? {
+				Some(ActiveRunDisposition::RetainedReviewComplete)
+			} else {
+				Some(ActiveRunDisposition::Stalled { idle_for })
+			}
+		} else {
+			None
+		};
+
+		if let Some(disposition) = disposition {
+			actions.push(ActiveRunReconciliation {
+				issue: issue.clone(),
+				run_attempt,
+				worktree_mapping,
+				disposition,
+				workflow: action_workflow.clone(),
+			});
+		}
+	}
+
+	Ok(actions)
+}
+
+fn inspect_exited_daemon_child_reconciliation<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+) -> Result<Vec<ActiveRunReconciliation>>
+where
+	T: IssueTracker,
+{
+	inspect_exited_daemon_child_reconciliation_at(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		issue_id,
+		run_id,
+		OffsetDateTime::now_utc().unix_timestamp(),
+	)
+}
+
+fn inspect_exited_daemon_child_reconciliation_at<T>(
+	tracker: &T,
+	_project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+	now_unix_epoch: i64,
+) -> Result<Vec<ActiveRunReconciliation>>
+where
+	T: IssueTracker,
+{
+	let Some(issue) = refresh_issue(tracker, issue_id)? else {
+		return Ok(Vec::new());
+	};
+	let Some(run_attempt) = state_store.run_attempt(run_id)? else {
+		return Ok(Vec::new());
+	};
+	let worktree_mapping = state_store.worktree_for_issue(issue_id)?;
+
+	if run_attempt.status() != "failed" || !is_issue_active_for_run(&issue, workflow) {
+		return Ok(Vec::new());
+	}
+
+	let Some(idle_for) = stalled_protocol_idle_duration(
+		state_store,
+		&run_attempt,
+		worktree_mapping.as_ref(),
+		now_unix_epoch,
+	)?
+	else {
+		return Ok(Vec::new());
+	};
+
+	Ok(vec![ActiveRunReconciliation {
+		issue,
+		run_attempt,
+		worktree_mapping,
+		disposition: ActiveRunDisposition::Stalled { idle_for },
+		workflow: workflow.clone(),
+	}])
+}
+
+fn active_reconciliation_workflow_for_lease<'a>(
+	current_workflow: &'a WorkflowDocument,
+	active_workflow_override: Option<ActiveWorkflowOverride<'a>>,
+	issue: &TrackerIssue,
+	run_attempt: &RunAttempt,
+) -> &'a WorkflowDocument {
+	match active_workflow_override {
+		Some(override_context)
+			if override_context.child.issue_id == issue.id
+				&& override_context.child.run_id == run_attempt.run_id() =>
+			override_context.workflow,
+		_ => current_workflow,
+	}
+}
+
+fn apply_active_run_reconciliation<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	worktree_manager: &WorktreeManager,
+	actions: Vec<ActiveRunReconciliation>,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	for action in actions {
+		match &action.disposition {
+			ActiveRunDisposition::RetainedReviewComplete => {
+				reconcile_retained_review_complete_active_run(project, state_store, &action)?;
+			},
+			ActiveRunDisposition::Terminal => {
+				tracing::info!(
+					project_id = project.service_id(),
+					issue_id = action.issue.id,
+					issue = action.issue.identifier,
+					run_id = action.run_attempt.run_id(),
+					disposition = "terminal",
+					"Reconciling terminal active run."
+				);
+
+				mark_run_attempt_if_active(state_store, action.run_attempt.run_id(), "terminated")?;
+
+				tracker::clear_automation_lane_labels(tracker, &action.issue, project.service_id())?;
+
+				state_store.clear_lease(&action.issue.id)?;
+
+				if let Some(mapping) = &action.worktree_mapping {
+					cleanup_worktree_mapping(
+						state_store,
+						worktree_manager,
+						&action.workflow,
+						&action.issue.identifier,
+						mapping,
+					)?;
+				}
+			},
+			ActiveRunDisposition::NonActive => {
+				reconcile_nonactive_active_run(project, state_store, worktree_manager, &action)?;
+			},
+			ActiveRunDisposition::Stalled { idle_for } => {
+				reconcile_stalled_active_run(
+					tracker,
+					project,
+					state_store,
+					worktree_manager,
+					&action,
+					*idle_for,
+				)?;
+			},
+		}
+	}
+
+	Ok(())
+}
+
+fn reconcile_retained_review_complete_active_run(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	action: &ActiveRunReconciliation,
+) -> Result<()> {
+	tracing::info!(
+		project_id = project.service_id(),
+		issue_id = action.issue.id,
+		issue = action.issue.identifier,
+		run_id = action.run_attempt.run_id(),
+		disposition = "retained_review_complete",
+		"Reconciling completed retained review run."
+	);
+
+	mark_run_attempt_if_active(state_store, action.run_attempt.run_id(), "succeeded")?;
+
+	state_store.clear_lease(&action.issue.id)?;
+
+	Ok(())
+}
+
+fn reconcile_nonactive_active_run(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	worktree_manager: &WorktreeManager,
+	action: &ActiveRunReconciliation,
+) -> Result<()> {
+	tracing::info!(
+		project_id = project.service_id(),
+		issue_id = action.issue.id,
+		issue = action.issue.identifier,
+		run_id = action.run_attempt.run_id(),
+		disposition = "non_active",
+		"Reconciling non-active run."
+	);
+
+	mark_run_attempt_if_active(state_store, action.run_attempt.run_id(), "interrupted")?;
+
+	let worktree_path = action.worktree_mapping.as_ref().map_or_else(
+		|| worktree_manager.plan_for_issue(&action.issue.identifier).path,
+		|mapping| mapping.worktree_path().to_path_buf(),
+	);
+
+	if worktree_path.exists() {
+		write_retry_budget_marker(
+			&worktree_path,
+			action.run_attempt.run_id(),
+			action.run_attempt.attempt_number(),
+			retry_budget_base_for_issue_worktree(state_store, &action.issue.id, &worktree_path)?,
+		)?;
+	}
+
+	state_store.clear_lease(&action.issue.id)?;
+
+	Ok(())
+}
+
+fn reconcile_stalled_active_run<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	worktree_manager: &WorktreeManager,
+	action: &ActiveRunReconciliation,
+	idle_for: Duration,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	tracing::warn!(
+		project_id = project.service_id(),
+		issue_id = action.issue.id,
+		issue = action.issue.identifier,
+		run_id = action.run_attempt.run_id(),
+		disposition = "stalled",
+		idle_for_s = idle_for.as_secs(),
+		"Reconciling stalled run."
+	);
+
+	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
+	state_store.clear_lease(&action.issue.id)?;
+
+	let worktree = action.worktree_mapping.as_ref().map_or_else(
+		|| worktree_manager.plan_for_issue(&action.issue.identifier),
+		|mapping| WorktreeSpec {
+			branch_name: mapping.branch_name().to_owned(),
+			issue_identifier: action.issue.identifier.clone(),
+			path: mapping.worktree_path().to_path_buf(),
+			reused_existing: true,
+		},
+	);
+	let retry_budget_base =
+		retry_budget_base_for_issue_worktree(state_store, &action.issue.id, &worktree.path)?;
+	let issue_run = IssueRunPlan {
+		issue: action.issue.clone(),
+		issue_state: planned_issue_state_for_dispatch(
+			&action.workflow,
+			&action.issue,
+			IssueDispatchMode::Retry,
+			None,
+		),
+		initial_issue_state: action.issue.state.name.clone(),
+		worktree,
+		#[cfg(test)]
+		retry_project_slug: String::new(),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: action.run_attempt.attempt_number(),
+		run_id: action.run_attempt.run_id().to_owned(),
+		retry_budget_base,
+	};
+
+	write_reconciliation_operation_marker_best_effort(
+		&issue_run.worktree.path,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		RUN_OPERATION_RECONCILIATION,
+	);
+	handle_failure(
+		tracker,
+		project,
+		&action.workflow,
+		state_store,
+		&issue_run,
+		&Report::new(StalledRunNeedsAttention {
+			issue_identifier: action.issue.identifier.clone(),
+			run_id: action.run_attempt.run_id().to_owned(),
+			idle_for,
+		}),
+	)?;
+
+	Ok(())
+}
+
+fn write_reconciliation_operation_marker_best_effort(
+	worktree_path: &Path,
+	run_id: &str,
+	attempt_number: i64,
+	current_operation: &str,
+) {
+	if let Err(error) = state::write_run_operation_marker_preserving_activity(
+		worktree_path,
+		run_id,
+		attempt_number,
+		current_operation,
+	) {
+		tracing::warn!(
+			?error,
+			run_id,
+			attempt_number,
+			current_operation,
+			worktree_path = %worktree_path.display(),
+			"Run operation marker write failed; continuing stalled-run reconciliation."
+		);
+	}
+}
+
+fn retained_review_handoff_matches_run(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<bool> {
+	let Some(worktree_mapping) = worktree_mapping else {
+		return Ok(false);
+	};
+	let Some(marker) = state_store.review_handoff_marker(
+		worktree_mapping.project_id(),
+		run_attempt.issue_id(),
+		worktree_mapping.branch_name(),
+	)? else {
+		return Ok(false);
+	};
+
+	Ok(marker.run_id() == run_attempt.run_id()
+		&& marker.attempt_number() == run_attempt.attempt_number()
+		&& marker.branch_name() == worktree_mapping.branch_name())
+}
+
+fn stalled_idle_duration(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+	now_unix_epoch: i64,
+) -> Result<Option<Duration>> {
+	if !matches!(run_attempt.status(), "starting" | "running") {
+		return Ok(None);
+	}
+
+	let Some(last_activity) =
+		last_observed_run_activity_unix_epoch(state_store, run_attempt, worktree_mapping)?
+	else {
+		return Ok(None);
+	};
+	let Some(idle_for) = observed_idle_duration(last_activity, now_unix_epoch) else {
+		return Ok(None);
+	};
+
+	if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT {
+		return Ok(Some(idle_for));
+	}
+
+	Ok(None)
+}
+
+fn last_observed_run_activity_unix_epoch(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<Option<i64>> {
+	let state_store_activity = state_store.last_run_activity_unix_epoch(run_attempt.run_id())?;
+	let worktree_activity = match worktree_mapping {
+		Some(mapping) => state::read_run_activity_marker(
+			mapping.worktree_path(),
+			run_attempt.run_id(),
+			run_attempt.attempt_number(),
+		)?,
+		None => None,
+	};
+
+	Ok(match (state_store_activity, worktree_activity) {
+		(Some(left), Some(right)) => Some(left.max(right)),
+		(Some(activity), None) | (None, Some(activity)) => Some(activity),
+		(None, None) => None,
+	})
+}
+
+fn stalled_protocol_idle_duration(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+	now_unix_epoch: i64,
+) -> Result<Option<Duration>> {
+	let Some(last_activity) =
+		last_observed_protocol_activity_unix_epoch(state_store, run_attempt, worktree_mapping)?
+	else {
+		return Ok(None);
+	};
+	let Some(idle_for) = observed_idle_duration(last_activity, now_unix_epoch) else {
+		return Ok(None);
+	};
+
+	if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT {
+		return Ok(Some(idle_for));
+	}
+
+	Ok(None)
+}
+
+fn last_observed_protocol_activity_unix_epoch(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<Option<i64>> {
+	let state_store_activity =
+		state_store.last_protocol_activity_unix_epoch(run_attempt.run_id())?;
+	let worktree_activity = match worktree_mapping {
+		Some(mapping) => state::read_run_protocol_activity_marker(
+			mapping.worktree_path(),
+			run_attempt.run_id(),
+			run_attempt.attempt_number(),
+		)?,
+		None => None,
+	};
+
+	Ok(match (state_store_activity, worktree_activity) {
+		(Some(left), Some(right)) => Some(left.max(right)),
+		(Some(activity), None) | (None, Some(activity)) => Some(activity),
+		(None, None) => None,
+	})
+}
+
+fn observed_idle_duration(last_activity_unix_epoch: i64, now_unix_epoch: i64) -> Option<Duration> {
+	now_unix_epoch
+		.checked_sub(last_activity_unix_epoch)
+		.and_then(|idle_seconds| u64::try_from(idle_seconds).ok())
+		.map(Duration::from_secs)
+}

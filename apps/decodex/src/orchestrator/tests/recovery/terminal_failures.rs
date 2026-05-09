@@ -1,0 +1,452 @@
+#[test]
+fn terminal_failures_without_needs_attention_label_use_nonstartable_guard_state() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::new(vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let mut issue =
+		sample_issue_without_needs_attention_team_label("Todo", &[active_label.as_str()]);
+
+	for label in &mut issue.labels {
+		label.id = issue
+			.team
+			.labels
+			.iter()
+			.find(|team_label| team_label.name == label.name)
+			.map(|team_label| team_label.id.clone())
+			.expect("issue label should resolve to a team label id");
+	}
+
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+	let error = Report::new(ManualAttentionRequested {
+		issue_identifier: issue.identifier.clone(),
+		label: String::from("decodex:needs-attention"),
+		run_id: issue_run.run_id.clone(),
+	});
+
+	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("run attempt should record");
+
+	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
+		.expect("terminal failure handling should succeed");
+
+	assert_eq!(
+		tracker.state_updates.borrow().last(),
+		Some(&(issue.id.clone(), String::from("state-progress")))
+	);
+	assert_eq!(
+		tracker.label_removals.borrow().last(),
+		Some(&(issue.id.clone(), vec![String::from("label-active")])),
+		"terminal failure should clear the active automation label even when needs-attention is unavailable"
+	);
+	assert!(tracker.comments.borrow().iter().any(|comment| {
+		comment.contains("does not exist on the team")
+			&& comment.contains("remains in `In Progress`")
+	}));
+	assert_eq!(
+		state_store
+			.run_attempt(&issue_run.run_id)
+			.expect("run attempt lookup should succeed")
+			.expect("run attempt should exist")
+			.status(),
+		orchestrator::TERMINAL_GUARDED_RUN_STATUS
+	);
+	assert!(
+		issue_run.worktree.path.join(orchestrator::TERMINAL_GUARD_MARKER_FILE).exists(),
+		"fallback guard should leave a durable worktree marker for restart recovery"
+	);
+}
+
+#[test]
+fn terminal_failures_apply_incremental_label_mutations_when_issue_labels_paginate() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::new(vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let mut issue = sample_issue("Todo", &[active_label.as_str()]);
+
+	issue.labels_complete = false;
+
+	for label in &mut issue.labels {
+		label.id = issue
+			.team
+			.labels
+			.iter()
+			.find(|team_label| team_label.name == label.name)
+			.map(|team_label| team_label.id.clone())
+			.expect("issue label should resolve to a team label id");
+	}
+
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+	let error = Report::new(ManualAttentionRequested {
+		issue_identifier: issue.identifier.clone(),
+		label: String::from("decodex:needs-attention"),
+		run_id: issue_run.run_id.clone(),
+	});
+
+	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
+	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
+		.expect(
+			"terminal failure should use incremental label mutations when issue labels paginate",
+		);
+
+	assert_eq!(
+		tracker.label_additions.borrow().as_slice(),
+		[(issue.id.clone(), vec![String::from("label-needs-attention")])]
+	);
+	assert_eq!(
+		tracker.label_removals.borrow().as_slice(),
+		[(issue.id.clone(), vec![String::from("label-active")])]
+	);
+	assert!(
+		tracker
+			.comments
+			.borrow()
+			.iter()
+			.any(|comment| comment.contains("decodex run failed and needs attention")),
+		"terminal failure should still leave a durable tracker comment"
+	);
+
+	let ledger_event = tracker
+		.comments
+		.borrow()
+		.iter()
+		.find_map(|comment| records::parse_linear_execution_event_record(comment))
+		.expect("terminal failure should write a Linear execution event");
+
+	assert_eq!(ledger_event.event_type, "needs_attention");
+	assert_eq!(ledger_event.error_class.as_deref(), Some("human_attention_required"));
+	assert_eq!(ledger_event.terminal_path.as_deref(), Some("manual_attention"));
+}
+
+#[test]
+fn review_policy_exhausted_failures_skip_retry_and_require_attention_pre_pr() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::new(vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+	let error = Report::new(ReviewPolicyStopRequested {
+		head_sha: String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+		issue_identifier: issue.identifier.clone(),
+		nonclean_rounds: Some(3),
+		reason: ReviewPolicyStopReason::Exhausted,
+		run_id: issue_run.run_id.clone(),
+	});
+
+	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("run attempt should record");
+
+	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
+		.expect("review policy failure handling should succeed");
+
+	assert_eq!(
+		tracker.state_updates.borrow().last(),
+		Some(&(issue.id.clone(), String::from("state-todo")))
+	);
+	assert!(tracker.comments.borrow().iter().any(|comment| {
+		comment.contains("review_policy_exhausted")
+			&& comment.contains("decide the next repair or redesign manually")
+			&& comment.contains("bounded convergence research follow-up")
+			&& comment.contains("machine-checkable")
+			&& comment.contains("clear label `decodex:needs-attention`")
+	}));
+	assert!(
+		!tracker
+			.comments
+			.borrow()
+			.iter()
+			.any(|comment| { comment.contains("retryable_execution_failure") })
+	);
+}
+
+#[test]
+fn review_policy_blocked_failures_skip_retry_and_require_attention_in_review() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::new(vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Review", &[]);
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: issue.state.name.clone(),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: true,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::ReviewRepair,
+		attempt_number: 2,
+		run_id: String::from("pub-101-attempt-2-123"),
+		retry_budget_base: 0,
+	};
+	let error = Report::new(ReviewPolicyStopRequested {
+		head_sha: String::from("18a20f7dfb9526e7421a5f095b1c6adec84e52d6"),
+		issue_identifier: issue.identifier.clone(),
+		nonclean_rounds: Some(1),
+		reason: ReviewPolicyStopReason::Blocked,
+		run_id: issue_run.run_id.clone(),
+	});
+
+	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("run attempt should record");
+
+	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
+		.expect("review policy failure handling should succeed");
+
+	assert_eq!(
+		tracker.state_updates.borrow().last(),
+		Some(&(issue.id.clone(), String::from("state-todo")))
+	);
+	assert!(tracker.comments.borrow().iter().any(|comment| {
+		comment.contains("review_policy_blocked")
+			&& comment.contains("resolve the blocker manually")
+			&& comment.contains("do not dispatch research")
+			&& comment.contains("clear label `decodex:needs-attention`")
+	}));
+	assert!(
+		!tracker
+			.comments
+			.borrow()
+			.iter()
+			.any(|comment| { comment.contains("retryable_execution_failure") })
+	);
+}
+
+#[test]
+fn app_server_failures_skip_retry_and_require_attention() {
+	assert_app_server_failure_requires_attention(
+		Report::new(AppServerCapabilityPreflightFailure::blocked_for_test(
+			"skills",
+			"skills/list returned no enabled skills.",
+		)),
+		"app_server_runtime_preflight_failed",
+		"repair the local Codex config/model/provider/skills/plugin/MCP state",
+	);
+	assert_app_server_failure_requires_attention(
+		Report::new(AppServerHomePreflightFailure::resolution_failed(String::from(
+			"app_server_preflight_failed: HOME is not set, so Decodex cannot resolve the shared Codex home for app-server dispatch.",
+		))),
+		"app_server_codex_home_preflight_failed",
+		"keep CODEX_HOME/CODEX_SQLITE_HOME shared instead of per-account",
+	);
+	assert_app_server_failure_requires_attention(
+		Report::new(AppServerHomePreflightFailure::initialize_mismatch(
+			String::from("/tmp/per-account-codex-home"),
+			String::from("/Users/test/.codex"),
+		)),
+		"app_server_codex_home_mismatch",
+		"restart `decodex serve`",
+	);
+	assert_app_server_failure_requires_attention(
+		Report::new(AppServerTransportFailure::new(String::from(
+			"App-server stdout disconnected unexpectedly.",
+		))),
+		"app_server_transport_disconnected",
+		"resolve the Codex app-server transport failure manually",
+	);
+	assert_app_server_failure_requires_attention(
+		Report::new(AppServerTurnFailure::new(
+			"thread-1",
+			Some(String::from("turn-1")),
+			"failed",
+			"You've hit your usage limit.",
+			Some(String::from("usageLimitExceeded")),
+		)),
+		"app_server_usage_limit_exceeded",
+		"inspect Codex account usage",
+	);
+}
+
+#[test]
+fn prepare_issue_run_clears_terminal_guard_marker_when_new_attempt_starts() {
+	let (_temp_dir, base_config, workflow) = temp_project_layout();
+	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue = sample_issue("Todo", &[]);
+	let tracker = FakeTracker::with_refresh_snapshots(vec![], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+	let worktree = worktree_manager
+		.ensure_worktree(&issue.identifier, false)
+		.expect("worktree should exist before retry guard clearing");
+	let marker_path = worktree.path.join(TERMINAL_GUARD_MARKER_FILE);
+
+	fs::write(&marker_path, "stale terminal guard\n").expect("terminal guard marker should write");
+
+	let issue_run = orchestrator::prepare_issue_run(
+		PrepareIssueRunContext {
+			tracker: &tracker,
+			project: &config,
+			workflow: &workflow,
+			state_store: &state_store,
+			worktree_manager: &worktree_manager,
+			dry_run: false,
+			lease_preacquired: false,
+			dispatch_mode: IssueDispatchMode::Normal,
+			preferred_issue_state: None,
+			preferred_initial_issue_state: None,
+			preferred_run_identity: None,
+			preferred_retry_budget_base: None,
+		},
+		issue,
+	)
+	.expect("issue preparation should succeed")
+	.expect("startable issue should produce a run plan");
+
+	assert_eq!(issue_run.worktree.path, worktree.path);
+	assert!(
+		!marker_path.exists(),
+		"starting a new attempt should clear stale terminal-guard markers"
+	);
+}
+
+#[test]
+fn retryable_failures_ignore_prior_continuation_attempts_in_writeback() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::new(vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: issue.state.name.clone(),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: 4,
+		run_id: String::from("pub-101-attempt-4-123"),
+		retry_budget_base: 0,
+	};
+
+	state_store
+		.record_run_attempt("pub-101-attempt-1-123", &issue.id, 1, "succeeded")
+		.expect("first continuation attempt should record");
+	state_store
+		.record_run_attempt("pub-101-attempt-2-123", &issue.id, 2, "succeeded")
+		.expect("second continuation attempt should record");
+	state_store
+		.record_run_attempt("pub-101-attempt-3-123", &issue.id, 3, "succeeded")
+		.expect("third continuation attempt should record");
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("current failed attempt should record");
+
+	orchestrator::handle_failure(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&issue_run,
+		&Report::msg("command failed"),
+	)
+	.expect("retryable failure handling should succeed");
+
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert!(tracker.label_updates.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
+	assert!(tracker.comments.borrow().iter().any(|comment| {
+		comment.contains("retryable_execution_failure")
+			&& comment.contains("- attempt: `4`")
+			&& comment.contains("- retry_budget_attempt: `1` / `3`")
+	}));
+	assert!(!tracker.comments.borrow().iter().any(|comment| {
+		comment.contains("needs attention") || comment.contains("retry_budget_exhausted")
+	}));
+}
+
+#[test]
+fn manual_attention_failure_overrides_succeeded_run_status() {
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+
+	state_store
+		.record_run_attempt("run-1", "issue-1", 1, "succeeded")
+		.expect("run attempt should record");
+	state_store.update_run_status("run-1", "failed").expect("failed outcome should persist");
+
+	assert_eq!(
+		state_store
+			.run_attempt("run-1")
+			.expect("run attempt lookup should succeed")
+			.expect("run attempt should exist")
+			.status(),
+		"failed"
+	);
+}

@@ -1,0 +1,3533 @@
+mod protocol;
+mod turn_failure;
+
+pub(crate) use turn_failure::AppServerTurnFailure;
+
+use std::{
+	collections::{BTreeMap, HashMap},
+	env,
+	error::Error,
+	fmt::{self, Display, Formatter},
+	path::{Path, PathBuf},
+	time::{Duration, Instant},
+};
+
+use color_eyre::Report;
+use serde::Serialize;
+use serde_json::{self, Value};
+use time::OffsetDateTime;
+
+use self::protocol::{
+	AgentMessageDeltaNotification, AppServerClient, ChatgptAuthTokensRefreshParams,
+	ChatgptAuthTokensRefreshResponse, CommandExecParams, CommandExecResponse,
+	CommandExecutionApprovalDecision, CommandExecutionRequestApprovalResponse, ConfigReadParams,
+	DynamicToolCallParams, EffectiveThreadConfig, ErrorNotification, FileChangeApprovalDecision,
+	FileChangeRequestApprovalResponse, InitializeResponse, ItemCompletedNotification,
+	ListMcpServerStatusParams, ListMcpServerStatusResponse, LoginAccountParams,
+	McpServerElicitationAction, McpServerElicitationRequestResponse, McpServerStatusSummary,
+	ModelListParams, ModelListResponse, ModelProviderCapabilitiesReadResponse, ModelSummary,
+	PermissionGrantScope, PermissionsRequestApprovalResponse, PluginListParams, PluginListResponse,
+	ProbeDynamicToolHandler, RunOutcome, RuntimeConfigSummary, SkillsListParams,
+	SkillsListResponse, ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest,
+	ThreadStatusChangedNotification, ToolRequestUserInputResponse, TurnCompletedNotification,
+	TurnError, TurnStartRequest, UserInput,
+};
+use crate::{
+	agent::{
+		app_server::protocol::LoginAccountResponse,
+		codex_accounts::{CodexAccountLogin, CodexAccountProvider},
+		json_rpc::{
+			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
+			JsonRpcConnection, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest,
+			ResolvedAppServerCodexHomeEnv, WireMessage,
+		},
+		tracker_tool_bridge::{
+			self, DynamicToolCallResponse, DynamicToolContentItem, DynamicToolHandler,
+			DynamicToolSpec, TurnCompletionStatus,
+		},
+	},
+	prelude::eyre,
+	state::{
+		self, CodexAccountActivitySummary, CodexAccountMarker, EffectiveRuntimeMarker,
+		RUN_OPERATION_AGENT_RUN, RUN_OPERATION_APP_SERVER_PREFLIGHT, StateStore,
+	},
+};
+
+pub(crate) const ACTIVE_RUN_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+
+const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const PROBE_RUN_ID: &str = "protocol-probe-run";
+const PROBE_ISSUE_ID: &str = "protocol-probe";
+const PROBE_EXPECTED_OUTPUT: &str = "PROBE_OK";
+const PROBE_COMMAND_EXEC_EXPECTED_OUTPUT: &str = "COMMAND_EXEC_OK";
+const PROBE_COMMAND_EXEC_TIMEOUT_MS: u64 = 5_000;
+const PROBE_COMMAND_EXEC_OUTPUT_BYTES_CAP: u64 = 1_024;
+const PROBE_DEVELOPER_INSTRUCTIONS: &str = "You are a protocol probe. You must call the dynamic tool `echo_probe` exactly once with the JSON argument `{\"text\":\"PROBE_OK\"}`. Do not use shell. Do not inspect files. After the tool response is returned, reply with the exact text PROBE_OK and nothing else.";
+const PROBE_USER_INPUT: &str = "Call `echo_probe` with `{\\\"text\\\":\\\"PROBE_OK\\\"}`. After the tool succeeds, reply with the exact text PROBE_OK.";
+const PREFLIGHT_EVENT_TYPE: &str = "app-server/preflight";
+const PREFLIGHT_MODEL_PAGE_LIMIT: u32 = 200;
+const PREFLIGHT_MCP_PAGE_LIMIT: u32 = 200;
+const PREFLIGHT_MCP_DETAIL: &str = "toolsAndAuthOnly";
+const PREFLIGHT_CHECK_CONFIG: &str = "config";
+const PREFLIGHT_CHECK_MODEL: &str = "model";
+const PREFLIGHT_CHECK_MODEL_PROVIDER: &str = "model_provider";
+const PREFLIGHT_CHECK_SKILLS: &str = "skills";
+const PREFLIGHT_CHECK_PLUGINS: &str = "plugins";
+const PREFLIGHT_CHECK_MCP: &str = "mcp";
+const JSONRPC_METHOD_NOT_FOUND: i64 = -32_601;
+const CHILD_BUCKET_MODEL: &str = "Model";
+const CHILD_BUCKET_PROTOCOL: &str = "Protocol";
+const CHILD_BUCKET_TOOL: &str = "Tool";
+const CHILD_BUCKET_SHELL: &str = "Shell";
+const CHILD_BUCKET_TRACKER: &str = "Tracker";
+const CHILD_BUCKET_BROWSER_IMAGE: &str = "Browser/Image";
+const CHILD_BUCKET_PR_LAND: &str = "PR/Land";
+const LARGE_CHILD_OUTPUT_BYTES: i64 = 100_000;
+const RECENT_PROTOCOL_ACTIVITY_LIMIT: usize = 8;
+const INPUT_TOKEN_KEYS: &[&str] = &[
+	"input_tokens",
+	"inputTokens",
+	"prompt_tokens",
+	"promptTokens",
+	"total_input_tokens",
+	"totalInputTokens",
+];
+const OUTPUT_TOKEN_KEYS: &[&str] = &[
+	"output_tokens",
+	"outputTokens",
+	"completion_tokens",
+	"completionTokens",
+	"total_output_tokens",
+	"totalOutputTokens",
+];
+
+pub(crate) trait TurnContinuationGuard {
+	fn should_continue_turn(&self, turn_count: u32) -> crate::prelude::Result<bool>;
+	fn validate_continuation_boundary(&self, _turn_count: u32) -> crate::prelude::Result<()> {
+		Ok(())
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct AppServerCapabilityPreflightReport {
+	checks: Vec<AppServerCapabilityPreflightCheck>,
+}
+impl AppServerCapabilityPreflightReport {
+	fn new() -> Self {
+		Self { checks: Vec::new() }
+	}
+
+	#[cfg(test)]
+	fn checks(&self) -> &[AppServerCapabilityPreflightCheck] {
+		&self.checks
+	}
+
+	fn push_ok(
+		&mut self,
+		name: &'static str,
+		summary: impl Into<String>,
+		details: BTreeMap<String, String>,
+	) {
+		self.checks.push(AppServerCapabilityPreflightCheck {
+			name,
+			status: AppServerCapabilityPreflightStatus::Ok,
+			summary: summary.into(),
+			details,
+		});
+	}
+
+	fn push_blocked(
+		&mut self,
+		name: &'static str,
+		summary: impl Into<String>,
+		details: BTreeMap<String, String>,
+	) {
+		self.checks.push(AppServerCapabilityPreflightCheck {
+			name,
+			status: AppServerCapabilityPreflightStatus::Blocked,
+			summary: summary.into(),
+			details,
+		});
+	}
+
+	fn has_blockers(&self) -> bool {
+		self.checks.iter().any(|check| check.status == AppServerCapabilityPreflightStatus::Blocked)
+	}
+
+	fn blocker_summary(&self) -> String {
+		let blockers = self
+			.checks
+			.iter()
+			.filter(|check| check.status == AppServerCapabilityPreflightStatus::Blocked)
+			.map(|check| format!("{}: {}", check.name, check.summary))
+			.collect::<Vec<_>>();
+
+		if blockers.is_empty() { String::from("no blockers recorded") } else { blockers.join("; ") }
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AppServerCapabilityPreflightFailure {
+	kind: AppServerCapabilityPreflightFailureKind,
+	report: AppServerCapabilityPreflightReport,
+}
+impl AppServerCapabilityPreflightFailure {
+	fn blocked(report: AppServerCapabilityPreflightReport) -> Self {
+		Self { kind: AppServerCapabilityPreflightFailureKind::BlockedState, report }
+	}
+
+	fn method_failed(
+		method: &'static str,
+		error: String,
+		report: AppServerCapabilityPreflightReport,
+	) -> Self {
+		Self {
+			kind: AppServerCapabilityPreflightFailureKind::MethodFailed { method, error },
+			report,
+		}
+	}
+
+	#[cfg(test)]
+	pub(crate) fn blocked_for_test(check: &'static str, summary: &str) -> Self {
+		let mut report = AppServerCapabilityPreflightReport::new();
+
+		report.push_blocked(check, summary, BTreeMap::new());
+
+		Self::blocked(report)
+	}
+
+	pub(crate) fn error_class(&self) -> &'static str {
+		match self.kind {
+			AppServerCapabilityPreflightFailureKind::MethodFailed { .. } =>
+				"app_server_introspection_method_failed",
+			AppServerCapabilityPreflightFailureKind::BlockedState =>
+				"app_server_runtime_preflight_failed",
+		}
+	}
+
+	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
+		format!(
+			"inspect Codex app-server preflight blocker `{}`, repair the local Codex config/model/provider/skills/plugin/MCP state, restart `decodex serve`, {recovery_gate}",
+			self.blocker_summary()
+		)
+	}
+
+	fn blocker_summary(&self) -> String {
+		match &self.kind {
+			AppServerCapabilityPreflightFailureKind::MethodFailed { method, error } => {
+				format!("{}: `{method}` returned {error}", check_name_for_method(method))
+			},
+			AppServerCapabilityPreflightFailureKind::BlockedState => self.report.blocker_summary(),
+		}
+	}
+
+	#[cfg(test)]
+	fn report(&self) -> &AppServerCapabilityPreflightReport {
+		&self.report
+	}
+}
+
+impl Display for AppServerCapabilityPreflightFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+		write!(formatter, "app_server_preflight_failed: {}", self.blocker_summary())
+	}
+}
+
+impl Error for AppServerCapabilityPreflightFailure {}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AppServerDynamicToolFailure {
+	kind: AppServerDynamicToolFailureKind,
+	tool: Option<String>,
+	message: String,
+}
+impl AppServerDynamicToolFailure {
+	fn protocol(tool: Option<String>, message: impl Into<String>) -> Self {
+		Self { kind: AppServerDynamicToolFailureKind::Protocol, tool, message: message.into() }
+	}
+
+	fn tool(tool: Option<String>, message: impl Into<String>) -> Self {
+		Self { kind: AppServerDynamicToolFailureKind::Tool, tool, message: message.into() }
+	}
+
+	pub(crate) fn error_class(&self) -> &'static str {
+		match self.kind {
+			AppServerDynamicToolFailureKind::Protocol => "app_server_dynamic_tool_protocol_failure",
+			AppServerDynamicToolFailureKind::Tool => "app_server_dynamic_tool_failed",
+		}
+	}
+
+	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
+		match self.kind {
+			AppServerDynamicToolFailureKind::Protocol => format!(
+				"inspect the app-server dynamic tool declaration and `item/tool/call` payload, repair the protocol mismatch manually, {recovery_gate}"
+			),
+			AppServerDynamicToolFailureKind::Tool => format!(
+				"inspect the dynamic tool response and lane state, correct the tool call or underlying service state manually, {recovery_gate}"
+			),
+		}
+	}
+
+	fn diagnostic_next_action(&self) -> &'static str {
+		match self.kind {
+			AppServerDynamicToolFailureKind::Protocol =>
+				"inspect the declared dynamic tool surface and item/tool/call payload before retrying the lane",
+			AppServerDynamicToolFailureKind::Tool =>
+				"inspect the tool response, correct the call arguments or backing state, and retry the tool call",
+		}
+	}
+}
+
+impl Display for AppServerDynamicToolFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+		write!(formatter, "app_server_dynamic_tool_failure: {}", self.message)?;
+
+		if let Some(tool) = self.tool.as_deref() {
+			write!(formatter, " (tool `{tool}`)")?;
+		}
+
+		Ok(())
+	}
+}
+
+impl Error for AppServerDynamicToolFailure {}
+
+#[derive(Clone)]
+pub(crate) struct AppServerRunRequest<'a> {
+	pub(crate) run_id: String,
+	pub(crate) issue_id: String,
+	pub(crate) attempt_number: i64,
+	pub(crate) listen: String,
+	pub(crate) cwd: String,
+	pub(crate) developer_instructions: String,
+	pub(crate) user_input: String,
+	pub(crate) max_turns: u32,
+	pub(crate) timeout: Duration,
+	pub(crate) process_env: AppServerProcessEnv,
+	pub(crate) continuation_user_input: Option<String>,
+	pub(crate) activity_marker_path: Option<PathBuf>,
+	pub(crate) resume_thread_id: Option<String>,
+	pub(crate) command_exec_health_check: Option<CommandExecHealthCheck>,
+	pub(crate) dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
+	pub(crate) continuation_guard: Option<&'a dyn TurnContinuationGuard>,
+	pub(crate) codex_account_provider: Option<&'a dyn CodexAccountProvider>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CommandExecHealthCheck {
+	pub(crate) command: Vec<String>,
+	pub(crate) expected_stdout: String,
+	pub(crate) timeout_ms: u64,
+	pub(crate) output_bytes_cap: u64,
+}
+impl CommandExecHealthCheck {
+	fn probe() -> Self {
+		Self {
+			command: vec![
+				String::from("/bin/sh"),
+				String::from("-c"),
+				format!("printf {PROBE_COMMAND_EXEC_EXPECTED_OUTPUT}"),
+			],
+			expected_stdout: String::from(PROBE_COMMAND_EXEC_EXPECTED_OUTPUT),
+			timeout_ms: PROBE_COMMAND_EXEC_TIMEOUT_MS,
+			output_bytes_cap: PROBE_COMMAND_EXEC_OUTPUT_BYTES_CAP,
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AppServerRunResult {
+	pub(crate) user_agent: String,
+	pub(crate) thread_id: String,
+	pub(crate) turn_id: String,
+	pub(crate) turn_count: u32,
+	pub(crate) event_count: i64,
+	pub(crate) final_output: String,
+	pub(crate) continuation_pending: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct AppServerCapabilityPreflightCheck {
+	name: &'static str,
+	status: AppServerCapabilityPreflightStatus,
+	summary: String,
+	#[serde(skip_serializing_if = "BTreeMap::is_empty")]
+	details: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug)]
+struct ChildActivityEvent {
+	event_bucket: String,
+	event_detail: Option<String>,
+	transition_bucket: Option<String>,
+	transition_detail: Option<String>,
+	tool_name: Option<String>,
+	tool_call: bool,
+	tool_output_bytes: Option<i64>,
+	input_tokens: Option<i64>,
+	output_tokens: Option<i64>,
+	completed: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct LargeOutputStats {
+	count: i64,
+	max_bytes: i64,
+}
+
+struct ChildActivityAccumulator {
+	started_at: Instant,
+	last_observed_at: Instant,
+	current_bucket: Option<String>,
+	current_detail: Option<String>,
+	active_tool_name: Option<String>,
+	large_output_stats: HashMap<String, LargeOutputStats>,
+	summary: state::ChildAgentActivitySummary,
+}
+impl ChildActivityAccumulator {
+	fn new() -> Self {
+		let now = Instant::now();
+
+		Self {
+			started_at: now,
+			last_observed_at: now,
+			current_bucket: None,
+			current_detail: None,
+			active_tool_name: None,
+			large_output_stats: HashMap::new(),
+			summary: state::ChildAgentActivitySummary::default(),
+		}
+	}
+
+	fn record(&mut self, event_type: &str, payload: &str) -> state::ChildAgentActivitySummary {
+		let now = Instant::now();
+		let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+
+		self.add_elapsed_time(now);
+
+		let event =
+			classify_child_activity_event(event_type, payload, self.active_tool_name.as_deref());
+
+		self.summary.event_count += 1;
+		self.summary.wall_seconds =
+			duration_seconds_i64(now.saturating_duration_since(self.started_at));
+
+		self.record_event_bucket(&event);
+
+		if let Some(tool_name) = event.tool_name.as_ref().filter(|_tool_name| event.tool_call) {
+			self.active_tool_name = Some(tool_name.clone());
+		}
+
+		if event_type == "item/tool/call/response" {
+			self.active_tool_name = None;
+		}
+		if event.completed {
+			self.set_current(None, None, None);
+		} else if let Some(next_bucket) = event.transition_bucket {
+			self.set_current(Some(next_bucket), event.transition_detail, Some(now_unix_epoch));
+		}
+
+		self.summary.current_elapsed_seconds =
+			self.summary.current_started_unix_epoch.and_then(|started_at| {
+				now_unix_epoch.checked_sub(started_at).filter(|elapsed| *elapsed >= 0)
+			});
+		self.last_observed_at = now;
+
+		self.summary.clone()
+	}
+
+	fn add_elapsed_time(&mut self, now: Instant) {
+		let Some(bucket_name) = self.current_bucket.clone() else {
+			return;
+		};
+		let seconds = duration_seconds_i64(now.saturating_duration_since(self.last_observed_at));
+		let bucket = child_activity_bucket_mut(&mut self.summary, &bucket_name);
+
+		bucket.wall_seconds = bucket.wall_seconds.saturating_add(seconds);
+	}
+
+	fn record_event_bucket(&mut self, event: &ChildActivityEvent) {
+		{
+			let bucket = child_activity_bucket_mut(&mut self.summary, &event.event_bucket);
+
+			bucket.event_count += 1;
+
+			if event.tool_call {
+				bucket.tool_call_count += 1;
+			}
+
+			if let Some(input_tokens) = event.input_tokens {
+				bucket.input_tokens = bucket.input_tokens.saturating_add(input_tokens);
+			}
+			if let Some(output_tokens) = event.output_tokens {
+				bucket.output_tokens = bucket.output_tokens.saturating_add(output_tokens);
+			}
+			if let Some(output_bytes) = event.tool_output_bytes {
+				bucket.output_bytes = bucket.output_bytes.saturating_add(output_bytes);
+			}
+		}
+
+		if event.tool_call {
+			self.summary.tool_call_count += 1;
+		}
+
+		if let Some(input_tokens) = event.input_tokens {
+			self.summary.input_tokens_current = Some(input_tokens);
+			self.summary.input_tokens_max = Some(
+				self.summary
+					.input_tokens_max
+					.map_or(input_tokens, |max_tokens| max_tokens.max(input_tokens)),
+			);
+			self.summary.input_tokens_cumulative =
+				self.summary.input_tokens_cumulative.saturating_add(input_tokens);
+		}
+		if let Some(output_tokens) = event.output_tokens {
+			self.summary.output_tokens_cumulative =
+				self.summary.output_tokens_cumulative.saturating_add(output_tokens);
+		}
+		if let Some(output_bytes) = event.tool_output_bytes {
+			self.record_tool_output(event, output_bytes);
+		}
+	}
+
+	fn record_tool_output(&mut self, event: &ChildActivityEvent, output_bytes: i64) {
+		let tool_name =
+			event.tool_name.as_deref().or(event.event_detail.as_deref()).unwrap_or("tool");
+
+		if self.summary.largest_tool_output_bytes.is_none_or(|largest| output_bytes > largest) {
+			self.summary.largest_tool_output_bytes = Some(output_bytes);
+			self.summary.largest_tool_output_tool = Some(tool_name.to_owned());
+		}
+		if output_bytes < LARGE_CHILD_OUTPUT_BYTES {
+			return;
+		}
+
+		let stats = self.large_output_stats.entry(tool_name.to_owned()).or_default();
+
+		stats.count += 1;
+		stats.max_bytes = stats.max_bytes.max(output_bytes);
+
+		self.refresh_large_output_warnings();
+	}
+
+	fn refresh_large_output_warnings(&mut self) {
+		let mut entries = self
+			.large_output_stats
+			.iter()
+			.map(|(tool_name, stats)| (tool_name.clone(), *stats))
+			.collect::<Vec<_>>();
+
+		entries.sort_by(|left, right| {
+			right.1.max_bytes.cmp(&left.1.max_bytes).then_with(|| left.0.cmp(&right.0))
+		});
+
+		self.summary.large_output_warnings = entries
+			.into_iter()
+			.take(4)
+			.map(|(tool_name, stats)| {
+				if stats.count > 1 {
+					format!(
+						"{tool_name} repeated {} large outputs; largest {} bytes",
+						stats.count, stats.max_bytes
+					)
+				} else {
+					format!("{tool_name} produced a large output: {} bytes", stats.max_bytes)
+				}
+			})
+			.collect();
+	}
+
+	fn set_current(
+		&mut self,
+		bucket: Option<String>,
+		detail: Option<String>,
+		started_unix_epoch: Option<i64>,
+	) {
+		if self.current_bucket == bucket && self.current_detail == detail {
+			return;
+		}
+
+		self.current_bucket = bucket.clone();
+		self.current_detail = detail.clone();
+		self.summary.current_bucket = bucket;
+		self.summary.current_detail = detail;
+		self.summary.current_started_unix_epoch = started_unix_epoch;
+		self.summary.current_elapsed_seconds = None;
+	}
+}
+
+struct ProtocolActivityAccumulator {
+	summary: state::ProtocolActivitySummary,
+}
+impl ProtocolActivityAccumulator {
+	fn new() -> Self {
+		Self { summary: state::ProtocolActivitySummary::default() }
+	}
+
+	fn record(
+		&mut self,
+		event_type: &str,
+		payload: &str,
+		child_activity: &state::ChildAgentActivitySummary,
+	) -> state::ProtocolActivitySummary {
+		self.summary.recent_events.push(protocol_activity_event(event_type, payload));
+
+		if self.summary.recent_events.len() > RECENT_PROTOCOL_ACTIVITY_LIMIT {
+			let remove_count =
+				self.summary.recent_events.len().saturating_sub(RECENT_PROTOCOL_ACTIVITY_LIMIT);
+
+			self.summary.recent_events.drain(0..remove_count);
+		}
+
+		if let Some(turn_status) = protocol_turn_status_from_payload(event_type, payload) {
+			self.summary.turn_status = Some(turn_status);
+		}
+		if let Some(waiting_reason) = protocol_waiting_reason(event_type, payload, child_activity) {
+			self.summary.waiting_reason = Some(waiting_reason);
+		}
+		if let Some(rate_limit_status) = protocol_rate_limit_status(event_type, payload) {
+			self.summary.rate_limit_status = Some(rate_limit_status);
+		}
+
+		self.summary.clone()
+	}
+}
+
+struct RunRecorder<'a> {
+	state_store: &'a StateStore,
+	run_id: &'a str,
+	attempt_number: i64,
+	activity_marker_path: Option<&'a PathBuf>,
+	thread_id: Option<String>,
+	turn_id: Option<String>,
+	next_sequence: i64,
+	child_activity: ChildActivityAccumulator,
+	protocol_activity: ProtocolActivityAccumulator,
+}
+impl<'a> RunRecorder<'a> {
+	fn new(
+		state_store: &'a StateStore,
+		run_id: &'a str,
+		attempt_number: i64,
+		activity_marker_path: Option<&'a PathBuf>,
+	) -> Self {
+		Self {
+			state_store,
+			run_id,
+			attempt_number,
+			activity_marker_path,
+			thread_id: None,
+			turn_id: None,
+			next_sequence: 1,
+			child_activity: ChildActivityAccumulator::new(),
+			protocol_activity: ProtocolActivityAccumulator::new(),
+		}
+	}
+
+	fn mark_activity(&self) -> crate::prelude::Result<()> {
+		if let Some(marker_path) = self.activity_marker_path {
+			write_activity_marker_best_effort(marker_path, self.run_id, self.attempt_number);
+		};
+
+		Ok(())
+	}
+
+	fn set_thread_id(&mut self, thread_id: &str) -> crate::prelude::Result<()> {
+		self.thread_id = Some(thread_id.to_owned());
+
+		if let Some(marker_path) = self.activity_marker_path {
+			write_thread_marker_best_effort(
+				marker_path,
+				self.run_id,
+				self.attempt_number,
+				thread_id,
+			);
+		}
+
+		Ok(())
+	}
+
+	fn set_turn_id(&mut self, turn_id: &str) -> crate::prelude::Result<()> {
+		self.turn_id = Some(turn_id.to_owned());
+
+		if let Some(marker_path) = self.activity_marker_path {
+			write_turn_marker_best_effort(marker_path, self.run_id, self.attempt_number, turn_id);
+		}
+
+		Ok(())
+	}
+
+	fn set_thread_status(
+		&mut self,
+		status: &str,
+		active_flags: &[String],
+	) -> crate::prelude::Result<()> {
+		if let Some(marker_path) = self.activity_marker_path {
+			write_thread_status_marker_best_effort(
+				marker_path,
+				self.run_id,
+				self.attempt_number,
+				self.thread_id.as_deref(),
+				self.turn_id.as_deref(),
+				status,
+				active_flags,
+			);
+		}
+
+		Ok(())
+	}
+
+	fn set_effective_runtime(
+		&mut self,
+		runtime: &EffectiveThreadConfig,
+	) -> crate::prelude::Result<()> {
+		if let Some(marker_path) = self.activity_marker_path {
+			write_effective_runtime_marker_best_effort(
+				marker_path,
+				self.run_id,
+				self.attempt_number,
+				self.thread_id.as_deref(),
+				self.turn_id.as_deref(),
+				runtime,
+			);
+		}
+
+		Ok(())
+	}
+
+	fn set_codex_account(
+		&mut self,
+		summary: &CodexAccountActivitySummary,
+		account_summaries: &[CodexAccountActivitySummary],
+	) -> crate::prelude::Result<()> {
+		if let Some(marker_path) = self.activity_marker_path {
+			write_codex_account_marker_best_effort(
+				marker_path,
+				self.run_id,
+				self.attempt_number,
+				summary,
+				account_summaries,
+			);
+		}
+
+		Ok(())
+	}
+
+	fn record(&mut self, event_type: &str, payload: &str) -> crate::prelude::Result<()> {
+		self.state_store.append_event(self.run_id, self.next_sequence, event_type, payload)?;
+
+		let child_activity = self.child_activity.record(event_type, payload);
+		let protocol_activity = self.protocol_activity.record(event_type, payload, &child_activity);
+
+		if let Some(marker_path) = self.activity_marker_path {
+			let activity = state::ProtocolActivityMarker {
+				run_id: self.run_id,
+				attempt_number: self.attempt_number,
+				thread_id: self.thread_id.as_deref(),
+				turn_id: self.turn_id.as_deref(),
+				event_count: self.next_sequence,
+				last_event_type: event_type,
+				child_agent_activity: Some(&child_activity),
+				protocol_activity: Some(&protocol_activity),
+			};
+
+			write_protocol_activity_marker_best_effort(marker_path, &activity);
+		}
+
+		self.next_sequence += 1;
+
+		Ok(())
+	}
+}
+
+struct TurnLoopResult {
+	turn_id: String,
+	turn_count: u32,
+	final_output: String,
+	continuation_pending: bool,
+}
+
+#[derive(Clone, Copy)]
+struct RequestDispatchContext<'a> {
+	phase: RequestWaitPhase,
+	dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
+	codex_account_provider: Option<&'a dyn CodexAccountProvider>,
+	target_thread_id: Option<&'a str>,
+	target_turn_id: Option<&'a str>,
+}
+impl<'a> RequestDispatchContext<'a> {
+	fn new(
+		phase: RequestWaitPhase,
+		dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
+		codex_account_provider: Option<&'a dyn CodexAccountProvider>,
+		target_thread_id: Option<&'a str>,
+		target_turn_id: Option<&'a str>,
+	) -> Self {
+		Self {
+			phase,
+			dynamic_tool_handler,
+			codex_account_provider,
+			target_thread_id,
+			target_turn_id,
+		}
+	}
+}
+
+#[derive(Debug)]
+struct DynamicToolCallDispatch {
+	response: DynamicToolCallResponse,
+	diagnostic: Option<DynamicToolFailureDiagnostic>,
+	terminal_failure: Option<AppServerDynamicToolFailure>,
+}
+impl DynamicToolCallDispatch {
+	fn success(response: DynamicToolCallResponse) -> Self {
+		Self { response, diagnostic: None, terminal_failure: None }
+	}
+
+	fn tool_failure(
+		response: DynamicToolCallResponse,
+		tool: Option<String>,
+		namespace: Option<String>,
+	) -> Self {
+		let message = dynamic_tool_response_text(&response);
+		let failure = AppServerDynamicToolFailure::tool(tool.clone(), message.clone());
+
+		Self {
+			response,
+			diagnostic: Some(DynamicToolFailureDiagnostic::from_failure(&failure, namespace)),
+			terminal_failure: None,
+		}
+	}
+
+	fn protocol_failure(tool: Option<String>, namespace: Option<String>, message: String) -> Self {
+		let failure = AppServerDynamicToolFailure::protocol(tool, message.clone());
+
+		Self {
+			response: DynamicToolCallResponse::failure(message),
+			diagnostic: Some(DynamicToolFailureDiagnostic::from_failure(&failure, namespace)),
+			terminal_failure: Some(failure),
+		}
+	}
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DynamicToolFailureDiagnostic {
+	failure_class: &'static str,
+	tool: Option<String>,
+	namespace: Option<String>,
+	message: String,
+	next_action: &'static str,
+}
+impl DynamicToolFailureDiagnostic {
+	fn from_failure(failure: &AppServerDynamicToolFailure, namespace: Option<String>) -> Self {
+		Self {
+			failure_class: failure.error_class(),
+			tool: failure.tool.clone(),
+			namespace,
+			message: failure.message.clone(),
+			next_action: failure.diagnostic_next_action(),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AppServerDynamicToolFailureKind {
+	Protocol,
+	Tool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum AppServerCapabilityPreflightStatus {
+	Ok,
+	Blocked,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum AppServerCapabilityPreflightFailureKind {
+	MethodFailed { method: &'static str, error: String },
+	BlockedState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RequestWaitPhase {
+	Initialize,
+	AccountLogin,
+	ThreadStart,
+	ThreadResume,
+	TurnStart,
+	TurnExecution,
+}
+impl RequestWaitPhase {
+	fn label(self) -> &'static str {
+		match self {
+			Self::Initialize => "initialize",
+			Self::AccountLogin => "account/login/start",
+			Self::ThreadStart => "thread/start",
+			Self::ThreadResume => "thread/resume",
+			Self::TurnStart => "turn/start",
+			Self::TurnExecution => "turn execution",
+		}
+	}
+}
+
+pub(crate) fn execute_app_server_run(
+	request: &AppServerRunRequest<'_>,
+	state_store: &StateStore,
+) -> crate::prelude::Result<AppServerRunResult> {
+	state_store.record_run_attempt(
+		&request.run_id,
+		&request.issue_id,
+		request.attempt_number,
+		"starting",
+	)?;
+
+	if let Some(marker_path) = request.activity_marker_path.as_ref() {
+		write_activity_marker_best_effort(marker_path, &request.run_id, request.attempt_number);
+	}
+
+	let result = execute_app_server_run_inner(request, state_store);
+
+	if result.is_err() {
+		state_store.record_run_attempt(
+			&request.run_id,
+			&request.issue_id,
+			request.attempt_number,
+			"failed",
+		)?;
+
+		if let Some(marker_path) = request.activity_marker_path.as_ref() {
+			write_activity_marker_best_effort(marker_path, &request.run_id, request.attempt_number);
+		}
+	}
+
+	result
+}
+
+pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServerRunResult> {
+	let state_store = StateStore::open_in_memory()?;
+	let probe_tool_handler = ProbeDynamicToolHandler;
+	let result = execute_app_server_run(
+		&AppServerRunRequest {
+			run_id: PROBE_RUN_ID.to_owned(),
+			issue_id: PROBE_ISSUE_ID.to_owned(),
+			attempt_number: 1,
+			listen: listen.to_owned(),
+			cwd: env::current_dir()?.display().to_string(),
+			developer_instructions: PROBE_DEVELOPER_INSTRUCTIONS.to_owned(),
+			user_input: PROBE_USER_INPUT.to_owned(),
+			max_turns: 1,
+			timeout: PROBE_TIMEOUT,
+			process_env: AppServerProcessEnv::default(),
+			continuation_user_input: None,
+			activity_marker_path: None,
+			resume_thread_id: None,
+			command_exec_health_check: Some(CommandExecHealthCheck::probe()),
+			dynamic_tool_handler: Some(&probe_tool_handler),
+			continuation_guard: None,
+			codex_account_provider: None,
+		},
+		&state_store,
+	)?;
+
+	if result.final_output.trim() != PROBE_EXPECTED_OUTPUT {
+		eyre::bail!(
+			"Protocol probe completed, but the final output was `{}` instead of `{PROBE_EXPECTED_OUTPUT}`.",
+			result.final_output.trim()
+		);
+	}
+
+	Ok(result)
+}
+
+fn classify_child_activity_event(
+	event_type: &str,
+	payload: &str,
+	active_tool_name: Option<&str>,
+) -> ChildActivityEvent {
+	let payload_value = serde_json::from_str::<Value>(payload).ok();
+	let input_tokens =
+		payload_value.as_ref().and_then(|value| find_numeric_field(value, INPUT_TOKEN_KEYS));
+	let output_tokens =
+		payload_value.as_ref().and_then(|value| find_numeric_field(value, OUTPUT_TOKEN_KEYS));
+
+	match event_type {
+		"item/tool/call" =>
+			child_tool_call_event(payload_value.as_ref(), input_tokens, output_tokens),
+		"item/tool/call/response" =>
+			child_tool_response_event(payload_value.as_ref(), active_tool_name, payload),
+		"item/completed" => child_item_completed_event(payload_value.as_ref(), payload),
+		"item/agentMessage/delta" => ChildActivityEvent {
+			event_bucket: CHILD_BUCKET_MODEL.to_owned(),
+			event_detail: Some(String::from("agent_message_delta")),
+			transition_bucket: Some(CHILD_BUCKET_MODEL.to_owned()),
+			transition_detail: Some(String::from("streaming response")),
+			tool_name: None,
+			tool_call: false,
+			tool_output_bytes: None,
+			input_tokens,
+			output_tokens,
+			completed: false,
+		},
+		"turn/completed" => ChildActivityEvent {
+			event_bucket: CHILD_BUCKET_MODEL.to_owned(),
+			event_detail: Some(String::from("turn_completed")),
+			transition_bucket: None,
+			transition_detail: None,
+			tool_name: None,
+			tool_call: false,
+			tool_output_bytes: None,
+			input_tokens,
+			output_tokens,
+			completed: true,
+		},
+		"thread/status/changed" => ChildActivityEvent {
+			event_bucket: CHILD_BUCKET_MODEL.to_owned(),
+			event_detail: Some(String::from("thread_status")),
+			transition_bucket: Some(CHILD_BUCKET_MODEL.to_owned()),
+			transition_detail: Some(String::from("child thread active")),
+			tool_name: None,
+			tool_call: false,
+			tool_output_bytes: None,
+			input_tokens,
+			output_tokens,
+			completed: false,
+		},
+		other => ChildActivityEvent {
+			event_bucket: CHILD_BUCKET_PROTOCOL.to_owned(),
+			event_detail: Some(other.to_owned()),
+			transition_bucket: None,
+			transition_detail: None,
+			tool_name: None,
+			tool_call: false,
+			tool_output_bytes: None,
+			input_tokens,
+			output_tokens,
+			completed: false,
+		},
+	}
+}
+
+fn protocol_activity_event(event_type: &str, payload: &str) -> state::ProtocolActivityEventSummary {
+	let payload_value = serde_json::from_str::<Value>(payload).ok();
+
+	state::ProtocolActivityEventSummary {
+		event_type: event_type.to_owned(),
+		category: protocol_activity_category(event_type).to_owned(),
+		detail: protocol_activity_detail(event_type, payload_value.as_ref()),
+	}
+}
+
+fn protocol_activity_category(event_type: &str) -> &'static str {
+	let normalized = event_type.to_ascii_lowercase();
+
+	if normalized.starts_with("turn/") {
+		return "turn";
+	}
+	if normalized.contains("plan") {
+		return "plan";
+	}
+	if normalized.contains("diff") || normalized.contains("filechange") {
+		return "diff";
+	}
+	if normalized.contains("command")
+		&& (normalized.contains("output") || normalized.contains("delta"))
+	{
+		return "command_output";
+	}
+	if normalized.contains("ratelimit") || normalized.contains("rate_limit") {
+		return "rate_limit";
+	}
+	if normalized.starts_with("account/") {
+		return "account";
+	}
+	if normalized == "item/tool/call/failure" {
+		return "protocol_error";
+	}
+	if normalized.ends_with("/response") || normalized == "json-rpc/error/response" {
+		return "server_request_resolution";
+	}
+	if normalized.starts_with("item/") {
+		return "item";
+	}
+	if normalized == "thread/status/changed" {
+		return "thread";
+	}
+	if normalized == "error" || normalized.contains("error") {
+		return "protocol_error";
+	}
+
+	"protocol"
+}
+
+fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> Option<String> {
+	if event_type == "thread/status/changed" {
+		return payload_value.and_then(|value| {
+			string_at_paths(value, &[&["params", "status", "type"], &["status", "type"]])
+		});
+	}
+	if event_type.starts_with("turn/") {
+		return protocol_turn_status_from_value(event_type, payload_value)
+			.or_else(|| Some(String::from("running")));
+	}
+	if event_type == "item/tool/call" {
+		return payload_value.and_then(extract_tool_name);
+	}
+	if event_type == "item/tool/call/failure" {
+		return payload_value.and_then(|value| {
+			string_at_paths(value, &[&["failureClass"], &["failure_class"]])
+				.or_else(|| string_at_paths(value, &[&["tool"]]))
+		});
+	}
+	if event_type == "item/completed" {
+		return payload_value.and_then(|value| {
+			string_at_paths(value, &[&["params", "item", "type"], &["item", "type"]])
+		});
+	}
+	if event_type.starts_with("account/") {
+		return protocol_account_detail(payload_value);
+	}
+	if event_type == "error" {
+		return payload_value
+			.and_then(|value| {
+				string_at_paths(
+					value,
+					&[&["params", "error", "codexErrorInfo"], &["error", "codexErrorInfo"]],
+				)
+			})
+			.or_else(|| Some(String::from("error")));
+	}
+
+	None
+}
+
+fn protocol_account_detail(payload_value: Option<&Value>) -> Option<String> {
+	let value = payload_value?;
+	let plan = string_at_paths(
+		value,
+		&[
+			&["params", "planType"],
+			&["params", "chatgptPlanType"],
+			&["planType"],
+			&["chatgptPlanType"],
+		],
+	);
+	let status = string_at_paths(
+		value,
+		&[&["params", "status"], &["params", "refreshStatus"], &["status"], &["refreshStatus"]],
+	);
+
+	match (plan, status) {
+		(Some(plan), Some(status)) => Some(format!("{plan}/{status}")),
+		(Some(plan), None) => Some(plan),
+		(None, Some(status)) => Some(status),
+		(None, None) => None,
+	}
+}
+
+fn protocol_turn_status_from_payload(event_type: &str, payload: &str) -> Option<String> {
+	let payload_value = serde_json::from_str::<Value>(payload).ok();
+
+	protocol_turn_status_from_value(event_type, payload_value.as_ref())
+}
+
+fn protocol_turn_status_from_value(
+	event_type: &str,
+	payload_value: Option<&Value>,
+) -> Option<String> {
+	match event_type {
+		"turn/started" => Some(String::from("running")),
+		"turn/completed" => payload_value
+			.and_then(|value| {
+				string_at_paths(value, &[&["params", "turn", "status"], &["turn", "status"]])
+			})
+			.or_else(|| Some(String::from("completed"))),
+		_ => None,
+	}
+}
+
+fn protocol_waiting_reason(
+	event_type: &str,
+	payload: &str,
+	child_activity: &state::ChildAgentActivitySummary,
+) -> Option<String> {
+	let payload_value = serde_json::from_str::<Value>(payload).ok();
+
+	if event_type == "thread/status/changed"
+		&& let Some(reason) = thread_status_waiting_reason(payload_value.as_ref())
+	{
+		return Some(reason);
+	}
+	if interactive_flag_for_request(event_type).is_some() {
+		return Some(String::from("approval_or_user_input"));
+	}
+	if event_type == "item/tool/call" {
+		return Some(String::from("tool_execution"));
+	}
+	if protocol_activity_category(event_type) == "command_output" {
+		return Some(String::from("tool_execution"));
+	}
+	if matches!(event_type, "item/tool/call/response" | "item/completed" | "turn/started")
+		|| event_type.ends_with("/delta")
+		|| event_type.ends_with("/response")
+	{
+		return Some(String::from("model_execution"));
+	}
+	if event_type == "turn/completed" {
+		return Some(String::from("turn_completed"));
+	}
+
+	if let Some(current_bucket) = child_activity.current_bucket.as_deref() {
+		return Some(match current_bucket {
+			CHILD_BUCKET_MODEL => String::from("model_execution"),
+			CHILD_BUCKET_PROTOCOL => String::from("protocol_activity"),
+			_ => String::from("tool_execution"),
+		});
+	}
+
+	None
+}
+
+fn thread_status_waiting_reason(payload_value: Option<&Value>) -> Option<String> {
+	let value = payload_value?;
+	let flags =
+		value_at_paths(value, &[&["params", "status", "activeFlags"], &["status", "activeFlags"]])?;
+	let flags = flags.as_array()?;
+
+	if flags
+		.iter()
+		.filter_map(Value::as_str)
+		.any(|flag| matches!(flag, "waitingOnApproval" | "waitingOnUserInput"))
+	{
+		return Some(String::from("approval_or_user_input"));
+	}
+
+	None
+}
+
+fn protocol_rate_limit_status(event_type: &str, payload: &str) -> Option<String> {
+	let payload_value = serde_json::from_str::<Value>(payload).ok()?;
+
+	find_string_field(&payload_value, &["rateLimitReachedType", "rate_limit_reached_type"])
+		.or_else(|| {
+			find_string_field(&payload_value, &["codexErrorInfo", "codex_error_info"])
+				.filter(|value| value.to_ascii_lowercase().contains("limit"))
+		})
+		.or_else(|| {
+			event_type.to_ascii_lowercase().contains("ratelimit").then(|| event_type.to_owned())
+		})
+}
+
+fn child_tool_call_event(
+	payload_value: Option<&Value>,
+	input_tokens: Option<i64>,
+	output_tokens: Option<i64>,
+) -> ChildActivityEvent {
+	let tool_name =
+		payload_value.and_then(extract_tool_name).unwrap_or_else(|| String::from("tool"));
+	let arguments = payload_value.and_then(extract_tool_arguments);
+	let (bucket, detail) = child_tool_bucket(&tool_name, arguments.as_ref());
+
+	ChildActivityEvent {
+		event_bucket: bucket.clone(),
+		event_detail: Some(detail.clone()),
+		transition_bucket: Some(bucket),
+		transition_detail: Some(detail),
+		tool_name: Some(tool_name),
+		tool_call: true,
+		tool_output_bytes: None,
+		input_tokens,
+		output_tokens,
+		completed: false,
+	}
+}
+
+fn child_tool_response_event(
+	payload_value: Option<&Value>,
+	active_tool_name: Option<&str>,
+	payload: &str,
+) -> ChildActivityEvent {
+	let tool_name = active_tool_name.unwrap_or("tool").to_owned();
+	let (bucket, detail) = child_tool_bucket(&tool_name, None);
+	let output_bytes = tool_output_size(payload_value, payload);
+
+	ChildActivityEvent {
+		event_bucket: bucket,
+		event_detail: Some(detail),
+		transition_bucket: Some(CHILD_BUCKET_MODEL.to_owned()),
+		transition_detail: Some(String::from("waiting after tool output")),
+		tool_name: Some(tool_name),
+		tool_call: false,
+		tool_output_bytes: Some(output_bytes),
+		input_tokens: payload_value.and_then(|value| find_numeric_field(value, INPUT_TOKEN_KEYS)),
+		output_tokens: payload_value.and_then(|value| find_numeric_field(value, OUTPUT_TOKEN_KEYS)),
+		completed: false,
+	}
+}
+
+fn child_item_completed_event(payload_value: Option<&Value>, payload: &str) -> ChildActivityEvent {
+	let item_kind = payload_value
+		.and_then(|value| string_at_paths(value, &[&["params", "item", "type"], &["item", "type"]]))
+		.unwrap_or_else(|| String::from("item"));
+	let tool_name = payload_value.and_then(extract_tool_name);
+	let input_tokens = payload_value.and_then(|value| find_numeric_field(value, INPUT_TOKEN_KEYS));
+	let output_tokens =
+		payload_value.and_then(|value| find_numeric_field(value, OUTPUT_TOKEN_KEYS));
+
+	if let Some(tool_name) = tool_name
+		&& item_kind != "agentMessage"
+	{
+		let (bucket, detail) = child_tool_bucket(&tool_name, None);
+
+		return ChildActivityEvent {
+			event_bucket: bucket,
+			event_detail: Some(detail),
+			transition_bucket: Some(CHILD_BUCKET_MODEL.to_owned()),
+			transition_detail: Some(String::from("waiting after completed item")),
+			tool_name: Some(tool_name),
+			tool_call: false,
+			tool_output_bytes: Some(tool_output_size(payload_value, payload)),
+			input_tokens,
+			output_tokens,
+			completed: false,
+		};
+	}
+
+	ChildActivityEvent {
+		event_bucket: CHILD_BUCKET_MODEL.to_owned(),
+		event_detail: Some(item_kind),
+		transition_bucket: Some(CHILD_BUCKET_MODEL.to_owned()),
+		transition_detail: Some(String::from("model output")),
+		tool_name: None,
+		tool_call: false,
+		tool_output_bytes: None,
+		input_tokens,
+		output_tokens,
+		completed: false,
+	}
+}
+
+fn child_tool_bucket(tool_name: &str, arguments: Option<&Value>) -> (String, String) {
+	let normalized_tool = tool_name.to_ascii_lowercase();
+
+	if is_tracker_tool_name(&normalized_tool) {
+		return (CHILD_BUCKET_TRACKER.to_owned(), tool_name.to_owned());
+	}
+	if normalized_tool.contains("view_image")
+		|| normalized_tool.contains("screenshot")
+		|| normalized_tool.contains("image_query")
+		|| normalized_tool.contains("browser")
+	{
+		return (CHILD_BUCKET_BROWSER_IMAGE.to_owned(), tool_name.to_owned());
+	}
+	if normalized_tool.contains("exec_command") {
+		let command_category = arguments
+			.and_then(extract_command_text)
+			.map(|command| shell_command_category(&command))
+			.unwrap_or_else(|| String::from("shell"));
+
+		if command_category == "pr_land" {
+			return (CHILD_BUCKET_PR_LAND.to_owned(), String::from("exec_command: pr_land"));
+		}
+
+		return (CHILD_BUCKET_SHELL.to_owned(), format!("exec_command: {command_category}"));
+	}
+
+	(CHILD_BUCKET_TOOL.to_owned(), tool_name.to_owned())
+}
+
+fn is_tracker_tool_name(normalized_tool: &str) -> bool {
+	matches!(
+		normalized_tool,
+		"issue_transition"
+			| "issue_comment"
+			| "issue_progress_checkpoint"
+			| "issue_review_checkpoint"
+			| "issue_review_handoff"
+			| "issue_review_repair_complete"
+			| "issue_delivery_closeout_complete"
+			| "issue_terminal_finalize"
+			| "issue_label_add"
+	) || normalized_tool.ends_with(".issue_transition")
+		|| normalized_tool.ends_with(".issue_comment")
+		|| normalized_tool.ends_with(".issue_progress_checkpoint")
+		|| normalized_tool.ends_with(".issue_review_checkpoint")
+		|| normalized_tool.ends_with(".issue_review_handoff")
+		|| normalized_tool.ends_with(".issue_review_repair_complete")
+		|| normalized_tool.ends_with(".issue_delivery_closeout_complete")
+		|| normalized_tool.ends_with(".issue_terminal_finalize")
+		|| normalized_tool.ends_with(".issue_label_add")
+}
+
+fn shell_command_category(command: &str) -> String {
+	let trimmed = command.trim();
+	let lowered = trimmed.to_ascii_lowercase();
+
+	if lowered.starts_with("git push")
+		|| lowered.starts_with("gh pr")
+		|| lowered.contains(" gh pr ")
+		|| lowered.contains("decodex land")
+		|| lowered.contains("issue_terminal_finalize")
+	{
+		return String::from("pr_land");
+	}
+	if lowered.starts_with("cargo make")
+		|| lowered.starts_with("cargo test")
+		|| lowered.starts_with("npm run check")
+		|| lowered.contains(" nextest ")
+	{
+		return String::from("checks");
+	}
+	if lowered.starts_with("git ") {
+		return String::from("git");
+	}
+	if lowered.starts_with("gh ") {
+		return String::from("gh");
+	}
+	if lowered.contains("vite") || lowered.contains("dev server") || lowered.contains("localhost") {
+		return String::from("dev_server");
+	}
+	if lowered.contains("playwright") || lowered.contains("browser") {
+		return String::from("browser_smoke");
+	}
+
+	String::from("shell")
+}
+
+fn child_activity_bucket_mut<'a>(
+	summary: &'a mut state::ChildAgentActivitySummary,
+	name: &str,
+) -> &'a mut state::ChildAgentActivityBucket {
+	if let Some(index) = summary.buckets.iter().position(|bucket| bucket.name == name) {
+		return &mut summary.buckets[index];
+	}
+
+	summary.buckets.push(state::ChildAgentActivityBucket {
+		name: name.to_owned(),
+		..state::ChildAgentActivityBucket::default()
+	});
+
+	let last_index = summary.buckets.len().saturating_sub(1);
+
+	&mut summary.buckets[last_index]
+}
+
+fn extract_tool_name(value: &Value) -> Option<String> {
+	let tool = string_at_paths(
+		value,
+		&[
+			&["params", "tool"],
+			&["params", "name"],
+			&["params", "item", "tool"],
+			&["params", "item", "name"],
+			&["tool"],
+			&["name"],
+			&["item", "tool"],
+			&["item", "name"],
+		],
+	)?;
+	let namespace = string_at_paths(value, &[&["params", "namespace"], &["namespace"]]);
+
+	Some(match namespace {
+		Some(namespace) if !namespace.is_empty() => format!("{namespace}.{tool}"),
+		_ => tool,
+	})
+}
+
+fn extract_tool_arguments(value: &Value) -> Option<Value> {
+	let arguments = value_at_paths(
+		value,
+		&[
+			&["params", "arguments"],
+			&["params", "item", "arguments"],
+			&["arguments"],
+			&["item", "arguments"],
+		],
+	)?;
+
+	if let Some(arguments_text) = arguments.as_str()
+		&& let Ok(parsed_arguments) = serde_json::from_str::<Value>(arguments_text)
+	{
+		return Some(parsed_arguments);
+	}
+
+	Some(arguments.clone())
+}
+
+fn extract_command_text(arguments: &Value) -> Option<String> {
+	string_at_paths(arguments, &[&["cmd"], &["command"], &["argv", "0"]])
+}
+
+fn string_at_paths(value: &Value, paths: &[&[&str]]) -> Option<String> {
+	paths
+		.iter()
+		.find_map(|path| value_at_path(value, path).and_then(Value::as_str).map(str::to_owned))
+}
+
+fn value_at_paths<'a>(value: &'a Value, paths: &[&[&str]]) -> Option<&'a Value> {
+	paths.iter().find_map(|path| value_at_path(value, path))
+}
+
+fn value_at_path<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
+	let mut current = value;
+
+	for part in path {
+		current = current.get(*part)?;
+	}
+
+	Some(current)
+}
+
+fn tool_output_size(value: Option<&Value>, payload: &str) -> i64 {
+	let largest_string = value.map(largest_string_len).unwrap_or(0);
+	let payload_len = i64::try_from(payload.len()).unwrap_or(i64::MAX);
+
+	largest_string.max(payload_len)
+}
+
+fn largest_string_len(value: &Value) -> i64 {
+	match value {
+		Value::String(text) => i64::try_from(text.len()).unwrap_or(i64::MAX),
+		Value::Array(items) => items.iter().map(largest_string_len).max().unwrap_or(0),
+		Value::Object(entries) => entries.values().map(largest_string_len).max().unwrap_or(0),
+		_ => 0,
+	}
+}
+
+fn find_numeric_field(value: &Value, keys: &[&str]) -> Option<i64> {
+	match value {
+		Value::Object(entries) => {
+			for (key, nested) in entries {
+				if keys.iter().any(|candidate| *candidate == key)
+					&& let Some(number) = json_number_to_i64(nested)
+				{
+					return Some(number);
+				}
+			}
+
+			entries.values().find_map(|nested| find_numeric_field(nested, keys))
+		},
+		Value::Array(items) => items.iter().find_map(|nested| find_numeric_field(nested, keys)),
+		_ => None,
+	}
+}
+
+fn find_string_field(value: &Value, keys: &[&str]) -> Option<String> {
+	match value {
+		Value::Object(entries) => {
+			for (key, nested) in entries {
+				if keys.iter().any(|candidate| *candidate == key)
+					&& let Some(text) = nested.as_str()
+				{
+					return Some(text.to_owned());
+				}
+			}
+
+			entries.values().find_map(|nested| find_string_field(nested, keys))
+		},
+		Value::Array(items) => items.iter().find_map(|nested| find_string_field(nested, keys)),
+		_ => None,
+	}
+}
+
+fn json_number_to_i64(value: &Value) -> Option<i64> {
+	value.as_i64().or_else(|| value.as_u64().and_then(|number| i64::try_from(number).ok()))
+}
+
+fn redact_identifier(identifier: &str) -> String {
+	let tail =
+		identifier.chars().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<String>();
+
+	if tail.is_empty() { String::from("unknown") } else { format!("...{tail}") }
+}
+
+fn duration_seconds_i64(duration: Duration) -> i64 {
+	i64::try_from(duration.as_secs()).unwrap_or(i64::MAX)
+}
+
+fn write_activity_marker_best_effort(marker_path: &Path, run_id: &str, attempt_number: i64) {
+	if let Err(error) = state::write_run_operation_marker(
+		marker_path,
+		run_id,
+		attempt_number,
+		RUN_OPERATION_AGENT_RUN,
+	) {
+		tracing::warn!(
+			?error,
+			run_id,
+			attempt_number,
+			marker_path = %marker_path.display(),
+			"Failed to update worktree activity marker."
+		);
+	}
+}
+
+fn write_activity_marker_best_effort_for_request(request: &AppServerRunRequest<'_>) {
+	if let Some(marker_path) = request.activity_marker_path.as_ref() {
+		write_activity_marker_best_effort(marker_path, &request.run_id, request.attempt_number);
+	}
+}
+
+fn write_capability_preflight_marker_best_effort(request: &AppServerRunRequest<'_>) {
+	if let Some(marker_path) = request.activity_marker_path.as_ref()
+		&& let Err(error) = state::write_run_operation_marker(
+			marker_path,
+			&request.run_id,
+			request.attempt_number,
+			RUN_OPERATION_APP_SERVER_PREFLIGHT,
+		) {
+		tracing::warn!(
+			?error,
+			run_id = request.run_id,
+			attempt_number = request.attempt_number,
+			marker_path = %marker_path.display(),
+			"Failed to update worktree app-server preflight marker."
+		);
+	}
+}
+
+fn write_protocol_activity_marker_best_effort(
+	marker_path: &Path,
+	activity: &state::ProtocolActivityMarker<'_>,
+) {
+	if let Err(error) = state::write_run_protocol_activity_marker(marker_path, activity) {
+		tracing::warn!(
+			?error,
+			run_id = activity.run_id,
+			attempt_number = activity.attempt_number,
+			marker_path = %marker_path.display(),
+			"Failed to update worktree protocol-activity marker."
+		);
+	}
+}
+
+fn write_turn_marker_best_effort(
+	marker_path: &Path,
+	run_id: &str,
+	attempt_number: i64,
+	turn_id: &str,
+) {
+	if let Err(error) = state::write_run_turn_marker(marker_path, run_id, attempt_number, turn_id) {
+		tracing::warn!(
+			?error,
+			run_id,
+			attempt_number,
+			marker_path = %marker_path.display(),
+			"Failed to update worktree turn marker."
+		);
+	}
+}
+
+fn write_thread_status_marker_best_effort(
+	marker_path: &Path,
+	run_id: &str,
+	attempt_number: i64,
+	thread_id: Option<&str>,
+	turn_id: Option<&str>,
+	thread_status: &str,
+	thread_active_flags: &[String],
+) {
+	if let Err(error) = state::write_run_thread_status_marker(
+		marker_path,
+		run_id,
+		attempt_number,
+		thread_id,
+		turn_id,
+		thread_status,
+		thread_active_flags,
+	) {
+		tracing::warn!(
+			?error,
+			run_id,
+			attempt_number,
+			marker_path = %marker_path.display(),
+			"Failed to update worktree thread-status marker."
+		);
+	}
+}
+
+fn write_effective_runtime_marker_best_effort(
+	marker_path: &Path,
+	run_id: &str,
+	attempt_number: i64,
+	thread_id: Option<&str>,
+	turn_id: Option<&str>,
+	runtime: &EffectiveThreadConfig,
+) {
+	if let Err(error) = state::write_run_effective_runtime_marker(
+		marker_path,
+		run_id,
+		attempt_number,
+		&EffectiveRuntimeMarker {
+			thread_id,
+			turn_id,
+			effective_model: &runtime.model,
+			effective_model_provider: &runtime.model_provider,
+			effective_cwd: &runtime.cwd,
+			effective_approval_policy: &runtime.approval_policy,
+			effective_approvals_reviewer: &runtime.approvals_reviewer,
+			effective_sandbox_mode: &runtime.sandbox_mode,
+		},
+	) {
+		tracing::warn!(
+			?error,
+			run_id,
+			attempt_number,
+			marker_path = %marker_path.display(),
+			"Failed to update worktree effective-runtime marker."
+		);
+	}
+}
+
+fn write_codex_account_marker_best_effort(
+	marker_path: &Path,
+	run_id: &str,
+	attempt_number: i64,
+	summary: &CodexAccountActivitySummary,
+	account_summaries: &[CodexAccountActivitySummary],
+) {
+	if let Err(error) = state::write_run_account_marker(
+		marker_path,
+		&CodexAccountMarker {
+			run_id,
+			attempt_number,
+			account: summary,
+			accounts: account_summaries,
+		},
+	) {
+		tracing::warn!(
+			?error,
+			run_id,
+			attempt_number,
+			marker_path = %marker_path.display(),
+			"Failed to update worktree Codex account marker."
+		);
+	}
+}
+
+fn write_thread_marker_best_effort(
+	marker_path: &Path,
+	run_id: &str,
+	attempt_number: i64,
+	thread_id: &str,
+) {
+	if let Err(error) =
+		state::write_run_thread_marker(marker_path, run_id, attempt_number, thread_id)
+	{
+		tracing::warn!(
+			?error,
+			run_id,
+			attempt_number,
+			marker_path = %marker_path.display(),
+			"Failed to update worktree thread marker."
+		);
+	}
+}
+
+fn execute_app_server_run_inner(
+	request: &AppServerRunRequest<'_>,
+	state_store: &StateStore,
+) -> crate::prelude::Result<AppServerRunResult> {
+	let mut recorder = RunRecorder::new(
+		state_store,
+		&request.run_id,
+		request.attempt_number,
+		request.activity_marker_path.as_ref(),
+	);
+	let expected_codex_home = request.process_env.resolve_codex_home_env()?;
+	let mut client = AppServerClient::spawn(&request.listen, &request.process_env)?;
+	let initialize_response = initialize_client_for_run(
+		&mut client,
+		&mut recorder,
+		request.dynamic_tool_handler,
+		&expected_codex_home,
+	)?;
+
+	client.mark_initialized()?;
+
+	write_capability_preflight_marker_best_effort(request);
+	run_app_server_capability_preflight(&mut client, &mut recorder, &request.cwd)?;
+	write_activity_marker_best_effort_for_request(request);
+
+	if let Some(health_check) = request.command_exec_health_check.as_ref() {
+		run_command_exec_health_check(&mut client, &mut recorder, request, health_check)?;
+	}
+
+	flush_pending_messages(&mut client, &mut recorder, None)?;
+	login_codex_account_for_run(&mut client, &mut recorder, request)?;
+	flush_pending_messages(&mut client, &mut recorder, None)?;
+
+	let thread_response = start_or_resume_thread_session(&mut client, &mut recorder, request)?;
+	let thread_id = thread_response.thread.id.clone();
+	let effective_thread_config = thread_response.effective_config();
+
+	record_thread_session_start(
+		state_store,
+		request,
+		&mut recorder,
+		&thread_id,
+		&effective_thread_config,
+	)?;
+	flush_pending_messages(&mut client, &mut recorder, Some(&thread_id))?;
+
+	state_store.record_run_attempt(
+		&request.run_id,
+		&request.issue_id,
+		request.attempt_number,
+		"running",
+	)?;
+	recorder.mark_activity()?;
+
+	let turn_result =
+		execute_turn_loop(&mut client, &mut recorder, request, state_store, &thread_id)?;
+
+	state_store.record_run_attempt(
+		&request.run_id,
+		&request.issue_id,
+		request.attempt_number,
+		"succeeded",
+	)?;
+	recorder.mark_activity()?;
+
+	Ok(AppServerRunResult {
+		user_agent: initialize_response.user_agent,
+		thread_id,
+		turn_id: turn_result.turn_id,
+		turn_count: turn_result.turn_count,
+		event_count: state_store.event_count(&request.run_id)?,
+		final_output: turn_result.final_output,
+		continuation_pending: turn_result.continuation_pending,
+	})
+}
+
+fn initialize_client_for_run(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
+	expected_codex_home: &ResolvedAppServerCodexHomeEnv,
+) -> crate::prelude::Result<InitializeResponse> {
+	let response = client.initialize_with_handler(
+		dynamic_tool_handler.is_some(),
+		|connection, wire_message, server_request| {
+			handle_server_request_while_waiting(
+				connection,
+				recorder,
+				wire_message,
+				server_request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::Initialize,
+					dynamic_tool_handler,
+					None,
+					None,
+					None,
+				),
+			)
+		},
+	)?;
+
+	validate_initialize_codex_home(expected_codex_home, &response)?;
+
+	Ok(response)
+}
+
+fn run_app_server_capability_preflight(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	cwd: &str,
+) -> crate::prelude::Result<AppServerCapabilityPreflightReport> {
+	let mut report = AppServerCapabilityPreflightReport::new();
+	let config = preflight_request(recorder, &report, "config/read", || {
+		client.read_config(&ConfigReadParams { cwd: Some(cwd.to_owned()), include_layers: false })
+	})?;
+
+	record_config_preflight(&mut report, &config.config);
+
+	let models = list_all_models_for_preflight(client, recorder, &report)?;
+
+	record_model_preflight(&mut report, &config.config, &models);
+
+	let provider_capabilities =
+		preflight_request(recorder, &report, "modelProvider/capabilities/read", || {
+			client.read_model_provider_capabilities()
+		})?;
+
+	record_model_provider_preflight(&mut report, &provider_capabilities);
+
+	let skills = preflight_request(recorder, &report, "skills/list", || {
+		client.list_skills(&SkillsListParams {
+			cwds: vec![cwd.to_owned()],
+			force_reload: false,
+			per_cwd_extra_user_roots: None,
+		})
+	})?;
+
+	record_skills_preflight(&mut report, cwd, &skills);
+
+	let plugins = preflight_request(recorder, &report, "plugin/list", || {
+		client.list_plugins(&PluginListParams { cwds: Some(vec![cwd.to_owned()]) })
+	})?;
+
+	record_plugin_preflight(&mut report, &plugins);
+
+	let mcp_servers = list_all_mcp_servers_for_preflight(client, recorder, &report)?;
+
+	record_mcp_preflight(&mut report, &mcp_servers);
+	record_app_server_preflight_report(recorder, &report)?;
+
+	if report.has_blockers() {
+		return Err(Report::new(AppServerCapabilityPreflightFailure::blocked(report)));
+	}
+
+	Ok(report)
+}
+
+fn preflight_request<T, F>(
+	recorder: &mut RunRecorder<'_>,
+	report: &AppServerCapabilityPreflightReport,
+	method: &'static str,
+	request: F,
+) -> crate::prelude::Result<T>
+where
+	F: FnOnce() -> crate::prelude::Result<T>,
+{
+	match request() {
+		Ok(response) => Ok(response),
+		Err(error) => {
+			let mut failed_report = report.clone();
+			let mut details = BTreeMap::new();
+
+			details.insert(String::from("method"), method.to_owned());
+			details.insert(String::from("error"), error.to_string());
+			failed_report.push_blocked(
+				check_name_for_method(method),
+				format!("`{method}` failed before thread/start."),
+				details,
+			);
+
+			record_app_server_preflight_report(recorder, &failed_report)?;
+
+			Err(Report::new(AppServerCapabilityPreflightFailure::method_failed(
+				method,
+				error.to_string(),
+				failed_report,
+			)))
+		},
+	}
+}
+
+fn list_all_models_for_preflight(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	report: &AppServerCapabilityPreflightReport,
+) -> crate::prelude::Result<Vec<ModelSummary>> {
+	let mut cursor = None;
+	let mut models = Vec::new();
+
+	loop {
+		let response: ModelListResponse =
+			preflight_request(recorder, report, "model/list", || {
+				client.list_models(&ModelListParams {
+					cursor: cursor.clone(),
+					include_hidden: Some(true),
+					limit: Some(PREFLIGHT_MODEL_PAGE_LIMIT),
+				})
+			})?;
+
+		models.extend(response.data);
+
+		let Some(next_cursor) = response.next_cursor else {
+			return Ok(models);
+		};
+
+		cursor = Some(next_cursor);
+	}
+}
+
+fn list_all_mcp_servers_for_preflight(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	report: &AppServerCapabilityPreflightReport,
+) -> crate::prelude::Result<Vec<McpServerStatusSummary>> {
+	let mut cursor = None;
+	let mut servers = Vec::new();
+
+	loop {
+		let response: ListMcpServerStatusResponse =
+			preflight_request(recorder, report, "mcpServerStatus/list", || {
+				client.list_mcp_server_status(&ListMcpServerStatusParams {
+					cursor: cursor.clone(),
+					detail: Some(PREFLIGHT_MCP_DETAIL.to_owned()),
+					limit: Some(PREFLIGHT_MCP_PAGE_LIMIT),
+				})
+			})?;
+
+		servers.extend(response.data);
+
+		let Some(next_cursor) = response.next_cursor else {
+			return Ok(servers);
+		};
+
+		cursor = Some(next_cursor);
+	}
+}
+
+fn record_config_preflight(
+	report: &mut AppServerCapabilityPreflightReport,
+	config: &RuntimeConfigSummary,
+) {
+	let mut details = BTreeMap::new();
+
+	insert_optional_detail(&mut details, "model", config.model.as_deref());
+	insert_optional_detail(&mut details, "model_provider", config.model_provider.as_deref());
+
+	if let Some(approval_policy) = config.approval_policy.as_ref().and_then(config_value_name) {
+		details.insert(String::from("approval_policy"), approval_policy);
+	}
+	if let Some(sandbox_mode) = config.sandbox_mode.as_ref().and_then(config_value_name) {
+		details.insert(String::from("sandbox_mode"), sandbox_mode);
+	}
+
+	report.push_ok(
+		PREFLIGHT_CHECK_CONFIG,
+		"config/read returned effective runtime configuration.",
+		details,
+	);
+}
+
+fn record_model_preflight(
+	report: &mut AppServerCapabilityPreflightReport,
+	config: &RuntimeConfigSummary,
+	models: &[ModelSummary],
+) {
+	let configured_model = config.model.as_deref().filter(|model| !model.trim().is_empty());
+	let default_model = models.iter().find(|model| model.is_default);
+	let matching_config_model = configured_model
+		.and_then(|configured| models.iter().find(|model| model_matches_config(model, configured)));
+	let mut details = BTreeMap::new();
+
+	details.insert(String::from("model_count"), models.len().to_string());
+
+	if let Some(configured_model) = configured_model {
+		details.insert(String::from("configured_model"), configured_model.to_owned());
+	}
+	if let Some(model) = default_model {
+		details.insert(String::from("default_model"), model.model.clone());
+	}
+	if let Some(model) = matching_config_model {
+		details.insert(String::from("matched_model_id"), model.id.clone());
+	}
+
+	if models.is_empty() {
+		report.push_blocked(
+			PREFLIGHT_CHECK_MODEL,
+			"model/list returned no available models.",
+			details,
+		);
+	} else if configured_model.is_some() && matching_config_model.is_none() {
+		report.push_blocked(
+			PREFLIGHT_CHECK_MODEL,
+			"configured model was not present in model/list.",
+			details,
+		);
+	} else if configured_model.is_none() && default_model.is_none() {
+		report.push_blocked(
+			PREFLIGHT_CHECK_MODEL,
+			"no configured model or default model was present.",
+			details,
+		);
+	} else {
+		report.push_ok(
+			PREFLIGHT_CHECK_MODEL,
+			"model/list returned an executable model selection.",
+			details,
+		);
+	}
+}
+
+fn record_model_provider_preflight(
+	report: &mut AppServerCapabilityPreflightReport,
+	capabilities: &ModelProviderCapabilitiesReadResponse,
+) {
+	let mut details = BTreeMap::new();
+
+	details.insert(String::from("web_search"), capabilities.web_search.to_string());
+	details.insert(String::from("image_generation"), capabilities.image_generation.to_string());
+	details.insert(String::from("namespace_tools"), capabilities.namespace_tools.to_string());
+	report.push_ok(
+		PREFLIGHT_CHECK_MODEL_PROVIDER,
+		"modelProvider/capabilities/read returned provider capabilities.",
+		details,
+	);
+}
+
+fn record_skills_preflight(
+	report: &mut AppServerCapabilityPreflightReport,
+	cwd: &str,
+	skills: &SkillsListResponse,
+) {
+	let cwd_entry = skills.data.iter().find(|entry| entry.cwd == cwd);
+	let all_skill_count: usize = skills.data.iter().map(|entry| entry.skills.len()).sum();
+	let enabled_skill_count: usize = skills
+		.data
+		.iter()
+		.flat_map(|entry| entry.skills.iter())
+		.filter(|skill| skill.enabled)
+		.count();
+	let errors = skills.data.iter().flat_map(|entry| entry.errors.iter()).collect::<Vec<_>>();
+	let mut details = BTreeMap::new();
+
+	details.insert(String::from("cwd"), cwd.to_owned());
+	details.insert(String::from("entry_count"), skills.data.len().to_string());
+	details.insert(String::from("skill_count"), all_skill_count.to_string());
+	details.insert(String::from("enabled_skill_count"), enabled_skill_count.to_string());
+
+	if let Some(first_error) = errors.first() {
+		details.insert(String::from("first_error_path"), first_error.path.clone());
+		details.insert(String::from("first_error"), first_error.message.clone());
+	}
+
+	if cwd_entry.is_none() {
+		report.push_blocked(
+			PREFLIGHT_CHECK_SKILLS,
+			"skills/list did not return an entry for the run cwd.",
+			details,
+		);
+	} else if !errors.is_empty() {
+		report.push_blocked(
+			PREFLIGHT_CHECK_SKILLS,
+			"skills/list returned skill scan errors.",
+			details,
+		);
+	} else if enabled_skill_count == 0 {
+		report.push_blocked(
+			PREFLIGHT_CHECK_SKILLS,
+			"skills/list returned no enabled skills.",
+			details,
+		);
+	} else {
+		report.push_ok(PREFLIGHT_CHECK_SKILLS, "skills/list returned enabled skills.", details);
+	}
+}
+
+fn record_plugin_preflight(
+	report: &mut AppServerCapabilityPreflightReport,
+	plugins: &PluginListResponse,
+) {
+	let plugin_count: usize =
+		plugins.marketplaces.iter().map(|marketplace| marketplace.plugins.len()).sum();
+	let installed_count = plugins
+		.marketplaces
+		.iter()
+		.flat_map(|marketplace| marketplace.plugins.iter())
+		.filter(|plugin| plugin.installed)
+		.count();
+	let enabled_count = plugins
+		.marketplaces
+		.iter()
+		.flat_map(|marketplace| marketplace.plugins.iter())
+		.filter(|plugin| plugin.enabled)
+		.count();
+	let mut details = BTreeMap::new();
+
+	details.insert(String::from("marketplace_count"), plugins.marketplaces.len().to_string());
+	details.insert(String::from("plugin_count"), plugin_count.to_string());
+	details.insert(String::from("installed_plugin_count"), installed_count.to_string());
+	details.insert(String::from("enabled_plugin_count"), enabled_count.to_string());
+
+	if let Some(first_error) = plugins.marketplace_load_errors.first() {
+		details.insert(String::from("first_error_path"), first_error.marketplace_path.clone());
+		details.insert(String::from("first_error"), first_error.message.clone());
+	}
+
+	if !plugins.marketplace_load_errors.is_empty() {
+		report.push_blocked(
+			PREFLIGHT_CHECK_PLUGINS,
+			"plugin/list returned marketplace load errors.",
+			details,
+		);
+	} else if plugins.marketplaces.is_empty() {
+		report.push_blocked(
+			PREFLIGHT_CHECK_PLUGINS,
+			"plugin/list returned no marketplaces.",
+			details,
+		);
+	} else {
+		report.push_ok(PREFLIGHT_CHECK_PLUGINS, "plugin/list returned plugin inventory.", details);
+	}
+}
+
+fn record_mcp_preflight(
+	report: &mut AppServerCapabilityPreflightReport,
+	servers: &[McpServerStatusSummary],
+) {
+	let not_logged_in = servers
+		.iter()
+		.filter(|server| server.auth_status == "notLoggedIn")
+		.map(|server| server.name.clone())
+		.collect::<Vec<_>>();
+	let tool_count: usize = servers.iter().map(|server| server.tools.len()).sum();
+	let mut details = BTreeMap::new();
+
+	details.insert(String::from("server_count"), servers.len().to_string());
+	details.insert(String::from("tool_count"), tool_count.to_string());
+
+	if !not_logged_in.is_empty() {
+		details.insert(String::from("not_logged_in_servers"), not_logged_in.join(", "));
+	}
+	if !not_logged_in.is_empty() {
+		report.push_blocked(
+			PREFLIGHT_CHECK_MCP,
+			"mcpServerStatus/list returned MCP servers that are not logged in.",
+			details,
+		);
+	} else {
+		report.push_ok(
+			PREFLIGHT_CHECK_MCP,
+			"mcpServerStatus/list returned MCP server state.",
+			details,
+		);
+	}
+}
+
+fn record_app_server_preflight_report(
+	recorder: &mut RunRecorder<'_>,
+	report: &AppServerCapabilityPreflightReport,
+) -> crate::prelude::Result<()> {
+	recorder.record(PREFLIGHT_EVENT_TYPE, &serde_json::to_string(report)?)
+}
+
+fn model_matches_config(model: &ModelSummary, configured_model: &str) -> bool {
+	model.model == configured_model || model.id == configured_model
+}
+
+fn insert_optional_detail(details: &mut BTreeMap<String, String>, name: &str, value: Option<&str>) {
+	if let Some(value) = value.filter(|value| !value.is_empty()) {
+		details.insert(name.to_owned(), value.to_owned());
+	}
+}
+
+fn config_value_name(value: &Value) -> Option<String> {
+	match value {
+		Value::String(value) if !value.is_empty() => Some(value.clone()),
+		Value::Object(object) => object
+			.get("type")
+			.and_then(Value::as_str)
+			.map(str::to_owned)
+			.or_else(|| (object.len() == 1).then(|| object.keys().next().cloned()).flatten()),
+		_ => None,
+	}
+}
+
+fn check_name_for_method(method: &str) -> &'static str {
+	match method {
+		"config/read" => PREFLIGHT_CHECK_CONFIG,
+		"model/list" => PREFLIGHT_CHECK_MODEL,
+		"modelProvider/capabilities/read" => PREFLIGHT_CHECK_MODEL_PROVIDER,
+		"skills/list" => PREFLIGHT_CHECK_SKILLS,
+		"plugin/list" => PREFLIGHT_CHECK_PLUGINS,
+		"mcpServerStatus/list" => PREFLIGHT_CHECK_MCP,
+		_ => "introspection",
+	}
+}
+
+fn run_command_exec_health_check(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
+	health_check: &CommandExecHealthCheck,
+) -> crate::prelude::Result<()> {
+	let params = build_command_exec_health_check_params(health_check, &request.cwd);
+	let response = client.command_exec(&params)?;
+
+	flush_pending_messages(client, recorder, None)?;
+
+	validate_command_exec_health_check_result(health_check, &response)
+}
+
+fn build_command_exec_health_check_params(
+	health_check: &CommandExecHealthCheck,
+	cwd: &str,
+) -> CommandExecParams {
+	CommandExecParams {
+		command: health_check.command.clone(),
+		cwd: Some(cwd.to_owned()),
+		timeout_ms: Some(health_check.timeout_ms),
+		output_bytes_cap: Some(health_check.output_bytes_cap),
+	}
+}
+
+fn validate_command_exec_health_check_result(
+	health_check: &CommandExecHealthCheck,
+	response: &CommandExecResponse,
+) -> crate::prelude::Result<()> {
+	if response.exit_code != 0 {
+		eyre::bail!(
+			"`command/exec` health check failed with exit code {}. stdout: {:?}; stderr: {:?}",
+			response.exit_code,
+			response.stdout,
+			response.stderr
+		);
+	}
+	if response.stdout != health_check.expected_stdout {
+		eyre::bail!(
+			"`command/exec` health check returned stdout {:?}, expected {:?}. stderr: {:?}",
+			response.stdout,
+			health_check.expected_stdout,
+			response.stderr
+		);
+	}
+	if !response.stderr.is_empty() {
+		eyre::bail!("`command/exec` health check wrote unexpected stderr: {:?}", response.stderr);
+	}
+
+	Ok(())
+}
+
+fn login_codex_account_for_run(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
+) -> crate::prelude::Result<()> {
+	let Some(account_provider) = request.codex_account_provider else {
+		return Ok(());
+	};
+	let account = account_provider.select_account()?;
+
+	recorder.set_codex_account(account.summary(), account.account_summaries())?;
+
+	record_codex_account_login(recorder, account.summary())?;
+
+	let response = client.login_account_with_handler(
+		login_account_params(&account),
+		|connection, wire_message, server_request| {
+			handle_server_request_while_waiting(
+				connection,
+				recorder,
+				wire_message,
+				server_request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::AccountLogin,
+					request.dynamic_tool_handler,
+					request.codex_account_provider,
+					None,
+					None,
+				),
+			)
+		},
+	)?;
+
+	match response {
+		LoginAccountResponse::ChatgptAuthTokens {} => {
+			recorder.record(
+				"account/login/start/response",
+				&serde_json::json!({
+					"type": "chatgptAuthTokens",
+					"accountFingerprint": account.summary().account_fingerprint.as_str(),
+					"planType": account.summary().plan_type.as_deref(),
+				})
+				.to_string(),
+			)?;
+		},
+	}
+
+	Ok(())
+}
+
+fn start_or_resume_thread_session(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
+) -> crate::prelude::Result<ThreadSessionResponse> {
+	if let Some(resume_thread_id) = request.resume_thread_id.as_deref() {
+		return resume_existing_thread_session(client, recorder, request, resume_thread_id);
+	}
+
+	start_fresh_thread_session(client, recorder, request)
+}
+
+fn start_fresh_thread_session(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
+) -> crate::prelude::Result<ThreadSessionResponse> {
+	let thread_start_request = build_thread_start_request(request)?;
+
+	client.start_thread_with_handler(
+		thread_start_request,
+		|connection, wire_message, server_request| {
+			handle_server_request_while_waiting(
+				connection,
+				recorder,
+				wire_message,
+				server_request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::ThreadStart,
+					request.dynamic_tool_handler,
+					request.codex_account_provider,
+					None,
+					None,
+				),
+			)
+		},
+	)
+}
+
+fn resume_existing_thread_session(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
+	resume_thread_id: &str,
+) -> crate::prelude::Result<ThreadSessionResponse> {
+	match client.resume_thread_with_handler(
+		build_thread_resume_request(resume_thread_id, request),
+		|connection, wire_message, server_request| {
+			handle_server_request_while_waiting(
+				connection,
+				recorder,
+				wire_message,
+				server_request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::ThreadResume,
+					request.dynamic_tool_handler,
+					request.codex_account_provider,
+					Some(resume_thread_id),
+					None,
+				),
+			)
+		},
+	) {
+		Ok(response) => Ok(response),
+		Err(error) if thread_resume_error_allows_fallback(&error) => {
+			recorder.record(
+				"thread/resume/miss",
+				&serde_json::json!({
+					"requestedThreadId": resume_thread_id,
+					"error": error.to_string(),
+				})
+				.to_string(),
+			)?;
+
+			start_fresh_thread_session(client, recorder, request)
+		},
+		Err(error) => Err(error),
+	}
+}
+
+fn record_thread_session_start(
+	state_store: &StateStore,
+	request: &AppServerRunRequest<'_>,
+	recorder: &mut RunRecorder<'_>,
+	thread_id: &str,
+	effective_thread_config: &EffectiveThreadConfig,
+) -> crate::prelude::Result<()> {
+	state_store.update_run_thread(&request.run_id, thread_id)?;
+	recorder.set_thread_id(thread_id)?;
+	recorder.set_effective_runtime(effective_thread_config)?;
+
+	validate_effective_thread_config(&request.cwd, effective_thread_config)?;
+
+	recorder.mark_activity()
+}
+
+fn execute_turn_loop(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
+	state_store: &StateStore,
+	thread_id: &str,
+) -> crate::prelude::Result<TurnLoopResult> {
+	let mut next_input = request.user_input.clone();
+	let mut turn_count = 0_u32;
+
+	loop {
+		let turn_id = start_turn_for_run(
+			client,
+			recorder,
+			request.dynamic_tool_handler,
+			request.codex_account_provider,
+			thread_id,
+			&next_input,
+		)?;
+
+		turn_count = turn_count.saturating_add(1);
+
+		state_store.update_run_turn(&request.run_id, &turn_id)?;
+		recorder.set_turn_id(&turn_id)?;
+
+		flush_pending_messages(client, recorder, Some(thread_id))?;
+
+		let final_output = wait_for_turn_completion(
+			client,
+			recorder,
+			thread_id,
+			&turn_id,
+			request.timeout,
+			request.dynamic_tool_handler,
+			request.codex_account_provider,
+		)?
+		.final_output;
+
+		if let Some(continuation_pending) =
+			resolve_turn_completion(request, turn_count, &final_output)?
+		{
+			return Ok(TurnLoopResult { turn_id, turn_count, final_output, continuation_pending });
+		}
+
+		next_input =
+			request.continuation_user_input.clone().unwrap_or_else(|| request.user_input.clone());
+	}
+}
+
+fn start_turn_for_run(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
+	codex_account_provider: Option<&dyn CodexAccountProvider>,
+	thread_id: &str,
+	next_input: &str,
+) -> crate::prelude::Result<String> {
+	let turn_response = client.start_turn_with_handler(
+		build_turn_start_request(thread_id, next_input),
+		|connection, wire_message, server_request| {
+			handle_server_request_while_waiting(
+				connection,
+				recorder,
+				wire_message,
+				server_request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::TurnStart,
+					dynamic_tool_handler,
+					codex_account_provider,
+					Some(thread_id),
+					None,
+				),
+			)
+		},
+	)?;
+
+	Ok(turn_response.turn.id)
+}
+
+fn resolve_turn_completion(
+	request: &AppServerRunRequest<'_>,
+	turn_count: u32,
+	final_output: &str,
+) -> crate::prelude::Result<Option<bool>> {
+	match classify_turn_completion(request.dynamic_tool_handler, final_output)? {
+		TurnCompletionStatus::Complete => Ok(Some(false)),
+		TurnCompletionStatus::Continue => {
+			if request.max_turns <= 1 {
+				reject_nonterminal_single_turn_completion(
+					request.dynamic_tool_handler,
+					final_output,
+				)?;
+			}
+			if turn_count >= request.max_turns {
+				return Ok(Some(true));
+			}
+			if continuation_boundary_reached(request.continuation_guard, turn_count)? {
+				return Ok(Some(true));
+			}
+
+			Ok(None)
+		},
+	}
+}
+
+fn build_thread_start_request(
+	request: &AppServerRunRequest<'_>,
+) -> crate::prelude::Result<ThreadStartRequest> {
+	let dynamic_tools =
+		request.dynamic_tool_handler.map(validated_dynamic_tool_specs).transpose()?;
+
+	Ok(ThreadStartRequest {
+		cwd: Some(request.cwd.clone()),
+		dynamic_tools,
+		developer_instructions: Some(request.developer_instructions.clone()),
+		..ThreadStartRequest::default()
+	})
+}
+
+fn validated_dynamic_tool_specs(
+	handler: &dyn DynamicToolHandler,
+) -> crate::prelude::Result<Vec<DynamicToolSpec>> {
+	let tool_specs = handler.tool_specs();
+
+	for spec in &tool_specs {
+		if !tracker_tool_bridge::dynamic_tool_identifier_is_valid(&spec.name) {
+			return Err(Report::new(AppServerDynamicToolFailure::protocol(
+				Some(spec.name.clone()),
+				format!(
+					"Dynamic tool name `{}` does not match the Codex app-server identifier pattern `^[a-zA-Z0-9_-]+$`.",
+					spec.name
+				),
+			)));
+		}
+
+		if let Some(namespace) = spec.namespace.as_deref()
+			&& !tracker_tool_bridge::dynamic_tool_identifier_is_valid(namespace)
+		{
+			return Err(Report::new(AppServerDynamicToolFailure::protocol(
+				Some(format!("{namespace}.{}", spec.name)),
+				format!(
+					"Dynamic tool namespace `{namespace}` does not match the Codex app-server identifier pattern `^[a-zA-Z0-9_-]+$`."
+				),
+			)));
+		}
+	}
+
+	Ok(tool_specs)
+}
+
+fn build_thread_resume_request(
+	resume_thread_id: &str,
+	request: &AppServerRunRequest<'_>,
+) -> ThreadResumeRequest {
+	ThreadResumeRequest {
+		thread_id: resume_thread_id.to_owned(),
+		cwd: Some(request.cwd.clone()),
+		developer_instructions: Some(request.developer_instructions.clone()),
+		..ThreadResumeRequest::default()
+	}
+}
+
+fn classify_turn_completion(
+	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
+	final_output: &str,
+) -> crate::prelude::Result<TurnCompletionStatus> {
+	if let Some(dynamic_tool_handler) = dynamic_tool_handler {
+		return dynamic_tool_handler.classify_turn_completion(final_output);
+	}
+
+	Ok(TurnCompletionStatus::Complete)
+}
+
+fn reject_nonterminal_single_turn_completion(
+	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
+	final_output: &str,
+) -> crate::prelude::Result<()> {
+	if let Some(dynamic_tool_handler) = dynamic_tool_handler {
+		dynamic_tool_handler.validate_turn_completion(final_output)?;
+	}
+
+	eyre::bail!(
+		"Turn completed without a terminal completion path while same-thread continuation is disabled."
+	);
+}
+
+fn continuation_boundary_reached(
+	continuation_guard: Option<&dyn TurnContinuationGuard>,
+	turn_count: u32,
+) -> crate::prelude::Result<bool> {
+	let Some(continuation_guard) = continuation_guard else {
+		return Ok(false);
+	};
+
+	if continuation_guard.should_continue_turn(turn_count)? {
+		return Ok(false);
+	}
+
+	continuation_guard.validate_continuation_boundary(turn_count)?;
+
+	Ok(true)
+}
+
+fn build_turn_start_request(thread_id: &str, user_input: &str) -> TurnStartRequest {
+	TurnStartRequest {
+		thread_id: thread_id.to_owned(),
+		input: vec![UserInput::Text { text: user_input.to_owned() }],
+		..TurnStartRequest::default()
+	}
+}
+
+fn login_account_params(account: &CodexAccountLogin) -> LoginAccountParams {
+	LoginAccountParams::ChatgptAuthTokens {
+		access_token: account.access_token().to_owned(),
+		chatgpt_account_id: account.account_id().to_owned(),
+		chatgpt_plan_type: account.plan_type().map(str::to_owned),
+	}
+}
+
+fn record_codex_account_login(
+	recorder: &mut RunRecorder<'_>,
+	summary: &CodexAccountActivitySummary,
+) -> crate::prelude::Result<()> {
+	recorder.record(
+		"account/login/start",
+		&serde_json::json!({
+			"type": "chatgptAuthTokens",
+			"accountFingerprint": summary.account_fingerprint.as_str(),
+			"planType": summary.plan_type.as_deref(),
+			"status": summary.status.as_str(),
+			"refreshStatus": summary.refresh_status.as_str(),
+			"primaryRemainingPercent": summary.primary_remaining_percent,
+			"secondaryRemainingPercent": summary.secondary_remaining_percent,
+			"rateLimitReachedType": summary.rate_limit_reached_type.as_deref(),
+		})
+		.to_string(),
+	)
+}
+
+fn flush_pending_messages(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	target_thread_id: Option<&str>,
+) -> crate::prelude::Result<()> {
+	for message in client.drain_pending() {
+		if targets_thread(&message, target_thread_id) {
+			recorder.record(message_type(&message), &message.raw)?;
+
+			apply_protocol_message_side_effects(recorder, &message)?;
+		}
+	}
+
+	Ok(())
+}
+
+fn wait_for_turn_completion(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	target_thread_id: &str,
+	target_turn_id: &str,
+	timeout: Duration,
+	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
+	codex_account_provider: Option<&dyn CodexAccountProvider>,
+) -> crate::prelude::Result<RunOutcome> {
+	let mut last_activity_at = Instant::now();
+	let mut final_output = String::new();
+	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
+
+	loop {
+		let now = Instant::now();
+		let Some(wait_timeout) = remaining_idle_budget(last_activity_at, now, timeout) else {
+			return Err(turn_wait_timeout_error(
+				target_thread_id,
+				target_turn_id,
+				latest_turn_failure,
+			));
+		};
+		let wire_message =
+			recv_turn_wire_message(client, wait_timeout, latest_turn_failure.as_ref())?;
+
+		if !targets_thread(&wire_message, Some(target_thread_id)) {
+			tracing::debug!(raw = %wire_message.raw, "Ignoring app-server message for another thread.");
+
+			continue;
+		}
+
+		last_activity_at = Instant::now();
+
+		recorder.record(message_type(&wire_message), &wire_message.raw)?;
+
+		apply_protocol_message_side_effects(recorder, &wire_message)?;
+
+		match &wire_message.message {
+			JsonRpcMessage::Notification(notification) => match notification.method.as_str() {
+				"thread/status/changed" => {
+					let payload: ThreadStatusChangedNotification =
+						serde_json::from_value(notification.params.clone())?;
+
+					if payload.status.kind == "systemError" && latest_turn_failure.is_none() {
+						latest_turn_failure =
+							Some(AppServerTurnFailure::from_system_error(&payload.thread_id));
+					}
+				},
+				"error" => {
+					if let Some((failure, will_retry)) = failure_from_error_notification(
+						notification,
+						target_thread_id,
+						target_turn_id,
+					)? {
+						if failure.requires_operator_attention() && will_retry != Some(true) {
+							return Err(Report::new(failure));
+						}
+
+						latest_turn_failure = Some(failure);
+					}
+				},
+				"item/agentMessage/delta" => {
+					let payload: AgentMessageDeltaNotification =
+						serde_json::from_value(notification.params.clone())?;
+
+					final_output.push_str(&payload.delta);
+				},
+				"item/completed" => {
+					let payload: ItemCompletedNotification =
+						serde_json::from_value(notification.params.clone())?;
+
+					if payload.item.kind == "agentMessage"
+						&& let Some(text) = payload.item.text
+					{
+						final_output = text;
+					}
+				},
+				"turn/completed" => {
+					let payload: TurnCompletedNotification =
+						serde_json::from_value(notification.params.clone())?;
+
+					if payload.turn.id != target_turn_id {
+						continue;
+					}
+					if payload.turn.status == "completed" {
+						return Ok(RunOutcome { final_output });
+					}
+
+					if let Some(error) = payload.turn.error.as_ref() {
+						return Err(Report::new(turn_failure_from_turn_error(
+							target_thread_id,
+							Some(&payload.turn.id),
+							&payload.turn.status,
+							error,
+						)));
+					}
+					if let Some(failure) = latest_turn_failure {
+						return Err(Report::new(failure));
+					}
+
+					eyre::bail!(
+						"Turn `{}` ended with status `{}` without an explicit error payload.",
+						payload.turn.id,
+						payload.turn.status
+					);
+				},
+				_ => {},
+			},
+			JsonRpcMessage::Request(request) => handle_server_request_during_turn_execution(
+				client,
+				recorder,
+				request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::TurnExecution,
+					dynamic_tool_handler,
+					codex_account_provider,
+					Some(target_thread_id),
+					Some(target_turn_id),
+				),
+			)?,
+			JsonRpcMessage::Response(_) | JsonRpcMessage::Error(_) => {
+				eyre::bail!(
+					"Received an unexpected JSON-RPC response while waiting for turn completion."
+				);
+			},
+		}
+	}
+}
+
+fn turn_wait_timeout_error(
+	target_thread_id: &str,
+	target_turn_id: &str,
+	latest_turn_failure: Option<AppServerTurnFailure>,
+) -> Report {
+	let message = format!(
+		"Timed out while waiting for turn `{target_turn_id}` on thread `{target_thread_id}`."
+	);
+
+	if let Some(failure) = latest_turn_failure {
+		return Report::new(failure).wrap_err(message);
+	}
+
+	eyre::eyre!(message)
+}
+
+fn recv_turn_wire_message(
+	client: &mut AppServerClient,
+	wait_timeout: Duration,
+	latest_turn_failure: Option<&AppServerTurnFailure>,
+) -> crate::prelude::Result<WireMessage> {
+	match client.recv(Some(wait_timeout)) {
+		Ok(wire_message) => Ok(wire_message),
+		Err(error) => {
+			if error.downcast_ref::<AppServerOutputTimeout>().is_some()
+				&& let Some(failure) = latest_turn_failure
+			{
+				return Err(Report::new(failure.clone())
+					.wrap_err("Timed out while waiting for additional app-server output."));
+			}
+
+			Err(error)
+		},
+	}
+}
+
+fn failure_from_error_notification(
+	notification: &JsonRpcNotification,
+	target_thread_id: &str,
+	target_turn_id: &str,
+) -> crate::prelude::Result<Option<(AppServerTurnFailure, Option<bool>)>> {
+	let payload: ErrorNotification = serde_json::from_value(notification.params.clone())?;
+	let payload_turn_matches =
+		payload.turn_id.as_deref().is_none_or(|turn_id| turn_id == target_turn_id);
+	let payload_thread_matches =
+		payload.thread_id.as_deref().is_none_or(|thread_id| thread_id == target_thread_id);
+
+	if !payload_thread_matches || !payload_turn_matches {
+		return Ok(None);
+	}
+
+	let failure = turn_failure_from_turn_error(
+		target_thread_id,
+		payload.turn_id.as_deref(),
+		"failed",
+		&payload.error,
+	);
+
+	Ok(Some((failure, payload.will_retry)))
+}
+
+fn turn_failure_from_turn_error(
+	thread_id: &str,
+	turn_id: Option<&str>,
+	status: &str,
+	error: &TurnError,
+) -> AppServerTurnFailure {
+	AppServerTurnFailure::new(
+		thread_id,
+		turn_id.map(str::to_owned),
+		status,
+		error.message.clone(),
+		error.codex_error_info.clone(),
+	)
+}
+
+fn remaining_idle_budget(
+	last_activity_at: Instant,
+	now: Instant,
+	timeout: Duration,
+) -> Option<Duration> {
+	timeout.checked_sub(now.saturating_duration_since(last_activity_at))
+}
+
+fn handle_server_request_while_waiting(
+	connection: &mut JsonRpcConnection,
+	recorder: &mut RunRecorder<'_>,
+	wire_message: &WireMessage,
+	request: &JsonRpcRequest,
+	context: RequestDispatchContext<'_>,
+) -> crate::prelude::Result<()> {
+	if targets_thread(wire_message, context.target_thread_id) {
+		record_wire_message_safely(recorder, wire_message)?;
+		record_interactive_request_state(recorder, request)?;
+	} else if request.method == "account/chatgptAuthTokens/refresh" {
+		record_codex_account_refresh_request(recorder, request)?;
+	}
+
+	dispatch_server_request(connection, recorder, request, context)
+}
+
+fn handle_server_request_during_turn_execution(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	context: RequestDispatchContext<'_>,
+) -> crate::prelude::Result<()> {
+	record_server_request_safely(recorder, request)?;
+	record_interactive_request_state(recorder, request)?;
+
+	dispatch_server_request(&mut client.connection, recorder, request, context)
+}
+
+fn dispatch_server_request(
+	connection: &mut JsonRpcConnection,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	context: RequestDispatchContext<'_>,
+) -> crate::prelude::Result<()> {
+	match request.method.as_str() {
+		"item/tool/call" if context.phase == RequestWaitPhase::TurnExecution =>
+			dispatch_dynamic_tool_call(connection, recorder, request, context),
+		"account/chatgptAuthTokens/refresh" =>
+			dispatch_codex_account_refresh(connection, recorder, request, context),
+		"item/tool/call" => respond_to_dynamic_tool_call_dispatch(
+			connection,
+			recorder,
+			request,
+			dynamic_tool_call_unavailable_for_phase(context.phase),
+		),
+		"item/commandExecution/requestApproval" => reject_interactive_server_request(
+			connection,
+			recorder,
+			request,
+			context.phase,
+			"item/commandExecution/requestApproval/response",
+			&CommandExecutionRequestApprovalResponse {
+				decision: CommandExecutionApprovalDecision::Decline,
+			},
+		),
+		"item/fileChange/requestApproval" => reject_interactive_server_request(
+			connection,
+			recorder,
+			request,
+			context.phase,
+			"item/fileChange/requestApproval/response",
+			&FileChangeRequestApprovalResponse { decision: FileChangeApprovalDecision::Decline },
+		),
+		"item/tool/requestUserInput" => reject_interactive_server_request(
+			connection,
+			recorder,
+			request,
+			context.phase,
+			"item/tool/requestUserInput/response",
+			&ToolRequestUserInputResponse::default(),
+		),
+		"item/permissions/requestApproval" => reject_interactive_server_request(
+			connection,
+			recorder,
+			request,
+			context.phase,
+			"item/permissions/requestApproval/response",
+			&PermissionsRequestApprovalResponse {
+				permissions: Default::default(),
+				scope: PermissionGrantScope::Turn,
+			},
+		),
+		"mcpServer/elicitation/request" => reject_interactive_server_request(
+			connection,
+			recorder,
+			request,
+			context.phase,
+			"mcpServer/elicitation/request/response",
+			&McpServerElicitationRequestResponse {
+				action: McpServerElicitationAction::Decline,
+				content: None,
+				meta: None,
+			},
+		),
+		other =>
+			reject_unsupported_server_request(connection, recorder, request, context.phase, other),
+	}
+}
+
+fn record_server_request(
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+) -> crate::prelude::Result<()> {
+	recorder.record(
+		request.method.as_str(),
+		&serde_json::json!({
+			"id": request.id.clone(),
+			"method": request.method.clone(),
+			"params": request.params.clone(),
+		})
+		.to_string(),
+	)
+}
+
+fn record_server_request_safely(
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+) -> crate::prelude::Result<()> {
+	if request.method == "account/chatgptAuthTokens/refresh" {
+		return record_codex_account_refresh_request(recorder, request);
+	}
+
+	record_server_request(recorder, request)
+}
+
+fn record_wire_message_safely(
+	recorder: &mut RunRecorder<'_>,
+	wire_message: &WireMessage,
+) -> crate::prelude::Result<()> {
+	match &wire_message.message {
+		JsonRpcMessage::Request(request)
+			if request.method == "account/chatgptAuthTokens/refresh" =>
+			record_codex_account_refresh_request(recorder, request),
+		_ => recorder.record(message_type(wire_message), &wire_message.raw),
+	}
+}
+
+fn record_codex_account_refresh_request(
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+) -> crate::prelude::Result<()> {
+	let params = serde_json::from_value::<ChatgptAuthTokensRefreshParams>(request.params.clone())
+		.unwrap_or(ChatgptAuthTokensRefreshParams { reason: None, previous_account_id: None });
+
+	recorder.record(
+		"account/chatgptAuthTokens/refresh",
+		&serde_json::json!({
+			"id": request.id.clone(),
+			"method": request.method.as_str(),
+			"reason": params.reason.as_deref(),
+			"previousAccountFingerprint": params.previous_account_id.as_deref().map(redact_identifier),
+		})
+		.to_string(),
+	)
+}
+
+fn dispatch_codex_account_refresh(
+	connection: &mut JsonRpcConnection,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	context: RequestDispatchContext<'_>,
+) -> crate::prelude::Result<()> {
+	let account_provider = context.codex_account_provider.ok_or_else(|| {
+		eyre::eyre!(
+			"app_server_protocol_failure: received `account/chatgptAuthTokens/refresh` without a configured Codex account provider."
+		)
+	})?;
+	let params = serde_json::from_value::<ChatgptAuthTokensRefreshParams>(request.params.clone())?;
+	let account = account_provider.refresh_account(params.previous_account_id.as_deref())?;
+	let response = ChatgptAuthTokensRefreshResponse {
+		access_token: account.access_token().to_owned(),
+		chatgpt_account_id: account.account_id().to_owned(),
+		chatgpt_plan_type: account.plan_type().map(str::to_owned),
+	};
+
+	recorder.set_codex_account(account.summary(), account.account_summaries())?;
+	connection.respond(&request.id, &response)?;
+
+	recorder.record(
+		"account/chatgptAuthTokens/refresh/response",
+		&serde_json::json!({
+			"type": "chatgptAuthTokens",
+			"accountFingerprint": account.summary().account_fingerprint.as_str(),
+			"planType": account.summary().plan_type.as_deref(),
+			"refreshStatus": account.summary().refresh_status.as_str(),
+			"primaryRemainingPercent": account.summary().primary_remaining_percent,
+			"secondaryRemainingPercent": account.summary().secondary_remaining_percent,
+		})
+		.to_string(),
+	)
+}
+
+fn dispatch_dynamic_tool_call(
+	connection: &mut JsonRpcConnection,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	context: RequestDispatchContext<'_>,
+) -> crate::prelude::Result<()> {
+	let target_turn_id = context.target_turn_id.ok_or_else(|| {
+		eyre::eyre!("app_server_protocol_failure: turn execution request missing turn context")
+	})?;
+	let target_thread_id = context.target_thread_id.ok_or_else(|| {
+		eyre::eyre!("app_server_protocol_failure: turn execution request missing thread context")
+	})?;
+	let dispatch = handle_dynamic_tool_call(
+		context.dynamic_tool_handler,
+		request,
+		target_thread_id,
+		target_turn_id,
+	);
+
+	respond_to_dynamic_tool_call_dispatch(connection, recorder, request, dispatch)
+}
+
+fn dynamic_tool_call_unavailable_for_phase(phase: RequestWaitPhase) -> DynamicToolCallDispatch {
+	DynamicToolCallDispatch::protocol_failure(
+		None,
+		None,
+		format!("Dynamic tool calls are unavailable while waiting for {}.", phase.label()),
+	)
+}
+
+fn respond_to_dynamic_tool_call_dispatch(
+	connection: &mut JsonRpcConnection,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	dispatch: DynamicToolCallDispatch,
+) -> crate::prelude::Result<()> {
+	record_server_request_response(
+		connection,
+		recorder,
+		request,
+		"item/tool/call/response",
+		&dispatch.response,
+	)?;
+
+	if let Some(diagnostic) = dispatch.diagnostic.as_ref() {
+		tracing::warn!(
+			failure_class = diagnostic.failure_class,
+			tool = diagnostic.tool.as_deref().unwrap_or("unknown"),
+			next_action = diagnostic.next_action,
+			message = diagnostic.message,
+			"Dynamic tool call failed."
+		);
+
+		recorder.record("item/tool/call/failure", &serde_json::to_string(diagnostic)?)?;
+	}
+	if let Some(terminal_failure) = dispatch.terminal_failure {
+		return Err(Report::new(terminal_failure));
+	}
+
+	Ok(())
+}
+
+fn reject_unsupported_server_request(
+	connection: &mut JsonRpcConnection,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	phase: RequestWaitPhase,
+	method: &str,
+) -> crate::prelude::Result<()> {
+	let message = format!("unsupported non-interactive server request `{method}`");
+
+	connection.respond_error(&request.id, JSONRPC_METHOD_NOT_FOUND, &message)?;
+	recorder.record(
+		"json-rpc/error/response",
+		&serde_json::json!({
+			"code": JSONRPC_METHOD_NOT_FOUND,
+			"message": message,
+		})
+		.to_string(),
+	)?;
+
+	eyre::bail!(
+		"app_server_protocol_failure: unsupported server request `{method}` while waiting for {}.",
+		phase.label()
+	);
+}
+
+fn record_server_request_response<T>(
+	connection: &mut JsonRpcConnection,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	event_type: &str,
+	response: &T,
+) -> crate::prelude::Result<()>
+where
+	T: Serialize,
+{
+	connection.respond(&request.id, response)?;
+
+	recorder.record(event_type, &serde_json::to_string(response)?)
+}
+
+fn reject_interactive_server_request<T>(
+	connection: &mut JsonRpcConnection,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	phase: RequestWaitPhase,
+	event_type: &str,
+	response: &T,
+) -> crate::prelude::Result<()>
+where
+	T: Serialize,
+{
+	record_server_request_response(connection, recorder, request, event_type, response)?;
+
+	Err(noninteractive_interaction_required(request.method.as_str(), phase))
+}
+
+fn noninteractive_interaction_required(method: &str, phase: RequestWaitPhase) -> Report {
+	eyre::eyre!(
+		"noninteractive_interaction_required: server request `{method}` requires interactive handling during {}.",
+		phase.label()
+	)
+}
+
+fn record_interactive_request_state(
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+) -> crate::prelude::Result<()> {
+	let Some(flag) = interactive_flag_for_request(request.method.as_str()) else {
+		return Ok(());
+	};
+
+	if let Some(thread_id) = thread_id_from_value(&request.params) {
+		recorder.set_thread_id(thread_id)?;
+	}
+	if let Some(turn_id) = turn_id_from_value(&request.params) {
+		recorder.set_turn_id(turn_id)?;
+	}
+
+	recorder.set_thread_status("active", &[flag.to_owned()])
+}
+
+fn interactive_flag_for_request(method: &str) -> Option<&'static str> {
+	match method {
+		"item/tool/requestUserInput" => Some("waitingOnUserInput"),
+		"item/commandExecution/requestApproval"
+		| "item/fileChange/requestApproval"
+		| "item/permissions/requestApproval"
+		| "mcpServer/elicitation/request" => Some("waitingOnApproval"),
+		_ => None,
+	}
+}
+
+fn apply_protocol_message_side_effects(
+	recorder: &mut RunRecorder<'_>,
+	message: &WireMessage,
+) -> crate::prelude::Result<()> {
+	match &message.message {
+		JsonRpcMessage::Notification(notification)
+			if notification.method == "thread/status/changed" =>
+		{
+			let payload: ThreadStatusChangedNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			if recorder.thread_id.is_none() {
+				recorder.set_thread_id(&payload.thread_id)?;
+			}
+
+			recorder.set_thread_status(&payload.status.kind, &payload.status.active_flags)?;
+		},
+		_ => {},
+	}
+
+	Ok(())
+}
+
+fn validate_effective_thread_config(
+	cwd: &str,
+	runtime: &EffectiveThreadConfig,
+) -> crate::prelude::Result<()> {
+	if runtime.cwd != cwd {
+		eyre::bail!(
+			"app_server_protocol_failure: effective cwd `{}` did not match requested worktree `{cwd}`.",
+			runtime.cwd
+		);
+	}
+	if runtime.approval_policy != "never" {
+		eyre::bail!(
+			"app_server_protocol_failure: effective approval policy `{}` is interactive; Decodex requires `never`.",
+			runtime.approval_policy
+		);
+	}
+	if runtime.sandbox_mode == "readOnly" {
+		eyre::bail!(
+			"app_server_protocol_failure: effective sandbox mode `readOnly` does not allow Decodex execution."
+		);
+	}
+
+	Ok(())
+}
+
+fn validate_initialize_codex_home(
+	expected: &ResolvedAppServerCodexHomeEnv,
+	response: &InitializeResponse,
+) -> crate::prelude::Result<()> {
+	let expected_home = normalized_home_path(expected.codex_home());
+	let resolved_home = normalized_home_path(Path::new(&response.codex_home));
+
+	if resolved_home != expected_home {
+		tracing::warn!(
+			expected_codex_home = %expected.codex_home().display(),
+			resolved_codex_home = %response.codex_home,
+			"Codex app-server resolved an unexpected Codex home."
+		);
+
+		return Err(Report::new(AppServerHomePreflightFailure::initialize_mismatch(
+			response.codex_home.clone(),
+			expected.codex_home().display().to_string(),
+		)));
+	}
+
+	Ok(())
+}
+
+fn normalized_home_path(path: &Path) -> PathBuf {
+	path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn thread_resume_error_allows_fallback(error: &Report) -> bool {
+	let message = error.to_string().to_lowercase();
+
+	message.contains("no rollout found for thread id")
+		|| message.contains("thread not found")
+		|| message.contains("failed to load rollout")
+}
+
+fn handle_dynamic_tool_call(
+	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
+	request: &JsonRpcRequest,
+	target_thread_id: &str,
+	target_turn_id: &str,
+) -> DynamicToolCallDispatch {
+	let payload =
+		match validated_dynamic_tool_call_payload(request, target_thread_id, target_turn_id) {
+			Ok(payload) => payload,
+			Err(dispatch) => return *dispatch,
+		};
+	let Some(dynamic_tool_handler) = dynamic_tool_handler else {
+		return DynamicToolCallDispatch::protocol_failure(
+			Some(payload.tool),
+			payload.namespace,
+			String::from("Dynamic tool bridge is unavailable for this run attempt."),
+		);
+	};
+	let tool_specs = dynamic_tool_handler.tool_specs();
+	let spec_matches_namespace = tool_specs.iter().any(|spec| {
+		spec.name == payload.tool && spec.namespace.as_deref() == payload.namespace.as_deref()
+	});
+
+	if !spec_matches_namespace {
+		let message = match payload.namespace.as_deref() {
+			Some(namespace) => format!(
+				"Dynamic tool `{}` was called under namespace `{namespace}`, but this run did not declare that tool namespace.",
+				payload.tool
+			),
+			None =>
+				format!("Dynamic tool `{}` is not declared for this run attempt.", payload.tool),
+		};
+
+		return DynamicToolCallDispatch::protocol_failure(
+			Some(payload.tool),
+			payload.namespace,
+			message,
+		);
+	}
+
+	let response = dynamic_tool_handler.handle_call_with_namespace(
+		payload.namespace.as_deref(),
+		&payload.tool,
+		payload.arguments,
+	);
+
+	if let Err(message) = validate_dynamic_tool_call_response(&response) {
+		return DynamicToolCallDispatch::protocol_failure(
+			Some(payload.tool),
+			payload.namespace,
+			message,
+		);
+	}
+
+	if !response.success {
+		return DynamicToolCallDispatch::tool_failure(
+			response,
+			Some(payload.tool),
+			payload.namespace,
+		);
+	}
+
+	DynamicToolCallDispatch::success(response)
+}
+
+fn validated_dynamic_tool_call_payload(
+	request: &JsonRpcRequest,
+	target_thread_id: &str,
+	target_turn_id: &str,
+) -> std::result::Result<DynamicToolCallParams, Box<DynamicToolCallDispatch>> {
+	let payload = serde_json::from_value::<DynamicToolCallParams>(request.params.clone()).map_err(
+		|error| {
+			Box::new(DynamicToolCallDispatch::protocol_failure(
+				None,
+				None,
+				format!("Invalid `item/tool/call` payload: {error}"),
+			))
+		},
+	)?;
+
+	if payload.call_id.trim().is_empty() {
+		return Err(Box::new(DynamicToolCallDispatch::protocol_failure(
+			Some(payload.tool),
+			payload.namespace,
+			String::from("Dynamic tool call payload included an empty `callId`."),
+		)));
+	}
+	if !tracker_tool_bridge::dynamic_tool_identifier_is_valid(&payload.tool) {
+		return Err(Box::new(DynamicToolCallDispatch::protocol_failure(
+			Some(payload.tool),
+			payload.namespace,
+			String::from(
+				"Dynamic tool call payload included a tool name outside the Codex app-server identifier pattern `^[a-zA-Z0-9_-]+$`.",
+			),
+		)));
+	}
+
+	if let Some(namespace) = payload.namespace.as_deref()
+		&& !tracker_tool_bridge::dynamic_tool_identifier_is_valid(namespace)
+	{
+		return Err(Box::new(DynamicToolCallDispatch::protocol_failure(
+			Some(payload.tool),
+			payload.namespace,
+			String::from(
+				"Dynamic tool call payload included a namespace outside the Codex app-server identifier pattern `^[a-zA-Z0-9_-]+$`.",
+			),
+		)));
+	}
+
+	if payload.thread_id != target_thread_id {
+		return Err(Box::new(DynamicToolCallDispatch::protocol_failure(
+			Some(payload.tool),
+			payload.namespace,
+			format!(
+				"Dynamic tool call targeted thread `{}`, but the active thread is `{target_thread_id}`.",
+				payload.thread_id
+			),
+		)));
+	}
+	if payload.turn_id != target_turn_id {
+		return Err(Box::new(DynamicToolCallDispatch::protocol_failure(
+			Some(payload.tool),
+			payload.namespace,
+			format!(
+				"Dynamic tool call targeted turn `{}`, but the active turn is `{target_turn_id}`.",
+				payload.turn_id
+			),
+		)));
+	}
+
+	Ok(payload)
+}
+
+fn validate_dynamic_tool_call_response(response: &DynamicToolCallResponse) -> Result<(), String> {
+	if response.content_items.is_empty() {
+		return Err(String::from(
+			"Dynamic tool handler returned an invalid response with no `contentItems`.",
+		));
+	}
+
+	Ok(())
+}
+
+fn dynamic_tool_response_text(response: &DynamicToolCallResponse) -> String {
+	let text_items = response
+		.content_items
+		.iter()
+		.map(|item| match item {
+			DynamicToolContentItem::InputText { text } => text.trim(),
+		})
+		.filter(|text| !text.is_empty())
+		.collect::<Vec<_>>();
+
+	if text_items.is_empty() {
+		String::from("Dynamic tool call failed without a text response.")
+	} else {
+		text_items.join("\n")
+	}
+}
+
+fn message_type(message: &WireMessage) -> &str {
+	match &message.message {
+		JsonRpcMessage::Notification(notification) => notification.method.as_str(),
+		JsonRpcMessage::Request(request) => request.method.as_str(),
+		JsonRpcMessage::Response(_) => "json-rpc/response",
+		JsonRpcMessage::Error(_) => "json-rpc/error",
+	}
+}
+
+fn targets_thread(message: &WireMessage, target_thread_id: Option<&str>) -> bool {
+	let Some(target_thread_id) = target_thread_id else {
+		return true;
+	};
+
+	match &message.message {
+		JsonRpcMessage::Notification(notification) => thread_id_from_notification(notification)
+			.is_none_or(|thread_id| thread_id == target_thread_id),
+		JsonRpcMessage::Request(request) => thread_id_from_value(&request.params)
+			.is_none_or(|thread_id| thread_id == target_thread_id),
+		JsonRpcMessage::Response(_) | JsonRpcMessage::Error(_) => true,
+	}
+}
+
+fn thread_id_from_notification(notification: &JsonRpcNotification) -> Option<&str> {
+	thread_id_from_value(&notification.params)
+}
+
+fn thread_id_from_value(value: &Value) -> Option<&str> {
+	value
+		.get("threadId")
+		.and_then(Value::as_str)
+		.or_else(|| value.get("thread").and_then(|thread| thread.get("id")).and_then(Value::as_str))
+}
+
+fn turn_id_from_value(value: &Value) -> Option<&str> {
+	value
+		.get("turnId")
+		.and_then(Value::as_str)
+		.or_else(|| value.get("turn").and_then(|turn| turn.get("id")).and_then(Value::as_str))
+}
+
+#[cfg(test)] mod tests;

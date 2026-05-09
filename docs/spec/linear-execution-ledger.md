@@ -1,0 +1,288 @@
+# Linear Execution Ledger
+
+Purpose: Define the versioned Linear comment records that mirror coarse Decodex lane
+transitions for team visibility.
+Status: normative
+Read this when: You are implementing, reviewing, or consuming structured Linear
+comments for Decodex team-visible lifecycle summaries.
+Not this document: The local runtime state machine, operator status snapshot shape,
+runtime SQLite schema, GitHub review orchestration, or repository validation gate.
+Defines: The Linear execution event record envelope, event types, required and
+optional fields, idempotency rules, retention expectations, and the boundary between
+Linear comments, the Decodex runtime database, and short-lived heartbeat markers.
+
+## Authority and scope
+
+- Linear comments are the team-visible mirror for low-frequency Decodex lane
+  transitions.
+- Each ledger record is one Linear issue comment that contains one structured event.
+- Ledger records describe durable transitions and handoff points, not high-frequency
+  runtime telemetry.
+- The ledger is append-only for normal operation. New facts use new event records
+  instead of mutating earlier records.
+- The schema in this document is the only authoritative schema for Decodex Linear
+  execution event records.
+- Fine-grained runtime truth lives in the Decodex runtime SQLite database and operator
+  snapshots. Decodex must not rebuild active runtime state from Linear comments on
+  every poll tick.
+- Runtime behavior remains governed by [`runtime.md`](./runtime.md),
+  [`post-review-lifecycle.md`](./post-review-lifecycle.md), and
+  [`tracker-tools.md`](./tracker-tools.md). Those documents define when events may be
+  written; this document defines what the records look like.
+
+## Comment body format
+
+A Linear execution event comment must contain exactly one fenced JSON object whose
+payload conforms to this schema. Human-readable text may surround the JSON block, but
+the JSON object is the authoritative record.
+
+Recommended shape:
+
+````text
+Decodex execution event: review_handoff
+
+```json
+{
+  "record_type": "decodex.linear_execution_event",
+  "record_version": 1,
+  "event_type": "review_handoff",
+  "event_timestamp": "2026-04-29T10:15:30Z",
+  "idempotency_key": "decodex:XY-352:xy-352-attempt-1-1777430188:1:review_handoff:6f3d2a9",
+  "service_id": "decodex",
+  "issue_id": "a1b2c3d4",
+  "issue_identifier": "XY-352",
+  "run_id": "xy-352-attempt-1-1777430188",
+  "attempt_number": 1,
+  "branch": "y/decodex-xy-352",
+  "worktree_path": ".worktrees/XY-352",
+  "pr_url": "https://github.com/hack-ink/decodex/pull/123",
+  "pr_head_sha": "0123456789abcdef0123456789abcdef01234567",
+  "pr_base_ref": "main",
+  "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+  "summary": "Documented the Linear execution ledger contract."
+}
+```
+````
+
+Consumers must ignore prose outside the fenced JSON object except for display.
+Producers must not put secrets, access tokens, absolute host paths, or local user names
+in ledger records.
+
+## Record envelope
+
+All field names are snake_case.
+
+| Field | Required | Type | Rule |
+| --- | --- | --- | --- |
+| `record_type` | yes | string | Must equal `decodex.linear_execution_event`. |
+| `record_version` | yes | integer | Must equal `1` for this schema. |
+| `event_type` | yes | string | Must be one of the event types in this document. |
+| `event_timestamp` | yes | string | RFC 3339 timestamp in UTC, recorded when the event happened. |
+| `idempotency_key` | yes | string | Stable key used to collapse duplicate records for the same event. |
+| `service_id` | yes | string | The registered project config `service_id` that owns the lane. |
+| `issue_id` | yes | string | The tracker issue id used by Linear APIs and local leases. |
+| `issue_identifier` | yes | string | The human-visible Linear identifier such as `XY-352`. |
+| `run_id` | yes | string | The Decodex run id for this attempt. |
+| `attempt_number` | yes | integer | The 1-based attempt number for `run_id`. |
+
+Ledger records are run-bound. If Decodex detects a candidate issue before it has a
+`run_id` and `attempt_number`, that pre-run observation is not a Linear execution
+ledger record.
+
+## Shared optional fields
+
+These fields are optional globally and become required for specific event types below.
+
+| Field | Type | Rule |
+| --- | --- | --- |
+| `branch` | string | Lane branch name when the branch exists or is the event subject. |
+| `worktree_path` | string | Repository-relative lane path when a worktree exists or is the event subject. Absolute paths are invalid. |
+| `commit_sha` | string | Git commit SHA when the event is tied to a source revision, merge commit, or validated head. |
+| `pr_url` | string | GitHub pull request URL when a PR exists or is the event subject. |
+| `pr_head_sha` | string | PR head commit SHA when a PR exists or is the event subject. |
+| `pr_base_ref` | string | PR base ref name when a PR exists or is the event subject. |
+| `summary` | string | Short human-readable summary of the event. |
+| `validation_result` | string | Repo-gate or PR validation result when validation is the event subject. |
+| `phase` | string | Execution-state phase for progress checkpoint records. |
+| `focus` | string | Current execution-state focus for progress checkpoint records. |
+| `next_action` | string | Next execution action for progress checkpoint or failure records. |
+| `blockers` | array of strings | Concrete blockers, empty when none are present. |
+| `evidence` | array of strings | Short factual evidence items. |
+| `verification` | array of strings | Verification commands or checks already run. |
+| `error_class` | string | Normalized failure class for needs-attention or terminal-failure records. |
+| `terminal_path` | string | Explicit terminal path such as `review_handoff`, `review_repair`, or `manual_attention`. |
+| `cleanup_status` | string | Cleanup result when cleanup is the event subject. |
+| `transport` | string | Agent transport name when agent startup is the event subject. |
+| `target_state` | string | Tracker workflow state written by closeout or failure handling. |
+| `failed_command` | string | Command that failed when a failure record is command-related. |
+| `raw_error` | string | Short raw error text when it is needed to make a failure actionable. |
+
+Optional fields must be omitted when unknown. Producers must not emit placeholder values
+such as `unknown`, `n/a`, or empty strings for fields that are not known. Fields not
+defined in this document are invalid for `record_version = 1`.
+
+## Event types
+
+The event type set is intentionally small and low-frequency:
+
+- `intake`
+- `lease_acquired`
+- `worktree_prepared`
+- `agent_started`
+- `progress_checkpoint`
+- `pr_opened`
+- `pr_updated`
+- `review_handoff`
+- `repair_handoff`
+- `landed`
+- `closeout`
+- `needs_attention`
+- `terminal_failure`
+- `cleanup_complete`
+
+No other `event_type` value is valid for `record_version = 1`.
+
+## Event-specific fields
+
+Every event requires the record envelope. Additional required fields are listed below.
+
+| Event type | Additional required fields | Common optional fields |
+| --- | --- | --- |
+| `intake` | `summary` | `branch`, `worktree_path` |
+| `lease_acquired` | `branch` | `worktree_path`, `summary` |
+| `worktree_prepared` | `branch`, `worktree_path`, `commit_sha` | `summary` |
+| `agent_started` | `branch`, `worktree_path` | `transport`, `summary` |
+| `progress_checkpoint` | `phase`, `focus`, `next_action`, `blockers`, `evidence` | `branch`, `worktree_path`, `commit_sha`, `pr_url`, `verification`, `summary` |
+| `pr_opened` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
+| `pr_updated` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
+| `review_handoff` | `branch`, `worktree_path`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `terminal_path` | `verification` |
+| `repair_handoff` | `branch`, `worktree_path`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `terminal_path` | `verification` |
+| `landed` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `summary` | `worktree_path` |
+| `closeout` | `pr_url`, `commit_sha`, `summary` | `branch`, `worktree_path`, `validation_result`, `target_state` |
+| `needs_attention` | `error_class`, `next_action`, `blockers`, `evidence`, `terminal_path` | `branch`, `worktree_path`, `pr_url`, `commit_sha`, `failed_command`, `raw_error`, `summary` |
+| `terminal_failure` | `error_class`, `next_action`, `blockers`, `evidence` | `branch`, `worktree_path`, `pr_url`, `commit_sha`, `failed_command`, `raw_error`, `summary` |
+| `cleanup_complete` | `branch`, `worktree_path`, `cleanup_status`, `summary` | `pr_url`, `commit_sha` |
+
+`terminal_path` values must match the runtime-owned terminal path for the tool or phase
+that writes the event. For normal review handoff this is `review_handoff`; for retained
+repair completion this is `review_repair`; for explicit human-required exits this is
+`manual_attention`.
+
+## Progress checkpoint records
+
+`progress_checkpoint` records are the Linear form of durable execution memory. They
+preserve task-local progress without changing lifecycle authority.
+
+Required `phase` values are the same normalized phases accepted by
+`issue_progress_checkpoint`:
+
+- `probing`
+- `implementing`
+- `verifying`
+- `blocked`
+- `ready_for_review`
+- `review_repair`
+- `ready_to_land`
+- `closeout`
+
+`progress_checkpoint` records must not be interpreted as review handoff, repair
+completion, merge readiness, closeout, cleanup completion, or terminal success. Those
+transitions require their dedicated event type and the governing runtime/tool contract.
+
+## Ledger-only comment contract
+
+Decodex writes and reads durable execution outcomes through
+`decodex.linear_execution_event` records only. Structured checkpoint,
+review-handoff, closeout, or other non-ledger payloads are issue history only.
+
+Runtime recovery must continue to use the runtime database, retained worktree
+markers, and current tracker/PR state as its active authority. Non-ledger Linear
+comments must not hydrate Run Ledger outcomes, satisfy a missing execution ledger, or
+be replayed as the active state machine.
+
+## Idempotency and ordering
+
+- `idempotency_key` must be deterministic for the logical event.
+- Retrying the same write must reuse the same `idempotency_key`.
+- Writing a materially new transition, checkpoint, PR head, failure, or cleanup result
+  must use a new `idempotency_key`.
+- Consumers must de-duplicate records with the same `record_type`, `record_version`,
+  `service_id`, `issue_id`, and `idempotency_key`.
+- If duplicates disagree, consumers should prefer the earliest valid record and surface a
+  data-quality warning instead of guessing which record is authoritative.
+- Event ordering is by `event_timestamp`, with Linear comment creation time as a
+  fallback tiebreaker. Consumers must tolerate delayed comments and duplicate retries.
+
+Recommended idempotency shape:
+
+```text
+<service_id>:<issue_identifier>:<run_id>:<attempt_number>:<event_type>:<stable-anchor>
+```
+
+The `stable-anchor` should be the most specific durable anchor for the event, such as a
+commit SHA, PR head SHA, terminal path, or checkpoint sequence key.
+
+## Linear comments versus runtime state
+
+Use Linear comments for team-visible, low-frequency records:
+
+- lane intake, lease acquisition, worktree preparation, and agent start
+- durable progress checkpoints
+- PR opened or updated events
+- review handoff and retained repair handoff
+- landed, closeout, needs-attention, terminal failure, and cleanup-complete events
+- stable identity and recovery fields: `service_id`, `issue_id`,
+  `issue_identifier`, `run_id`, `attempt_number`, `branch`, `worktree_path`,
+  `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `event_timestamp`, and
+  `idempotency_key`
+
+Use the Decodex runtime database and `.decodex-run-activity` for local/operator-only
+runtime telemetry:
+
+- heartbeat timestamps and current operation updates
+- app-server protocol event counts and last event names
+- thread liveness, wait reasons, idle seconds, retry timers, and suspected-stall hints
+- `child_agent_activity` buckets
+- token counts, largest tool-output sizes, and context-pressure warnings
+- review-policy convergence counters that only guide the current retained-lane retry
+  loop
+- transient diagnostic details that help the local operator understand whether an active
+  process is busy, idle, or stalled
+
+High-frequency heartbeat, child-agent buckets, token counts, and transient idle details
+must stay local/operator-only. They must not be promoted into Linear execution ledger
+comments, because they would turn Linear into a noisy telemetry sink rather than the
+team-visible execution ledger.
+
+If a field is required for team-visible issue history, it belongs in a Linear ledger
+record. If a field is required for local scheduling, recovery, retry ownership, phase
+timing, dashboard freshness, or agent liveness, it belongs in the runtime database or
+`.decodex-run-activity`.
+
+Operator status and dashboard consumers may aggregate ledger records for completed
+history lanes that are already present in the local runtime attempt window. That
+aggregation is display-only: it may show PR URL, landed or merge commit, closeout
+status, needs-attention reason, and elapsed lifecycle timing from Linear comments, but
+it must not replay those comments as active leases, dispatch ownership, retry state, or
+post-review orchestration authority.
+
+Successful closeout and cleanup results must remain successful in local runtime history.
+If a closeout or cleanup child exits successfully, status consumers should surface the
+lane as `completed` or the run attempt as `succeeded`, even when the Linear tracker
+issue was already `Done` before the child exited. A pre-existing terminal tracker state
+must not downgrade an observed successful closeout or cleanup to `terminated`.
+
+## Retention expectations
+
+- Linear ledger comments are retained with the Linear issue for the lifetime of that
+  issue.
+- Decodex must not delete ledger comments during normal cleanup.
+- Redaction is allowed only for accidental secret or host-private data exposure, and the
+  replacement comment must preserve the original `idempotency_key` plus a short redaction
+  reason.
+- Runtime database rows are owned by the local Decodex installation and retained by
+  explicit cleanup policy.
+- Local `.decodex-run-activity` markers are short-lived runtime state. They may be
+  updated frequently, replaced by newer state, or removed during deterministic cleanup.
+- Removing local markers must not erase the team-visible execution ledger because the
+  durable lane transition records remain in Linear comments.

@@ -11,11 +11,14 @@
     "check": "astro check"
   },
   "dependencies": {
-    "@astrojs/check": "^0.9.8",
-    "@tailwindcss/vite": "^4.2.2",
-    "astro": "^6.0.7",
-    "marked": "^17.0.4",
-    "tailwindcss": "^4.2.2",
+    "@astrojs/check": "^0.9.9",
+    "@tailwindcss/vite": "4.2.2",
+    "astro": "^6.3.1",
+    "marked": "^18.0.3",
+    "tailwindcss": "4.2.2",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "yaml": "2.8.4"
   }
 }

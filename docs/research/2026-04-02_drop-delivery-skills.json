@@ -1,0 +1,152 @@
+{
+  "schema": "research-run/2",
+  "run_id": "2026-04-02_drop-delivery-skills",
+  "question": "What runtime-native design should replace the delivery skills if decodex discards them completely?",
+  "success_criteria": [
+    "Eliminate delivery-prepare and delivery-closeout as workflow skills.",
+    "Keep post-review landing and closeout machine-checkable inside decodex.",
+    "Preserve explicit closeout semantics without relying on skill-local commit-message workflows.",
+    "Produce a migration shape that fits the current orchestrator, tracker bridge, and workflow policy surfaces."
+  ],
+  "constraints": [
+    "Use the current checkout as the primary evidence source.",
+    "Do not require delivery-specific skills or skill shims in the target design.",
+    "Keep tracker writes issue-scoped and aligned with the existing decodex runtime ownership model.",
+    "Do not depend on branch-name or PR-title heuristics for delivery decisions."
+  ],
+  "stop_rule": "Stop once the replacement design is concrete enough to implement or once the bounded pass is blocked by a required worker gate.",
+  "primary_hypothesis": "The delivery skills should be replaced by a decodex-owned delivery protocol: workflow policy declares the closeout target and merge behavior, the runtime owns post-review state transitions and validation, and the agent uses only issue-scoped tracker tools plus repo-native git and GitHub actions.",
+  "rival_hypotheses": [
+    "A thin delivery skill shim is still required as the user-facing entrypoint even after the protocol moves into decodex.",
+    "The existing delivery commit-message contract should remain the primary authority even if the runtime owns closeout."
+  ],
+  "falsifiers": [
+    "If decodex lacks the runtime surfaces needed to validate merged PR lineage and completed tracker state, removing the skills would create an unowned gap.",
+    "If merge policy still requires a delivery-specific commit contract that cannot move into runtime or workflow policy, deleting the skills would remove essential authority."
+  ],
+  "coverage": {
+    "mode": "standard",
+    "min_source_families": 0
+  },
+  "continuation": {
+    "mode": "stop",
+    "attempt": 1,
+    "max_attempts": 1,
+    "session_id": "2026-04-02_drop-delivery-skills"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "probe_completed",
+      "remaining_option_count": 1,
+      "independent_option_questions": [],
+      "external_slices": []
+    },
+    {
+      "seq": 2,
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E1",
+          "kind": "observation",
+          "summary": "The normative post-review lifecycle already treats `delivery_closeout` as a retained-lane phase whose meaning must not depend on a helper name, so the domain boundary already belongs to decodex rather than to a skill wrapper.",
+          "source_family": "repo_spec"
+        },
+        {
+          "id": "E2",
+          "kind": "observation",
+          "summary": "The orchestrator already has a dedicated `DeliveryCloseout` dispatch mode plus runtime validation for GitHub availability and retained PR lineage, which shows the runtime already models delivery closeout as first-class execution state.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E3",
+          "kind": "observation",
+          "summary": "The tracker tool bridge already exposes issue-scoped transition and comment tools and validates that delivery closeout only completes after the merged PR matches the retained lane and the issue has reached the resolved completed state.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E4",
+          "kind": "inference",
+          "summary": "The current delivery skills duplicate runtime concerns by carrying closeout semantics, merge-history semantics, and tracker-sync rules in skill prose even though the runtime and workflow specs already own the same lifecycle boundary.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E5",
+          "kind": "observation",
+          "summary": "The current delivery-prepare skill adds extra report-generation and commit-message-contract obligations that are not required by the tracker tool bridge or the retained-lane runtime model.",
+          "source_family": "repo_code"
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T1",
+          "summary": "Internalizing delivery into decodex removes duplicated skill/runtime authority, but decodex must then own a small explicit delivery protocol surface in workflow policy and prompt contracts instead of relying on skill prose.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E2",
+            "E4"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T2",
+          "summary": "Dropping the delivery commit-message contract simplifies commit and push flow, but any semantics currently carried by `delivery_mode` and typed refs must move to runtime-owned state or issue-scoped tool calls before merge and closeout.",
+          "supporting_evidence_ids": [
+            "E3",
+            "E5"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T3",
+          "summary": "If delivery becomes runtime-native, merge policy should derive from PR state plus workflow policy rather than from whether commit subjects happen to match a delivery JSON schema.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E2",
+            "E5"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ]
+    },
+    {
+      "seq": 4,
+      "type": "judgment_candidate_created",
+      "judgment_payload": {
+        "judgment_type": "recommend",
+        "preferred_option": "runtime-native-delivery-protocol",
+        "rejected_options": [
+          "keep-delivery-skills-as-thin-shims",
+          "keep-delivery-commit-contract-as-primary-authority"
+        ],
+        "decision_claim": "Discard the delivery skills entirely and replace them with a decodex-owned delivery protocol: workflow policy declares the resolved completed state and merge/closeout policy, the runtime owns landing and closeout validation, and the coding agent uses only issue-scoped tracker tools plus repo-native git and GitHub actions.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T3"
+        ]
+      },
+      "judgment_hash": "sha256:dec502b46d7fb2c49715ccd5ff9d8b3531c068c20bf312c0ce0496135e4b6b09"
+    },
+    {
+      "seq": 5,
+      "type": "finalized_error",
+      "reason_code": "worker_unavailable",
+      "details": "The research plugin requires a skeptic worker for the current judgment candidate, but this turn did not include explicit child-agent authorization, so the bounded run could not complete the required adversarial challenge.",
+      "failed_workers": [
+        "skeptic"
+      ]
+    }
+  ]
+}
