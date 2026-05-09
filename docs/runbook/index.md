@@ -1,0 +1,37 @@
+# Runbook Index
+
+Purpose: Route agents to procedural documents that tell them which sequence to execute.
+
+Question this index answers: "which sequence should I execute?"
+
+## Use this index when
+
+- You need a runbook, how-to, migration sequence, validation flow, troubleshooting path,
+  or maintenance procedure.
+- You already know the relevant spec and need the operational steps.
+- You need explicit prerequisites, commands, checkpoints, or verification.
+
+## Do not use this index when
+
+- You need the authoritative contract, schema, or invariant.
+- You need current repository layout or implementation boundaries.
+- You need durable design rationale rather than operator steps.
+
+## What belongs in `docs/runbook/`
+
+- Task-oriented operator procedures.
+- Validation and inspection sequences.
+- Rollout, rollback, and recovery flows.
+- Bounded recipes that depend on a governing spec.
+
+## Current runbooks
+
+- [`github-pages-deploy.md`](./github-pages-deploy.md) for GitHub Pages deployment and
+  `decodex.space` custom-domain setup for the static public site.
+- [`linear-archive-hygiene.md`](./linear-archive-hygiene.md) for dry-run-first
+  archive hygiene of old terminal Linear issues by repo label.
+- [`local-github-signal-workflow.md`](./local-github-signal-workflow.md) for collecting
+  GitHub change bundles, running Codex editorial analysis, validating signal entries,
+  and publishing static site content.
+- [`self-dogfood-pilot.md`](./self-dogfood-pilot.md) for the retained-lane pilot run
+  against `decodex` itself and the bounded live-operation sequence.

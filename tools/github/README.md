@@ -13,8 +13,8 @@ Current scripts:
 
 Contract ownership:
 
-- input bundle shape: `docs/spec/github_change_bundle.md`
-- output signal shape: `docs/spec/signal_entry.md`
+- input bundle shape: `docs/spec/github-change-bundle.md`
+- output signal shape: `docs/spec/signal-entry.md`
 
 Example flow:
 

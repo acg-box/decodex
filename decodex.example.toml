@@ -1,0 +1,20 @@
+service_id = "your-service-id"
+
+[tracker]
+api_key_env_var = "LINEAR_API_KEY"
+
+[github]
+token_env_var = "GITHUB_TOKEN"
+
+# Optional Codex-specific runtime policy.
+# Omit this block to use `internal_review_mode = "loop"` and `external_review_enabled = true`.
+[codex]
+external_review_enabled = true
+internal_review_mode    = "loop"
+
+# Required project paths. Project configs are managed outside checkouts, for example under
+# `~/.codex/decodex/projects/<service-id>/project.toml`.
+# Omit `worktree_root` to use `<repo_root>/.worktrees`.
+[paths]
+repo_root     = "/absolute/path/to/target/repo"
+worktree_root = ".worktrees"
