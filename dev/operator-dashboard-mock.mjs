@@ -7,8 +7,6 @@ import { fileURLToPath } from "node:url";
 
 const DEFAULT_LISTEN_ADDRESS = "127.0.0.1:57399";
 const DEFAULT_READY_STALE_SECONDS = 120;
-const USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
-const CODEX_USER_AGENT = "codex-cli";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -17,7 +15,6 @@ function parseArgs(argv) {
 		authDir: null,
 		dashboardHtml: path.join(repoRoot, "src/orchestrator/operator_dashboard.html"),
 		listenAddress: DEFAULT_LISTEN_ADDRESS,
-		queryUsage: false,
 		readyStaleSeconds: DEFAULT_READY_STALE_SECONDS,
 	};
 
@@ -43,10 +40,6 @@ function parseArgs(argv) {
 			options.authDir = path.join(process.env.HOME || ".", ".codex");
 			continue;
 		}
-		if (arg === "--query-usage") {
-			options.queryUsage = true;
-			continue;
-		}
 		if (arg === "--ready-stale-seconds") {
 			options.readyStaleSeconds = Number(requiredValue(argv, (index += 1), arg));
 			if (!Number.isFinite(options.readyStaleSeconds) || options.readyStaleSeconds <= 0) {
@@ -56,10 +49,6 @@ function parseArgs(argv) {
 		}
 
 		throw new Error(`Unknown argument: ${arg}`);
-	}
-
-	if (options.queryUsage && !options.authDir) {
-		throw new Error("--query-usage requires --use-codex-auth or --codex-auth-dir");
 	}
 
 	return options;
@@ -84,7 +73,6 @@ Options:
   --dashboard-html PATH        Dashboard HTML path
   --use-codex-auth             Load auth*.json accounts from ~/.codex
   --codex-auth-dir DIR         Load auth*.json accounts from DIR
-  --query-usage                Query ChatGPT usage for loaded auth accounts
   --ready-stale-seconds N      /readyz freshness window (default ${DEFAULT_READY_STALE_SECONDS})
   -h, --help                   Show this help
 `);
@@ -587,56 +575,6 @@ function accountFingerprint(accountId) {
 	return value ? `...${value.slice(-6)}` : "unknown";
 }
 
-function numeric(value) {
-	if (value == null) {
-		return null;
-	}
-	const number = Number(value);
-
-	return Number.isFinite(number) ? Math.round(number) : null;
-}
-
-function scalarString(value) {
-	if (value == null) {
-		return null;
-	}
-	if (typeof value === "string") {
-		return value || null;
-	}
-	if (typeof value === "number" || typeof value === "boolean") {
-		return String(value);
-	}
-
-	return null;
-}
-
-function usageWindow(rateLimit, key) {
-	const window = rateLimit?.[key];
-	if (!window || typeof window !== "object") {
-		return {};
-	}
-	const usedPercent = numeric(window.used_percent);
-
-	return {
-		windowSeconds: numeric(window.limit_window_seconds),
-		remainingPercent:
-			usedPercent == null ? null : Math.max(0, Math.min(100, 100 - usedPercent)),
-		resetsAt: numeric(window.reset_at),
-	};
-}
-
-function reachedType(payload) {
-	const reached = payload?.rate_limit_reached_type;
-	if (!reached) {
-		return null;
-	}
-	if (typeof reached === "object") {
-		return scalarString(reached.kind) || scalarString(reached.type);
-	}
-
-	return scalarString(reached);
-}
-
 function scoreAccount(account) {
 	const primary = account.primary_remaining_percent ?? 0;
 	const secondary = account.secondary_remaining_percent ?? primary;
@@ -652,7 +590,7 @@ function scoreAccount(account) {
 	return score;
 }
 
-async function codexAuthAccounts(authDir, queryUsage) {
+async function codexAuthAccounts(authDir) {
 	const entries = await fs.readdir(authDir, { withFileTypes: true });
 	const files = entries
 		.filter((entry) => entry.isFile() && /^auth.*\.json$/u.test(entry.name))
@@ -698,14 +636,10 @@ async function codexAuthAccounts(authDir, queryUsage) {
 			credits_balance: null,
 			rate_limit_reached_type: null,
 			cooldown_until_unix_epoch: null,
-			note: queryUsage ? "usage probe pending" : "real auth loaded; usage not queried",
+			note: "real auth loaded; usage not queried",
 		};
 
-		accounts.push(
-			queryUsage && tokens.access_token && tokens.account_id
-				? await accountWithUsage(base, tokens.access_token, tokens.account_id)
-				: base,
-		);
+		accounts.push(base);
 	}
 
 	const selected = accounts.reduce((best, current) =>
@@ -717,48 +651,6 @@ async function codexAuthAccounts(authDir, queryUsage) {
 	}
 
 	return accounts;
-}
-
-async function accountWithUsage(base, accessToken, accountId) {
-	const response = await fetch(USAGE_ENDPOINT, {
-		headers: {
-			Authorization: `Bearer ${accessToken}`,
-			"ChatGPT-Account-Id": accountId,
-			"User-Agent": CODEX_USER_AGENT,
-		},
-		signal: AbortSignal.timeout(10_000),
-	});
-
-	if (!response.ok) {
-		return {
-			...base,
-			status: "usage_probe_failed",
-			note: `usage endpoint HTTP ${response.status}`,
-		};
-	}
-
-	const payload = await response.json();
-	const primary = usageWindow(payload.rate_limit, "primary_window");
-	const secondary = usageWindow(payload.rate_limit, "secondary_window");
-	const credits = payload.credits || {};
-
-	return {
-		...base,
-		plan_type: scalarString(payload.plan_type),
-		checked_at_unix_epoch: nowUnix(),
-		primary_window_seconds: primary.windowSeconds,
-		primary_remaining_percent: primary.remainingPercent,
-		primary_resets_at_unix_epoch: primary.resetsAt,
-		secondary_window_seconds: secondary.windowSeconds,
-		secondary_remaining_percent: secondary.remainingPercent,
-		secondary_resets_at_unix_epoch: secondary.resetsAt,
-		credits_has_credits:
-			typeof credits.has_credits === "boolean" ? credits.has_credits : null,
-		credits_unlimited: typeof credits.unlimited === "boolean" ? credits.unlimited : null,
-		credits_balance: scalarString(credits.balance),
-		rate_limit_reached_type: reachedType(payload),
-		note: "usage probe ok",
-	};
 }
 
 function accountUsageStatus(account) {
@@ -789,12 +681,9 @@ function send(response, statusCode, contentType, body, headers = {}) {
 
 async function main() {
 	const options = parseArgs(process.argv.slice(2));
-	const staticAccounts =
-		options.authDir && options.queryUsage
-			? null
-			: options.authDir
-				? await codexAuthAccounts(options.authDir, options.queryUsage)
-				: mockAccounts();
+	const staticAccounts = options.authDir
+		? await codexAuthAccounts(options.authDir)
+		: mockAccounts();
 	let lastPublishedAt = nowUnix();
 	const { host, port } = splitListenAddress(options.listenAddress);
 	const server = http.createServer(async (request, response) => {
@@ -825,11 +714,7 @@ async function main() {
 			}
 			if (url.pathname === "/state") {
 				lastPublishedAt = nowUnix();
-				const accounts =
-					options.authDir && options.queryUsage
-						? await codexAuthAccounts(options.authDir, true)
-						: staticAccounts;
-				const snapshot = buildSnapshot(accounts);
+				const snapshot = buildSnapshot(staticAccounts);
 				send(response, 200, "application/json", JSON.stringify(snapshot), {
 					"X-Decodex-Snapshot-Unix-Epoch": String(lastPublishedAt),
 				});
@@ -846,7 +731,7 @@ async function main() {
 		console.log(`operator dashboard mock: http://${host}:${port}/dashboard`);
 		console.log(
 			options.authDir
-				? `accounts: ${options.authDir}${options.queryUsage ? " with live usage per /state" : ` (${staticAccounts.length} loaded)`}`
+				? `accounts: ${options.authDir} (${staticAccounts.length} loaded)`
 				: `accounts: ${staticAccounts.length} synthetic fixture accounts`,
 		);
 	});
