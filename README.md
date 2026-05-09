@@ -133,7 +133,7 @@ For dashboard UI development, use the mock operator state server:
 
 ```sh
 node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399
-node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-codex-auth --query-usage
+node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-codex-auth
 ```
 
 The dashboard semantics and local-vs-external state boundary live in
