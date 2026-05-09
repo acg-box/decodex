@@ -30,7 +30,7 @@ def parse_args() -> argparse.Namespace:
 
 def repo_root_from(bundle_path: Path) -> Path:
     root = bundle_path.resolve().parents[2]
-    if not (root / "skills" / "decodex-github-signal" / "SKILL.md").exists():
+    if not (root / "plugins" / "decodex" / "skills" / "github-signal" / "SKILL.md").exists():
         raise SystemExit(f"Unable to resolve repo root from {bundle_path}")
     return root
 
@@ -40,10 +40,10 @@ def build_prompt(bundle_path: Path, repo_root: Path) -> str:
     return "\n".join(
         [
             "Read and follow these repo-local instructions before drafting:",
-            "- skills/decodex-github-signal/SKILL.md",
-            "- docs/spec/github_change_bundle.md",
-            "- docs/spec/signal_entry.md",
-            "- docs/guide/local_github_signal_workflow.md",
+            "- plugins/decodex/skills/github-signal/SKILL.md",
+            "- docs/spec/github-change-bundle.md",
+            "- docs/spec/signal-entry.md",
+            "- docs/runbook/local-github-signal-workflow.md",
             "",
             f"Analyze the bundle at `{relative_bundle}`.",
             "",

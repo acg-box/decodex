@@ -1,0 +1,625 @@
+{
+  "schema": "research-run/2",
+  "run_id": "2026-05-03_codex-cloud-task-apis",
+  "question": "Should Codex Cloud task APIs become part of Decodex execution modes, and under what constraints?",
+  "success_criteria": [
+    "Map Codex Cloud task list, create, status, diff, and apply capabilities from source.",
+    "Compare those capabilities with Decodex's local app-server execution model and owned-lane lifecycle.",
+    "End with a decision-ready adopt, defer, or reject judgment while keeping local execution authoritative for the MVP."
+  ],
+  "constraints": [
+    "No account-pool implementation changes.",
+    "No replacement of local codex app-server execution.",
+    "No credential or account-pool schema changes.",
+    "Any later implementation must be split into a separate issue."
+  ],
+  "stop_rule": "Stop once source evidence is sufficient to decide adopt, defer, or reject for Decodex's current execution model.",
+  "primary_hypothesis": "Codex Cloud task APIs are useful future remote-execution inputs, but should be deferred from Decodex until a separate remote-execution issue can preserve owned-lane lifecycle authority.",
+  "rival_hypotheses": [
+    "Adopt Cloud tasks now as an alternate Decodex execution backend.",
+    "Reject Cloud task APIs permanently because they do not match Decodex's local app-server model."
+  ],
+  "falsifiers": [
+    "If Cloud task APIs already expose Decodex-equivalent issue ownership, repo gate, and PR handoff semantics, immediate adoption would be viable.",
+    "If Cloud task APIs cannot expose task status, diff, or local apply primitives at all, future integration should be rejected rather than deferred.",
+    "If Decodex's local app-server model no longer owns execution, the local-MVP constraint would be obsolete."
+  ],
+  "coverage": {
+    "mode": "standard",
+    "min_source_families": 0
+  },
+  "continuation": {
+    "mode": "auto_if_not_decision_ready",
+    "attempt": 1,
+    "max_attempts": 3,
+    "session_id": "xy-451-attempt-4-1777808209"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "probe_completed",
+      "remaining_option_count": 1,
+      "independent_option_questions": [],
+      "external_slices": []
+    },
+    {
+      "seq": 2,
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E1",
+          "kind": "observation",
+          "summary": "The Cloud task client trait exposes list, summary/status, diff, messages/text, sibling attempts, preflight apply, apply, and create operations.",
+          "source_family": "codex_source",
+          "source_path": "/private/tmp/openai-codex/codex-rs/cloud-tasks-client/src/api.rs:133-163"
+        },
+        {
+          "id": "E2",
+          "kind": "observation",
+          "summary": "The HTTP client maps Cloud list and create to backend task endpoints, with Codex API and ChatGPT backend path styles, and supports limit, task_filter, environment_id, and cursor query parameters.",
+          "source_family": "codex_source",
+          "source_path": "/private/tmp/openai-codex/codex-rs/backend-client/src/client.rs:320-424"
+        },
+        {
+          "id": "E3",
+          "kind": "observation",
+          "summary": "Task summary/status derives from task_status_display/latest_turn_status_display, while task text exposes prompt, assistant messages, current turn id, sibling turn ids, placement, and attempt status.",
+          "source_family": "codex_source",
+          "source_path": "/private/tmp/openai-codex/codex-rs/cloud-tasks-client/src/http.rs:183-317"
+        },
+        {
+          "id": "E4",
+          "kind": "observation",
+          "summary": "Cloud diff/apply fetches a unified diff from task details or uses an override, then applies locally from the current directory through codex_git_utils and git apply; preflight is git apply --check.",
+          "source_family": "codex_source",
+          "source_path": "/private/tmp/openai-codex/codex-rs/cloud-tasks-client/src/http.rs:252-520; /private/tmp/openai-codex/codex-rs/git-utils/src/apply.rs:37-104"
+        },
+        {
+          "id": "E5",
+          "kind": "observation",
+          "summary": "The Cloud CLI wrapper surfaces exec, status, list, apply, and diff commands; exec requires an environment, can select a branch, and supports one to four attempts.",
+          "source_family": "codex_source",
+          "source_path": "/private/tmp/openai-codex/codex-rs/cloud-tasks/src/cli.rs:15-120"
+        },
+        {
+          "id": "E6",
+          "kind": "observation",
+          "summary": "Decodex's MVP app-server contract is a local stdio JSON-RPC session using initialize, thread/start or thread/resume, turn/start, turn completion notifications, and dynamic tool calls for issue-scoped tracker writes.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/app-server.md:9-80; docs/spec/app-server.md:102-152"
+        },
+        {
+          "id": "E7",
+          "kind": "observation",
+          "summary": "Decodex runtime authority is one local service, one isolated linked worktree lane per eligible issue, one direct app-server session per attempt, runtime DB ownership for active state, and Linear/GitHub as mirrors rather than live runtime backends.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/runtime.md:9-60; docs/spec/runtime.md:110-150"
+        },
+        {
+          "id": "E8",
+          "kind": "observation",
+          "summary": "Decodex's successful completion path requires PR-backed review handoff, repo gate validation, and explicit terminal finalization; the runtime must not infer completion or bypass the handoff state.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/runtime.md:183-241; src/orchestrator/execution.rs:658-705"
+        },
+        {
+          "id": "E9",
+          "kind": "observation",
+          "summary": "The owned-lane policy restricts runtime decisions to fixed action classes and requires manual intervention when retained lane, tracker, or PR signals disagree enough to require guessing.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/owned-lane-policy.md:26-69; docs/spec/owned-lane-policy.md:116-160"
+        },
+        {
+          "id": "E10",
+          "kind": "observation",
+          "summary": "The operator control plane treats the runtime SQLite database as the active execution source of truth; Linear and GitHub remain collaboration and validation surfaces, not queue or lane ownership authority.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/reference/operator-control-plane.md:16-57"
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T1",
+          "summary": "Cloud task list/status/diff data could help a future remote-observation or remote-execution mode, but the source surface does not carry Decodex's issue lease, repo gate, or PR handoff authority.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E2",
+            "E3",
+            "E6",
+            "E7",
+            "E8"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T2",
+          "summary": "Importing Cloud apply directly into Decodex would be unsafe unless wrapped by lane ownership, dirty-tree protection, repo gate validation, and PR-backed handoff, because Cloud apply is currently a local git apply primitive.",
+          "supporting_evidence_ids": [
+            "E4",
+            "E7",
+            "E8",
+            "E9"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T3",
+          "summary": "Cloud create is plausible future work only as an explicit remote-execution mode that binds environment, branch, issue, and attempt identity up front, rather than an account-pool side effect.",
+          "supporting_evidence_ids": [
+            "E2",
+            "E5",
+            "E7",
+            "E9"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T4",
+          "summary": "Deferring keeps the account-pool slice from becoming a remote-execution redesign while preserving the evidence that Cloud tasks have reusable task, diff, and apply primitives for a later scoped issue.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E4",
+            "E6",
+            "E7",
+            "E10"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ]
+    },
+    {
+      "seq": 4,
+      "type": "judgment_candidate_created",
+      "judgment_payload": {
+        "judgment_type": "defer",
+        "preferred_option": "defer-cloud-task-integration",
+        "rejected_options": [
+          "adopt-cloud-tasks-as-decodex-execution-backend-now",
+          "reject-cloud-tasks-permanently"
+        ],
+        "decision_claim": "Defer Codex Cloud task integration. Local codex app-server remains the authoritative MVP path. Cloud task APIs may belong later only behind an explicit, separately scoped remote-execution mode that maps one Cloud task to one Decodex-owned issue/lane, preserves repo-gate and PR-backed handoff, and does not reuse account-pool work as a hidden remote-execution redesign.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E4",
+          "E6",
+          "E7",
+          "E8"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T3",
+          "T4"
+        ]
+      },
+      "judgment_hash": "sha256:5a4707197057d9106e828560d302c9191a5ab44b150b1517bf6c226ae0f04019"
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "The defer recommendation is directionally correct, but the future-mode constraints must explicitly require issue-scoped tracker-tool and terminal-finalization parity, runtime liveness parity, and a comparison against app-server remote-environment support rather than assuming Cloud tasks are the only remote shape.",
+      "objections": [
+        {
+          "id": "OBJ-001-tracker-tool-parity-missing",
+          "summary": "Preserving repo gate and PR-backed handoff is insufficient unless any future remote mode also preserves issue-scoped tracker tool calls and explicit issue_terminal_finalize semantics."
+        },
+        {
+          "id": "OBJ-002-cloud-task-shape-may-be-the-wrong-remote-shape",
+          "summary": "The future path should not assume one Cloud task per lane is the right abstraction because app-server already exposes environment selection plus dynamic tools while Decodex relies on repeated turn/start calls on one thread."
+        },
+        {
+          "id": "OBJ-003-operator-liveness-parity-omitted",
+          "summary": "The constraints must require runtime-observability parity for protocol events, liveness fields, stall detection, and recovery; Cloud task summaries and diffs alone do not satisfy Decodex's operator model."
+        }
+      ],
+      "seq": 5,
+      "target_judgment_hash": "sha256:5a4707197057d9106e828560d302c9191a5ab44b150b1517bf6c226ae0f04019"
+    },
+    {
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E11",
+          "kind": "observation",
+          "summary": "Decodex's tracker bridge requires issue-scoped tool calls for transition, comment, progress checkpoint, review checkpoint, review handoff, label add, and terminal finalization; invalid or missing terminal signals must fail the attempt.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/tracker-tools.md:18-59; docs/spec/tracker-tools.md:63-83; docs/spec/tracker-tools.md:85-130"
+        },
+        {
+          "id": "E12",
+          "kind": "observation",
+          "summary": "The Codex app-server protocol already exposes experimental thread/start and turn/start environment selections alongside dynamic tools and raw-event support, so future remote work must compare Cloud tasks with an app-server environment extension before choosing an execution shape.",
+          "source_family": "codex_source",
+          "source_path": "/private/tmp/openai-codex/codex-rs/app-server-protocol/src/protocol/v2.rs:3548-3618; /private/tmp/openai-codex/codex-rs/app-server-protocol/src/protocol/v2.rs:5519-5544; /private/tmp/openai-codex/codex-rs/app-server/src/codex_message_processor.rs:2788-2837; /private/tmp/openai-codex/codex-rs/app-server/src/codex_message_processor.rs:3001-3019"
+        },
+        {
+          "id": "E13",
+          "kind": "observation",
+          "summary": "Decodex operator visibility depends on runtime DB protocol journals, active-lane heartbeat, liveness fields, stall detection, and event-count hydration, which task summaries and diffs do not provide by themselves.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/runtime.md:290-316; docs/spec/runtime.md:318-338; docs/spec/runtime.md:348-378"
+        },
+        {
+          "id": "E14",
+          "kind": "observation",
+          "summary": "The Cloud task command runtime wires exec to create_task, status to get_task_summary, list to paginated list_tasks, diff to collected attempt diffs, and apply to selected attempt diff plus local apply_task; the TUI also supports preflight/apply and detail loading around those primitives.",
+          "source_family": "codex_source",
+          "source_path": "/private/tmp/openai-codex/codex-rs/cloud-tasks/src/lib.rs:157-180; /private/tmp/openai-codex/codex-rs/cloud-tasks/src/lib.rs:493-603; /private/tmp/openai-codex/codex-rs/cloud-tasks/src/lib.rs:614-724; /private/tmp/openai-codex/codex-rs/cloud-tasks/src/lib.rs:1845-1965"
+        }
+      ],
+      "seq": 6
+    },
+    {
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T5",
+          "summary": "A future remote-execution mode cannot be accepted merely because it can create a task and return a patch; it must preserve issue-scoped tracker tools, terminal finalization, repo gate validation, PR handoff, and lane-scoped Git ownership.",
+          "supporting_evidence_ids": [
+            "E4",
+            "E7",
+            "E8",
+            "E11"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T6",
+          "summary": "Codex app-server environment support may be a better future remote abstraction than Cloud tasks because it is closer to Decodex's existing thread, turn, dynamic-tool, and event-stream model; a later issue should compare both shapes before implementation.",
+          "supporting_evidence_ids": [
+            "E6",
+            "E7",
+            "E11",
+            "E12",
+            "E13"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T7",
+          "summary": "Until Cloud task APIs can provide tracker-tool parity and liveness/event parity, their safest Decodex use is read-only observation or explicit patch import/apply inside an already owned local lane, not authoritative execution replacement.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E3",
+            "E4",
+            "E11",
+            "E13",
+            "E14"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ],
+      "seq": 7
+    },
+    {
+      "type": "judgment_candidate_created",
+      "addresses_objection_ids": [
+        "OBJ-001-tracker-tool-parity-missing",
+        "OBJ-002-cloud-task-shape-may-be-the-wrong-remote-shape",
+        "OBJ-003-operator-liveness-parity-omitted"
+      ],
+      "judgment_payload": {
+        "judgment_type": "defer",
+        "preferred_option": "defer-cloud-task-integration-and-keep-local-app-server-mvp",
+        "rejected_options": [
+          "adopt-cloud-tasks-as-decodex-execution-backend-now",
+          "reject-cloud-task-apis-permanently",
+          "hide-remote-execution-inside-account-pool-work",
+          "choose-cloud-task-backend-before-comparing-app-server-remote-environments"
+        ],
+        "decision_claim": "Defer Codex Cloud task integration. Local codex app-server remains the authoritative Decodex MVP path. Cloud task APIs are useful future evidence for list/create/status/diff/apply and may support read-only observation or explicit patch import later, but authoritative remote execution must be a separate issue that compares Cloud tasks with app-server remote-environment support and preserves issue-scoped tracker tools, explicit terminal finalization, runtime liveness/event hydration, repo-gate validation, PR-backed handoff, and lane-scoped Git ownership. Account-pool work must not carry Cloud task execution, credential schema, or remote-execution lifecycle changes.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E4",
+          "E6",
+          "E7",
+          "E8",
+          "E11",
+          "E12",
+          "E13",
+          "E14"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T4",
+          "T5",
+          "T6",
+          "T7"
+        ]
+      },
+      "seq": 8,
+      "judgment_hash": "sha256:45bf9826204b1a2d32600f03cdde58526f7feeb0f5117fcef1f3952acc360c37"
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "The revised defer judgment addresses the earlier remote-execution objections, but its patch-import clause still needs to carry the owned-lane, dirty-tree, routed-identity, repo-gate, and PR-handoff qualifiers in the decision claim itself.",
+      "objections": [
+        {
+          "id": "OBJ-004-patch-import-safety-omitted",
+          "summary": "The decision claim's patch-import wording must explicitly restrict any future Cloud diff/apply use to an already owned local lane with clean/checked worktree state, routed identity, repo-gate validation, and PR-backed handoff."
+        }
+      ],
+      "seq": 9,
+      "target_judgment_hash": "sha256:45bf9826204b1a2d32600f03cdde58526f7feeb0f5117fcef1f3952acc360c37"
+    },
+    {
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E15",
+          "kind": "observation",
+          "summary": "Decodex lane Git and review operations depend on routed GitHub credentials and worktree-local identity inheritance; patch import/apply must therefore remain inside a Decodex-owned linked worktree with the correct routed identity rather than operating on an arbitrary cwd.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/runtime.md:152-166; docs/spec/tracker-tools.md:108-122; src/worktree.rs:1420-1481"
+        }
+      ],
+      "seq": 10
+    },
+    {
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T8",
+          "summary": "Patch import from Cloud task diffs is only acceptable as a future lane-owned workflow: preflight against the owned linked worktree, protect dirty state, preserve routed Git/Linear identity, run the repo gate, and complete PR-backed handoff through Decodex rather than treating Cloud apply as an external authority.",
+          "supporting_evidence_ids": [
+            "E4",
+            "E8",
+            "E11",
+            "E15"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ],
+      "seq": 11
+    },
+    {
+      "type": "judgment_candidate_created",
+      "addresses_objection_ids": [
+        "OBJ-004-patch-import-safety-omitted"
+      ],
+      "judgment_payload": {
+        "judgment_type": "defer",
+        "preferred_option": "defer-cloud-task-integration-and-keep-local-app-server-mvp",
+        "rejected_options": [
+          "adopt-cloud-tasks-as-decodex-execution-backend-now",
+          "reject-cloud-task-apis-permanently",
+          "hide-remote-execution-inside-account-pool-work",
+          "choose-cloud-task-backend-before-comparing-app-server-remote-environments",
+          "allow-cloud-diff-apply-outside-an-owned-clean-decodex-lane"
+        ],
+        "decision_claim": "Defer Codex Cloud task integration. Local codex app-server remains the authoritative Decodex MVP path. Cloud task APIs are useful future evidence for list/create/status/diff/apply and may support read-only observation later. Explicit Cloud patch import/apply is only a possible future lane-owned workflow, and only if a separate issue proves preflight against the owned linked worktree, dirty-tree protection, routed Git/Linear identity, repo-gate validation, and PR-backed handoff through Decodex. Authoritative remote execution must be a separate issue that compares Cloud tasks with app-server remote-environment support and preserves issue-scoped tracker tools, explicit terminal finalization, runtime liveness/event hydration, repo-gate validation, PR-backed handoff, and lane-scoped Git ownership. Account-pool work must not carry Cloud task execution, credential schema, or remote-execution lifecycle changes.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E4",
+          "E6",
+          "E7",
+          "E8",
+          "E11",
+          "E12",
+          "E13",
+          "E14",
+          "E15"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T4",
+          "T5",
+          "T6",
+          "T7",
+          "T8"
+        ]
+      },
+      "seq": 12,
+      "judgment_hash": "sha256:483bc8f58842f2f113359833a3c80e63ae1b3c431c2de413a207ac80b73d2614"
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "The judgment is close, but the future remote-execution identity contract must explicitly bind Cloud task creation to Decodex issue, run, attempt, branch, and environment identity.",
+      "objections": [
+        {
+          "id": "OBJ-005-remote-run-identity-binding-omitted",
+          "summary": "Any future Cloud create/execution mode must bind environment, branch, issue identity, run_id, and attempt_number up front so task, sibling-attempt, review, and closeout recovery can reconcile safely against Decodex runtime authority."
+        }
+      ],
+      "seq": 13,
+      "target_judgment_hash": "sha256:483bc8f58842f2f113359833a3c80e63ae1b3c431c2de413a207ac80b73d2614"
+    },
+    {
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E16",
+          "kind": "observation",
+          "summary": "Cloud task creation currently binds environment_id, branch/git_ref, qa mode, and best_of_n attempts, while Decodex lane recovery and handoff identity are keyed by issue identity, run_id, attempt_number, branch, PR head, and runtime DB ownership; a future remote mode must bridge both identity models explicitly.",
+          "source_family": "mixed_source",
+          "source_path": "/private/tmp/openai-codex/codex-rs/cloud-tasks-client/src/api.rs:162-169; /private/tmp/openai-codex/codex-rs/cloud-tasks-client/src/http.rs:319-379; /private/tmp/openai-codex/codex-rs/cloud-tasks/src/lib.rs:157-180; docs/spec/runtime.md:72-80; docs/spec/runtime.md:110-150; docs/spec/runtime.md:217-241; docs/spec/runtime.md:348-378"
+        }
+      ],
+      "seq": 14
+    },
+    {
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T9",
+          "summary": "A future Cloud execution mode must establish task-to-lane identity at creation time by binding environment, branch, issue identifier/id, run_id, and attempt_number, otherwise sibling attempts, liveness, review handoff, retained recovery, and closeout cannot be reconciled safely.",
+          "supporting_evidence_ids": [
+            "E2",
+            "E7",
+            "E8",
+            "E13",
+            "E16"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ],
+      "seq": 15
+    },
+    {
+      "type": "judgment_candidate_created",
+      "addresses_objection_ids": [
+        "OBJ-005-remote-run-identity-binding-omitted"
+      ],
+      "judgment_payload": {
+        "judgment_type": "defer",
+        "preferred_option": "defer-cloud-task-integration-and-keep-local-app-server-mvp",
+        "rejected_options": [
+          "adopt-cloud-tasks-as-decodex-execution-backend-now",
+          "reject-cloud-task-apis-permanently",
+          "hide-remote-execution-inside-account-pool-work",
+          "choose-cloud-task-backend-before-comparing-app-server-remote-environments",
+          "allow-cloud-diff-apply-outside-an-owned-clean-decodex-lane",
+          "create-cloud-tasks-without-decodex-run-and-attempt-identity"
+        ],
+        "decision_claim": "Defer Codex Cloud task integration. Local codex app-server remains the authoritative Decodex MVP path. Cloud task APIs are useful future evidence for list/create/status/diff/apply and may support read-only observation later. Explicit Cloud patch import/apply is only a possible future lane-owned workflow, and only if a separate issue proves preflight against the owned linked worktree, dirty-tree protection, routed Git/Linear identity, repo-gate validation, and PR-backed handoff through Decodex. Authoritative remote execution must be a separate issue that compares Cloud tasks with app-server remote-environment support and preserves issue-scoped tracker tools, explicit terminal finalization, runtime liveness/event hydration, repo-gate validation, PR-backed handoff, and lane-scoped Git ownership. Any future Cloud create/execution path must bind environment_id, branch/git_ref, Linear issue identity, Decodex run_id, and attempt_number before task creation so task status, sibling attempts, liveness, review handoff, retained recovery, and closeout can reconcile to one owned lane. Account-pool work must not carry Cloud task execution, credential schema, or remote-execution lifecycle changes.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E4",
+          "E6",
+          "E7",
+          "E8",
+          "E11",
+          "E12",
+          "E13",
+          "E14",
+          "E15",
+          "E16"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T4",
+          "T5",
+          "T6",
+          "T7",
+          "T8",
+          "T9"
+        ]
+      },
+      "seq": 16,
+      "judgment_hash": "sha256:1b33cd90ee31a9d3898380f658af5a18b5e8895688f4095ba4926d4d8565766b"
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "The defer judgment is still plausible, but read-only observation also needs an explicit provenance requirement because current Cloud list/create surfaces do not carry Decodex issue/run/attempt identity by themselves.",
+      "objections": [
+        {
+          "id": "OBJ-006-read-only-observation-provenance-gap",
+          "summary": "Read-only Cloud task observation must not hydrate Decodex operator state unless a future issue proves a durable Decodex-owned mapping or backend metadata channel for issue, run_id, and attempt_number provenance."
+        }
+      ],
+      "seq": 17,
+      "target_judgment_hash": "sha256:1b33cd90ee31a9d3898380f658af5a18b5e8895688f4095ba4926d4d8565766b"
+    },
+    {
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E17",
+          "kind": "observation",
+          "summary": "Current Cloud task list summaries expose task id, title, status, timestamp, environment label, diff summary, review flag, and attempt_total, with environment_id unset in list mapping; create sends metadata only for best_of_n and returns only the created task id, so Decodex provenance is not available from those surfaces alone.",
+          "source_family": "codex_source",
+          "source_path": "/private/tmp/openai-codex/codex-rs/cloud-tasks-client/src/api.rs:33-50; /private/tmp/openai-codex/codex-rs/cloud-tasks-client/src/http.rs:319-380; /private/tmp/openai-codex/codex-rs/cloud-tasks-client/src/http.rs:717-732"
+        }
+      ],
+      "seq": 18
+    },
+    {
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T10",
+          "summary": "Even read-only Cloud task observation must remain non-authoritative until a future issue proves provenance through a Decodex-owned task mapping or backend metadata channel that round-trips issue id, issue identifier, run_id, and attempt_number on list/details.",
+          "supporting_evidence_ids": [
+            "E7",
+            "E10",
+            "E13",
+            "E16",
+            "E17"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ],
+      "seq": 19
+    },
+    {
+      "type": "judgment_candidate_created",
+      "addresses_objection_ids": [
+        "OBJ-006-read-only-observation-provenance-gap"
+      ],
+      "judgment_payload": {
+        "judgment_type": "defer",
+        "preferred_option": "defer-cloud-task-integration-and-keep-local-app-server-mvp",
+        "rejected_options": [
+          "adopt-cloud-tasks-as-decodex-execution-backend-now",
+          "reject-cloud-task-apis-permanently",
+          "hide-remote-execution-inside-account-pool-work",
+          "choose-cloud-task-backend-before-comparing-app-server-remote-environments",
+          "allow-cloud-diff-apply-outside-an-owned-clean-decodex-lane",
+          "create-cloud-tasks-without-decodex-run-and-attempt-identity",
+          "hydrate-decodex-operator-state-from-cloud-tasks-without-provenance"
+        ],
+        "decision_claim": "Defer Codex Cloud task integration. Local codex app-server remains the authoritative Decodex MVP path. Cloud task APIs are useful future evidence for list/create/status/diff/apply, but even read-only observation must stay non-authoritative until a separate issue proves a Decodex-owned task mapping or backend metadata channel that round-trips Linear issue id/identifier plus Decodex run_id and attempt_number on task list/details. Explicit Cloud patch import/apply is only a possible future lane-owned workflow, and only if a separate issue proves preflight against the owned linked worktree, dirty-tree protection, routed Git/Linear identity, repo-gate validation, and PR-backed handoff through Decodex. Authoritative remote execution must be a separate issue that compares Cloud tasks with app-server remote-environment support and preserves issue-scoped tracker tools, explicit terminal finalization, runtime liveness/event hydration, repo-gate validation, PR-backed handoff, and lane-scoped Git ownership. Any future Cloud create/execution path must bind environment_id, branch/git_ref, Linear issue identity, Decodex run_id, and attempt_number before task creation so task status, sibling attempts, liveness, review handoff, retained recovery, and closeout can reconcile to one owned lane. Account-pool work must not carry Cloud task execution, credential schema, or remote-execution lifecycle changes.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E4",
+          "E6",
+          "E7",
+          "E8",
+          "E11",
+          "E12",
+          "E13",
+          "E14",
+          "E15",
+          "E16",
+          "E17"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T4",
+          "T5",
+          "T6",
+          "T7",
+          "T8",
+          "T9",
+          "T10"
+        ]
+      },
+      "seq": 20,
+      "judgment_hash": "sha256:9d5873aefa6a6e9e5ceef5c8f340dbe008f8666483c1666b9c9afec48ab9c9ac"
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "No remaining objection blocks decision-ready finalization after the judgment requires separate issue scope, tracker/terminal/liveness parity, task-to-lane identity binding, provenance for read-only observation, and owned-lane safeguards for any patch import/apply path.",
+      "objections": [],
+      "seq": 21,
+      "target_judgment_hash": "sha256:9d5873aefa6a6e9e5ceef5c8f340dbe008f8666483c1666b9c9afec48ab9c9ac"
+    },
+    {
+      "type": "finalized_decision_ready",
+      "confidence": "medium",
+      "missing_evidence": [
+        "A live disposable Cloud task metadata round-trip was not performed; the future issue must verify whether list/details can carry Decodex issue/run/attempt provenance.",
+        "A live non-local codex app-server environment run with dynamic tools and event hydration was not performed; the future issue must compare that app-server shape against Cloud tasks before implementation."
+      ],
+      "seq": 22,
+      "judgment_hash": "sha256:9d5873aefa6a6e9e5ceef5c8f340dbe008f8666483c1666b9c9afec48ab9c9ac"
+    }
+  ]
+}

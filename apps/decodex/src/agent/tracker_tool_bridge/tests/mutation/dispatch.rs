@@ -1,0 +1,858 @@
+use records::CLOSEOUT_RECORD_TYPE;
+use records::CloseoutRecord;
+
+use crate::tracker;
+
+#[test]
+fn closeout_apply_validates_merged_pr_and_completed_issue_state() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let mut completed_issue = sample_review_issue();
+
+	completed_issue.state =
+		TrackerState { id: String::from("state-done"), name: String::from("Done") };
+
+	let tracker = FakeTracker::with_refresh_snapshots(vec![
+		vec![completed_issue.clone()],
+		vec![completed_issue],
+	]);
+	let issue = sample_review_issue();
+	let workflow = sample_workflow();
+	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
+	let mut merged_pull_request = sample_pull_request();
+
+	merged_pull_request.url = String::from(pr_url);
+	merged_pull_request.state = String::from("MERGED");
+
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(merged_pull_request.clone()),
+		Ok(merged_pull_request),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_closeout_context_in(temp_dir.path(), pr_url),
+		Some(TrackerToolBridge::leaked_test_state_store()),
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": pr_url,
+			"summary": "Merged the approved lane and finished closeout."
+		}),
+	);
+	let finalize_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		serde_json::json!({ "path": "closeout" }),
+	);
+
+	assert!(response.success);
+	assert!(finalize_response.success);
+
+	DynamicToolHandler::validate_turn_completion(&bridge, "done")
+		.expect("closeout completion should allow the turn to complete");
+
+	bridge.apply_closeout().expect("closeout should validate cleanly");
+
+	let comments = tracker.comments.borrow();
+
+	assert_eq!(comments.len(), 1);
+	assert!(comments[0].contains("decodex closeout completed"));
+	assert!(comments[0].contains("\"record_type\": \"decodex.linear_execution_event\""));
+	assert!(comments[0].contains("\"event_type\": \"closeout\""));
+	assert!(tracker.state_updates.borrow().is_empty());
+}
+
+#[test]
+fn closeout_apply_writes_coarse_comment_without_replaying_existing_records() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let mut completed_issue = sample_review_issue();
+
+	completed_issue.state =
+		TrackerState { id: String::from("state-done"), name: String::from("Done") };
+
+	completed_issue.labels.push(TrackerLabel {
+		id: String::from("label-active"),
+		name: tracker::automation_active_label(TEST_SERVICE_ID),
+	});
+
+	let tracker = FakeTracker::with_refresh_snapshots(vec![
+		vec![completed_issue.clone()],
+		vec![completed_issue],
+	]);
+	let issue = sample_review_issue();
+	let workflow = sample_workflow();
+	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
+	let mut merged_pull_request = sample_pull_request();
+
+	merged_pull_request.url = String::from(pr_url);
+	merged_pull_request.state = String::from("MERGED");
+
+	let existing_record = records::append_structured_comment_record(
+		"decodex closeout completed",
+		&CloseoutRecord {
+			record_type: String::from(CLOSEOUT_RECORD_TYPE),
+			completed_at: String::from("2026-04-12T00:00:00Z"),
+			run_id: String::from("pub-618-attempt-4-123"),
+			attempt_number: 4,
+			branch_name: String::from("x/decodex-pub-618"),
+			pr_url: String::from(pr_url),
+		},
+	)
+	.expect("closeout record should serialize");
+
+	tracker.issue_comments.borrow_mut().insert(
+		issue.id.clone(),
+		vec![TrackerComment {
+			body: existing_record,
+			created_at: String::from("2026-04-12T00:00:00Z"),
+		}],
+	);
+
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(merged_pull_request.clone()),
+		Ok(merged_pull_request),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_closeout_context_in(temp_dir.path(), pr_url),
+		Some(TrackerToolBridge::leaked_test_state_store()),
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": pr_url,
+			"summary": "Merged the approved lane and finished closeout."
+		}),
+	);
+	let finalize_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		serde_json::json!({ "path": "closeout" }),
+	);
+
+	assert!(response.success);
+	assert!(finalize_response.success);
+
+	bridge.apply_closeout().expect("closeout should persist a coarse tracker summary");
+
+	assert_eq!(tracker.comments.borrow().len(), 1);
+	assert!(
+		tracker.label_removals.borrow().is_empty(),
+		"closeout writeback should keep ownership until cleanup succeeds"
+	);
+	assert!(tracker.state_updates.borrow().is_empty());
+}
+
+#[test]
+fn closeout_clear_uses_server_team_label_lookup_for_active_label_removal() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
+	let mut completed_issue = sample_review_issue();
+
+	completed_issue.state =
+		TrackerState { id: String::from("state-done"), name: String::from("Done") };
+
+	completed_issue
+		.labels
+		.push(TrackerLabel { id: String::from("label-active"), name: active_label.clone() });
+	completed_issue
+		.labels
+		.push(TrackerLabel { id: String::from("label-queued"), name: queue_label.clone() });
+	completed_issue.team.labels.retain(|label| label.name != active_label.as_str());
+
+	let tracker = FakeTracker::with_refresh_snapshots(vec![
+		vec![completed_issue.clone()],
+		vec![completed_issue.clone()],
+	])
+	.with_team_label_lookup_id(&completed_issue.team.id, &active_label, "label-active");
+	let issue = sample_review_issue();
+	let workflow = sample_workflow();
+	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
+	let mut merged_pull_request = sample_pull_request();
+
+	merged_pull_request.url = String::from(pr_url);
+	merged_pull_request.state = String::from("MERGED");
+
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(merged_pull_request.clone()),
+		Ok(merged_pull_request),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_closeout_context_in(temp_dir.path(), pr_url),
+		Some(TrackerToolBridge::leaked_test_state_store()),
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": pr_url,
+			"summary": "Merged the approved lane and finished closeout."
+		}),
+	);
+	let finalize_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		serde_json::json!({ "path": "closeout" }),
+	);
+
+	assert!(response.success);
+	assert!(finalize_response.success);
+
+	bridge.clear_closeout_issue_scope().expect(
+		"closeout cleanup should resolve the active label id server-side when team labels paginate",
+	);
+
+	assert_eq!(
+		tracker.label_removals.borrow().as_slice(),
+		[vec![String::from("label-active")], vec![String::from("label-queued")],]
+	);
+	assert!(tracker.state_updates.borrow().is_empty());
+}
+
+#[test]
+fn closeout_apply_keeps_active_label_until_cleanup() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let mut completed_issue = sample_review_issue();
+
+	completed_issue.state =
+		TrackerState { id: String::from("state-done"), name: String::from("Done") };
+	completed_issue.labels_complete = false;
+
+	completed_issue.labels.retain(|label| label.name != active_label.as_str());
+
+	let tracker = FakeTracker::with_refresh_snapshots(vec![
+		vec![completed_issue.clone()],
+		vec![completed_issue.clone()],
+	])
+	.with_label_lookup_issues(&active_label, vec![completed_issue.clone()]);
+	let issue = sample_review_issue();
+	let workflow = sample_workflow();
+	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
+	let mut merged_pull_request = sample_pull_request();
+
+	merged_pull_request.url = String::from(pr_url);
+	merged_pull_request.state = String::from("MERGED");
+
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(merged_pull_request.clone()),
+		Ok(merged_pull_request),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_closeout_context_in(temp_dir.path(), pr_url),
+		Some(TrackerToolBridge::leaked_test_state_store()),
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": pr_url,
+			"summary": "Merged the approved lane and finished closeout."
+		}),
+	);
+	let finalize_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		serde_json::json!({ "path": "closeout" }),
+	);
+
+	assert!(response.success);
+	assert!(finalize_response.success);
+
+	bridge
+		.apply_closeout()
+		.expect("closeout writeback should succeed without clearing the active label");
+
+	assert!(
+		tracker.label_removals.borrow().is_empty(),
+		"closeout writeback should not clear ownership before cleanup"
+	);
+	assert!(tracker.label_updates.borrow().is_empty());
+}
+
+#[test]
+fn closeout_clear_clears_active_label_when_issue_labels_paginate() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
+	let mut completed_issue = sample_review_issue();
+
+	completed_issue.state =
+		TrackerState { id: String::from("state-done"), name: String::from("Done") };
+	completed_issue.labels_complete = false;
+
+	completed_issue.labels.retain(|label| label.name != active_label.as_str());
+
+	let tracker = FakeTracker::with_refresh_snapshots(vec![vec![completed_issue.clone()]])
+		.with_label_lookup_issues(&active_label, vec![completed_issue.clone()])
+		.with_label_lookup_issues(&queue_label, vec![completed_issue.clone()]);
+	let issue = sample_review_issue();
+	let workflow = sample_workflow();
+	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
+	let merged_pull_request = {
+		let mut pull_request = sample_pull_request();
+
+		pull_request.url = String::from(pr_url);
+		pull_request.state = String::from("MERGED");
+
+		pull_request
+	};
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(merged_pull_request.clone()),
+		Ok(merged_pull_request),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_closeout_context_in(temp_dir.path(), pr_url),
+		Some(TrackerToolBridge::leaked_test_state_store()),
+		&inspector,
+		&local_repo_inspector,
+	);
+
+	bridge
+		.clear_closeout_issue_scope()
+		.expect("closeout cleanup should clear the active and queue labels incrementally when issue labels paginate");
+
+	assert_eq!(
+		tracker.label_removals.borrow().as_slice(),
+		[vec![String::from("label-active")], vec![String::from("label-queued")],]
+	);
+}
+
+#[test]
+fn closeout_clear_treats_missing_lane_label_removal_as_idempotent() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
+	let mut completed_issue = sample_review_issue();
+
+	completed_issue.state =
+		TrackerState { id: String::from("state-done"), name: String::from("Done") };
+
+	completed_issue
+		.labels
+		.push(TrackerLabel { id: String::from("label-active"), name: active_label });
+	completed_issue
+		.labels
+		.push(TrackerLabel { id: String::from("label-queued"), name: queue_label });
+
+	let tracker =
+		FakeTracker::with_label_update_error("Linear GraphQL request failed: Label not on issue");
+
+	tracker.refresh_snapshots.replace(vec![vec![completed_issue.clone()]]);
+
+	let issue = sample_review_issue();
+	let workflow = sample_workflow();
+	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
+	let merged_pull_request = {
+		let mut pull_request = sample_pull_request();
+
+		pull_request.url = String::from(pr_url);
+		pull_request.state = String::from("MERGED");
+
+		pull_request
+	};
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(merged_pull_request.clone()),
+		Ok(merged_pull_request),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_closeout_context_in(temp_dir.path(), pr_url),
+		Some(TrackerToolBridge::leaked_test_state_store()),
+		&inspector,
+		&local_repo_inspector,
+	);
+
+	bridge
+		.clear_closeout_issue_scope()
+		.expect("closeout cleanup should ignore already-absent Linear lane labels");
+}
+
+#[test]
+fn closeout_clear_skips_lane_labels_when_server_confirms_absent() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let queue_label = tracker::automation_queue_label(TEST_SERVICE_ID);
+	let mut completed_issue = sample_review_issue();
+
+	completed_issue.state =
+		TrackerState { id: String::from("state-done"), name: String::from("Done") };
+
+	completed_issue
+		.labels
+		.retain(|label| label.name != active_label.as_str() && label.name != queue_label.as_str());
+
+	let tracker = FakeTracker::with_refresh_snapshots(vec![vec![completed_issue.clone()]]);
+	let issue = sample_review_issue();
+	let workflow = sample_workflow();
+	let pr_url = "https://github.com/hack-ink/decodex/pull/260";
+	let merged_pull_request = {
+		let mut pull_request = sample_pull_request();
+
+		pull_request.url = String::from(pr_url);
+		pull_request.state = String::from("MERGED");
+
+		pull_request
+	};
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(merged_pull_request.clone()),
+		Ok(merged_pull_request),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_closeout_context_in(temp_dir.path(), pr_url),
+		Some(TrackerToolBridge::leaked_test_state_store()),
+		&inspector,
+		&local_repo_inspector,
+	);
+
+	bridge
+		.clear_closeout_issue_scope()
+		.expect("closeout cleanup should be idempotent after lane labels are already gone");
+
+	assert!(tracker.label_removals.borrow().is_empty());
+}
+
+#[test]
+fn closeout_complete_rejects_issue_that_is_not_yet_completed() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = tracker_with_current_issue_snapshot(&sample_review_issue());
+	let issue = sample_review_issue();
+	let workflow = sample_workflow();
+	let pr_url = "https://github.com/hack-ink/decodex/pull/261";
+	let mut merged_pull_request = sample_pull_request();
+
+	merged_pull_request.url = String::from(pr_url);
+	merged_pull_request.state = String::from("MERGED");
+
+	let inspector = FakePullRequestInspector::new(vec![
+		Ok(merged_pull_request.clone()),
+		Ok(merged_pull_request),
+	]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_inspectors(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_closeout_context_in(temp_dir.path(), pr_url),
+		Some(TrackerToolBridge::leaked_test_state_store()),
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": pr_url,
+			"summary": "Merged the approved lane and attempted closeout."
+		}),
+	);
+
+	assert!(!response.success);
+	assert!(matches!(
+		response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText { text }]
+			if text.contains("requires tracker state `Done`")
+				&& text.contains("Move the issue to `Done` with `issue_transition` before calling `issue_closeout_complete`")
+	));
+}
+
+#[test]
+fn review_handoff_inspection_uses_configured_github_token() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = GitHubTokenAssertingPullRequestInspector {
+		expected_token: env::var("HOME").expect("HOME should exist"),
+		response: sample_pull_request(),
+	};
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
+
+	write_clean_review_checkpoint(&review_context);
+
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/48",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(response.success);
+}
+
+#[test]
+fn review_handoff_inspection_rejects_missing_or_blank_github_token() {
+	{
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let tracker = FakeTracker::new();
+		let issue = sample_issue();
+		let workflow = sample_workflow();
+		let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+		let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+		let mut review_context = sample_review_context_in(temp_dir.path());
+
+		review_context.github_token_env_var = None;
+
+		write_clean_review_checkpoint(&review_context);
+
+		let bridge = TrackerToolBridge::with_review_handoff_for_test(
+			&tracker,
+			&issue,
+			&workflow,
+			review_context,
+			&pull_request_inspector,
+			&local_repo_inspector,
+		);
+		let response = DynamicToolHandler::handle_call(
+			&bridge,
+			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+			serde_json::json!({
+				"pr_url": "https://github.com/hack-ink/decodex/pull/48",
+				"summary": "Ready for review."
+			}),
+		);
+
+		assert!(!response.success);
+		assert_eq!(
+			response.content_items,
+			vec![DynamicToolContentItem::InputText {
+				text: String::from(
+					"`github.token_env_var` must be configured for PR-backed review handoff validation.",
+				),
+			}]
+		);
+	}
+	{
+		let temp_dir = TempDir::new().expect("tempdir should create");
+		let tracker = FakeTracker::new();
+		let issue = sample_issue();
+		let workflow = sample_workflow();
+		let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+		let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+		let env_var =
+			format!("DECODEX_TEST_BLANK_REVIEW_HANDOFF_GITHUB_TOKEN_ENV_{}", process::id());
+		let _env_guard = TestEnvVarGuard::set(&env_var, "");
+		let mut review_context = sample_review_context_in(temp_dir.path());
+
+		review_context.github_token_env_var = Some(env_var.clone());
+
+		write_clean_review_checkpoint(&review_context);
+
+		let bridge = TrackerToolBridge::with_review_handoff_for_test(
+			&tracker,
+			&issue,
+			&workflow,
+			review_context,
+			&pull_request_inspector,
+			&local_repo_inspector,
+		);
+		let response = DynamicToolHandler::handle_call(
+			&bridge,
+			ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+			serde_json::json!({
+				"pr_url": "https://github.com/hack-ink/decodex/pull/48",
+				"summary": "Ready for review."
+			}),
+		);
+
+		assert!(!response.success);
+		assert_eq!(
+			response.content_items,
+			vec![DynamicToolContentItem::InputText {
+				text: format!(
+					"Environment variable `{env_var}` referenced by `github.token_env_var` must not be blank."
+				),
+			}]
+		);
+	}
+}
+
+#[test]
+fn transitions_current_issue_with_allowed_state() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TRANSITION_TOOL_NAME,
+		serde_json::json!({ "issue_identifier": "DEC-1", "state": "In Progress" }),
+	);
+
+	assert!(response.success);
+	assert_eq!(tracker.state_updates.borrow().as_slice(), ["state-progress"]);
+}
+
+#[test]
+fn rejects_success_transition_without_review_handoff() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TRANSITION_TOOL_NAME,
+		serde_json::json!({ "state": "In Review" }),
+	);
+
+	assert!(!response.success);
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert_eq!(
+		response.content_items,
+		vec![DynamicToolContentItem::InputText {
+			text: String::from(
+				"State `In Review` requires `issue_review_handoff` after the branch is pushed and a reviewable PR exists."
+			),
+		}]
+	);
+}
+
+#[test]
+fn rejects_invalid_transition_argument_shapes() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
+	let cases = [
+		(
+			serde_json::json!({ "unexpected_state_field": "In Progress" }),
+			"Invalid `issue.transition` arguments: missing field `state`",
+		),
+		(
+			serde_json::json!({
+				"state": "In Progress",
+				"unexpected_state_field": "In Progress",
+			}),
+			"Invalid `issue.transition` arguments: unknown field `unexpected_state_field`",
+		),
+	];
+
+	for (arguments, message) in cases {
+		let response =
+			DynamicToolHandler::handle_call(&bridge, ISSUE_TRANSITION_TOOL_NAME, arguments);
+
+		assert!(!response.success);
+		assert_eq!(
+			response.content_items,
+			vec![DynamicToolContentItem::InputText { text: String::from(message) }]
+		);
+	}
+
+	assert!(tracker.state_updates.borrow().is_empty());
+}
+
+#[test]
+fn rejects_success_transition_regardless_of_other_workflow_state_membership() {
+	for workflow in [
+		sample_workflow_with_startable_states(&["Todo", "In Review"]),
+		sample_workflow_with_tracker_states(&["Todo"], "In Progress", "In Review", "In Review"),
+		sample_workflow_with_tracker_states(&["Todo"], "In Review", "In Review", "Todo"),
+	] {
+		let tracker = FakeTracker::new();
+		let issue = sample_issue();
+
+		assert_success_transition_requires_review_handoff(workflow, &tracker, &issue);
+	}
+}
+
+fn assert_success_transition_requires_review_handoff(
+	workflow: WorkflowDocument,
+	tracker: &FakeTracker,
+	issue: &TrackerIssue,
+) {
+	let bridge = TrackerToolBridge::new(tracker, issue, &workflow);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_TRANSITION_TOOL_NAME,
+		serde_json::json!({ "state": "In Review" }),
+	);
+
+	assert!(!response.success);
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert_eq!(
+		response.content_items,
+		vec![DynamicToolContentItem::InputText {
+			text: String::from(
+				"State `In Review` requires `issue_review_handoff` after the branch is pushed and a reviewable PR exists."
+			),
+		}]
+	);
+}
+
+#[test]
+fn rejects_tool_calls_for_another_issue() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_COMMENT_TOOL_NAME,
+		serde_json::json!({ "issue_identifier": "DEC-999", "body": "hello" }),
+	);
+
+	assert!(!response.success);
+	assert!(tracker.comments.borrow().is_empty());
+}
+
+#[test]
+fn accepts_public_comments_without_sensitive_paths() {
+	for body in [
+		"Started work and running validation now.",
+		"decodex run failed and will retry\n\n- worktree_path: `.worktrees/DEC-1`",
+	] {
+		let tracker = FakeTracker::new();
+		let issue = sample_issue();
+		let workflow = sample_workflow();
+		let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
+		let response = DynamicToolHandler::handle_call(
+			&bridge,
+			ISSUE_COMMENT_TOOL_NAME,
+			serde_json::json!({ "body": body }),
+		);
+
+		assert!(response.success, "comment should be accepted: {body}");
+		assert_eq!(tracker.comments.borrow().as_slice(), [body]);
+	}
+}
+
+#[test]
+fn rejects_public_comments_with_sensitive_or_unknown_paths() {
+	for (body, expected_error) in [
+		(
+			"decodex run failed and will retry\n\n- worktree_path: `/absolute/path/to/repo/.worktrees/DEC-1`",
+			"`worktree_path` must be repository-relative, not `/absolute/path/to/repo/.worktrees/DEC-1`.",
+		),
+		(
+			"decodex run failed and will retry\n\n- unexpected_path: `/absolute/path/to/repo/.worktrees/DEC-1`",
+			"Unsupported structured field `unexpected_path` in public issue comments.",
+		),
+		(
+			"decodex run failed and will retry\n\n- worktree_path: `C:/absolute/path/to/repo/.worktrees/DEC-1`",
+			"`worktree_path` must be repository-relative, not `C:/absolute/path/to/repo/.worktrees/DEC-1`.",
+		),
+	] {
+		let tracker = FakeTracker::new();
+		let issue = sample_issue();
+		let workflow = sample_workflow();
+		let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
+		let response = DynamicToolHandler::handle_call(
+			&bridge,
+			ISSUE_COMMENT_TOOL_NAME,
+			serde_json::json!({ "body": body }),
+		);
+
+		assert!(!response.success, "comment should be rejected: {body}");
+		assert!(tracker.comments.borrow().is_empty());
+		assert_eq!(
+			response.content_items,
+			vec![DynamicToolContentItem::InputText { text: String::from(expected_error) }]
+		);
+	}
+}
+
+#[test]
+fn adds_allowed_workflow_label() {
+	let issue = sample_issue();
+	let tracker = tracker_with_current_issue_snapshot(&issue);
+	let workflow = sample_workflow();
+	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_LABEL_ADD_TOOL_NAME,
+		serde_json::json!({ "label": "decodex:needs-attention" }),
+	);
+
+	assert!(response.success);
+	assert_eq!(tracker.label_additions.borrow().as_slice(), [vec![String::from("label-needs")]]);
+}
+
+#[test]
+fn rejects_invalid_label_add_argument_shapes() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
+	let cases = [
+		(
+			serde_json::json!({ "unexpected_label_field": "decodex:needs-attention" }),
+			"Invalid `issue.label.add` arguments: missing field `label`",
+		),
+		(
+			serde_json::json!({
+				"label": "decodex:needs-attention",
+				"unexpected_label_field": "decodex:needs-attention",
+			}),
+			"Invalid `issue.label.add` arguments: unknown field `unexpected_label_field`",
+		),
+	];
+
+	for (arguments, message) in cases {
+		let response =
+			DynamicToolHandler::handle_call(&bridge, ISSUE_LABEL_ADD_TOOL_NAME, arguments);
+
+		assert!(!response.success);
+		assert_eq!(
+			response.content_items,
+			vec![DynamicToolContentItem::InputText { text: String::from(message) }]
+		);
+	}
+
+	assert!(tracker.label_updates.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+}

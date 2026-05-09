@@ -1,0 +1,206 @@
+{
+  "schema": "research-run/2",
+  "run_id": "2026-04-02_plan-plugin-to-progress-skill",
+  "question": "Should decodex remove the plan plugin and replace it with one Linear-backed development progress state skill optimized for AI/agent/LLM execution state?",
+  "success_criteria": [
+    "Determine whether removing the plan plugin is preferable to keeping or simplifying it.",
+    "Define the smallest Linear-backed state-management surface that fits the current decodex lifecycle.",
+    "Preserve lifecycle authority boundaries so progress state cannot replace review handoff, closeout, or terminal finalize."
+  ],
+  "constraints": [
+    "Keep the routed Linear issue description as a generic briefing surface rather than plugin-private state.",
+    "Prefer one skill over a writing/execution split unless evidence shows the split is required.",
+    "Do not require linked-plan documents or a separate durable strategy authority unless the runtime truly needs them."
+  ],
+  "stop_rule": "Stop once the repository evidence supports a decision-ready recommendation or shows that removing the plan plugin would leave unresolved lifecycle gaps.",
+  "primary_hypothesis": "The current repo needs a lightweight Linear-backed execution-state skill more than it needs a separate plan plugin, so the best fit is to remove the plan plugin and replace it with one issue-scoped progress-state skill.",
+  "rival_hypotheses": [
+    "The plan plugin should stay and only be simplified because the runtime still needs durable strategy authority.",
+    "The best fit is to keep the plan plugin internals but collapse writing and execution into one skill instead of removing it."
+  ],
+  "falsifiers": [
+    "If the current runtime depends on linked-plan revision lineage for normal execution continuity, removing the plan plugin is insufficient.",
+    "If a lightweight Linear-backed checkpoint cannot represent the state needed for retries, review repair, and verification boundaries, the replacement skill is insufficient."
+  ],
+  "coverage": {
+    "mode": "standard",
+    "min_source_families": 0
+  },
+  "continuation": {
+    "mode": "auto_if_not_decision_ready",
+    "attempt": 1,
+    "max_attempts": 2,
+    "session_id": "2026-04-02_plan-plugin-to-progress-skill"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "probe_completed",
+      "remaining_option_count": 3,
+      "independent_option_questions": [
+        "Does the runtime need durable strategy authority beyond execution-state checkpoints for normal issue execution?",
+        "Can one issue-scoped Linear checkpoint cover the state transitions that agents actually need without reintroducing plan complexity?"
+      ],
+      "external_slices": []
+    },
+    {
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E1",
+          "kind": "observation",
+          "summary": "The runtime and README both position tracked planning as an execution overlay inside the retained lane rather than as decodex's primary lifecycle authority.",
+          "source_family": "repo_docs"
+        },
+        {
+          "id": "E2",
+          "kind": "observation",
+          "summary": "The runtime says Linear is the source of truth for issue lifecycle and coarse outcomes, forbids a second long-lived business workflow model outside Linear, and requires the issue description to remain a generic briefing surface.",
+          "source_family": "repo_docs"
+        },
+        {
+          "id": "E3",
+          "kind": "observation",
+          "summary": "The tracker tool contract already establishes an issue-scoped structured-checkpoint pattern via issue_review_checkpoint, which decodex treats as the only authoritative structured review-policy signal.",
+          "source_family": "repo_docs"
+        },
+        {
+          "id": "E4",
+          "kind": "observation",
+          "summary": "The current plan plugin is explicitly split into writing and execution, with linked tracked-plan documents, append-only plan-event comments, and cross-surface validation before execution can proceed.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E5",
+          "kind": "observation",
+          "summary": "The current plan plugin surface is about 2082 lines across skills, templates, and contract helpers, which is large for a feature now described as an execution overlay.",
+          "source_family": "repo_code"
+        },
+        {
+          "id": "E6",
+          "kind": "observation",
+          "summary": "Prior bounded research on the plan plugin concluded that the design still had unresolved runtime task-state, write-skew, lineage, and plan-local-done semantic gaps.",
+          "source_family": "repo_docs"
+        },
+        {
+          "id": "E7",
+          "kind": "inference",
+          "summary": "The repo's higher-frequency need is a lightweight issue-scoped execution-state contract on Linear rather than a separate durable strategy-authority subsystem.",
+          "source_family": "repo_docs"
+        }
+      ],
+      "seq": 2
+    },
+    {
+      "type": "inventory_updated",
+      "remaining_option_count": 1,
+      "independent_option_questions": [],
+      "external_slices": [],
+      "supporting_evidence_ids": [
+        "E1",
+        "E2",
+        "E3",
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "seq": 3
+    },
+    {
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T1",
+          "summary": "Removing the plan plugin aligns the common path with decodex's existing issue-scoped tracker authority and reduces control-plane complexity, but it gives up durable strategy lineage across replans.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E2",
+            "E5"
+          ],
+          "disconfirming_evidence_ids": [
+            "E4"
+          ]
+        },
+        {
+          "id": "T2",
+          "summary": "A single Linear-backed progress-state skill fits the existing checkpoint pattern and the agent's real execution needs, but it must stay below lifecycle authority so it cannot replace review handoff, closeout, or terminal finalize.",
+          "supporting_evidence_ids": [
+            "E2",
+            "E3",
+            "E7"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T3",
+          "summary": "Keeping the plan plugin preserves a stronger durable planning contract for rare multi-session planning cases, but it forces a dual-surface strategy/runtime model onto the common path and carries known semantic debt.",
+          "supporting_evidence_ids": [
+            "E4",
+            "E6"
+          ],
+          "disconfirming_evidence_ids": [
+            "E1",
+            "E7"
+          ]
+        },
+        {
+          "id": "T4",
+          "summary": "Collapsing writing and execution into one skill would reduce surface count, but most of the complexity is in the linked-document plus event-log contract rather than in the number of skill entrypoints.",
+          "supporting_evidence_ids": [
+            "E4",
+            "E5",
+            "E6"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ],
+      "seq": 4
+    },
+    {
+      "type": "judgment_candidate_created",
+      "judgment_payload": {
+        "judgment_type": "recommend",
+        "preferred_option": "remove-plan-plugin-and-adopt-linear-progress-skill",
+        "rejected_options": [
+          "keep-plan-plugin-and-simplify-it",
+          "collapse-plan-writing-and-execution-into-one-skill"
+        ],
+        "decision_claim": "Remove the plan plugin and replace it with one Linear-backed development progress state skill. The new skill should manage only issue-scoped execution state on the current Linear issue, keep the issue description as generic briefing, reuse the checkpoint pattern already established by issue_review_checkpoint, and stay strictly below decodex lifecycle authority so it cannot substitute for review handoff, delivery closeout, or terminal finalize.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E3",
+          "E5",
+          "E6",
+          "E7"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T3",
+          "T4"
+        ]
+      },
+      "seq": 5,
+      "judgment_hash": "sha256:6f37876de0e33898f204fe56e1144418894233df0ab79337b043f8e5956acebd"
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "The strongest objection is that removing the plan plugin also removes durable strategy lineage for rare replan-heavy workflows, but the current repo evidence shows that normal decodex execution does not depend on that authority. The replacement remains safe if the new skill is limited to issue-scoped execution state on Linear and cannot substitute for lifecycle signals such as review handoff or terminal finalize.",
+      "objections": [],
+      "seq": 6,
+      "target_judgment_hash": "sha256:6f37876de0e33898f204fe56e1144418894233df0ab79337b043f8e5956acebd"
+    },
+    {
+      "type": "finalized_decision_ready",
+      "confidence": "medium",
+      "missing_evidence": [
+        "The exact field list and write protocol for the replacement development progress state skill still need to be specified.",
+        "A migration plan for removing the plan plugin and replacing any current callers still needs to be written."
+      ],
+      "seq": 7,
+      "judgment_hash": "sha256:6f37876de0e33898f204fe56e1144418894233df0ab79337b043f8e5956acebd"
+    }
+  ]
+}
