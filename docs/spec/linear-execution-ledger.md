@@ -133,6 +133,7 @@ The event type set is intentionally small and low-frequency:
 - `pr_opened`
 - `pr_updated`
 - `review_handoff`
+- `review_handoff_rebind`
 - `repair_handoff`
 - `landed`
 - `closeout`
@@ -156,6 +157,7 @@ Every event requires the record envelope. Additional required fields are listed 
 | `pr_opened` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
 | `pr_updated` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
 | `review_handoff` | `branch`, `worktree_path`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `terminal_path` | `verification` |
+| `review_handoff_rebind` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `evidence` | `worktree_path`, `next_action` |
 | `repair_handoff` | `branch`, `worktree_path`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `terminal_path` | `verification` |
 | `landed` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `summary` | `worktree_path` |
 | `closeout` | `pr_url`, `commit_sha`, `summary` | `branch`, `worktree_path`, `validation_result`, `target_state` |
@@ -167,6 +169,11 @@ Every event requires the record envelope. Additional required fields are listed 
 that writes the event. For normal review handoff this is `review_handoff`; for retained
 repair completion this is `review_repair`; for explicit human-required exits this is
 `manual_attention`.
+
+`review_handoff_rebind` is only for an explicit operator recovery command that restores a
+missing runtime DB review handoff marker after validating the retained worktree and PR
+lineage. It is not a normal agent terminal signal, does not imply `issue_terminal_finalize`
+ran, and must not be emitted automatically from `decodex run`.
 
 ## Progress checkpoint records
 

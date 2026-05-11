@@ -83,6 +83,101 @@ fn review_markers_roundtrip_preserve_required_fields() {
 }
 
 #[test]
+fn clear_review_markers_for_handoff_preserves_other_branches() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let removed_handoff = ReviewHandoffMarker::new(
+		"run-1",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"main",
+		"x/decodex-pub-101",
+		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+	);
+	let removed_orchestration = ReviewOrchestrationMarker::new(
+		"run-1",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+		"request_pending",
+		None,
+		None,
+		None,
+		0,
+		0,
+		None,
+	);
+	let kept_handoff = ReviewHandoffMarker::new(
+		"run-2",
+		1,
+		"x/decodex-pub-101-review",
+		"https://github.com/hack-ink/decodex/pull/102",
+		"main",
+		"x/decodex-pub-101-review",
+		"18a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+	);
+	let kept_orchestration = ReviewOrchestrationMarker::new(
+		"run-2",
+		1,
+		"x/decodex-pub-101-review",
+		"https://github.com/hack-ink/decodex/pull/102",
+		"18a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+		"request_pending",
+		None,
+		None,
+		None,
+		0,
+		0,
+		None,
+	);
+
+	store
+		.upsert_review_handoff_marker("pubfi", "PUB-101", &removed_handoff)
+		.expect("removed handoff marker should persist");
+	store
+		.upsert_review_orchestration_marker("pubfi", "PUB-101", &removed_orchestration)
+		.expect("removed orchestration marker should persist");
+	store
+		.upsert_review_handoff_marker("pubfi", "PUB-101", &kept_handoff)
+		.expect("kept handoff marker should persist");
+	store
+		.upsert_review_orchestration_marker("pubfi", "PUB-101", &kept_orchestration)
+		.expect("kept orchestration marker should persist");
+	store
+		.clear_review_markers_for_handoff(
+			"pubfi",
+			"PUB-101",
+			&removed_handoff,
+			&removed_orchestration,
+		)
+		.expect("exact review markers should clear");
+
+	let reopened = StateStore::open(&state_path).expect("reopened state store should open");
+
+	assert!(
+		reopened
+			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101")
+			.expect("removed handoff marker should read")
+			.is_none()
+	);
+	assert_eq!(
+		reopened
+			.review_handoff_marker("pubfi", "PUB-101", "x/decodex-pub-101-review")
+			.expect("kept handoff marker should read"),
+		Some(kept_handoff.clone())
+	);
+	assert_eq!(
+		reopened
+			.review_orchestration_marker("pubfi", "PUB-101", &kept_handoff)
+			.expect("kept orchestration marker should read"),
+		Some(kept_orchestration)
+	);
+}
+
+#[test]
 fn missing_review_markers_return_absent() {
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let handoff = ReviewHandoffMarker::new(
