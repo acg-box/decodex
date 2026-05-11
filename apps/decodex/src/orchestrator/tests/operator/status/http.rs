@@ -178,8 +178,10 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(response.contains("flow-queue"));
 		assert!(response.contains("<span>Intake</span>"));
 		assert!(response.contains("<span>Landing</span>"));
-		assert!(response.contains("<h2>Projects</h2>"));
-		assert!(response.contains("Registered projects"));
+		assert!(response.contains("section-marker section-marker-projects"));
+		assert!(!response.contains("<h2 id=\"projects-title\">Projects</h2>"));
+		assert!(!response.contains("data-fold-key=\"panel:projects\""));
+		assert!(response.contains("<summary><span>All</span>"));
 		assert!(response.contains("projectRegistrationCommand"));
 		assert!(
 			response.contains("decodex project add ~/.codex/decodex/projects/<service-id>")
@@ -228,6 +230,10 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("running laness"));
 		assert!(!response.contains("active-echo"));
 		assert!(response.contains("fold-panel"));
+		assert!(response.contains(".fold-indicator::before"));
+		assert!(response.contains("content: \"+\";"));
+		assert!(response.contains("content: \"-\";"));
+		assert!(!response.contains(".fold-indicator::after"));
 		assert!(response.contains("data-fold-key=\"panel:worktrees\""));
 		assert!(response.contains("data-fold-key=\"panel:recent\""));
 		assert!(response.contains("cursor: pointer;"));
@@ -243,13 +249,16 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("Landing Readiness"));
 		assert!(response.contains("/state"));
 		assert!(response.contains("/readyz"));
-		assert!(response.contains("/dashboard/control"));
-		assert!(response.contains("WebSocket"));
-		assert!(response.contains("applyDashboardRunActivity"));
-		assert!(response.contains("sendDashboardControl"));
-		assert!(response.contains("data-dashboard-control=\"focusProject\""));
-		assert!(response.contains("data-dashboard-control=\"retryRun\""));
-		assert!(response.contains("controlAck"));
+			assert!(response.contains("/dashboard/control"));
+			assert!(response.contains("WebSocket"));
+			assert!(response.contains("applyDashboardRunActivity"));
+			assert!(response.contains("sendDashboardControl"));
+			assert!(!response.contains("data-dashboard-control=\"focusProject\""));
+			assert!(!response.contains("data-dashboard-control=\"focusRun\""));
+			assert!(!response.contains("data-dashboard-control=\"pauseProject\""));
+			assert!(!response.contains("data-dashboard-control=\"resumeProject\""));
+			assert!(response.contains("data-dashboard-control=\"retryRun\""));
+			assert!(response.contains("controlAck"));
 		assert!(!response.contains("Last updated: none"));
 		assert!(!response.contains("Auto-refresh"));
 		assert!(!response.contains("<h2>Project Scope</h2>"));
@@ -505,7 +514,7 @@ fn operator_dashboard_websocket_controls_focus_and_clear_subscription() {
 	});
 
 	assert_eq!(clear_ack["payload"]["accepted"], true);
-	assert_eq!(clear_ack["payload"]["status"], "focused");
+	assert_eq!(clear_ack["payload"]["status"], "cleared");
 	assert_eq!(clear_ack["payload"]["subscription"]["projectId"], Value::Null);
 	assert_eq!(clear_ack["payload"]["subscription"]["issueId"], Value::Null);
 	assert_eq!(clear_ack["payload"]["subscription"]["runId"], Value::Null);
