@@ -335,6 +335,13 @@ fn validate_linear_execution_event_fields(
 
 			require_string(record.terminal_path.as_deref(), "terminal_path")
 		},
+		"review_handoff_rebind" => {
+			validate_pr_event_fields(record)?;
+			require_string(record.validation_result.as_deref(), "validation_result")?;
+			require_string(record.summary.as_deref(), "summary")?;
+
+			require_vec(record.evidence.as_ref(), "evidence")
+		},
 		"landed" => {
 			validate_pr_event_fields(record)?;
 

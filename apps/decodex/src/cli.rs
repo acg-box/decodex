@@ -20,6 +20,7 @@ use crate::{
 	manual::{self, ManualCommitRequest, ManualLandRequest},
 	orchestrator::{self, IssueDispatchMode, RunOnceRequest, ServeRequest},
 	prelude::eyre,
+	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
 	runtime,
 };
 
@@ -57,6 +58,7 @@ impl Cli {
 			Command::Serve(args) => args.run(config_path),
 			Command::Project(args) => args.run(),
 			Command::Status(args) => args.run(config_path),
+			Command::Recover(args) => args.run(config_path),
 			Command::ArchiveLinear(args) => args.run(config_path),
 			Command::Probe(args) => args.run(),
 			Command::Attempt(args) => args.run(config_path),
@@ -126,6 +128,8 @@ enum Command {
 	Project(ProjectCommand),
 	/// Inspect the current local runtime state for one configured project.
 	Status(StatusCommand),
+	/// Diagnose or explicitly repair supported retained-lane recovery cases.
+	Recover(RecoverCommand),
 	/// Dry-run or archive old terminal Linear issues by repo label.
 	ArchiveLinear(ArchiveLinearCommand),
 	/// Validate the local app-server integration boundary.
@@ -351,6 +355,81 @@ impl StatusCommand {
 }
 
 #[derive(Debug, Args)]
+struct RecoverCommand {
+	#[command(subcommand)]
+	command: RecoverSubcommand,
+}
+impl RecoverCommand {
+	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+		match &self.command {
+			RecoverSubcommand::ReviewHandoff(args) => args.run(config_path),
+		}
+	}
+}
+
+#[derive(Debug, Subcommand)]
+enum RecoverSubcommand {
+	/// Recover retained review lanes whose handoff marker is missing.
+	ReviewHandoff(ReviewHandoffRecoveryCommand),
+}
+
+#[derive(Debug, Args)]
+struct ReviewHandoffRecoveryCommand {
+	#[command(subcommand)]
+	command: ReviewHandoffRecoverySubcommand,
+}
+impl ReviewHandoffRecoveryCommand {
+	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+		match &self.command {
+			ReviewHandoffRecoverySubcommand::Diagnose(args) =>
+				recovery::run_review_handoff_diagnose(
+					config_path,
+					&ReviewHandoffDiagnoseRequest { issue: args.issue.clone(), json: args.json },
+				),
+			ReviewHandoffRecoverySubcommand::Rebind(args) => recovery::run_review_handoff_rebind(
+				config_path,
+				&ReviewHandoffRebindRequest {
+					issue: args.issue.clone(),
+					pr_url: args.pr.clone(),
+					dry_run: args.dry_run,
+				},
+			),
+		}
+	}
+}
+
+#[derive(Debug, Subcommand)]
+enum ReviewHandoffRecoverySubcommand {
+	/// Read-only diagnosis for orphaned retained review lanes.
+	Diagnose(ReviewHandoffDiagnoseCommand),
+	/// Explicitly bind a validated PR URL to one retained review lane.
+	Rebind(ReviewHandoffRebindCommand),
+}
+
+#[derive(Debug, Args)]
+struct ReviewHandoffDiagnoseCommand {
+	/// Issue identifier to inspect. Omit to inspect all retained review worktrees.
+	#[arg(value_name = "ISSUE")]
+	issue: Option<String>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct ReviewHandoffRebindCommand {
+	/// Issue identifier for the retained review lane.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Pull request URL to bind after validation.
+	#[arg(long, value_name = "URL")]
+	pr: String,
+	/// Validate only; do not write runtime markers or tracker audit comments.
+	#[arg(long)]
+	dry_run: bool,
+}
+
+#[derive(Debug, Args)]
 struct ArchiveLinearCommand {
 	/// Repo label scope to inspect, for example `repo:decodex`.
 	#[arg(long = "repo-label", value_name = "LABEL", required = true)]
@@ -493,7 +572,9 @@ mod tests {
 
 	use crate::cli::{
 		AttemptCommand, Cli, Command, CommitCommand, LandCommand, ProbeCommand, ProjectCommand,
-		ProjectSubcommand, RunCommand, ServeCommand, StatusCommand,
+		ProjectSubcommand, RecoverCommand, RecoverSubcommand, ReviewHandoffDiagnoseCommand,
+		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
+		RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -668,5 +749,57 @@ mod tests {
 
 		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
 		assert!(matches!(cli.command, Command::Status(StatusCommand { json: true, limit: 5 })));
+	}
+
+	#[test]
+	fn parses_review_handoff_diagnose_with_issue_and_json() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"--config",
+			"./project.toml",
+			"recover",
+			"review-handoff",
+			"diagnose",
+			"PUB-718",
+			"--json",
+		]);
+
+		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
+		assert!(matches!(
+			cli.command,
+			Command::Recover(RecoverCommand {
+				command: RecoverSubcommand::ReviewHandoff(ReviewHandoffRecoveryCommand {
+					command: ReviewHandoffRecoverySubcommand::Diagnose(
+						ReviewHandoffDiagnoseCommand { issue: Some(_), json: true }
+					)
+				})
+			})
+		));
+	}
+
+	#[test]
+	fn parses_review_handoff_rebind_dry_run() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"recover",
+			"review-handoff",
+			"rebind",
+			"PUB-718",
+			"--pr",
+			"https://github.com/hack-ink/pubfi-mono-v2/pull/14",
+			"--dry-run",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Recover(RecoverCommand {
+				command: RecoverSubcommand::ReviewHandoff(ReviewHandoffRecoveryCommand {
+					command: ReviewHandoffRecoverySubcommand::Rebind(
+						ReviewHandoffRebindCommand { issue, pr, dry_run: true }
+					)
+				})
+			}) if issue == "PUB-718"
+				&& pr == "https://github.com/hack-ink/pubfi-mono-v2/pull/14"
+		));
 	}
 }
