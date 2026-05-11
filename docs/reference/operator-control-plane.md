@@ -128,11 +128,13 @@ Worktree visibility follows the owning dashboard section:
   when the queue lease is not held.
 - Running lanes derive CLI and dashboard text from the same `OperatorRunStatus`
   object. `protocol_activity`, when present, summarizes app-server structured
-  notifications for turn status, waiting reason, rate-limit status, and recent
-  protocol events. The dashboard uses that shared summary to explain whether active
-  time is going to model execution, tools, approval/user input, or protocol idleness.
-  These high-frequency details remain local/operator-only and are not written to
-  Linear except through existing lifecycle summaries.
+  notifications for turn status, waiting reason, and recent protocol events. The
+  dashboard uses that shared summary to explain whether active time is going to model
+  execution, tools, approval/user input, or protocol idleness. Account usage details
+  stay in the `Accounts` table; connector rate-limit backoff is surfaced as project
+  and snapshot health, not repeated in each lane debug row. These high-frequency
+  details remain local/operator-only and are not written to Linear except through
+  existing lifecycle summaries.
 - Dynamic tool failures appear in local protocol activity as
   `item/tool/call/failure` with a normalized failure class and next action. Invalid
   or undeclared app-server tool requests are protocol failures; declared Decodex

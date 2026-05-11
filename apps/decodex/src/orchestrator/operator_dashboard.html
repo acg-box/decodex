@@ -48,14 +48,14 @@
 				--fast: 140ms;
 				--medium: 220ms;
 				--slow: 380ms;
-				--type-micro: 9px;
-				--type-caption: 10px;
-				--type-label: 11px;
-				--type-meta: 11px;
-				--type-body: 12px;
+				--type-micro: 10px;
+				--type-caption: 11px;
+				--type-label: 12px;
+				--type-meta: 12px;
+				--type-body: 13px;
 				--type-row-title: 13px;
-				--type-section-title: 14px;
-				--type-card-title: 15px;
+				--type-row-aside: 11px;
+				--type-section-title: 13px;
 				--type-display: 18px;
 				--weight-label: 500;
 				--weight-strong: 600;
@@ -215,7 +215,7 @@
 			}
 
 			.table-meta {
-				font-family: var(--sans);
+				font-family: var(--mono);
 				font-size: var(--type-caption);
 				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
@@ -241,6 +241,8 @@
 				align-items: baseline;
 				gap: 0 6px;
 				min-width: 0;
+				font-family: var(--mono);
+				font-variant-numeric: tabular-nums;
 			}
 
 			.metric-group {
@@ -263,7 +265,7 @@
 
 			.metric-label {
 				color: var(--muted);
-				font-family: var(--sans);
+				font-family: var(--mono);
 				font-weight: var(--weight-label);
 				letter-spacing: 0;
 			}
@@ -574,6 +576,38 @@
 				letter-spacing: 0;
 			}
 
+			.value-link,
+			.transport-link {
+				color: inherit;
+				margin: -1px -3px;
+				padding: 1px 3px;
+				border-radius: 4px;
+				text-decoration: none;
+				transition:
+					color var(--fast) var(--ease),
+					background-color var(--fast) var(--ease),
+					box-shadow var(--fast) var(--ease),
+					transform var(--fast) var(--ease);
+			}
+
+			.value-link:hover,
+			.transport-link:hover {
+				color: var(--text);
+				background: color-mix(in srgb, currentColor 10%, transparent);
+				box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent);
+			}
+
+			.value-link:active,
+			.transport-link:active {
+				transform: translateY(1px);
+			}
+
+			.value-link:focus-visible,
+			.transport-link:focus-visible {
+				outline: 1px solid color-mix(in srgb, currentColor 42%, transparent);
+				outline-offset: 2px;
+			}
+
 			.transport-meta[data-tone="success"] strong {
 				color: var(--success);
 			}
@@ -603,7 +637,7 @@
 			}
 
 			.flow-stage span {
-				font-family: var(--sans);
+				font-family: var(--mono);
 				font-size: var(--type-label);
 				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
@@ -639,7 +673,7 @@
 
 			.flow-stage strong {
 				color: var(--text);
-				font-family: var(--sans);
+				font-family: var(--mono);
 				font-size: var(--type-label);
 				font-weight: var(--weight-label);
 				font-variant-numeric: tabular-nums;
@@ -735,7 +769,7 @@
 				min-width: 0;
 				color: var(--muted-strong);
 				font-size: var(--type-section-title);
-				font-weight: var(--weight-strong);
+				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
 				line-height: 1.25;
 				white-space: nowrap;
@@ -814,7 +848,7 @@
 			.panel-head h2 {
 				margin: 0;
 				font-size: var(--type-section-title);
-				font-weight: var(--weight-strong);
+				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
 				font-family: var(--sans);
 				color: var(--muted-strong);
@@ -880,10 +914,6 @@
 				padding-bottom: var(--space-card-y);
 			}
 
-			#active-panel .row-title h3 {
-				font-size: var(--type-card-title);
-			}
-
 			.action-card::before,
 			.run-card::before,
 			.worktree-card::before {
@@ -924,18 +954,14 @@
 			}
 
 			.row-title h3,
-			.row-title h4 {
+			.row-title h4,
+			.run-title {
 				margin: 0;
-				font-size: var(--type-card-title);
+				color: var(--text);
+				font-size: var(--type-row-title);
+				font-weight: var(--weight-strong);
 				letter-spacing: 0;
-				line-height: 1.26;
-			}
-
-			.worktree-card .row-title h3,
-			.worktree-card .row-title h4 {
-				color: var(--muted-strong);
-				font-size: var(--type-body);
-				font-weight: var(--weight-label);
+				line-height: 1.28;
 			}
 
 			.worktree-card .row-summary {
@@ -957,20 +983,30 @@
 				font-weight: var(--weight-label);
 			}
 
-			.kicker,
-			.card-meta {
+			.kicker {
 				display: flex;
 				flex-wrap: wrap;
 				gap: 8px;
-				font-family: var(--sans);
+				font-family: var(--mono);
 				font-size: var(--type-label);
 				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
 				color: var(--muted);
 			}
 
-			.card-meta {
+			.row-aside {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 6px 8px;
 				justify-content: end;
+				align-items: baseline;
+				color: var(--muted);
+				font-family: var(--mono);
+				font-size: var(--type-row-aside);
+				font-weight: var(--weight-label);
+				font-variant-numeric: tabular-nums;
+				letter-spacing: 0;
+				line-height: 1.22;
 				text-align: right;
 			}
 
@@ -980,19 +1016,11 @@
 				min-width: 0;
 			}
 
-			.run-title {
-				margin: 0;
-				color: var(--text);
-				font-size: var(--type-card-title);
-				font-weight: var(--weight-strong);
-				line-height: 1.28;
-			}
-
 			.run-subtitle {
 				display: flex;
 				flex-wrap: wrap;
 				gap: 8px 12px;
-				font-family: var(--sans);
+				font-family: var(--mono);
 				font-size: var(--type-label);
 				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
@@ -1012,32 +1040,12 @@
 				flex-wrap: wrap;
 				gap: 12px;
 				margin-top: 12px;
-				font-family: var(--sans);
+				font-family: var(--mono);
 				font-size: var(--type-label);
 				color: var(--muted);
 			}
 
 			.status-line strong {
-				color: var(--text);
-				font-weight: var(--weight-label);
-			}
-
-			.activity-line {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 5px 14px;
-				margin-top: 8px;
-				font-family: var(--sans);
-				font-size: var(--type-label);
-				line-height: 1.4;
-				color: var(--muted);
-			}
-
-			.activity-line span:first-child {
-				color: var(--muted-strong);
-			}
-
-			.activity-line strong {
 				color: var(--text);
 				font-weight: var(--weight-label);
 			}
@@ -1414,16 +1422,6 @@
 				opacity: 0.74;
 			}
 
-			.run-control-line {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 6px;
-				align-items: center;
-				justify-content: flex-start;
-				min-width: 0;
-				margin-top: 8px;
-			}
-
 			.control-button {
 				display: inline-flex;
 				align-items: center;
@@ -1471,10 +1469,41 @@
 				border-radius: 999px;
 			}
 
+			.status-line .run-stop-button {
+				width: 18px;
+				min-width: 18px;
+				height: 18px;
+				min-height: 18px;
+				margin-left: -7px;
+				padding: 0;
+				border: 0;
+				border-radius: 2px;
+				background: transparent;
+				color: color-mix(in srgb, var(--danger) 86%, var(--text));
+				opacity: 0.92;
+			}
+
+			.status-line .run-stop-button:hover {
+				border: 0;
+				background: transparent;
+				color: color-mix(in srgb, var(--danger) 88%, var(--text));
+				opacity: 1;
+			}
+
+			.status-line .run-stop-button:focus-visible {
+				outline: 1px solid color-mix(in srgb, var(--danger) 58%, transparent);
+				outline-offset: 2px;
+			}
+
 			.control-button.icon-button svg {
 				display: block;
 				width: 13px;
 				height: 13px;
+			}
+
+			.status-line .run-stop-button svg {
+				width: 14px;
+				height: 14px;
 			}
 
 			.control-button[disabled] {
@@ -1655,6 +1684,11 @@
 				color: var(--info);
 			}
 
+			.account-privacy-toggle.is-on,
+			.project-location-toggle.is-on {
+				color: var(--info);
+			}
+
 			.project-filter-toggle:hover {
 				background: var(--surface-muted);
 				color: var(--text);
@@ -1671,40 +1705,78 @@
 				opacity: 0.45;
 			}
 
-			.account-use-line {
+			.run-meta-line {
 				display: flex;
 				flex-wrap: wrap;
-				align-items: center;
-				gap: 6px 10px;
+				align-items: baseline;
+				gap: 6px 14px;
 				margin-top: 8px;
 				min-width: 0;
-				font-family: var(--sans);
+				font-family: var(--mono);
 				font-size: var(--type-label);
+				font-variant-ligatures: none;
+				letter-spacing: 0;
+				line-height: 1.35;
 				color: var(--muted);
 			}
 
-			.account-use-line .account-name.is-machine,
-			.account-use-line .machine-text {
-				font-family: var(--mono);
-				font-variant-ligatures: none;
-				letter-spacing: 0;
-			}
-
-			.account-use-line strong {
-				color: var(--text);
-				font-weight: var(--weight-label);
-			}
-
-			.account-use-line.is-missing strong {
-				color: var(--muted-strong);
-			}
-
-			.account-use-line span {
+			.run-meta-item {
+				display: inline-flex;
+				align-items: baseline;
+				gap: 5px;
 				min-width: 0;
+			}
+
+			.run-meta-item.is-account {
+				position: relative;
+				gap: 0;
+				padding-left: 16px;
+			}
+
+			.run-meta-item:not(:first-child)::before {
+				content: "";
+				width: 2px;
+				height: 2px;
+				margin-right: 7px;
+				border-radius: 999px;
+				background: currentColor;
+				opacity: 0.64;
+				transform: translateY(-1px);
+			}
+
+			.run-meta-label {
+				min-width: 0;
+				color: var(--muted);
 				overflow-wrap: anywhere;
 			}
 
-			.account-use-label {
+			.run-meta-icon {
+				position: absolute;
+				top: 50%;
+				left: 0;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 12px;
+				height: 12px;
+				color: var(--muted-strong);
+				transform: translateY(-50%);
+			}
+
+			.run-meta-icon svg {
+				display: block;
+				width: 12px;
+				height: 12px;
+			}
+
+			.run-meta-item strong {
+				min-width: 0;
+				color: var(--text);
+				font-weight: var(--weight-label);
+				overflow-wrap: anywhere;
+			}
+
+			.run-meta-item.is-missing strong {
 				color: var(--muted-strong);
 			}
 
@@ -1941,14 +2013,10 @@
 				justify-self: stretch;
 				gap: 6px;
 				min-width: 0;
-				font-family: var(--sans);
-				text-align: center;
-			}
-
-			.account-row-id.is-machine {
 				font-family: var(--mono);
 				font-variant-ligatures: none;
 				letter-spacing: 0;
+				text-align: center;
 			}
 
 			.account-row-id strong {
@@ -2190,7 +2258,7 @@
 				display: grid;
 				grid-template-columns: 96px minmax(0, 1fr);
 				align-items: baseline;
-				gap: 10px 16px;
+				gap: 10px;
 				min-width: 0;
 				font-family: var(--mono);
 				font-size: var(--type-caption);
@@ -2454,55 +2522,9 @@
 				grid-template-columns: minmax(0, 1fr) minmax(150px, 0.72fr);
 			}
 
-			.queue-facts {
+			.card-facts {
 				gap: 13px clamp(24px, 8vw, 96px);
 				align-items: start;
-			}
-
-			.queue-group {
-				padding-top: 0;
-				border-top: 0;
-			}
-
-			.queue-group:first-child {
-				padding-top: 0;
-				border-top: 0;
-			}
-
-			.queue-group + .queue-group {
-				margin-top: 16px;
-			}
-
-			.queue-group > .action-card:last-child {
-				border-bottom: 0;
-			}
-
-			.queue-group-header {
-				display: flex;
-				align-items: baseline;
-				justify-content: space-between;
-				gap: 12px;
-				margin-bottom: 10px;
-				padding-bottom: 0;
-				border-bottom: 0;
-			}
-
-			.queue-group-header h4 {
-				margin: 0;
-				font-size: var(--type-meta);
-				font-family: var(--sans);
-				font-weight: var(--weight-label);
-				letter-spacing: var(--tracking-caps);
-				color: var(--muted);
-			}
-
-			.queue-group-count {
-				font-family: var(--sans);
-				font-size: var(--type-meta);
-				font-weight: var(--weight-label);
-				font-variant-numeric: tabular-nums;
-				letter-spacing: var(--tracking-caps);
-				color: var(--muted);
 			}
 
 			.field {
@@ -2914,7 +2936,7 @@
 					grid-template-columns: 1fr;
 				}
 
-				.card-meta {
+				.row-aside {
 					justify-content: start;
 					text-align: left;
 				}
@@ -3242,6 +3264,15 @@
 				["activity", "Activity"],
 				["work", "Work"],
 			];
+			const FIELD_LABEL_ACRONYMS = new Map([
+				["api", "API"],
+				["codex", "Codex"],
+				["cwd", "CWD"],
+				["id", "ID"],
+				["pr", "PR"],
+				["prs", "PRs"],
+				["url", "URL"],
+			]);
 			const ACCOUNT_IDENTITY_EDGE_CHARS = 6;
 			const ACCOUNT_IDENTITY_MIN_EDGE_CHARS = 3;
 			const ACCOUNT_RANDOM_NAMES = [
@@ -3411,6 +3442,54 @@
 				});
 			}
 
+			function encodeLocalPath(path) {
+				return path
+					.split("/")
+					.map((segment, index) => (index === 0 ? "" : encodeURIComponent(segment)))
+					.join("/");
+			}
+
+			function localPathHref(value) {
+				const rawValue = String(value || "").trim();
+				if (
+					!rawValue.startsWith("/") ||
+					rawValue.startsWith("//") ||
+					/[\n\r]/.test(rawValue) ||
+					!["/Users/", "/Volumes/", "/tmp/", "/private/", "/var/", "/opt/", "/home/"].some((prefix) =>
+						rawValue.startsWith(prefix),
+					)
+				) {
+					return "";
+				}
+
+				return `file://${encodeLocalPath(rawValue)}`;
+			}
+
+			function linkHref(value) {
+				const rawValue = String(value || "").trim();
+				return /^(https?|wss?):\/\//i.test(rawValue) ? rawValue : localPathHref(rawValue);
+			}
+
+			function linkValueLabel(label, value) {
+				const text = String(value || "").trim();
+				const labelKey = detailLabel(label).toLowerCase();
+				const pullRequestMatch = text.match(/\/pull\/(\d+)(?:$|[/?#])/);
+				if (labelKey === "pr" && pullRequestMatch) {
+					return `#${pullRequestMatch[1]}`;
+				}
+
+				return text;
+			}
+
+			function renderValueLink(label, value, className = "value-link") {
+				const href = linkHref(value);
+				if (!href) {
+					return "";
+				}
+
+				return `<a class="${className}" href="${escapeHtml(href)}" target="_blank" rel="noreferrer" title="${escapeHtml(href)}">${escapeHtml(linkValueLabel(label, value))}</a>`;
+			}
+
 			function metricTokenParts(token) {
 				const match = String(token).trim().match(/^(-?\d[\d.,]*(?:[a-zA-Z%]+)?)(?:\s+(.+))?$/);
 				if (!match) {
@@ -3430,7 +3509,7 @@
 				}
 
 				const label = parts.label
-					? `<span class="metric-label">${escapeHtml(parts.label)}</span>`
+					? `<span class="metric-label">${escapeHtml(titleCaseLabel(parts.label))}</span>`
 					: "";
 				return `<span class="metric-group"><span class="metric-number">${escapeHtml(parts.number)}</span>${label}</span>`;
 			}
@@ -3466,6 +3545,14 @@
 				return String(value)
 					.replace(/_/g, " ")
 					.replace(/\b\w/g, (character) => character.toUpperCase());
+			}
+
+			function compactStateToken(value) {
+				if (!value) {
+					return "none";
+				}
+
+				return String(value).trim().toLowerCase().replace(/_/g, " ");
 			}
 
 			function formatTimestamp(value) {
@@ -3988,12 +4075,16 @@
 				if (candidate.display_classification === "owned_active") {
 					return `Shown in ${COPY.runningLane}; excluded from queue.`;
 				}
-				if (candidate.attention?.summary) {
+				if (
+					candidate.attention?.summary &&
+					!queuedCandidateSummaryIsNoise(candidate.attention.summary)
+				) {
 					return candidate.attention.summary;
 				}
 				switch (candidate.reason) {
+					case "normal_dispatch":
 					case "eligible_for_dispatch":
-						return "Ready to start.";
+						return "";
 					case "shared_claim_present":
 						return "Claimed; no live local lane visible.";
 					case "open_tracker_blockers":
@@ -4003,11 +4094,11 @@
 					case "missing_dispatch_briefing":
 						return "Missing dispatch brief.";
 					case "global_concurrency_exhausted":
-						return "Waiting for a free agent slot.";
+						return "";
 					case "issue_opted_out":
 						return "Automation is disabled for this issue.";
 					case "issue_needs_attention":
-						return "Needs-attention label set.";
+						return "";
 					case "non_startable_state":
 						return `${candidate.state} cannot start.`;
 					case "terminal_state":
@@ -4017,12 +4108,17 @@
 				}
 			}
 
+			function queuedCandidateSummaryIsNoise(summary) {
+				const normalized = String(summary || "").trim().toLowerCase();
+				return normalized === "" || normalized.includes("systemerror");
+			}
+
 			function queuedCandidateStatusText(candidate) {
 				if (candidate.display_classification === "owned_active") {
 					return COPY.runningInline;
 				}
 				if (candidate.reason === "global_concurrency_exhausted") {
-					return "At capacity";
+					return "At Capacity";
 				}
 
 				return humanizeToken(candidate.classification);
@@ -4030,31 +4126,34 @@
 
 			function queuedCandidateReasonText(candidate) {
 				if (candidate.display_classification === "owned_active") {
-					return "running lane claim";
+					return "Running Lane Claim";
 				}
 				if (
 					candidate.attention?.worktree_has_tracked_changes &&
 					candidate.attention?.retry_budget_attempt_count != null
 				) {
-					return "Partial patch retained";
+					return "Partial Patch Retained";
 				}
 				if (candidate.attention?.thread_status === "systemError") {
-					return "App-server error";
+					return "App-Server Error";
 				}
 				if (candidate.attention?.last_event_type === "item/tool/call") {
-					return "Tool call stalled";
+					return "Tool Call Stalled";
 				}
 				if (candidate.attention?.attention_error_class) {
 					return humanizeToken(candidate.attention.attention_error_class);
 				}
 				if (candidate.reason === "issue_needs_attention") {
-					return "Needs attention";
+					return "Needs Attention";
 				}
 				if (candidate.attention?.retry_budget_attempt_count != null) {
-					return "Auto retry paused";
+					return "Auto Retry Paused";
 				}
 				if (candidate.reason === "global_concurrency_exhausted") {
-					return "Capacity full";
+					return "";
+				}
+				if (["normal_dispatch", "eligible_for_dispatch"].includes(candidate.reason)) {
+					return "";
 				}
 
 				return humanizeToken(candidate.reason);
@@ -4068,44 +4167,13 @@
 				);
 			}
 
-			function queueClassificationGroups(items) {
-				const groups = [
-					["ready", "Ready"],
-					["waiting", "Waiting"],
-					["claimed", "Claimed"],
-					["blocked", "Blocked"],
-				];
-				const knownClassifications = new Set(groups.map(([classification]) => classification));
-
-				const renderedGroups = groups
-					.map(([classification, title]) => ({
-						classification,
-						title,
-						items: items.filter(
-							(candidate) =>
-								(candidate.display_classification || candidate.classification) ===
-								classification,
-						),
-					}))
-					.filter((group) => group.items.length);
-
-				const otherItems = items.filter(
-					(candidate) =>
-						!knownClassifications.has(candidate.display_classification || candidate.classification),
-				);
-				if (otherItems.length) {
-					renderedGroups.push({
-						classification: "other",
-						title: "Other",
-						items: otherItems,
-					});
-				}
-
-				return renderedGroups;
+			function formatDetailToken(value) {
+				const token = String(value || "").trim();
+				return token ? token.toUpperCase() : "NONE";
 			}
 
 			function formatPriority(priority) {
-				return priority == null ? "none" : `P${priority}`;
+				return priority == null ? "NONE" : `P${priority}`;
 			}
 
 			function applyDashboardLayout() {
@@ -4400,6 +4468,21 @@
 				delete node.dataset.tone;
 			}
 
+			function titleCaseLabel(label) {
+				return String(label || "").replace(/\b[A-Za-z][A-Za-z0-9]*\b/g, (word) => {
+					const lower = word.toLowerCase();
+					const acronym = FIELD_LABEL_ACRONYMS.get(lower);
+					return acronym || `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+				});
+			}
+
+			function detailLabel(label) {
+				return String(label || "").replace(/\b[A-Za-z][A-Za-z0-9]*\b/g, (word) => {
+					const lower = word.toLowerCase();
+					return FIELD_LABEL_ACRONYMS.get(lower) || lower;
+				});
+			}
+
 
 			function resolveTheme(selection) {
 				if (selection === "dark" || selection === "light") {
@@ -4436,14 +4519,24 @@
 				renderThemeControls(themeSelection, effectiveTheme);
 			}
 
-			function field(label, value, valueClass = "") {
+			function renderField(label, value, valueClass, labelFormatter, fieldClass = "") {
+				const fieldClassName = ["field", fieldClass].filter(Boolean).join(" ");
 				const className = ["field-value", valueClass].filter(Boolean).join(" ");
+				const valueHtml = renderValueLink(label, value) || escapeHtml(value);
 				return `
-					<div class="field">
-						<div class="field-label">${escapeHtml(label)}</div>
-						<div class="${className}">${escapeHtml(value)}</div>
+					<div class="${fieldClassName}">
+						<div class="field-label">${escapeHtml(labelFormatter(label))}</div>
+						<div class="${className}">${valueHtml}</div>
 					</div>
 				`;
+			}
+
+			function field(label, value, valueClass = "") {
+				return renderField(label, value, valueClass, detailLabel);
+			}
+
+			function cardField(label, value, valueClass = "") {
+				return renderField(label, value, valueClass, titleCaseLabel, "card-field");
 			}
 
 			function renderAttentionFacts(candidate) {
@@ -4457,10 +4550,10 @@
 					const attempt = attention.attempt_number == null ? "" : ` · attempt ${attention.attempt_number}`;
 					facts.push(["Run", `${attention.run_id}${attempt}`]);
 				}
-				if (attention.current_operation) {
+				if (attention.current_operation && attention.current_operation !== "agent_run") {
 					facts.push(["Op", humanizeToken(attention.current_operation)]);
 				}
-				if (attention.thread_status) {
+				if (attention.thread_status && attention.thread_status !== "systemError") {
 					facts.push(["Thread", humanizeToken(attention.thread_status)]);
 				}
 				if (attention.attempt_status) {
@@ -4517,7 +4610,11 @@
 			}
 
 			function statusLabel(label, tone) {
-				return `<span class="status-label ${tone}">${escapeHtml(label)}</span>`;
+				return `<span class="status-label ${tone}">${escapeHtml(titleCaseLabel(label))}</span>`;
+			}
+
+			function inlineStatusFact(label, value) {
+				return `<span>${escapeHtml(titleCaseLabel(label))} <strong>${escapeHtml(value)}</strong></span>`;
 			}
 
 			function runDetailKey(run) {
@@ -4834,13 +4931,13 @@
 					const bits = [statusLabel(humanizeToken(run.status), tone)];
 
 					if (run.wait_reason) {
-						bits.push(`<span>wait <strong>${escapeHtml(humanizeToken(run.wait_reason))}</strong></span>`);
+						bits.push(inlineStatusFact("Wait", humanizeToken(run.wait_reason)));
 					}
 					if (run.continuation_pending) {
-						bits.push("<span>continuation <strong>pending</strong></span>");
+						bits.push(inlineStatusFact("Continuation", "Pending"));
 					}
 					if (run.retry_kind) {
-						bits.push(`<span>retry <strong>${escapeHtml(humanizeToken(run.retry_kind))}</strong></span>`);
+						bits.push(inlineStatusFact("Retry", humanizeToken(run.retry_kind)));
 					}
 
 					return bits;
@@ -4848,12 +4945,12 @@
 
 				const bits = [statusLabel(humanizeToken(outcome.final_outcome), tone)];
 
-				bits.push(`<span>history <strong>${escapeHtml(humanizeToken(outcome.ledger_status))}</strong></span>`);
+				bits.push(inlineStatusFact("History", humanizeToken(outcome.ledger_status)));
 				if (outcome.closeout_status) {
-					bits.push(`<span>closeout <strong>${escapeHtml(humanizeToken(outcome.closeout_status))}</strong></span>`);
+					bits.push(inlineStatusFact("Closeout", humanizeToken(outcome.closeout_status)));
 				}
 				if (outcome.needs_attention_reason) {
-					bits.push("<span>attention <strong>recorded</strong></span>");
+					bits.push(inlineStatusFact("Attention", "Recorded"));
 				}
 
 				return bits;
@@ -4925,17 +5022,17 @@
 			function runExecutionLivenessSummary(run) {
 				switch (run.execution_liveness) {
 					case "process_alive":
-						return "Process alive";
+						return "process alive";
 					case "thread_active":
-						return "Thread active";
+						return "thread active";
 					case "protocol_observed":
-						return "Protocol active";
+						return "protocol active";
 					case "process_stopped":
-						return "Process stopped";
+						return "process stopped";
 					case "not_running":
-						return "Not running";
+						return "not running";
 					default:
-						return "Liveness unknown";
+						return "liveness unknown";
 				}
 			}
 
@@ -5013,34 +5110,6 @@
 				}
 			}
 
-			function normalizedProtocolRateLimitStatus(value) {
-				const status = String(value || "").trim();
-				const normalized = status.toLowerCase();
-
-				if (!status || ["none", "null", "undefined"].includes(normalized)) {
-					return "";
-				}
-				if (status.includes("/") || status.includes(" ")) {
-					return "";
-				}
-
-				return status;
-			}
-
-			function protocolActivityRateLimit(run) {
-				return (
-					normalizedProtocolRateLimitStatus(protocolActivity(run)?.rate_limit_status) ||
-					normalizedProtocolRateLimitStatus(codexAccount(run)?.rate_limit_reached_type) ||
-					"none"
-				);
-			}
-
-			function protocolActivityRateLimitDisplay(run, emptyValue = "none") {
-				const status = protocolActivityRateLimit(run);
-
-				return status === "none" ? emptyValue : humanizeToken(status).toLowerCase();
-			}
-
 			function protocolActivityRecentSummary(run) {
 				const events = protocolActivity(run)?.recent_events || [];
 				if (!events.length) {
@@ -5061,16 +5130,11 @@
 				if (!activity) {
 					return "none";
 				}
-				const rateLimit = protocolActivityRateLimitDisplay(run, "");
 				const parts = [
 					`turn ${activity.turn_status || "none"}`,
 					`waiting ${activity.waiting_reason || "none"}`,
 					`recent ${protocolActivityRecentSummary(run)}`,
 				];
-
-				if (rateLimit) {
-					parts.splice(2, 0, `rate limit ${rateLimit}`);
-				}
 
 				return parts.join("; ");
 			}
@@ -5155,10 +5219,6 @@
 				};
 			}
 
-			function activeRunFreshnessSource(run) {
-				return activeRunFreshness(run).source;
-			}
-
 			function activeRunFreshnessFact(run, formatter = formatTimestamp) {
 				const freshness = activeRunFreshness(run);
 				return [
@@ -5185,7 +5245,7 @@
 					facts.push([freshness.sourceLabel, formatRelativeTimestamp(freshness.timestamp)]);
 				}
 				if (focus) {
-					facts.push(["time going to", focus]);
+					facts.push(["focus", detailLabel(focus)]);
 				}
 				if (run.idle_for_seconds != null) {
 					facts.push(["lane idle", formatDuration(run.idle_for_seconds)]);
@@ -5193,32 +5253,29 @@
 				if (run.protocol_idle_for_seconds != null) {
 					facts.push(["agent idle", formatDuration(run.protocol_idle_for_seconds)]);
 				}
-				const rateLimit = protocolActivityRateLimitDisplay(run);
-				if (rateLimit !== "none") {
-					facts.push(["rate limit", rateLimit]);
-				}
-
 				return facts;
 			}
 
-			function renderActiveTelemetryLine(run) {
+			function renderRunMetaFact(label, value, valueClass = "", title = "") {
+				const classAttribute = valueClass ? ` class="${escapeHtml(valueClass)}"` : "";
+				const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
+
+				return `
+					<span class="run-meta-item">
+						<span class="run-meta-label">${escapeHtml(detailLabel(label))}</span>
+						<strong${classAttribute}${titleAttribute}>${escapeHtml(value)}</strong>
+					</span>
+				`;
+			}
+
+			function renderRunTelemetryMetaItems(run) {
 				const facts = activeRunTelemetryFacts(run);
 
 				if (!facts.length) {
 					return "";
 				}
 
-				return `
-					<div class="activity-line" aria-label="Lane activity">
-						${facts
-							.map(
-								([label, value]) => `
-									<span>${escapeHtml(label)} <strong>${escapeHtml(value)}</strong></span>
-								`,
-							)
-							.join("")}
-						</div>
-					`;
+				return facts.map(([label, value]) => renderRunMetaFact(label, value)).join("");
 			}
 
 			function codexAccount(run) {
@@ -5271,7 +5328,7 @@
 				}
 
 				function codexAccountEmail(account) {
-					return String(account?.email || "").trim();
+					return String(account?.account_email || account?.email || "").trim();
 				}
 
 				function compactAccountEmail(email) {
@@ -5641,15 +5698,6 @@
 					return humanizeToken(status);
 				}
 
-				function codexAccountStatusBit(account) {
-					const tone = codexAccountStatusTone(account);
-					if (!tone) {
-						return "";
-					}
-
-					return `<span>account <strong>${escapeHtml(codexAccountStatusLabel(account).toLowerCase())}</strong></span>`;
-				}
-
 				function codexAccountCreditsSummary(account) {
 					if (!account) {
 						return null;
@@ -5758,7 +5806,6 @@
 				}
 
 				function renderCodexAccountPoolRow(account) {
-					const displayName = codexAccountDisplayName(account);
 					const displayTitle = codexAccountDisplayTitle(account);
 					const visibleName = codexAccountVisibleName(account);
 					const plan = codexAccountPlanLabel(account);
@@ -5854,42 +5901,47 @@
 					const account = codexAccount(run);
 					if (!account) {
 						return `
-							<div class="account-use-line is-missing" aria-label="Account used by this lane">
-								<span class="account-use-label">Account</span>
+							<span class="run-meta-item is-account is-missing" aria-label="account">
+								<span class="run-meta-icon" aria-hidden="true">
+									<svg viewBox="0 0 16 16" fill="none">
+										<path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M3.35 2.25h9.3c.61 0 1.1.49 1.1 1.1v9.3c0 .61-.49 1.1-1.1 1.1h-9.3c-.61 0-1.1-.49-1.1-1.1v-9.3c0-.61.49-1.1 1.1-1.1ZM8 4.15a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Zm0 4.78c2.02 0 3.26.96 3.7 2.78.08.35-.18.67-.54.67H4.84c-.36 0-.62-.32-.54-.67.44-1.82 1.68-2.78 3.7-2.78Z"></path>
+									</svg>
+								</span>
 								<strong>not captured</strong>
-							</div>
+							</span>
 						`;
 					}
 
-					const displayName = codexAccountDisplayName(account);
 					const displayTitle = codexAccountDisplayTitle(account);
 					const visibleName = codexAccountVisibleName(account);
 					const identityClass = codexAccountShowsEmail(account) ? " is-machine" : "";
-					const primary = codexAccountWindowData(account, "primary");
-					const secondaryWindow = codexAccountWindowData(account, "secondary");
-					const windowFacts = [
-						[codexAccountWindowLabel(primary.windowSeconds), primary.remainingPercent],
-						[codexAccountWindowLabel(secondaryWindow.windowSeconds), secondaryWindow.remainingPercent],
-					]
-						.filter(([, value]) => value != null)
-						.map(
-							([label, value]) =>
-								`<span>${escapeHtml(label)} <strong class="machine-text">${escapeHtml(`${value}%`)}</strong></span>`,
-						)
-						.join("");
 
 					return `
-						<div class="account-use-line" aria-label="Account used by this lane">
-							<span class="account-use-label">Account</span>
+						<span class="run-meta-item is-account" aria-label="account">
+							<span class="run-meta-icon" aria-hidden="true">
+								<svg viewBox="0 0 16 16" fill="none">
+									<path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M3.35 2.25h9.3c.61 0 1.1.49 1.1 1.1v9.3c0 .61-.49 1.1-1.1 1.1h-9.3c-.61 0-1.1-.49-1.1-1.1v-9.3c0-.61.49-1.1 1.1-1.1ZM8 4.15a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Zm0 4.78c2.02 0 3.26.96 3.7 2.78.08.35-.18.67-.54.67H4.84c-.36 0-.62-.32-.54-.67.44-1.82 1.68-2.78 3.7-2.78Z"></path>
+								</svg>
+							</span>
 							<strong class="account-name${identityClass}" title="${escapeHtml(displayTitle)}">${escapeHtml(visibleName)}</strong>
-							${windowFacts}
-							<span>${escapeHtml(codexAccountTokenLabel(account.refresh_status))}</span>
-						</div>
+						</span>
 					`;
 				}
 
+				function renderRunMetaLine(run) {
+					const items = [renderRunCodexAccountInline(run), renderRunTelemetryMetaItems(run)]
+						.filter(Boolean)
+						.join("");
+
+					if (!items) {
+						return "";
+					}
+
+					return `<div class="run-meta-line" aria-label="Lane metadata">${items}</div>`;
+				}
+
 				function renderCodexAccountBand(run) {
-					return renderRunCodexAccountInline(run);
+					return renderRunMetaLine(run);
 				}
 
 				function codexAccountPoolAccounts(snapshot) {
@@ -6060,35 +6112,7 @@
 						return "not captured";
 					}
 
-					const parts = [
-						`identity ${codexAccountDisplayName(account)}`,
-						`plan ${account.plan_type || "unknown"}`,
-						`status ${account.status || "unknown"}`,
-						codexAccountTokenLabel(account.refresh_status),
-						codexAccountWindowSummary(account, "primary"),
-						codexAccountWindowSummary(account, "secondary"),
-						codexAccountCreditsSummary(account),
-						codexAccountReachedType(account) ? `reached ${codexAccountReachedType(account)}` : null,
-					];
-
-					return parts.filter(Boolean).join("; ");
-				}
-
-				function codexAccountPoolDebugSummary(accounts) {
-					if (!accounts.length) {
-						return "not captured";
-					}
-
-					return accounts
-						.map((account) => {
-							const identity = codexAccountDisplayName(account);
-							return [
-								identity,
-								codexAccountStatusLabel(account),
-								codexAccountWindowSummary(account, "primary"),
-							].join(" ");
-						})
-						.join(" | ");
+					return codexAccountDisplayName(account);
 				}
 
 				function codexAccountHistorySummary(account) {
@@ -6144,9 +6168,7 @@
 					return null;
 				}
 
-				const label = summary.current_detail
-					? humanizeToken(summary.current_detail)
-					: humanizeToken(summary.current_bucket);
+				const label = detailLabel(humanizeToken(summary.current_detail || summary.current_bucket));
 
 				return `${label} · ${formatDuration(summary.current_elapsed_seconds)}`;
 			}
@@ -6168,18 +6190,18 @@
 				const peakInput = formatCompactCount(summary.input_tokens_max);
 				const inputWindowsMatch = childAgentInputWindowsMatch(summary);
 				const facts = [
-					["Current window", latestInput, "Current context window from the latest child-agent event."],
+					["current window", latestInput, "Current context window from the latest child-agent event."],
 					[
-						"Cumulative input",
+						"cumulative input",
 						formatCompactCount(summary.input_tokens_cumulative),
 						"Total input tokens processed across child-agent events.",
 					],
-					["Tool calls", String(summary.tool_call_count ?? 0)],
+					["tool calls", String(summary.tool_call_count ?? 0)],
 				];
 
 				if (!inputWindowsMatch) {
 					facts.splice(1, 0, [
-						"Peak window",
+						"peak window",
 						peakInput,
 						"Largest observed context window for this lane.",
 					]);
@@ -6187,9 +6209,9 @@
 
 				if (summary.largest_tool_output_bytes != null) {
 					facts.push([
-						"Largest output",
+						"largest output",
 						formatCompactBytes(summary.largest_tool_output_bytes),
-						"Largest tool output; Debug details show attribution.",
+						"Largest tool output; debug details show attribution.",
 					]);
 				}
 
@@ -6245,7 +6267,7 @@
 
 			function childBucketSignalSummary(signals, fallback) {
 				return signals.length
-					? signals.map(([label, value]) => `${label} ${value}`).join(", ")
+					? signals.map(([label, value]) => `${detailLabel(label)} ${value}`).join(", ")
 					: fallback;
 			}
 
@@ -6254,7 +6276,7 @@
 					.map(
 						([label, value]) => `
 							<span class="child-bucket-signal">
-								<span>${escapeHtml(label)}</span>
+								<span>${escapeHtml(detailLabel(label))}</span>
 								<strong>${escapeHtml(value)}</strong>
 							</span>
 						`,
@@ -6386,7 +6408,7 @@
 					Number(summary.wall_seconds || 0),
 					buckets.reduce((total, bucket) => total + Number(bucket.wall_seconds || 0), 0),
 				);
-				const current = childAgentCurrentSummary(summary) || "No active child bucket";
+				const current = childAgentCurrentSummary(summary) || "none";
 				const contextFacts = childAgentContextFacts(summary);
 				const shareBuckets = buckets.filter((bucket) => childBucketHasMeaningfulWallShare(bucket, totalWall));
 				const diagnosticBuckets = buckets
@@ -6400,7 +6422,7 @@
 				return `
 					<div class="child-activity" aria-label="Child agent timing breakdown">
 						<div class="child-activity-head">
-							<span>Agent now</span>
+							<span>Activity</span>
 							<strong>${escapeHtml(current)}</strong>
 						</div>
 						<div class="child-activity-body">
@@ -6461,7 +6483,7 @@
 												.map(([label, value, title]) => {
 													const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
 
-													return `<span${titleAttribute}>${escapeHtml(label)} <strong>${escapeHtml(value)}</strong></span>`;
+													return `<span${titleAttribute}>${escapeHtml(detailLabel(label))} <strong>${escapeHtml(value)}</strong></span>`;
 												})
 												.join("")}
 										</span>
@@ -6643,7 +6665,7 @@
 					return "Telemetry pending.";
 				}
 				if (runStoppedProcessNeedsAttention(run)) {
-					return "Process stopped; recovery needed.";
+					return "";
 				}
 				if (runProcessStoppedWhileActive(run)) {
 					return `Agent done; finalizing ${humanizeToken(run.current_operation || run.phase).toLowerCase()}.`;
@@ -6690,39 +6712,39 @@
 			function runHealthText(run) {
 				if (runTelemetryMissingNeedsAttention(run)) {
 					if (runHasChildAgentActivity(run)) {
-						return "Metadata pending";
+						return "Metadata Pending";
 					}
-					return "Telemetry missing";
+					return "Telemetry Missing";
 				}
 				if (runTelemetryMissing(run)) {
 					if (runHasChildAgentActivity(run)) {
-						return "Metadata pending";
+						return "Metadata Pending";
 					}
-					return "Starting telemetry";
+					return "Starting Telemetry";
 				}
 				if (runStoppedProcessNeedsAttention(run)) {
-					return "Needs attention";
+					return "Needs Attention";
 				}
 				if (runProcessStoppedWhileActive(run)) {
 					return runStageLabel(run);
 				}
 				if (run.suspected_stall) {
-					return "Needs attention";
+					return "Needs Attention";
 				}
 				if (run.interactive_requested) {
-					return "Input requested";
+					return "Input Requested";
 				}
 				if (run.continuation_pending) {
-					return "Continuation pending";
+					return "Continuation Pending";
 				}
 				if (runWaitReasonShowsExecutionProgress(run)) {
 					return humanizeToken(run.wait_reason);
 				}
 				if (run.wait_reason) {
-					return `Waiting on ${humanizeToken(run.wait_reason).toLowerCase()}`;
+					return `Waiting On ${humanizeToken(run.wait_reason)}`;
 				}
 				if (!run.active_lease && runCountsAsRunning(run)) {
-					return "Live, no queue lease";
+					return "Live, No Queue Lease";
 				}
 				if (run.thread_status) {
 					return humanizeToken(run.thread_status);
@@ -7060,12 +7082,12 @@
 							scope: "Review",
 							issue: issueKey,
 							title: "Repair running",
-							summary: "Repair lane already active.",
+							summary: "",
 							status: `run ${humanizeToken(activeRun.phase)}`,
 							facts: [
 								["Run", activeRun.run_id],
 								["Operation", humanizeToken(activeRun.current_operation || activeRun.phase)],
-								["Checks", lane.check_state || "none"],
+								["Checks", compactStateToken(lane.check_state)],
 								["Threads", lane.unresolved_review_threads == null ? "none" : String(lane.unresolved_review_threads)],
 								["PR", lane.pr_url || "none"],
 								["Branch", lane.branch_name],
@@ -7081,10 +7103,10 @@
 							scope: blockerScope,
 							issue: issueKey,
 							title: postReviewBlockerTitle(lane),
-							summary: lane.reason || "Needs attention before retained lane can continue.",
-							status: lane.review_decision && blockerScope === "Review" ? `review ${humanizeToken(lane.review_decision)}` : humanizeToken(lane.classification),
+							summary: "",
+							status: lane.review_decision && blockerScope === "Review" ? `review ${compactStateToken(lane.review_decision)}` : humanizeToken(lane.classification),
 							facts: [
-								["Checks", lane.check_state || "none"],
+								["Checks", compactStateToken(lane.check_state)],
 								["Threads", lane.unresolved_review_threads == null ? "none" : String(lane.unresolved_review_threads)],
 								["PR", lane.pr_url || "none"],
 								["Branch", lane.branch_name],
@@ -7099,10 +7121,10 @@
 							scope: "Review",
 							issue: issueKey,
 							title: "Wait for review",
-							summary: lane.reason || "Waiting on review or checks.",
-							status: lane.check_state ? `checks ${humanizeToken(lane.check_state)}` : "waiting",
+							summary: "",
+							status: lane.check_state ? `checks ${compactStateToken(lane.check_state)}` : "waiting",
 							facts: [
-								["Review decision", lane.review_decision || "none"],
+								["Review decision", compactStateToken(lane.review_decision)],
 								["Threads", lane.unresolved_review_threads == null ? "none" : String(lane.unresolved_review_threads)],
 								["PR", lane.pr_url || "none"],
 								["Branch", lane.branch_name],
@@ -7117,11 +7139,11 @@
 							scope: "Review",
 							issue: issueKey,
 							title: "Ready to land",
-							summary: lane.reason || "Approvals and required checks complete.",
-							status: lane.mergeable ? `merge ${humanizeToken(lane.mergeable)}` : "ready",
+							summary: "",
+							status: lane.mergeable ? `merge ${compactStateToken(lane.mergeable)}` : "ready",
 							facts: [
-								["Review decision", lane.review_decision || "none"],
-								["Checks", lane.check_state || "none"],
+								["Review decision", compactStateToken(lane.review_decision)],
+								["Checks", compactStateToken(lane.check_state)],
 								["PR", lane.pr_url || "none"],
 								["Branch", lane.branch_name],
 							],
@@ -7195,7 +7217,7 @@
 				nodes.transportHealth.innerHTML = `
 					<span class="status-pill ${readiness.tone}">${escapeHtml(topbarReadinessLabel(readiness.label))}</span>
 					<span class="transport-meta" data-kind="endpoint" data-tone="${escapeHtml(stream.tone)}" title="${escapeHtml(stream.title)} Poll fallback: ${escapeHtml(ENDPOINTS.state)}">
-						<span>Transport</span><strong>${escapeHtml(dashboardSocketUrl())}</strong>
+						<span>Transport</span><strong>${renderValueLink("WebSocket", dashboardSocketUrl(), "transport-link") || escapeHtml(dashboardSocketUrl())}</strong>
 					</span>
 					${snapshotFreshnessRow}
 				`;
@@ -7268,12 +7290,9 @@
 				].join(" · ");
 			}
 
-			function projectScopeKicker(project, isActive, projects) {
+			function projectKicker(project) {
 				if (!project.enabled) {
 					return "Disabled";
-				}
-				if (isActive) {
-					return projects.length === 1 ? "Current" : "Selected";
 				}
 
 				return "";
@@ -7422,12 +7441,12 @@
 				`;
 			}
 
-			function renderProjectEntry(project, selectedId, projects) {
+			function renderProjectEntry(project, selectedId) {
 				const health = projectHealth(project);
 				const isActive = selectedId === project.project_id;
 				const projectPath = projectPathSummary(project);
 				const projectLocationTitle = projectLocationsHidden ? "Project location hidden" : projectPath;
-				const kicker = projectScopeKicker(project, isActive, projects);
+				const kicker = projectKicker(project);
 				const lastActivity = formatRelativeTimestamp(project.last_activity_at);
 				const activityCopy = lastActivity === "none" ? "-" : lastActivity;
 				const ariaCurrent = isActive ? ' aria-current="true"' : "";
@@ -7614,7 +7633,7 @@
 							})}
 						</div>
 						<div class="project-table-list" role="rowgroup">
-							${rows.map((project) => renderProjectEntry(project, selectedId, projects)).join("")}
+							${rows.map((project) => renderProjectEntry(project, selectedId)).join("")}
 						</div>
 					</div>
 				`;
@@ -7754,49 +7773,39 @@
 					return;
 				}
 
-				container.innerHTML = queueClassificationGroups(items)
-					.map((group) => {
-						return `
-							<section class="queue-group">
-								<div class="queue-group-header">
-									<h4>${escapeHtml(group.title)}</h4>
-									<span class="queue-group-count">${group.items.length}</span>
-								</div>
-								${group.items
-									.map((candidate) => {
-										const tone = toneForQueuedCandidate(candidate);
-										const blockers = candidate.blocker_identifiers.length
-											? candidate.blocker_identifiers.join(", ")
-											: "none";
+				container.innerHTML = items
+					.map((candidate) => {
+						const tone = toneForQueuedCandidate(candidate);
+						const blockers = candidate.blocker_identifiers.length
+							? candidate.blocker_identifiers.join(", ")
+							: "NONE";
+						const summary = summarizeQueuedCandidate(candidate);
+						const reason = queuedCandidateReasonText(candidate);
 
-										return `
-											<article class="action-card ${tone}">
-												<div class="row-head">
-													<div class="row-title">
-														<div class="kicker">
-															<span>Issue</span>
-															<span class="mono">${escapeHtml(candidate.issue_identifier)}</span>
-														</div>
-														<h4>${escapeHtml(candidate.title)}</h4>
-													</div>
-												</div>
-												<p class="row-summary">${escapeHtml(summarizeQueuedCandidate(candidate))}</p>
-												<div class="status-line">
-													${statusLabel(queuedCandidateStatusText(candidate), tone)}
-													<span>reason <strong>${escapeHtml(queuedCandidateReasonText(candidate))}</strong></span>
-												</div>
-												${renderAttentionFacts(candidate)}
-												<div class="grid two queue-facts">
-													${field("State", candidate.state)}
-													${field("Priority", formatPriority(candidate.priority))}
-													${field("Created", formatTimestampCompact(candidate.created_at), "is-time")}
-													${field("Blockers", blockers, blockers === "none" ? "is-muted" : "")}
-												</div>
-											</article>
-										`;
-									})
-									.join("")}
-							</section>
+						return `
+							<article class="action-card ${tone}">
+								<div class="row-head">
+									<div class="row-title">
+										<div class="kicker">
+											<span>Issue</span>
+											<span class="mono">${escapeHtml(candidate.issue_identifier)}</span>
+										</div>
+										<h4>${escapeHtml(candidate.title)}</h4>
+									</div>
+								</div>
+								${summary ? `<p class="row-summary">${escapeHtml(summary)}</p>` : ""}
+								<div class="status-line">
+									${statusLabel(queuedCandidateStatusText(candidate), tone)}
+									${reason ? inlineStatusFact("Reason", reason) : ""}
+								</div>
+								${renderAttentionFacts(candidate)}
+								<div class="grid two card-facts">
+									${cardField("State", formatDetailToken(candidate.state))}
+									${cardField("Priority", formatPriority(candidate.priority))}
+									${cardField("Created", formatTimestampCompact(candidate.created_at), "is-time")}
+									${cardField("Blockers", blockers, blockers === "NONE" ? "is-muted" : "")}
+								</div>
+							</article>
 						`;
 					})
 					.join("");
@@ -7821,12 +7830,12 @@
 										<h4>${escapeHtml(item.title)}</h4>
 									</div>
 								</div>
-								<p class="row-summary">${escapeHtml(item.summary)}</p>
+								${item.summary ? `<p class="row-summary">${escapeHtml(item.summary)}</p>` : ""}
 								<div class="status-line">
 									${statusLabel(item.status, item.tone)}
 								</div>
-								<div class="grid two">
-									${item.facts.map(([label, value]) => field(label, value)).join("")}
+								<div class="grid two card-facts">
+									${item.facts.map(([label, value]) => cardField(label, value)).join("")}
 								</div>
 							</article>
 						`,
@@ -7860,20 +7869,18 @@
 				);
 			}
 
-			function renderRunControlLine(run) {
+			function renderRunStopControl(run) {
 				const interruptEnabled = runInterruptControlEnabled(run);
 				if (!interruptEnabled) {
 					return "";
 				}
 
 				return `
-					<div class="run-control-line">
-						<button class="control-button icon-button" type="button" data-dashboard-control="interruptRun" data-project-id="${escapeHtml(run.project_id || "")}" data-issue-id="${escapeHtml(run.issue_id || "")}" data-run-id="${escapeHtml(run.run_id || "")}" data-tone="danger" title="Stop this active Decodex work." aria-label="Stop this active Decodex work">
-							<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-								<rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"></rect>
-							</svg>
-						</button>
-					</div>
+					<button class="control-button icon-button run-stop-button" type="button" data-dashboard-control="interruptRun" data-project-id="${escapeHtml(run.project_id || "")}" data-issue-id="${escapeHtml(run.issue_id || "")}" data-run-id="${escapeHtml(run.run_id || "")}" title="Stop this active Decodex work." aria-label="Stop this active Decodex work">
+						<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+							<path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M4.35 2.25h7.3c1.16 0 2.1.94 2.1 2.1v7.3c0 1.16-.94 2.1-2.1 2.1h-7.3c-1.16 0-2.1-.94-2.1-2.1v-7.3c0-1.16.94-2.1 2.1-2.1Zm1.25 2.55h1.05c.42 0 .75.33.75.75v4.9c0 .42-.33.75-.75.75H5.6c-.42 0-.75-.33-.75-.75v-4.9c0-.42.33-.75.75-.75Zm3.75 0h1.05c.42 0 .75.33.75.75v4.9c0 .42-.33.75-.75.75H9.35c-.42 0-.75-.33-.75-.75v-4.9c0-.42.33-.75.75-.75Z"></path>
+						</svg>
+					</button>
 				`;
 			}
 
@@ -7903,40 +7910,35 @@
 						const issueTitle = runIssueTitle(run, derived);
 						const summary = activeRunSummary(run);
 						const account = codexAccount(run);
-						const accountStatusBit = codexAccountStatusBit(account);
 
 						if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
-							statusBits.push(`<span>wait <strong>${escapeHtml(humanizeToken(run.wait_reason))}</strong></span>`);
-						}
-						if (!run.active_lease) {
-							statusBits.push("<span>lease <strong>not held</strong></span>");
-							statusBits.push(`<span>liveness <strong>${escapeHtml(runExecutionLivenessSummary(run))}</strong></span>`);
+							statusBits.push(inlineStatusFact("Wait", humanizeToken(run.wait_reason)));
 						}
 						if (runTelemetryMissing(run)) {
 							statusBits.push(
 								runHasChildAgentActivity(run)
-									? "<span>metadata <strong>pending</strong></span>"
-									: "<span>telemetry <strong>missing</strong></span>",
+									? inlineStatusFact("Metadata", "Pending")
+									: inlineStatusFact("Telemetry", "Missing"),
 							);
 						}
-						if (runStoppedProcessNeedsAttention(run)) {
-							statusBits.push("<span>recovery <strong>needed</strong></span>");
-						} else if (runProcessStoppedWhileActive(run)) {
-							statusBits.push("<span>agent <strong>done</strong></span>");
+						if (
+							!runStoppedProcessNeedsAttention(run) &&
+							runProcessStoppedWhileActive(run)
+						) {
+							statusBits.push(inlineStatusFact("Agent", "Done"));
 						}
-						if (run.interactive_requested) {
-							statusBits.push("<span>operator <strong>input</strong></span>");
+						if (run.interactive_requested && !runStoppedProcessNeedsAttention(run)) {
+							statusBits.push(inlineStatusFact("Operator", "Input"));
 						}
 						if (run.continuation_pending) {
-							statusBits.push("<span>continuation <strong>pending</strong></span>");
-						}
-						if (run.retry_kind) {
-							statusBits.push(`<span>retry <strong>${escapeHtml(humanizeToken(run.retry_kind))}</strong></span>`);
-						}
-						if (accountStatusBit) {
-							statusBits.push(accountStatusBit);
+							statusBits.push(inlineStatusFact("Continuation", "Pending"));
 						}
 						const attemptNumber = attemptNumberFromRun(run);
+						const stopControl = renderRunStopControl(run);
+						const statusLineParts = [...statusBits];
+						if (stopControl) {
+							statusLineParts.splice(1, 0, stopControl);
+						}
 
 						return `
 							<article class="run-card ${tone}">
@@ -7945,48 +7947,39 @@
 										<div class="run-subtitle">
 											<span>Issue</span>
 											<span class="mono">${escapeHtml(issueKey)}</span>
-											<span>${escapeHtml(humanizeToken(run.current_operation || run.phase))}</span>
 										</div>
 										<h3 class="run-title">${escapeHtml(issueTitle)}</h3>
 									</div>
-								<div class="card-meta">
-									${attemptNumber ? `<span>Attempt ${escapeHtml(attemptNumber)}</span>` : ""}
-									${runNeedsAttention(run) ? `<span>${escapeHtml(runHealthText(run))}</span>` : ""}
+									<div class="row-aside">
+										${attemptNumber ? `<span>Attempt ${escapeHtml(attemptNumber)}</span>` : ""}
+										${runNeedsAttention(run) ? `<span>${escapeHtml(titleCaseLabel(runHealthText(run)))}</span>` : ""}
+									</div>
 								</div>
-								</div>
+									<div class="status-line">${statusLineParts.join("")}</div>
 									${summary ? `<p class="row-summary">${escapeHtml(summary)}</p>` : ""}
-									<div class="status-line">${statusBits.join("")}</div>
-									${renderRunCodexAccountInline(run)}
-									${renderActiveTelemetryLine(run)}
-									${renderRunControlLine(run)}
+									${renderRunMetaLine(run)}
 									${renderChildAgentBreakdown(run)}
 									<details data-detail-key="${escapeHtml(detailKey)}"${detailsOpenAttribute(detailKey)}>
-										<summary>Debug details</summary>
+										<summary>Debug Details</summary>
 									<div class="grid debug-grid">
 										${field("Run", run.run_id)}
 										${field("Attempt status", run.attempt_status || run.status)}
-										${field("Freshness source", activeRunFreshnessSource(run))}
-										${field("Lane activity", formatTimestamp(run.last_run_activity_at))}
 										${field("Updated", formatTimestamp(run.updated_at))}
 										${field("Codex thread", runThreadSummary(run))}
 										${field("Thread flags", runThreadFlagSummary(run))}
 										${field(COPY.protocolEvent, protocolEventSummary(run))}
 										${field("Protocol activity", protocolActivityDebugSummary(run))}
-										${field("Rate limit", protocolActivityRateLimitDisplay(run))}
 										${field("Branch", run.branch_name || "none")}
 										${field("Worktree", run.worktree_path || "none")}
 										${field("Queue lease", runQueueLeaseSummary(run))}
 										${field("Execution liveness", runExecutionLivenessSummary(run))}
 										${field("Model", runModelSummary(run))}
-										${field("Account", codexAccountDebugSummary(account))}
-										${field("Accounts", codexAccountPoolDebugSummary(codexAccounts(run)))}
 										${field("Child agent", childAgentDebugSummary(childAgentActivity(run)))}
 										${field("Context pressure", childAgentContextSummary(childAgentActivity(run)))}
 										${field("Large outputs", childAgentLargeOutputSummary(childAgentActivity(run)))}
 										${field("Next retry", formatTimestamp(run.next_retry_at))}
 										${field("Turn", run.turn_id || "none")}
 										${field("Event count", String(run.event_count))}
-										${field("Last protocol activity", formatTimestamp(run.last_protocol_activity_at))}
 										${field("Process", runProcessSummary(run))}
 										${field("Effective cwd", capturedValue(run.effective_cwd))}
 										${field("Approvals", runApprovalSummary(run))}
@@ -8078,8 +8071,8 @@
 										</div>
 										<h4>${escapeHtml(title)}</h4>
 									</div>
-									<div class="card-meta">
-										<span>${escapeHtml(pluralize(lane.attempt_count ?? 1, "attempt"))}</span>
+									<div class="row-aside">
+										<span>${escapeHtml(titleCaseLabel(pluralize(lane.attempt_count ?? 1, "attempt")))}</span>
 										<span>${escapeHtml(formatTimestamp(finishedAt))}</span>
 									</div>
 								</div>
@@ -8089,7 +8082,7 @@
 								${renderHistoryLedgerFacts(lane)}
 								${renderAttemptTimeline(lane)}
 								<details data-detail-key="${escapeHtml(detailKey)}"${detailsOpenAttribute(detailKey)}>
-									<summary>Latest attempt details</summary>
+									<summary>Latest Attempt Details</summary>
 									<div class="grid debug-grid">
 										${field("Run", run.run_id)}
 										${field("Issue id", run.issue_id)}
@@ -8097,12 +8090,10 @@
 										${field("Codex thread", runThreadSummary(run))}
 										${field(COPY.protocolEvent, protocolEventSummary(run))}
 										${field("Protocol activity", protocolActivityDebugSummary(run))}
-										${field("Rate limit", protocolActivityRateLimitDisplay(run))}
 										${field("Branch", run.branch_name || "none")}
 										${field("Worktree", run.worktree_path || "none")}
 										${field("Model", runModelSummary(run))}
 										${field("Account", codexAccountDebugSummary(codexAccount(run)))}
-										${field("Accounts", codexAccountPoolDebugSummary(codexAccounts(run)))}
 										${field("Child agent", childAgentDebugSummary(childAgentActivity(run)))}
 										${field("Context pressure", childAgentContextSummary(childAgentActivity(run)))}
 										${field("Large outputs", childAgentLargeOutputSummary(childAgentActivity(run)))}
