@@ -1,6 +1,6 @@
-# GitHub Tooling
+# GitHub Scripts
 
-This directory owns the deterministic GitHub-first Decodex pipeline.
+This directory owns deterministic GitHub-first Decodex scripts.
 
 Current scripts:
 
@@ -19,17 +19,17 @@ Contract ownership:
 Example flow:
 
 ```bash
-python3 tools/github/build_change_bundle.py \
+python3 scripts/github/build_change_bundle.py \
   --repo openai/codex \
   --pr 15222 \
-  --out tools/github/bundles/openai-codex-pr-15222.json
+  --out artifacts/github/bundles/openai-codex-pr-15222.json
 
-python3 tools/github/render_signal_entry.py \
-  --bundle tools/github/bundles/openai-codex-pr-15222.json \
-  --analysis tools/github/analysis/openai-codex-pr-15222.analysis.json \
+python3 scripts/github/render_signal_entry.py \
+  --bundle artifacts/github/bundles/openai-codex-pr-15222.json \
+  --analysis artifacts/github/analysis/openai-codex-pr-15222.analysis.json \
   --out site/src/content/signals/openai-codex-pr-15222.json
 
-python3 tools/github/validate_signal_entry.py \
+python3 scripts/github/validate_signal_entry.py \
   site/src/content/signals/openai-codex-pr-15222.json
 ```
 

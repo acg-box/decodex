@@ -18,16 +18,18 @@ should not be treated as repository source.
 | --- | --- |
 | `apps/decodex/` | Rust package that builds the `decodex` CLI and runtime. Runtime, orchestration, tracker integration, app-server integration, operator HTTP, and local control-plane behavior live under `apps/decodex/src/`. |
 | `site/` | Astro static site for the public Decodex signal surface. It renders checked-in content and generated JSON from `site/src/content/`; it is not backed by a live Decodex daemon. |
-| `tools/github/` | Deterministic GitHub collection, normalization, render, and validation scripts for public signal content. |
-| `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including manual CLI, automation, commit, land, labels, and GitHub signal drafting. |
+| `scripts/github/` | Deterministic GitHub collection, normalization, render, validation, and sync scripts for public signal content. |
+| `scripts/config/` | Repository automation scripts for config-derived artifacts. |
+| `artifacts/github/` | Checked-in GitHub change bundles and editorial analysis drafts used by the public signal pipeline. |
+| `dev/skills/` | Repository-development skill-like instructions that are not part of installable plugin distribution. |
+| `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including manual CLI, automation, commit, land, and labels. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |
 | `docs/decisions/` | Durable rationale for repository-level design choices. |
 | `docs/research/` | Machine-authored research run artifacts used by shipped research tooling. |
 | `docs/plans/` | Historical saved plan artifacts from the static-site bootstrap. These are not primary authority. |
-| `scripts/` | Repository-level helper scripts that are not part of the Rust runtime binary. |
-| `dev/` | Local development helpers such as the operator dashboard mock server. |
+| `dev/` | Local development helpers outside `dev/skills/`, such as the operator dashboard mock server. |
 | `assets/` | Shared static assets that are not owned by the Astro app's generated output. |
 | `.github/` | CI, release, Pages deployment, and content-refresh workflows. |
 | `Makefile.toml` | Repo-native task names and automation entrypoints. |
@@ -71,9 +73,11 @@ Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
 
 ## GitHub signal tooling
 
-`tools/github/` owns deterministic content tooling. It may call Codex for the editorial
-drafting step through the plugin skill at `plugins/decodex/skills/github-signal/`, but
-the scripts must keep generated artifacts explicit and checked into the repository.
+`scripts/github/` owns deterministic content scripts. It may call Codex for the
+editorial drafting step through the repo-local instructions at
+`dev/skills/github-signal/`, but that surface is not part of the installable Decodex
+plugin distribution. Generated GitHub bundles and analysis drafts live under
+`artifacts/github/` and must stay explicit and checked into the repository.
 
 ## Installable Codex surface
 
@@ -110,7 +114,8 @@ tracker routing, and policy.
 - Runtime authority stays in `apps/decodex/src/`, the registered project contract under
   `~/.codex/decodex/projects/<service-id>/`, and the governing specs under
   `docs/spec/`.
-- Public site authority stays in `site/`, `tools/github/`, and the site/content specs.
+- Public site authority stays in `site/`, `scripts/github/`, `artifacts/github/`, and
+  the site/content specs.
 - Reusable agent-facing Decodex usage instructions live under `plugins/decodex/`.
 - `docs/runbook/`, `docs/reference/`, and `docs/decisions/` must not override runtime or
   workflow authority.
