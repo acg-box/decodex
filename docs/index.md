@@ -41,7 +41,7 @@ The split below is by question type, not by human-versus-agent audience.
 - Need the raw machine-authored research run artifacts used by shipped research tooling
   -> `docs/research/`
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`
-- Need the GitHub signal editorial workflow -> `plugins/decodex/skills/github-signal/`
+- Need the repo-local GitHub signal editorial workflow -> `dev/skills/github-signal/`
   plus `docs/runbook/local-github-signal-workflow.md`
 - Need repository execution defaults or tracker-state policy -> registered project
   `WORKFLOW.md`

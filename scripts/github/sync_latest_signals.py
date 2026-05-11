@@ -65,8 +65,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default="openai/codex", help="GitHub repository in owner/name format.")
     parser.add_argument("--signals-dir", default="site/src/content/signals", help="Published signal directory.")
-    parser.add_argument("--bundles-dir", default="tools/github/bundles", help="Bundle directory.")
-    parser.add_argument("--analysis-dir", default="tools/github/analysis", help="Analysis draft directory.")
+    parser.add_argument("--bundles-dir", default="artifacts/github/bundles", help="Bundle directory.")
+    parser.add_argument("--analysis-dir", default="artifacts/github/analysis", help="Analysis draft directory.")
     parser.add_argument(
         "--release-delta-out",
         default="site/src/content/release-deltas/openai-codex-latest.json",

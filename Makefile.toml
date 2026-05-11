@@ -60,8 +60,8 @@ dependencies = [
 [tasks.check-site-content]
 workspace = false
 script = [
-	"python3 tools/github/validate_change_bundle.py tools/github/bundles",
-	"python3 tools/github/validate_signal_entry.py site/src/content/signals",
+	"python3 scripts/github/validate_change_bundle.py artifacts/github/bundles",
+	"python3 scripts/github/validate_signal_entry.py site/src/content/signals",
 ]
 
 [tasks.check-site-types]
