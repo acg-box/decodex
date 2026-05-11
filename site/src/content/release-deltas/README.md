@@ -10,7 +10,7 @@ The current artifact is a bounded comparator payload:
 Build the latest `openai/codex` artifact with:
 
 ```bash
-python3 tools/github/build_release_delta.py \
+python3 scripts/github/build_release_delta.py \
   --repo openai/codex \
   --signals-dir site/src/content/signals \
   --out site/src/content/release-deltas/openai-codex-latest.json

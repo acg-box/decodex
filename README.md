@@ -1,55 +1,87 @@
+<div align="center">
+
 # Decodex
 
-Decodex is a mono repo for repo-native agent orchestration and public Codex signal
-publishing.
+Repo-native agent orchestration and public Codex signal publishing.
 
-The repository has two deliberately separate product surfaces:
+[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Language Checks](https://github.com/hack-ink/decodex/actions/workflows/language.yml/badge.svg?branch=main)](https://github.com/hack-ink/decodex/actions/workflows/language.yml)
+[![Release](https://github.com/hack-ink/decodex/actions/workflows/release.yml/badge.svg)](https://github.com/hack-ink/decodex/actions/workflows/release.yml)
+[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/hack-ink/decodex)](https://github.com/hack-ink/decodex/tags)
+[![GitHub last commit](https://img.shields.io/github/last-commit/hack-ink/decodex?color=red&style=plastic)](https://github.com/hack-ink/decodex)
+[![GitHub code lines](https://tokei.rs/b1/github/hack-ink/decodex)](https://github.com/hack-ink/decodex)
 
-- a local Rust runtime and operator control plane for retained coding-agent lanes
-- a static public site that publishes GitHub-backed Codex change signals
+https://decodex.space
 
-The static site remains the public surface by default. Runtime and operator behavior
-does not become a public site backend just because both surfaces now live in one
-workspace.
+<img src="assets/logo-source.png" alt="Decodex logo" width="360">
+
+</div>
+
+## Feature Highlights
+
+- Rust CLI and runtime for repo-native retained coding-agent lanes.
+- Explicit project registry under `~/.codex/decodex/projects/<service-id>/`.
+- Local operator listener with a read-only dashboard at `/` and `/dashboard`, plus
+  `GET /state` for JSON snapshots.
+- Static Astro site that publishes GitHub-backed Codex change signals.
+- Deterministic GitHub signal pipeline for change bundles, release deltas, rendered
+  signal entries, and content validation.
+- Installable Decodex plugin with reusable agent-facing skills for manual CLI,
+  automation, commit, land, and labels.
+- Repository documentation split by question type into spec, runbook, reference, and
+  decision lanes.
 
 ## Status
 
-This repository now integrates the former runtime repository and the static signal site
-into one Decodex workspace:
+Prototype / in active development.
 
-- `apps/decodex/` owns the Rust package that builds the `decodex` CLI and runtime.
-- `site/` owns the Astro static site and checked-in public content.
-- `tools/github/` owns deterministic GitHub bundle, release-delta, render, and
-  validation scripts.
-- `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
-  skills.
-- `docs/` remains the authoritative documentation surface.
+This repository now integrates the former runtime repository and the static signal site
+into one Decodex workspace. The static site remains the public surface by default.
+Runtime and operator behavior does not become a public site backend just because both
+surfaces live in one workspace.
 
 Supported runtime host targets are macOS and Linux. Windows remains unsupported for the
 runtime.
 
-## Repository Layout
+## App identity
 
-- `apps/decodex/src/` holds the Decodex runtime, orchestration logic, tracker
-  integrations, app-server integration, operator HTTP server, and authoritative
-  implementation behavior.
-- `site/` holds the static Astro application and site-owned content collections.
-- `tools/github/` holds deterministic public-signal collection and validation tooling.
-- `plugins/decodex/` holds the canonical Decodex plugin source.
-- `docs/spec/` holds normative runtime, workflow, site, and content contracts.
-- `docs/runbook/` holds operator procedures, validation sequences, deployment steps, and
-  content workflows.
-- `docs/reference/` holds current repository and artifact surface maps.
-- `docs/decisions/` holds durable design rationale and tradeoffs.
-- `docs/research/` holds machine-authored research run artifacts used by shipped
-  research tooling.
-- `docs/plans/` holds historical saved plan artifacts from the static-site bootstrap.
-- `scripts/` and `dev/` hold repository-level helpers that are not part of the shipped
-  runtime binary.
-- `decodex.example.toml` is the redacted project-config template; live project
-  contracts live under `~/.codex/decodex/projects/<service-id>/`.
+- Product display name: **Decodex**.
+- Runtime CLI binary: **decodex**.
+- Public site: <https://decodex.space>.
+- Lower-case `decodex` remains only for stable technical identifiers such as the
+  repository slug, Cargo package name, CLI binary, plugin package, config keys, and
+  schema names.
 
-## Runtime CLI
+## Workspace posture
+
+- `apps/decodex/` owns the Rust package that builds the `decodex` CLI and runtime.
+- `site/` owns the Astro static site and checked-in public content.
+- `scripts/github/` owns deterministic GitHub bundle, release-delta, render, and
+  validation scripts.
+- `artifacts/github/` owns checked-in GitHub bundles and editorial analysis drafts.
+- `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
+  skills.
+- `dev/skills/` owns repository-development skill-like instructions that are not
+  packaged with the installable Decodex plugin.
+- `docs/` remains the authoritative documentation surface.
+
+Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
+`~/.codex/decodex/projects/<service-id>/`, and the governing specs under `docs/spec/`.
+Public site authority stays in `site/`, `scripts/github/`, `artifacts/github/`, and
+the site/content specs.
+
+## Runtime platform support
+
+- The Decodex runtime contract is Unix-only: macOS and Linux.
+- Windows is outside the runtime contract.
+- The public site is static and deploys through GitHub Pages.
+- Starting `decodex serve` without `--config` loads enabled projects from the explicit
+  registry only. It does not scan Codex history, repo-local config files, or currently
+  open worktrees to infer projects.
+
+## Usage
+
+### Runtime CLI
 
 From the workspace root:
 
@@ -62,12 +94,17 @@ cargo run -p decodex -- run --dry-run
 cargo run -p decodex -- serve --interval 60s --listen-address 127.0.0.1:8912
 ```
 
-Install the local runtime binary from the package directory:
+### Install from Source
 
 ```sh
+git clone https://github.com/hack-ink/decodex
+cd decodex
+
 cargo install --path apps/decodex --force
 decodex --version
 ```
+
+### Project contracts
 
 Project contracts are managed outside checkouts under
 `~/.codex/decodex/projects/<service-id>/` with fixed filenames:
@@ -75,9 +112,7 @@ Project contracts are managed outside checkouts under
 - `project.toml` for service paths and credential environment-variable names
 - `WORKFLOW.md` for execution policy
 
-Starting `decodex serve` without `--config` loads enabled projects from the explicit
-registry only. It does not scan Codex history, repo-local config files, or currently
-open worktrees to infer projects.
+The redacted template for a project config lives at `decodex.example.toml`.
 
 ## Static Site
 
@@ -99,29 +134,28 @@ The public site does not own:
 - app-server orchestration
 - the operator dashboard served by `decodex serve`
 
-The static-site boundary is recorded in
-[`docs/decisions/static-public-site.md`](docs/decisions/static-public-site.md). GitHub
-Pages setup for `https://decodex.space` lives in
-[`docs/runbook/github-pages-deploy.md`](docs/runbook/github-pages-deploy.md).
+The static-site boundary is recorded in `docs/decisions/static-public-site.md`. GitHub
+Pages setup for `https://decodex.space` lives in `docs/runbook/github-pages-deploy.md`.
 
 ## GitHub Signal Pipeline
 
 The GitHub-first public signal path stays deterministic and reviewable:
 
-- `tools/github/build_change_bundle.py` builds normalized GitHub bundles.
-- `plugins/decodex/skills/github-signal/SKILL.md` defines the Codex editorial step.
-- `tools/github/sync_latest_signals.py` discovers recent merged PRs and refreshes
+- `scripts/github/build_change_bundle.py` builds normalized GitHub bundles under
+  `artifacts/github/bundles/`.
+- `dev/skills/github-signal/SKILL.md` records the repo-local Codex editorial
+  instructions. It is not part of the installable Decodex plugin distribution.
+- `scripts/github/sync_latest_signals.py` discovers recent merged PRs and refreshes
   content artifacts.
-- `tools/github/render_signal_entry.py` renders reviewed analysis drafts into site
+- `scripts/github/render_signal_entry.py` renders reviewed analysis drafts into site
   content.
-- `tools/github/validate_signal_entry.py` validates the published signal collection.
+- `scripts/github/validate_signal_entry.py` validates the published signal collection.
 - `.github/workflows/refresh-github-signals.yml` refreshes GitHub-backed signals every
   hour from a trusted runner.
 - `.github/workflows/deploy-pages.yml` publishes the Astro site to GitHub Pages on
   pushes to `main`.
 
-The governing workflow lives in
-[`docs/runbook/local-github-signal-workflow.md`](docs/runbook/local-github-signal-workflow.md).
+The governing workflow lives at `docs/runbook/local-github-signal-workflow.md`.
 
 ## Operator Dashboard
 
@@ -137,7 +171,7 @@ node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-code
 ```
 
 The dashboard semantics and local-vs-external state boundary live in
-[`docs/reference/operator-control-plane.md`](docs/reference/operator-control-plane.md).
+`docs/reference/operator-control-plane.md`.
 
 ## Development
 
@@ -164,17 +198,80 @@ Static-site/content checks are available separately:
 cargo make decodex-checks
 ```
 
+## Workspace Layout
+
+The tracked workspace currently keeps:
+
+- `apps/decodex/` as the Rust package that builds the `decodex` CLI and runtime
+- `site/` as the Astro static site for the public Decodex signal surface
+- `scripts/github/` as the deterministic GitHub collection, normalization, render, and
+  validation script surface
+- `artifacts/github/` as checked-in GitHub bundle and analysis artifacts
+- `plugins/decodex/` as the canonical installable Decodex plugin source
+- `dev/skills/` as repo-development skill-like instructions that are not packaged with
+  the installable Decodex plugin
+- `docs/spec/` as the normative runtime, workflow, site, and content contract lane
+- `docs/runbook/` as the operator procedures, validation sequences, deployment steps,
+  and content workflow lane
+- `docs/reference/` as the current repository and artifact surface map lane
+- `docs/decisions/` as the durable design-rationale lane
+- `docs/research/` as machine-authored research artifacts used by shipped research
+  tooling
+- `docs/plans/` as historical saved plan artifacts from the static-site bootstrap
+- `dev/` as local development helpers outside `dev/skills/`, such as the operator
+  dashboard mock server
+- `assets/` as shared static assets that are not owned by the Astro app's generated
+  output
+- `.github/` as CI, release, Pages deployment, and content-refresh workflows
+
+Generated or local-only directories such as `target/`, `site/dist/`, `site/.astro/`,
+`.worktrees/`, `.workspaces/`, and `.codex/` are not part of the tracked repository
+structure. For the authoritative layout and ownership map, read
+`docs/reference/workspace-layout.md`.
+
 ## Documentation
 
-- Repository router: [`docs/index.md`](docs/index.md)
-- Documentation policy: [`docs/policy.md`](docs/policy.md)
-- Specifications: [`docs/spec/index.md`](docs/spec/index.md)
-- Operational runbooks: [`docs/runbook/index.md`](docs/runbook/index.md)
-- Reference docs: [`docs/reference/index.md`](docs/reference/index.md)
-- Design decisions: [`docs/decisions/index.md`](docs/decisions/index.md)
-- Workspace layout: [`docs/reference/workspace-layout.md`](docs/reference/workspace-layout.md)
-- Static-site decision: [`docs/decisions/static-public-site.md`](docs/decisions/static-public-site.md)
+- Product and development overview: this `README.md`
+- Unified documentation router: `docs/index.md`
+- Normative specs: `docs/spec/index.md`
+- Procedural runbooks: `docs/runbook/index.md`
+- Current implementation references: `docs/reference/index.md`
+- Durable design rationale: `docs/decisions/index.md`
+- Documentation policy and placement rules: `docs/policy.md`
 
-## License
+## Support Me
 
-Licensed under [GPL-3.0](LICENSE).
+If you find this project helpful and would like to support its development, you can buy me a coffee!
+
+Your support is greatly appreciated and motivates me to keep improving this project.
+
+- **Fiat**
+    - [Ko-fi](https://ko-fi.com/hack_ink)
+    - [Afdian](https://afdian.com/a/hack_ink)
+- **Crypto**
+    - **Bitcoin**
+        - `bc1pedlrf67ss52md29qqkzr2avma6ghyrt4jx9ecp9457qsl75x247sqcp43c`
+    - **Ethereum**
+        - `0x3e25247CfF03F99a7D83b28F207112234feE73a6`
+    - **Polkadot**
+        - `156HGo9setPcU2qhFMVWLkcmtCEGySLwNqa3DaEiYSWtte4Y`
+
+Thank you for your support!
+
+## Appreciation
+
+We would like to extend our heartfelt gratitude to the following projects and contributors:
+
+- The Rust community for their continuous support and development of the Rust ecosystem.
+
+## Additional Acknowledgements
+
+- TODO
+
+<div align="right">
+
+### License
+
+<sup>Licensed under [GPL-3.0](LICENSE).</sup>
+
+</div>
