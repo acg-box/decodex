@@ -77,11 +77,12 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 		.next()
 		.expect("metric number style should end before metric label rule");
 
-	assert!(response.contains("--type-micro: 9px;"));
+	assert!(response.contains("--type-micro: 10px;"));
 	assert!(response.contains("--type-caption: 11px;"));
 	assert!(response.contains("--type-label: 12px;"));
+	assert!(response.contains("--type-body: 13px;"));
 	assert!(response.contains("--type-row-title: 13px;"));
-	assert!(response.contains("--type-card-title: 15px;"));
+	assert!(response.contains("--type-section-title: 13px;"));
 	assert!(response.contains("--weight-label: 500;"));
 	assert!(response.contains("--weight-strong: 600;"));
 	assert!(response.contains("--tracking-caps: 0;"));
@@ -95,34 +96,32 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 	assert!(response.contains("--space-row-y: 12px;"));
 	assert!(response.contains("--space-card-y: 16px;"));
 	assert!(response.contains("--space-row-indent: 18px;"));
-	assert!(section_marker_title.contains("font-size: var(--type-meta);"));
+	assert!(section_marker_title.contains("font-size: var(--type-section-title);"));
 	assert!(section_marker_title.contains("font-weight: var(--weight-label);"));
 	assert!(section_marker.contains("font-family: var(--sans);"));
 	assert!(!section_marker_title.contains("text-transform: uppercase;"));
 	assert!(section_marker_bar.contains("height: 14px;"));
 	assert!(!response.contains(".section-marker > .table-meta {"));
-	assert!(flow_stage_label.contains("font-family: var(--sans);"));
+	assert!(flow_stage_label.contains("font-family: var(--mono);"));
 	assert!(flow_stage_label.contains("font-size: var(--type-label);"));
 	assert!(flow_stage_label.contains("font-weight: var(--weight-label);"));
 	assert!(!flow_stage_label.contains("text-transform: uppercase;"));
 	assert!(flow_stage_label.contains("color: var(--muted-strong);"));
-	assert!(panel_title.contains("font-size: var(--type-meta);"));
+	assert!(panel_title.contains("font-size: var(--type-section-title);"));
 	assert!(panel_title.contains("font-weight: var(--weight-label);"));
 	assert!(panel_title.contains("font-family: var(--sans);"));
 	assert!(!panel_title.contains("text-transform: uppercase;"));
-	assert!(table_meta.contains("font-family: var(--sans);"));
+	assert!(table_meta.contains("font-family: var(--mono);"));
 	assert!(table_meta.contains("font-weight: var(--weight-label);"));
 	assert!(!table_meta.contains("text-transform: uppercase;"));
-	assert!(metric_number.contains("font-size: 0.94em;"));
+	assert!(metric_number.contains("font-size: 0.92em;"));
 	assert!(metric_number.contains("font-weight: var(--weight-label);"));
 	assert!(response.contains("padding: var(--space-panel-head-y) 0 var(--space-md);"));
 	assert!(response.contains("padding: var(--space-row-y) 0 var(--space-row-y) var(--space-row-indent);"));
 	assert!(response.contains("padding: var(--space-card-y) 0 var(--space-card-y) var(--space-row-indent);"));
 	assert!(response.contains(".project-title-line strong"));
 	assert!(response.contains(".transport-meta[data-kind=\"endpoint\"] strong"));
-	assert!(response.contains(".account-row-id.is-machine"));
-	assert!(response.contains(".account-use-line .account-name.is-machine"));
-	assert!(response.contains(".account-use-line .machine-text"));
+	assert!(response.contains(".run-meta-item.is-missing strong"));
 	assert!(response.contains(".project-work-ratio strong"));
 	assert!(response.contains(".metric-number"));
 	assert!(response.contains(".metric-label"));
@@ -130,10 +129,7 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 	assert!(response.contains("gap: 4px;"));
 	assert!(response.contains("font-variant-numeric: tabular-nums;"));
 	assert!(response.contains(".account-row-id strong"));
-	assert!(response.contains(".run-title"));
-	assert!(response.contains("font-size: var(--type-row-title);"));
 	assert!(response.contains("font-size: var(--type-body);"));
-	assert!(response.contains("font-size: var(--type-card-title);"));
 	assert!(!response.contains("font-size: 17px;"));
 	assert!(!response.contains("letter-spacing: 0.14em;"));
 	assert!(!response.contains("font-weight: 700;"));
@@ -141,6 +137,101 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 	assert!(!response.contains("--weight-strong: 650;"));
 	assert!(!response.contains("padding: 18px 0 18px 18px;"));
 	assert!(!response.contains("padding: 20px 0 12px;"));
+}
+
+#[test]
+fn operator_dashboard_cards_and_accounts_share_running_lane_typography() {
+	let response = dashboard_response();
+	let row_title = response
+		.split(".row-title h3,\n\t\t\t.row-title h4,\n\t\t\t.run-title {")
+		.nth(1)
+		.expect("shared row title style should exist")
+		.split(".worktree-card .row-summary")
+		.next()
+		.expect("shared row title style should end before worktree summary rule");
+	let run_meta_line = response
+		.split(".run-meta-line {")
+		.nth(1)
+		.expect("run meta line style should exist")
+		.split(".run-meta-item {")
+		.next()
+		.expect("run meta line style should end before item rule");
+	let account_row_id = response
+		.split(".account-row-id {")
+		.nth(1)
+		.expect("account row id style should exist")
+		.split(".account-row-id strong")
+		.next()
+		.expect("account row id style should end before strong rule");
+	let row_aside = response
+		.split(".row-aside {")
+		.nth(1)
+		.expect("row aside style should exist")
+		.split(".run-title-stack")
+		.next()
+		.expect("row aside style should end before run title stack rule");
+	let run_meta_icon = response
+		.split(".run-meta-icon {")
+		.nth(1)
+		.expect("run meta icon style should exist")
+		.split(".run-meta-icon svg")
+		.next()
+		.expect("run meta icon style should end before svg rule");
+
+	assert!(response.contains(".run-title"));
+	assert!(response.contains("[\"codex\", \"Codex\"]"));
+	assert!(response.contains("[\"prs\", \"PRs\"]"));
+	assert!(response.contains("titleCaseLabel(parts.label)"));
+	assert!(response.contains("function detailLabel(label)"));
+	assert!(response.contains("function renderValueLink(label, value, className = \"value-link\")"));
+	assert!(response.contains("function localPathHref(value)"));
+	assert!(response.contains("return `file://${encodeLocalPath(rawValue)}`;"));
+	assert!(response.contains("const pullRequestMatch = text.match(/\\/pull\\/(\\d+)(?:$|[/?#])/);"));
+	assert!(response.contains("return `#${pullRequestMatch[1]}`;"));
+	assert!(response.contains("text-decoration: none;"));
+	assert!(response.contains("background: color-mix(in srgb, currentColor 10%, transparent);"));
+	assert!(response.contains("box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent);"));
+	assert!(response.contains("function renderField(label, value, valueClass, labelFormatter, fieldClass = \"\")"));
+	assert!(response.contains("const fieldClassName = [\"field\", fieldClass].filter(Boolean).join(\" \");"));
+	assert!(response.contains("<div class=\"${fieldClassName}\">"));
+	assert!(response.contains("<div class=\"field-label\">${escapeHtml(labelFormatter(label))}</div>"));
+	assert!(response.contains("return renderField(label, value, valueClass, detailLabel);"));
+	assert!(response.contains("return renderField(label, value, valueClass, titleCaseLabel, \"card-field\");"));
+	assert!(response.contains("const valueHtml = renderValueLink(label, value) || escapeHtml(value);"));
+	assert!(!response.contains("<div class=\"field-label\">${escapeHtml(titleCaseLabel(label))}</div>"));
+	assert!(row_title.contains("font-size: var(--type-row-title);"));
+	assert!(row_title.contains("font-weight: var(--weight-strong);"));
+	assert!(row_title.contains("line-height: 1.28;"));
+	assert!(response.contains("--type-row-aside: 11px;"));
+	assert!(row_aside.contains("font-size: var(--type-row-aside);"));
+	assert!(row_aside.contains("font-family: var(--mono);"));
+	assert!(row_aside.contains("font-variant-numeric: tabular-nums;"));
+	assert!(row_aside.contains("line-height: 1.22;"));
+	assert!(response.contains("class=\"row-aside\""));
+	assert!(!response.contains("class=\"card-meta\""));
+	assert!(!response.contains("font-size: var(--type-card-title);"));
+	assert!(!response.contains("--type-card-title:"));
+	assert!(run_meta_line.contains("font-family: var(--mono);"));
+	assert!(run_meta_line.contains("font-variant-ligatures: none;"));
+	assert!(run_meta_line.contains("letter-spacing: 0;"));
+	assert!(run_meta_line.contains("line-height: 1.35;"));
+	assert!(response.contains(".run-meta-item.is-account {\n\t\t\t\tposition: relative;"));
+	assert!(response.contains("padding-left: 16px;"));
+	assert!(!response.contains(".run-meta-item.is-account {\n\t\t\t\talign-items: center;"));
+	assert!(response.contains(".run-meta-icon {"));
+	assert!(response.contains(".run-meta-icon svg"));
+	assert!(run_meta_icon.contains("position: absolute;"));
+	assert!(run_meta_icon.contains("top: 50%;"));
+	assert!(run_meta_icon.contains("width: 12px;"));
+	assert!(run_meta_icon.contains("height: 12px;"));
+	assert!(run_meta_icon.contains("transform: translateY(-50%);"));
+	assert!(response.contains(".run-meta-label"));
+	assert!(account_row_id.contains("font-family: var(--mono);"));
+	assert!(account_row_id.contains("font-variant-ligatures: none;"));
+	assert!(account_row_id.contains("letter-spacing: 0;"));
+	assert!(!response.contains(".account-row-id.is-machine"));
+	assert!(!response.contains(".account-use-line"));
+	assert!(!response.contains(".account-use-label"));
 }
 
 #[test]
@@ -188,10 +279,24 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("data-duration=\"diagnostic\""));
 	assert!(response.contains("function childDiagnosticBucketRank(bucket)"));
 	assert!(response.contains("summary.current_detail"));
+	assert!(response.contains("detailLabel(humanizeToken(summary.current_detail || summary.current_bucket))"));
 	assert!(response.contains("return `${label} · ${formatDuration(summary.current_elapsed_seconds)}`;"));
+	assert!(response.contains("<span>Activity</span>"));
+	assert!(response.contains(".child-activity-head {\n\t\t\t\tdisplay: grid;\n\t\t\t\tgrid-template-columns: 96px minmax(0, 1fr);\n\t\t\t\talign-items: baseline;\n\t\t\t\tgap: 10px;"));
+	assert!(!response.contains("titleCaseLabel(\"agent activity\")"));
+	assert!(!response.contains("<span>agent activity</span>"));
+	assert!(!response.contains("<span>Agent Activity</span>"));
+	assert!(response.contains("const current = childAgentCurrentSummary(summary) || \"none\";"));
+	assert!(!response.contains("<span>Agent Now</span>"));
+	assert!(!response.contains("No active child bucket"));
+	assert!(response.contains("[\"current window\", latestInput"));
+	assert!(response.contains("\"peak window\","));
+	assert!(response.contains("\"cumulative input\","));
+	assert!(response.contains("[\"tool calls\", String(summary.tool_call_count ?? 0)]"));
+	assert!(response.contains("\"largest output\","));
 	assert!(response.contains("tool calls"));
 	assert!(response.contains("output bytes"));
-	assert!(response.contains("Largest tool output; Debug details show attribution."));
+	assert!(response.contains("Largest tool output; debug details show attribution."));
 	assert!(response.contains("field(\"Large outputs\", childAgentLargeOutputSummary(childAgentActivity(run)))"));
 	assert!(!response.contains("events only"));
 	assert!(!response.contains("child-warning"));
@@ -204,27 +309,6 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("--child-bucket-value-column: clamp(190px, 18vw, 230px);"));
 	assert!(response.contains("grid-template-columns: 96px minmax(64px, 1fr) var(--child-bucket-value-column);"));
 	assert!(response.contains("width: var(--child-bucket-value-column);"));
-	assert!(response.contains("runNeedsAttention"));
-	assert!(response.contains("runCountsAsRunning"));
-	assert!(response.contains("runWaitReasonShowsExecutionProgress"));
-	assert!(response.contains("[\"model_execution\", \"tool_execution\", \"protocol_activity\"].includes(run.wait_reason)"));
-	assert!(response.contains("return `Running through ${focus}.`;"));
-	assert!(response.contains("run.wait_reason && !runWaitReasonShowsExecutionProgress(run)"));
-	assert!(response.contains("runOperationRequiresLiveAgent"));
-	assert!(response.contains("runProcessStoppedWithoutAttention"));
-	assert!(response.contains("runStageLabel"));
-	assert!(response.contains("return \"Stopped\";"));
-	assert!(response.contains("Finalizing"));
-	assert!(
-		response.contains(
-			"Agent process stopped before finish; recovery needed."
-		)
-	);
-	assert!(response.contains("Stopped agent process"));
-	assert!(response.contains("attention stopped"));
-	assert!(response.contains("recovery <strong>needed</strong>"));
-	assert!(response.contains("agent <strong>done</strong>"));
-	assert!(!response.contains("process <strong>stopped</strong>"));
 	assert!(response.contains("runningLaneMetaText"));
 	assert!(response.contains("const parts = [`${derived.liveRuns ?? 0} running`];"));
 	assert!(response.contains("attentionCount === 1"));
@@ -235,11 +319,13 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("runStaleWithoutKnownProcessNeedsAttention"));
 	assert!(response.contains("runExecutionLivenessSummary"));
 	assert!(response.contains("runQueueLeaseSummary"));
-	assert!(response.contains("lease <strong>not held</strong>"));
+	assert!(response.contains("return \"process alive\";"));
+	assert!(!response.contains("return \"Process alive\";"));
+	assert!(!response.contains("lease <strong>not held</strong>"));
 	assert!(response.contains("field(\"Attempt status\", run.attempt_status || run.status)"));
 	assert!(response.contains("field(\"Queue lease\", runQueueLeaseSummary(run))"));
 	assert!(response.contains("field(\"Execution liveness\", runExecutionLivenessSummary(run))"));
-	assert!(response.contains("Live, no queue lease"));
+	assert!(response.contains("Live, No Queue Lease"));
 	assert!(response.contains("no lease; live process"));
 	assert!(!response.contains("Queue ownership"));
 	assert!(response.contains("attention.worktree_path"));
@@ -266,6 +352,42 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 }
 
 #[test]
+fn operator_dashboard_active_run_status_copy_stays_concise() {
+	let response = dashboard_response();
+
+	assert!(response.contains("runNeedsAttention"));
+	assert!(response.contains("runCountsAsRunning"));
+	assert!(response.contains("runWaitReasonShowsExecutionProgress"));
+	assert!(response.contains(
+		"[\"model_execution\", \"tool_execution\", \"protocol_activity\"].includes(run.wait_reason)"
+	));
+	assert!(response.contains("run.wait_reason && !runWaitReasonShowsExecutionProgress(run)"));
+	assert!(response.contains("runOperationRequiresLiveAgent"));
+	assert!(response.contains("runProcessStoppedWithoutAttention"));
+	assert!(response.contains("runStageLabel"));
+	assert!(response.contains("return \"Stopped\";"));
+	assert!(response.contains("Finalizing"));
+	assert!(response.contains("Operator input needed."));
+	assert!(response.contains("Protocol idle."));
+	assert!(response.contains("Stopped agent process"));
+	assert!(response.contains("attention stopped"));
+	assert!(response.contains("inlineStatusFact(\"Agent\", \"Done\")"));
+	assert!(!response.contains("Running through ${focus}"));
+	assert!(!response.contains("Running through model execution."));
+	assert!(!response.contains("Time is going to ${focus}."));
+	assert!(!response.contains("Running now."));
+	assert!(!response.contains("Thread is ${humanizeToken(run.thread_status).toLowerCase()}."));
+	assert!(!response.contains("Agent turn complete; Decodex is finishing"));
+	assert!(!response.contains("No agent progress for"));
+	assert!(!response.contains("Waiting for approval or input."));
+	assert!(!response.contains("Turn complete; continuation pending."));
+	assert!(!response.contains("process <strong>stopped</strong>"));
+	assert!(!response.contains("recovery <strong>needed</strong>"));
+	assert!(response.contains("run.interactive_requested && !runStoppedProcessNeedsAttention(run)"));
+	assert!(!response.contains(&["Process stopped;", " recovery needed."].concat()));
+}
+
+#[test]
 fn operator_dashboard_renders_account_usage_controls() {
 	let response = dashboard_response();
 
@@ -284,12 +406,14 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(!response.contains("function renderCodexAccountPoolHeader(accounts)"));
 	assert!(response.contains("function renderCodexAccountPoolRow(account)"));
 	assert!(response.contains("function codexAccountDebugSummary(account)"));
-	assert!(response.contains("function codexAccountPoolDebugSummary(accounts)"));
+	assert!(!response.contains("function codexAccountPoolDebugSummary(accounts)"));
+	assert!(response.contains("return \"not captured\";"));
 	assert!(response.contains("function codexAccountHistorySummary(account)"));
 	assert!(response.contains("snapshot?.accounts"));
-	assert!(response.contains("account?.email"));
-	assert!(response.contains("run?.account || null"));
+	assert!(response.contains("account?.account_email || account?.email"));
+	assert!(response.contains("run?.account || run?.codex_account || null"));
 	assert!(response.contains("run?.accounts"));
+	assert!(response.contains("run?.codex_accounts"));
 	assert!(response.contains("account-pool-panel"));
 	assert!(!response.contains("<h2>Accounts</h2>"));
 	assert!(!response.contains("<h2>Codex Accounts</h2>"));
@@ -316,7 +440,9 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("panel section-aftercare\" id=\"review-panel\""));
 	assert!(!response.contains("section-group-start"));
 	assert!(response.contains("#queue-panel .panel-head"));
-	assert!(response.contains(".queue-group > .action-card:last-child"));
+	assert!(!response.contains("queue-group"));
+	assert!(!response.contains("queue-group-header"));
+	assert!(!response.contains("queue-group-count"));
 	assert!(response.contains("nodes.projectTitle.textContent = \"Decodex\""));
 	assert!(!response.contains("Decodex Operator"));
 	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"active\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
@@ -432,10 +558,42 @@ fn operator_dashboard_renders_account_sort_controls() {
 }
 
 #[test]
+fn operator_dashboard_renders_project_sort_controls() {
+	let response = dashboard_response();
+
+	assert!(response.contains("const PROJECT_SORT_STORAGE_KEY = \"decodex.operator.projectSort\";"));
+	assert!(response.contains("const PROJECT_SORT_COLUMNS = ["));
+	assert!(response.contains("[\"project\", \"Project\"]"));
+	assert!(response.contains("[\"location\", \"Location\"]"));
+	assert!(response.contains("[\"activity\", \"Activity\"]"));
+	assert!(response.contains("[\"work\", \"Work\"]"));
+	assert!(response.contains("function loadProjectSort()"));
+	assert!(response.contains("function persistProjectSort()"));
+	assert!(response.contains("function isProjectSortKey(value)"));
+	assert!(response.contains("function projectSortDefaultDirection(key)"));
+	assert!(response.contains("return [\"activity\", \"work\"].includes(key) ? \"desc\" : \"asc\";"));
+	assert!(response.contains("function renderProjectSortButton([key, label])"));
+	assert!(response.contains("project-table-sort"));
+	assert!(response.contains("data-project-sort-key"));
+	assert!(response.contains("aria-label=\"Sort projects by ${escapeHtml(label)}; ${escapeHtml(current)}\""));
+	assert!(response.contains("project-sort-up"));
+	assert!(response.contains("project-sort-down"));
+	assert!(response.contains("aria-sort=\"${direction === \"asc\" ? \"ascending\" : \"descending\"}\""));
+	assert!(response.contains("function projectColumnSortValue(project, key)"));
+	assert!(response.contains("function compareProjectRowsByColumn(left, right, key, direction)"));
+	assert!(response.contains("function compareProjectRowsStable(left, right)"));
+	assert!(response.contains("function sortProjectRows(rows)"));
+	assert!(response.contains("projectSort.key === key"));
+	assert!(response.contains("projectSortDefaultDirection(key)"));
+	assert!(response.contains("persistProjectSort();"));
+	assert!(response.contains("sortProjectRows(projectFilterRows(projects, activeProjectRows))"));
+}
+
+#[test]
 fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	let response = dashboard_response();
 
-	assert!(response.contains("account-use-line"));
+	assert!(response.contains("run-meta-line"));
 	assert!(response.contains("account-pool-list"));
 	assert!(response.contains("account-pool-guide"));
 	assert!(!response.contains("account-pool-window-heads"));
@@ -508,8 +666,19 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains(".account-row-plan {\n\t\t\t\tgrid-area: plan;"));
 	assert!(response.contains("<div class=\"account-row-id${identityClass}\">"));
 	assert!(response.contains("<div class=\"account-row-plan\">${escapeHtml(plan)}</div>"));
-	assert!(response.contains("<strong class=\"account-name${identityClass}\""));
-	assert!(response.contains("<strong class=\"machine-text\">${escapeHtml(`${value}%`)}</strong>"));
+	assert!(response.contains("<strong class=\"account-name\""));
+	assert!(response.contains("<span class=\"run-meta-icon\" aria-hidden=\"true\">"));
+	assert!(response.contains("<svg viewBox=\"0 0 16 16\" fill=\"none\">"));
+	assert!(response.contains("<path fill=\"currentColor\" fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M3.35 2.25h9.3"));
+	assert!(response.contains("M8 4.15a1.8 1.8"));
+	assert!(response.contains("c.61 0 1.1.49 1.1 1.1v9.3"));
+	assert!(!response.contains("d=\"M8 1.65a6.35"));
+	assert!(!response.contains("<path fill=\"currentColor\" d=\"M8 7.3a2.55"));
+	assert!(!response.contains("<path fill=\"currentColor\" d=\"M3.25 13.15c.48-2.65"));
+	assert!(!response.contains("fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M3.9 2.2h8.2"));
+	assert!(!response.contains("<circle cx=\"8\" cy=\"5.1\""));
+	assert!(response.contains("<strong class=\"account-name${identityClass}\" title=\"${escapeHtml(displayTitle)}\">${escapeHtml(visibleName)}</strong>"));
+	assert!(!response.contains("<strong class=\"machine-text\">${escapeHtml(`${value}%`)}</strong>"));
 	assert!(!response.contains("function codexAccountSecondaryLabel(account)"));
 	assert!(response.contains("const visibleName = codexAccountVisibleName(account);"));
 	assert!(response.contains("const displayTitle = codexAccountDisplayTitle(account);"));
@@ -561,8 +730,11 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	assert!(!response.contains("account-active-glow"));
 	assert!(!response.contains("account-active-sweep"));
 	assert!(!response.contains("account-active-dot"));
-	assert!(response.contains("aria-label=\"Account used by this lane\""));
-	assert!(response.contains("<span class=\"account-use-label\">Account</span>"));
+	assert!(response.contains("aria-label=\"Lane metadata\""));
+	assert!(response.contains("<span class=\"run-meta-item is-account\" aria-label=\"account\">"));
+	assert!(!response.contains("<span>account</span>"));
+	assert!(response.contains("<strong>not captured</strong>"));
+	assert!(!response.contains("<span class=\"account-use-label\">Account</span>"));
 	assert!(!response.contains("<span class=\"account-use-label\">Codex account</span>"));
 	assert!(response.contains("aria-label=\"Accounts\""));
 	assert!(response.contains("ACCOUNT_PRIVACY_STORAGE_KEY"));
@@ -571,22 +743,33 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	assert!(response.contains("renderCodexAccountPoolWindow(account, \"secondary\")"));
 	assert!(!response.contains("<div class=\"account-quota-line\">"));
 	assert!(response.contains("<div class=\"account-window is-${escapeHtml(prefix)}${toneClass}\""));
-	assert!(response.contains("codexAccountStatusBit(account)"));
+	assert!(!response.contains("codexAccountStatusBit(account)"));
 	assert!(response.contains("renderRunCodexAccountInline(run)"));
+	assert!(response.contains("function renderRunMetaLine(run)"));
 }
 
 #[test]
 fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	let response = dashboard_response();
+	let active_debug = response
+		.split("<summary>Debug Details</summary>")
+		.nth(1)
+		.expect("active debug details should exist")
+		.split("</details>")
+		.next()
+		.expect("active debug details should end");
 
-	assert!(response.contains("field(\"Account\", codexAccountDebugSummary(account))"));
-	assert!(response.contains(
+	assert!(!active_debug.contains("field(\"Account\", codexAccountDebugSummary(account))"));
+	assert!(!active_debug.contains("field(\"Freshness source\","));
+	assert!(!active_debug.contains("field(\"Lane activity\","));
+	assert!(!active_debug.contains("field(\"Last protocol activity\","));
+	assert!(!response.contains(
 		"field(\"Accounts\", codexAccountPoolDebugSummary(codexAccounts(run)))"
 	));
 	assert!(response.contains("field(\"Account\", codexAccountDebugSummary(codexAccount(run)))"));
 	assert!(response.contains("facts.push([\"Account\", codexAccountHistorySummary(codexAccount(run))])"));
 	assert!(!response.contains("facts.push([\"Codex pool\""));
-	assert!(response.contains("account <strong>"));
+	assert!(!response.contains("account <strong>"));
 	assert!(response.contains("credits_unlimited"));
 	assert!(response.contains("function formatCodexAccountCreditsBalance(value)"));
 	assert!(response.contains("const balance = formatCodexAccountCreditsBalance(account.credits_balance);"));
@@ -687,7 +870,25 @@ fn operator_dashboard_omits_watch_and_project_pause_controls() {
 	assert!(!response.contains(">Watching</button>"));
 	assert!(!response.contains(">Pause</button>"));
 	assert!(!response.contains(">Resume</button>"));
-	assert!(response.contains("data-dashboard-control=\"retryRun\""));
+	assert!(!response.contains("data-dashboard-control=\"retryRun\""));
+	assert!(!response.contains(">Retry now</button>"));
+	assert!(response.contains("data-dashboard-control=\"interruptRun\""));
+	assert!(response.contains("aria-label=\"Stop this active Decodex work\""));
+	assert!(response.contains("const statusLineParts = [...statusBits];"));
+	assert!(response.contains("statusLineParts.splice(1, 0, stopControl);"));
+	assert!(response.contains(".status-line .run-stop-button {"));
+	assert!(response.contains("width: 18px;"));
+	assert!(response.contains("border: 0;"));
+	assert!(response.contains("background: transparent;"));
+	assert!(response.contains("color: color-mix(in srgb, var(--danger) 86%, var(--text));"));
+	assert!(response.contains("<path fill=\"currentColor\" fill-rule=\"evenodd\" clip-rule=\"evenodd\""));
+	assert!(response.contains("d=\"M4.35 2.25h7.3"));
+	assert!(!response.contains("<rect x=\"4.2\" y=\"3.2\" width=\"2.9\" height=\"9.6\""));
+	assert!(!response.contains("class=\"row-head run-row-head\""));
+	assert!(!response.contains("class=\"run-head-aside\""));
+	assert!(!response.contains("class=\"run-actions\""));
+	assert!(!response.contains("data-tone=\"danger\" title=\"Stop this active Decodex work.\""));
+	assert!(!response.contains("run-stop-button {\n\t\t\t\tposition: absolute;"));
 }
 
 #[test]
@@ -711,7 +912,7 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains("function projectHasActiveWork(project)"));
 	assert!(!response.contains("function projectHasVisibleWork(project)"));
 	assert!(response.contains("function activeProjects(projects)"));
-	assert!(response.contains("function renderProjectEntry(project, selectedId, projects)"));
+	assert!(response.contains("function renderProjectEntry(project, selectedId)"));
 	assert!(response.contains("function renderProjectTable(projects, activeProjectRows, selectedId)"));
 	assert!(response.contains("function projectFilterRows(projects, activeProjectRows)"));
 	assert!(response.contains("function renderEmptyState(title, copy = \"\")"));
@@ -720,11 +921,41 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains("renderRoutineEmptyList("));
 	assert!(response.contains("Appears after /state publishes a snapshot."));
 	assert!(response.contains("renderQueuedCandidates("));
+	assert!(response.contains("function formatDetailToken(value)"));
+	assert!(response.contains("return token ? token.toUpperCase() : \"NONE\";"));
+	assert!(response.contains("return priority == null ? \"NONE\" : `P${priority}`;"));
+	assert!(response.contains("function queuedCandidateSummaryIsNoise(summary)"));
+	assert!(response.contains("normalized.includes(\"systemerror\")"));
+	assert!(response.contains("function inlineStatusFact(label, value)"));
+	assert!(response.contains("titleCaseLabel(label)"));
+	assert!(response.contains("const summary = summarizeQueuedCandidate(candidate);"));
+	assert!(response.contains("const reason = queuedCandidateReasonText(candidate);"));
+	assert!(response.contains("<div class=\"grid two card-facts\">"));
+	assert!(!response.contains("queue-facts"));
+	assert!(response.contains("cardField(\"State\", formatDetailToken(candidate.state))"));
+	assert!(response.contains("cardField(\"Priority\", formatPriority(candidate.priority))"));
+	assert!(response.contains(": \"NONE\";"));
+	assert!(response.contains("cardField(\"Blockers\", blockers, blockers === \"NONE\" ? \"is-muted\" : \"\")"));
+	assert!(response.contains("${summary ? `<p class=\"row-summary\">${escapeHtml(summary)}</p>` : \"\"}"));
+	assert!(response.contains("${reason ? inlineStatusFact(\"Reason\", reason) : \"\"}"));
+	assert!(!response.contains("<span>reason <strong>"));
+	assert!(!response.contains("<span>wait <strong>"));
+	assert!(!response.contains("<span>metadata <strong>"));
+	assert!(!response.contains("<span>telemetry <strong>"));
 	assert!(response.contains("renderActionCards("));
+	assert!(response.contains("${item.facts.map(([label, value]) => cardField(label, value)).join(\"\")}"));
+	assert!(!response.contains("${item.facts.map(([label, value]) => field(label, value)).join(\"\")}"));
 	assert!(!response.contains("No running lanes"));
 	assert!(!response.contains("No queued issues"));
 	assert!(!response.contains("No PR lanes"));
-	assert!(response.contains("return projects.length === 1 ? \"Current\" : \"Selected\";"));
+	assert!(!response.contains(&["Ready to", " start."].concat()));
+	assert!(!response.contains(&["Waiting for a", " free agent slot."].concat()));
+	assert!(!response.contains(&["App-server thread", " ended with systemError."].concat()));
+	assert!(!response.contains("return \"Capacity full\";"));
+	assert!(response.contains("function projectKicker(project)"));
+	assert!(response.contains("return \"Disabled\";"));
+	assert!(!response.contains("function projectScopeKicker"));
+	assert!(!response.contains("return projects.length === 1 ? \"Current\" : \"Selected\";"));
 	assert!(response.contains("return \"\";"));
 	assert!(!response.contains("<h2 id=\"projects-title\">Projects</h2>"));
 	assert!(!response.contains("id=\"projects-meta\""));
@@ -742,10 +973,14 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains(".project-table-guide span {\n\t\t\t\tmin-width: 0;\n\t\t\t\ttext-align: center;"));
 	assert!(response.contains(".project-table-guide .project-location-head"));
 	assert!(!response.contains(".project-table-guide span:first-child"));
-	assert!(response.contains("<span role=\"columnheader\">Project</span>"));
-	assert!(response.contains("<span class=\"project-column-head project-location-head\" role=\"columnheader\">Location ${projectLocationToggleMarkup()}</span>"));
-	assert!(response.contains("<span role=\"columnheader\">Activity</span>"));
-	assert!(response.contains("<span class=\"project-column-head\" role=\"columnheader\">Work ${projectWorkInfoMarkup()}</span>"));
+	assert!(response.contains("renderProjectColumnHead(PROJECT_SORT_COLUMNS[0])"));
+	assert!(response.contains("renderProjectColumnHead(PROJECT_SORT_COLUMNS[1], {"));
+	assert!(response.contains("after: projectLocationToggleMarkup()"));
+	assert!(response.contains("renderProjectColumnHead(PROJECT_SORT_COLUMNS[2])"));
+	assert!(response.contains("renderProjectColumnHead(PROJECT_SORT_COLUMNS[3], {"));
+	assert!(response.contains("after: projectWorkInfoMarkup()"));
+	assert!(!response.contains("<span role=\"columnheader\">Project</span>"));
+	assert!(!response.contains("<span role=\"columnheader\">Activity</span>"));
 	assert!(!response.contains("<span role=\"columnheader\">Status</span>"));
 	assert!(!response.contains("<span role=\"columnheader\">Running</span>"));
 	assert!(!response.contains("<span role=\"columnheader\">Waiting</span>"));
@@ -788,7 +1023,10 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(!response.contains("const connectorCopy = projectSyncMeta(project, health);"));
 	assert!(!response.contains("const prefix = `${activeCount} active · ${projects.length} all`;"));
 	assert!(response.contains("return \"ok\";"));
+	assert!(response.contains("const kicker = projectKicker(project);"));
 	assert!(response.contains("${kicker ? `<span class=\"project-kicker\">${escapeHtml(kicker)}</span>` : \"\"}"));
+	assert!(!response.contains("projectScopeKicker(project"));
+	assert!(!response.contains("renderProjectEntry(project, selectedId, projects)"));
 	assert!(!response.contains("const connectorCopy = `connector ${connector}`;"));
 	assert!(!response.contains("const connectorCopy = `sync ${connector}`;"));
 	assert!(!response.contains("? pluralize(project.warning_count, \"warning\")"));
@@ -819,6 +1057,43 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("function projectWorkInfoMarkup()"));
 	assert!(response.contains("data-project-work-info"));
 	assert!(response.contains("class=\"project-work-tooltip\" role=\"tooltip\""));
+}
+
+#[test]
+fn operator_dashboard_normalizes_review_state_tokens() {
+	let response = dashboard_response();
+
+	assert!(response.contains("function compactStateToken(value)"));
+	assert!(response.contains("return String(value).trim().toLowerCase().replace(/_/g, \" \");"));
+	assert!(response.contains(
+		"status: lane.mergeable ? `merge ${compactStateToken(lane.mergeable)}` : \"ready\","
+	));
+	assert!(response.contains(
+		"status: lane.check_state ? `checks ${compactStateToken(lane.check_state)}` : \"waiting\","
+	));
+	assert!(response.contains("`review ${compactStateToken(lane.review_decision)}`"));
+	assert!(response.contains("[\"Checks\", compactStateToken(lane.check_state)]"));
+	assert!(response.contains("[\"Review decision\", compactStateToken(lane.review_decision)]"));
+	assert!(!response.contains("`merge ${humanizeToken(lane.mergeable)}`"));
+	assert!(!response.contains("`checks ${humanizeToken(lane.check_state)}`"));
+	assert!(!response.contains("[\"Checks\", lane.check_state || \"none\"]"));
+}
+
+#[test]
+fn operator_dashboard_review_cards_omit_static_summary_copy() {
+	let response = dashboard_response();
+
+	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: `run ${humanizeToken(activeRun.phase)}`"));
+	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.review_decision"));
+	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.check_state"));
+	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.mergeable"));
+	assert!(
+		response.contains("${item.summary ? `<p class=\"row-summary\">${escapeHtml(item.summary)}</p>` : \"\"}")
+	);
+	assert!(!response.contains(&["Repair lane", " already active."].concat()));
+	assert!(!response.contains(&["Needs attention before", " retained lane can continue."].concat()));
+	assert!(!response.contains(&["Waiting on review", " or checks."].concat()));
+	assert!(!response.contains(&["Approvals and required", " checks complete."].concat()));
 }
 
 #[test]
@@ -889,6 +1164,7 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 	assert!(response.contains("queuedCandidateNeedsAttention"));
 	assert!(response.contains("intakeAttentionCount"));
 	assert!(response.contains("queuedBlockedWithoutAttention"));
+	assert!(response.contains("attention.thread_status && attention.thread_status !== \"systemError\""));
 	assert!(response.contains("candidate.classification !== \"claimed\""));
 	assert!(response.contains("queueBacklogCandidates.filter(queuedCandidateNeedsAttention).length"));
 	assert!(response.contains(
@@ -916,7 +1192,7 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 		.next()
 		.expect("queued candidate reason function should have an end");
 
-	assert!(reason_text.contains("return \"Needs attention\";"));
+	assert!(reason_text.contains("return \"Needs Attention\";"));
 	assert!(
 		response.contains("facts.push([\"Attempt status\", humanizeToken(attention.attempt_status)]);")
 	);
@@ -927,7 +1203,7 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 		"facts.push([\"Auto retry\", autoRetryBlockedReasonText(attention.auto_retry_blocked_reason)]);"
 	));
 	assert!(response.contains("return \"needs-attention label set\";"));
-	assert!(reason_text.contains("return \"Auto retry paused\";"));
+	assert!(reason_text.contains("return \"Auto Retry Paused\";"));
 	assert!(!response.contains("return \"blocked by needs-attention\";"));
 	assert!(!reason_text.contains("return \"Retry budget held\";"));
 	assert!(!response.contains(
@@ -935,10 +1211,10 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 	));
 	assert!(
 		reason_text
-			.find("return \"Needs attention\";")
+			.find("return \"Needs Attention\";")
 			.expect("needs-attention reason should exist")
 			< reason_text
-				.find("return \"Auto retry paused\";")
+				.find("return \"Auto Retry Paused\";")
 				.expect("retry-budget reason should exist")
 	);
 }
@@ -972,7 +1248,7 @@ fn operator_dashboard_header_shows_endpoint_and_snapshot_freshness() {
 	assert!(response.contains("<span>Transport</span>"));
 	assert!(response.contains("topbarReadinessLabel(readiness.label)"));
 	assert!(response.contains("<span class=\"transport-meta\" data-kind=\"endpoint\" data-tone=\"${escapeHtml(stream.tone)}\""));
-	assert!(response.contains("<span>Transport</span><strong>${escapeHtml(dashboardSocketUrl())}</strong>"));
+	assert!(response.contains("<span>Transport</span><strong>${renderValueLink(\"WebSocket\", dashboardSocketUrl(), \"transport-link\") || escapeHtml(dashboardSocketUrl())}</strong>"));
 	assert!(!response.contains("topbarStreamLabel(stream.label)"));
 	assert!(response.contains("Poll fallback: ${escapeHtml(ENDPOINTS.state)}"));
 	assert!(response.contains("<span class=\"transport-meta\" data-kind=\"snapshot\" data-tone=\"${escapeHtml(snapshotFreshness.tone)}\""));
@@ -1021,9 +1297,31 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(response.contains("source: \"none\""));
 	assert!(!response.contains("source: \"updated_at\""));
 	assert!(response.contains("function formatRelativeTimestamp(value)"));
+	assert!(response.contains("return \"0s\";"));
+	assert!(response.contains("return `${seconds}s`;"));
+	assert!(response.contains("return `${minutes}m`;"));
+	assert!(response.contains("return `${hours}h`;"));
+	assert!(response.contains("return `${days}d`;"));
+	assert!(response.contains("sourceLabel: \"live activity\""));
+	assert!(response.contains("sourceLabel: \"protocol activity\""));
+	assert!(response.contains("facts.push([\"lane idle\", formatDuration(run.idle_for_seconds)]);"));
+	assert!(response.contains("facts.push([\"agent idle\", formatDuration(run.protocol_idle_for_seconds)]);"));
+	assert!(response.contains("facts.push([\"focus\", detailLabel(focus)]);"));
+	assert!(response.contains("renderRunMetaFact(label, value)"));
+	assert!(!response.contains("sourceLabel: \"Live Activity\""));
+	assert!(!response.contains("facts.push([\"Lane Idle\", formatDuration(run.idle_for_seconds)]);"));
+	assert!(!response.contains("facts.push([\"Agent Idle\", formatDuration(run.protocol_idle_for_seconds)]);"));
+	assert!(!response.contains("${inlineStatusFact(label, value)}"));
+	assert!(!response.contains("just now"));
+	assert!(!response.contains("s ago"));
+	assert!(!response.contains("m ago"));
+	assert!(!response.contains("h ago"));
+	assert!(!response.contains("d ago"));
 	assert!(response.contains("function activeRunTelemetryFacts(run)"));
-	assert!(response.contains("function renderActiveTelemetryLine(run)"));
-	assert!(response.contains("activity-line"));
+	assert!(response.contains("function renderRunTelemetryMetaItems(run)"));
+	assert!(response.contains("function renderRunMetaFact(label, value, valueClass = \"\", title = \"\")"));
+	assert!(!response.contains("function renderActiveTelemetryLine(run)"));
+	assert!(!response.contains("activity-line"));
 	assert!(
 		response
 			.contains("freshness.timestamp ? formatter(freshness.timestamp) : \"not captured\"")
@@ -1031,10 +1329,8 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(!response.contains("Last ${freshness.sourceLabel}"));
 	assert!(!response.contains("Latest ${freshness.sourceLabel}"));
 	assert!(!response.contains("renderTimingStrip(run)"));
-	assert!(response.contains("field(\"Freshness source\", activeRunFreshnessSource(run))"));
-	assert!(
-		response.contains("field(\"Lane activity\", formatTimestamp(run.last_run_activity_at))")
-	);
+	assert!(!response.contains("activeRunFreshnessSource(run)"));
+	assert!(!response.contains("field(\"Freshness source\", activeRunFreshnessSource(run))"));
 	assert!(response.contains("field(\"Updated\", formatTimestamp(run.updated_at))"));
 }
 
@@ -1046,9 +1342,33 @@ fn operator_dashboard_uses_shared_protocol_activity_summary() {
 	assert!(response.contains("function protocolActivityFocus(run)"));
 	assert!(response.contains("function protocolActivityRecentSummary(run)"));
 	assert!(response.contains("function protocolActivityDebugSummary(run)"));
-	assert!(response.contains("facts.push([\"time going to\", focus]);"));
+	assert!(!response.contains("function normalizedProtocolRateLimitStatus(value)"));
+	assert!(!response.contains("status.includes(\"/\") || status.includes(\" \")"));
+	assert!(!response.contains("protocolActivityRateLimitDisplay(run, \"\")"));
+	assert!(!response.contains("parts.splice(2, 0, `rate limit ${rateLimit}`);"));
+	assert!(!response.contains("`rate ${protocolActivityRateLimitDisplay(run)}`"));
+	assert!(response.contains("facts.push([\"focus\", detailLabel(focus)]);"));
 	assert!(response.contains("return \"approval/user input\";"));
 	assert!(response.contains("return \"protocol idleness\";"));
 	assert!(response.contains("field(\"Protocol activity\", protocolActivityDebugSummary(run))"));
-	assert!(response.contains("field(\"Rate limit\", protocolActivityRateLimit(run))"));
+	assert!(!response.contains("field(\"Rate limit\", protocolActivityRateLimitDisplay(run))"));
+}
+
+#[test]
+fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
+	let response = dashboard_response();
+
+	assert!(response.contains("function mergeDashboardRunRecord(snapshotRun, activityRun)"));
+	assert!(response.contains("function mergeDashboardActiveRuns(snapshot, activeRunRows)"));
+	assert!(response.contains("\"issue_identifier\""));
+	assert!(response.contains("\"title\""));
+	assert!(response.contains("\"child_agent_activity\""));
+	assert!(response.contains("\"protocol_activity\""));
+	assert!(response.contains("!dashboardRunFieldHasValue(activityRun[key])"));
+	assert!(response.contains("merged[key] = snapshotRun[key];"));
+	assert!(
+		response.contains("const mergedActiveRuns = mergeDashboardActiveRuns(snapshot, activeRunRows);")
+	);
+	assert!(response.contains("active_runs: mergedActiveRuns,"));
+	assert!(!response.contains("active_runs: activeRunRows,"));
 }
