@@ -33,6 +33,13 @@ pub(crate) struct ServeRequest<'a> {
 	pub(crate) listen_address: &'a str,
 }
 
+/// Agent-readable runtime diagnosis request.
+pub(crate) struct DiagnoseRequest<'a> {
+	pub(crate) config_path: Option<&'a Path>,
+	pub(crate) json: bool,
+	pub(crate) limit: usize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RunSummary {
 	project_id: String,
