@@ -7909,7 +7909,6 @@
 						const issueKey = issueDisplayKey(run);
 						const issueTitle = runIssueTitle(run, derived);
 						const summary = activeRunSummary(run);
-						const account = codexAccount(run);
 
 						if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
 							statusBits.push(inlineStatusFact("Wait", humanizeToken(run.wait_reason)));
