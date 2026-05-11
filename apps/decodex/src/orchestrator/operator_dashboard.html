@@ -8,10 +8,9 @@
 			content="Delivery progress console for Decodex retained lanes."
 		/>
 		<title>Decodex</title>
-		<link
-			rel="icon"
-			href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' rx='18' fill='%230f151c'/%3E%3Cpath d='M18 57V23h11l11 17 11-17h11v34H51V40L40 56 29 40v17Z' fill='%23f0b24c'/%3E%3C/svg%3E"
-		/>
+		<link rel="icon" type="image/png" href="/assets/icon.png" />
+		<link rel="icon" href="/assets/logo.ico" />
+		<link rel="apple-touch-icon" sizes="180x180" href="/assets/logo-touch.png" />
 		<style>
 			:root {
 				color-scheme: light;
@@ -50,13 +49,14 @@
 				--medium: 220ms;
 				--slow: 380ms;
 				--type-micro: 9px;
-				--type-caption: 11px;
-				--type-label: 12px;
-				--type-meta: 12px;
-				--type-body: 13px;
+				--type-caption: 10px;
+				--type-label: 11px;
+				--type-meta: 11px;
+				--type-body: 12px;
 				--type-row-title: 13px;
+				--type-section-title: 14px;
 				--type-card-title: 15px;
-				--type-display: 17px;
+				--type-display: 18px;
 				--weight-label: 500;
 				--weight-strong: 600;
 				--tracking-caps: 0;
@@ -216,7 +216,7 @@
 
 			.table-meta {
 				font-family: var(--sans);
-				font-size: var(--type-label);
+				font-size: var(--type-caption);
 				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
 				line-height: 1.35;
@@ -254,7 +254,7 @@
 			.metric-number {
 				color: var(--muted-strong);
 				font-family: var(--mono);
-				font-size: 0.94em;
+				font-size: 0.92em;
 				font-weight: var(--weight-label);
 				font-variant-numeric: tabular-nums;
 				letter-spacing: 0;
@@ -449,7 +449,7 @@
 				align-items: center;
 				justify-content: center;
 				font-family: var(--sans);
-				font-size: var(--type-label);
+				font-size: var(--type-caption);
 				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
 			}
@@ -543,7 +543,7 @@
 				min-width: 0;
 				gap: 6px;
 				font-family: var(--sans);
-				font-size: var(--type-label);
+				font-size: var(--type-caption);
 				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
 				line-height: 1;
@@ -640,7 +640,7 @@
 			.flow-stage strong {
 				color: var(--text);
 				font-family: var(--sans);
-				font-size: var(--type-meta);
+				font-size: var(--type-label);
 				font-weight: var(--weight-label);
 				font-variant-numeric: tabular-nums;
 				letter-spacing: 0;
@@ -734,8 +734,8 @@
 				gap: 10px;
 				min-width: 0;
 				color: var(--muted-strong);
-				font-size: var(--type-meta);
-				font-weight: var(--weight-label);
+				font-size: var(--type-section-title);
+				font-weight: var(--weight-strong);
 				letter-spacing: var(--tracking-caps);
 				line-height: 1.25;
 				white-space: nowrap;
@@ -813,8 +813,8 @@
 
 			.panel-head h2 {
 				margin: 0;
-				font-size: var(--type-meta);
-				font-weight: var(--weight-label);
+				font-size: var(--type-section-title);
+				font-weight: var(--weight-strong);
 				letter-spacing: var(--tracking-caps);
 				font-family: var(--sans);
 				color: var(--muted-strong);
@@ -934,7 +934,7 @@
 			.worktree-card .row-title h3,
 			.worktree-card .row-title h4 {
 				color: var(--muted-strong);
-				font-size: var(--type-row-title);
+				font-size: var(--type-body);
 				font-weight: var(--weight-label);
 			}
 
@@ -1003,7 +1003,7 @@
 				margin: 10px 0 0;
 				max-width: 78ch;
 				color: var(--muted-strong);
-				font-size: var(--type-row-title);
+				font-size: var(--type-body);
 				line-height: 1.52;
 			}
 
@@ -1013,7 +1013,7 @@
 				gap: 12px;
 				margin-top: 12px;
 				font-family: var(--sans);
-				font-size: var(--type-meta);
+				font-size: var(--type-label);
 				color: var(--muted);
 			}
 
@@ -1098,6 +1098,59 @@
 
 			.project-column-head.project-location-head {
 				justify-content: flex-start;
+			}
+
+			.project-table-sort {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				gap: 4px;
+				min-width: 0;
+				max-width: 100%;
+				padding: 0;
+				border: 0;
+				background: transparent;
+				color: inherit;
+				font: inherit;
+				letter-spacing: inherit;
+				line-height: inherit;
+				text-align: center;
+				cursor: pointer;
+				transition: color var(--fast) var(--ease);
+			}
+
+			.project-table-sort:hover,
+			.project-table-sort.is-active {
+				color: var(--text);
+			}
+
+			.project-table-sort:focus-visible {
+				color: var(--text);
+				outline: 2px solid var(--info);
+				outline-offset: 3px;
+			}
+
+			.project-table-sort-label {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+
+			.project-table-sort-icon {
+				display: block;
+				flex: 0 0 auto;
+				width: 8px;
+				height: 12px;
+			}
+
+			.project-table-sort-icon path {
+				opacity: 0.38;
+				transition: opacity var(--fast) var(--ease);
+			}
+
+			.project-table-sort.is-asc .project-sort-up,
+			.project-table-sort.is-desc .project-sort-down {
+				opacity: 1;
 			}
 
 			.project-table-list {
@@ -1366,13 +1419,9 @@
 				flex-wrap: wrap;
 				gap: 6px;
 				align-items: center;
-				justify-content: flex-end;
-				min-width: 0;
-			}
-
-			.run-control-line {
 				justify-content: flex-start;
-				margin-top: 12px;
+				min-width: 0;
+				margin-top: 8px;
 			}
 
 			.control-button {
@@ -1406,8 +1455,26 @@
 				color: color-mix(in srgb, var(--warning) 82%, var(--text));
 			}
 
+			.control-button[data-tone="danger"] {
+				color: color-mix(in srgb, var(--danger) 82%, var(--text));
+			}
+
 			.control-button[data-tone="success"] {
 				color: var(--success);
+			}
+
+			.control-button.icon-button {
+				width: 26px;
+				min-width: 26px;
+				height: 26px;
+				padding: 0;
+				border-radius: 999px;
+			}
+
+			.control-button.icon-button svg {
+				display: block;
+				width: 13px;
+				height: 13px;
 			}
 
 			.control-button[disabled] {
@@ -1609,9 +1676,7 @@
 				flex-wrap: wrap;
 				align-items: center;
 				gap: 6px 10px;
-				margin-top: 10px;
-				padding-top: 10px;
-				border-top: 1px solid var(--line);
+				margin-top: 8px;
 				min-width: 0;
 				font-family: var(--sans);
 				font-size: var(--type-label);
@@ -1628,6 +1693,10 @@
 			.account-use-line strong {
 				color: var(--text);
 				font-weight: var(--weight-label);
+			}
+
+			.account-use-line.is-missing strong {
+				color: var(--muted-strong);
 			}
 
 			.account-use-line span {
@@ -2124,7 +2193,7 @@
 				gap: 10px 16px;
 				min-width: 0;
 				font-family: var(--mono);
-				font-size: var(--type-label);
+				font-size: var(--type-caption);
 				line-height: 1.4;
 				color: var(--muted);
 			}
@@ -2158,7 +2227,7 @@
 				gap: 10px;
 				min-width: 0;
 				font-family: var(--mono);
-				font-size: var(--type-label);
+				font-size: var(--type-caption);
 				color: var(--muted);
 			}
 
@@ -2219,7 +2288,7 @@
 				padding-top: 8px;
 				border-top: 1px solid var(--line);
 				font-family: var(--mono);
-				font-size: var(--type-label);
+				font-size: var(--type-caption);
 				color: var(--muted);
 			}
 
@@ -2444,7 +2513,7 @@
 
 			.field-label {
 				font-family: var(--sans);
-				font-size: var(--type-label);
+				font-size: var(--type-caption);
 				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
 				color: var(--muted);
@@ -2452,7 +2521,7 @@
 
 			.field-value {
 				font-family: var(--mono);
-				font-size: var(--type-body);
+				font-size: var(--type-label);
 				font-weight: var(--weight-label);
 				font-variant-numeric: tabular-nums;
 				line-height: 1.35;
@@ -2475,7 +2544,7 @@
 				padding-top: 10px;
 				border-top: 1px solid var(--line);
 				font-family: var(--mono);
-				font-size: var(--type-label);
+				font-size: var(--type-caption);
 				line-height: 1.45;
 				color: var(--muted);
 			}
@@ -3158,6 +3227,7 @@
 			const ACCOUNT_POOL_SORT_STORAGE_KEY = "decodex.operator.accountSort";
 			const PROJECT_FILTER_STORAGE_KEY = "decodex.operator.projectFilter";
 			const PROJECT_LOCATION_PRIVACY_STORAGE_KEY = "decodex.operator.projectLocationPrivacy";
+			const PROJECT_SORT_STORAGE_KEY = "decodex.operator.projectSort";
 			const ACCOUNT_POOL_SORT_COLUMNS = [
 				["account", "Account"],
 				["plan", "Plan"],
@@ -3165,6 +3235,12 @@
 				["secondary", "7d"],
 				["credits", "Credits"],
 				["status", "Status"],
+			];
+			const PROJECT_SORT_COLUMNS = [
+				["project", "Project"],
+				["location", "Location"],
+				["activity", "Activity"],
+				["work", "Work"],
 			];
 			const ACCOUNT_IDENTITY_EDGE_CHARS = 6;
 			const ACCOUNT_IDENTITY_MIN_EDGE_CHARS = 3;
@@ -3292,6 +3368,7 @@
 			let accountPoolSort = loadAccountPoolSort();
 			let projectFilterMode = loadProjectFilterMode();
 			let projectLocationsHidden = loadProjectLocationPrivacy();
+			let projectSort = loadProjectSort();
 			let projectWorkInfoOpen = false;
 			const detailDisclosureState = new Map();
 			const detailAnimationTimers = new WeakMap();
@@ -3435,24 +3512,24 @@
 
 				const seconds = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 1000));
 				if (seconds < 5) {
-					return "just now";
+					return "0s";
 				}
 				if (seconds < 60) {
-					return `${seconds}s ago`;
+					return `${seconds}s`;
 				}
 
 				const minutes = Math.floor(seconds / 60);
 				if (minutes < 60) {
-					return `${minutes}m ago`;
+					return `${minutes}m`;
 				}
 
 				const hours = Math.floor(minutes / 60);
 				if (hours < 24) {
-					return `${hours}h ago`;
+					return `${hours}h`;
 				}
 
 				const days = Math.floor(hours / 24);
-				return `${days}d ago`;
+				return `${days}d`;
 			}
 
 			function dashboardSocketUrl() {
@@ -4172,6 +4249,44 @@
 			function persistProjectFilterMode() {
 				try {
 					window.localStorage.setItem(PROJECT_FILTER_STORAGE_KEY, projectFilterMode);
+				} catch (_error) {
+					/* Ignore storage failures and continue with the in-memory choice. */
+				}
+			}
+
+			function isProjectSortKey(value) {
+				return PROJECT_SORT_COLUMNS.some(([key]) => key === value);
+			}
+
+			function projectSortDefaultDirection(key) {
+				return ["activity", "work"].includes(key) ? "desc" : "asc";
+			}
+
+			function loadProjectSort() {
+				try {
+					const stored = window.localStorage.getItem(PROJECT_SORT_STORAGE_KEY);
+					const parsed = stored ? JSON.parse(stored) : {};
+					const key = String(parsed?.key || "");
+					const direction = String(parsed?.direction || projectSortDefaultDirection(key));
+					if (
+						isProjectSortKey(key) &&
+						(direction === "asc" || direction === "desc")
+					) {
+						return { key, direction };
+					}
+				} catch (_error) {
+					/* Ignore invalid storage and use the operational default order. */
+				}
+
+				return { key: "", direction: "asc" };
+			}
+
+			function persistProjectSort() {
+				try {
+					window.localStorage.setItem(
+						PROJECT_SORT_STORAGE_KEY,
+						JSON.stringify(projectSort),
+					);
 				} catch (_error) {
 					/* Ignore storage failures and continue with the in-memory choice. */
 				}
@@ -4898,8 +5013,32 @@
 				}
 			}
 
+			function normalizedProtocolRateLimitStatus(value) {
+				const status = String(value || "").trim();
+				const normalized = status.toLowerCase();
+
+				if (!status || ["none", "null", "undefined"].includes(normalized)) {
+					return "";
+				}
+				if (status.includes("/") || status.includes(" ")) {
+					return "";
+				}
+
+				return status;
+			}
+
 			function protocolActivityRateLimit(run) {
-				return protocolActivity(run)?.rate_limit_status || codexAccount(run)?.rate_limit_reached_type || "none";
+				return (
+					normalizedProtocolRateLimitStatus(protocolActivity(run)?.rate_limit_status) ||
+					normalizedProtocolRateLimitStatus(codexAccount(run)?.rate_limit_reached_type) ||
+					"none"
+				);
+			}
+
+			function protocolActivityRateLimitDisplay(run, emptyValue = "none") {
+				const status = protocolActivityRateLimit(run);
+
+				return status === "none" ? emptyValue : humanizeToken(status).toLowerCase();
 			}
 
 			function protocolActivityRecentSummary(run) {
@@ -4922,12 +5061,18 @@
 				if (!activity) {
 					return "none";
 				}
-				return [
+				const rateLimit = protocolActivityRateLimitDisplay(run, "");
+				const parts = [
 					`turn ${activity.turn_status || "none"}`,
 					`waiting ${activity.waiting_reason || "none"}`,
-					`rate ${protocolActivityRateLimit(run)}`,
 					`recent ${protocolActivityRecentSummary(run)}`,
-				].join("; ");
+				];
+
+				if (rateLimit) {
+					parts.splice(2, 0, `rate limit ${rateLimit}`);
+				}
+
+				return parts.join("; ");
 			}
 
 			function issueDisplayKey(item) {
@@ -5048,7 +5193,7 @@
 				if (run.protocol_idle_for_seconds != null) {
 					facts.push(["agent idle", formatDuration(run.protocol_idle_for_seconds)]);
 				}
-				const rateLimit = protocolActivityRateLimit(run);
+				const rateLimit = protocolActivityRateLimitDisplay(run);
 				if (rateLimit !== "none") {
 					facts.push(["rate limit", rateLimit]);
 				}
@@ -5076,43 +5221,45 @@
 					`;
 			}
 
-				function codexAccount(run) {
-					const selected = run?.account || null;
-					if (selected) {
-						return selected;
-					}
-
-					const accounts = codexAccounts(run);
-
-					return (
-						accounts.find((account) => {
-							const status = String(account?.status || "").toLowerCase();
-							return status === "selected";
-						}) ||
-						accounts[0] ||
-						null
-					);
+			function codexAccount(run) {
+				const selected = run?.account || run?.codex_account || null;
+				if (selected) {
+					return selected;
 				}
 
-				function codexAccounts(run) {
-					const accounts = Array.isArray(run?.accounts)
-						? run.accounts.filter(Boolean)
+				const accounts = codexAccounts(run);
+
+				return (
+					accounts.find((account) => {
+						const status = String(account?.status || "").toLowerCase();
+						return status === "selected";
+					}) ||
+					accounts[0] ||
+					null
+				);
+			}
+
+			function codexAccounts(run) {
+				const accounts = Array.isArray(run?.accounts)
+					? run.accounts.filter(Boolean)
+					: Array.isArray(run?.codex_accounts)
+						? run.codex_accounts.filter(Boolean)
 						: [];
-					const selected = run?.account || null;
+				const selected = run?.account || run?.codex_account || null;
 
-					if (!selected) {
-						return accounts;
-					}
-					if (
-						accounts.some(
-							(account) => codexAccountIdentity(account) === codexAccountIdentity(selected),
-						)
-					) {
-						return accounts;
-					}
-
-					return [selected, ...accounts];
+				if (!selected) {
+					return accounts;
 				}
+				if (
+					accounts.some(
+						(account) => codexAccountIdentity(account) === codexAccountIdentity(selected),
+					)
+				) {
+					return accounts;
+				}
+
+				return [selected, ...accounts];
+			}
 
 				function codexAccountIdentity(account) {
 					const fingerprint = account?.account_fingerprint || "";
@@ -5706,7 +5853,12 @@
 				function renderRunCodexAccountInline(run) {
 					const account = codexAccount(run);
 					if (!account) {
-						return "";
+						return `
+							<div class="account-use-line is-missing" aria-label="Account used by this lane">
+								<span class="account-use-label">Account</span>
+								<strong>not captured</strong>
+							</div>
+						`;
 					}
 
 					const displayName = codexAccountDisplayName(account);
@@ -5905,7 +6057,7 @@
 
 				function codexAccountDebugSummary(account) {
 					if (!account) {
-						return "none";
+						return "not captured";
 					}
 
 					const parts = [
@@ -5924,7 +6076,7 @@
 
 				function codexAccountPoolDebugSummary(accounts) {
 					if (!accounts.length) {
-						return "none";
+						return "not captured";
 					}
 
 					return accounts
@@ -6366,7 +6518,7 @@
 					return "Failed";
 				}
 				if (run.status === "interrupted") {
-					return "Interrupted";
+					return "Stopped";
 				}
 				if (run.status === "terminated") {
 					return "Terminated";
@@ -6480,54 +6632,49 @@
 			function activeRunSummary(run) {
 				if (runTelemetryMissingNeedsAttention(run)) {
 					if (runHasChildAgentActivity(run)) {
-						return `Child activity visible; metadata missing for ${formatDuration(run.idle_for_seconds)}.`;
+						return `Metadata missing ${formatDuration(run.idle_for_seconds)}.`;
 					}
-					return `No app-server telemetry for ${formatDuration(run.idle_for_seconds)}; lane state only.`;
+					return `Telemetry missing ${formatDuration(run.idle_for_seconds)}.`;
 				}
 				if (runTelemetryMissing(run)) {
 					if (runHasChildAgentActivity(run)) {
-						return "Child activity visible; run metadata pending.";
+						return "Metadata pending.";
 					}
-					return "Waiting for telemetry.";
+					return "Telemetry pending.";
 				}
 				if (runStoppedProcessNeedsAttention(run)) {
-					return "Agent process stopped before finish; recovery needed.";
+					return "Process stopped; recovery needed.";
 				}
 				if (runProcessStoppedWhileActive(run)) {
-					return `Agent turn complete; Decodex is finishing ${humanizeToken(run.current_operation || run.phase).toLowerCase()}.`;
+					return `Agent done; finalizing ${humanizeToken(run.current_operation || run.phase).toLowerCase()}.`;
 				}
 				if (run.suspected_stall) {
-					return `No agent progress for ${formatDuration(run.protocol_idle_for_seconds ?? run.idle_for_seconds)}; heartbeat still updates.`;
+					return `No progress ${formatDuration(run.protocol_idle_for_seconds ?? run.idle_for_seconds)}.`;
 				}
 				if (run.interactive_requested) {
-					return "Waiting for approval or input.";
+					return "Operator input needed.";
 				}
 				if (run.continuation_pending) {
-					return "Turn complete; continuation pending.";
+					return "Continuation pending.";
 				}
 				if (runWaitReasonShowsExecutionProgress(run)) {
-					const focus = protocolActivityFocus(run) || humanizeToken(run.wait_reason).toLowerCase();
-					return `Running through ${focus}.`;
+					return "";
 				}
 				if (run.wait_reason) {
 					return `Waiting on ${humanizeToken(run.wait_reason).toLowerCase()}.`;
 				}
 				if (!run.active_lease) {
-					return `${runExecutionLivenessSummary(run)}; ${runQueueLeaseSummary(run)}.`;
+					return "No queue lease.";
 				}
 				const childCurrent = childAgentCurrentSummary(childAgentActivity(run));
 				if (childCurrent) {
-					const focus = protocolActivityFocus(run);
-					return focus ? `Time is going to ${focus}.` : "";
+					return "";
 				}
 				const focus = protocolActivityFocus(run);
 				if (focus === "protocol idleness") {
-					return "No recent protocol activity.";
+					return "Protocol idle.";
 				}
-				if (run.thread_status) {
-					return `Thread is ${humanizeToken(run.thread_status).toLowerCase()}.`;
-				}
-				return "Running now.";
+				return "";
 			}
 
 			function runIssueRecord(run, derived) {
@@ -6728,7 +6875,7 @@
 					notices.push({
 						tone: controlEvent.accepted ? "warning" : "danger",
 						title: controlEvent.accepted ? "Control accepted" : "Control failed",
-						copy: `${humanizeToken(controlEvent.action)}: ${controlEvent.message}`,
+						copy: `${dashboardControlActionLabel(controlEvent.action)}: ${controlEvent.message}`,
 						ackKey: controlEvent.key,
 					});
 				}
@@ -6837,13 +6984,6 @@
 				const waitingItems = [];
 				const readyItems = [];
 				const attentionItems = [];
-				const retryRuns = new Set();
-
-				for (const run of [...activeRuns, ...recentRuns]) {
-					if (run.next_retry_at) {
-						retryRuns.add(run.run_id);
-					}
-				}
 
 				for (const run of activeRuns) {
 					const tone = toneForRun(run);
@@ -7007,7 +7147,6 @@
 					liveRuns,
 					activeLaneCount: activeRuns.length,
 					liveLeases: activeRuns.filter((run) => run.active_lease).length,
-					retryQueue: retryRuns.size,
 					readyCount: readyItems.length,
 					queuedCandidates,
 					queueBacklogCandidates,
@@ -7230,6 +7369,40 @@
 				`;
 			}
 
+			function renderProjectSortButton([key, label]) {
+				const direction = projectSort.key === key ? projectSort.direction : "";
+				const activeClass = direction ? ` is-active is-${direction}` : "";
+				const current = direction
+					? `currently ${direction === "asc" ? "ascending" : "descending"}`
+					: "not sorted";
+
+				return `
+					<button class="project-table-sort${activeClass}" type="button" data-project-sort-key="${escapeHtml(key)}" aria-label="Sort projects by ${escapeHtml(label)}; ${escapeHtml(current)}" title="Sort by ${escapeHtml(label)}">
+						<span class="project-table-sort-label">${escapeHtml(label)}</span>
+						<svg class="project-table-sort-icon" aria-hidden="true" viewBox="0 0 8 12" fill="currentColor">
+							<path class="project-sort-up" d="M4 1 1 5h6Z"></path>
+							<path class="project-sort-down" d="M4 11 1 7h6Z"></path>
+						</svg>
+					</button>
+				`;
+			}
+
+			function renderProjectColumnHead(column, options = {}) {
+				const [key] = column;
+				const direction = projectSort.key === key ? projectSort.direction : "";
+				const ariaSort = direction
+					? ` aria-sort="${direction === "asc" ? "ascending" : "descending"}"`
+					: "";
+				const className = `project-column-head${options.className ? ` ${options.className}` : ""}`;
+
+				return `
+					<span class="${escapeHtml(className)}" role="columnheader"${ariaSort}>
+						${renderProjectSortButton(column)}
+						${options.after || ""}
+					</span>
+				`;
+			}
+
 			const projectRegistrationCommand =
 				"decodex project add ~/.codex/decodex/projects/<service-id>";
 
@@ -7280,8 +7453,147 @@
 				return projectFilterMode === "all" ? projects : activeProjectRows;
 			}
 
+			function projectNumber(value) {
+				const number = Number(value ?? 0);
+				return Number.isFinite(number) ? number : 0;
+			}
+
+			function projectTimestampSortValue(value) {
+				if (!value) {
+					return null;
+				}
+
+				const parsed = new Date(value);
+				const time = parsed.getTime();
+				return Number.isNaN(time) ? null : time;
+			}
+
+			function projectWorkSortValue(project) {
+				return [
+					projectNumber(project.active_run_count),
+					projectNumber(project.waiting_lane_count),
+					projectNumber(project.attention_count),
+				];
+			}
+
+			function projectColumnSortValue(project, key) {
+				if (key === "project") {
+					return String(project.project_id || "").toLowerCase();
+				}
+				if (key === "location") {
+					return compactProjectLocation(projectPathSummary(project)).toLowerCase();
+				}
+				if (key === "activity") {
+					return projectTimestampSortValue(project.last_activity_at);
+				}
+				if (key === "work") {
+					return projectWorkSortValue(project);
+				}
+
+				return "";
+			}
+
+			function compareProjectSortValues(leftValue, rightValue, direction) {
+				const leftMissing = leftValue == null || leftValue === "";
+				const rightMissing = rightValue == null || rightValue === "";
+				if (leftMissing && rightMissing) {
+					return 0;
+				}
+				if (leftMissing) {
+					return 1;
+				}
+				if (rightMissing) {
+					return -1;
+				}
+
+				if (Array.isArray(leftValue) && Array.isArray(rightValue)) {
+					const count = Math.max(leftValue.length, rightValue.length);
+					for (let index = 0; index < count; index += 1) {
+						const delta = compareProjectSortValues(
+							leftValue[index] ?? 0,
+							rightValue[index] ?? 0,
+							direction,
+						);
+						if (delta) {
+							return delta;
+						}
+					}
+
+					return 0;
+				}
+
+				const delta =
+					typeof leftValue === "number" && typeof rightValue === "number"
+						? leftValue === rightValue
+							? 0
+							: leftValue < rightValue
+								? -1
+								: 1
+						: String(leftValue).localeCompare(String(rightValue));
+
+				return direction === "desc" ? -delta : delta;
+			}
+
+			function compareProjectRowsByColumn(left, right, key, direction) {
+				return compareProjectSortValues(
+					projectColumnSortValue(left, key),
+					projectColumnSortValue(right, key),
+					direction,
+				);
+			}
+
+			function projectOperationalRank(project) {
+				if (!project.enabled) {
+					return 5;
+				}
+				if ((project.active_run_count ?? 0) > 0) {
+					return 0;
+				}
+				if ((project.attention_count ?? 0) > 0 || (project.warning_count ?? 0) > 0) {
+					return 1;
+				}
+				if (["backoff", "degraded", "stale_cache"].includes(project.connector_state)) {
+					return 2;
+				}
+				if ((project.waiting_lane_count ?? 0) > 0) {
+					return 3;
+				}
+				if (projectHasActiveWork(project)) {
+					return 4;
+				}
+
+				return 5;
+			}
+
+			function compareProjectRowsStable(left, right) {
+				const rankDelta = projectOperationalRank(left) - projectOperationalRank(right);
+				if (rankDelta) {
+					return rankDelta;
+				}
+
+				return String(left.project_id || "").localeCompare(String(right.project_id || ""));
+			}
+
+			function sortProjectRows(rows) {
+				return [...rows].sort((left, right) => {
+					if (projectSort.key) {
+						const columnDelta = compareProjectRowsByColumn(
+							left,
+							right,
+							projectSort.key,
+							projectSort.direction,
+						);
+						if (columnDelta) {
+							return columnDelta;
+						}
+					}
+
+					return compareProjectRowsStable(left, right);
+				});
+			}
+
 			function renderProjectTable(projects, activeProjectRows, selectedId) {
-				const rows = projectFilterRows(projects, activeProjectRows);
+				const rows = sortProjectRows(projectFilterRows(projects, activeProjectRows));
 				const label = projectFilterMode === "all" ? "All projects" : "Active projects";
 
 				if (!rows.length) {
@@ -7291,10 +7603,15 @@
 				return `
 					<div class="project-table" role="table" aria-label="${escapeHtml(label)}">
 						<div class="project-table-guide" role="row">
-							<span role="columnheader">Project</span>
-							<span class="project-column-head project-location-head" role="columnheader">Location ${projectLocationToggleMarkup()}</span>
-							<span role="columnheader">Activity</span>
-							<span class="project-column-head" role="columnheader">Work ${projectWorkInfoMarkup()}</span>
+							${renderProjectColumnHead(PROJECT_SORT_COLUMNS[0])}
+							${renderProjectColumnHead(PROJECT_SORT_COLUMNS[1], {
+								className: "project-location-head",
+								after: projectLocationToggleMarkup(),
+							})}
+							${renderProjectColumnHead(PROJECT_SORT_COLUMNS[2])}
+							${renderProjectColumnHead(PROJECT_SORT_COLUMNS[3], {
+								after: projectWorkInfoMarkup(),
+							})}
 						</div>
 						<div class="project-table-list" role="rowgroup">
 							${rows.map((project) => renderProjectEntry(project, selectedId, projects)).join("")}
@@ -7533,24 +7850,29 @@
 				);
 			}
 
-			function runRetryControlEnabled(run) {
+			function runInterruptControlEnabled(run) {
 				return Boolean(
 					run.project_id &&
 						run.issue_id &&
-						(run.retry_kind ||
-							run.next_retry_at ||
-							run.phase === "retry_backoff" ||
-							run.phase === "waiting_continuation" ||
-							run.wait_reason),
+						run.run_id &&
+						run.process_id &&
+						run.process_alive === true,
 				);
 			}
 
 			function renderRunControlLine(run) {
-				const retryEnabled = runRetryControlEnabled(run);
+				const interruptEnabled = runInterruptControlEnabled(run);
+				if (!interruptEnabled) {
+					return "";
+				}
 
 				return `
 					<div class="run-control-line">
-						<button class="control-button" type="button" data-dashboard-control="retryRun" data-project-id="${escapeHtml(run.project_id || "")}" data-issue-id="${escapeHtml(run.issue_id || "")}" data-run-id="${escapeHtml(run.run_id || "")}" data-tone="warning"${retryEnabled ? "" : " disabled"}>Retry</button>
+						<button class="control-button icon-button" type="button" data-dashboard-control="interruptRun" data-project-id="${escapeHtml(run.project_id || "")}" data-issue-id="${escapeHtml(run.issue_id || "")}" data-run-id="${escapeHtml(run.run_id || "")}" data-tone="danger" title="Stop this active Decodex work." aria-label="Stop this active Decodex work">
+							<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+								<rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"></rect>
+							</svg>
+						</button>
 					</div>
 				`;
 			}
@@ -7576,16 +7898,16 @@
 					.map((run) => {
 						const tone = toneForRun(run);
 						const statusBits = [statusLabel(runStageLabel(run), tone)];
-							const detailKey = runDetailKey(run);
-							const issueKey = issueDisplayKey(run);
-							const issueTitle = runIssueTitle(run, derived);
-							const summary = activeRunSummary(run);
-							const account = codexAccount(run);
-							const accountStatusBit = codexAccountStatusBit(account);
+						const detailKey = runDetailKey(run);
+						const issueKey = issueDisplayKey(run);
+						const issueTitle = runIssueTitle(run, derived);
+						const summary = activeRunSummary(run);
+						const account = codexAccount(run);
+						const accountStatusBit = codexAccountStatusBit(account);
 
-							if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
-								statusBits.push(`<span>wait <strong>${escapeHtml(humanizeToken(run.wait_reason))}</strong></span>`);
-							}
+						if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
+							statusBits.push(`<span>wait <strong>${escapeHtml(humanizeToken(run.wait_reason))}</strong></span>`);
+						}
 						if (!run.active_lease) {
 							statusBits.push("<span>lease <strong>not held</strong></span>");
 							statusBits.push(`<span>liveness <strong>${escapeHtml(runExecutionLivenessSummary(run))}</strong></span>`);
@@ -7608,13 +7930,13 @@
 						if (run.continuation_pending) {
 							statusBits.push("<span>continuation <strong>pending</strong></span>");
 						}
-							if (run.retry_kind) {
-								statusBits.push(`<span>retry <strong>${escapeHtml(humanizeToken(run.retry_kind))}</strong></span>`);
-							}
-							if (accountStatusBit) {
-								statusBits.push(accountStatusBit);
-							}
-							const attemptNumber = attemptNumberFromRun(run);
+						if (run.retry_kind) {
+							statusBits.push(`<span>retry <strong>${escapeHtml(humanizeToken(run.retry_kind))}</strong></span>`);
+						}
+						if (accountStatusBit) {
+							statusBits.push(accountStatusBit);
+						}
+						const attemptNumber = attemptNumberFromRun(run);
 
 						return `
 							<article class="run-card ${tone}">
@@ -7634,9 +7956,9 @@
 								</div>
 									${summary ? `<p class="row-summary">${escapeHtml(summary)}</p>` : ""}
 									<div class="status-line">${statusBits.join("")}</div>
-									${renderRunControlLine(run)}
-									${renderActiveTelemetryLine(run)}
 									${renderRunCodexAccountInline(run)}
+									${renderActiveTelemetryLine(run)}
+									${renderRunControlLine(run)}
 									${renderChildAgentBreakdown(run)}
 									<details data-detail-key="${escapeHtml(detailKey)}"${detailsOpenAttribute(detailKey)}>
 										<summary>Debug details</summary>
@@ -7650,7 +7972,7 @@
 										${field("Thread flags", runThreadFlagSummary(run))}
 										${field(COPY.protocolEvent, protocolEventSummary(run))}
 										${field("Protocol activity", protocolActivityDebugSummary(run))}
-										${field("Rate limit", protocolActivityRateLimit(run))}
+										${field("Rate limit", protocolActivityRateLimitDisplay(run))}
 										${field("Branch", run.branch_name || "none")}
 										${field("Worktree", run.worktree_path || "none")}
 										${field("Queue lease", runQueueLeaseSummary(run))}
@@ -7775,7 +8097,7 @@
 										${field("Codex thread", runThreadSummary(run))}
 										${field(COPY.protocolEvent, protocolEventSummary(run))}
 										${field("Protocol activity", protocolActivityDebugSummary(run))}
-										${field("Rate limit", protocolActivityRateLimit(run))}
+										${field("Rate limit", protocolActivityRateLimitDisplay(run))}
 										${field("Branch", run.branch_name || "none")}
 										${field("Worktree", run.worktree_path || "none")}
 										${field("Model", runModelSummary(run))}
@@ -8093,12 +8415,105 @@
 				}, 2000);
 			}
 
+			function dashboardRunFieldHasValue(value) {
+				if (Array.isArray(value)) {
+					return value.length > 0;
+				}
+				if (typeof value === "string") {
+					return value.trim() !== "";
+				}
+
+				return value !== null && value !== undefined;
+			}
+
+			function mergeDashboardRunRecord(snapshotRun, activityRun) {
+				if (!snapshotRun) {
+					return { ...activityRun };
+				}
+
+				const merged = { ...snapshotRun, ...activityRun };
+
+				for (const key of [
+					"issue_identifier",
+					"title",
+					"account",
+					"accounts",
+					"codex_account",
+					"codex_accounts",
+					"child_agent_activity",
+					"protocol_activity",
+					"branch_name",
+					"worktree_path",
+				]) {
+					if (
+						!dashboardRunFieldHasValue(activityRun[key]) &&
+						dashboardRunFieldHasValue(snapshotRun[key])
+					) {
+						merged[key] = snapshotRun[key];
+					}
+				}
+
+				return merged;
+			}
+
+			function dashboardRunIdentityKeys(run) {
+				const keys = run?.run_id ? [`run:${run.run_id}`] : [];
+
+				for (const key of issueIdentityKeys(run)) {
+					keys.push(`issue:${key}`);
+				}
+
+				return keys;
+			}
+
+			function dashboardRunLookup(runs) {
+				const lookup = new Map();
+
+				for (const run of runs) {
+					for (const key of dashboardRunIdentityKeys(run)) {
+						if (!lookup.has(key)) {
+							lookup.set(key, run);
+						}
+					}
+				}
+
+				return lookup;
+			}
+
+			function mergeDashboardActiveRuns(snapshot, activeRunRows) {
+				const snapshotActiveRuns = snapshot.active_runs || [];
+				const snapshotRunLookup = dashboardRunLookup(snapshotActiveRuns);
+				const seenSnapshotRuns = new Set();
+				const mergedRuns = [];
+
+				for (const activityRun of activeRunRows) {
+					const snapshotRun = dashboardRunIdentityKeys(activityRun)
+						.map((key) => snapshotRunLookup.get(key))
+						.find(Boolean);
+
+					if (snapshotRun) {
+						seenSnapshotRuns.add(snapshotRun);
+					}
+
+					mergedRuns.push(mergeDashboardRunRecord(snapshotRun, activityRun));
+				}
+
+				for (const snapshotRun of snapshotActiveRuns) {
+					if (!seenSnapshotRuns.has(snapshotRun)) {
+						mergedRuns.push(snapshotRun);
+					}
+				}
+
+				return mergedRuns;
+			}
+
 			function mergeDashboardRunActivity(snapshot, activeRuns) {
 				const activeRunRows = activeRuns
 					.filter((run) => run && typeof run === "object")
 					.map((run) => ({ ...run }));
+				const mergedActiveRuns = mergeDashboardActiveRuns(snapshot, activeRunRows);
 				const activeById = new Map(
-					activeRunRows
+					mergedActiveRuns
 						.filter((run) => run.run_id)
 						.map((run) => [run.run_id, run]),
 				);
@@ -8111,17 +8526,17 @@
 					seenRecentIds.add(run.run_id);
 					const activeRun = activeById.get(run.run_id);
 
-					return activeRun ? { ...run, ...activeRun } : run;
+					return activeRun ? mergeDashboardRunRecord(run, activeRun) : run;
 				});
 
-				for (const run of activeRunRows) {
+				for (const run of mergedActiveRuns) {
 					if (run.run_id && !seenRecentIds.has(run.run_id)) {
 						recentRuns.unshift(run);
 						seenRecentIds.add(run.run_id);
 					}
 				}
 
-				const activeCountsByProject = activeRunRows.reduce((counts, run) => {
+				const activeCountsByProject = mergedActiveRuns.reduce((counts, run) => {
 					const projectId = run.project_id || snapshot.project_id;
 					if (!projectId) {
 						return counts;
@@ -8147,7 +8562,7 @@
 
 				return {
 					...snapshot,
-					active_runs: activeRunRows,
+					active_runs: mergedActiveRuns,
 					recent_runs: recentRuns,
 					projects,
 				};
@@ -8246,6 +8661,13 @@
 					action,
 					...payload,
 				});
+			}
+
+			function dashboardControlActionLabel(action) {
+				if (action === "interruptRun" || action === "interrupt") {
+					return "Stop";
+				}
+				return humanizeToken(action);
 			}
 
 			function recordDashboardControlEvent(event) {
@@ -8431,7 +8853,7 @@
 				const runId = button.dataset.runId || null;
 
 				switch (control) {
-					case "retryRun":
+					case "interruptRun":
 						sendDashboardControl(control, { projectId, issueId, runId });
 						break;
 					default:
@@ -8531,6 +8953,30 @@
 
 			nodes.projectOverview.addEventListener("click", (event) => {
 				if (!(event.target instanceof Element)) {
+					return;
+				}
+
+				const sortButton = event.target.closest("[data-project-sort-key]");
+				if (sortButton) {
+					event.preventDefault();
+					const key = sortButton.dataset.projectSortKey;
+					if (!isProjectSortKey(key)) {
+						return;
+					}
+
+					projectSort = {
+						key,
+						direction:
+							projectSort.key === key
+								? projectSort.direction === "asc"
+									? "desc"
+									: "asc"
+								: projectSortDefaultDirection(key),
+					};
+					persistProjectSort();
+					if (lastDashboardRender) {
+						renderDashboardState(lastDashboardRender);
+					}
 					return;
 				}
 
