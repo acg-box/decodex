@@ -1021,6 +1021,37 @@ impl StateStore {
 		self.delete_review_markers_locked(issue_id)
 	}
 
+	/// Remove the exact retained review markers created for one handoff identity.
+	pub(crate) fn clear_review_markers_for_handoff(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		handoff_marker: &ReviewHandoffMarker,
+		orchestration_marker: &ReviewOrchestrationMarker,
+	) -> Result<()> {
+		let handoff_key = ReviewMarkerKey::new(project_id, issue_id, handoff_marker.branch_name());
+		let orchestration_key = ReviewOrchestrationKey::new(
+			project_id,
+			issue_id,
+			orchestration_marker.branch_name(),
+			orchestration_marker.run_id(),
+			orchestration_marker.attempt_number(),
+		);
+		let mut state = self.lock()?;
+
+		state.review_handoffs.remove(&handoff_key);
+		state.review_orchestrations.remove(&orchestration_key);
+		self.persist_runtime_state_locked(&state)?;
+
+		self.delete_review_marker_identity_locked(
+			project_id,
+			issue_id,
+			handoff_marker.branch_name(),
+			orchestration_marker.run_id(),
+			orchestration_marker.attempt_number(),
+		)
+	}
+
 	/// Read the worktree mapping for one issue.
 	pub fn worktree_for_issue(&self, issue_id: &str) -> Result<Option<WorktreeMapping>> {
 		let state = self.lock()?;
@@ -1176,6 +1207,30 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_review_markers(issue_id)
+	}
+
+	fn delete_review_marker_identity_locked(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		branch_name: &str,
+		run_id: &str,
+		attempt_number: i64,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let mut sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.delete_review_marker_identity(
+			project_id,
+			issue_id,
+			branch_name,
+			run_id,
+			attempt_number,
+		)
 	}
 }
 

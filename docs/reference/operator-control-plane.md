@@ -122,6 +122,11 @@ Worktree visibility follows the owning dashboard section:
   within the same turn.
 - `Review & Landing` means a retained PR lane still owns the path for review repair,
   landing, closeout, or retained-lane cleanup.
+- `missing_review_handoff_record` in `Review & Landing` means Decodex found a retained
+  review worktree but cannot find the authoritative runtime DB handoff marker. Treat
+  this as an orphaned retained review lane: inspect it with
+  `decodex recover review-handoff diagnose <ISSUE>`, then use the explicit rebind path
+  only after the PR URL and retained worktree lineage match exactly.
 - `Intake Queue` means queued attention still owns the path, including partial retained
   progress after retries.
 - `Recovery Worktrees` means the path is retained local state after the authoritative
