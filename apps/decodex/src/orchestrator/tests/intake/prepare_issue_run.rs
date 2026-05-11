@@ -58,11 +58,7 @@ fn prepare_issue_run_records_starting_attempt_before_execute() {
 
 	assert_eq!(
 		event_types,
-		vec![
-			String::from("intake"),
-			String::from("lease_acquired"),
-			String::from("worktree_prepared"),
-		]
+		vec![String::from("run_started")]
 	);
 }
 
