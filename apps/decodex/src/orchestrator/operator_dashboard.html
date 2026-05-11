@@ -671,6 +671,10 @@
 				--section-tone: var(--tone-muted);
 			}
 
+			.section-marker-projects {
+				--section-tone: var(--info);
+			}
+
 			.section-marker-execution {
 				--section-tone: var(--tone-run);
 			}
@@ -968,6 +972,51 @@
 				gap: 0;
 			}
 
+			.project-scope-list.has-registered-projects {
+				gap: 12px;
+			}
+
+			.project-subsection {
+				display: grid;
+				gap: 0;
+				min-width: 0;
+			}
+
+			.project-subsection-head {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) max-content 14px;
+				align-items: center;
+				gap: 12px;
+				padding: 13px 0;
+				border-bottom: 1px solid var(--line);
+				color: var(--muted-strong);
+				font-family: var(--mono);
+				font-size: 12px;
+				font-weight: 650;
+				letter-spacing: 0.14em;
+				line-height: 1.3;
+				text-transform: uppercase;
+			}
+
+			.project-subsection-head strong {
+				color: var(--text);
+				font-size: 11px;
+				font-weight: 700;
+				letter-spacing: 0;
+				text-transform: none;
+				white-space: nowrap;
+			}
+
+			.project-subsection-head::after {
+				content: "";
+				width: 14px;
+				height: 14px;
+			}
+
+			.project-active-list {
+				display: grid;
+			}
+
 			.project-scope-list.is-empty .empty-state {
 				grid-template-columns: minmax(142px, max-content) minmax(0, 1fr);
 				max-width: none;
@@ -1021,7 +1070,8 @@
 				transition: background-color var(--fast) var(--ease);
 			}
 
-			.project-scope-list > .project-entry:last-child {
+			.project-active-list > .project-entry:last-child,
+			.registered-project-list > .project-entry:last-child {
 				border-bottom: 0;
 			}
 
@@ -1089,6 +1139,83 @@
 				transform: scaleX(1);
 			}
 
+			.registered-projects {
+				border-top: 1px solid var(--line);
+			}
+
+			.registered-projects > summary {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) max-content 14px;
+				align-items: center;
+				gap: 12px;
+				padding: 13px 0;
+				color: var(--muted-strong);
+				font-family: var(--mono);
+				font-size: 12px;
+				font-weight: 650;
+				letter-spacing: 0.14em;
+				line-height: 1.3;
+				text-transform: uppercase;
+				cursor: pointer;
+				list-style: none;
+			}
+
+			.registered-projects > summary::-webkit-details-marker {
+				display: none;
+			}
+
+			.registered-projects > summary:focus {
+				outline: none;
+			}
+
+			.registered-projects > summary:focus-visible {
+				outline: 2px solid var(--info);
+				outline-offset: 2px;
+			}
+
+			.registered-projects > summary strong {
+				color: var(--text);
+				font-size: 11px;
+				font-weight: 700;
+				letter-spacing: 0;
+				text-transform: none;
+				white-space: nowrap;
+			}
+
+			.registered-projects > summary::after {
+				content: "+";
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 14px;
+				height: 14px;
+				color: var(--muted);
+				font-size: 13px;
+				font-weight: 700;
+				letter-spacing: 0;
+				line-height: 1;
+				text-transform: none;
+				transition: color var(--fast) var(--ease);
+			}
+
+			.registered-projects[data-detail-state="open"] > summary::after {
+				content: "-";
+			}
+
+			.registered-projects > summary:hover::after {
+				color: var(--text);
+			}
+
+			.registered-project-list {
+				display: grid;
+				border-top: 1px solid var(--line);
+			}
+
+			.registered-project-list .project-entry {
+				padding-top: 14px;
+				padding-bottom: 14px;
+			}
+
 			.project-entry.tone-land {
 				--project-accent: var(--tone-land);
 			}
@@ -1118,6 +1245,14 @@
 				letter-spacing: 0;
 				line-height: 1.2;
 				text-transform: uppercase;
+			}
+
+			.project-activity {
+				color: var(--muted);
+				font-family: var(--mono);
+				font-size: 11px;
+				letter-spacing: 0;
+				line-height: 1.2;
 			}
 
 			.project-title-line {
@@ -1206,7 +1341,6 @@
 				min-width: 0;
 			}
 
-			.project-action-line,
 			.run-control-line {
 				display: flex;
 				flex-wrap: wrap;
@@ -1566,6 +1700,10 @@
 				--account-accent: var(--success);
 			}
 
+			.account-row.is-ready {
+				--account-accent: var(--info);
+			}
+
 			.account-row.is-selected::before {
 				box-shadow: 0 0 10px color-mix(in srgb, var(--account-accent) 22%, transparent);
 			}
@@ -1832,7 +1970,8 @@
 					transform var(--medium) var(--ease);
 			}
 
-			.account-row.is-selected .account-status {
+			.account-row.is-selected .account-status,
+			.account-row.is-ready .account-status {
 				color: var(--account-accent);
 			}
 
@@ -2281,7 +2420,8 @@
 
 			details.is-animating > .grid,
 			details.is-animating > .attempt-list,
-			details.is-animating > .panel-body {
+			details.is-animating > .panel-body,
+			details.is-animating > .registered-project-list {
 				overflow: hidden;
 				transform-origin: top center;
 				transition:
@@ -2349,13 +2489,22 @@
 				display: none;
 			}
 
+			.fold-panel > summary.panel-head:focus {
+				outline: none;
+			}
+
+			.fold-panel > summary.panel-head:focus-visible {
+				outline: 2px solid var(--info);
+				outline-offset: 2px;
+			}
+
 			.fold-panel.is-empty > .panel-body {
 				display: block;
 			}
 
 			.summary-tools {
 				display: grid;
-				grid-template-columns: minmax(0, max-content) 12px;
+				grid-template-columns: minmax(0, max-content) 14px;
 				align-items: center;
 				justify-content: end;
 				gap: 12px;
@@ -2370,43 +2519,24 @@
 				display: inline-flex;
 				align-items: center;
 				justify-content: center;
-				position: relative;
 				width: 14px;
 				height: 14px;
 				color: var(--muted);
+				font-family: var(--mono);
+				font-size: 13px;
+				font-weight: 700;
+				letter-spacing: 0;
+				line-height: 1;
 				transition:
-					color var(--fast) var(--ease),
-					transform var(--slow) var(--ease);
+					color var(--fast) var(--ease);
 			}
 
-			.fold-indicator::before,
-			.fold-indicator::after {
-				content: "";
-				position: absolute;
-				left: 50%;
-				top: 50%;
-				width: 12px;
-				height: 1.5px;
-				border-radius: 999px;
-				background: currentColor;
-				transform: translate(-50%, -50%);
-				transition:
-					opacity var(--slow) var(--ease),
-					transform var(--slow) var(--ease),
-					background-color var(--fast) var(--ease);
+			.fold-indicator::before {
+				content: "+";
 			}
 
-			.fold-indicator::after {
-				transform: translate(-50%, -50%) rotate(90deg);
-			}
-
-			.fold-panel[data-detail-state="open"] .fold-indicator {
-				transform: rotate(180deg);
-			}
-
-			.fold-panel[data-detail-state="open"] .fold-indicator::after {
-				opacity: 0;
-				transform: translate(-50%, -50%) rotate(0deg);
+			.fold-panel[data-detail-state="open"] .fold-indicator::before {
+				content: "-";
 			}
 
 			.fold-panel > summary:hover .fold-indicator {
@@ -2763,7 +2893,7 @@
 						aria-label="Control Plane group"
 					>
 						<span>Control Plane</span>
-						<p>Accounts · Projects</p>
+						<p>Accounts</p>
 					</div>
 					<section class="panel section-control" id="account-pool-panel">
 						<div class="panel-head">
@@ -2791,15 +2921,17 @@
 						</div>
 					</section>
 
-					<section class="panel section-control" id="projects-panel">
-						<div class="panel-head">
-							<div>
-								<h2>Projects</h2>
-							</div>
-							<p class="table-meta" id="projects-meta"></p>
-						</div>
+					<div
+						class="section-marker section-marker-projects"
+						id="section-marker-projects"
+						aria-label="Projects group"
+					>
+						<span>Projects</span>
+						<p>All · Active</p>
+					</div>
+					<section class="panel section-projects" id="projects-panel">
 						<div class="panel-body">
-							<div class="project-scope-list" id="project-overview" role="list" aria-label="Registered projects"></div>
+							<div class="project-scope-list" id="project-overview" role="group" aria-label="Projects"></div>
 						</div>
 					</section>
 
@@ -2908,7 +3040,6 @@
 			const ACCOUNT_PRIVACY_STORAGE_KEY = "decodex.operator.accountPrivacy";
 			const ACCOUNT_NAME_OFFSET_STORAGE_KEY = "decodex.operator.accountNameOffsets";
 			const ACCOUNT_POOL_SORT_STORAGE_KEY = "decodex.operator.accountSort";
-			const DASHBOARD_SUBSCRIPTION_STORAGE_KEY = "decodex.operator.dashboardSubscription";
 			const ACCOUNT_POOL_SORT_COLUMNS = [
 				["account", "Account"],
 				["plan", "Plan"],
@@ -3003,11 +3134,11 @@
 				},
 				sectionMarkers: {
 					control: document.getElementById("section-marker-control"),
+					projects: document.getElementById("section-marker-projects"),
 					execution: document.getElementById("section-marker-execution"),
 					aftercare: document.getElementById("section-marker-aftercare"),
 				},
 				projectOverview: document.getElementById("project-overview"),
-				projectsMeta: document.getElementById("projects-meta"),
 				accountPool: document.getElementById("account-pool"),
 				accountPoolMeta: document.getElementById("account-pool-meta"),
 				accountPrivacyToggle: document.getElementById("account-privacy-toggle"),
@@ -3033,7 +3164,7 @@
 				error: false,
 				lastEventAt: null,
 			};
-			let dashboardSubscription = loadDashboardSubscription();
+			let dashboardSubscription = normalizeDashboardSubscription();
 			let dashboardControlEvents = [];
 			let dashboardControlRequestCounter = 0;
 			const themeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -3049,7 +3180,8 @@
 				primary: ["accountPool", "projects", "active", "queue", "review", "worktrees", "recent"],
 			};
 			const DASHBOARD_SECTION_GROUPS = [
-				{ marker: "control", panels: ["accountPool", "projects"] },
+				{ marker: "control", panels: ["accountPool"] },
+				{ marker: "projects", panels: ["projects"] },
 				{ marker: "execution", panels: ["active", "queue"] },
 				{ marker: "aftercare", panels: ["review", "worktrees", "recent"] },
 			];
@@ -3844,26 +3976,6 @@
 				};
 			}
 
-			function loadDashboardSubscription() {
-				try {
-					const stored = window.localStorage.getItem(DASHBOARD_SUBSCRIPTION_STORAGE_KEY);
-					return normalizeDashboardSubscription(stored ? JSON.parse(stored) : {});
-				} catch (_error) {
-					return normalizeDashboardSubscription();
-				}
-			}
-
-			function persistDashboardSubscription() {
-				try {
-					window.localStorage.setItem(
-						DASHBOARD_SUBSCRIPTION_STORAGE_KEY,
-						JSON.stringify(dashboardSubscription),
-					);
-				} catch (_error) {
-					/* Ignore storage failures and continue with the in-memory choice. */
-				}
-			}
-
 			function renderAccountPrivacyToggle() {
 				const visible = !accountEmailsHidden;
 				nodes.accountPrivacyToggle.classList.toggle("is-on", visible);
@@ -4021,7 +4133,7 @@
 			}
 
 			function detailContent(details) {
-				return details.querySelector(":scope > .panel-body, :scope > .grid, :scope > .attempt-list");
+				return details.querySelector(":scope > .panel-body, :scope > .grid, :scope > .attempt-list, :scope > .registered-project-list");
 			}
 
 			function rememberDetailOpenState(details, isOpen) {
@@ -5023,6 +5135,23 @@
 					return reached && reached !== "none" ? reached : "";
 				}
 
+				function codexAccountUsageLimited(account) {
+					if (!account) {
+						return false;
+					}
+
+					const status = String(account.status || "").toLowerCase();
+					const primary = codexAccountWindowData(account, "primary");
+					const secondary = codexAccountWindowData(account, "secondary");
+
+					return Boolean(
+						codexAccountReachedType(account) ||
+							status.includes("limit") ||
+							primary.remainingPercent === 0 ||
+							secondary.remainingPercent === 0,
+					);
+				}
+
 				function codexAccountStatusTone(account) {
 					if (!account) {
 						return "";
@@ -5033,8 +5162,7 @@
 					const lowestRemaining = codexAccountLowestRemaining(account);
 
 					if (
-						codexAccountReachedType(account) ||
-						status.includes("limit") ||
+						codexAccountUsageLimited(account) ||
 						status.includes("failed") ||
 						status.includes("unusable") ||
 						refresh.includes("failed")
@@ -5047,15 +5175,18 @@
 					) {
 						return "warn";
 					}
-					if (
-						refresh &&
-						!["not_needed", "refreshed", "succeeded", "none"].includes(refresh)
-					) {
-						return "warn";
-					}
-
-					return "";
+				if (
+					refresh &&
+					!["not_needed", "refreshed", "succeeded", "none"].includes(refresh)
+				) {
+					return "warn";
 				}
+				if (status === "available") {
+					return "ready";
+				}
+
+				return "";
+			}
 
 				function codexAccountStatusLabel(account) {
 					if (!account) {
@@ -5065,6 +5196,9 @@
 					const reached = codexAccountReachedType(account);
 					const status = reached || account.status || "selected";
 					const normalizedStatus = String(status).toLowerCase();
+					if (codexAccountUsageLimited(account)) {
+						return "Limited";
+					}
 					if (normalizedStatus === "selected") {
 						return "Active";
 					}
@@ -5123,13 +5257,13 @@
 					return number.toFixed(2);
 				}
 
-				function codexAccountCreditsTone(account) {
-					if (!account) {
-						return "";
-					}
-					if (account.credits_has_credits === false) {
-						return "danger";
-					}
+			function codexAccountCreditsTone(account) {
+				if (!account) {
+					return "";
+				}
+				if (codexAccountReachedType(account).includes("credit")) {
+					return "danger";
+				}
 
 					return "";
 				}
@@ -6643,25 +6777,31 @@
 				return null;
 			}
 
-			function projectsMetaCopy(snapshot, projects) {
-				if (!projects.length) {
-					return pluralize(0, "project");
+			function projectHasRecentActivity(project) {
+				const parsed = Date.parse(project.last_activity_at || "");
+				if (!Number.isFinite(parsed)) {
+					return false;
 				}
 
-				const enabledCount = projects.filter((project) => project.enabled).length;
-				const selectedId = selectedProjectId(snapshot, projects);
+				const ageSeconds = Math.floor(Date.now() / 1000) - Math.floor(parsed / 1000);
+				return ageSeconds >= 0 && ageSeconds <= 900;
+			}
 
-				if (!enabledCount) {
-					return `${pluralize(projects.length, "project")} · none enabled`;
-				}
-				if (projects.length === 1) {
-					return pluralize(1, "project");
-				}
-				if (selectedId) {
-					return `${pluralize(projects.length, "project")} · ${enabledCount} enabled · ${selectedId} selected`;
-				}
+			function projectHasVisibleWork(project) {
+				const workCount =
+					(project.active_run_count ?? 0) +
+					(project.waiting_lane_count ?? 0) +
+					(project.attention_count ?? 0) +
+					(project.post_review_lane_count ?? 0) +
+					(project.retained_worktree_count ?? 0);
+				const connector = projectConnectorSummary(project);
+				const syncNeedsAttention = project.enabled && ["backoff", "degraded", "stale"].includes(connector);
 
-				return `${pluralize(projects.length, "project")} · ${enabledCount} enabled`;
+				return workCount > 0 || (project.warning_count ?? 0) > 0 || syncNeedsAttention || projectHasRecentActivity(project);
+			}
+
+			function activeProjects(projects) {
+				return projects.filter(projectHasVisibleWork);
 			}
 
 			function projectHealth(project) {
@@ -6771,28 +6911,6 @@
 				return project.repo_root || project.config_path || "path unavailable";
 			}
 
-			function dashboardProjectIsFocused(project) {
-				return (
-					dashboardSubscription.projectId === project.project_id &&
-					!dashboardSubscription.issueId &&
-					!dashboardSubscription.runId
-				);
-			}
-
-			function renderProjectControls(project) {
-				const focused = dashboardProjectIsFocused(project);
-				const toggleAction = project.enabled ? "pauseProject" : "resumeProject";
-				const toggleLabel = project.enabled ? "Pause" : "Resume";
-				const toggleTone = project.enabled ? "warning" : "success";
-
-				return `
-					<div class="project-action-line">
-						<button class="control-button" type="button" data-dashboard-control="focusProject" data-project-id="${escapeHtml(project.project_id)}">${focused ? "Focused" : "Focus"}</button>
-						<button class="control-button" type="button" data-dashboard-control="${escapeHtml(toggleAction)}" data-project-id="${escapeHtml(project.project_id)}" data-tone="${toggleTone}">${toggleLabel}</button>
-					</div>
-				`;
-			}
-
 			const projectRegistrationCommand =
 				"decodex project add ~/.codex/decodex/projects/<service-id>";
 
@@ -6812,20 +6930,76 @@
 				`;
 			}
 
+			function renderProjectEntry(project, selectedId, projects) {
+				const health = projectHealth(project);
+				const isActive = selectedId === project.project_id;
+				const projectPath = projectPathSummary(project);
+				const kicker = projectScopeKicker(project, isActive, projects);
+				const attention = projectAttentionSummary(project);
+				const lastActivity = formatRelativeTimestamp(project.last_activity_at);
+				const connectorCopy = projectSyncMeta(project, health);
+				const attentionCopy =
+					attention === "ok" || attention.includes("retained") ? "" : attention;
+				const activityCopy = lastActivity === "none" ? "" : `active ${lastActivity}`;
+				const metaItems = [connectorCopy].filter(Boolean);
+				if (attentionCopy) {
+					metaItems.splice(1, 0, attentionCopy);
+				}
+				const ariaCurrent = isActive ? ' aria-current="true"' : "";
+
+				return `
+					<article class="project-entry ${health.tone}${isActive ? " is-active" : ""}" role="listitem"${ariaCurrent} aria-label="Project ${escapeHtml(project.project_id)} ${escapeHtml(health.label)} ${escapeHtml(projectCapacitySummary(project))}">
+						<div class="project-entry-main">
+							<div class="project-title-line">
+								<strong>${escapeHtml(project.project_id)}</strong>
+								<span class="project-health" title="${escapeHtml(health.title)}">${escapeHtml(health.label)}</span>
+								${activityCopy ? `<span class="project-activity">${escapeHtml(activityCopy)}</span>` : ""}
+								${kicker ? `<span class="project-kicker">${escapeHtml(kicker)}</span>` : ""}
+							</div>
+							<div class="project-path" title="${escapeHtml(projectPath)}">${escapeHtml(projectPath)}</div>
+							<div class="project-meta-line">
+								${metaItems.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+							</div>
+						</div>
+						<div class="project-side">
+							<div class="project-stat-line" aria-label="Project status summary">
+								${renderProjectStats(project)}
+							</div>
+						</div>
+					</article>
+				`;
+			}
+
+			function renderRegisteredProjects(projects, activeProjectRows, selectedId) {
+				const activeIds = new Set(activeProjectRows.map((project) => project.project_id));
+				const hiddenCount = projects.filter((project) => !activeIds.has(project.project_id)).length;
+				const summary = hiddenCount
+					? `${hiddenCount} idle · ${projects.length} total`
+					: `${projects.length} total`;
+
+				return `
+					<details class="registered-projects" data-fold-key="projects:all"${detailsOpenAttribute("projects:all")}>
+						<summary><span>All</span><strong>${escapeHtml(summary)}</strong></summary>
+						<div class="registered-project-list" role="list" aria-label="All projects">
+							${projects.map((project) => renderProjectEntry(project, selectedId, projects)).join("")}
+						</div>
+					</details>
+				`;
+			}
+
 			function renderProjects(snapshot, derived) {
 				if (!snapshot) {
-					nodes.projectsMeta.textContent = "";
 					nodes.projectOverview.classList.add("is-empty", "is-waiting");
 					nodes.projectOverview.innerHTML = renderEmptyState(COPY.waitingSnapshot);
 					return;
 				}
 
 				const projects = derived.projects;
-
-				nodes.projectsMeta.textContent = projectsMetaCopy(snapshot, projects);
+				const activeProjectRows = activeProjects(projects);
 
 				if (!projects.length) {
 					nodes.projectOverview.classList.add("is-empty");
+					nodes.projectOverview.classList.remove("has-registered-projects");
 					nodes.projectOverview.classList.remove("is-waiting");
 					nodes.projectOverview.innerHTML = renderProjectEmptyState(
 						"No registered projects",
@@ -6835,51 +7009,32 @@
 				}
 
 				const selectedId = selectedProjectId(snapshot, projects);
+				const activeSummary = activeProjectRows.length
+					? pluralize(activeProjectRows.length, "active project")
+					: "none active";
+				const activeMarkup = activeProjectRows.length
+					? activeProjectRows.map((project) => renderProjectEntry(project, selectedId, projects)).join("")
+					: renderProjectEmptyState(
+						"No active project work",
+						`${pluralize(projects.length, "project")} idle. Open All when you need the full registry.`,
+						{ showAction: false },
+					);
 
 				nodes.projectOverview.classList.remove("is-empty", "is-waiting");
-				nodes.projectOverview.innerHTML = projects
-					.map((project) => {
-						const health = projectHealth(project);
-						const isActive = selectedId === project.project_id;
-						const projectPath = projectPathSummary(project);
-						const kicker = projectScopeKicker(project, isActive, projects);
-						const connector = projectConnectorSummary(project);
-						const attention = projectAttentionSummary(project);
-						const lastActivity = formatRelativeTimestamp(project.last_activity_at);
-						const connectorCopy = projectSyncMeta(project, health);
-						const attentionCopy =
-							attention === "ok" || attention.includes("retained") ? "" : attention;
-						const activityCopy =
-							lastActivity === "none" ? "no activity yet" : `active ${lastActivity}`;
-						const metaItems = [connectorCopy, activityCopy].filter(Boolean);
-						if (attentionCopy) {
-							metaItems.splice(1, 0, attentionCopy);
-						}
-						const ariaCurrent = isActive ? ' aria-current="true"' : "";
-
-						return `
-							<article class="project-entry ${health.tone}${isActive ? " is-active" : ""}" role="listitem"${ariaCurrent} aria-label="Project ${escapeHtml(project.project_id)} ${escapeHtml(health.label)} ${escapeHtml(projectCapacitySummary(project))}">
-								<div class="project-entry-main">
-									<div class="project-title-line">
-										<strong>${escapeHtml(project.project_id)}</strong>
-										<span class="project-health" title="${escapeHtml(health.title)}">${escapeHtml(health.label)}</span>
-										${kicker ? `<span class="project-kicker">${escapeHtml(kicker)}</span>` : ""}
-									</div>
-									<div class="project-path" title="${escapeHtml(projectPath)}">${escapeHtml(projectPath)}</div>
-									<div class="project-meta-line">
-										${metaItems.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
-									</div>
-								</div>
-								<div class="project-side">
-									<div class="project-stat-line" aria-label="Project status summary">
-										${renderProjectStats(project)}
-									</div>
-									${renderProjectControls(project)}
-								</div>
-							</article>
-						`;
-					})
-					.join("");
+				nodes.projectOverview.classList.toggle("is-empty", activeProjectRows.length === 0);
+				nodes.projectOverview.classList.add("has-registered-projects");
+				nodes.projectOverview.innerHTML = `
+					${renderRegisteredProjects(projects, activeProjectRows, selectedId)}
+					<section class="project-subsection" aria-label="Active projects">
+						<div class="project-subsection-head">
+							<span>Active</span>
+							<strong>${escapeHtml(activeSummary)}</strong>
+						</div>
+						<div class="project-active-list" role="list" aria-label="Active projects">
+							${activeMarkup}
+						</div>
+					</section>
+				`;
 			}
 
 			function setFlowCounts(queue, run, review, land) {
@@ -7103,13 +7258,6 @@
 				);
 			}
 
-			function dashboardRunIsFocused(run) {
-				return (
-					(run.run_id && dashboardSubscription.runId === run.run_id) ||
-					(run.issue_id && dashboardSubscription.issueId === run.issue_id)
-				);
-			}
-
 			function runRetryControlEnabled(run) {
 				return Boolean(
 					run.project_id &&
@@ -7123,12 +7271,10 @@
 			}
 
 			function renderRunControlLine(run) {
-				const focused = dashboardRunIsFocused(run);
 				const retryEnabled = runRetryControlEnabled(run);
 
 				return `
 					<div class="run-control-line">
-						<button class="control-button" type="button" data-dashboard-control="focusRun" data-project-id="${escapeHtml(run.project_id || "")}" data-issue-id="${escapeHtml(run.issue_id || "")}" data-run-id="${escapeHtml(run.run_id || "")}">${focused ? "Focused" : "Focus"}</button>
 						<button class="control-button" type="button" data-dashboard-control="retryRun" data-project-id="${escapeHtml(run.project_id || "")}" data-issue-id="${escapeHtml(run.issue_id || "")}" data-run-id="${escapeHtml(run.run_id || "")}" data-tone="warning"${retryEnabled ? "" : " disabled"}>Retry</button>
 					</div>
 				`;
@@ -7805,17 +7951,6 @@
 				});
 			}
 
-			function setDashboardSubscription(subscription, shouldSend = true) {
-				dashboardSubscription = normalizeDashboardSubscription(subscription);
-				persistDashboardSubscription();
-				if (shouldSend) {
-					syncDashboardSubscriptionToSocket();
-				}
-				if (lastDashboardRender) {
-					renderDashboardState(lastDashboardRender);
-				}
-			}
-
 			function sendDashboardControl(action, payload = {}) {
 				return sendDashboardSocketMessage({
 					type: "control",
@@ -7841,10 +7976,6 @@
 			}
 
 			function applyDashboardControlAck(payload) {
-				if (payload?.subscription) {
-					dashboardSubscription = normalizeDashboardSubscription(payload.subscription);
-					persistDashboardSubscription();
-				}
 				if (payload?.action === "ack" || payload?.action === "subscribe") {
 					return;
 				}
@@ -8011,14 +8142,6 @@
 				const runId = button.dataset.runId || null;
 
 				switch (control) {
-					case "focusProject":
-						setDashboardSubscription({ projectId });
-						break;
-					case "focusRun":
-						setDashboardSubscription({ projectId, issueId, runId });
-						break;
-					case "pauseProject":
-					case "resumeProject":
 					case "retryRun":
 						sendDashboardControl(control, { projectId, issueId, runId });
 						break;
