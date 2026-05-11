@@ -48,6 +48,28 @@
 				--fast: 140ms;
 				--medium: 220ms;
 				--slow: 380ms;
+				--type-micro: 9px;
+				--type-caption: 10px;
+				--type-label: 11px;
+				--type-meta: 12px;
+				--type-body: 13px;
+				--type-row-title: 14px;
+				--type-card-title: 16px;
+				--type-display: 18px;
+				--weight-label: 650;
+				--weight-strong: 650;
+				--tracking-caps: 0;
+				--space-2xs: 4px;
+				--space-xs: 6px;
+				--space-sm: 8px;
+				--space-account-row-y: 10px;
+				--space-md: 12px;
+				--space-row-y: 14px;
+				--space-panel-head-y: 16px;
+				--space-row-indent: 18px;
+				--space-section-x: 20px;
+				--space-section-y: 20px;
+				--space-card-y: 18px;
 				--mono:
 					"SFMono-Regular", "IBM Plex Mono", "Menlo", "Monaco", "Consolas", monospace;
 				--sans:
@@ -131,7 +153,7 @@
 				max-width: 1180px;
 				margin: 0 auto;
 				display: grid;
-				gap: 16px;
+				gap: var(--space-panel-head-y);
 			}
 
 			.masthead {
@@ -176,7 +198,7 @@
 
 			h1 {
 				margin: 0;
-				font-size: 1.14rem;
+				font-size: var(--type-display);
 				letter-spacing: 0;
 				line-height: 1;
 			}
@@ -191,9 +213,9 @@
 
 			.table-meta {
 				font-family: var(--mono);
-				font-size: 11px;
-				font-weight: 600;
-				letter-spacing: 0.06em;
+				font-size: var(--type-label);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
 				line-height: 1.35;
 				text-transform: uppercase;
 				color: var(--muted);
@@ -258,8 +280,8 @@
 				backdrop-filter: blur(18px);
 				list-style: none;
 				font-family: var(--mono);
-				font-size: 10px;
-				letter-spacing: 0.08em;
+				font-size: var(--type-caption);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--danger);
 				cursor: pointer;
@@ -302,8 +324,8 @@
 
 			.notice-hint {
 				color: var(--muted);
-				font-size: 10px;
-				letter-spacing: 0.1em;
+				font-size: var(--type-caption);
+				letter-spacing: var(--tracking-caps);
 			}
 
 			.notice-panel {
@@ -337,8 +359,8 @@
 				display: block;
 				margin-bottom: 3px;
 				font-family: var(--mono);
-				font-size: 10px;
-				letter-spacing: 0.07em;
+				font-size: var(--type-caption);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--text);
 			}
@@ -346,7 +368,7 @@
 			.notice-item p {
 				margin: 0;
 				color: var(--muted-strong);
-				font-size: 13px;
+				font-size: var(--type-body);
 				line-height: 1.38;
 			}
 
@@ -374,8 +396,8 @@
 				align-items: center;
 				justify-content: center;
 				font-family: var(--mono);
-				font-size: 11px;
-				letter-spacing: 0.08em;
+				font-size: var(--type-label);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 			}
 
@@ -468,8 +490,8 @@
 				min-width: 0;
 				gap: 6px;
 				font-family: var(--mono);
-				font-size: 11px;
-				letter-spacing: 0.04em;
+				font-size: var(--type-label);
+				letter-spacing: var(--tracking-caps);
 				line-height: 1;
 				color: var(--muted);
 				white-space: nowrap;
@@ -486,7 +508,7 @@
 				overflow: hidden;
 				max-width: min(42vw, 320px);
 				color: var(--muted-strong);
-				font-weight: 600;
+				font-weight: var(--weight-label);
 				text-overflow: ellipsis;
 				white-space: nowrap;
 			}
@@ -521,8 +543,8 @@
 
 			.flow-stage span {
 				font-family: var(--mono);
-				font-size: 10px;
-				letter-spacing: 0.11em;
+				font-size: var(--type-caption);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--muted);
 			}
@@ -557,8 +579,8 @@
 			.flow-stage strong {
 				color: var(--text);
 				font-family: var(--mono);
-				font-size: 0.78rem;
-				font-weight: 600;
+				font-size: var(--type-meta);
+				font-weight: var(--weight-label);
 				letter-spacing: 0;
 				min-width: 0;
 				overflow: hidden;
@@ -618,17 +640,21 @@
 				flex-wrap: wrap;
 				align-items: center;
 				justify-content: space-between;
-				gap: 8px 18px;
-				margin: 20px 20px 0;
-				padding: 10px 0 8px;
+				gap: var(--space-sm) var(--space-row-indent);
+				margin: var(--space-section-y) var(--space-section-x) 0;
+				padding: var(--space-md) 0 var(--space-sm);
 				border-top: 1px solid var(--line-strong);
 				font-family: var(--mono);
 				color: var(--muted);
 			}
 
+			.section-marker > .table-meta {
+				white-space: nowrap;
+			}
+
 			.section-marker:first-child {
 				margin-top: 0;
-				padding-top: 14px;
+				padding-top: var(--space-panel-head-y);
 			}
 
 			.section-marker span {
@@ -637,9 +663,9 @@
 				gap: 10px;
 				min-width: 0;
 				color: var(--text);
-				font-size: 10px;
-				font-weight: 650;
-				letter-spacing: 0.12em;
+				font-size: var(--type-meta);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
 				line-height: 1.25;
 				text-transform: uppercase;
 				white-space: nowrap;
@@ -649,22 +675,8 @@
 				content: "";
 				flex: 0 0 auto;
 				width: 2px;
-				height: 14px;
+				height: 16px;
 				background: var(--section-tone);
-			}
-
-			.section-marker p {
-				margin: 0;
-				min-width: 0;
-				overflow: hidden;
-				color: var(--muted);
-				font-size: 10px;
-				font-weight: 600;
-				letter-spacing: 0.08em;
-				line-height: 1.25;
-				text-overflow: ellipsis;
-				text-transform: uppercase;
-				white-space: nowrap;
 			}
 
 			.section-marker-control {
@@ -686,7 +698,7 @@
 			.panel {
 				display: grid;
 				gap: 0;
-				padding: 0 20px;
+				padding: 0 var(--space-section-x);
 				border: 0;
 				border-radius: 0;
 				background: transparent;
@@ -699,14 +711,14 @@
 			}
 
 			#account-pool-panel {
-				padding-bottom: 12px;
+				padding-bottom: var(--space-md);
 				background: transparent;
 			}
 
 			#account-pool-panel .panel-head {
 				align-items: center;
-				padding-top: 16px;
-				padding-bottom: 10px;
+				padding-top: var(--space-panel-head-y);
+				padding-bottom: var(--space-md);
 			}
 
 			#account-pool-panel .panel-body {
@@ -722,8 +734,8 @@
 				flex-wrap: wrap;
 				align-items: end;
 				justify-content: space-between;
-				gap: 10px;
-				padding: 20px 0 12px;
+				gap: var(--space-md);
+				padding: var(--space-panel-head-y) 0 var(--space-md);
 				border-bottom: 0;
 				transition:
 					color var(--fast) var(--ease),
@@ -737,9 +749,9 @@
 
 			.panel-head h2 {
 				margin: 0;
-				font-size: 12px;
-				font-weight: 650;
-				letter-spacing: 0.14em;
+				font-size: var(--type-meta);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				font-family: var(--mono);
 				color: var(--muted-strong);
@@ -751,7 +763,7 @@
 			}
 
 			#queue-panel .panel-head {
-				padding-top: 14px;
+				padding-top: var(--space-panel-head-y);
 			}
 
 			.panel-body {
@@ -772,7 +784,7 @@
 				isolation: isolate;
 				position: relative;
 				margin: 0;
-				padding: 18px 0 18px 18px;
+				padding: var(--space-card-y) 0 var(--space-card-y) var(--space-row-indent);
 				background: transparent;
 				border: 0;
 				border-bottom: 1px solid var(--line);
@@ -797,16 +809,16 @@
 			}
 
 			.card-list > :first-child {
-				padding-top: 18px;
+				padding-top: var(--space-card-y);
 			}
 
 			.card-list > :last-child {
 				border-bottom: 0;
-				padding-bottom: 18px;
+				padding-bottom: var(--space-card-y);
 			}
 
 			#active-panel .row-title h3 {
-				font-size: 17px;
+				font-size: var(--type-card-title);
 			}
 
 			.action-card::before,
@@ -851,7 +863,7 @@
 			.row-title h3,
 			.row-title h4 {
 				margin: 0;
-				font-size: 16px;
+				font-size: var(--type-card-title);
 				letter-spacing: 0;
 				line-height: 1.26;
 			}
@@ -859,12 +871,12 @@
 			.worktree-card .row-title h3,
 			.worktree-card .row-title h4 {
 				color: var(--muted-strong);
-				font-size: 14px;
-				font-weight: 650;
+				font-size: var(--type-row-title);
+				font-weight: var(--weight-label);
 			}
 
 			.worktree-card .row-summary {
-				font-size: 13px;
+				font-size: var(--type-body);
 				line-height: 1.48;
 			}
 
@@ -873,13 +885,13 @@
 			}
 
 			.worktree-card .field-label {
-				font-size: 10px;
+				font-size: var(--type-caption);
 			}
 
 			.worktree-card .field-value {
 				color: var(--muted-strong);
-				font-size: 12px;
-				font-weight: 600;
+				font-size: var(--type-meta);
+				font-weight: var(--weight-label);
 			}
 
 			.kicker,
@@ -888,8 +900,8 @@
 				flex-wrap: wrap;
 				gap: 8px;
 				font-family: var(--mono);
-				font-size: 11px;
-				letter-spacing: 0.06em;
+				font-size: var(--type-label);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--muted);
 			}
@@ -908,7 +920,7 @@
 			.run-title {
 				margin: 0;
 				color: var(--text);
-				font-size: 16px;
+				font-size: var(--type-card-title);
 				font-weight: 700;
 				line-height: 1.28;
 			}
@@ -918,8 +930,8 @@
 				flex-wrap: wrap;
 				gap: 8px 12px;
 				font-family: var(--mono);
-				font-size: 11px;
-				letter-spacing: 0.06em;
+				font-size: var(--type-label);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--muted);
 			}
@@ -928,7 +940,7 @@
 				margin: 10px 0 0;
 				max-width: 78ch;
 				color: var(--muted-strong);
-				font-size: 14px;
+				font-size: var(--type-row-title);
 				line-height: 1.52;
 			}
 
@@ -938,13 +950,13 @@
 				gap: 12px;
 				margin-top: 12px;
 				font-family: var(--mono);
-				font-size: 12px;
+				font-size: var(--type-meta);
 				color: var(--muted);
 			}
 
 			.status-line strong {
 				color: var(--text);
-				font-weight: 600;
+				font-weight: var(--weight-label);
 			}
 
 			.activity-line {
@@ -953,7 +965,7 @@
 				gap: 5px 14px;
 				margin-top: 8px;
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				line-height: 1.4;
 				color: var(--muted);
 			}
@@ -964,7 +976,7 @@
 
 			.activity-line strong {
 				color: var(--text);
-				font-weight: 600;
+				font-weight: var(--weight-label);
 			}
 
 			.project-scope-list {
@@ -973,7 +985,7 @@
 			}
 
 			.project-scope-list.has-registered-projects {
-				gap: 12px;
+				gap: 0;
 			}
 
 			.project-subsection {
@@ -983,34 +995,8 @@
 			}
 
 			.project-subsection-head {
-				display: grid;
-				grid-template-columns: minmax(0, 1fr) max-content 14px;
-				align-items: center;
-				gap: 12px;
-				padding: 13px 0;
-				border-bottom: 1px solid var(--line);
-				color: var(--muted-strong);
-				font-family: var(--mono);
-				font-size: 12px;
-				font-weight: 650;
-				letter-spacing: 0.14em;
-				line-height: 1.3;
-				text-transform: uppercase;
-			}
-
-			.project-subsection-head strong {
-				color: var(--text);
-				font-size: 11px;
-				font-weight: 700;
-				letter-spacing: 0;
-				text-transform: none;
-				white-space: nowrap;
-			}
-
-			.project-subsection-head::after {
-				content: "";
-				width: 14px;
-				height: 14px;
+				padding-top: var(--space-panel-head-y);
+				padding-bottom: var(--space-md);
 			}
 
 			.project-active-list {
@@ -1021,7 +1007,7 @@
 				grid-template-columns: minmax(142px, max-content) minmax(0, 1fr);
 				max-width: none;
 				min-height: 34px;
-				padding: 6px 0 8px 14px;
+				padding: var(--space-xs) 0 var(--space-sm) var(--space-row-y);
 				border-left: 2px solid var(--tone-muted);
 			}
 
@@ -1049,7 +1035,7 @@
 				max-width: 100%;
 				color: var(--muted-strong);
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				line-height: 1.35;
 				overflow-wrap: anywhere;
 			}
@@ -1063,7 +1049,7 @@
 				gap: 14px 28px;
 				align-items: center;
 				min-width: 0;
-				padding: 18px 0 18px 18px;
+				padding: var(--space-row-y) 0 var(--space-row-y) var(--space-row-indent);
 				border-bottom: 1px solid var(--line);
 				background: transparent;
 				color: var(--muted-strong);
@@ -1085,8 +1071,8 @@
 				position: absolute;
 				z-index: 2;
 				left: 0;
-				top: 18px;
-				bottom: 18px;
+				top: var(--space-row-y);
+				bottom: var(--space-row-y);
 				width: 3px;
 				background: var(--project-accent);
 				box-shadow: none;
@@ -1144,20 +1130,8 @@
 			}
 
 			.registered-projects > summary {
-				display: grid;
-				grid-template-columns: minmax(0, 1fr) max-content 14px;
-				align-items: center;
-				gap: 12px;
-				padding: 13px 0;
-				color: var(--muted-strong);
-				font-family: var(--mono);
-				font-size: 12px;
-				font-weight: 650;
-				letter-spacing: 0.14em;
-				line-height: 1.3;
-				text-transform: uppercase;
-				cursor: pointer;
-				list-style: none;
+				padding-top: var(--space-panel-head-y);
+				padding-bottom: var(--space-md);
 			}
 
 			.registered-projects > summary::-webkit-details-marker {
@@ -1173,36 +1147,7 @@
 				outline-offset: 2px;
 			}
 
-			.registered-projects > summary strong {
-				color: var(--text);
-				font-size: 11px;
-				font-weight: 700;
-				letter-spacing: 0;
-				text-transform: none;
-				white-space: nowrap;
-			}
-
-			.registered-projects > summary::after {
-				content: "+";
-				display: inline-flex;
-				align-items: center;
-				justify-content: center;
-				width: 14px;
-				height: 14px;
-				color: var(--muted);
-				font-size: 13px;
-				font-weight: 700;
-				letter-spacing: 0;
-				line-height: 1;
-				text-transform: none;
-				transition: color var(--fast) var(--ease);
-			}
-
-			.registered-projects[data-detail-state="open"] > summary::after {
-				content: "-";
-			}
-
-			.registered-projects > summary:hover::after {
+			.registered-projects > summary:hover h2 {
 				color: var(--text);
 			}
 
@@ -1212,8 +1157,8 @@
 			}
 
 			.registered-project-list .project-entry {
-				padding-top: 14px;
-				padding-bottom: 14px;
+				padding-top: var(--space-md);
+				padding-bottom: var(--space-md);
 			}
 
 			.project-entry.tone-land {
@@ -1241,7 +1186,7 @@
 			.project-kicker {
 				color: var(--project-accent);
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				letter-spacing: 0;
 				line-height: 1.2;
 				text-transform: uppercase;
@@ -1250,7 +1195,7 @@
 			.project-activity {
 				color: var(--muted);
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				letter-spacing: 0;
 				line-height: 1.2;
 			}
@@ -1266,7 +1211,7 @@
 			.project-title-line strong {
 				min-width: 0;
 				color: var(--text);
-				font-size: 17px;
+				font-size: var(--type-row-title);
 				line-height: 1.26;
 				overflow-wrap: anywhere;
 			}
@@ -1274,7 +1219,7 @@
 			.project-health {
 				color: var(--project-accent);
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				letter-spacing: 0;
 				text-transform: uppercase;
 			}
@@ -1283,7 +1228,7 @@
 				min-width: 0;
 				color: var(--muted-strong);
 				font-family: var(--mono);
-				font-size: 12px;
+				font-size: var(--type-label);
 				letter-spacing: 0;
 				line-height: 1.45;
 				overflow-wrap: anywhere;
@@ -1295,7 +1240,7 @@
 				gap: 6px 16px;
 				min-width: 0;
 				font-family: var(--mono);
-				font-size: 12px;
+				font-size: var(--type-label);
 				line-height: 1.45;
 				color: var(--muted);
 			}
@@ -1314,7 +1259,7 @@
 
 			.project-stat-line strong {
 				color: var(--text);
-				font-size: 16px;
+				font-size: var(--type-body);
 				font-weight: 700;
 				line-height: 1;
 			}
@@ -1323,7 +1268,7 @@
 				display: grid;
 				gap: 3px;
 				min-width: 0;
-				font-size: 10px;
+				font-size: var(--type-caption);
 				letter-spacing: 0;
 				line-height: 1.2;
 				text-transform: uppercase;
@@ -1366,9 +1311,9 @@
 				background: var(--surface-muted);
 				color: var(--muted-strong);
 				font-family: var(--mono);
-				font-size: 10px;
-				font-weight: 650;
-				letter-spacing: 0.06em;
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
 				line-height: 1;
 				text-transform: uppercase;
 				transition:
@@ -1415,8 +1360,8 @@
 
 			.timing-label {
 				font-family: var(--mono);
-				font-size: 10px;
-				letter-spacing: 0.08em;
+				font-size: var(--type-caption);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--muted);
 			}
@@ -1424,7 +1369,7 @@
 			.timing-value {
 				margin-top: 4px;
 				font-family: var(--mono);
-				font-size: 12px;
+				font-size: var(--type-meta);
 				color: var(--text);
 				overflow: hidden;
 				text-overflow: ellipsis;
@@ -1509,13 +1454,13 @@
 				border-top: 1px solid var(--line);
 				min-width: 0;
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				color: var(--muted);
 			}
 
 			.account-use-line strong {
 				color: var(--text);
-				font-weight: 650;
+				font-weight: var(--weight-label);
 			}
 
 			.account-use-line span {
@@ -1533,7 +1478,7 @@
 				gap: 5px 10px;
 				min-width: 0;
 				font-family: var(--mono);
-				font-size: 10px;
+				font-size: var(--type-caption);
 				color: var(--muted);
 			}
 
@@ -1552,7 +1497,7 @@
 
 			.account-pool-list {
 				--account-grid: minmax(220px, 1.12fr) minmax(56px, 0.42fr) repeat(4, minmax(0, 1fr));
-				--account-gap: 14px;
+				--account-gap: var(--space-row-y);
 				display: grid;
 				min-width: 760px;
 				background: transparent;
@@ -1564,13 +1509,13 @@
 				align-items: end;
 				gap: var(--account-gap);
 				min-width: 0;
-				padding: 0 0 7px 18px;
+				padding: 0 0 var(--space-sm) var(--space-row-indent);
 				border-bottom: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
 				color: var(--muted);
 				font-family: var(--mono);
-				font-size: 10px;
-				font-weight: 650;
-				letter-spacing: 0.08em;
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
 				line-height: 1.15;
 				text-transform: uppercase;
 			}
@@ -1643,7 +1588,7 @@
 				gap: 4px var(--account-gap);
 				min-width: 0;
 				min-height: 42px;
-				padding: 10px 0 10px 18px;
+				padding: var(--space-account-row-y) 0 var(--space-account-row-y) var(--space-row-indent);
 				border-bottom: 1px solid var(--line);
 				background: transparent;
 				transition:
@@ -1665,8 +1610,8 @@
 				position: absolute;
 				z-index: 2;
 				left: 0;
-				top: 9px;
-				bottom: 9px;
+				top: calc(var(--space-account-row-y) - 1px);
+				bottom: calc(var(--space-account-row-y) - 1px);
 				width: 3px;
 				background: var(--account-accent);
 				box-shadow: none;
@@ -1762,8 +1707,8 @@
 				text-overflow: ellipsis;
 				white-space: nowrap;
 				color: var(--text);
-				font-size: 13px;
-				font-weight: 650;
+				font-size: var(--type-body);
+				font-weight: var(--weight-label);
 			}
 
 			.account-name-reroll {
@@ -1810,7 +1755,7 @@
 				text-overflow: ellipsis;
 				color: var(--muted);
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				font-weight: 500;
 				line-height: 1.2;
 				text-align: center;
@@ -1853,9 +1798,9 @@
 			.account-window-label {
 				display: none;
 				color: var(--muted);
-				font-size: 10px;
-				font-weight: 650;
-				letter-spacing: 0.03em;
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
 			}
 
 			.account-window > strong {
@@ -1863,8 +1808,8 @@
 				grid-column: 1;
 				grid-row: 1;
 				color: var(--text);
-				font-size: 13px;
-				font-weight: 650;
+				font-size: var(--type-body);
+				font-weight: var(--weight-label);
 				line-height: 1.15;
 			}
 
@@ -1885,7 +1830,7 @@
 				text-overflow: ellipsis;
 				color: var(--muted);
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				line-height: 1.08;
 				white-space: nowrap;
 			}
@@ -1898,7 +1843,7 @@
 				text-overflow: ellipsis;
 				color: var(--muted);
 				font-family: var(--mono);
-				font-size: 10px;
+				font-size: var(--type-caption);
 				line-height: 1.12;
 				white-space: nowrap;
 			}
@@ -1912,7 +1857,7 @@
 				width: auto;
 				text-align: center;
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				color: var(--muted);
 			}
 
@@ -1924,7 +1869,7 @@
 				justify-content: center;
 				min-width: 0;
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				line-height: 1.2;
 				text-align: center;
 				white-space: nowrap;
@@ -1937,7 +1882,7 @@
 
 			.account-row-credit strong {
 				color: var(--text);
-				font-weight: 650;
+				font-weight: var(--weight-label);
 			}
 
 			.account-row-credit.is-danger strong {
@@ -1950,7 +1895,7 @@
 				gap: 6px;
 				min-width: 0;
 				color: var(--muted-strong);
-				font-weight: 650;
+				font-weight: var(--weight-label);
 				line-height: 1.25;
 				white-space: nowrap;
 				transition:
@@ -1998,7 +1943,7 @@
 				gap: 10px 16px;
 				min-width: 0;
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				line-height: 1.4;
 				color: var(--muted);
 			}
@@ -2016,7 +1961,7 @@
 			.child-activity-head strong,
 			.child-context strong {
 				color: var(--text);
-				font-weight: 600;
+				font-weight: var(--weight-label);
 			}
 
 			.child-share-list {
@@ -2032,7 +1977,7 @@
 				gap: 10px;
 				min-width: 0;
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				color: var(--muted);
 			}
 
@@ -2069,7 +2014,7 @@
 
 			.child-bucket-value {
 				color: var(--text);
-				font-weight: 600;
+				font-weight: var(--weight-label);
 				justify-self: end;
 				width: var(--child-bucket-value-column);
 				min-width: 0;
@@ -2093,7 +2038,7 @@
 				padding-top: 8px;
 				border-top: 1px solid var(--line);
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				color: var(--muted);
 			}
 
@@ -2130,7 +2075,7 @@
 
 			.child-bucket-signal strong {
 				color: var(--text);
-				font-weight: 600;
+				font-weight: var(--weight-label);
 			}
 
 			.child-bucket-bar {
@@ -2153,8 +2098,8 @@
 				align-items: center;
 				gap: 6px;
 				font-family: var(--mono);
-				font-size: 11px;
-				letter-spacing: 0.08em;
+				font-size: var(--type-label);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 			}
 
@@ -2289,17 +2234,17 @@
 
 			.queue-group-header h4 {
 				margin: 0;
-				font-size: 0.76rem;
+				font-size: var(--type-meta);
 				font-family: var(--mono);
-				letter-spacing: 0.1em;
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--muted);
 			}
 
 			.queue-group-count {
 				font-family: var(--mono);
-				font-size: 0.76rem;
-				letter-spacing: 0.08em;
+				font-size: var(--type-meta);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--muted);
 			}
@@ -2312,16 +2257,16 @@
 
 			.field-label {
 				font-family: var(--mono);
-				font-size: 11px;
-				letter-spacing: 0.09em;
+				font-size: var(--type-label);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--muted);
 			}
 
 			.field-value {
 				font-family: var(--mono);
-				font-size: 13px;
-				font-weight: 600;
+				font-size: var(--type-body);
+				font-weight: var(--weight-label);
 				font-variant-numeric: tabular-nums;
 				line-height: 1.35;
 				word-break: break-word;
@@ -2330,7 +2275,7 @@
 
 			.field-value.is-time,
 			.field-value.is-muted {
-				font-size: 12px;
+				font-size: var(--type-meta);
 				font-weight: 500;
 				color: var(--muted-strong);
 			}
@@ -2343,7 +2288,7 @@
 				padding-top: 10px;
 				border-top: 1px solid var(--line);
 				font-family: var(--mono);
-				font-size: 11px;
+				font-size: var(--type-label);
 				line-height: 1.45;
 				color: var(--muted);
 			}
@@ -2355,7 +2300,7 @@
 
 			.attention-facts strong {
 				color: var(--text);
-				font-weight: 600;
+				font-weight: var(--weight-label);
 			}
 
 			details {
@@ -2367,8 +2312,8 @@
 			summary {
 				cursor: pointer;
 				font-family: var(--mono);
-				font-size: 11px;
-				letter-spacing: 0.08em;
+				font-size: var(--type-label);
+				letter-spacing: var(--tracking-caps);
 				text-transform: uppercase;
 				color: var(--muted);
 				user-select: none;
@@ -2453,7 +2398,7 @@
 				padding: 8px 10px;
 				background: var(--surface-muted);
 				color: var(--muted-strong);
-				font-size: 12px;
+				font-size: var(--type-meta);
 			}
 
 			.attempt-row span {
@@ -2507,7 +2452,7 @@
 				grid-template-columns: minmax(0, max-content) 14px;
 				align-items: center;
 				justify-content: end;
-				gap: 12px;
+				gap: var(--space-md);
 				text-align: right;
 			}
 
@@ -2523,7 +2468,7 @@
 				height: 14px;
 				color: var(--muted);
 				font-family: var(--mono);
-				font-size: 13px;
+				font-size: var(--type-row-title);
 				font-weight: 700;
 				letter-spacing: 0;
 				line-height: 1;
@@ -2535,11 +2480,12 @@
 				content: "+";
 			}
 
-			.fold-panel[data-detail-state="open"] .fold-indicator::before {
+			details[data-detail-state="open"] > summary .fold-indicator::before {
 				content: "-";
 			}
 
-			.fold-panel > summary:hover .fold-indicator {
+			.fold-panel > summary:hover .fold-indicator,
+			.registered-projects > summary:hover .fold-indicator {
 				color: var(--text);
 			}
 
@@ -2547,9 +2493,9 @@
 				display: grid;
 				grid-template-columns: minmax(118px, max-content);
 				align-items: center;
-				gap: 4px 12px;
+				gap: var(--space-2xs) var(--space-md);
 				max-width: 640px;
-				padding: 4px 0 8px;
+				padding: var(--space-2xs) 0 var(--space-sm);
 				border: 0;
 				border-radius: 0;
 				background: transparent;
@@ -2557,8 +2503,8 @@
 			}
 
 			.card-list > .empty-state:first-child:last-child {
-				padding-top: 4px;
-				padding-bottom: 8px;
+				padding-top: var(--space-2xs);
+				padding-bottom: var(--space-sm);
 				border-bottom: 0;
 			}
 
@@ -2566,9 +2512,9 @@
 				display: block;
 				color: var(--muted);
 				font-family: var(--mono);
-				font-size: 10px;
+				font-size: var(--type-caption);
 				font-weight: 500;
-				letter-spacing: 0.07em;
+				letter-spacing: var(--tracking-caps);
 				line-height: 1.3;
 				text-transform: uppercase;
 			}
@@ -2576,7 +2522,7 @@
 			.empty-state .empty-copy {
 				max-width: 48ch;
 				color: var(--muted);
-				font-size: 11px;
+				font-size: var(--type-label);
 				line-height: 1.35;
 			}
 
@@ -2663,7 +2609,7 @@
 
 				.account-pool-guide {
 					padding-left: 18px;
-					font-size: 9px;
+					font-size: var(--type-micro);
 				}
 
 				.account-row {
@@ -2893,7 +2839,6 @@
 						aria-label="Control Plane group"
 					>
 						<span>Control Plane</span>
-						<p>Accounts</p>
 					</div>
 					<section class="panel section-control" id="account-pool-panel">
 						<div class="panel-head">
@@ -2927,7 +2872,7 @@
 						aria-label="Projects group"
 					>
 						<span>Projects</span>
-						<p>All · Active</p>
+						<p class="table-meta" id="projects-meta"></p>
 					</div>
 					<section class="panel section-projects" id="projects-panel">
 						<div class="panel-body">
@@ -2941,7 +2886,6 @@
 						aria-label="Execution group"
 					>
 						<span>Execution</span>
-						<p>Running · Intake</p>
 					</div>
 					<section class="panel section-execution" id="active-panel">
 						<div class="panel-head">
@@ -2973,7 +2917,6 @@
 						aria-label="Closeout group"
 					>
 						<span>Closeout</span>
-						<p>Review · Recovery · History</p>
 					</div>
 					<section class="panel section-aftercare" id="review-panel">
 						<div class="panel-head">
@@ -3139,6 +3082,7 @@
 					aftercare: document.getElementById("section-marker-aftercare"),
 				},
 				projectOverview: document.getElementById("project-overview"),
+				projectsMeta: document.getElementById("projects-meta"),
 				accountPool: document.getElementById("account-pool"),
 				accountPoolMeta: document.getElementById("account-pool-meta"),
 				accountPrivacyToggle: document.getElementById("account-privacy-toggle"),
@@ -3585,6 +3529,13 @@
 				);
 			}
 
+			function runWaitReasonShowsExecutionProgress(run) {
+				return (
+					run.phase === "executing" &&
+					["model_execution", "tool_execution", "protocol_activity"].includes(run.wait_reason)
+				);
+			}
+
 			function toneForRun(run) {
 				if (
 					runNeedsAttention(run) ||
@@ -3599,8 +3550,11 @@
 				if (runTelemetryMissing(run) || runProcessStoppedWhileActive(run)) {
 					return "tone-wait";
 				}
+				if (runWaitReasonShowsExecutionProgress(run)) {
+					return "tone-run";
+				}
 				if (
-					run.wait_reason ||
+					(run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) ||
 					run.phase === "retry_backoff" ||
 					run.phase === "waiting_continuation"
 				) {
@@ -4281,6 +4235,12 @@
 						<strong>${escapeHtml(title)}</strong>
 					</div>
 				`;
+			}
+
+			function renderRoutineEmptyList(container, snapshot, waitingCopy = "") {
+				container.innerHTML = snapshot
+					? ""
+					: renderEmptyState(COPY.waitingSnapshot, waitingCopy);
 			}
 
 			function pluralLabel(count, singular, plural = `${singular}s`) {
@@ -6220,6 +6180,10 @@
 				if (run.continuation_pending) {
 					return "The latest turn completed with a continuation pending.";
 				}
+				if (runWaitReasonShowsExecutionProgress(run)) {
+					const focus = protocolActivityFocus(run) || humanizeToken(run.wait_reason).toLowerCase();
+					return `Running through ${focus}.`;
+				}
 				if (run.wait_reason) {
 					return `Waiting on ${humanizeToken(run.wait_reason).toLowerCase()}.`;
 				}
@@ -6278,6 +6242,9 @@
 				}
 				if (run.continuation_pending) {
 					return "Continuation pending";
+				}
+				if (runWaitReasonShowsExecutionProgress(run)) {
+					return humanizeToken(run.wait_reason);
 				}
 				if (run.wait_reason) {
 					return `Waiting on ${humanizeToken(run.wait_reason).toLowerCase()}`;
@@ -6588,7 +6555,12 @@
 						continue;
 					}
 
-					if (run.phase === "retry_backoff" || run.phase === "waiting_continuation" || run.wait_reason) {
+					const runIsWaiting =
+						run.phase === "retry_backoff" ||
+						run.phase === "waiting_continuation" ||
+						(run.wait_reason && !runWaitReasonShowsExecutionProgress(run));
+
+					if (runIsWaiting) {
 						waitingItems.push({
 							tone,
 							scope: "Running",
@@ -6777,39 +6749,35 @@
 				return null;
 			}
 
-			function projectHasRecentActivity(project) {
-				const parsed = Date.parse(project.last_activity_at || "");
-				if (!Number.isFinite(parsed)) {
-					return false;
-				}
-
-				const ageSeconds = Math.floor(Date.now() / 1000) - Math.floor(parsed / 1000);
-				return ageSeconds >= 0 && ageSeconds <= 900;
-			}
-
-			function projectHasVisibleWork(project) {
+			function projectHasActiveWork(project) {
 				const workCount =
 					(project.active_run_count ?? 0) +
+					(project.queued_candidate_count ?? 0) +
 					(project.waiting_lane_count ?? 0) +
 					(project.attention_count ?? 0) +
-					(project.post_review_lane_count ?? 0) +
-					(project.retained_worktree_count ?? 0);
+					(project.post_review_lane_count ?? 0);
 				const connector = projectConnectorSummary(project);
 				const syncNeedsAttention = project.enabled && ["backoff", "degraded", "stale"].includes(connector);
 
-				return workCount > 0 || (project.warning_count ?? 0) > 0 || syncNeedsAttention || projectHasRecentActivity(project);
+				return workCount > 0 || (project.warning_count ?? 0) > 0 || syncNeedsAttention;
 			}
 
 			function activeProjects(projects) {
-				return projects.filter(projectHasVisibleWork);
+				return projects.filter(projectHasActiveWork);
 			}
 
 			function projectHealth(project) {
 				if (!project.enabled) {
 					return { label: "disabled", tone: "tone-muted", title: "Disabled in registry" };
 				}
+				if ((project.active_run_count ?? 0) > 0) {
+					return { label: "running", tone: "tone-run", title: "Project has active running lanes" };
+				}
 				if ((project.attention_count ?? 0) > 0) {
 					return { label: "needs attention", tone: "tone-blocked", title: "Operator attention required" };
+				}
+				if ((project.waiting_lane_count ?? 0) > 0) {
+					return { label: "waiting", tone: "tone-wait", title: "Project has lanes waiting to resume" };
 				}
 				if (project.connector_state === "backoff") {
 					return {
@@ -6940,7 +6908,7 @@
 				const connectorCopy = projectSyncMeta(project, health);
 				const attentionCopy =
 					attention === "ok" || attention.includes("retained") ? "" : attention;
-				const activityCopy = lastActivity === "none" ? "" : `active ${lastActivity}`;
+				const activityCopy = lastActivity === "none" ? "" : `activity ${lastActivity}`;
 				const metaItems = [connectorCopy].filter(Boolean);
 				if (attentionCopy) {
 					metaItems.splice(1, 0, attentionCopy);
@@ -6978,8 +6946,16 @@
 					: `${projects.length} total`;
 
 				return `
-					<details class="registered-projects" data-fold-key="projects:all"${detailsOpenAttribute("projects:all")}>
-						<summary><span>All</span><strong>${escapeHtml(summary)}</strong></summary>
+					<details class="registered-projects fold-panel" data-fold-key="projects:all"${detailsOpenAttribute("projects:all")}>
+						<summary class="panel-head">
+							<div>
+								<h2>All</h2>
+							</div>
+							<div class="summary-tools">
+								<p class="table-meta">${escapeHtml(summary)}</p>
+								<span class="fold-indicator" aria-hidden="true"></span>
+							</div>
+						</summary>
 						<div class="registered-project-list" role="list" aria-label="All projects">
 							${projects.map((project) => renderProjectEntry(project, selectedId, projects)).join("")}
 						</div>
@@ -6987,8 +6963,20 @@
 				`;
 			}
 
+			function projectOverviewSummary(projects, activeProjectRows) {
+				const activeCount = activeProjectRows.length;
+				const idleCount = Math.max(projects.length - activeCount, 0);
+
+				return `${activeCount} active · ${idleCount} idle · ${projects.length} total`;
+			}
+
+			function activeProjectSummary(activeProjectRows) {
+				return `${activeProjectRows.length} active`;
+			}
+
 			function renderProjects(snapshot, derived) {
 				if (!snapshot) {
+					nodes.projectsMeta.textContent = COPY.waitingSnapshot;
 					nodes.projectOverview.classList.add("is-empty", "is-waiting");
 					nodes.projectOverview.innerHTML = renderEmptyState(COPY.waitingSnapshot);
 					return;
@@ -6998,6 +6986,7 @@
 				const activeProjectRows = activeProjects(projects);
 
 				if (!projects.length) {
+					nodes.projectsMeta.textContent = "0 total";
 					nodes.projectOverview.classList.add("is-empty");
 					nodes.projectOverview.classList.remove("has-registered-projects");
 					nodes.projectOverview.classList.remove("is-waiting");
@@ -7009,31 +6998,29 @@
 				}
 
 				const selectedId = selectedProjectId(snapshot, projects);
-				const activeSummary = activeProjectRows.length
-					? pluralize(activeProjectRows.length, "active project")
-					: "none active";
 				const activeMarkup = activeProjectRows.length
 					? activeProjectRows.map((project) => renderProjectEntry(project, selectedId, projects)).join("")
-					: renderProjectEmptyState(
-						"No active project work",
-						`${pluralize(projects.length, "project")} idle. Open All when you need the full registry.`,
-						{ showAction: false },
-					);
+					: "";
 
+				nodes.projectsMeta.textContent = projectOverviewSummary(projects, activeProjectRows);
 				nodes.projectOverview.classList.remove("is-empty", "is-waiting");
 				nodes.projectOverview.classList.toggle("is-empty", activeProjectRows.length === 0);
 				nodes.projectOverview.classList.add("has-registered-projects");
 				nodes.projectOverview.innerHTML = `
-					${renderRegisteredProjects(projects, activeProjectRows, selectedId)}
 					<section class="project-subsection" aria-label="Active projects">
-						<div class="project-subsection-head">
-							<span>Active</span>
-							<strong>${escapeHtml(activeSummary)}</strong>
+						<div class="project-subsection-head panel-head">
+							<div>
+								<h2>Active</h2>
+							</div>
+							<div class="summary-tools">
+								<p class="table-meta">${escapeHtml(activeProjectSummary(activeProjectRows))}</p>
+							</div>
 						</div>
 						<div class="project-active-list" role="list" aria-label="Active projects">
 							${activeMarkup}
 						</div>
 					</section>
+					${renderRegisteredProjects(projects, activeProjectRows, selectedId)}
 				`;
 			}
 
@@ -7125,40 +7112,13 @@
 				return parts.join(" · ");
 			}
 
-			function backlogEmptyState(snapshot, derived) {
-				if (!snapshot) {
-					return {
-						title: COPY.waitingSnapshot,
-						copy: "Queue data appears after /state publishes a snapshot.",
-					};
-				}
-				if (derived.reviewOwnedQueueCount) {
-					return {
-						title: "No queued issues",
-						copy: "Issues already in Review & Landing are not counted here.",
-					};
-				}
-				if (derived.queuedActiveOwned) {
-					return {
-						title: "No queued issues",
-						copy: `All locally claimed issues are already visible under ${COPY.runningLane}.`,
-					};
-				}
-				if (derived.queuedClosed) {
-					return {
-						title: "No queued issues",
-						copy: "Closed automation labels are counted as stale, not queue work.",
-					};
-				}
-				return {
-					title: "No queued issues",
-					copy: "Ready, capacity-limited, or blocked issues appear here before they start.",
-				};
-			}
-
-			function renderQueuedCandidates(container, items, emptyTitle, emptyCopy) {
+			function renderQueuedCandidates(container, items, snapshot) {
 				if (!items.length) {
-					container.innerHTML = renderEmptyState(emptyTitle, emptyCopy);
+					renderRoutineEmptyList(
+						container,
+						snapshot,
+						"Queue data appears after /state publishes a snapshot.",
+					);
 					return;
 				}
 
@@ -7210,9 +7170,9 @@
 					.join("");
 			}
 
-			function renderActionCards(container, items, emptyTitle, emptyCopy) {
+			function renderActionCards(container, items, snapshot, waitingCopy = "") {
 				if (!items.length) {
-					container.innerHTML = renderEmptyState(emptyTitle, emptyCopy);
+					renderRoutineEmptyList(container, snapshot, waitingCopy);
 					return;
 				}
 
@@ -7289,9 +7249,10 @@
 				);
 
 				if (!runs.length) {
-					nodes.activeRuns.innerHTML = renderEmptyState(
-						snapshot ? "No running lanes" : COPY.waitingSnapshot,
-						snapshot ? "Queued work appears here after dispatch." : "",
+					renderRoutineEmptyList(
+						nodes.activeRuns,
+						snapshot,
+						"Running lane data appears after /state publishes a snapshot.",
 					);
 					return;
 				}
@@ -7307,7 +7268,7 @@
 							const account = codexAccount(run);
 							const accountStatusBit = codexAccountStatusBit(account);
 
-							if (run.wait_reason) {
+							if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
 								statusBits.push(`<span>wait <strong>${escapeHtml(humanizeToken(run.wait_reason))}</strong></span>`);
 							}
 						if (!run.active_lease) {
@@ -7652,6 +7613,12 @@
 				`;
 			}
 
+			function recoveryWorktreeShouldDefaultOpen(renderedWorktree) {
+				const role = renderedWorktree.role;
+
+				return role.tone === "tone-blocked" || role.label.startsWith("post-land");
+			}
+
 			function renderWorktrees(snapshot) {
 				const worktrees = snapshot?.worktrees ?? [];
 				const renderedWorktrees = worktrees
@@ -7669,7 +7636,10 @@
 					});
 				const retainedWorktrees = renderedWorktrees.filter(({ role }) => role.sortRank > 0);
 				setFoldPanelEmpty(nodes.panels.worktrees, !retainedWorktrees.length);
-				syncDefaultDetailOpenState(nodes.panels.worktrees, retainedWorktrees.length > 0);
+				syncDefaultDetailOpenState(
+					nodes.panels.worktrees,
+					retainedWorktrees.some(recoveryWorktreeShouldDefaultOpen),
+				);
 
 				nodes.worktreesMeta.textContent = retainedWorktrees.length
 					? `${pluralize(retainedWorktrees.length, "worktree")} · retained or cleanup`
@@ -8114,20 +8084,18 @@
 				renderProjects(snapshot, derived);
 				renderAccountPool(snapshot);
 				renderActiveRuns(snapshot, derived);
-				const backlogEmpty = backlogEmptyState(snapshot, derived);
 				renderQueuedCandidates(
 					nodes.queuedCandidates,
 					derived.queueBacklogCandidates,
-					backlogEmpty.title,
-					backlogEmpty.copy,
+					snapshot,
 				);
 				nodes.queuedMeta.textContent = backlogMetaText(snapshot, derived);
 				renderRecentRuns(snapshot);
 				renderActionCards(
 					nodes.reviewQueue,
 					reviewItems,
-					"No PR lanes",
-					"PRs waiting for review, landing, or closeout appear here.",
+					snapshot,
+					"Review lane data appears after /state publishes a snapshot.",
 				);
 				nodes.reviewLanesMeta.textContent = snapshot
 					? `${pluralize(derived.postReviewLanes.length, "PR")} · ${pluralize(derived.reviewBlockerCount, "needs attention", "need attention")} · ${derived.readyItems.length} ready · ${derived.reviewWaitingCount} waiting`
