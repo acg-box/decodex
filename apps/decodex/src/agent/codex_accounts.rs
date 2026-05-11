@@ -728,6 +728,8 @@ struct AccountUsageSnapshot {
 impl AccountUsageSnapshot {
 	fn is_limited(&self) -> bool {
 		self.rate_limit_reached_type.is_some()
+			|| self.primary.as_ref().is_some_and(UsageWindow::is_depleted)
+			|| self.secondary.as_ref().is_some_and(UsageWindow::is_depleted)
 	}
 }
 
@@ -736,6 +738,11 @@ struct UsageWindow {
 	window_seconds: Option<i64>,
 	remaining_percent: i64,
 	resets_at_unix_epoch: Option<i64>,
+}
+impl UsageWindow {
+	const fn is_depleted(&self) -> bool {
+		self.remaining_percent <= 0
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -924,11 +931,18 @@ fn account_candidate_score(candidate: &CodexAccountLogin) -> i64 {
 	let secondary = summary.secondary_remaining_percent.unwrap_or(primary);
 	let mut score = primary.saturating_mul(1_000).saturating_add(secondary.saturating_mul(10));
 
-	if summary.rate_limit_reached_type.is_some() {
-		score = score.saturating_sub(50_000);
+	if account_summary_is_limited(summary) {
+		score = score.saturating_sub(200_000);
 	}
 
 	score
+}
+
+fn account_summary_is_limited(summary: &CodexAccountActivitySummary) -> bool {
+	summary.rate_limit_reached_type.is_some()
+		|| summary.status.to_lowercase().contains("limit")
+		|| summary.primary_remaining_percent == Some(0)
+		|| summary.secondary_remaining_percent == Some(0)
 }
 
 fn account_summaries(
@@ -957,8 +971,8 @@ const fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 mod tests {
 	use crate::agent::codex_accounts::{
-		self, CodexAccountActivitySummary, CodexAccountLogin, CreditsSnapshot, Path, UsageWindow,
-		compare_account_candidates,
+		self, AccountPoolRecord, CodexAccountActivitySummary, CodexAccountLogin, CodexTokenData,
+		CreditsSnapshot, Path, UsageWindow, compare_account_candidates,
 	};
 
 	#[test]
@@ -1037,7 +1051,7 @@ mod tests {
 	}
 
 	#[test]
-	fn usage_limit_requires_explicit_rate_limit_signal() {
+	fn usage_limit_detects_depleted_windows_without_credit_heuristics() {
 		let payload = serde_json::json!({
 			"plan_type": "pro",
 			"rate_limit": {
@@ -1047,7 +1061,7 @@ mod tests {
 					"reset_at": 1_800_018_000
 				},
 				"secondary_window": {
-					"used_percent": 0,
+					"used_percent": 100,
 					"limit_window_seconds": 604_800,
 					"reset_at": 1_800_604_800
 				}
@@ -1062,9 +1076,65 @@ mod tests {
 		let summary = codex_accounts::usage_snapshot_from_payload(&payload, 1_800_000_000);
 
 		assert_eq!(summary.primary.as_ref().map(|window| window.remaining_percent), Some(100));
-		assert_eq!(summary.secondary.as_ref().map(|window| window.remaining_percent), Some(100));
+		assert_eq!(summary.secondary.as_ref().map(|window| window.remaining_percent), Some(0));
 		assert_eq!(summary.credits.as_ref().map(|credits| credits.has_credits), Some(false));
-		assert!(!summary.is_limited());
+		assert!(summary.is_limited());
+
+		let record = AccountPoolRecord {
+			email: Some(String::from("limited@example.com")),
+			disabled: false,
+			cooldown_until_unix_epoch: None,
+			cooldown_until: None,
+			auth_mode: Some(String::from("chatgpt")),
+			openai_api_key: None,
+			tokens: Some(CodexTokenData {
+				email: None,
+				id_token: None,
+				access_token: String::from("access"),
+				refresh_token: String::from("refresh"),
+				account_id: Some(String::from("acct_limited")),
+			}),
+			last_refresh: None,
+		};
+		let login = record
+			.login_from_usage(summary, "not_needed")
+			.expect("limited usage should still produce an account summary");
+
+		assert_eq!(login.summary().status, "usage_limited");
+
+		let available_payload = serde_json::json!({
+			"plan_type": "pro",
+			"rate_limit": {
+				"primary_window": {
+					"used_percent": 40,
+					"limit_window_seconds": 18_000,
+					"reset_at": 1_800_018_000
+				},
+				"secondary_window": {
+					"used_percent": 72,
+					"limit_window_seconds": 604_800,
+					"reset_at": 1_800_604_800
+				}
+			},
+			"credits": {
+				"has_credits": false,
+				"unlimited": false,
+				"balance": "0"
+			},
+			"rate_limit_reached_type": null
+		});
+		let available_summary =
+			codex_accounts::usage_snapshot_from_payload(&available_payload, 1_800_000_000);
+
+		assert_eq!(
+			available_summary.primary.as_ref().map(|window| window.remaining_percent),
+			Some(60)
+		);
+		assert_eq!(
+			available_summary.secondary.as_ref().map(|window| window.remaining_percent),
+			Some(28)
+		);
+		assert!(!available_summary.is_limited());
 	}
 
 	#[test]
@@ -1102,7 +1172,7 @@ mod tests {
 	}
 
 	#[test]
-	fn account_candidate_sort_does_not_penalize_missing_credits() {
+	fn account_candidate_sort_does_not_penalize_zero_credits_when_windows_available() {
 		let mut candidates = [
 			CodexAccountLogin {
 				access_token: String::from("a"),
