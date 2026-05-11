@@ -2139,12 +2139,13 @@ where
 		};
 
 		if !context.dry_run {
-			write_prepare_lifecycle_events(
-				context.tracker,
-				context.project,
-				context.state_store,
-				&issue_run,
-			)?;
+				write_prepare_lifecycle_events(
+					context.tracker,
+					context.project,
+					context.workflow,
+					context.state_store,
+					&issue_run,
+				)?;
 		}
 
 		Ok(Some(issue_run))

@@ -70,6 +70,8 @@ Then keep the body explicit:
   the static site.
 - [`linear-execution-ledger.md`](./linear-execution-ledger.md) defines the versioned
   Linear comment event-ledger schema for low-frequency Decodex lane transitions.
+- [`agent-evidence.md`](./agent-evidence.md) defines the local agent-readable evidence
+  files written under `~/.codex/decodex/agent-evidence/<service-id>/`.
 - [`commit-messages.md`](./commit-messages.md) defines the machine-readable commit-message
   contract for local history.
 - [`installable-agent-policy.md`](./installable-agent-policy.md) defines the boundary

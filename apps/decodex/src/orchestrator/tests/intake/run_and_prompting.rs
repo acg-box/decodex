@@ -526,6 +526,8 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains("Do not browse upstream references"));
 	assert!(instructions.contains("Tracker tool contract"));
 	assert!(instructions.contains("You own issue-scoped tracker writes for `PUB-101`."));
+	assert!(instructions.contains("Decodex already records the run-start Linear ledger"));
+	assert!(!instructions.contains("started work on run"));
 	assert!(
 		instructions.contains("Do not speculate about capabilities you did not directly verify.")
 	);
