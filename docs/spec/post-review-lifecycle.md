@@ -65,6 +65,29 @@ In the current runtime, the retained lane persists its validated review handoff 
 
 If these signals disagree and the disagreement cannot be resolved without guessing operator intent, the runtime must use `manual_intervention_required`.
 
+## Explicit handoff recovery
+
+`missing_review_handoff_record` is a fail-closed post-review state. The scheduler must
+not infer a PR lineage from branch names, current heads, PR titles, or Linear comments,
+and `decodex run` must not repair this state automatically.
+
+The supported operator recovery surface is `decodex recover review-handoff`. This is a
+break-glass recovery path for orphaned retained review lanes, not part of the normal
+automation success path.
+
+- `diagnose` is read-only. It reports the project, issue, branch, worktree, local head,
+  active automation label, existing PR URL when present, and the missing marker reason.
+- `rebind` is mutating and requires an explicit issue identifier plus PR URL. It must
+  validate the configured project, tracker issue, success-state compatibility, active
+  automation ownership, retained worktree branch, clean worktree, PR repository, PR base,
+  PR head branch, PR head SHA, and open non-draft PR state before writing markers.
+- A successful rebind writes the same runtime DB handoff and orchestration marker shapes
+  as normal `issue_review_handoff` needs, and records a `review_handoff_rebind` audit
+  event. It does not land the PR, queue follow-up work, or substitute for healthy lanes'
+  normal `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")`
+  path. If any audit write fails after marker creation, the command must clear the new
+  markers and report failure instead of leaving a silently rebound lane.
+
 ## Phase model
 
 The post-`In Review` lifecycle is expressed in lane phases. These phases refine, but do not replace, the owned-lane action classes.
