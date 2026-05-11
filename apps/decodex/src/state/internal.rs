@@ -448,6 +448,32 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn delete_review_marker_identity(
+		&mut self,
+		project_id: &str,
+		issue_id: &str,
+		branch_name: &str,
+		run_id: &str,
+		attempt_number: i64,
+	) -> Result<()> {
+		let transaction = self.connection.transaction()?;
+
+		transaction.execute(
+			"DELETE FROM review_handoffs
+			 WHERE project_id = ?1 AND issue_id = ?2 AND branch_name = ?3",
+			params![project_id, issue_id, branch_name],
+		)?;
+		transaction.execute(
+			"DELETE FROM review_orchestrations
+			 WHERE project_id = ?1 AND issue_id = ?2 AND branch_name = ?3
+			   AND run_id = ?4 AND attempt_number = ?5",
+			params![project_id, issue_id, branch_name, run_id, attempt_number],
+		)?;
+		transaction.commit()?;
+
+		Ok(())
+	}
+
 	fn load_projects(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT service_id, config_path, repo_root, worktree_root, workflow_path, \
