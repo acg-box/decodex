@@ -249,7 +249,9 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 			assert!(!response.contains("Command Brief"));
 			assert!(!response.contains("Intake Pressure"));
 			assert!(!response.contains("Landing Readiness"));
+
 			assert_dashboard_html_control_surface(response.as_str());
+
 			assert!(!response.contains("Last updated: none"));
 			assert!(!response.contains("Auto-refresh"));
 			assert!(!response.contains("<h2>Project Scope</h2>"));
@@ -696,6 +698,7 @@ fn operator_dashboard_websocket_interrupt_control_stops_active_run_process() {
 			&worktree_path.display().to_string(),
 		)
 		.expect("worktree should record");
+
 	state::write_run_operation_marker_for_process(
 		&worktree_path,
 		"run-1",
@@ -704,6 +707,7 @@ fn operator_dashboard_websocket_interrupt_control_stops_active_run_process() {
 		RUN_OPERATION_AGENT_RUN,
 	)
 	.expect("run operation marker should write");
+
 	interrupter_calls
 		.lock()
 		.expect("dashboard run interrupter calls should not be poisoned")
@@ -732,6 +736,7 @@ fn operator_dashboard_websocket_interrupt_control_stops_active_run_process() {
 		config.service_id(),
 		issue.id,
 	);
+
 	client
 		.write_all(&websocket_client_text_frame(&interrupt_message))
 		.expect("client should send interrupt");

@@ -1,6 +1,7 @@
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use sha1::{Digest as _, Sha1};
+use libc::SIGTERM;
 
 #[cfg(test)]
 type DashboardRunInterrupterForTest = fn(u32) -> Result<()>;
@@ -932,6 +933,7 @@ fn interrupt_dashboard_run(
 	let run_attempt = state_store
 		.run_attempt(run_id)?
 		.ok_or_else(|| eyre::eyre!("Decodex run `{run_id}` is not recorded."))?;
+
 	if run_attempt.issue_id() != issue_id {
 		eyre::bail!(
 			"Decodex run `{run_id}` belongs to issue `{}`, not `{issue_id}`.",
@@ -948,6 +950,7 @@ fn interrupt_dashboard_run(
 	let worktree = state_store
 		.worktree_for_issue(issue_id)?
 		.ok_or_else(|| eyre::eyre!("Issue `{issue_id}` has no recorded worktree."))?;
+
 	if worktree.project_id() != project_id {
 		eyre::bail!(
 			"Issue `{issue_id}` belongs to project `{}`, not `{project_id}`.",
@@ -957,14 +960,17 @@ fn interrupt_dashboard_run(
 
 	let marker = state::read_run_activity_marker_snapshot(worktree.worktree_path())?
 		.ok_or_else(|| eyre::eyre!("Run `{run_id}` has no activity marker."))?;
+
 	if marker.run_id() != run_id || marker.attempt_number() != run_attempt.attempt_number() {
 		eyre::bail!("Run `{run_id}` activity marker does not match the active attempt.");
 	}
+
 	let process_id = marker
 		.process_id()
 		.ok_or_else(|| eyre::eyre!("Run `{run_id}` has no recorded process id."))?;
 
 	interrupt_dashboard_process(process_id)?;
+
 	state_store.update_run_status(run_id, "interrupted")?;
 	state_store.clear_lease(issue_id)?;
 
@@ -983,19 +989,21 @@ fn interrupt_dashboard_process(process_id: u32) -> Result<()> {
 	if process_id == process::id() {
 		eyre::bail!("Refusing to stop the Decodex control-plane process.");
 	}
+
 	let process_id = pid_t::try_from(process_id)
 		.map_err(|error| eyre::eyre!("Run process id is out of range: {error}"))?;
+
 	if process_id <= 0 {
 		eyre::bail!("Run process id must be positive.");
 	}
 
-	let result = unsafe { libc::kill(process_id, libc::SIGTERM) };
+	let result = unsafe { libc::kill(process_id, SIGTERM) };
+
 	if result == 0 {
 		return Ok(());
 	}
 
-	let error = std::io::Error::last_os_error();
-	eyre::bail!("Failed to stop run process `{process_id}`: {error}");
+	eyre::bail!("Failed to stop run process `{process_id}`.");
 }
 
 #[cfg(test)]
