@@ -30,12 +30,14 @@ Decodex currently runs as a local, single-machine control plane:
 - The project-owned `WORKFLOW.md` remains the execution-policy contract for that
   registered repo.
 
-Project registration is not service intake. `Projects` may show multiple enabled
-projects at once, but a service is only eligible to intake Linear issues labeled with
-its matching `decodex:queued:<service-id>` label. For example, a Decodex-only run
-intakes issues labeled `decodex:queued:decodex`; `rsnap` can stay enabled in
-`Projects`, and issues labeled `decodex:queued:rsnap` remain rsnap intake rather than
-Decodex intake. The pilot runbook owns enqueue and run steps.
+Project registration is not service intake. The `Projects` dashboard section may show
+multiple enabled projects with visible work at once, and its filter can reveal the full
+registered-project table, but a service is only eligible to intake
+Linear issues labeled with its matching `decodex:queued:<service-id>` label. For
+example, a Decodex-only run intakes issues labeled `decodex:queued:decodex`; `rsnap`
+can stay enabled in the full project registry, and issues labeled `decodex:queued:rsnap`
+remain rsnap intake rather than Decodex intake. The pilot runbook owns enqueue and
+run steps.
 
 When `decodex run --dry-run` or the status output has no eligible intake candidate,
 the operator hint points to the short checklist: `Todo`, the service-scoped
@@ -78,31 +80,39 @@ directory does not, by itself, mean an active lane is still running; the owning
 section says whether the path belongs to an active lease, retained review/landing
 lane, queued attention state, or cleanup/recovery inbox.
 
-`Projects` is the registered-project overview for this local installation. Its rows
-come from project registrations and per-project runtime snapshot state stored in
-`~/.codex/decodex/runtime.sqlite3`; it is not a repository discovery scan, Codex
-conversation-history scan, or repo-local config search. If the view is empty,
-Decodex has no registered project rows to summarize yet. If it is idle or
-capacity-waiting, the registered projects exist but currently have no local lane ready
-to run or are waiting on local capacity. Neither state is, by itself, evidence that
-the Linear tracker or GitHub connector failed; confirm the central project registry
-and service queue label before treating it as a connector problem.
+`Projects` is its own dashboard section. It renders a single fleet table for this local
+installation, with a section-level filter icon that switches between projects with
+visible work and the full registered-project registry. Rows come from project
+registrations and per-project runtime snapshot state stored in
+`~/.codex/decodex/runtime.sqlite3`; the section is not a repository discovery scan,
+Codex conversation-history scan, or repo-local config search. The table columns are
+project identity, location, activity, and `Work` as `running/waiting/attention`. The
+location column displays a compact path with the repo directory emphasized and keeps
+the full path in hover text; the location eye toggles paths between visible paths and
+`-`. Activity also shows `-` when no activity timestamp is reported. By default, the
+filtered view shows only projects with visible local work, warnings, or connector
+attention. If the filtered view is empty, registered projects exist but currently have
+no visible local work. Neither
+state is, by itself, evidence that the
+Linear tracker or GitHub connector failed; confirm the central project registry and
+service queue label before treating it as a connector problem.
 
 The browser dashboard reads the complete published state from `GET /state` and may
 also keep a local WebSocket open at `GET /dashboard/control`. `/state` remains the
 authoritative reconciliation snapshot; the WebSocket pushes Decodex-owned snapshot
-and active-lane activity updates sooner than the polling interval, and accepts a
-small local dashboard control protocol. Browser-originated `subscribe` / `focus`
-messages scope live active-lane updates for that socket. `pauseProject` and
-`resumeProject` use the existing local project registry enabled flag, and `retryRun`
-starts the existing local `decodex run <issue>` path for an explicit operator retry.
-`ack` is dashboard-local acknowledgement only. The socket is not a browser connection
-to Codex app-server, GitHub, or Linear, and it does not make high-frequency protocol
-activity durable outside the local operator surface.
+and active-lane activity updates sooner than the polling interval, and accepts the
+local dashboard control protocol. The current browser UI keeps live updates unscoped
+and exposes only explicit lane retry controls; project watch and pause/resume controls
+are intentionally not shown. `retryRun` starts the existing local `decodex run
+<issue>` path for an explicit operator retry. `ack` is dashboard-local acknowledgement
+only. The socket is not a browser connection to Codex app-server, GitHub, or Linear,
+and it does not make high-frequency protocol activity durable outside the local
+operator surface.
 
 | Section | Meaning |
 | --- | --- |
-| `Projects` | Fleet-level project rows. This is the multi-project overview: enabled state, health, connector state, capacity, attention count, retained local worktree count, and last activity. It should not duplicate per-lane details already shown below. |
+| `Accounts` | Codex account pool and usage table. Account identity can be obscured from the `Account` column header eye without changing the underlying snapshot. |
+| `Projects` | Fleet-level project table. The section-level filter toggles between active project work and the full registry. Location is its own compact path column and can be obscured from the location header eye. `Activity` shows a relative timestamp or `-`; `Work` is `running/waiting/attention`. It should not duplicate per-lane details already shown below. |
 | `Running Lanes` | Active leased or live-executing issue lanes. A lane here is currently owned by this local control plane, or a live process/thread/protocol marker still explains active execution even when the queue lease is not held. It shows issue identity, phase, operation, attempt, queue lease state, execution liveness, thread/protocol status, child-agent activity when captured, timing, branch, and worktree. |
 | `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after retries, the candidate is partial retained progress and not just a generic retry-budget hold. Running lanes are not repeated as normal intake work. |
 | `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. |
