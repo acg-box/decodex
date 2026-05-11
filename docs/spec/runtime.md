@@ -180,11 +180,13 @@ At the start of a normal run, the coding agent should:
 
 1. Acquire the local lease.
 2. Transition the issue to `In Progress`.
-3. Post the applicable structured run-start comment.
+3. Post the applicable structured `run_started` comment.
 
-Run-start, lease, and worktree-preparation comments are Linear execution ledger records.
-Their record envelope, event type, required fields, idempotency key, and
-repository-relative `worktree_path` rules are defined by
+The run-start comment is one Linear execution ledger record for new runs. It carries
+the branch, repository-relative worktree path, current commit, transport, run id, and
+attempt number instead of emitting separate intake, lease, worktree-preparation, and
+agent-start comments. Its record envelope, event type, required fields, idempotency
+key, and repository-relative `worktree_path` rules are defined by
 [`linear-execution-ledger.md`](./linear-execution-ledger.md).
 
 ### Completion disposition
