@@ -5,11 +5,11 @@ use std::{
 	env,
 	error::Error,
 	fmt::{self, Display, Formatter},
-	fs::{self, File},
+	fs::{self, File, OpenOptions},
 	io::{ErrorKind, Read, Write},
 	net::{SocketAddr, TcpListener, TcpStream},
 	path::{Path, PathBuf},
-	process::{Child, Command, ExitStatus, Stdio},
+	process::{self, Child, Command, ExitStatus, Stdio},
 	slice,
 	sync::{
 		Arc, Mutex,
@@ -56,6 +56,8 @@ include!("orchestrator/git_ops.rs");
 include!("orchestrator/status.rs");
 
 include!("orchestrator/selection.rs");
+
+include!("orchestrator/agent_evidence.rs");
 
 pub(crate) const DEFAULT_STATUS_RUN_LIMIT: usize = 10;
 pub(crate) const DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT: usize = 25;
