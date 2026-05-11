@@ -149,14 +149,14 @@ function account({
 function mockAccounts() {
 	return [
 		account({
-			email: "primary@example.test",
+			email: "mock-primary@decodex.test",
 			fingerprint: "...acct01",
 			primary: 96,
 			secondary: 92,
 			selected: true,
 		}),
 		account({
-			email: "weekly-depleted@example.test",
+			email: "mock-weekly-limited@decodex.test",
 			fingerprint: "...acct02",
 			status: "usage_limited",
 			primary: 100,
@@ -165,7 +165,7 @@ function mockAccounts() {
 			creditsHasCredits: false,
 		}),
 		account({
-			email: "nightly@example.test",
+			email: "mock-nightly@decodex.test",
 			fingerprint: "...acct03",
 			primary: 44,
 			secondary: 78,
@@ -342,7 +342,6 @@ function queuedCandidates() {
 			classification: "blocked",
 			reason: "issue_needs_attention",
 			attention: {
-				summary: "App-server thread ended with systemError.",
 				run_id: "xy-452-attempt-2-mock",
 				attempt_number: 2,
 				current_operation: "agent_run",
@@ -370,7 +369,7 @@ function postReviewLanes() {
 			branch_name: "xy/xy-460-ready",
 			worktree_path: "/Users/x/code/y/hack-ink/decodex/.worktrees/XY-460",
 			classification: "ready_to_land",
-			reason: "Approvals and required checks are complete.",
+			reason: "",
 			pr_url: "https://github.com/hack-ink/decodex/pull/460",
 			pr_state: "OPEN",
 			review_decision: "APPROVED",
@@ -385,7 +384,7 @@ function postReviewLanes() {
 			branch_name: "xy/xy-461-review-wait",
 			worktree_path: "/Users/x/code/y/hack-ink/decodex/.worktrees/XY-461",
 			classification: "wait_for_review",
-			reason: "External review request is pending.",
+			reason: "",
 			pr_url: "https://github.com/hack-ink/decodex/pull/461",
 			pr_state: "OPEN",
 			review_decision: "REVIEW_REQUIRED",
@@ -400,7 +399,7 @@ function postReviewLanes() {
 			branch_name: "xy/xy-462-closeout",
 			worktree_path: "/Users/x/code/y/hack-ink/decodex/.worktrees/XY-462",
 			classification: "closeout_blocked",
-			reason: "Merged PR is visible but tracker closeout needs operator attention.",
+			reason: "",
 			pr_url: "https://github.com/hack-ink/decodex/pull/462",
 			pr_state: "MERGED",
 			review_decision: "APPROVED",
