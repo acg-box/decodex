@@ -95,10 +95,10 @@ impl<'a> TrackerToolBridge<'a> {
 	pub(super) fn comment_tool_specs(&self) -> Vec<DynamicToolSpec> {
 		vec![DynamicToolSpec::new(
 			ISSUE_COMMENT_TOOL_NAME,
-			"Add a comment to the currently leased issue.",
+			"Add an exceptional human-readable comment to the currently leased issue for manual-attention blockers or explicit collaboration notes. Use progress checkpoints for routine progress.",
 			serde_json::json!({
-				"type": "object",
-				"properties": {
+					"type": "object",
+					"properties": {
 					"issue_id": { "type": "string" },
 					"issue_identifier": { "type": "string" },
 					"body": { "type": "string" }
