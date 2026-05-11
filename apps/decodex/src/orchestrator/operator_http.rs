@@ -1,15 +1,24 @@
+use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use sha1::{Digest as _, Sha1};
-use base64::engine::general_purpose::STANDARD;
+use libc::SIGTERM;
 
 #[cfg(test)]
-type DashboardRetryLauncherForTest = fn(&Path, &str) -> Result<u32>;
+type DashboardRunInterrupterForTest = fn(u32) -> Result<()>;
 
 const OPERATOR_DASHBOARD_HTML: &str =
 	include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/operator_dashboard.html"));
+const OPERATOR_DASHBOARD_ICON_PNG: &[u8] =
+	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/public/assets/icon.png"));
+const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
+	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/public/assets/logo.ico"));
+const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] = include_bytes!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../site/public/assets/logo-touch.png"
+));
 
 #[cfg(test)]
-static DASHBOARD_RETRY_LAUNCHER_FOR_TEST: Mutex<Option<DashboardRetryLauncherForTest>> =
+static DASHBOARD_RUN_INTERRUPTER_FOR_TEST: Mutex<Option<DashboardRunInterrupterForTest>> =
 	Mutex::new(None);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -22,6 +31,9 @@ enum OperatorSnapshotReadiness {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OperatorRequestRoute {
 	Dashboard,
+	DashboardIconPng,
+	DashboardLogoIco,
+	DashboardLogoTouchPng,
 	DashboardWs,
 	Live,
 	Ready,
@@ -123,15 +135,15 @@ struct DashboardRunActivityEvent {
 }
 
 #[cfg(test)]
-struct DashboardRetryLauncherGuardForTest {
-	previous: Option<DashboardRetryLauncherForTest>,
+struct DashboardRunInterrupterGuardForTest {
+	previous: Option<DashboardRunInterrupterForTest>,
 }
 #[cfg(test)]
-impl Drop for DashboardRetryLauncherGuardForTest {
+impl Drop for DashboardRunInterrupterGuardForTest {
 	fn drop(&mut self) {
-		let mut slot = DASHBOARD_RETRY_LAUNCHER_FOR_TEST
+		let mut slot = DASHBOARD_RUN_INTERRUPTER_FOR_TEST
 			.lock()
-			.expect("dashboard retry launcher test hook should not be poisoned");
+			.expect("dashboard run interrupter test hook should not be poisoned");
 
 		*slot = self.previous.take();
 	}
@@ -212,15 +224,11 @@ fn handle_operator_state_endpoint_connection(
 	}
 
 	let response = match route {
-		OperatorRequestRoute::Dashboard => {
-			build_operator_state_http_response_for_route(
-				route,
-				None,
-				None,
-				OperatorSnapshotReadiness::Ready,
-			)
-		},
-		OperatorRequestRoute::Live => {
+		OperatorRequestRoute::Dashboard
+		| OperatorRequestRoute::DashboardIconPng
+		| OperatorRequestRoute::DashboardLogoIco
+		| OperatorRequestRoute::DashboardLogoTouchPng
+		| OperatorRequestRoute::Live => {
 			build_operator_state_http_response_for_route(
 				route,
 				None,
@@ -592,11 +600,10 @@ fn dashboard_control_ready_payload(subscription: &DashboardClientSubscription) -
 			"clearFocus",
 			"pauseProject",
 			"resumeProject",
-			"retryRun",
+			"interruptRun",
 			"ack"
 		],
 		"subscription": dashboard_subscription_payload(subscription),
-		"retryTransport": "local-decodex-run",
 	})
 }
 
@@ -668,8 +675,8 @@ fn handle_dashboard_control_action(
 			dashboard_project_enabled_control_ack(session, state_store, message, action, false),
 		"resume" | "resumeProject" =>
 			dashboard_project_enabled_control_ack(session, state_store, message, action, true),
-		"retry" | "retryRun" =>
-			dashboard_retry_control_ack(session, state_store, message, action),
+		"interrupt" | "interruptRun" =>
+			dashboard_interrupt_control_ack(session, state_store, message, action),
 		"ack" | "ackNotice" => dashboard_control_ack_for_message(
 			session,
 			message,
@@ -753,7 +760,7 @@ fn dashboard_project_enabled_control_ack(
 	})
 }
 
-fn dashboard_retry_control_ack(
+fn dashboard_interrupt_control_ack(
 	session: &DashboardWebSocketSession,
 	state_store: &StateStore,
 	message: &DashboardClientMessage,
@@ -768,24 +775,37 @@ fn dashboard_retry_control_ack(
 			action,
 			accepted: false,
 			status: "missing_issue",
-			message: "Retry requires an issue id.",
+			message: "Stop requires an issue id.",
 			project_id: Some(project_id),
 			issue_id: message.issue_id.as_deref(),
 			run_id: message.run_id.as_deref(),
 			subscription: Some(&session.subscription),
 		});
 	};
-
-	match spawn_dashboard_retry_run(state_store, project_id, issue_id) {
-		Ok(child_id) => dashboard_control_ack_value(DashboardControlAck {
+	let Some(run_id) = dashboard_required_run_id(message) else {
+		return dashboard_control_ack_value(DashboardControlAck {
 			request_id: message.request_id.as_deref(),
 			action,
-			accepted: true,
-			status: "retry_started",
-			message: &format!("Started `decodex run {issue_id}` as process {child_id}."),
+			accepted: false,
+			status: "missing_run",
+			message: "Stop requires a run id.",
 			project_id: Some(project_id),
 			issue_id: Some(issue_id),
 			run_id: message.run_id.as_deref(),
+			subscription: Some(&session.subscription),
+		});
+	};
+
+	match interrupt_dashboard_run(state_store, project_id, issue_id, run_id) {
+		Ok(process_id) => dashboard_control_ack_value(DashboardControlAck {
+			request_id: message.request_id.as_deref(),
+			action,
+			accepted: true,
+			status: "interrupted",
+			message: &format!("Stopped run `{run_id}` by signaling process {process_id}."),
+			project_id: Some(project_id),
+			issue_id: Some(issue_id),
+			run_id: Some(run_id),
 			subscription: Some(&session.subscription),
 		}),
 		Err(error) => dashboard_control_ack_value(DashboardControlAck {
@@ -796,7 +816,7 @@ fn dashboard_retry_control_ack(
 			message: &error.to_string(),
 			project_id: Some(project_id),
 			issue_id: Some(issue_id),
-			run_id: message.run_id.as_deref(),
+			run_id: Some(run_id),
 			subscription: Some(&session.subscription),
 		}),
 	}
@@ -893,6 +913,10 @@ fn dashboard_required_issue_id(message: &DashboardClientMessage) -> Option<&str>
 	message.issue_id.as_deref().map(str::trim).filter(|value| !value.is_empty())
 }
 
+fn dashboard_required_run_id(message: &DashboardClientMessage) -> Option<&str> {
+	message.run_id.as_deref().map(str::trim).filter(|value| !value.is_empty())
+}
+
 fn dashboard_clean_scope_value(value: Option<&str>) -> Option<String> {
 	value
 		.map(str::trim)
@@ -900,56 +924,98 @@ fn dashboard_clean_scope_value(value: Option<&str>) -> Option<String> {
 		.map(str::to_owned)
 }
 
-fn spawn_dashboard_retry_run(
+fn interrupt_dashboard_run(
 	state_store: &StateStore,
 	project_id: &str,
 	issue_id: &str,
+	run_id: &str,
 ) -> Result<u32> {
-	let registration = state_store
-		.list_projects()?
-		.into_iter()
-		.find(|registration| registration.service_id() == project_id)
-		.ok_or_else(|| eyre::eyre!("Decodex project `{project_id}` is not registered."))?;
+	let run_attempt = state_store
+		.run_attempt(run_id)?
+		.ok_or_else(|| eyre::eyre!("Decodex run `{run_id}` is not recorded."))?;
 
-	#[cfg(test)]
-	if let Some(launcher) = *DASHBOARD_RETRY_LAUNCHER_FOR_TEST
-		.lock()
-		.expect("dashboard retry launcher test hook should not be poisoned")
-	{
-		return launcher(registration.config_path(), issue_id);
+	if run_attempt.issue_id() != issue_id {
+		eyre::bail!(
+			"Decodex run `{run_id}` belongs to issue `{}`, not `{issue_id}`.",
+			run_attempt.issue_id()
+		);
+	}
+	if !matches!(run_attempt.status(), "starting" | "running") {
+		eyre::bail!(
+			"Decodex run `{run_id}` is `{}` and cannot be stopped.",
+			run_attempt.status()
+		);
 	}
 
-	let mut child = Command::new(env::current_exe()?)
-		.arg("-c")
-		.arg(registration.config_path())
-		.arg("run")
-		.arg(issue_id)
-		.stdin(Stdio::null())
-		.stdout(Stdio::null())
-		.stderr(Stdio::null())
-		.spawn()
-		.map_err(|error| eyre::eyre!("Failed to start dashboard retry run: {error}"))?;
-	let child_id = child.id();
+	let worktree = state_store
+		.worktree_for_issue(issue_id)?
+		.ok_or_else(|| eyre::eyre!("Issue `{issue_id}` has no recorded worktree."))?;
 
-	thread::spawn(move || {
-		if let Err(error) = child.wait() {
-			tracing::warn!(?error, "Dashboard retry child wait failed.");
-		}
-	});
+	if worktree.project_id() != project_id {
+		eyre::bail!(
+			"Issue `{issue_id}` belongs to project `{}`, not `{project_id}`.",
+			worktree.project_id()
+		);
+	}
 
-	Ok(child_id)
+	let marker = state::read_run_activity_marker_snapshot(worktree.worktree_path())?
+		.ok_or_else(|| eyre::eyre!("Run `{run_id}` has no activity marker."))?;
+
+	if marker.run_id() != run_id || marker.attempt_number() != run_attempt.attempt_number() {
+		eyre::bail!("Run `{run_id}` activity marker does not match the active attempt.");
+	}
+
+	let process_id = marker
+		.process_id()
+		.ok_or_else(|| eyre::eyre!("Run `{run_id}` has no recorded process id."))?;
+
+	interrupt_dashboard_process(process_id)?;
+
+	state_store.update_run_status(run_id, "interrupted")?;
+	state_store.clear_lease(issue_id)?;
+
+	Ok(process_id)
+}
+
+fn interrupt_dashboard_process(process_id: u32) -> Result<()> {
+	#[cfg(test)]
+	if let Some(interrupter) = *DASHBOARD_RUN_INTERRUPTER_FOR_TEST
+		.lock()
+		.expect("dashboard run interrupter test hook should not be poisoned")
+	{
+		return interrupter(process_id);
+	}
+
+	if process_id == process::id() {
+		eyre::bail!("Refusing to stop the Decodex control-plane process.");
+	}
+
+	let process_id = pid_t::try_from(process_id)
+		.map_err(|error| eyre::eyre!("Run process id is out of range: {error}"))?;
+
+	if process_id <= 0 {
+		eyre::bail!("Run process id must be positive.");
+	}
+
+	let result = unsafe { libc::kill(process_id, SIGTERM) };
+
+	if result == 0 {
+		return Ok(());
+	}
+
+	eyre::bail!("Failed to stop run process `{process_id}`.");
 }
 
 #[cfg(test)]
-fn install_dashboard_retry_launcher_for_test(
-	launcher: DashboardRetryLauncherForTest,
-) -> DashboardRetryLauncherGuardForTest {
-	let mut slot = DASHBOARD_RETRY_LAUNCHER_FOR_TEST
+fn install_dashboard_run_interrupter_for_test(
+	interrupter: DashboardRunInterrupterForTest,
+) -> DashboardRunInterrupterGuardForTest {
+	let mut slot = DASHBOARD_RUN_INTERRUPTER_FOR_TEST
 		.lock()
-		.expect("dashboard retry launcher test hook should not be poisoned");
-	let previous = slot.replace(launcher);
+		.expect("dashboard run interrupter test hook should not be poisoned");
+	let previous = slot.replace(interrupter);
 
-	DashboardRetryLauncherGuardForTest { previous }
+	DashboardRunInterrupterGuardForTest { previous }
 }
 
 fn dashboard_event_for_subscription(
@@ -1158,6 +1224,15 @@ fn build_operator_state_http_response_for_route(
 		OperatorRequestRoute::Dashboard => {
 			http_response_bytes("200 OK", "text/html; charset=utf-8", OPERATOR_DASHBOARD_HTML.as_bytes())
 		},
+		OperatorRequestRoute::DashboardIconPng => {
+			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG)
+		},
+		OperatorRequestRoute::DashboardLogoIco => {
+			http_response_bytes("200 OK", "image/x-icon", OPERATOR_DASHBOARD_LOGO_ICO)
+		},
+		OperatorRequestRoute::DashboardLogoTouchPng => {
+			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG)
+		},
 		OperatorRequestRoute::DashboardWs => websocket_upgrade_required_response(),
 		OperatorRequestRoute::Live => {
 			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok")
@@ -1238,6 +1313,9 @@ fn parse_operator_state_request_route(
 	match normalized_path {
 		OPERATOR_DASHBOARD_ENDPOINT_PATH | OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH =>
 			Ok(OperatorRequestRoute::Dashboard),
+		"/assets/icon.png" => Ok(OperatorRequestRoute::DashboardIconPng),
+		"/assets/logo.ico" => Ok(OperatorRequestRoute::DashboardLogoIco),
+		"/assets/logo-touch.png" => Ok(OperatorRequestRoute::DashboardLogoTouchPng),
 		OPERATOR_DASHBOARD_WS_ENDPOINT_PATH => Ok(OperatorRequestRoute::DashboardWs),
 		OPERATOR_LIVE_ENDPOINT_PATH => Ok(OperatorRequestRoute::Live),
 		OPERATOR_READY_ENDPOINT_PATH => Ok(OperatorRequestRoute::Ready),
