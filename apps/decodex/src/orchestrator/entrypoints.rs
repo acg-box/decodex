@@ -198,6 +198,131 @@ pub(crate) fn print_status(
 	Ok(())
 }
 
+pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
+	if request.limit == 0 {
+		eyre::bail!("`diagnose --limit` must be greater than zero.");
+	}
+
+	let state_store = runtime::open_runtime_store()?;
+	let Some(config_path) = resolve_config_path(request.config_path, &state_store)? else {
+		eyre::bail!(
+			"No Decodex project config found. Pass --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
+		);
+	};
+	let config = ServiceConfig::from_path(&config_path)?;
+	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
+
+	runtime::register_project_config(&state_store, &config_path, true)?;
+
+	let mut snapshot = match config.tracker().resolve_api_key().and_then(LinearClient::new) {
+		Ok(tracker) => build_diagnose_live_snapshot(
+			&tracker,
+			&config,
+			&workflow,
+			&state_store,
+			request.limit,
+		),
+		Err(error) => {
+			let _ = error;
+
+			tracing::warn!(
+				project_id = config.service_id(),
+				"Skipped live diagnose observer because tracker credentials were unavailable."
+			);
+
+			let mut snapshot =
+				build_operator_status_snapshot(&config, &state_store, request.limit)?;
+
+			add_operator_snapshot_warning(
+				&mut snapshot,
+				"diagnose_tracker_observer_unavailable",
+			);
+
+			Ok(snapshot)
+		},
+	}?;
+
+	refresh_operator_project_summary(&mut snapshot);
+
+	let results = write_agent_evidence_snapshot(
+		&snapshot,
+		AgentEvidenceSource::DiagnoseCommand,
+	)?;
+	let result = results
+		.into_iter()
+		.find(|result| result.project_id == config.service_id())
+		.ok_or_else(|| {
+			eyre::eyre!(
+				"Agent evidence writer did not produce an index for project `{}`.",
+				config.service_id()
+			)
+		})?;
+
+	if request.json {
+		println!("{}", serde_json::to_string_pretty(&result.handoff_index)?);
+	} else {
+		println!("{}", render_agent_evidence_write_result(&result));
+	}
+
+	Ok(())
+}
+
+fn build_diagnose_live_snapshot<T>(
+	tracker: &T,
+	config: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	limit: usize,
+) -> Result<OperatorStatusSnapshot>
+where
+	T: IssueTracker,
+{
+	let mut snapshot_warnings = Vec::new();
+
+	match recover_runtime_state_from_tracker_and_worktrees(tracker, config, workflow, state_store) {
+		Ok(recovered_state) =>
+			hydrate_status_snapshot_state(config, state_store, recovered_state)?,
+		Err(error) => {
+			let _ = error;
+
+			tracing::warn!(
+				project_id = config.service_id(),
+				"Skipped runtime recovery for diagnose; sensitive runtime details were withheld."
+			);
+
+			snapshot_warnings.push("diagnose_runtime_recovery_unavailable");
+		},
+	}
+
+	let mut snapshot = match build_live_operator_status_snapshot(
+		tracker,
+		config,
+		workflow,
+		state_store,
+		limit,
+	) {
+		Ok(snapshot) => snapshot,
+		Err(error) => {
+			let _ = error;
+
+			tracing::warn!(
+				project_id = config.service_id(),
+				"Fell back to local diagnose snapshot; sensitive runtime details were withheld."
+			);
+
+			snapshot_warnings.push("diagnose_live_observer_unavailable");
+
+			build_operator_status_snapshot(config, state_store, limit)?
+		},
+	};
+
+	for warning in snapshot_warnings {
+		add_operator_snapshot_warning(&mut snapshot, warning);
+	}
+
+	Ok(snapshot)
+}
+
 fn run_control_plane_tick(
 	state_store: &StateStore,
 	project_runtimes: &mut HashMap<String, ProjectDaemonRuntime>,
@@ -417,13 +542,17 @@ fn control_plane_project_local_snapshot(
 			snapshot_warnings,
 			&active_connector_backoff_statuses(project.service_id(), runtime),
 		) {
-			Ok(snapshot) => ControlPlaneProjectTick {
-				project_status: snapshot
-					.projects
-					.first()
-					.cloned()
-					.map(|status| complete_project_status(project, status)),
-				snapshot: Some(snapshot),
+			Ok(snapshot) => {
+				write_agent_evidence_best_effort(&snapshot, AgentEvidenceSource::ServeTick);
+
+				ControlPlaneProjectTick {
+					project_status: snapshot
+						.projects
+						.first()
+						.cloned()
+						.map(|status| complete_project_status(project, status)),
+					snapshot: Some(snapshot),
+				}
 			},
 			Err(error) => {
 				let _ = error;
@@ -509,6 +638,8 @@ fn control_plane_project_snapshot(
 	) {
 		Ok(snapshot) => {
 			runtime.tracker_backoff = None;
+
+			write_agent_evidence_best_effort(&snapshot, AgentEvidenceSource::ServeTick);
 
 			ControlPlaneProjectTick {
 				project_status: snapshot
