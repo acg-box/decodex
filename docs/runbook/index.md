@@ -33,5 +33,8 @@ Question this index answers: "which sequence should I execute?"
 - [`local-github-signal-workflow.md`](./local-github-signal-workflow.md) for collecting
   GitHub change bundles, running Codex editorial analysis, validating signal entries,
   and publishing static site content.
+- [`recover-review-handoff.md`](./recover-review-handoff.md) for diagnosing and
+  explicitly rebinding retained review lanes blocked by a missing runtime DB handoff
+  marker.
 - [`self-dogfood-pilot.md`](./self-dogfood-pilot.md) for the retained-lane pilot run
   against `decodex` itself and the bounded live-operation sequence.
