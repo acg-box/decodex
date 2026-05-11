@@ -208,7 +208,7 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("Queued issue -> reviewed change -> landed branch"));
 		assert!(response.contains("Running Lanes"));
 		assert!(response.contains("Intake Queue"));
-		assert!(response.contains("At capacity"));
+		assert!(!response.contains("At capacity"));
 		assert!(response.contains("Review &amp; Landing"));
 		assert!(response.contains("Run History"));
 		assert!(response.contains("historyLedgerOutcome"));
@@ -218,16 +218,17 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(response.contains("Lane activity"));
 		assert!(response.contains("agent idle"));
 		assert!(response.contains("Child agent"));
-		assert!(response.contains("Agent now"));
-		assert!(response.contains("Current window"));
-		assert!(response.contains("Peak window"));
+		assert!(response.contains("<span>Activity</span>"));
+		assert!(!response.contains("<span>Agent Now</span>"));
+		assert!(response.contains("current window"));
+		assert!(response.contains("peak window"));
 		assert!(!response.contains("same as current"));
-		assert!(response.contains("Cumulative input"));
+		assert!(response.contains("cumulative input"));
 		assert!(response.contains("Current context window from the latest child-agent event."));
 		assert!(response.contains("Total input tokens processed across child-agent events."));
 		assert!(response.contains("child_agent_activity"));
 		assert!(response.contains("renderChildAgentBreakdown"));
-		assert!(response.contains("Debug details"));
+		assert!(response.contains("Debug Details"));
 		assert!(response.contains("already running"));
 		assert!(!response.contains("running laness"));
 		assert!(!response.contains("active-echo"));
@@ -249,18 +250,9 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("Command Brief"));
 		assert!(!response.contains("Intake Pressure"));
 		assert!(!response.contains("Landing Readiness"));
-		assert!(response.contains("/state"));
-		assert!(response.contains("/readyz"));
-			assert!(response.contains("/dashboard/control"));
-			assert!(response.contains("WebSocket"));
-			assert!(response.contains("applyDashboardRunActivity"));
-			assert!(response.contains("sendDashboardControl"));
-			assert!(!response.contains("data-dashboard-control=\"focusProject\""));
-			assert!(!response.contains("data-dashboard-control=\"focusRun\""));
-			assert!(!response.contains("data-dashboard-control=\"pauseProject\""));
-			assert!(!response.contains("data-dashboard-control=\"resumeProject\""));
-			assert!(response.contains("data-dashboard-control=\"retryRun\""));
-			assert!(response.contains("controlAck"));
+
+		assert_dashboard_html_control_surface(response.as_str());
+
 		assert!(!response.contains("Last updated: none"));
 		assert!(!response.contains("Auto-refresh"));
 		assert!(!response.contains("<h2>Project Scope</h2>"));
@@ -270,6 +262,91 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("Ready probe"));
 		assert!(!response.contains("Live probe"));
 		assert!(!response.contains("/livez"));
+	}
+}
+
+fn assert_dashboard_html_control_surface(response: &str) {
+	for required in [
+		"/state",
+		"/readyz",
+		"/dashboard/control",
+		"WebSocket",
+		"applyDashboardRunActivity",
+		"sendDashboardControl",
+		"data-dashboard-control=\"interruptRun\"",
+		"aria-label=\"Stop this active Decodex work\"",
+		"if (!interruptEnabled) {",
+		"controlAck",
+	] {
+		assert!(response.contains(required), "missing required dashboard control marker `{required}`");
+	}
+	for forbidden in [
+		"data-dashboard-control=\"focusProject\"",
+		"data-dashboard-control=\"focusRun\"",
+		"data-dashboard-control=\"pauseProject\"",
+		"data-dashboard-control=\"resumeProject\"",
+		"data-dashboard-control=\"retryRun\"",
+		">Retry now</button>",
+		">Retry</button>",
+		"run.wait_reason),",
+	] {
+		assert!(
+			!response.contains(forbidden),
+			"unexpected dashboard control marker `{forbidden}`"
+		);
+	}
+}
+
+#[test]
+fn operator_dashboard_uses_decodex_brand_icons() {
+	let response = String::from_utf8(
+		orchestrator::build_operator_state_http_response(
+			format!(
+				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+				orchestrator::OPERATOR_DASHBOARD_ENDPOINT_PATH
+			)
+			.as_bytes(),
+			None,
+			OperatorSnapshotReadiness::SnapshotUnavailable,
+		)
+		.expect("dashboard response should build"),
+	)
+	.expect("dashboard response should be utf-8");
+
+	assert!(response.contains(r#"<link rel="icon" type="image/png" href="/assets/icon.png" />"#));
+	assert!(response.contains(r#"<link rel="icon" href="/assets/logo.ico" />"#));
+	assert!(
+		response.contains(r#"<link rel="apple-touch-icon" sizes="180x180" href="/assets/logo-touch.png" />"#)
+	);
+	assert!(!response.contains("data:image/svg+xml"));
+	assert!(!response.contains("M18 57V23"));
+}
+
+#[test]
+fn operator_state_endpoint_serves_decodex_brand_assets() {
+	for (path, content_type, signature) in [
+		("/assets/icon.png", "image/png", b"\x89PNG\r\n\x1a\n".as_slice()),
+		("/assets/logo-touch.png", "image/png", b"\x89PNG\r\n\x1a\n".as_slice()),
+		("/assets/logo.ico", "image/x-icon", b"\0\0\x01\0".as_slice()),
+	] {
+		let response = orchestrator::build_operator_state_http_response(
+			format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+				.as_bytes(),
+			None,
+			OperatorSnapshotReadiness::SnapshotUnavailable,
+		)
+		.expect("asset response should build");
+		let header_end = response
+			.windows(4)
+			.position(|window| window == b"\r\n\r\n")
+			.expect("response should contain headers");
+		let headers = String::from_utf8(response[..header_end].to_vec())
+			.expect("headers should be utf-8");
+		let body = &response[(header_end + 4)..];
+
+		assert!(headers.starts_with("HTTP/1.1 200 OK\r\n"));
+		assert!(headers.contains(&format!("Content-Type: {content_type}")));
+		assert!(body.starts_with(signature));
 	}
 }
 
@@ -594,33 +671,51 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 }
 
 #[test]
-fn operator_dashboard_websocket_retry_control_uses_registered_project_config() {
+fn operator_dashboard_websocket_interrupt_control_stops_active_run_process() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot::default()));
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
-	let registration = ProjectRegistration::from_config(
-		config.service_id(),
-		&service_config_path(config.repo_root()),
-		&config,
-		true,
-		"test-fingerprint",
-	);
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
 	let dashboard_events = DashboardEventHub::default();
 	let server_snapshot = Arc::clone(&snapshot);
 	let server_state_store = Arc::clone(&state_store);
 	let server_dashboard_events = dashboard_events.clone();
-	let launcher_calls = dashboard_retry_launcher_calls_for_test();
+	let interrupter_calls = dashboard_run_interrupter_calls_for_test();
 
-	state_store.upsert_project(&registration).expect("project should register");
-	launcher_calls
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease(config.service_id(), &issue.id, "run-1", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_operation_marker_for_process(
+		&worktree_path,
+		"run-1",
+		1,
+		4_242,
+		RUN_OPERATION_AGENT_RUN,
+	)
+	.expect("run operation marker should write");
+
+	interrupter_calls
 		.lock()
-		.expect("dashboard retry launcher calls should not be poisoned")
+		.expect("dashboard run interrupter calls should not be poisoned")
 		.clear();
 
-	let _launcher_guard =
-		orchestrator::install_dashboard_retry_launcher_for_test(fake_dashboard_retry_launcher);
+	let _interrupter_guard =
+		orchestrator::install_dashboard_run_interrupter_for_test(fake_dashboard_run_interrupter);
 	let server = thread::spawn(move || {
 		let (stream, _) = listener.accept().expect("listener should accept a connection");
 
@@ -637,35 +732,53 @@ fn operator_dashboard_websocket_retry_control_uses_registered_project_config() {
 
 	assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
 
-	client
-		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"retry-1","action":"retryRun","projectId":"pubfi","issueId":"PUB-101","runId":"run-1"}"#,
-		))
-		.expect("client should send retry");
+	let interrupt_message = format!(
+		r#"{{"type":"control","requestId":"interrupt-1","action":"interruptRun","projectId":"{}","issueId":"{}","runId":"run-1"}}"#,
+		config.service_id(),
+		issue.id,
+	);
 
-	let retry_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
-		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "retry-1"
+	client
+		.write_all(&websocket_client_text_frame(&interrupt_message))
+		.expect("client should send interrupt");
+
+	let interrupt_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "interrupt-1"
 	});
 
-	assert_eq!(retry_ack["payload"]["accepted"], true);
-	assert_eq!(retry_ack["payload"]["status"], "retry_started");
-	assert_eq!(retry_ack["payload"]["projectId"], "pubfi");
-	assert_eq!(retry_ack["payload"]["issueId"], "PUB-101");
-	assert_eq!(retry_ack["payload"]["runId"], "run-1");
+	assert_eq!(interrupt_ack["payload"]["accepted"], true);
+	assert_eq!(interrupt_ack["payload"]["status"], "interrupted");
+	assert_eq!(interrupt_ack["payload"]["projectId"], config.service_id());
+	assert_eq!(interrupt_ack["payload"]["issueId"], issue.id);
+	assert_eq!(interrupt_ack["payload"]["runId"], "run-1");
 	assert!(
-		retry_ack["payload"]["message"]
+		interrupt_ack["payload"]["message"]
 			.as_str()
-			.expect("retry ack message should be text")
+			.expect("interrupt ack message should be text")
 			.contains("process 4242")
 	);
 
-	let calls = launcher_calls
+	let calls = interrupter_calls
 		.lock()
-		.expect("dashboard retry launcher calls should not be poisoned");
+		.expect("dashboard run interrupter calls should not be poisoned");
 
 	assert_eq!(calls.len(), 1);
-	assert_eq!(calls[0].0, service_config_path(config.repo_root()));
-	assert_eq!(calls[0].1, "PUB-101");
+	assert_eq!(calls[0], 4_242);
+	assert_eq!(
+		state_store
+			.run_attempt("run-1")
+			.expect("run lookup should succeed")
+			.expect("run should remain recorded")
+			.status(),
+		"interrupted",
+	);
+	assert!(
+		state_store
+			.lease_for_issue(&issue.id)
+			.expect("lease lookup should succeed")
+			.is_none(),
+		"interrupt should release the queue lease"
+	);
 
 	drop(calls);
 	drop(client);
@@ -675,7 +788,7 @@ fn operator_dashboard_websocket_retry_control_uses_registered_project_config() {
 }
 
 #[test]
-fn operator_dashboard_websocket_retry_control_reports_validation_errors() {
+fn operator_dashboard_websocket_interrupt_control_reports_validation_errors() {
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot::default()));
@@ -715,34 +828,34 @@ fn operator_dashboard_websocket_retry_control_reports_validation_errors() {
 
 	client
 		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"missing-issue","action":"retryRun","projectId":"pubfi"}"#,
+			r#"{"type":"control","requestId":"missing-run","action":"interruptRun","projectId":"pubfi","issueId":"PUB-101"}"#,
 		))
-		.expect("client should send missing-issue control");
+		.expect("client should send missing-run control");
 
-	let missing_issue_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
-		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "missing-issue"
+	let missing_run_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "missing-run"
 	});
 
-	assert_eq!(missing_issue_ack["payload"]["accepted"], false);
-	assert_eq!(missing_issue_ack["payload"]["status"], "missing_issue");
+	assert_eq!(missing_run_ack["payload"]["accepted"], false);
+	assert_eq!(missing_run_ack["payload"]["status"], "missing_run");
 
 	client
 		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"unknown-project","action":"retryRun","projectId":"missing","issueId":"PUB-101"}"#,
+			r#"{"type":"control","requestId":"unknown-run","action":"interruptRun","projectId":"pubfi","issueId":"PUB-101","runId":"missing"}"#,
 		))
-		.expect("client should send unknown-project control");
+		.expect("client should send unknown-run control");
 
-	let unknown_project_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
-		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "unknown-project"
+	let unknown_run_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "unknown-run"
 	});
 
-	assert_eq!(unknown_project_ack["payload"]["accepted"], false);
-	assert_eq!(unknown_project_ack["payload"]["status"], "failed");
+	assert_eq!(unknown_run_ack["payload"]["accepted"], false);
+	assert_eq!(unknown_run_ack["payload"]["status"], "failed");
 	assert!(
-		unknown_project_ack["payload"]["message"]
+		unknown_run_ack["payload"]["message"]
 			.as_str()
-			.expect("retry ack message should be text")
-			.contains("not registered")
+			.expect("interrupt ack message should be text")
+			.contains("not recorded")
 	);
 
 	drop(client);
@@ -846,20 +959,19 @@ fn websocket_client_text_frame(payload: &str) -> Vec<u8> {
 	frame
 }
 
-fn dashboard_retry_launcher_calls_for_test() -> &'static Mutex<Vec<(PathBuf, String)>> {
-	static CALLS: std::sync::OnceLock<Mutex<Vec<(PathBuf, String)>>> =
-		std::sync::OnceLock::new();
+fn dashboard_run_interrupter_calls_for_test() -> &'static Mutex<Vec<u32>> {
+	static CALLS: std::sync::OnceLock<Mutex<Vec<u32>>> = std::sync::OnceLock::new();
 
 	CALLS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-fn fake_dashboard_retry_launcher(config_path: &Path, issue_id: &str) -> Result<u32> {
-	dashboard_retry_launcher_calls_for_test()
+fn fake_dashboard_run_interrupter(process_id: u32) -> Result<()> {
+	dashboard_run_interrupter_calls_for_test()
 		.lock()
-		.expect("dashboard retry launcher calls should not be poisoned")
-		.push((config_path.to_path_buf(), issue_id.to_owned()));
+		.expect("dashboard run interrupter calls should not be poisoned")
+		.push(process_id);
 
-	Ok(4_242)
+	Ok(())
 }
 
 fn read_websocket_json_until(
