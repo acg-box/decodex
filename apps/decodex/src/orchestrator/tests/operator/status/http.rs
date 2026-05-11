@@ -181,7 +181,8 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(response.contains("section-marker section-marker-projects"));
 		assert!(!response.contains("<h2 id=\"projects-title\">Projects</h2>"));
 		assert!(!response.contains("data-fold-key=\"panel:projects\""));
-		assert!(response.contains("<summary><span>All</span>"));
+		assert!(response.contains("<h2>All</h2>"));
+		assert!(response.contains("<div class=\"summary-tools\">"));
 		assert!(response.contains("projectRegistrationCommand"));
 		assert!(
 			response.contains("decodex project add ~/.codex/decodex/projects/<service-id>")
@@ -240,7 +241,7 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(response.contains("animateDetail(details, !details.open)"));
 		assert!(response.contains("width: min(380px, calc(100vw - 36px));"));
 		assert!(response.contains(".notice-item p"));
-		assert!(response.contains("font-size: 13px;"));
+		assert!(response.contains("font-size: var(--type-body);"));
 		assert!(!response.contains(".fold-panel.is-empty .fold-indicator"));
 		assert!(!response.contains("details.classList.contains(\"is-empty\")"));
 		assert!(!response.contains("Operator views"));

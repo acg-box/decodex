@@ -25,6 +25,58 @@ fn operator_dashboard_background_wash_stays_viewport_fixed() {
 }
 
 #[test]
+fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
+	let response = dashboard_response();
+	let section_marker_title = response
+		.split(".section-marker span {")
+		.nth(1)
+		.expect("section marker title style should exist")
+		.split(".section-marker span::before")
+		.next()
+		.expect("section marker title style should end before marker rule");
+	let panel_title = response
+		.split(".panel-head h2 {")
+		.nth(1)
+		.expect("panel title style should exist")
+		.split(".panel:hover .panel-head h2")
+		.next()
+		.expect("panel title style should end before hover rule");
+	let section_marker_bar = response
+		.split(".section-marker span::before {")
+		.nth(1)
+		.expect("section marker bar style should exist")
+		.split(".section-marker-control")
+		.next()
+		.expect("section marker bar style should end before meta rule");
+
+	assert!(response.contains("--type-micro: 9px;"));
+	assert!(response.contains("--type-row-title: 14px;"));
+	assert!(response.contains("--type-card-title: 16px;"));
+	assert!(response.contains("--tracking-caps: 0;"));
+	assert!(response.contains("--space-panel-head-y: 16px;"));
+	assert!(response.contains("--space-row-y: 14px;"));
+	assert!(response.contains("--space-card-y: 18px;"));
+	assert!(response.contains("--space-row-indent: 18px;"));
+	assert!(section_marker_title.contains("font-size: var(--type-meta);"));
+	assert!(section_marker_bar.contains("height: 16px;"));
+	assert!(panel_title.contains("font-size: var(--type-meta);"));
+	assert!(response.contains("padding: var(--space-panel-head-y) 0 var(--space-md);"));
+	assert!(response.contains("padding: var(--space-row-y) 0 var(--space-row-y) var(--space-row-indent);"));
+	assert!(response.contains("padding: var(--space-card-y) 0 var(--space-card-y) var(--space-row-indent);"));
+	assert!(response.contains(".project-title-line strong"));
+	assert!(response.contains(".project-stat-line strong"));
+	assert!(response.contains(".account-row-id strong"));
+	assert!(response.contains(".run-title"));
+	assert!(response.contains("font-size: var(--type-row-title);"));
+	assert!(response.contains("font-size: var(--type-body);"));
+	assert!(response.contains("font-size: var(--type-card-title);"));
+	assert!(!response.contains("font-size: 17px;"));
+	assert!(!response.contains("letter-spacing: 0.14em;"));
+	assert!(!response.contains("padding: 18px 0 18px 18px;"));
+	assert!(!response.contains("padding: 20px 0 12px;"));
+}
+
+#[test]
 fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics() {
 	let response = String::from_utf8(
 		orchestrator::build_operator_state_http_response(
@@ -85,6 +137,10 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("width: var(--child-bucket-value-column);"));
 	assert!(response.contains("runNeedsAttention"));
 	assert!(response.contains("runCountsAsRunning"));
+	assert!(response.contains("runWaitReasonShowsExecutionProgress"));
+	assert!(response.contains("[\"model_execution\", \"tool_execution\", \"protocol_activity\"].includes(run.wait_reason)"));
+	assert!(response.contains("return `Running through ${focus}.`;"));
+	assert!(response.contains("run.wait_reason && !runWaitReasonShowsExecutionProgress(run)"));
 	assert!(response.contains("runOperationRequiresLiveAgent"));
 	assert!(response.contains("runProcessStoppedWithoutAttention"));
 	assert!(response.contains("runStageLabel"));
@@ -174,12 +230,14 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("section-marker section-marker-aftercare"));
 	assert!(response.contains("<span>Control Plane</span>"));
 	assert!(response.contains("<span>Projects</span>"));
+	assert!(response.contains("<p class=\"table-meta\" id=\"projects-meta\"></p>"));
+	assert!(!response.contains("<p>All · Active</p>"));
 	assert!(response.contains("<span>Execution</span>"));
 	assert!(response.contains("<span>Closeout</span>"));
-	assert!(response.contains("<p>Accounts</p>"));
-	assert!(response.contains("All · Active"));
-	assert!(response.contains("Running · Intake"));
-	assert!(response.contains("Review · Recovery · History"));
+	assert!(!response.contains("<p>Accounts</p>"));
+	assert!(!response.contains("All · Active"));
+	assert!(!response.contains("Running · Intake"));
+	assert!(!response.contains("Review · Recovery · History"));
 	assert!(!response.contains("data-fold-key=\"panel:projects\""));
 	assert!(response.contains("panel section-execution\" id=\"active-panel\""));
 	assert!(response.contains("panel section-aftercare\" id=\"review-panel\""));
@@ -248,8 +306,8 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("renderDashboardState(lastDashboardRender);"));
 	assert!(response.contains(".table-meta[data-tone=\"active\"]"));
 	assert!(response.contains(".table-meta[data-tone=\"attention\"]"));
-	assert!(response.contains("font-size: 11px;"));
-	assert!(response.contains("letter-spacing: 0.06em;"));
+	assert!(response.contains("font-size: var(--type-label);"));
+	assert!(response.contains("letter-spacing: var(--tracking-caps);"));
 	assert!(response.contains("text-transform: uppercase;"));
 	assert!(response.contains("setPanelMeta(nodes.accountPoolMeta, meta, activeCount > 0 ? \"active\" : \"\")"));
 	assert!(response.contains("${pluralize(accounts.length, \"account\")} · ${activeCount} active"));
@@ -374,7 +432,7 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	assert!(!response.contains("max-width: 190px;"));
 	assert!(!response.contains("max-width: 142px;"));
 	assert!(response.contains("min-height: 42px;"));
-	assert!(response.contains("padding: 10px 0 10px 18px;"));
+	assert!(response.contains("padding: var(--space-account-row-y) 0 var(--space-account-row-y) var(--space-row-indent);"));
 	assert!(response.contains("border-bottom: 1px solid var(--line);"));
 	assert!(response.contains(".account-pool-list > .account-row:last-child"));
 	assert!(response.contains("account-row-credit"));
@@ -546,38 +604,80 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 
 	assert!(response.contains("function projectCapacitySummary(project)"));
 	assert!(response.contains("function renderProjectStats(project)"));
-	assert!(response.contains("function projectHasVisibleWork(project)"));
+	assert!(response.contains("function projectHasActiveWork(project)"));
+	assert!(!response.contains("function projectHasVisibleWork(project)"));
 	assert!(response.contains("function activeProjects(projects)"));
 	assert!(response.contains("function renderProjectEntry(project, selectedId, projects)"));
 	assert!(response.contains("function renderRegisteredProjects(projects, activeProjectRows, selectedId)"));
 	assert!(response.contains("function renderEmptyState(title, copy = \"\")"));
+	assert!(response.contains("function renderRoutineEmptyList(container, snapshot, waitingCopy = \"\")"));
 	assert!(response.contains("nodes.projectOverview.innerHTML = renderEmptyState(COPY.waitingSnapshot);"));
-	assert!(response.contains("snapshot ? \"No running lanes\" : COPY.waitingSnapshot"));
+	assert!(response.contains("renderRoutineEmptyList("));
+	assert!(response.contains("Running lane data appears after /state publishes a snapshot."));
+	assert!(response.contains("Queue data appears after /state publishes a snapshot."));
+	assert!(response.contains("Review lane data appears after /state publishes a snapshot."));
+	assert!(response.contains("renderQueuedCandidates("));
+	assert!(response.contains("renderActionCards("));
+	assert!(!response.contains("No running lanes"));
+	assert!(!response.contains("No queued issues"));
+	assert!(!response.contains("No PR lanes"));
 	assert!(response.contains("return projects.length === 1 ? \"Current\" : \"Selected\";"));
 	assert!(response.contains("return \"\";"));
 	assert!(!response.contains("<h2 id=\"projects-title\">Projects</h2>"));
-	assert!(!response.contains("id=\"projects-meta\""));
+	assert!(response.contains("id=\"projects-meta\""));
 	assert!(!response.contains("project-panel-head"));
-	assert!(!response.contains("nodes.projectsMeta"));
+	assert!(response.contains("nodes.projectsMeta"));
 	assert!(response.contains("role=\"group\" aria-label=\"Projects\""));
 	assert!(response.contains("const activeProjectRows = activeProjects(projects);"));
-	assert!(response.contains("No active project work"));
-	assert!(response.contains("Open All when you need the full registry."));
+	assert!(response.contains(": \"\";"));
+	assert!(!response.contains("No active project work"));
+	assert!(!response.contains("Open All when you need the full registry."));
 	assert!(response.contains("class=\"project-subsection\" aria-label=\"Active projects\""));
-	assert!(response.contains(".project-subsection-head::after"));
-	assert!(response.contains("grid-template-columns: minmax(0, 1fr) max-content 14px;"));
+	assert!(response.contains(".project-subsection-head {"));
+	assert!(response.contains("class=\"project-subsection-head panel-head\""));
+	assert!(response.contains("<h2>Active</h2>"));
+	assert!(response.contains("function activeProjectSummary(activeProjectRows)"));
+	assert!(response.contains("<p class=\"table-meta\">${escapeHtml(activeProjectSummary(activeProjectRows))}</p>"));
+	assert!(response.contains("${renderRegisteredProjects(projects, activeProjectRows, selectedId)}"));
+	assert!(
+		response
+			.find("class=\"project-subsection\" aria-label=\"Active projects\"")
+			.expect("active projects section should render")
+			< response
+				.find("${renderRegisteredProjects(projects, activeProjectRows, selectedId)}")
+				.expect("registered projects disclosure should render after active list")
+	);
+	assert!(response.contains("function projectOverviewSummary(projects, activeProjectRows)"));
+	assert!(response.contains("nodes.projectsMeta.textContent = projectOverviewSummary(projects, activeProjectRows);"));
+	assert!(response.contains("nodes.projectsMeta.textContent = COPY.waitingSnapshot;"));
+	assert!(response.contains("nodes.projectsMeta.textContent = \"0 total\";"));
+	assert!(response.contains("justify-content: space-between;"));
 	assert!(response.contains("class=\"project-active-list\" role=\"list\" aria-label=\"Active projects\""));
-	assert!(response.contains("<summary><span>All</span><strong>${escapeHtml(summary)}</strong></summary>"));
+	assert!(response.contains("class=\"registered-projects fold-panel\""));
+	assert!(response.contains("<summary class=\"panel-head\">"));
+	assert!(response.contains("<h2>All</h2>"));
+	assert!(response.contains("<div class=\"summary-tools\">"));
+	assert!(response.contains("<p class=\"table-meta\">${escapeHtml(summary)}</p>"));
+	assert!(response.contains("<span class=\"fold-indicator\" aria-hidden=\"true\"></span>"));
 	assert!(response.contains("role=\"list\" aria-label=\"All projects\""));
 	assert!(response.contains(".project-active-list > .project-entry:last-child"));
 	assert!(response.contains(".registered-project-list > .project-entry:last-child"));
+	assert!(response.contains("return projects.filter(projectHasActiveWork);"));
+	assert!(response.contains("project.queued_candidate_count ?? 0"));
+	assert!(response.contains("project.post_review_lane_count ?? 0"));
+	assert!(response.contains("return workCount > 0 || (project.warning_count ?? 0) > 0 || syncNeedsAttention;"));
+	assert!(!response.contains("project.retained_worktree_count ?? 0);"));
+	assert!(!response.contains("projectHasRecentActivity(project)"));
 	assert!(response.contains("class=\"project-activity\""));
-	assert!(response.contains("const activityCopy = lastActivity === \"none\" ? \"\" : `active ${lastActivity}`;"));
+	assert!(response.contains("const activityCopy = lastActivity === \"none\" ? \"\" : `activity ${lastActivity}`;"));
+	assert!(!response.contains("`active ${lastActivity}`"));
 	assert!(response.contains("project.post_review_lane_count ?? 0"));
 	assert!(response.contains("project.retained_worktree_count ?? 0"));
 	assert!(response.contains("return pluralize(project.warning_count, \"warning\");"));
 	assert!(response.contains("return `${pluralize(project.retained_worktree_count, \"worktree\")} retained`;"));
+	assert!(response.contains("return { label: \"running\", tone: \"tone-run\""));
 	assert!(response.contains("return { label: \"needs attention\", tone: \"tone-blocked\""));
+	assert!(response.contains("return { label: \"waiting\", tone: \"tone-wait\""));
 	assert!(response.contains("label: \"sync backoff\""));
 	assert!(response.contains("label: \"sync degraded\""));
 	assert!(response.contains("return { label: \"ok\", tone: \"tone-land\""));
@@ -635,9 +735,11 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 		"${pluralize(derived.postReviewLanes.length, \"PR\")} · ${pluralize(derived.reviewBlockerCount, \"needs attention\", \"need attention\")}"
 	));
 	assert!(response.contains("${pluralize(retainedWorktrees.length, \"worktree\")} · retained or cleanup"));
-	assert!(
-		response.contains("Ready, capacity-limited, or blocked issues appear here before they start.")
-	);
+	assert!(response.contains("function recoveryWorktreeShouldDefaultOpen(renderedWorktree)"));
+	assert!(response.contains("role.tone === \"tone-blocked\" || role.label.startsWith(\"post-land\")"));
+	assert!(response.contains("retainedWorktrees.some(recoveryWorktreeShouldDefaultOpen)"));
+	assert!(!response.contains("syncDefaultDetailOpenState(nodes.panels.worktrees, retainedWorktrees.length > 0);"));
+	assert!(!response.contains("Ready, capacity-limited, or blocked issues appear here before they start."));
 	assert!(!response.contains("claimed without local lane"));
 	assert!(!response.contains("const repairCount = attentionItems.length;"));
 }
