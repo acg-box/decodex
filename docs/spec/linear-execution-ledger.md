@@ -125,10 +125,7 @@ defined in this document are invalid for `record_version = 1`.
 
 The event type set is intentionally small and low-frequency:
 
-- `intake`
-- `lease_acquired`
-- `worktree_prepared`
-- `agent_started`
+- `run_started`
 - `progress_checkpoint`
 - `pr_opened`
 - `pr_updated`
@@ -141,7 +138,11 @@ The event type set is intentionally small and low-frequency:
 - `terminal_failure`
 - `cleanup_complete`
 
-No other `event_type` value is valid for `record_version = 1`.
+No other `event_type` value is valid for new `record_version = 1` writes.
+Historical startup records with `event_type` values `intake`, `lease_acquired`,
+`worktree_prepared`, and `agent_started` remain valid for old comments, but current
+Decodex writers must emit one `run_started` record instead of those separate startup
+records.
 
 ## Event-specific fields
 
@@ -149,10 +150,11 @@ Every event requires the record envelope. Additional required fields are listed 
 
 | Event type | Additional required fields | Common optional fields |
 | --- | --- | --- |
-| `intake` | `summary` | `branch`, `worktree_path` |
-| `lease_acquired` | `branch` | `worktree_path`, `summary` |
-| `worktree_prepared` | `branch`, `worktree_path`, `commit_sha` | `summary` |
-| `agent_started` | `branch`, `worktree_path` | `transport`, `summary` |
+| `run_started` | `branch`, `worktree_path`, `commit_sha`, `transport`, `summary` |  |
+| `intake` | `summary` | `branch`, `worktree_path`; legacy read-only startup record |
+| `lease_acquired` | `branch` | `worktree_path`, `summary`; legacy read-only startup record |
+| `worktree_prepared` | `branch`, `worktree_path`, `commit_sha` | `summary`; legacy read-only startup record |
+| `agent_started` | `branch`, `worktree_path` | `transport`, `summary`; legacy read-only startup record |
 | `progress_checkpoint` | `phase`, `focus`, `next_action`, `blockers`, `evidence` | `branch`, `worktree_path`, `commit_sha`, `pr_url`, `verification`, `summary` |
 | `pr_opened` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
 | `pr_updated` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
@@ -233,7 +235,7 @@ commit SHA, PR head SHA, terminal path, or checkpoint sequence key.
 
 Use Linear comments for team-visible, low-frequency records:
 
-- lane intake, lease acquisition, worktree preparation, and agent start
+- lane run start, including branch, worktree, current commit, and transport
 - durable progress checkpoints
 - PR opened or updated events
 - review handoff and retained repair handoff
