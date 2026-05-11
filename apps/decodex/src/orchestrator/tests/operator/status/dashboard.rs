@@ -78,9 +78,11 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 		.expect("metric number style should end before metric label rule");
 
 	assert!(response.contains("--type-micro: 9px;"));
-	assert!(response.contains("--type-caption: 11px;"));
-	assert!(response.contains("--type-label: 12px;"));
+	assert!(response.contains("--type-caption: 10px;"));
+	assert!(response.contains("--type-label: 11px;"));
+	assert!(response.contains("--type-body: 12px;"));
 	assert!(response.contains("--type-row-title: 13px;"));
+	assert!(response.contains("--type-section-title: 14px;"));
 	assert!(response.contains("--type-card-title: 15px;"));
 	assert!(response.contains("--weight-label: 500;"));
 	assert!(response.contains("--weight-strong: 600;"));
@@ -95,8 +97,8 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 	assert!(response.contains("--space-row-y: 12px;"));
 	assert!(response.contains("--space-card-y: 16px;"));
 	assert!(response.contains("--space-row-indent: 18px;"));
-	assert!(section_marker_title.contains("font-size: var(--type-meta);"));
-	assert!(section_marker_title.contains("font-weight: var(--weight-label);"));
+	assert!(section_marker_title.contains("font-size: var(--type-section-title);"));
+	assert!(section_marker_title.contains("font-weight: var(--weight-strong);"));
 	assert!(section_marker.contains("font-family: var(--sans);"));
 	assert!(!section_marker_title.contains("text-transform: uppercase;"));
 	assert!(section_marker_bar.contains("height: 14px;"));
@@ -106,14 +108,14 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 	assert!(flow_stage_label.contains("font-weight: var(--weight-label);"));
 	assert!(!flow_stage_label.contains("text-transform: uppercase;"));
 	assert!(flow_stage_label.contains("color: var(--muted-strong);"));
-	assert!(panel_title.contains("font-size: var(--type-meta);"));
-	assert!(panel_title.contains("font-weight: var(--weight-label);"));
+	assert!(panel_title.contains("font-size: var(--type-section-title);"));
+	assert!(panel_title.contains("font-weight: var(--weight-strong);"));
 	assert!(panel_title.contains("font-family: var(--sans);"));
 	assert!(!panel_title.contains("text-transform: uppercase;"));
 	assert!(table_meta.contains("font-family: var(--sans);"));
 	assert!(table_meta.contains("font-weight: var(--weight-label);"));
 	assert!(!table_meta.contains("text-transform: uppercase;"));
-	assert!(metric_number.contains("font-size: 0.94em;"));
+	assert!(metric_number.contains("font-size: 0.92em;"));
 	assert!(metric_number.contains("font-weight: var(--weight-label);"));
 	assert!(response.contains("padding: var(--space-panel-head-y) 0 var(--space-md);"));
 	assert!(response.contains("padding: var(--space-row-y) 0 var(--space-row-y) var(--space-row-indent);"));
@@ -123,6 +125,7 @@ fn operator_dashboard_uses_shared_type_scale_for_operator_rows() {
 	assert!(response.contains(".account-row-id.is-machine"));
 	assert!(response.contains(".account-use-line .account-name.is-machine"));
 	assert!(response.contains(".account-use-line .machine-text"));
+	assert!(response.contains(".account-use-line.is-missing strong"));
 	assert!(response.contains(".project-work-ratio strong"));
 	assert!(response.contains(".metric-number"));
 	assert!(response.contains(".metric-label"));
@@ -204,27 +207,6 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("--child-bucket-value-column: clamp(190px, 18vw, 230px);"));
 	assert!(response.contains("grid-template-columns: 96px minmax(64px, 1fr) var(--child-bucket-value-column);"));
 	assert!(response.contains("width: var(--child-bucket-value-column);"));
-	assert!(response.contains("runNeedsAttention"));
-	assert!(response.contains("runCountsAsRunning"));
-	assert!(response.contains("runWaitReasonShowsExecutionProgress"));
-	assert!(response.contains("[\"model_execution\", \"tool_execution\", \"protocol_activity\"].includes(run.wait_reason)"));
-	assert!(response.contains("return `Running through ${focus}.`;"));
-	assert!(response.contains("run.wait_reason && !runWaitReasonShowsExecutionProgress(run)"));
-	assert!(response.contains("runOperationRequiresLiveAgent"));
-	assert!(response.contains("runProcessStoppedWithoutAttention"));
-	assert!(response.contains("runStageLabel"));
-	assert!(response.contains("return \"Stopped\";"));
-	assert!(response.contains("Finalizing"));
-	assert!(
-		response.contains(
-			"Agent process stopped before finish; recovery needed."
-		)
-	);
-	assert!(response.contains("Stopped agent process"));
-	assert!(response.contains("attention stopped"));
-	assert!(response.contains("recovery <strong>needed</strong>"));
-	assert!(response.contains("agent <strong>done</strong>"));
-	assert!(!response.contains("process <strong>stopped</strong>"));
 	assert!(response.contains("runningLaneMetaText"));
 	assert!(response.contains("const parts = [`${derived.liveRuns ?? 0} running`];"));
 	assert!(response.contains("attentionCount === 1"));
@@ -266,6 +248,41 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 }
 
 #[test]
+fn operator_dashboard_active_run_status_copy_stays_concise() {
+	let response = dashboard_response();
+
+	assert!(response.contains("runNeedsAttention"));
+	assert!(response.contains("runCountsAsRunning"));
+	assert!(response.contains("runWaitReasonShowsExecutionProgress"));
+	assert!(response.contains(
+		"[\"model_execution\", \"tool_execution\", \"protocol_activity\"].includes(run.wait_reason)"
+	));
+	assert!(response.contains("run.wait_reason && !runWaitReasonShowsExecutionProgress(run)"));
+	assert!(response.contains("runOperationRequiresLiveAgent"));
+	assert!(response.contains("runProcessStoppedWithoutAttention"));
+	assert!(response.contains("runStageLabel"));
+	assert!(response.contains("return \"Stopped\";"));
+	assert!(response.contains("Finalizing"));
+	assert!(response.contains("Process stopped; recovery needed."));
+	assert!(response.contains("Operator input needed."));
+	assert!(response.contains("Protocol idle."));
+	assert!(response.contains("Stopped agent process"));
+	assert!(response.contains("attention stopped"));
+	assert!(response.contains("recovery <strong>needed</strong>"));
+	assert!(response.contains("agent <strong>done</strong>"));
+	assert!(!response.contains("Running through ${focus}"));
+	assert!(!response.contains("Running through model execution."));
+	assert!(!response.contains("Time is going to ${focus}."));
+	assert!(!response.contains("Running now."));
+	assert!(!response.contains("Thread is ${humanizeToken(run.thread_status).toLowerCase()}."));
+	assert!(!response.contains("Agent turn complete; Decodex is finishing"));
+	assert!(!response.contains("No agent progress for"));
+	assert!(!response.contains("Waiting for approval or input."));
+	assert!(!response.contains("Turn complete; continuation pending."));
+	assert!(!response.contains("process <strong>stopped</strong>"));
+}
+
+#[test]
 fn operator_dashboard_renders_account_usage_controls() {
 	let response = dashboard_response();
 
@@ -285,11 +302,13 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("function renderCodexAccountPoolRow(account)"));
 	assert!(response.contains("function codexAccountDebugSummary(account)"));
 	assert!(response.contains("function codexAccountPoolDebugSummary(accounts)"));
+	assert!(response.contains("return \"not captured\";"));
 	assert!(response.contains("function codexAccountHistorySummary(account)"));
 	assert!(response.contains("snapshot?.accounts"));
 	assert!(response.contains("account?.email"));
-	assert!(response.contains("run?.account || null"));
+	assert!(response.contains("run?.account || run?.codex_account || null"));
 	assert!(response.contains("run?.accounts"));
+	assert!(response.contains("run?.codex_accounts"));
 	assert!(response.contains("account-pool-panel"));
 	assert!(!response.contains("<h2>Accounts</h2>"));
 	assert!(!response.contains("<h2>Codex Accounts</h2>"));
@@ -432,6 +451,38 @@ fn operator_dashboard_renders_account_sort_controls() {
 }
 
 #[test]
+fn operator_dashboard_renders_project_sort_controls() {
+	let response = dashboard_response();
+
+	assert!(response.contains("const PROJECT_SORT_STORAGE_KEY = \"decodex.operator.projectSort\";"));
+	assert!(response.contains("const PROJECT_SORT_COLUMNS = ["));
+	assert!(response.contains("[\"project\", \"Project\"]"));
+	assert!(response.contains("[\"location\", \"Location\"]"));
+	assert!(response.contains("[\"activity\", \"Activity\"]"));
+	assert!(response.contains("[\"work\", \"Work\"]"));
+	assert!(response.contains("function loadProjectSort()"));
+	assert!(response.contains("function persistProjectSort()"));
+	assert!(response.contains("function isProjectSortKey(value)"));
+	assert!(response.contains("function projectSortDefaultDirection(key)"));
+	assert!(response.contains("return [\"activity\", \"work\"].includes(key) ? \"desc\" : \"asc\";"));
+	assert!(response.contains("function renderProjectSortButton([key, label])"));
+	assert!(response.contains("project-table-sort"));
+	assert!(response.contains("data-project-sort-key"));
+	assert!(response.contains("aria-label=\"Sort projects by ${escapeHtml(label)}; ${escapeHtml(current)}\""));
+	assert!(response.contains("project-sort-up"));
+	assert!(response.contains("project-sort-down"));
+	assert!(response.contains("aria-sort=\"${direction === \"asc\" ? \"ascending\" : \"descending\"}\""));
+	assert!(response.contains("function projectColumnSortValue(project, key)"));
+	assert!(response.contains("function compareProjectRowsByColumn(left, right, key, direction)"));
+	assert!(response.contains("function compareProjectRowsStable(left, right)"));
+	assert!(response.contains("function sortProjectRows(rows)"));
+	assert!(response.contains("projectSort.key === key"));
+	assert!(response.contains("projectSortDefaultDirection(key)"));
+	assert!(response.contains("persistProjectSort();"));
+	assert!(response.contains("sortProjectRows(projectFilterRows(projects, activeProjectRows))"));
+}
+
+#[test]
 fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	let response = dashboard_response();
 
@@ -563,6 +614,7 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	assert!(!response.contains("account-active-dot"));
 	assert!(response.contains("aria-label=\"Account used by this lane\""));
 	assert!(response.contains("<span class=\"account-use-label\">Account</span>"));
+	assert!(response.contains("<strong>not captured</strong>"));
 	assert!(!response.contains("<span class=\"account-use-label\">Codex account</span>"));
 	assert!(response.contains("aria-label=\"Accounts\""));
 	assert!(response.contains("ACCOUNT_PRIVACY_STORAGE_KEY"));
@@ -687,7 +739,10 @@ fn operator_dashboard_omits_watch_and_project_pause_controls() {
 	assert!(!response.contains(">Watching</button>"));
 	assert!(!response.contains(">Pause</button>"));
 	assert!(!response.contains(">Resume</button>"));
-	assert!(response.contains("data-dashboard-control=\"retryRun\""));
+	assert!(!response.contains("data-dashboard-control=\"retryRun\""));
+	assert!(!response.contains(">Retry now</button>"));
+	assert!(response.contains("data-dashboard-control=\"interruptRun\""));
+	assert!(response.contains("aria-label=\"Stop this active Decodex work\""));
 }
 
 #[test]
@@ -742,10 +797,14 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains(".project-table-guide span {\n\t\t\t\tmin-width: 0;\n\t\t\t\ttext-align: center;"));
 	assert!(response.contains(".project-table-guide .project-location-head"));
 	assert!(!response.contains(".project-table-guide span:first-child"));
-	assert!(response.contains("<span role=\"columnheader\">Project</span>"));
-	assert!(response.contains("<span class=\"project-column-head project-location-head\" role=\"columnheader\">Location ${projectLocationToggleMarkup()}</span>"));
-	assert!(response.contains("<span role=\"columnheader\">Activity</span>"));
-	assert!(response.contains("<span class=\"project-column-head\" role=\"columnheader\">Work ${projectWorkInfoMarkup()}</span>"));
+	assert!(response.contains("renderProjectColumnHead(PROJECT_SORT_COLUMNS[0])"));
+	assert!(response.contains("renderProjectColumnHead(PROJECT_SORT_COLUMNS[1], {"));
+	assert!(response.contains("after: projectLocationToggleMarkup()"));
+	assert!(response.contains("renderProjectColumnHead(PROJECT_SORT_COLUMNS[2])"));
+	assert!(response.contains("renderProjectColumnHead(PROJECT_SORT_COLUMNS[3], {"));
+	assert!(response.contains("after: projectWorkInfoMarkup()"));
+	assert!(!response.contains("<span role=\"columnheader\">Project</span>"));
+	assert!(!response.contains("<span role=\"columnheader\">Activity</span>"));
 	assert!(!response.contains("<span role=\"columnheader\">Status</span>"));
 	assert!(!response.contains("<span role=\"columnheader\">Running</span>"));
 	assert!(!response.contains("<span role=\"columnheader\">Waiting</span>"));
@@ -1021,6 +1080,16 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(response.contains("source: \"none\""));
 	assert!(!response.contains("source: \"updated_at\""));
 	assert!(response.contains("function formatRelativeTimestamp(value)"));
+	assert!(response.contains("return \"0s\";"));
+	assert!(response.contains("return `${seconds}s`;"));
+	assert!(response.contains("return `${minutes}m`;"));
+	assert!(response.contains("return `${hours}h`;"));
+	assert!(response.contains("return `${days}d`;"));
+	assert!(!response.contains("just now"));
+	assert!(!response.contains("s ago"));
+	assert!(!response.contains("m ago"));
+	assert!(!response.contains("h ago"));
+	assert!(!response.contains("d ago"));
 	assert!(response.contains("function activeRunTelemetryFacts(run)"));
 	assert!(response.contains("function renderActiveTelemetryLine(run)"));
 	assert!(response.contains("activity-line"));
@@ -1046,9 +1115,33 @@ fn operator_dashboard_uses_shared_protocol_activity_summary() {
 	assert!(response.contains("function protocolActivityFocus(run)"));
 	assert!(response.contains("function protocolActivityRecentSummary(run)"));
 	assert!(response.contains("function protocolActivityDebugSummary(run)"));
+	assert!(response.contains("function normalizedProtocolRateLimitStatus(value)"));
+	assert!(response.contains("status.includes(\"/\") || status.includes(\" \")"));
+	assert!(response.contains("protocolActivityRateLimitDisplay(run, \"\")"));
+	assert!(response.contains("parts.splice(2, 0, `rate limit ${rateLimit}`);"));
+	assert!(!response.contains("`rate ${protocolActivityRateLimitDisplay(run)}`"));
 	assert!(response.contains("facts.push([\"time going to\", focus]);"));
 	assert!(response.contains("return \"approval/user input\";"));
 	assert!(response.contains("return \"protocol idleness\";"));
 	assert!(response.contains("field(\"Protocol activity\", protocolActivityDebugSummary(run))"));
-	assert!(response.contains("field(\"Rate limit\", protocolActivityRateLimit(run))"));
+	assert!(response.contains("field(\"Rate limit\", protocolActivityRateLimitDisplay(run))"));
+}
+
+#[test]
+fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
+	let response = dashboard_response();
+
+	assert!(response.contains("function mergeDashboardRunRecord(snapshotRun, activityRun)"));
+	assert!(response.contains("function mergeDashboardActiveRuns(snapshot, activeRunRows)"));
+	assert!(response.contains("\"issue_identifier\""));
+	assert!(response.contains("\"title\""));
+	assert!(response.contains("\"child_agent_activity\""));
+	assert!(response.contains("\"protocol_activity\""));
+	assert!(response.contains("!dashboardRunFieldHasValue(activityRun[key])"));
+	assert!(response.contains("merged[key] = snapshotRun[key];"));
+	assert!(
+		response.contains("const mergedActiveRuns = mergeDashboardActiveRuns(snapshot, activeRunRows);")
+	);
+	assert!(response.contains("active_runs: mergedActiveRuns,"));
+	assert!(!response.contains("active_runs: activeRunRows,"));
 }

@@ -102,12 +102,13 @@ also keep a local WebSocket open at `GET /dashboard/control`. `/state` remains t
 authoritative reconciliation snapshot; the WebSocket pushes Decodex-owned snapshot
 and active-lane activity updates sooner than the polling interval, and accepts the
 local dashboard control protocol. The current browser UI keeps live updates unscoped
-and exposes only explicit lane retry controls; project watch and pause/resume controls
-are intentionally not shown. `retryRun` starts the existing local `decodex run
-<issue>` path for an explicit operator retry. `ack` is dashboard-local acknowledgement
-only. The socket is not a browser connection to Codex app-server, GitHub, or Linear,
-and it does not make high-frequency protocol activity durable outside the local
-operator surface.
+and exposes only an explicit stop control for active lanes with a known live child
+process; project watch, project pause/resume, and manual retry controls are
+intentionally not shown. The stop control signals the recorded child process for that
+run, marks the local attempt interrupted, and releases the local queue lease. `ack` is
+dashboard-local acknowledgement only. The socket is not a browser connection to Codex
+app-server, GitHub, or Linear, and it does not make high-frequency protocol activity
+durable outside the local operator surface.
 
 | Section | Meaning |
 | --- | --- |
