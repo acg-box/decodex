@@ -169,14 +169,18 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(!response.contains(".stack > .panel + .panel"));
 	assert!(response.contains("panel section-control\" id=\"account-pool-panel\""));
 	assert!(response.contains("section-marker section-marker-control"));
+	assert!(response.contains("section-marker section-marker-projects"));
 	assert!(response.contains("section-marker section-marker-execution"));
 	assert!(response.contains("section-marker section-marker-aftercare"));
 	assert!(response.contains("<span>Control Plane</span>"));
+	assert!(response.contains("<span>Projects</span>"));
 	assert!(response.contains("<span>Execution</span>"));
 	assert!(response.contains("<span>Closeout</span>"));
-	assert!(response.contains("Accounts · Projects"));
+	assert!(response.contains("<p>Accounts</p>"));
+	assert!(response.contains("All · Active"));
 	assert!(response.contains("Running · Intake"));
 	assert!(response.contains("Review · Recovery · History"));
+	assert!(!response.contains("data-fold-key=\"panel:projects\""));
 	assert!(response.contains("panel section-execution\" id=\"active-panel\""));
 	assert!(response.contains("panel section-aftercare\" id=\"review-panel\""));
 	assert!(!response.contains("section-group-start"));
@@ -333,6 +337,7 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains("account-window-date"));
 	assert!(!response.contains("<span class=\"is-reset\">Reset</span>"));
 	assert!(response.contains("is-selected"));
+	assert!(response.contains("is-ready"));
 	assert!(response.contains("--account-accent: var(--tone-muted);"));
 	assert!(response.contains("grid-template-areas:"));
 	assert!(response.contains("\"id plan primary secondary credit state\""));
@@ -391,6 +396,7 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	assert!(response.contains(".account-row:focus-within .account-window"));
 	assert!(response.contains(".account-status::before"));
 	assert!(response.contains(".account-row.is-selected .account-status"));
+	assert!(response.contains(".account-row.is-ready .account-status"));
 	assert!(response.contains(".account-row.is-warn .account-status"));
 	assert!(response.contains(".account-row.is-danger .account-status"));
 	assert!(response.contains(".account-row:hover .account-status::before"));
@@ -432,6 +438,10 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(!response.contains(".replace(/\\.00$/, \"\")"));
 	assert!(!response.contains(".replace(/(\\.\\d)0$/, \"$1\")"));
 	assert!(response.contains("function codexAccountCreditsTone(account)"));
+	assert!(response.contains("function codexAccountUsageLimited(account)"));
+	assert!(response.contains("if (status === \"available\")"));
+	assert!(response.contains("return \"ready\";"));
+	assert!(response.contains("codexAccountReachedType(account).includes(\"credit\")"));
 	assert!(response.contains("const credits = codexAccountCreditsSummary(account);"));
 	assert!(response.contains("const creditTone = codexAccountCreditsTone(account);"));
 	assert!(response.contains("<span>credits</span>"));
@@ -453,6 +463,7 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(!response.contains("depleted"));
 	assert!(response.contains("rate_limit_reached_type"));
 	assert!(response.contains("if (normalizedStatus === \"available\")"));
+	assert!(response.contains("if (codexAccountUsageLimited(account))"));
 	assert!(response.contains("if (normalizedStatus.includes(\"limit\"))"));
 	assert!(response.contains("return \"Limited\";"));
 	assert!(response.contains("cooldown_until_unix_epoch"));
@@ -498,6 +509,26 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 }
 
 #[test]
+fn operator_dashboard_omits_watch_and_project_pause_controls() {
+	let response = dashboard_response();
+
+	assert!(!response.contains("function dashboardSubscriptionMatches(subscription)"));
+	assert!(!response.contains("function clearDashboardSubscription(shouldSend = true)"));
+	assert!(!response.contains("function toggleDashboardSubscription(subscription)"));
+	assert!(!response.contains("toggleDashboardSubscription({ projectId })"));
+	assert!(!response.contains("toggleDashboardSubscription({ projectId, issueId, runId })"));
+	assert!(!response.contains("data-dashboard-control=\"focusProject\""));
+	assert!(!response.contains("data-dashboard-control=\"focusRun\""));
+	assert!(!response.contains("data-dashboard-control=\"pauseProject\""));
+	assert!(!response.contains("data-dashboard-control=\"resumeProject\""));
+	assert!(!response.contains(">Watch</button>"));
+	assert!(!response.contains(">Watching</button>"));
+	assert!(!response.contains(">Pause</button>"));
+	assert!(!response.contains(">Resume</button>"));
+	assert!(response.contains("data-dashboard-control=\"retryRun\""));
+}
+
+#[test]
 fn operator_dashboard_projects_keep_status_summary_compact() {
 	let response = String::from_utf8(
 		orchestrator::build_operator_state_http_response(
@@ -515,14 +546,35 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 
 	assert!(response.contains("function projectCapacitySummary(project)"));
 	assert!(response.contains("function renderProjectStats(project)"));
-	assert!(response.contains("function projectsMetaCopy(snapshot, projects)"));
+	assert!(response.contains("function projectHasVisibleWork(project)"));
+	assert!(response.contains("function activeProjects(projects)"));
+	assert!(response.contains("function renderProjectEntry(project, selectedId, projects)"));
+	assert!(response.contains("function renderRegisteredProjects(projects, activeProjectRows, selectedId)"));
 	assert!(response.contains("function renderEmptyState(title, copy = \"\")"));
 	assert!(response.contains("nodes.projectOverview.innerHTML = renderEmptyState(COPY.waitingSnapshot);"));
 	assert!(response.contains("snapshot ? \"No running lanes\" : COPY.waitingSnapshot"));
-	assert!(response.contains("return pluralize(1, \"project\");"));
-	assert!(response.contains("return pluralize(0, \"project\");"));
 	assert!(response.contains("return projects.length === 1 ? \"Current\" : \"Selected\";"));
 	assert!(response.contains("return \"\";"));
+	assert!(!response.contains("<h2 id=\"projects-title\">Projects</h2>"));
+	assert!(!response.contains("id=\"projects-meta\""));
+	assert!(!response.contains("project-panel-head"));
+	assert!(!response.contains("nodes.projectsMeta"));
+	assert!(response.contains("role=\"group\" aria-label=\"Projects\""));
+	assert!(response.contains("const activeProjectRows = activeProjects(projects);"));
+	assert!(response.contains("No active project work"));
+	assert!(response.contains("Open All when you need the full registry."));
+	assert!(response.contains("class=\"project-subsection\" aria-label=\"Active projects\""));
+	assert!(response.contains(".project-subsection-head::after"));
+	assert!(response.contains("grid-template-columns: minmax(0, 1fr) max-content 14px;"));
+	assert!(response.contains("class=\"project-active-list\" role=\"list\" aria-label=\"Active projects\""));
+	assert!(response.contains("<summary><span>All</span><strong>${escapeHtml(summary)}</strong></summary>"));
+	assert!(response.contains("role=\"list\" aria-label=\"All projects\""));
+	assert!(response.contains(".project-active-list > .project-entry:last-child"));
+	assert!(response.contains(".registered-project-list > .project-entry:last-child"));
+	assert!(response.contains("class=\"project-activity\""));
+	assert!(response.contains("const activityCopy = lastActivity === \"none\" ? \"\" : `active ${lastActivity}`;"));
+	assert!(response.contains("project.post_review_lane_count ?? 0"));
+	assert!(response.contains("project.retained_worktree_count ?? 0"));
 	assert!(response.contains("return pluralize(project.warning_count, \"warning\");"));
 	assert!(response.contains("return `${pluralize(project.retained_worktree_count, \"worktree\")} retained`;"));
 	assert!(response.contains("return { label: \"needs attention\", tone: \"tone-blocked\""));
@@ -533,6 +585,7 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains("const connectorCopy = projectSyncMeta(project, health);"));
 	assert!(response.contains("if (connector === \"ok\")"));
 	assert!(response.contains("return copy === health.label ? \"\" : copy;"));
+	assert!(!response.contains("const prefix = `${activeCount} active · ${projects.length} all`;"));
 	assert!(response.contains("return \"ok\";"));
 	assert!(response.contains("${kicker ? `<span class=\"project-kicker\">${escapeHtml(kicker)}</span>` : \"\"}"));
 	assert!(!response.contains("const connectorCopy = `connector ${connector}`;"));
