@@ -710,7 +710,7 @@ fn dashboard_clear_focus_control_ack(
 		request_id: message.request_id.as_deref(),
 		action,
 		accepted: true,
-		status: "focused",
+		status: "cleared",
 		message: "Dashboard focus cleared for this WebSocket session.",
 		project_id: None,
 		issue_id: None,
