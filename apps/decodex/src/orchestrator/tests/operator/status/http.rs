@@ -208,7 +208,7 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("Queued issue -> reviewed change -> landed branch"));
 		assert!(response.contains("Running Lanes"));
 		assert!(response.contains("Intake Queue"));
-		assert!(response.contains("At capacity"));
+		assert!(!response.contains("At capacity"));
 		assert!(response.contains("Review &amp; Landing"));
 		assert!(response.contains("Run History"));
 		assert!(response.contains("historyLedgerOutcome"));
@@ -218,11 +218,12 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(response.contains("Lane activity"));
 		assert!(response.contains("agent idle"));
 		assert!(response.contains("Child agent"));
-		assert!(response.contains("Agent Now"));
-		assert!(response.contains("Current Window"));
-		assert!(response.contains("Peak Window"));
+		assert!(response.contains("<span>Activity</span>"));
+		assert!(!response.contains("<span>Agent Now</span>"));
+		assert!(response.contains("current window"));
+		assert!(response.contains("peak window"));
 		assert!(!response.contains("same as current"));
-		assert!(response.contains("Cumulative Input"));
+		assert!(response.contains("cumulative input"));
 		assert!(response.contains("Current context window from the latest child-agent event."));
 		assert!(response.contains("Total input tokens processed across child-agent events."));
 		assert!(response.contains("child_agent_activity"));
@@ -246,15 +247,15 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains(".fold-panel.is-empty .fold-indicator"));
 		assert!(!response.contains("details.classList.contains(\"is-empty\")"));
 		assert!(!response.contains("Operator views"));
-			assert!(!response.contains("Command Brief"));
-			assert!(!response.contains("Intake Pressure"));
-			assert!(!response.contains("Landing Readiness"));
+		assert!(!response.contains("Command Brief"));
+		assert!(!response.contains("Intake Pressure"));
+		assert!(!response.contains("Landing Readiness"));
 
-			assert_dashboard_html_control_surface(response.as_str());
+		assert_dashboard_html_control_surface(response.as_str());
 
-			assert!(!response.contains("Last updated: none"));
-			assert!(!response.contains("Auto-refresh"));
-			assert!(!response.contains("<h2>Project Scope</h2>"));
+		assert!(!response.contains("Last updated: none"));
+		assert!(!response.contains("Auto-refresh"));
+		assert!(!response.contains("<h2>Project Scope</h2>"));
 		assert!(!response.contains("Projects appear on the first state update"));
 		assert!(!response.contains("Diagnostics"));
 		assert!(!response.contains("State JSON"));
