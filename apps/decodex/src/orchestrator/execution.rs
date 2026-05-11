@@ -214,6 +214,7 @@ where
 fn write_prepare_lifecycle_events<T>(
 	tracker: &T,
 	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 ) -> Result<()>
@@ -226,15 +227,13 @@ where
 			"Prepared worktree `{}` for issue `{}` did not expose a HEAD commit.",
 			issue_run.worktree.path.display(),
 			issue_run.issue.identifier
-		)
-	})?;
+			)
+		})?;
 
-	write_intake_lifecycle_event(tracker, project, state_store, issue_run, &worktree_path)?;
-	write_lease_lifecycle_event(tracker, project, state_store, issue_run, &worktree_path)?;
-
-	write_worktree_prepared_lifecycle_event(
+	write_run_started_lifecycle_event(
 		tracker,
 		project,
+		workflow,
 		state_store,
 		issue_run,
 		&worktree_path,
@@ -242,62 +241,10 @@ where
 	)
 }
 
-fn write_intake_lifecycle_event<T>(
+fn write_run_started_lifecycle_event<T>(
 	tracker: &T,
 	project: &ServiceConfig,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	worktree_path: &str,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	let anchor = records::stable_event_anchor(&[issue_run.dispatch_mode.as_str(), "intake"]);
-	let mut record = records::LinearExecutionEventRecord::new(
-		lifecycle_event_identity(project, issue_run),
-		"intake",
-		current_timestamp(),
-		&anchor,
-	);
-
-	record.branch = Some(issue_run.worktree.branch_name.clone());
-	record.worktree_path = Some(worktree_path.to_owned());
-	record.summary = Some(format!(
-		"Decodex selected the issue for {} dispatch.",
-		issue_run.dispatch_mode.as_str()
-	));
-
-	write_lifecycle_event(tracker, state_store, &issue_run.issue.id, &record)
-}
-
-fn write_lease_lifecycle_event<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	worktree_path: &str,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	let anchor = records::stable_event_anchor(&[&issue_run.worktree.branch_name]);
-	let mut record = records::LinearExecutionEventRecord::new(
-		lifecycle_event_identity(project, issue_run),
-		"lease_acquired",
-		current_timestamp(),
-		&anchor,
-	);
-
-	record.branch = Some(issue_run.worktree.branch_name.clone());
-	record.worktree_path = Some(worktree_path.to_owned());
-	record.summary = Some(String::from("Decodex acquired the local lane lease."));
-
-	write_lifecycle_event(tracker, state_store, &issue_run.issue.id, &record)
-}
-
-fn write_worktree_prepared_lifecycle_event<T>(
-	tracker: &T,
-	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 	worktree_path: &str,
@@ -306,10 +253,16 @@ fn write_worktree_prepared_lifecycle_event<T>(
 where
 	T: IssueTracker + ?Sized,
 {
-	let anchor = records::stable_event_anchor(&[&issue_run.worktree.branch_name, commit_sha]);
+	let transport = workflow.frontmatter().agent().transport();
+	let anchor = records::stable_event_anchor(&[
+		issue_run.dispatch_mode.as_str(),
+		&issue_run.worktree.branch_name,
+		commit_sha,
+		transport,
+	]);
 	let mut record = records::LinearExecutionEventRecord::new(
 		lifecycle_event_identity(project, issue_run),
-		"worktree_prepared",
+		"run_started",
 		current_timestamp(),
 		&anchor,
 	);
@@ -317,34 +270,11 @@ where
 	record.branch = Some(issue_run.worktree.branch_name.clone());
 	record.worktree_path = Some(worktree_path.to_owned());
 	record.commit_sha = Some(commit_sha.to_owned());
-	record.summary = Some(String::from("Decodex prepared the lane worktree."));
-
-	write_lifecycle_event(tracker, state_store, &issue_run.issue.id, &record)
-}
-
-fn write_agent_started_lifecycle_event<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	state_store: &StateStore,
-	issue_run: &IssueRunPlan,
-	transport: &str,
-) -> Result<()>
-where
-	T: IssueTracker + ?Sized,
-{
-	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
-	let anchor = records::stable_event_anchor(&[&issue_run.worktree.branch_name, transport]);
-	let mut record = records::LinearExecutionEventRecord::new(
-		lifecycle_event_identity(project, issue_run),
-		"agent_started",
-		current_timestamp(),
-		&anchor,
-	);
-
-	record.branch = Some(issue_run.worktree.branch_name.clone());
-	record.worktree_path = Some(worktree_path);
 	record.transport = Some(transport.to_owned());
-	record.summary = Some(String::from("Decodex started the lane agent."));
+	record.summary = Some(format!(
+		"Decodex started a {} run for this issue.",
+		issue_run.dispatch_mode.as_str()
+	));
 
 	write_lifecycle_event(tracker, state_store, &issue_run.issue.id, &record)
 }
@@ -486,9 +416,6 @@ where
 	};
 	let decodex_tool_bridge =
 		DecodexToolBridge::new(&tracker_tool_bridge, build_decodex_run_context(workflow, issue_run));
-
-	write_agent_started_lifecycle_event(tracker, project, state_store, issue_run, &transport)?;
-
 	let run_result = agent::execute_app_server_run(
 		&AppServerRunRequest {
 			run_id: issue_run.run_id.clone(),

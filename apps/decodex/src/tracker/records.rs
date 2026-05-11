@@ -302,6 +302,14 @@ fn validate_linear_execution_event_fields(
 	record: &LinearExecutionEventRecord,
 ) -> Result<(), String> {
 	match record.event_type.as_str() {
+		"run_started" => {
+			require_string(record.branch.as_deref(), "branch")?;
+			require_string(record.worktree_path.as_deref(), "worktree_path")?;
+			require_string(record.commit_sha.as_deref(), "commit_sha")?;
+			require_string(record.transport.as_deref(), "transport")?;
+
+			require_string(record.summary.as_deref(), "summary")
+		},
 		"intake" => require_string(record.summary.as_deref(), "summary"),
 		"lease_acquired" => {
 			require_string(record.branch.as_deref(), "branch")?;

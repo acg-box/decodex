@@ -223,8 +223,8 @@ rate-limited, or unavailable.
   `reset_at`, `reset_unix_epoch`, `retry_after_seconds`, and operator `next_action`.
   Running lanes should still render from local runtime DB state while external sync
   is paused.
-- Linear writes should stay coarse: start, progress checkpoint, PR-ready/handoff,
-  blocked/failed, landed, done, and cleanup summaries.
+- Linear writes should stay coarse: one run-start ledger, material progress
+  checkpoints, PR-ready/handoff, blocked/failed, landed, done, and cleanup summaries.
 - Fine-grained retry budgets, raw attempts, heartbeat, child buckets, token pressure,
   and recovery details stay local.
 - Completed lanes without Decodex Linear execution ledger records are reported as
