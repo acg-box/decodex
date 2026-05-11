@@ -45,6 +45,13 @@ non-terminal state, no open dependency blockers, and available local capacity.
 The runtime database is the local source of truth for active execution. Linear and
 GitHub remain external collaboration mirrors and validation surfaces.
 
+Decodex also writes local agent-readable evidence under
+`~/.codex/decodex/agent-evidence/<service-id>/`. This evidence is derived from the
+operator snapshot and exists so a repair agent can quickly open one handoff index,
+related blocker snapshots, and run capsules. It is not scheduling authority, not a
+replacement for the runtime database, and not a Linear or GitHub collaboration record.
+Use `decodex diagnose --json` when an agent needs the current handoff index directly.
+
 ## State Ownership
 
 | Surface | Owns | Does Not Own |

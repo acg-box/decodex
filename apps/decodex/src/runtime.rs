@@ -36,6 +36,11 @@ pub(crate) fn log_dir() -> Result<PathBuf> {
 	Ok(decodex_home_dir()?.join("logs"))
 }
 
+/// Resolve the local agent-readable evidence directory.
+pub(crate) fn agent_evidence_dir() -> Result<PathBuf> {
+	Ok(decodex_home_dir()?.join("agent-evidence"))
+}
+
 /// Resolve the global single-machine runtime database path.
 pub(crate) fn runtime_db_path() -> Result<PathBuf> {
 	Ok(decodex_home_dir()?.join("runtime.sqlite3"))
@@ -139,41 +144,13 @@ fn config_fingerprint(config_path: &Path, workflow_path: &Path) -> Result<String
 #[cfg(test)]
 mod tests {
 	use std::{
-		env,
-		ffi::OsString,
 		fs,
 		path::{Path, PathBuf},
 	};
 
 	use tempfile::TempDir;
 
-	use crate::{runtime, state::StateStore};
-
-	struct EnvVarGuard {
-		key: &'static str,
-		previous: Option<OsString>,
-	}
-
-	impl EnvVarGuard {
-		fn set(key: &'static str, value: &Path) -> Self {
-			let previous = env::var_os(key);
-
-			unsafe {
-				env::set_var(key, value);
-			}
-
-			Self { key, previous }
-		}
-	}
-
-	impl Drop for EnvVarGuard {
-		fn drop(&mut self) {
-			match self.previous.take() {
-				Some(previous) => unsafe { env::set_var(self.key, previous) },
-				None => unsafe { env::remove_var(self.key) },
-			}
-		}
-	}
+	use crate::{runtime, state::StateStore, test_support::TestEnvVarGuard};
 
 	#[test]
 	fn runtime_paths_live_under_codex_decodex_home() {
@@ -186,9 +163,20 @@ mod tests {
 	}
 
 	#[test]
+	fn agent_evidence_path_lives_under_decodex_home() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let _home_guard = set_test_home(temp_dir.path());
+
+		assert_eq!(
+			runtime::agent_evidence_dir().expect("agent evidence path should resolve"),
+			temp_dir.path().join(".codex/decodex/agent-evidence")
+		);
+	}
+
+	#[test]
 	fn project_config_registration_requires_explicit_repo_root() {
 		let temp_dir = TempDir::new().expect("temp dir should create");
-		let _home_guard = EnvVarGuard::set("HOME", temp_dir.path());
+		let _home_guard = set_test_home(temp_dir.path());
 		let state_store = StateStore::open(temp_dir.path().join("runtime.sqlite3"))
 			.expect("state store should open");
 		let config_dir =
@@ -207,6 +195,10 @@ mod tests {
 			error.to_string().contains("paths.repo_root"),
 			"error should explain the missing explicit repo root: {error:?}"
 		);
+	}
+
+	fn set_test_home(path: &Path) -> TestEnvVarGuard {
+		TestEnvVarGuard::set("HOME", path.to_str().expect("test home should be UTF-8"))
 	}
 
 	#[test]

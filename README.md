@@ -86,6 +86,7 @@ cargo run -p decodex -- --help
 cargo run -p decodex -- probe stdio://
 cargo run -p decodex -- project list
 cargo run -p decodex -- status
+cargo run -p decodex -- diagnose --json
 cargo run -p decodex -- run --dry-run
 cargo run -p decodex -- serve --interval 60s --listen-address 127.0.0.1:8912
 ```
@@ -109,6 +110,10 @@ Project contracts are managed outside checkouts under
 - `WORKFLOW.md` for execution policy
 
 The redacted template for a project config lives at `decodex.example.toml`.
+
+`decodex diagnose --json` writes the local agent evidence index under
+`~/.codex/decodex/agent-evidence/<service-id>/` and prints the same handoff index for
+repair agents.
 
 ## Static Site
 

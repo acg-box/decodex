@@ -18,7 +18,7 @@ use crate::{
 	agent,
 	archive_hygiene::{self, ArchiveHygieneRequest},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
-	orchestrator::{self, IssueDispatchMode, RunOnceRequest, ServeRequest},
+	orchestrator::{self, DiagnoseRequest, IssueDispatchMode, RunOnceRequest, ServeRequest},
 	prelude::eyre,
 	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
 	runtime,
@@ -58,6 +58,7 @@ impl Cli {
 			Command::Serve(args) => args.run(config_path),
 			Command::Project(args) => args.run(),
 			Command::Status(args) => args.run(config_path),
+			Command::Diagnose(args) => args.run(config_path),
 			Command::Recover(args) => args.run(config_path),
 			Command::ArchiveLinear(args) => args.run(config_path),
 			Command::Probe(args) => args.run(),
@@ -128,6 +129,8 @@ enum Command {
 	Project(ProjectCommand),
 	/// Inspect the current local runtime state for one configured project.
 	Status(StatusCommand),
+	/// Write and print the agent-readable local evidence index.
+	Diagnose(DiagnoseCommand),
 	/// Diagnose or explicitly repair supported retained-lane recovery cases.
 	Recover(RecoverCommand),
 	/// Dry-run or archive old terminal Linear issues by repo label.
@@ -355,6 +358,25 @@ impl StatusCommand {
 }
 
 #[derive(Debug, Args)]
+struct DiagnoseCommand {
+	/// Emit the agent handoff index JSON instead of a one-line path summary.
+	#[arg(long)]
+	json: bool,
+	/// Maximum number of recent runs to include while generating evidence.
+	#[arg(long, value_name = "COUNT", default_value_t = orchestrator::DEFAULT_STATUS_RUN_LIMIT)]
+	limit: usize,
+}
+impl DiagnoseCommand {
+	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+		orchestrator::run_diagnose(DiagnoseRequest {
+			config_path,
+			json: self.json,
+			limit: self.limit,
+		})
+	}
+}
+
+#[derive(Debug, Args)]
 struct RecoverCommand {
 	#[command(subcommand)]
 	command: RecoverSubcommand,
@@ -571,10 +593,10 @@ mod tests {
 	use clap::Parser;
 
 	use crate::cli::{
-		AttemptCommand, Cli, Command, CommitCommand, LandCommand, ProbeCommand, ProjectCommand,
-		ProjectSubcommand, RecoverCommand, RecoverSubcommand, ReviewHandoffDiagnoseCommand,
-		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
-		RunCommand, ServeCommand, StatusCommand,
+		AttemptCommand, Cli, Command, CommitCommand, DiagnoseCommand, LandCommand, ProbeCommand,
+		ProjectCommand, ProjectSubcommand, RecoverCommand, RecoverSubcommand,
+		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
+		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -749,6 +771,22 @@ mod tests {
 
 		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
 		assert!(matches!(cli.command, Command::Status(StatusCommand { json: true, limit: 5 })));
+	}
+
+	#[test]
+	fn parses_diagnose_with_json_limit_and_global_config() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"--config",
+			"./project.toml",
+			"diagnose",
+			"--json",
+			"--limit",
+			"5",
+		]);
+
+		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
+		assert!(matches!(cli.command, Command::Diagnose(DiagnoseCommand { json: true, limit: 5 })));
 	}
 
 	#[test]
