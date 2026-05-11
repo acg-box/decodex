@@ -1,11 +1,14 @@
 ---
 name: github-signal
-description: Use when turning a normalized GitHub bundle under `tools/github/bundles/` into a Decodex signal draft, especially for requests to analyze a PR-first bundle, decide if a change is signal-worthy, or write/update the local editorial analysis JSON that feeds `tools/github/render_signal_entry.py`.
+description: Use when turning a normalized GitHub bundle under `artifacts/github/bundles/` into a Decodex signal draft, especially for requests to analyze a PR-first bundle, decide if a change is signal-worthy, or write/update the local editorial analysis JSON that feeds `scripts/github/render_signal_entry.py`.
 ---
 
 # Decodex GitHub Signal
 
 Use this skill for the local editorial step in the GitHub-first Decodex workflow.
+This is a Decodex repository-development instruction surface, not a complete
+user-facing plugin skill, and it must not be packaged with the installable Decodex
+plugin.
 
 This skill does not replace the deterministic scripts. It tells Codex how to read a
 bundle, decide whether it deserves publication, and draft the analysis JSON that the
@@ -19,8 +22,8 @@ repo already renders into a final `signal_entry/v1`.
 
 ## Inputs
 
-- A normalized bundle JSON under `tools/github/bundles/`
-- An output path under `tools/github/analysis/`
+- A normalized bundle JSON under `artifacts/github/bundles/`
+- An output path under `artifacts/github/analysis/`
 
 ## Boundaries
 
@@ -119,7 +122,7 @@ Write a JSON analysis draft with these fields:
 1. Validate the bundle first.
 2. Read `primary_pr.title`, `primary_pr.body`, `files`, and `commits`.
 3. Decide whether the change is signal-worthy.
-4. Draft the editorial JSON under `tools/github/analysis/`.
+4. Draft the editorial JSON under `artifacts/github/analysis/`.
 5. Render the final signal entry with the repo script.
 6. Validate the published signal collection and site build.
 
@@ -128,22 +131,22 @@ Write a JSON analysis draft with these fields:
 Validate a bundle:
 
 ```bash
-python3 tools/github/validate_change_bundle.py tools/github/bundles/<bundle>.json
+python3 scripts/github/validate_change_bundle.py artifacts/github/bundles/<bundle>.json
 ```
 
 Render the final signal entry after drafting:
 
 ```bash
-python3 tools/github/render_signal_entry.py \
-  --bundle tools/github/bundles/<bundle>.json \
-  --analysis tools/github/analysis/<bundle>.analysis.json \
+python3 scripts/github/render_signal_entry.py \
+  --bundle artifacts/github/bundles/<bundle>.json \
+  --analysis artifacts/github/analysis/<bundle>.analysis.json \
   --out site/src/content/signals/<bundle>.json
 ```
 
 Validate the published output:
 
 ```bash
-python3 tools/github/validate_signal_entry.py site/src/content/signals
+python3 scripts/github/validate_signal_entry.py site/src/content/signals
 npm run build --prefix site
 npm run check --prefix site
 ```

@@ -17,8 +17,9 @@ Consequences:
 
 - Public content remains diffable, reviewable, cacheable, and deployable through GitHub
   Pages without a live Decodex daemon.
-- `tools/github/` remains the content-generation boundary for public signals and
-  release deltas.
+- `scripts/github/` remains the content-generation script boundary for public signals
+  and release deltas, with checked-in GitHub bundles and editorial analysis drafts
+  under `artifacts/github/`.
 - `apps/decodex/` can evolve the runtime without turning the public website into an
   operational dependency.
 - Dynamic public capabilities such as login, personalized feeds, live queries, or
