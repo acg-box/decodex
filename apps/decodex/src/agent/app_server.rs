@@ -1110,13 +1110,22 @@ fn protocol_account_detail(payload_value: Option<&Value>) -> Option<String> {
 		&[
 			&["params", "planType"],
 			&["params", "chatgptPlanType"],
+			&["params", "rateLimits", "planType"],
 			&["planType"],
 			&["chatgptPlanType"],
+			&["rateLimits", "planType"],
 		],
 	);
 	let status = string_at_paths(
 		value,
-		&[&["params", "status"], &["params", "refreshStatus"], &["status"], &["refreshStatus"]],
+		&[
+			&["params", "status"],
+			&["params", "refreshStatus"],
+			&["params", "rateLimits", "rateLimitReachedType"],
+			&["status"],
+			&["refreshStatus"],
+			&["rateLimits", "rateLimitReachedType"],
+		],
 	);
 
 	match (plan, status) {
@@ -1207,17 +1216,15 @@ fn thread_status_waiting_reason(payload_value: Option<&Value>) -> Option<String>
 	None
 }
 
-fn protocol_rate_limit_status(event_type: &str, payload: &str) -> Option<String> {
+fn protocol_rate_limit_status(_event_type: &str, payload: &str) -> Option<String> {
 	let payload_value = serde_json::from_str::<Value>(payload).ok()?;
 
-	find_string_field(&payload_value, &["rateLimitReachedType", "rate_limit_reached_type"])
-		.or_else(|| {
+	find_string_field(&payload_value, &["rateLimitReachedType", "rate_limit_reached_type"]).or_else(
+		|| {
 			find_string_field(&payload_value, &["codexErrorInfo", "codex_error_info"])
 				.filter(|value| value.to_ascii_lowercase().contains("limit"))
-		})
-		.or_else(|| {
-			event_type.to_ascii_lowercase().contains("ratelimit").then(|| event_type.to_owned())
-		})
+		},
+	)
 }
 
 fn child_tool_call_event(
@@ -1519,15 +1526,27 @@ fn find_string_field(value: &Value, keys: &[&str]) -> Option<String> {
 		Value::Object(entries) => {
 			for (key, nested) in entries {
 				if keys.iter().any(|candidate| *candidate == key)
-					&& let Some(text) = nested.as_str()
+					&& let Some(text) = string_like_json_value(nested)
 				{
-					return Some(text.to_owned());
+					return Some(text);
 				}
 			}
 
 			entries.values().find_map(|nested| find_string_field(nested, keys))
 		},
 		Value::Array(items) => items.iter().find_map(|nested| find_string_field(nested, keys)),
+		_ => None,
+	}
+}
+
+fn string_like_json_value(value: &Value) -> Option<String> {
+	match value {
+		Value::String(text) if !text.is_empty() => Some(text.clone()),
+		Value::Number(number) => Some(number.to_string()),
+		Value::Bool(value) => Some(value.to_string()),
+		Value::Object(entries) => ["kind", "type"]
+			.iter()
+			.find_map(|key| entries.get(*key).and_then(string_like_json_value)),
 		_ => None,
 	}
 }
