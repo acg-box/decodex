@@ -11,10 +11,6 @@ Repo-native agent orchestration and public Codex signal publishing.
 [![GitHub last commit](https://img.shields.io/github/last-commit/hack-ink/decodex?color=red&style=plastic)](https://github.com/hack-ink/decodex)
 [![GitHub code lines](https://tokei.rs/b1/github/hack-ink/decodex)](https://github.com/hack-ink/decodex)
 
-https://decodex.space
-
-<img src="assets/logo-source.png" alt="Decodex logo" width="360">
-
 </div>
 
 ## Feature Highlights
