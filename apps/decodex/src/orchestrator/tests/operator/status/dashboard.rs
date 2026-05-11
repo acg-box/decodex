@@ -326,6 +326,12 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("account-privacy-toggle"));
 	assert!(response.contains("account-eye-open"));
 	assert!(response.contains("account-eye-off"));
+}
+
+#[test]
+fn operator_dashboard_account_privacy_controls_use_compact_identities() {
+	let response = dashboard_response();
+
 	assert!(response.contains("const ACCOUNT_PRIVACY_STORAGE_KEY = \"decodex.operator.accountPrivacy\";"));
 	assert!(response.contains("const ACCOUNT_NAME_OFFSET_STORAGE_KEY = \"decodex.operator.accountNameOffsets\";"));
 	assert!(response.contains("const ACCOUNT_IDENTITY_EDGE_CHARS = 6;"));
@@ -751,6 +757,12 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	);
 	assert!(response.contains("role=\"row\""));
 	assert!(response.contains("role=\"cell\""));
+}
+
+#[test]
+fn operator_dashboard_projects_show_compact_activity_work_and_location() {
+	let response = dashboard_response();
+
 	assert!(!response.contains("<h2>Active</h2>"));
 	assert!(!response.contains("<h2>All</h2>"));
 	assert!(response.contains("return projects.filter(projectHasActiveWork);"));
