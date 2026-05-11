@@ -181,14 +181,15 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(response.contains("section-marker section-marker-projects"));
 		assert!(!response.contains("<h2 id=\"projects-title\">Projects</h2>"));
 		assert!(!response.contains("data-fold-key=\"panel:projects\""));
-		assert!(response.contains("<h2>All</h2>"));
-		assert!(response.contains("<div class=\"summary-tools\">"));
+		assert!(response.contains("id=\"project-filter-toggle\""));
+		assert!(response.contains("class=\"project-table\" role=\"table\""));
+		assert!(!response.contains("<h2>All</h2>"));
 		assert!(response.contains("projectRegistrationCommand"));
 		assert!(
 			response.contains("decodex project add ~/.codex/decodex/projects/<service-id>")
 		);
-		assert!(response.contains("Projects must be registered explicitly"));
-		assert!(response.contains("does not discover ~/.codex history or repo-local files"));
+		assert!(response.contains("Register projects explicitly"));
+		assert!(response.contains("does not scan history or repos"));
 		assert!(response.contains("data-detail-key"));
 		assert!(response.contains("notice-dock"));
 		assert!(response.contains("Notices"));
@@ -207,14 +208,14 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("Queued issue -> reviewed change -> landed branch"));
 		assert!(response.contains("Running Lanes"));
 		assert!(response.contains("Intake Queue"));
-		assert!(response.contains("Waiting for capacity"));
+		assert!(response.contains("At capacity"));
 		assert!(response.contains("Review &amp; Landing"));
 		assert!(response.contains("Run History"));
 		assert!(response.contains("historyLedgerOutcome"));
 		assert!(response.contains("Run history unavailable"));
 		assert!(response.contains("renderHistoryLedgerFacts"));
 		assert!(response.contains("Recovery Worktrees"));
-		assert!(response.contains("Lane activity telemetry"));
+		assert!(response.contains("Lane activity"));
 		assert!(response.contains("agent idle"));
 		assert!(response.contains("Child agent"));
 		assert!(response.contains("Agent now"));
