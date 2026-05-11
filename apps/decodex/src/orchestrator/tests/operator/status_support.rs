@@ -8,15 +8,19 @@ use serde_json::Value;
 
 fn successful_linear_execution_history_comments(issue: &TrackerIssue) -> Vec<TrackerComment> {
 	vec![
-		linear_execution_history_comment(
-			issue,
-			"intake",
-			"2026-04-29T10:00:00Z",
-			"intake",
-			|record| {
-				record.summary = Some(String::from("Queued issue for Decodex execution."));
-			},
-		),
+			linear_execution_history_comment(
+				issue,
+				"run_started",
+				"2026-04-29T10:00:00Z",
+				"run-start",
+				|record| {
+					record.branch = Some(String::from("y/decodex-xy-355"));
+					record.worktree_path = Some(String::from(".worktrees/XY-355"));
+					record.commit_sha = Some(String::from("0000000000000000000000000000000000000000"));
+					record.transport = Some(String::from("stdio://"));
+					record.summary = Some(String::from("Started the Decodex lane."));
+				},
+			),
 		linear_execution_history_comment(
 			issue,
 			"review_handoff",

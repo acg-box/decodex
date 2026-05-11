@@ -46,7 +46,8 @@ The follow-up MVP should support these issue-scoped operations:
 - `issue_transition`
   - move the current issue to an allowed target state
 - `issue_comment`
-  - add a comment to the current issue
+  - add an exceptional human-readable comment to the current issue for
+    manual-attention blockers or explicit collaboration notes
 - `issue_progress_checkpoint`
   - record the current durable execution-state snapshot for the current issue without changing lifecycle authority
 - `issue_review_checkpoint`
@@ -114,6 +115,11 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   - when a normal lane is about to validate and write back `issue_review_handoff`
   - when a retained post-review lane is about to re-enter `review_repair`
 - Comment bodies should remain repository-controlled or agent-authored, but all tool calls must be journaled by `decodex` for recovery and audit.
+- Routine start and progress visibility should use Linear execution ledger records
+  instead of ad hoc `issue_comment` text. A normal run start is represented by one
+  `run_started` ledger record, and ordinary progress uses `issue_progress_checkpoint`
+  only when execution phase, focus, next action, blockers, evidence, or verification
+  changes materially.
 - Structured Linear execution event comments must conform to
   [`linear-execution-ledger.md`](./linear-execution-ledger.md).
 - Structured comment fields such as `worktree_path` must use repository-relative paths;

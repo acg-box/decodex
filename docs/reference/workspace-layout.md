@@ -99,6 +99,9 @@ Runtime state that belongs to the local operator, not to this repository, lives 
 - `runtime.sqlite3` is the single-machine control-plane database for all registered
   projects.
 - `logs/` stores Decodex process logs.
+- `agent-evidence/<service-id>/` stores local agent-readable diagnosis artifacts,
+  including `handoff-index.json`, `events.jsonl`, `blockers/*.json`, and
+  `runs/<yyyy-mm>/<run-id>/capsule.json`.
 - `projects/<service-id>/project.toml` stores the central service config for one
   registered project.
 - `projects/<service-id>/WORKFLOW.md` stores that project's execution policy.
