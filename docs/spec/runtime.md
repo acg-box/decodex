@@ -180,11 +180,13 @@ At the start of a normal run, the coding agent should:
 
 1. Acquire the local lease.
 2. Transition the issue to `In Progress`.
-3. Post the applicable structured run-start comment.
+3. Post the applicable structured `run_started` comment.
 
-Run-start, lease, and worktree-preparation comments are Linear execution ledger records.
-Their record envelope, event type, required fields, idempotency key, and
-repository-relative `worktree_path` rules are defined by
+The run-start comment is one Linear execution ledger record for new runs. It carries
+the branch, repository-relative worktree path, current commit, transport, run id, and
+attempt number instead of emitting separate intake, lease, worktree-preparation, and
+agent-start comments. Its record envelope, event type, required fields, idempotency
+key, and repository-relative `worktree_path` rules are defined by
 [`linear-execution-ledger.md`](./linear-execution-ledger.md).
 
 ### Completion disposition
@@ -294,7 +296,7 @@ and idempotency fields are defined by
 
 ## Local operational state
 
-The local runtime store is the global Decodex SQLite database for one local installation. It lives at `~/.codex/decodex/runtime.sqlite3`, not inside any registered project checkout or worktree. Every row that belongs to a repo is scoped by `project_id`. Decodex logs live beside that database under `~/.codex/decodex/logs/`; vendor-qualified app-data directories and per-project runtime databases are not part of the runtime contract.
+The local runtime store is the global Decodex SQLite database for one local installation. It lives at `~/.codex/decodex/runtime.sqlite3`, not inside any registered project checkout or worktree. Every row that belongs to a repo is scoped by `project_id`. Decodex logs live beside that database under `~/.codex/decodex/logs/`, and agent-readable derived evidence lives under `~/.codex/decodex/agent-evidence/<service-id>/`; vendor-qualified app-data directories and per-project runtime databases are not part of the runtime contract.
 
 Project contracts live outside registered repositories under `~/.codex/decodex/projects/<service-id>/`. Each project directory must contain `project.toml` and `WORKFLOW.md`; arbitrary project file names such as `<service-id>.toml` are not part of the contract. `project.toml` must set `[paths].repo_root` so the project contract is explicit. Project registration stores the centralized `config_path`, target `repo_root`, `worktree_root`, and workflow path in the global runtime database. Commands that start inside a registered checkout or lane worktree resolve the project through that registry; they do not discover or trust worktree-local config files. `decodex serve` loads enabled registered projects from the global runtime database. It must not scan `.codex` history, repo-local config files, or currently open worktrees to infer additional projects.
 
@@ -335,6 +337,7 @@ The minimum supported surface is:
 
 - structured runtime logs with stable identifiers such as `project_id`, `issue_id`, `issue`, `run_id`, `attempt`, `branch`, and repository-relative `worktree_path`
 - a local status command that renders the current service snapshot in both human-readable and JSON forms
+- an agent evidence command, `decodex diagnose`, that writes a compact derived handoff index, blocker snapshots, run capsules, and an append-only evidence event stream under `~/.codex/decodex/agent-evidence/<service-id>/`
 
 The status surface should describe runtime DB-backed execution state, plus low-frequency connector refreshes and retained `.worktrees` lanes, for example:
 
