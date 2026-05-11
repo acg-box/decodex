@@ -25,9 +25,9 @@ Outputs:
 
 ## Workflow
 
-1. Build a normalized GitHub change bundle under `tools/github/bundles/`.
+1. Build a normalized GitHub change bundle under `artifacts/github/bundles/`.
 2. Review the bundle and decide whether the change is signal-worthy.
-3. Run Codex analysis against the bundle with `plugins/decodex/skills/github-signal/` and save the editorial draft JSON.
+3. Run Codex analysis against the bundle with the repo-local instructions at `dev/skills/github-signal/` and save the editorial draft JSON under `artifacts/github/analysis/`.
 4. Render the resulting signal entry into `site/src/content/signals/`.
 5. Validate the signal entry shape and collection consistency.
 6. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
@@ -39,33 +39,33 @@ Outputs:
 Build a PR-first bundle:
 
 ```bash
-python3 tools/github/build_change_bundle.py \
+python3 scripts/github/build_change_bundle.py \
   --repo openai/codex \
   --pr 15222 \
-  --out tools/github/bundles/openai-codex-pr-15222.json
+  --out artifacts/github/bundles/openai-codex-pr-15222.json
 ```
 
 Validate the bundle:
 
 ```bash
-python3 tools/github/validate_change_bundle.py \
-  tools/github/bundles/openai-codex-pr-15222.json
+python3 scripts/github/validate_change_bundle.py \
+  artifacts/github/bundles/openai-codex-pr-15222.json
 ```
 
 Render a final signal entry from the reviewed bundle plus the local editorial
 draft:
 
 ```bash
-python3 tools/github/render_signal_entry.py \
-  --bundle tools/github/bundles/openai-codex-pr-15222.json \
-  --analysis tools/github/analysis/openai-codex-pr-15222.analysis.json \
+python3 scripts/github/render_signal_entry.py \
+  --bundle artifacts/github/bundles/openai-codex-pr-15222.json \
+  --analysis artifacts/github/analysis/openai-codex-pr-15222.analysis.json \
   --out site/src/content/signals/openai-codex-pr-15222.json
 ```
 
 Validate the published signal entries and the site collection:
 
 ```bash
-python3 tools/github/validate_signal_entry.py site/src/content/signals
+python3 scripts/github/validate_signal_entry.py site/src/content/signals
 npm run build --prefix site
 npm run check --prefix site
 cargo make decodex-checks
@@ -74,7 +74,7 @@ cargo make decodex-checks
 Build the homepage release-delta artifact:
 
 ```bash
-python3 tools/github/build_release_delta.py \
+python3 scripts/github/build_release_delta.py \
   --repo openai/codex \
   --signals-dir site/src/content/signals \
   --out site/src/content/release-deltas/openai-codex-latest.json
@@ -82,17 +82,20 @@ python3 tools/github/build_release_delta.py \
 
 The repository already includes a real sample for this flow:
 
-- bundle: `tools/github/bundles/openai-codex-pr-15222.json`
-- editorial draft: `tools/github/analysis/openai-codex-pr-15222.analysis.json`
+- bundle: `artifacts/github/bundles/openai-codex-pr-15222.json`
+- editorial draft: `artifacts/github/analysis/openai-codex-pr-15222.analysis.json`
 - rendered signal: `site/src/content/signals/openai-codex-pr-15222.json`
 
-Repo-local skill entrypoint:
+Repo-local editorial instruction entrypoint:
 
-- `plugins/decodex/skills/github-signal/SKILL.md`
+- `dev/skills/github-signal/SKILL.md`
+
+This entrypoint is for Decodex repository development only. It is incomplete as a
+general user-facing skill and must not be packaged with the installable Decodex plugin.
 
 Automated hourly sync entrypoint:
 
-- `tools/github/sync_latest_signals.py`
+- `scripts/github/sync_latest_signals.py`
 
 ## Editorial gate
 
