@@ -672,6 +672,7 @@ struct OperatorStatusSnapshot {
 	warnings: Vec<String>,
 	connector_backoffs: Vec<OperatorConnectorBackoffStatus>,
 	projects: Vec<OperatorProjectStatus>,
+	account_control: OperatorCodexAccountControlStatus,
 	accounts: Vec<CodexAccountActivitySummary>,
 	active_runs: Vec<OperatorRunStatus>,
 	recent_runs: Vec<OperatorRunStatus>,
@@ -710,6 +711,12 @@ struct OperatorProjectStatus {
 	connector_state: String,
 	last_activity_at: Option<String>,
 	warning_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorCodexAccountControlStatus {
+	mode: String,
+	account_selector: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

@@ -424,9 +424,14 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("function codexAccountPoolAccounts(snapshot)"));
 	assert!(response.contains("function codexAccountPoolRank(account)"));
 	assert!(response.contains("function codexAccountPoolSortKey(account)"));
-	assert!(response.contains("function renderCodexAccountPool(accounts)"));
+	assert!(response.contains("function renderCodexAccountPool(accounts, snapshot)"));
 	assert!(!response.contains("function renderCodexAccountPoolHeader(accounts)"));
-	assert!(response.contains("function renderCodexAccountPoolRow(account)"));
+	assert!(response.contains("function renderCodexAccountPoolRow(account, snapshot)"));
+	assert!(response.contains("function renderCodexAccountSelectButton(account, snapshot)"));
+	assert!(response.contains("data-account-select=\"${escapeHtml(action)}\""));
+	assert!(response.contains("sendDashboardControl(action, { projectId, accountSelector });"));
+	assert!(response.contains("clearAccountSelection"));
+	assert!(response.contains("selectAccount"));
 	assert!(response.contains("function codexAccountDebugSummary(account)"));
 	assert!(!response.contains("function codexAccountPoolDebugSummary(accounts)"));
 	assert!(response.contains("return \"not captured\";"));
@@ -859,7 +864,8 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(!response.contains("lowestRemaining <= 20"));
 	assert!(!response.contains("account-meter"));
 	assert!(!response.contains("lowestRemaining}%"));
-	assert!(response.contains("nodes.accountPool.innerHTML = renderCodexAccountPool(accounts)"));
+	assert!(response
+		.contains("nodes.accountPool.innerHTML = renderCodexAccountPool(accounts, snapshot)"));
 	assert!(response.contains("renderAccountPrivacyToggle();"));
 	assert!(!response.contains("setPanelMeta(nodes.accountPoolMeta"));
 	assert!(!response.contains("nodes.accountPoolMeta.textContent = snapshot"));

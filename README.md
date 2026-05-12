@@ -112,7 +112,9 @@ Project contracts are managed outside checkouts under
 The redacted template for a project config lives at `decodex.example.toml`.
 When a project enables `[codex.accounts]`, the shared ChatGPT account pool is
 `~/.codex/decodex/accounts.jsonl`; it is global Decodex state, not a project-local
-file, and project configs do not own an account-pool path override.
+file, and project configs do not own an account-pool path override. Set
+`[codex.accounts].fixed_account` to pin runs to one account; the operator dashboard can
+write the same project config field from the Accounts UI.
 
 `decodex diagnose --json` writes the local agent evidence index under
 `~/.codex/decodex/agent-evidence/<service-id>/` and prints the same handoff index for
