@@ -783,6 +783,16 @@
 				background: var(--section-tone);
 			}
 
+			.section-marker-meta {
+				flex: 0 1 auto;
+				min-width: 0;
+				max-width: min(320px, 50vw);
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				text-align: right;
+			}
+
 			.section-marker-control {
 				--section-tone: var(--tone-muted);
 			}
@@ -812,15 +822,6 @@
 					background-color var(--medium) var(--ease),
 					border-color var(--medium) var(--ease),
 					transform var(--medium) var(--ease);
-			}
-
-			#account-pool-panel {
-				padding-bottom: var(--space-md);
-				background: transparent;
-			}
-
-			#account-pool-panel .panel-body {
-				padding-bottom: 4px;
 			}
 
 			#active-panel {
@@ -1893,6 +1894,8 @@
 
 			.account-row {
 				--account-accent: var(--tone-muted);
+				--account-confirm-accent: var(--tone-run);
+				--account-confirm-cycle: 1.45s;
 				position: relative;
 				isolation: isolate;
 				display: grid;
@@ -1961,10 +1964,6 @@
 				--account-accent: var(--success);
 			}
 
-			.account-row.is-fixed {
-				--account-accent: var(--success);
-			}
-
 			.account-row.is-ready {
 				--account-accent: var(--success);
 			}
@@ -1988,6 +1987,10 @@
 				--account-accent: var(--danger);
 			}
 
+			.account-row.is-fixed {
+				--account-accent: var(--info);
+			}
+
 			.account-row.is-warn::after,
 			.account-row.is-danger::after {
 				opacity: 0.35;
@@ -2005,10 +2008,65 @@
 				transform: scaleX(1.45) scaleY(1.08);
 			}
 
+			.account-row.is-armed:hover::before,
+			.account-row.is-armed:focus-within::before {
+				transform: none;
+			}
+
+			.account-row.is-armed:not(.is-selected):not(.is-fixed):hover::before,
+			.account-row.is-armed:not(.is-selected):not(.is-fixed):focus-within::before {
+				box-shadow: none;
+			}
+
+			.account-row.is-armed.is-selected:hover::before,
+			.account-row.is-armed.is-selected:focus-within::before,
+			.account-row.is-armed.is-fixed:hover::before,
+			.account-row.is-armed.is-fixed:focus-within::before {
+				box-shadow: 0 0 10px color-mix(in srgb, var(--account-accent) 22%, transparent);
+			}
+
 			.account-row:hover::after,
 			.account-row:focus-within::after {
 				opacity: 0.85;
 				transform: scaleX(1);
+			}
+
+			@keyframes account-confirm-name-breathe {
+				0%,
+				100% {
+					color: color-mix(in srgb, var(--account-confirm-accent) 46%, var(--muted));
+					text-shadow: none;
+				}
+				50% {
+					color: var(--account-confirm-accent);
+					text-shadow:
+						0 0 6px color-mix(in srgb, var(--account-confirm-accent) 34%, transparent),
+						0 0 15px color-mix(in srgb, var(--account-confirm-accent) 20%, transparent);
+				}
+			}
+
+			@keyframes account-confirm-bracket-left {
+				0%,
+				100% {
+					opacity: 0.36;
+					transform: translate(0.18ch, -50%);
+				}
+				50% {
+					opacity: 0.98;
+					transform: translate(-0.12ch, -50%);
+				}
+			}
+
+			@keyframes account-confirm-bracket-right {
+				0%,
+				100% {
+					opacity: 0.36;
+					transform: translate(-0.18ch, -50%);
+				}
+				50% {
+					opacity: 0.98;
+					transform: translate(0.12ch, -50%);
+				}
 			}
 
 			.account-row-id {
@@ -2035,6 +2093,99 @@
 				font-weight: var(--weight-label);
 			}
 
+			.account-name-button {
+				position: relative;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				min-width: 0;
+				max-width: 100%;
+				padding: 0 2px;
+				border: 0;
+				background: transparent;
+				color: var(--text);
+				font-family: var(--mono);
+				font-size: var(--type-label);
+				font-variant-ligatures: none;
+				font-weight: var(--weight-label);
+				letter-spacing: 0;
+				line-height: 1.25;
+				cursor: pointer;
+				transition:
+					color var(--fast) var(--ease),
+					text-shadow var(--medium) var(--ease);
+			}
+
+			.account-name-button::before,
+			.account-name-button::after {
+				position: absolute;
+				top: 50%;
+				display: block;
+				color: var(--account-confirm-accent);
+				font-weight: var(--weight-strong);
+				line-height: 1;
+				opacity: 0;
+				pointer-events: none;
+				text-shadow:
+					0 0 8px color-mix(in srgb, var(--account-confirm-accent) 42%, transparent),
+					0 0 16px color-mix(in srgb, var(--account-confirm-accent) 22%, transparent);
+				will-change: opacity, transform;
+			}
+
+			.account-name-button::before {
+				content: ">";
+				left: -1.35ch;
+				transform: translate(0.18ch, -50%);
+			}
+
+			.account-name-button::after {
+				content: "<";
+				right: -1.35ch;
+				transform: translate(-0.18ch, -50%);
+			}
+
+			.account-name-button .account-name {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-name-button:hover,
+			.account-name-button.is-fixed {
+				color: var(--account-confirm-accent);
+			}
+
+			.account-name-button.is-fixed {
+				text-shadow:
+					0 0 6px color-mix(in srgb, var(--account-confirm-accent) 34%, transparent),
+					0 0 15px color-mix(in srgb, var(--account-confirm-accent) 20%, transparent);
+			}
+
+			.account-name-button.is-fixed::before,
+			.account-name-button.is-fixed::after {
+				opacity: 0.72;
+				transform: translate(0, -50%);
+			}
+
+			.account-name-button.is-armed {
+				animation: account-confirm-name-breathe var(--account-confirm-cycle) var(--ease) infinite;
+				will-change: color, text-shadow;
+			}
+
+			.account-name-button.is-armed::before {
+				animation: account-confirm-bracket-left var(--account-confirm-cycle) var(--ease) infinite;
+			}
+
+			.account-name-button.is-armed::after {
+				animation: account-confirm-bracket-right var(--account-confirm-cycle) var(--ease) infinite;
+			}
+
+			.account-name-button:focus-visible {
+				outline: 2px solid var(--info);
+				outline-offset: 4px;
+			}
+
 			.account-name-reroll {
 				display: inline-flex;
 				align-items: center;
@@ -2053,6 +2204,10 @@
 					color var(--fast) var(--ease);
 			}
 
+			.account-name-button + .account-name-reroll {
+				margin-left: 8px;
+			}
+
 			.account-name-reroll svg {
 				display: block;
 				width: 12px;
@@ -2067,48 +2222,6 @@
 
 			.account-name-reroll:focus-visible {
 				color: var(--text);
-				outline: 2px solid var(--info);
-				outline-offset: 2px;
-			}
-
-			.account-select-button {
-				display: inline-flex;
-				align-items: center;
-				justify-content: center;
-				flex: 0 0 auto;
-				width: 18px;
-				height: 18px;
-				padding: 0;
-				border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
-				border-radius: 999px;
-				background: color-mix(in srgb, var(--surface-muted) 74%, transparent);
-				color: var(--muted);
-				cursor: pointer;
-				transition:
-					background-color var(--fast) var(--ease),
-					border-color var(--fast) var(--ease),
-					color var(--fast) var(--ease),
-					transform var(--fast) var(--ease);
-			}
-
-			.account-select-button svg {
-				display: block;
-				width: 12px;
-				height: 12px;
-				stroke-width: 2.2;
-			}
-
-			.account-select-button:hover,
-			.account-select-button.is-fixed {
-				border-color: color-mix(in srgb, var(--success) 58%, var(--line-strong));
-				color: var(--success);
-			}
-
-			.account-select-button:hover {
-				transform: translateY(-1px);
-			}
-
-			.account-select-button:focus-visible {
 				outline: 2px solid var(--info);
 				outline-offset: 2px;
 			}
@@ -2282,6 +2395,7 @@
 			}
 
 			.account-row.is-selected .account-status,
+			.account-row.is-fixed .account-status,
 			.account-row.is-ready .account-status {
 				color: var(--account-accent);
 			}
@@ -3168,6 +3282,7 @@
 						aria-label="Accounts group"
 					>
 						<span>Accounts</span>
+						<p class="table-meta section-marker-meta" id="account-mode-meta"></p>
 					</div>
 					<section class="panel section-control" id="account-pool-panel">
 						<div class="panel-body">
@@ -3238,7 +3353,7 @@
 							<div>
 								<h2>Review &amp; Landing</h2>
 							</div>
-							<p class="table-meta" id="review-lanes-meta">Snapshot pending</p>
+							<p class="table-meta" id="review-lanes-meta">0 PRs · 0 need attention · 0 ready · 0 waiting</p>
 						</div>
 						<div class="panel-body">
 							<div class="card-list" id="review-queue"></div>
@@ -3399,6 +3514,7 @@
 				themeButtons: [...document.querySelectorAll("[data-theme-choice]")],
 				workspace: document.getElementById("workspace"),
 				primaryStack: document.getElementById("primary-stack"),
+				accountModeMeta: document.getElementById("account-mode-meta"),
 				panels: {
 					projects: document.getElementById("projects-panel"),
 					accountPool: document.getElementById("account-pool-panel"),
@@ -3448,6 +3564,7 @@
 			let accountEmailsHidden = loadAccountPrivacy();
 			let accountNameOffsets = loadAccountNameOffsets();
 			let accountPoolSort = loadAccountPoolSort();
+			let accountSelectionConfirmation = null;
 			let projectFilterMode = loadProjectFilterMode();
 			let projectLocationsHidden = loadProjectLocationPrivacy();
 			let projectSort = loadProjectSort();
@@ -3471,7 +3588,6 @@
 				runningInlineMetaPlural: "already running",
 				protocolEvent: "Protocol event",
 				staleClosed: "closed labels",
-				waitingSnapshot: "Snapshot pending",
 			};
 
 			function escapeHtml(value) {
@@ -4907,10 +5023,8 @@
 				`;
 			}
 
-			function renderRoutineEmptyList(container, snapshot, waitingCopy = "") {
-				container.innerHTML = snapshot
-					? ""
-					: renderEmptyState(COPY.waitingSnapshot, waitingCopy);
+			function renderRoutineEmptyList(container) {
+				container.innerHTML = "";
 			}
 
 			function keyedPatchNodeKey(node) {
@@ -5584,25 +5698,14 @@
 					return account?.plan_type || "";
 				}
 
-				function codexAccountControlProjectId(snapshot) {
-					const snapshotProjectId = String(snapshot?.project_id || "").trim();
-					if (snapshotProjectId && snapshotProjectId !== "all") {
-						return snapshotProjectId;
-					}
-
-					const projects = Array.isArray(snapshot?.projects)
-						? snapshot.projects.filter((project) => project?.project_id)
-						: [];
-
-					return projects.length === 1 ? String(projects[0].project_id) : "";
-				}
-
 				function codexAccountControlSelector(account) {
 					return codexAccountEmail(account) || codexAccountFingerprint(account);
 				}
 
 				function codexAccountConfiguredSelector(snapshot) {
-					return String(snapshot?.account_control?.account_selector || "").trim();
+					const accountControl = snapshot?.account_control || {};
+
+					return String(accountControl.account_selector || "").trim();
 				}
 
 				function codexAccountMatchesConfiguredSelector(account, snapshot) {
@@ -5615,6 +5718,94 @@
 						selector === codexAccountEmail(account) ||
 						selector === codexAccountFingerprint(account)
 					);
+				}
+
+				function accountSelectionConfirmationKey(action, selector) {
+					return `${String(action || "").trim()}:${String(selector || "").trim()}`;
+				}
+
+				function accountSelectionConfirmationMatches(action, selector) {
+					if (!accountSelectionConfirmation) {
+						return false;
+					}
+
+					return (
+						accountSelectionConfirmation.key ===
+						accountSelectionConfirmationKey(action, selector)
+					);
+				}
+
+				function accountSelectionControlTitle(action, displayTitle, armed) {
+					const prefix =
+						action === "clearAccountSelection"
+							? armed
+								? "Click again to return the global account pool to balanced selection"
+								: "Click once, then again to return the global account pool to balanced selection"
+							: armed
+								? "Click again to use this account for new global runs"
+								: "Click once, then again to use this account for new global runs";
+
+					return displayTitle ? `${prefix}: ${displayTitle}` : prefix;
+				}
+
+				function syncAccountSelectionConfirmationDom() {
+					for (const button of nodes.accountPool.querySelectorAll("[data-account-confirm-action]")) {
+						const action = button.dataset.accountConfirmAction;
+						const selector = button.dataset.accountSelector || "";
+						const armed = accountSelectionConfirmationMatches(action, selector);
+						const row = button.closest(".account-row");
+						const title = accountSelectionControlTitle(
+							action,
+							button.dataset.accountDisplayTitle || "",
+							armed,
+						);
+
+						button.classList.toggle("is-armed", armed);
+						button.setAttribute("aria-label", title);
+						button.setAttribute("title", title);
+						if (row) {
+							row.classList.toggle("is-armed", armed);
+						}
+					}
+				}
+
+				function clearAccountSelectionConfirmation(syncDom = true) {
+					accountSelectionConfirmation = null;
+					if (syncDom) {
+						syncAccountSelectionConfirmationDom();
+					}
+				}
+
+				function armAccountSelectionConfirmation(action, selector) {
+					accountSelectionConfirmation = {
+						key: accountSelectionConfirmationKey(action, selector),
+						action,
+						selector,
+					};
+					syncAccountSelectionConfirmationDom();
+				}
+
+				function confirmAccountSelection(action, selector) {
+					clearAccountSelectionConfirmation(false);
+					if (action === "selectAccount") {
+						sendDashboardControl(action, { accountSelector: selector });
+					} else if (action === "clearAccountSelection") {
+						sendDashboardControl(action);
+					}
+					syncAccountSelectionConfirmationDom();
+				}
+
+				function handleAccountSelectionConfirmation(action, selector) {
+					if (!selector || !["selectAccount", "clearAccountSelection"].includes(action)) {
+						return;
+					}
+
+					if (accountSelectionConfirmationMatches(action, selector)) {
+						confirmAccountSelection(action, selector);
+						return;
+					}
+
+					armAccountSelectionConfirmation(action, selector);
 				}
 
 				function codexAccountEmail(account) {
@@ -5724,29 +5915,24 @@
 					`;
 				}
 
-				function renderCodexAccountSelectButton(account, snapshot) {
-					const projectId = codexAccountControlProjectId(snapshot);
+				function renderCodexAccountNameControl(account, snapshot) {
 					const selector = codexAccountControlSelector(account);
-					if (!projectId || !selector) {
-						return "";
+					const displayTitle = codexAccountDisplayTitle(account);
+					const visibleName = codexAccountVisibleName(account);
+					if (!selector) {
+						return `<strong class="account-name" title="${escapeHtml(displayTitle)}">${escapeHtml(visibleName)}</strong>`;
 					}
 
 					const fixed = codexAccountMatchesConfiguredSelector(account, snapshot);
 					const action = fixed ? "clearAccountSelection" : "selectAccount";
-					const title = fixed
-						? "Return this project to balanced account selection"
-						: "Use this account for new runs";
+					const armed = accountSelectionConfirmationMatches(action, selector);
 					const fixedClass = fixed ? " is-fixed" : "";
+					const armedClass = armed ? " is-armed" : "";
+					const title = accountSelectionControlTitle(action, displayTitle, armed);
 
 					return `
-						<button class="account-select-button${fixedClass}" type="button" data-account-select="${escapeHtml(action)}" data-project-id="${escapeHtml(projectId)}" data-account-selector="${escapeHtml(selector)}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">
-							<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-								${
-									fixed
-										? '<path d="M6 18 18 6"></path><path d="m6 6 12 12"></path>'
-										: '<path d="M20 6 9 17l-5-5"></path>'
-								}
-							</svg>
+						<button class="account-name-button${fixedClass}${armedClass}" type="button" data-account-confirm-action="${escapeHtml(action)}" data-account-selector="${escapeHtml(selector)}" data-account-display-title="${escapeHtml(displayTitle)}" aria-pressed="${fixed ? "true" : "false"}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">
+							<span class="account-name">${escapeHtml(visibleName)}</span>
 						</button>
 					`;
 				}
@@ -6123,14 +6309,15 @@
 				}
 
 				function renderCodexAccountPoolRow(account, snapshot) {
-					const displayTitle = codexAccountDisplayTitle(account);
-					const visibleName = codexAccountVisibleName(account);
 					const plan = codexAccountPlanLabel(account);
 					const statusTone = codexAccountStatusTone(account);
 					const toneClass = statusTone ? ` is-${statusTone}` : "";
-					const fixedClass = codexAccountMatchesConfiguredSelector(account, snapshot)
-						? " is-fixed"
-						: "";
+					const fixed = codexAccountMatchesConfiguredSelector(account, snapshot);
+					const fixedClass = fixed ? " is-fixed" : "";
+					const selector = codexAccountControlSelector(account);
+					const action = fixed ? "clearAccountSelection" : "selectAccount";
+					const armedClass =
+						selector && accountSelectionConfirmationMatches(action, selector) ? " is-armed" : "";
 					const selectedClass =
 						String(account.status || "").toLowerCase() === "selected" ? " is-selected" : "";
 				const metaFacts = codexAccountMetaFacts(account);
@@ -6140,11 +6327,10 @@
 				const identityClass = codexAccountShowsEmail(account) ? " is-machine" : "";
 
 				return `
-						<div class="account-row${selectedClass}${fixedClass}${toneClass}">
+						<div class="account-row${selectedClass}${fixedClass}${armedClass}${toneClass}">
 							<div class="account-row-id${identityClass}">
-								<strong class="account-name" title="${escapeHtml(displayTitle)}">${escapeHtml(visibleName)}</strong>
+								${renderCodexAccountNameControl(account, snapshot)}
 								${renderCodexAccountRandomNameButton(account)}
-								${renderCodexAccountSelectButton(account, snapshot)}
 							</div>
 							<div class="account-row-plan">${escapeHtml(plan)}</div>
 							${renderCodexAccountPoolWindow(account, "primary")}
@@ -6200,13 +6386,38 @@
 					return `<span class="account-pool-heading">${sortButton}${accountPrivacyToggleMarkup()}</span>`;
 				}
 
-				function renderCodexAccountPool(accounts, snapshot) {
-					if (!accounts.length) {
-						return renderEmptyState(
-							"No accounts",
-							"Account usage appears after snapshot publish.",
-						);
+				function codexAccountControlStatusLabel(snapshot) {
+					const accountControl = snapshot?.account_control || {};
+					const selector = String(accountControl.account_selector || "").trim();
+					if (!selector) {
+						return "Balanced";
 					}
+
+					const account = codexAccountPoolAccounts(snapshot).find(
+						(candidate) =>
+							selector === codexAccountEmail(candidate) ||
+							selector === codexAccountFingerprint(candidate),
+					);
+					if (account) {
+						const label = codexAccountShowsEmail(account)
+							? compactAccountIdentity(selector)
+							: codexAccountVisibleName(account);
+						return `Fixed · ${label}`;
+					}
+
+					return `Fixed · ${accountEmailsHidden ? "account" : compactAccountIdentity(selector)}`;
+				}
+
+				function renderAccountModeControl(snapshot) {
+					const title = codexAccountControlStatusLabel(snapshot);
+					nodes.accountModeMeta.textContent = title;
+					nodes.accountModeMeta.title = title;
+				}
+
+			function renderCodexAccountPool(accounts, snapshot) {
+				if (!accounts.length) {
+					return "";
+				}
 
 					return `
 						<div class="account-pool-list" aria-label="Accounts">
@@ -6306,7 +6517,10 @@
 											? "available"
 											: account.status,
 							};
-							if (!existing || codexAccountPoolRank(candidate) >= codexAccountPoolRank(existing)) {
+							if (
+								!existing ||
+								codexAccountPoolMergeRank(candidate) >= codexAccountPoolMergeRank(existing)
+							) {
 								accountsByIdentity.set(identity, candidate);
 							}
 						}
@@ -6315,7 +6529,7 @@
 					return sortCodexAccountPoolAccounts([...accountsByIdentity.values()]);
 				}
 
-				function codexAccountPoolRank(account) {
+				function codexAccountPoolMergeRank(account) {
 					const status = String(account?.status || "").toLowerCase();
 
 					return status === "selected" ? 1 : 0;
@@ -6385,46 +6599,31 @@
 					return direction === "desc" ? -delta : delta;
 				}
 
-				function codexAccountPoolSortKey(account) {
-					const identity =
-						codexAccountIdentity(account) ||
-						account?.plan_type ||
-						"account";
-					const hash = codexAccountIdentityHash(identity).toString(16).padStart(8, "0");
-
-					return hash;
-				}
-
-				function compareCodexAccountPoolStable(left, right) {
-					const rankDelta = codexAccountPoolRank(right) - codexAccountPoolRank(left);
-					if (rankDelta) {
-						return rankDelta;
+				function sortCodexAccountPoolAccounts(accounts) {
+					if (!accountPoolSort.key) {
+						return accounts;
 					}
 
-					return codexAccountPoolSortKey(left).localeCompare(codexAccountPoolSortKey(right));
-				}
-
-				function sortCodexAccountPoolAccounts(accounts) {
 					return accounts.sort((left, right) => {
-						if (accountPoolSort.key) {
-							const columnDelta = compareCodexAccountPoolColumn(
-								left,
-								right,
-								accountPoolSort.key,
-								accountPoolSort.direction,
-							);
-							if (columnDelta) {
-								return columnDelta;
-							}
+						const columnDelta = compareCodexAccountPoolColumn(
+							left,
+							right,
+							accountPoolSort.key,
+							accountPoolSort.direction,
+						);
+						if (columnDelta) {
+							return columnDelta;
 						}
 
-						return compareCodexAccountPoolStable(left, right);
+						return 0;
 					});
 				}
 
 				function renderAccountPool(snapshot) {
 					const accounts = codexAccountPoolAccounts(snapshot);
-					nodes.accountPool.innerHTML = renderCodexAccountPool(accounts, snapshot);
+					renderAccountModeControl(snapshot);
+					renderStableList(nodes.accountPool, renderCodexAccountPool(accounts, snapshot));
+					syncAccountSelectionConfirmationDom();
 					renderAccountPrivacyToggle();
 				}
 
@@ -7961,7 +8160,7 @@
 				if (!snapshot) {
 					renderProjectFilterToggle();
 					nodes.projectOverview.classList.add("is-empty", "is-waiting");
-					nodes.projectOverview.innerHTML = renderEmptyState(COPY.waitingSnapshot);
+					nodes.projectOverview.innerHTML = "";
 					return;
 				}
 
@@ -8048,7 +8247,7 @@
 
 			function backlogMetaText(snapshot, derived) {
 				if (!snapshot) {
-					return COPY.waitingSnapshot;
+					return "0 queued";
 				}
 
 				const parts = [`${derived.queueBacklogCandidates.length} queued`];
@@ -8081,13 +8280,9 @@
 				return parts.join(" · ");
 			}
 
-			function renderQueuedCandidates(container, items, snapshot) {
+			function renderQueuedCandidates(container, items) {
 				if (!items.length) {
-					renderRoutineEmptyList(
-						container,
-						snapshot,
-						"Appears after /state publishes a snapshot.",
-					);
+					renderRoutineEmptyList(container);
 					return;
 				}
 
@@ -8129,9 +8324,9 @@
 					.join("");
 			}
 
-			function renderActionCards(container, items, snapshot, waitingCopy = "") {
+			function renderActionCards(container, items) {
 				if (!items.length) {
-					renderRoutineEmptyList(container, snapshot, waitingCopy);
+					renderRoutineEmptyList(container);
 					return;
 				}
 
@@ -8206,16 +8401,12 @@
 				const runs = snapshot?.active_runs ?? [];
 				setPanelMeta(
 					nodes.activeRunsMeta,
-					snapshot ? runningLaneMetaText(derived) : COPY.waitingSnapshot,
+					runningLaneMetaText(derived),
 					derived.runningAttentionCount ? "attention" : "",
 				);
 
 				if (!runs.length) {
-					renderRoutineEmptyList(
-						nodes.activeRuns,
-						snapshot,
-						"Appears after /state publishes a snapshot.",
-					);
+					renderRoutineEmptyList(nodes.activeRuns);
 					return;
 				}
 
@@ -8365,7 +8556,7 @@
 									? ` · ${pluralize(hiddenActiveCount, COPY.runningInlineMeta, COPY.runningInlineMetaPlural)}`
 									: ""
 							}`
-						: COPY.waitingSnapshot,
+						: "0 issues · 0 attempts",
 				);
 
 				if (!lanes.length) {
@@ -9153,21 +9344,18 @@
 				renderQueuedCandidates(
 					nodes.queuedCandidates,
 					derived.queueBacklogCandidates,
-					snapshot,
 				);
 				setPanelMeta(nodes.queuedMeta, backlogMetaText(snapshot, derived));
 				renderRecentRuns(snapshot);
 				renderActionCards(
 					nodes.reviewQueue,
 					reviewItems,
-					snapshot,
-					"Appears after /state publishes a snapshot.",
 				);
 				setPanelMeta(
 					nodes.reviewLanesMeta,
 					snapshot
 						? `${pluralize(derived.postReviewLanes.length, "PR")} · ${pluralize(derived.reviewBlockerCount, "needs attention", "need attention")} · ${derived.readyItems.length} ready · ${derived.reviewWaitingCount} waiting`
-						: COPY.waitingSnapshot,
+						: "0 PRs · 0 need attention · 0 ready · 0 waiting",
 				);
 				renderWorktrees(snapshot);
 			}
@@ -9254,18 +9442,12 @@
 					return;
 				}
 
-				const selectButton = event.target.closest("[data-account-select]");
-				if (selectButton) {
+				const confirmButton = event.target.closest("[data-account-confirm-action]");
+				if (confirmButton) {
 					event.preventDefault();
-					const action = selectButton.dataset.accountSelect;
-					const projectId = selectButton.dataset.projectId || null;
-					const accountSelector = selectButton.dataset.accountSelector || null;
-
-					if (action === "selectAccount") {
-						sendDashboardControl(action, { projectId, accountSelector });
-					} else if (action === "clearAccountSelection") {
-						sendDashboardControl(action, { projectId });
-					}
+					const action = confirmButton.dataset.accountConfirmAction;
+					const accountSelector = confirmButton.dataset.accountSelector || null;
+					handleAccountSelectionConfirmation(action, accountSelector);
 					return;
 				}
 
@@ -9361,6 +9543,13 @@
 			document.addEventListener("click", (event) => {
 				if (!(event.target instanceof Element)) {
 					return;
+				}
+
+				if (
+					accountSelectionConfirmation &&
+					!event.target.closest("[data-account-confirm-action]")
+				) {
+					clearAccountSelectionConfirmation(true);
 				}
 
 				if (!event.target.closest("[data-project-work-info]")) {

@@ -328,7 +328,9 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("const parts = [`${derived.liveRuns ?? 0} running`];"));
 	assert!(response.contains("attentionCount === 1"));
 	assert!(response.contains("nodes.activeRunsMeta,"));
-	assert!(response.contains("snapshot ? runningLaneMetaText(derived) : COPY.waitingSnapshot"));
+	assert!(response.contains("runningLaneMetaText(derived),"));
+	assert!(!response.contains("Snapshot pending"));
+	assert!(!response.contains("COPY.waitingSnapshot"));
 	assert!(!response.contains("const parts = [`${derived.liveRuns} live`];"));
 	assert!(!response.contains("parts.push(`${derived.runningAttentionCount} stalled`)"));
 	assert!(response.contains("runStaleWithoutKnownProcessNeedsAttention"));
@@ -421,15 +423,30 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("function codexAccountStatusTone(account)"));
 	assert!(response.contains("function renderRunCodexAccountInline(run)"));
 	assert!(response.contains("function renderAccountPool(snapshot)"));
+	assert!(response.contains("function renderAccountModeControl(snapshot)"));
+	assert!(response.contains("nodes.accountModeMeta.textContent = title;"));
+	assert!(response.contains("nodes.accountModeMeta.title = title;"));
 	assert!(response.contains("function codexAccountPoolAccounts(snapshot)"));
-	assert!(response.contains("function codexAccountPoolRank(account)"));
-	assert!(response.contains("function codexAccountPoolSortKey(account)"));
+	assert!(response.contains("function codexAccountPoolMergeRank(account)"));
 	assert!(response.contains("function renderCodexAccountPool(accounts, snapshot)"));
 	assert!(!response.contains("function renderCodexAccountPoolHeader(accounts)"));
 	assert!(response.contains("function renderCodexAccountPoolRow(account, snapshot)"));
-	assert!(response.contains("function renderCodexAccountSelectButton(account, snapshot)"));
-	assert!(response.contains("data-account-select=\"${escapeHtml(action)}\""));
-	assert!(response.contains("sendDashboardControl(action, { projectId, accountSelector });"));
+	assert!(response.contains("function renderCodexAccountNameControl(account, snapshot)"));
+	assert!(!response.contains("ACCOUNT_SELECTION_CONFIRMATION_MS"));
+	assert!(!response.contains("accountSelectionConfirmationTimer"));
+	assert!(response.contains("function accountSelectionConfirmationMatches(action, selector)"));
+	assert!(response.contains("function syncAccountSelectionConfirmationDom()"));
+	assert!(response.contains("clearAccountSelectionConfirmation(true);"));
+	assert!(response.contains("function accountSelectionControlTitle(action, displayTitle, armed)"));
+	assert!(response.contains("function handleAccountSelectionConfirmation(action, selector)"));
+	assert!(response.contains("data-account-confirm-action=\"${escapeHtml(action)}\""));
+	assert!(response.contains("data-account-display-title=\"${escapeHtml(displayTitle)}\""));
+	assert!(!response.contains("data-account-select=\""));
+	assert!(!response.contains("dataset.accountSelect;"));
+	assert!(!response.contains("account-select-button"));
+	assert!(!response.contains("data-account-project-select"));
+	assert!(response.contains("sendDashboardControl(action, { accountSelector: selector });"));
+	assert!(response.contains("sendDashboardControl(action);"));
 	assert!(response.contains("clearAccountSelection"));
 	assert!(response.contains("selectAccount"));
 	assert!(response.contains("function codexAccountDebugSummary(account)"));
@@ -450,7 +467,11 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("section-marker section-marker-projects"));
 	assert!(response.contains("aria-label=\"Accounts group\""));
 	assert!(response.contains("<span>Accounts</span>"));
+	assert!(response.contains("<p class=\"table-meta section-marker-meta\" id=\"account-mode-meta\"></p>"));
+	assert!(response.contains("accountModeMeta: document.getElementById(\"account-mode-meta\")"));
 	assert!(!response.contains("Accounts\n\t\t\t\t\t\t\t<button class=\"account-privacy-toggle\""));
+	assert!(!response.contains("account-mode-control"));
+	assert!(!response.contains("account-mode-status"));
 	assert!(!response.contains("<span>Control Plane</span>"));
 	assert!(response.contains("Projects\n\t\t\t\t\t\t\t<button class=\"project-filter-toggle\""));
 	assert!(!response.contains("id=\"account-pool-meta\""));
@@ -473,7 +494,8 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("nodes.projectTitle.textContent = \"Decodex\""));
 	assert!(!response.contains("Decodex Operator"));
 	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"active\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
-	assert!(response.contains("#account-pool-panel {"));
+	assert!(!response.contains("#account-pool-panel {"));
+	assert!(!response.contains("No accounts"));
 	assert!(response.contains("#active-panel {\n\t\t\t\tbackground: transparent;"));
 	assert!(!response.contains("account-pool-title"));
 	assert!(response.contains("account-privacy-toggle"));
@@ -512,17 +534,26 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(response.contains("function codexAccountShowsEmail(account)"));
 	assert!(response.contains("function codexAccountVisibleName(account)"));
 	assert!(response.contains("function codexAccountDisplayTitle(account)"));
+	assert!(response.contains("function codexAccountControlStatusLabel(snapshot)"));
 	assert!(response.contains("return codexAccountShowsEmail(account) ? email : codexAccountRandomName(account);"));
 	assert!(response.contains("? compactAccountEmail(email)"));
+	assert!(response.contains("const account = codexAccountPoolAccounts(snapshot).find("));
+	assert!(response.contains("? compactAccountIdentity(selector)"));
+	assert!(response.contains(": codexAccountVisibleName(account);"));
+	assert!(response.contains("return \"Balanced\";"));
+	assert!(response.contains("return `Fixed · ${label}`;"));
+	assert!(response.contains("return `Fixed · ${accountEmailsHidden ? \"account\" : compactAccountIdentity(selector)}`;"));
+	assert!(response.contains("const title = codexAccountControlStatusLabel(snapshot);"));
+	assert!(!response.contains("const title = `Mode ${modeLabel}`;"));
 	assert!(response.contains("account-name-reroll"));
 	assert!(response.contains("data-account-name-reroll"));
 	assert!(response.contains("aria-label=\"Change account name\""));
 	assert!(response.contains("return `${local.slice(0, 3)}...${local.slice(-3)}${domain}`;"));
 	assert!(response.contains("return ACCOUNT_RANDOM_NAMES[index];"));
 	assert!(response.contains("return status === \"selected\" ? 1 : 0;"));
-	assert!(response.contains("return codexAccountPoolSortKey(left).localeCompare(codexAccountPoolSortKey(right));"));
-	assert!(response.contains("const hash = codexAccountIdentityHash(identity).toString(16).padStart(8, \"0\");"));
-	assert!(response.contains("return hash;"));
+	assert!(response.contains("return accounts;"));
+	assert!(!response.contains("function codexAccountPoolSortKey(account)"));
+	assert!(!response.contains("return codexAccountPoolSortKey(left).localeCompare(codexAccountPoolSortKey(right));"));
 	assert!(!response.contains("const checkedAt = codexAccountNumber(account?.checked_at_unix_epoch) || 0;"));
 	assert!(!response.contains("localeCompare(codexAccountDisplayName(right))"));
 	assert!(!response.contains("return account.account_fingerprint;"));
@@ -530,6 +561,7 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(!response.contains("const fingerprint = account.account_fingerprint || \"unknown\";"));
 	assert!(!response.contains("account.account_fingerprint || \"unknown\",\n"));
 	assert!(response.contains("renderAccountPrivacyToggle();"));
+	assert!(response.contains("renderAccountModeControl(snapshot);"));
 	assert!(response.contains("persistAccountPrivacy(accountEmailsHidden);"));
 	assert!(response.contains("persistAccountNameOffsets();"));
 	assert!(response.contains("let lastDashboardRender = null;"));
@@ -543,6 +575,8 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(!response.contains("text-transform: uppercase;"));
 	assert!(response.contains("function renderCodexAccountPoolGuideCell(column)"));
 	assert!(response.contains("return `<span class=\"account-pool-heading\">${sortButton}${accountPrivacyToggleMarkup()}</span>`;"));
+	assert!(response.contains(".section-marker-meta {"));
+	assert!(response.contains("text-align: right;"));
 	assert!(!response.contains("setPanelMeta(nodes.accountPoolMeta"));
 	assert!(!response.contains("${pluralize(accounts.length, \"account\")} · ${activeCount} active"));
 }
@@ -575,8 +609,10 @@ fn operator_dashboard_renders_account_sort_controls() {
 	assert!(response.contains("account-sort-down"));
 	assert!(response.contains("function codexAccountPoolColumnSortValue(account, key)"));
 	assert!(response.contains("function compareCodexAccountPoolColumn(left, right, key, direction)"));
-	assert!(response.contains("function compareCodexAccountPoolStable(left, right)"));
+	assert!(!response.contains("function compareCodexAccountPoolStable(left, right)"));
 	assert!(response.contains("function sortCodexAccountPoolAccounts(accounts)"));
+	assert!(response.contains("if (!accountPoolSort.key)"));
+	assert!(response.contains("return 0;"));
 	assert!(response.contains("codexAccountWindowData(account, \"primary\").remainingPercent"));
 	assert!(response.contains("codexAccountWindowData(account, \"secondary\").remainingPercent"));
 	assert!(response.contains("codexAccountCreditsSortValue(account)"));
@@ -672,10 +708,53 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains("title=\"${escapeHtml(resetTitle)}\""));
 	assert!(response.contains("account-window-date"));
 	assert!(!response.contains("<span class=\"is-reset\">Reset</span>"));
+}
+
+#[test]
+fn operator_dashboard_accounts_renders_fixed_selection_affordance() {
+	let response = dashboard_response();
+
 	assert!(response.contains("is-selected"));
 	assert!(response.contains("is-ready"));
+	assert!(response.contains("is-armed"));
 	assert!(response.contains("--account-accent: var(--tone-muted);"));
+	assert!(response.contains("--account-confirm-accent: var(--tone-run);"));
 	assert!(response.contains(".account-row.is-ready {\n\t\t\t\t--account-accent: var(--success);"));
+	assert!(response.contains(".account-row.is-fixed {\n\t\t\t\t--account-accent: var(--info);"));
+	assert!(!response.contains(".account-row.is-armed {\n\t\t\t\t--account-accent: var(--warning);"));
+	assert!(response.contains("--account-confirm-cycle: 1.45s;"));
+	assert!(!response.contains("--account-confirm-color-cycle"));
+	assert!(!response.contains("account-confirm-bar-breathe"));
+	assert!(response.contains("@keyframes account-confirm-name-breathe"));
+	assert!(response.contains("@keyframes account-confirm-bracket-left"));
+	assert!(response.contains("@keyframes account-confirm-bracket-right"));
+	assert!(response.contains("color: var(--account-confirm-accent);"));
+	assert!(!response.contains("12.5%"));
+	assert!(!response.contains("37.5%"));
+	assert!(!response.contains("62.5%"));
+	assert!(!response.contains("87.5%"));
+	assert!(response.contains(
+		"color: color-mix(in srgb, var(--account-confirm-accent) 46%, var(--muted));"
+	));
+	assert!(response.contains("text-shadow: none;"));
+	assert!(response.contains(".account-name-button.is-fixed::before"));
+	assert!(response.contains(".account-name-button.is-fixed::after"));
+	assert!(response.contains(
+		".account-name-button.is-fixed {\n\t\t\t\tcolor: var(--account-confirm-accent);"
+	));
+	assert!(response.contains(".account-name-button + .account-name-reroll"));
+	assert!(response.contains("margin-left: 8px;"));
+	assert!(response.contains("opacity: 0.72;"));
+	assert!(response.contains("animation: account-confirm-name-breathe var(--account-confirm-cycle) var(--ease) infinite;"));
+	assert!(response.contains("animation: account-confirm-bracket-left var(--account-confirm-cycle) var(--ease) infinite;"));
+	assert!(response.contains("animation: account-confirm-bracket-right var(--account-confirm-cycle) var(--ease) infinite;"));
+	assert!(!response.contains("infinite alternate;"));
+}
+
+#[test]
+fn operator_dashboard_accounts_keeps_identity_rows_compact() {
+	let response = dashboard_response();
+
 	assert!(response.contains("grid-template-areas:"));
 	assert!(response.contains("\"id plan primary secondary credit state\""));
 	assert!(response.contains("\"meta meta meta meta meta meta\""));
@@ -693,7 +772,8 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains(".account-row-plan {\n\t\t\t\tgrid-area: plan;"));
 	assert!(response.contains("<div class=\"account-row-id${identityClass}\">"));
 	assert!(response.contains("<div class=\"account-row-plan\">${escapeHtml(plan)}</div>"));
-	assert!(response.contains("<strong class=\"account-name\""));
+	assert!(response.contains("<button class=\"account-name-button${fixedClass}${armedClass}\""));
+	assert!(response.contains("<span class=\"account-name\">${escapeHtml(visibleName)}</span>"));
 	assert!(response.contains("<span class=\"run-meta-icon\" aria-hidden=\"true\">"));
 	assert!(response.contains("<svg viewBox=\"0 0 16 16\" fill=\"none\">"));
 	assert!(response.contains("<path fill=\"currentColor\" fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M3.35 2.25h9.3"));
@@ -748,6 +828,8 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	assert!(response.contains(".account-row:focus-within .account-window"));
 	assert!(response.contains(".account-status::before"));
 	assert!(response.contains(".account-row.is-selected .account-status"));
+	assert!(response.contains(".account-row.is-fixed .account-status"));
+	assert!(!response.contains(".account-row.is-armed .account-status"));
 	assert!(response.contains(".account-row.is-ready .account-status"));
 	assert!(response.contains(".account-row.is-warn .account-status"));
 	assert!(response.contains(".account-row.is-danger .account-status"));
@@ -864,8 +946,11 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(!response.contains("lowestRemaining <= 20"));
 	assert!(!response.contains("account-meter"));
 	assert!(!response.contains("lowestRemaining}%"));
-	assert!(response
-		.contains("nodes.accountPool.innerHTML = renderCodexAccountPool(accounts, snapshot)"));
+	assert!(response.contains(
+		"renderStableList(nodes.accountPool, renderCodexAccountPool(accounts, snapshot));"
+	));
+	assert!(response.contains("syncAccountSelectionConfirmationDom();"));
+	assert!(!response.contains("nodes.accountPool.innerHTML = renderCodexAccountPool(accounts, snapshot)"));
 	assert!(response.contains("renderAccountPrivacyToggle();"));
 	assert!(!response.contains("setPanelMeta(nodes.accountPoolMeta"));
 	assert!(!response.contains("nodes.accountPoolMeta.textContent = snapshot"));
@@ -944,10 +1029,10 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains("function renderProjectTable(projects, activeProjectRows, selectedId)"));
 	assert!(response.contains("function projectFilterRows(projects, activeProjectRows)"));
 	assert!(response.contains("function renderEmptyState(title, copy = \"\")"));
-	assert!(response.contains("function renderRoutineEmptyList(container, snapshot, waitingCopy = \"\")"));
-	assert!(response.contains("nodes.projectOverview.innerHTML = renderEmptyState(COPY.waitingSnapshot);"));
+	assert!(response.contains("function renderRoutineEmptyList(container)"));
+	assert!(response.contains("nodes.projectOverview.innerHTML = \"\";"));
 	assert!(response.contains("renderRoutineEmptyList("));
-	assert!(response.contains("Appears after /state publishes a snapshot."));
+	assert!(!response.contains("Appears after /state publishes a snapshot."));
 	assert!(response.contains("renderQueuedCandidates("));
 	assert!(response.contains("function formatDetailToken(value)"));
 	assert!(response.contains("return token || \"NONE\";"));
@@ -1184,9 +1269,14 @@ fn operator_dashboard_projects_filter_uses_icon_toggle() {
 fn operator_dashboard_empty_lane_meta_uses_counts() {
 	let response = dashboard_response();
 
-	assert!(response.contains("snapshot ? runningLaneMetaText(derived) : COPY.waitingSnapshot"));
+	assert!(!response.contains("Snapshot pending"));
+	assert!(!response.contains("COPY.waitingSnapshot"));
+	assert!(response.contains("runningLaneMetaText(derived),"));
+	assert!(response.contains(": \"0 issues · 0 attempts\","));
+	assert!(response.contains(": \"0 PRs · 0 need attention · 0 ready · 0 waiting\","));
 	assert!(response.contains("const parts = [`${derived.liveRuns ?? 0} running`];"));
 	assert!(response.contains("const parts = [`${derived.queueBacklogCandidates.length} queued`];"));
+	assert!(response.contains("return \"0 queued\";"));
 	assert!(response.contains("setPanelMeta(nodes.queuedMeta, backlogMetaText(snapshot, derived));"));
 	assert!(response.contains(": \"0 worktrees\","));
 	assert!(!response.contains("queue empty"));

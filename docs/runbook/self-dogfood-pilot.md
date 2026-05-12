@@ -73,9 +73,11 @@ projects.
 If the project uses managed ChatGPT accounts, enable `[codex.accounts]` in
 `project.toml` and keep the JSONL pool at `~/.codex/decodex/accounts.jsonl`. Do not
 store the shared pool under a project directory or configure a project-local account
-path. To keep every new run on one account, set
-`[codex.accounts].fixed_account = "<email-or-fingerprint>"`; the operator dashboard
-Accounts UI writes that same field when selecting or clearing a fixed account.
+path. To keep every new account-pool run on one account, set
+`[codex.accounts].fixed_account = "<email-or-fingerprint>"` in
+`~/.codex/decodex/config.toml`; the operator dashboard Accounts UI writes and clears
+that same global selector. When the selector is absent, Decodex balances new runs
+across the global pool.
 
 After restarting `decodex serve`, verify the registry still points at the centralized
 project directory:

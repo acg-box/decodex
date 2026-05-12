@@ -43,11 +43,13 @@ pub(crate) struct CodexAccountPool {
 }
 impl CodexAccountPool {
 	pub(crate) fn from_config(config: &ProjectCodexAccountsConfig) -> crate::prelude::Result<Self> {
+		let fixed_account = runtime::global_fixed_account_selector()?;
+
 		Self::new_with_fixed_account(
 			runtime::accounts_path()?,
 			config.usage_endpoint().unwrap_or(DEFAULT_USAGE_ENDPOINT),
 			config.refresh_endpoint().unwrap_or(DEFAULT_REFRESH_ENDPOINT),
-			config.fixed_account(),
+			fixed_account.as_deref(),
 		)
 	}
 

@@ -782,14 +782,11 @@ fn dashboard_project_enabled_control_ack(
 
 fn dashboard_account_selection_control_ack(
 	session: &DashboardWebSocketSession,
-	state_store: &StateStore,
+	_state_store: &StateStore,
 	message: &DashboardClientMessage,
 	action: &str,
 	set_fixed: bool,
 ) -> Value {
-	let Some(project_id) = dashboard_required_project_id(message) else {
-		return dashboard_missing_project_control_ack(session, message, action);
-	};
 	let selector = if set_fixed {
 		match dashboard_required_account_selector(message) {
 			Some(selector) => Some(selector),
@@ -800,7 +797,7 @@ fn dashboard_account_selection_control_ack(
 					accepted: false,
 					status: "missing_account",
 					message: "Account selection requires an account selector.",
-					project_id: Some(project_id),
+					project_id: None,
 					issue_id: message.issue_id.as_deref(),
 					run_id: message.run_id.as_deref(),
 					subscription: Some(&session.subscription),
@@ -810,17 +807,17 @@ fn dashboard_account_selection_control_ack(
 	} else {
 		None
 	};
-	let result = update_project_codex_account_selection(state_store, project_id, selector);
+	let result = runtime::write_global_fixed_account_selector(selector);
 	let (accepted, status, copy) = match (set_fixed, result) {
 		(true, Ok(())) => (
 			true,
 			"fixed",
-			String::from("Project config now pins new Codex runs to the selected account."),
+			String::from("Global Codex account pool now pins new runs to the selected account."),
 		),
 		(false, Ok(())) => (
 			true,
 			"balanced",
-			String::from("Project config now uses balanced Codex account selection."),
+			String::from("Global Codex account pool now uses balanced account selection."),
 		),
 		(_, Err(error)) => (false, "failed", error.to_string()),
 	};
@@ -831,7 +828,7 @@ fn dashboard_account_selection_control_ack(
 		accepted,
 		status,
 		message: &copy,
-		project_id: Some(project_id),
+		project_id: None,
 		issue_id: message.issue_id.as_deref(),
 		run_id: message.run_id.as_deref(),
 		subscription: Some(&session.subscription),
@@ -1001,84 +998,6 @@ fn dashboard_required_account_selector(message: &DashboardClientMessage) -> Opti
 		.as_deref()
 		.map(str::trim)
 		.filter(|value| !value.is_empty())
-}
-
-fn update_project_codex_account_selection(
-	state_store: &StateStore,
-	project_id: &str,
-	selector: Option<&str>,
-) -> Result<()> {
-	let registration = state_store
-		.list_projects()?
-		.into_iter()
-		.find(|project| project.service_id() == project_id)
-		.ok_or_else(|| eyre::eyre!("Decodex project `{project_id}` is not registered."))?;
-
-	write_project_codex_account_selection(registration.config_path(), selector)?;
-
-	runtime::register_project_config(
-		state_store,
-		registration.config_path(),
-		registration.enabled(),
-	)?;
-
-	Ok(())
-}
-
-fn write_project_codex_account_selection(
-	config_path: &Path,
-	selector: Option<&str>,
-) -> Result<()> {
-	let config_path = ServiceConfig::resolve_project_config_path(config_path)?;
-	let input = fs::read_to_string(&config_path)?;
-	let mut document = toml::from_str::<toml::Table>(&input)?;
-
-	match selector.map(str::trim).filter(|value| !value.is_empty()) {
-		Some(selector) => {
-			let accounts = ensure_toml_table(ensure_toml_table(&mut document, "codex")?, "accounts")?;
-
-			accounts.insert(String::from("fixed_account"), selector.to_owned().into());
-		},
-		None => {
-			if let Some(codex) = document.get_mut("codex").and_then(|value| value.as_table_mut())
-				&& let Some(accounts) = codex.get_mut("accounts").and_then(|value| value.as_table_mut())
-			{
-				accounts.remove("fixed_account");
-			}
-		},
-	}
-
-	let output = toml::to_string_pretty(&document)?;
-	let temp_path = dashboard_project_config_temp_path(&config_path)?;
-
-	fs::write(&temp_path, output)?;
-	fs::rename(temp_path, &config_path)?;
-	ServiceConfig::from_path(&config_path)?;
-
-	Ok(())
-}
-
-fn ensure_toml_table<'a>(table: &'a mut toml::Table, key: &str) -> Result<&'a mut toml::Table> {
-	if !table.contains_key(key) {
-		table.insert(String::from(key), toml::Table::new().into());
-	}
-
-	table
-		.get_mut(key)
-		.and_then(|value| value.as_table_mut())
-		.ok_or_else(|| eyre::eyre!("Project config `{key}` must be a TOML table."))
-}
-
-fn dashboard_project_config_temp_path(config_path: &Path) -> Result<PathBuf> {
-	let parent = config_path.parent().ok_or_else(|| {
-		eyre::eyre!("Project config `{}` must have a parent directory.", config_path.display())
-	})?;
-	let file_name = config_path
-		.file_name()
-		.and_then(|name| name.to_str())
-		.ok_or_else(|| eyre::eyre!("Project config path must end in a valid file name."))?;
-
-	Ok(parent.join(format!(".{file_name}.tmp-{}", process::id())))
 }
 
 fn dashboard_clean_scope_value(value: Option<&str>) -> Option<String> {

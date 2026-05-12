@@ -28,7 +28,7 @@ use crate::tracker::records;
 		TurnContinuationGuard,
 	};
 #[rustfmt::skip]
-use crate::config::{InternalReviewMode, ProjectCodexAccountsConfig, ServiceConfig};
+use crate::config::{InternalReviewMode, ServiceConfig};
 #[rustfmt::skip]
 use crate::github;
 #[rustfmt::skip]
