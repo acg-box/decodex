@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import http from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -493,11 +494,47 @@ function historyLane(accounts) {
 	};
 }
 
-function buildSnapshot(accounts) {
+function accountSelector(account) {
+	return account.account_email || account.account_fingerprint || "";
+}
+
+function accountMatchesSelector(account, selector) {
+	const value = String(selector || "").trim();
+
+	return Boolean(value && [account.account_email, account.account_fingerprint].includes(value));
+}
+
+function selectedAccountForControl(accounts, fixedAccountSelector) {
+	if (fixedAccountSelector) {
+		const fixedAccount = accounts.find((item) => accountMatchesSelector(item, fixedAccountSelector));
+		if (fixedAccount) {
+			return fixedAccount;
+		}
+	}
+
+	return accounts.find((item) => item.status === "selected") || accounts[0] || null;
+}
+
+function accountsWithSelection(accounts, fixedAccountSelector) {
+	const selectedAccount = selectedAccountForControl(accounts, fixedAccountSelector);
+
+	return accounts.map((item) => {
+		const selected = selectedAccount && accountSelector(item) === accountSelector(selectedAccount);
+
+		return {
+			...item,
+			status: selected ? "selected" : accountUsageStatus(item),
+			selected_at_unix_epoch: selected ? nowUnix() - 20 : null,
+		};
+	});
+}
+
+function buildSnapshot(accounts, fixedAccountSelector) {
+	const controlledAccounts = accountsWithSelection(accounts, fixedAccountSelector);
 	const activeRuns = [
-		activeRun({ accounts }),
+		activeRun({ accounts: controlledAccounts }),
 		activeRun({
-			accounts,
+			accounts: controlledAccounts,
 			attempt: 2,
 			issue: "XY-452",
 			title: "Stalled lane requiring attention",
@@ -543,10 +580,15 @@ function buildSnapshot(accounts) {
 				warning_count: 1,
 			},
 		],
+		account_control: {
+			mode: fixedAccountSelector ? "fixed" : "balanced",
+			account_selector: fixedAccountSelector || null,
+		},
+		accounts: controlledAccounts,
 		active_runs: activeRuns,
 		queued_candidates: queuedCandidates(),
 		recent_runs: [],
-		history_lanes: [historyLane(accounts)],
+		history_lanes: [historyLane(controlledAccounts)],
 		worktrees: worktrees(),
 		post_review_lanes: reviewLanes,
 	};
@@ -678,11 +720,127 @@ function send(response, statusCode, contentType, body, headers = {}) {
 	response.end(body);
 }
 
+function websocketAcceptValue(key) {
+	return crypto
+		.createHash("sha1")
+		.update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+		.digest("base64");
+}
+
+function encodeWebSocketText(payload) {
+	const body = Buffer.from(JSON.stringify(payload), "utf8");
+	if (body.length <= 125) {
+		return Buffer.concat([Buffer.from([0x81, body.length]), body]);
+	}
+	if (body.length <= 65_535) {
+		const header = Buffer.alloc(4);
+		header[0] = 0x81;
+		header[1] = 126;
+		header.writeUInt16BE(body.length, 2);
+		return Buffer.concat([header, body]);
+	}
+
+	const header = Buffer.alloc(10);
+	header[0] = 0x81;
+	header[1] = 127;
+	header.writeBigUInt64BE(BigInt(body.length), 2);
+	return Buffer.concat([header, body]);
+}
+
+function sendWebSocketJson(socket, payload) {
+	if (socket.destroyed) {
+		return;
+	}
+	socket.write(encodeWebSocketText(payload));
+}
+
+function decodeWebSocketFrames(buffer) {
+	const messages = [];
+	let offset = 0;
+	let closed = false;
+
+	while (buffer.length - offset >= 2) {
+		const first = buffer[offset];
+		const second = buffer[offset + 1];
+		const opcode = first & 0x0f;
+		const masked = (second & 0x80) === 0x80;
+		let length = second & 0x7f;
+		let headerLength = 2;
+
+		if (length === 126) {
+			if (buffer.length - offset < 4) {
+				break;
+			}
+			length = buffer.readUInt16BE(offset + 2);
+			headerLength = 4;
+		} else if (length === 127) {
+			if (buffer.length - offset < 10) {
+				break;
+			}
+			length = Number(buffer.readBigUInt64BE(offset + 2));
+			headerLength = 10;
+		}
+
+		const maskLength = masked ? 4 : 0;
+		const frameLength = headerLength + maskLength + length;
+		if (buffer.length - offset < frameLength) {
+			break;
+		}
+
+		const mask = masked
+			? buffer.subarray(offset + headerLength, offset + headerLength + 4)
+			: null;
+		const payloadStart = offset + headerLength + maskLength;
+		const payload = Buffer.from(buffer.subarray(payloadStart, payloadStart + length));
+		if (mask) {
+			for (let index = 0; index < payload.length; index += 1) {
+				payload[index] ^= mask[index % 4];
+			}
+		}
+
+		if (opcode === 0x8) {
+			closed = true;
+			offset += frameLength;
+			break;
+		}
+		if (opcode === 0x1) {
+			messages.push(payload.toString("utf8"));
+		}
+		offset += frameLength;
+	}
+
+	return {
+		closed,
+		messages,
+		remaining: buffer.subarray(offset),
+	};
+}
+
+function dashboardControlAck(message, accepted, status, copy) {
+	return {
+		type: "controlAck",
+		payload: {
+			requestId: message.requestId || null,
+			action: message.action || message.type || "control",
+			accepted,
+			status,
+			message: copy,
+			projectId: message.projectId || null,
+			issueId: message.issueId || null,
+			runId: message.runId || null,
+		},
+	};
+}
+
 async function main() {
 	const options = parseArgs(process.argv.slice(2));
 	const staticAccounts = options.authDir
 		? await codexAuthAccounts(options.authDir)
 		: mockAccounts();
+	let fixedAccountSelector =
+		staticAccounts.find((item) => item.status === "selected")?.account_email ||
+		staticAccounts[0]?.account_email ||
+		null;
 	let lastPublishedAt = nowUnix();
 	const { host, port } = splitListenAddress(options.listenAddress);
 	const server = http.createServer(async (request, response) => {
@@ -713,7 +871,7 @@ async function main() {
 			}
 			if (url.pathname === "/state") {
 				lastPublishedAt = nowUnix();
-				const snapshot = buildSnapshot(staticAccounts);
+				const snapshot = buildSnapshot(staticAccounts, fixedAccountSelector);
 				send(response, 200, "application/json", JSON.stringify(snapshot), {
 					"X-Decodex-Snapshot-Unix-Epoch": String(lastPublishedAt),
 				});
@@ -724,6 +882,144 @@ async function main() {
 		} catch (error) {
 			send(response, 500, "text/plain; charset=utf-8", error?.message || "mock server error");
 		}
+	});
+
+	server.on("upgrade", (request, socket) => {
+		const url = new URL(request.url || "/", `http://${options.listenAddress}`);
+		if (url.pathname !== "/dashboard/control") {
+			socket.destroy();
+			return;
+		}
+
+		const key = request.headers["sec-websocket-key"];
+		if (!key) {
+			socket.destroy();
+			return;
+		}
+
+		socket.write(
+			[
+				"HTTP/1.1 101 Switching Protocols",
+				"Upgrade: websocket",
+				"Connection: Upgrade",
+				`Sec-WebSocket-Accept: ${websocketAcceptValue(key)}`,
+				"",
+				"",
+			].join("\r\n"),
+		);
+
+		let buffered = Buffer.alloc(0);
+		socket.on("data", (chunk) => {
+			buffered = Buffer.concat([buffered, chunk]);
+			const decoded = decodeWebSocketFrames(buffered);
+			buffered = decoded.remaining;
+			if (decoded.closed) {
+				socket.end();
+				return;
+			}
+
+			for (const text of decoded.messages) {
+				let message;
+				try {
+					message = JSON.parse(text);
+				} catch (_error) {
+					sendWebSocketJson(socket, {
+						type: "controlAck",
+						payload: {
+							requestId: null,
+							action: "control",
+							accepted: false,
+							status: "invalid_json",
+							message: "Mock dashboard control received invalid JSON.",
+						},
+					});
+					continue;
+				}
+
+				if (message.type === "subscribe") {
+					sendWebSocketJson(
+						socket,
+						dashboardControlAck(message, true, "accepted", "Mock subscription accepted."),
+					);
+					continue;
+				}
+
+				if (message.type !== "control") {
+					sendWebSocketJson(
+						socket,
+						dashboardControlAck(
+							message,
+							false,
+							"unsupported",
+							"Mock dashboard control type is unsupported.",
+						),
+					);
+					continue;
+				}
+
+				if (message.action === "selectAccount") {
+					const selector = String(message.accountSelector || "").trim();
+					if (!staticAccounts.some((item) => accountMatchesSelector(item, selector))) {
+						sendWebSocketJson(
+							socket,
+							dashboardControlAck(
+								message,
+								false,
+								"unknown_account",
+								"Mock account selector was not found.",
+							),
+						);
+						continue;
+					}
+					fixedAccountSelector = selector;
+					lastPublishedAt = nowUnix();
+					sendWebSocketJson(
+						socket,
+						dashboardControlAck(message, true, "accepted", "Mock account selection updated."),
+					);
+					sendWebSocketJson(socket, {
+						type: "snapshot",
+						payload: {
+							snapshot: buildSnapshot(staticAccounts, fixedAccountSelector),
+							snapshotPublishedAtUnixEpoch: lastPublishedAt,
+						},
+					});
+					continue;
+				}
+
+				if (message.action === "clearAccountSelection") {
+					fixedAccountSelector = null;
+					lastPublishedAt = nowUnix();
+					sendWebSocketJson(
+						socket,
+						dashboardControlAck(
+							message,
+							true,
+							"accepted",
+							"Mock account selection returned to balanced mode.",
+						),
+					);
+					sendWebSocketJson(socket, {
+						type: "snapshot",
+						payload: {
+							snapshot: buildSnapshot(staticAccounts, fixedAccountSelector),
+							snapshotPublishedAtUnixEpoch: lastPublishedAt,
+						},
+					});
+					continue;
+				}
+
+				sendWebSocketJson(
+					socket,
+					dashboardControlAck(
+						message,
+						false,
+						"unsupported",
+						"Mock dashboard control action is unsupported.",
+					),
+				);
+			}
+		});
 	});
 
 	server.listen(port, host, () => {

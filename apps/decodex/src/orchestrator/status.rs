@@ -182,7 +182,7 @@ fn build_operator_status_snapshot(
 			last_activity_at: None,
 			warning_count: 0,
 		}],
-		account_control: codex_account_control_status(project),
+		account_control: global_codex_account_control_status(),
 		accounts,
 		active_runs,
 		recent_runs,
@@ -198,12 +198,10 @@ fn build_operator_status_snapshot(
 	Ok(snapshot)
 }
 
-fn codex_account_control_status(project: &ServiceConfig) -> OperatorCodexAccountControlStatus {
-	let account_selector = project
-		.codex()
-		.accounts()
-		.and_then(ProjectCodexAccountsConfig::fixed_account)
-		.map(str::to_owned);
+fn global_codex_account_control_status() -> OperatorCodexAccountControlStatus {
+	let account_selector = runtime::global_fixed_account_selector()
+		.ok()
+		.flatten();
 	let mode = if account_selector.is_some() { "fixed" } else { "balanced" };
 
 	OperatorCodexAccountControlStatus {
