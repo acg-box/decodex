@@ -117,20 +117,22 @@ When `[codex.accounts]` is enabled, the account pool is a global Decodex file at
 `~/.codex/decodex/accounts.jsonl`; project configs do not own an account-pool path
 override. The pool accepts flat `auth.json`-style JSONL records or records wrapped as
 `{ "auth": ... }`.
-Before login, Decodex probes configured accounts through the ChatGPT usage endpoint,
-skips disabled, cooling-down, and incomplete records, penalizes usage-limited records,
-prefers the highest remaining usage, and uses the least-recently selected account to
-break equal usage scores. Successful selection writes
-`last_selected_at_unix_epoch` back to the JSONL file so later runs can rotate tied
-accounts across process restarts.
+Before login, Decodex probes configured accounts through the ChatGPT usage endpoint.
+By default, it skips disabled, cooling-down, and incomplete records, penalizes
+usage-limited records, prefers the highest remaining usage, and uses the
+least-recently selected account to break equal usage scores. If
+`[codex.accounts].fixed_account` is set, Decodex only considers the matching account
+instead of balancing across the pool. The selector matches an account email, full
+account id, or redacted account fingerprint as displayed in the operator UI.
+Successful selection writes `last_selected_at_unix_epoch` back to the JSONL file.
 
 Decodex owns token freshness for injected `chatgptAuthTokens`. It proactively refreshes
 an account before probing when the access-token JWT `exp` is expired. If no expiration
 claim is available, it refreshes when `last_refresh` is more than eight days old. If
 the app-server later sends `account/chatgptAuthTokens/refresh`, Decodex refreshes the
-previous account id supplied by the request, updates the JSONL record with returned
-tokens and `last_refresh`, records a redacted local protocol event, and responds with
-fresh `chatgptAuthTokens`.
+fixed account when configured, otherwise the previous account id supplied by the
+request. It updates the JSONL record with returned tokens and `last_refresh`, records
+a redacted local protocol event, and responds with fresh `chatgptAuthTokens`.
 
 ## `initialize`
 
