@@ -57,6 +57,7 @@ pub(crate) const ACTIVE_RUN_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const MCP_PREFLIGHT_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const PROBE_RUN_ID: &str = "protocol-probe-run";
 const PROBE_ISSUE_ID: &str = "protocol-probe";
 const PROBE_EXPECTED_OUTPUT: &str = "PROBE_OK";
@@ -67,7 +68,7 @@ const PROBE_DEVELOPER_INSTRUCTIONS: &str = "You are a protocol probe. You must c
 const PROBE_USER_INPUT: &str = "Call `echo_probe` with `{\\\"text\\\":\\\"PROBE_OK\\\"}`. After the tool succeeds, reply with the exact text PROBE_OK.";
 const PREFLIGHT_EVENT_TYPE: &str = "app-server/preflight";
 const PREFLIGHT_MODEL_PAGE_LIMIT: u32 = 200;
-const PREFLIGHT_MCP_PAGE_LIMIT: u32 = 200;
+const PREFLIGHT_MCP_PAGE_LIMIT: u32 = 50;
 const PREFLIGHT_MCP_DETAIL: &str = "toolsAndAuthOnly";
 const PREFLIGHT_CHECK_CONFIG: &str = "config";
 const PREFLIGHT_CHECK_MODEL: &str = "model";
@@ -1892,9 +1893,16 @@ fn run_app_server_capability_preflight(
 
 	record_plugin_preflight(&mut report, &plugins);
 
-	let mcp_servers = list_all_mcp_servers_for_preflight(client, recorder, &report)?;
+	match list_all_mcp_servers_for_preflight(client) {
+		Ok(mcp_servers) => record_mcp_preflight(&mut report, &mcp_servers),
+		Err(error) if mcp_preflight_can_degrade(&error) => {
+			record_mcp_preflight_degraded(&mut report, &error);
+		},
+		Err(error) => {
+			return preflight_method_failure(recorder, &report, "mcpServerStatus/list", error);
+		},
+	}
 
-	record_mcp_preflight(&mut report, &mcp_servers);
 	record_app_server_preflight_report(recorder, &report)?;
 
 	if report.has_blockers() {
@@ -1902,6 +1910,33 @@ fn run_app_server_capability_preflight(
 	}
 
 	Ok(report)
+}
+
+fn preflight_method_failure<T>(
+	recorder: &mut RunRecorder<'_>,
+	report: &AppServerCapabilityPreflightReport,
+	method: &'static str,
+	error: Report,
+) -> crate::prelude::Result<T> {
+	let error_message = error.to_string();
+	let mut failed_report = report.clone();
+	let mut details = BTreeMap::new();
+
+	details.insert(String::from("method"), method.to_owned());
+	details.insert(String::from("error"), error_message.clone());
+	failed_report.push_blocked(
+		check_name_for_method(method),
+		format!("`{method}` failed before thread/start."),
+		details,
+	);
+
+	record_app_server_preflight_report(recorder, &failed_report)?;
+
+	Err(Report::new(AppServerCapabilityPreflightFailure::method_failed(
+		method,
+		error_message,
+		failed_report,
+	)))
 }
 
 fn preflight_request<T, F>(
@@ -1915,26 +1950,7 @@ where
 {
 	match request() {
 		Ok(response) => Ok(response),
-		Err(error) => {
-			let mut failed_report = report.clone();
-			let mut details = BTreeMap::new();
-
-			details.insert(String::from("method"), method.to_owned());
-			details.insert(String::from("error"), error.to_string());
-			failed_report.push_blocked(
-				check_name_for_method(method),
-				format!("`{method}` failed before thread/start."),
-				details,
-			);
-
-			record_app_server_preflight_report(recorder, &failed_report)?;
-
-			Err(Report::new(AppServerCapabilityPreflightFailure::method_failed(
-				method,
-				error.to_string(),
-				failed_report,
-			)))
-		},
+		Err(error) => preflight_method_failure(recorder, report, method, error),
 	}
 }
 
@@ -1968,21 +1984,19 @@ fn list_all_models_for_preflight(
 
 fn list_all_mcp_servers_for_preflight(
 	client: &mut AppServerClient,
-	recorder: &mut RunRecorder<'_>,
-	report: &AppServerCapabilityPreflightReport,
 ) -> crate::prelude::Result<Vec<McpServerStatusSummary>> {
 	let mut cursor = None;
 	let mut servers = Vec::new();
 
 	loop {
-		let response: ListMcpServerStatusResponse =
-			preflight_request(recorder, report, "mcpServerStatus/list", || {
-				client.list_mcp_server_status(&ListMcpServerStatusParams {
-					cursor: cursor.clone(),
-					detail: Some(PREFLIGHT_MCP_DETAIL.to_owned()),
-					limit: Some(PREFLIGHT_MCP_PAGE_LIMIT),
-				})
-			})?;
+		let response: ListMcpServerStatusResponse = client.list_mcp_server_status(
+			&ListMcpServerStatusParams {
+				cursor: cursor.clone(),
+				detail: Some(PREFLIGHT_MCP_DETAIL.to_owned()),
+				limit: Some(PREFLIGHT_MCP_PAGE_LIMIT),
+			},
+			MCP_PREFLIGHT_REQUEST_TIMEOUT,
+		)?;
 
 		servers.extend(response.data);
 
@@ -2210,6 +2224,27 @@ fn record_mcp_preflight(
 			details,
 		);
 	}
+}
+
+fn mcp_preflight_can_degrade(error: &Report) -> bool {
+	error.downcast_ref::<AppServerOutputTimeout>().is_some()
+}
+
+fn record_mcp_preflight_degraded(report: &mut AppServerCapabilityPreflightReport, error: &Report) {
+	let mut details = BTreeMap::new();
+
+	details.insert(String::from("method"), String::from("mcpServerStatus/list"));
+	details.insert(String::from("degraded_reason"), String::from("timeout"));
+	details.insert(String::from("error"), error.to_string());
+	details.insert(
+		String::from("timeout_seconds"),
+		MCP_PREFLIGHT_REQUEST_TIMEOUT.as_secs().to_string(),
+	);
+	report.push_ok(
+		PREFLIGHT_CHECK_MCP,
+		"mcpServerStatus/list timed out during optional MCP inventory; continuing after core app-server capability checks passed.",
+		details,
+	);
 }
 
 fn record_app_server_preflight_report(
@@ -3378,8 +3413,9 @@ fn handle_dynamic_tool_call(
 				"Dynamic tool `{}` was called under namespace `{namespace}`, but this run did not declare that tool namespace.",
 				payload.tool
 			),
-			None =>
-				format!("Dynamic tool `{}` is not declared for this run attempt.", payload.tool),
+			None => {
+				format!("Dynamic tool `{}` is not declared for this run attempt.", payload.tool)
+			},
 		};
 
 		return DynamicToolCallDispatch::protocol_failure(
