@@ -50,7 +50,8 @@ fn pull_request_review_state_from_page_scopes_signals_to_external_review_actor()
 	let review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),
-	);
+	)
+	.expect("review state should build");
 
 	assert_eq!(review_state.issue_description_external_review_thumbs_up_count, 1);
 	assert_eq!(review_state.issue_comments.len(), 1);
@@ -85,7 +86,8 @@ fn pull_request_review_state_from_page_skips_pending_reviews_without_submitted_t
 	let review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),
-	);
+	)
+	.expect("review state should build");
 
 	assert!(review_state.reviews.is_empty());
 }

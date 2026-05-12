@@ -19,6 +19,8 @@ use crate::{
 };
 
 const AFTER_CREATE_PENDING_MARKER: &str = ".decodex-after-create.pending";
+const WORKSPACE_HOOK_CAPTURE_LIMIT: usize = 1_024 * 1_024;
+const WORKSPACE_HOOK_TRUNCATED_MARKER: &[u8] = b"\n[decodex truncated workspace hook output]\n";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WorktreeSpec {
@@ -989,7 +991,7 @@ where
 
 		match reader.read(&mut chunk) {
 			Ok(0) => return Ok(()),
-			Ok(read) => buffer.extend_from_slice(&chunk[..read]),
+			Ok(read) => append_capped_workspace_hook_output(buffer, &chunk[..read]),
 			Err(error) if error.kind() == ErrorKind::WouldBlock => return Ok(()),
 			Err(error) if error.kind() == ErrorKind::Interrupted => continue,
 			Err(error) => {
@@ -997,6 +999,26 @@ where
 			},
 		}
 	}
+}
+
+fn append_capped_workspace_hook_output(buffer: &mut Vec<u8>, chunk: &[u8]) {
+	if buffer.len() >= WORKSPACE_HOOK_CAPTURE_LIMIT {
+		return;
+	}
+
+	let remaining = WORKSPACE_HOOK_CAPTURE_LIMIT - buffer.len();
+
+	if chunk.len() <= remaining {
+		buffer.extend_from_slice(chunk);
+
+		return;
+	}
+
+	let marker_len = remaining.min(WORKSPACE_HOOK_TRUNCATED_MARKER.len());
+	let chunk_len = remaining.saturating_sub(marker_len);
+
+	buffer.extend_from_slice(&chunk[..chunk_len]);
+	buffer.extend_from_slice(&WORKSPACE_HOOK_TRUNCATED_MARKER[..marker_len]);
 }
 
 fn append_output_details(buffer: &mut String, output: &Output) {
@@ -1196,7 +1218,7 @@ fn sanitize_branch_component(value: &str) -> String {
 #[cfg(test)]
 mod tests {
 	use std::{
-		env, fs,
+		fs,
 		path::{Path, PathBuf},
 		process::Command,
 		thread,
@@ -1205,7 +1227,7 @@ mod tests {
 
 	use tempfile::TempDir;
 
-	use crate::{workflow::WorkflowDocument, worktree::WorktreeManager};
+	use crate::{git_credentials, workflow::WorkflowDocument, worktree::WorktreeManager};
 
 	fn workspace_hooks(
 		workspace_hooks_frontmatter: &str,
@@ -1257,24 +1279,9 @@ read_first = []
 	fn test_git_command() -> Command {
 		let mut command = Command::new("git");
 
-		clear_injected_git_config(&mut command);
+		git_credentials::clear_injected_git_config(&mut command);
 
 		command
-	}
-
-	fn clear_injected_git_config(command: &mut Command) {
-		let config_count = env::var("GIT_CONFIG_COUNT")
-			.ok()
-			.and_then(|value| value.parse::<usize>().ok())
-			.unwrap_or(0);
-
-		command.env_remove("GIT_CONFIG_COUNT");
-		command.env_remove("GIT_CONFIG_PARAMETERS");
-
-		for index in 0..config_count {
-			command.env_remove(format!("GIT_CONFIG_KEY_{index}"));
-			command.env_remove(format!("GIT_CONFIG_VALUE_{index}"));
-		}
 	}
 
 	fn run_git(repo_root: &Path, args: &[&str]) {

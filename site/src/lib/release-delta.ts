@@ -75,11 +75,19 @@ export function comparisonKey(stableTagName: string, prereleaseTagName: string):
 }
 
 export function defaultComparison(delta: ReleaseDeltaData): ReleaseComparisonData {
+  const releaseDefault = delta.comparisons.find(
+    (comparison) =>
+      comparison.stable_tag_name === delta.stable_release.tag_name &&
+      comparison.prerelease_tag_name === delta.prerelease.tag_name,
+  );
+
+  if (releaseDefault?.tracked_signal_slugs.length) {
+    return releaseDefault;
+  }
+
   return (
-    delta.comparisons.find(
-      (comparison) =>
-        comparison.stable_tag_name === delta.stable_release.tag_name &&
-        comparison.prerelease_tag_name === delta.prerelease.tag_name,
-    ) ?? delta.comparisons[0]
+    delta.comparisons.find((comparison) => comparison.tracked_signal_slugs.length > 0) ??
+    releaseDefault ??
+    delta.comparisons[0]
   );
 }
