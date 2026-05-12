@@ -345,7 +345,7 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(!response.contains("Queue ownership"));
 	assert!(response.contains("attention.worktree_path"));
 	assert!(response.contains("candidate.attention?.attention_error_class"));
-	assert!(response.contains("facts.push([\"Cause\", humanizeToken(attention.attention_error_class)]);"));
+	assert!(response.contains("facts.push([\"Cause\", sentenceToken(attention.attention_error_class)]);"));
 	assert!(response.contains("queued attention"));
 	assert!(response.contains("worktree.ownership_reason"));
 	assert!(response.contains("const hygiene = worktree.hygiene;"));
@@ -387,6 +387,13 @@ fn operator_dashboard_active_run_status_copy_stays_concise() {
 	assert!(response.contains("Stopped agent process"));
 	assert!(response.contains("attention stopped"));
 	assert!(response.contains("inlineStatusFact(\"Agent\", \"Done\")"));
+	assert!(response.contains("const waitReason = sentenceToken(run.wait_reason);"));
+	assert!(response.contains("if (!displayTextRepeats(summary, waitReason))"));
+	assert!(response.contains("displayTextRepeats(summary, \"operator input\")"));
+	assert!(response.contains("status: \"waiting\","));
+	assert!(!response.contains(
+		"status: run.wait_reason ? `wait ${humanizeToken(run.wait_reason)}`"
+	));
 	assert!(!response.contains("Running through ${focus}"));
 	assert!(!response.contains("Running through model execution."));
 	assert!(!response.contains("Time is going to ${focus}."));
@@ -941,10 +948,15 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains("return priority == null ? \"NONE\" : `P${priority}`;"));
 	assert!(response.contains("function queuedCandidateSummaryIsNoise(summary)"));
 	assert!(response.contains("normalized.includes(\"systemerror\")"));
+	assert!(response.contains("function sentenceToken(value)"));
+	assert!(response.contains("function displayTextRepeats(left, right)"));
 	assert!(response.contains("function inlineStatusFact(label, value)"));
 	assert!(response.contains("titleCaseLabel(label)"));
 	assert!(response.contains("const summary = summarizeQueuedCandidate(candidate);"));
-	assert!(response.contains("const reason = queuedCandidateReasonText(candidate);"));
+	assert!(response.contains("const reason = queuedCandidateInlineReason(candidate);"));
+	assert!(response.contains("bits.push(inlineStatusFact(\"History\", humanizeToken(outcome.ledger_status)))"));
+	assert!(!response.contains("facts.push([\"History\", humanizeToken(outcome.ledger_status)])"));
+	assert!(!response.contains("facts.push([\"Closeout\", humanizeToken(outcome.closeout_status)])"));
 	assert!(response.contains("<div class=\"grid two card-facts\">"));
 	assert!(!response.contains("queue-facts"));
 	assert!(response.contains("cardField(\"State\", formatDetailToken(candidate.state))"));
@@ -1099,9 +1111,11 @@ fn operator_dashboard_review_cards_omit_static_summary_copy() {
 	let response = dashboard_response();
 
 	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: `run ${humanizeToken(activeRun.phase)}`"));
-	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.review_decision"));
+	assert!(response.contains("function postReviewBlockerStatus(lane, blockerScope)"));
+	assert!(response.contains("status: postReviewBlockerStatus(lane, blockerScope)"));
 	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.check_state"));
 	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.mergeable"));
+	assert!(!response.contains("status: lane.review_decision && blockerScope === \"Review\""));
 	assert!(
 		response.contains("${item.summary ? `<p class=\"row-summary\">${escapeHtml(item.summary)}</p>` : \"\"}")
 	);
@@ -1207,7 +1221,7 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 		.next()
 		.expect("queued candidate reason function should have an end");
 
-	assert!(reason_text.contains("return \"Needs Attention\";"));
+	assert!(reason_text.contains("return \"needs attention\";"));
 	assert!(
 		response.contains("facts.push([\"Attempt status\", humanizeToken(attention.attempt_status)]);")
 	);
@@ -1218,7 +1232,10 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 		"facts.push([\"Auto retry\", autoRetryBlockedReasonText(attention.auto_retry_blocked_reason)]);"
 	));
 	assert!(response.contains("return \"needs-attention label set\";"));
-	assert!(reason_text.contains("return \"Auto Retry Paused\";"));
+	assert!(reason_text.contains("return \"auto retry paused\";"));
+	assert!(response.contains("function queuedCandidateInlineReason(candidate)"));
+	assert!(response.contains("displayTextRepeats(reason, sentenceToken(candidate.attention.attention_error_class))"));
+	assert!(response.contains("displayTextRepeats(reason, \"patch retained\")"));
 	assert!(!response.contains("return \"blocked by needs-attention\";"));
 	assert!(!reason_text.contains("return \"Retry budget held\";"));
 	assert!(!response.contains(
@@ -1226,10 +1243,10 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 	));
 	assert!(
 		reason_text
-			.find("return \"Needs Attention\";")
+			.find("return \"needs attention\";")
 			.expect("needs-attention reason should exist")
 			< reason_text
-				.find("return \"Auto Retry Paused\";")
+				.find("return \"auto retry paused\";")
 				.expect("retry-budget reason should exist")
 	);
 }
