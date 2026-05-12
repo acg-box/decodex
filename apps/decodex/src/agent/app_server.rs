@@ -308,6 +308,7 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) continuation_user_input: Option<String>,
 	pub(crate) activity_marker_path: Option<PathBuf>,
 	pub(crate) resume_thread_id: Option<String>,
+	pub(crate) ephemeral_thread: bool,
 	pub(crate) command_exec_health_check: Option<CommandExecHealthCheck>,
 	pub(crate) dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
 	pub(crate) continuation_guard: Option<&'a dyn TurnContinuationGuard>,
@@ -924,6 +925,7 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 			continuation_user_input: None,
 			activity_marker_path: None,
 			resume_thread_id: None,
+			ephemeral_thread: true,
 			command_exec_health_check: Some(CommandExecHealthCheck::probe()),
 			dynamic_tool_handler: Some(&probe_tool_handler),
 			continuation_guard: None,
@@ -2565,6 +2567,7 @@ fn build_thread_start_request(
 		cwd: Some(request.cwd.clone()),
 		dynamic_tools,
 		developer_instructions: Some(request.developer_instructions.clone()),
+		ephemeral: request.ephemeral_thread.then_some(true),
 		..ThreadStartRequest::default()
 	})
 }

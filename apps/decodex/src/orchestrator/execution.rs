@@ -452,6 +452,7 @@ where
 			)),
 			activity_marker_path: Some(issue_run.worktree.path.clone()),
 			resume_thread_id: resolve_resume_thread_id(state_store, issue_run)?,
+			ephemeral_thread: false,
 			command_exec_health_check: None,
 			dynamic_tool_handler: Some(&decodex_tool_bridge),
 			continuation_guard: Some(&continuation_guard),
