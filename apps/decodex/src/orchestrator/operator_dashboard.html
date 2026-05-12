@@ -1961,15 +1961,21 @@
 				--account-accent: var(--success);
 			}
 
+			.account-row.is-fixed {
+				--account-accent: var(--success);
+			}
+
 			.account-row.is-ready {
 				--account-accent: var(--success);
 			}
 
-			.account-row.is-selected::before {
+			.account-row.is-selected::before,
+			.account-row.is-fixed::before {
 				box-shadow: 0 0 10px color-mix(in srgb, var(--account-accent) 22%, transparent);
 			}
 
-			.account-row.is-selected::after {
+			.account-row.is-selected::after,
+			.account-row.is-fixed::after {
 				opacity: 0.45;
 				transform: scaleX(1);
 			}
@@ -2061,6 +2067,48 @@
 
 			.account-name-reroll:focus-visible {
 				color: var(--text);
+				outline: 2px solid var(--info);
+				outline-offset: 2px;
+			}
+
+			.account-select-button {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				flex: 0 0 auto;
+				width: 18px;
+				height: 18px;
+				padding: 0;
+				border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+				border-radius: 999px;
+				background: color-mix(in srgb, var(--surface-muted) 74%, transparent);
+				color: var(--muted);
+				cursor: pointer;
+				transition:
+					background-color var(--fast) var(--ease),
+					border-color var(--fast) var(--ease),
+					color var(--fast) var(--ease),
+					transform var(--fast) var(--ease);
+			}
+
+			.account-select-button svg {
+				display: block;
+				width: 12px;
+				height: 12px;
+				stroke-width: 2.2;
+			}
+
+			.account-select-button:hover,
+			.account-select-button.is-fixed {
+				border-color: color-mix(in srgb, var(--success) 58%, var(--line-strong));
+				color: var(--success);
+			}
+
+			.account-select-button:hover {
+				transform: translateY(-1px);
+			}
+
+			.account-select-button:focus-visible {
 				outline: 2px solid var(--info);
 				outline-offset: 2px;
 			}
@@ -5523,13 +5571,50 @@
 				return [selected, ...accounts];
 			}
 
+				function codexAccountFingerprint(account) {
+					return String(account?.account_fingerprint || "").trim();
+				}
+
 				function codexAccountIdentity(account) {
-					const fingerprint = account?.account_fingerprint || "";
+					const fingerprint = codexAccountFingerprint(account);
 					if (fingerprint) {
 						return fingerprint;
 					}
 
 					return account?.plan_type || "";
+				}
+
+				function codexAccountControlProjectId(snapshot) {
+					const snapshotProjectId = String(snapshot?.project_id || "").trim();
+					if (snapshotProjectId && snapshotProjectId !== "all") {
+						return snapshotProjectId;
+					}
+
+					const projects = Array.isArray(snapshot?.projects)
+						? snapshot.projects.filter((project) => project?.project_id)
+						: [];
+
+					return projects.length === 1 ? String(projects[0].project_id) : "";
+				}
+
+				function codexAccountControlSelector(account) {
+					return codexAccountEmail(account) || codexAccountFingerprint(account);
+				}
+
+				function codexAccountConfiguredSelector(snapshot) {
+					return String(snapshot?.account_control?.account_selector || "").trim();
+				}
+
+				function codexAccountMatchesConfiguredSelector(account, snapshot) {
+					const selector = codexAccountConfiguredSelector(snapshot);
+					if (!selector) {
+						return false;
+					}
+
+					return (
+						selector === codexAccountEmail(account) ||
+						selector === codexAccountFingerprint(account)
+					);
 				}
 
 				function codexAccountEmail(account) {
@@ -5634,6 +5719,33 @@
 								<path d="M2 18h1.6c1.4 0 2.7-.7 3.5-1.8l5.8-8.4C13.7 6.7 15 6 16.4 6H22"></path>
 								<path d="M2 6h1.6c1.4 0 2.7.7 3.5 1.8l.7 1"></path>
 								<path d="M12.8 16.2c.8 1.1 2.1 1.8 3.5 1.8H22"></path>
+							</svg>
+						</button>
+					`;
+				}
+
+				function renderCodexAccountSelectButton(account, snapshot) {
+					const projectId = codexAccountControlProjectId(snapshot);
+					const selector = codexAccountControlSelector(account);
+					if (!projectId || !selector) {
+						return "";
+					}
+
+					const fixed = codexAccountMatchesConfiguredSelector(account, snapshot);
+					const action = fixed ? "clearAccountSelection" : "selectAccount";
+					const title = fixed
+						? "Return this project to balanced account selection"
+						: "Use this account for new runs";
+					const fixedClass = fixed ? " is-fixed" : "";
+
+					return `
+						<button class="account-select-button${fixedClass}" type="button" data-account-select="${escapeHtml(action)}" data-project-id="${escapeHtml(projectId)}" data-account-selector="${escapeHtml(selector)}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">
+							<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+								${
+									fixed
+										? '<path d="M6 18 18 6"></path><path d="m6 6 12 12"></path>'
+										: '<path d="M20 6 9 17l-5-5"></path>'
+								}
 							</svg>
 						</button>
 					`;
@@ -6010,12 +6122,15 @@
 					`;
 				}
 
-				function renderCodexAccountPoolRow(account) {
+				function renderCodexAccountPoolRow(account, snapshot) {
 					const displayTitle = codexAccountDisplayTitle(account);
 					const visibleName = codexAccountVisibleName(account);
 					const plan = codexAccountPlanLabel(account);
 					const statusTone = codexAccountStatusTone(account);
 					const toneClass = statusTone ? ` is-${statusTone}` : "";
+					const fixedClass = codexAccountMatchesConfiguredSelector(account, snapshot)
+						? " is-fixed"
+						: "";
 					const selectedClass =
 						String(account.status || "").toLowerCase() === "selected" ? " is-selected" : "";
 				const metaFacts = codexAccountMetaFacts(account);
@@ -6025,10 +6140,11 @@
 				const identityClass = codexAccountShowsEmail(account) ? " is-machine" : "";
 
 				return `
-						<div class="account-row${selectedClass}${toneClass}">
+						<div class="account-row${selectedClass}${fixedClass}${toneClass}">
 							<div class="account-row-id${identityClass}">
 								<strong class="account-name" title="${escapeHtml(displayTitle)}">${escapeHtml(visibleName)}</strong>
 								${renderCodexAccountRandomNameButton(account)}
+								${renderCodexAccountSelectButton(account, snapshot)}
 							</div>
 							<div class="account-row-plan">${escapeHtml(plan)}</div>
 							${renderCodexAccountPoolWindow(account, "primary")}
@@ -6084,7 +6200,7 @@
 					return `<span class="account-pool-heading">${sortButton}${accountPrivacyToggleMarkup()}</span>`;
 				}
 
-				function renderCodexAccountPool(accounts) {
+				function renderCodexAccountPool(accounts, snapshot) {
 					if (!accounts.length) {
 						return renderEmptyState(
 							"No accounts",
@@ -6097,7 +6213,7 @@
 							<div class="account-pool-guide">
 								${ACCOUNT_POOL_SORT_COLUMNS.map(renderCodexAccountPoolGuideCell).join("")}
 							</div>
-							${accounts.map(renderCodexAccountPoolRow).join("")}
+							${accounts.map((account) => renderCodexAccountPoolRow(account, snapshot)).join("")}
 						</div>
 					`;
 				}
@@ -6308,7 +6424,7 @@
 
 				function renderAccountPool(snapshot) {
 					const accounts = codexAccountPoolAccounts(snapshot);
-					nodes.accountPool.innerHTML = renderCodexAccountPool(accounts);
+					nodes.accountPool.innerHTML = renderCodexAccountPool(accounts, snapshot);
 					renderAccountPrivacyToggle();
 				}
 
@@ -8894,6 +9010,12 @@
 					return;
 				}
 				recordDashboardControlEvent(payload || {});
+				if (
+					payload?.accepted &&
+					["selectAccount", "clearAccountSelection"].includes(payload.action)
+				) {
+					refreshDashboard();
+				}
 			}
 
 			function applyDashboardControlReady(payload) {
@@ -9128,6 +9250,21 @@
 					persistAccountPoolSort();
 					if (lastDashboardRender) {
 						renderDashboardState(lastDashboardRender);
+					}
+					return;
+				}
+
+				const selectButton = event.target.closest("[data-account-select]");
+				if (selectButton) {
+					event.preventDefault();
+					const action = selectButton.dataset.accountSelect;
+					const projectId = selectButton.dataset.projectId || null;
+					const accountSelector = selectButton.dataset.accountSelector || null;
+
+					if (action === "selectAccount") {
+						sendDashboardControl(action, { projectId, accountSelector });
+					} else if (action === "clearAccountSelection") {
+						sendDashboardControl(action, { projectId });
 					}
 					return;
 				}
