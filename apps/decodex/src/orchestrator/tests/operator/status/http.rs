@@ -1,5 +1,7 @@
 use std::net::SocketAddr;
 
+use crate::runtime;
+
 #[test]
 fn operator_state_endpoint_serves_snapshot_json() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
@@ -550,9 +552,12 @@ fn assert_dashboard_account_selection_controls(
 	frame: &mut Vec<u8>,
 	repo_root: &Path,
 ) {
+	let home = repo_root.parent().expect("fixture repo root should have a parent");
+	let _home_guard = TestEnvVarGuard::set("HOME", home.to_str().expect("fixture home should be UTF-8"));
+
 	client
 		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"account-1","action":"selectAccount","projectId":"pubfi","accountSelector":"copy@example.com"}"#,
+			r#"{"type":"control","requestId":"account-1","action":"selectAccount","accountSelector":"copy@example.com"}"#,
 		))
 		.expect("client should send account selection");
 
@@ -562,15 +567,20 @@ fn assert_dashboard_account_selection_controls(
 
 	assert_eq!(account_ack["payload"]["accepted"], true);
 	assert_eq!(account_ack["payload"]["status"], "fixed");
-
-	let updated_config = load_service_config(repo_root);
-	let accounts = updated_config.codex().accounts().expect("accounts should be configured");
-
-	assert_eq!(accounts.fixed_account(), Some("copy@example.com"));
+	assert_eq!(
+		runtime::global_fixed_account_selector().expect("global account selector should read"),
+		Some(String::from("copy@example.com"))
+	);
+	assert!(
+		!fs::read_to_string(service_config_path(repo_root))
+			.expect("project config should remain readable")
+			.contains("fixed_account"),
+		"account selection should not write project-scoped fixed_account"
+	);
 
 	client
 		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"account-clear","action":"clearAccountSelection","projectId":"pubfi"}"#,
+			r#"{"type":"control","requestId":"account-clear","action":"clearAccountSelection"}"#,
 		))
 		.expect("client should send account clear");
 
@@ -581,10 +591,7 @@ fn assert_dashboard_account_selection_controls(
 	assert_eq!(account_clear_ack["payload"]["accepted"], true);
 	assert_eq!(account_clear_ack["payload"]["status"], "balanced");
 	assert_eq!(
-		load_service_config(repo_root)
-			.codex()
-			.accounts()
-			.and_then(ProjectCodexAccountsConfig::fixed_account),
+		runtime::global_fixed_account_selector().expect("global account selector should read"),
 		None
 	);
 }
