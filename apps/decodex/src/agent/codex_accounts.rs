@@ -37,22 +37,25 @@ pub(crate) struct CodexAccountPool {
 	path: PathBuf,
 	usage_endpoint: String,
 	refresh_endpoint: String,
+	fixed_account: Option<String>,
 	client: Client,
 	selected_account_id: Mutex<Option<String>>,
 }
 impl CodexAccountPool {
 	pub(crate) fn from_config(config: &ProjectCodexAccountsConfig) -> crate::prelude::Result<Self> {
-		Self::new(
+		Self::new_with_fixed_account(
 			runtime::accounts_path()?,
 			config.usage_endpoint().unwrap_or(DEFAULT_USAGE_ENDPOINT),
 			config.refresh_endpoint().unwrap_or(DEFAULT_REFRESH_ENDPOINT),
+			config.fixed_account(),
 		)
 	}
 
-	pub(crate) fn new(
+	fn new_with_fixed_account(
 		path: impl AsRef<Path>,
 		usage_endpoint: impl Into<String>,
 		refresh_endpoint: impl Into<String>,
+		fixed_account: Option<&str>,
 	) -> crate::prelude::Result<Self> {
 		let client = Client::builder().timeout(HTTP_TIMEOUT).build()?;
 
@@ -60,6 +63,10 @@ impl CodexAccountPool {
 			path: path.as_ref().to_path_buf(),
 			usage_endpoint: usage_endpoint.into(),
 			refresh_endpoint: refresh_endpoint.into(),
+			fixed_account: fixed_account
+				.map(str::trim)
+				.filter(|selector| !selector.is_empty())
+				.map(str::to_owned),
 			client,
 			selected_account_id: Mutex::new(None),
 		})
@@ -111,80 +118,24 @@ impl CodexAccountPool {
 		&self,
 		records: &mut [AccountPoolRecord],
 	) -> crate::prelude::Result<CodexAccountLogin> {
+		if let Some(selector) = self.fixed_account.as_deref() {
+			return self.select_fixed_from_records(records, selector);
+		}
+
 		let now = OffsetDateTime::now_utc().unix_timestamp();
 		let mut candidates = Vec::new();
 		let mut skipped = Vec::new();
 		let mut records_changed = false;
 
 		for (index, record) in records.iter_mut().enumerate() {
-			if record.disabled {
-				skipped.push(format!("line {} disabled", index + 1));
-
-				continue;
-			}
-			if record.cooldown_until_unix_epoch.is_some_and(|cooldown| cooldown > now) {
-				skipped.push(format!("line {} cooling down", index + 1));
-
-				continue;
-			}
-			if record.account_id().is_none() {
-				skipped.push(format!("line {} missing account id", index + 1));
-
-				continue;
-			}
-			if record.access_token().is_none() {
-				skipped.push(format!("line {} missing access token", index + 1));
-
-				continue;
-			}
-
-			let refresh_status = match self.proactive_refresh_record(record, now) {
-				Ok(status) => {
-					if status == RefreshStatus::Succeeded {
-						records_changed = true;
-					}
-
-					status.as_str()
-				},
-				Err(error) if error.requires_skip => {
-					skipped.push(format!(
-						"{} proactive refresh failed: {}",
-						record.display_name(),
-						error.source
-					));
-
-					continue;
-				},
-				Err(error) => {
-					skipped.push(format!(
-						"{} proactive refresh failed; probing existing token: {}",
-						record.display_name(),
-						error.source
-					));
-
-					RefreshStatus::Failed.as_str()
-				},
-			};
-
-			match self.probe_record_usage(record) {
-				Ok(usage) => candidates.push(record.login_from_usage(usage, refresh_status)?),
-				Err(error) if error.unauthorized && record.refresh_token().is_some() => {
-					self.refresh_record(record)?;
-
-					records_changed = true;
-
-					let usage = self.probe_record_usage(record).map_err(|retry_error| {
-						eyre::eyre!(
-							"Codex account `{}` refreshed but usage probe still failed: {retry_error}",
-							record.display_name()
-						)
-					})?;
-
-					candidates.push(record.login_from_usage(usage, "succeeded")?);
-				},
-				Err(error) => {
-					skipped.push(format!("{} usage probe failed: {error}", record.display_name()));
-				},
+			match self.account_candidate_from_record(
+				record,
+				index + 1,
+				now,
+				&mut records_changed,
+			)? {
+				Ok(candidate) => candidates.push(candidate),
+				Err(reason) => skipped.push(reason),
 			}
 		}
 
@@ -222,6 +173,103 @@ impl CodexAccountPool {
 		self.remember_selected_account(&selected.account_id)?;
 
 		Ok(selected)
+	}
+
+	fn select_fixed_from_records(
+		&self,
+		records: &mut [AccountPoolRecord],
+		selector: &str,
+	) -> crate::prelude::Result<CodexAccountLogin> {
+		let record_index = self.fixed_record_index(records, selector)?;
+		let now = OffsetDateTime::now_utc().unix_timestamp();
+		let mut records_changed = false;
+		let mut selected = match self.account_candidate_from_record(
+			&mut records[record_index],
+			record_index + 1,
+			now,
+			&mut records_changed,
+		)? {
+			Ok(candidate) => candidate,
+			Err(reason) => {
+				eyre::bail!(
+					"Configured Codex fixed account `{selector}` from `{}` is not usable: {reason}",
+					self.path.display()
+				);
+			},
+		};
+
+		selected.mark_selected(now);
+		records[record_index].last_selected_at_unix_epoch = Some(now);
+		records_changed = true;
+
+		let account_summaries = account_summaries(&selected, &[]);
+		let selected = selected.with_account_summaries(account_summaries);
+
+		if records_changed {
+			self.save_records(records)?;
+		}
+
+		self.remember_selected_account(&selected.account_id)?;
+
+		Ok(selected)
+	}
+
+	fn account_candidate_from_record(
+		&self,
+		record: &mut AccountPoolRecord,
+		line_number: usize,
+		now: i64,
+		records_changed: &mut bool,
+	) -> crate::prelude::Result<std::result::Result<CodexAccountLogin, String>> {
+		if record.disabled {
+			return Ok(Err(format!("line {line_number} disabled")));
+		}
+		if record.cooldown_until_unix_epoch.is_some_and(|cooldown| cooldown > now) {
+			return Ok(Err(format!("line {line_number} cooling down")));
+		}
+		if record.account_id().is_none() {
+			return Ok(Err(format!("line {line_number} missing account id")));
+		}
+		if record.access_token().is_none() {
+			return Ok(Err(format!("line {line_number} missing access token")));
+		}
+
+		let refresh_status = match self.proactive_refresh_record(record, now) {
+			Ok(status) => {
+				if status == RefreshStatus::Succeeded {
+					*records_changed = true;
+				}
+
+				status.as_str()
+			},
+			Err(error) if error.requires_skip => {
+				return Ok(Err(format!(
+					"{} proactive refresh failed: {}",
+					record.display_name(),
+					error.source
+				)));
+			},
+			Err(_error) => RefreshStatus::Failed.as_str(),
+		};
+
+		match self.probe_record_usage(record) {
+			Ok(usage) => Ok(Ok(record.login_from_usage(usage, refresh_status)?)),
+			Err(error) if error.unauthorized && record.refresh_token().is_some() => {
+				self.refresh_record(record)?;
+
+				*records_changed = true;
+
+				let usage = self.probe_record_usage(record).map_err(|retry_error| {
+					eyre::eyre!(
+						"Codex account `{}` refreshed but usage probe still failed: {retry_error}",
+						record.display_name()
+					)
+				})?;
+
+				Ok(Ok(record.login_from_usage(usage, "succeeded")?))
+			},
+			Err(error) => Ok(Err(format!("{} usage probe failed: {error}", record.display_name()))),
+		}
 	}
 
 	fn probe_account_activity_summaries(
@@ -342,16 +390,23 @@ impl CodexAccountPool {
 		records: &mut [AccountPoolRecord],
 		previous_account_id: Option<&str>,
 	) -> crate::prelude::Result<CodexAccountLogin> {
-		let selected_account_id = self.selected_account_id()?;
-		let target_account_id = previous_account_id.or(selected_account_id.as_deref());
-		let Some(record_index) = records.iter().position(|record| {
-			target_account_id.is_none_or(|target| record.account_id() == Some(target))
-		}) else {
-			eyre::bail!(
-				"Codex account refresh requested an account that is not in the configured accounts."
-			);
-		};
+		let record_index = if let Some(selector) = self.fixed_account.as_deref() {
+			self.fixed_record_index(records, selector)?
+		} else {
+			let selected_account_id = self.selected_account_id()?;
+			let target_account_id = previous_account_id.or(selected_account_id.as_deref());
 
+			records
+				.iter()
+				.position(|record| {
+					target_account_id.is_none_or(|target| record.account_id() == Some(target))
+				})
+				.ok_or_else(|| {
+					eyre::eyre!(
+						"Codex account refresh requested an account that is not in the configured accounts."
+					)
+				})?
+		};
 		self.refresh_record(&mut records[record_index])?;
 
 		let usage = self.probe_record_usage(&records[record_index])?;
@@ -369,6 +424,32 @@ impl CodexAccountPool {
 		self.remember_selected_account(&selected.account_id)?;
 
 		Ok(selected)
+	}
+
+	fn fixed_record_index(
+		&self,
+		records: &[AccountPoolRecord],
+		selector: &str,
+	) -> crate::prelude::Result<usize> {
+		let matches = records
+			.iter()
+			.enumerate()
+			.filter_map(|(index, record)| {
+				record.matches_account_selector(selector).then_some(index)
+			})
+			.collect::<Vec<_>>();
+
+		match matches.as_slice() {
+			[] => eyre::bail!(
+				"Configured Codex fixed account `{selector}` does not match any account in `{}`.",
+				self.path.display()
+			),
+			[index] => Ok(*index),
+			_ => eyre::bail!(
+				"Configured Codex fixed account `{selector}` matched multiple accounts in `{}`.",
+				self.path.display()
+			),
+		}
 	}
 
 	fn probe_record_usage(
@@ -629,6 +710,14 @@ impl AccountPoolRecord {
 		self.email()
 			.or_else(|| self.account_id().map(redact_account_id))
 			.unwrap_or_else(|| String::from("unnamed account"))
+	}
+
+	fn matches_account_selector(&self, selector: &str) -> bool {
+		let selector = selector.trim();
+
+		self.email().as_deref() == Some(selector)
+			|| self.account_id() == Some(selector)
+			|| self.account_id().map(redact_account_id).as_deref() == Some(selector)
 	}
 
 	fn access_token(&self) -> Option<&str> {
@@ -1157,9 +1246,19 @@ const fn is_false(value: &bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+	use std::{
+		fs,
+		io::{Read, Write},
+		net::TcpListener,
+		thread,
+	};
+
+	use tempfile::TempDir;
+
 	use crate::agent::codex_accounts::{
-		self, AccountPoolRecord, CodexAccountActivitySummary, CodexAccountLogin, CodexTokenData,
-		CreditsSnapshot, Path, ProactiveRefreshReason, UsageWindow, compare_account_candidates,
+		self, AccountPoolRecord, CodexAccountActivitySummary, CodexAccountLogin, CodexAccountPool,
+		CodexAccountProvider, CodexTokenData, CreditsSnapshot, DEFAULT_REFRESH_ENDPOINT, Path,
+		ProactiveRefreshReason, UsageWindow, compare_account_candidates,
 	};
 
 	#[test]
@@ -1177,6 +1276,62 @@ mod tests {
 		assert_eq!(records[0].email().as_deref(), Some("primary@example.com"));
 		assert_eq!(records[1].account_id(), Some("acct_wrapped"));
 		assert_eq!(records[1].email().as_deref(), Some("wrapped@example.com"));
+	}
+
+	#[test]
+	fn account_selector_matches_email_full_id_and_fingerprint() {
+		let record = AccountPoolRecord {
+			email: Some(String::from("selected@example.com")),
+			disabled: false,
+			cooldown_until_unix_epoch: None,
+			cooldown_until: None,
+			last_selected_at_unix_epoch: None,
+			auth_mode: Some(String::from("chatgpt")),
+			openai_api_key: None,
+			tokens: Some(CodexTokenData {
+				email: None,
+				id_token: None,
+				access_token: String::from("access"),
+				refresh_token: String::from("refresh"),
+				account_id: Some(String::from("acct_fixed_123456")),
+			}),
+			last_refresh: None,
+		};
+
+		assert!(record.matches_account_selector("selected@example.com"));
+		assert!(record.matches_account_selector("acct_fixed_123456"));
+		assert!(record.matches_account_selector("...123456"));
+		assert!(!record.matches_account_selector("other@example.com"));
+	}
+
+	#[test]
+	fn fixed_account_selection_uses_configured_account_without_balancing() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let accounts_path = temp_dir.path().join("accounts.jsonl");
+		let usage_endpoint = start_codex_usage_fixture_server(vec![
+			r#"{"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":85},"secondary_window":{"used_percent":90}}}"#,
+		]);
+
+		fs::write(
+			&accounts_path,
+			r#"{"email":"default@example.com","auth_mode":"chatgpt","tokens":{"access_token":"access-default","refresh_token":"refresh-default","account_id":"acct_default"}}
+{"email":"copy@example.com","auth_mode":"chatgpt","tokens":{"access_token":"access-copy","refresh_token":"refresh-copy","account_id":"acct_copy"}}
+"#,
+		)
+		.expect("accounts fixture should write");
+
+		let pool = CodexAccountPool::new_with_fixed_account(
+			&accounts_path,
+			usage_endpoint,
+			DEFAULT_REFRESH_ENDPOINT,
+			Some("copy@example.com"),
+		)
+		.expect("account pool should initialize");
+		let account = pool.select_account().expect("fixed account should select");
+
+		assert_eq!(account.account_id(), "acct_copy");
+		assert_eq!(account.summary().email.as_deref(), Some("copy@example.com"));
+		assert_eq!(account.account_summaries().len(), 1);
 	}
 
 	#[test]
@@ -1469,5 +1624,28 @@ mod tests {
 		candidates.sort_by(compare_account_candidates);
 
 		assert_eq!(candidates[0].account_id(), "acct_b");
+	}
+
+	fn start_codex_usage_fixture_server(responses: Vec<&'static str>) -> String {
+		let listener = TcpListener::bind("127.0.0.1:0").expect("usage fixture server should bind");
+		let address = listener.local_addr().expect("usage fixture address should resolve");
+
+		thread::spawn(move || {
+			for body in responses {
+				let (mut stream, _peer) =
+					listener.accept().expect("usage fixture should accept request");
+				let mut buffer = [0_u8; 4096];
+				let _bytes_read = stream.read(&mut buffer).expect("request should read");
+				let response = format!(
+					"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+					body.len(),
+					body
+				);
+
+				stream.write_all(response.as_bytes()).expect("usage response should write");
+			}
+		});
+
+		format!("http://{address}/usage")
 	}
 }
