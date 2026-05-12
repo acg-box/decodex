@@ -1015,7 +1015,8 @@ fn update_project_codex_account_selection(
 		.ok_or_else(|| eyre::eyre!("Decodex project `{project_id}` is not registered."))?;
 
 	write_project_codex_account_selection(registration.config_path(), selector)?;
-	crate::runtime::register_project_config(
+
+	runtime::register_project_config(
 		state_store,
 		registration.config_path(),
 		registration.enabled(),
@@ -1036,11 +1037,11 @@ fn write_project_codex_account_selection(
 		Some(selector) => {
 			let accounts = ensure_toml_table(ensure_toml_table(&mut document, "codex")?, "accounts")?;
 
-			accounts.insert(String::from("fixed_account"), toml::Value::String(selector.to_owned()));
+			accounts.insert(String::from("fixed_account"), selector.to_owned().into());
 		},
 		None => {
-			if let Some(toml::Value::Table(codex)) = document.get_mut("codex")
-				&& let Some(toml::Value::Table(accounts)) = codex.get_mut("accounts")
+			if let Some(codex) = document.get_mut("codex").and_then(|value| value.as_table_mut())
+				&& let Some(accounts) = codex.get_mut("accounts").and_then(|value| value.as_table_mut())
 			{
 				accounts.remove("fixed_account");
 			}
@@ -1059,13 +1060,13 @@ fn write_project_codex_account_selection(
 
 fn ensure_toml_table<'a>(table: &'a mut toml::Table, key: &str) -> Result<&'a mut toml::Table> {
 	if !table.contains_key(key) {
-		table.insert(String::from(key), toml::Value::Table(toml::Table::new()));
+		table.insert(String::from(key), toml::Table::new().into());
 	}
 
-	match table.get_mut(key) {
-		Some(toml::Value::Table(table)) => Ok(table),
-		_ => eyre::bail!("Project config `{key}` must be a TOML table."),
-	}
+	table
+		.get_mut(key)
+		.and_then(|value| value.as_table_mut())
+		.ok_or_else(|| eyre::eyre!("Project config `{key}` must be a TOML table."))
 }
 
 fn dashboard_project_config_temp_path(config_path: &Path) -> Result<PathBuf> {
