@@ -12,6 +12,7 @@ trait PullRequestReviewStateInspector {
 pub(crate) struct RunOnceRequest<'a> {
 	pub(crate) config_path: Option<&'a Path>,
 	pub(crate) dry_run: bool,
+	pub(crate) explain_queue: bool,
 	pub(crate) preferred_issue_id: Option<&'a str>,
 	pub(crate) preferred_issue_state: Option<&'a str>,
 	pub(crate) preferred_initial_issue_state: Option<&'a str>,

@@ -3,6 +3,7 @@ use std::{
 	io::ErrorKind,
 	path::{Path, PathBuf},
 	process::{Command, Stdio},
+	thread,
 	time::Duration,
 };
 
@@ -26,6 +27,8 @@ use crate::{
 
 const MANUAL_LAND_CLOSEOUT_MARKER_GIT_PATH: &str = "decodex/manual-land-closeout";
 const MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS: usize = 4;
+const MANUAL_LAND_MERGEABILITY_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Debug)]
 pub(crate) struct ManualCommitRequest {
@@ -181,7 +184,7 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 	}
 
 	let default_branch = context.repository.default_branch.clone();
-	let landing_state = github::inspect_pull_request_landing_state(
+	let landing_state = inspect_pull_request_landing_state_for_manual_land(
 		&context.canonical_repo_root,
 		&context.pr_url,
 		&context.github_token,
@@ -224,6 +227,41 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 	);
 
 	Ok(())
+}
+
+fn inspect_pull_request_landing_state_for_manual_land(
+	cwd: &Path,
+	pr_url: &str,
+	github_token: &str,
+) -> Result<PullRequestLandingState> {
+	let mut last_landing_state = None;
+
+	for attempt in 1..=MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS {
+		let landing_state = github::inspect_pull_request_landing_state(cwd, pr_url, github_token)?;
+
+		if landing_state.state == "MERGED"
+			|| !pull_request::mergeability_unknown(landing_state.gate_view())
+		{
+			return Ok(landing_state);
+		}
+
+		last_landing_state = Some(landing_state);
+
+		if attempt < MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS {
+			tracing::info!(
+				pr_url = %pr_url,
+				attempt,
+				mergeable = "UNKNOWN",
+				merge_state_status = "UNKNOWN",
+				"Pull request mergeability is unresolved; waiting for GitHub to recompute before validating manual land gates."
+			);
+
+			thread::sleep(MANUAL_LAND_MERGEABILITY_RETRY_DELAY);
+		}
+	}
+
+	last_landing_state
+		.ok_or_else(|| eyre::eyre!("Pull request `{pr_url}` landing state was unavailable."))
 }
 
 fn prepare_manual_land_context(
@@ -767,6 +805,11 @@ fn validate_landing_state(
 		gate_view.merge_state_status,
 	) {
 		eyre::bail!("Pull request `{pr_url}` has failed required checks that need repair.");
+	}
+	if pull_request::mergeability_unknown(gate_view) {
+		eyre::bail!(
+			"Pull request `{pr_url}` mergeability is still unknown after retry; wait for GitHub to recompute mergeability and retry `decodex land`."
+		);
 	}
 	if !pull_request::merge_state_allows_ready_to_land(gate_view.merge_state_status) {
 		eyre::bail!(
@@ -2044,6 +2087,26 @@ exit 1\n",
 		.expect("merged PR should resume closeout");
 
 		assert_eq!(mode, LandExecutionMode::CloseoutOnly);
+	}
+
+	#[test]
+	fn landing_state_validation_explains_unknown_mergeability_after_retry() {
+		let mut landing_state = sample_landing_state();
+
+		landing_state.base_ref_name = String::from("main");
+		landing_state.mergeable = String::from("UNKNOWN");
+
+		let error = manual::validate_landing_state(
+			&landing_state,
+			"https://github.com/hack-ink/decodex/pull/64",
+			"main",
+			"XY-225",
+			"deadbeef",
+		)
+		.expect_err("unknown mergeability should not land");
+
+		assert!(error.to_string().contains("mergeability is still unknown after retry"));
+		assert!(error.to_string().contains("retry `decodex land`"));
 	}
 
 	#[test]
