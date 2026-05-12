@@ -26,6 +26,11 @@ pub(crate) fn global_config_path() -> Result<PathBuf> {
 	Ok(decodex_home_dir()?.join("config.toml"))
 }
 
+/// Resolve the global ChatGPT account-pool JSONL path.
+pub(crate) fn accounts_path() -> Result<PathBuf> {
+	Ok(decodex_home_dir()?.join("accounts.jsonl"))
+}
+
 /// Resolve the directory that stores project contract directories managed outside repos.
 pub(crate) fn project_config_dir() -> Result<PathBuf> {
 	Ok(decodex_home_dir()?.join("projects"))
@@ -159,6 +164,17 @@ mod tests {
 		assert_eq!(
 			runtime::decodex_home_dir_from(home),
 			PathBuf::from("/tmp/decodex-home-test/.codex/decodex")
+		);
+	}
+
+	#[test]
+	fn account_pool_path_lives_under_decodex_home() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let _home_guard = set_test_home(temp_dir.path());
+
+		assert_eq!(
+			runtime::accounts_path().expect("accounts path should resolve"),
+			temp_dir.path().join(".codex/decodex/accounts.jsonl")
 		);
 	}
 
