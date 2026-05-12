@@ -3575,11 +3575,7 @@
 			}
 
 			function compactStateToken(value) {
-				if (!value) {
-					return "none";
-				}
-
-				return String(value).trim().toLowerCase().replace(/_/g, " ");
+				return formatDetailToken(value);
 			}
 
 			function formatTimestamp(value) {
@@ -4229,7 +4225,7 @@
 
 			function formatDetailToken(value) {
 				const token = String(value || "").trim();
-				return token ? token.toUpperCase() : "NONE";
+				return token || "NONE";
 			}
 
 			function formatPriority(priority) {
@@ -4530,6 +4526,9 @@
 
 			function titleCaseLabel(label) {
 				return String(label || "").replace(/\b[A-Za-z][A-Za-z0-9]*\b/g, (word) => {
+					if (/^[A-Z0-9]+$/.test(word) && /[A-Z]/.test(word)) {
+						return word;
+					}
 					const lower = word.toLowerCase();
 					const acronym = FIELD_LABEL_ACRONYMS.get(lower);
 					return acronym || `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
@@ -4597,6 +4596,22 @@
 
 			function cardField(label, value, valueClass = "") {
 				return renderField(label, value, valueClass, titleCaseLabel, "card-field");
+			}
+
+			function cardFactValueClass(value, explicitClass = "") {
+				return [explicitClass, String(value || "").trim() === "NONE" ? "is-muted" : ""]
+					.filter(Boolean)
+					.join(" ");
+			}
+
+			function optionalCardToken(value) {
+				const token = String(value || "").trim();
+				return token || "NONE";
+			}
+
+			function reviewThreadToken(count) {
+				const numericCount = Number(count);
+				return Number.isFinite(numericCount) && numericCount > 0 ? String(numericCount) : "NONE";
 			}
 
 			function renderAttentionFacts(candidate) {
@@ -7274,9 +7289,9 @@
 								["Run", activeRun.run_id],
 								["Operation", humanizeToken(activeRun.current_operation || activeRun.phase)],
 								["Checks", compactStateToken(lane.check_state)],
-								["Threads", lane.unresolved_review_threads == null ? "none" : String(lane.unresolved_review_threads)],
-								["PR", lane.pr_url || "none"],
-								["Branch", lane.branch_name],
+								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
+								["PR", optionalCardToken(lane.pr_url)],
+								["Branch", optionalCardToken(lane.branch_name)],
 							],
 						});
 						continue;
@@ -7293,9 +7308,9 @@
 							status: postReviewBlockerStatus(lane, blockerScope),
 							facts: [
 								["Checks", compactStateToken(lane.check_state)],
-								["Threads", lane.unresolved_review_threads == null ? "none" : String(lane.unresolved_review_threads)],
-								["PR", lane.pr_url || "none"],
-								["Branch", lane.branch_name],
+								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
+								["PR", optionalCardToken(lane.pr_url)],
+								["Branch", optionalCardToken(lane.branch_name)],
 							],
 						});
 						continue;
@@ -7311,9 +7326,9 @@
 							status: lane.check_state ? `checks ${compactStateToken(lane.check_state)}` : "waiting",
 							facts: [
 								["Review decision", compactStateToken(lane.review_decision)],
-								["Threads", lane.unresolved_review_threads == null ? "none" : String(lane.unresolved_review_threads)],
-								["PR", lane.pr_url || "none"],
-								["Branch", lane.branch_name],
+								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
+								["PR", optionalCardToken(lane.pr_url)],
+								["Branch", optionalCardToken(lane.branch_name)],
 							],
 						});
 						continue;
@@ -7330,8 +7345,9 @@
 							facts: [
 								["Review decision", compactStateToken(lane.review_decision)],
 								["Checks", compactStateToken(lane.check_state)],
-								["PR", lane.pr_url || "none"],
-								["Branch", lane.branch_name],
+								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
+								["PR", optionalCardToken(lane.pr_url)],
+								["Branch", optionalCardToken(lane.branch_name)],
 							],
 						});
 					}
@@ -8021,7 +8037,7 @@
 									${statusLabel(item.status, item.tone)}
 								</div>
 								<div class="grid two card-facts">
-									${item.facts.map(([label, value]) => cardField(label, value)).join("")}
+									${item.facts.map(([label, value, valueClass]) => cardField(label, value, cardFactValueClass(value, valueClass))).join("")}
 								</div>
 							</article>
 						`,
