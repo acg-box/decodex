@@ -1,6 +1,6 @@
 ---
 name: manual-cli
-description: Use for human-driven Decodex CLI workflows: project registration, probe, status, dry-run probes, live-run routing, commit, land, archive hygiene, and local operator inspection. Does not own retained-lane automation policy beyond routing to the automation skill.
+description: "Use for human-driven Decodex CLI workflows: project registration, probe, status, dry-run probes, live-run routing, commit, land, archive hygiene, and local operator inspection. Does not own retained-lane automation policy beyond routing to the automation skill."
 ---
 
 # Manual CLI
