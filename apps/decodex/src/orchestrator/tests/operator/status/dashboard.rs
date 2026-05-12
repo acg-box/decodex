@@ -944,7 +944,8 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains("Appears after /state publishes a snapshot."));
 	assert!(response.contains("renderQueuedCandidates("));
 	assert!(response.contains("function formatDetailToken(value)"));
-	assert!(response.contains("return token ? token.toUpperCase() : \"NONE\";"));
+	assert!(response.contains("return token || \"NONE\";"));
+	assert!(!response.contains("return token ? token.toUpperCase() : \"NONE\";"));
 	assert!(response.contains("return priority == null ? \"NONE\" : `P${priority}`;"));
 	assert!(response.contains("function queuedCandidateSummaryIsNoise(summary)"));
 	assert!(response.contains("normalized.includes(\"systemerror\")"));
@@ -970,7 +971,9 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(!response.contains("<span>metadata <strong>"));
 	assert!(!response.contains("<span>telemetry <strong>"));
 	assert!(response.contains("renderActionCards("));
-	assert!(response.contains("${item.facts.map(([label, value]) => cardField(label, value)).join(\"\")}"));
+	assert!(response.contains("function cardFactValueClass(value, explicitClass = \"\")"));
+	assert!(response.contains("String(value || \"\").trim() === \"NONE\" ? \"is-muted\" : \"\""));
+	assert!(response.contains("${item.facts.map(([label, value, valueClass]) => cardField(label, value, cardFactValueClass(value, valueClass))).join(\"\")}"));
 	assert!(!response.contains("${item.facts.map(([label, value]) => field(label, value)).join(\"\")}"));
 	assert!(!response.contains("No running lanes"));
 	assert!(!response.contains("No queued issues"));
@@ -1091,7 +1094,16 @@ fn operator_dashboard_normalizes_review_state_tokens() {
 	let response = dashboard_response();
 
 	assert!(response.contains("function compactStateToken(value)"));
-	assert!(response.contains("return String(value).trim().toLowerCase().replace(/_/g, \" \");"));
+	assert!(response.contains("return formatDetailToken(value);"));
+	assert!(response.contains("function reviewThreadToken(count)"));
+	assert!(
+		response.contains(
+			"return Number.isFinite(numericCount) && numericCount > 0 ? String(numericCount) : \"NONE\";",
+		)
+	);
+	assert!(response.contains("function optionalCardToken(value)"));
+	assert!(response.contains("return token || \"NONE\";"));
+	assert!(response.contains("if (/^[A-Z0-9]+$/.test(word) && /[A-Z]/.test(word))"));
 	assert!(response.contains(
 		"status: lane.mergeable ? `merge ${compactStateToken(lane.mergeable)}` : \"ready\","
 	));
@@ -1100,10 +1112,14 @@ fn operator_dashboard_normalizes_review_state_tokens() {
 	));
 	assert!(response.contains("`review ${compactStateToken(lane.review_decision)}`"));
 	assert!(response.contains("[\"Checks\", compactStateToken(lane.check_state)]"));
+	assert!(response.contains("[\"Threads\", reviewThreadToken(lane.unresolved_review_threads)]"));
 	assert!(response.contains("[\"Review decision\", compactStateToken(lane.review_decision)]"));
+	assert!(response.contains("[\"PR\", optionalCardToken(lane.pr_url)]"));
 	assert!(!response.contains("`merge ${humanizeToken(lane.mergeable)}`"));
 	assert!(!response.contains("`checks ${humanizeToken(lane.check_state)}`"));
 	assert!(!response.contains("[\"Checks\", lane.check_state || \"none\"]"));
+	assert!(!response.contains("lane.unresolved_review_threads == null ? \"none\""));
+	assert!(!response.contains("lane.pr_url || \"none\""));
 }
 
 #[test]
