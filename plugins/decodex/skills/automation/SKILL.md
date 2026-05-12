@@ -1,6 +1,6 @@
 ---
 name: automation
-description: Use for Decodex runtime-owned automation: registered projects, `serve`, automatic issue intake, retained lanes, tracker tools, review handoff, repair, landing, closeout, cleanup, and operator recovery. Does not own manual commit or manual PR landing details.
+description: "Use for Decodex runtime-owned automation: registered projects, `serve`, automatic issue intake, retained lanes, tracker tools, review handoff, repair, landing, closeout, cleanup, and operator recovery. Does not own manual commit or manual PR landing details."
 ---
 
 # Automation
