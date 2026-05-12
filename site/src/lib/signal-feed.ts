@@ -53,6 +53,8 @@ export type SignalCardData = {
   confidence: SignalConfidence;
   impact: SignalImpact;
   config_flags: string[];
+  caveats: string[];
+  watch_state?: string;
   proof_points: string[];
   source_refs: SourceRefs;
   how_to_try?: string;

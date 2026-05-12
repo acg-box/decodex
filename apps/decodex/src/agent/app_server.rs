@@ -3346,9 +3346,7 @@ fn normalized_home_path(path: &Path) -> PathBuf {
 fn thread_resume_error_allows_fallback(error: &Report) -> bool {
 	let message = error.to_string().to_lowercase();
 
-	message.contains("no rollout found for thread id")
-		|| message.contains("thread not found")
-		|| message.contains("failed to load rollout")
+	message.contains("no rollout found for thread id") || message.contains("thread not found")
 }
 
 fn handle_dynamic_tool_call(

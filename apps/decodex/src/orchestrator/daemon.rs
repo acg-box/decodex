@@ -791,38 +791,11 @@ where
 	T: IssueTracker,
 {
 	let now = Instant::now();
+	let Some(first_entry) = retry_queue.next_entry().cloned() else {
+		return Ok(RetryDispatchDecision::Continue);
+	};
 
-	loop {
-		let Some(first_entry) = retry_queue.next_entry().cloned() else {
-			return Ok(RetryDispatchDecision::Continue);
-		};
-
-		if now >= first_entry.ready_at {
-			break;
-		}
-
-		let Some(issue) = refresh_issue(tracker, &first_entry.issue_id)? else {
-			clear_retry_schedule_and_release(retry_queue, state_store, &first_entry.issue_id)?;
-
-			continue;
-		};
-
-			if matches!(
-				evaluate_retry_entry_retention_policy(
-					tracker,
-					&issue,
-					project,
-					workflow,
-				state_store,
-				&first_entry,
-			)?,
-			RetryEntryRetentionDecision::Drop
-		) {
-			clear_retry_schedule_and_release(retry_queue, state_store, &first_entry.issue_id)?;
-
-			continue;
-		}
-
+	if now < first_entry.ready_at {
 		tracing::debug!(
 			issue_id = first_entry.issue_id,
 			retry_kind = ?first_entry.kind,

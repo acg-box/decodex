@@ -791,6 +791,9 @@ fn app_server_turn_failure_classifies_operator_attention() {
 fn thread_resume_fallback_only_allows_missing_thread_errors() {
 	assert!(super::thread_resume_error_allows_fallback(&eyre::eyre!("thread not found")));
 	assert!(super::thread_resume_error_allows_fallback(&eyre::eyre!(
+		"no rollout found for thread id thread-1"
+	)));
+	assert!(!super::thread_resume_error_allows_fallback(&eyre::eyre!(
 		"failed to load rollout from disk"
 	)));
 	assert!(!super::thread_resume_error_allows_fallback(&eyre::eyre!(
