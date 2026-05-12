@@ -297,6 +297,7 @@ fn thread_start_and_resume_requests_inherit_runtime_config() {
 		assert!(value.get("approvalPolicy").is_none());
 		assert!(value.get("sandbox").is_none());
 		assert!(value.get("config").is_none());
+		assert!(value.get("ephemeral").is_none());
 	}
 
 	let start =
@@ -359,11 +360,23 @@ fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 		continuation_user_input: None,
 		activity_marker_path: None,
 		resume_thread_id: None,
+		ephemeral_thread: false,
 		command_exec_health_check: None,
 		dynamic_tool_handler: None,
 		continuation_guard: None,
 		codex_account_provider: None,
 	}
+}
+
+#[test]
+fn synthetic_probe_thread_start_is_ephemeral_when_requested() {
+	let mut request = minimal_run_request();
+	request.ephemeral_thread = true;
+
+	let start = super::build_thread_start_request(&request).expect("request should build");
+	let value = serde_json::to_value(&start).expect("thread start request should serialize");
+
+	assert_eq!(value["ephemeral"], true);
 }
 
 #[test]
@@ -1258,6 +1271,7 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			)),
 			activity_marker_path: Some(marker_path.clone()),
 			resume_thread_id: None,
+			ephemeral_thread: false,
 			command_exec_health_check: None,
 			dynamic_tool_handler: Some(&handler),
 			continuation_guard: Some(&guard),
@@ -1301,6 +1315,7 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			continuation_user_input: None,
 			activity_marker_path: Some(marker_path.clone()),
 			resume_thread_id: Some(first_result.thread_id.clone()),
+			ephemeral_thread: false,
 			command_exec_health_check: None,
 			dynamic_tool_handler: Some(&handler),
 			continuation_guard: None,
