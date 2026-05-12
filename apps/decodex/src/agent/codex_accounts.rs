@@ -199,6 +199,7 @@ impl CodexAccountPool {
 		};
 
 		selected.mark_selected(now);
+
 		records[record_index].last_selected_at_unix_epoch = Some(now);
 		records_changed = true;
 
@@ -407,6 +408,7 @@ impl CodexAccountPool {
 					)
 				})?
 		};
+
 		self.refresh_record(&mut records[record_index])?;
 
 		let usage = self.probe_record_usage(&records[record_index])?;
@@ -1248,7 +1250,7 @@ const fn is_false(value: &bool) -> bool {
 mod tests {
 	use std::{
 		fs,
-		io::{Read, Write},
+		io::{Read as _, Write as _},
 		net::TcpListener,
 		thread,
 	};
@@ -1634,7 +1636,7 @@ mod tests {
 			for body in responses {
 				let (mut stream, _peer) =
 					listener.accept().expect("usage fixture should accept request");
-				let mut buffer = [0_u8; 4096];
+				let mut buffer = [0_u8; 4_096];
 				let _bytes_read = stream.read(&mut buffer).expect("request should read");
 				let response = format!(
 					"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
