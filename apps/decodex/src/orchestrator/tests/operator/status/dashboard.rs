@@ -235,6 +235,21 @@ fn operator_dashboard_cards_and_accounts_share_running_lane_typography() {
 }
 
 #[test]
+fn operator_dashboard_patches_active_run_cards_without_replacing_the_list() {
+	let response = dashboard_response();
+
+	assert!(response.contains("function renderStableList(container, html)"));
+	assert!(response.contains("function patchChildNodes(current, next)"));
+	assert!(response.contains("function activeRunRenderKey(run)"));
+	assert!(response.contains("data-render-key=\"${escapeHtml(renderKey)}\""));
+	assert!(response.contains("renderStableList(\n\t\t\t\t\tnodes.activeRuns,"));
+	assert!(!response.contains("nodes.activeRuns.innerHTML = runs"));
+	assert!(response.contains("return node.dataset.renderKey || node.dataset.detailKey || \"\";"));
+	assert!(response.contains("current.closest(\"details.is-animating\")"));
+	assert!(response.contains("width var(--slow) var(--ease),"));
+}
+
+#[test]
 fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics() {
 	let response = String::from_utf8(
 		orchestrator::build_operator_state_http_response(
