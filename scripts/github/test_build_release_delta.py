@@ -36,7 +36,8 @@ class GithubRequestTests(unittest.TestCase):
             FakeResponse('{"ok": true}'),
         ]
 
-        def fake_urlopen(_request):
+        def fake_urlopen(_request, timeout=None):
+            self.assertEqual(timeout, build_release_delta.GITHUB_REQUEST_TIMEOUT_SECONDS)
             result = attempts.pop(0)
             if isinstance(result, Exception):
                 raise result
