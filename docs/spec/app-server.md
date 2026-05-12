@@ -87,11 +87,13 @@ unless an existing lifecycle event summarizes them.
 3. Run the bounded capability preflight with `config/read`, `model/list`,
    `modelProvider/capabilities/read`, `skills/list`, `plugin/list`, and
    `mcpServerStatus/list`.
-4. Send `thread/start`.
-5. Send `turn/start`.
-6. Consume notifications until that turn reaches a terminal outcome.
-7. If the project-owned continuation policy allows another same-thread turn, send another `turn/start` on the same thread.
-8. Persist the local run journal and classify the bounded run result.
+4. When `[codex.accounts]` is enabled, select a shared ChatGPT account and send
+   `account/login/start` with `chatgptAuthTokens`.
+5. Send `thread/start`.
+6. Send `turn/start`.
+7. Consume notifications until that turn reaches a terminal outcome.
+8. If the project-owned continuation policy allows another same-thread turn, send another `turn/start` on the same thread.
+9. Persist the local run journal and classify the bounded run result.
 
 The capability preflight is observational. It may inspect the effective app-server
 config, model inventory, provider capabilities, skill inventory, plugin inventory,
@@ -110,6 +112,25 @@ When dynamic tools are enabled, `decodex` must also:
 The client-side dynamic bridge may expose narrow Decodex-owned tools that are local to one run attempt, such as the deferred `decodex.decodex_run_context` tool. These tools must stay small and side-effect-bounded so they can move to a process-local MCP server if the surface expands. Broader stateful or cross-service tool families remain MCP candidates rather than reasons to grow the client bridge indefinitely.
 
 If app-server sends an invalid or undeclared `item/tool/call`, `decodex` must respond with a failed `DynamicToolCallResponse`, record an operator-local `item/tool/call/failure` diagnostic with a normalized failure class and next action, and fail the run as an app-server dynamic-tool protocol failure. If a declared Decodex tool returns `success = false`, `decodex` records the same local diagnostic but leaves the turn alive so the model can correct arguments or backing state within the same run.
+
+When `[codex.accounts]` is enabled, the account pool is a global Decodex file at
+`~/.codex/decodex/accounts.jsonl`; project configs do not own an account-pool path
+override. The pool accepts flat `auth.json`-style JSONL records or records wrapped as
+`{ "auth": ... }`.
+Before login, Decodex probes configured accounts through the ChatGPT usage endpoint,
+skips disabled, cooling-down, and incomplete records, penalizes usage-limited records,
+prefers the highest remaining usage, and uses the least-recently selected account to
+break equal usage scores. Successful selection writes
+`last_selected_at_unix_epoch` back to the JSONL file so later runs can rotate tied
+accounts across process restarts.
+
+Decodex owns token freshness for injected `chatgptAuthTokens`. It proactively refreshes
+an account before probing when the access-token JWT `exp` is expired. If no expiration
+claim is available, it refreshes when `last_refresh` is more than eight days old. If
+the app-server later sends `account/chatgptAuthTokens/refresh`, Decodex refreshes the
+previous account id supplied by the request, updates the JSONL record with returned
+tokens and `last_refresh`, records a redacted local protocol event, and responds with
+fresh `chatgptAuthTokens`.
 
 ## `initialize`
 
