@@ -418,6 +418,7 @@ where
 		aggregate_control_plane_snapshot(registered_project_count, project_snapshots);
 
 	snapshot.projects = project_statuses;
+	snapshot.account_control = global_codex_account_control_status();
 
 	for warning in snapshot_warnings {
 		add_operator_snapshot_warning(&mut snapshot, warning);
