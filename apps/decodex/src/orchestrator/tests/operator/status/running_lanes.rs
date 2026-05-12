@@ -296,6 +296,11 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 		snapshot_json["accounts"].as_array().expect("snapshot should expose configured accounts");
 
 	assert!(snapshot.active_runs.is_empty());
+	assert_eq!(snapshot_json["account_control"]["mode"], "balanced");
+	assert_eq!(
+		snapshot_json["account_control"]["account_selector"],
+		serde_json::Value::Null,
+	);
 	assert_eq!(accounts.len(), 2);
 	assert_eq!(accounts[0]["email"], "default@example.com");
 	assert_eq!(accounts[0]["status"], "available");
