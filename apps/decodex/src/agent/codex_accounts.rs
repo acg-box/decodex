@@ -15,7 +15,7 @@ use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-	config::ProjectCodexAccountsConfig, prelude::eyre, state::CodexAccountActivitySummary,
+	config::ProjectCodexAccountsConfig, prelude::eyre, runtime, state::CodexAccountActivitySummary,
 };
 
 const DEFAULT_USAGE_ENDPOINT: &str = "https://chatgpt.com/backend-api/wham/usage";
@@ -23,6 +23,7 @@ const DEFAULT_REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const CODEX_USER_AGENT: &str = "codex-cli";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
+const TOKEN_REFRESH_INTERVAL_SECONDS: i64 = 8 * 24 * 60 * 60;
 
 pub(crate) trait CodexAccountProvider {
 	fn select_account(&self) -> crate::prelude::Result<CodexAccountLogin>;
@@ -42,7 +43,7 @@ pub(crate) struct CodexAccountPool {
 impl CodexAccountPool {
 	pub(crate) fn from_config(config: &ProjectCodexAccountsConfig) -> crate::prelude::Result<Self> {
 		Self::new(
-			config.path(),
+			runtime::accounts_path()?,
 			config.usage_endpoint().unwrap_or(DEFAULT_USAGE_ENDPOINT),
 			config.refresh_endpoint().unwrap_or(DEFAULT_REFRESH_ENDPOINT),
 		)
@@ -137,8 +138,36 @@ impl CodexAccountPool {
 				continue;
 			}
 
+			let refresh_status = match self.proactive_refresh_record(record, now) {
+				Ok(status) => {
+					if status == RefreshStatus::Succeeded {
+						records_changed = true;
+					}
+
+					status.as_str()
+				},
+				Err(error) if error.requires_skip => {
+					skipped.push(format!(
+						"{} proactive refresh failed: {}",
+						record.display_name(),
+						error.source
+					));
+
+					continue;
+				},
+				Err(error) => {
+					skipped.push(format!(
+						"{} proactive refresh failed; probing existing token: {}",
+						record.display_name(),
+						error.source
+					));
+
+					RefreshStatus::Failed.as_str()
+				},
+			};
+
 			match self.probe_record_usage(record) {
-				Ok(usage) => candidates.push(record.login_from_usage(usage, "not_needed")?),
+				Ok(usage) => candidates.push(record.login_from_usage(usage, refresh_status)?),
 				Err(error) if error.unauthorized && record.refresh_token().is_some() => {
 					self.refresh_record(record)?;
 
@@ -176,8 +205,19 @@ impl CodexAccountPool {
 
 		selected.mark_selected(now);
 
+		if let Some(record) =
+			records.iter_mut().find(|record| record.account_id() == Some(selected.account_id()))
+		{
+			record.last_selected_at_unix_epoch = Some(now);
+			records_changed = true;
+		}
+
 		let account_summaries = account_summaries(&selected, &candidates);
 		let selected = selected.with_account_summaries(account_summaries);
+
+		if records_changed {
+			self.save_records(records)?;
+		}
 
 		self.remember_selected_account(&selected.account_id)?;
 
@@ -203,9 +243,29 @@ impl CodexAccountPool {
 				continue;
 			}
 
+			let refresh_status = match self.proactive_refresh_record(record, now) {
+				Ok(status) => {
+					if status == RefreshStatus::Succeeded {
+						records_changed = true;
+					}
+
+					status.as_str()
+				},
+				Err(error) if error.requires_skip => {
+					summaries.push(record.probe_failed_activity_summary(
+						now,
+						"failed",
+						&error.source,
+					));
+
+					continue;
+				},
+				Err(_error) => "failed",
+			};
+
 			match self.probe_record_usage(record) {
 				Ok(usage) => {
-					summaries.push(record.activity_summary_from_usage(usage, "not_needed")?);
+					summaries.push(record.activity_summary_from_usage(usage, refresh_status)?);
 				},
 				Err(error) if error.unauthorized && record.refresh_token().is_some() => {
 					match self.refresh_record(record) {
@@ -253,6 +313,30 @@ impl CodexAccountPool {
 		Ok(summaries)
 	}
 
+	fn proactive_refresh_record(
+		&self,
+		record: &mut AccountPoolRecord,
+		now_unix_epoch: i64,
+	) -> std::result::Result<RefreshStatus, ProactiveRefreshError> {
+		let Some(reason) = record.proactive_refresh_reason(now_unix_epoch) else {
+			return Ok(RefreshStatus::NotNeeded);
+		};
+
+		if record.refresh_token().is_none() {
+			return Err(ProactiveRefreshError {
+				source: ReportableRefreshError::new(format!("missing refresh token for {reason}")),
+				requires_skip: reason.requires_valid_token(),
+			});
+		}
+
+		self.refresh_record(record).map(|()| RefreshStatus::Succeeded).map_err(|error| {
+			ProactiveRefreshError {
+				source: ReportableRefreshError::new(error.to_string()),
+				requires_skip: reason.requires_valid_token(),
+			}
+		})
+	}
+
 	fn refresh_from_records(
 		&self,
 		records: &mut [AccountPoolRecord],
@@ -275,6 +359,8 @@ impl CodexAccountPool {
 		let mut selected = records[record_index].login_from_usage(usage, "succeeded")?;
 
 		selected.mark_selected(now);
+
+		records[record_index].last_selected_at_unix_epoch = Some(now);
 
 		let selected_summary = selected.summary().clone();
 		let selected = selected.with_account_summaries(vec![selected_summary]);
@@ -416,6 +502,7 @@ pub(crate) struct CodexAccountLogin {
 	access_token: String,
 	account_id: String,
 	plan_type: Option<String>,
+	last_selected_at_unix_epoch: Option<i64>,
 	summary: CodexAccountActivitySummary,
 	account_summaries: Vec<CodexAccountActivitySummary>,
 }
@@ -470,6 +557,8 @@ enum AccountPoolLine {
 		cooldown_until_unix_epoch: Option<i64>,
 		#[serde(skip_serializing_if = "Option::is_none")]
 		cooldown_until: Option<String>,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		last_selected_at_unix_epoch: Option<i64>,
 		auth: AuthDotJson,
 	},
 	Flat(AccountPoolRecord),
@@ -478,17 +567,24 @@ impl AccountPoolLine {
 	fn into_record(self) -> AccountPoolRecord {
 		match self {
 			Self::Flat(record) => record,
-			Self::Wrapped { email, disabled, cooldown_until_unix_epoch, cooldown_until, auth } =>
-				AccountPoolRecord {
-					email: first_nonblank_string(email, auth.email),
-					disabled,
-					cooldown_until_unix_epoch,
-					cooldown_until,
-					auth_mode: auth.auth_mode,
-					openai_api_key: auth.openai_api_key,
-					tokens: auth.tokens,
-					last_refresh: auth.last_refresh,
-				},
+			Self::Wrapped {
+				email,
+				disabled,
+				cooldown_until_unix_epoch,
+				cooldown_until,
+				last_selected_at_unix_epoch,
+				auth,
+			} => AccountPoolRecord {
+				email: first_nonblank_string(email, auth.email),
+				disabled,
+				cooldown_until_unix_epoch,
+				cooldown_until,
+				last_selected_at_unix_epoch,
+				auth_mode: auth.auth_mode,
+				openai_api_key: auth.openai_api_key,
+				tokens: auth.tokens,
+				last_refresh: auth.last_refresh,
+			},
 		}
 	}
 }
@@ -517,6 +613,8 @@ struct AccountPoolRecord {
 	cooldown_until_unix_epoch: Option<i64>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	cooldown_until: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	last_selected_at_unix_epoch: Option<i64>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	auth_mode: Option<String>,
 	#[serde(rename = "OPENAI_API_KEY", skip_serializing_if = "Option::is_none")]
@@ -657,6 +755,7 @@ impl AccountPoolRecord {
 			access_token,
 			account_id,
 			plan_type: summary.plan_type.clone(),
+			last_selected_at_unix_epoch: self.last_selected_at_unix_epoch,
 			summary,
 			account_summaries: Vec::new(),
 		})
@@ -688,6 +787,20 @@ impl AccountPoolRecord {
 
 		summary
 	}
+
+	fn proactive_refresh_reason(&self, now_unix_epoch: i64) -> Option<ProactiveRefreshReason> {
+		let tokens = self.tokens.as_ref()?;
+
+		if let Some(expires_at) = jwt_expiration_unix_epoch(&tokens.access_token) {
+			return (expires_at <= now_unix_epoch)
+				.then_some(ProactiveRefreshReason::AccessTokenExpired);
+		}
+
+		let last_refresh = self.last_refresh.as_deref().and_then(rfc3339_unix_epoch)?;
+
+		(last_refresh < now_unix_epoch.saturating_sub(TOKEN_REFRESH_INTERVAL_SECONDS))
+			.then_some(ProactiveRefreshReason::LastRefreshStale)
+	}
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -715,6 +828,63 @@ struct RefreshResponse {
 	access_token: Option<String>,
 	refresh_token: Option<String>,
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RefreshStatus {
+	NotNeeded,
+	Succeeded,
+	Failed,
+}
+impl RefreshStatus {
+	const fn as_str(self) -> &'static str {
+		match self {
+			Self::NotNeeded => "not_needed",
+			Self::Succeeded => "succeeded",
+			Self::Failed => "failed",
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProactiveRefreshReason {
+	AccessTokenExpired,
+	LastRefreshStale,
+}
+impl ProactiveRefreshReason {
+	const fn requires_valid_token(self) -> bool {
+		matches!(self, Self::AccessTokenExpired)
+	}
+}
+impl Display for ProactiveRefreshReason {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::AccessTokenExpired => formatter.write_str("expired access token"),
+			Self::LastRefreshStale => formatter.write_str("stale refresh timestamp"),
+		}
+	}
+}
+
+#[derive(Debug)]
+struct ProactiveRefreshError {
+	source: ReportableRefreshError,
+	requires_skip: bool,
+}
+
+#[derive(Debug)]
+struct ReportableRefreshError {
+	message: String,
+}
+impl ReportableRefreshError {
+	fn new(message: String) -> Self {
+		Self { message }
+	}
+}
+impl Display for ReportableRefreshError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+		formatter.write_str(&self.message)
+	}
+}
+impl Error for ReportableRefreshError {}
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct AccountUsageSnapshot {
@@ -889,6 +1059,18 @@ fn jwt_email_claim(id_token: Option<&str>) -> Option<String> {
 	claims.get("email").and_then(json_scalar_to_string)
 }
 
+fn jwt_expiration_unix_epoch(jwt: &str) -> Option<i64> {
+	let payload = jwt.split('.').nth(1)?;
+	let payload_bytes = parse_base64_url(payload)?;
+	let claims = serde_json::from_slice::<Value>(&payload_bytes).ok()?;
+
+	claims.get("exp").and_then(number_as_i64)
+}
+
+fn rfc3339_unix_epoch(input: &str) -> Option<i64> {
+	OffsetDateTime::parse(input, &Rfc3339).ok().map(|timestamp| timestamp.unix_timestamp())
+}
+
 fn parse_base64_url(input: &str) -> Option<Vec<u8>> {
 	let mut output = Vec::with_capacity(input.len() * 3 / 4);
 	let mut accumulator = 0_u32;
@@ -922,6 +1104,11 @@ const fn base64_url_value(byte: u8) -> Option<u8> {
 fn compare_account_candidates(left: &CodexAccountLogin, right: &CodexAccountLogin) -> Ordering {
 	account_candidate_score(right)
 		.cmp(&account_candidate_score(left))
+		.then_with(|| {
+			left.last_selected_at_unix_epoch
+				.unwrap_or(0)
+				.cmp(&right.last_selected_at_unix_epoch.unwrap_or(0))
+		})
 		.then_with(|| left.summary.account_fingerprint.cmp(&right.summary.account_fingerprint))
 }
 
@@ -972,7 +1159,7 @@ const fn is_false(value: &bool) -> bool {
 mod tests {
 	use crate::agent::codex_accounts::{
 		self, AccountPoolRecord, CodexAccountActivitySummary, CodexAccountLogin, CodexTokenData,
-		CreditsSnapshot, Path, UsageWindow, compare_account_candidates,
+		CreditsSnapshot, Path, ProactiveRefreshReason, UsageWindow, compare_account_candidates,
 	};
 
 	#[test]
@@ -1085,6 +1272,7 @@ mod tests {
 			disabled: false,
 			cooldown_until_unix_epoch: None,
 			cooldown_until: None,
+			last_selected_at_unix_epoch: None,
 			auth_mode: Some(String::from("chatgpt")),
 			openai_api_key: None,
 			tokens: Some(CodexTokenData {
@@ -1138,12 +1326,47 @@ mod tests {
 	}
 
 	#[test]
+	fn proactive_refresh_prefers_access_token_expiration_then_last_refresh() {
+		let mut record = AccountPoolRecord {
+			email: Some(String::from("refresh@example.com")),
+			disabled: false,
+			cooldown_until_unix_epoch: None,
+			cooldown_until: None,
+			last_selected_at_unix_epoch: None,
+			auth_mode: Some(String::from("chatgpt")),
+			openai_api_key: None,
+			tokens: Some(CodexTokenData {
+				email: None,
+				id_token: None,
+				access_token: String::from("x.eyJleHAiOjEwMDB9.y"),
+				refresh_token: String::from("refresh"),
+				account_id: Some(String::from("acct_refresh")),
+			}),
+			last_refresh: Some(String::from("2099-01-01T00:00:00Z")),
+		};
+
+		assert_eq!(
+			record.proactive_refresh_reason(1_001),
+			Some(ProactiveRefreshReason::AccessTokenExpired)
+		);
+
+		record.tokens.as_mut().expect("tokens should exist").access_token = String::from("opaque");
+		record.last_refresh = Some(String::from("2026-01-01T00:00:00Z"));
+
+		assert_eq!(
+			record.proactive_refresh_reason(1_768_000_000),
+			Some(ProactiveRefreshReason::LastRefreshStale)
+		);
+	}
+
+	#[test]
 	fn account_candidate_sort_prefers_remaining_usage() {
 		let mut candidates = [
 			CodexAccountLogin {
 				access_token: String::from("a"),
 				account_id: String::from("acct_a"),
 				plan_type: Some(String::from("pro")),
+				last_selected_at_unix_epoch: None,
 				summary: CodexAccountActivitySummary {
 					account_fingerprint: String::from("...acct_a"),
 					primary_remaining_percent: Some(10),
@@ -1156,6 +1379,7 @@ mod tests {
 				access_token: String::from("b"),
 				account_id: String::from("acct_b"),
 				plan_type: Some(String::from("pro")),
+				last_selected_at_unix_epoch: None,
 				summary: CodexAccountActivitySummary {
 					account_fingerprint: String::from("...acct_b"),
 					primary_remaining_percent: Some(70),
@@ -1178,6 +1402,7 @@ mod tests {
 				access_token: String::from("a"),
 				account_id: String::from("acct_a"),
 				plan_type: Some(String::from("pro")),
+				last_selected_at_unix_epoch: None,
 				summary: CodexAccountActivitySummary {
 					account_fingerprint: String::from("...acct_a"),
 					primary_remaining_percent: Some(86),
@@ -1192,12 +1417,49 @@ mod tests {
 				access_token: String::from("b"),
 				account_id: String::from("acct_b"),
 				plan_type: Some(String::from("pro")),
+				last_selected_at_unix_epoch: None,
 				summary: CodexAccountActivitySummary {
 					account_fingerprint: String::from("...acct_b"),
 					primary_remaining_percent: Some(100),
 					secondary_remaining_percent: Some(100),
 					credits_has_credits: Some(false),
 					credits_unlimited: Some(false),
+					..CodexAccountActivitySummary::default()
+				},
+				account_summaries: Vec::new(),
+			},
+		];
+
+		candidates.sort_by(compare_account_candidates);
+
+		assert_eq!(candidates[0].account_id(), "acct_b");
+	}
+
+	#[test]
+	fn account_candidate_sort_balances_tied_usage_by_last_selection() {
+		let mut candidates = [
+			CodexAccountLogin {
+				access_token: String::from("a"),
+				account_id: String::from("acct_a"),
+				plan_type: Some(String::from("pro")),
+				last_selected_at_unix_epoch: Some(20),
+				summary: CodexAccountActivitySummary {
+					account_fingerprint: String::from("...acct_a"),
+					primary_remaining_percent: Some(70),
+					secondary_remaining_percent: Some(40),
+					..CodexAccountActivitySummary::default()
+				},
+				account_summaries: Vec::new(),
+			},
+			CodexAccountLogin {
+				access_token: String::from("b"),
+				account_id: String::from("acct_b"),
+				plan_type: Some(String::from("pro")),
+				last_selected_at_unix_epoch: Some(10),
+				summary: CodexAccountActivitySummary {
+					account_fingerprint: String::from("...acct_b"),
+					primary_remaining_percent: Some(70),
+					secondary_remaining_percent: Some(40),
 					..CodexAccountActivitySummary::default()
 				},
 				account_summaries: Vec::new(),
