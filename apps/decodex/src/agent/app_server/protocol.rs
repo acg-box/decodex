@@ -187,8 +187,9 @@ impl AppServerClient {
 	pub(super) fn list_mcp_server_status(
 		&mut self,
 		params: &ListMcpServerStatusParams,
+		timeout: Duration,
 	) -> Result<ListMcpServerStatusResponse> {
-		self.connection.request("mcpServerStatus/list", params, REQUEST_TIMEOUT)
+		self.connection.request("mcpServerStatus/list", params, timeout)
 	}
 
 	pub(super) fn recv(&mut self, timeout: Option<Duration>) -> Result<WireMessage> {

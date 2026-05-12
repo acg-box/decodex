@@ -5,6 +5,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use color_eyre::Report;
 use serde_json::{self, Value};
 use tempfile::TempDir;
 
@@ -19,8 +20,9 @@ use crate::{
 			TurnContinuationGuard, UserInput,
 		},
 		json_rpc::{
-			AppServerHomePreflightFailure, AppServerProcessEnv, JsonRpcMessage,
-			JsonRpcNotification, JsonRpcRequest, ResolvedAppServerCodexHomeEnv, WireMessage,
+			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
+			JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, ResolvedAppServerCodexHomeEnv,
+			WireMessage,
 		},
 		tracker_tool_bridge::{
 			DynamicToolCallResponse, DynamicToolContentItem, DynamicToolHandler, DynamicToolSpec,
@@ -585,6 +587,26 @@ fn capability_preflight_request_error_records_method_blocker() {
 	assert!(failure.to_string().contains("Method not found"));
 	assert!(failure.report().has_blockers());
 	assert_eq!(state_store.event_count("run-1").expect("event count should load"), 1);
+}
+
+#[test]
+fn mcp_preflight_timeout_degrades_to_recorded_ok_check() {
+	let error = Report::new(AppServerOutputTimeout);
+	let mut report = AppServerCapabilityPreflightReport::new();
+
+	assert!(super::mcp_preflight_can_degrade(&error));
+
+	super::record_mcp_preflight_degraded(&mut report, &error);
+
+	assert!(!report.has_blockers());
+	assert_eq!(report.checks().len(), 1);
+	assert_eq!(report.checks()[0].name, "mcp");
+	assert_eq!(report.checks()[0].status, super::AppServerCapabilityPreflightStatus::Ok);
+	assert_eq!(
+		report.checks()[0].details.get("degraded_reason").map(String::as_str),
+		Some("timeout")
+	);
+	assert!(report.checks()[0].summary.contains("continuing"));
 }
 
 #[test]

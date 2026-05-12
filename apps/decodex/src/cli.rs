@@ -221,12 +221,22 @@ struct RunCommand {
 	/// Skip external side effects where the later implementation allows it.
 	#[arg(long)]
 	dry_run: bool,
+	/// Explain current queued candidates without preparing or dispatching a lane.
+	#[arg(long, requires = "dry_run")]
+	explain: bool,
 }
 impl RunCommand {
 	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+		if self.explain && self.issue.is_some() {
+			eyre::bail!(
+				"`decodex run --dry-run --explain` explains the project queue and does not accept a positional issue."
+			);
+		}
+
 		orchestrator::run_once(RunOnceRequest {
 			config_path,
 			dry_run: self.dry_run,
+			explain_queue: self.explain,
 			preferred_issue_id: self.issue.as_deref(),
 			preferred_issue_state: None,
 			preferred_initial_issue_state: None,
@@ -516,6 +526,7 @@ impl AttemptCommand {
 		orchestrator::run_once(RunOnceRequest {
 			config_path,
 			dry_run: request.dry_run,
+			explain_queue: false,
 			preferred_issue_id: Some(request.issue_id.as_str()),
 			preferred_issue_state: Some(request.issue_state.as_str()),
 			preferred_initial_issue_state: request.initial_issue_state.as_deref(),
@@ -685,14 +696,35 @@ mod tests {
 	fn parses_run_with_positional_issue_and_dry_run() {
 		let cli = Cli::parse_from(["decodex", "run", "issue-1", "--dry-run"]);
 
-		assert!(matches!(cli.command, Command::Run(RunCommand { issue: Some(_), dry_run: true })));
+		assert!(matches!(
+			cli.command,
+			Command::Run(RunCommand { issue: Some(_), dry_run: true, explain: false })
+		));
 	}
 
 	#[test]
 	fn parses_run_without_issue() {
 		let cli = Cli::parse_from(["decodex", "run"]);
 
-		assert!(matches!(cli.command, Command::Run(RunCommand { issue: None, dry_run: false })));
+		assert!(matches!(
+			cli.command,
+			Command::Run(RunCommand { issue: None, dry_run: false, explain: false })
+		));
+	}
+
+	#[test]
+	fn parses_run_dry_run_explain() {
+		let cli = Cli::parse_from(["decodex", "run", "--dry-run", "--explain"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Run(RunCommand { issue: None, dry_run: true, explain: true })
+		));
+
+		let error = Cli::try_parse_from(["decodex", "run", "--explain"])
+			.expect_err("explain should require dry-run");
+
+		assert!(error.to_string().contains("--dry-run"));
 	}
 
 	#[test]
