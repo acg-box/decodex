@@ -3550,6 +3550,30 @@
 					.replace(/\b\w/g, (character) => character.toUpperCase());
 			}
 
+			function sentenceToken(value) {
+				return humanizeToken(value).toLowerCase();
+			}
+
+			function normalizedDisplayText(value) {
+				return String(value || "")
+					.toLowerCase()
+					.replace(/[^a-z0-9]+/g, " ")
+					.trim();
+			}
+
+			function displayTextRepeats(left, right) {
+				const normalizedLeft = normalizedDisplayText(left);
+				const normalizedRight = normalizedDisplayText(right);
+
+				return Boolean(
+					normalizedLeft &&
+						normalizedRight &&
+						(normalizedLeft === normalizedRight ||
+							normalizedLeft.includes(normalizedRight) ||
+							normalizedRight.includes(normalizedLeft)),
+				);
+			}
+
 			function compactStateToken(value) {
 				if (!value) {
 					return "none";
@@ -4022,6 +4046,14 @@
 				return humanizeToken(lane.classification);
 			}
 
+			function postReviewBlockerStatus(lane, blockerScope) {
+				if (lane.review_decision && blockerScope === "Review") {
+					return `review ${compactStateToken(lane.review_decision)}`;
+				}
+
+				return "needs attention";
+			}
+
 			function toneForQueuedCandidate(candidate) {
 				if (candidate.display_classification === "owned_active") {
 					return "tone-run";
@@ -4129,28 +4161,28 @@
 
 			function queuedCandidateReasonText(candidate) {
 				if (candidate.display_classification === "owned_active") {
-					return "Running Lane Claim";
+					return "running lane claim";
 				}
 				if (
 					candidate.attention?.worktree_has_tracked_changes &&
 					candidate.attention?.retry_budget_attempt_count != null
 				) {
-					return "Partial Patch Retained";
+					return "partial patch retained";
 				}
 				if (candidate.attention?.thread_status === "systemError") {
-					return "App-Server Error";
+					return "app-server error";
 				}
 				if (candidate.attention?.last_event_type === "item/tool/call") {
-					return "Tool Call Stalled";
+					return "tool call stalled";
 				}
 				if (candidate.attention?.attention_error_class) {
-					return humanizeToken(candidate.attention.attention_error_class);
+					return sentenceToken(candidate.attention.attention_error_class);
 				}
 				if (candidate.reason === "issue_needs_attention") {
-					return "Needs Attention";
+					return "needs attention";
 				}
 				if (candidate.attention?.retry_budget_attempt_count != null) {
-					return "Auto Retry Paused";
+					return "auto retry paused";
 				}
 				if (candidate.reason === "global_concurrency_exhausted") {
 					return "";
@@ -4159,7 +4191,32 @@
 					return "";
 				}
 
-				return humanizeToken(candidate.reason);
+				return sentenceToken(candidate.reason);
+			}
+
+			function queuedCandidateInlineReason(candidate) {
+				const reason = queuedCandidateReasonText(candidate);
+				if (!reason) {
+					return "";
+				}
+
+				if (
+					candidate.attention?.attention_error_class &&
+					displayTextRepeats(reason, sentenceToken(candidate.attention.attention_error_class))
+				) {
+					return "";
+				}
+				if (
+					candidate.attention?.worktree_has_tracked_changes &&
+					displayTextRepeats(reason, "patch retained")
+				) {
+					return "";
+				}
+				if (displayTextRepeats(candidate.attention?.summary, reason)) {
+					return "";
+				}
+
+				return reason;
 			}
 
 			function queuedCandidateNeedsAttention(candidate) {
@@ -4573,7 +4630,7 @@
 					facts.push(["Auto retry", autoRetryBlockedReasonText(attention.auto_retry_blocked_reason)]);
 				}
 				if (attention.attention_error_class) {
-					facts.push(["Cause", humanizeToken(attention.attention_error_class)]);
+					facts.push(["Cause", sentenceToken(attention.attention_error_class)]);
 				}
 				if (attention.worktree_has_tracked_changes) {
 					facts.push(["Patch", "retained"]);
@@ -4609,7 +4666,7 @@
 					return "needs-attention label set";
 				}
 
-				return `blocked by ${humanizeToken(reason)}`;
+				return `blocked by ${sentenceToken(reason)}`;
 			}
 
 			function statusLabel(label, tone) {
@@ -5061,7 +5118,10 @@
 					const bits = [statusLabel(humanizeToken(run.status), tone)];
 
 					if (run.wait_reason) {
-						bits.push(inlineStatusFact("Wait", humanizeToken(run.wait_reason)));
+						const waitReason = sentenceToken(run.wait_reason);
+						if (!displayTextRepeats(recentRunSummary(run, lane), waitReason)) {
+							bits.push(inlineStatusFact("Wait", waitReason));
+						}
 					}
 					if (run.continuation_pending) {
 						bits.push(inlineStatusFact("Continuation", "Pending"));
@@ -6747,7 +6807,6 @@
 					return facts;
 				}
 
-				facts.push(["History", humanizeToken(outcome.ledger_status)]);
 				if (outcome.pr_url) {
 					facts.push(["PR", outcome.pr_url]);
 				}
@@ -6756,9 +6815,6 @@
 				}
 				if (outcome.branch) {
 					facts.push(["Branch", outcome.branch]);
-				}
-				if (outcome.closeout_status) {
-					facts.push(["Closeout", humanizeToken(outcome.closeout_status)]);
 				}
 				if (outcome.needs_attention_reason) {
 					facts.push(["Attention", outcome.needs_attention_reason]);
@@ -7186,7 +7242,7 @@
 							summary: run.next_retry_at
 								? `Retry scheduled for ${formatTimestamp(run.next_retry_at)}.`
 								: `Waiting on ${humanizeToken(run.wait_reason || run.phase).toLowerCase()}.`,
-							status: run.wait_reason ? `wait ${humanizeToken(run.wait_reason)}` : `phase ${humanizeToken(run.phase)}`,
+							status: "waiting",
 							facts: [
 								["Codex thread", runThreadSummary(run)],
 								["Thread flags", runThreadFlagSummary(run)],
@@ -7234,7 +7290,7 @@
 							issue: issueKey,
 							title: postReviewBlockerTitle(lane),
 							summary: "",
-							status: lane.review_decision && blockerScope === "Review" ? `review ${compactStateToken(lane.review_decision)}` : humanizeToken(lane.classification),
+							status: postReviewBlockerStatus(lane, blockerScope),
 							facts: [
 								["Checks", compactStateToken(lane.check_state)],
 								["Threads", lane.unresolved_review_threads == null ? "none" : String(lane.unresolved_review_threads)],
@@ -7910,7 +7966,7 @@
 							? candidate.blocker_identifiers.join(", ")
 							: "NONE";
 						const summary = summarizeQueuedCandidate(candidate);
-						const reason = queuedCandidateReasonText(candidate);
+						const reason = queuedCandidateInlineReason(candidate);
 
 						return `
 							<article class="action-card ${tone}">
@@ -8044,14 +8100,18 @@
 							const summary = activeRunSummary(run);
 
 							if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
-								statusBits.push(inlineStatusFact("Wait", humanizeToken(run.wait_reason)));
+								const waitReason = sentenceToken(run.wait_reason);
+								if (!displayTextRepeats(summary, waitReason)) {
+									statusBits.push(inlineStatusFact("Wait", waitReason));
+								}
 							}
 							if (runTelemetryMissing(run)) {
-								statusBits.push(
-									runHasChildAgentActivity(run)
-										? inlineStatusFact("Metadata", "Pending")
-										: inlineStatusFact("Telemetry", "Missing"),
-								);
+								const telemetryFact = runHasChildAgentActivity(run)
+									? ["Metadata", "Pending"]
+									: ["Telemetry", "Missing"];
+								if (!displayTextRepeats(summary, telemetryFact.join(" "))) {
+									statusBits.push(inlineStatusFact(telemetryFact[0], telemetryFact[1]));
+								}
 							}
 							if (
 								!runStoppedProcessNeedsAttention(run) &&
@@ -8060,10 +8120,14 @@
 								statusBits.push(inlineStatusFact("Agent", "Done"));
 							}
 							if (run.interactive_requested && !runStoppedProcessNeedsAttention(run)) {
-								statusBits.push(inlineStatusFact("Operator", "Input"));
+								if (!displayTextRepeats(summary, "operator input")) {
+									statusBits.push(inlineStatusFact("Operator", "Input"));
+								}
 							}
 							if (run.continuation_pending) {
-								statusBits.push(inlineStatusFact("Continuation", "Pending"));
+								if (!displayTextRepeats(summary, "continuation pending")) {
+									statusBits.push(inlineStatusFact("Continuation", "Pending"));
+								}
 							}
 							const attemptNumber = attemptNumberFromRun(run);
 							const stopControl = renderRunStopControl(run);
