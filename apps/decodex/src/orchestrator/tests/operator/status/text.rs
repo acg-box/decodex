@@ -93,6 +93,47 @@ fn operator_status_text_renders_human_readable_sections() {
 }
 
 #[test]
+fn queue_explain_renders_candidate_reasons_without_running_dispatch() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let candidates = operator_status_text_queued_candidates();
+	let rendered = orchestrator::render_queue_explain(&config, &candidates);
+
+	assert!(rendered.contains("Mode: dry-run queue explain"));
+	assert!(rendered.contains("Queued candidates: 3"));
+	assert!(rendered.contains("Ready: 1"));
+	assert!(rendered.contains("Claimed: 1"));
+	assert!(rendered.contains("Closed: 1"));
+	assert!(rendered.contains("issue: PUB-102"));
+	assert!(rendered.contains("classification: ready"));
+	assert!(rendered.contains("reason: eligible_for_dispatch"));
+}
+
+#[test]
+fn runtime_recovery_warning_keeps_safe_error_class() {
+	assert_eq!(
+		orchestrator::runtime_recovery_warning(
+			"runtime_recovery_unavailable",
+			&eyre::eyre!("Linear tracker request failed"),
+		),
+		"runtime_recovery_unavailable:tracker"
+	);
+	assert_eq!(
+		orchestrator::runtime_recovery_warning(
+			"runtime_recovery_unavailable",
+			&eyre::eyre!("worktree scan failed"),
+		),
+		"runtime_recovery_unavailable:worktree"
+	);
+	assert_eq!(
+		orchestrator::runtime_recovery_warning(
+			"runtime_recovery_unavailable",
+			&eyre::eyre!("sqlite runtime store locked"),
+		),
+		"runtime_recovery_unavailable:runtime_store"
+	);
+}
+
+#[test]
 fn operator_status_text_explains_empty_backlog_checks() {
 	let snapshot = OperatorStatusSnapshot {
 		project_id: String::from("pubfi"),

@@ -85,8 +85,11 @@ pub(crate) fn retained_landing_requires_agent_fallback(
 	review_and_check_gates_ready
 		&& ((retained_landing_gates_satisfied(view)
 			&& !retained_clean_path_landing_gates_satisfied(view))
-			|| view.mergeable == "UNKNOWN"
-			|| view.merge_state_status == "UNKNOWN")
+			|| mergeability_unknown(view))
+}
+
+pub(crate) fn mergeability_unknown(view: PullRequestLandingGateView<'_>) -> bool {
+	view.mergeable == "UNKNOWN" || view.merge_state_status == "UNKNOWN"
 }
 
 pub(crate) fn merge_state_allows_ready_to_land(merge_state_status: &str) -> bool {
@@ -214,5 +217,21 @@ mod tests {
 	fn failed_checks_require_repair_only_for_blocked_red_checks() {
 		assert!(pull_request::failed_checks_require_repair(Some("FAILURE"), "BLOCKED"));
 		assert!(!pull_request::failed_checks_require_repair(Some("FAILURE"), "CLEAN"));
+	}
+
+	#[test]
+	fn landing_gate_helpers_detect_unknown_mergeability() {
+		let mut view = sample_gate_view();
+
+		view.mergeable = "UNKNOWN";
+
+		assert!(pull_request::mergeability_unknown(view));
+
+		let mut view = sample_gate_view();
+
+		view.merge_state_status = "UNKNOWN";
+
+		assert!(pull_request::mergeability_unknown(view));
+		assert!(!pull_request::mergeability_unknown(sample_gate_view()));
 	}
 }

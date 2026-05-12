@@ -125,6 +125,58 @@ fn operator_status_snapshot_surfaces_merged_dirty_ad_hoc_worktree() {
 }
 
 #[test]
+fn operator_status_snapshot_updates_owned_merged_worktree_hygiene_without_global_warning() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("Done", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	git_status_success(
+		config.repo_root(),
+		&[
+			"worktree",
+			"add",
+			"-b",
+			"xy/pub-101-cleanup",
+			worktree_path.to_str().expect("worktree path should be UTF-8"),
+			"main",
+		],
+	);
+	commit_worktree_change(&worktree_path, "README.md", "feature work\n", "feature work");
+	git_status_success(
+		config.repo_root(),
+		&["merge", "--no-ff", "xy/pub-101-cleanup", "-m", "land feature"],
+	);
+
+	fs::write(worktree_path.join("README.md"), "dirty after land\n")
+		.expect("worktree file should become dirty");
+
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"xy/pub-101-cleanup",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let worktree = snapshot
+		.worktrees
+		.iter()
+		.find(|worktree| worktree.worktree_path == ".worktrees/PUB-101")
+		.expect("owned merged worktree should still be visible");
+
+	assert!(!snapshot.warnings.contains(&String::from("merged_worktree_cleanup_pending")));
+	assert!(!snapshot.warnings.contains(&String::from("merged_dirty_worktree")));
+	assert!(
+		worktree.hygiene.as_ref().is_some_and(|hygiene| hygiene.dirty),
+		"hygiene should still surface on the owned worktree row"
+	);
+}
+
+#[test]
 fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
