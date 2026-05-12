@@ -16,7 +16,7 @@ SCRIPT_HOME = Path(__file__).resolve().parent
 if str(SCRIPT_HOME) not in sys.path:
     sys.path.insert(0, str(SCRIPT_HOME))
 
-from build_change_bundle import build_pr_bundle, routed_token_env  # noqa: E402
+from build_change_bundle import build_pr_bundle, github_request, routed_token_env  # noqa: E402
 from contracts import dump_json, load_json, validate_release_delta, validate_signal  # noqa: E402
 from sync_latest_signals import run_script  # noqa: E402
 
@@ -74,25 +74,12 @@ def load_selected_comparison(path: Path, stable_tag: str, preview_tag: str | Non
 
 
 def pr_lookup(repo: str, pr_number: int, token: str | None) -> dict[str, Any]:
-    import urllib.request
-    import urllib.error
+    payload, _headers = github_request(f"https://api.github.com/repos/{repo}/pulls/{pr_number}", token)
 
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{repo}/pulls/{pr_number}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}" if token else "",
-            "User-Agent": "decodex-release-range-backfill",
-        },
-    )
-    if not token:
-        request.headers.pop("Authorization")
-    try:
-        with urllib.request.urlopen(request) as response:
-            return json.load(response)
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
-        raise SystemExit(f"GitHub API request failed for PR #{pr_number}: {exc.code} {details}") from exc
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Expected pull request object from GitHub for PR #{pr_number}")
+
+    return payload
 
 
 def signal_paths(pr_number: int, args: argparse.Namespace) -> tuple[Path, Path, Path]:

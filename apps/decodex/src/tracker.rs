@@ -246,3 +246,19 @@ where
 
 	Ok(true)
 }
+
+pub(crate) fn create_linear_execution_event_comment_without_remote_scan<T>(
+	tracker: &T,
+	issue_id: &str,
+	body: &str,
+	record: &LinearExecutionEventRecord,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	records::validate_linear_execution_event_record(record).map_err(|error| eyre::eyre!(error))?;
+
+	let comment_body = records::append_structured_comment_record(body, record)?;
+
+	tracker.create_comment(issue_id, &comment_body)
+}

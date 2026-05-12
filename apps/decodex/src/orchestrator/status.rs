@@ -137,20 +137,18 @@ fn build_operator_status_snapshot(
 	limit: usize,
 ) -> crate::prelude::Result<OperatorStatusSnapshot> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
-	let mut active_runs = state_store
-		.list_active_runs(project.service_id())?
+	let (active_runs, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
+	let recent_runs = recent_runs
 		.into_iter()
-		.map(|run| operator_run_status(project, state_store, run, now_unix_epoch))
+		.map(|run| operator_run_status(project, run, now_unix_epoch))
+		.collect::<crate::prelude::Result<Vec<_>>>()?;
+	let mut active_runs = active_runs
+		.into_iter()
+		.map(|run| operator_run_status(project, run, now_unix_epoch))
 		.collect::<crate::prelude::Result<Vec<_>>>()?
 		.into_iter()
 		.filter(operator_run_counts_as_active)
 		.collect::<Vec<_>>();
-	let recent_run_fetch_limit = limit.saturating_add(active_runs.len());
-	let recent_runs = state_store
-		.list_recent_runs(project.service_id(), recent_run_fetch_limit)?
-		.into_iter()
-		.map(|run| operator_run_status(project, state_store, run, now_unix_epoch))
-		.collect::<crate::prelude::Result<Vec<_>>>()?;
 	let mut active_run_ids =
 		active_runs.iter().map(|run| run.run_id.clone()).collect::<HashSet<_>>();
 
@@ -3270,12 +3268,11 @@ fn hydrate_status_snapshot_state(
 
 fn operator_run_status(
 	project: &ServiceConfig,
-	state_store: &StateStore,
 	run: ProjectRunStatus,
 	now_unix_epoch: i64,
 ) -> crate::prelude::Result<OperatorRunStatus> {
 	let marker = load_operator_run_marker(&run)?;
-	let timing = operator_run_timing(state_store, run.run_id(), marker.as_ref(), now_unix_epoch)?;
+	let timing = operator_run_timing(&run, marker.as_ref(), now_unix_epoch);
 	let app_server_state = operator_run_app_server_state(&run, marker.as_ref());
 	let protocol_summary = operator_run_protocol_summary(&run, marker.as_ref());
 	let status =
@@ -3404,18 +3401,17 @@ fn load_operator_run_marker(
 }
 
 fn operator_run_timing(
-	state_store: &StateStore,
-	run_id: &str,
+	run: &ProjectRunStatus,
 	marker: Option<&RunActivityMarker>,
 	now_unix_epoch: i64,
-) -> crate::prelude::Result<OperatorRunTiming> {
+) -> OperatorRunTiming {
 	let process_id = marker.and_then(RunActivityMarker::process_id);
 	let last_run_activity_unix_epoch = max_optional_i64(
-		state_store.last_run_activity_unix_epoch(run_id)?,
+		Some(run.last_run_activity_unix_epoch()),
 		marker.and_then(RunActivityMarker::last_activity_unix_epoch),
 	);
 	let last_protocol_activity_unix_epoch = max_optional_i64(
-		state_store.last_protocol_activity_unix_epoch(run_id)?,
+		run.last_event_at_unix(),
 		marker.and_then(RunActivityMarker::last_protocol_activity_unix_epoch),
 	);
 	let last_progress_unix_epoch = max_optional_i64(
@@ -3423,7 +3419,7 @@ fn operator_run_timing(
 		last_protocol_activity_unix_epoch,
 	);
 
-	Ok(OperatorRunTiming {
+	OperatorRunTiming {
 		process_alive: process_id.map(process_is_alive),
 		process_id,
 		last_run_activity_unix_epoch,
@@ -3434,7 +3430,7 @@ fn operator_run_timing(
 			last_protocol_activity_unix_epoch,
 			now_unix_epoch,
 		),
-	})
+	}
 }
 
 fn operator_run_app_server_state(

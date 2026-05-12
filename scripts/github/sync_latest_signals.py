@@ -77,6 +77,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--token-env", help="Environment variable containing a GitHub token.")
     parser.add_argument("--codex-bin", default="codex", help="Codex executable to invoke.")
     parser.add_argument("--model", help="Optional Codex model override.")
+    parser.add_argument(
+        "--refresh-release-delta",
+        action="store_true",
+        help="Refresh the release-delta artifact even when no new signal entry was created.",
+    )
     return parser.parse_args()
 
 
@@ -213,7 +218,11 @@ def main() -> None:
         created += 1
 
     run_script("validate_signal_entry.py", str(root / args.signals_dir))
-    refresh_release_delta(args)
+    release_delta_refreshed = (
+        created > 0 or args.refresh_release_delta or not (root / args.release_delta_out).exists()
+    )
+    if release_delta_refreshed:
+        refresh_release_delta(args)
     print(
         json.dumps(
             {
@@ -221,7 +230,7 @@ def main() -> None:
                 "published_prs_seen": len(published),
                 "recent_prs_scanned": len(candidates),
                 "new_signals_created": created,
-                "release_delta_refreshed": True,
+                "release_delta_refreshed": release_delta_refreshed,
             },
             sort_keys=True,
         )

@@ -515,7 +515,8 @@ fn merge_pull_request_review_state_page_counts_unresolved_threads_across_pages()
 	let mut review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),
-	);
+	)
+	.expect("review state should build");
 	let next_page = sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
@@ -550,7 +551,8 @@ fn merge_pull_request_issue_comment_page_appends_comments_across_pages() {
 	let mut review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),
-	);
+	)
+	.expect("review state should build");
 	let next_page = PullRequestIssueCommentsNode {
 		url: String::from("https://github.com/hack-ink/decodex/pull/174"),
 		comments: PullRequestIssueCommentConnection {
@@ -617,7 +619,8 @@ fn assert_review_state_page_rejects_changed_metadata(
 	let mut review_state = orchestrator::pull_request_review_state_from_page(
 		&repository,
 		repository.pull_request.as_ref().expect("pull request should exist"),
-	);
+	)
+	.expect("review state should build");
 	let mut next_page = sample_pull_request_review_state_page(
 		"https://github.com/hack-ink/decodex/pull/174",
 		"x/pubfi-pub-101",
