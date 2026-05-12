@@ -21,6 +21,8 @@ fn control_plane_snapshot_lists_disabled_registered_projects() {
 	assert_eq!(snapshot.projects.len(), 1);
 	assert_eq!(project.project_id, "pubfi");
 	assert!(!project.enabled);
+	assert_eq!(snapshot.account_control.mode, "balanced");
+	assert_eq!(snapshot.account_control.account_selector, None);
 	assert_eq!(project.connector_state, "disabled");
 	assert_eq!(project.active_run_count, 0);
 	assert_eq!(project.retained_worktree_count, 0);
@@ -114,6 +116,7 @@ fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects
 		project_by_id.get("rsnap").expect("idle project summary should exist").active_run_count,
 		0,
 	);
+	assert_eq!(snapshot.account_control.mode, "balanced");
 	assert_eq!(snapshot.active_runs.len(), 1);
 	assert_eq!(snapshot.active_runs[0].run_id, "run-active");
 	assert_eq!(snapshot.active_runs[0].project_id, "pubfi");
