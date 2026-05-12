@@ -29,6 +29,10 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 		warnings: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
+		account_control: OperatorCodexAccountControlStatus {
+			mode: String::from("balanced"),
+			account_selector: None,
+		},
 		accounts: Vec::new(),
 		active_runs: vec![active_run.clone()],
 		recent_runs: vec![active_run],

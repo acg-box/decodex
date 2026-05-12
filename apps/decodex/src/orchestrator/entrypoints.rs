@@ -696,6 +696,10 @@ fn empty_control_plane_snapshot(limit: usize) -> OperatorStatusSnapshot {
 		warnings: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
+		account_control: OperatorCodexAccountControlStatus {
+			mode: String::from("balanced"),
+			account_selector: None,
+		},
 		accounts: Vec::new(),
 		active_runs: Vec::new(),
 		recent_runs: Vec::new(),

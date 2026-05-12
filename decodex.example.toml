@@ -15,6 +15,7 @@ internal_review_mode    = "loop"
 # Optional shared Codex account pool.
 # Uncomment the block to use the global `~/.codex/decodex/accounts.jsonl` pool.
 # [codex.accounts]
+# fixed_account = "account@example.com"
 
 # Required project paths. Project configs are managed outside checkouts, for example under
 # `~/.codex/decodex/projects/<service-id>/project.toml`.
