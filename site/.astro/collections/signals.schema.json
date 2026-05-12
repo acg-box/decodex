@@ -69,6 +69,18 @@
       "type": "string",
       "minLength": 1
     },
+    "caveats": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "watch_state": {
+      "type": "string",
+      "minLength": 1
+    },
     "proof_points": {
       "minItems": 1,
       "type": "array",

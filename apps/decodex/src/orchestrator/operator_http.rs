@@ -75,6 +75,10 @@ impl DashboardEventHub {
 		clients.retain(|client| client.send(event.clone()).is_ok());
 	}
 
+	fn has_clients(&self) -> bool {
+		self.clients.lock().is_ok_and(|clients| !clients.is_empty())
+	}
+
 	#[cfg(test)]
 	fn close_clients_for_test(&self) {
 		if let Ok(mut clients) = self.clients.lock() {
@@ -355,6 +359,13 @@ fn run_operator_run_activity_websocket_broadcasts(
 			Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
 			Err(RecvTimeoutError::Timeout) => {},
 		}
+
+		if !dashboard_events.has_clients() {
+			last_fingerprint = None;
+
+			continue;
+		}
+
 		match build_operator_run_activity_event(&state_store) {
 			Ok(event) => {
 				if last_fingerprint.as_deref() == Some(event.fingerprint.as_slice()) {
@@ -394,9 +405,10 @@ fn build_operator_run_activity_event(state_store: &StateStore) -> Result<Dashboa
 				continue;
 			},
 		};
+		let (runs, _) = state_store.list_project_runs(project.service_id(), 0)?;
 
-		for run in state_store.list_active_runs(project.service_id())? {
-			let run_status = operator_run_status(&project, state_store, run, now_unix_epoch)?;
+		for run in runs {
+			let run_status = operator_run_status(&project, run, now_unix_epoch)?;
 
 			if operator_run_counts_as_active(&run_status) {
 				active_runs.push(run_status);
@@ -406,9 +418,9 @@ fn build_operator_run_activity_event(state_store: &StateStore) -> Result<Dashboa
 
 	let fingerprint = serde_json::to_vec(&active_runs)?;
 	let payload = json!({
-			"emittedAtUnixEpoch": now_unix_epoch,
-			"activeRuns": active_runs,
-		});
+		"emittedAtUnixEpoch": now_unix_epoch,
+		"activeRuns": active_runs,
+	});
 
 	Ok(DashboardRunActivityEvent {
 		fingerprint,

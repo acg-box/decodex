@@ -94,12 +94,17 @@ const initialAnswer = "Checking...";
 
   async function resetStatusFetchOnce(apiUrl) {
     if (!window.__decodexResetStatusPromise) {
-      window.__decodexResetStatusPromise = fetch(apiUrl, { mode: "cors" }).then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`reset status HTTP ${response.status}`);
-        }
-        return response.json();
-      });
+      window.__decodexResetStatusPromise = fetch(apiUrl, { mode: "cors" })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(`reset status HTTP ${response.status}`);
+          }
+          return response.json();
+        })
+        .catch((error) => {
+          window.__decodexResetStatusPromise = null;
+          throw error;
+        });
     }
 
     return window.__decodexResetStatusPromise;
@@ -122,9 +127,9 @@ const initialAnswer = "Checking...";
       resetStatusSetTone(root, isReset ? "positive" : "neutral");
       root.setAttribute("aria-label", `${question} ${answer}`);
     } catch {
-      answerTextNode.textContent = "No";
+      answerTextNode.textContent = "Unknown";
       resetStatusSetTone(root, "muted");
-      root.setAttribute("aria-label", `${question} No`);
+      root.setAttribute("aria-label", `${question} Unknown`);
     }
   }
 
