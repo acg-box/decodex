@@ -202,6 +202,16 @@ def validate_signal(entry: dict[str, Any]) -> ValidationResult:
     if entry.get("how_to_try") and not entry.get("expected_effect"):
         errors.append("expected_effect is required when how_to_try is present")
 
+    caveats = entry.get("caveats", [])
+    if caveats is None:
+        caveats = []
+    if not isinstance(caveats, list) or not all(isinstance(item, str) and item for item in caveats):
+        errors.append("caveats must be a list of non-empty strings when present")
+
+    watch_state = entry.get("watch_state")
+    if watch_state is not None and (not isinstance(watch_state, str) or not watch_state):
+        errors.append("watch_state must be a non-empty string when present")
+
     refs = entry.get("source_refs")
     if not isinstance(refs, dict):
         errors.append("source_refs must be an object")

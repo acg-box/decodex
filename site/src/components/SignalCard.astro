@@ -24,6 +24,9 @@ const renderedHowToTry = signal.how_to_try
 const renderedExpectedEffect = signal.expected_effect
   ? renderMarkdownInline(signal.expected_effect)
   : null;
+const renderedWatchState = signal.watch_state
+  ? renderMarkdownInline(signal.watch_state)
+  : null;
 const resolvedFlags = resolveConfigFlags(signal.config_flags);
 const configToggleFlags = resolvedFlags.filter((flag) => flag.kind === "feature");
 const visibleFlags = resolvedFlags.filter((flag) => flag.kind === "raw");
@@ -151,6 +154,26 @@ const sourceItems: SourceRefItem[] =
             </li>
           ))}
         </ul>
+
+        {signal.caveats.length > 0 ? (
+          <div class="mt-5">
+            <p class="signal-entry-label">Caveats</p>
+            <ul class="mt-2 space-y-2 text-[0.88rem] leading-6 text-[color:var(--ink-soft)]">
+              {signal.caveats.map((caveat) => (
+                <li class="signal-proof-item">
+                  <span class="signal-markdown signal-markdown--inline" set:html={renderMarkdownInline(caveat)} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {renderedWatchState ? (
+          <p class="mt-5 text-[0.88rem] leading-6 text-[color:var(--ink-soft)]">
+            <span class="signal-entry-label">Watch state</span>{" "}
+            <span class="signal-markdown signal-markdown--inline" set:html={renderedWatchState} />
+          </p>
+        ) : null}
 
         <ol class="signal-source-timeline">
           {sourceItems.map((source) => (

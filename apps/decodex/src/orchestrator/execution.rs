@@ -204,9 +204,15 @@ where
 {
 	let body = format!("Decodex execution event: {}", record.event_type);
 
-	tracker::create_linear_execution_event_comment(tracker, issue_id, &body, record)?;
+	if state_store.record_linear_execution_event(record)?
+		&& let Err(error) = tracker::create_linear_execution_event_comment_without_remote_scan(
+			tracker, issue_id, &body, record,
+		)
+	{
+		state_store.forget_linear_execution_event(&record.idempotency_key)?;
 
-	state_store.record_linear_execution_event(record)?;
+		return Err(error);
+	}
 
 	Ok(())
 }
@@ -1186,15 +1192,26 @@ where
 		},
 	);
 
-	tracker::create_linear_execution_event_comment(
-		tracker,
-		&issue_run.issue.id,
-		&comment,
-		&event,
-	)?;
-
 	if let Some(state_store) = runtime.state_store {
-		state_store.record_linear_execution_event(&event)?;
+		if state_store.record_linear_execution_event(&event)?
+			&& let Err(error) = tracker::create_linear_execution_event_comment_without_remote_scan(
+				tracker,
+				&issue_run.issue.id,
+				&comment,
+				&event,
+			)
+		{
+			state_store.forget_linear_execution_event(&event.idempotency_key)?;
+
+			return Err(error);
+		}
+	} else {
+		tracker::create_linear_execution_event_comment(
+			tracker,
+			&issue_run.issue.id,
+			&comment,
+			&event,
+		)?;
 	}
 
 	Ok(TerminalFailureOutcome {

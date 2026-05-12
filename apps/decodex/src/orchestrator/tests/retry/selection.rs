@@ -81,6 +81,11 @@ fn queued_retry_blocks_normal_candidate_selection_until_due() {
 			if excluded_issue_ids == vec![issue.id.clone()]
 	));
 	assert!(!retry_queue.is_empty(), "future retry should keep the queued claim");
+	assert_eq!(
+		tracker.refresh_snapshots.borrow().len(),
+		1,
+		"future retry planning should not refresh tracker state before the retry is due"
+	);
 }
 
 #[test]
@@ -121,6 +126,11 @@ fn queued_retry_stays_blocked_when_project_lookup_blips_before_due_time() {
 			if excluded_issue_ids == vec![issue.id.clone()]
 	));
 	assert!(!retry_queue.is_empty(), "future retry should keep the queued claim");
+	assert_eq!(
+		tracker.refresh_snapshots.borrow().len(),
+		1,
+		"future retry planning should not refresh tracker state before the retry is due"
+	);
 }
 
 #[test]
@@ -260,78 +270,21 @@ fn future_retry_claim_stays_blocked_when_issue_moves_to_another_project_before_d
 		retry_queue.entries.contains_key(&issue.id),
 		"future retries should keep their queued claim until due when the issue is still active"
 	);
+	assert_eq!(
+		tracker.refresh_snapshots.borrow().len(),
+		1,
+		"future retry planning should not refresh tracker state before the retry is due"
+	);
 }
 
 #[test]
-fn retry_claim_releases_when_issue_becomes_non_active() {
-	for (ready_delay, description) in [
-		(Duration::from_secs(60), "future"),
-		(Duration::from_secs(0), "due"),
-	] {
-		let (_temp_dir, config, workflow) = temp_project_layout();
-		let issue = selection_sample_service_owned_issue("In Review");
-		let tracker =
-			FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
-		let state_store = StateStore::open_in_memory().expect("state store should open");
-		let mut retry_queue = RetryQueue::default();
-
-		retry_queue.upsert(RetryEntry {
-			issue_id: issue.id.clone(),
-			retry_project_slug: issue
-				.project_slug
-				.clone()
-				.expect("sample issue should carry a project slug"),
-			continuation_initial_issue_state: None,
-			dispatch_mode: IssueDispatchMode::Retry,
-			kind: RetryKind::Failure,
-			attempt: 1,
-			ready_at: Instant::now() + ready_delay,
-		});
-
-		let decision = orchestrator::plan_due_retry_run(
-			&mut retry_queue,
-			&tracker,
-			&config,
-			&workflow,
-			&state_store,
-		)
-		.expect("retry planning should succeed");
-
-		assert!(matches!(decision, orchestrator::RetryDispatchDecision::Continue));
-		assert!(
-			retry_queue.is_empty(),
-			"{description} non-active issue should release the queued claim"
-		);
-	}
-}
-
-#[test]
-fn future_retry_claim_release_clears_persisted_retry_marker() {
+fn future_retry_claim_stays_blocked_when_issue_becomes_non_active_before_due_time() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = selection_sample_service_owned_issue("In Review");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let worktree_path = config.worktree_root().join("PUB-101");
 	let mut retry_queue = RetryQueue::default();
-
-	state_store
-		.upsert_worktree(
-			"pubfi",
-			&issue.id,
-			"x/pubfi-pub-101",
-			&worktree_path.display().to_string(),
-		)
-		.expect("worktree should record");
-
-	state::write_run_retry_schedule(
-		&worktree_path,
-		"run-1",
-		1,
-		"failure",
-		OffsetDateTime::now_utc().unix_timestamp() + 60,
-	)
-	.expect("retry schedule should write");
 
 	retry_queue.upsert(RetryEntry {
 		issue_id: issue.id.clone(),
@@ -355,8 +308,109 @@ fn future_retry_claim_release_clears_persisted_retry_marker() {
 	)
 	.expect("retry planning should succeed");
 
+	assert!(matches!(
+		decision,
+		RetryDispatchDecision::Blocked{ excluded_issue_ids }
+			if excluded_issue_ids == vec![issue.id.clone()]
+	));
+	assert!(
+		retry_queue.entries.contains_key(&issue.id),
+		"future retry should keep the local claim until due instead of polling remote state"
+	);
+	assert_eq!(
+		tracker.refresh_snapshots.borrow().len(),
+		1,
+		"future retry planning should not refresh tracker state before the retry is due"
+	);
+}
+
+#[test]
+fn due_retry_claim_releases_when_issue_becomes_non_active() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = selection_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut retry_queue = RetryQueue::default();
+
+	retry_queue.upsert(RetryEntry {
+		issue_id: issue.id.clone(),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		continuation_initial_issue_state: None,
+		dispatch_mode: IssueDispatchMode::Retry,
+		kind: RetryKind::Failure,
+		attempt: 1,
+		ready_at: Instant::now(),
+	});
+
+	let decision = orchestrator::plan_due_retry_run(
+		&mut retry_queue,
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+	)
+	.expect("retry planning should succeed");
+
 	assert!(matches!(decision, orchestrator::RetryDispatchDecision::Continue));
-	assert!(retry_queue.is_empty(), "non-active issue should release the queued claim early");
+	assert!(retry_queue.is_empty(), "due non-active issue should release the queued claim");
+}
+
+#[test]
+fn due_retry_claim_release_clears_persisted_retry_marker() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = selection_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let mut retry_queue = RetryQueue::default();
+
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_retry_schedule(
+		&worktree_path,
+		"run-1",
+		1,
+		"failure",
+		OffsetDateTime::now_utc().unix_timestamp(),
+	)
+	.expect("retry schedule should write");
+
+	retry_queue.upsert(RetryEntry {
+		issue_id: issue.id.clone(),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		continuation_initial_issue_state: None,
+		dispatch_mode: IssueDispatchMode::Retry,
+		kind: RetryKind::Failure,
+		attempt: 1,
+		ready_at: Instant::now(),
+	});
+
+	let decision = orchestrator::plan_due_retry_run(
+		&mut retry_queue,
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+	)
+	.expect("retry planning should succeed");
+
+	assert!(matches!(decision, orchestrator::RetryDispatchDecision::Continue));
+	assert!(retry_queue.is_empty(), "non-active issue should release the queued claim when due");
 
 	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
 		.expect("marker should load")
@@ -506,7 +560,7 @@ fn due_continuation_retry_stays_queued_when_global_concurrency_is_exhausted() {
 }
 
 #[test]
-fn future_retry_claim_releases_when_issue_returns_to_todo_before_due_time() {
+fn future_retry_claim_stays_blocked_when_issue_returns_to_todo_before_due_time() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = selection_sample_service_owned_issue("Todo");
 	let tracker =
@@ -536,8 +590,20 @@ fn future_retry_claim_releases_when_issue_returns_to_todo_before_due_time() {
 	)
 	.expect("retry planning should succeed");
 
-	assert!(matches!(decision, orchestrator::RetryDispatchDecision::Continue));
-	assert!(retry_queue.is_empty(), "todo issues should not retain queued retry claims");
+	assert!(matches!(
+		decision,
+		RetryDispatchDecision::Blocked{ excluded_issue_ids }
+			if excluded_issue_ids == vec![issue.id.clone()]
+	));
+	assert!(
+		retry_queue.entries.contains_key(&issue.id),
+		"future retry should keep the local claim until due instead of polling remote state"
+	);
+	assert_eq!(
+		tracker.refresh_snapshots.borrow().len(),
+		1,
+		"future retry planning should not refresh tracker state before the retry is due"
+	);
 }
 
 #[test]

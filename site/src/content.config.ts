@@ -45,6 +45,8 @@ const signalEntrySchema = z
     config_flags: z.array(z.string()).default([]),
     how_to_try: z.string().min(1).optional(),
     expected_effect: z.string().min(1).optional(),
+    caveats: z.array(z.string().min(1)).default([]),
+    watch_state: z.string().min(1).optional(),
     proof_points: z.array(z.string().min(1)).min(1),
     source_refs: sourceRefSchema,
   })

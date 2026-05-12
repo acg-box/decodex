@@ -36,6 +36,10 @@ PR_IN_MESSAGE_RE = re.compile(r"\(#(\d+)\)")
 RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
 GITHUB_REQUEST_ATTEMPTS = 4
 GITHUB_REQUEST_BACKOFF_SECONDS = 1.0
+GITHUB_REQUEST_TIMEOUT_SECONDS = 30.0
+DEFAULT_STABLE_LIMIT = 0
+DEFAULT_PREVIEW_LIMIT = 0
+DEFAULT_PAIR_LIMIT = 24
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,20 +52,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--stable-limit",
         type=int,
-        default=0,
+        default=DEFAULT_STABLE_LIMIT,
         help="Maximum number of recent stable releases to include. Use 0 for all releases at or above the floor.",
     )
     parser.add_argument(
         "--preview-limit",
         type=int,
-        default=0,
+        default=DEFAULT_PREVIEW_LIMIT,
         help="Maximum number of recent prereleases to include. Use 0 for all supported prereleases.",
     )
     parser.add_argument(
         "--pair-limit",
         type=int,
-        default=0,
-        help="Maximum number of precomputed stable->preview compare entries. Use 0 for all valid pairs.",
+        default=DEFAULT_PAIR_LIMIT,
+        help="Maximum number of signal-bearing stable->preview compare entries. Use 0 for all valid pairs.",
     )
     parser.add_argument(
         "--min-stable-tag",
@@ -109,7 +113,7 @@ def github_request(url: str, token: str | None) -> Any:
 
     for attempt in range(1, GITHUB_REQUEST_ATTEMPTS + 1):
         try:
-            with urllib.request.urlopen(request) as response:
+            with urllib.request.urlopen(request, timeout=GITHUB_REQUEST_TIMEOUT_SECONDS) as response:
                 return json.load(response)
         except urllib.error.HTTPError as exc:
             details = exc.read().decode("utf-8", errors="replace")
@@ -121,6 +125,20 @@ def github_request(url: str, token: str | None) -> Any:
         time.sleep(GITHUB_REQUEST_BACKOFF_SECONDS * attempt)
 
     raise SystemExit(f"GitHub API request failed for {url}: exhausted retry loop")
+
+
+def github_releases(repo: str, token: str | None) -> list[dict[str, Any]]:
+    releases: list[dict[str, Any]] = []
+
+    for page in range(1, 6):
+        payload = github_request(f"https://api.github.com/repos/{repo}/releases?per_page=100&page={page}", token)
+        if not isinstance(payload, list):
+            raise SystemExit("Expected releases list payload from GitHub API")
+        releases.extend(payload)
+        if len(payload) < 100:
+            break
+
+    return releases
 
 
 def select_release_pair(releases: list[dict[str, Any]], tag_prefix: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -206,7 +224,6 @@ def release_sort_key(release: dict[str, Any]) -> str:
 def compare_candidates(
     stable_releases: list[dict[str, Any]],
     preview_releases: list[dict[str, Any]],
-    pair_limit: int,
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     candidates: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for stable in stable_releases:
@@ -223,7 +240,7 @@ def compare_candidates(
         ),
         reverse=True,
     )
-    return candidates[:pair_limit] if pair_limit > 0 else candidates
+    return candidates
 
 
 def extract_signal_commit_shas(signal: dict[str, Any]) -> set[str]:
@@ -259,14 +276,52 @@ def load_signals(signals_dir: str | Path, repo: str) -> list[dict[str, Any]]:
     return entries
 
 
+def previous_signal_pair_keys(path: Path) -> list[tuple[str, str]]:
+    if not path.exists():
+        return []
+
+    try:
+        previous = load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    keys: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for comparison in previous.get("comparisons", []):
+        if not comparison.get("tracked_signal_slugs"):
+            continue
+        key = (comparison.get("stable_tag_name"), comparison.get("prerelease_tag_name"))
+        if not all(isinstance(value, str) and value for value in key):
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return keys
+
+
+def unique_release_pairs(
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    unique: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for stable, preview in pairs:
+        key = (stable["tag_name"], preview["tag_name"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((stable, preview))
+
+    return unique
+
+
 def main() -> None:
     args = parse_args()
     token_env = args.token_env or routed_token_env() or "GITHUB_TOKEN"
     token = os.environ.get(token_env)
 
-    releases = github_request(f"https://api.github.com/repos/{args.repo}/releases?per_page=100", token)
-    if not isinstance(releases, list):
-        raise SystemExit("Expected releases list payload from GitHub API")
+    releases = github_releases(args.repo, token)
     stable_release, prerelease = select_release_pair(releases, args.tag_prefix)
     stable_releases, preview_releases = select_release_options(
         releases,
@@ -275,18 +330,20 @@ def main() -> None:
         args.preview_limit,
         args.min_stable_tag,
     )
-    release_pairs = compare_candidates(stable_releases, preview_releases, args.pair_limit)
+    release_pairs = compare_candidates(stable_releases, preview_releases)
     default_pair = (stable_release, prerelease)
-    if not any(
-        pair[0]["tag_name"] == default_pair[0]["tag_name"] and pair[1]["tag_name"] == default_pair[1]["tag_name"]
-        for pair in release_pairs
-    ):
-        release_pairs = [default_pair, *release_pairs[: max(args.pair_limit - 1, 0)]]
-
-    allowed_stable_tags = {stable["tag_name"] for stable, _ in release_pairs}
-    allowed_preview_tags = {preview["tag_name"] for _, preview in release_pairs}
-    stable_releases = [release for release in stable_releases if release["tag_name"] in allowed_stable_tags]
-    preview_releases = [release for release in preview_releases if release["tag_name"] in allowed_preview_tags]
+    releases_by_tag = {release["tag_name"]: release for release in [*stable_releases, *preview_releases]}
+    previous_pairs = [
+        (releases_by_tag[stable_tag], releases_by_tag[preview_tag])
+        for stable_tag, preview_tag in previous_signal_pair_keys(Path(args.out))
+        if stable_tag in releases_by_tag and preview_tag in releases_by_tag
+    ]
+    if previous_pairs:
+        release_pairs = unique_release_pairs([default_pair, *previous_pairs])
+    else:
+        release_pairs = unique_release_pairs([default_pair, *release_pairs])
+        if args.pair_limit > 0:
+            release_pairs = release_pairs[: args.pair_limit]
 
     signal_entries = load_signals(args.signals_dir, args.repo)
     comparison_entries: list[dict[str, Any]] = []
@@ -294,6 +351,10 @@ def main() -> None:
     default_compare_payload: dict[str, Any] | None = None
 
     for stable_candidate, preview_candidate in release_pairs:
+        is_default_pair = (
+            stable_candidate["tag_name"] == stable_release["tag_name"]
+            and preview_candidate["tag_name"] == prerelease["tag_name"]
+        )
         compare = github_request(
             f"https://api.github.com/repos/{args.repo}/compare/{stable_candidate['tag_name']}...{preview_candidate['tag_name']}",
             token,
@@ -338,15 +399,20 @@ def main() -> None:
             }
         )
 
-        if (
-            stable_candidate["tag_name"] == stable_release["tag_name"]
-            and preview_candidate["tag_name"] == prerelease["tag_name"]
-        ):
+        if is_default_pair:
             default_compare_payload = compare_payload
             default_tracked_signal_slugs = tracked_signal_slugs
 
+        if args.pair_limit > 0 and len(comparison_entries) >= args.pair_limit and default_compare_payload is not None:
+            break
+
     if default_compare_payload is None:
         raise SystemExit("Default stable/prerelease pair was not included in comparison entries")
+
+    allowed_stable_tags = {entry["stable_tag_name"] for entry in comparison_entries}
+    allowed_preview_tags = {entry["prerelease_tag_name"] for entry in comparison_entries}
+    stable_releases = [release for release in stable_releases if release["tag_name"] in allowed_stable_tags]
+    preview_releases = [release for release in preview_releases if release["tag_name"] in allowed_preview_tags]
 
     payload = {
         "schema": RELEASE_DELTA_SCHEMA,

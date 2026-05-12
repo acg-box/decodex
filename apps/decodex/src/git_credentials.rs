@@ -1,6 +1,6 @@
 #[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 use std::{
-	fs,
+	env, fs,
 	io::ErrorKind,
 	path::{Path, PathBuf},
 	process::{self, Command},
@@ -18,6 +18,8 @@ const GITHUB_SSH_URL_PREFIXES: &[&str] = &[
 	"ssh://git@github.com-x/",
 	"ssh://git@github.com-y/",
 ];
+const GIT_CONFIG_ENV_REMOVE_FLOOR: usize = 64;
+
 static NEXT_ASKPASS_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy)]
@@ -44,44 +46,6 @@ impl<'a> GitCredentialSource<'a> {
 		);
 
 		Ok((git_env, askpass_guard))
-	}
-}
-
-#[derive(Clone, Default, Eq, PartialEq)]
-pub(crate) enum GitSigningConfig {
-	#[default]
-	Preserve,
-	DisableInherited,
-	SigningKey(String),
-}
-impl GitSigningConfig {
-	pub(crate) fn from_local_git_config(repo_root: &Path) -> Result<Self> {
-		let output = Command::new("git")
-			.arg("-C")
-			.arg(repo_root)
-			.args(["config", "--local", "--includes", "--get", "user.signingkey"])
-			.output()?;
-
-		if output.status.success() {
-			let signing_key = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-
-			return if signing_key.is_empty() {
-				Ok(Self::DisableInherited)
-			} else {
-				Ok(Self::SigningKey(signing_key))
-			};
-		}
-		if output.status.code() == Some(1) {
-			return Ok(Self::Preserve);
-		}
-
-		let stderr = String::from_utf8_lossy(&output.stderr);
-
-		eyre::bail!(
-			"Failed to inspect local Git signing key in `{}`: {}",
-			repo_root.display(),
-			stderr.trim()
-		);
 	}
 }
 
@@ -121,6 +85,8 @@ impl GitCredentialEnvironment {
 	}
 
 	pub(crate) fn apply_to(&self, command: &mut Command) {
+		clear_injected_git_config(command);
+
 		command
 			.env("GH_PROMPT_DISABLED", "1")
 			.env("GIT_TERMINAL_PROMPT", "0")
@@ -183,6 +149,7 @@ impl GitAskpassGuard {
 		Ok(Self { path })
 	}
 }
+
 impl Drop for GitAskpassGuard {
 	fn drop(&mut self) {
 		if let Err(error) = fs::remove_file(&self.path)
@@ -194,6 +161,59 @@ impl Drop for GitAskpassGuard {
 				"Failed to remove Git askpass helper."
 			);
 		}
+	}
+}
+
+#[derive(Clone, Default, Eq, PartialEq)]
+pub(crate) enum GitSigningConfig {
+	#[default]
+	Preserve,
+	DisableInherited,
+	SigningKey(String),
+}
+impl GitSigningConfig {
+	pub(crate) fn from_local_git_config(repo_root: &Path) -> Result<Self> {
+		let output = Command::new("git")
+			.arg("-C")
+			.arg(repo_root)
+			.args(["config", "--local", "--includes", "--get", "user.signingkey"])
+			.output()?;
+
+		if output.status.success() {
+			let signing_key = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+
+			return if signing_key.is_empty() {
+				Ok(Self::DisableInherited)
+			} else {
+				Ok(Self::SigningKey(signing_key))
+			};
+		}
+		if output.status.code() == Some(1) {
+			return Ok(Self::Preserve);
+		}
+
+		let stderr = String::from_utf8_lossy(&output.stderr);
+
+		eyre::bail!(
+			"Failed to inspect local Git signing key in `{}`: {}",
+			repo_root.display(),
+			stderr.trim()
+		);
+	}
+}
+
+pub(crate) fn clear_injected_git_config(command: &mut Command) {
+	let config_count = env::var("GIT_CONFIG_COUNT")
+		.ok()
+		.and_then(|value| value.parse::<usize>().ok())
+		.unwrap_or(0);
+
+	command.env_remove("GIT_CONFIG_COUNT");
+	command.env_remove("GIT_CONFIG_PARAMETERS");
+
+	for index in 0..config_count.max(GIT_CONFIG_ENV_REMOVE_FLOOR) {
+		command.env_remove(format!("GIT_CONFIG_KEY_{index}"));
+		command.env_remove(format!("GIT_CONFIG_VALUE_{index}"));
 	}
 }
 
@@ -239,4 +259,38 @@ fn sanitize_path_component(value: &str) -> String {
 		.collect::<String>();
 
 	if sanitized.is_empty() { String::from("git") } else { sanitized }
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{ffi::OsStr, process::Command};
+
+	use crate::git_credentials::GitCredentialEnvironment;
+
+	#[test]
+	fn apply_to_scrubs_inherited_git_config_injection() {
+		let mut command = Command::new("git");
+
+		command
+			.env("GIT_CONFIG_PARAMETERS", "commit.gpgsign=true")
+			.env("GIT_CONFIG_COUNT", "1")
+			.env("GIT_CONFIG_KEY_0", "commit.gpgsign")
+			.env("GIT_CONFIG_VALUE_0", "true");
+
+		GitCredentialEnvironment::default().apply_to(&mut command);
+
+		assert_env_removed(&command, "GIT_CONFIG_PARAMETERS");
+		assert_env_removed(&command, "GIT_CONFIG_COUNT");
+		assert_env_removed(&command, "GIT_CONFIG_KEY_0");
+		assert_env_removed(&command, "GIT_CONFIG_VALUE_0");
+	}
+
+	fn assert_env_removed(command: &Command, name: &str) {
+		let target = OsStr::new(name);
+
+		assert!(
+			command.get_envs().any(|(key, value)| key == target && value.is_none()),
+			"`{name}` should be explicitly removed from child environment"
+		);
+	}
 }

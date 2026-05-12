@@ -6,8 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
+import ssl
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,6 +30,11 @@ from contracts import (  # noqa: E402
     truncate_patch,
     validate_bundle,
 )
+
+RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
+GITHUB_REQUEST_ATTEMPTS = 4
+GITHUB_REQUEST_BACKOFF_SECONDS = 1.0
+GITHUB_REQUEST_TIMEOUT_SECONDS = 30.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,6 +68,14 @@ def routed_token_env() -> str | None:
     return {"x": "GITHUB_PAT_X", "y": "GITHUB_PAT_Y"}.get(identity, "GITHUB_TOKEN")
 
 
+def is_retryable_github_error(exc: urllib.error.HTTPError | urllib.error.URLError) -> bool:
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in RETRYABLE_HTTP_STATUS_CODES
+
+    reason = exc.reason
+    return isinstance(reason, (ConnectionResetError, TimeoutError, socket.timeout, ssl.SSLError))
+
+
 def github_request(url: str, token: str | None) -> tuple[Any, dict[str, str]]:
     request = urllib.request.Request(
         url,
@@ -71,12 +87,21 @@ def github_request(url: str, token: str | None) -> tuple[Any, dict[str, str]]:
     )
     if not token:
         request.headers.pop("Authorization")
-    try:
-        with urllib.request.urlopen(request) as response:
-            return json.load(response), dict(response.headers)
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
-        raise SystemExit(f"GitHub API request failed for {url}: {exc.code} {details}") from exc
+
+    for attempt in range(1, GITHUB_REQUEST_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=GITHUB_REQUEST_TIMEOUT_SECONDS) as response:
+                return json.load(response), dict(response.headers)
+        except urllib.error.HTTPError as exc:
+            details = exc.read().decode("utf-8", errors="replace")
+            if not is_retryable_github_error(exc) or attempt == GITHUB_REQUEST_ATTEMPTS:
+                raise SystemExit(f"GitHub API request failed for {url}: {exc.code} {details}") from exc
+        except urllib.error.URLError as exc:
+            if not is_retryable_github_error(exc) or attempt == GITHUB_REQUEST_ATTEMPTS:
+                raise SystemExit(f"GitHub API request failed for {url}: {exc.reason}") from exc
+        time.sleep(GITHUB_REQUEST_BACKOFF_SECONDS * attempt)
+
+    raise SystemExit(f"GitHub API request failed for {url}: exhausted retry loop")
 
 
 def github_paginated(url: str, token: str | None) -> list[Any]:
