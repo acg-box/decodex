@@ -2409,6 +2409,9 @@
 				width: var(--bucket-width, 0%);
 				background: currentColor;
 				opacity: 0.75;
+				transition:
+					width var(--slow) var(--ease),
+					opacity var(--fast) var(--ease);
 			}
 
 			.status-label {
@@ -4621,6 +4624,10 @@
 				return `run:${run.run_id}:more-fields`;
 			}
 
+			function activeRunRenderKey(run) {
+				return `active-run:${run.run_id || issueDisplayKey(run)}`;
+			}
+
 			function detailsOpenAttribute(detailKey) {
 				return detailDisclosureState.get(detailKey) ? ' open data-detail-state="open"' : "";
 			}
@@ -4784,6 +4791,129 @@
 				container.innerHTML = snapshot
 					? ""
 					: renderEmptyState(COPY.waitingSnapshot, waitingCopy);
+			}
+
+			function keyedPatchNodeKey(node) {
+				if (!(node instanceof Element)) {
+					return "";
+				}
+
+				return node.dataset.renderKey || node.dataset.detailKey || "";
+			}
+
+			function syncElementAttributes(current, next) {
+				for (const attribute of [...current.attributes]) {
+					if (!next.hasAttribute(attribute.name)) {
+						current.removeAttribute(attribute.name);
+					}
+				}
+
+				for (const attribute of [...next.attributes]) {
+					if (current.getAttribute(attribute.name) !== attribute.value) {
+						current.setAttribute(attribute.name, attribute.value);
+					}
+				}
+			}
+
+			function patchNode(current, next) {
+				if (
+					current.nodeType !== next.nodeType ||
+					current.nodeName !== next.nodeName
+				) {
+					current.replaceWith(next.cloneNode(true));
+					return;
+				}
+
+				if (current.nodeType === Node.TEXT_NODE) {
+					if (current.nodeValue !== next.nodeValue) {
+						current.nodeValue = next.nodeValue;
+					}
+					return;
+				}
+
+				if (!(current instanceof Element) || !(next instanceof Element)) {
+					return;
+				}
+
+				// Preserve active accordion animation styles until their timer clears them.
+				if (
+					current.closest("details.is-animating") &&
+					!(current instanceof HTMLDetailsElement)
+				) {
+					return;
+				}
+
+				if (current instanceof HTMLDetailsElement) {
+					const detailKey = detailStateKey(current);
+					if (detailKey && detailDisclosureState.has(detailKey)) {
+						const shouldOpen = detailDisclosureState.get(detailKey);
+						if (shouldOpen) {
+							next.setAttribute("open", "");
+							next.dataset.detailState = "open";
+						} else {
+							next.removeAttribute("open");
+							delete next.dataset.detailState;
+						}
+					}
+				}
+
+				syncElementAttributes(current, next);
+				patchChildNodes(current, next);
+			}
+
+			function patchChildNodes(current, next) {
+				const currentChildren = [...current.childNodes];
+				const nextChildren = [...next.childNodes];
+				const keyedCurrent = new Map();
+
+				for (const child of currentChildren) {
+					const key = keyedPatchNodeKey(child);
+					if (key && !keyedCurrent.has(key)) {
+						keyedCurrent.set(key, child);
+					}
+				}
+
+				let cursor = current.firstChild;
+				const used = new Set();
+
+				for (const nextChild of nextChildren) {
+					const key = keyedPatchNodeKey(nextChild);
+					let currentChild = key ? keyedCurrent.get(key) : null;
+
+					while (cursor && used.has(cursor)) {
+						cursor = cursor.nextSibling;
+					}
+
+					if (!currentChild && cursor && !keyedPatchNodeKey(cursor)) {
+						currentChild = cursor;
+					}
+
+					if (currentChild) {
+						used.add(currentChild);
+						patchNode(currentChild, nextChild);
+						if (currentChild !== cursor) {
+							current.insertBefore(currentChild, cursor);
+						}
+						cursor = currentChild.nextSibling;
+					} else {
+						const clone = nextChild.cloneNode(true);
+						current.insertBefore(clone, cursor);
+						used.add(clone);
+					}
+				}
+
+				for (const child of [...current.childNodes]) {
+					if (!used.has(child)) {
+						child.remove();
+					}
+				}
+			}
+
+			function renderStableList(container, html) {
+				const template = document.createElement("template");
+				template.innerHTML = html.trim();
+
+				patchChildNodes(container, template.content);
 			}
 
 			function pluralLabel(count, singular, plural = `${singular}s`) {
@@ -7901,46 +8031,49 @@
 					return;
 				}
 
-				nodes.activeRuns.innerHTML = runs
-					.map((run) => {
-						const tone = toneForRun(run);
-						const statusBits = [statusLabel(runStageLabel(run), tone)];
-						const detailKey = runDetailKey(run);
-						const issueKey = issueDisplayKey(run);
-						const issueTitle = runIssueTitle(run, derived);
-						const summary = activeRunSummary(run);
+				renderStableList(
+					nodes.activeRuns,
+					runs
+						.map((run) => {
+							const tone = toneForRun(run);
+							const statusBits = [statusLabel(runStageLabel(run), tone)];
+							const detailKey = runDetailKey(run);
+							const renderKey = activeRunRenderKey(run);
+							const issueKey = issueDisplayKey(run);
+							const issueTitle = runIssueTitle(run, derived);
+							const summary = activeRunSummary(run);
 
-						if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
-							statusBits.push(inlineStatusFact("Wait", humanizeToken(run.wait_reason)));
-						}
-						if (runTelemetryMissing(run)) {
-							statusBits.push(
-								runHasChildAgentActivity(run)
-									? inlineStatusFact("Metadata", "Pending")
-									: inlineStatusFact("Telemetry", "Missing"),
-							);
-						}
-						if (
-							!runStoppedProcessNeedsAttention(run) &&
-							runProcessStoppedWhileActive(run)
-						) {
-							statusBits.push(inlineStatusFact("Agent", "Done"));
-						}
-						if (run.interactive_requested && !runStoppedProcessNeedsAttention(run)) {
-							statusBits.push(inlineStatusFact("Operator", "Input"));
-						}
-						if (run.continuation_pending) {
-							statusBits.push(inlineStatusFact("Continuation", "Pending"));
-						}
-						const attemptNumber = attemptNumberFromRun(run);
-						const stopControl = renderRunStopControl(run);
-						const statusLineParts = [...statusBits];
-						if (stopControl) {
-							statusLineParts.splice(1, 0, stopControl);
-						}
+							if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
+								statusBits.push(inlineStatusFact("Wait", humanizeToken(run.wait_reason)));
+							}
+							if (runTelemetryMissing(run)) {
+								statusBits.push(
+									runHasChildAgentActivity(run)
+										? inlineStatusFact("Metadata", "Pending")
+										: inlineStatusFact("Telemetry", "Missing"),
+								);
+							}
+							if (
+								!runStoppedProcessNeedsAttention(run) &&
+								runProcessStoppedWhileActive(run)
+							) {
+								statusBits.push(inlineStatusFact("Agent", "Done"));
+							}
+							if (run.interactive_requested && !runStoppedProcessNeedsAttention(run)) {
+								statusBits.push(inlineStatusFact("Operator", "Input"));
+							}
+							if (run.continuation_pending) {
+								statusBits.push(inlineStatusFact("Continuation", "Pending"));
+							}
+							const attemptNumber = attemptNumberFromRun(run);
+							const stopControl = renderRunStopControl(run);
+							const statusLineParts = [...statusBits];
+							if (stopControl) {
+								statusLineParts.splice(1, 0, stopControl);
+							}
 
-						return `
-							<article class="run-card ${tone}">
+							return `
+							<article class="run-card ${tone}" data-render-key="${escapeHtml(renderKey)}">
 								<div class="row-head">
 									<div class="run-title-stack">
 										<div class="run-subtitle">
@@ -7987,8 +8120,9 @@
 								</details>
 							</article>
 						`;
-					})
-					.join("");
+						})
+						.join(""),
+				);
 			}
 
 			function renderAttemptTimeline(lane) {
