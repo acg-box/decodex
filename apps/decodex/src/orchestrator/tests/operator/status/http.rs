@@ -113,6 +113,10 @@ fn operator_state_endpoint_serializes_closed_queue_classification() {
 		warnings: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
+		account_control: OperatorCodexAccountControlStatus {
+			mode: String::from("balanced"),
+			account_selector: None,
+		},
 		accounts: Vec::new(),
 		active_runs: vec![],
 		recent_runs: vec![],
@@ -532,6 +536,44 @@ fn operator_dashboard_websocket_accepts_subscription_and_project_pause_control()
 			.find(|project| project.service_id() == "pubfi")
 			.expect("project should remain registered")
 			.enabled()
+	);
+
+	client
+		.write_all(&websocket_client_text_frame(
+			r#"{"type":"control","requestId":"account-1","action":"selectAccount","projectId":"pubfi","accountSelector":"copy@example.com"}"#,
+		))
+		.expect("client should send account selection");
+
+	let account_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "account-1"
+	});
+
+	assert_eq!(account_ack["payload"]["accepted"], true);
+	assert_eq!(account_ack["payload"]["status"], "fixed");
+
+	let updated_config = load_service_config(config.repo_root());
+	let accounts = updated_config.codex().accounts().expect("accounts should be configured");
+
+	assert_eq!(accounts.fixed_account(), Some("copy@example.com"));
+
+	client
+		.write_all(&websocket_client_text_frame(
+			r#"{"type":"control","requestId":"account-clear","action":"clearAccountSelection","projectId":"pubfi"}"#,
+		))
+		.expect("client should send account clear");
+
+	let account_clear_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "account-clear"
+	});
+
+	assert_eq!(account_clear_ack["payload"]["accepted"], true);
+	assert_eq!(account_clear_ack["payload"]["status"], "balanced");
+	assert_eq!(
+		load_service_config(config.repo_root())
+			.codex()
+			.accounts()
+			.and_then(ProjectCodexAccountsConfig::fixed_account),
+		None
 	);
 
 	drop(client);

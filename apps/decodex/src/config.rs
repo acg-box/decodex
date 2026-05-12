@@ -215,6 +215,7 @@ impl Default for ProjectCodexConfig {
 pub struct ProjectCodexAccountsConfig {
 	usage_endpoint: Option<String>,
 	refresh_endpoint: Option<String>,
+	fixed_account: Option<String>,
 }
 impl ProjectCodexAccountsConfig {
 	/// Override for ChatGPT usage probes. Defaults to the Codex `/wham/usage` endpoint.
@@ -227,6 +228,11 @@ impl ProjectCodexAccountsConfig {
 		self.refresh_endpoint.as_deref()
 	}
 
+	/// Fixed account selector for runs. Matches an account email, id, or displayed fingerprint.
+	pub fn fixed_account(&self) -> Option<&str> {
+		self.fixed_account.as_deref()
+	}
+
 	fn validate(&self) -> Result<()> {
 		validate_optional_nonempty_string(
 			"codex.accounts.usage_endpoint",
@@ -235,6 +241,10 @@ impl ProjectCodexAccountsConfig {
 		validate_optional_nonempty_string(
 			"codex.accounts.refresh_endpoint",
 			self.refresh_endpoint.as_deref(),
+		)?;
+		validate_optional_nonempty_string(
+			"codex.accounts.fixed_account",
+			self.fixed_account.as_deref(),
 		)?;
 
 		Ok(())
@@ -1089,6 +1099,7 @@ mod tests {
 					[codex.accounts]
 					usage_endpoint = "http://127.0.0.1:1234/wham/usage"
 					refresh_endpoint = "http://127.0.0.1:1234/oauth/token"
+					fixed_account = "primary@example.com"
 				"#,
 		);
 		let config = ServiceConfig::from_path(&config_path).expect("accounts should parse");
@@ -1096,6 +1107,7 @@ mod tests {
 
 		assert_eq!(accounts.usage_endpoint(), Some("http://127.0.0.1:1234/wham/usage"));
 		assert_eq!(accounts.refresh_endpoint(), Some("http://127.0.0.1:1234/oauth/token"));
+		assert_eq!(accounts.fixed_account(), Some("primary@example.com"));
 	}
 
 	#[test]
