@@ -730,14 +730,12 @@ fn append_merged_worktree_cleanup_debts(
 		return;
 	}
 
-	warnings.push(String::from("merged_worktree_cleanup_pending"));
-
-	if debts.iter().any(|debt| debt.cleanliness.is_dirty()) {
-		warnings.push(String::from("merged_dirty_worktree"));
-	}
+	let mut surfaced_cleanup_debt = false;
+	let mut surfaced_dirty_cleanup_debt = false;
 
 	for debt in debts {
 		let relative_path = relative_worktree_path_for_path(project, &debt.path);
+		let is_dirty = debt.cleanliness.is_dirty();
 		let debt_status = operator_worktree_status_from_cleanup_debt(debt, relative_path.clone());
 
 		if !seen_paths.insert(relative_path.clone()) {
@@ -750,7 +748,17 @@ fn append_merged_worktree_cleanup_debts(
 			continue;
 		}
 
+		surfaced_cleanup_debt = true;
+		surfaced_dirty_cleanup_debt |= is_dirty;
+
 		worktrees.push(debt_status);
+	}
+
+	if surfaced_cleanup_debt {
+		warnings.push(String::from("merged_worktree_cleanup_pending"));
+	}
+	if surfaced_dirty_cleanup_debt {
+		warnings.push(String::from("merged_dirty_worktree"));
 	}
 }
 
@@ -3883,6 +3891,66 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 					.map_or_else(|| String::from("none"), |value| value.to_string())
 			));
 		}
+	}
+
+	output
+}
+
+fn render_queue_explain(
+	config: &ServiceConfig,
+	queued_candidates: &[OperatorQueuedIssueStatus],
+) -> String {
+	let mut output = String::new();
+
+	output.push_str(&format!("Project: {}\n", config.service_id()));
+	output.push_str("Mode: dry-run queue explain\n");
+	output.push_str(&format!("Queued candidates: {}\n", queued_candidates.len()));
+	output.push_str(&format!(
+		"Ready: {}\n",
+		queued_candidates
+			.iter()
+			.filter(|candidate| candidate.classification == "ready")
+			.count()
+	));
+	output.push_str(&format!(
+		"Waiting: {}\n",
+		queued_candidates
+			.iter()
+			.filter(|candidate| candidate.classification == "waiting")
+			.count()
+	));
+	output.push_str(&format!(
+		"Blocked: {}\n",
+		queued_candidates
+			.iter()
+			.filter(|candidate| candidate.classification == "blocked")
+			.count()
+	));
+	output.push_str(&format!(
+		"Claimed: {}\n",
+		queued_candidates
+			.iter()
+			.filter(|candidate| candidate.classification == "claimed")
+			.count()
+	));
+	output.push_str(&format!(
+		"Closed: {}\n",
+		queued_candidates
+			.iter()
+			.filter(|candidate| candidate.classification == "closed")
+			.count()
+	));
+	output.push_str("\nQueued Candidate Reasons\n");
+
+	if queued_candidates.is_empty() {
+		output.push_str("- none\n");
+		output.push_str(&format!("  {}\n", format_status_no_eligible_issue_hint(config.service_id())));
+
+		return output;
+	}
+
+	for queued_issue in queued_candidates {
+		append_rendered_queued_issue(&mut output, queued_issue, None);
 	}
 
 	output
