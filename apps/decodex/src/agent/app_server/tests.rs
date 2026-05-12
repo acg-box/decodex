@@ -371,6 +371,7 @@ fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 #[test]
 fn synthetic_probe_thread_start_is_ephemeral_when_requested() {
 	let mut request = minimal_run_request();
+
 	request.ephemeral_thread = true;
 
 	let start = super::build_thread_start_request(&request).expect("request should build");
