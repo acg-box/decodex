@@ -167,6 +167,7 @@ The MVP thread start request owns these fields:
 - `cwd`
 - `dynamicTools` when the run exposes issue-scoped tracker tools
 - `developerInstructions`
+- `ephemeral` only for synthetic Decodex probe threads
 
 Decodex must not inject project-owned config, model, personality, service-tier, sandbox, or approval-policy overrides into `thread/start`. Child runs inherit runtime defaults from the active Codex runtime.
 
@@ -302,6 +303,8 @@ The `decodex probe` command must verify at least:
 5. The local client can complete the bounded app-server capability preflight after
    `initialize` and before `thread/start`.
 6. The local client can complete one bounded standalone `command/exec` health check after `initialize`.
-7. The local client can complete one `dynamicTools -> item/tool/call -> response` round trip and still finish with the expected final output.
+7. The local client can complete one ephemeral
+   `dynamicTools -> item/tool/call -> response` round trip and still finish with the
+   expected final output without materializing a probe thread on disk.
 
 The probe command is the first gate before deeper orchestrator logic depends on the protocol.
