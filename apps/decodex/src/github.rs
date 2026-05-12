@@ -5,10 +5,12 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use color_eyre::Report;
 use serde::Deserialize;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
+	git_credentials,
 	prelude::{Result, eyre},
 	pull_request::PullRequestLandingState,
 };
@@ -211,6 +213,8 @@ struct CommitViewCommit {
 }
 
 pub(crate) fn configure_gh_command(command: &mut Command, github_token: &str) {
+	git_credentials::clear_injected_git_config(command);
+
 	command
 		.env("GH_TOKEN", github_token)
 		.env("GITHUB_TOKEN", github_token)
@@ -453,7 +457,8 @@ pub(crate) fn wait_for_pull_request_merge_commit(
 		match inspect_pull_request_merge_commit(cwd, pr_url, github_token) {
 			Ok(merge_commit) => return Ok(merge_commit),
 			Err(error) if Instant::now() >= deadline => return Err(error),
-			Err(_error) => {},
+			Err(error) if merge_commit_wait_error_is_retryable(&error) => {},
+			Err(error) => return Err(error),
 		};
 
 		thread::sleep(Duration::from_secs(1));
@@ -515,7 +520,8 @@ pub(crate) fn wait_for_commit_subject(
 		match inspect_commit_subject(cwd, pr_url, commit_oid, github_token) {
 			Ok(subject) => return Ok(subject),
 			Err(error) if Instant::now() >= deadline => return Err(error),
-			Err(_error) => {},
+			Err(error) if commit_subject_wait_error_is_retryable(&error) => {},
+			Err(error) => return Err(error),
 		};
 
 		thread::sleep(Duration::from_secs(1));
@@ -753,9 +759,25 @@ fn next_pull_request_review_threads_cursor(
 		})
 }
 
+fn merge_commit_wait_error_is_retryable(error: &Report) -> bool {
+	let message = error.to_string();
+
+	message.contains("did not reach `MERGED` state after landing")
+		|| message.contains("does not expose a merge commit after merge")
+}
+
+fn commit_subject_wait_error_is_retryable(error: &Report) -> bool {
+	let message = error.to_string().to_ascii_lowercase();
+
+	message.contains("failed to inspect merge commit")
+		&& (message.contains("not found") || message.contains("http 404"))
+}
+
 #[cfg(test)]
 mod tests {
 	use std::ffi::OsStr;
+
+	use crate::prelude::eyre;
 
 	#[test]
 	fn parses_pull_request_url() {
@@ -831,6 +853,26 @@ mod tests {
 				.is_some_and(|value| value == OsStr::new("never")),
 			"configure_gh_command should disable credential-manager prompts"
 		);
+	}
+
+	#[test]
+	fn merge_commit_wait_retries_only_visibility_errors() {
+		assert!(super::merge_commit_wait_error_is_retryable(&eyre::eyre!(
+			"Pull request `https://github.com/hack-ink/decodex/pull/1` does not expose a merge commit after merge."
+		)));
+		assert!(!super::merge_commit_wait_error_is_retryable(&eyre::eyre!(
+			"Failed to inspect merge result for `https://github.com/hack-ink/decodex/pull/1`: HTTP 401"
+		)));
+	}
+
+	#[test]
+	fn commit_subject_wait_retries_only_not_found_visibility_errors() {
+		assert!(super::commit_subject_wait_error_is_retryable(&eyre::eyre!(
+			"Failed to inspect merge commit `abc` for `https://github.com/hack-ink/decodex/pull/1`: HTTP 404 Not Found"
+		)));
+		assert!(!super::commit_subject_wait_error_is_retryable(&eyre::eyre!(
+			"Failed to inspect merge commit `abc` for `https://github.com/hack-ink/decodex/pull/1`: HTTP 401 Unauthorized"
+		)));
 	}
 
 	#[test]
