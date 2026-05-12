@@ -971,7 +971,7 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 
 					comments_after =
 						next_pull_request_issue_comments_cursor(&pull_request.comments, pr_url)?;
-					review_state = Some(pull_request_review_state_from_page(&repository, pull_request));
+					review_state = Some(pull_request_review_state_from_page(&repository, pull_request)?);
 
 					next_cursor
 				},

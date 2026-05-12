@@ -87,8 +87,8 @@ fn query_pull_request_issue_comments_page(
 fn pull_request_review_state_from_page(
 	repository: &PullRequestReviewStateRepository,
 	pull_request: &PullRequestReviewStateNode,
-) -> PullRequestReviewState {
-	PullRequestReviewState {
+) -> Result<PullRequestReviewState> {
+	Ok(PullRequestReviewState {
 		url: pull_request.url.clone(),
 		state: pull_request.state.clone(),
 		is_draft: pull_request.is_draft,
@@ -120,14 +120,14 @@ fn pull_request_review_state_from_page(
 			.nodes
 			.iter()
 			.map(issue_comment_state_from_node)
-			.collect(),
+			.collect::<Result<Vec<_>>>()?,
 		reviews: pull_request
 			.reviews
 			.nodes
 			.iter()
 			.filter_map(review_summary_state_from_node)
 			.collect(),
-	}
+	})
 }
 
 fn merge_pull_request_review_state_page(
@@ -184,9 +184,13 @@ fn merge_pull_request_issue_comment_page(
 		eyre::bail!("Pull request issue comment state changed while paginating `{}`.", review_state.url);
 	}
 
+	let mut comment_ids =
+		review_state.issue_comments.iter().map(|comment| comment.database_id).collect::<HashSet<_>>();
+
 	for comment in pull_request.comments.nodes.iter().map(issue_comment_state_from_node) {
-		if review_state.issue_comments.iter().any(|existing| existing.database_id == comment.database_id)
-		{
+		let comment = comment?;
+
+		if !comment_ids.insert(comment.database_id) {
 			eyre::bail!(
 				"Pull request issue comments repeated while paginating `{}`.",
 				review_state.url
@@ -216,19 +220,18 @@ fn pull_request_status_check_rollup_state(
 
 fn issue_comment_state_from_node(
 	comment: &PullRequestIssueCommentNode,
-) -> PullRequestIssueCommentState {
-	PullRequestIssueCommentState {
+) -> Result<PullRequestIssueCommentState> {
+	Ok(PullRequestIssueCommentState {
 		database_id: comment.database_id,
 		author_login: comment.author.as_ref().map(|author| author.login.clone()),
 		body: comment.body.clone(),
-		created_at_unix_epoch: parse_github_timestamp_to_unix_epoch(&comment.created_at)
-			.expect("pull request issue comment timestamp should parse"),
+		created_at_unix_epoch: parse_github_timestamp_to_unix_epoch(&comment.created_at)?,
 		external_review_eyes_reaction_count: reaction_group_actor_count(
 			&comment.reaction_groups,
 			"EYES",
 			EXTERNAL_REVIEW_ACTOR_LOGIN,
 		),
-	}
+	})
 }
 
 fn review_summary_state_from_node(

@@ -112,19 +112,22 @@ def main() -> None:
     if args.model:
         cmd[2:2] = ["--model", args.model]
 
-    completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
-    if completed.returncode != 0:
-        stderr = completed.stderr.strip()
-        stdout = completed.stdout.strip()
-        details = stderr or stdout or "unknown error"
-        raise SystemExit(f"codex exec failed: {details}")
+    try:
+        completed = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        if completed.returncode != 0:
+            stderr = completed.stderr.strip()
+            stdout = completed.stdout.strip()
+            details = stderr or stdout or "unknown error"
+            raise SystemExit(f"codex exec failed: {details}")
 
-    payload = extract_json_payload(tmp_output.read_text(encoding="utf-8"))
-    validation = validate_analysis_draft(payload)
-    if not validation.ok:
-        raise SystemExit("Analysis draft validation failed:\n- " + "\n- ".join(validation.errors))
+        payload = extract_json_payload(tmp_output.read_text(encoding="utf-8"))
+        validation = validate_analysis_draft(payload)
+        if not validation.ok:
+            raise SystemExit("Analysis draft validation failed:\n- " + "\n- ".join(validation.errors))
 
-    dump_json(args.out, payload)
+        dump_json(args.out, payload)
+    finally:
+        tmp_output.unlink(missing_ok=True)
     print(args.out)
 
 

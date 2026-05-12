@@ -133,12 +133,14 @@ impl StateData {
 			thread_id: attempt.thread_id.clone(),
 			turn_id: attempt.turn_id.clone(),
 			updated_at: attempt.updated_at.clone(),
+			updated_at_unix: attempt.updated_at_unix,
 			branch_name: worktree.map(|mapping| mapping.branch_name.clone()),
 			worktree_path: worktree.map(|mapping| mapping.worktree_path.clone()),
 			active_lease,
 			event_count: event_summary.event_count,
 			last_event_type: event_summary.last_event_type,
 			last_event_at: event_summary.last_event_at,
+			last_event_at_unix: event_summary.last_event_at_unix,
 		})
 	}
 
@@ -369,14 +371,13 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(changed == 1)
 	}
 
-	fn upsert_linear_execution_event(
+	fn insert_linear_execution_event_if_absent(
 		&self,
 		record: &LinearExecutionEventRuntimeRecord,
-	) -> Result<()> {
+	) -> Result<bool> {
 		let payload_json = serde_json::to_string(&record.record)?;
-
-		self.connection.execute(
-			"INSERT OR REPLACE INTO linear_execution_events (
+		let changed = self.connection.execute(
+			"INSERT OR IGNORE INTO linear_execution_events (
 					idempotency_key, service_id, issue_id, event_type, event_timestamp,
 					event_unix, payload_json, recorded_at, recorded_at_unix
 				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -391,6 +392,15 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				&record.recorded_at,
 				record.recorded_at_unix,
 			],
+		)?;
+
+		Ok(changed == 1)
+	}
+
+	fn delete_linear_execution_event(&self, idempotency_key: &str) -> Result<()> {
+		self.connection.execute(
+			"DELETE FROM linear_execution_events WHERE idempotency_key = ?1",
+			params![idempotency_key],
 		)?;
 
 		Ok(())

@@ -607,125 +607,132 @@ fn schedule_retry_after_child_exit_keeps_blocked_closeout_retry_for_completed_is
 }
 
 #[test]
-fn queued_review_repair_retry_handles_backoff_budget_and_ownership() {
-	{
-		let (_temp_dir, config, workflow) = temp_project_layout();
-		let issue = sample_service_owned_issue("In Review");
-		let tracker =
-			FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
-		let state_store = StateStore::open_in_memory().expect("state store should open");
-		let mut retry_queue = RetryQueue::default();
+fn future_review_repair_retry_keeps_backoff_window_until_due() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut retry_queue = RetryQueue::default();
 
-		retry_queue.upsert(RetryEntry {
-			issue_id: issue.id.clone(),
-			retry_project_slug: issue
-				.project_slug
-				.clone()
-				.expect("sample issue should carry a project slug"),
-			continuation_initial_issue_state: None,
-			dispatch_mode: IssueDispatchMode::ReviewRepair,
-			kind: RetryKind::Failure,
-			attempt: 1,
-			ready_at: Instant::now() + Duration::from_secs(60),
-		});
+	retry_queue.upsert(RetryEntry {
+		issue_id: issue.id.clone(),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		continuation_initial_issue_state: None,
+		dispatch_mode: IssueDispatchMode::ReviewRepair,
+		kind: RetryKind::Failure,
+		attempt: 1,
+		ready_at: Instant::now() + Duration::from_secs(60),
+	});
 
-		let decision = orchestrator::plan_due_retry_run(
-			&mut retry_queue,
-			&tracker,
-			&config,
-			&workflow,
-			&state_store,
-		)
-		.expect("future review-repair retry should stay queued");
+	let decision = orchestrator::plan_due_retry_run(
+		&mut retry_queue,
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+	)
+	.expect("future review-repair retry should stay queued");
 
-		assert!(matches!(
-			decision,
-			RetryDispatchDecision::Blocked{ excluded_issue_ids }
-				if excluded_issue_ids == vec![issue.id.clone()]
-		));
-		assert!(
-			retry_queue.entries.contains_key(&issue.id),
-			"review-repair retries should keep their queued backoff window until ready"
-		);
+	assert!(matches!(
+		decision,
+		RetryDispatchDecision::Blocked{ excluded_issue_ids }
+			if excluded_issue_ids == vec![issue.id.clone()]
+	));
+	assert!(
+		retry_queue.entries.contains_key(&issue.id),
+		"review-repair retries should keep their queued backoff window until ready"
+	);
+	assert_eq!(
+		tracker.refresh_snapshots.borrow().len(),
+		1,
+		"future review-repair retry planning should not refresh tracker state before the retry is due"
+	);
+}
+
+#[test]
+fn due_review_repair_retry_drops_after_backoff_budget_exhausted() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut retry_queue = RetryQueue::default();
+
+	for attempt in 1..=3 {
+		state_store
+			.record_run_attempt(&format!("run-{attempt}"), &issue.id, attempt, "failed")
+			.expect("failed repair attempt should record");
 	}
-	{
-		let (_temp_dir, config, workflow) = temp_project_layout();
-		let issue = sample_service_owned_issue("In Review");
-		let tracker =
-			FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
-		let state_store = StateStore::open_in_memory().expect("state store should open");
-		let mut retry_queue = RetryQueue::default();
 
-		for attempt in 1..=3 {
-			state_store
-				.record_run_attempt(&format!("run-{attempt}"), &issue.id, attempt, "failed")
-				.expect("failed repair attempt should record");
-		}
+	retry_queue.upsert(RetryEntry {
+		issue_id: issue.id.clone(),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		continuation_initial_issue_state: None,
+		dispatch_mode: IssueDispatchMode::ReviewRepair,
+		kind: RetryKind::Failure,
+		attempt: 3,
+		ready_at: Instant::now(),
+	});
 
-		retry_queue.upsert(RetryEntry {
-			issue_id: issue.id.clone(),
-			retry_project_slug: issue
-				.project_slug
-				.clone()
-				.expect("sample issue should carry a project slug"),
-			continuation_initial_issue_state: None,
-			dispatch_mode: IssueDispatchMode::ReviewRepair,
-			kind: RetryKind::Failure,
-			attempt: 3,
-			ready_at: Instant::now() + Duration::from_secs(60),
-		});
+	let decision = orchestrator::plan_due_retry_run(
+		&mut retry_queue,
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+	)
+	.expect("exhausted review-repair retry should be dropped");
 
-		let decision = orchestrator::plan_due_retry_run(
-			&mut retry_queue,
-			&tracker,
-			&config,
-			&workflow,
-			&state_store,
-		)
-		.expect("exhausted review-repair retry should be dropped");
+	assert!(matches!(decision, RetryDispatchDecision::Continue));
+	assert!(
+		retry_queue.entries.is_empty(),
+		"exhausted review-repair retry should not hold the queued claim"
+	);
+}
 
-		assert!(matches!(decision, RetryDispatchDecision::Continue));
-		assert!(
-			retry_queue.entries.is_empty(),
-			"exhausted review-repair retry should not hold the queued claim"
-		);
-	}
-	{
-		let (_temp_dir, config, workflow) = temp_project_layout();
-		let issue = sample_issue("In Review", &[]);
-		let tracker =
-			FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
-		let state_store = StateStore::open_in_memory().expect("state store should open");
-		let mut retry_queue = RetryQueue::default();
+#[test]
+fn due_review_repair_retry_drops_when_active_ownership_is_gone() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Review", &[]);
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut retry_queue = RetryQueue::default();
 
-		retry_queue.upsert(RetryEntry {
-			issue_id: issue.id.clone(),
-			retry_project_slug: issue
-				.project_slug
-				.clone()
-				.expect("sample issue should carry a project slug"),
-			continuation_initial_issue_state: None,
-			dispatch_mode: IssueDispatchMode::ReviewRepair,
-			kind: RetryKind::Failure,
-			attempt: 1,
-			ready_at: Instant::now() + Duration::from_secs(60),
-		});
+	retry_queue.upsert(RetryEntry {
+		issue_id: issue.id.clone(),
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		continuation_initial_issue_state: None,
+		dispatch_mode: IssueDispatchMode::ReviewRepair,
+		kind: RetryKind::Failure,
+		attempt: 1,
+		ready_at: Instant::now(),
+	});
 
-		let decision = orchestrator::plan_due_retry_run(
-			&mut retry_queue,
-			&tracker,
-			&config,
-			&workflow,
-			&state_store,
-		)
-		.expect("review-repair retry planning should succeed");
+	let decision = orchestrator::plan_due_retry_run(
+		&mut retry_queue,
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+	)
+	.expect("review-repair retry planning should succeed");
 
-		assert!(matches!(decision, RetryDispatchDecision::Continue));
-		assert!(
-			!retry_queue.entries.contains_key(&issue.id),
-			"review-repair retries should be dropped when active ownership is gone"
-		);
-	}
+	assert!(matches!(decision, RetryDispatchDecision::Continue));
+	assert!(
+		!retry_queue.entries.contains_key(&issue.id),
+		"review-repair retries should be dropped when active ownership is gone"
+	);
 }
 
 #[test]

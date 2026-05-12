@@ -80,12 +80,14 @@ pub struct ProjectRunStatus {
 	thread_id: Option<String>,
 	turn_id: Option<String>,
 	updated_at: String,
+	updated_at_unix: i64,
 	branch_name: Option<String>,
 	worktree_path: Option<PathBuf>,
 	active_lease: bool,
 	event_count: i64,
 	last_event_type: Option<String>,
 	last_event_at: Option<String>,
+	last_event_at_unix: Option<i64>,
 }
 impl ProjectRunStatus {
 	/// Stable run identifier.
@@ -151,6 +153,18 @@ impl ProjectRunStatus {
 	/// Timestamp of the latest recorded protocol event, when one exists.
 	pub fn last_event_at(&self) -> Option<&str> {
 		self.last_event_at.as_deref()
+	}
+
+	/// Unix timestamp of the latest recorded protocol event, when one exists.
+	pub(crate) fn last_event_at_unix(&self) -> Option<i64> {
+		self.last_event_at_unix
+	}
+
+	pub(crate) fn last_run_activity_unix_epoch(&self) -> i64 {
+		match self.last_event_at_unix {
+			Some(last_event_at_unix) => self.updated_at_unix.max(last_event_at_unix),
+			None => self.updated_at_unix,
+		}
 	}
 }
 

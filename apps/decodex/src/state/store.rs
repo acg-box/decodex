@@ -753,6 +753,34 @@ impl StateStore {
 		Ok(runs)
 	}
 
+	/// List active and recent run attempts for one project from one durable snapshot.
+	pub(crate) fn list_project_runs(
+		&self,
+		project_id: &str,
+		base_recent_limit: usize,
+	) -> Result<(Vec<ProjectRunStatus>, Vec<ProjectRunStatus>)> {
+		let state = self.lock()?;
+		let mut runs = state
+			.run_attempts
+			.values()
+			.filter_map(|attempt| state.project_run_status(project_id, attempt))
+			.collect::<Vec<_>>();
+
+		runs.sort_by(compare_project_run_status);
+
+		let active_runs = runs
+			.iter()
+			.filter(|status| status.active_lease())
+			.cloned()
+			.collect::<Vec<_>>();
+		let recent_limit = base_recent_limit.saturating_add(active_runs.len());
+		let mut recent_runs = runs;
+
+		recent_runs.truncate(recent_limit);
+
+		Ok((active_runs, recent_runs))
+	}
+
 	/// List all active leased runs for one project without applying the recent-run limit.
 	pub fn list_active_runs(&self, project_id: &str) -> Result<Vec<ProjectRunStatus>> {
 		let state = self.lock()?;
@@ -780,17 +808,18 @@ impl StateStore {
 		_payload: &str,
 	) -> Result<()> {
 		let mut state = self.lock_without_refresh()?;
+		let insert_index = {
+			let events = state.events.entry(run_id.to_owned()).or_default();
 
-		if state
-			.events
-			.get(run_id)
-			.is_some_and(|events| events.iter().any(|event| event.sequence_number == sequence_number))
-		{
-			eyre::bail!(
-				"Protocol event `{run_id}` sequence `{sequence_number}` already exists in the runtime journal."
-			);
-		}
-
+			match events.binary_search_by_key(&sequence_number, |event| event.sequence_number) {
+				Ok(_index) => {
+					eyre::bail!(
+						"Protocol event `{run_id}` sequence `{sequence_number}` already exists in the runtime journal."
+					);
+				},
+				Err(index) => index,
+			}
+		};
 		let now = timestamp_parts();
 		let event = ProtocolEventRecord {
 			sequence_number,
@@ -810,11 +839,7 @@ impl StateStore {
 			.entry(run_id.to_owned())
 			.or_default()
 			.record_event(&event);
-
-		let events = state.events.entry(run_id.to_owned()).or_default();
-
-		events.push(event);
-		events.sort_by_key(|event| event.sequence_number);
+		state.events.entry(run_id.to_owned()).or_default().insert(insert_index, event);
 
 		Ok(())
 	}
@@ -827,20 +852,34 @@ impl StateStore {
 		records::validate_linear_execution_event_record(record).map_err(|error| eyre::eyre!(error))?;
 
 		let now = timestamp_parts();
-		let mut state = self.lock_without_refresh()?;
 		let idempotency_key = record.idempotency_key.clone();
-		let is_new = !state.linear_execution_events.contains_key(&idempotency_key);
+		let mut state = self.lock_without_refresh()?;
+
+		if state.linear_execution_events.contains_key(&idempotency_key) {
+			return Ok(false);
+		}
+
 		let runtime_record = LinearExecutionEventRuntimeRecord {
 			record: record.clone(),
 			event_unix: parse_linear_execution_event_unix(record),
 			recorded_at: now.text,
 			recorded_at_unix: now.unix,
 		};
+		let is_new = self.insert_linear_execution_event_if_absent_locked(&runtime_record)?;
 
-		state.linear_execution_events.insert(idempotency_key, runtime_record.clone());
-		self.upsert_linear_execution_event_locked(&runtime_record)?;
+		if is_new {
+			state.linear_execution_events.insert(idempotency_key, runtime_record);
+		}
 
 		Ok(is_new)
+	}
+
+	pub(crate) fn forget_linear_execution_event(&self, idempotency_key: &str) -> Result<()> {
+		let mut state = self.lock_without_refresh()?;
+
+		state.linear_execution_events.remove(idempotency_key);
+
+		self.delete_linear_execution_event_locked(idempotency_key)
 	}
 
 	/// List locally cached Linear execution events for one issue lane.
@@ -1151,10 +1190,21 @@ impl StateStore {
 		sqlite.append_protocol_event(run_id, event)
 	}
 
-	fn upsert_linear_execution_event_locked(
+	fn insert_linear_execution_event_if_absent_locked(
 		&self,
 		record: &LinearExecutionEventRuntimeRecord,
-	) -> Result<()> {
+	) -> Result<bool> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(true);
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.insert_linear_execution_event_if_absent(record)
+	}
+
+	fn delete_linear_execution_event_locked(&self, idempotency_key: &str) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -1162,7 +1212,7 @@ impl StateStore {
 			.lock()
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
-		sqlite.upsert_linear_execution_event(record)
+		sqlite.delete_linear_execution_event(idempotency_key)
 	}
 
 	fn delete_lease_locked(&self, issue_id: &str) -> Result<()> {
