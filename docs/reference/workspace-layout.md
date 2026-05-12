@@ -98,6 +98,8 @@ Runtime state that belongs to the local operator, not to this repository, lives 
 
 - `runtime.sqlite3` is the single-machine control-plane database for all registered
   projects.
+- `accounts.jsonl` stores the optional shared ChatGPT account pool used for
+  Codex app-server auth token injection and refresh.
 - `logs/` stores Decodex process logs.
 - `agent-evidence/<service-id>/` stores local agent-readable diagnosis artifacts,
   including `handoff-index.json`, `events.jsonl`, `blockers/*.json`, and
