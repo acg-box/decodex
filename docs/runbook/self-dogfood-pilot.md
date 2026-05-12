@@ -39,6 +39,7 @@ For the recommended first deployment, collect each project contract under `~/.co
 ```text
 ~/.codex/decodex/
   config.toml
+  accounts.jsonl
   runtime.sqlite3
   logs/
   projects/
@@ -68,6 +69,11 @@ decodex project list
 `decodex serve` schedules enabled projects from that registry. It does not scan
 `.codex` history, repo-local config files, or currently open worktrees to infer
 projects.
+
+If the project uses managed ChatGPT accounts, enable `[codex.accounts]` in
+`project.toml` and keep the JSONL pool at `~/.codex/decodex/accounts.jsonl`. Do not
+store the shared pool under a project directory or configure a project-local account
+path.
 
 After restarting `decodex serve`, verify the registry still points at the centralized
 project directory:

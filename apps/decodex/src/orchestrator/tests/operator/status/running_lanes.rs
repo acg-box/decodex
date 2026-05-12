@@ -254,13 +254,17 @@ fn idle_operator_status_snapshot_has_no_runtime_or_recovery_noise() {
 
 #[test]
 fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
-	let (_temp_dir, base_config, _workflow) = temp_project_layout();
-	let accounts_path = service_config_dir(base_config.repo_root()).join("codex-auth.jsonl");
+	let (temp_dir, base_config, _workflow) = temp_project_layout();
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+	let accounts_path = temp_dir.path().join(".codex/decodex/accounts.jsonl");
 	let usage_endpoint = start_codex_usage_fixture_server(vec![
 		r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":7,"limit_window_seconds":18000,"reset_at":1800018000},"secondary_window":{"used_percent":11,"limit_window_seconds":604800,"reset_at":1800604800}},"credits":{"has_credits":true,"unlimited":false,"balance":"12.34"}}"#,
 		r#"{"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":22,"limit_window_seconds":18000,"reset_at":1800019000},"secondary_window":{"used_percent":33,"limit_window_seconds":604800,"reset_at":1800605800}},"credits":{"has_credits":false,"unlimited":false,"balance":"0"}}"#,
 	]);
 
+	std::fs::create_dir_all(accounts_path.parent().expect("accounts path should have parent"))
+		.expect("accounts dir should exist");
 	std::fs::write(
 		&accounts_path,
 		r#"{"email":"default@example.com","auth_mode":"chatgpt","tokens":{"access_token":"access-default","refresh_token":"refresh-default","account_id":"acct_default"}}
@@ -277,8 +281,7 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 	);
 
 	config_toml.push_str(&format!(
-		"\n[codex.accounts]\npath = \"{}\"\nusage_endpoint = \"{}\"\n",
-		accounts_path.display(),
+		"\n[codex.accounts]\nusage_endpoint = \"{}\"\n",
 		usage_endpoint
 	));
 

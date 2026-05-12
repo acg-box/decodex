@@ -180,9 +180,11 @@ impl ProjectCodexConfig {
 		self.accounts.as_ref()
 	}
 
-	fn resolve_paths(mut self, config_dir: &Path) -> Result<Self> {
+	fn resolve_paths(mut self, _config_dir: &Path) -> Result<Self> {
 		if let Some(accounts) = self.accounts.take() {
-			self.accounts = Some(accounts.resolve_paths(config_dir)?);
+			accounts.validate()?;
+
+			self.accounts = Some(accounts);
 		}
 
 		Ok(self)
@@ -211,16 +213,10 @@ impl Default for ProjectCodexConfig {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectCodexAccountsConfig {
-	path: PathBuf,
 	usage_endpoint: Option<String>,
 	refresh_endpoint: Option<String>,
 }
 impl ProjectCodexAccountsConfig {
-	/// JSONL file containing one composite auth.json-style account per line.
-	pub fn path(&self) -> &Path {
-		&self.path
-	}
-
 	/// Override for ChatGPT usage probes. Defaults to the Codex `/wham/usage` endpoint.
 	pub fn usage_endpoint(&self) -> Option<&str> {
 		self.usage_endpoint.as_deref()
@@ -232,7 +228,6 @@ impl ProjectCodexAccountsConfig {
 	}
 
 	fn validate(&self) -> Result<()> {
-		validate_nonempty_path("codex.accounts.path", &self.path)?;
 		validate_optional_nonempty_string(
 			"codex.accounts.usage_endpoint",
 			self.usage_endpoint.as_deref(),
@@ -243,12 +238,6 @@ impl ProjectCodexAccountsConfig {
 		)?;
 
 		Ok(())
-	}
-
-	fn resolve_paths(mut self, config_dir: &Path) -> Result<Self> {
-		self.path = resolve_config_path(config_dir, &self.path)?;
-
-		Ok(self)
 	}
 }
 
@@ -700,32 +689,6 @@ fn resolve_relative_path(base: &Path, path: &Path) -> PathBuf {
 	normalize_path(&resolved)
 }
 
-fn resolve_config_path(base: &Path, path: &Path) -> Result<PathBuf> {
-	let expanded = expand_home_path(path)?;
-
-	Ok(resolve_relative_path(base, &expanded))
-}
-
-fn expand_home_path(path: &Path) -> Result<PathBuf> {
-	let Some(path_text) = path.to_str() else {
-		return Ok(path.to_path_buf());
-	};
-	let Some(rest) = path_text.strip_prefix("~/") else {
-		if path_text == "~" {
-			return env::var_os("HOME")
-				.map(PathBuf::from)
-				.ok_or_else(|| eyre::eyre!("`HOME` is required to expand `~`."));
-		}
-
-		return Ok(path.to_path_buf());
-	};
-	let Some(home) = env::var_os("HOME") else {
-		eyre::bail!("`HOME` is required to expand `{path_text}`.");
-	};
-
-	Ok(PathBuf::from(home).join(rest))
-}
-
 fn normalize_path(path: &Path) -> PathBuf {
 	let mut normalized = PathBuf::new();
 
@@ -1118,28 +1081,45 @@ mod tests {
 				service_id = "pubfi"
 
 				[tracker]
-				api_key_env_var = "HOME"
+					api_key_env_var = "HOME"
 
-				[github]
-				token_env_var = "HOME"
+					[github]
+					token_env_var = "HOME"
 
-				[codex.accounts]
-				path = "accounts/codex-auth.jsonl"
-				usage_endpoint = "http://127.0.0.1:1234/wham/usage"
-				refresh_endpoint = "http://127.0.0.1:1234/oauth/token"
-			"#,
+					[codex.accounts]
+					usage_endpoint = "http://127.0.0.1:1234/wham/usage"
+					refresh_endpoint = "http://127.0.0.1:1234/oauth/token"
+				"#,
 		);
 		let config = ServiceConfig::from_path(&config_path).expect("accounts should parse");
 		let accounts = config.codex().accounts().expect("accounts should be configured");
-		let expected_path = temp_dir
-			.path()
-			.canonicalize()
-			.expect("temp dir should canonicalize")
-			.join("accounts/codex-auth.jsonl");
 
-		assert_eq!(accounts.path(), expected_path);
 		assert_eq!(accounts.usage_endpoint(), Some("http://127.0.0.1:1234/wham/usage"));
 		assert_eq!(accounts.refresh_endpoint(), Some("http://127.0.0.1:1234/oauth/token"));
+	}
+
+	#[test]
+	fn rejects_legacy_codex_accounts_path_override() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let config_path = write_config_file(
+			temp_dir.path(),
+			r#"
+				service_id = "pubfi"
+
+				[tracker]
+					api_key_env_var = "HOME"
+
+					[github]
+					token_env_var = "HOME"
+
+					[codex.accounts]
+					path = "accounts/codex-auth.jsonl"
+				"#,
+		);
+		let error = ServiceConfig::from_path(&config_path)
+			.expect_err("legacy account path override should fail");
+
+		assert!(error.to_string().contains("path"));
 	}
 
 	#[test]
