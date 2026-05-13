@@ -194,15 +194,39 @@ const filterRuntimeScript = `(function () {
   <main class="site-frame">
     <header class="site-topbar">
       <div class="site-topbar__head">
-        <div class="site-head__logo">
-          <a class="site-brand__wordmark" href="/" aria-label="Decodex home">
-            <img
-              class="site-brand__wordmark-image"
-              src="/assets/logo.png"
-              alt="Decodex"
-              width="801"
-              height="293"
-            />
+        <div class="site-brand__main">
+          <div class="site-head__logo">
+            <a class="site-brand__wordmark" href="/" aria-label="Decodex home">
+              <img
+                class="site-brand__wordmark-image"
+                src="/assets/logo.png"
+                alt="Decodex"
+                width="801"
+                height="293"
+              />
+            </a>
+          </div>
+
+          <p class="site-brand__eyebrow">Codex signal feed</p>
+          <h1 class="site-brand__title">
+            Changes worth trying before they become release notes.
+          </h1>
+
+          <p class="site-brand__note">
+            We track Codex upstream commits, extract user-visible behavior, and turn the useful parts into try paths, watch notes, and release rollups.
+          </p>
+
+          <a
+            class="site-brand__social"
+            href="https://x.com/decodexspace"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Follow decodexspace on X"
+          >
+            <span class="site-brand__social-handle">@decodexspace on X</span>
+            <span class="site-brand__social-copy">
+              Codex signal posts and release rollups.
+            </span>
           </a>
         </div>
 
@@ -219,23 +243,6 @@ const filterRuntimeScript = `(function () {
             <AppcastDownloadWidget />
           </div>
         </div>
-
-        <p class="site-brand__note">
-          Signal layer for Codex changes that are worth trying, watching, or adapting.
-        </p>
-
-        <a
-          class="site-brand__social"
-          href="https://x.com/decodexspace"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Follow decodexspace on X"
-        >
-          <span class="site-brand__social-handle">@decodexspace on X</span>
-          <span class="site-brand__social-copy">
-            Codex signal posts and release rollups.
-          </span>
-        </a>
       </div>
     </header>
 
