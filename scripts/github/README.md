@@ -5,15 +5,19 @@ This directory owns deterministic GitHub-first Decodex scripts.
 Current scripts:
 
 - `build_change_bundle.py`
+- `build_release_delta.py`
+- `backfill_release_range.py`
 - `run_codex_analysis.py`
 - `sync_latest_signals.py`
+- `sync_prerelease_signals.py`
 - `validate_change_bundle.py`
 - `render_signal_entry.py`
 - `validate_signal_entry.py`
 
-Current schema-only contracts:
+Current checked contracts:
 
 - `analysis_draft.schema.json`
+- `release_delta/v1` is validated by `contracts.py`
 - `upstream_impact.schema.json`
 - `social_post_draft.schema.json`
 
@@ -39,6 +43,14 @@ python3 scripts/github/render_signal_entry.py \
 
 python3 scripts/github/validate_signal_entry.py \
   site/src/content/signals/openai-codex-pr-15222.json
+```
+
+Prerelease-first flow:
+
+```bash
+python3 scripts/github/sync_prerelease_signals.py \
+  --repo openai/codex \
+  --max-prs 3
 ```
 
 These scripts stay deterministic on purpose. Local Codex analysis produces the
