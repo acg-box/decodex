@@ -33,6 +33,8 @@ generation.
 
 ## Release Reading Rules
 
+- Treat Codex prereleases as a primary Radar source because their release bodies may be
+  empty or title-only.
 - Treat release notes as discovery, not proof, when they are sparse.
 - Use GitHub compare data and PR mappings to explain what changed between stable and
   prerelease tags.
@@ -42,6 +44,26 @@ generation.
   rollout, platform-gated, or config-gated.
 - Do not write a release recap that only duplicates a release bot unless there is no
   deeper evidence-backed angle.
+
+## Codex Prerelease-First Path
+
+When the target is an OpenAI Codex prerelease:
+
+1. Refresh or read `release_delta/v1`.
+2. Select the top-level `stable_release` -> `prerelease` comparison unless the user
+   asks for a specific tag pair.
+3. Use `compare.pr_numbers` and `compare.commit_shas` as the discovery queue.
+4. Remove PRs that already have published `signal_entry/v1` coverage.
+5. Prioritize the remaining PRs by Radar triggers: app-server/protocol, plugins, MCP,
+   browser/Chrome, tool search, hooks, permissions, sandboxing, config, auth,
+   providers, and visible CLI/TUI behavior.
+6. Build PR-first bundles for the selected unpublished PRs and run
+   `codex-code-analysis` before `github-signal`.
+7. Refresh `release_delta/v1` after new signals are rendered so the homepage can map
+   prerelease deltas to the new tracked signals.
+
+Use `scripts/github/sync_prerelease_signals.py` for the default latest-prerelease
+automation path.
 
 ## Analysis Modes
 
@@ -53,6 +75,9 @@ Use exactly one primary mode:
 | `delta_explainer` | Compare commits map to existing signals or clear PRs. | Refresh existing `release_delta/v1` and summarize the evidence. |
 | `operator_impact` | Release changes app-server, plugins, browser, MCP, permissions, sandbox, hooks, config, auth, or providers. | `upstream_impact/v1` plus possible follow-up issue. |
 | `watch_note` | The release is interesting but evidence is incomplete. | Watch note with caveats. |
+
+For sparse Codex prereleases, prefer `delta_explainer` or `operator_impact` over
+`release_pulse`; the release version alone is rarely the useful story.
 
 ## Style Lessons
 
