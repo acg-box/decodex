@@ -18,6 +18,7 @@ const { totalSignals, tryPathCount, highImpactCount } = Astro.props;
 ></div>
 
 <script>
+  import * as THREE from "three";
   import type * as ThreeTypes from "three";
 
   type SymphonyRoot = HTMLElement & {
@@ -26,19 +27,12 @@ const { totalSignals, tryPathCount, highImpactCount } = Astro.props;
   type Disposable = {
     dispose: () => void;
   };
-  type ThreeModule = typeof import("three");
   type SceneObject = ThreeTypes.Object3D & {
     geometry?: ThreeTypes.BufferGeometry;
     material?: ThreeTypes.Material | ThreeTypes.Material[];
   };
 
   const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  let threePromise: Promise<ThreeModule> | null = null;
-
-  function loadThree() {
-    threePromise ??= import("three");
-    return threePromise;
-  }
 
   function disposeMaterial(material: ThreeTypes.Material | ThreeTypes.Material[]) {
     if (Array.isArray(material)) {
@@ -48,9 +42,8 @@ const { totalSignals, tryPathCount, highImpactCount } = Astro.props;
     material.dispose();
   }
 
-  async function initSymphonyScene(rootCandidate: Element) {
+  function initSymphonyScene(rootCandidate: Element) {
     if (!(rootCandidate instanceof HTMLElement)) return;
-    const THREE = await loadThree();
     const root = rootCandidate as SymphonyRoot;
     if (typeof root.__decodexSymphonyCleanup === "function") {
       root.__decodexSymphonyCleanup();
@@ -231,9 +224,7 @@ const { totalSignals, tryPathCount, highImpactCount } = Astro.props;
   }
 
   function bindSymphonyScenes() {
-    document.querySelectorAll("[data-symphony-scene]").forEach((root) => {
-      void initSymphonyScene(root);
-    });
+    document.querySelectorAll("[data-symphony-scene]").forEach(initSymphonyScene);
   }
 
   document.addEventListener("astro:page-load", bindSymphonyScenes);
