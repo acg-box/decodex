@@ -19,6 +19,8 @@ Inputs:
 Depends on:
 - [`local-github-signal-workflow.md`](./local-github-signal-workflow.md) for the
   GitHub signal path.
+- [`../../dev/skills/x-post-draft/SKILL.md`](../../dev/skills/x-post-draft/SKILL.md)
+  for the repo-local drafting method.
 - [`../decisions/radar-control-plane-publisher.md`](../decisions/radar-control-plane-publisher.md)
   for the Radar, Control Plane, and Publisher boundary.
 - [`../decisions/static-public-site.md`](../decisions/static-public-site.md) for the
@@ -60,6 +62,7 @@ for technical claims.
      vague for a useful reader takeaway.
 
 4. Create a checked-in draft.
+   - Use `dev/skills/x-post-draft/SKILL.md`.
    - Write `artifacts/social/x/<slug>.json`.
    - Use `schema = "social_post_draft/v1"`.
    - Keep `status = "draft"` until approval.

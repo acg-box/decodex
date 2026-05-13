@@ -22,7 +22,7 @@ should not be treated as repository source.
 | `scripts/config/` | Repository automation scripts for config-derived artifacts. |
 | `artifacts/github/` | Checked-in GitHub change bundles and editorial analysis drafts used by the public signal pipeline. |
 | `artifacts/social/` | Checked-in Publisher social post drafts and publication evidence. |
-| `dev/skills/` | Repository-development skill-like instructions that are not part of installable plugin distribution. |
+| `dev/skills/` | Repository-development skills for Radar upstream triage, code analysis, release analysis, GitHub signal drafting, and X post drafting. These are not part of installable plugin distribution. |
 | `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including manual CLI, automation, commit, land, and labels. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
@@ -74,10 +74,12 @@ Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
 
 ## GitHub signal tooling
 
-`scripts/github/` owns deterministic content scripts. It may call Codex for the
-editorial drafting step through the repo-local instructions at
-`dev/skills/github-signal/`, but that surface is not part of the installable Decodex
-plugin distribution. Generated GitHub bundles and analysis drafts live under
+`scripts/github/` owns deterministic content scripts. Its automated Codex step may
+apply the repo-local code-analysis and GitHub-signal instructions under `dev/skills/`
+to produce the existing `analysis_draft` JSON consumed by `render_signal_entry.py`.
+The broader upstream triage, release-analysis, and X-drafting skills are manual
+Radar/Publisher reasoning surfaces unless a later script explicitly wires them into a
+checked-in contract. Generated GitHub bundles and analysis drafts live under
 `artifacts/github/` and must stay explicit and checked into the repository.
 
 `artifacts/github/impact/` may hold `upstream_impact/v1` classifications when an

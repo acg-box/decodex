@@ -41,6 +41,8 @@ def build_prompt(bundle_path: Path, repo_root: Path) -> str:
     return "\n".join(
         [
             "Read and follow these repo-local instructions before drafting:",
+            "- dev/skills/README.md",
+            "- dev/skills/codex-code-analysis/SKILL.md",
             "- dev/skills/github-signal/SKILL.md",
             "- docs/spec/github-change-bundle.md",
             "- docs/spec/signal-entry.md",
@@ -49,6 +51,8 @@ def build_prompt(bundle_path: Path, repo_root: Path) -> str:
             f"Analyze the bundle at `{relative_bundle}`.",
             "",
             "Return exactly one JSON object matching the provided output schema.",
+            "Use the code-analysis skill as the in-session behavior-reading pass.",
+            "Do not invent a separate checked-in code-analysis artifact.",
             "Treat the pull request as the main narrative container and the commits/files as evidence.",
             "Do not summarize every commit independently.",
             "Keep the output publishable for Decodex: concise, user-facing, and evidence-backed.",
