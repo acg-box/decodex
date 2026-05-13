@@ -1,6 +1,8 @@
 #[test]
 fn control_plane_snapshot_lists_disabled_registered_projects() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let (temp_dir, config, _workflow) = temp_project_layout();
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
@@ -32,8 +34,12 @@ fn control_plane_snapshot_lists_disabled_registered_projects() {
 
 #[test]
 fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects() {
-	let (_active_temp_dir, active_config, _active_workflow) = temp_project_layout();
+	let (active_temp_dir, active_config, _active_workflow) = temp_project_layout();
 	let (_idle_temp_dir, idle_base_config, _idle_workflow) = temp_project_layout();
+	let _home_guard = TestEnvVarGuard::set(
+		"HOME",
+		active_temp_dir.path().to_str().expect("home should be utf-8"),
+	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue_with_sort_fields(
 		"issue-active",
