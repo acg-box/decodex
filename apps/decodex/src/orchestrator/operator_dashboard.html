@@ -6855,6 +6855,10 @@
 				return `${childBucketSharePercent(bucket, totalWall)}% · ${formatDuration(seconds)} / ${formatDuration(totalWall)}`;
 			}
 
+			function childBucketRenderKey(bucket) {
+				return `child-bucket:${bucket?.name || "unknown"}`;
+			}
+
 			function childDiagnosticBucketRank(bucket) {
 				const name = String(bucket?.name || "").toLowerCase();
 				if (name.includes("protocol")) {
@@ -6955,7 +6959,7 @@
 													const width = childBucketWidth(bucket, totalWall);
 
 													return `
-														<div class="child-bucket is-share" data-duration="wall-share">
+														<div class="child-bucket is-share" data-render-key="${escapeHtml(childBucketRenderKey(bucket))}" data-duration="wall-share">
 															<span class="child-bucket-name">${escapeHtml(humanizeToken(bucket.name))}</span>
 															<span class="child-bucket-bar" aria-hidden="true" style="--bucket-width: ${width}%"><span></span></span>
 															<span class="child-bucket-value">${escapeHtml(childBucketShareLabel(bucket, totalWall))}</span>
@@ -6982,7 +6986,7 @@
 													const signalSummary = childBucketDiagnosticSummary(bucket);
 
 													return `
-														<div class="${bucketClass}"${bucketState}>
+														<div class="${bucketClass}" data-render-key="${escapeHtml(childBucketRenderKey(bucket))}"${bucketState}>
 															<span class="child-bucket-name">${escapeHtml(humanizeToken(bucket.name))}</span>
 															<span class="child-bucket-signals" aria-label="${escapeHtml(signalSummary)}">
 																${renderChildBucketDiagnosticSignals(bucket)}
