@@ -1021,6 +1021,33 @@ code {
   margin: 0;
 }
 
+.release-delta__criteria-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.release-delta__criteria-item {
+  position: relative;
+  padding-left: 0.85rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.release-delta__criteria-item::before {
+  position: absolute;
+  top: 0.62em;
+  left: 0;
+  width: 0.26rem;
+  height: 0.26rem;
+  border-radius: 999px;
+  background: var(--muted-soft);
+  content: "";
+}
+
 .release-delta__state-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1621,8 +1648,8 @@ code {
     grid-template-columns: minmax(0, 1fr) minmax(18rem, 23rem);
     grid-template-areas:
       "logo utility"
-      "note status"
-      "social actions";
+      "note utility"
+      "social utility";
     align-items: start;
     column-gap: 2.25rem;
     row-gap: 0.65rem;
@@ -1675,8 +1702,8 @@ code {
   }
 
   .site-head__utility {
-    min-height: 3.22rem;
-    align-content: space-between;
+    min-height: 0;
+    align-content: start;
     justify-items: end;
   }
 

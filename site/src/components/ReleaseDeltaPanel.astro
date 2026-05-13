@@ -54,14 +54,14 @@ const tryPathCount = trackedSignals.filter(hasConcreteTryPath).length;
 
 <section class="release-delta" aria-label="Codex upstream radar snapshot">
   <div class="release-delta__control-row">
-    <p class="release-delta__panel-label">Latest checkpoint</p>
+    <p class="release-delta__panel-label">Latest upstream window</p>
     <span class="release-delta__window-label">
       <strong>{releaseLabel(activeStable, delta.tag_prefix)}</strong>
       <span aria-hidden="true">-&gt;</span>
       <strong>{releaseLabel(activePreview, delta.tag_prefix)}</strong>
     </span>
     <a class="release-delta__checkpoint-link signal-link" href={activeComparison.compare.url} target="_blank" rel="noreferrer">
-      Open GitHub compare
+      View upstream diff
     </a>
   </div>
   <div class="release-delta__comparison">
@@ -70,10 +70,10 @@ const tryPathCount = trackedSignals.filter(hasConcreteTryPath).length;
         <div class="release-delta__hero-copy">
           <p class="release-delta__eyebrow">Continuous radar</p>
           <h2 class="release-delta__title">
-            Codex upstream signal room
+            Codex changes worth trying
           </h2>
           <p class="release-delta__hero-subcopy">
-            Release tags are checkpoints. The feed is driven by commit and PR evidence that may affect Decodex or the public Codex workflow.
+            We read the upstream commit and PR trail, then publish only the changes that affect real Codex workflows: new capabilities, behavior shifts, migration risks, and concrete try paths.
           </p>
         </div>
       </div>
@@ -84,16 +84,13 @@ const tryPathCount = trackedSignals.filter(hasConcreteTryPath).length;
 
       <div class="release-delta__summary-rail release-delta__summary-rail--hero">
         <span class="release-delta__summary-item">
-          <strong>{activeComparison.compare.total_commits}</strong> commits in checkpoint
+          <strong>{publicHighlightSignals.length}</strong> picked highlights
         </span>
         <span class="release-delta__summary-item">
-          <strong>{trackedSignals.length}</strong> public signals
+          <strong>{tryPathCount}</strong> guided try paths
         </span>
         <span class="release-delta__summary-item">
-          <strong>{tryPathCount}</strong> try paths
-        </span>
-        <span class="release-delta__summary-item">
-          Last signal <strong>{formatPublishedAt(latestPublicSignalAt ?? latestWindowTrackedAt ?? activePreview.published_at)}</strong>
+          Updated <strong>{formatPublishedAt(latestPublicSignalAt ?? latestWindowTrackedAt ?? activePreview.published_at)}</strong>
         </span>
       </div>
     </div>
@@ -102,9 +99,9 @@ const tryPathCount = trackedSignals.filter(hasConcreteTryPath).length;
       <div class="release-delta__overview">
         <div class="release-delta__overview-head">
           <div>
-            <p class="release-delta__panel-label">Current signals</p>
+            <p class="release-delta__panel-label">Start here</p>
             <h3 class="release-delta__overview-title">
-              {publicHighlightSignals.length > 0 ? "Signals ready to try" : "No action-worthy signal yet"}
+              {publicHighlightSignals.length > 0 ? "Try these first" : "No action-worthy signal yet"}
             </h3>
           </div>
         </div>
@@ -157,24 +154,15 @@ const tryPathCount = trackedSignals.filter(hasConcreteTryPath).length;
           )
         }
       </div>
-      <aside class="release-delta__state" aria-label="Radar state">
-        <p class="release-delta__panel-label">Radar state</p>
-        <dl class="release-delta__state-list">
-          <div class="release-delta__state-row">
-            <dt>Evidence units</dt>
-            <dd>{activeComparison.compare.commit_shas.length}</dd>
-          </div>
-          <div class="release-delta__state-row">
-            <dt>Checkpoint signals</dt>
-            <dd>{featuredSignals.length}</dd>
-          </div>
-          <div class="release-delta__state-row">
-            <dt>Public feed</dt>
-            <dd>{trackedSignals.length}</dd>
-          </div>
-        </dl>
+      <aside class="release-delta__state" aria-label="Curation rules">
+        <p class="release-delta__panel-label">What makes the cut</p>
+        <ul class="release-delta__criteria-list">
+          <li class="release-delta__criteria-item">User-visible behavior, not every upstream commit.</li>
+          <li class="release-delta__criteria-item">A concrete try path or a clear watch state.</li>
+          <li class="release-delta__criteria-item">Source-backed evidence attached to the card.</li>
+        </ul>
         <p class="release-delta__state-copy">
-          Checkpoints summarize releases; the public feed stays on the commit and PR trail.
+          Release tags are context. The product is the curated signal feed.
         </p>
       </aside>
     </div>
