@@ -1,8 +1,10 @@
 ---
 import { getCollection } from "astro:content";
 import EmptyFeedState from "@/components/EmptyFeedState.astro";
+import AppcastDownloadWidget from "@/components/AppcastDownloadWidget.astro";
 import FilterBar from "@/components/FilterBar.astro";
 import ReleaseDeltaPanel from "@/components/ReleaseDeltaPanel.astro";
+import ResetStatusWidget from "@/components/ResetStatusWidget.astro";
 import SignalCard from "@/components/SignalCard.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
@@ -207,6 +209,14 @@ const filterRuntimeScript = `(function () {
         <div class="site-head__utility">
           <div class="site-head__theme">
             <ThemeToggle />
+          </div>
+
+          <div class="site-head__status">
+            <ResetStatusWidget variant="inline" />
+          </div>
+
+          <div class="site-head__actions">
+            <AppcastDownloadWidget />
           </div>
         </div>
 
