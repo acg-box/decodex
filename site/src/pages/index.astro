@@ -23,7 +23,6 @@ const rawFilter = Astro.url.searchParams.get("filter");
 const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
 const collectionEntries = await getCollection("signals");
 const releaseDeltaEntries = await getCollection("releaseDeltas");
-const recommendedConfigEntries = await getCollection("recommendedConfigs");
 const allSignals: SignalCardData[] = sortSignals(
   collectionEntries.map((entry) => ({
     id: entry.id,
@@ -34,10 +33,6 @@ const signals: SignalCardData[] = homepageSignals(allSignals);
 const releaseDelta: ReleaseDeltaData | null =
   releaseDeltaEntries
     .map((entry) => entry.data as ReleaseDeltaData)
-    .find((entry) => entry.repo === "openai/codex") ?? null;
-const recommendedConfig =
-  recommendedConfigEntries
-    .map((entry) => entry.data)
     .find((entry) => entry.repo === "openai/codex") ?? null;
 const hasPublishedSignals = signals.length > 0;
 const groupedSignals = groupSignalsByMonth(signals);
@@ -269,7 +264,7 @@ const filterRuntimeScript = `(function () {
     </header>
 
     {releaseDelta ? (
-      <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={signals} recommendedConfig={recommendedConfig} />
+      <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={signals} />
     ) : null}
 
     <section class="feed-toolbar" id="latest-signals">

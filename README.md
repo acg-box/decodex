@@ -142,7 +142,7 @@ The public site owns:
 
 - Codex signal cards
 - release-delta presentation
-- recommended config artifacts
+- continuous Radar status presentation
 - static assets and public page rendering
 
 The public site does not own:
