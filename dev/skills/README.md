@@ -25,9 +25,15 @@ follow-up work:
 Use only the skills needed for the current artifact. Do not create a social draft just
 because a signal exists.
 
-For OpenAI Codex prereleases, start with `codex-release-analysis` and the latest
-stable-to-prerelease compare instead of a generic recent-commit scan. Codex prerelease
-notes are often too sparse to explain what changed.
+Default posture: track every upstream Codex commit as a possible evidence unit. Resolve
+commits back to PRs when possible, decide whether the change matters to Decodex Control
+Plane or the wider Codex community, and only then promote important, useful, or
+deprecated behavior into a signal, upstream-impact artifact, follow-up issue, or X
+draft.
+
+For upstream releases and prereleases, use `codex-release-analysis` as a rollup over
+the accumulated commit/PR analysis. Codex prerelease notes are often too sparse to
+explain what changed by themselves.
 
 Only the existing checked-in contracts are durable artifacts today:
 `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`, `upstream_impact/v1`,

@@ -42,6 +42,7 @@ Use these as format patterns only:
 | Pattern | Good for | Decodex adaptation |
 | --- | --- | --- |
 | Release-bot bullet | Fast `release_pulse` posts. | Version or source headline, two or three evidence-backed bullets, source link. |
+| Release rollup | `release_rollup` posts after a release or prerelease. | Summarize what prior commit/PR analysis found: useful now, Control Plane impact, deprecations, and watch-only gaps. |
 | Human workflow read | `practical_explainer` and `operator_impact`. | Start with the concrete workflow change, then explain why it matters and what caveat remains. |
 | Watch note | Interesting but incomplete evidence. | Say what changed, why Radar is watching, and what evidence is still missing. |
 
@@ -50,13 +51,17 @@ Use these as format patterns only:
 Choose exactly one `mode` from `social_post_draft/v1`:
 
 - `release_pulse`: short release-aware summary with source link.
+- `release_rollup`: release or prerelease summary built from accumulated Radar
+  analysis.
 - `practical_explainer`: concrete user workflow and expected result.
 - `operator_impact`: Decodex Control Plane implication.
 - `thread`: multi-post explanation when one post hides evidence or caveats.
 - `watch_note`: cautious public note for incomplete evidence.
 
 `@decodexspace` should mostly use `practical_explainer` and `operator_impact`.
-Use `release_pulse` only when the release itself is the useful alert.
+Use `release_pulse` only when the release itself is the useful alert. Use
+`release_rollup` when the release or prerelease is best explained by historical
+commit/PR analysis rather than by upstream release notes.
 
 ## Claim Review
 
