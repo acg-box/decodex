@@ -62,14 +62,16 @@ Use exactly one `mode` value:
 | Value | Purpose |
 | --- | --- |
 | `release_pulse` | Short release-aware summary with a source link. |
+| `release_rollup` | Release or prerelease summary built from accumulated signal, upstream-impact, and commit/PR analysis. |
 | `practical_explainer` | Concrete user-facing explanation of how to try or reason about a feature. |
 | `operator_impact` | Decodex-specific explanation of app-server, plugin, browser, MCP, sandbox, config, or orchestration implications. |
 | `thread` | Multi-post explanation when one post would hide important evidence or caveats. |
 | `watch_note` | Cautious note for interesting changes that are not ready for a strong recommendation. |
 
 `release_pulse` should be the minority path for `@decodexspace`; the account should
-differ from release-only bots by preferring `practical_explainer` and `operator_impact`
-drafts when evidence supports them.
+differ from release-only bots by preferring `practical_explainer`,
+`operator_impact`, and evidence-backed `release_rollup` drafts when evidence supports
+them.
 
 ## Claim rules
 

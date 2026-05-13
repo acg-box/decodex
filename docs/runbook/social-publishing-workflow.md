@@ -57,7 +57,7 @@ for technical claims.
 
 3. Decide whether to draft a post.
    - Draft when the change has a clear `release_pulse`, `practical_explainer`,
-     `operator_impact`, or `watch_note` angle.
+     `release_rollup`, `operator_impact`, or `watch_note` angle.
    - Skip when the change is internal cleanup, too weakly sourced, too private, or too
      vague for a useful reader takeaway.
 
@@ -91,6 +91,14 @@ Use `release_pulse` when:
 - the release note itself is the story
 - the post is mainly fast awareness
 - the change does not yet justify a deeper Decodex angle
+
+Use `release_rollup` when:
+
+- upstream publishes a release or prerelease
+- Decodex already has commit/PR analysis, signals, or upstream-impact notes in that
+  release window
+- the post should summarize useful changes, Control Plane implications, deprecations,
+  and watch-only gaps without pretending upstream release notes contain that detail
 
 Use `practical_explainer` when:
 

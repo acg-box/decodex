@@ -33,8 +33,8 @@ generation.
 
 ## Release Reading Rules
 
-- Treat Codex prereleases as a primary Radar source because their release bodies may be
-  empty or title-only.
+- Treat release and prerelease tags as reporting checkpoints over the commit/PR stream,
+  not as a separate higher-priority intake lane.
 - Treat release notes as discovery, not proof, when they are sparse.
 - Use GitHub compare data and PR mappings to explain what changed between stable and
   prerelease tags.
@@ -42,28 +42,26 @@ generation.
   or PR evidence.
 - Do not imply a feature is broadly available when the source says alpha, beta,
   rollout, platform-gated, or config-gated.
-- Do not write a release recap that only duplicates a release bot unless there is no
-  deeper evidence-backed angle.
+- Do not write a release recap that only duplicates a release bot. Prefer a summary
+  built from accumulated Decodex signal, upstream-impact, and commit/PR analysis.
 
-## Codex Prerelease-First Path
+## Release Rollup Path
 
-When the target is an OpenAI Codex prerelease:
+When the target is an OpenAI Codex release or prerelease:
 
 1. Refresh or read `release_delta/v1`.
 2. Select the top-level `stable_release` -> `prerelease` comparison unless the user
    asks for a specific tag pair.
-3. Use `compare.pr_numbers` and `compare.commit_shas` as the discovery queue.
-4. Remove PRs that already have published `signal_entry/v1` coverage.
-5. Prioritize the remaining PRs by Radar triggers: app-server/protocol, plugins, MCP,
-   browser/Chrome, tool search, hooks, permissions, sandboxing, config, auth,
-   providers, and visible CLI/TUI behavior.
-6. Build PR-first bundles for the selected unpublished PRs and run
-   `codex-code-analysis` before `github-signal`.
+3. Start from existing `signal_entry/v1`, `upstream_impact/v1`, and recent
+   commit/PR analyses that match the compare range.
+4. Use `compare.pr_numbers` and `compare.commit_shas` to find gaps that still need
+   code analysis.
+5. Group findings by reader value: useful now, important for Decodex Control Plane,
+   deprecated/removed behavior, and watch-only changes.
+6. Draft release or prerelease X reporting only after the summary is grounded in those
+   historical analyses.
 7. Refresh `release_delta/v1` after new signals are rendered so the homepage can map
-   prerelease deltas to the new tracked signals.
-
-Use `scripts/github/sync_prerelease_signals.py` for the default latest-prerelease
-automation path.
+   the release window to tracked signals.
 
 ## Analysis Modes
 
@@ -76,8 +74,9 @@ Use exactly one primary mode:
 | `operator_impact` | Release changes app-server, plugins, browser, MCP, permissions, sandbox, hooks, config, auth, or providers. | `upstream_impact/v1` plus possible follow-up issue. |
 | `watch_note` | The release is interesting but evidence is incomplete. | Watch note with caveats. |
 
-For sparse Codex prereleases, prefer `delta_explainer` or `operator_impact` over
-`release_pulse`; the release version alone is rarely the useful story.
+For sparse Codex prereleases, prefer `delta_explainer`, `operator_impact`, or a
+source-backed release rollup over `release_pulse`; the release version alone is rarely
+the useful story.
 
 ## Style Lessons
 
@@ -98,7 +97,7 @@ Return:
 - user-facing takeaway
 - Control Plane impact, if any
 - Publisher recommendation: no post, `release_pulse`, `practical_explainer`,
-  `operator_impact`, or `watch_note`
+  `operator_impact`, `release_rollup`, or `watch_note`
 
 Promote durable conclusions into existing artifacts only: `upstream_impact/v1`,
 `analysis_draft` plus rendered `signal_entry/v1`, refreshed `release_delta/v1`, or
