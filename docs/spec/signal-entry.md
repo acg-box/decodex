@@ -89,3 +89,19 @@ Commit-only signals should include:
 - `why_it_matters` must describe user value, not internal implementation mechanics alone.
 - `confidence = "weak"` is allowed only when the entry clearly signals uncertainty.
 - `impact` and `confidence` must be rendered on the homepage card.
+
+## Homepage inclusion rule
+
+The signal collection may contain more entries than the homepage feed renders. The
+homepage feed includes entries that meet at least one of these conditions:
+
+- `impact` is `medium` or `high`
+- `kind` is `try_now`
+- `how_to_try` is present
+- `config_flags` is non-empty
+- the entry is a confirmed capability
+- the entry describes deprecated, removed, legacy, rollback, disabled, or migration-
+  relevant behavior
+
+Other low-impact entries may remain checked in for release rollups, source trace, or
+archive recovery, but they should not dominate the public feed.
