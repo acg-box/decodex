@@ -22,6 +22,8 @@ Repo-native agent orchestration and public Codex signal publishing.
 - Static Astro site that publishes GitHub-backed Codex change signals.
 - Deterministic GitHub signal pipeline for change bundles, release deltas, rendered
   signal entries, and content validation.
+- Publisher workflow for checked-in upstream impact classification and reviewable X
+  drafts for `@decodexspace`.
 - Installable Decodex plugin with reusable agent-facing skills for manual CLI,
   automation, commit, land, and labels.
 - Repository documentation split by question type into spec, runbook, reference, and
@@ -55,6 +57,7 @@ runtime.
 - `scripts/github/` owns deterministic GitHub bundle, release-delta, render, and
   validation scripts.
 - `artifacts/github/` owns checked-in GitHub bundles and editorial analysis drafts.
+- `artifacts/social/` owns checked-in Publisher social draft artifacts.
 - `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
   skills.
 - `dev/skills/` owns repository-development skill-like instructions that are not
@@ -155,9 +158,14 @@ The GitHub-first public signal path stays deterministic and reviewable:
   instructions. It is not part of the installable Decodex plugin distribution.
 - `scripts/github/sync_latest_signals.py` discovers recent merged PRs and refreshes
   content artifacts.
+- `docs/spec/upstream-impact.md` records how upstream Codex changes are classified for
+  public signals and Control Plane follow-up work.
 - `scripts/github/render_signal_entry.py` renders reviewed analysis drafts into site
   content.
 - `scripts/github/validate_signal_entry.py` validates the published signal collection.
+- `docs/spec/social-post-draft.md` and
+  `docs/runbook/social-publishing-workflow.md` govern optional checked-in X drafts
+  before external publication.
 - `.github/workflows/refresh-github-signals.yml` refreshes GitHub-backed signals every
   hour from a trusted runner.
 - `.github/workflows/deploy-pages.yml` publishes the Astro site to GitHub Pages on
