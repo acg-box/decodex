@@ -37,7 +37,20 @@ const stableOptions = delta.release_options.stable;
 const previewOptions = delta.release_options.preview;
 const stableByTag = new Map(stableOptions.map((release) => [release.tag_name, release]));
 const previewByTag = new Map(previewOptions.map((release) => [release.tag_name, release]));
-const activeComparison = defaultComparison(delta);
+const latestComparison = delta.comparisons.find(
+  (comparison) =>
+    comparison.stable_tag_name === delta.stable_release.tag_name &&
+    comparison.prerelease_tag_name === delta.prerelease.tag_name,
+);
+const latestComparisonTrackedCount = latestComparison?.tracked_signal_slugs.length ?? 0;
+const activeComparison =
+  (latestComparison &&
+  trackedSignalsForSlugs(latestComparison.tracked_signal_slugs, trackedSignals).length > 0
+    ? latestComparison
+    : delta.comparisons.find(
+        (comparison) =>
+          trackedSignalsForSlugs(comparison.tracked_signal_slugs, trackedSignals).length > 0,
+      )) ?? defaultComparison(delta);
 
 function hasConcreteTryPath(signal: SignalCardData): boolean {
   return Boolean(signal.how_to_try && signal.expected_effect);
@@ -129,6 +142,9 @@ const comparisonEntries = delta.comparisons
       if (!latest || signal.published_at > latest) return signal.published_at;
       return latest;
     }, null);
+    const isLatestPair =
+      comparison.stable_tag_name === delta.stable_release.tag_name &&
+      comparison.prerelease_tag_name === delta.prerelease.tag_name;
     return {
       ...comparison,
       stable,
@@ -136,6 +152,7 @@ const comparisonEntries = delta.comparisons
       featuredSignals,
       highlightSignals,
       latestTrackedAt,
+      isLatestPair,
       key: comparisonKey(comparison.stable_tag_name, comparison.prerelease_tag_name),
     };
   })
@@ -209,8 +226,13 @@ const comparisonKeysByStable = Object.fromEntries(
             <strong>{entry.compare.total_commits}</strong> commits ahead
           </span>
           <span class="release-delta__summary-item">
-            <strong>{entry.tracked_signal_slugs.length}</strong> tracked signals
+            <strong>{entry.featuredSignals.length}</strong> curated signals
           </span>
+          {!entry.isLatestPair ? (
+            <span class="release-delta__summary-item">
+              Latest pair <strong>{latestComparisonTrackedCount}</strong> signals
+            </span>
+          ) : null}
           <span class="release-delta__summary-item">
             Last updated <strong>{formatPublishedAt(entry.latestTrackedAt ?? entry.preview.published_at)}</strong>
           </span>
@@ -272,7 +294,7 @@ const comparisonKeysByStable = Object.fromEntries(
               </ol>
             ) : (
               <p class="release-delta__empty">
-                No published signals in this version pair currently clear the highlight bar.
+                No curated public signals in this version pair currently clear the highlight bar.
               </p>
             )
           }

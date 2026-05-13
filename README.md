@@ -73,6 +73,10 @@ Runtime authority stays in `apps/decodex/src/`, the registered project contracts
 Public site authority stays in `site/`, `scripts/github/`, `artifacts/github/`, and
 the site/content specs.
 
+Historical Radar trace is local by default. `scripts/github/sync_latest_signals.py`
+writes `.decodex/radar.sqlite3` so every inspected upstream commit can be tracked
+without publishing every low-level or skipped item to the static site or Git history.
+
 ## Runtime platform support
 
 - The Decodex runtime contract is Unix-only: macOS and Linux.

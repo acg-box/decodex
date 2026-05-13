@@ -64,6 +64,8 @@ Then keep the body explicit:
   by the static site.
 - [`release-delta.md`](./release-delta.md) defines the stable-versus-prerelease summary
   artifact used by the homepage release-delta module.
+- [`radar-ledger.md`](./radar-ledger.md) defines the local SQLite ledger that keeps
+  every observed upstream Codex commit traceable without storing all raw history in Git.
 - [`radar-artifact-retention.md`](./radar-artifact-retention.md) defines the 28-day Git
   hot window for raw Radar artifacts, the warm curated artifacts that stay in Git, and
   the GitHub Release archive manifest contract.

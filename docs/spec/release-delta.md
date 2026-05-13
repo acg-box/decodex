@@ -147,3 +147,9 @@ in a denser visual style, but it should not silently truncate the list to only a
 small fixed subset.
 
 The release-delta module must remain subordinate to the overall page hierarchy. It may summarize the delta, but it must not replace the main signal feed.
+
+If the latest stable-to-prerelease pair has no matching public signals yet, the
+homepage may choose a signal-bearing comparison as the initial visible panel. The latest
+pair must remain available in the comparator options, and its tracked-signal count must
+not be inflated to make the latest pair look analyzed when no matching signal evidence
+exists.
