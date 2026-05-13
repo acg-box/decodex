@@ -114,7 +114,7 @@
         {
           "id": "E9",
           "kind": "observation",
-          "summary": "The current automation path discovers recent merged PRs with title scoring, builds a GitHub bundle, runs Codex to produce an analysis_draft JSON, renders a signal_entry/v1, validates signal entries, and refreshes release_delta/v1.",
+          "summary": "The current automation path discovers recent upstream commits, resolves them back to PRs when possible, builds a GitHub bundle, runs Codex to produce an analysis_draft JSON, renders a signal_entry/v1, validates signal entries, and refreshes release_delta/v1.",
           "source_family": "decodex_repo",
           "source_path": "scripts/github/sync_latest_signals.py; scripts/github/run_codex_analysis.py; scripts/github/render_signal_entry.py"
         },

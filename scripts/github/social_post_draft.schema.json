@@ -34,7 +34,14 @@
     },
     "mode": {
       "type": "string",
-      "enum": ["release_pulse", "practical_explainer", "operator_impact", "thread", "watch_note"]
+      "enum": [
+        "release_pulse",
+        "release_rollup",
+        "practical_explainer",
+        "operator_impact",
+        "thread",
+        "watch_note"
+      ]
     },
     "status": {
       "type": "string",

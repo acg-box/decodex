@@ -28,12 +28,10 @@ Outputs:
 
 ## Workflow
 
-1. For OpenAI Codex prereleases, start from the prerelease-first path because upstream
-   prerelease notes are often sparse: refresh `release_delta/v1`, compare the latest
-   stable tag to the latest prerelease tag, and use unpublished compare PRs as the
-   candidate queue.
-2. Triage other upstream Codex activity with `dev/skills/codex-upstream-triage/` when
-   the candidate is not already chosen by automation or by the operator.
+1. Track upstream Codex commits continuously. Treat each commit as a candidate to
+   understand, then resolve it back to a PR when possible.
+2. Triage upstream activity with `dev/skills/codex-upstream-triage/` when the
+   candidate is not already chosen by automation or by the operator.
 3. Build a normalized GitHub change bundle under `artifacts/github/bundles/` for
    selected candidates.
 4. Analyze source behavior with `dev/skills/codex-code-analysis/` as an in-session
@@ -45,11 +43,14 @@ Outputs:
 7. Render the resulting signal entry into `site/src/content/signals/`.
 8. Validate the signal entry shape and collection consistency.
 9. Classify upstream impact when the change may affect Control Plane or Publisher.
-10. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
+10. Regenerate the release-delta artifact so the homepage compares release windows
+    using the updated signal set.
 11. Draft optional social publishing content only through
    [`social-publishing-workflow.md`](./social-publishing-workflow.md).
-12. Review the rendered content manually in the homepage feed.
-13. Push the content update and let CI build and deploy the static site.
+12. When upstream publishes a release or prerelease, use `codex-release-analysis` to
+    roll up the accumulated commit/PR analysis into a release summary or X draft.
+13. Review the rendered content manually in the homepage feed.
+14. Push the content update and let CI build and deploy the static site.
 
 ## Deterministic commands
 
@@ -97,25 +98,20 @@ python3 scripts/github/build_release_delta.py \
   --out site/src/content/release-deltas/openai-codex-latest.json
 ```
 
-Sync unpublished signals from the latest prerelease compare:
+Preview unpublished PRs from a selected release compare range without generating
+content:
 
 ```bash
-python3 scripts/github/sync_prerelease_signals.py \
+python3 scripts/github/backfill_release_range.py \
   --repo openai/codex \
-  --max-prs 3
-```
-
-Preview the latest prerelease queue without generating content:
-
-```bash
-python3 scripts/github/sync_prerelease_signals.py \
-  --repo openai/codex \
+  --stable-tag rust-v0.130.0 \
+  --preview-tag rust-v0.131.0-alpha.9 \
   --dry-run
 ```
 
-`sync_prerelease_signals.py --dry-run` refreshes the prerelease compare into a
-temporary release-delta file, so it does not mutate checked-in content while listing
-the queue.
+Use release-range backfill to fill gaps in the accumulated commit/PR analysis before a
+release or prerelease summary. It should supplement continuous commit tracking, not
+replace it.
 
 The repository already includes a real sample for this flow:
 
@@ -133,13 +129,9 @@ plugin. Today only `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1
 `upstream_impact/v1`, `release_delta/v1`, and `social_post_draft/v1` are durable
 content contracts for this workflow.
 
-Automated hourly sync entrypoint:
+Automated sync entrypoint:
 
 - `scripts/github/sync_latest_signals.py`
-
-Prerelease-first sync entrypoint:
-
-- `scripts/github/sync_prerelease_signals.py`
 
 ## Editorial gate
 
@@ -157,10 +149,11 @@ Skip or defer entries for:
 
 For the release-delta artifact:
 
-- treat Codex prereleases as a high-value source even when release notes are empty
 - include only signals whose source commit SHAs appear in the stable-versus-prerelease compare set
 - prefer highlighting the smaller tracked subset over trying to summarize every internal commit in the compare
 - do not treat prerelease notes alone as sufficient editorial evidence when the release body is empty
+- use release and prerelease publication time as a summary checkpoint over accumulated
+  commit/PR analysis, not as the primary source of truth
 
 For upstream-impact and social-draft artifacts:
 
@@ -173,8 +166,9 @@ For upstream-impact and social-draft artifacts:
 The current Decodex boundary is:
 
 - local Codex run: manual editorial review, batch backfills, and prompt iteration
-- deterministic scripts: bundle fetch, Codex analysis execution, render, and validation
-- trusted CI runner: hourly refresh of recent merged PRs plus normal site validation and commit/push of changed content
+- deterministic scripts: commit/PR discovery, bundle fetch, Codex analysis execution,
+  render, and validation
+- trusted CI runner: refresh of recent upstream commits plus normal site validation and commit/push of changed content
 
 The hourly GitHub Actions path assumes:
 
