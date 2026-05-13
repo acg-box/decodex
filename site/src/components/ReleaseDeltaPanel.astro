@@ -43,14 +43,7 @@ const latestComparison = delta.comparisons.find(
     comparison.prerelease_tag_name === delta.prerelease.tag_name,
 );
 const latestComparisonTrackedCount = latestComparison?.tracked_signal_slugs.length ?? 0;
-const activeComparison =
-  (latestComparison &&
-  trackedSignalsForSlugs(latestComparison.tracked_signal_slugs, trackedSignals).length > 0
-    ? latestComparison
-    : delta.comparisons.find(
-        (comparison) =>
-          trackedSignalsForSlugs(comparison.tracked_signal_slugs, trackedSignals).length > 0,
-      )) ?? defaultComparison(delta);
+const activeComparison = latestComparison ?? defaultComparison(delta);
 
 function hasConcreteTryPath(signal: SignalCardData): boolean {
   return Boolean(signal.how_to_try && signal.expected_effect);
