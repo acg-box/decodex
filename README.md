@@ -59,6 +59,8 @@ runtime.
 - `scripts/github/` owns deterministic GitHub bundle, release-delta, render, and
   validation scripts.
 - `artifacts/github/` owns checked-in GitHub bundles and editorial analysis drafts.
+- `artifacts/archive/` owns checked-in recovery manifests for cold Radar batches stored
+  as GitHub Release assets.
 - `artifacts/social/` owns checked-in Publisher social draft artifacts.
 - `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
   skills.

@@ -72,3 +72,8 @@ Repo-local skills under `dev/skills/` are reasoning instructions for the Codex
 analysis step and for manual Radar/Publisher work. They do not introduce extra
 intermediate artifact schemas unless the conclusion is promoted into one of the
 checked-in contracts listed above.
+
+Raw bundles and analysis drafts are retained in Git for a 28-day hot window. Archive
+older raw batches as dedicated `radar-archive-*` GitHub Release assets and commit only
+the recovery manifest under `artifacts/archive/index/`. See
+`docs/spec/radar-artifact-retention.md` and `docs/runbook/radar-artifact-archive.md`.
