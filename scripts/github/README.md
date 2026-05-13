@@ -45,3 +45,8 @@ These scripts stay deterministic on purpose. Local Codex analysis produces the
 editorial draft JSON consumed by `render_signal_entry.py`. Trusted automation may
 invoke the Codex analysis step as long as `auth.json` is injected into
 `CODEX_HOME` and no credentials are logged or persisted into the repo.
+
+Repo-local skills under `dev/skills/` are reasoning instructions for the Codex
+analysis step and for manual Radar/Publisher work. They do not introduce extra
+intermediate artifact schemas unless the conclusion is promoted into one of the
+checked-in contracts listed above.

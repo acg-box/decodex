@@ -1,0 +1,243 @@
+{
+  "schema": "research-run/2",
+  "run_id": "2026-05-13_codex-radar-skill-split",
+  "question": "How should Decodex read upstream Codex code, latest commits, releases, and public posting patterns so Radar output can improve Control Plane and Publisher work without overclaiming?",
+  "success_criteria": [
+    "Separate fast upstream triage from code-aware analysis and final signal drafting.",
+    "Preserve current deterministic artifact boundaries for GitHub bundles, analysis drafts, rendered signals, upstream-impact classifications, release deltas, and social drafts.",
+    "Use X account observations as style benchmarks only, not technical evidence.",
+    "End with a skill split that can be used manually now and can be wired into automation incrementally."
+  ],
+  "constraints": [
+    "Do not make X posts or operate an X composer from the research pass.",
+    "Do not introduce new durable intermediate artifact schemas unless validators and gates are added in the same change.",
+    "Do not imply sparse upstream release bodies prove product behavior.",
+    "Keep installable Decodex plugin skills separate from repo-local development skills under dev/skills/."
+  ],
+  "stop_rule": "Stop once the skill routing decision is clear enough to update repo-local skills, docs, and the current Codex analysis prompt without changing the social publication approval boundary.",
+  "primary_hypothesis": "Decodex should split Radar work into repo-local reasoning skills for upstream triage, code analysis, release analysis, and X drafting, while keeping github-signal as the final analysis_draft authoring step and avoiding new intermediate artifacts.",
+  "rival_hypotheses": [
+    "Keep one large github-signal skill for the whole workflow.",
+    "Create first-class checked-in triage, code-analysis, and release-analysis artifacts immediately.",
+    "Treat release posts and X posts as sufficient source material for public Decodex claims."
+  ],
+  "falsifiers": [
+    "If the existing automation already consumes separate triage, code-analysis, and release-analysis artifacts, the manual-only split would understate current behavior.",
+    "If X style observations can produce a valid social_post_draft/v1 without GitHub, changelog, signal, or upstream-impact evidence, the evidence boundary would be too strict.",
+    "If sparse release bodies contain enough detail to support confirmed claims, the compare-first release rule would be too conservative."
+  ],
+  "coverage": {
+    "mode": "standard",
+    "min_source_families": 0
+  },
+  "continuation": {
+    "mode": "manual_if_not_decision_ready",
+    "attempt": 1,
+    "max_attempts": 1,
+    "session_id": "2026-05-13_codex-radar-skill-split"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "probe_completed",
+      "remaining_option_count": 3,
+      "independent_option_questions": [
+        "Should analysis be one skill or a small staged set of repo-local skills?",
+        "Should intermediate triage and code-analysis outputs become durable artifacts now?",
+        "How should public X posting style benchmarks influence Decodex output without becoming source evidence?"
+      ],
+      "external_slices": [
+        "Latest openai/codex GitHub commits and release metadata.",
+        "Public X account posting patterns for @Codex_Changelog, @LLMJunky, and @decodexspace."
+      ]
+    },
+    {
+      "seq": 2,
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E1",
+          "kind": "observation",
+          "summary": "The latest upstream Codex commits observed on 2026-05-13 included tool-search handler encapsulation, app-server websocket listener restoration with an auth guard, plugin version/share gating, hook requirement changes, provider routing, and cleanup of an SSE fixture hook.",
+          "source_family": "github_api",
+          "source_locator": "https://api.github.com/repos/openai/codex/commits?per_page=8"
+        },
+        {
+          "id": "E2",
+          "kind": "observation",
+          "summary": "Commit 51bfb5f3b115 restored an app-server websocket listener with an auth guard and touched app-server transport/auth code, which is relevant to Decodex Control Plane integration.",
+          "source_family": "github_api",
+          "source_locator": "https://github.com/openai/codex/commit/51bfb5f3b115"
+        },
+        {
+          "id": "E3",
+          "kind": "observation",
+          "summary": "Commit d1430fd61e4a exposed plugin versions and gated plugin sharing, touching app-server protocol schemas and plugin summary/share surfaces.",
+          "source_family": "github_api",
+          "source_locator": "https://github.com/openai/codex/commit/d1430fd61e4a"
+        },
+        {
+          "id": "E4",
+          "kind": "observation",
+          "summary": "Commit 104fc1495646 encapsulated tool-search entries in handlers and touched tool-search handler and registry code, a likely Radar trigger but still requiring code-path analysis before publication.",
+          "source_family": "github_api",
+          "source_locator": "https://github.com/openai/codex/commit/104fc1495646"
+        },
+        {
+          "id": "E5",
+          "kind": "observation",
+          "summary": "Recent rust-v0.131.0 alpha GitHub release bodies were title-like and sparse, so release metadata alone is insufficient evidence for confirmed feature claims.",
+          "source_family": "github_release_api",
+          "source_locator": "https://api.github.com/repos/openai/codex/releases"
+        },
+        {
+          "id": "E6",
+          "kind": "observation",
+          "summary": "@Codex_Changelog uses fast automated release-bullet posts: version headline, a few feature bullets, and source links. This is useful for release_pulse formatting but not enough for deeper Decodex claims.",
+          "source_family": "public_x_observation",
+          "source_locator": "https://x.com/Codex_Changelog"
+        },
+        {
+          "id": "E7",
+          "kind": "observation",
+          "summary": "@LLMJunky posts more practical Codex workflow analysis, focusing on what a user can try, why it matters in real usage, and where the limitation remains.",
+          "source_family": "public_x_observation",
+          "source_locator": "https://x.com/LLMJunky"
+        },
+        {
+          "id": "E8",
+          "kind": "observation",
+          "summary": "@decodexspace had no observed posts in the public page pass, so Decodex can define its own evidence-backed style rather than preserving existing account conventions.",
+          "source_family": "public_x_observation",
+          "source_locator": "https://x.com/decodexspace"
+        },
+        {
+          "id": "E9",
+          "kind": "observation",
+          "summary": "The current automation path discovers recent merged PRs with title scoring, builds a GitHub bundle, runs Codex to produce an analysis_draft JSON, renders a signal_entry/v1, validates signal entries, and refreshes release_delta/v1.",
+          "source_family": "decodex_repo",
+          "source_path": "scripts/github/sync_latest_signals.py; scripts/github/run_codex_analysis.py; scripts/github/render_signal_entry.py"
+        },
+        {
+          "id": "E10",
+          "kind": "observation",
+          "summary": "The durable content contracts currently present for this workflow are GitHub bundles, analysis drafts, rendered signal entries, upstream-impact classifications, release deltas, and social post drafts; no triage-note or code-analysis-note schema is present.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/github-change-bundle.md; scripts/github/analysis_draft.schema.json; docs/spec/signal-entry.md; docs/spec/upstream-impact.md; docs/spec/release-delta.md; docs/spec/social-post-draft.md"
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T1",
+          "summary": "Splitting the workflow into staged repo-local skills improves selectivity and lets Radar distinguish commit triage, behavior reading, release interpretation, final signal drafting, and public post drafting.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E2",
+            "E3",
+            "E4",
+            "E9"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T2",
+          "summary": "Creating durable triage or code-analysis artifacts now would add contract and gate obligations that the current scripts do not satisfy.",
+          "supporting_evidence_ids": [
+            "E9",
+            "E10"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T3",
+          "summary": "Release analysis should compare sparse release metadata against commits, PRs, existing signals, and release_delta/v1 rather than duplicating release-bot summaries.",
+          "supporting_evidence_ids": [
+            "E5",
+            "E6",
+            "E9"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T4",
+          "summary": "X observations are useful for cadence, structure, and tone, but all Decodex technical claims still need GitHub, changelog, signal, or upstream-impact evidence.",
+          "supporting_evidence_ids": [
+            "E6",
+            "E7",
+            "E8",
+            "E10"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ]
+    },
+    {
+      "seq": 4,
+      "type": "judgment_candidate_created",
+      "judgment_payload": {
+        "judgment_type": "recommend",
+        "preferred_option": "split-repo-local-radar-skills-with-existing-artifact-boundaries",
+        "rejected_options": [
+          "single-large-github-signal-skill",
+          "new-durable-intermediate-artifacts-now",
+          "social-or-release-posts-as-technical-source-evidence"
+        ],
+        "decision_claim": "Split Decodex Radar into manual reasoning skills for upstream triage, code analysis, release analysis, and X drafting; keep durable outputs limited to existing checked-in contracts; wire only in-session code-analysis into run_codex_analysis prompt for current automation.",
+        "key_evidence_ids": [
+          "E1",
+          "E5",
+          "E6",
+          "E7",
+          "E9",
+          "E10"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T3",
+          "T4"
+        ]
+      },
+      "judgment_hash": "sha256:a100c2d386d45be8039eaa5aba398de72287d58e95258cef87df6fb224179d3a"
+    },
+    {
+      "seq": 5,
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "target_judgment_hash": "sha256:a100c2d386d45be8039eaa5aba398de72287d58e95258cef87df6fb224179d3a",
+      "summary": "The split is useful only if it preserves artifact boundaries, avoids undocumented intermediate outputs, does not imply current automation already orchestrates all new skills, and blocks style-only social drafting.",
+      "objections": [
+        {
+          "id": "OBJ-001-artifact-seam-drift",
+          "summary": "Keep github-signal scoped to analysis_draft authoring, not direct signal_entry/v1 production."
+        },
+        {
+          "id": "OBJ-002-missing-intermediate-artifact-contracts",
+          "summary": "Either keep triage/code/release notes non-durable or add paths, schemas, validators, and gates."
+        },
+        {
+          "id": "OBJ-003-automation-doc-drift",
+          "summary": "Docs must not imply current scripts already orchestrate all new skills unless scripts are wired."
+        },
+        {
+          "id": "OBJ-004-style-only-social-bypass",
+          "summary": "A style-only X observation must not lead directly to a social_post_draft/v1."
+        },
+        {
+          "id": "OBJ-005-release-analysis-overlap",
+          "summary": "Release analysis must feed existing upstream_impact, signal, release_delta, or social draft contracts instead of creating duplicate judgment."
+        }
+      ]
+    },
+    {
+      "seq": 6,
+      "type": "finalized_decision_ready",
+      "judgment_hash": "sha256:a100c2d386d45be8039eaa5aba398de72287d58e95258cef87df6fb224179d3a",
+      "summary": "Decision-ready: split the repo-local Radar skills, keep triage/code/release outputs as non-durable reasoning passes, wire in-session code-analysis into the current analysis_draft prompt, and require source-backed evidence before X drafting."
+    }
+  ]
+}

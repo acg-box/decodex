@@ -43,8 +43,9 @@ The split below is by question type, not by human-versus-agent audience.
 - Need the raw machine-authored research run artifacts used by shipped research tooling
   -> `docs/research/`
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`
-- Need the repo-local GitHub signal editorial workflow -> `dev/skills/github-signal/`
-  plus `docs/runbook/local-github-signal-workflow.md`
+- Need repo-local Radar skills for upstream Codex triage, code analysis, release
+  analysis, GitHub signal drafting, or X post drafting -> `dev/skills/` plus
+  `docs/runbook/local-github-signal-workflow.md`
 - Need upstream Codex impact classification or social post draft contracts ->
   `docs/spec/upstream-impact.md` and `docs/spec/social-post-draft.md`
 - Need the `@decodexspace` social publishing procedure ->
