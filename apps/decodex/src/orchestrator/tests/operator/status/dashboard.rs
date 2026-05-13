@@ -276,6 +276,7 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("childAgentLargeOutputWarnings"));
 	assert!(response.contains("childAgentLargeOutputSummary"));
 	assert!(response.contains("childBucketShareLabel"));
+	assert!(response.contains("function childBucketRenderKey(bucket)"));
 	assert!(response.contains("childBucketWidth"));
 	assert!(response.contains("function renderMetricText(text)"));
 	assert!(response.contains("function setMetricText(node, text)"));
@@ -289,6 +290,12 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("child-bucket is-event-only"));
 	assert!(response.contains("child-bucket-signals"));
 	assert!(response.contains("child-bucket-signal"));
+	assert_eq!(
+		response
+			.matches("data-render-key=\"${escapeHtml(childBucketRenderKey(bucket))}\"")
+			.count(),
+		2
+	);
 	assert!(response.contains("data-duration=\"wall-share\""));
 	assert!(response.contains("data-duration=\"event-diagnostics\""));
 	assert!(response.contains("data-duration=\"diagnostic\""));
