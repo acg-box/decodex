@@ -264,10 +264,14 @@ fn handle_operator_state_endpoint_connection(
 				.lock()
 				.map_err(|error| eyre::eyre!("Operator state snapshot lock poisoned: {error}"))?
 				.clone();
+			let snapshot_json = published_snapshot
+				.snapshot_json
+				.as_ref()
+				.map(|snapshot_json| snapshot_json_with_live_account_control(snapshot_json));
 
 			build_operator_state_http_response_for_route(
 				route,
-				published_snapshot.snapshot_json.as_deref(),
+				snapshot_json.as_deref(),
 				published_snapshot.last_publish_unix_epoch,
 				OperatorSnapshotReadiness::SnapshotUnavailable,
 			)
@@ -280,6 +284,34 @@ fn handle_operator_state_endpoint_connection(
 	stream.write_all(&response)?;
 
 	Ok(())
+}
+
+fn snapshot_json_with_live_account_control(snapshot_json: &[u8]) -> Vec<u8> {
+	let Ok(mut snapshot) = serde_json::from_slice::<Value>(snapshot_json) else {
+		return snapshot_json.to_vec();
+	};
+	let Some(snapshot_object) = snapshot.as_object_mut() else {
+		return snapshot_json.to_vec();
+	};
+
+	if !snapshot_object.contains_key("account_control") {
+		return snapshot_json.to_vec();
+	}
+
+	let account_control = global_codex_account_control_status();
+
+	snapshot_object.insert(
+		String::from("account_control"),
+		json!({
+			"mode": account_control.mode,
+			"account_selector": account_control.account_selector,
+		}),
+	);
+
+	match serde_json::to_vec(&snapshot) {
+		Ok(output) => output,
+		Err(_) => snapshot_json.to_vec(),
+	}
 }
 
 fn handle_operator_dashboard_websocket_connection(
