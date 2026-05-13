@@ -1,0 +1,1142 @@
+{
+  "archive_asset": {
+    "name": "decodex-radar-archive-2026-05-13-pre-2026-04-13.tar.zst",
+    "sha256": "95c0b0067e727ff4c55d242e82b439c8cbef43cfd2c0e5c2660b5d2e261567e3",
+    "size_bytes": 226256
+  },
+  "archive_id": "2026-05-13-pre-2026-04-13",
+  "checksum_asset": {
+    "name": "SHA256SUMS",
+    "sha256": "e5b1781b2adf874b453c069385319080a6f3daea909eff1a6ea715096c2eadc9"
+  },
+  "created_at": "2026-05-13T07:52:56Z",
+  "cutoff_published_before": "2026-04-13T00:00:00Z",
+  "files": [
+    {
+      "evidence_date": "2026-03-19T19:26:37Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-12334.json",
+      "sha256": "1bad183656f2c175b09aeb827e2bc2853d174b401dd45ae0c5d44dbd98240472",
+      "size_bytes": 23416
+    },
+    {
+      "evidence_date": "2026-03-19T19:26:37Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-12334.analysis.json",
+      "sha256": "b8c096f2cc587a8fbb65a7aed0c01a1d44e5106686644cc329da20e80db85967",
+      "size_bytes": 2153
+    },
+    {
+      "evidence_date": "2026-03-18T22:44:31Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-13494.json",
+      "sha256": "1a2a1ee1543a8ab4cb4909ec433f9571e7a8d2cc547f97d819fe1997d42d90bb",
+      "size_bytes": 12573
+    },
+    {
+      "evidence_date": "2026-03-18T22:44:31Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-13494.analysis.json",
+      "sha256": "d1fea212e9fcd4401493c1ca54bc74e7d81a710a488fd98d5e598e3e33c633c9",
+      "size_bytes": 2007
+    },
+    {
+      "evidence_date": "2026-03-19T03:41:07Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-14632.json",
+      "sha256": "2a3c81d178ec88e2b375be1ded8dc9733fe3420a5082f91b7d522e1cfd12b3bc",
+      "size_bytes": 10856
+    },
+    {
+      "evidence_date": "2026-03-19T03:41:07Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-14632.analysis.json",
+      "sha256": "d33d25358563eebb25cf3b4f012d0bb5fe9c509f611f44d7e541a3a0a88d6b07",
+      "size_bytes": 1804
+    },
+    {
+      "evidence_date": "2026-03-25T19:35:57Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-14847.json",
+      "sha256": "f37682357e5899989c37e8bdb94330eff423cbeb609813ef1ec1732abfb77b50",
+      "size_bytes": 18549
+    },
+    {
+      "evidence_date": "2026-03-25T19:35:57Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-14847.analysis.json",
+      "sha256": "8f6c452ebf71504e2ea45e9459de902de58d9938d06ddbc3aa021fc865973da0",
+      "size_bytes": 2312
+    },
+    {
+      "evidence_date": "2026-03-19T17:53:09Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-14867.json",
+      "sha256": "ff446056e958b1b8b18191562e87040944953cde3822589dc30a4a8d6cdc3449",
+      "size_bytes": 51307
+    },
+    {
+      "evidence_date": "2026-03-19T17:53:09Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-14867.analysis.json",
+      "sha256": "a90a77610b783457d2cb2e05a35b00edc51619f885d8d082d23c66eaeaae48cb",
+      "size_bytes": 1905
+    },
+    {
+      "evidence_date": "2026-03-18T22:45:17Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-14888.json",
+      "sha256": "c0acc0718264a6afc76c0416669b817d4dbd9fb90c8b572ed3531caadf9620d9",
+      "size_bytes": 5541
+    },
+    {
+      "evidence_date": "2026-03-18T22:45:17Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-14888.analysis.json",
+      "sha256": "445229c00f6f7093d668ca2f12b101b19249c6f69a1927fbd28f1228665d534e",
+      "size_bytes": 1742
+    },
+    {
+      "evidence_date": "2026-03-18T17:54:12Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-14945.json",
+      "sha256": "a4f12370d9398c76befade78e696691872ec73a1f85db4424cb8ea6371f8097c",
+      "size_bytes": 14293
+    },
+    {
+      "evidence_date": "2026-03-18T17:54:12Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-14945.analysis.json",
+      "sha256": "1c7ac6c2a65d3a00f91a43a9e2a768890c02e50c09f8b2b290aeb300a658bf0e",
+      "size_bytes": 1961
+    },
+    {
+      "evidence_date": "2026-03-19T05:24:10Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-14970.json",
+      "sha256": "8dbea4092d712a7d2951cbf974f3d5f74ac65fe3f8185bfb93e9a55294066077",
+      "size_bytes": 15570
+    },
+    {
+      "evidence_date": "2026-03-19T05:24:10Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-14970.analysis.json",
+      "sha256": "671cafd96ae0c82e172637bac8616f843337abac25b04d92a29dd392ee5baeee",
+      "size_bytes": 2130
+    },
+    {
+      "evidence_date": "2026-03-19T05:42:41Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-14988.json",
+      "sha256": "091a87a6d5862527dfd19fed61b6a879d06c24dfb5e8f0d7c5686d86f4c541fd",
+      "size_bytes": 48347
+    },
+    {
+      "evidence_date": "2026-03-19T05:42:41Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-14988.analysis.json",
+      "sha256": "4ec15046c1835e61863a79a6179155a9fd854cf28506fc37c1e5ad77590e59ac",
+      "size_bytes": 2131
+    },
+    {
+      "evidence_date": "2026-03-19T04:29:37Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15011.json",
+      "sha256": "e7d0bfbb37b1af2391cf74b14a5a05121847f4625c08582dac2749a4c34066f1",
+      "size_bytes": 10197
+    },
+    {
+      "evidence_date": "2026-03-19T04:29:37Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15011.analysis.json",
+      "sha256": "e5e9906509f848ca9dd3ce5e2ec81ccd9790520f0bca018199c26018177bf990",
+      "size_bytes": 1972
+    },
+    {
+      "evidence_date": "2026-03-20T01:05:24Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15021.json",
+      "sha256": "0de15354477d3a6e0f5d9c265f363fe115d6c8243b97ee6a46fde5d1343417e9",
+      "size_bytes": 21805
+    },
+    {
+      "evidence_date": "2026-03-20T01:05:24Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15021.analysis.json",
+      "sha256": "688b720d01bc42c9d0e83cf70ef7db85fd4b9c0a16ad8e7fdebbde643bf22670",
+      "size_bytes": 1972
+    },
+    {
+      "evidence_date": "2026-03-19T07:46:16Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15041.json",
+      "sha256": "8a15cc56793868e0acf7551527515521c466d0b11ce2c3f23eb1fe708c6b5426",
+      "size_bytes": 32327
+    },
+    {
+      "evidence_date": "2026-03-19T07:46:16Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15041.analysis.json",
+      "sha256": "02a8adb8251588f9a301ebbaeeaf04bc5bdffb646f0ef99558be085029591978",
+      "size_bytes": 2170
+    },
+    {
+      "evidence_date": "2026-03-19T00:45:31Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15042.json",
+      "sha256": "0eb1901375b63eb04b642a07463b01527564bf716c016e9ec96507eba046c9e3",
+      "size_bytes": 19508
+    },
+    {
+      "evidence_date": "2026-03-19T00:45:31Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15042.analysis.json",
+      "sha256": "405a6ecd41c79421987706caeccae3b2b1c0384833476dea9ee223abc87d93b8",
+      "size_bytes": 1958
+    },
+    {
+      "evidence_date": "2026-03-19T10:21:26Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15056.json",
+      "sha256": "70514c4fb49c182b7454e7f736a97dd4a8af4b6bea75c9e1faaa8bea0600d3ac",
+      "size_bytes": 14939
+    },
+    {
+      "evidence_date": "2026-03-19T10:21:26Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15056.analysis.json",
+      "sha256": "b857dde6356633482a1e854675908dc3cea173c830d27a40910b81dc6f6eb667",
+      "size_bytes": 1491
+    },
+    {
+      "evidence_date": "2026-03-18T20:58:21Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15072.json",
+      "sha256": "1fe724f8dbc227d3e6f0d515257023cda08b8f2620724311b242a77ade149ed5",
+      "size_bytes": 14884
+    },
+    {
+      "evidence_date": "2026-03-18T20:58:21Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15072.analysis.json",
+      "sha256": "0ddc9e5ca378816267430ec94947ae0eaaeba5f2a1e4ca73529a7172b6b1461a",
+      "size_bytes": 2080
+    },
+    {
+      "evidence_date": "2026-03-18T20:57:56Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15075.json",
+      "sha256": "501a13171a88eb7664b77b310cfb697544138af272ee8658ba084a53c56b56f3",
+      "size_bytes": 11339
+    },
+    {
+      "evidence_date": "2026-03-18T20:57:56Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15075.analysis.json",
+      "sha256": "ee7bce301b4a60c37f07b948dff5948deb175411ab501cf8e0a8a996b26b9c91",
+      "size_bytes": 1672
+    },
+    {
+      "evidence_date": "2026-03-18T21:21:31Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15076.json",
+      "sha256": "b36952596090bacee1c4493b5a168a00205ff75dfb91463d46f3a18ca7eb2be8",
+      "size_bytes": 2923
+    },
+    {
+      "evidence_date": "2026-03-18T21:21:31Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15076.analysis.json",
+      "sha256": "8035c9c408adeb1057ef7b914dc31627cab43e34a00b8eea9c78d229f0035eb2",
+      "size_bytes": 2089
+    },
+    {
+      "evidence_date": "2026-03-18T22:19:50Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15077.json",
+      "sha256": "8a0e25aac67a124336425a6955ca8d67c15229112181bb3be9efb1330a49074b",
+      "size_bytes": 4781
+    },
+    {
+      "evidence_date": "2026-03-18T22:19:50Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15077.analysis.json",
+      "sha256": "b3133d690917b8f98671e4094179fcc49773f5cfdc255c533fdfa4ed1c47af05",
+      "size_bytes": 1771
+    },
+    {
+      "evidence_date": "2026-03-19T00:57:48Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15088.json",
+      "sha256": "feab670298ad6f2c2db828a4283fd8731e0756715ecb68a5b9231876b4c327c7",
+      "size_bytes": 18338
+    },
+    {
+      "evidence_date": "2026-03-19T00:57:48Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15088.analysis.json",
+      "sha256": "bc6a716e101d066f4dddb89341312c306b1d13dd4559b10967a33445c347ffb6",
+      "size_bytes": 2105
+    },
+    {
+      "evidence_date": "2026-03-19T00:30:05Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15089.json",
+      "sha256": "e9074ac51ec59ea6d4d9a7fa7d7d07a97dc4245d625051b4d6931ea399689a73",
+      "size_bytes": 26119
+    },
+    {
+      "evidence_date": "2026-03-19T00:30:05Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15089.analysis.json",
+      "sha256": "def8ef6662a5ec5711aa79312ea8328727eeb5ddd2120f216721f29cd1079f2b",
+      "size_bytes": 2239
+    },
+    {
+      "evidence_date": "2026-03-19T19:00:37Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15090.json",
+      "sha256": "185ad19b7061e6db7059a66ba8c2ae95e385ed18224b69651f859366c2ef04de",
+      "size_bytes": 17912
+    },
+    {
+      "evidence_date": "2026-03-19T19:00:37Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15090.analysis.json",
+      "sha256": "5a541addce9edcd7b29b101e2b4b530feeef95872a5c5fff13b26098d09186ec",
+      "size_bytes": 2719
+    },
+    {
+      "evidence_date": "2026-03-18T20:52:33Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15092.json",
+      "sha256": "88cea150d9e76aa176641ba6e577af94f0bc9247ef0d8c86e8cbf44994c84a9f",
+      "size_bytes": 2330
+    },
+    {
+      "evidence_date": "2026-03-18T20:52:33Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15092.analysis.json",
+      "sha256": "8834598a14f07718ac810be7a87e986b0651b2b29513d76cd4ff75a355eff81d",
+      "size_bytes": 1681
+    },
+    {
+      "evidence_date": "2026-03-18T23:11:11Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15100.json",
+      "sha256": "82d302c7025094263520beb8c78c42d2374b7bdfd1a3a12017a606c7b5a0163e",
+      "size_bytes": 3995
+    },
+    {
+      "evidence_date": "2026-03-18T23:11:11Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15100.analysis.json",
+      "sha256": "bb3201f0038f8c406dd1f385b837be62f7cef1b6f117794b12c40543c9cfa646",
+      "size_bytes": 1620
+    },
+    {
+      "evidence_date": "2026-03-18T22:19:29Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15102.json",
+      "sha256": "814ce70ff12d158bf373ee26eecc1ba9b08ecd2f58487e80009c4695373ab4fa",
+      "size_bytes": 35675
+    },
+    {
+      "evidence_date": "2026-03-18T22:19:29Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15102.analysis.json",
+      "sha256": "b83cb15889db7c8073d9933863ce78ff8777119dd831b657cb5d639b6144247b",
+      "size_bytes": 1690
+    },
+    {
+      "evidence_date": "2026-03-18T23:10:51Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15103.json",
+      "sha256": "58a737cbc6f9444866c40cb1c1bfbc46f3952032cd1eaebaa46dcd501fb5a2af",
+      "size_bytes": 3243
+    },
+    {
+      "evidence_date": "2026-03-18T23:10:51Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15103.analysis.json",
+      "sha256": "aa59f0033484c405559c8784ea7360a91b8255fdc7aff155fc5f0f157d2fde19",
+      "size_bytes": 2252
+    },
+    {
+      "evidence_date": "2026-03-19T00:03:37Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15104.json",
+      "sha256": "06b2cccc689184450680d10ee22f63038ad045c494a3c92f162276b79bc60b3e",
+      "size_bytes": 15565
+    },
+    {
+      "evidence_date": "2026-03-19T00:03:37Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15104.analysis.json",
+      "sha256": "4fd8e6d59f39f2bf04f6b22055ea158c7e438966ca22e7918a32d92bff5eecb2",
+      "size_bytes": 1808
+    },
+    {
+      "evidence_date": "2026-03-18T22:54:13Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15111.json",
+      "sha256": "1ecbb0f32736eae89a4a0fa9cd6e2ef121b424132c47cc01640f02b3313ca8b1",
+      "size_bytes": 2202
+    },
+    {
+      "evidence_date": "2026-03-18T22:54:13Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15111.analysis.json",
+      "sha256": "83a6b24c27a7f4bef0efd32249d5fc1961cfe6727dcd0ffe2f56ec079a3ecceb",
+      "size_bytes": 1880
+    },
+    {
+      "evidence_date": "2026-03-19T04:48:31Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15118.json",
+      "sha256": "f4a0bb514705f10ecfb817b650f6ff6cc60359d7e662a590fe82848120e0edc0",
+      "size_bytes": 9992
+    },
+    {
+      "evidence_date": "2026-03-19T04:48:31Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15118.analysis.json",
+      "sha256": "eda5b80a47e8d143c3bb0d90ed41c9bf009b3964e7adb94cd2d9a90e1a52d323",
+      "size_bytes": 1731
+    },
+    {
+      "evidence_date": "2026-03-19T01:00:36Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15119.json",
+      "sha256": "e26df8674baf138f3b0629331600645da239e2fe6c4b84fc0a54cc693fe49610",
+      "size_bytes": 23417
+    },
+    {
+      "evidence_date": "2026-03-19T01:00:36Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15119.analysis.json",
+      "sha256": "6e579da116038645c90327ce7396448e103d699e93ade85ea902db371cf45bf7",
+      "size_bytes": 1783
+    },
+    {
+      "evidence_date": "2026-03-19T15:31:15Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15125.json",
+      "sha256": "951a8233a45246f317bae11fd1c735a5fd4a7fcf52404a10695d175a518240d8",
+      "size_bytes": 12998
+    },
+    {
+      "evidence_date": "2026-03-19T15:31:15Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15125.analysis.json",
+      "sha256": "bf20cc0c0ecc3aa1b473a8106862be482584d2d740ba0934255c45a0e17c77fa",
+      "size_bytes": 2141
+    },
+    {
+      "evidence_date": "2026-03-20T01:58:18Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15150.json",
+      "sha256": "a1341e9ead0b7eb237ed4bcd9930a1e6e151a0b1b4f34e8c8a941d266d39290c",
+      "size_bytes": 37070
+    },
+    {
+      "evidence_date": "2026-03-20T01:58:18Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15150.analysis.json",
+      "sha256": "81da8e7e2ee334e01aafddfd5dde891c76edbf8be4c53fd25df966acd79ce821",
+      "size_bytes": 1796
+    },
+    {
+      "evidence_date": "2026-03-19T21:29:23Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15154.json",
+      "sha256": "f8dfcfee27a7841c9ac4ed676426846ea79cb45f435332fef9c9c8d2524f1e7c",
+      "size_bytes": 9748
+    },
+    {
+      "evidence_date": "2026-03-19T21:29:23Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15154.analysis.json",
+      "sha256": "f77326558f8f11f24d89cd6540f4fb55961c0530305a39d0ba68a6cb467c87b3",
+      "size_bytes": 2396
+    },
+    {
+      "evidence_date": "2026-03-19T12:12:51Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15163.json",
+      "sha256": "edbf63a1a1c058d6a0ce4b8404305f15ef9a3cb38f164785002ff1f61fe814f6",
+      "size_bytes": 3064
+    },
+    {
+      "evidence_date": "2026-03-19T12:12:51Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15163.analysis.json",
+      "sha256": "9ef5c79833474ac61a6501fcfea4548d24609541813bb3ffa56d792f8d3188fe",
+      "size_bytes": 1810
+    },
+    {
+      "evidence_date": "2026-03-19T15:48:28Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15175.json",
+      "sha256": "ef765d7fdd5467900d4888edcaf5c10d1f9bf32458729c0c3004c613f0b793d1",
+      "size_bytes": 3017
+    },
+    {
+      "evidence_date": "2026-03-19T15:48:28Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15175.analysis.json",
+      "sha256": "68c7cfea3ed15e453818e983002be290f7c13363c133bcaa5f79b87739233e79",
+      "size_bytes": 1504
+    },
+    {
+      "evidence_date": "2026-03-19T15:48:02Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15180.json",
+      "sha256": "7d89f27263d7f49f011f91165277f3bf34c5b59ff8e9be5a5689e75815999a01",
+      "size_bytes": 3179
+    },
+    {
+      "evidence_date": "2026-03-19T15:48:02Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15180.analysis.json",
+      "sha256": "9bf79a309cc4b58005eb50d7d7ac0d870dc275cd898994517a886a85ada97ba5",
+      "size_bytes": 1410
+    },
+    {
+      "evidence_date": "2026-03-19T17:38:54Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15185.json",
+      "sha256": "f27183f04ad63d5e2bfecc8d9092c10b534ad8afa7f5d03685f28740c1cc9b10",
+      "size_bytes": 7823
+    },
+    {
+      "evidence_date": "2026-03-19T17:38:54Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15185.analysis.json",
+      "sha256": "72b21420e6c34c9c70663077c3e040a4ce503e95000958373c2dee97478b04c1",
+      "size_bytes": 2083
+    },
+    {
+      "evidence_date": "2026-03-19T22:05:14Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15190.json",
+      "sha256": "01c48cdeb54a7888f9f7fde5ed6d5ba2b6b2d65df967fca977bdca75a89d6cc8",
+      "size_bytes": 15192
+    },
+    {
+      "evidence_date": "2026-03-19T22:05:14Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15190.analysis.json",
+      "sha256": "184d67ffff9c41387a5c04938193113305668eecfc8f223cf171f1d2d418040c",
+      "size_bytes": 2386
+    },
+    {
+      "evidence_date": "2026-03-20T02:36:59Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15195.json",
+      "sha256": "3403bf47b2bf9dab7a099516f2e8fb474bdd66a07722e1d3e88f4ea15652fe11",
+      "size_bytes": 8521
+    },
+    {
+      "evidence_date": "2026-03-20T02:36:59Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15195.analysis.json",
+      "sha256": "20eb2e04382e52999c8b91542c2878f305238637e0bc309ab0f3f07f2c5093ba",
+      "size_bytes": 1394
+    },
+    {
+      "evidence_date": "2026-03-19T18:25:12Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15196.json",
+      "sha256": "2935d6c7491a5830445b8b973d0b61052136bfcc97a4ec21a4ef6af64f113d4c",
+      "size_bytes": 7278
+    },
+    {
+      "evidence_date": "2026-03-19T18:25:12Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15196.analysis.json",
+      "sha256": "b3dae5d545d360c5fbfda0d53aa4519a39a03aab2d0dd203f30abc13418ee01c",
+      "size_bytes": 1928
+    },
+    {
+      "evidence_date": "2026-03-19T18:59:03Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15198.json",
+      "sha256": "82d127092542e20d9934cf40c72fc4e126725e12b5314f8006bf451eb2297972",
+      "size_bytes": 8559
+    },
+    {
+      "evidence_date": "2026-03-19T18:59:03Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15198.analysis.json",
+      "sha256": "b5b0aae985e611d3dbbabac54f5a8a47cec8f59f968852bd4cc9a2c0d17c6255",
+      "size_bytes": 2047
+    },
+    {
+      "evidence_date": "2026-03-20T03:19:22Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15199.json",
+      "sha256": "eefc1ebfc94117f60e3d25d4e930bc08a283824146f5e4c82fb50ece959b2f71",
+      "size_bytes": 29994
+    },
+    {
+      "evidence_date": "2026-03-20T03:19:22Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15199.analysis.json",
+      "sha256": "bd26bed0ee5f93c1de42c7e4519cf34e497ff42520a51936cc453c019ba3e710",
+      "size_bytes": 2498
+    },
+    {
+      "evidence_date": "2026-03-19T19:10:42Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15201.json",
+      "sha256": "f920a0c644dfd057f4c0e24e69baceaf68019a604218a0127c31da04c29dbd69",
+      "size_bytes": 3135
+    },
+    {
+      "evidence_date": "2026-03-19T19:10:42Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15201.analysis.json",
+      "sha256": "e70ee4a09fe3534bb9f30ea3115afca20310e9afdacaf12c6bef9c76d0f43b3a",
+      "size_bytes": 1524
+    },
+    {
+      "evidence_date": "2026-03-20T19:08:25Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15203.json",
+      "sha256": "b88370bb7f29788f5fea875c10eac940bbc81ca4ad8860048eda8cc32c6a5f8f",
+      "size_bytes": 19662
+    },
+    {
+      "evidence_date": "2026-03-20T19:08:25Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15203.analysis.json",
+      "sha256": "bca45f2888c393f746bf60ff1b50b5d599c43a4b7b4b6bb7b58966e4580ab726",
+      "size_bytes": 1721
+    },
+    {
+      "evidence_date": "2026-03-19T20:07:19Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15206.json",
+      "sha256": "88effee79e5773918fa566c27fbffe27fb7d503d5e171fb3289085e17210cf90",
+      "size_bytes": 5113
+    },
+    {
+      "evidence_date": "2026-03-19T20:07:19Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15206.analysis.json",
+      "sha256": "a2a66c3212a7b404b280a61f1747df5c21a0cca58ad1ba06a82aaf132da96be9",
+      "size_bytes": 1665
+    },
+    {
+      "evidence_date": "2026-03-19T21:09:35Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15207.json",
+      "sha256": "3b881babd618cd24b49400bfb04847c8089ee856da4185d9b1b3e6208e69940e",
+      "size_bytes": 8383
+    },
+    {
+      "evidence_date": "2026-03-19T21:09:35Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15207.analysis.json",
+      "sha256": "a02d9da00b1979939b80a870a437fe338ed9c482c8aa2e153ac087d2760c1957",
+      "size_bytes": 2077
+    },
+    {
+      "evidence_date": "2026-03-20T04:28:33Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15215.json",
+      "sha256": "016fb6f9ae60813fa1d4be85df4ca5546560d1d21dc1577e4c10d20a0806f25b",
+      "size_bytes": 18154
+    },
+    {
+      "evidence_date": "2026-03-20T04:28:33Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15215.analysis.json",
+      "sha256": "8dfb630d870100affd72f4c095ff9cc28a8c249c920335c8da7188a0c9761d81",
+      "size_bytes": 1491
+    },
+    {
+      "evidence_date": "2026-03-19T21:08:05Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15216.json",
+      "sha256": "e40ecf79e03b9b916cfb3b3a17f0430a3135310a44378e6fd09a4a53810e08b0",
+      "size_bytes": 21289
+    },
+    {
+      "evidence_date": "2026-03-19T21:08:05Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15216.analysis.json",
+      "sha256": "5659a2e0d7b8fbe5acda6d3581edb7f173748bb036ae84c8680bde8754b63aab",
+      "size_bytes": 2310
+    },
+    {
+      "evidence_date": "2026-03-19T22:02:45Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15217.json",
+      "sha256": "e512b4320acac72552c8c490f6b4b5a15cab6921bdb8d8f302e7a6e193702888",
+      "size_bytes": 9287
+    },
+    {
+      "evidence_date": "2026-03-19T22:02:45Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15217.analysis.json",
+      "sha256": "0c8904e3bb987da0269505edc4b434e43d13b59a82a57a84f659f53b0132c9d4",
+      "size_bytes": 2199
+    },
+    {
+      "evidence_date": "2026-03-19T22:09:59Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15220.json",
+      "sha256": "358237270b7c62af62047f7703c8a7fcc4db5d37e8ee060c52f299e90adf19a4",
+      "size_bytes": 17361
+    },
+    {
+      "evidence_date": "2026-03-19T22:09:59Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15220.analysis.json",
+      "sha256": "332c565090e5623f955196b2c1fe9314a15a182aa956ffdc5da85d509cc8af3d",
+      "size_bytes": 1275
+    },
+    {
+      "evidence_date": "2026-03-19T22:16:26Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15222.json",
+      "sha256": "cbffc9b580740354d8c048baedded59dd73f5fe836138a5d6a3ee14349114d51",
+      "size_bytes": 7924
+    },
+    {
+      "evidence_date": "2026-03-19T22:16:26Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15222.analysis.json",
+      "sha256": "9a808f0f296a397e9840e7594ad8f1afaf4f0da1b96e28e1fe2ae44335e4de43",
+      "size_bytes": 1465
+    },
+    {
+      "evidence_date": "2026-03-20T05:57:17Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15223.json",
+      "sha256": "6f95010541f9a59fba406c181bd561af71bd26594daa5089960f509fcf1ec5fb",
+      "size_bytes": 21413
+    },
+    {
+      "evidence_date": "2026-03-20T05:57:17Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15223.analysis.json",
+      "sha256": "4ca0a51429e6aabfa12f8c12f536e37e87008747e98b389a55d03fe5e22b1dd2",
+      "size_bytes": 1385
+    },
+    {
+      "evidence_date": "2026-03-20T00:08:04Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15232.json",
+      "sha256": "e8ca0cf66a7de7fa3a977450881d6eee4b129fd1991a9c0bf8ed89b547f81950",
+      "size_bytes": 15014
+    },
+    {
+      "evidence_date": "2026-03-20T00:08:04Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15232.analysis.json",
+      "sha256": "01a4b7d561838806a937e2b8b772d7c6e2c545cd086ead021a37174b77cfec92",
+      "size_bytes": 2337
+    },
+    {
+      "evidence_date": "2026-03-20T03:13:08Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15233.json",
+      "sha256": "ded8f9c1e38973b4ff41825adb056d1aef4db050875f4e917241d1822c77fd31",
+      "size_bytes": 15531
+    },
+    {
+      "evidence_date": "2026-03-20T03:13:08Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15233.analysis.json",
+      "sha256": "eccf6b82d1644f18602ee76befde5980bf89baad8d7916396313c73032b12b89",
+      "size_bytes": 1960
+    },
+    {
+      "evidence_date": "2026-03-20T04:31:57Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15252.json",
+      "sha256": "cf6fcd63a72d727a2c334b0de29b4f1747229e994ee77a9ec514d2f8e5c57f9a",
+      "size_bytes": 1812
+    },
+    {
+      "evidence_date": "2026-03-20T04:31:57Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15252.analysis.json",
+      "sha256": "f6dd8bf0f18bce9d0c7f99d57fb54aeeef413736bac540e740c4aa97d73f9b1b",
+      "size_bytes": 1699
+    },
+    {
+      "evidence_date": "2026-03-20T03:12:07Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15253.json",
+      "sha256": "7e33fb5fd4d966a0954f5979b66411f0f00abb04c0331546b6131ae9ffaecc1a",
+      "size_bytes": 91193
+    },
+    {
+      "evidence_date": "2026-03-20T03:12:07Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15253.analysis.json",
+      "sha256": "4d4f9325c01a5fb6e3fad1cb3d1b05005bc39576571f6695f1441ac67e89ccfd",
+      "size_bytes": 2264
+    },
+    {
+      "evidence_date": "2026-03-20T02:38:12Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15254.json",
+      "sha256": "e8d988e4b8346ae21581726bd0c7b25289ccc98369d8d1524bc89ebe0208111b",
+      "size_bytes": 18893
+    },
+    {
+      "evidence_date": "2026-03-20T02:38:12Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15254.analysis.json",
+      "sha256": "1de2e4b7e5f90ca16bd523b7c1b0e9fcee7465b7da83a0d42e7f673d7919e2d7",
+      "size_bytes": 2500
+    },
+    {
+      "evidence_date": "2026-03-23T17:19:45Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15259.json",
+      "sha256": "58cfe946cc8606983a5f031d72f57e236f287c0112613e2e131a7422ad3d26d0",
+      "size_bytes": 47564
+    },
+    {
+      "evidence_date": "2026-03-23T17:19:45Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15259.analysis.json",
+      "sha256": "ae9822e3cc28906032b48ca852803973dfe1439a1210fa99321ff97b0424fa7f",
+      "size_bytes": 2349
+    },
+    {
+      "evidence_date": "2026-03-20T05:35:52Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15262.json",
+      "sha256": "8f66c151421e5246e089415ebab38446a94d926730adec2477dce12507c8ce3d",
+      "size_bytes": 5048
+    },
+    {
+      "evidence_date": "2026-03-20T05:35:52Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15262.analysis.json",
+      "sha256": "049da6191793f3666305b7c8f36d29fb182d071bc81035785a7bf82024bbdfc8",
+      "size_bytes": 1842
+    },
+    {
+      "evidence_date": "2026-03-20T03:02:40Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15263.json",
+      "sha256": "91ed00552c2e3af02a313dc41ea188dd4212d39572094e5ac3ccfaf7976b58bf",
+      "size_bytes": 5471
+    },
+    {
+      "evidence_date": "2026-03-20T03:02:40Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15263.analysis.json",
+      "sha256": "988178c4dbc19a41b0425463616f39125c5f5b533fe61a7486116e4f55acbc87",
+      "size_bytes": 2069
+    },
+    {
+      "evidence_date": "2026-03-20T05:01:39Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15264.json",
+      "sha256": "8164c41b8244bcf5491a4aec05eea11f4e65a8bf0254972ae2a5acd12e0eadbc",
+      "size_bytes": 8646
+    },
+    {
+      "evidence_date": "2026-03-20T05:01:39Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15264.analysis.json",
+      "sha256": "1aef91f79b3737a5eb1591a2cce2fb4b9698c80d17373c7d46c80f4458d6ceec",
+      "size_bytes": 1350
+    },
+    {
+      "evidence_date": "2026-03-20T07:06:24Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15275.json",
+      "sha256": "a4493123482233e1b0e2c2e9a60cbf57dff366bd93f2b3f36fdff8d0d08cc8d9",
+      "size_bytes": 8796
+    },
+    {
+      "evidence_date": "2026-03-20T07:06:24Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15275.analysis.json",
+      "sha256": "3ee2cde3f4528534a85379c7304fadf1564190763a0f1dac738e8884b3e46957",
+      "size_bytes": 1990
+    },
+    {
+      "evidence_date": "2026-03-23T17:10:17Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15279.json",
+      "sha256": "ad5ddef42780a55a3b9abfb5c83b9df9e628d3cee2bb539e5e465c720fcf0aff",
+      "size_bytes": 8463
+    },
+    {
+      "evidence_date": "2026-03-23T17:10:17Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15279.analysis.json",
+      "sha256": "5a16b661aace583af8dc3dd29498ef854a7badb181b36508efe7ac3c526ce9db",
+      "size_bytes": 2005
+    },
+    {
+      "evidence_date": "2026-03-21T01:42:41Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15348.json",
+      "sha256": "224cea51c0c946fe670639428235f4450a79721c497bad56038040258f264c04",
+      "size_bytes": 6600
+    },
+    {
+      "evidence_date": "2026-03-21T01:42:41Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15348.analysis.json",
+      "sha256": "e8149475b1b3449cd8a61568625aeb9efed6f1f10b98a67f045e48a5c2a02d01",
+      "size_bytes": 1723
+    },
+    {
+      "evidence_date": "2026-03-22T07:17:48Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15376.json",
+      "sha256": "dfdf9ea307b3713a919239d6efeac2b30b18bf51a6f9ccfb2e5745badb50b223",
+      "size_bytes": 2764
+    },
+    {
+      "evidence_date": "2026-03-22T07:17:48Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15376.analysis.json",
+      "sha256": "646f777adc290a9e1caee6e2dc9fd172c3c74c0f77661b6a2a736180598c35c1",
+      "size_bytes": 1898
+    },
+    {
+      "evidence_date": "2026-03-21T18:29:33Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15390.json",
+      "sha256": "436687b531c4a6d02441a95a13b4ca252c5c480340ebe97544456e670ca9239e",
+      "size_bytes": 5124
+    },
+    {
+      "evidence_date": "2026-03-21T18:29:33Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15390.analysis.json",
+      "sha256": "c6e1b8a8c2755985b2794090b3ae03b51e06cb70a6e4a7236fea54ec31ec7d26",
+      "size_bytes": 2065
+    },
+    {
+      "evidence_date": "2026-03-21T20:43:15Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15409.json",
+      "sha256": "775d6ecf51ffc14cdd44705df5eb7876d446f43748078edfd414dd79395cf574",
+      "size_bytes": 4497
+    },
+    {
+      "evidence_date": "2026-03-21T20:43:15Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15409.analysis.json",
+      "sha256": "61cc2b1f3a8a4dcd35f1a66f6c77a6625a66a65541886edf91bd832536dc429c",
+      "size_bytes": 1467
+    },
+    {
+      "evidence_date": "2026-03-21T21:06:11Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15414.json",
+      "sha256": "a58855457ff8e312a2859d957e569883fded4ce2d4513887ec969c154451dbbf",
+      "size_bytes": 3936
+    },
+    {
+      "evidence_date": "2026-03-21T21:06:11Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15414.analysis.json",
+      "sha256": "bea41079064b05715750f83e8433b6af52e67edfbb4df3252bcb949c487e675a",
+      "size_bytes": 1987
+    },
+    {
+      "evidence_date": "2026-03-23T01:24:14Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15443.json",
+      "sha256": "24291775f698cc7e0b255db0e14995d256d8b4305f4611fd3bb5bebb008e1e79",
+      "size_bytes": 5518
+    },
+    {
+      "evidence_date": "2026-03-23T01:24:14Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15443.analysis.json",
+      "sha256": "91c9f1fafa3e081b07205383aa494e04916bc62323f300612923278e1630e6e9",
+      "size_bytes": 2195
+    },
+    {
+      "evidence_date": "2026-03-25T22:13:02Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15659.json",
+      "sha256": "54d1dcda9df008e7f056a8d67869d0de7182808d7f46434bde2ec2807aff4f82",
+      "size_bytes": 7370
+    },
+    {
+      "evidence_date": "2026-03-25T22:13:02Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15659.analysis.json",
+      "sha256": "bdaae2bfe3af51c0ac8c9b5b9e896df29edbc137cb69625b3c8f3ec3d4b867d6",
+      "size_bytes": 1829
+    },
+    {
+      "evidence_date": "2026-03-25T19:50:40Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15759.json",
+      "sha256": "c8dfcb6feec86c4af0946ae96639db5537c8b77c85d36e28a13c5ee04df6dabd",
+      "size_bytes": 8817
+    },
+    {
+      "evidence_date": "2026-03-25T19:50:40Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15759.analysis.json",
+      "sha256": "5f1068abbb166edb6763fc47ed3d49370cd9d6b274ce0fd75251e1687e5f03af",
+      "size_bytes": 2526
+    },
+    {
+      "evidence_date": "2026-03-25T23:14:36Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15785.json",
+      "sha256": "1f42abf63a51b648a70f5c8f6e9f761c820e784c368b027435d498b430583dfb",
+      "size_bytes": 32283
+    },
+    {
+      "evidence_date": "2026-03-25T23:14:36Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15785.analysis.json",
+      "sha256": "a6582cc2ee858f6a68f15d484649ce15d2030992da4135fc4a6cbcd91e0e8d06",
+      "size_bytes": 3026
+    },
+    {
+      "evidence_date": "2026-03-25T23:09:20Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-15802.json",
+      "sha256": "053af5370e3564e9180c043ee2c9f304328d2f9f43f7c1fafbeb57056aa73f2b",
+      "size_bytes": 6169
+    },
+    {
+      "evidence_date": "2026-03-25T23:09:20Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-15802.analysis.json",
+      "sha256": "984a6adf57961821fe87e1e2c2f5a494f7f831cb35730cfd03d02e97b489fa40",
+      "size_bytes": 2333
+    },
+    {
+      "evidence_date": "2026-03-30T09:47:21Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-16010.json",
+      "sha256": "0a8e4c8f0f0f809ac4dedff301f6b06af3fc308780e1a53cb10910749072fad5",
+      "size_bytes": 12886
+    },
+    {
+      "evidence_date": "2026-03-30T09:47:21Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-16010.analysis.json",
+      "sha256": "21186cca84d394477c49f66ba2116456fde31a58a2c97ad03b9fb6a142a0d223",
+      "size_bytes": 1976
+    },
+    {
+      "evidence_date": "2026-04-07T02:17:14Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-16082.json",
+      "sha256": "ae47437f9b8329ab7bb92ca0ff948aab2af9ca4125c00d15a1bb2ee3054b275b",
+      "size_bytes": 25516
+    },
+    {
+      "evidence_date": "2026-04-07T02:17:14Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-16082.analysis.json",
+      "sha256": "af03e4e5aa2909ee51045ee577b3669647c94ae25601f5fdaa4c8db710ecb2ea",
+      "size_bytes": 2281
+    },
+    {
+      "evidence_date": "2026-04-07T00:46:28Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-16153.json",
+      "sha256": "e7bc7e7f4c07ca263fae09b7d1af580630e3ff586ef435b5084e070f23e5e8f2",
+      "size_bytes": 9391
+    },
+    {
+      "evidence_date": "2026-04-07T00:46:28Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-16153.analysis.json",
+      "sha256": "e7f423f56f9cc44cdc8fc35bcdb6188bd826c0a73f80918933613f36574b1c80",
+      "size_bytes": 2258
+    },
+    {
+      "evidence_date": "2026-03-29T23:54:18Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-16204.json",
+      "sha256": "52a657060f66fc8bd9eee5c91e43b153fe983fbc7e94d797251361e87da96f0d",
+      "size_bytes": 1880
+    },
+    {
+      "evidence_date": "2026-03-29T23:54:18Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-16204.analysis.json",
+      "sha256": "73edfb0913e9f19bf56f6c634674576f48374fe0581b409a5460d4ee908599bf",
+      "size_bytes": 1771
+    },
+    {
+      "evidence_date": "2026-04-03T06:00:02Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-16508.json",
+      "sha256": "fc8bd4422afe1ca0ba2e5757b3bc2382be626523d6ff255dde71f88c3b7b9026",
+      "size_bytes": 85238
+    },
+    {
+      "evidence_date": "2026-04-03T06:00:02Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-16508.analysis.json",
+      "sha256": "57b7715cdedd1c6f1a85b6173620a0f7da57a5dbac0eb8c4765b24bad4dc344b",
+      "size_bytes": 2138
+    },
+    {
+      "evidence_date": "2026-04-02T23:39:57Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-16631.json",
+      "sha256": "1462dad9565a368407c16054456d05474925772071289c3b390e34a5d462673f",
+      "size_bytes": 11801
+    },
+    {
+      "evidence_date": "2026-04-02T23:39:57Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-16631.analysis.json",
+      "sha256": "8030b9c8857c628df322f46862870b5eb00f9ff105b5dbdb3f4b855c19b91521",
+      "size_bytes": 2081
+    },
+    {
+      "evidence_date": "2026-04-03T00:05:45Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-16633.json",
+      "sha256": "acfc0b9178a63a3915081aca7012bafa49cdb683d25e0b65b9dcac4140ddc696",
+      "size_bytes": 1742
+    },
+    {
+      "evidence_date": "2026-04-03T00:05:45Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-16633.analysis.json",
+      "sha256": "48a50b95dfb915b626068801218b2e95b1ada246f56af9b21096d9b151d7e44c",
+      "size_bytes": 1735
+    },
+    {
+      "evidence_date": "2026-04-07T02:38:51Z",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-16946.json",
+      "sha256": "95a5f37525bfa226d78ec6bd22b697d1009c56b97056cbf51a481930c3f37ce9",
+      "size_bytes": 13670
+    },
+    {
+      "evidence_date": "2026-04-07T02:38:51Z",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-16946.analysis.json",
+      "sha256": "c0b7fb7a12bd53d5fc7c124cacc54e02ec64c6615d9de0fa4a251b882dabae21",
+      "size_bytes": 2693
+    }
+  ],
+  "release_tag": "radar-archive-2026-05-13-pre-2026-04-13",
+  "release_url": "https://github.com/hack-ink/decodex/releases/tag/radar-archive-2026-05-13-pre-2026-04-13",
+  "retention_days": 28,
+  "schema": "radar_archive_manifest/v1",
+  "selected_older_than_days": 30,
+  "source_commit": "22beb587ab6b0730cc91eaf2403e04120c0a20f4"
+}
