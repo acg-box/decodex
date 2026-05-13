@@ -1,8 +1,6 @@
 ---
 import { renderMarkdownInline } from "@/lib/render-markdown";
-import { resolveFeatureToggleByName } from "@/lib/config-flags";
 import {
-  comparisonKey,
   defaultComparison,
   releaseLabel,
   trackedSignalsForSlugs,
@@ -13,25 +11,9 @@ import { formatPublishedAt, kindLabel, type SignalCardData } from "@/lib/signal-
 type Props = {
   delta: ReleaseDeltaData;
   trackedSignals: SignalCardData[];
-  recommendedConfig: {
-    schema: "recommended_config/v1";
-    repo: string;
-    id: string;
-    title: string;
-    curator_name: string;
-    curator_url: string;
-    subtitle: string;
-    audience_note: string;
-    warning: string;
-    config_toml: string;
-    flags: Array<{
-      name: string;
-      description: string;
-    }>;
-  } | null;
 };
 
-const { delta, trackedSignals, recommendedConfig } = Astro.props;
+const { delta, trackedSignals } = Astro.props;
 
 const stableOptions = delta.release_options.stable;
 const previewOptions = delta.release_options.preview;
@@ -42,8 +24,9 @@ const latestComparison = delta.comparisons.find(
     comparison.stable_tag_name === delta.stable_release.tag_name &&
     comparison.prerelease_tag_name === delta.prerelease.tag_name,
 );
-const latestComparisonTrackedCount = latestComparison?.tracked_signal_slugs.length ?? 0;
 const activeComparison = latestComparison ?? defaultComparison(delta);
+const activeStable = stableByTag.get(activeComparison.stable_tag_name) ?? delta.stable_release;
+const activePreview = previewByTag.get(activeComparison.prerelease_tag_name) ?? delta.prerelease;
 
 function hasConcreteTryPath(signal: SignalCardData): boolean {
   return Boolean(signal.how_to_try && signal.expected_effect);
@@ -56,491 +39,144 @@ function isHomepageHighlightSignal(signal: SignalCardData): boolean {
   return signal.kind === "behavior_change" && signal.impact !== "low";
 }
 
-type RecommendedConfigToggle = {
-  name: string;
-  display: string;
-  configPath: string;
-  cliEnableFlag?: string;
-  description: string;
-  schemaUrl?: string;
-  referenceUrl?: string;
-  referenceDescription?: string | null;
-  githubSearchUrl?: string;
-};
-
-function buildRecommendedConfig(profile: Props["recommendedConfig"]): {
-  title: string;
-  curatorName: string;
-  curatorUrl: string;
-  subtitle: string;
-  audienceNote: string;
-  warning: string;
-  toggles: RecommendedConfigToggle[];
-  tomlSnippet: string | null;
-} {
-  if (!profile) {
-    return {
-      title: "",
-      curatorName: "",
-      curatorUrl: "",
-      subtitle: "",
-      audienceNote: "",
-      warning: "",
-      toggles: [],
-      tomlSnippet: null,
-    };
-  }
-
-  const toggles: RecommendedConfigToggle[] = [];
-  for (const flag of profile.flags) {
-    const resolved = resolveFeatureToggleByName(flag.name);
-    if (!resolved || !resolved.configPath) continue;
-    toggles.push({
-      name: flag.name,
-      display: resolved.display,
-      configPath: resolved.configPath,
-      cliEnableFlag: resolved.cliEnableFlag,
-      description: flag.description,
-      schemaUrl: resolved.schemaUrl,
-      referenceUrl: resolved.referenceUrl,
-      referenceDescription: resolved.referenceDescription,
-      githubSearchUrl: resolved.githubSearchUrl,
-    });
-  }
-
-  return {
-    title: profile.title,
-    curatorName: profile.curator_name,
-    curatorUrl: profile.curator_url,
-    subtitle: profile.subtitle,
-    audienceNote: profile.audience_note,
-    warning: profile.warning,
-    toggles,
-    tomlSnippet: profile.config_toml.trimEnd(),
-  };
-}
-
-const manualRecommendedConfig = buildRecommendedConfig(recommendedConfig);
-
-const comparisonEntries = delta.comparisons
-  .map((comparison) => {
-    const stable = stableByTag.get(comparison.stable_tag_name);
-    const preview = previewByTag.get(comparison.prerelease_tag_name);
-    if (!stable || !preview) {
-      return null;
-    }
-    const featuredSignals = trackedSignalsForSlugs(comparison.tracked_signal_slugs, trackedSignals);
-    const highlightSignals = featuredSignals.filter(isHomepageHighlightSignal);
-    const latestTrackedAt = featuredSignals.reduce<string | null>((latest, signal) => {
-      if (!latest || signal.published_at > latest) return signal.published_at;
-      return latest;
-    }, null);
-    const isLatestPair =
-      comparison.stable_tag_name === delta.stable_release.tag_name &&
-      comparison.prerelease_tag_name === delta.prerelease.tag_name;
-    return {
-      ...comparison,
-      stable,
-      preview,
-      featuredSignals,
-      highlightSignals,
-      latestTrackedAt,
-      isLatestPair,
-      key: comparisonKey(comparison.stable_tag_name, comparison.prerelease_tag_name),
-    };
-  })
-  .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-
-const comparisonKeysByStable = Object.fromEntries(
-  stableOptions.map((stable) => [
-    stable.tag_name,
-    comparisonEntries
-      .filter((entry) => entry.stable_tag_name === stable.tag_name)
-      .map((entry) => entry.prerelease_tag_name),
-  ]),
-);
+const featuredSignals = trackedSignalsForSlugs(activeComparison.tracked_signal_slugs, trackedSignals);
+const publicHighlightSignals = trackedSignals.filter(isHomepageHighlightSignal).slice(0, 3);
+const latestWindowTrackedAt = featuredSignals.reduce<string | null>((latest, signal) => {
+  if (!latest || signal.published_at > latest) return signal.published_at;
+  return latest;
+}, null);
+const latestPublicSignalAt = trackedSignals.reduce<string | null>((latest, signal) => {
+  if (!latest || signal.published_at > latest) return signal.published_at;
+  return latest;
+}, null);
+const tryPathCount = trackedSignals.filter(hasConcreteTryPath).length;
 ---
 
-<section
-  class="release-delta"
-  aria-label="Preview changes"
-  data-release-comparator
-  data-compare-map={JSON.stringify(comparisonKeysByStable)}
->
-  <div class="release-delta__summary-rail release-delta__summary-rail--hero">
-    <span class="release-delta__summary-item release-delta__summary-item--pair">
-      <span class="release-delta__chooser">
-        From
-        <label class="release-delta__inline-select">
-          <span class="sr-only">Stable release</span>
-          <select class="release-delta__select release-delta__select--inline" data-compare-stable>
-            {stableOptions.map((release) => (
-              <option
-                value={release.tag_name}
-                selected={release.tag_name === activeComparison.stable_tag_name}
-              >
-                {releaseLabel(release, delta.tag_prefix)}
-              </option>
-            ))}
-          </select>
-        </label>
-        to
-        <label class="release-delta__inline-select">
-          <span class="sr-only">Preview release</span>
-          <select class="release-delta__select release-delta__select--inline" data-compare-preview>
-            {previewOptions.map((release) => (
-              <option
-                value={release.tag_name}
-                selected={release.tag_name === activeComparison.prerelease_tag_name}
-              >
-                {releaseLabel(release, delta.tag_prefix)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </span>
+<section class="release-delta" aria-label="Codex upstream radar snapshot">
+  <div class="release-delta__control-row">
+    <p class="release-delta__panel-label">Latest checkpoint</p>
+    <span class="release-delta__window-label">
+      <strong>{releaseLabel(activeStable, delta.tag_prefix)}</strong>
+      <span aria-hidden="true">-&gt;</span>
+      <strong>{releaseLabel(activePreview, delta.tag_prefix)}</strong>
     </span>
   </div>
-  {comparisonEntries.map((entry) => (
-    <div
-      class="release-delta__comparison"
-      data-compare-panel={entry.key}
-      hidden={entry.key !== comparisonKey(activeComparison.stable_tag_name, activeComparison.prerelease_tag_name)}
-    >
-      <div class="release-delta__hero">
+  <div class="release-delta__comparison">
+    <div class="release-delta__hero">
         <div class="release-delta__hero-head">
           <div class="release-delta__hero-copy">
-            <p class="release-delta__eyebrow">Preview changes</p>
-          </div>
-        </div>
-
-        <div class="release-delta__summary-rail release-delta__summary-rail--hero">
-          <span class="release-delta__summary-item">
-            <strong>{entry.compare.total_commits}</strong> commits ahead
-          </span>
-          <span class="release-delta__summary-item">
-            <strong>{entry.featuredSignals.length}</strong> curated signals
-          </span>
-          {!entry.isLatestPair ? (
-            <span class="release-delta__summary-item">
-              Latest pair <strong>{latestComparisonTrackedCount}</strong> signals
-            </span>
-          ) : null}
-          <span class="release-delta__summary-item">
-            Last updated <strong>{formatPublishedAt(entry.latestTrackedAt ?? entry.preview.published_at)}</strong>
-          </span>
-          <a class="release-delta__summary-link signal-link" href={entry.compare.url} target="_blank" rel="noreferrer">
-            Open GitHub compare
-          </a>
-        </div>
-      </div>
-
-      <div class="release-delta__content-grid">
-        <div class="release-delta__overview">
-          <div class="release-delta__overview-head">
-            <div>
-              <p class="release-delta__panel-label">Highlights</p>
-              <h3 class="release-delta__overview-title">Most worth trying in this preview</h3>
-            </div>
-          </div>
-
-          {
-            entry.highlightSignals.length > 0 ? (
-              <ol class="release-delta__overview-list">
-                {entry.highlightSignals.map((signal) => (
-                  <li class="release-overview-card">
-                    <div class="release-overview-card__body">
-                      <div class="release-overview-card__meta">
-                        <span>{kindLabel(signal.kind)}</span>
-                      </div>
-                      <a
-                        class="release-overview-card__title signal-markdown signal-markdown--title"
-                        href={`#${signal.slug}`}
-                        set:html={renderMarkdownInline(signal.title)}
-                      />
-                      <p
-                        class="release-overview-card__why signal-markdown signal-markdown--inline"
-                        set:html={renderMarkdownInline(signal.why_it_matters)}
-                      />
-                      <div class="release-overview-card__details">
-                        <div class="release-overview-card__detail">
-                          <p class="release-overview-card__label">How to try</p>
-                          <p
-                            class="release-overview-card__detail-body signal-markdown signal-markdown--inline"
-                            set:html={renderMarkdownInline(signal.how_to_try ?? "")}
-                          />
-                        </div>
-                        <div class="release-overview-card__detail">
-                          <p class="release-overview-card__label">What you should notice</p>
-                          <p
-                            class="release-overview-card__detail-body signal-markdown signal-markdown--inline"
-                            set:html={renderMarkdownInline(signal.expected_effect ?? "")}
-                          />
-                        </div>
-                      </div>
-                      <a class="release-overview-card__action signal-link" href={`#${signal.slug}`}>
-                        Read the full evidence
-                      </a>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p class="release-delta__empty">
-                No curated public signals in this version pair currently clear the highlight bar.
-              </p>
-            )
-          }
-        </div>
-      </div>
-
-    </div>
-  ))}
-  {
-    manualRecommendedConfig.toggles.length > 0 ? (
-      <section class="release-delta__config" aria-label="Recommended pre-release config">
-        <div class="release-delta__config-head">
-          <p class="release-delta__panel-label">Pre-release config</p>
-        </div>
-
-        <p class="release-delta__config-warning">
-          <a
-            class="signal-link"
-            href={manualRecommendedConfig.curatorUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {`${manualRecommendedConfig.curatorName}'s`}
-          </a>
-          {" recommended pre-release config. "}
-          {manualRecommendedConfig.audienceNote} {manualRecommendedConfig.warning}{" "}
-          {manualRecommendedConfig.toggles.length} toggles for <code>$CODEX_HOME/config.toml</code>.
-        </p>
-
-        <div class="release-delta__config-toolbar">
-          <p class="release-delta__config-sources">
-            Refs:
-            {" "}
-            <a
-              class="signal-link"
-              href="https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json"
-              target="_blank"
-              rel="noreferrer"
-            >
-              config.schema.json
-            </a>
-            {" · "}
-            <a
-              class="signal-link"
-              href="https://developers.openai.com/codex/config-reference"
-              target="_blank"
-              rel="noreferrer"
-            >
-              config reference
-            </a>
+          <p class="release-delta__eyebrow">Continuous radar</p>
+          <h2 class="release-delta__title">
+            Codex upstream signal room
+          </h2>
+          <p class="release-delta__hero-subcopy">
+            Release tags are checkpoints. The feed is driven by commit and PR evidence that may affect Decodex or the public Codex workflow.
           </p>
-          <div class="release-delta__config-actions">
-            <button
-              type="button"
-              class="release-delta__copy-button"
-              data-copy-config
-              data-copy-text={manualRecommendedConfig.tomlSnippet ?? ""}
-              data-copy-default="COPY"
-              data-copy-success="COPIED"
-              data-copy-failure="COPY FAILED"
-              aria-live="polite"
-            >
-              COPY
-            </button>
+        </div>
+        <a class="release-delta__hero-link signal-link" href={activeComparison.compare.url} target="_blank" rel="noreferrer">
+          Open GitHub compare
+        </a>
+      </div>
+
+      <div class="release-delta__radar-strip" aria-hidden="true">
+        <span class="release-delta__radar-strip-line"></span>
+      </div>
+
+      <div class="release-delta__summary-rail release-delta__summary-rail--hero">
+        <span class="release-delta__summary-item">
+          <strong>{activeComparison.compare.total_commits}</strong> commits in checkpoint
+        </span>
+        <span class="release-delta__summary-item">
+          <strong>{trackedSignals.length}</strong> public signals
+        </span>
+        <span class="release-delta__summary-item">
+          <strong>{tryPathCount}</strong> try paths
+        </span>
+        <span class="release-delta__summary-item">
+          Last signal <strong>{formatPublishedAt(latestPublicSignalAt ?? latestWindowTrackedAt ?? activePreview.published_at)}</strong>
+        </span>
+      </div>
+    </div>
+
+    <div class="release-delta__content-grid">
+      <div class="release-delta__overview">
+        <div class="release-delta__overview-head">
+          <div>
+            <p class="release-delta__panel-label">Current signals</p>
+            <h3 class="release-delta__overview-title">
+              {publicHighlightSignals.length > 0 ? "Signals ready to try" : "No action-worthy signal yet"}
+            </h3>
           </div>
         </div>
 
-        <button
-          type="button"
-          class="release-delta__config-divider-toggle"
-          data-config-toggle
-          aria-expanded="true"
-          aria-controls="config-features"
-          aria-label="Collapse features table"
-        >
-          <span class="release-delta__config-divider-rule" aria-hidden="true"></span>
-        </button>
-
-        <div class="release-delta__config-table-shell" data-config-shell id="config-features">
-          <table class="release-delta__config-table" aria-label="Recommended pre-release feature toggles">
-            <thead class="release-delta__config-table-head">
-              <tr>
-                <th class="release-delta__config-table-label release-delta__config-col--feature" scope="col">
-                  Feature
-                </th>
-                <th class="release-delta__config-table-label" scope="col">Why this is on</th>
-                <th class="release-delta__config-table-label release-delta__config-col--ref" scope="col">Ref</th>
-              </tr>
-            </thead>
-            <tbody class="release-delta__config-list">
-              {manualRecommendedConfig.toggles.map((toggle) => (
-                <tr class="release-delta__config-item">
-                  <td class="release-delta__config-cell release-delta__config-cell--feature">
-                    <p class="release-delta__config-meta">
-                      <span class="release-delta__config-meta-label">CONF</span>
-                      <code class="release-delta__config-meta-code" title={toggle.display}>{toggle.display}</code>
-                    </p>
-                    <p class="release-delta__config-meta">
-                      <span class="release-delta__config-meta-label">CLI</span>
-                      <code
-                        class="release-delta__config-meta-code"
-                        title={toggle.cliEnableFlag ?? `--enable ${toggle.name}`}
-                      >
-                        {toggle.cliEnableFlag ?? `--enable ${toggle.name}`}
-                      </code>
-                    </p>
-                  </td>
-                  <td class="release-delta__config-cell">
-                    <p
-                      class="release-delta__config-item-copy signal-markdown signal-markdown--inline"
-                      set:html={renderMarkdownInline(toggle.description)}
+        {
+          publicHighlightSignals.length > 0 ? (
+            <ol class="release-delta__overview-list">
+              {publicHighlightSignals.map((signal) => (
+                <li class="release-overview-card">
+                  <div class="release-overview-card__body">
+                    <div class="release-overview-card__meta">
+                      <span>{kindLabel(signal.kind)}</span>
+                    </div>
+                    <a
+                      class="release-overview-card__title signal-markdown signal-markdown--title"
+                      href={`#${signal.slug}`}
+                      set:html={renderMarkdownInline(signal.title)}
                     />
-                  </td>
-                  <td class="release-delta__config-cell release-delta__config-cell--ref">
-                    {toggle.githubSearchUrl ? (
-                      <p class="release-delta__config-item-links">
-                        <a class="signal-link" href={toggle.githubSearchUrl} target="_blank" rel="noreferrer">
-                          GitHub
-                        </a>
-                      </p>
-                    ) : null}
-                  </td>
-                </tr>
+                    <p
+                      class="release-overview-card__why signal-markdown signal-markdown--inline"
+                      set:html={renderMarkdownInline(signal.why_it_matters)}
+                    />
+                    <div class="release-overview-card__details">
+                      <div class="release-overview-card__detail">
+                        <p class="release-overview-card__label">How to try</p>
+                        <p
+                          class="release-overview-card__detail-body signal-markdown signal-markdown--inline"
+                          set:html={renderMarkdownInline(signal.how_to_try ?? "")}
+                        />
+                      </div>
+                      <div class="release-overview-card__detail">
+                        <p class="release-overview-card__label">What you should notice</p>
+                        <p
+                          class="release-overview-card__detail-body signal-markdown signal-markdown--inline"
+                          set:html={renderMarkdownInline(signal.expected_effect ?? "")}
+                        />
+                      </div>
+                    </div>
+                    <a class="release-overview-card__action signal-link" href={`#${signal.slug}`}>
+                      Read the full evidence
+                    </a>
+                  </div>
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    ) : null
-  }
-  <script is:inline>
-    (function () {
-      function bind(root) {
-        if (!root || root.dataset.comparatorBound === "true") return;
-        root.dataset.comparatorBound = "true";
-
-        var stableSelect = root.querySelector("[data-compare-stable]");
-        var previewSelect = root.querySelector("[data-compare-preview]");
-        if (!stableSelect || !previewSelect) return;
-
-        var validPreviewMap = JSON.parse(root.getAttribute("data-compare-map") || "{}");
-
-        function syncPreviewOptions(stableTag) {
-          var validPreviewTags = validPreviewMap[stableTag] || [];
-          var hasCurrent = validPreviewTags.indexOf(previewSelect.value) !== -1;
-          Array.prototype.forEach.call(previewSelect.options, function (option) {
-            option.disabled = validPreviewTags.indexOf(option.value) === -1;
-          });
-          if (!hasCurrent && validPreviewTags.length > 0) {
-            previewSelect.value = validPreviewTags[0];
-          }
+            </ol>
+          ) : (
+            <p class="release-delta__empty">
+              The public feed below is current; nothing in the latest pass clears the try-now highlight bar yet.
+            </p>
+          )
         }
-
-        function syncPanels() {
-          var key = stableSelect.value + "::" + previewSelect.value;
-          root.querySelectorAll("[data-compare-panel]").forEach(function (panel) {
-            panel.hidden = panel.getAttribute("data-compare-panel") !== key;
-          });
-        }
-
-        function apply() {
-          syncPreviewOptions(stableSelect.value);
-          syncPanels();
-        }
-
-        function copyText(value) {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            return navigator.clipboard.writeText(value);
-          }
-
-          return Promise.reject(new Error("Clipboard API unavailable"));
-        }
-
-        root.querySelectorAll("[data-copy-config]").forEach(function (button) {
-          if (button.dataset.copyBound === "true") return;
-          button.dataset.copyBound = "true";
-          button.addEventListener("click", function () {
-            var text = button.getAttribute("data-copy-text") || "";
-            var defaultLabel = button.getAttribute("data-copy-default") || "COPY TOML";
-            var successLabel = button.getAttribute("data-copy-success") || "COPIED";
-            var failureLabel = button.getAttribute("data-copy-failure") || "COPY FAILED";
-            if (!text) return;
-            copyText(text)
-              .then(function () {
-                button.textContent = successLabel;
-              })
-              .catch(function () {
-                button.textContent = failureLabel;
-              });
-            window.setTimeout(function () {
-              button.textContent = defaultLabel;
-            }, 1600);
-          });
-        });
-
-        root.querySelectorAll("[data-config-toggle]").forEach(function (button) {
-          if (button.dataset.toggleBound === "true") return;
-          button.dataset.toggleBound = "true";
-
-          var shell = button.closest(".release-delta__config") && button.closest(".release-delta__config").querySelector("[data-config-shell]");
-          if (!shell) return;
-
-          function setExpanded(expanded, immediate) {
-            button.setAttribute("aria-expanded", expanded ? "true" : "false");
-            button.setAttribute("aria-label", expanded ? "Collapse features table" : "Expand features table");
-
-            if (expanded) {
-              shell.dataset.collapsed = "false";
-              shell.style.opacity = "1";
-              if (immediate) {
-                shell.style.maxHeight = "none";
-                return;
-              }
-              shell.style.maxHeight = shell.scrollHeight + "px";
-              window.setTimeout(function () {
-                if (button.getAttribute("aria-expanded") === "true") {
-                  shell.style.maxHeight = "none";
-                }
-              }, 260);
-              return;
-            }
-
-            shell.dataset.collapsed = "true";
-            if (immediate) {
-              shell.style.maxHeight = "0px";
-              shell.style.opacity = "0";
-              return;
-            }
-            shell.style.maxHeight = shell.scrollHeight + "px";
-            shell.offsetHeight;
-            shell.style.maxHeight = "0px";
-            shell.style.opacity = "0";
-          }
-
-          setExpanded(true, true);
-
-          button.addEventListener("click", function () {
-            var expanded = button.getAttribute("aria-expanded") === "true";
-            setExpanded(!expanded, false);
-          });
-        });
-
-        stableSelect.addEventListener("change", apply);
-        previewSelect.addEventListener("change", apply);
-        apply();
-      }
-
-      function ready() {
-        document.querySelectorAll("[data-release-comparator]").forEach(bind);
-      }
-
-      document.addEventListener("astro:page-load", ready);
-      document.addEventListener("DOMContentLoaded", ready);
-    })();
-  </script>
+      </div>
+      <aside class="release-delta__state" aria-label="Radar state">
+        <p class="release-delta__panel-label">Radar state</p>
+        <dl class="release-delta__state-list">
+          <div class="release-delta__state-row">
+            <dt>Evidence units</dt>
+            <dd>{activeComparison.compare.commit_shas.length}</dd>
+          </div>
+          <div class="release-delta__state-row">
+            <dt>Checkpoint signals</dt>
+            <dd>{featuredSignals.length}</dd>
+          </div>
+          <div class="release-delta__state-row">
+            <dt>Public feed</dt>
+            <dd>{trackedSignals.length}</dd>
+          </div>
+        </dl>
+        <p class="release-delta__state-copy">
+          Checkpoints summarize releases; the public feed stays on the commit and PR trail.
+        </p>
+      </aside>
+    </div>
+  </div>
 </section>
