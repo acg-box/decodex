@@ -21,6 +21,7 @@ should not be treated as repository source.
 | `scripts/github/` | Deterministic GitHub collection, normalization, render, validation, and sync scripts for public signal content. |
 | `scripts/config/` | Repository automation scripts for config-derived artifacts. |
 | `artifacts/github/` | Checked-in GitHub change bundles and editorial analysis drafts used by the public signal pipeline. |
+| `artifacts/social/` | Checked-in Publisher social post drafts and publication evidence. |
 | `dev/skills/` | Repository-development skill-like instructions that are not part of installable plugin distribution. |
 | `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including manual CLI, automation, commit, land, and labels. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
@@ -78,6 +79,12 @@ editorial drafting step through the repo-local instructions at
 `dev/skills/github-signal/`, but that surface is not part of the installable Decodex
 plugin distribution. Generated GitHub bundles and analysis drafts live under
 `artifacts/github/` and must stay explicit and checked into the repository.
+
+`artifacts/github/impact/` may hold `upstream_impact/v1` classifications when an
+upstream Codex change has public-signal, Control Plane, or Publisher implications.
+`artifacts/social/` may hold `social_post_draft/v1` drafts before external publication.
+Both remain checked-in review artifacts; neither turns the public site into a live
+service.
 
 ## Installable Codex surface
 

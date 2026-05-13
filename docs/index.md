@@ -38,11 +38,17 @@ The split below is by question type, not by human-versus-agent audience.
   implementation surface maps -> `docs/reference/`
 - Need durable design rationale, packaging choices, or static-site tradeoffs ->
   `docs/decisions/`
+- Need the current Radar, Control Plane, and Publisher capability boundary ->
+  `docs/decisions/radar-control-plane-publisher.md`
 - Need the raw machine-authored research run artifacts used by shipped research tooling
   -> `docs/research/`
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`
 - Need the repo-local GitHub signal editorial workflow -> `dev/skills/github-signal/`
   plus `docs/runbook/local-github-signal-workflow.md`
+- Need upstream Codex impact classification or social post draft contracts ->
+  `docs/spec/upstream-impact.md` and `docs/spec/social-post-draft.md`
+- Need the `@decodexspace` social publishing procedure ->
+  `docs/runbook/social-publishing-workflow.md`
 - Need repository execution defaults or tracker-state policy -> registered project
   `WORKFLOW.md`
 - Need repo task names or automation entrypoints -> `Makefile.toml`
@@ -60,6 +66,8 @@ The split below is by question type, not by human-versus-agent audience.
 - Keep the public site static by default. `site/` consumes checked-in content and
   generated JSON; it must not depend on a live Decodex daemon unless a later decision
   changes that boundary.
+- Keep social publishing static-first as well. Drafts must be reviewable checked-in
+  artifacts before any external posting automation acts on them.
 - Start each document with a short routing header that says what the document is for,
   when to read it, and what it does not cover.
 - Keep links explicit and stable.

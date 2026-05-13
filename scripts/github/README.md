@@ -11,10 +11,18 @@ Current scripts:
 - `render_signal_entry.py`
 - `validate_signal_entry.py`
 
+Current schema-only contracts:
+
+- `analysis_draft.schema.json`
+- `upstream_impact.schema.json`
+- `social_post_draft.schema.json`
+
 Contract ownership:
 
 - input bundle shape: `docs/spec/github-change-bundle.md`
 - output signal shape: `docs/spec/signal-entry.md`
+- upstream impact shape: `docs/spec/upstream-impact.md`
+- social post draft shape: `docs/spec/social-post-draft.md`
 
 Example flow:
 
