@@ -21,6 +21,8 @@ Depends on:
 
 Outputs:
 - A validated signal entry committed to the repo
+- Optional upstream-impact and social-draft artifacts when the change affects Control
+  Plane or external publishing
 - A push that allows CI to build and deploy the static site
 
 ## Workflow
@@ -30,9 +32,12 @@ Outputs:
 3. Run Codex analysis against the bundle with the repo-local instructions at `dev/skills/github-signal/` and save the editorial draft JSON under `artifacts/github/analysis/`.
 4. Render the resulting signal entry into `site/src/content/signals/`.
 5. Validate the signal entry shape and collection consistency.
-6. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
-7. Review the rendered content manually in the homepage feed.
-8. Push the content update and let CI build and deploy the static site.
+6. Classify upstream impact when the change may affect Control Plane or Publisher.
+7. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
+8. Draft optional social publishing content only through
+   [`social-publishing-workflow.md`](./social-publishing-workflow.md).
+9. Review the rendered content manually in the homepage feed.
+10. Push the content update and let CI build and deploy the static site.
 
 ## Deterministic commands
 
@@ -116,6 +121,12 @@ For the release-delta artifact:
 - include only signals whose source commit SHAs appear in the stable-versus-prerelease compare set
 - prefer highlighting the smaller tracked subset over trying to summarize every internal commit in the compare
 - do not treat prerelease notes alone as sufficient editorial evidence when the release body is empty
+
+For upstream-impact and social-draft artifacts:
+
+- classify Control Plane implications before creating engineering follow-up work
+- keep social drafts checked in and unposted until approval
+- do not use X engagement as technical evidence
 
 ## CI boundary
 

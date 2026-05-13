@@ -17,13 +17,16 @@ repo already renders into a final `signal_entry/v1`.
 ## Read before drafting
 
 - `docs/spec/github-change-bundle.md`
+- `docs/spec/upstream-impact.md`
 - `docs/spec/signal-entry.md`
+- `docs/spec/social-post-draft.md`
 - `docs/runbook/local-github-signal-workflow.md`
 
 ## Inputs
 
 - A normalized bundle JSON under `artifacts/github/bundles/`
 - An output path under `artifacts/github/analysis/`
+- Optional upstream impact output under `artifacts/github/impact/`
 
 ## Boundaries
 
@@ -31,6 +34,9 @@ repo already renders into a final `signal_entry/v1`.
 - Treat commits, files, and patch excerpts as evidence.
 - Do not summarize every commit as if it were independently important.
 - Publish only when the change introduces a capability, changes user-visible behavior, or offers a clear try-now path.
+- Classify Control Plane impact separately from public signal worthiness when the
+  change touches Codex app-server, plugins, browser automation, MCP, permissions,
+  sandboxing, or config behavior.
 - Keep `why_it_matters` focused on user value, not internal mechanics.
 - If `how_to_try` is present, make it concrete and pair it with `expected_effect`.
 - When a feature is gated by `config.toml`, prefer canonical user-facing toggles over raw patch constants or PR-local token strings.
@@ -123,8 +129,10 @@ Write a JSON analysis draft with these fields:
 2. Read `primary_pr.title`, `primary_pr.body`, `files`, and `commits`.
 3. Decide whether the change is signal-worthy.
 4. Draft the editorial JSON under `artifacts/github/analysis/`.
-5. Render the final signal entry with the repo script.
-6. Validate the published signal collection and site build.
+5. Draft an `upstream_impact/v1` artifact when the change affects Control Plane or
+   Publisher follow-up.
+6. Render the final signal entry with the repo script.
+7. Validate the published signal collection and site build.
 
 ## Commands
 
