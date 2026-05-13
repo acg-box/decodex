@@ -6,8 +6,8 @@ export const FILTERS = [
   },
   {
     id: "github",
-    label: "GitHub",
-    description: "PR-first GitHub change signals.",
+    label: "Upstream",
+    description: "Source-backed upstream change signals.",
   },
   {
     id: "try-now",
