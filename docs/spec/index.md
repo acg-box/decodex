@@ -64,6 +64,9 @@ Then keep the body explicit:
   by the static site.
 - [`release-delta.md`](./release-delta.md) defines the stable-versus-prerelease summary
   artifact used by the homepage release-delta module.
+- [`radar-artifact-retention.md`](./radar-artifact-retention.md) defines the 28-day Git
+  hot window for raw Radar artifacts, the warm curated artifacts that stay in Git, and
+  the GitHub Release archive manifest contract.
 - [`upstream-impact.md`](./upstream-impact.md) defines how Radar classifies upstream
   Codex changes for public signals, Control Plane follow-up, and Publisher angles.
 - [`social-post-draft.md`](./social-post-draft.md) defines the checked-in social draft
