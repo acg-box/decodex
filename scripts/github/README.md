@@ -7,6 +7,7 @@ Current scripts:
 - `build_change_bundle.py`
 - `build_release_delta.py`
 - `backfill_release_range.py`
+- `radar_ledger.py`
 - `run_codex_analysis.py`
 - `sync_latest_signals.py`
 - `validate_change_bundle.py`
@@ -51,6 +52,14 @@ python3 scripts/github/sync_latest_signals.py \
   --repo openai/codex \
   --search-limit 20 \
   --max-new-prs 3
+```
+
+The sync writes a local SQLite Radar ledger at `.decodex/radar.sqlite3` by default.
+Use `--no-ledger` only for throwaway runs. To bootstrap the ledger from existing
+checked-in artifacts:
+
+```bash
+python3 scripts/github/radar_ledger.py ingest-existing
 ```
 
 Release-window gap fill:
