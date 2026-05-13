@@ -158,11 +158,10 @@ The GitHub-first public signal path stays deterministic and reviewable:
   `artifacts/github/bundles/`.
 - `dev/skills/README.md` routes the repo-local Radar and editorial instructions. They
   are not part of the installable Decodex plugin distribution.
-- `scripts/github/sync_latest_signals.py` discovers recent merged PRs and refreshes
-  content artifacts.
-- `scripts/github/sync_prerelease_signals.py` starts from the latest stable-to-prerelease
-  compare so Decodex can explain Codex prereleases even when upstream release notes are
-  sparse.
+- `scripts/github/sync_latest_signals.py` discovers recent upstream commits, resolves
+  them back to PRs when possible, and refreshes content artifacts.
+- `scripts/github/backfill_release_range.py` fills release-window gaps before a
+  release or prerelease summary, but daily Radar still starts from the commit stream.
 - `docs/spec/upstream-impact.md` records how upstream Codex changes are classified for
   public signals and Control Plane follow-up work.
 - `scripts/github/render_signal_entry.py` renders reviewed analysis drafts into site

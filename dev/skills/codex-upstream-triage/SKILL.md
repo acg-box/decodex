@@ -29,20 +29,20 @@ Decodex plugin skill.
 
 Use the lightest source that can answer the triage question:
 
-1. GitHub release-delta or compare metadata when the user asks about a Codex release
-   or prerelease.
-2. GitHub PR metadata when a PR number is known.
-3. GitHub commit metadata when only a SHA is known.
+1. GitHub commit metadata for the upstream commit stream.
+2. GitHub PR metadata when a commit maps to a merged PR or a PR number is known.
+3. GitHub release-delta or compare metadata when the user asks for a release or
+   prerelease rollup.
 4. Upstream changelog or browser observation when the question is about public product
    framing.
 
-For a latest Codex pass, prefer the latest stable-to-prerelease compare before a
-generic recent-commit scan. Prerelease bodies are often sparse, so the compare PR and
-commit set is the useful queue.
+For normal Radar operation, scan recent upstream commits first and resolve each commit
+back to a PR when possible. A commit list is a queue for understanding and
+classification, not final evidence.
 
-For a latest-commit pass outside a release window, list recent upstream commits first,
-then resolve promising commits back to PRs before building bundles. A commit list is a
-queue, not final evidence.
+For release or prerelease work, compare metadata is a rollup index over the commit/PR
+history already being analyzed. Do not let a release tag displace the underlying commit
+and PR evidence.
 
 ## Candidate Ladder
 
@@ -54,7 +54,6 @@ Classify each item as exactly one:
 | `watch` | Interesting but too weak, too hidden, or too broad. | Optional `upstream_impact/v1` with `control_plane_impact = "watch"`. |
 | `bundle` | Enough GitHub context exists for code analysis. | Build or reuse a `github_change_bundle/v1`. |
 | `release_review` | Release or changelog framing needs comparison against commits and signals. | Use `codex-release-analysis`. |
-| `prerelease_delta` | A sparse Codex prerelease needs compare-driven reconstruction. | Use `codex-release-analysis`, then build bundles for unpublished compare PRs. |
 | `style_reference` | Useful only as style or audience evidence. | Save no technical artifact; use only as optional style context when a separate source-backed draft exists. |
 
 ## Grouping Rules
@@ -78,8 +77,8 @@ Escalate to `codex-code-analysis` when changed files or release text mention:
 - CLI/TUI behavior visible to a normal Codex user
 
 Escalate to `codex-release-analysis` when the source is a release, prerelease, app
-update, or public changelog. For Codex prereleases, default to `prerelease_delta`
-unless the release body is already explanatory enough to stand on its own.
+update, or public changelog. For Codex releases and prereleases, summarize from prior
+commit/PR analysis whenever possible, then use compare data to find gaps.
 
 Escalate to `x-post-draft` only after there is technical source evidence and a clear
 Publisher angle. Style references from X must not start a social draft by themselves.

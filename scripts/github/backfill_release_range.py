@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill unpublished GitHub signals for a stable->preview prerelease compare range."""
+"""Backfill unpublished GitHub signals for a selected release compare range."""
 
 from __future__ import annotations
 
@@ -210,7 +210,7 @@ def main() -> None:
                 args.repo,
                 pr["number"],
                 token,
-                [f"Backfilled from prerelease compare range {stable_tag}...{preview_tag}"],
+            [f"Backfilled from release compare range {stable_tag}...{preview_tag}"],
             )
             dump_json(root / bundle_path, bundle)
 

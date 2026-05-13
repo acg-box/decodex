@@ -9,7 +9,6 @@ Current scripts:
 - `backfill_release_range.py`
 - `run_codex_analysis.py`
 - `sync_latest_signals.py`
-- `sync_prerelease_signals.py`
 - `validate_change_bundle.py`
 - `render_signal_entry.py`
 - `validate_signal_entry.py`
@@ -45,11 +44,22 @@ python3 scripts/github/validate_signal_entry.py \
   site/src/content/signals/openai-codex-pr-15222.json
 ```
 
-Prerelease-first flow:
+Continuous commit sync:
 
 ```bash
-python3 scripts/github/sync_prerelease_signals.py \
+python3 scripts/github/sync_latest_signals.py \
   --repo openai/codex \
+  --search-limit 20 \
+  --max-new-prs 3
+```
+
+Release-window gap fill:
+
+```bash
+python3 scripts/github/backfill_release_range.py \
+  --repo openai/codex \
+  --stable-tag rust-v0.130.0 \
+  --preview-tag rust-v0.131.0-alpha.9 \
   --max-prs 3
 ```
 

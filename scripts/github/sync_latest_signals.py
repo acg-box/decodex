@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discover recent merged PRs, generate Decodex signals, and refresh release deltas."""
+"""Discover recent upstream commits, generate Decodex signals, and refresh release deltas."""
 
 from __future__ import annotations
 
@@ -17,9 +17,17 @@ SCRIPT_HOME = Path(__file__).resolve().parent
 if str(SCRIPT_HOME) not in sys.path:
     sys.path.insert(0, str(SCRIPT_HOME))
 
-from build_change_bundle import build_pr_bundle, github_request, repo_default_branch, routed_token_env  # noqa: E402
+from build_change_bundle import (  # noqa: E402
+    build_commit_bundle,
+    build_pr_bundle,
+    github_request,
+    maybe_promote_commit_to_pr,
+    repo_default_branch,
+    routed_token_env,
+)
 from contracts import dump_json, load_json, validate_signal  # noqa: E402
 
+COMMIT_URL_RE = re.compile(r"/commit/([0-9a-f]{7,40})$")
 PR_URL_RE = re.compile(r"/pull/(\d+)$")
 POSITIVE_TITLE_TERMS = (
     "feat",
@@ -72,8 +80,8 @@ def parse_args() -> argparse.Namespace:
         default="site/src/content/release-deltas/openai-codex-latest.json",
         help="Path to write the release delta artifact.",
     )
-    parser.add_argument("--search-limit", type=int, default=20, help="How many recent merged PRs to inspect.")
-    parser.add_argument("--max-new-prs", type=int, default=3, help="Maximum unpublished PRs to publish per run.")
+    parser.add_argument("--search-limit", type=int, default=20, help="How many recent commits to inspect.")
+    parser.add_argument("--max-new-prs", type=int, default=3, help="Maximum unpublished changes to publish per run.")
     parser.add_argument("--token-env", help="Environment variable containing a GitHub token.")
     parser.add_argument("--codex-bin", default="codex", help="Codex executable to invoke.")
     parser.add_argument("--model", help="Optional Codex model override.")
@@ -105,23 +113,48 @@ def published_pr_numbers(signals_dir: Path) -> set[int]:
     return published
 
 
-def recent_merged_prs(repo: str, token: str | None, search_limit: int) -> list[dict[str, Any]]:
+def published_commit_shas(signals_dir: Path) -> set[str]:
+    published: set[str] = set()
+    for path in sorted(signals_dir.glob("*.json")):
+        payload = load_json(path)
+        validation = validate_signal(payload)
+        if not validation.ok:
+            raise SystemExit(f"Signal validation failed for {path}:\n- " + "\n- ".join(validation.errors))
+        for url in payload.get("source_refs", {}).get("commit_urls", []):
+            if not isinstance(url, str):
+                continue
+            match = COMMIT_URL_RE.search(url)
+            if match:
+                published.add(match.group(1))
+    return published
+
+
+def recent_commits(repo: str, token: str | None, search_limit: int) -> list[dict[str, Any]]:
     default_branch = repo_default_branch(repo, token)
-    query = urllib.parse.quote_plus(f"repo:{repo} is:pr is:merged base:{default_branch}")
     payload, _ = github_request(
-        f"https://api.github.com/search/issues?q={query}&sort=updated&order=desc&per_page={search_limit}",
+        f"https://api.github.com/repos/{repo}/commits?sha={urllib.parse.quote(default_branch)}&per_page={search_limit}",
         token,
     )
-    items = payload.get("items")
-    if not isinstance(items, list):
-        raise SystemExit("Expected search/issues to return an items list")
+    if not isinstance(payload, list):
+        raise SystemExit("Expected commits list payload from GitHub API")
     results: list[dict[str, Any]] = []
-    for item in items:
-        number = item.get("number")
-        title = item.get("title")
+    for item in payload:
+        sha = item.get("sha")
+        commit = item.get("commit")
         url = item.get("html_url")
-        if isinstance(number, int) and isinstance(title, str) and isinstance(url, str):
-            results.append({"number": number, "title": title, "url": url})
+        if not isinstance(sha, str) or not isinstance(commit, dict) or not isinstance(url, str):
+            continue
+        message = commit.get("message")
+        if not isinstance(message, str) or not message:
+            continue
+        results.append(
+            {
+                "sha": sha,
+                "title": message.strip().splitlines()[0],
+                "url": url,
+                "committed_at": (commit.get("committer") or {}).get("date"),
+            }
+        )
     return results
 
 
@@ -137,8 +170,13 @@ def candidate_score(title: str) -> int:
     return score
 
 
-def signal_paths(pr_number: int, args: argparse.Namespace) -> tuple[Path, Path, Path]:
-    stem = f"openai-codex-pr-{pr_number}"
+def signal_paths(candidate: dict[str, Any], args: argparse.Namespace) -> tuple[Path, Path, Path]:
+    pr_number = candidate.get("pr_number")
+    stem = (
+        f"openai-codex-pr-{pr_number}"
+        if isinstance(pr_number, int)
+        else f"openai-codex-commit-{candidate['sha'][:12]}"
+    )
     bundles_dir = Path(args.bundles_dir)
     analysis_dir = Path(args.analysis_dir)
     signals_dir = Path(args.signals_dir)
@@ -177,19 +215,37 @@ def main() -> None:
     token = os.environ.get(token_env)
     root = repo_root()
     signals_dir = (root / args.signals_dir).resolve()
-    published = published_pr_numbers(signals_dir)
-    candidates = recent_merged_prs(args.repo, token, args.search_limit)
-    unpublished = [item for item in candidates if item["number"] not in published]
+    published_prs = published_pr_numbers(signals_dir)
+    published_shas = published_commit_shas(signals_dir)
+    commits = recent_commits(args.repo, token, args.search_limit)
+    candidates: list[dict[str, Any]] = []
+    seen_candidate_keys: set[tuple[str, int | str]] = set()
+    for commit in commits:
+        if commit["sha"] in published_shas:
+            continue
+        pr_number = maybe_promote_commit_to_pr(args.repo, commit["sha"], token)
+        if pr_number is not None and pr_number in published_prs:
+            continue
+        candidate_key: tuple[str, int | str] = (
+            ("pr", pr_number) if pr_number is not None else ("commit", commit["sha"])
+        )
+        if candidate_key in seen_candidate_keys:
+            continue
+        seen_candidate_keys.add(candidate_key)
+        candidates.append({**commit, "pr_number": pr_number})
+
+    unpublished = candidates
     unpublished = [item for item in unpublished if candidate_score(item["title"]) > 0][: args.max_new_prs]
 
     created = 0
     for candidate in reversed(unpublished):
-        bundle_path, analysis_path, signal_path = signal_paths(candidate["number"], args)
-        bundle = build_pr_bundle(
-            args.repo,
-            candidate["number"],
-            token,
-            [f"Discovered via hourly merged-PR sync: {candidate['url']}"],
+        bundle_path, analysis_path, signal_path = signal_paths(candidate, args)
+        notes = [f"Discovered via continuous upstream commit sync: {candidate['url']}"]
+        pr_number = candidate.get("pr_number")
+        bundle = (
+            build_pr_bundle(args.repo, pr_number, token, notes)
+            if isinstance(pr_number, int)
+            else build_commit_bundle(args.repo, candidate["sha"], token, notes)
         )
         dump_json(root / bundle_path, bundle)
 
@@ -227,8 +283,10 @@ def main() -> None:
         json.dumps(
             {
                 "repo": args.repo,
-                "published_prs_seen": len(published),
-                "recent_prs_scanned": len(candidates),
+                "published_prs_seen": len(published_prs),
+                "published_commits_seen": len(published_shas),
+                "recent_commits_scanned": len(commits),
+                "unpublished_changes_considered": len(candidates),
                 "new_signals_created": created,
                 "release_delta_refreshed": release_delta_refreshed,
             },
