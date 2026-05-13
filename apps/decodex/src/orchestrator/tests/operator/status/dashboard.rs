@@ -1319,7 +1319,6 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 	assert!(response.contains("intakeAttentionCount"));
 	assert!(response.contains("queuedBlockedWithoutAttention"));
 	assert!(response.contains("attention.thread_status && attention.thread_status !== \"systemError\""));
-	assert!(response.contains("candidate.classification !== \"claimed\""));
 	assert!(response.contains("queueBacklogCandidates.filter(queuedCandidateNeedsAttention).length"));
 	assert!(response.contains(
 		"${pluralize(derived.postReviewLanes.length, \"PR\")} · ${pluralize(derived.reviewBlockerCount, \"needs attention\", \"need attention\")}"
@@ -1333,6 +1332,18 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 	assert!(!response.contains("Ready, capacity-limited, or blocked issues appear here before they start."));
 	assert!(!response.contains("claimed without local lane"));
 	assert!(!response.contains("const repairCount = attentionItems.length;"));
+}
+
+#[test]
+fn operator_dashboard_does_not_hide_claimed_queue_without_local_lane() {
+	let response = dashboard_response();
+
+	assert!(response.contains("const activeRunByIssue = new Map();"));
+	assert!(response.contains("for (const key of issueIdentityKeys(run))"));
+	assert!(response.contains("const activeRun = issueIdentityKeys(candidate)"));
+	assert!(response.contains("if (activeRun) {"));
+	assert!(!response.contains("activeRun && candidate.classification === \"claimed\""));
+	assert!(!response.contains("candidate.classification !== \"claimed\" &&"));
 }
 
 #[test]
