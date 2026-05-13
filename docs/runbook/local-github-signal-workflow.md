@@ -28,24 +28,28 @@ Outputs:
 
 ## Workflow
 
-1. Triage upstream Codex activity with `dev/skills/codex-upstream-triage/` when the
-   candidate is not already chosen by automation or by the operator.
-2. Build a normalized GitHub change bundle under `artifacts/github/bundles/` for
+1. For OpenAI Codex prereleases, start from the prerelease-first path because upstream
+   prerelease notes are often sparse: refresh `release_delta/v1`, compare the latest
+   stable tag to the latest prerelease tag, and use unpublished compare PRs as the
+   candidate queue.
+2. Triage other upstream Codex activity with `dev/skills/codex-upstream-triage/` when
+   the candidate is not already chosen by automation or by the operator.
+3. Build a normalized GitHub change bundle under `artifacts/github/bundles/` for
    selected candidates.
-3. Analyze source behavior with `dev/skills/codex-code-analysis/` as an in-session
+4. Analyze source behavior with `dev/skills/codex-code-analysis/` as an in-session
    reasoning pass; do not create a separate checked-in artifact for this pass.
-4. Use `dev/skills/codex-release-analysis/` when the source is a release, prerelease,
+5. Use `dev/skills/codex-release-analysis/` when the source is a release, prerelease,
    app update, or changelog entry.
-5. Run final signal drafting with `dev/skills/github-signal/` and save the
+6. Run final signal drafting with `dev/skills/github-signal/` and save the
    `analysis_draft` JSON under `artifacts/github/analysis/`.
-6. Render the resulting signal entry into `site/src/content/signals/`.
-7. Validate the signal entry shape and collection consistency.
-8. Classify upstream impact when the change may affect Control Plane or Publisher.
-9. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
-10. Draft optional social publishing content only through
+7. Render the resulting signal entry into `site/src/content/signals/`.
+8. Validate the signal entry shape and collection consistency.
+9. Classify upstream impact when the change may affect Control Plane or Publisher.
+10. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
+11. Draft optional social publishing content only through
    [`social-publishing-workflow.md`](./social-publishing-workflow.md).
-11. Review the rendered content manually in the homepage feed.
-12. Push the content update and let CI build and deploy the static site.
+12. Review the rendered content manually in the homepage feed.
+13. Push the content update and let CI build and deploy the static site.
 
 ## Deterministic commands
 
@@ -93,6 +97,26 @@ python3 scripts/github/build_release_delta.py \
   --out site/src/content/release-deltas/openai-codex-latest.json
 ```
 
+Sync unpublished signals from the latest prerelease compare:
+
+```bash
+python3 scripts/github/sync_prerelease_signals.py \
+  --repo openai/codex \
+  --max-prs 3
+```
+
+Preview the latest prerelease queue without generating content:
+
+```bash
+python3 scripts/github/sync_prerelease_signals.py \
+  --repo openai/codex \
+  --dry-run
+```
+
+`sync_prerelease_signals.py --dry-run` refreshes the prerelease compare into a
+temporary release-delta file, so it does not mutate checked-in content while listing
+the queue.
+
 The repository already includes a real sample for this flow:
 
 - bundle: `artifacts/github/bundles/openai-codex-pr-15222.json`
@@ -113,6 +137,10 @@ Automated hourly sync entrypoint:
 
 - `scripts/github/sync_latest_signals.py`
 
+Prerelease-first sync entrypoint:
+
+- `scripts/github/sync_prerelease_signals.py`
+
 ## Editorial gate
 
 Publish only when the change meets at least one of these tests:
@@ -129,6 +157,7 @@ Skip or defer entries for:
 
 For the release-delta artifact:
 
+- treat Codex prereleases as a high-value source even when release notes are empty
 - include only signals whose source commit SHAs appear in the stable-versus-prerelease compare set
 - prefer highlighting the smaller tracked subset over trying to summarize every internal commit in the compare
 - do not treat prerelease notes alone as sufficient editorial evidence when the release body is empty
