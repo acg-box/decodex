@@ -159,23 +159,6 @@ const releaseDeltaSchema = z
     });
   });
 
-const recommendedConfigSchema = z.object({
-  schema: z.literal("recommended_config/v1"),
-  repo: z.string().min(1),
-  id: z.string().min(1),
-  title: z.string().min(1),
-  curator_name: z.string().min(1),
-  curator_url: z.string().regex(/^https:\/\//, "curator_url must be an https URL"),
-  subtitle: z.string().min(1),
-  audience_note: z.string().min(1),
-  warning: z.string().min(1),
-  config_toml: z.string().min(1),
-  flags: z.array(z.object({
-    name: z.string().min(1),
-    description: z.string().min(1),
-  })).min(1),
-});
-
 const signals = defineCollection({
   loader: glob({
     pattern: "**/*.json",
@@ -192,16 +175,7 @@ const releaseDeltas = defineCollection({
   schema: releaseDeltaSchema,
 });
 
-const recommendedConfigs = defineCollection({
-  loader: glob({
-    pattern: "**/*.json",
-    base: "./src/content/recommended-configs",
-  }),
-  schema: recommendedConfigSchema,
-});
-
 export const collections = {
   signals,
   releaseDeltas,
-  recommendedConfigs,
 };

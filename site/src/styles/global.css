@@ -125,7 +125,7 @@ h5,
 h6 {
   margin: 0;
   font-weight: 800;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
 }
 
 p,
@@ -341,7 +341,7 @@ code {
 .site-brand__social-handle {
   font-size: 0.92rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   color: var(--accent);
 }
 
@@ -506,7 +506,7 @@ code {
 .appcast-download__title {
   font-size: 0.86rem;
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   line-height: 1;
   color: var(--ink);
 }
@@ -612,7 +612,7 @@ code {
 .appcast-download__version-title {
   font-size: 0.82rem;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   line-height: 1.1;
   color: var(--ink);
 }
@@ -648,7 +648,7 @@ code {
   color: var(--ink);
   font-size: 0.86rem;
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   line-height: 1.1;
 }
 
@@ -662,7 +662,7 @@ code {
   background: none;
   font-size: 0.86rem;
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   color: var(--ink);
   white-space: nowrap;
 }
@@ -713,7 +713,7 @@ code {
 .reset-stack__question {
   font-size: 1.28rem;
   font-weight: 800;
-  letter-spacing: -0.045em;
+  letter-spacing: 0;
   line-height: 1.02;
   color: var(--ink);
 }
@@ -729,7 +729,7 @@ code {
   background: var(--bg-soft);
   font-size: 0.82rem;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
   color: var(--ink);
   white-space: nowrap;
 }
@@ -840,28 +840,39 @@ code {
 
 .release-delta {
   display: grid;
-  gap: 1.3rem;
-  margin-top: 1.15rem;
-  padding: 1.25rem 1.15rem 1.15rem;
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: var(--panel);
+  gap: 0.9rem;
+  margin-top: 1.2rem;
+  padding: 1.05rem 0 1.05rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+}
+
+.release-delta__control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding-bottom: 0.15rem;
 }
 
 .release-delta__hero {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.7rem;
   padding: 0;
 }
 
 .release-delta__hero-head {
   display: grid;
-  gap: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.9rem 1.5rem;
+  align-items: start;
 }
 
 .release-delta__hero-copy {
   display: grid;
-  gap: 0;
+  gap: 0.42rem;
 }
 
 .release-delta__eyebrow {
@@ -873,191 +884,76 @@ code {
   text-transform: uppercase;
 }
 
-.release-delta__chooser {
-  display: flex;
+.release-delta__window-label {
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
+  justify-content: flex-end;
+  gap: 0.32rem;
   color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.5;
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
-.release-delta__inline-select {
-  display: inline-flex;
-  align-items: center;
-}
-
-.release-delta__select {
-  appearance: none;
-  min-width: 0;
-  border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
-  padding: 0 1rem 0.08rem 0;
-  background: transparent;
+.release-delta__window-label strong {
   color: var(--ink);
-  font: inherit;
-  line-height: 1.25;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
-.release-delta__select--inline {
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  padding-right: 0.15rem;
+.release-delta__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.18rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.release-delta__hero-subcopy {
+  max-width: 46rem;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.release-delta__hero-link {
+  justify-self: end;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .release-delta__comparison {
   display: grid;
-  gap: 1.15rem;
+  gap: 0.85rem;
 }
 
 .release-delta__content-grid {
   display: grid;
-  gap: 0.85rem;
+  gap: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
 }
 
-.release-delta__config {
-  display: grid;
-  gap: 0.45rem;
-  padding-bottom: 0.1rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.release-delta__config-head {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.release-delta__config-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.release-delta__config-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-  background: color-mix(in srgb, var(--accent) 5%, var(--panel));
-  padding: 0.18rem 0.52rem;
-  color: var(--muted);
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.release-delta__config-warning {
-  margin: 0;
-  max-width: none;
-  color: var(--ink-soft);
-  font-size: 0.88rem;
-  line-height: 1.5;
-}
-
-.release-delta__config-warning code {
-  border: 1px solid var(--code-border);
-  border-radius: 0.5rem;
-  background: var(--code-bg);
-  padding: 0.12rem 0.38rem;
-  color: var(--accent);
-  font-size: 0.92em;
-}
-
-.release-delta__config-sources {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.2rem;
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1.22;
-}
-
-.release-delta__config-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 1.25rem;
-  row-gap: 0.5rem;
-  margin-top: 0.36rem;
-  padding: 0 0 0;
-}
-
-.release-delta__config-summary {
-  max-width: 42rem;
-  color: var(--ink-soft);
-  font-size: 0.96rem;
-  line-height: 1.64;
-}
-
-.release-delta__config-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.85rem;
-  justify-self: end;
-}
-
-.release-delta__copy-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 1.22;
-  text-align: right;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition:
-    color 140ms ease;
-}
-
-.release-delta__config-toggle:hover,
-.release-delta__copy-button:hover {
-  color: var(--link);
-}
-
-.release-delta__config-divider-toggle {
+.release-delta__radar-strip {
   display: flex;
   align-items: center;
   width: 100%;
-  gap: 0;
-  border: 0;
-  background: transparent;
-  margin: -0.38rem 0 -0.34rem;
-  padding: 0.46rem 0 0.36rem;
-  color: var(--muted-soft);
-  cursor: pointer;
-  transition: color 140ms ease;
+  padding: 0.05rem 0 0.05rem;
 }
 
-.release-delta__config-divider-toggle:hover {
-  color: var(--ink-soft);
-}
-
-.release-delta__config-divider-rule {
+.release-delta__radar-strip-line {
   position: relative;
   flex: 1 1 auto;
   height: 1px;
   background: color-mix(in srgb, var(--border) 84%, transparent);
   overflow: hidden;
-  transition:
-    height 180ms ease,
-    background 180ms ease,
-    box-shadow 180ms ease;
 }
 
-.release-delta__config-divider-rule::after {
+.release-delta__radar-strip-line::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1075,29 +971,15 @@ code {
   background-repeat: no-repeat;
   background-position: 200% 0;
   opacity: 0.82;
-  animation: release-delta-divider-shimmer 2.8s linear infinite;
-}
-
-.release-delta__config-divider-toggle:hover .release-delta__config-divider-rule,
-.release-delta__config-divider-toggle:focus-visible .release-delta__config-divider-rule {
-  height: 2px;
-  background: color-mix(in srgb, var(--accent) 26%, var(--border));
-  box-shadow: 0 0 0.55rem color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.release-delta__config-divider-toggle:hover .release-delta__config-divider-rule::after,
-.release-delta__config-divider-toggle:focus-visible .release-delta__config-divider-rule::after,
-.release-delta__config-divider-toggle[aria-expanded="false"] .release-delta__config-divider-rule::after {
-  opacity: 1;
-  animation-duration: 1.5s;
+  animation: release-delta-radar-shimmer 2.8s linear infinite;
 }
 
 :root[data-theme="light"] {
-  .release-delta__config-divider-rule {
+  .release-delta__radar-strip-line {
     background: color-mix(in srgb, var(--accent) 56%, var(--border));
   }
 
-  .release-delta__config-divider-rule::after {
+  .release-delta__radar-strip-line::after {
     background-image: linear-gradient(
       90deg,
       transparent 0%,
@@ -1112,22 +994,16 @@ code {
     );
     opacity: 0.92;
   }
-
-  .release-delta__config-divider-toggle:hover .release-delta__config-divider-rule,
-  .release-delta__config-divider-toggle:focus-visible .release-delta__config-divider-rule {
-    background: color-mix(in srgb, var(--link) 62%, var(--border));
-    box-shadow: 0 0 0.65rem color-mix(in srgb, var(--link) 26%, transparent);
-  }
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]),
   :root[data-theme="system"] {
-    .release-delta__config-divider-rule {
+    .release-delta__radar-strip-line {
       background: color-mix(in srgb, var(--accent) 56%, var(--border));
     }
 
-    .release-delta__config-divider-rule::after {
+    .release-delta__radar-strip-line::after {
       background-image: linear-gradient(
         90deg,
         transparent 0%,
@@ -1142,16 +1018,10 @@ code {
       );
       opacity: 0.92;
     }
-
-    .release-delta__config-divider-toggle:hover .release-delta__config-divider-rule,
-    .release-delta__config-divider-toggle:focus-visible .release-delta__config-divider-rule {
-      background: color-mix(in srgb, var(--link) 62%, var(--border));
-      box-shadow: 0 0 0.65rem color-mix(in srgb, var(--link) 26%, transparent);
-    }
   }
 }
 
-@keyframes release-delta-divider-shimmer {
+@keyframes release-delta-radar-shimmer {
   0% {
     background-position: 200% 0;
   }
@@ -1161,179 +1031,66 @@ code {
   }
 }
 
-.release-delta__config-table-shell {
-  overflow: hidden;
-  max-height: none;
-  opacity: 1;
-  transition:
-    max-height 260ms ease,
-    opacity 220ms ease;
+.release-delta__state {
+  display: grid;
+  gap: 0.6rem;
+  align-self: start;
+  padding-left: 1rem;
+  border-left: 1px solid var(--border);
 }
 
-.release-delta__config-table-shell[data-collapsed="true"] {
-  opacity: 0;
-}
-
-.release-delta__config-table {
-  width: 100%;
-  border-top: 0;
-  border-collapse: collapse;
-  table-layout: auto;
-}
-
-.release-delta__config-table-head th {
-  padding: 0.22rem 0 0.38rem 0;
-  vertical-align: bottom;
-  text-align: left;
-}
-
-.release-delta__config-table-label {
-  color: var(--muted-soft);
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.release-delta__config-col--feature,
-.release-delta__config-col--ref {
-  width: 1%;
-  white-space: nowrap;
-}
-
-.release-delta__config-table-head .release-delta__config-col--feature {
-  padding-right: 1.1rem;
-}
-
-.release-delta__config-table-head .release-delta__config-col--ref {
-  padding-left: 1.1rem;
-}
-
-.release-delta__config-item + .release-delta__config-item .release-delta__config-cell {
-  border-top: 1px solid var(--border);
-}
-
-.release-delta__config-cell {
-  min-width: 0;
-  padding: 0.9rem 0;
-  vertical-align: top;
-}
-
-.release-delta__config-cell--feature {
-  width: 19rem;
-  padding-right: 1.1rem;
-}
-
-.release-delta__config-cell--ref {
-  width: 6.5rem;
-  padding-left: 1.1rem;
-  white-space: nowrap;
-}
-
-.release-delta__config-cell > * {
+.release-delta__state-list {
+  display: grid;
+  gap: 0;
   margin: 0;
 }
 
-.release-delta__config-cell > * + * {
-  margin-top: 0.32rem;
+.release-delta__state-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.38rem 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.release-delta__config-primary {
-  width: fit-content;
-  max-width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 0.68rem;
-  background: color-mix(in srgb, var(--bg-soft) 82%, var(--panel));
-  padding: 0.34rem 0.58rem;
+.release-delta__state-row dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.release-delta__state-row dd {
+  margin: 0;
   color: var(--ink);
-  font-size: 0.78rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.release-delta__config-meta {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 0.42rem;
-  min-width: 0;
-}
-
-.release-delta__config-meta-label {
-  display: inline-block;
-  width: 4.6ch;
-  flex: 0 0 4.6ch;
-  text-align: right;
-  white-space: nowrap;
-  color: var(--muted-soft);
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-size: 1rem;
+  font-weight: 800;
   line-height: 1.2;
-  text-transform: uppercase;
 }
 
-.release-delta__config-meta-code {
-  color: var(--muted);
-  font-size: 0.72rem;
-  line-height: 1.45;
-  white-space: nowrap;
-}
-
-.release-delta__config-cli,
-.release-delta__config-inline-link {
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.45;
-}
-
-.release-delta__config-item-copy {
+.release-delta__state-copy {
+  margin: 0;
   color: var(--ink-soft);
-  font-size: 0.86rem;
-  line-height: 1.56;
-}
-
-.release-delta__config-item-note {
-  color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.55;
-}
-
-.release-delta__config-item-note-label {
-  margin-right: 0.35rem;
-  color: var(--muted-soft);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.release-delta__config-item-links {
-  color: var(--muted);
   font-size: 0.78rem;
-  line-height: 1.5;
-  width: fit-content;
-  white-space: nowrap;
+  line-height: 1.55;
 }
 
 .release-delta__overview {
   display: grid;
-  gap: 0.85rem;
+  gap: 0.62rem;
   padding: 0;
 }
 
 .release-delta__overview-head {
   display: grid;
-  gap: 0.3rem;
-  padding-bottom: 0.2rem;
+  gap: 0.22rem;
 }
 
 .release-delta__overview-title {
   font-size: 1rem;
   font-weight: 800;
   line-height: 1.22;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
   color: var(--ink);
 }
 
@@ -1431,17 +1188,15 @@ code {
 .release-delta__summary-rail {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.72rem 1.3rem;
+  gap: 0.55rem 1.25rem;
   align-items: center;
-  padding: 0.45rem 0 0.8rem;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  padding: 0;
+  border: 0;
 }
 
 .release-delta__summary-rail--hero {
-  padding: 0.2rem 0 0.75rem;
-  border-top: 0;
-  border-bottom: 1px solid var(--border);
+  padding: 0;
+  border: 0;
 }
 
 .release-delta__summary-item {
@@ -1454,17 +1209,11 @@ code {
   white-space: nowrap;
 }
 
-.release-delta__summary-item--pair {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-}
-
 .release-delta__summary-item strong {
   color: var(--ink);
   font-size: 1rem;
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .release-delta__panel-label {
@@ -1479,14 +1228,6 @@ code {
   font-size: 0.84rem;
   line-height: 1.5;
   color: var(--muted);
-}
-
-.release-delta__summary-link {
-  margin-left: auto;
-  padding-left: 0.2rem;
-  font-size: 0.82rem;
-  line-height: 1.4;
-  white-space: nowrap;
 }
 
 .sr-only {
@@ -1937,20 +1678,16 @@ code {
 
   .release-delta {
     margin-top: 1.1rem;
-    padding: 1.25rem;
+    padding: 1.05rem 0;
   }
 
   .release-delta__hero-head {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .release-delta__content-grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 15rem;
     align-items: start;
-  }
-
-  .release-delta__config-cell--feature {
-    width: 18rem;
   }
 
   .feed-toolbar {
@@ -2044,46 +1781,18 @@ code {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .release-delta__config-toolbar {
+  .release-delta__hero-head {
     grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
   }
 
-  .release-delta__config-actions {
+  .release-delta__hero-link {
     justify-self: start;
-    justify-content: flex-start;
   }
 
-  .release-delta__config-table,
-  .release-delta__config-table-head,
-  .release-delta__config-list,
-  .release-delta__config-item,
-  .release-delta__config-cell {
-    display: block;
-    width: 100%;
-  }
-
-  .release-delta__config-table-head {
-    display: none;
-  }
-
-  .release-delta__config-item {
-    padding: 0.9rem 0;
-  }
-
-  .release-delta__config-cell {
-    padding: 0;
-    border-top: 0;
-  }
-
-  .release-delta__config-cell + .release-delta__config-cell {
-    margin-top: 0.7rem;
-  }
-
-  .release-delta__config-cell--feature,
-  .release-delta__config-cell--ref {
-    width: auto;
+  .release-delta__state {
+    padding-top: 0.85rem;
     padding-left: 0;
-    padding-right: 0;
+    border-top: 1px solid var(--border);
+    border-left: 0;
   }
 }
