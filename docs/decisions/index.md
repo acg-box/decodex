@@ -23,6 +23,9 @@ Question this index answers: "why was it designed this way?"
 - [`decodex-plugin-source.md`](./decodex-plugin-source.md) records why this repository
   owns the canonical Decodex plugin and why generic Playbook guidance should only keep
   portable routing.
+- [`radar-control-plane-publisher.md`](./radar-control-plane-publisher.md) records the
+  stable capability names for upstream Codex intelligence, retained-lane orchestration,
+  and public publishing after the repository integration.
 - [`static-public-site.md`](./static-public-site.md) records why the public Decodex site
   remains static while runtime/operator behavior stays in the CLI and local control
   plane.

@@ -64,6 +64,11 @@ Then keep the body explicit:
   by the static site.
 - [`release-delta.md`](./release-delta.md) defines the stable-versus-prerelease summary
   artifact used by the homepage release-delta module.
+- [`upstream-impact.md`](./upstream-impact.md) defines how Radar classifies upstream
+  Codex changes for public signals, Control Plane follow-up, and Publisher angles.
+- [`social-post-draft.md`](./social-post-draft.md) defines the checked-in social draft
+  artifact required before `@decodexspace` or another external social account publishes
+  Decodex content.
 - [`site-contract.md`](./site-contract.md) defines the static-site page budget,
   homepage obligations, and card rendering contract.
 - [`reset-status.md`](./reset-status.md) defines the reset-status artifact consumed by
