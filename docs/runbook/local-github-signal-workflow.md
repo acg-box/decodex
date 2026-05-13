@@ -18,6 +18,7 @@ Depends on:
 - `docs/spec/signal-entry.md`
 - `docs/spec/release-delta.md`
 - `docs/spec/site-contract.md`
+- `dev/skills/README.md`
 
 Outputs:
 - A validated signal entry committed to the repo
@@ -27,17 +28,24 @@ Outputs:
 
 ## Workflow
 
-1. Build a normalized GitHub change bundle under `artifacts/github/bundles/`.
-2. Review the bundle and decide whether the change is signal-worthy.
-3. Run Codex analysis against the bundle with the repo-local instructions at `dev/skills/github-signal/` and save the editorial draft JSON under `artifacts/github/analysis/`.
-4. Render the resulting signal entry into `site/src/content/signals/`.
-5. Validate the signal entry shape and collection consistency.
-6. Classify upstream impact when the change may affect Control Plane or Publisher.
-7. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
-8. Draft optional social publishing content only through
+1. Triage upstream Codex activity with `dev/skills/codex-upstream-triage/` when the
+   candidate is not already chosen by automation or by the operator.
+2. Build a normalized GitHub change bundle under `artifacts/github/bundles/` for
+   selected candidates.
+3. Analyze source behavior with `dev/skills/codex-code-analysis/` as an in-session
+   reasoning pass; do not create a separate checked-in artifact for this pass.
+4. Use `dev/skills/codex-release-analysis/` when the source is a release, prerelease,
+   app update, or changelog entry.
+5. Run final signal drafting with `dev/skills/github-signal/` and save the
+   `analysis_draft` JSON under `artifacts/github/analysis/`.
+6. Render the resulting signal entry into `site/src/content/signals/`.
+7. Validate the signal entry shape and collection consistency.
+8. Classify upstream impact when the change may affect Control Plane or Publisher.
+9. Regenerate the release-delta artifact so the homepage compares the latest stable release to the latest prerelease using the updated signal set.
+10. Draft optional social publishing content only through
    [`social-publishing-workflow.md`](./social-publishing-workflow.md).
-9. Review the rendered content manually in the homepage feed.
-10. Push the content update and let CI build and deploy the static site.
+11. Review the rendered content manually in the homepage feed.
+12. Push the content update and let CI build and deploy the static site.
 
 ## Deterministic commands
 
@@ -93,10 +101,13 @@ The repository already includes a real sample for this flow:
 
 Repo-local editorial instruction entrypoint:
 
-- `dev/skills/github-signal/SKILL.md`
+- `dev/skills/README.md`
 
-This entrypoint is for Decodex repository development only. It is incomplete as a
-general user-facing skill and must not be packaged with the installable Decodex plugin.
+These entrypoints are for Decodex repository development only. They are incomplete as
+general user-facing skills and must not be packaged with the installable Decodex
+plugin. Today only `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`,
+`upstream_impact/v1`, `release_delta/v1`, and `social_post_draft/v1` are durable
+content contracts for this workflow.
 
 Automated hourly sync entrypoint:
 
