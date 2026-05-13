@@ -1,10 +1,8 @@
 ---
 import { getCollection } from "astro:content";
 import EmptyFeedState from "@/components/EmptyFeedState.astro";
-import AppcastDownloadWidget from "@/components/AppcastDownloadWidget.astro";
 import FilterBar from "@/components/FilterBar.astro";
 import ReleaseDeltaPanel from "@/components/ReleaseDeltaPanel.astro";
-import ResetStatusWidget from "@/components/ResetStatusWidget.astro";
 import SignalCard from "@/components/SignalCard.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
@@ -38,12 +36,6 @@ const hasPublishedSignals = signals.length > 0;
 const groupedSignals = groupSignalsByMonth(signals);
 const showGroupLabels = groupedSignals.length > 1;
 const clientFilterIds = FILTERS.map((filter) => filter.id);
-const tryPathCount = signals.filter((signal) => Boolean(signal.how_to_try)).length;
-const archivedSignalCount = Math.max(0, allSignals.length - signals.length);
-const sourceLinkedCount = signals.filter((signal) => {
-  const refs = signal.source_refs;
-  return Boolean(refs.pr_url || refs.items?.length || refs.commit_urls.length);
-}).length;
 
 const previewSignal: SignalCardData = {
   id: "preview-shell",
@@ -216,50 +208,24 @@ const filterRuntimeScript = `(function () {
           <div class="site-head__theme">
             <ThemeToggle />
           </div>
-
-          <div class="site-head__cues">
-            <ul class="site-brand__cues" aria-label="Decodex promises">
-              <li class="site-brand__cue">
-                <span class="site-brand__cue-label">Try paths</span>
-                <span class="site-brand__cue-value">{tryPathCount}</span>
-              </li>
-              <li class="site-brand__cue">
-                <span class="site-brand__cue-label">Source links</span>
-                <span class="site-brand__cue-value">{sourceLinkedCount}/{signals.length}</span>
-              </li>
-              <li class="site-brand__cue">
-                <span class="site-brand__cue-label">Archive</span>
-                <span class="site-brand__cue-value">{archivedSignalCount}</span>
-              </li>
-            </ul>
-          </div>
         </div>
 
         <p class="site-brand__note">
-          Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
+          Signal layer for Codex changes that are worth trying, watching, or adapting.
         </p>
-
-        <div class="site-head__status">
-          <ResetStatusWidget variant="inline" />
-        </div>
 
         <a
           class="site-brand__social"
-          href="https://x.com/YvetteCipher"
+          href="https://x.com/decodexspace"
           target="_blank"
           rel="noreferrer"
-          aria-label="Follow YvetteCipher on X"
+          aria-label="Follow decodexspace on X"
         >
-          <span class="site-brand__social-handle">@YvetteCipher on X</span>
+          <span class="site-brand__social-handle">@decodexspace on X</span>
           <span class="site-brand__social-copy">
-            Follow to help cover ops and unlock creator rewards.
+            Codex signal posts and release rollups.
           </span>
         </a>
-
-        <div class="site-head__actions">
-          <AppcastDownloadWidget />
-        </div>
-
       </div>
     </header>
 
@@ -271,8 +237,7 @@ const filterRuntimeScript = `(function () {
       <div class="feed-toolbar__intro">
         <p class="feed-toolbar__label">Latest signals</p>
         <p class="feed-toolbar__summary">
-          {signals.length} community-ready signals from {allSignals.length} analyzed upstream changes.
-          {archivedSignalCount > 0 ? ` ${archivedSignalCount} low-level watch items stay out of the public feed.` : ""}
+          Source-backed Codex changes, filtered for user-visible behavior, concrete try paths, and migration watch notes.
         </p>
       </div>
 
