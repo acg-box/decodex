@@ -160,6 +160,9 @@ The GitHub-first public signal path stays deterministic and reviewable:
   are not part of the installable Decodex plugin distribution.
 - `scripts/github/sync_latest_signals.py` discovers recent merged PRs and refreshes
   content artifacts.
+- `scripts/github/sync_prerelease_signals.py` starts from the latest stable-to-prerelease
+  compare so Decodex can explain Codex prereleases even when upstream release notes are
+  sparse.
 - `docs/spec/upstream-impact.md` records how upstream Codex changes are classified for
   public signals and Control Plane follow-up work.
 - `scripts/github/render_signal_entry.py` renders reviewed analysis drafts into site

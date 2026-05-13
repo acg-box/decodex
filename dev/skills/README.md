@@ -25,6 +25,10 @@ follow-up work:
 Use only the skills needed for the current artifact. Do not create a social draft just
 because a signal exists.
 
+For OpenAI Codex prereleases, start with `codex-release-analysis` and the latest
+stable-to-prerelease compare instead of a generic recent-commit scan. Codex prerelease
+notes are often too sparse to explain what changed.
+
 Only the existing checked-in contracts are durable artifacts today:
 `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`, `upstream_impact/v1`,
 `release_delta/v1`, and `social_post_draft/v1`. The triage, code-analysis, and

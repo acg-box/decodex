@@ -77,9 +77,12 @@ Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
 `scripts/github/` owns deterministic content scripts. Its automated Codex step may
 apply the repo-local code-analysis and GitHub-signal instructions under `dev/skills/`
 to produce the existing `analysis_draft` JSON consumed by `render_signal_entry.py`.
-The broader upstream triage, release-analysis, and X-drafting skills are manual
-Radar/Publisher reasoning surfaces unless a later script explicitly wires them into a
-checked-in contract. Generated GitHub bundles and analysis drafts live under
+`sync_prerelease_signals.py` is the prerelease-first entrypoint: it refreshes the
+stable-to-prerelease release delta, selects unpublished compare PRs, and reuses the
+existing bundle, analysis-draft, render, and validation path. The broader upstream
+triage, release-analysis, and X-drafting skills remain manual Radar/Publisher
+reasoning surfaces unless a script explicitly wires them into a checked-in contract.
+Generated GitHub bundles and analysis drafts live under
 `artifacts/github/` and must stay explicit and checked into the repository.
 
 `artifacts/github/impact/` may hold `upstream_impact/v1` classifications when an
