@@ -33,6 +33,11 @@ Question this index answers: "which sequence should I execute?"
 - [`local-github-signal-workflow.md`](./local-github-signal-workflow.md) for collecting
   GitHub change bundles, running Codex editorial analysis, validating signal entries,
   and publishing static site content.
+- [`radar-artifact-archive.md`](./radar-artifact-archive.md) for moving raw Radar
+  bundles and analysis drafts out of Git after the 28-day hot window while keeping
+  release-asset recovery manifests checked in.
+- [`social-publishing-workflow.md`](./social-publishing-workflow.md) for turning Radar
+  evidence into reviewed `@decodexspace` X drafts and recording publication evidence.
 - [`recover-review-handoff.md`](./recover-review-handoff.md) for diagnosing and
   explicitly rebinding retained review lanes blocked by a missing runtime DB handoff
   marker.

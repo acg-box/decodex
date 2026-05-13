@@ -1,0 +1,116 @@
+# Radar Artifact Retention
+
+Purpose: Define which Decodex Radar and Publisher artifacts stay in Git, which raw
+artifacts are kept only in a short hot window, and how cold archives remain
+recoverable.
+
+Status: normative
+
+Read this when:
+- You are deciding whether a GitHub bundle, analysis draft, signal entry, upstream
+  impact note, or social draft should remain checked in.
+- You are preparing an archive batch for old Radar artifacts.
+- You are adding automation that prunes or restores `artifacts/github/` material.
+
+Not this document:
+- The GitHub change-bundle schema.
+- The signal-entry schema.
+- The step-by-step archive procedure.
+
+Defines:
+- Hot, warm, and cold Radar artifact classes.
+- The maximum Git hot-window for raw bundles and analysis drafts.
+- The GitHub Release asset archive contract.
+- The manifest record that keeps cold artifacts traceable from Git.
+
+## Retention classes
+
+Decodex uses three retention classes for Radar and Publisher data.
+
+| Class | Storage | Examples | Retention |
+| --- | --- | --- | --- |
+| Hot raw artifacts | Git working tree | `artifacts/github/bundles/*.json`, `artifacts/github/analysis/*.analysis.json` | At most 28 days in Git after collection or publication. |
+| Warm curated artifacts | Git working tree | `site/src/content/signals/*.json`, `site/src/content/release-deltas/openai-codex-latest.json`, `artifacts/github/impact/*.json`, approved or published `artifacts/social/x/*.json` | Retained in Git while they are part of the public site, Control Plane review trail, or Publisher record. |
+| Cold raw archive | GitHub Release assets plus a Git manifest | Archived bundle and analysis batches, optional source snapshots, optional ledger exports | Retained outside the Git tree. Git keeps only the manifest. |
+
+The hot raw window is intentionally short. Continuous Radar should keep every upstream
+commit traceable, but it must not make the repository a permanent raw-data warehouse.
+
+## Hot raw artifact rule
+
+Raw GitHub bundles and local editorial analysis drafts must not remain in Git for more
+than 28 days after collection or publication unless a human explicitly marks the batch
+as still active.
+
+For existing artifacts that do not carry their own collection timestamp, the retention
+clock should use the paired `signal_entry/v1.published_at` when available. If no paired
+signal exists, the archive batch must record the operator-selected evidence date in its
+manifest.
+
+The 28-day limit applies to the raw supporting material, not to the public signal
+entry. A signal entry may outlive its raw bundle when the archive manifest preserves how
+to recover the original bundle and analysis draft.
+
+## Warm curated artifact rule
+
+Keep these artifacts in Git unless a separate content cleanup explicitly removes them:
+
+- published `signal_entry/v1` files under `site/src/content/signals/`
+- the current homepage `release_delta/v1` artifact
+- `upstream_impact/v1` records that affect Decodex Control Plane or Publisher follow-up
+- approved or published `social_post_draft/v1` records
+- archive manifests under `artifacts/archive/index/`
+
+Draft or rejected social artifacts may be archived after the same 28-day hot window
+unless they document a still-useful editorial boundary.
+
+## Cold archive destination
+
+Cold raw artifacts must be stored as GitHub Release assets under a dedicated Radar
+archive tag. They must not be committed as compressed archives inside the repository.
+
+Use tag names that cannot be confused with product releases, for example:
+
+- `radar-archive-2026-05`
+- `radar-archive-rust-v0.130.0-to-rust-v0.131.0-alpha.9`
+
+Each archive release should include:
+
+- one compressed archive, preferably `decodex-radar-archive-<id>.tar.zst`
+- `manifest.json`
+- `SHA256SUMS`
+- optional detached signatures when the operator has signing material available
+
+Git keeps a copy of the manifest under `artifacts/archive/index/<archive-id>.json`.
+That manifest is the durable pointer from the repository to the release assets.
+
+## Manifest contract
+
+The archive manifest schema identifier is:
+
+- `radar_archive_manifest/v1`
+
+The manifest must contain:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `schema` | string | Must be `radar_archive_manifest/v1`. |
+| `archive_id` | string | Stable archive identifier. |
+| `created_at` | string | UTC timestamp for archive creation. |
+| `retention_days` | number | Must be `28` unless a later spec changes the policy. |
+| `source_commit` | string | Repository commit used to select and package files. |
+| `release_tag` | string | GitHub tag holding the archive assets. |
+| `release_url` | string | GitHub Release URL when available. |
+| `archive_asset` | object | Name, size, and SHA-256 for the compressed archive. |
+| `checksum_asset` | object | Name and SHA-256 for `SHA256SUMS`. |
+| `files` | array | Archived file records. |
+
+Each `files[]` record must contain:
+
+- `path`
+- `kind` (`bundle`, `analysis`, `source_cache`, `ledger_export`, or `other`)
+- `sha256`
+- `size_bytes`
+
+When the archive batch removes files from Git, the same commit must add the manifest
+that points to the GitHub Release asset.
