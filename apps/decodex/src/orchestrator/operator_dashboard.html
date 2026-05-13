@@ -7490,12 +7490,21 @@
 				const historyRuns = sessionHistoryRuns(snapshot);
 				const postReviewLanes = snapshot?.post_review_lanes ?? [];
 				const postReviewIssueKeys = new Set(postReviewLanes.flatMap(issueIdentityKeys));
-				const activeRunByIssue = new Map(activeRuns.map((run) => [run.issue_id, run]));
+				const activeRunByIssue = new Map();
+				for (const run of activeRuns) {
+					for (const key of issueIdentityKeys(run)) {
+						if (!activeRunByIssue.has(key)) {
+							activeRunByIssue.set(key, run);
+						}
+					}
+				}
 				const queuedCandidates = [...(snapshot?.queued_candidates ?? [])]
 					.map((candidate) => {
-						const activeRun = activeRunByIssue.get(candidate.issue_id);
+						const activeRun = issueIdentityKeys(candidate)
+							.map((key) => activeRunByIssue.get(key))
+							.find(Boolean);
 
-						if (activeRun && candidate.classification === "claimed") {
+						if (activeRun) {
 							return {
 								...candidate,
 								display_classification: "owned_active",
@@ -7509,7 +7518,6 @@
 				const queueBacklogCandidates = queuedCandidates.filter(
 					(candidate) =>
 						candidate.display_classification !== "owned_active" &&
-						candidate.classification !== "claimed" &&
 						candidate.classification !== "closed" &&
 						!issueMatchesKeySet(candidate, postReviewIssueKeys),
 				);
