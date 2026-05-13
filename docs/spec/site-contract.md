@@ -49,6 +49,15 @@ The homepage must remain scan-first. Large marketing hero sections, dashboard-st
 
 The release-delta module must summarize the latest stable release, the latest prerelease, and the tracked signal differences unlocked by the prerelease without displacing the primary feed.
 
+The primary feed is curated for community-ready signals, not every analyzed upstream
+commit. Low-impact internal changes without a try path, capability value, or
+deprecated/migration cue may stay in the signal collection, Radar ledger, or release
+rollup inputs without appearing in the homepage feed.
+
+When the latest stable-to-prerelease pair has no matching published public signals, the
+homepage may default the comparator to the most recent signal-bearing pair while keeping
+the latest pair visible in the comparator options.
+
 ## Allowed filters
 
 The MVP filter set is:

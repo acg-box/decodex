@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Decodex social post draft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "slug",
+    "channel",
+    "target_account",
+    "mode",
+    "status",
+    "audience",
+    "text",
+    "source_refs",
+    "evidence_notes",
+    "claims"
+  ],
+  "properties": {
+    "schema": {
+      "const": "social_post_draft/v1"
+    },
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "channel": {
+      "const": "x"
+    },
+    "target_account": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_]+$",
+      "minLength": 1
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "release_pulse",
+        "release_rollup",
+        "practical_explainer",
+        "operator_impact",
+        "thread",
+        "watch_note"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "approved", "published", "rejected"]
+    },
+    "audience": {
+      "type": "string",
+      "minLength": 1
+    },
+    "text": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 280
+      }
+    },
+    "source_refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["signals"]
+        },
+        {
+          "required": ["upstream_impacts"]
+        },
+        {
+          "required": ["urls"]
+        }
+      ],
+      "properties": {
+        "signals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "upstream_impacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "urls": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^https://"
+          }
+        }
+      }
+    },
+    "evidence_notes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence", "confidence"],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["confirmed", "likely", "weak"]
+          }
+        }
+      }
+    },
+    "published_url": {
+      "type": "string",
+      "pattern": "^https://"
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewed_by", "reviewed_at", "notes"],
+      "properties": {
+        "reviewed_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewed_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "caveats": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "media_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "published"
+          }
+        }
+      },
+      "then": {
+        "required": ["published_url", "approval"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": ["approved", "published"]
+          }
+        }
+      },
+      "then": {
+        "required": ["approval"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rejected"
+          }
+        }
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": ["approval"]
+          },
+          {
+            "required": ["caveats"]
+          }
+        ]
+      }
+    }
+  ]
+}
