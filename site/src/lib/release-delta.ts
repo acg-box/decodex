@@ -81,13 +81,5 @@ export function defaultComparison(delta: ReleaseDeltaData): ReleaseComparisonDat
       comparison.prerelease_tag_name === delta.prerelease.tag_name,
   );
 
-  if (releaseDefault?.tracked_signal_slugs.length) {
-    return releaseDefault;
-  }
-
-  return (
-    delta.comparisons.find((comparison) => comparison.tracked_signal_slugs.length > 0) ??
-    releaseDefault ??
-    delta.comparisons[0]
-  );
+  return releaseDefault ?? delta.comparisons[0];
 }
