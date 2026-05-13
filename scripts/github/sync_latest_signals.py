@@ -26,6 +26,13 @@ from build_change_bundle import (  # noqa: E402
     routed_token_env,
 )
 from contracts import dump_json, load_json, validate_signal  # noqa: E402
+from radar_ledger import (  # noqa: E402
+    DEFAULT_LEDGER_PATH,
+    connect as connect_ledger,
+    ingest_artifact_set,
+    record_commit,
+    record_review,
+)
 
 COMMIT_URL_RE = re.compile(r"/commit/([0-9a-f]{7,40})$")
 PR_URL_RE = re.compile(r"/pull/(\d+)$")
@@ -85,6 +92,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--token-env", help="Environment variable containing a GitHub token.")
     parser.add_argument("--codex-bin", default="codex", help="Codex executable to invoke.")
     parser.add_argument("--model", help="Optional Codex model override.")
+    parser.add_argument(
+        "--ledger",
+        default=DEFAULT_LEDGER_PATH,
+        help="Local SQLite Radar ledger path. Defaults to .decodex/radar.sqlite3.",
+    )
+    parser.add_argument("--no-ledger", action="store_true", help="Disable local Radar ledger writes.")
     parser.add_argument(
         "--refresh-release-delta",
         action="store_true",
@@ -214,64 +227,137 @@ def main() -> None:
     token_env = args.token_env or routed_token_env() or "GITHUB_TOKEN"
     token = os.environ.get(token_env)
     root = repo_root()
+    ledger_path = None if args.no_ledger else Path(args.ledger)
+    if ledger_path is not None and not ledger_path.is_absolute():
+        ledger_path = root / ledger_path
+    ledger = connect_ledger(ledger_path) if ledger_path is not None else None
     signals_dir = (root / args.signals_dir).resolve()
     published_prs = published_pr_numbers(signals_dir)
     published_shas = published_commit_shas(signals_dir)
     commits = recent_commits(args.repo, token, args.search_limit)
     candidates: list[dict[str, Any]] = []
     seen_candidate_keys: set[tuple[str, int | str]] = set()
-    for commit in commits:
-        if commit["sha"] in published_shas:
-            continue
-        pr_number = maybe_promote_commit_to_pr(args.repo, commit["sha"], token)
-        if pr_number is not None and pr_number in published_prs:
-            continue
-        candidate_key: tuple[str, int | str] = (
-            ("pr", pr_number) if pr_number is not None else ("commit", commit["sha"])
-        )
-        if candidate_key in seen_candidate_keys:
-            continue
-        seen_candidate_keys.add(candidate_key)
-        candidates.append({**commit, "pr_number": pr_number})
+    try:
+        for commit in commits:
+            pr_number = maybe_promote_commit_to_pr(args.repo, commit["sha"], token)
+            subject_kind = "pr" if pr_number is not None else "commit"
+            subject_id = str(pr_number) if pr_number is not None else commit["sha"]
+            if ledger is not None:
+                record_commit(
+                    ledger,
+                    repo=args.repo,
+                    sha=commit["sha"],
+                    title=commit["title"],
+                    url=commit["url"],
+                    committed_at=commit.get("committed_at"),
+                    pr_number=pr_number,
+                )
+            if commit["sha"] in published_shas or (pr_number is not None and pr_number in published_prs):
+                if ledger is not None:
+                    record_review(
+                        ledger,
+                        repo=args.repo,
+                        subject_kind=subject_kind,
+                        subject_id=subject_id,
+                        status="signal",
+                        reason="Already present in published signal collection.",
+                        confidence="confirmed",
+                    )
+                continue
+            candidate_key: tuple[str, int | str] = (
+                ("pr", pr_number) if pr_number is not None else ("commit", commit["sha"])
+            )
+            if candidate_key in seen_candidate_keys:
+                if ledger is not None:
+                    record_review(
+                        ledger,
+                        repo=args.repo,
+                        subject_kind=subject_kind,
+                        subject_id=subject_id,
+                        status="seen",
+                        reason="Duplicate recent commit for an already considered PR.",
+                    )
+                continue
+            seen_candidate_keys.add(candidate_key)
+            score = candidate_score(commit["title"])
+            if score <= 0:
+                if ledger is not None:
+                    record_review(
+                        ledger,
+                        repo=args.repo,
+                        subject_kind=subject_kind,
+                        subject_id=subject_id,
+                        status="skipped",
+                        reason=f"Recent commit title scored {score}; no public signal was generated.",
+                        confidence="likely",
+                    )
+                continue
+            candidates.append({**commit, "pr_number": pr_number, "score": score})
 
-    unpublished = candidates
-    unpublished = [item for item in unpublished if candidate_score(item["title"]) > 0][: args.max_new_prs]
+        unpublished = candidates[: args.max_new_prs]
+        for candidate in candidates[args.max_new_prs :]:
+            if ledger is None:
+                continue
+            pr_number = candidate.get("pr_number")
+            subject_kind = "pr" if isinstance(pr_number, int) else "commit"
+            subject_id = str(pr_number) if isinstance(pr_number, int) else candidate["sha"]
+            record_review(
+                ledger,
+                repo=args.repo,
+                subject_kind=subject_kind,
+                subject_id=subject_id,
+                status="watch",
+                reason="Positive Radar candidate left for a later sync budget.",
+                confidence="likely",
+            )
 
-    created = 0
-    for candidate in reversed(unpublished):
-        bundle_path, analysis_path, signal_path = signal_paths(candidate, args)
-        notes = [f"Discovered via continuous upstream commit sync: {candidate['url']}"]
-        pr_number = candidate.get("pr_number")
-        bundle = (
-            build_pr_bundle(args.repo, pr_number, token, notes)
-            if isinstance(pr_number, int)
-            else build_commit_bundle(args.repo, candidate["sha"], token, notes)
-        )
-        dump_json(root / bundle_path, bundle)
+        created = 0
+        for candidate in reversed(unpublished):
+            bundle_path, analysis_path, signal_path = signal_paths(candidate, args)
+            notes = [f"Discovered via continuous upstream commit sync: {candidate['url']}"]
+            pr_number = candidate.get("pr_number")
+            bundle = (
+                build_pr_bundle(args.repo, pr_number, token, notes)
+                if isinstance(pr_number, int)
+                else build_commit_bundle(args.repo, candidate["sha"], token, notes)
+            )
+            dump_json(root / bundle_path, bundle)
 
-        run_script(
-            "run_codex_analysis.py",
-            "--bundle",
-            str(root / bundle_path),
-            "--out",
-            str(root / analysis_path),
-            "--repo-root",
-            str(root),
-            "--codex-bin",
-            args.codex_bin,
-            *(["--model", args.model] if args.model else []),
-        )
+            run_script(
+                "run_codex_analysis.py",
+                "--bundle",
+                str(root / bundle_path),
+                "--out",
+                str(root / analysis_path),
+                "--repo-root",
+                str(root),
+                "--codex-bin",
+                args.codex_bin,
+                *(["--model", args.model] if args.model else []),
+            )
 
-        run_script(
-            "render_signal_entry.py",
-            "--bundle",
-            str(root / bundle_path),
-            "--analysis",
-            str(root / analysis_path),
-            "--out",
-            str(root / signal_path),
-        )
-        created += 1
+            run_script(
+                "render_signal_entry.py",
+                "--bundle",
+                str(root / bundle_path),
+                "--analysis",
+                str(root / analysis_path),
+                "--out",
+                str(root / signal_path),
+            )
+            if ledger is not None:
+                ingest_artifact_set(
+                    ledger,
+                    bundle_path=root / bundle_path,
+                    analysis_path=root / analysis_path,
+                    signal_path=root / signal_path,
+                )
+            created += 1
+        if ledger is not None:
+            ledger.commit()
+    finally:
+        if ledger is not None:
+            ledger.close()
 
     run_script("validate_signal_entry.py", str(root / args.signals_dir))
     release_delta_refreshed = (
@@ -289,6 +375,7 @@ def main() -> None:
                 "unpublished_changes_considered": len(candidates),
                 "new_signals_created": created,
                 "release_delta_refreshed": release_delta_refreshed,
+                "ledger": str(ledger_path) if ledger_path is not None else None,
             },
             sort_keys=True,
         )

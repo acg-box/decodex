@@ -17,6 +17,7 @@ Depends on:
 - `docs/spec/github-change-bundle.md`
 - `docs/spec/signal-entry.md`
 - `docs/spec/release-delta.md`
+- `docs/spec/radar-ledger.md`
 - `docs/spec/site-contract.md`
 - `dev/skills/README.md`
 
@@ -29,7 +30,9 @@ Outputs:
 ## Workflow
 
 1. Track upstream Codex commits continuously. Treat each commit as a candidate to
-   understand, then resolve it back to a PR when possible.
+   understand, then resolve it back to a PR when possible. The sync writes
+   `.decodex/radar.sqlite3` by default so skipped and deferred commits remain
+   traceable without becoming public site entries.
 2. Triage upstream activity with `dev/skills/codex-upstream-triage/` when the
    candidate is not already chosen by automation or by the operator.
 3. Build a normalized GitHub change bundle under `artifacts/github/bundles/` for
@@ -133,6 +136,13 @@ Automated sync entrypoint:
 
 - `scripts/github/sync_latest_signals.py`
 
+Bootstrap or inspect local historical trace:
+
+```bash
+python3 scripts/github/radar_ledger.py ingest-existing
+python3 scripts/github/radar_ledger.py summary --json
+```
+
 ## Editorial gate
 
 Publish only when the change meets at least one of these tests:
@@ -140,6 +150,11 @@ Publish only when the change meets at least one of these tests:
 - it introduces a new capability
 - it changes user-visible behavior
 - it offers a clear try-now path
+- it explains deprecated, removed, legacy, or migration-relevant behavior
+
+The homepage feed applies the same posture programmatically: low-impact internal
+changes without a try path, capability value, or deprecated/migration cue stay out of
+the public feed while remaining available to the ledger and release rollups.
 
 Skip or defer entries for:
 

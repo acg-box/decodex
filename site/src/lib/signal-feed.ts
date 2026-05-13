@@ -68,6 +68,9 @@ export type SignalGroup = {
   items: SignalCardData[];
 };
 
+const DEPRECATED_OR_MIGRATION_PATTERN =
+  /\b(deprecat|remove|removed|drops?|no longer|legacy|disabled|disable|rollback|rolled back|breaking)\b/i;
+
 export function isFilterId(value: string | null): value is FilterId {
   return FILTERS.some((filter) => filter.id === value);
 }
@@ -91,6 +94,30 @@ export function sortSignals(signals: SignalCardData[]): SignalCardData[] {
   return [...signals].sort((left, right) =>
     right.published_at.localeCompare(left.published_at),
   );
+}
+
+export function isDeprecatedOrMigrationSignal(signal: SignalCardData): boolean {
+  const searchable = [
+    signal.title,
+    signal.summary,
+    signal.why_it_matters,
+    signal.watch_state ?? "",
+    ...signal.caveats,
+  ].join("\n");
+  return DEPRECATED_OR_MIGRATION_PATTERN.test(searchable);
+}
+
+export function isHomepageSignal(signal: SignalCardData): boolean {
+  if (signal.impact !== "low") return true;
+  if (signal.kind === "try_now") return true;
+  if (signal.how_to_try) return true;
+  if (signal.config_flags.length > 0) return true;
+  if (signal.kind === "capability" && signal.confidence === "confirmed") return true;
+  return isDeprecatedOrMigrationSignal(signal);
+}
+
+export function homepageSignals(signals: SignalCardData[]): SignalCardData[] {
+  return sortSignals(signals).filter(isHomepageSignal);
 }
 
 export function groupSignalsByMonth(signals: SignalCardData[]): SignalGroup[] {
