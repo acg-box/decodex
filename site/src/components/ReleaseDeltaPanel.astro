@@ -60,11 +60,14 @@ const tryPathCount = trackedSignals.filter(hasConcreteTryPath).length;
       <span aria-hidden="true">-&gt;</span>
       <strong>{releaseLabel(activePreview, delta.tag_prefix)}</strong>
     </span>
+    <a class="release-delta__checkpoint-link signal-link" href={activeComparison.compare.url} target="_blank" rel="noreferrer">
+      Open GitHub compare
+    </a>
   </div>
   <div class="release-delta__comparison">
     <div class="release-delta__hero">
-        <div class="release-delta__hero-head">
-          <div class="release-delta__hero-copy">
+      <div class="release-delta__hero-head">
+        <div class="release-delta__hero-copy">
           <p class="release-delta__eyebrow">Continuous radar</p>
           <h2 class="release-delta__title">
             Codex upstream signal room
@@ -73,9 +76,6 @@ const tryPathCount = trackedSignals.filter(hasConcreteTryPath).length;
             Release tags are checkpoints. The feed is driven by commit and PR evidence that may affect Decodex or the public Codex workflow.
           </p>
         </div>
-        <a class="release-delta__hero-link signal-link" href={activeComparison.compare.url} target="_blank" rel="noreferrer">
-          Open GitHub compare
-        </a>
       </div>
 
       <div class="release-delta__radar-strip" aria-hidden="true">
