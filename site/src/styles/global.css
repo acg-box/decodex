@@ -250,7 +250,7 @@ code {
 .site-brand__wordmark-image {
   display: block;
   width: auto;
-  height: 3.08rem;
+  height: 2.58rem;
 }
 
 .site-brand__note {
@@ -485,8 +485,8 @@ code {
 }
 
 .appcast-download__title {
-  font-size: 0.88rem;
-  font-weight: 750;
+  font-size: 0.8rem;
+  font-weight: 680;
   letter-spacing: 0;
   line-height: 1;
   color: var(--ink);
@@ -627,8 +627,8 @@ code {
 .reset-inline__question {
   min-width: 0;
   color: var(--ink);
-  font-size: 0.88rem;
-  font-weight: 750;
+  font-size: 0.82rem;
+  font-weight: 680;
   letter-spacing: 0;
   line-height: 1.1;
 }
@@ -641,8 +641,8 @@ code {
   padding: 0;
   border: 0;
   background: none;
-  font-size: 0.88rem;
-  font-weight: 750;
+  font-size: 0.82rem;
+  font-weight: 680;
   letter-spacing: 0;
   color: var(--ink);
   white-space: nowrap;
@@ -870,24 +870,24 @@ code {
   justify-content: flex-end;
   gap: 0.32rem;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   line-height: 1.35;
 }
 
 .release-delta__window-label strong {
   color: var(--ink);
-  font-size: 0.98rem;
-  font-weight: 760;
+  font-size: 0.86rem;
+  font-weight: 680;
   letter-spacing: 0;
 }
 
 .release-delta__title {
   margin: 0;
   color: var(--ink);
-  font-size: 1.26rem;
-  font-weight: 760;
+  font-size: 1.1rem;
+  font-weight: 700;
   letter-spacing: 0;
-  line-height: 1.18;
+  line-height: 1.22;
 }
 
 .release-delta__hero-subcopy {
@@ -1041,9 +1041,9 @@ code {
 
 .release-delta__state-row dd {
   margin: 0;
-  color: var(--ink);
-  font-size: 1.04rem;
-  font-weight: 760;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 620;
   line-height: 1.2;
 }
 
@@ -1073,8 +1073,8 @@ code {
 }
 
 .release-delta__overview-title {
-  font-size: 1.04rem;
-  font-weight: 760;
+  font-size: 0.94rem;
+  font-weight: 700;
   line-height: 1.22;
   letter-spacing: 0;
   color: var(--ink);
@@ -1132,7 +1132,7 @@ code {
   grid-area: title;
   width: fit-content;
   color: var(--ink);
-  font-size: 1.04rem;
+  font-size: 0.95rem;
   line-height: 1.28;
 }
 
@@ -1203,15 +1203,15 @@ code {
   align-items: center;
   gap: 0.25rem;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   line-height: 1.45;
   white-space: nowrap;
 }
 
 .release-delta__summary-item strong {
-  color: var(--ink);
-  font-size: 1.04rem;
-  font-weight: 760;
+  color: var(--ink-soft);
+  font-size: inherit;
+  font-weight: 620;
   letter-spacing: 0;
 }
 
@@ -1436,8 +1436,8 @@ code {
 
 .signal-entry__title {
   max-width: 48rem;
-  font-size: 1.22rem;
-  font-weight: 760;
+  font-size: 1.08rem;
+  font-weight: 700;
   line-height: 1.22;
   color: var(--ink);
 }
@@ -1656,7 +1656,7 @@ code {
   }
 
   .site-brand__wordmark-image {
-    height: 3.22rem;
+    height: 2.72rem;
   }
 
   .site-brand__meta {
