@@ -12,6 +12,7 @@ import { type ReleaseDeltaData } from "@/lib/release-delta";
 import {
   FILTERS,
   groupSignalsByMonth,
+  homepageSignals,
   isFilterId,
   sortSignals,
   type FilterId,
@@ -23,12 +24,13 @@ const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
 const collectionEntries = await getCollection("signals");
 const releaseDeltaEntries = await getCollection("releaseDeltas");
 const recommendedConfigEntries = await getCollection("recommendedConfigs");
-const signals: SignalCardData[] = sortSignals(
+const allSignals: SignalCardData[] = sortSignals(
   collectionEntries.map((entry) => ({
     id: entry.id,
     ...entry.data,
   })),
 );
+const signals: SignalCardData[] = homepageSignals(allSignals);
 const releaseDelta: ReleaseDeltaData | null =
   releaseDeltaEntries
     .map((entry) => entry.data as ReleaseDeltaData)
@@ -42,11 +44,11 @@ const groupedSignals = groupSignalsByMonth(signals);
 const showGroupLabels = groupedSignals.length > 1;
 const clientFilterIds = FILTERS.map((filter) => filter.id);
 const tryPathCount = signals.filter((signal) => Boolean(signal.how_to_try)).length;
+const archivedSignalCount = Math.max(0, allSignals.length - signals.length);
 const sourceLinkedCount = signals.filter((signal) => {
   const refs = signal.source_refs;
   return Boolean(refs.pr_url || refs.items?.length || refs.commit_urls.length);
 }).length;
-const highImpactCount = signals.filter((signal) => signal.impact === "high").length;
 
 const previewSignal: SignalCardData = {
   id: "preview-shell",
@@ -231,8 +233,8 @@ const filterRuntimeScript = `(function () {
                 <span class="site-brand__cue-value">{sourceLinkedCount}/{signals.length}</span>
               </li>
               <li class="site-brand__cue">
-                <span class="site-brand__cue-label">High impact</span>
-                <span class="site-brand__cue-value">{highImpactCount}</span>
+                <span class="site-brand__cue-label">Archive</span>
+                <span class="site-brand__cue-value">{archivedSignalCount}</span>
               </li>
             </ul>
           </div>
@@ -273,6 +275,10 @@ const filterRuntimeScript = `(function () {
     <section class="feed-toolbar" id="latest-signals">
       <div class="feed-toolbar__intro">
         <p class="feed-toolbar__label">Latest signals</p>
+        <p class="feed-toolbar__summary">
+          {signals.length} community-ready signals from {allSignals.length} analyzed upstream changes.
+          {archivedSignalCount > 0 ? ` ${archivedSignalCount} low-level watch items stay out of the public feed.` : ""}
+        </p>
       </div>
 
       <div class="feed-toolbar__controls">
