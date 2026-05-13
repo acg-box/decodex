@@ -1202,6 +1202,75 @@ fn operator_state_endpoint_reads_complete_headers_before_parsing() {
 }
 
 #[test]
+fn operator_state_endpoint_overlays_live_account_control_on_published_snapshot() {
+	const SNAPSHOT_UNIX_EPOCH: i64 = 1_774_000_000;
+
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
+	let stale_snapshot = serde_json::json!({
+		"project_id": "all",
+		"account_control": {
+			"mode": "balanced",
+			"account_selector": null,
+		},
+		"accounts": [],
+		"active_runs": [],
+		"recent_runs": [],
+		"history_lanes": [],
+		"queued_candidates": [],
+		"worktrees": [],
+		"post_review_lanes": [],
+	});
+
+	runtime::write_global_fixed_account_selector(Some("copy@example.com"))
+		.expect("global account selector should write");
+
+	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
+	let address = listener.local_addr().expect("listener address should resolve");
+	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
+		snapshot_json: Some(serde_json::to_vec(&stale_snapshot).expect("snapshot should serialize")),
+		last_publish_unix_epoch: Some(SNAPSHOT_UNIX_EPOCH),
+	}));
+	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
+	let server_snapshot = Arc::clone(&snapshot);
+	let server_state_store = Arc::clone(&state_store);
+	let server = thread::spawn(move || {
+		let (stream, _) = listener.accept().expect("listener should accept a connection");
+		let dashboard_events = DashboardEventHub::default();
+
+		orchestrator::handle_operator_state_endpoint_connection(
+			stream,
+			&server_snapshot,
+			&dashboard_events,
+			&server_state_store,
+			Duration::from_secs(30),
+		)
+		.expect("handler should serve state");
+	});
+	let mut client = TcpStream::connect(address).expect("client should connect");
+	let mut response = String::new();
+
+	client
+		.write_all(b"GET /state HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+		.expect("client should write state request");
+	client.shutdown(Shutdown::Write).expect("client should close the request body stream");
+	client.read_to_string(&mut response).expect("client should read response");
+	server.join().expect("server thread should complete");
+
+	let body = response.split_once("\r\n\r\n").expect("response should contain a body").1;
+	let served_snapshot: Value = serde_json::from_str(body).expect("body should be valid json");
+
+	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+	assert_eq!(served_snapshot["account_control"]["mode"], "fixed");
+	assert_eq!(served_snapshot["account_control"]["account_selector"], "copy@example.com");
+	assert_eq!(served_snapshot["project_id"], "all");
+	assert!(response.contains(&format!(
+		"X-Decodex-Snapshot-Unix-Epoch: {SNAPSHOT_UNIX_EPOCH}\r\n"
+	)));
+}
+
+#[test]
 fn operator_state_endpoint_livez_ignores_poisoned_snapshot_lock() {
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
