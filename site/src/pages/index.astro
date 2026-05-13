@@ -1,19 +1,27 @@
 ---
 import { getCollection } from "astro:content";
-import EmptyFeedState from "@/components/EmptyFeedState.astro";
 import AppcastDownloadWidget from "@/components/AppcastDownloadWidget.astro";
+import EmptyFeedState from "@/components/EmptyFeedState.astro";
 import FilterBar from "@/components/FilterBar.astro";
-import ReleaseDeltaPanel from "@/components/ReleaseDeltaPanel.astro";
 import ResetStatusWidget from "@/components/ResetStatusWidget.astro";
 import SignalCard from "@/components/SignalCard.astro";
+import SignalSymphony from "@/components/SignalSymphony.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import { type ReleaseDeltaData } from "@/lib/release-delta";
+import {
+  defaultComparison,
+  releaseLabel,
+  type ReleaseDeltaData,
+} from "@/lib/release-delta";
+import { renderMarkdownInline } from "@/lib/render-markdown";
 import {
   FILTERS,
+  formatPublishedAt,
   groupSignalsByMonth,
   homepageSignals,
+  impactLabel,
   isFilterId,
+  kindLabel,
   sortSignals,
   type FilterId,
   type SignalCardData,
@@ -34,10 +42,6 @@ const releaseDelta: ReleaseDeltaData | null =
   releaseDeltaEntries
     .map((entry) => entry.data as ReleaseDeltaData)
     .find((entry) => entry.repo === "openai/codex") ?? null;
-const hasPublishedSignals = signals.length > 0;
-const groupedSignals = groupSignalsByMonth(signals);
-const showGroupLabels = groupedSignals.length > 1;
-const clientFilterIds = FILTERS.map((filter) => filter.id);
 
 const previewSignal: SignalCardData = {
   id: "preview-shell",
@@ -71,6 +75,91 @@ const previewSignal: SignalCardData = {
   },
   previewLabel: "Scaffold Preview",
 };
+
+const visibleSignals = signals.length > 0 ? signals : [previewSignal];
+const hasPublishedSignals = signals.length > 0;
+const groupedSignals = groupSignalsByMonth(signals);
+const showGroupLabels = groupedSignals.length > 1;
+const clientFilterIds = FILTERS.map((filter) => filter.id);
+
+function hasConcreteTryPath(signal: SignalCardData): boolean {
+  return Boolean(signal.how_to_try && signal.expected_effect);
+}
+
+function primarySourceLabel(signal: SignalCardData): string {
+  const pullRequest = signal.source_refs.items?.find((item) => item.kind === "pull_request");
+  if (pullRequest?.meta) return pullRequest.meta;
+  if (signal.source_refs.pr_url) {
+    const match = signal.source_refs.pr_url.match(/\/pull\/(\d+)$/);
+    if (match) return `#${match[1]}`;
+  }
+  return signal.source_refs.repo;
+}
+
+const tryPathSignals = visibleSignals.filter(hasConcreteTryPath);
+const prioritySignals = [
+  ...tryPathSignals,
+  ...visibleSignals.filter((signal) => !hasConcreteTryPath(signal)),
+].slice(0, 3);
+const leadSignal =
+  visibleSignals.find((signal) => signal.impact === "high") ??
+  tryPathSignals[0] ??
+  visibleSignals[0];
+const watchSignals = visibleSignals
+  .filter((signal) => signal.watch_state || signal.caveats.length > 0)
+  .slice(0, 3);
+const highImpactCount = visibleSignals.filter((signal) => signal.impact === "high").length;
+const tryPathCount = visibleSignals.filter(hasConcreteTryPath).length;
+const latestSignalAt = visibleSignals.reduce<string | null>((latest, signal) => {
+  if (!latest || signal.published_at > latest) return signal.published_at;
+  return latest;
+}, null);
+
+const activeComparison = releaseDelta ? defaultComparison(releaseDelta) : null;
+const stableByTag = releaseDelta
+  ? new Map(releaseDelta.release_options.stable.map((release) => [release.tag_name, release]))
+  : new Map();
+const previewByTag = releaseDelta
+  ? new Map(releaseDelta.release_options.preview.map((release) => [release.tag_name, release]))
+  : new Map();
+const activeStable =
+  releaseDelta && activeComparison
+    ? stableByTag.get(activeComparison.stable_tag_name) ?? releaseDelta.stable_release
+    : null;
+const activePreview =
+  releaseDelta && activeComparison
+    ? previewByTag.get(activeComparison.prerelease_tag_name) ?? releaseDelta.prerelease
+    : null;
+const releaseWindow =
+  releaseDelta && activeComparison && activeStable && activePreview
+    ? {
+        stable: releaseLabel(activeStable, releaseDelta.tag_prefix),
+        preview: releaseLabel(activePreview, releaseDelta.tag_prefix),
+        compareUrl: activeComparison.compare.url,
+        commits: activeComparison.compare.total_commits,
+        status: activeComparison.compare.status,
+        updatedAt: formatPublishedAt(releaseDelta.generated_at),
+      }
+    : null;
+
+const productLoops = [
+  {
+    title: "Watch every upstream move",
+    body: "Track Codex commits, PRs, prereleases, and release checkpoints without waiting for official notes.",
+  },
+  {
+    title: "Read code as evidence",
+    body: "Bundle PR bodies, touched files, tests, caveats, and migration signals into source-backed entries.",
+  },
+  {
+    title: "Route impact into Decodex",
+    body: "Mark what affects Control Plane, app-server integration, plugins, automation, and operator workflows.",
+  },
+  {
+    title: "Publish useful community output",
+    body: "Turn confirmed changes into X posts, release rollups, and practical try paths for Codex users.",
+  },
+];
 
 const filterRuntimeScript = `(function () {
   var validFilters = ${JSON.stringify(clientFilterIds)};
@@ -184,102 +273,226 @@ const filterRuntimeScript = `(function () {
     applyFilter(readFilter(), { updateHistory: false, animate: false });
   });
 })();`;
-
 ---
 
 <BaseLayout
   title="Decodex"
-  description="The signal layer for Codex changes worth tracking."
+  description="Autonomous Codex upstream intelligence for Decodex Control Plane and the Codex community."
 >
-  <main class="site-frame">
-    <header class="site-topbar">
-      <div class="site-topbar__head">
-        <div class="site-brand__main">
-          <div class="site-head__logo">
-            <a class="site-brand__wordmark" href="/" aria-label="Decodex home">
-              <img
-                class="site-brand__wordmark-image"
-                src="/assets/logo.png"
-                alt="Decodex"
-                width="801"
-                height="293"
-              />
+  <main class="official-site">
+    <section class="official-hero" aria-label="Decodex official homepage">
+      <SignalSymphony
+        totalSignals={visibleSignals.length}
+        tryPathCount={tryPathCount}
+        highImpactCount={highImpactCount}
+      />
+
+      <header class="site-header">
+        <a class="site-logo" href="/" aria-label="Decodex home">
+          <img
+            class="site-logo__image"
+            src="/assets/logo.png"
+            alt="Decodex"
+            width="801"
+            height="293"
+          />
+        </a>
+        <nav class="site-nav" aria-label="Site navigation">
+          <a href="#system">System</a>
+          <a href="#radar">Radar</a>
+          <a href="#publisher">Publisher</a>
+          <a href="#evidence">Evidence</a>
+        </nav>
+        <ThemeToggle />
+      </header>
+
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <h1>Decodex</h1>
+          <p>
+            A Symphony-style automation layer for Codex: it watches upstream, reads the code, extracts practical impact, updates Decodex Control Plane priorities, and publishes useful community signal.
+          </p>
+          <div class="hero-actions" aria-label="Primary actions">
+            <a href="#radar">Open live radar</a>
+            <a href="#system">See the system</a>
+            <a href="https://x.com/decodexspace" target="_blank" rel="noreferrer">
+              Follow @decodexspace
             </a>
           </div>
-
-          <p class="site-brand__eyebrow">Codex signal feed</p>
-          <h1 class="site-brand__title">
-            Changes worth trying before they become release notes.
-          </h1>
-
-          <p class="site-brand__note">
-            We track Codex upstream commits, extract user-visible behavior, and turn the useful parts into try paths, watch notes, and release rollups.
-          </p>
-
-          <a
-            class="site-brand__social"
-            href="https://x.com/decodexspace"
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Follow decodexspace on X"
-          >
-            <span class="site-brand__social-handle">@decodexspace on X</span>
-            <span class="site-brand__social-copy">
-              Codex signal posts and release rollups.
-            </span>
-          </a>
         </div>
 
-        <div class="site-head__utility">
-          <div class="site-head__theme">
-            <ThemeToggle />
-          </div>
-
-          <div class="site-head__status">
-            <ResetStatusWidget variant="inline" />
-          </div>
-
-          <div class="site-head__actions">
+        <aside class="hero-console" aria-label="Live Decodex utility panel">
+          <div class="console-row console-row--download">
+            <span>Latest Codex beta</span>
             <AppcastDownloadWidget />
           </div>
+          <div class="console-row">
+            <span>Reset watch</span>
+            <ResetStatusWidget variant="inline" />
+          </div>
+          {releaseWindow ? (
+            <div class="console-window">
+              <span>Current upstream window</span>
+              <strong>{releaseWindow.stable} -> {releaseWindow.preview}</strong>
+              <a href={releaseWindow.compareUrl} target="_blank" rel="noreferrer">
+                {releaseWindow.commits} commits under watch
+              </a>
+            </div>
+          ) : null}
+        </aside>
+      </div>
+
+      <div class="hero-bottom" aria-label="Current Decodex signal state">
+        <div>
+          <strong>{visibleSignals.length}</strong>
+          <span>curated signals</span>
         </div>
-      </div>
-    </header>
-
-    {releaseDelta ? (
-      <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={signals} />
-    ) : null}
-
-    <section class="feed-toolbar" id="latest-signals">
-      <div class="feed-toolbar__intro">
-        <p class="feed-toolbar__label">Latest signals</p>
-        <p class="feed-toolbar__summary">
-          Source-backed Codex changes, filtered for user-visible behavior, concrete try paths, and migration watch notes.
-        </p>
-      </div>
-
-      <div class="feed-toolbar__controls">
-        <FilterBar activeFilter={activeFilter} />
+        <div>
+          <strong>{tryPathCount}</strong>
+          <span>try paths</span>
+        </div>
+        <div>
+          <strong>{highImpactCount}</strong>
+          <span>high impact</span>
+        </div>
+        <div>
+          <strong>{formatPublishedAt(latestSignalAt ?? leadSignal.published_at)}</strong>
+          <span>latest analysis</span>
+        </div>
       </div>
     </section>
 
-    <section class="feed-region" data-feed-region>
-      {!hasPublishedSignals ? <SignalCard signal={previewSignal} /> : null}
-      {hasPublishedSignals ? <EmptyFeedState activeFilter={activeFilter} /> : null}
+    <section class="site-section system-section" id="system">
+      <div class="section-heading">
+        <h2>What Decodex automates</h2>
+        <p>
+          The website is the public readout of a continuous Decodex loop, not a static changelog.
+        </p>
+      </div>
+      <div class="system-loop">
+        {productLoops.map((item, index) => (
+          <article>
+            <span>{String(index + 1).padStart(2, "0")}</span>
+            <h3>{item.title}</h3>
+            <p>{item.body}</p>
+          </article>
+        ))}
+      </div>
+    </section>
 
-      {groupedSignals.map((group) => (
-        <section class="feed-group" data-feed-group>
-          {showGroupLabels ? (
-            <div class="feed-group__label">
-              <span>{group.label}</span>
-            </div>
-          ) : null}
+    <section class="site-section radar-section" id="radar">
+      <div class="section-heading">
+        <h2>Live Codex radar</h2>
+        <p>
+          High-signal upstream changes become reader-facing action, watch state, and Control Plane context.
+        </p>
+      </div>
 
-          <div class="space-y-4">
-            {group.items.map((signal) => <SignalCard signal={signal} />)}
+      <div class="radar-layout">
+        <article class="lead-brief">
+          <div class="lead-brief__meta">
+            <span>{primarySourceLabel(leadSignal)}</span>
+            <span>{kindLabel(leadSignal.kind)}</span>
+            <span>{impactLabel(leadSignal.impact)}</span>
           </div>
-        </section>
-      ))}
+          <h3
+            class="signal-markdown signal-markdown--title"
+            set:html={renderMarkdownInline(leadSignal.title)}
+          />
+          <p
+            class="signal-markdown lead-brief__summary"
+            set:html={renderMarkdownInline(leadSignal.why_it_matters)}
+          />
+          <div class="lead-brief__action">
+            <span>{leadSignal.how_to_try ? "Try path" : "Watch note"}</span>
+            <p
+              class="signal-markdown signal-markdown--inline"
+              set:html={renderMarkdownInline(leadSignal.how_to_try ?? leadSignal.watch_state ?? leadSignal.summary)}
+            />
+          </div>
+          <a class="lead-brief__link" href={`#${leadSignal.slug}`}>Open the evidence</a>
+        </article>
+
+        <div class="radar-stack">
+          <section class="brief-list" aria-label="Next useful signals">
+            <h3>Next useful reads</h3>
+            <ol>
+              {prioritySignals.map((signal) => (
+                <li>
+                  <a href={`#${signal.slug}`}>
+                    <span>{primarySourceLabel(signal)}</span>
+                    <strong set:html={renderMarkdownInline(signal.title)} />
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          <section class="watch-list" aria-label="Watch notes">
+            <h3>Watch notes</h3>
+            <ul>
+              {(watchSignals.length > 0 ? watchSignals : prioritySignals).map((signal) => (
+                <li>
+                  <span>{primarySourceLabel(signal)}</span>
+                  <p
+                    class="signal-markdown signal-markdown--inline"
+                    set:html={renderMarkdownInline(signal.watch_state ?? signal.caveats[0] ?? signal.summary)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="site-section publisher-section" id="publisher">
+      <div class="section-heading">
+        <h2>Publisher output</h2>
+        <p>
+          Decodex turns the same evidence base into public posts, prerelease briefs, and release rollups.
+        </p>
+      </div>
+      <div class="publisher-board">
+        <div class="publisher-note">
+          <span>Draft logic</span>
+          <p>
+            Every post starts from commit and PR evidence, then separates what changed, who should try it, and what Decodex should absorb into B-side workflows.
+          </p>
+        </div>
+        <div class="publisher-flow">
+          <span>Commit evidence</span>
+          <span>Human-grade analysis</span>
+          <span>X post</span>
+          <span>Release rollup</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="site-section feed-section" id="evidence">
+      <div class="feed-toolbar">
+        <div class="feed-toolbar__copy">
+          <h2>Evidence feed</h2>
+          <p>
+            Every entry stays source-backed. Use filters when you only need runnable changes or high-impact shifts.
+          </p>
+        </div>
+        <FilterBar activeFilter={activeFilter} />
+      </div>
+
+      <section class="feed-region" data-feed-region>
+        {!hasPublishedSignals ? <SignalCard signal={previewSignal} /> : null}
+        {hasPublishedSignals ? <EmptyFeedState activeFilter={activeFilter} /> : null}
+
+        {groupedSignals.map((group) => (
+          <section class="feed-group" data-feed-group>
+            {showGroupLabels ? <p class="feed-group__label">{group.label}</p> : null}
+            <div class="feed-group__items">
+              {group.items.map((signal) => <SignalCard signal={signal} />)}
+            </div>
+          </section>
+        ))}
+      </section>
     </section>
   </main>
   {hasPublishedSignals ? <script is:inline set:html={filterRuntimeScript}></script> : null}
