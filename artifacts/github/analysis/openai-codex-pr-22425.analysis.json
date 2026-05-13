@@ -1,0 +1,23 @@
+{
+  "caveats": [
+    "This is a plugin/app-server payload behavior change, not evidence of a broader plugin UI redesign.",
+    "The bundle has no docs or examples refs, so the public framing should stay tied to PR and test evidence."
+  ],
+  "confidence": "confirmed",
+  "config_flags": [],
+  "expected_effect": null,
+  "how_to_try": null,
+  "impact": "low",
+  "kind": "behavior_change",
+  "proof_points": [
+    "The PR body states that `shared-with-me` remains the request kind while private plugins return under `workspace-shared-with-me-private` and UNLISTED installed workspace plugins return under `workspace-shared-with-me-unlisted`.",
+    "`codex-rs/core-plugins/src/remote.rs` replaces the old shared-with-me marketplace constant with separate private and unlisted workspace-shared marketplace names.",
+    "`codex-rs/core-plugins/src/remote/remote_installed_plugin_sync.rs` initializes installed-plugin tracking for both new workspace-shared buckets.",
+    "App-server and core plugin tests update `plugin/list`, `plugin/read`, `plugin/share`, and share-list expectations from `shared-with-me` IDs to `workspace-shared-with-me-private`, with list coverage for the unlisted bucket."
+  ],
+  "slug": "split-shared-workspace-plugins-by-discoverability",
+  "summary": "Merged PR #22425 keeps `shared-with-me` as the `plugin/list` request kind, but changes the returned workspace-shared plugin buckets: private shares now use `workspace-shared-with-me-private`, and installed unlisted workspace plugins can use `workspace-shared-with-me-unlisted`.",
+  "title": "Shared workspace plugins are split by discoverability",
+  "watch_state": "Watch whether downstream plugin clients or cached IDs still assume all shared workspace plugins live under `shared-with-me`.",
+  "why_it_matters": "App-server and plugin clients get less ambiguous marketplace identities for workspace-shared plugins. That makes it easier to distinguish private shares from unlisted workspace installs without treating every shared workspace plugin as one generic `shared-with-me` bucket."
+}
