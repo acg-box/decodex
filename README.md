@@ -22,6 +22,8 @@ Repo-native agent orchestration and public Codex signal publishing.
 - Static Astro site that publishes GitHub-backed Codex change signals.
 - Deterministic GitHub signal pipeline for change bundles, release deltas, rendered
   signal entries, and content validation.
+- Repo-local Radar skills for upstream Codex triage, code analysis, release analysis,
+  signal drafting, and X post drafting.
 - Publisher workflow for checked-in upstream impact classification and reviewable X
   drafts for `@decodexspace`.
 - Installable Decodex plugin with reusable agent-facing skills for manual CLI,
@@ -60,8 +62,8 @@ runtime.
 - `artifacts/social/` owns checked-in Publisher social draft artifacts.
 - `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
   skills.
-- `dev/skills/` owns repository-development skill-like instructions that are not
-  packaged with the installable Decodex plugin.
+- `dev/skills/` owns repository-development skills for Radar analysis and Publisher
+  drafting. They are not packaged with the installable Decodex plugin.
 - `docs/` remains the authoritative documentation surface.
 
 Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
@@ -154,8 +156,8 @@ The GitHub-first public signal path stays deterministic and reviewable:
 
 - `scripts/github/build_change_bundle.py` builds normalized GitHub bundles under
   `artifacts/github/bundles/`.
-- `dev/skills/github-signal/SKILL.md` records the repo-local Codex editorial
-  instructions. It is not part of the installable Decodex plugin distribution.
+- `dev/skills/README.md` routes the repo-local Radar and editorial instructions. They
+  are not part of the installable Decodex plugin distribution.
 - `scripts/github/sync_latest_signals.py` discovers recent merged PRs and refreshes
   content artifacts.
 - `docs/spec/upstream-impact.md` records how upstream Codex changes are classified for
@@ -224,8 +226,8 @@ The tracked workspace currently keeps:
   validation script surface
 - `artifacts/github/` as checked-in GitHub bundle and analysis artifacts
 - `plugins/decodex/` as the canonical installable Decodex plugin source
-- `dev/skills/` as repo-development skill-like instructions that are not packaged with
-  the installable Decodex plugin
+- `dev/skills/` as repo-development Radar analysis and Publisher drafting skills that
+  are not packaged with the installable Decodex plugin
 - `docs/spec/` as the normative runtime, workflow, site, and content contract lane
 - `docs/runbook/` as the operator procedures, validation sequences, deployment steps,
   and content workflow lane

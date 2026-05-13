@@ -1,18 +1,19 @@
 ---
 name: github-signal
-description: Use when turning a normalized GitHub bundle under `artifacts/github/bundles/` into a Decodex signal draft, especially for requests to analyze a PR-first bundle, decide if a change is signal-worthy, or write/update the local editorial analysis JSON that feeds `scripts/github/render_signal_entry.py`.
+description: Use when turning a reviewed GitHub bundle and code-analysis result into a Decodex signal draft, especially for writing or updating the local editorial analysis JSON that feeds `scripts/github/render_signal_entry.py`.
 ---
 
 # Decodex GitHub Signal
 
-Use this skill for the local editorial step in the GitHub-first Decodex workflow.
+Use this skill for the final local editorial step in the GitHub-first Decodex workflow.
 This is a Decodex repository-development instruction surface, not a complete
 user-facing plugin skill, and it must not be packaged with the installable Decodex
 plugin.
 
 This skill does not replace the deterministic scripts. It tells Codex how to read a
-bundle, decide whether it deserves publication, and draft the analysis JSON that the
-repo already renders into a final `signal_entry/v1`.
+reviewed bundle and in-session code-analysis result, decide whether the change deserves
+publication, and draft the analysis JSON that the repo already renders into a final
+`signal_entry/v1`.
 
 ## Read before drafting
 
@@ -21,12 +22,26 @@ repo already renders into a final `signal_entry/v1`.
 - `docs/spec/signal-entry.md`
 - `docs/spec/social-post-draft.md`
 - `docs/runbook/local-github-signal-workflow.md`
+- `dev/skills/codex-upstream-triage/SKILL.md`
+- `dev/skills/codex-code-analysis/SKILL.md`
 
 ## Inputs
 
 - A normalized bundle JSON under `artifacts/github/bundles/`
+- A code-analysis result from `dev/skills/codex-code-analysis/SKILL.md`, when the
+  behavior path is not already clear from the bundle
 - An output path under `artifacts/github/analysis/`
 - Optional upstream impact output under `artifacts/github/impact/`
+
+## Companion Skill Routing
+
+- Use `codex-upstream-triage` before this skill when the candidate still needs to be
+  selected from latest commits, PRs, releases, or changelog entries.
+- Use `codex-code-analysis` before this skill when the behavior path or Control Plane
+  impact is not already clear.
+- Use `codex-release-analysis` before this skill when the source is release-shaped.
+- Use `x-post-draft` after this skill only when the rendered signal or upstream-impact
+  artifact supports a social draft.
 
 ## Boundaries
 
@@ -126,10 +141,11 @@ Write a JSON analysis draft with these fields:
 ## Workflow
 
 1. Validate the bundle first.
-2. Read `primary_pr.title`, `primary_pr.body`, `files`, and `commits`.
+2. Read `primary_pr.title`, `primary_pr.body`, `files`, `commits`, and the companion
+   in-session code-analysis result when one was produced.
 3. Decide whether the change is signal-worthy.
-4. Draft the editorial JSON under `artifacts/github/analysis/`.
-5. Draft an `upstream_impact/v1` artifact when the change affects Control Plane or
+4. Draft the `analysis_draft` JSON under `artifacts/github/analysis/`.
+5. Draft or update an `upstream_impact/v1` artifact when the change affects Control Plane or
    Publisher follow-up.
 6. Render the final signal entry with the repo script.
 7. Validate the published signal collection and site build.
