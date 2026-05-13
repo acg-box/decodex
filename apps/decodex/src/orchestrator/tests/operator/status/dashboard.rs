@@ -369,6 +369,19 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 }
 
 #[test]
+fn operator_dashboard_keys_child_bucket_rows_for_stable_patching() {
+	let response = dashboard_response();
+
+	assert!(response.contains("function childBucketRenderKey(bucket)"));
+	assert_eq!(
+		response
+			.matches("data-render-key=\"${escapeHtml(childBucketRenderKey(bucket))}\"")
+			.count(),
+		2
+	);
+}
+
+#[test]
 fn operator_dashboard_active_run_status_copy_stays_concise() {
 	let response = dashboard_response();
 
