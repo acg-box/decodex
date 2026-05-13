@@ -43,6 +43,8 @@ The split below is by question type, not by human-versus-agent audience.
 - Need Radar raw-artifact retention, archive manifests, or GitHub Release archive
   procedure -> `docs/spec/radar-artifact-retention.md` and
   `docs/runbook/radar-artifact-archive.md`
+- Need historical upstream commit trace, skipped-candidate state, or local Radar ledger
+  behavior -> `docs/spec/radar-ledger.md`
 - Need the raw machine-authored research run artifacts used by shipped research tooling
   -> `docs/research/`
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`

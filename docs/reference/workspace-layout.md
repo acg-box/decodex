@@ -118,6 +118,15 @@ Runtime state that belongs to the local operator, not to this repository, lives 
 - `accounts.jsonl` stores the optional shared ChatGPT account pool used for
   Codex app-server auth token injection and refresh.
 - `logs/` stores Decodex process logs.
+
+Repo-local Radar history that belongs to the current checkout, not to Git, lives under
+`.decodex/`:
+
+- `radar.sqlite3` is the default SQLite ledger for observed upstream Codex commits,
+  skipped candidates, PR mappings, review status, and artifact links.
+
+`.decodex/` is ignored by Git. Public curated artifacts and archive manifests remain in
+the checked-in tree.
 - `agent-evidence/<service-id>/` stores local agent-readable diagnosis artifacts,
   including `handoff-index.json`, `events.jsonl`, `blockers/*.json`, and
   `runs/<yyyy-mm>/<run-id>/capsule.json`.
