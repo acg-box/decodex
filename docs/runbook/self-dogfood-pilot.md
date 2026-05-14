@@ -84,7 +84,7 @@ project directory:
 
 - `decodex project list` should show the project config as
   `~/.codex/decodex/projects/<service-id>/project.toml`.
-- `GET /state` or the operator UI should show no project backed by a flat `*.toml`
+- `decodex status --json` or the operator UI should show no project backed by a flat `*.toml`
   config path inside a checkout or lane worktree.
 
 Runtime state now lives in the Decodex-owned SQLite database at `~/.codex/decodex/runtime.sqlite3`, and logs live under `~/.codex/decodex/logs/`. On restart, `decodex` reloads retained worktree knowledge and active-lane recovery intent from that database, then refreshes low-frequency Linear and GitHub state as connector budgets allow.
@@ -321,21 +321,20 @@ wants to observe the self-bootstrap loop without reading source code.
    lsof -nP -iTCP:8912 -sTCP:LISTEN
    ps -p "$SERVE_PID" -o pid,lstart,command
    curl -fsS http://127.0.0.1:8912/livez
-   curl -fsS http://127.0.0.1:8912/readyz
    ```
 
    Use the port from the active `--listen-address` if it is not `127.0.0.1:8912`.
    Treat a missing listener, a binary revision that does not match the current landed
    `HEAD`, or a `decodex serve` start time older than the latest runtime or dashboard
    landing as stale evidence. Restart `decodex serve` after reinstalling or after any
-   runtime/UI land, then rerun `/livez` and `/readyz` on the same port before applying
-   new queue labels. A browser tab left open on an old port is not evidence for the
-   current serve process.
+   runtime/UI land, then rerun `/livez` on the same port and reload the dashboard
+   before applying new queue labels. A browser tab left open on an old port is not
+   evidence for the current serve process.
 
    Installed-dashboard smoke checklist: after `decodex --version` matches the short
    `HEAD`, restart `decodex serve` from that installed binary. Verify `GET /livez`
-   and `GET /readyz` pass, then confirm `GET /state` and the browser dashboard agree
-   on project registration and visible lane counts before queueing work.
+   passes, then confirm `decodex status --json` and the browser dashboard agree on
+   project registration and visible lane counts before queueing work.
 
 3. Confirm the installed binary can reach the Codex app-server boundary:
 
@@ -419,13 +418,13 @@ wants to observe the self-bootstrap loop without reading source code.
    Restart observation checkpoint after a runtime fix:
 
    - Restart `decodex serve` from the same registered project setup and confirm
-     `GET /readyz` reports a fresh operator snapshot. If readiness is stale or missing,
-     wait one poll tick; if it stays stale, stop before queueing new issues.
-   - Check `GET /state` before applying new `decodex:queued:decodex` labels. The
-     snapshot should show the intended `decodex` project registration, no previous
-     completed lane counted as running capacity, and retained or recovery worktree
-     entries only when they correspond to a live PR, review, landing, or recovery
-     state.
+     `GET /livez` responds. Reload the dashboard and wait for a WebSocket snapshot; if
+     it stays missing after one poll tick, stop before queueing new issues.
+   - Check `decodex status --json` before applying new `decodex:queued:decodex`
+     labels. The snapshot should show the intended `decodex` project registration, no
+     previous completed lane counted as running capacity, and retained or recovery
+     worktree entries only when they correspond to a live PR, review, landing, or
+     recovery state.
    - In the dashboard, confirm `Projects`, `Intake Queue`, `Running Lanes`,
      `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` agree with the same
      snapshot: the landed fix is visible through the latest run history, no stale
@@ -435,17 +434,19 @@ wants to observe the self-bootstrap loop without reading source code.
 
    Post-land self-bootstrap observation checklist:
 
-   - Check `GET /readyz` after the landed runtime fix is running again. The snapshot
-     should be fresh; if it stays stale after one poll tick, stop the demo loop.
-   - Check `GET /state` before queueing follow-up work. Active and post-review counts
-     should match the visible `Running Lanes` and `Review & Landing` rows.
+   - Reload the dashboard after the landed runtime fix is running again. The WebSocket
+     snapshot should be fresh; if it stays stale after one poll tick, stop the demo
+     loop.
+   - Check `decodex status --json` before queueing follow-up work. Active and
+     post-review counts should match the visible `Running Lanes` and `Review & Landing`
+     rows.
    - Watch host CPU while the landed lane drains. CPU should return to the expected
      idle range after closeout instead of staying pinned with zero active work.
    - `Recovery Worktrees` should be empty except cleanup-only retained worktrees for
      landed or closed lanes waiting deterministic removal.
-   - Stop before applying new queue labels if `/state` disagrees with the dashboard,
-     active or post-review counts are inflated, CPU stays elevated, or retained rows
-     lack a cleanup-only reason.
+   - Stop before applying new queue labels if `decodex status --json` disagrees with
+     the dashboard, active or post-review counts are inflated, CPU stays elevated, or
+     retained rows lack a cleanup-only reason.
 
    Concurrent self-bootstrap observation checklist:
 
@@ -498,8 +499,8 @@ wants to observe the self-bootstrap loop without reading source code.
      timing when the ledger recorded those fields; raw attempts and heartbeat details
      stay in the expanded debug view.
      To validate rich local closeout persistence after a lane completes, keep
-     `decodex serve --listen-address 127.0.0.1:8912` running and inspect the served
-     `GET /state` snapshot or the 8912 dashboard `Run Ledger`, not a replay of Linear
+     `decodex serve --listen-address 127.0.0.1:8912` running and inspect
+     `decodex status --json` or the 8912 dashboard `Run Ledger`, not a replay of Linear
      comments. The completed row should still expose the local `run_id`, attempt
      number, lifecycle status, PR or landing reference, closeout or attention reason,
      elapsed timing, and debug-only raw attempt or heartbeat details after the lane
@@ -509,7 +510,7 @@ wants to observe the self-bootstrap loop without reading source code.
      real failed or interrupted retry.
      Use the post-XY-370 installed-binary docs-only canary, such as XY-371, to verify
      that this clean closeout path preserves the original handoff `run_id` with
-     `attempt_number = 1` and does not add an interrupted attempt to `GET /state`
+     `attempt_number = 1` and does not add an interrupted attempt to status/dashboard
      history. If closeout reports `attempt-2` without a real failed or interrupted
      retry, record that as failed canary evidence. Record the PR URL, merge commit,
      and closeout identity in Linear before treating the canary as healthy.
@@ -569,11 +570,11 @@ Decodex is intentionally Unix-only, and the control plane relies on Unix file-de
 decodex serve --interval 60s --listen-address 127.0.0.1:8912
 ```
 
-The listener serves one read-only operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `cargo run -p decodex -- status --json` from `GET /state`, plus two tiny text probes on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as active queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
+The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `cargo run -p decodex -- status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as active queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
 
 - `GET /` or `GET /dashboard`: the same single-page operator console
+- `GET /dashboard/control`: WebSocket transport for snapshots, live run activity, and local dashboard control acknowledgements
 - `GET /livez`: process-level liveness for the operator listener only
-- `GET /readyz`: whether a current operator snapshot exists and is still fresh within the control-plane poll budget
 
 During `serve`, each poll tick now does two distinct things:
 

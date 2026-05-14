@@ -209,10 +209,6 @@ where
 	Ok(snapshot)
 }
 
-fn operator_snapshot_ready_stale_after(poll_interval: Duration) -> Duration {
-	poll_interval.checked_mul(2).unwrap_or(Duration::MAX)
-}
-
 fn inspect_or_clear_active_children<T>(
 	active_children: &mut Vec<DaemonRunChild>,
 	retry_queue: &mut RetryQueue,

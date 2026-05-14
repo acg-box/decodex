@@ -3406,7 +3406,6 @@
 		</details>
 
 		<script>
-			const REFRESH_INTERVAL_MS = 5000;
 			const DETAILS_ANIMATION_MS = 380;
 			const FOLD_PANEL_ANIMATION_MS = 220;
 			const THEME_STORAGE_KEY = "decodex.operator.theme";
@@ -3487,13 +3486,7 @@
 				"Theo",
 				"Val",
 			];
-			const ENDPOINTS = {
-				dashboard: "/",
-				state: "/state",
-				ready: "/readyz",
-				websocket: "/dashboard/control",
-			};
-			const SNAPSHOT_PUBLISHED_HEADER = "x-decodex-snapshot-unix-epoch";
+			const DASHBOARD_WEBSOCKET_ENDPOINT = "/dashboard/control";
 			const RUN_ATTENTION_IDLE_SECONDS = 60;
 			const RUN_STALE_NO_PROCESS_SECONDS = 300;
 
@@ -3545,10 +3538,10 @@
 				worktreesMeta: document.getElementById("worktrees-meta"),
 			};
 
-			let refreshInFlight = false;
 			let lastDashboardRender = null;
 			let dashboardSocket = null;
 			let dashboardSocketReconnectTimer = null;
+			let dashboardLiveActiveRuns = [];
 			let dashboardStreamState = {
 				supported: typeof window.WebSocket === "function",
 				connected: false,
@@ -3811,29 +3804,10 @@
 				const host = window.location.host;
 
 				if (!host) {
-					return ENDPOINTS.websocket;
+					return DASHBOARD_WEBSOCKET_ENDPOINT;
 				}
 
-				return `${protocol}//${host}${ENDPOINTS.websocket}`;
-			}
-
-			function snapshotPublishedAtFromResponse(response) {
-				const rawValue = response.headers.get(SNAPSHOT_PUBLISHED_HEADER);
-				if (!rawValue) {
-					return null;
-				}
-
-				const unixEpochSeconds = Number(rawValue);
-				if (!Number.isFinite(unixEpochSeconds)) {
-					return null;
-				}
-
-				const parsed = new Date(unixEpochSeconds * 1000);
-				if (Number.isNaN(parsed.getTime())) {
-					return null;
-				}
-
-				return parsed.toISOString();
+				return `${protocol}//${host}${DASHBOARD_WEBSOCKET_ENDPOINT}`;
 			}
 
 			function snapshotAgeSeconds(snapshotPublishedAt) {
@@ -3853,11 +3827,9 @@
 				if (snapshotPublishedAt) {
 					const ageSeconds = snapshotAgeSeconds(snapshotPublishedAt);
 					const staleByAge = ageSeconds != null && ageSeconds >= 30;
-					const staleByReadiness = readiness.label === "Snapshot stale";
 					if (
 						!snapshotError &&
 						readiness.tone !== "danger" &&
-						!staleByReadiness &&
 						!staleByAge
 					) {
 						return null;
@@ -3868,7 +3840,7 @@
 						tone:
 							snapshotError || readiness.tone === "danger"
 								? "danger"
-								: staleByAge || staleByReadiness
+								: staleByAge
 									? "warning"
 									: readiness.tone,
 						title: `Published ${formatTimestamp(snapshotPublishedAt)}`,
@@ -3894,8 +3866,6 @@
 				switch (label) {
 					case "Snapshot ready":
 						return "Ready";
-					case "Snapshot stale":
-						return "Stale";
 					case "State degraded":
 						return "Degraded";
 					case "Tracker sync paused":
@@ -3912,9 +3882,9 @@
 			function dashboardStreamMeta() {
 				if (!dashboardStreamState.supported) {
 					return {
-						label: "polling",
-						tone: "muted",
-						title: "WebSocket unavailable; polling active.",
+						label: "unavailable",
+						tone: "danger",
+						title: "WebSocket unavailable.",
 					};
 				}
 
@@ -3932,7 +3902,7 @@
 					return {
 						label: "reconnecting",
 						tone: "warning",
-						title: "WebSocket reconnecting; polling active.",
+						title: "WebSocket reconnecting.",
 					};
 				}
 
@@ -7364,50 +7334,52 @@
 				};
 			}
 
-			function summarizeReadiness(readyResponse, snapshotError, snapshot) {
+			function summarizeReadiness(snapshotError, snapshot) {
 				const warnings = snapshot?.warnings ?? [];
 				const trackerBackoff = hasConnectorBackoff(snapshot);
 
-				if (!readyResponse) {
+				if (!dashboardStreamState.supported) {
 					return {
 						tone: "danger",
-						label: "Listener down",
-						copy: "Cannot reach /readyz on this listener.",
+						label: "WebSocket unavailable",
+						copy: "This browser cannot open the dashboard WebSocket.",
 					};
 				}
 
-					if (readyResponse.ok) {
-						if (trackerBackoff && !snapshotError) {
-							return {
-								tone: "warning",
-								label: "Tracker sync paused",
-								copy: "Serving local state; Linear sync is paused.",
-							};
-						}
+				if (dashboardStreamState.error) {
+					return {
+						tone: "danger",
+						label: "WebSocket disconnected",
+						copy: "Dashboard stream disconnected; reconnecting.",
+					};
+				}
 
+				if (snapshot) {
+					if (trackerBackoff && !snapshotError) {
 						return {
-							tone: snapshotError || warnings.length ? "warning" : "success",
-							label: snapshotError || warnings.length ? "State degraded" : "Snapshot ready",
+							tone: "warning",
+							label: "Tracker sync paused",
+							copy: "Serving local state; Linear sync is paused.",
+						};
+					}
+
+					return {
+						tone: snapshotError || warnings.length ? "warning" : "success",
+						label: snapshotError || warnings.length ? "State degraded" : "Snapshot ready",
 						copy: snapshotError
-							? "/state did not return a usable snapshot."
+							? "WebSocket did not deliver a usable snapshot."
 							: warnings.length
 								? "Local state is published; external observer sections were skipped."
-							: "Fresh operator snapshot published.",
-					};
-				}
-
-				if (readyResponse.body === "snapshot_stale") {
-					return {
-						tone: "warning",
-						label: "Snapshot stale",
-						copy: "Snapshot is past the freshness limit.",
+								: "Fresh operator snapshot published.",
 					};
 				}
 
 				return {
 					tone: "warning",
 					label: "No snapshot",
-					copy: "No usable snapshot has been published.",
+					copy: dashboardStreamState.connected
+						? "WebSocket connected; waiting for operator snapshot."
+						: "Connecting to dashboard WebSocket.",
 				};
 			}
 
@@ -7421,13 +7393,13 @@
 						tone: "danger",
 						title: readiness.label,
 						copy: snapshotError
-							? `${readiness.copy} State fetch also failed: ${snapshotError}`
+							? `${readiness.copy} Snapshot stream also failed: ${snapshotError}`
 							: readiness.copy,
 					});
 				} else if (snapshotError) {
 					notices.push({
 						tone: "danger",
-						title: "State fetch",
+						title: "Snapshot stream",
 						copy: snapshotError,
 					});
 				}
@@ -7870,7 +7842,7 @@
 
 				nodes.transportHealth.innerHTML = `
 					<span class="status-pill ${readiness.tone}">${escapeHtml(topbarReadinessLabel(readiness.label))}</span>
-					<span class="transport-meta" data-kind="endpoint" data-tone="${escapeHtml(stream.tone)}" title="${escapeHtml(stream.title)} Poll fallback: ${escapeHtml(ENDPOINTS.state)}">
+					<span class="transport-meta" data-kind="endpoint" data-tone="${escapeHtml(stream.tone)}" title="${escapeHtml(stream.title)}">
 						<span>Transport</span><strong>${renderValueLink("WebSocket", dashboardSocketUrl(), "transport-link") || escapeHtml(dashboardSocketUrl())}</strong>
 					</span>
 					${snapshotFreshnessRow}
@@ -8973,52 +8945,6 @@
 					.join("");
 			}
 
-			async function requestText(url) {
-				const response = await fetch(url, {
-					cache: "no-store",
-					headers: { "cache-control": "no-cache" },
-				});
-				return {
-					ok: response.ok,
-					status: response.status,
-					body: (await response.text()).trim(),
-				};
-			}
-
-			async function requestJson(url) {
-				const response = await fetch(url, {
-					cache: "no-store",
-					headers: { "cache-control": "no-cache" },
-				});
-				const snapshotPublishedAt = snapshotPublishedAtFromResponse(response);
-
-				if (!response.ok) {
-					return {
-						ok: false,
-						status: response.status,
-						body: (await response.text()).trim(),
-						snapshotPublishedAt,
-					};
-				}
-
-				return {
-					ok: true,
-					status: response.status,
-					body: await response.json(),
-					snapshotPublishedAt,
-				};
-			}
-
-			function responseFailureCopy(label, status, body) {
-				const trimmedBody = typeof body === "string" ? body.trim() : "";
-
-				if (!trimmedBody || trimmedBody.startsWith("<") || trimmedBody.length > 220) {
-					return `${label} failed with HTTP ${status}.`;
-				}
-
-				return trimmedBody;
-			}
-
 			function unixEpochSecondsToIso(value) {
 				const unixEpochSeconds = Number(value);
 				if (!Number.isFinite(unixEpochSeconds)) {
@@ -9216,8 +9142,30 @@
 				};
 			}
 
+			function snapshotWithLiveRunActivity(snapshot) {
+				if (!snapshot || !dashboardSocketIsOpen() || !dashboardLiveActiveRuns.length) {
+					return snapshot;
+				}
+
+				return mergeDashboardRunActivity(snapshot, dashboardLiveActiveRuns);
+			}
+
 			function applyDashboardRunActivity(payload) {
-				if (!lastDashboardRender?.snapshot || !Array.isArray(payload?.activeRuns)) {
+				if (!Array.isArray(payload?.activeRuns)) {
+					updateDashboardStreamState({
+						connected: true,
+						error: false,
+						lastEventAt: new Date().toISOString(),
+					});
+
+					return;
+				}
+
+				dashboardLiveActiveRuns = payload.activeRuns
+					.filter((run) => run && typeof run === "object")
+					.map((run) => ({ ...run }));
+
+				if (!lastDashboardRender?.snapshot) {
 					updateDashboardStreamState({
 						connected: true,
 						error: false,
@@ -9229,7 +9177,7 @@
 
 				lastDashboardRender = {
 					...lastDashboardRender,
-					snapshot: mergeDashboardRunActivity(lastDashboardRender.snapshot, payload.activeRuns),
+					snapshot: snapshotWithLiveRunActivity(lastDashboardRender.snapshot),
 				};
 				updateDashboardStreamState(
 					{
@@ -9247,11 +9195,10 @@
 					return;
 				}
 
-				lastDashboardRender = {
-					readinessResponse: { ok: true, status: 200, body: "ready" },
-					snapshot: payload.snapshot,
-					snapshotError: "",
-					snapshotPublishedAt:
+					lastDashboardRender = {
+						snapshot: snapshotWithLiveRunActivity(payload.snapshot),
+						snapshotError: "",
+						snapshotPublishedAt:
 						unixEpochSecondsToIso(payload.snapshotPublishedAtUnixEpoch) ||
 						new Date().toISOString(),
 				};
@@ -9338,12 +9285,6 @@
 					return;
 				}
 				recordDashboardControlEvent(payload || {});
-				if (
-					payload?.accepted &&
-					["selectAccount", "clearAccountSelection"].includes(payload.action)
-				) {
-					refreshDashboard();
-				}
 			}
 
 			function applyDashboardControlReady(payload) {
@@ -9352,6 +9293,10 @@
 
 			function connectDashboardSocket() {
 				if (!dashboardStreamState.supported) {
+					updateDashboardStreamState({
+						connected: false,
+						error: true,
+					});
 					return;
 				}
 
@@ -9374,6 +9319,7 @@
 					syncDashboardSubscriptionToSocket();
 				};
 				dashboardSocket.onclose = () => {
+					dashboardLiveActiveRuns = [];
 					updateDashboardStreamState({
 						connected: false,
 						error: true,
@@ -9381,6 +9327,7 @@
 					scheduleDashboardSocketReconnect();
 				};
 				dashboardSocket.onerror = () => {
+					dashboardLiveActiveRuns = [];
 					updateDashboardStreamState({
 						connected: false,
 						error: true,
@@ -9400,75 +9347,12 @@
 				};
 			}
 
-			async function refreshDashboard() {
-				if (refreshInFlight) {
-					return;
-				}
-
-				refreshInFlight = true;
-				try {
-					await refreshDashboardOnce();
-				} finally {
-					refreshInFlight = false;
-				}
-			}
-
-			async function refreshDashboardOnce() {
-				let readinessResponse = null;
-				let snapshot = null;
-				let snapshotError = "";
-				let snapshotPublishedAt = null;
-
-				try {
-					const [readyResult, stateResult] = await Promise.allSettled([
-						requestText(ENDPOINTS.ready),
-						requestJson(ENDPOINTS.state),
-					]);
-
-					if (readyResult.status === "fulfilled") {
-						readinessResponse = readyResult.value;
-					}
-
-					if (stateResult.status === "fulfilled") {
-						snapshotPublishedAt = stateResult.value.snapshotPublishedAt;
-						if (stateResult.value.ok) {
-							snapshot = stateResult.value.body;
-						} else {
-							snapshotError = responseFailureCopy(
-								"State fetch",
-								stateResult.value.status,
-								stateResult.value.body,
-							);
-						}
-					} else {
-						snapshotError =
-							stateResult.reason instanceof Error
-								? stateResult.reason.message
-								: "State fetch failed.";
-					}
-				} catch (error) {
-					snapshotError =
-						error instanceof Error
-							? error.message
-							: "Dashboard refresh failed.";
-				}
-
-				lastDashboardRender = {
-					readinessResponse,
-					snapshot,
-					snapshotError,
-					snapshotPublishedAt,
-				};
-				renderDashboardState(lastDashboardRender);
-			}
-
 			function renderDashboardState({
-				readinessResponse,
 				snapshot,
 				snapshotError,
 				snapshotPublishedAt,
 			}) {
-				const readiness = summarizeReadiness(readinessResponse, snapshotError, snapshot);
+				const readiness = summarizeReadiness(snapshotError, snapshot);
 				const notices = dashboardNotices(readiness, snapshotError, snapshot);
 				const derived = buildDerivedState(snapshot);
 				const reviewItems = reviewLaneItems(derived);
@@ -9512,16 +9396,20 @@
 				}
 			}
 
-			function startPolling() {
+			function startDashboardStream() {
 				applyTheme(themeSelection, false);
 				renderAccountPrivacyToggle();
 				renderProjectFilterToggle();
 				renderProjectLocationToggle();
 				renderProjectWorkInfoState();
 				applyDashboardLayout();
+					lastDashboardRender = {
+						snapshot: null,
+						snapshotError: "",
+						snapshotPublishedAt: null,
+				};
+				renderDashboardState(lastDashboardRender);
 				connectDashboardSocket();
-				refreshDashboard();
-				window.setInterval(refreshDashboard, REFRESH_INTERVAL_MS);
 			}
 
 			for (const button of nodes.themeButtons) {
@@ -9730,12 +9618,12 @@
 			});
 
 			document.addEventListener("visibilitychange", () => {
-				if (!document.hidden) {
-					refreshDashboard();
+				if (!document.hidden && !dashboardSocketIsOpen()) {
+					connectDashboardSocket();
 				}
 			});
 
-			startPolling();
+			startDashboardStream();
 		</script>
 	</body>
 </html>

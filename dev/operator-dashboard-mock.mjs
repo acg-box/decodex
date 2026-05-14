@@ -7,17 +7,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_LISTEN_ADDRESS = "127.0.0.1:57399";
-const DEFAULT_READY_STALE_SECONDS = 120;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function parseArgs(argv) {
 	const options = {
-		authDir: null,
-		dashboardHtml: path.join(repoRoot, "src/orchestrator/operator_dashboard.html"),
-		listenAddress: DEFAULT_LISTEN_ADDRESS,
-		readyStaleSeconds: DEFAULT_READY_STALE_SECONDS,
-	};
+			authDir: null,
+			dashboardHtml: path.join(repoRoot, "src/orchestrator/operator_dashboard.html"),
+			listenAddress: DEFAULT_LISTEN_ADDRESS,
+		};
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
@@ -41,14 +39,6 @@ function parseArgs(argv) {
 			options.authDir = path.join(process.env.HOME || ".", ".codex");
 			continue;
 		}
-		if (arg === "--ready-stale-seconds") {
-			options.readyStaleSeconds = Number(requiredValue(argv, (index += 1), arg));
-			if (!Number.isFinite(options.readyStaleSeconds) || options.readyStaleSeconds <= 0) {
-				throw new Error("--ready-stale-seconds must be a positive number");
-			}
-			continue;
-		}
-
 		throw new Error(`Unknown argument: ${arg}`);
 	}
 
@@ -67,14 +57,13 @@ function requiredValue(argv, index, flag) {
 function printHelp() {
 	console.log(`Usage: node dev/operator-dashboard-mock.mjs [options]
 
-Serves the real operator dashboard HTML with a comprehensive mock /state payload.
+Serves the real operator dashboard HTML with mock WebSocket snapshot and activity events.
 
 Options:
   --listen-address HOST:PORT   Bind address (default ${DEFAULT_LISTEN_ADDRESS})
   --dashboard-html PATH        Dashboard HTML path
   --use-codex-auth             Load auth*.json accounts from ~/.codex
   --codex-auth-dir DIR         Load auth*.json accounts from DIR
-  --ready-stale-seconds N      /readyz freshness window (default ${DEFAULT_READY_STALE_SECONDS})
   -h, --help                   Show this help
 `);
 }
@@ -855,30 +844,12 @@ async function main() {
 				send(response, 200, "text/html; charset=utf-8", html);
 				return;
 			}
-			if (url.pathname === "/livez") {
-				send(response, 200, "text/plain; charset=utf-8", "ok");
-				return;
-			}
-			if (url.pathname === "/readyz") {
-				const stale = nowUnix() - lastPublishedAt > options.readyStaleSeconds;
-				send(
-					response,
-					stale ? 503 : 200,
-					"text/plain; charset=utf-8",
-					stale ? "snapshot_stale" : "ready",
-				);
-				return;
-			}
-			if (url.pathname === "/state") {
-				lastPublishedAt = nowUnix();
-				const snapshot = buildSnapshot(staticAccounts, fixedAccountSelector);
-				send(response, 200, "application/json", JSON.stringify(snapshot), {
-					"X-Decodex-Snapshot-Unix-Epoch": String(lastPublishedAt),
-				});
-				return;
-			}
+				if (url.pathname === "/livez") {
+					send(response, 200, "text/plain; charset=utf-8", "ok");
+					return;
+				}
 
-			send(response, 404, "text/plain; charset=utf-8", "not found");
+				send(response, 404, "text/plain; charset=utf-8", "not found");
 		} catch (error) {
 			send(response, 500, "text/plain; charset=utf-8", error?.message || "mock server error");
 		}
@@ -907,6 +878,30 @@ async function main() {
 				"",
 			].join("\r\n"),
 		);
+		sendWebSocketJson(socket, {
+			type: "controlReady",
+			payload: {
+				supportedActions: [
+					"subscribe",
+					"focus",
+					"clearFocus",
+					"pauseProject",
+					"resumeProject",
+					"interruptRun",
+					"selectAccount",
+					"clearAccountSelection",
+					"ack",
+				],
+				subscription: {},
+			},
+		});
+		sendWebSocketJson(socket, {
+			type: "snapshot",
+			payload: {
+				snapshot: buildSnapshot(staticAccounts, fixedAccountSelector),
+				snapshotPublishedAtUnixEpoch: lastPublishedAt,
+			},
+		});
 
 		let buffered = Buffer.alloc(0);
 		socket.on("data", (chunk) => {

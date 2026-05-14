@@ -22,13 +22,6 @@ static DASHBOARD_RUN_INTERRUPTER_FOR_TEST: Mutex<Option<DashboardRunInterrupterF
 	Mutex::new(None);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OperatorSnapshotReadiness {
-	Ready,
-	SnapshotUnavailable,
-	SnapshotStale,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OperatorRequestRoute {
 	Dashboard,
 	DashboardIconPng,
@@ -36,8 +29,6 @@ enum OperatorRequestRoute {
 	DashboardLogoTouchPng,
 	DashboardWs,
 	Live,
-	Ready,
-	State,
 }
 
 enum DashboardClientFrame {
@@ -160,7 +151,6 @@ fn run_operator_state_endpoint(
 	snapshot: Arc<Mutex<PublishedOperatorSnapshot>>,
 	dashboard_events: DashboardEventHub,
 	state_store: Arc<StateStore>,
-	ready_stale_after: Duration,
 	shutdown_rx: Receiver<()>,
 ) {
 	loop {
@@ -169,23 +159,22 @@ fn run_operator_state_endpoint(
 		}
 
 		match listener.accept() {
-			Ok((stream, _peer_addr)) => {
-				let connection_snapshot = Arc::clone(&snapshot);
-				let connection_dashboard_events = dashboard_events.clone();
-				let connection_state_store = Arc::clone(&state_store);
+				Ok((stream, _peer_addr)) => {
+					let connection_snapshot = Arc::clone(&snapshot);
+					let connection_dashboard_events = dashboard_events.clone();
+					let connection_state_store = Arc::clone(&state_store);
 
-				thread::spawn(move || {
-					if let Err(error) = handle_operator_state_endpoint_connection(
-						stream,
-						&connection_snapshot,
-						&connection_dashboard_events,
-						&connection_state_store,
-						ready_stale_after,
-					) {
-						tracing::warn!(?error, "Operator state endpoint request failed.");
-					}
-				});
-			},
+					thread::spawn(move || {
+						if let Err(error) = handle_operator_state_endpoint_connection(
+							stream,
+							&connection_snapshot,
+							&connection_dashboard_events,
+							&connection_state_store,
+						) {
+							tracing::warn!(?error, "Operator state endpoint request failed.");
+						}
+					});
+				},
 			Err(error) if error.kind() == ErrorKind::WouldBlock => {
 				thread::sleep(Duration::from_millis(20));
 			},
@@ -203,7 +192,6 @@ fn handle_operator_state_endpoint_connection(
 	snapshot: &Arc<Mutex<PublishedOperatorSnapshot>>,
 	dashboard_events: &DashboardEventHub,
 	state_store: &Arc<StateStore>,
-	ready_stale_after: Duration,
 ) -> Result<()> {
 	stream.set_read_timeout(Some(Duration::from_millis(250)))?;
 	stream.set_write_timeout(Some(Duration::from_millis(250)))?;
@@ -222,6 +210,7 @@ fn handle_operator_state_endpoint_connection(
 		handle_operator_dashboard_websocket_connection(
 			stream,
 			&request,
+			snapshot,
 			dashboard_events,
 			state_store,
 		)?;
@@ -229,57 +218,7 @@ fn handle_operator_state_endpoint_connection(
 		return Ok(());
 	}
 
-	let response = match route {
-		OperatorRequestRoute::Dashboard
-		| OperatorRequestRoute::DashboardIconPng
-		| OperatorRequestRoute::DashboardLogoIco
-		| OperatorRequestRoute::DashboardLogoTouchPng
-		| OperatorRequestRoute::Live => {
-			build_operator_state_http_response_for_route(
-				route,
-				None,
-				None,
-				OperatorSnapshotReadiness::Ready,
-			)
-		},
-		OperatorRequestRoute::Ready => {
-			let last_publish_unix_epoch = snapshot
-				.lock()
-				.map_err(|error| eyre::eyre!("Operator state snapshot lock poisoned: {error}"))?
-				.last_publish_unix_epoch;
-
-			build_operator_state_http_response_for_route(
-				route,
-				None,
-				None,
-				operator_snapshot_readiness(
-					last_publish_unix_epoch,
-					OffsetDateTime::now_utc().unix_timestamp(),
-					ready_stale_after,
-				),
-			)
-		},
-		OperatorRequestRoute::State => {
-			let published_snapshot = snapshot
-				.lock()
-				.map_err(|error| eyre::eyre!("Operator state snapshot lock poisoned: {error}"))?
-				.clone();
-			let snapshot_json = published_snapshot
-				.snapshot_json
-				.as_ref()
-				.map(|snapshot_json| snapshot_json_with_live_account_control(snapshot_json));
-
-			build_operator_state_http_response_for_route(
-				route,
-				snapshot_json.as_deref(),
-				published_snapshot.last_publish_unix_epoch,
-				OperatorSnapshotReadiness::SnapshotUnavailable,
-			)
-		},
-		OperatorRequestRoute::DashboardWs => unreachable!(
-			"dashboard websocket route is handled before building one-shot responses"
-		),
-	};
+	let response = build_operator_state_http_response_for_route(route);
 
 	stream.write_all(&response)?;
 
@@ -317,6 +256,7 @@ fn snapshot_json_with_live_account_control(snapshot_json: &[u8]) -> Vec<u8> {
 fn handle_operator_dashboard_websocket_connection(
 	mut stream: TcpStream,
 	request: &[u8],
+	snapshot: &Arc<Mutex<PublishedOperatorSnapshot>>,
 	dashboard_events: &DashboardEventHub,
 	state_store: &Arc<StateStore>,
 ) -> Result<()> {
@@ -344,14 +284,23 @@ fn handle_operator_dashboard_websocket_connection(
 		&dashboard_control_ready_payload(&session.subscription),
 	)?;
 
+	if let Some(payload) = dashboard_current_snapshot_event_payload(snapshot)? {
+		write_dashboard_websocket_event(&mut stream, "snapshot", &payload)?;
+	}
+
 	loop {
 		for frame in read_dashboard_websocket_client_frames(&mut stream, &mut client_frame_buffer)? {
 			match frame {
 				DashboardClientFrame::Text(payload) => {
-					let response =
-						handle_dashboard_client_message(&mut session, state_store, &payload);
+					let response = handle_dashboard_client_message(&mut session, state_store, &payload);
 
 					write_dashboard_websocket_event(&mut stream, "controlAck", &response)?;
+
+					if dashboard_control_ack_should_push_snapshot(&response)
+						&& let Some(payload) = dashboard_current_snapshot_event_payload(snapshot)?
+					{
+						write_dashboard_websocket_event(&mut stream, "snapshot", &payload)?;
+					}
 				},
 				DashboardClientFrame::Close => return Ok(()),
 				DashboardClientFrame::Ping(payload) => {
@@ -460,6 +409,33 @@ fn build_operator_run_activity_event(state_store: &StateStore) -> Result<Dashboa
 		fingerprint,
 		event: DashboardBroadcastEvent { event_type: "runActivity", payload },
 	})
+}
+
+fn dashboard_current_snapshot_event_payload(
+	snapshot: &Arc<Mutex<PublishedOperatorSnapshot>>,
+) -> Result<Option<Value>> {
+	let published_snapshot = snapshot
+		.lock()
+		.map_err(|error| eyre::eyre!("Operator state snapshot lock poisoned: {error}"))?
+		.clone();
+	let Some(snapshot_json) = published_snapshot.snapshot_json.as_ref() else {
+		return Ok(None);
+	};
+	let snapshot_json = snapshot_json_with_live_account_control(snapshot_json);
+	let snapshot = serde_json::from_slice::<Value>(&snapshot_json)?;
+
+	Ok(Some(json!({
+		"snapshotPublishedAtUnixEpoch": published_snapshot.last_publish_unix_epoch,
+		"snapshot": snapshot,
+	})))
+}
+
+fn dashboard_control_ack_should_push_snapshot(ack: &Value) -> bool {
+	ack.get("accepted").and_then(Value::as_bool).unwrap_or(false)
+		&& matches!(
+			ack.get("action").and_then(Value::as_str),
+			Some("selectAccount" | "clearAccountSelection")
+		)
 }
 
 fn write_dashboard_websocket_event(
@@ -1258,31 +1234,6 @@ fn operator_http_header_contains_token(value: &str, token: &str) -> bool {
 		.any(|candidate| candidate.trim().eq_ignore_ascii_case(token))
 }
 
-fn operator_snapshot_readiness(
-	last_publish_unix_epoch: Option<i64>,
-	now_unix_epoch: i64,
-	ready_stale_after: Duration,
-) -> OperatorSnapshotReadiness {
-	let Some(last_publish_unix_epoch) = last_publish_unix_epoch else {
-		return OperatorSnapshotReadiness::SnapshotUnavailable;
-	};
-
-	if last_publish_unix_epoch > now_unix_epoch {
-		return OperatorSnapshotReadiness::SnapshotStale;
-	}
-
-	let Some(snapshot_age_seconds) = now_unix_epoch.checked_sub(last_publish_unix_epoch) else {
-		return OperatorSnapshotReadiness::SnapshotStale;
-	};
-	let ready_stale_after_seconds = i64::try_from(ready_stale_after.as_secs()).unwrap_or(i64::MAX);
-
-	if snapshot_age_seconds <= ready_stale_after_seconds {
-		OperatorSnapshotReadiness::Ready
-	} else {
-		OperatorSnapshotReadiness::SnapshotStale
-	}
-}
-
 fn read_operator_state_request_headers(stream: &mut TcpStream) -> Result<Vec<u8>> {
 	let mut request = Vec::with_capacity(1_024);
 
@@ -1311,30 +1262,16 @@ fn read_operator_state_request_headers(stream: &mut TcpStream) -> Result<Vec<u8>
 }
 
 #[cfg(test)]
-fn build_operator_state_http_response(
-	request: &[u8],
-	snapshot_json: Option<&[u8]>,
-	readiness: OperatorSnapshotReadiness,
-) -> Result<Vec<u8>> {
+fn build_operator_state_http_response(request: &[u8]) -> Result<Vec<u8>> {
 	let route = match parse_operator_state_request_route(request) {
 		Ok(route) => route,
 		Err(response) => return Ok(response),
 	};
 
-	Ok(build_operator_state_http_response_for_route(
-		route,
-		snapshot_json,
-		None,
-		readiness,
-	))
+	Ok(build_operator_state_http_response_for_route(route))
 }
 
-fn build_operator_state_http_response_for_route(
-	route: OperatorRequestRoute,
-	snapshot_json: Option<&[u8]>,
-	snapshot_last_publish_unix_epoch: Option<i64>,
-	readiness: OperatorSnapshotReadiness,
-) -> Vec<u8> {
+fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> Vec<u8> {
 	match route {
 		OperatorRequestRoute::Dashboard => {
 			http_response_bytes("200 OK", "text/html; charset=utf-8", OPERATOR_DASHBOARD_HTML.as_bytes())
@@ -1351,33 +1288,6 @@ fn build_operator_state_http_response_for_route(
 		OperatorRequestRoute::DashboardWs => websocket_upgrade_required_response(),
 		OperatorRequestRoute::Live => {
 			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok")
-		},
-		OperatorRequestRoute::Ready => match readiness {
-			OperatorSnapshotReadiness::Ready => {
-				http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ready")
-			},
-			OperatorSnapshotReadiness::SnapshotUnavailable => http_response_bytes(
-				"503 Service Unavailable",
-				"text/plain; charset=utf-8",
-				b"snapshot_unavailable",
-			),
-			OperatorSnapshotReadiness::SnapshotStale => http_response_bytes(
-				"503 Service Unavailable",
-				"text/plain; charset=utf-8",
-				b"snapshot_stale",
-			),
-		},
-		OperatorRequestRoute::State => match snapshot_json {
-			Some(snapshot_json) => {
-				let headers = snapshot_response_headers(snapshot_last_publish_unix_epoch);
-
-				http_response_bytes_with_headers("200 OK", "application/json", &headers, snapshot_json)
-			},
-			None => http_response_bytes(
-				"503 Service Unavailable",
-				"text/plain; charset=utf-8",
-				b"operator snapshot unavailable",
-			),
 		},
 	}
 }
@@ -1433,24 +1343,12 @@ fn parse_operator_state_request_route(
 		"/assets/logo-touch.png" => Ok(OperatorRequestRoute::DashboardLogoTouchPng),
 		OPERATOR_DASHBOARD_WS_ENDPOINT_PATH => Ok(OperatorRequestRoute::DashboardWs),
 		OPERATOR_LIVE_ENDPOINT_PATH => Ok(OperatorRequestRoute::Live),
-		OPERATOR_READY_ENDPOINT_PATH => Ok(OperatorRequestRoute::Ready),
-		OPERATOR_STATE_ENDPOINT_PATH => Ok(OperatorRequestRoute::State),
 		_ => Err(http_response_bytes(
 			"404 Not Found",
 			"text/plain; charset=utf-8",
 			b"not found",
 		)),
 	}
-}
-
-fn snapshot_response_headers(
-	last_publish_unix_epoch: Option<i64>,
-) -> Vec<(&'static str, String)> {
-	last_publish_unix_epoch
-		.map(|last_publish_unix_epoch| {
-			vec![("X-Decodex-Snapshot-Unix-Epoch", last_publish_unix_epoch.to_string())]
-		})
-		.unwrap_or_default()
 }
 
 fn http_response_bytes(status_line: &str, content_type: &str, body: &[u8]) -> Vec<u8> {
