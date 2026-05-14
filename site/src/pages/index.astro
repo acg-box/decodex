@@ -73,8 +73,8 @@ const previewSignal: SignalCardData = {
   expected_effect:
     "The homepage feed will render real GitHub signals without another route-level refactor.",
   proof_points: [
-    "The homepage already exposes title, published date, impact, confidence, summary, and why-it-matters on card.",
-    "The filter bar is constrained to all, github, try-now, and high-impact.",
+    "The homepage already exposes title, published date, impact, confidence, summary, and why it matters on each card.",
+    "The filter bar is constrained to all signals, upstream signals, try paths, and high impact.",
     "The utility slot is visually present but intentionally subordinate to the feed.",
   ],
   source_refs: {
@@ -82,7 +82,7 @@ const previewSignal: SignalCardData = {
     commit_urls: ["https://docs.astro.build/en/guides/content-collections/"],
     pr_url: "https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages",
   },
-  previewLabel: "Scaffold Preview",
+  previewLabel: "Scaffold preview",
 };
 
 const visibleSignals = signals.length > 0 ? signals : [previewSignal];
@@ -153,7 +153,7 @@ const releaseWindow =
 
 const productLoops = [
   {
-    title: "Control Plane",
+    title: "Control plane",
     body: "Project registry, identity routing, signing policy, review handoff, and landing rules.",
   },
   {
@@ -303,7 +303,6 @@ const interactionRuntimeScript = `(function () {
     ".filter-chip",
     ".appcast-download__primary",
     ".appcast-download__version",
-    ".system-panel__links a",
     ".brief-list a",
     ".utility-row--window a",
     ".signal-card__index a",
@@ -539,6 +538,33 @@ const interactionRuntimeScript = `(function () {
           </div>
         </div>
 
+        <section class="utility-strip" aria-label="Decodex live status">
+          <div class="utility-strip__items">
+            <div class="utility-row utility-row--download">
+              <AppcastDownloadWidget />
+            </div>
+            {
+              releaseWindow ? (
+              <div class="utility-row utility-row--window">
+                <span class="utility-row__label">
+                  Upstream
+                  <span class="utility-separator">·</span>
+                  <span class="utility-row__label-meta">{releaseWindow.commits} commits</span>
+                </span>
+                <a href={releaseWindow.compareUrl} target="_blank" rel="noreferrer">
+                  <strong>
+                    {releaseWindow.stable} <span class="release-arrow">→</span> {releaseWindow.preview}
+                  </strong>
+                </a>
+              </div>
+              ) : null
+            }
+            <div class="utility-row utility-row--reset">
+              <span class="utility-row__label">Rate limit reset</span>
+              <ResetStatusWidget status={resetStatus} variant="inline" />
+            </div>
+          </div>
+        </section>
       </div>
 
       <div class="hero-bottom" aria-label="Current Decodex signal state">
@@ -561,34 +587,6 @@ const interactionRuntimeScript = `(function () {
       </div>
     </section>
 
-    <section class="utility-strip" aria-label="Decodex utility links">
-      <div class="utility-strip__inner">
-        <div class="utility-strip__intro">
-          <span>Live status</span>
-          <p>Beta downloads, reset watch, and the current tracked release window.</p>
-        </div>
-        <div class="utility-strip__items">
-          <div class="utility-row utility-row--download">
-            <span>Codex app feed</span>
-            <AppcastDownloadWidget />
-          </div>
-          <div class="utility-row">
-            <span>Reset watch</span>
-            <ResetStatusWidget status={resetStatus} variant="inline" />
-          </div>
-          {releaseWindow ? (
-            <div class="utility-row utility-row--window">
-              <span>Upstream window</span>
-              <a href={releaseWindow.compareUrl} target="_blank" rel="noreferrer">
-                <strong>{releaseWindow.stable} -> {releaseWindow.preview}</strong>
-                <small>{releaseWindow.commits} commits under watch</small>
-              </a>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </section>
-
     <section class="site-section system-section" id="system">
       <div class="section-heading">
         <h2>Automation map</h2>
@@ -600,11 +598,6 @@ const interactionRuntimeScript = `(function () {
         <div class="system-panel__lead">
           <span>Decodex software</span>
           <strong>Operate work, track impact, and keep delivery policy explicit.</strong>
-          <div class="system-panel__links" aria-label="Decodex external links">
-            <a href={decodexGitHubUrl} target="_blank" rel="noreferrer">GitHub</a>
-            <a href={primaryXUrl} target="_blank" rel="noreferrer">@YvetteCipher</a>
-            <a href={signalBotXUrl} target="_blank" rel="noreferrer">@decodexspace bot</a>
-          </div>
         </div>
         <ol class="system-loop">
           {productLoops.map((item, index) => (
@@ -650,7 +643,7 @@ const interactionRuntimeScript = `(function () {
               set:html={renderMarkdownInline(leadSignal.how_to_try ?? leadSignal.watch_state ?? leadSignal.summary)}
             />
           </div>
-          <a class="lead-brief__link" href={`#${leadSignal.slug}`}>Open the evidence</a>
+          <a class="lead-brief__link" href={`#${leadSignal.slug}`}>Open evidence</a>
         </article>
 
         <div class="radar-stack">
@@ -690,14 +683,14 @@ const interactionRuntimeScript = `(function () {
       <div class="section-heading">
         <h2>Publisher output</h2>
         <p>
-          Public updates from the analyzed source set.
+          Source-backed updates for the community channel.
         </p>
       </div>
       <div class="publisher-board">
         <div class="publisher-note">
-          <span>Draft logic</span>
+          <span>Output path</span>
           <p>
-            Drafts separate the change, the audience, and any B-side follow-up. Bot: <a href={signalBotXUrl} target="_blank" rel="noreferrer">@decodexspace</a>.
+            Commit evidence becomes short X posts, release rollups, and B-side follow-up notes. Bot channel: <a href={signalBotXUrl} target="_blank" rel="noreferrer">@decodexspace</a>.
           </p>
         </div>
         <div class="publisher-flow">

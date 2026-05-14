@@ -1,6 +1,6 @@
 {
   "schema": "reset_status/v1",
-  "question": "Are we reset today?",
+  "question": "Rate limit reset today?",
   "answer": "no",
   "confidence": "likely",
   "observed_for_date": "2026-05-13",
