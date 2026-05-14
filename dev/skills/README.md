@@ -21,6 +21,8 @@ follow-up work:
    `analysis_draft` JSON consumed by `scripts/github/render_signal_entry.py`.
 5. `x-post-draft`: turn evidence-backed Radar output into a reviewable
    `social_post_draft/v1` artifact for `@decodexspace`.
+6. `rate-limit-reset-watch`: review today's `@thsottiaux` X posts with AI semantic
+   judgment and refresh the homepage `reset_status/v1` artifact.
 
 Use only the skills needed for the current artifact. Do not create a social draft just
 because a signal exists.
@@ -37,6 +39,6 @@ explain what changed by themselves.
 
 Only the existing checked-in contracts are durable artifacts today:
 `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`, `upstream_impact/v1`,
-`release_delta/v1`, and `social_post_draft/v1`. The triage, code-analysis, and
-release-analysis skills are reasoning passes unless their conclusions are promoted
-into one of those contracts.
+`release_delta/v1`, `social_post_draft/v1`, and `reset_status/v1`. The triage,
+code-analysis, release-analysis, and reset-watch skills are reasoning passes unless
+their conclusions are promoted into one of those contracts.

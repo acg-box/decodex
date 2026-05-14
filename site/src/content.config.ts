@@ -159,6 +159,29 @@ const releaseDeltaSchema = z
     });
   });
 
+const resetStatusEvidencePostSchema = z.object({
+  published_at_label: z.string().min(1).optional(),
+  relevance: z.enum(["related", "not_related", "uncertain"]),
+  summary: z.string().min(1),
+  url: z.string().regex(/^https:\/\//, "post url must be an https URL").optional(),
+});
+
+const resetStatusSchema = z.object({
+  schema: z.literal("reset_status/v1"),
+  question: z.string().min(1),
+  answer: z.enum(["yes", "no", "unknown"]),
+  confidence: z.enum(["confirmed", "likely", "weak"]),
+  observed_for_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "observed_for_date must be YYYY-MM-DD"),
+  timezone: z.string().min(1),
+  generated_at: z.string().min(1),
+  source_account: z.string().min(1),
+  source_url: z.string().regex(/^https:\/\//, "source_url must be an https URL"),
+  search_url: z.string().regex(/^https:\/\//, "search_url must be an https URL").optional(),
+  judgment_mode: z.literal("ai_semantic_review"),
+  rationale: z.string().min(1),
+  evidence_posts: z.array(resetStatusEvidencePostSchema).default([]),
+});
+
 const signals = defineCollection({
   loader: glob({
     pattern: "**/*.json",
@@ -175,7 +198,16 @@ const releaseDeltas = defineCollection({
   schema: releaseDeltaSchema,
 });
 
+const resetStatus = defineCollection({
+  loader: glob({
+    pattern: "**/*.json",
+    base: "./src/content/reset-status",
+  }),
+  schema: resetStatusSchema,
+});
+
 export const collections = {
   signals,
   releaseDeltas,
+  resetStatus,
 };
