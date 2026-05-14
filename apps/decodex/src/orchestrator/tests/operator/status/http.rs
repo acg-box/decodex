@@ -3,163 +3,6 @@ use std::net::SocketAddr;
 use crate::runtime;
 
 #[test]
-fn operator_state_endpoint_serves_snapshot_json() {
-	let (_temp_dir, config, _workflow) = temp_project_layout();
-	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let issue = sample_issue("Todo", &[]);
-	let worktree_path = config.worktree_root().join("PUB-101");
-
-	state_store
-		.record_run_attempt("run-1", &issue.id, 1, "running")
-		.expect("run attempt should record");
-	state_store
-		.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
-		.expect("lease should record");
-	state_store
-		.upsert_worktree(
-			"pubfi",
-			&issue.id,
-			"x/pubfi-pub-101",
-			&worktree_path.display().to_string(),
-		)
-		.expect("worktree should record");
-
-	state::write_run_protocol_activity_marker(
-		&worktree_path,
-		&ProtocolActivityMarker {
-			run_id: "run-1",
-			attempt_number: 1,
-			thread_id: Some("thread-1"),
-			turn_id: Some("turn-1"),
-			event_count: 4,
-			last_event_type: "item/tool/call/response",
-			child_agent_activity: Some(&ChildAgentActivitySummary {
-				buckets: vec![state::ChildAgentActivityBucket {
-					name: String::from("Browser/Image"),
-					wall_seconds: 41,
-					event_count: 4,
-					tool_call_count: 2,
-					input_tokens: 0,
-					output_tokens: 0,
-					output_bytes: 240_000,
-				}],
-				current_bucket: Some(String::from("Model")),
-				current_detail: Some(String::from("waiting after tool output")),
-				current_started_unix_epoch: None,
-				current_elapsed_seconds: Some(0),
-				wall_seconds: 693,
-				event_count: 4,
-				tool_call_count: 2,
-				input_tokens_current: Some(135_000),
-				input_tokens_max: Some(135_000),
-				input_tokens_cumulative: 6_510_000,
-				output_tokens_cumulative: 18_000,
-				largest_tool_output_bytes: Some(240_000),
-				largest_tool_output_tool: Some(String::from("view_image")),
-					large_output_warnings: vec![String::from(
-						"view_image repeated 2 large outputs; largest 240000 bytes",
-					)],
-				}),
-				protocol_activity: None,
-			},
-		)
-	.expect("child activity marker should write");
-
-	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
-		.expect("snapshot should build");
-	let snapshot_json = serde_json::to_vec(&snapshot).expect("snapshot json should serialize");
-	let response = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_STATE_ENDPOINT_PATH
-			)
-			.as_bytes(),
-			Some(snapshot_json.as_slice()),
-			OperatorSnapshotReadiness::Ready,
-		)
-		.expect("response build should succeed"),
-	)
-	.expect("response should be utf-8");
-	let (status_line, body) =
-		response.split_once("\r\n").expect("response should contain a status line");
-	let body = body.split_once("\r\n\r\n").expect("response should contain a body").1;
-	let served_snapshot: Value = serde_json::from_str(body).expect("body should be valid json");
-
-	assert_eq!(status_line, "HTTP/1.1 200 OK");
-	assert_eq!(served_snapshot["project_id"], "pubfi");
-	assert_eq!(served_snapshot["run_limit"], 10);
-	assert_eq!(served_snapshot["active_runs"][0]["run_id"], "run-1");
-	assert_eq!(served_snapshot["active_runs"][0]["status"], "running");
-	assert_eq!(served_snapshot["active_runs"][0]["attempt_status"], "running");
-	assert_eq!(served_snapshot["active_runs"][0]["phase"], "executing");
-	assert_eq!(served_snapshot["active_runs"][0]["queue_lease_state"], "held");
-	assert_eq!(served_snapshot["active_runs"][0]["execution_liveness"], "process_alive");
-	assert_eq!(
-		served_snapshot["active_runs"][0]["child_agent_activity"]["buckets"][0]["name"],
-		"Browser/Image"
-	);
-	assert_eq!(
-		served_snapshot["active_runs"][0]["child_agent_activity"]["input_tokens_max"],
-		135_000
-	);
-	assert_eq!(served_snapshot["queued_candidates"], Value::Array(Vec::new()));
-	assert_eq!(served_snapshot["worktrees"][0]["worktree_path"], ".worktrees/PUB-101");
-}
-
-#[test]
-fn operator_state_endpoint_serializes_closed_queue_classification() {
-	let snapshot = OperatorStatusSnapshot {
-		project_id: String::from("pubfi"),
-		run_limit: 10,
-		warnings: Vec::new(),
-		connector_backoffs: Vec::new(),
-		projects: Vec::new(),
-		account_control: OperatorCodexAccountControlStatus {
-			mode: String::from("balanced"),
-			account_selector: None,
-		},
-		accounts: Vec::new(),
-		active_runs: vec![],
-		recent_runs: vec![],
-		history_lanes: vec![],
-		queued_candidates: vec![orchestrator::OperatorQueuedIssueStatus {
-			issue_id: String::from("issue-closed"),
-			issue_identifier: String::from("PUB-104"),
-			title: String::from("Retire closed queue residue"),
-			state: String::from("Done"),
-			priority: Some(1),
-			created_at: String::from("2026-03-14T09:58:00Z"),
-			classification: String::from("closed"),
-			reason: String::from("terminal_state"),
-			attention: None,
-			blocker_identifiers: vec![],
-		}],
-		worktrees: vec![],
-		post_review_lanes: vec![],
-	};
-	let snapshot_json = serde_json::to_vec(&snapshot).expect("snapshot json should serialize");
-	let response = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_STATE_ENDPOINT_PATH
-			)
-			.as_bytes(),
-			Some(snapshot_json.as_slice()),
-			OperatorSnapshotReadiness::Ready,
-		)
-		.expect("response build should succeed"),
-	)
-	.expect("response should be utf-8");
-	let body = response.split_once("\r\n\r\n").expect("response should contain a body").1;
-	let served_snapshot: Value = serde_json::from_str(body).expect("body should be valid json");
-
-	assert_eq!(served_snapshot["queued_candidates"][0]["classification"], "closed");
-	assert_eq!(served_snapshot["queued_candidates"][0]["reason"], "terminal_state");
-}
-
-#[test]
 fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route() {
 	for path in [
 		OPERATOR_DASHBOARD_ENDPOINT_PATH,
@@ -169,8 +12,6 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 			orchestrator::build_operator_state_http_response(
 				format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
 					.as_bytes(),
-				None,
-				OperatorSnapshotReadiness::SnapshotUnavailable,
 			)
 			.expect("dashboard response should build"),
 		)
@@ -200,7 +41,7 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(response.contains("notice-dock"));
 		assert!(response.contains("Notices"));
 		assert!(response.contains("notice-panel"));
-		assert!(response.contains("State fetch"));
+			assert!(response.contains("Snapshot stream"));
 		assert!(response.contains("Snapshot warning"));
 		assert!(response.contains("Tracker sync paused"));
 		assert!(response.contains("connector_backoffs"));
@@ -257,7 +98,7 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 		assert!(!response.contains("Intake Pressure"));
 		assert!(!response.contains("Landing Readiness"));
 
-		assert_dashboard_html_control_surface(response.as_str());
+	assert_dashboard_html_control_surface(response.as_str());
 
 		assert!(!response.contains("Last updated: none"));
 		assert!(!response.contains("Auto-refresh"));
@@ -273,8 +114,6 @@ fn operator_state_endpoint_serves_dashboard_html_from_root_and_dashboard_route()
 
 fn assert_dashboard_html_control_surface(response: &str) {
 	for required in [
-		"/state",
-		"/readyz",
 		"/dashboard/control",
 		"WebSocket",
 		"applyDashboardRunActivity",
@@ -287,6 +126,8 @@ fn assert_dashboard_html_control_surface(response: &str) {
 		assert!(response.contains(required), "missing required dashboard control marker `{required}`");
 	}
 	for forbidden in [
+		"/state",
+		"/readyz",
 		"data-dashboard-control=\"focusProject\"",
 		"data-dashboard-control=\"focusRun\"",
 		"data-dashboard-control=\"pauseProject\"",
@@ -312,8 +153,6 @@ fn operator_dashboard_uses_decodex_brand_icons() {
 				orchestrator::OPERATOR_DASHBOARD_ENDPOINT_PATH
 			)
 			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
 		)
 		.expect("dashboard response should build"),
 	)
@@ -338,8 +177,6 @@ fn operator_state_endpoint_serves_decodex_brand_assets() {
 		let response = orchestrator::build_operator_state_http_response(
 			format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
 				.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
 		)
 		.expect("asset response should build");
 		let header_end = response
@@ -365,8 +202,6 @@ fn operator_state_endpoint_rejects_dashboard_websocket_without_upgrade() {
 				orchestrator::OPERATOR_DASHBOARD_WS_ENDPOINT_PATH
 			)
 			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
 		)
 		.expect("dashboard websocket response should build"),
 	)
@@ -395,7 +230,6 @@ fn operator_dashboard_websocket_pushes_broadcast_events() {
 			&server_snapshot,
 			&server_dashboard_events,
 			&server_state_store,
-			Duration::from_secs(30),
 		)
 		.expect("websocket handler should complete after client disconnect");
 	});
@@ -447,11 +281,62 @@ fn operator_dashboard_websocket_pushes_broadcast_events() {
 }
 
 #[test]
+fn operator_dashboard_websocket_sends_current_snapshot_on_connect() {
+	const SNAPSHOT_UNIX_EPOCH: i64 = 1_774_000_000;
+
+	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
+	let address = listener.local_addr().expect("listener address should resolve");
+	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
+		snapshot_json: Some(br#"{"project_id":"pubfi","active_runs":[]}"#.to_vec()),
+		last_publish_unix_epoch: Some(SNAPSHOT_UNIX_EPOCH),
+	}));
+	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
+	let dashboard_events = DashboardEventHub::default();
+	let server_snapshot = Arc::clone(&snapshot);
+	let server_state_store = Arc::clone(&state_store);
+	let server_dashboard_events = dashboard_events.clone();
+	let server = thread::spawn(move || {
+		let (stream, _) = listener.accept().expect("listener should accept a connection");
+
+		orchestrator::handle_operator_state_endpoint_connection(
+			stream,
+			&server_snapshot,
+			&server_dashboard_events,
+			&server_state_store,
+		)
+		.expect("websocket handler should complete after client disconnect");
+	});
+	let (mut client, response, mut frame) = open_dashboard_websocket_client(address);
+
+	assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
+
+	let initial_snapshot = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "snapshot"
+	});
+
+	assert_eq!(
+		initial_snapshot["payload"]["snapshotPublishedAtUnixEpoch"],
+		SNAPSHOT_UNIX_EPOCH
+	);
+	assert_eq!(initial_snapshot["payload"]["snapshot"]["project_id"], "pubfi");
+
+	drop(client);
+
+	dashboard_events.close_clients_for_test();
+	server.join().expect("server thread should complete");
+}
+
+#[test]
 fn operator_dashboard_websocket_accepts_subscription_and_project_pause_control() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
-	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot::default()));
+	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
+		snapshot_json: Some(
+			br#"{"project_id":"pubfi","active_runs":[],"account_control":{"mode":"balanced","account_selector":null}}"#.to_vec(),
+		),
+		last_publish_unix_epoch: Some(1_774_000_000),
+	}));
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
 	let registration = ProjectRegistration::from_config(
 		config.service_id(),
@@ -475,7 +360,6 @@ fn operator_dashboard_websocket_accepts_subscription_and_project_pause_control()
 			&server_snapshot,
 			&server_dashboard_events,
 			&server_state_store,
-			Duration::from_secs(30),
 		)
 		.expect("websocket handler should complete after client disconnect");
 	});
@@ -567,6 +451,16 @@ fn assert_dashboard_account_selection_controls(
 
 	assert_eq!(account_ack["payload"]["accepted"], true);
 	assert_eq!(account_ack["payload"]["status"], "fixed");
+
+	let account_snapshot = read_websocket_json_until(client, frame, |payload| {
+		payload["type"] == "snapshot"
+			&& payload["payload"]["snapshot"]["account_control"]["mode"] == "fixed"
+	});
+
+	assert_eq!(
+		account_snapshot["payload"]["snapshot"]["account_control"]["account_selector"],
+		"copy@example.com"
+	);
 	assert_eq!(
 		runtime::global_fixed_account_selector().expect("global account selector should read"),
 		Some(String::from("copy@example.com"))
@@ -590,6 +484,16 @@ fn assert_dashboard_account_selection_controls(
 
 	assert_eq!(account_clear_ack["payload"]["accepted"], true);
 	assert_eq!(account_clear_ack["payload"]["status"], "balanced");
+
+	let account_clear_snapshot = read_websocket_json_until(client, frame, |payload| {
+		payload["type"] == "snapshot"
+			&& payload["payload"]["snapshot"]["account_control"]["mode"] == "balanced"
+	});
+
+	assert_eq!(
+		account_clear_snapshot["payload"]["snapshot"]["account_control"]["account_selector"],
+		Value::Null
+	);
 	assert_eq!(
 		runtime::global_fixed_account_selector().expect("global account selector should read"),
 		None
@@ -614,7 +518,6 @@ fn operator_dashboard_websocket_controls_focus_and_clear_subscription() {
 			&server_snapshot,
 			&server_dashboard_events,
 			&server_state_store,
-			Duration::from_secs(30),
 		)
 		.expect("websocket handler should complete after client disconnect");
 	});
@@ -678,7 +581,6 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 			&server_snapshot,
 			&server_dashboard_events,
 			&server_state_store,
-			Duration::from_secs(30),
 		)
 		.expect("websocket handler should complete after client disconnect");
 	});
@@ -780,7 +682,6 @@ fn operator_dashboard_websocket_interrupt_control_stops_active_run_process() {
 			&server_snapshot,
 			&server_dashboard_events,
 			&server_state_store,
-			Duration::from_secs(30),
 		)
 		.expect("websocket handler should complete after client disconnect");
 	});
@@ -861,7 +762,6 @@ fn operator_dashboard_websocket_interrupt_control_reports_validation_errors() {
 			&server_snapshot,
 			&server_dashboard_events,
 			&server_state_store,
-			Duration::from_secs(30),
 		)
 		.expect("websocket handler should complete after client disconnect");
 	});
@@ -1156,14 +1056,9 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 
 #[test]
 fn operator_state_endpoint_reads_complete_headers_before_parsing() {
-	const SNAPSHOT_UNIX_EPOCH: i64 = 1_774_000_000;
-
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
-	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
-		snapshot_json: Some(br#"{"status":"ok"}"#.to_vec()),
-		last_publish_unix_epoch: Some(SNAPSHOT_UNIX_EPOCH),
-	}));
+	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot::default()));
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
 	let server_snapshot = Arc::clone(&snapshot);
 	let server_state_store = Arc::clone(&state_store);
@@ -1176,29 +1071,25 @@ fn operator_state_endpoint_reads_complete_headers_before_parsing() {
 			&server_snapshot,
 			&dashboard_events,
 			&server_state_store,
-			Duration::from_secs(30),
 		)
 		.expect("handler should accept segmented headers");
 	});
 	let mut client = TcpStream::connect(address).expect("client should connect");
 	let mut response = String::new();
 
-	client.write_all(b"GET /st").expect("client should write first request fragment");
+	client.write_all(b"GET /dash").expect("client should write first request fragment");
 
 	thread::sleep(Duration::from_millis(10));
 
 	client
-		.write_all(b"ate HTTP/1.1\r\nHost: localhost\r\n\r\n")
+		.write_all(b"board HTTP/1.1\r\nHost: localhost\r\n\r\n")
 		.expect("client should write second request fragment");
 	client.shutdown(Shutdown::Write).expect("client should close the request body stream");
 	client.read_to_string(&mut response).expect("client should read response");
 	server.join().expect("server thread should complete");
 
 	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
-	assert!(response.contains(&format!(
-		"X-Decodex-Snapshot-Unix-Epoch: {SNAPSHOT_UNIX_EPOCH}\r\n"
-	)));
-	assert!(response.ends_with("{\"status\":\"ok\"}"));
+	assert!(response.contains("<title>Decodex</title>"));
 }
 
 #[test]
@@ -1233,41 +1124,42 @@ fn operator_state_endpoint_overlays_live_account_control_on_published_snapshot()
 		last_publish_unix_epoch: Some(SNAPSHOT_UNIX_EPOCH),
 	}));
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
+	let dashboard_events = DashboardEventHub::default();
 	let server_snapshot = Arc::clone(&snapshot);
 	let server_state_store = Arc::clone(&state_store);
+	let server_dashboard_events = dashboard_events.clone();
 	let server = thread::spawn(move || {
 		let (stream, _) = listener.accept().expect("listener should accept a connection");
-		let dashboard_events = DashboardEventHub::default();
 
 		orchestrator::handle_operator_state_endpoint_connection(
 			stream,
 			&server_snapshot,
-			&dashboard_events,
+			&server_dashboard_events,
 			&server_state_store,
-			Duration::from_secs(30),
 		)
-		.expect("handler should serve state");
+		.expect("handler should serve websocket snapshot");
 	});
-	let mut client = TcpStream::connect(address).expect("client should connect");
-	let mut response = String::new();
+	let (mut client, response, mut frame) = open_dashboard_websocket_client(address);
+	let served_snapshot = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "snapshot"
+	});
 
-	client
-		.write_all(b"GET /state HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-		.expect("client should write state request");
-	client.shutdown(Shutdown::Write).expect("client should close the request body stream");
-	client.read_to_string(&mut response).expect("client should read response");
+	assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
+	assert_eq!(served_snapshot["payload"]["snapshot"]["account_control"]["mode"], "fixed");
+	assert_eq!(
+		served_snapshot["payload"]["snapshot"]["account_control"]["account_selector"],
+		"copy@example.com"
+	);
+	assert_eq!(served_snapshot["payload"]["snapshot"]["project_id"], "all");
+	assert_eq!(
+		served_snapshot["payload"]["snapshotPublishedAtUnixEpoch"],
+		SNAPSHOT_UNIX_EPOCH
+	);
+
+	drop(client);
+
+	dashboard_events.close_clients_for_test();
 	server.join().expect("server thread should complete");
-
-	let body = response.split_once("\r\n\r\n").expect("response should contain a body").1;
-	let served_snapshot: Value = serde_json::from_str(body).expect("body should be valid json");
-
-	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
-	assert_eq!(served_snapshot["account_control"]["mode"], "fixed");
-	assert_eq!(served_snapshot["account_control"]["account_selector"], "copy@example.com");
-	assert_eq!(served_snapshot["project_id"], "all");
-	assert!(response.contains(&format!(
-		"X-Decodex-Snapshot-Unix-Epoch: {SNAPSHOT_UNIX_EPOCH}\r\n"
-	)));
 }
 
 #[test]
@@ -1296,7 +1188,6 @@ fn operator_state_endpoint_livez_ignores_poisoned_snapshot_lock() {
 			&server_snapshot,
 			&dashboard_events,
 			&server_state_store,
-			Duration::from_secs(30),
 		)
 		.expect("live probe should not require snapshot lock");
 	});
@@ -1321,7 +1212,7 @@ fn operator_state_endpoint_livez_ignores_poisoned_snapshot_lock() {
 }
 
 #[test]
-fn operator_state_endpoint_serves_liveness_and_readiness_probes() {
+fn operator_state_endpoint_serves_only_liveness_probe() {
 	let live_response = String::from_utf8(
 		orchestrator::build_operator_state_http_response(
 			format!(
@@ -1329,8 +1220,6 @@ fn operator_state_endpoint_serves_liveness_and_readiness_probes() {
 				orchestrator::OPERATOR_LIVE_ENDPOINT_PATH
 			)
 			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
 		)
 		.expect("live response should build"),
 	)
@@ -1338,81 +1227,23 @@ fn operator_state_endpoint_serves_liveness_and_readiness_probes() {
 
 	assert!(live_response.starts_with("HTTP/1.1 200 OK\r\n"));
 	assert!(live_response.ends_with("ok"));
-
-	let ready_unavailable = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_READY_ENDPOINT_PATH
-			)
-			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
-		)
-		.expect("ready response should build"),
-	)
-	.expect("ready response should be utf-8");
-
-	assert!(ready_unavailable.starts_with("HTTP/1.1 503 Service Unavailable\r\n"));
-	assert!(ready_unavailable.ends_with("snapshot_unavailable"));
-
-	let ready_response = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_READY_ENDPOINT_PATH
-			)
-			.as_bytes(),
-			Some(br#"{"status":"ok"}"#),
-			OperatorSnapshotReadiness::Ready,
-		)
-		.expect("ready response should build"),
-	)
-	.expect("ready response should be utf-8");
-
-	assert!(ready_response.starts_with("HTTP/1.1 200 OK\r\n"));
-	assert!(ready_response.ends_with("ready"));
 }
 
 #[test]
-fn operator_state_endpoint_reports_stale_snapshots_as_not_ready() {
-	let stale_response = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_READY_ENDPOINT_PATH
+fn operator_state_endpoint_rejects_removed_http_snapshot_routes() {
+	for removed_path in ["/state", "/readyz"] {
+		let response = String::from_utf8(
+			orchestrator::build_operator_state_http_response(
+				format!(
+					"GET {removed_path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+				)
+				.as_bytes(),
 			)
-			.as_bytes(),
-			Some(br#"{"status":"ok"}"#),
-			OperatorSnapshotReadiness::SnapshotStale,
+			.expect("removed route response should build"),
 		)
-		.expect("stale ready response should build"),
-	)
-	.expect("stale ready response should be utf-8");
+		.expect("removed route response should be utf-8");
 
-	assert!(stale_response.starts_with("HTTP/1.1 503 Service Unavailable\r\n"));
-	assert!(stale_response.ends_with("snapshot_stale"));
-}
-
-#[test]
-fn operator_snapshot_readiness_handles_timestamp_edges() {
-	for (last_publish, now, threshold, expected) in [
-		(
-			Some(200),
-			100,
-			Duration::from_secs(30),
-			OperatorSnapshotReadiness::SnapshotStale,
-		),
-		(
-			Some(100),
-			101,
-			Duration::from_secs(u64::MAX),
-			OperatorSnapshotReadiness::Ready,
-		),
-	] {
-		assert_eq!(
-			orchestrator::operator_snapshot_readiness(last_publish, now, threshold),
-			expected
-		);
+		assert!(response.starts_with("HTTP/1.1 404 Not Found\r\n"));
+		assert!(response.ends_with("not found"));
 	}
 }
