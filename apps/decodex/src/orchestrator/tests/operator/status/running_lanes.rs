@@ -278,7 +278,7 @@ fn idle_operator_status_snapshot_has_no_runtime_or_recovery_noise() {
 		assert_eq!(
 			snapshot_json[field],
 			serde_json::json!([]),
-			"idle /state field {field} should serialize as an empty array",
+				"idle operator snapshot field {field} should serialize as an empty array",
 		);
 	}
 
