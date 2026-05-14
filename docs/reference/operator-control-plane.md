@@ -67,11 +67,12 @@ Use `decodex diagnose --json` when an agent needs the current handoff index dire
 
 ## Operator Dashboard Sections
 
-The browser dashboard is a read-only view over the same operator snapshot served at
-`GET /state`.
+The browser dashboard is a local view over the operator snapshot delivered by the
+`GET /dashboard/control` WebSocket after the page loads from `GET /` or
+`GET /dashboard`.
 
 The dashboard header also shows the browser origin being viewed and, when the
-served state response carries a publish timestamp, the relative age of that
+WebSocket snapshot payload carries a publish timestamp, the relative age of that
 snapshot so an operator can catch stale tabs or an old listener port quickly.
 
 Because the runtime SQLite DB is authoritative, dashboard sections describe current
@@ -97,18 +98,18 @@ state is, by itself, evidence that the
 Linear tracker or GitHub connector failed; confirm the central project registry and
 service queue label before treating it as a connector problem.
 
-The browser dashboard reads the complete published state from `GET /state` and may
-also keep a local WebSocket open at `GET /dashboard/control`. `/state` remains the
-authoritative reconciliation snapshot; the WebSocket pushes Decodex-owned snapshot
-and active-lane activity updates sooner than the polling interval, and accepts the
-local dashboard control protocol. The current browser UI keeps live updates unscoped
-and exposes only an explicit stop control for active lanes with a known live child
-process; project watch, project pause/resume, and manual retry controls are
-intentionally not shown. The stop control signals the recorded child process for that
-run, marks the local attempt interrupted, and releases the local queue lease. `ack` is
-dashboard-local acknowledgement only. The socket is not a browser connection to Codex
-app-server, GitHub, or Linear, and it does not make high-frequency protocol activity
-durable outside the local operator surface.
+The browser dashboard reads the complete published state from the local
+`GET /dashboard/control` WebSocket. That socket is the dashboard authority for
+published snapshots, active-lane activity updates, and local dashboard control
+acknowledgements; there is no separate HTTP snapshot polling route. The current
+browser UI keeps live updates unscoped and exposes explicit stop controls for active
+lanes with a known live child process plus account-pool selection controls; project
+watch, project pause/resume, and manual retry controls are intentionally not shown.
+The stop control signals the recorded child process for that run, marks the local
+attempt interrupted, and releases the local queue lease. `ack` is dashboard-local
+acknowledgement only. The socket is not a browser connection to Codex app-server,
+GitHub, or Linear, and it does not make high-frequency protocol activity durable
+outside the local operator surface.
 
 | Section | Meaning |
 | --- | --- |
@@ -153,8 +154,8 @@ Worktree visibility follows the owning dashboard section:
   runtime owner is gone or cannot explain it as active, review/landing, or queued
   work.
 
-Every `/state` worktree row includes an `ownership` and `ownership_reason` that
-distinguishes active-lane ownership, post-review ownership, queued attention, and
+Every operator snapshot worktree row includes an `ownership` and `ownership_reason`
+that distinguishes active-lane ownership, post-review ownership, queued attention, and
 cleanup-only local retention. A `Recovery Worktrees` row tells the operator to inspect
 the local path and either clean it up or recover local-only changes; it is not, by
 itself, evidence that the SQLite runtime store lost an active lane. When the tracker
@@ -231,11 +232,11 @@ rate-limited, or unavailable.
 
 - Connector failures should appear as typed health/backoff state, not raw API error
   blobs in the main layout.
-- When a tracker connector enters backoff, `/state` includes a `connector_backoffs`
-  entry with the affected `project_id`, `connector`, `sync_phase`, `quota_class`,
-  `reset_at`, `reset_unix_epoch`, `retry_after_seconds`, and operator `next_action`.
-  Running lanes should still render from local runtime DB state while external sync
-  is paused.
+- When a tracker connector enters backoff, the published operator snapshot includes a
+  `connector_backoffs` entry with the affected `project_id`, `connector`,
+  `sync_phase`, `quota_class`, `reset_at`, `reset_unix_epoch`,
+  `retry_after_seconds`, and operator `next_action`. Running lanes should still render
+  from local runtime DB state while external sync is paused.
 - Linear writes should stay coarse: one run-start ledger, material progress
   checkpoints, PR-ready/handoff, blocked/failed, landed, done, and cleanup summaries.
 - Fine-grained retry budgets, raw attempts, heartbeat, child buckets, token pressure,

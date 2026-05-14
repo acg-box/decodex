@@ -6,8 +6,6 @@ fn dashboard_response() -> String {
 				orchestrator::OPERATOR_DASHBOARD_ENDPOINT_PATH
 			)
 			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
 		)
 		.expect("dashboard response should build"),
 	)
@@ -251,19 +249,7 @@ fn operator_dashboard_patches_active_run_cards_without_replacing_the_list() {
 
 #[test]
 fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics() {
-	let response = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_DASHBOARD_ENDPOINT_PATH
-			)
-			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
-		)
-		.expect("dashboard response should build"),
-	)
-	.expect("dashboard response should be utf-8");
+	let response = dashboard_response();
 
 	assert!(response.contains("childBucketIsSubsecond"));
 	assert!(response.contains("childBucketIsEventOnly"));
@@ -1040,19 +1026,7 @@ fn operator_dashboard_omits_watch_and_project_pause_controls() {
 
 #[test]
 fn operator_dashboard_projects_keep_status_summary_compact() {
-	let response = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_DASHBOARD_ENDPOINT_PATH
-			)
-			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
-		)
-		.expect("dashboard response should build"),
-	)
-	.expect("dashboard response should be utf-8");
+	let response = dashboard_response();
 
 	assert!(response.contains("function projectCapacitySummary(project)"));
 	assert!(response.contains("function renderProjectStats(project)"));
@@ -1322,19 +1296,7 @@ fn operator_dashboard_empty_lane_meta_uses_counts() {
 
 #[test]
 fn operator_dashboard_flow_counts_distinguish_intake_attention() {
-	let response = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_DASHBOARD_ENDPOINT_PATH
-			)
-			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
-		)
-		.expect("dashboard response should build"),
-	)
-	.expect("dashboard response should be utf-8");
+	let response = dashboard_response();
 
 	assert!(response.contains("queuedCandidateNeedsAttention"));
 	assert!(response.contains("intakeAttentionCount"));
@@ -1410,25 +1372,14 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 
 #[test]
 fn operator_dashboard_header_shows_endpoint_and_snapshot_freshness() {
-	let response = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_DASHBOARD_ENDPOINT_PATH
-			)
-			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
-		)
-		.expect("dashboard response should build"),
-	)
-	.expect("dashboard response should be utf-8");
+	let response = dashboard_response();
 
-	assert!(response.contains("SNAPSHOT_PUBLISHED_HEADER"));
-	assert!(response.contains("x-decodex-snapshot-unix-epoch"));
+	assert!(response.contains("const DASHBOARD_WEBSOCKET_ENDPOINT = \"/dashboard/control\";"));
+	assert!(!response.contains("SNAPSHOT_PUBLISHED_HEADER"));
+	assert!(!response.contains("x-decodex-snapshot-unix-epoch"));
 	assert!(!response.contains("function dashboardEndpointMeta(path)"));
 	assert!(response.contains("function dashboardSocketUrl()"));
-	assert!(response.contains("function snapshotPublishedAtFromResponse(response)"));
+	assert!(!response.contains("function snapshotPublishedAtFromResponse(response)"));
 	assert!(response.contains("function snapshotAgeSeconds(snapshotPublishedAt)"));
 	assert!(response.contains("function snapshotFreshnessMeta("));
 	assert!(response.contains("function topbarReadinessLabel(label)"));
@@ -1439,7 +1390,7 @@ fn operator_dashboard_header_shows_endpoint_and_snapshot_freshness() {
 	assert!(response.contains("<span class=\"transport-meta\" data-kind=\"endpoint\" data-tone=\"${escapeHtml(stream.tone)}\""));
 	assert!(response.contains("<span>Transport</span><strong>${renderValueLink(\"WebSocket\", dashboardSocketUrl(), \"transport-link\") || escapeHtml(dashboardSocketUrl())}</strong>"));
 	assert!(!response.contains("topbarStreamLabel(stream.label)"));
-	assert!(response.contains("Poll fallback: ${escapeHtml(ENDPOINTS.state)}"));
+	assert!(!response.contains("Poll fallback"));
 	assert!(response.contains("<span class=\"transport-meta\" data-kind=\"snapshot\" data-tone=\"${escapeHtml(snapshotFreshness.tone)}\""));
 	assert!(response.contains("<span>Snapshot</span>"));
 	assert!(response.contains("case \"Snapshot ready\":"));
@@ -1451,11 +1402,15 @@ fn operator_dashboard_header_shows_endpoint_and_snapshot_freshness() {
 	assert!(response.contains("const snapshotFreshnessRow = snapshotFreshness"));
 	assert!(response.contains("return null;"));
 	assert!(response.contains("const staleByAge = ageSeconds != null && ageSeconds >= 30;"));
-	assert!(response.contains("const staleByReadiness = readiness.label === \"Snapshot stale\";"));
+	assert!(!response.contains("const staleByReadiness"));
 	assert!(response.contains("data-tone=\"${escapeHtml(snapshotFreshness.tone)}\""));
 	assert!(response.contains("Published ${formatTimestamp(snapshotPublishedAt)}"));
 	assert!(response.contains("formatRelativeTimestamp(snapshotPublishedAt)"));
-	assert!(response.contains("snapshotPublishedAt = stateResult.value.snapshotPublishedAt"));
+	assert!(response.contains("unixEpochSecondsToIso(payload.snapshotPublishedAtUnixEpoch)"));
+	assert!(!response.contains("stateResult.value.snapshotPublishedAt"));
+	assert!(!response.contains("readinessResponse"));
+	assert!(!response.contains("body: \"ready\""));
+	assert!(!response.contains("polling active"));
 	assert!(
 		response.contains("renderHeader(snapshot, readiness, notices, snapshotPublishedAt, snapshotError)")
 	);
@@ -1467,19 +1422,7 @@ fn operator_dashboard_header_shows_endpoint_and_snapshot_freshness() {
 
 #[test]
 fn operator_dashboard_active_freshness_prefers_live_activity_source() {
-	let response = String::from_utf8(
-		orchestrator::build_operator_state_http_response(
-			format!(
-				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-				orchestrator::OPERATOR_DASHBOARD_ENDPOINT_PATH
-			)
-			.as_bytes(),
-			None,
-			OperatorSnapshotReadiness::SnapshotUnavailable,
-		)
-		.expect("dashboard response should build"),
-	)
-	.expect("dashboard response should be utf-8");
+	let response = dashboard_response();
 
 	assert!(response.contains("function activeRunFreshness(run)"));
 	assert!(response.contains("source: \"last_run_activity_at\""));
@@ -1549,6 +1492,8 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 
 	assert!(response.contains("function mergeDashboardRunRecord(snapshotRun, activityRun)"));
 	assert!(response.contains("function mergeDashboardActiveRuns(snapshot, activeRunRows)"));
+	assert!(response.contains("let dashboardLiveActiveRuns = [];"));
+	assert!(response.contains("function snapshotWithLiveRunActivity(snapshot)"));
 	assert!(response.contains("\"issue_identifier\""));
 	assert!(response.contains("\"title\""));
 	assert!(response.contains("\"child_agent_activity\""));
@@ -1558,6 +1503,28 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(
 		response.contains("const mergedActiveRuns = mergeDashboardActiveRuns(snapshot, activeRunRows);")
 	);
+	assert!(response.contains("dashboardLiveActiveRuns = payload.activeRuns"));
+	assert!(response.contains("snapshot: snapshotWithLiveRunActivity(payload.snapshot),"));
 	assert!(response.contains("active_runs: mergedActiveRuns,"));
 	assert!(!response.contains("active_runs: activeRunRows,"));
+}
+
+#[test]
+fn operator_dashboard_uses_websocket_without_http_state_fallback() {
+	let response = dashboard_response();
+
+	assert!(response.contains("connectDashboardSocket();"));
+	assert!(response.contains("function startDashboardStream()"));
+	assert!(response.contains("startDashboardStream();"));
+	assert!(response.contains("if (!document.hidden && !dashboardSocketIsOpen()) {\n\t\t\t\t\tconnectDashboardSocket();"));
+	assert!(!response.contains("function scheduleDashboardHttpFallback"));
+	assert!(!response.contains("clearDashboardHttpFallback();"));
+	assert!(!response.contains("requestJson("));
+	assert!(!response.contains("requestText("));
+	assert!(!response.contains("fetch("));
+	assert!(!response.contains("\"/state\""));
+	assert!(!response.contains("\"/readyz\""));
+	assert!(!response.contains("window.setInterval(refreshDashboard"));
+	assert!(!response.contains("function refreshDashboard"));
+	assert!(!response.contains("const REFRESH_INTERVAL_MS"));
 }

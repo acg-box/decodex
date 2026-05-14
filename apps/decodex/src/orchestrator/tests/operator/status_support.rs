@@ -1,9 +1,6 @@
 use std::{panic, slice};
 
-use orchestrator::{
-	OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus, OperatorSnapshotReadiness,
-	OperatorWorktreeStatus,
-};
+use orchestrator::{OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus, OperatorWorktreeStatus};
 use serde_json::Value;
 
 fn successful_linear_execution_history_comments(issue: &TrackerIssue) -> Vec<TrackerComment> {

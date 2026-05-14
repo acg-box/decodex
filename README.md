@@ -17,8 +17,8 @@ Repo-native agent orchestration and public Codex signal publishing.
 
 - Rust CLI and runtime for repo-native retained coding-agent lanes.
 - Explicit project registry under `~/.codex/decodex/projects/<service-id>/`.
-- Local operator listener with a read-only dashboard at `/` and `/dashboard`, plus
-  `GET /state` for JSON snapshots.
+- Local operator listener with a dashboard at `/` and `/dashboard`, WebSocket
+  snapshot/control traffic at `/dashboard/control`, and `GET /livez` for liveness.
 - Static Astro site that publishes GitHub-backed Codex change signals.
 - Deterministic GitHub signal pipeline for change bundles, release deltas, rendered
   signal entries, and content validation.
@@ -185,11 +185,12 @@ The governing workflow lives at `docs/runbook/local-github-signal-workflow.md`.
 
 ## Operator Dashboard
 
-`decodex serve` owns the local operator listener. It serves one read-only operator
-console from `GET /` and `GET /dashboard`, plus the same JSON status snapshot model from
-`GET /state`.
+`decodex serve` owns the local operator listener. It serves the operator dashboard from
+`GET /` and `GET /dashboard`; published snapshots, active-run updates, and local
+dashboard controls flow through the `/dashboard/control` WebSocket. The HTTP surface is
+kept to dashboard pages/assets and `GET /livez`.
 
-For dashboard UI development, use the mock operator state server:
+For dashboard UI development, use the mock operator dashboard server:
 
 ```sh
 node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399

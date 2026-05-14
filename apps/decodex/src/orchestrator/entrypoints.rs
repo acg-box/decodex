@@ -120,11 +120,8 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 		runtime::register_project_config(&state_store, &config_path, true)?;
 	}
 
-	let operator_state_endpoint = OperatorStateEndpoint::start(
-		request.listen_address,
-		operator_snapshot_ready_stale_after(request.poll_interval),
-		Arc::clone(&state_store),
-	)?;
+	let operator_state_endpoint =
+		OperatorStateEndpoint::start(request.listen_address, Arc::clone(&state_store))?;
 	let runtime_db_path = runtime::runtime_db_path()?;
 	let global_config_path = runtime::global_config_path()?;
 	let project_config_dir = runtime::project_config_dir()?;
@@ -133,7 +130,8 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 	tracing::info!(
 		poll_interval_s = request.poll_interval.as_secs(),
 		listen_address = %operator_state_endpoint.listen_address(),
-		path = OPERATOR_STATE_ENDPOINT_PATH,
+		path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
+		ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
 		runtime_db_path = %runtime_db_path.display(),
 		global_config_path = %global_config_path.display(),
 		project_config_dir = %project_config_dir.display(),
