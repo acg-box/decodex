@@ -120,19 +120,19 @@ declare module 'astro:content' {
 		: any;
 
 	type DataEntryMap = {
-		"recommendedConfigs": Record<string, {
-  id: string;
-  body?: string;
-  collection: "recommendedConfigs";
-  data: InferEntrySchema<"recommendedConfigs">;
-  rendered?: RenderedContent;
-  filePath?: string;
-}>;
-"releaseDeltas": Record<string, {
+		"releaseDeltas": Record<string, {
   id: string;
   body?: string;
   collection: "releaseDeltas";
   data: InferEntrySchema<"releaseDeltas">;
+  rendered?: RenderedContent;
+  filePath?: string;
+}>;
+"resetStatus": Record<string, {
+  id: string;
+  body?: string;
+  collection: "resetStatus";
+  data: InferEntrySchema<"resetStatus">;
   rendered?: RenderedContent;
   filePath?: string;
 }>;

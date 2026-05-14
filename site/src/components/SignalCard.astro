@@ -43,6 +43,7 @@ const sourceItems: SourceRefItem[] =
           url,
         })),
       ];
+const primarySource = sourceItems.find((source) => source.kind === "pull_request") ?? sourceItems[0];
 ---
 
 <article
@@ -53,101 +54,77 @@ const sourceItems: SourceRefItem[] =
   data-filter-try={signal.kind === "try_now" || Boolean(signal.how_to_try) ? "true" : "false"}
   data-filter-impact={signal.impact}
 >
-  <aside class="signal-entry__rail">
-    <span class="signal-entry-date">
-      {formatPublishedAt(signal.published_at)}
-    </span>
+  <div class="signal-card__index">
+    <time datetime={signal.published_at}>{formatPublishedAt(signal.published_at)}</time>
+    {primarySource ? (
+      <a href={primarySource.url} target="_blank" rel="noreferrer">
+        {primarySource.meta ?? primarySource.title}
+      </a>
+    ) : null}
+  </div>
 
-    <div class="signal-entry__taxonomy">
-      <span class="signal-entry__taxonomy-item signal-entry__taxonomy-item--accent">
-        {kindLabel(signal.kind)}
-      </span>
-      <span class="signal-entry__taxonomy-item">{impactLabel(signal.impact)}</span>
-      <span class="signal-entry__taxonomy-item">{confidenceLabel(signal.confidence)}</span>
-    </div>
-  </aside>
+  <div class="signal-card__body">
+    <header class="signal-card__header">
+      {signal.previewLabel ? <p class="signal-card__preview">{signal.previewLabel}</p> : null}
+      <div class="signal-card__taxonomy" aria-label="Signal classification">
+        <span>{kindLabel(signal.kind)}</span>
+        <span>{impactLabel(signal.impact)}</span>
+        <span>{confidenceLabel(signal.confidence)}</span>
+      </div>
+      <h2 class="signal-markdown signal-markdown--title" set:html={renderedTitle} />
+      <p class="signal-markdown signal-card__summary" set:html={renderedSummary} />
+    </header>
 
-  <div class="signal-entry__content">
-    <div class="space-y-3">
-      {signal.previewLabel ? (
-        <p class="signal-entry__preview">
-          {signal.previewLabel}
-        </p>
-      ) : null}
-
-      <h2
-        class="signal-markdown signal-markdown--title signal-entry__title"
-        set:html={renderedTitle}
-      />
-
-      <p
-        class="signal-markdown signal-entry__summary"
-        set:html={renderedSummary}
-      />
-
-      <p class="signal-entry__why">
-        <span class="signal-entry-label">Why it matters</span>
-        <span class="signal-markdown signal-markdown--inline" set:html={renderedWhyItMatters} />
-      </p>
-    </div>
-
-    <section class="signal-entry-action">
-      <p class="signal-entry-action__row">
-        <span class="signal-entry-label">Action</span>
-        <span class="signal-entry-action__body">
-          {renderedHowToTry ? (
-            <>
-              <span class="terminal-inline">Try now</span>{" "}
-              <span class="signal-markdown signal-markdown--inline" set:html={renderedHowToTry} />
-            </>
+    <div class="signal-card__readout">
+      <section>
+        <h3>Why it matters</h3>
+        <p class="signal-markdown signal-markdown--inline" set:html={renderedWhyItMatters} />
+      </section>
+      <section>
+        <h3>{renderedHowToTry ? "Try path" : "Watch state"}</h3>
+        {
+          renderedHowToTry ? (
+            <p class="signal-markdown signal-markdown--inline" set:html={renderedHowToTry} />
+          ) : renderedWatchState ? (
+            <p class="signal-markdown signal-markdown--inline" set:html={renderedWatchState} />
           ) : (
-            "Watch only. No safe try path is published for this signal yet."
-          )}
-        </span>
+            <p>Watch only. No safe try path is published for this signal yet.</p>
+          )
+        }
+      </section>
+    </div>
+
+    {signal.expected_effect ? (
+      <p class="signal-card__effect">
+        <span>Expected effect</span>
+        <span class="signal-markdown signal-markdown--inline" set:html={renderedExpectedEffect ?? ""} />
       </p>
+    ) : null}
 
-      {signal.expected_effect ? (
-        <p class="signal-entry-action__effect">
-          <span class="signal-entry-label">Expected effect</span>
-          <span class="signal-markdown signal-markdown--inline" set:html={renderedExpectedEffect ?? ""} />
-        </p>
-      ) : null}
+    {configToggleFlags.length > 0 || visibleFlags.length > 0 ? (
+      <div class="signal-card__flags" aria-label="Config flags">
+        {configToggleFlags.length > 0 ? <span>Add to <code>$CODEX_HOME/config.toml</code></span> : null}
+        {configToggleFlags.map((flag) => (
+          <code class="signal-flag" title={flag.cliEnableFlag ?? flag.raw}>
+            {flag.display}
+          </code>
+        ))}
+        {visibleFlags.map((flag) => (
+          <code class="signal-flag">
+            {flag.display}
+          </code>
+        ))}
+      </div>
+    ) : null}
 
-      {configToggleFlags.length > 0 ? (
-        <div class="signal-entry-config">
-          <p class="signal-entry-label">Config</p>
-          <p class="signal-entry-config__hint">
-            Add to <code>$CODEX_HOME/config.toml</code>.
-          </p>
-          <div class="mt-3 flex flex-wrap gap-2">
-            {configToggleFlags.map((flag) => (
-              <code class="signal-flag" title={flag.cliEnableFlag ?? flag.raw}>
-                {flag.display}
-              </code>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {visibleFlags.length > 0 ? (
-        <div class="mt-3 flex flex-wrap gap-2">
-          {visibleFlags.map((flag) => (
-            <code class="signal-flag">
-              {flag.display}
-            </code>
-          ))}
-        </div>
-      ) : null}
-    </section>
-
-    <details class="signal-entry-details">
-      <summary class="signal-entry-details__summary">
-        <span>Sources and evidence</span>
+    <details class="signal-card__evidence">
+      <summary>
+        <span>Evidence</span>
         <span>{signal.proof_points.length} proof point{signal.proof_points.length === 1 ? "" : "s"}</span>
       </summary>
 
-      <div class="signal-entry-details__body">
-        <ul class="space-y-2 text-[0.88rem] leading-6 text-[color:var(--ink-soft)]">
+      <div class="signal-card__evidence-body">
+        <ul class="signal-proof-list">
           {signal.proof_points.map((point) => (
             <li class="signal-proof-item">
               <span class="signal-markdown signal-markdown--inline" set:html={renderMarkdownInline(point)} />
@@ -156,9 +133,9 @@ const sourceItems: SourceRefItem[] =
         </ul>
 
         {signal.caveats.length > 0 ? (
-          <div class="mt-5">
-            <p class="signal-entry-label">Caveats</p>
-            <ul class="mt-2 space-y-2 text-[0.88rem] leading-6 text-[color:var(--ink-soft)]">
+          <div class="signal-card__caveats">
+            <h3>Caveats</h3>
+            <ul class="signal-proof-list">
               {signal.caveats.map((caveat) => (
                 <li class="signal-proof-item">
                   <span class="signal-markdown signal-markdown--inline" set:html={renderMarkdownInline(caveat)} />
@@ -168,23 +145,21 @@ const sourceItems: SourceRefItem[] =
           </div>
         ) : null}
 
-        {renderedWatchState ? (
-          <p class="mt-5 text-[0.88rem] leading-6 text-[color:var(--ink-soft)]">
-            <span class="signal-entry-label">Watch state</span>{" "}
+        {renderedWatchState && renderedHowToTry ? (
+          <p class="signal-card__watch">
+            <span>Watch state</span>
             <span class="signal-markdown signal-markdown--inline" set:html={renderedWatchState} />
           </p>
         ) : null}
 
-        <ol class="signal-source-timeline">
+        <ol class="signal-source-list">
           {sourceItems.map((source) => (
-            <li class="signal-source-timeline__item">
-              <span class={`signal-source-timeline__kind signal-source-timeline__kind--${source.kind}`}>
-                {source.kind === "pull_request" ? "PR" : "Commit"}
-              </span>
-              <a class="signal-source-timeline__title signal-link" href={source.url} target="_blank" rel="noreferrer">
+            <li>
+              <span>{source.kind === "pull_request" ? "PR" : "Commit"}</span>
+              <a href={source.url} target="_blank" rel="noreferrer">
                 {source.title}
               </a>
-              {source.meta ? <span class="signal-source-timeline__meta">{source.meta}</span> : null}
+              {source.meta ? <small>{source.meta}</small> : null}
             </li>
           ))}
         </ol>

@@ -1,0 +1,31 @@
+{
+  "schema": "reset_status/v1",
+  "question": "Rate limit reset today?",
+  "answer": "no",
+  "confidence": "likely",
+  "observed_for_date": "2026-05-13",
+  "timezone": "Asia/Shanghai",
+  "generated_at": "2026-05-13T15:27:51Z",
+  "source_account": "@thsottiaux",
+  "source_url": "https://x.com/thsottiaux",
+  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-05-13%20until%3A2026-05-14&src=typed_query&f=live",
+  "judgment_mode": "ai_semantic_review",
+  "rationale": "AI semantic review of today's visible @thsottiaux posts did not find a post about rate limit quota reset, cap recovery, or reset timing.",
+  "evidence_posts": [
+    {
+      "published_at_label": "9h",
+      "relevance": "not_related",
+      "summary": "Post about using ChatGPT more after GPT-5.5 Instant."
+    },
+    {
+      "published_at_label": "12h",
+      "relevance": "not_related",
+      "summary": "Post about in-app browser improvements in the Codex app."
+    },
+    {
+      "published_at_label": "13h",
+      "relevance": "not_related",
+      "summary": "Short reply to another X user without rate-limit reset content."
+    }
+  ]
+}
