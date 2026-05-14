@@ -12,6 +12,8 @@ const appDownloadLabel = "Download Codex Beta";
       target="_blank"
       rel="noreferrer"
       aria-label={`Download ${appName}`}
+      aria-haspopup="menu"
+      aria-expanded="false"
       data-appcast-primary
     >
       <span class="appcast-download__body">
@@ -102,6 +104,10 @@ const appDownloadLabel = "Download Codex Beta";
 
   function appcastSetOpenState(root, isOpen) {
     root.dataset.appcastOpen = isOpen ? "true" : "false";
+    const primary = root.querySelector("[data-appcast-primary]");
+    if (primary instanceof HTMLElement) {
+      primary.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    }
   }
 
   function appcastCancelClose(root) {
