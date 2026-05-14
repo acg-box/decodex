@@ -515,8 +515,8 @@ struct ProjectDaemonRuntime {
 	workflow_cache: Option<CachedWorkflowDocument>,
 }
 
-#[derive(Clone, Debug)]
-struct TrackerConnectorBackoff {
+	#[derive(Clone, Debug)]
+	struct TrackerConnectorBackoff {
 	until: Instant,
 	reset_unix_epoch: i64,
 	reset_source: &'static str,
@@ -533,11 +533,7 @@ struct OperatorStateEndpoint {
 	activity_thread: Option<JoinHandle<()>>,
 }
 impl OperatorStateEndpoint {
-	fn start(
-		listen_address: &str,
-		ready_stale_after: Duration,
-		state_store: Arc<StateStore>,
-	) -> crate::prelude::Result<Self> {
+	fn start(listen_address: &str, state_store: Arc<StateStore>) -> crate::prelude::Result<Self> {
 		let listener = TcpListener::bind(listen_address).map_err(|error| {
 			eyre::eyre!("Failed to bind operator state endpoint on `{listen_address}`: {error}")
 		})?;
@@ -563,7 +559,6 @@ impl OperatorStateEndpoint {
 				shared_snapshot,
 				server_dashboard_events,
 				server_state_store,
-				ready_stale_after,
 				shutdown_rx,
 			);
 		});
