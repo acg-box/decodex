@@ -5983,6 +5983,58 @@
 					return codexAccountTokenLabel(refreshStatus).replace(/^token /, "");
 				}
 
+				function codexAccountRefreshStatusNeedsAttention(refreshStatus) {
+					const status = String(refreshStatus || "").toLowerCase();
+					return Boolean(
+						status &&
+							!["not_needed", "refreshed", "succeeded", "none"].includes(status),
+					);
+				}
+
+				function codexAccountRefreshFailed(account) {
+					return String(account?.refresh_status || "").toLowerCase().includes("failed");
+				}
+
+				function codexAccountNote(account) {
+					return String(account?.note || "").trim();
+				}
+
+				function codexAccountNoteLooksRoutine(note) {
+					return String(note || "").trim().toLowerCase() === "usage probe ok";
+				}
+
+				function codexAccountNoteLooksError(note) {
+					return /\b(failed|error|unauthorized|forbidden|invalid|missing|unusable)\b/i.test(
+						String(note || ""),
+					);
+				}
+
+				function replaceLiteral(value, needle, replacement) {
+					const text = String(value || "");
+					const target = String(needle || "");
+					return target ? text.split(target).join(replacement) : text;
+				}
+
+				function codexAccountPrivacyLabel(account) {
+					return codexAccountShowsEmail(account)
+						? codexAccountEmail(account)
+						: codexAccountRandomName(account);
+				}
+
+				function codexAccountPrivacyText(account, value) {
+					let text = String(value || "");
+					if (!text || !accountEmailsHidden) {
+						return text;
+					}
+
+					const replacement = codexAccountPrivacyLabel(account);
+					text = replaceLiteral(text, codexAccountEmail(account), replacement);
+					return text.replace(
+						/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+						replacement,
+					);
+				}
+
 				function codexAccountNumber(value) {
 					if (value == null) {
 						return null;
@@ -6149,8 +6201,7 @@
 
 					const status = String(account.status || "").toLowerCase();
 					const refresh = String(account.refresh_status || "").toLowerCase();
-					const refreshNeedsAttention =
-						refresh && !["not_needed", "refreshed", "succeeded", "none"].includes(refresh);
+					const refreshNeedsAttention = codexAccountRefreshStatusNeedsAttention(refresh);
 
 					if (
 						codexAccountUsageLimited(account) ||
@@ -6262,17 +6313,21 @@
 						return [];
 					}
 					const refreshStatus = String(account.refresh_status || "").toLowerCase();
-					const note = String(account.note || "").trim();
-					const noteLooksRoutine = note.toLowerCase() === "usage probe ok";
+					const note = codexAccountNote(account);
+					const noteLooksRoutine = codexAccountNoteLooksRoutine(note);
+					const noteLooksError = codexAccountNoteLooksError(note);
 
 					const facts = [
-						refreshStatus && !["not_needed", "none", "succeeded", "refreshed"].includes(refreshStatus)
+						codexAccountRefreshStatusNeedsAttention(refreshStatus) &&
+							!codexAccountRefreshFailed(account)
 							? ["token", codexAccountTokenValue(account.refresh_status)]
 							: null,
 						account.cooldown_until_unix_epoch
 							? ["cooldown", codexAccountUnixTimestamp(account.cooldown_until_unix_epoch)]
 							: null,
-						note && !noteLooksRoutine ? ["note", note] : null,
+						note && !noteLooksRoutine && !noteLooksError
+							? ["note", codexAccountPrivacyText(account, note)]
+							: null,
 					];
 
 					return facts.filter(Boolean);
@@ -7413,6 +7468,10 @@
 					});
 				}
 
+				for (const accountNotice of codexAccountNotices(snapshot)) {
+					notices.push(accountNotice);
+				}
+
 				for (const controlEvent of dashboardControlEvents) {
 					notices.push({
 						tone: controlEvent.accepted ? "warning" : "danger",
@@ -7424,6 +7483,72 @@
 
 				return notices;
 			}
+
+				function codexAccountHasNotice(account) {
+					if (!account) {
+						return false;
+					}
+
+					const status = String(account.status || "").toLowerCase();
+					const note = codexAccountNote(account);
+					return Boolean(
+						codexAccountRefreshFailed(account) ||
+							codexAccountNoteLooksError(note) ||
+							status.includes("failed") ||
+							status.includes("unusable"),
+					);
+				}
+
+				function codexAccountNoticeTitle(account) {
+					if (codexAccountRefreshFailed(account)) {
+						return "Codex account token";
+					}
+					if (codexAccountNoteLooksError(codexAccountNote(account))) {
+						return "Codex account usage";
+					}
+
+					return "Codex account";
+				}
+
+				function codexAccountNoticeCopy(account) {
+					const note = codexAccountNote(account);
+					const parts = [];
+					const noteIncludesRefreshFailure = /refresh failed|token refresh failed/i.test(note);
+					if (note && !codexAccountNoteLooksRoutine(note)) {
+						parts.push(codexAccountPrivacyText(account, note));
+					}
+					if (codexAccountRefreshFailed(account) && !noteIncludesRefreshFailure) {
+						parts.unshift(codexAccountTokenLabel(account.refresh_status));
+					}
+					if (!parts.length) {
+						parts.push(codexAccountStatusLabel(account));
+					}
+
+					return `${codexAccountPrivacyLabel(account)}: ${parts.join("; ")}`;
+				}
+
+				function codexAccountNotices(snapshot) {
+					const notices = [];
+					const seen = new Set();
+					for (const account of codexAccountPoolAccounts(snapshot)) {
+						if (!codexAccountHasNotice(account)) {
+							continue;
+						}
+						const notice = {
+							tone: "danger",
+							title: codexAccountNoticeTitle(account),
+							copy: codexAccountNoticeCopy(account),
+						};
+						const key = `${notice.title}:${notice.copy}`;
+						if (seen.has(key)) {
+							continue;
+						}
+						seen.add(key);
+						notices.push(notice);
+					}
+
+					return notices;
+				}
 
 				function warningNotice(warning) {
 					if (warning === "tracker_rate_limited") {

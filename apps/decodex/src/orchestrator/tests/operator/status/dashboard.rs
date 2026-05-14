@@ -545,9 +545,13 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(response.contains("function codexAccountRandomNameOffset(account)"));
 	assert!(response.contains("function renderCodexAccountRandomNameButton(account)"));
 	assert!(response.contains("function codexAccountShowsEmail(account)"));
+	assert!(response.contains("function codexAccountPrivacyLabel(account)"));
+	assert!(response.contains("function codexAccountPrivacyText(account, value)"));
 	assert!(response.contains("function codexAccountVisibleName(account)"));
 	assert!(response.contains("function codexAccountDisplayTitle(account)"));
 	assert!(response.contains("function codexAccountControlStatusLabel(snapshot)"));
+	assert!(response.contains("text = replaceLiteral(text, codexAccountEmail(account), replacement);"));
+	assert!(response.contains("/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi"));
 	assert!(response.contains("return codexAccountShowsEmail(account) ? email : codexAccountRandomName(account);"));
 	assert!(response.contains("? compactAccountEmail(email)"));
 	assert!(response.contains("const account = codexAccountPoolAccounts(snapshot).find("));
@@ -592,6 +596,23 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(response.contains("text-align: right;"));
 	assert!(!response.contains("setPanelMeta(nodes.accountPoolMeta"));
 	assert!(!response.contains("${pluralize(accounts.length, \"account\")} · ${activeCount} active"));
+}
+
+#[test]
+fn operator_dashboard_account_errors_route_to_notice_dock_with_privacy() {
+	let response = dashboard_response();
+
+	assert!(response.contains("function codexAccountNotices(snapshot)"));
+	assert!(response.contains("for (const accountNotice of codexAccountNotices(snapshot))"));
+	assert!(response.contains("notices.push(accountNotice);"));
+	assert!(response.contains("function codexAccountHasNotice(account)"));
+	assert!(response.contains("function codexAccountNoticeCopy(account)"));
+	assert!(response.contains("return `${codexAccountPrivacyLabel(account)}: ${parts.join(\"; \")}`;"));
+	assert!(response.contains("codexAccountRefreshFailed(account) && !noteIncludesRefreshFailure"));
+	assert!(response.contains("codexAccountRefreshStatusNeedsAttention(refreshStatus) &&"));
+	assert!(response.contains("!codexAccountRefreshFailed(account)"));
+	assert!(response.contains("note && !noteLooksRoutine && !noteLooksError"));
+	assert!(response.contains("codexAccountPrivacyText(account, note)"));
 }
 
 #[test]
