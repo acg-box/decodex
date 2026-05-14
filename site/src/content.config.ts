@@ -159,21 +159,27 @@ const releaseDeltaSchema = z
     });
   });
 
-const recommendedConfigSchema = z.object({
-  schema: z.literal("recommended_config/v1"),
-  repo: z.string().min(1),
-  id: z.string().min(1),
-  title: z.string().min(1),
-  curator_name: z.string().min(1),
-  curator_url: z.string().regex(/^https:\/\//, "curator_url must be an https URL"),
-  subtitle: z.string().min(1),
-  audience_note: z.string().min(1),
-  warning: z.string().min(1),
-  config_toml: z.string().min(1),
-  flags: z.array(z.object({
-    name: z.string().min(1),
-    description: z.string().min(1),
-  })).min(1),
+const resetStatusEvidencePostSchema = z.object({
+  published_at_label: z.string().min(1).optional(),
+  relevance: z.enum(["related", "not_related", "uncertain"]),
+  summary: z.string().min(1),
+  url: z.string().regex(/^https:\/\//, "post url must be an https URL").optional(),
+});
+
+const resetStatusSchema = z.object({
+  schema: z.literal("reset_status/v1"),
+  question: z.string().min(1),
+  answer: z.enum(["yes", "no", "unknown"]),
+  confidence: z.enum(["confirmed", "likely", "weak"]),
+  observed_for_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "observed_for_date must be YYYY-MM-DD"),
+  timezone: z.string().min(1),
+  generated_at: z.string().min(1),
+  source_account: z.string().min(1),
+  source_url: z.string().regex(/^https:\/\//, "source_url must be an https URL"),
+  search_url: z.string().regex(/^https:\/\//, "search_url must be an https URL").optional(),
+  judgment_mode: z.literal("ai_semantic_review"),
+  rationale: z.string().min(1),
+  evidence_posts: z.array(resetStatusEvidencePostSchema).default([]),
 });
 
 const signals = defineCollection({
@@ -192,16 +198,16 @@ const releaseDeltas = defineCollection({
   schema: releaseDeltaSchema,
 });
 
-const recommendedConfigs = defineCollection({
+const resetStatus = defineCollection({
   loader: glob({
     pattern: "**/*.json",
-    base: "./src/content/recommended-configs",
+    base: "./src/content/reset-status",
   }),
-  schema: recommendedConfigSchema,
+  schema: resetStatusSchema,
 });
 
 export const collections = {
   signals,
   releaseDeltas,
-  recommendedConfigs,
+  resetStatus,
 };

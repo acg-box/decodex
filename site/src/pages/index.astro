@@ -1,19 +1,28 @@
 ---
 import { getCollection } from "astro:content";
-import EmptyFeedState from "@/components/EmptyFeedState.astro";
 import AppcastDownloadWidget from "@/components/AppcastDownloadWidget.astro";
+import EmptyFeedState from "@/components/EmptyFeedState.astro";
 import FilterBar from "@/components/FilterBar.astro";
-import ReleaseDeltaPanel from "@/components/ReleaseDeltaPanel.astro";
 import ResetStatusWidget from "@/components/ResetStatusWidget.astro";
 import SignalCard from "@/components/SignalCard.astro";
+import SignalSymphony from "@/components/SignalSymphony.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
 import BaseLayout from "@/layouts/BaseLayout.astro";
-import { type ReleaseDeltaData } from "@/lib/release-delta";
+import {
+  defaultComparison,
+  releaseLabel,
+  type ReleaseDeltaData,
+} from "@/lib/release-delta";
+import { renderMarkdownInline } from "@/lib/render-markdown";
+import { type ResetStatusData } from "@/lib/reset-status";
 import {
   FILTERS,
+  formatPublishedAt,
   groupSignalsByMonth,
   homepageSignals,
+  impactLabel,
   isFilterId,
+  kindLabel,
   sortSignals,
   type FilterId,
   type SignalCardData,
@@ -21,9 +30,12 @@ import {
 
 const rawFilter = Astro.url.searchParams.get("filter");
 const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
+const decodexGitHubUrl = "https://github.com/hack-ink/decodex";
+const primaryXUrl = "https://x.com/YvetteCipher";
+const signalBotXUrl = "https://x.com/decodexspace";
 const collectionEntries = await getCollection("signals");
 const releaseDeltaEntries = await getCollection("releaseDeltas");
-const recommendedConfigEntries = await getCollection("recommendedConfigs");
+const resetStatusEntries = await getCollection("resetStatus");
 const allSignals: SignalCardData[] = sortSignals(
   collectionEntries.map((entry) => ({
     id: entry.id,
@@ -35,20 +47,10 @@ const releaseDelta: ReleaseDeltaData | null =
   releaseDeltaEntries
     .map((entry) => entry.data as ReleaseDeltaData)
     .find((entry) => entry.repo === "openai/codex") ?? null;
-const recommendedConfig =
-  recommendedConfigEntries
-    .map((entry) => entry.data)
-    .find((entry) => entry.repo === "openai/codex") ?? null;
-const hasPublishedSignals = signals.length > 0;
-const groupedSignals = groupSignalsByMonth(signals);
-const showGroupLabels = groupedSignals.length > 1;
-const clientFilterIds = FILTERS.map((filter) => filter.id);
-const tryPathCount = signals.filter((signal) => Boolean(signal.how_to_try)).length;
-const archivedSignalCount = Math.max(0, allSignals.length - signals.length);
-const sourceLinkedCount = signals.filter((signal) => {
-  const refs = signal.source_refs;
-  return Boolean(refs.pr_url || refs.items?.length || refs.commit_urls.length);
-}).length;
+const resetStatus: ResetStatusData | null =
+  resetStatusEntries
+    .map((entry) => entry.data as ResetStatusData)
+    .sort((left, right) => right.generated_at.localeCompare(left.generated_at))[0] ?? null;
 
 const previewSignal: SignalCardData = {
   id: "preview-shell",
@@ -71,8 +73,8 @@ const previewSignal: SignalCardData = {
   expected_effect:
     "The homepage feed will render real GitHub signals without another route-level refactor.",
   proof_points: [
-    "The homepage already exposes title, published date, impact, confidence, summary, and why-it-matters on card.",
-    "The filter bar is constrained to all, github, try-now, and high-impact.",
+    "The homepage already exposes title, published date, impact, confidence, summary, and why it matters on each card.",
+    "The filter bar is constrained to all signals, upstream signals, try paths, and high impact.",
     "The utility slot is visually present but intentionally subordinate to the feed.",
   ],
   source_refs: {
@@ -80,8 +82,93 @@ const previewSignal: SignalCardData = {
     commit_urls: ["https://docs.astro.build/en/guides/content-collections/"],
     pr_url: "https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages",
   },
-  previewLabel: "Scaffold Preview",
+  previewLabel: "Scaffold preview",
 };
+
+const visibleSignals = signals.length > 0 ? signals : [previewSignal];
+const hasPublishedSignals = signals.length > 0;
+const groupedSignals = groupSignalsByMonth(signals);
+const showGroupLabels = groupedSignals.length > 1;
+const clientFilterIds = FILTERS.map((filter) => filter.id);
+
+function hasConcreteTryPath(signal: SignalCardData): boolean {
+  return Boolean(signal.how_to_try && signal.expected_effect);
+}
+
+function primarySourceLabel(signal: SignalCardData): string {
+  const pullRequest = signal.source_refs.items?.find((item) => item.kind === "pull_request");
+  if (pullRequest?.meta) return pullRequest.meta;
+  if (signal.source_refs.pr_url) {
+    const match = signal.source_refs.pr_url.match(/\/pull\/(\d+)$/);
+    if (match) return `#${match[1]}`;
+  }
+  return signal.source_refs.repo;
+}
+
+const tryPathSignals = visibleSignals.filter(hasConcreteTryPath);
+const prioritySignals = [
+  ...tryPathSignals,
+  ...visibleSignals.filter((signal) => !hasConcreteTryPath(signal)),
+].slice(0, 3);
+const leadSignal =
+  visibleSignals.find((signal) => signal.impact === "high") ??
+  tryPathSignals[0] ??
+  visibleSignals[0];
+const watchSignals = visibleSignals
+  .filter((signal) => signal.watch_state || signal.caveats.length > 0)
+  .slice(0, 3);
+const highImpactCount = visibleSignals.filter((signal) => signal.impact === "high").length;
+const tryPathCount = visibleSignals.filter(hasConcreteTryPath).length;
+const latestSignalAt = visibleSignals.reduce<string | null>((latest, signal) => {
+  if (!latest || signal.published_at > latest) return signal.published_at;
+  return latest;
+}, null);
+
+const activeComparison = releaseDelta ? defaultComparison(releaseDelta) : null;
+const stableByTag = releaseDelta
+  ? new Map(releaseDelta.release_options.stable.map((release) => [release.tag_name, release]))
+  : new Map();
+const previewByTag = releaseDelta
+  ? new Map(releaseDelta.release_options.preview.map((release) => [release.tag_name, release]))
+  : new Map();
+const activeStable =
+  releaseDelta && activeComparison
+    ? stableByTag.get(activeComparison.stable_tag_name) ?? releaseDelta.stable_release
+    : null;
+const activePreview =
+  releaseDelta && activeComparison
+    ? previewByTag.get(activeComparison.prerelease_tag_name) ?? releaseDelta.prerelease
+    : null;
+const releaseWindow =
+  releaseDelta && activeComparison && activeStable && activePreview
+    ? {
+        stable: releaseLabel(activeStable, releaseDelta.tag_prefix),
+        preview: releaseLabel(activePreview, releaseDelta.tag_prefix),
+        compareUrl: activeComparison.compare.url,
+        commits: activeComparison.compare.total_commits,
+        status: activeComparison.compare.status,
+        updatedAt: formatPublishedAt(releaseDelta.generated_at),
+      }
+    : null;
+
+const productLoops = [
+  {
+    title: "Control plane",
+    body: "Project registry, identity routing, signing policy, review handoff, and landing rules.",
+  },
+  {
+    title: "Retained execution",
+    body: "Issue intake, context preservation, progress checkpoints, and verified handoff.",
+  },
+  {
+    title: "Upstream radar",
+    body: "Commit and PR analysis translated into product follow-up.",
+  },
+  {
+    title: "Publisher",
+    body: "X posts, release rollups, and migration notes with source links intact.",
+  },
+];
 
 const filterRuntimeScript = `(function () {
   var validFilters = ${JSON.stringify(clientFilterIds)};
@@ -196,114 +283,451 @@ const filterRuntimeScript = `(function () {
   });
 })();`;
 
+const interactionRuntimeScript = `(function () {
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var revealSelector = [
+    ".utility-strip",
+    ".site-section",
+    ".system-loop li",
+    ".lead-brief",
+    ".brief-list",
+    ".watch-list",
+    ".publisher-note",
+    ".publisher-flow span",
+    ".signal-card",
+    ".hero-bottom div"
+  ].join(",");
+  var pressSelector = [
+    ".hero-actions a",
+    ".lead-brief__link",
+    ".filter-chip",
+    ".appcast-download__primary",
+    ".appcast-download__version",
+    ".brief-list a",
+    ".utility-row--window a",
+    ".signal-card__index a",
+    ".signal-source-list a"
+  ].join(",");
+  var revealObserver = null;
+  var navObserver = null;
+  var revealGeometryBound = false;
+  var revealFrame = 0;
+
+  function all(selector) {
+    return Array.prototype.slice.call(document.querySelectorAll(selector));
+  }
+
+  function revealByGeometry() {
+    revealFrame = 0;
+    all(".reveal-ready:not(.is-visible)").forEach(function (node) {
+      if (!(node instanceof HTMLElement) || node.hidden) return;
+      var rect = node.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.96 && rect.bottom > window.innerHeight * -0.1) {
+        node.classList.add("is-visible");
+      }
+    });
+  }
+
+  function revealAllReady() {
+    all(".reveal-ready:not(.is-visible)").forEach(function (node) {
+      if (node instanceof HTMLElement && !node.hidden) node.classList.add("is-visible");
+    });
+  }
+
+  function scheduleGeometryReveal() {
+    if (revealFrame) return;
+    revealFrame = window.requestAnimationFrame(revealByGeometry);
+  }
+
+  function bindGeometryReveal() {
+    if (revealGeometryBound || reduceMotion.matches) return;
+    revealGeometryBound = true;
+    window.addEventListener("scroll", scheduleGeometryReveal, { passive: true });
+    window.addEventListener("resize", scheduleGeometryReveal);
+  }
+
+  function bindReveals() {
+    var nodes = all(revealSelector).filter(function (node) {
+      return node instanceof HTMLElement && node.dataset.revealBound !== "true";
+    });
+    if (nodes.length === 0) return;
+
+    nodes.forEach(function (node, index) {
+      node.dataset.revealBound = "true";
+      node.style.setProperty("--reveal-delay", String(Math.min(index % 7, 6) * 36) + "ms");
+      node.classList.add("reveal-ready");
+    });
+
+    if (reduceMotion.matches || !("IntersectionObserver" in window)) {
+      nodes.forEach(function (node) {
+        node.classList.add("is-visible");
+      });
+      return;
+    }
+
+    if (!revealObserver) {
+      revealObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("is-visible");
+          revealObserver.unobserve(entry.target);
+        });
+      }, { rootMargin: "0px 0px -8% 0px", threshold: 0.12 });
+    }
+
+    nodes.forEach(function (node) {
+      revealObserver.observe(node);
+    });
+    bindGeometryReveal();
+    scheduleGeometryReveal();
+    window.setTimeout(scheduleGeometryReveal, 360);
+    window.setTimeout(revealAllReady, 520);
+  }
+
+  function syncNav(id) {
+    all(".site-nav a[href^='#']").forEach(function (link) {
+      var active = link.hash === "#" + id;
+      link.dataset.current = active ? "true" : "false";
+      if (active) link.setAttribute("aria-current", "location");
+      else if (link.getAttribute("aria-current") === "location") link.removeAttribute("aria-current");
+    });
+  }
+
+  function bindNav() {
+    var links = all(".site-nav a[href^='#']");
+    if (links.length === 0 || navObserver || !("IntersectionObserver" in window)) return;
+    var sections = links
+      .map(function (link) {
+        return document.getElementById(link.hash.slice(1));
+      })
+      .filter(function (section) {
+        return section instanceof HTMLElement;
+      });
+    if (sections.length === 0) return;
+
+    navObserver = new IntersectionObserver(function (entries) {
+      var visible = entries
+        .filter(function (entry) { return entry.isIntersecting; })
+        .sort(function (left, right) { return right.intersectionRatio - left.intersectionRatio; })[0];
+      if (visible && visible.target.id) syncNav(visible.target.id);
+    }, { rootMargin: "-22% 0px -55% 0px", threshold: [0.18, 0.35, 0.58] });
+
+    sections.forEach(function (section) {
+      navObserver.observe(section);
+    });
+    if (window.location.hash) syncNav(window.location.hash.slice(1));
+  }
+
+  function bindDetails() {
+    all(".signal-card__evidence").forEach(function (details) {
+      if (!(details instanceof HTMLDetailsElement) || details.dataset.evidenceBound === "true") return;
+      details.dataset.evidenceBound = "true";
+      details.addEventListener("toggle", function () {
+        var card = details.closest("[data-signal-card]");
+        if (card instanceof HTMLElement) {
+          card.dataset.evidenceOpen = details.open ? "true" : "false";
+        }
+      });
+    });
+  }
+
+  function bindPressStates() {
+    all(pressSelector).forEach(function (target) {
+      if (!(target instanceof HTMLElement) || target.dataset.pressBound === "true") return;
+      target.dataset.pressBound = "true";
+      var clear = function () {
+        target.dataset.pressed = "false";
+      };
+      target.addEventListener("pointerdown", function () {
+        target.dataset.pressed = "true";
+      });
+      target.addEventListener("pointerup", clear);
+      target.addEventListener("pointercancel", clear);
+      target.addEventListener("pointerleave", clear);
+      target.addEventListener("blur", clear);
+      target.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") target.dataset.pressed = "true";
+      });
+      target.addEventListener("keyup", clear);
+    });
+  }
+
+  function bindHeroPointer() {
+    var hero = document.querySelector(".official-hero");
+    if (!(hero instanceof HTMLElement) || hero.dataset.pointerBound === "true" || reduceMotion.matches) return;
+    hero.dataset.pointerBound = "true";
+    var frame = 0;
+    var nextX = 0;
+    var nextY = 0;
+    function applyShift() {
+      hero.style.setProperty("--hero-shift-x", nextX.toFixed(2) + "px");
+      hero.style.setProperty("--hero-shift-y", nextY.toFixed(2) + "px");
+      frame = 0;
+    }
+    hero.addEventListener("pointermove", function (event) {
+      var rect = hero.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      nextX = ((event.clientX - rect.left) / rect.width - 0.5) * -12;
+      nextY = ((event.clientY - rect.top) / rect.height - 0.5) * -10;
+      if (!frame) frame = window.requestAnimationFrame(applyShift);
+    });
+    hero.addEventListener("pointerleave", function () {
+      nextX = 0;
+      nextY = 0;
+      if (!frame) frame = window.requestAnimationFrame(applyShift);
+    });
+  }
+
+  function bindInteractions() {
+    bindReveals();
+    bindNav();
+    bindDetails();
+    bindPressStates();
+    bindHeroPointer();
+  }
+
+  document.addEventListener("astro:page-load", bindInteractions);
+  document.addEventListener("DOMContentLoaded", bindInteractions);
+  bindInteractions();
+})();`;
 ---
 
 <BaseLayout
   title="Decodex"
-  description="The signal layer for Codex changes worth tracking."
+  description="Autonomous software for Codex work, upstream radar, and public updates."
 >
-  <main class="site-frame">
-    <header class="site-topbar">
-      <div class="site-topbar__head">
-        <div class="site-head__logo">
-          <a class="site-brand__wordmark" href="/" aria-label="Decodex home">
-            <img
-              class="site-brand__wordmark-image"
-              src="/assets/logo.png"
-              alt="Decodex"
-              width="801"
-              height="293"
-            />
-          </a>
-        </div>
+  <main class="official-site">
+    <section class="official-hero" aria-label="Decodex official homepage">
+      <SignalSymphony
+        totalSignals={visibleSignals.length}
+        tryPathCount={tryPathCount}
+        highImpactCount={highImpactCount}
+      />
 
-        <div class="site-head__utility">
-          <div class="site-head__theme">
-            <ThemeToggle />
-          </div>
-
-          <div class="site-head__cues">
-            <ul class="site-brand__cues" aria-label="Decodex promises">
-              <li class="site-brand__cue">
-                <span class="site-brand__cue-label">Try paths</span>
-                <span class="site-brand__cue-value">{tryPathCount}</span>
-              </li>
-              <li class="site-brand__cue">
-                <span class="site-brand__cue-label">Source links</span>
-                <span class="site-brand__cue-value">{sourceLinkedCount}/{signals.length}</span>
-              </li>
-              <li class="site-brand__cue">
-                <span class="site-brand__cue-label">Archive</span>
-                <span class="site-brand__cue-value">{archivedSignalCount}</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <p class="site-brand__note">
-          Signal layer for Codex. GitHub-first, release-aware, and optimized for what is worth trying next.
-        </p>
-
-        <div class="site-head__status">
-          <ResetStatusWidget variant="inline" />
-        </div>
-
-        <a
-          class="site-brand__social"
-          href="https://x.com/YvetteCipher"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Follow YvetteCipher on X"
-        >
-          <span class="site-brand__social-handle">@YvetteCipher on X</span>
-          <span class="site-brand__social-copy">
-            Follow to help cover ops and unlock creator rewards.
-          </span>
+      <header class="site-header">
+        <a class="site-logo" href="/" aria-label="Decodex home">
+          <img
+            class="site-logo__image"
+            src="/assets/logo.png"
+            alt="Decodex"
+            width="801"
+            height="293"
+          />
         </a>
+        <nav class="site-nav" aria-label="Site navigation">
+          <a href="#system">Software</a>
+          <a href="#radar">Radar</a>
+          <a href="#publisher">Publisher</a>
+          <a href="#evidence">Evidence</a>
+        </nav>
+        <ThemeToggle />
+      </header>
 
-        <div class="site-head__actions">
-          <AppcastDownloadWidget />
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <h1>Decodex</h1>
+          <p>
+            One control loop for projects, retained lanes, signed delivery, upstream radar, and public updates.
+          </p>
+          <div class="hero-actions" aria-label="Primary actions">
+            <a href="#radar">Open Decodex radar</a>
+            <a href={decodexGitHubUrl} target="_blank" rel="noreferrer">GitHub</a>
+            <a href={primaryXUrl} target="_blank" rel="noreferrer">
+              Follow @YvetteCipher
+            </a>
+          </div>
         </div>
 
+        <section class="utility-strip" aria-label="Decodex live status">
+          <div class="utility-strip__items">
+            <div class="utility-row utility-row--download">
+              <AppcastDownloadWidget />
+            </div>
+            {
+              releaseWindow ? (
+              <div class="utility-row utility-row--window">
+                <span class="utility-row__label">
+                  Upstream
+                  <span class="utility-separator">·</span>
+                  <span class="utility-row__label-meta">{releaseWindow.commits} commits</span>
+                </span>
+                <a href={releaseWindow.compareUrl} target="_blank" rel="noreferrer">
+                  <strong>
+                    {releaseWindow.stable} <span class="release-arrow">→</span> {releaseWindow.preview}
+                  </strong>
+                </a>
+              </div>
+              ) : null
+            }
+            <div class="utility-row utility-row--reset">
+              <span class="utility-row__label">Rate limit reset</span>
+              <ResetStatusWidget status={resetStatus} variant="inline" />
+            </div>
+          </div>
+        </section>
       </div>
-    </header>
 
-    {releaseDelta ? (
-      <ReleaseDeltaPanel delta={releaseDelta} trackedSignals={signals} recommendedConfig={recommendedConfig} />
-    ) : null}
-
-    <section class="feed-toolbar" id="latest-signals">
-      <div class="feed-toolbar__intro">
-        <p class="feed-toolbar__label">Latest signals</p>
-        <p class="feed-toolbar__summary">
-          {signals.length} community-ready signals from {allSignals.length} analyzed upstream changes.
-          {archivedSignalCount > 0 ? ` ${archivedSignalCount} low-level watch items stay out of the public feed.` : ""}
-        </p>
-      </div>
-
-      <div class="feed-toolbar__controls">
-        <FilterBar activeFilter={activeFilter} />
+      <div class="hero-bottom" aria-label="Current Decodex signal state">
+        <div>
+          <strong>{visibleSignals.length}</strong>
+          <span>curated signals</span>
+        </div>
+        <div>
+          <strong>{tryPathCount}</strong>
+          <span>try paths</span>
+        </div>
+        <div>
+          <strong>{highImpactCount}</strong>
+          <span>high impact</span>
+        </div>
+        <div>
+          <strong>{formatPublishedAt(latestSignalAt ?? leadSignal.published_at)}</strong>
+          <span>latest analysis</span>
+        </div>
       </div>
     </section>
 
-    <section class="feed-region" data-feed-region>
-      {!hasPublishedSignals ? <SignalCard signal={previewSignal} /> : null}
-      {hasPublishedSignals ? <EmptyFeedState activeFilter={activeFilter} /> : null}
+    <section class="site-section system-section" id="system">
+      <div class="section-heading">
+        <h2>Automation map</h2>
+        <p>
+          Four loops behind the product surface.
+        </p>
+      </div>
+      <div class="system-panel">
+        <div class="system-panel__lead">
+          <span>Decodex software</span>
+          <strong>Operate work, track impact, and keep delivery policy explicit.</strong>
+        </div>
+        <ol class="system-loop">
+          {productLoops.map((item, index) => (
+            <li>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
 
-      {groupedSignals.map((group) => (
-        <section class="feed-group" data-feed-group>
-          {showGroupLabels ? (
-            <div class="feed-group__label">
-              <span>{group.label}</span>
-            </div>
-          ) : null}
+    <section class="site-section radar-section" id="radar">
+      <div class="section-heading">
+        <h2>Decodex radar</h2>
+        <p>
+          Prioritized changes with an action path or watch note attached.
+        </p>
+      </div>
 
-          <div class="space-y-4">
-            {group.items.map((signal) => <SignalCard signal={signal} />)}
+      <div class="radar-layout">
+        <article class="lead-brief">
+          <div class="lead-brief__meta">
+            <span>{primarySourceLabel(leadSignal)}</span>
+            <span>{kindLabel(leadSignal.kind)}</span>
+            <span>{impactLabel(leadSignal.impact)}</span>
           </div>
-        </section>
-      ))}
+          <h3
+            class="signal-markdown signal-markdown--title"
+            set:html={renderMarkdownInline(leadSignal.title)}
+          />
+          <p
+            class="signal-markdown lead-brief__summary"
+            set:html={renderMarkdownInline(leadSignal.why_it_matters)}
+          />
+          <div class="lead-brief__action">
+            <span>{leadSignal.how_to_try ? "Try path" : "Watch note"}</span>
+            <p
+              class="signal-markdown signal-markdown--inline"
+              set:html={renderMarkdownInline(leadSignal.how_to_try ?? leadSignal.watch_state ?? leadSignal.summary)}
+            />
+          </div>
+          <a class="lead-brief__link" href={`#${leadSignal.slug}`}>Open evidence</a>
+        </article>
+
+        <div class="radar-stack">
+          <section class="brief-list" aria-label="Next useful signals">
+            <h3>Next useful reads</h3>
+            <ol>
+              {prioritySignals.map((signal) => (
+                <li>
+                  <a href={`#${signal.slug}`}>
+                    <span>{primarySourceLabel(signal)}</span>
+                    <strong set:html={renderMarkdownInline(signal.title)} />
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          <section class="watch-list" aria-label="Watch notes">
+            <h3>Watch notes</h3>
+            <ul>
+              {(watchSignals.length > 0 ? watchSignals : prioritySignals).map((signal) => (
+                <li>
+                  <span>{primarySourceLabel(signal)}</span>
+                  <p
+                    class="signal-markdown signal-markdown--inline"
+                    set:html={renderMarkdownInline(signal.watch_state ?? signal.caveats[0] ?? signal.summary)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="site-section publisher-section" id="publisher">
+      <div class="section-heading">
+        <h2>Publisher output</h2>
+        <p>
+          Source-backed updates for the community channel.
+        </p>
+      </div>
+      <div class="publisher-board">
+        <div class="publisher-note">
+          <span>Output path</span>
+          <p>
+            Commit evidence becomes short X posts, release rollups, and B-side follow-up notes. Bot channel: <a href={signalBotXUrl} target="_blank" rel="noreferrer">@decodexspace</a>.
+          </p>
+        </div>
+        <div class="publisher-flow">
+          <span>Commit evidence</span>
+          <span>Human-grade analysis</span>
+          <span>X post</span>
+          <span>Release rollup</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="site-section feed-section" id="evidence">
+      <div class="feed-toolbar">
+        <div class="feed-toolbar__copy">
+          <h2>Evidence feed</h2>
+          <p>
+            Source-backed cards. Filter for try paths or high-impact shifts.
+          </p>
+        </div>
+        <FilterBar activeFilter={activeFilter} />
+      </div>
+
+      <section class="feed-region" data-feed-region>
+        {!hasPublishedSignals ? <SignalCard signal={previewSignal} /> : null}
+        {hasPublishedSignals ? <EmptyFeedState activeFilter={activeFilter} /> : null}
+
+        {groupedSignals.map((group) => (
+          <section class="feed-group" data-feed-group>
+            {showGroupLabels ? <p class="feed-group__label">{group.label}</p> : null}
+            <div class="feed-group__items">
+              {group.items.map((signal) => <SignalCard signal={signal} />)}
+            </div>
+          </section>
+        ))}
+      </section>
     </section>
   </main>
   {hasPublishedSignals ? <script is:inline set:html={filterRuntimeScript}></script> : null}
+  <script is:inline set:html={interactionRuntimeScript}></script>
 </BaseLayout>

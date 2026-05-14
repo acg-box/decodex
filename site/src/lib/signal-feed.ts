@@ -6,17 +6,17 @@ export const FILTERS = [
   },
   {
     id: "github",
-    label: "GitHub",
-    description: "PR-first GitHub change signals.",
+    label: "Upstream",
+    description: "Source-backed upstream change signals.",
   },
   {
     id: "try-now",
-    label: "Try Now",
+    label: "Try paths",
     description: "Signals with an actionable try path.",
   },
   {
     id: "high-impact",
-    label: "High Impact",
+    label: "High impact",
     description: "Directional or high-value shifts worth watching.",
   },
 ] as const;
@@ -162,20 +162,20 @@ export function kindLabel(kind: SignalKind): string {
     case "capability":
       return "Capability";
     case "behavior_change":
-      return "Behavior Change";
+      return "Behavior change";
     case "try_now":
-      return "Try Now";
+      return "Try now";
   }
 }
 
 export function impactLabel(impact: SignalImpact): string {
   switch (impact) {
     case "low":
-      return "Low Impact";
+      return "Low impact";
     case "medium":
-      return "Medium Impact";
+      return "Medium impact";
     case "high":
-      return "High Impact";
+      return "High impact";
   }
 }
 
