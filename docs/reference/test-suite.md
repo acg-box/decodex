@@ -74,8 +74,8 @@ large catch-all test file unless the behavior crosses several of these stages.
 | `apps/decodex/src/orchestrator/tests/operator/status/text.rs` | 4 | Human-readable operator status text |
 | `apps/decodex/src/orchestrator/tests/operator/status/publishing.rs` | 6 | Snapshot publishing, degraded observers, and tracker backoff |
 | `apps/decodex/src/orchestrator/tests/operator/status/queue.rs` | 8 | Intake queue classifications and shared-claim visibility |
-| `apps/decodex/src/orchestrator/tests/operator/status/http.rs` | 10 | Operator `/state`, `/livez`, readiness, and dashboard route responses |
-| `apps/decodex/src/orchestrator/tests/operator/status/dashboard.rs` | 3 | Dashboard client rendering contracts |
+| `apps/decodex/src/orchestrator/tests/operator/status/http.rs` | 17 | Operator dashboard HTTP pages/assets, `/livez`, WebSocket control, and removed snapshot-route responses |
+| `apps/decodex/src/orchestrator/tests/operator/status/dashboard.rs` | 33 | Dashboard client rendering contracts |
 | `apps/decodex/src/orchestrator/tests/review_landing/status_support.rs` | 0 | Shared Review & Landing status fixtures |
 | `apps/decodex/src/orchestrator/tests/review_landing/status_rows.rs` | 18 | Review & Landing status rows and handoff lineage |
 | `apps/decodex/src/orchestrator/tests/review_landing/orchestration.rs` | 12 | Review orchestration, admin merge, and repair routing |
@@ -139,7 +139,7 @@ protect different contracts in retained review lanes, status rows, and cleanup f
 These areas should stay dense unless the implementation contract changes:
 
 - `operator/status/` covers operator-facing JSON, text, dashboard, `/livez`, and
-  readiness behavior. These tests are noisy but protect the local control-plane surface.
+  WebSocket behavior. These tests are noisy but protect the local control-plane surface.
 - `review_landing/status_rows.rs` keeps both descendant handoff and lineage-rewrite cases
   because the production branch distinguishes accepted ancestry from rejected rewrites.
 - `intake/candidate_selection.rs` keeps planner, dispatch policy, and block-reason cases
