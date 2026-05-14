@@ -14,6 +14,7 @@ import {
   type ReleaseDeltaData,
 } from "@/lib/release-delta";
 import { renderMarkdownInline } from "@/lib/render-markdown";
+import { type ResetStatusData } from "@/lib/reset-status";
 import {
   FILTERS,
   formatPublishedAt,
@@ -29,8 +30,12 @@ import {
 
 const rawFilter = Astro.url.searchParams.get("filter");
 const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
+const decodexGitHubUrl = "https://github.com/hack-ink/decodex";
+const primaryXUrl = "https://x.com/YvetteCipher";
+const signalBotXUrl = "https://x.com/decodexspace";
 const collectionEntries = await getCollection("signals");
 const releaseDeltaEntries = await getCollection("releaseDeltas");
+const resetStatusEntries = await getCollection("resetStatus");
 const allSignals: SignalCardData[] = sortSignals(
   collectionEntries.map((entry) => ({
     id: entry.id,
@@ -42,6 +47,10 @@ const releaseDelta: ReleaseDeltaData | null =
   releaseDeltaEntries
     .map((entry) => entry.data as ReleaseDeltaData)
     .find((entry) => entry.repo === "openai/codex") ?? null;
+const resetStatus: ResetStatusData | null =
+  resetStatusEntries
+    .map((entry) => entry.data as ResetStatusData)
+    .sort((left, right) => right.generated_at.localeCompare(left.generated_at))[0] ?? null;
 
 const previewSignal: SignalCardData = {
   id: "preview-shell",
@@ -144,20 +153,20 @@ const releaseWindow =
 
 const productLoops = [
   {
-    title: "Watch every upstream move",
-    body: "Track Codex commits, PRs, prereleases, and release checkpoints without waiting for official notes.",
+    title: "Control Plane",
+    body: "Project registry, identity routing, signing policy, review handoff, and landing rules.",
   },
   {
-    title: "Read code as evidence",
-    body: "Bundle PR bodies, touched files, tests, caveats, and migration signals into source-backed entries.",
+    title: "Retained execution",
+    body: "Issue intake, context preservation, progress checkpoints, and verified handoff.",
   },
   {
-    title: "Route impact into Decodex",
-    body: "Mark what affects Control Plane, app-server integration, plugins, automation, and operator workflows.",
+    title: "Upstream radar",
+    body: "Commit and PR analysis translated into product follow-up.",
   },
   {
-    title: "Publish useful community output",
-    body: "Turn confirmed changes into X posts, release rollups, and practical try paths for Codex users.",
+    title: "Publisher",
+    body: "X posts, release rollups, and migration notes with source links intact.",
   },
 ];
 
@@ -273,11 +282,220 @@ const filterRuntimeScript = `(function () {
     applyFilter(readFilter(), { updateHistory: false, animate: false });
   });
 })();`;
+
+const interactionRuntimeScript = `(function () {
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var revealSelector = [
+    ".utility-strip",
+    ".site-section",
+    ".system-loop li",
+    ".lead-brief",
+    ".brief-list",
+    ".watch-list",
+    ".publisher-note",
+    ".publisher-flow span",
+    ".signal-card",
+    ".hero-bottom div"
+  ].join(",");
+  var pressSelector = [
+    ".hero-actions a",
+    ".lead-brief__link",
+    ".filter-chip",
+    ".appcast-download__primary",
+    ".appcast-download__version",
+    ".system-panel__links a",
+    ".brief-list a",
+    ".utility-row--window a",
+    ".signal-card__index a",
+    ".signal-source-list a"
+  ].join(",");
+  var revealObserver = null;
+  var navObserver = null;
+  var revealGeometryBound = false;
+  var revealFrame = 0;
+
+  function all(selector) {
+    return Array.prototype.slice.call(document.querySelectorAll(selector));
+  }
+
+  function revealByGeometry() {
+    revealFrame = 0;
+    all(".reveal-ready:not(.is-visible)").forEach(function (node) {
+      if (!(node instanceof HTMLElement) || node.hidden) return;
+      var rect = node.getBoundingClientRect();
+      if (rect.top < window.innerHeight * 0.96 && rect.bottom > window.innerHeight * -0.1) {
+        node.classList.add("is-visible");
+      }
+    });
+  }
+
+  function revealAllReady() {
+    all(".reveal-ready:not(.is-visible)").forEach(function (node) {
+      if (node instanceof HTMLElement && !node.hidden) node.classList.add("is-visible");
+    });
+  }
+
+  function scheduleGeometryReveal() {
+    if (revealFrame) return;
+    revealFrame = window.requestAnimationFrame(revealByGeometry);
+  }
+
+  function bindGeometryReveal() {
+    if (revealGeometryBound || reduceMotion.matches) return;
+    revealGeometryBound = true;
+    window.addEventListener("scroll", scheduleGeometryReveal, { passive: true });
+    window.addEventListener("resize", scheduleGeometryReveal);
+  }
+
+  function bindReveals() {
+    var nodes = all(revealSelector).filter(function (node) {
+      return node instanceof HTMLElement && node.dataset.revealBound !== "true";
+    });
+    if (nodes.length === 0) return;
+
+    nodes.forEach(function (node, index) {
+      node.dataset.revealBound = "true";
+      node.style.setProperty("--reveal-delay", String(Math.min(index % 7, 6) * 36) + "ms");
+      node.classList.add("reveal-ready");
+    });
+
+    if (reduceMotion.matches || !("IntersectionObserver" in window)) {
+      nodes.forEach(function (node) {
+        node.classList.add("is-visible");
+      });
+      return;
+    }
+
+    if (!revealObserver) {
+      revealObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("is-visible");
+          revealObserver.unobserve(entry.target);
+        });
+      }, { rootMargin: "0px 0px -8% 0px", threshold: 0.12 });
+    }
+
+    nodes.forEach(function (node) {
+      revealObserver.observe(node);
+    });
+    bindGeometryReveal();
+    scheduleGeometryReveal();
+    window.setTimeout(scheduleGeometryReveal, 360);
+    window.setTimeout(revealAllReady, 520);
+  }
+
+  function syncNav(id) {
+    all(".site-nav a[href^='#']").forEach(function (link) {
+      var active = link.hash === "#" + id;
+      link.dataset.current = active ? "true" : "false";
+      if (active) link.setAttribute("aria-current", "location");
+      else if (link.getAttribute("aria-current") === "location") link.removeAttribute("aria-current");
+    });
+  }
+
+  function bindNav() {
+    var links = all(".site-nav a[href^='#']");
+    if (links.length === 0 || navObserver || !("IntersectionObserver" in window)) return;
+    var sections = links
+      .map(function (link) {
+        return document.getElementById(link.hash.slice(1));
+      })
+      .filter(function (section) {
+        return section instanceof HTMLElement;
+      });
+    if (sections.length === 0) return;
+
+    navObserver = new IntersectionObserver(function (entries) {
+      var visible = entries
+        .filter(function (entry) { return entry.isIntersecting; })
+        .sort(function (left, right) { return right.intersectionRatio - left.intersectionRatio; })[0];
+      if (visible && visible.target.id) syncNav(visible.target.id);
+    }, { rootMargin: "-22% 0px -55% 0px", threshold: [0.18, 0.35, 0.58] });
+
+    sections.forEach(function (section) {
+      navObserver.observe(section);
+    });
+    if (window.location.hash) syncNav(window.location.hash.slice(1));
+  }
+
+  function bindDetails() {
+    all(".signal-card__evidence").forEach(function (details) {
+      if (!(details instanceof HTMLDetailsElement) || details.dataset.evidenceBound === "true") return;
+      details.dataset.evidenceBound = "true";
+      details.addEventListener("toggle", function () {
+        var card = details.closest("[data-signal-card]");
+        if (card instanceof HTMLElement) {
+          card.dataset.evidenceOpen = details.open ? "true" : "false";
+        }
+      });
+    });
+  }
+
+  function bindPressStates() {
+    all(pressSelector).forEach(function (target) {
+      if (!(target instanceof HTMLElement) || target.dataset.pressBound === "true") return;
+      target.dataset.pressBound = "true";
+      var clear = function () {
+        target.dataset.pressed = "false";
+      };
+      target.addEventListener("pointerdown", function () {
+        target.dataset.pressed = "true";
+      });
+      target.addEventListener("pointerup", clear);
+      target.addEventListener("pointercancel", clear);
+      target.addEventListener("pointerleave", clear);
+      target.addEventListener("blur", clear);
+      target.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") target.dataset.pressed = "true";
+      });
+      target.addEventListener("keyup", clear);
+    });
+  }
+
+  function bindHeroPointer() {
+    var hero = document.querySelector(".official-hero");
+    if (!(hero instanceof HTMLElement) || hero.dataset.pointerBound === "true" || reduceMotion.matches) return;
+    hero.dataset.pointerBound = "true";
+    var frame = 0;
+    var nextX = 0;
+    var nextY = 0;
+    function applyShift() {
+      hero.style.setProperty("--hero-shift-x", nextX.toFixed(2) + "px");
+      hero.style.setProperty("--hero-shift-y", nextY.toFixed(2) + "px");
+      frame = 0;
+    }
+    hero.addEventListener("pointermove", function (event) {
+      var rect = hero.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      nextX = ((event.clientX - rect.left) / rect.width - 0.5) * -12;
+      nextY = ((event.clientY - rect.top) / rect.height - 0.5) * -10;
+      if (!frame) frame = window.requestAnimationFrame(applyShift);
+    });
+    hero.addEventListener("pointerleave", function () {
+      nextX = 0;
+      nextY = 0;
+      if (!frame) frame = window.requestAnimationFrame(applyShift);
+    });
+  }
+
+  function bindInteractions() {
+    bindReveals();
+    bindNav();
+    bindDetails();
+    bindPressStates();
+    bindHeroPointer();
+  }
+
+  document.addEventListener("astro:page-load", bindInteractions);
+  document.addEventListener("DOMContentLoaded", bindInteractions);
+  bindInteractions();
+})();`;
 ---
 
 <BaseLayout
   title="Decodex"
-  description="Autonomous Codex upstream intelligence for Decodex Control Plane and the Codex community."
+  description="Autonomous software for Codex work, upstream radar, and public updates."
 >
   <main class="official-site">
     <section class="official-hero" aria-label="Decodex official homepage">
@@ -298,7 +516,7 @@ const filterRuntimeScript = `(function () {
           />
         </a>
         <nav class="site-nav" aria-label="Site navigation">
-          <a href="#system">System</a>
+          <a href="#system">Software</a>
           <a href="#radar">Radar</a>
           <a href="#publisher">Publisher</a>
           <a href="#evidence">Evidence</a>
@@ -310,36 +528,17 @@ const filterRuntimeScript = `(function () {
         <div class="hero-copy">
           <h1>Decodex</h1>
           <p>
-            A Symphony-style automation layer for Codex: it watches upstream, reads the code, extracts practical impact, updates Decodex Control Plane priorities, and publishes useful community signal.
+            One control loop for projects, retained lanes, signed delivery, upstream radar, and public updates.
           </p>
           <div class="hero-actions" aria-label="Primary actions">
-            <a href="#radar">Open live radar</a>
-            <a href="#system">See the system</a>
-            <a href="https://x.com/decodexspace" target="_blank" rel="noreferrer">
-              Follow @decodexspace
+            <a href="#radar">Open Decodex radar</a>
+            <a href={decodexGitHubUrl} target="_blank" rel="noreferrer">GitHub</a>
+            <a href={primaryXUrl} target="_blank" rel="noreferrer">
+              Follow @YvetteCipher
             </a>
           </div>
         </div>
 
-        <aside class="hero-console" aria-label="Live Decodex utility panel">
-          <div class="console-row console-row--download">
-            <span>Latest Codex beta</span>
-            <AppcastDownloadWidget />
-          </div>
-          <div class="console-row">
-            <span>Reset watch</span>
-            <ResetStatusWidget variant="inline" />
-          </div>
-          {releaseWindow ? (
-            <div class="console-window">
-              <span>Current upstream window</span>
-              <strong>{releaseWindow.stable} -> {releaseWindow.preview}</strong>
-              <a href={releaseWindow.compareUrl} target="_blank" rel="noreferrer">
-                {releaseWindow.commits} commits under watch
-              </a>
-            </div>
-          ) : null}
-        </aside>
       </div>
 
       <div class="hero-bottom" aria-label="Current Decodex signal state">
@@ -362,29 +561,70 @@ const filterRuntimeScript = `(function () {
       </div>
     </section>
 
+    <section class="utility-strip" aria-label="Decodex utility links">
+      <div class="utility-strip__inner">
+        <div class="utility-strip__intro">
+          <span>Live status</span>
+          <p>Beta downloads, reset watch, and the current tracked release window.</p>
+        </div>
+        <div class="utility-strip__items">
+          <div class="utility-row utility-row--download">
+            <span>Codex app feed</span>
+            <AppcastDownloadWidget />
+          </div>
+          <div class="utility-row">
+            <span>Reset watch</span>
+            <ResetStatusWidget status={resetStatus} variant="inline" />
+          </div>
+          {releaseWindow ? (
+            <div class="utility-row utility-row--window">
+              <span>Upstream window</span>
+              <a href={releaseWindow.compareUrl} target="_blank" rel="noreferrer">
+                <strong>{releaseWindow.stable} -> {releaseWindow.preview}</strong>
+                <small>{releaseWindow.commits} commits under watch</small>
+              </a>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+
     <section class="site-section system-section" id="system">
       <div class="section-heading">
-        <h2>What Decodex automates</h2>
+        <h2>Automation map</h2>
         <p>
-          The website is the public readout of a continuous Decodex loop, not a static changelog.
+          Four loops behind the product surface.
         </p>
       </div>
-      <div class="system-loop">
-        {productLoops.map((item, index) => (
-          <article>
-            <span>{String(index + 1).padStart(2, "0")}</span>
-            <h3>{item.title}</h3>
-            <p>{item.body}</p>
-          </article>
-        ))}
+      <div class="system-panel">
+        <div class="system-panel__lead">
+          <span>Decodex software</span>
+          <strong>Operate work, track impact, and keep delivery policy explicit.</strong>
+          <div class="system-panel__links" aria-label="Decodex external links">
+            <a href={decodexGitHubUrl} target="_blank" rel="noreferrer">GitHub</a>
+            <a href={primaryXUrl} target="_blank" rel="noreferrer">@YvetteCipher</a>
+            <a href={signalBotXUrl} target="_blank" rel="noreferrer">@decodexspace bot</a>
+          </div>
+        </div>
+        <ol class="system-loop">
+          {productLoops.map((item, index) => (
+            <li>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
 
     <section class="site-section radar-section" id="radar">
       <div class="section-heading">
-        <h2>Live Codex radar</h2>
+        <h2>Decodex radar</h2>
         <p>
-          High-signal upstream changes become reader-facing action, watch state, and Control Plane context.
+          Prioritized changes with an action path or watch note attached.
         </p>
       </div>
 
@@ -450,14 +690,14 @@ const filterRuntimeScript = `(function () {
       <div class="section-heading">
         <h2>Publisher output</h2>
         <p>
-          Decodex turns the same evidence base into public posts, prerelease briefs, and release rollups.
+          Public updates from the analyzed source set.
         </p>
       </div>
       <div class="publisher-board">
         <div class="publisher-note">
           <span>Draft logic</span>
           <p>
-            Every post starts from commit and PR evidence, then separates what changed, who should try it, and what Decodex should absorb into B-side workflows.
+            Drafts separate the change, the audience, and any B-side follow-up. Bot: <a href={signalBotXUrl} target="_blank" rel="noreferrer">@decodexspace</a>.
           </p>
         </div>
         <div class="publisher-flow">
@@ -474,7 +714,7 @@ const filterRuntimeScript = `(function () {
         <div class="feed-toolbar__copy">
           <h2>Evidence feed</h2>
           <p>
-            Every entry stays source-backed. Use filters when you only need runnable changes or high-impact shifts.
+            Source-backed cards. Filter for try paths or high-impact shifts.
           </p>
         </div>
         <FilterBar activeFilter={activeFilter} />
@@ -496,4 +736,5 @@ const filterRuntimeScript = `(function () {
     </section>
   </main>
   {hasPublishedSignals ? <script is:inline set:html={filterRuntimeScript}></script> : null}
+  <script is:inline set:html={interactionRuntimeScript}></script>
 </BaseLayout>
