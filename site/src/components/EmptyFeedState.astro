@@ -17,12 +17,12 @@ const messages: Record<FilterId, { title: string; body: string }> = {
     body: "The current collection is empty or still waiting for the first rendered GitHub-backed signal.",
   },
   "try-now": {
-    title: "No try-now entries match yet.",
+    title: "No try paths match yet.",
     body: "This filter only shows signals with a concrete user test path.",
   },
   "high-impact": {
-    title: "No high-impact entries yet.",
-    body: "High-impact is reserved for the smaller set of changes that clearly alter how users should think about Codex.",
+    title: "No high impact signals yet.",
+    body: "High impact is reserved for the smaller set of changes that clearly alter how users should think about Codex.",
   },
 };
 
@@ -31,18 +31,12 @@ const messagesJson = JSON.stringify(messages);
 ---
 
 <section
-  class="border border-dashed border-[color:var(--border-strong)] bg-[color:var(--panel)] px-5 py-6"
+  class="empty-feed-state"
   data-empty-state
   data-empty-messages={messagesJson}
   hidden={activeFilter === "all"}
 >
-  <p class="text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-[color:var(--muted-soft)]">
-    Empty feed state
-  </p>
-  <h2 class="mt-3 text-[1.7rem] leading-tight text-[color:var(--ink)]" data-empty-title>
-    {message.title}
-  </h2>
-  <p class="mt-3 max-w-2xl text-[0.96rem] leading-7 text-[color:var(--ink-soft)]" data-empty-body>
-    {message.body}
-  </p>
+  <p>Empty feed</p>
+  <h2 data-empty-title>{message.title}</h2>
+  <p data-empty-body>{message.body}</p>
 </section>
