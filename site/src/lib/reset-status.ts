@@ -1,4 +1,4 @@
-export const RESET_STATUS_QUESTION = "Are we reset today?";
+export const RESET_STATUS_QUESTION = "Rate limit reset today?";
 export const RESET_STATUS_SOURCE_ACCOUNT = "@thsottiaux";
 export const RESET_STATUS_SOURCE_URL = "https://x.com/thsottiaux";
 
