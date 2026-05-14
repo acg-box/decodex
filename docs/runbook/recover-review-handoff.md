@@ -3,7 +3,7 @@
 Purpose: Diagnose and explicitly repair retained review lanes that are blocked by a
 missing runtime DB handoff marker.
 
-Use this when: `decodex status`, `/state`, or the dashboard shows a `Review & Landing`
+Use this when: `decodex status` or the dashboard shows a `Review & Landing`
 lane blocked with `missing_review_handoff_record`.
 
 Do not use this for: healthy PR handoffs, review repair, landing, closeout, cleanup-only
