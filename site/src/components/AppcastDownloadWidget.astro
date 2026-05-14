@@ -1,7 +1,7 @@
 ---
 const appcastUrl = "https://persistent.oaistatic.com/codex-app-beta/appcast.xml";
 const appName = "Codex (Beta).app";
-const appDownloadLabel = "Download Codex Beta";
+const appDownloadLabel = "Download Codex beta";
 ---
 
 <div class="appcast-download" data-appcast-root data-appcast-url={appcastUrl} data-app-name={appName}>
@@ -17,13 +17,11 @@ const appDownloadLabel = "Download Codex Beta";
       data-appcast-primary
     >
       <span class="appcast-download__body">
-        <span class="appcast-download__kicker">
-          <span class="appcast-download__eyebrow">Public beta</span>
+        <span class="appcast-download__meta-row">
+          <span class="appcast-download__kicker">Latest Codex app</span>
+          <span class="appcast-download__meta" data-appcast-primary-meta>Checking latest build</span>
         </span>
-        <span class="appcast-download__title-row">
-          <span class="appcast-download__title">{appDownloadLabel}</span>
-        </span>
-        <span class="appcast-download__meta" data-appcast-primary-meta>Checking latest build</span>
+        <span class="appcast-download__title">{appDownloadLabel}</span>
       </span>
     </a>
 
@@ -135,7 +133,7 @@ const appDownloadLabel = "Download Codex Beta";
     primary.href = latest.url;
     primary.setAttribute("aria-label", `Download ${appName} ${latest.shortVersion}`);
     const dateLabel = appcastFormatDate(latest.pubDate);
-    meta.textContent = dateLabel.length > 0 ? `Latest ${latest.shortVersion} · ${dateLabel}` : `Latest ${latest.shortVersion}`;
+    meta.textContent = dateLabel.length > 0 ? `${latest.shortVersion} · ${dateLabel}` : latest.shortVersion;
   }
 
   function appcastRenderList(root, items, appName) {
