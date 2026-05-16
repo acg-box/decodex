@@ -201,10 +201,11 @@ args = [
 ]
 
 # Test
-# | task      | type      | cwd |
-# | --------- | --------- | --- |
-# | test      | composite |     |
-# | test-rust | command   |     |
+# | task                    | type      | cwd |
+# | ----------------------- | --------- | --- |
+# | test                    | composite |     |
+# | test-rust               | command   |     |
+# | test-decodex-app-stage  | script    |     |
 
 [tasks.test]
 clear = true
@@ -223,6 +224,33 @@ args = [
 	"--all-targets",
 	"--all-features",
 ]
+
+[tasks.test-decodex-app-stage]
+workspace = false
+script = '''
+if [ "$(uname -s)" != "Darwin" ]; then
+  echo "Decodex App staging is macOS-only; skipping."
+  exit 0
+fi
+
+./apps/decodex-app/script/build_and_run.sh stage
+COMMON_ROOT="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+STAGE_DIR="${DECODEX_APP_STAGE_DIR:-$COMMON_ROOT/target/decodex-app}"
+APP_PATH="$STAGE_DIR/Decodex App.app"
+test -d "$APP_PATH"
+test -x "$APP_PATH/Contents/MacOS/DecodexApp"
+test -f "$APP_PATH/Contents/Info.plist"
+test -f "$APP_PATH/Contents/Resources/AppIcon.icns"
+test -f "$APP_PATH/Contents/Resources/StatusBarIcon.png"
+codesign --verify --deep --strict "$APP_PATH"
+codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -q '^TeamIdentifier='
+codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -q 'flags=.*runtime'
+plutil -extract CFBundleName raw "$APP_PATH/Contents/Info.plist" | grep -qx 'Decodex App'
+plutil -extract CFBundleDisplayName raw "$APP_PATH/Contents/Info.plist" | grep -qx 'Decodex App'
+plutil -extract CFBundleIconFile raw "$APP_PATH/Contents/Info.plist" | grep -qx 'AppIcon'
+plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/Info.plist" | grep -qx 'space.decodex.app'
+plutil -extract LSUIElement raw "$APP_PATH/Contents/Info.plist" | grep -qx 'true'
+'''
 
 # Build
 # | task       | type    | cwd  |
