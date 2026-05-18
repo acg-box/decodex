@@ -119,14 +119,17 @@ override. The pool accepts flat `auth.json`-style JSONL records or records wrapp
 `{ "auth": ... }`.
 Before login, Decodex probes configured accounts through the ChatGPT usage endpoint.
 By default, it skips disabled, cooling-down, and incomplete records, penalizes
-usage-limited records, prefers the highest remaining usage, and uses the
-least-recently selected account to break equal usage scores. If the global
+usage-limited records, scores both the short primary window and the longer secondary
+window, prefers the account with the strongest remaining bottleneck capacity, and uses
+the least-recently selected account to break equal capacity scores. If the global
 `~/.codex/decodex/config.toml` sets `[codex.accounts].fixed_account`, Decodex only
 considers the matching account instead of balancing across the pool. The selector
 matches an account email, full account id, or redacted account fingerprint as displayed
 in the operator UI. Project configs can enable account-pool use, but they do not own a
 project-scoped fixed account.
-Successful selection writes `last_selected_at_unix_epoch` back to the JSONL file.
+Successful selection writes `last_selected_at_unix_epoch` back to the JSONL file, and
+selection holds a pool-local lock so concurrent run dispatches observe the latest
+selector state instead of all choosing from the same stale snapshot.
 
 Decodex owns token freshness for injected `chatgptAuthTokens`. It proactively refreshes
 an account before probing when the access-token JWT `exp` is expired. If no expiration
