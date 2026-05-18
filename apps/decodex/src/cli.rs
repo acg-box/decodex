@@ -15,7 +15,7 @@ use clap::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	accounts::{self, AccountImportRequest, AccountLoginRequest},
+	accounts::{self, AccountImportRequest, AccountLoginRequest, AccountUseRequest},
 	agent,
 	archive_hygiene::{self, ArchiveHygieneRequest},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
@@ -165,6 +165,11 @@ impl AccountCommand {
 					auth_json_path: args.auth_json.clone(),
 					json: args.json,
 				}),
+			AccountSubcommand::Use(args) => accounts::run_account_use(&AccountUseRequest {
+				selector: args.selector.clone(),
+				auth_json_path: args.auth_json.clone(),
+				json: args.json,
+			}),
 			AccountSubcommand::Login(args) => accounts::run_account_login(&AccountLoginRequest {
 				codex_bin: args.codex_bin.clone(),
 				keep_temp_home: args.keep_temp_home,
@@ -185,6 +190,8 @@ enum AccountSubcommand {
 	Logout(AccountLogoutCommand),
 	/// Import an existing Codex `auth.json` into the Decodex account pool.
 	ImportAuth(AccountImportCommand),
+	/// Force Codex to use one stored account by overwriting its `auth.json`.
+	Use(AccountUseCommand),
 	/// Run Codex device login in an isolated temporary home, then import it.
 	Login(AccountLoginCommand),
 }
@@ -227,6 +234,19 @@ struct AccountImportCommand {
 	#[arg(value_name = "AUTH_JSON")]
 	auth_json: PathBuf,
 	/// Print the updated account list as JSON for app integrations.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct AccountUseCommand {
+	/// Email, full account id, or redacted fingerprint to write into Codex `auth.json`.
+	selector: String,
+	/// Override the Codex `auth.json` destination. Defaults to `$CODEX_HOME/auth.json`
+	/// or `~/.codex/auth.json`.
+	#[arg(long, value_name = "AUTH_JSON")]
+	auth_json: Option<PathBuf>,
+	/// Print the updated Codex auth selection as JSON for app integrations.
 	#[arg(long)]
 	json: bool,
 }
@@ -703,10 +723,11 @@ mod tests {
 	use clap::Parser;
 
 	use crate::cli::{
-		AttemptCommand, Cli, Command, CommitCommand, DiagnoseCommand, LandCommand, ProbeCommand,
-		ProjectCommand, ProjectSubcommand, RecoverCommand, RecoverSubcommand,
-		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
-		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
+		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
+		CommitCommand, DiagnoseCommand, LandCommand, ProbeCommand, ProjectCommand,
+		ProjectSubcommand, RecoverCommand, RecoverSubcommand, ReviewHandoffDiagnoseCommand,
+		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
+		RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -864,6 +885,30 @@ mod tests {
 		assert!(matches!(
 			cli.command,
 			Command::Project(ProjectCommand { command: ProjectSubcommand::Enable(_) })
+		));
+	}
+
+	#[test]
+	fn parses_account_use_with_auth_json_override() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"account",
+			"use",
+			"copy@example.com",
+			"--auth-json",
+			"./auth.json",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Account(AccountCommand {
+				command: AccountSubcommand::Use(AccountUseCommand {
+					selector,
+					auth_json: Some(_),
+					json: true,
+				})
+			}) if selector == "copy@example.com"
 		));
 	}
 

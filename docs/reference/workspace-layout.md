@@ -17,7 +17,7 @@ should not be treated as repository source.
 | Path | Role |
 | --- | --- |
 | `apps/decodex/` | Rust package that builds the `decodex` CLI and runtime. Runtime, orchestration, tracker integration, app-server integration, operator HTTP, and local control-plane behavior live under `apps/decodex/src/`. |
-| `apps/decodex-app/` | SwiftPM macOS app for local Decodex Codex account-pool management. It invokes `decodex account` commands and does not own runtime scheduling or operator dashboard state. |
+| `apps/decodex-app/` | SwiftPM macOS app for local Decodex Codex account-pool management. It talks to the bundled `decodex-app-helper`, which links the Rust account service directly, and does not own runtime scheduling or operator dashboard state. |
 | `site/` | Astro static site for the public Decodex signal surface. It renders checked-in content and generated JSON from `site/src/content/`; it is not backed by a live Decodex daemon. |
 | `scripts/github/` | Deterministic GitHub collection, normalization, render, validation, and sync scripts for public signal content. |
 | `scripts/config/` | Repository automation scripts for config-derived artifacts. |

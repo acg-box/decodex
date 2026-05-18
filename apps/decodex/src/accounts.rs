@@ -1,9 +1,12 @@
 #[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 use std::{
 	env, fs,
-	io::ErrorKind,
+	io::{self, ErrorKind, Read, Write as _},
 	path::{Path, PathBuf},
-	process::{self, Command},
+	process::{self, Child, Command, ExitStatus, Stdio},
+	sync::mpsc::{self, Receiver, RecvTimeoutError, Sender},
+	thread::{self, JoinHandle},
+	time::Duration,
 };
 
 use serde::{Deserialize, Serialize};
@@ -24,21 +27,43 @@ pub(crate) struct AccountImportRequest {
 	pub(crate) json: bool,
 }
 
-struct AccountStore {
+pub(crate) struct AccountUseRequest {
+	pub(crate) selector: String,
+	pub(crate) auth_json_path: Option<PathBuf>,
+	pub(crate) json: bool,
+}
+
+pub(crate) struct AccountStore {
 	accounts_path: PathBuf,
 	global_config_path: PathBuf,
+	codex_auth_path: PathBuf,
 }
 impl AccountStore {
-	fn global() -> Result<Self> {
+	pub(crate) fn global() -> Result<Self> {
 		Ok(Self {
 			accounts_path: runtime::accounts_path()?,
 			global_config_path: runtime::global_config_path()?,
+			codex_auth_path: default_codex_auth_json_path()?,
 		})
 	}
 
 	#[cfg(test)]
 	fn new(accounts_path: PathBuf, global_config_path: PathBuf) -> Self {
-		Self { accounts_path, global_config_path }
+		let codex_auth_path = accounts_path
+			.parent()
+			.map(|parent| parent.join("auth.json"))
+			.unwrap_or_else(|| PathBuf::from("auth.json"));
+
+		Self { accounts_path, global_config_path, codex_auth_path }
+	}
+
+	#[cfg(test)]
+	fn new_with_codex_auth_path(
+		accounts_path: PathBuf,
+		global_config_path: PathBuf,
+		codex_auth_path: PathBuf,
+	) -> Self {
+		Self { accounts_path, global_config_path, codex_auth_path }
 	}
 
 	fn list(&self) -> Result<AccountListResponse> {
@@ -136,6 +161,39 @@ impl AccountStore {
 		self.response_from_records(&records)
 	}
 
+	fn use_for_codex(
+		&self,
+		selector: &str,
+		auth_json_path: Option<&Path>,
+	) -> Result<AccountUseResponse> {
+		let selector = selector.trim();
+
+		if selector.is_empty() {
+			eyre::bail!("Codex account selector cannot be empty.");
+		}
+
+		let records = self.load_records()?;
+		let record = records
+			.iter()
+			.find(|record| record.matches_account_selector(selector))
+			.ok_or_else(|| eyre::eyre!("No Decodex account matches selector `{selector}`."))?;
+
+		if record.disabled {
+			eyre::bail!("Decodex account `{selector}` is disabled and cannot be used by Codex.");
+		}
+
+		record.validate_importable()?;
+
+		let target_path = auth_json_path.unwrap_or(&self.codex_auth_path);
+
+		write_auth_json_atomically(target_path, &record.auth_dot_json()?)?;
+
+		Ok(AccountUseResponse {
+			codex_auth_path: target_path.display().to_string(),
+			account: record.identity_summary(),
+		})
+	}
+
 	fn load_records(&self) -> Result<Vec<AccountPoolRecord>> {
 		let input = match fs::read_to_string(&self.accounts_path) {
 			Ok(input) => input,
@@ -184,19 +242,43 @@ impl AccountStore {
 
 	fn response_from_records(&self, records: &[AccountPoolRecord]) -> Result<AccountListResponse> {
 		let selector = self.fixed_account_selector()?;
+		let codex_auth = self.codex_auth_identity().unwrap_or_default();
 		let control = AccountControlSummary {
 			mode: if selector.is_some() { String::from("fixed") } else { String::from("balanced") },
 			account_selector: selector.clone(),
 		};
-		let accounts =
-			records.iter().map(|record| record.summary(selector.as_deref())).collect::<Vec<_>>();
+		let accounts = records
+			.iter()
+			.map(|record| record.summary(selector.as_deref(), codex_auth.as_ref()))
+			.collect::<Vec<_>>();
 
 		Ok(AccountListResponse {
 			accounts_path: self.accounts_path.display().to_string(),
 			global_config_path: self.global_config_path.display().to_string(),
+			codex_auth_path: self.codex_auth_path.display().to_string(),
+			codex_auth: codex_auth.as_ref().map(AccountIdentity::summary),
 			control,
 			accounts,
 		})
+	}
+
+	fn codex_auth_identity(&self) -> Result<Option<AccountIdentity>> {
+		let input = match fs::read_to_string(&self.codex_auth_path) {
+			Ok(input) => input,
+			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+			Err(error) => {
+				eyre::bail!(
+					"Failed to read Codex auth JSON `{}`: {error}",
+					self.codex_auth_path.display()
+				);
+			},
+		};
+		let auth = serde_json::from_str::<AuthDotJson>(&input).map_err(|error| {
+			eyre::eyre!("Codex auth JSON `{}` is invalid: {error}", self.codex_auth_path.display())
+		})?;
+		let record = AccountPoolRecord::from_auth(auth)?;
+
+		Ok(Some(record.identity()))
 	}
 
 	fn fixed_account_selector(&self) -> Result<Option<String>> {
@@ -286,75 +368,66 @@ impl AccountStore {
 }
 
 #[derive(Serialize)]
-struct AccountListResponse {
-	accounts_path: String,
-	global_config_path: String,
-	control: AccountControlSummary,
-	accounts: Vec<AccountSummary>,
+pub(crate) struct AccountListResponse {
+	pub(crate) accounts_path: String,
+	pub(crate) global_config_path: String,
+	pub(crate) codex_auth_path: String,
+	pub(crate) codex_auth: Option<AccountIdentitySummary>,
+	pub(crate) control: AccountControlSummary,
+	pub(crate) accounts: Vec<AccountSummary>,
 }
 
 #[derive(Serialize)]
-struct AccountControlSummary {
-	mode: String,
-	account_selector: Option<String>,
+pub(crate) struct AccountUseResponse {
+	pub(crate) codex_auth_path: String,
+	pub(crate) account: AccountIdentitySummary,
+}
+
+#[derive(Clone, Serialize)]
+pub(crate) struct AccountIdentitySummary {
+	pub(crate) account_fingerprint: String,
+	pub(crate) email: Option<String>,
+	pub(crate) selector: String,
 }
 
 #[derive(Serialize)]
-struct AccountSummary {
-	account_fingerprint: String,
+pub(crate) struct AccountControlSummary {
+	pub(crate) mode: String,
+	pub(crate) account_selector: Option<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct AccountSummary {
+	pub(crate) account_fingerprint: String,
+	pub(crate) email: Option<String>,
+	pub(crate) selector: String,
+	pub(crate) status: String,
+	pub(crate) selected: bool,
+	pub(crate) codex_active: bool,
+	pub(crate) disabled: bool,
+	pub(crate) refresh_token_present: bool,
+	pub(crate) access_token_expires_at_unix_epoch: Option<i64>,
+	pub(crate) last_selected_at_unix_epoch: Option<i64>,
+	pub(crate) cooldown_until_unix_epoch: Option<i64>,
+	pub(crate) note: Option<String>,
+}
+
+#[derive(Clone)]
+struct AccountIdentity {
+	account_id: Option<String>,
 	email: Option<String>,
-	selector: String,
-	status: String,
-	selected: bool,
-	disabled: bool,
-	refresh_token_present: bool,
-	access_token_expires_at_unix_epoch: Option<i64>,
-	last_selected_at_unix_epoch: Option<i64>,
-	cooldown_until_unix_epoch: Option<i64>,
-	note: Option<String>,
 }
+impl AccountIdentity {
+	fn summary(&self) -> AccountIdentitySummary {
+		let account_fingerprint = self
+			.account_id
+			.as_deref()
+			.map(redact_account_id)
+			.or_else(|| self.email.clone())
+			.unwrap_or_else(|| String::from("unknown"));
+		let selector = self.email.clone().unwrap_or_else(|| account_fingerprint.clone());
 
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-enum AccountPoolLine {
-	Wrapped {
-		#[serde(skip_serializing_if = "Option::is_none")]
-		email: Option<String>,
-		#[serde(default, skip_serializing_if = "is_false")]
-		disabled: bool,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		cooldown_until_unix_epoch: Option<i64>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		cooldown_until: Option<String>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		last_selected_at_unix_epoch: Option<i64>,
-		auth: AuthDotJson,
-	},
-	Flat(AccountPoolRecord),
-}
-impl AccountPoolLine {
-	fn into_record(self) -> Result<AccountPoolRecord> {
-		match self {
-			Self::Flat(record) => Ok(record),
-			Self::Wrapped {
-				email,
-				disabled,
-				cooldown_until_unix_epoch,
-				cooldown_until,
-				last_selected_at_unix_epoch,
-				auth,
-			} => {
-				let mut record = AccountPoolRecord::from_auth(auth)?;
-
-				record.email = first_nonblank_string(email, record.email);
-				record.disabled = disabled;
-				record.cooldown_until_unix_epoch = cooldown_until_unix_epoch;
-				record.cooldown_until = cooldown_until;
-				record.last_selected_at_unix_epoch = last_selected_at_unix_epoch;
-
-				Ok(record)
-			},
-		}
+		AccountIdentitySummary { account_fingerprint, email: self.email.clone(), selector }
 	}
 }
 
@@ -450,6 +523,14 @@ impl AccountPoolRecord {
 			|| self.account_id().map(redact_account_id).as_deref() == Some(selector)
 	}
 
+	fn matches_account_identity(&self, identity: &AccountIdentity) -> bool {
+		identity
+			.account_id
+			.as_deref()
+			.is_some_and(|account_id| self.account_id() == Some(account_id))
+			|| identity.email.as_deref().is_some_and(|email| self.email().as_deref() == Some(email))
+	}
+
 	fn account_id(&self) -> Option<&str> {
 		self.tokens
 			.as_ref()
@@ -467,7 +548,31 @@ impl AccountPoolRecord {
 			})
 	}
 
-	fn summary(&self, fixed_selector: Option<&str>) -> AccountSummary {
+	fn identity(&self) -> AccountIdentity {
+		AccountIdentity { account_id: self.account_id().map(str::to_owned), email: self.email() }
+	}
+
+	fn identity_summary(&self) -> AccountIdentitySummary {
+		self.identity().summary()
+	}
+
+	fn auth_dot_json(&self) -> Result<AuthDotJson> {
+		self.validate_importable()?;
+
+		Ok(AuthDotJson {
+			email: self.email(),
+			auth_mode: self.auth_mode.clone(),
+			openai_api_key: self.openai_api_key.clone(),
+			tokens: self.tokens.clone(),
+			last_refresh: self.last_refresh.clone(),
+		})
+	}
+
+	fn summary(
+		&self,
+		fixed_selector: Option<&str>,
+		codex_auth: Option<&AccountIdentity>,
+	) -> AccountSummary {
 		let now = OffsetDateTime::now_utc().unix_timestamp();
 		let account_fingerprint = self
 			.account_id()
@@ -502,6 +607,8 @@ impl AccountPoolRecord {
 			selector,
 			status: status.to_owned(),
 			selected,
+			codex_active: codex_auth
+				.is_some_and(|identity| self.matches_account_identity(identity)),
 			disabled: self.disabled,
 			refresh_token_present,
 			access_token_expires_at_unix_epoch,
@@ -524,51 +631,121 @@ struct CodexTokenData {
 	account_id: Option<String>,
 }
 
-pub(crate) fn run_account_list(json: bool) -> Result<()> {
-	let store = AccountStore::global()?;
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+enum AccountPoolLine {
+	Wrapped {
+		#[serde(skip_serializing_if = "Option::is_none")]
+		email: Option<String>,
+		#[serde(default, skip_serializing_if = "is_false")]
+		disabled: bool,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		cooldown_until_unix_epoch: Option<i64>,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		cooldown_until: Option<String>,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		last_selected_at_unix_epoch: Option<i64>,
+		auth: AuthDotJson,
+	},
+	Flat(AccountPoolRecord),
+}
+impl AccountPoolLine {
+	fn into_record(self) -> Result<AccountPoolRecord> {
+		match self {
+			Self::Flat(record) => Ok(record),
+			Self::Wrapped {
+				email,
+				disabled,
+				cooldown_until_unix_epoch,
+				cooldown_until,
+				last_selected_at_unix_epoch,
+				auth,
+			} => {
+				let mut record = AccountPoolRecord::from_auth(auth)?;
 
-	print_list_response(&store.list()?, json)
+				record.email = first_nonblank_string(email, record.email);
+				record.disabled = disabled;
+				record.cooldown_until_unix_epoch = cooldown_until_unix_epoch;
+				record.cooldown_until = cooldown_until;
+				record.last_selected_at_unix_epoch = last_selected_at_unix_epoch;
+
+				Ok(record)
+			},
+		}
+	}
+}
+
+enum LoginPipeEvent {
+	Chunk(Vec<u8>),
+	ReaderFailed(String),
+}
+
+pub(crate) fn run_account_list(json: bool) -> Result<()> {
+	print_list_response(&account_list()?, json)
 }
 
 pub(crate) fn run_account_select(selector: &str, json: bool) -> Result<()> {
-	let store = AccountStore::global()?;
-	let response = store.select(selector)?;
-
-	print_list_response(&response, json)
+	print_list_response(&account_select(selector)?, json)
 }
 
 pub(crate) fn run_account_clear(json: bool) -> Result<()> {
-	let store = AccountStore::global()?;
-	let response = store.clear_selection()?;
-
-	print_list_response(&response, json)
+	print_list_response(&account_clear()?, json)
 }
 
 pub(crate) fn run_account_logout(selector: &str, json: bool) -> Result<()> {
-	let store = AccountStore::global()?;
-	let response = store.logout(selector)?;
-
-	print_list_response(&response, json)
+	print_list_response(&account_logout(selector)?, json)
 }
 
 pub(crate) fn run_account_import(request: &AccountImportRequest) -> Result<()> {
-	let store = AccountStore::global()?;
-	let response = store.import_auth_json(&request.auth_json_path)?;
+	print_list_response(&account_import(&request.auth_json_path)?, request.json)
+}
 
-	print_list_response(&response, request.json)
+pub(crate) fn run_account_use(request: &AccountUseRequest) -> Result<()> {
+	print_use_response(&account_use(request)?, request.json)
 }
 
 pub(crate) fn run_account_login(request: &AccountLoginRequest) -> Result<()> {
+	let response = account_login(request, |chunk| {
+		print!("{chunk}");
+
+		io::stdout().flush()?;
+
+		Ok(())
+	})?;
+
+	print_list_response(&response, false)
+}
+
+pub(crate) fn account_list() -> Result<AccountListResponse> {
+	AccountStore::global()?.list()
+}
+
+pub(crate) fn account_select(selector: &str) -> Result<AccountListResponse> {
+	AccountStore::global()?.select(selector)
+}
+
+pub(crate) fn account_clear() -> Result<AccountListResponse> {
+	AccountStore::global()?.clear_selection()
+}
+
+pub(crate) fn account_logout(selector: &str) -> Result<AccountListResponse> {
+	AccountStore::global()?.logout(selector)
+}
+
+pub(crate) fn account_import(auth_json_path: &Path) -> Result<AccountListResponse> {
+	AccountStore::global()?.import_auth_json(auth_json_path)
+}
+
+pub(crate) fn account_use(request: &AccountUseRequest) -> Result<AccountUseResponse> {
+	AccountStore::global()?.use_for_codex(&request.selector, request.auth_json_path.as_deref())
+}
+
+pub(crate) fn account_login(
+	request: &AccountLoginRequest,
+	on_output: impl FnMut(&str) -> Result<()>,
+) -> Result<AccountListResponse> {
 	let temp_home = create_login_home()?;
-	let status = Command::new(&request.codex_bin)
-		.arg("login")
-		.arg("--device-auth")
-		.env("CODEX_HOME", &temp_home)
-		.env("CODEX_SQLITE_HOME", &temp_home)
-		.status()
-		.map_err(|error| {
-			eyre::eyre!("Failed to start `{}` for Codex account login: {error}", request.codex_bin)
-		})?;
+	let status = run_codex_device_login(&request.codex_bin, &temp_home, on_output)?;
 
 	if !status.success() {
 		cleanup_login_home(&temp_home, request.keep_temp_home);
@@ -582,9 +759,119 @@ pub(crate) fn run_account_login(request: &AccountLoginRequest) -> Result<()> {
 
 	cleanup_login_home(&temp_home, request.keep_temp_home);
 
-	let response = import_result?;
+	import_result
+}
 
-	print_list_response(&response, false)
+fn run_codex_device_login(
+	codex_bin: &str,
+	temp_home: &Path,
+	on_output: impl FnMut(&str) -> Result<()>,
+) -> Result<ExitStatus> {
+	let mut child = Command::new(codex_bin)
+		.arg("login")
+		.arg("--device-auth")
+		.env("CODEX_HOME", temp_home)
+		.env("CODEX_SQLITE_HOME", temp_home)
+		.stdout(Stdio::piped())
+		.stderr(Stdio::piped())
+		.spawn()
+		.map_err(|error| {
+			eyre::eyre!("Failed to start `{codex_bin}` for Codex account login: {error}")
+		})?;
+	let stdout =
+		child.stdout.take().ok_or_else(|| eyre::eyre!("Failed to capture Codex login stdout."))?;
+	let stderr =
+		child.stderr.take().ok_or_else(|| eyre::eyre!("Failed to capture Codex login stderr."))?;
+	let (sender, receiver) = mpsc::channel();
+	let stdout_reader = spawn_login_pipe_reader(stdout, sender.clone());
+	let stderr_reader = spawn_login_pipe_reader(stderr, sender);
+	let status = wait_for_login_child(child, receiver, on_output)?;
+
+	join_login_pipe_reader(stdout_reader)?;
+	join_login_pipe_reader(stderr_reader)?;
+
+	Ok(status)
+}
+
+fn spawn_login_pipe_reader(
+	mut reader: impl Read + Send + 'static,
+	sender: Sender<LoginPipeEvent>,
+) -> JoinHandle<()> {
+	thread::spawn(move || {
+		let mut buffer = [0_u8; 4_096];
+
+		loop {
+			match reader.read(&mut buffer) {
+				Ok(0) => return,
+				Ok(len) =>
+					if sender.send(LoginPipeEvent::Chunk(buffer[..len].to_vec())).is_err() {
+						return;
+					},
+				Err(error) => {
+					let _ = sender.send(LoginPipeEvent::ReaderFailed(error.to_string()));
+
+					return;
+				},
+			}
+		}
+	})
+}
+
+fn wait_for_login_child(
+	mut child: Child,
+	receiver: Receiver<LoginPipeEvent>,
+	mut on_output: impl FnMut(&str) -> Result<()>,
+) -> Result<ExitStatus> {
+	let mut reader_error = None;
+
+	loop {
+		while let Ok(event) = receiver.try_recv() {
+			handle_login_pipe_event(event, &mut on_output, &mut reader_error)?;
+		}
+
+		if let Some(status) = child.try_wait()? {
+			while let Ok(event) = receiver.try_recv() {
+				handle_login_pipe_event(event, &mut on_output, &mut reader_error)?;
+			}
+
+			if let Some(error) = reader_error {
+				eyre::bail!("Failed while reading Codex login output: {error}");
+			}
+
+			return Ok(status);
+		}
+
+		match receiver.recv_timeout(Duration::from_millis(50)) {
+			Ok(event) => handle_login_pipe_event(event, &mut on_output, &mut reader_error)?,
+			Err(RecvTimeoutError::Timeout) => {},
+			Err(RecvTimeoutError::Disconnected) => {
+				let status = child.wait()?;
+
+				if let Some(error) = reader_error {
+					eyre::bail!("Failed while reading Codex login output: {error}");
+				}
+
+				return Ok(status);
+			},
+		}
+	}
+}
+
+fn handle_login_pipe_event(
+	event: LoginPipeEvent,
+	on_output: &mut impl FnMut(&str) -> Result<()>,
+	reader_error: &mut Option<String>,
+) -> Result<()> {
+	match event {
+		LoginPipeEvent::Chunk(chunk) => on_output(&String::from_utf8_lossy(&chunk))?,
+		LoginPipeEvent::ReaderFailed(error) => *reader_error = Some(error),
+	}
+
+	Ok(())
+}
+
+fn join_login_pipe_reader(handle: JoinHandle<()>) -> Result<()> {
+	handle.join().map_err(|_| eyre::eyre!("Codex login output reader panicked."))
 }
 
 fn parse_account_records(input: &str, path: &Path) -> Result<Vec<AccountPoolRecord>> {
@@ -635,6 +922,23 @@ fn print_list_response(response: &AccountListResponse, json: bool) -> Result<()>
 	Ok(())
 }
 
+fn print_use_response(response: &AccountUseResponse, json: bool) -> Result<()> {
+	if json {
+		println!("{}", serde_json::to_string_pretty(response)?);
+
+		return Ok(());
+	}
+
+	println!(
+		"Codex auth now uses {} ({})",
+		response.account.email.as_deref().unwrap_or("no email"),
+		response.account.account_fingerprint
+	);
+	println!("auth: {}", response.codex_auth_path);
+
+	Ok(())
+}
+
 fn create_login_home() -> Result<PathBuf> {
 	let root = env::temp_dir().join(format!(
 		"decodex-codex-login-{}-{}",
@@ -647,6 +951,45 @@ fn create_login_home() -> Result<PathBuf> {
 	secure_account_file(&root)?;
 
 	Ok(root)
+}
+
+fn default_codex_auth_json_path() -> Result<PathBuf> {
+	if let Some(codex_home) =
+		env::var_os("CODEX_HOME").map(PathBuf::from).filter(|path| !path.as_os_str().is_empty())
+	{
+		return Ok(codex_home.join("auth.json"));
+	}
+
+	let Some(home) = env::var_os("HOME") else {
+		eyre::bail!("Failed to resolve `$HOME` for the Codex auth JSON path.");
+	};
+
+	Ok(PathBuf::from(home).join(".codex").join("auth.json"))
+}
+
+fn write_auth_json_atomically(path: &Path, auth: &AuthDotJson) -> Result<()> {
+	let parent = path.parent().ok_or_else(|| {
+		eyre::eyre!("Codex auth JSON path `{}` must have a parent directory.", path.display())
+	})?;
+	let file_name = path
+		.file_name()
+		.and_then(|name| name.to_str())
+		.ok_or_else(|| eyre::eyre!("Codex auth JSON path must end in a valid file name."))?;
+	let temp_path = parent.join(format!(".{file_name}.tmp-{}", process::id()));
+	let mut output = serde_json::to_string_pretty(auth)?;
+
+	output.push('\n');
+
+	fs::create_dir_all(parent)?;
+	fs::write(&temp_path, output)?;
+
+	secure_account_file(&temp_path)?;
+
+	fs::rename(temp_path, path)?;
+
+	secure_account_file(path)?;
+
+	Ok(())
 }
 
 fn cleanup_login_home(path: &Path, keep: bool) {
@@ -781,7 +1124,7 @@ mod tests {
 
 	use tempfile::TempDir;
 
-	use crate::accounts::{AccountPoolRecord, AccountStore, CodexTokenData};
+	use crate::accounts::{AccountPoolRecord, AccountStore, AuthDotJson, CodexTokenData};
 
 	#[test]
 	fn imports_auth_json_without_printing_tokens() {
@@ -846,5 +1189,101 @@ mod tests {
 
 		assert!(response.accounts.is_empty());
 		assert_eq!(fs::read_to_string(&store.accounts_path).expect("accounts should read"), "");
+	}
+
+	#[test]
+	fn use_for_codex_overwrites_auth_json_from_pool() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let codex_auth_path = temp_dir.path().join(".codex/auth.json");
+		let store = AccountStore::new_with_codex_auth_path(
+			temp_dir.path().join("accounts.jsonl"),
+			temp_dir.path().join("config.toml"),
+			codex_auth_path.clone(),
+		);
+
+		store
+			.save_records(&[account_record(
+				"copy@example.com",
+				"acct_123456",
+				"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+				"refresh-secret",
+			)])
+			.expect("records should save");
+
+		let response = store
+			.use_for_codex("copy@example.com", None)
+			.expect("account should become Codex auth");
+		let auth_input =
+			fs::read_to_string(&codex_auth_path).expect("Codex auth should be written");
+		let auth =
+			serde_json::from_str::<AuthDotJson>(&auth_input).expect("Codex auth should parse");
+		let tokens = auth.tokens.expect("Codex auth should include tokens");
+
+		assert_eq!(response.account.email.as_deref(), Some("copy@example.com"));
+		assert_eq!(auth.email.as_deref(), Some("copy@example.com"));
+		assert_eq!(tokens.account_id.as_deref(), Some("acct_123456"));
+	}
+
+	#[test]
+	fn list_marks_codex_active_account() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let codex_auth_path = temp_dir.path().join("auth.json");
+		let store = AccountStore::new_with_codex_auth_path(
+			temp_dir.path().join("accounts.jsonl"),
+			temp_dir.path().join("config.toml"),
+			codex_auth_path.clone(),
+		);
+
+		store
+			.save_records(&[
+				account_record(
+					"copy@example.com",
+					"acct_123456",
+					"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+					"refresh-secret",
+				),
+				account_record(
+					"other@example.com",
+					"acct_654321",
+					"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+					"refresh-secret-2",
+				),
+			])
+			.expect("records should save");
+		store.use_for_codex("other@example.com", None).expect("account should become Codex auth");
+
+		let response = store.list().expect("account list should load");
+
+		assert_eq!(
+			response.codex_auth.as_ref().and_then(|auth| auth.email.as_deref()),
+			Some("other@example.com")
+		);
+		assert!(!response.accounts[0].codex_active);
+		assert!(response.accounts[1].codex_active);
+	}
+
+	fn account_record(
+		email: &str,
+		account_id: &str,
+		access_token: &str,
+		refresh_token: &str,
+	) -> AccountPoolRecord {
+		AccountPoolRecord {
+			email: Some(String::from(email)),
+			disabled: false,
+			cooldown_until_unix_epoch: None,
+			cooldown_until: None,
+			last_selected_at_unix_epoch: None,
+			auth_mode: None,
+			openai_api_key: None,
+			tokens: Some(CodexTokenData {
+				email: None,
+				id_token: None,
+				access_token: String::from(access_token),
+				refresh_token: String::from(refresh_token),
+				account_id: Some(String::from(account_id)),
+			}),
+			last_refresh: None,
+		}
 	}
 }
