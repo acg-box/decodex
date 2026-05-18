@@ -26,6 +26,7 @@ struct AppBridgeRequest: Encodable, Sendable {
 	let authJsonPath: String?
 	let codexBin: String?
 	let keepTempHome: Bool?
+	let includeUsage: Bool?
 
 	enum CodingKeys: String, CodingKey {
 		case operation
@@ -33,25 +34,26 @@ struct AppBridgeRequest: Encodable, Sendable {
 		case authJsonPath = "auth_json_path"
 		case codexBin = "codex_bin"
 		case keepTempHome = "keep_temp_home"
+		case includeUsage = "include_usage"
 	}
 
-	static let accountList = AppBridgeRequest(operation: "account_list")
-	static let accountClear = AppBridgeRequest(operation: "account_clear")
+	static let accountList = AppBridgeRequest(operation: "account_list", includeUsage: true)
+	static let accountClear = AppBridgeRequest(operation: "account_clear", includeUsage: true)
 
 	static func accountUse(selector: String) -> AppBridgeRequest {
 		AppBridgeRequest(operation: "account_use", selector: selector)
 	}
 
 	static func accountSelect(selector: String) -> AppBridgeRequest {
-		AppBridgeRequest(operation: "account_select", selector: selector)
+		AppBridgeRequest(operation: "account_select", selector: selector, includeUsage: true)
 	}
 
 	static func accountLogout(selector: String) -> AppBridgeRequest {
-		AppBridgeRequest(operation: "account_logout", selector: selector)
+		AppBridgeRequest(operation: "account_logout", selector: selector, includeUsage: true)
 	}
 
 	static func accountLogin() -> AppBridgeRequest {
-		AppBridgeRequest(operation: "account_login")
+		AppBridgeRequest(operation: "account_login", includeUsage: true)
 	}
 
 	private init(
@@ -59,13 +61,15 @@ struct AppBridgeRequest: Encodable, Sendable {
 		selector: String? = nil,
 		authJsonPath: String? = nil,
 		codexBin: String? = nil,
-		keepTempHome: Bool? = nil
+		keepTempHome: Bool? = nil,
+		includeUsage: Bool? = nil
 	) {
 		self.operation = operation
 		self.selector = selector
 		self.authJsonPath = authJsonPath
 		self.codexBin = codexBin
 		self.keepTempHome = keepTempHome
+		self.includeUsage = includeUsage
 	}
 }
 

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-	accounts::{self, AccountLoginRequest, AccountUseRequest},
+	accounts::{self, AccountListResponse, AccountLoginRequest, AccountUseRequest},
 	prelude::{Result, eyre},
 };
 
@@ -17,15 +17,33 @@ use crate::{
 #[serde(tag = "operation", rename_all = "snake_case")]
 enum AppBridgeRequest {
 	#[serde(rename = "account_list")]
-	List,
+	List {
+		#[serde(default)]
+		include_usage: bool,
+	},
 	#[serde(rename = "account_select")]
-	Select { selector: String },
+	Select {
+		selector: String,
+		#[serde(default)]
+		include_usage: bool,
+	},
 	#[serde(rename = "account_clear")]
-	Clear,
+	Clear {
+		#[serde(default)]
+		include_usage: bool,
+	},
 	#[serde(rename = "account_logout")]
-	Logout { selector: String },
+	Logout {
+		selector: String,
+		#[serde(default)]
+		include_usage: bool,
+	},
 	#[serde(rename = "account_import")]
-	Import { auth_json_path: String },
+	Import {
+		auth_json_path: String,
+		#[serde(default)]
+		include_usage: bool,
+	},
 	#[serde(rename = "account_use")]
 	Use { selector: String, auth_json_path: Option<String> },
 	#[serde(rename = "account_login")]
@@ -34,6 +52,8 @@ enum AppBridgeRequest {
 		codex_bin: String,
 		#[serde(default)]
 		keep_temp_home: bool,
+		#[serde(default)]
+		include_usage: bool,
 	},
 }
 
@@ -74,14 +94,22 @@ pub fn run() -> Result<()> {
 
 fn handle_request(request: AppBridgeRequest) -> Result<()> {
 	match request {
-		AppBridgeRequest::List => emit_result(&accounts::account_list()?),
-		AppBridgeRequest::Select { selector } => emit_result(&accounts::account_select(&selector)?),
-		AppBridgeRequest::Clear => emit_result(&accounts::account_clear()?),
-		AppBridgeRequest::Logout { selector } => emit_result(&accounts::account_logout(&selector)?),
-		AppBridgeRequest::Import { auth_json_path } => {
+		AppBridgeRequest::List { include_usage } =>
+			if include_usage {
+				emit_result(&accounts::account_list_with_usage()?)
+			} else {
+				emit_result(&accounts::account_list()?)
+			},
+		AppBridgeRequest::Select { selector, include_usage } =>
+			emit_account_list_result(accounts::account_select(&selector)?, include_usage),
+		AppBridgeRequest::Clear { include_usage } =>
+			emit_account_list_result(accounts::account_clear()?, include_usage),
+		AppBridgeRequest::Logout { selector, include_usage } =>
+			emit_account_list_result(accounts::account_logout(&selector)?, include_usage),
+		AppBridgeRequest::Import { auth_json_path, include_usage } => {
 			let auth_json_path = PathBuf::from(auth_json_path);
 
-			emit_result(&accounts::account_import(&auth_json_path)?)
+			emit_account_list_result(accounts::account_import(&auth_json_path)?, include_usage)
 		},
 		AppBridgeRequest::Use { selector, auth_json_path } =>
 			emit_result(&accounts::account_use(&AccountUseRequest {
@@ -89,7 +117,7 @@ fn handle_request(request: AppBridgeRequest) -> Result<()> {
 				auth_json_path: auth_json_path.map(Into::into),
 				json: true,
 			})?),
-		AppBridgeRequest::Login { codex_bin, keep_temp_home } => {
+		AppBridgeRequest::Login { codex_bin, keep_temp_home, include_usage } => {
 			let response = accounts::account_login(
 				&AccountLoginRequest { codex_bin, keep_temp_home },
 				|chunk| {
@@ -99,9 +127,16 @@ fn handle_request(request: AppBridgeRequest) -> Result<()> {
 				},
 			)?;
 
-			emit_result(&response)
+			emit_account_list_result(response, include_usage)
 		},
 	}
+}
+
+fn emit_account_list_result(response: AccountListResponse, include_usage: bool) -> Result<()> {
+	let response =
+		if include_usage { accounts::hydrate_account_list_usage(response) } else { response };
+
+	emit_result(&response)
 }
 
 fn emit_result<T>(payload: &T) -> Result<()>
