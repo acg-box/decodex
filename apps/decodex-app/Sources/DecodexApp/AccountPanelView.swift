@@ -105,7 +105,7 @@ struct AccountPanelView: View {
 
 				Button {
 					Task {
-						await store.refresh()
+						await store.refresh(force: true)
 					}
 				} label: {
 					Image(systemName: store.isRefreshing ? "arrow.triangle.2.circlepath.circle" : "arrow.clockwise")

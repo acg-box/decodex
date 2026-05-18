@@ -75,9 +75,13 @@ impl AccountStore {
 	}
 
 	fn list_with_usage(&self) -> Result<AccountListResponse> {
+		self.list_with_cached_usage(false)
+	}
+
+	fn list_with_cached_usage(&self, force_refresh: bool) -> Result<AccountListResponse> {
 		let mut response = self.list()?;
 
-		response.hydrate_usage_from_path(&self.accounts_path);
+		response.hydrate_usage_from_path(&self.accounts_path, force_refresh);
 
 		Ok(response)
 	}
@@ -389,13 +393,13 @@ pub(crate) struct AccountListResponse {
 	pub(crate) usage_probe_error: Option<String>,
 }
 impl AccountListResponse {
-	fn hydrate_usage_from_path(&mut self, accounts_path: &Path) {
+	fn hydrate_usage_from_path(&mut self, accounts_path: &Path, force_refresh: bool) {
 		if self.accounts.is_empty() {
 			return;
 		}
 
 		match CodexAccountPool::from_accounts_path(accounts_path)
-			.and_then(|pool| pool.account_activity_summaries())
+			.and_then(|pool| pool.account_activity_summaries_cached(force_refresh))
 		{
 			Ok(summaries) => self.apply_usage_summaries(&summaries),
 			Err(error) => self.usage_probe_error = Some(error.to_string()),
@@ -809,10 +813,14 @@ pub(crate) fn account_list_with_usage() -> Result<AccountListResponse> {
 	AccountStore::global()?.list_with_usage()
 }
 
+pub(crate) fn account_list_with_cached_usage(force_refresh: bool) -> Result<AccountListResponse> {
+	AccountStore::global()?.list_with_cached_usage(force_refresh)
+}
+
 pub(crate) fn hydrate_account_list_usage(mut response: AccountListResponse) -> AccountListResponse {
 	let accounts_path = PathBuf::from(&response.accounts_path);
 
-	response.hydrate_usage_from_path(&accounts_path);
+	response.hydrate_usage_from_path(&accounts_path, false);
 
 	response
 }

@@ -9,8 +9,12 @@ or the full operator dashboard.
 
 ## Scope
 
-The first Decodex App release only manages the shared Codex account pool through the
-bundled `decodex-app-helper`, which links the Rust account service directly:
+The first Decodex App release manages the shared Codex account pool through the local
+Decodex server. On launch the app connects to an existing `decodex serve` on the
+default local endpoint when one is available; otherwise it starts the bundled
+`decodex serve --api-only` binary and talks to that server. App-started servers do not
+poll registered projects or dispatch Linear work. The helper remains available for
+interactive login flows that need streamed command output:
 
 - list accounts without printing token material
 - pin future Decodex runs to one account
@@ -44,13 +48,17 @@ apps/decodex-app/script/build_and_run.sh stage
 cargo make test-decodex-app-stage
 ```
 
-The staging script builds both the Swift app and the Rust `decodex-app-helper`, then
-copies the helper into `Contents/Helpers/`. Direct SwiftPM launches are development-only;
-when needed, point them at a workspace-built helper:
+The staging script builds the Swift app, the Rust `decodex` server binary, and
+`decodex-app-helper`, then copies both Rust executables into `Contents/Helpers/`.
+Direct SwiftPM launches are development-only; when needed, point them at workspace-built
+executables:
 
 ```sh
 cargo build -p decodex --bin decodex-app-helper
-DECODEX_APP_HELPER="$(pwd)/target/debug/decodex-app-helper" swift run --package-path apps/decodex-app DecodexApp
+cargo build -p decodex --bin decodex
+DECODEX_APP_DECODEX="$(pwd)/target/debug/decodex" \
+DECODEX_APP_HELPER="$(pwd)/target/debug/decodex-app-helper" \
+swift run --package-path apps/decodex-app DecodexApp
 ```
 
 The staging script follows the local Rsnap-style signing path: it writes
@@ -73,4 +81,4 @@ scripts/assets/render_decodex_app_icons.swift
 ```
 
 The staging script copies `app-icon.icns`, the template status item image, and the
-signed `decodex-app-helper` into the app bundle.
+signed `decodex` / `decodex-app-helper` executables into the app bundle.
