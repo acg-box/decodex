@@ -27,6 +27,7 @@ struct AppBridgeRequest: Encodable, Sendable {
 	let codexBin: String?
 	let keepTempHome: Bool?
 	let includeUsage: Bool?
+	let forceRefresh: Bool?
 
 	enum CodingKeys: String, CodingKey {
 		case operation
@@ -37,7 +38,14 @@ struct AppBridgeRequest: Encodable, Sendable {
 		case includeUsage = "include_usage"
 	}
 
-	static let accountList = AppBridgeRequest(operation: "account_list", includeUsage: true)
+	static func accountList(forceRefresh: Bool = false) -> AppBridgeRequest {
+		AppBridgeRequest(
+			operation: "account_list",
+			includeUsage: true,
+			forceRefresh: forceRefresh
+		)
+	}
+
 	static let accountClear = AppBridgeRequest(operation: "account_clear", includeUsage: true)
 
 	static func accountUse(selector: String) -> AppBridgeRequest {
@@ -62,7 +70,8 @@ struct AppBridgeRequest: Encodable, Sendable {
 		authJsonPath: String? = nil,
 		codexBin: String? = nil,
 		keepTempHome: Bool? = nil,
-		includeUsage: Bool? = nil
+		includeUsage: Bool? = nil,
+		forceRefresh: Bool? = nil
 	) {
 		self.operation = operation
 		self.selector = selector
@@ -70,6 +79,7 @@ struct AppBridgeRequest: Encodable, Sendable {
 		self.codexBin = codexBin
 		self.keepTempHome = keepTempHome
 		self.includeUsage = includeUsage
+		self.forceRefresh = forceRefresh
 	}
 }
 
@@ -179,6 +189,10 @@ struct DecodexAppBridge: Sendable {
 		as type: T.Type,
 		onOutput: (@MainActor @Sendable (String) -> Void)?
 	) async throws -> T {
+		if onOutput == nil, try request.serverRoute() != nil {
+			return try await DecodexServerBridge.shared.run(request, as: type)
+		}
+
 		let helperURL = try helperExecutableURL()
 		let requestData = try JSONEncoder().encode(request)
 

@@ -33,6 +33,39 @@ fn control_plane_snapshot_lists_disabled_registered_projects() {
 }
 
 #[test]
+fn control_plane_api_only_snapshot_does_not_tick_enabled_projects() {
+	let (temp_dir, config, _workflow) = temp_project_layout();
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+
+	state_store.upsert_project(&registration).expect("project should register");
+
+	let snapshot = orchestrator::run_control_plane_api_only_tick(&state_store)
+		.expect("api-only snapshot should build");
+	let project = snapshot.projects.first().expect("enabled project should be listed");
+
+	assert_eq!(snapshot.projects.len(), 1);
+	assert_eq!(project.project_id, "pubfi");
+	assert!(project.enabled);
+	assert_eq!(project.connector_state, "api_only");
+	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.queued_candidate_count, 0);
+	assert_eq!(project.warning_count, 1);
+	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.queued_candidates.is_empty());
+	assert!(snapshot.warnings.contains(&String::from("automation_disabled")));
+	assert!(!snapshot.warnings.contains(&String::from("no_enabled_projects")));
+}
+
+#[test]
 fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects() {
 	let (active_temp_dir, active_config, _active_workflow) = temp_project_layout();
 	let (_idle_temp_dir, idle_base_config, _idle_workflow) = temp_project_layout();
