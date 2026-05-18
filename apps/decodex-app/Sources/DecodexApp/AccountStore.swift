@@ -46,7 +46,7 @@ final class AccountStore: ObservableObject {
 		return "person.2.circle"
 	}
 
-	func refresh() async {
+	func refresh(force: Bool = false) async {
 		guard !isRefreshing else {
 			return
 		}
@@ -57,7 +57,10 @@ final class AccountStore: ObservableObject {
 		}
 
 		do {
-			accountList = try await bridge.runJSON(.accountList, as: AccountListResponse.self)
+			accountList = try await bridge.runJSON(
+				.accountList(forceRefresh: force),
+				as: AccountListResponse.self
+			)
 			notice = nil
 		} catch {
 			notice = error.localizedDescription

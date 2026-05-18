@@ -1230,6 +1230,35 @@ fn operator_state_endpoint_serves_only_liveness_probe() {
 }
 
 #[test]
+fn operator_state_endpoint_serves_account_api_snapshot() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
+	let response = String::from_utf8(
+		orchestrator::build_operator_state_http_response(
+			b"GET /api/accounts?refresh=1 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+		)
+		.expect("account response should build"),
+	)
+	.expect("account response should be utf-8");
+
+	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+	assert!(response.contains("Content-Type: application/json"));
+
+	let body = response
+		.split_once("\r\n\r\n")
+		.map(|(_, body)| body)
+		.expect("account response should include body");
+	let data: Value = serde_json::from_str(body).expect("account response should be json");
+
+	assert_eq!(data["accounts"], serde_json::json!([]));
+	assert_eq!(data["usage_probe_error"], Value::Null);
+	assert!(data["accounts_path"].as_str().is_some_and(|path| {
+		path.ends_with(".codex/decodex/accounts.jsonl")
+	}));
+}
+
+#[test]
 fn operator_state_endpoint_rejects_removed_http_snapshot_routes() {
 	for removed_path in ["/state", "/readyz"] {
 		let response = String::from_utf8(
