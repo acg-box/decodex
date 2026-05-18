@@ -8,7 +8,7 @@ final class AccountStore: ObservableObject {
 	@Published var loginTranscript = ""
 	@Published var notice: String?
 
-	private let cli = DecodexCLI()
+	private let bridge = DecodexAppBridge()
 
 	var accounts: [CodexAccount] {
 		accountList?.accounts ?? []
@@ -19,14 +19,19 @@ final class AccountStore: ObservableObject {
 			return "Not loaded"
 		}
 
+		let codexLabel = accountList?.codexAuth?.displayName ?? "no Codex auth"
 		if let selector = control.accountSelector, !selector.isEmpty {
-			return "Fixed: \(selector)"
+			return "Codex: \(codexLabel) / Decodex: \(selector)"
 		}
 
-		return control.mode == "balanced" ? "Balanced" : control.mode.capitalized
+		let decodexLabel = control.mode == "balanced" ? "balanced" : control.mode
+		return "Codex: \(codexLabel) / Decodex: \(decodexLabel)"
 	}
 
 	var menuSymbol: String {
+		if accounts.contains(where: \.codexActive) {
+			return "bolt.circle.fill"
+		}
 		if accounts.contains(where: \.selected) {
 			return "person.crop.circle.badge.checkmark"
 		}
@@ -44,8 +49,20 @@ final class AccountStore: ObservableObject {
 		}
 
 		do {
-			accountList = try await cli.runJSON(["account", "list", "--json"], as: AccountListResponse.self)
+			accountList = try await bridge.runJSON(.accountList, as: AccountListResponse.self)
 			notice = nil
+		} catch {
+			notice = error.localizedDescription
+		}
+	}
+
+	func useInCodex(_ account: CodexAccount) async {
+		do {
+			_ = try await bridge.runJSON(
+				.accountUse(selector: account.selector),
+				as: CodexAuthUseResponse.self
+			)
+			await refresh()
 		} catch {
 			notice = error.localizedDescription
 		}
@@ -54,12 +71,14 @@ final class AccountStore: ObservableObject {
 	func select(_ account: CodexAccount) async {
 		do {
 			if account.selected {
-				_ = try await cli.run(["account", "clear", "--json"])
+				accountList = try await bridge.runJSON(.accountClear, as: AccountListResponse.self)
 			} else {
-				_ = try await cli.run(["account", "select", account.selector, "--json"])
+				accountList = try await bridge.runJSON(
+					.accountSelect(selector: account.selector),
+					as: AccountListResponse.self
+				)
 			}
-
-			await refresh()
+			notice = nil
 		} catch {
 			notice = error.localizedDescription
 		}
@@ -67,8 +86,8 @@ final class AccountStore: ObservableObject {
 
 	func clearSelection() async {
 		do {
-			_ = try await cli.run(["account", "clear", "--json"])
-			await refresh()
+			accountList = try await bridge.runJSON(.accountClear, as: AccountListResponse.self)
+			notice = nil
 		} catch {
 			notice = error.localizedDescription
 		}
@@ -76,8 +95,11 @@ final class AccountStore: ObservableObject {
 
 	func logout(_ account: CodexAccount) async {
 		do {
-			_ = try await cli.run(["account", "logout", account.selector, "--json"])
-			await refresh()
+			accountList = try await bridge.runJSON(
+				.accountLogout(selector: account.selector),
+				as: AccountListResponse.self
+			)
+			notice = nil
 		} catch {
 			notice = error.localizedDescription
 		}
@@ -89,10 +111,10 @@ final class AccountStore: ObservableObject {
 		notice = nil
 
 		do {
-			try await cli.runStreaming(["account", "login"]) { [weak self] chunk in
+			accountList = try await bridge.runStreaming(.accountLogin(), as: AccountListResponse.self) { [weak self] chunk in
 				self?.loginTranscript += chunk
 			}
-			await refresh()
+			notice = nil
 		} catch {
 			notice = error.localizedDescription
 		}

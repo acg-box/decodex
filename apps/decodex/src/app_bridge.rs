@@ -1,0 +1,147 @@
+//! Internal JSON bridge used by the bundled Decodex App helper.
+
+use std::{
+	io::{self, Read as _, Write as _},
+	path::PathBuf,
+};
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::{
+	accounts::{self, AccountLoginRequest, AccountUseRequest},
+	prelude::{Result, eyre},
+};
+
+#[derive(Deserialize)]
+#[serde(tag = "operation", rename_all = "snake_case")]
+enum AppBridgeRequest {
+	#[serde(rename = "account_list")]
+	List,
+	#[serde(rename = "account_select")]
+	Select { selector: String },
+	#[serde(rename = "account_clear")]
+	Clear,
+	#[serde(rename = "account_logout")]
+	Logout { selector: String },
+	#[serde(rename = "account_import")]
+	Import { auth_json_path: String },
+	#[serde(rename = "account_use")]
+	Use { selector: String, auth_json_path: Option<String> },
+	#[serde(rename = "account_login")]
+	Login {
+		#[serde(default = "default_codex_bin")]
+		codex_bin: String,
+		#[serde(default)]
+		keep_temp_home: bool,
+	},
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum AppBridgeEvent<'a, T = Value>
+where
+	T: Serialize,
+{
+	Output { text: &'a str },
+	Result { payload: T },
+	Error { message: String },
+}
+
+/// Run one Decodex App helper request from stdin and write JSON events to stdout.
+pub fn run() -> Result<()> {
+	color_eyre::install()?;
+
+	let mut input = String::new();
+
+	io::stdin().read_to_string(&mut input)?;
+
+	let request = serde_json::from_str::<AppBridgeRequest>(&input)
+		.map_err(|error| eyre::eyre!("Invalid Decodex App bridge request: {error}"))?;
+
+	match handle_request(request) {
+		Ok(()) => Ok(()),
+		Err(error) => {
+			let event: AppBridgeEvent<'_, ()> =
+				AppBridgeEvent::Error { message: error.to_string() };
+
+			emit_event(&event)?;
+
+			Err(error)
+		},
+	}
+}
+
+fn handle_request(request: AppBridgeRequest) -> Result<()> {
+	match request {
+		AppBridgeRequest::List => emit_result(&accounts::account_list()?),
+		AppBridgeRequest::Select { selector } => emit_result(&accounts::account_select(&selector)?),
+		AppBridgeRequest::Clear => emit_result(&accounts::account_clear()?),
+		AppBridgeRequest::Logout { selector } => emit_result(&accounts::account_logout(&selector)?),
+		AppBridgeRequest::Import { auth_json_path } => {
+			let auth_json_path = PathBuf::from(auth_json_path);
+
+			emit_result(&accounts::account_import(&auth_json_path)?)
+		},
+		AppBridgeRequest::Use { selector, auth_json_path } =>
+			emit_result(&accounts::account_use(&AccountUseRequest {
+				selector,
+				auth_json_path: auth_json_path.map(Into::into),
+				json: true,
+			})?),
+		AppBridgeRequest::Login { codex_bin, keep_temp_home } => {
+			let response = accounts::account_login(
+				&AccountLoginRequest { codex_bin, keep_temp_home },
+				|chunk| {
+					let event: AppBridgeEvent<'_, ()> = AppBridgeEvent::Output { text: chunk };
+
+					emit_event(&event)
+				},
+			)?;
+
+			emit_result(&response)
+		},
+	}
+}
+
+fn emit_result<T>(payload: &T) -> Result<()>
+where
+	T: Serialize,
+{
+	emit_event(&AppBridgeEvent::Result { payload })
+}
+
+fn emit_event<T>(event: &AppBridgeEvent<'_, T>) -> Result<()>
+where
+	T: Serialize,
+{
+	let mut stdout = io::stdout().lock();
+
+	serde_json::to_writer(&mut stdout, event)?;
+
+	stdout.write_all(b"\n")?;
+	stdout.flush()?;
+
+	Ok(())
+}
+
+fn default_codex_bin() -> String {
+	String::from("codex")
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::app_bridge::AppBridgeRequest;
+
+	#[test]
+	fn parses_account_use_bridge_request() {
+		let request = serde_json::from_value::<AppBridgeRequest>(serde_json::json!({
+			"operation": "account_use",
+			"selector": "copy@example.com",
+			"auth_json_path": "/tmp/auth.json"
+		}))
+		.expect("bridge request should parse");
+
+		assert!(matches!(request, AppBridgeRequest::Use { .. }));
+	}
+}
