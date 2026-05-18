@@ -8,7 +8,8 @@ mod tracker_tool_bridge;
 pub(crate) use self::{
 	app_server::{
 		ACTIVE_RUN_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,
-		AppServerRunRequest, AppServerRunResult, AppServerTurnFailure, TurnContinuationGuard,
+		AppServerRunRequest, AppServerRunResult, AppServerThreadArchiveRequest,
+		AppServerTurnFailure, TurnContinuationGuard, archive_app_server_thread_after_success,
 		execute_app_server_run, probe_app_server,
 	},
 	codex_accounts::{CodexAccountPool, CodexAccountProvider},
