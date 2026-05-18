@@ -806,6 +806,15 @@ fn validate_landing_state(
 	) {
 		eyre::bail!("Pull request `{pr_url}` has failed required checks that need repair.");
 	}
+
+	if let Some(other) = gate_view.status_check_rollup_state
+		&& pull_request::checks_require_wait(Some(other))
+	{
+		eyre::bail!(
+			"Pull request `{pr_url}` is still waiting on checks: statusCheckRollup=`{other}`."
+		);
+	}
+
 	if pull_request::mergeability_unknown(gate_view) {
 		eyre::bail!(
 			"Pull request `{pr_url}` mergeability is still unknown after retry; wait for GitHub to recompute mergeability and retry `decodex land`."
@@ -825,9 +834,6 @@ fn validate_landing_state(
 	}
 
 	match gate_view.status_check_rollup_state {
-		Some(other) if pull_request::checks_require_wait(Some(other)) => eyre::bail!(
-			"Pull request `{pr_url}` is still waiting on checks: statusCheckRollup=`{other}`."
-		),
 		Some("SUCCESS") | None => {
 			debug_assert!(pull_request::manual_landing_gates_satisfied(gate_view));
 
@@ -2107,6 +2113,27 @@ exit 1\n",
 
 		assert!(error.to_string().contains("mergeability is still unknown after retry"));
 		assert!(error.to_string().contains("retry `decodex land`"));
+	}
+
+	#[test]
+	fn landing_state_validation_treats_pending_checks_as_wait_even_when_merge_blocked() {
+		let mut landing_state = sample_landing_state();
+
+		landing_state.base_ref_name = String::from("main");
+		landing_state.merge_state_status = String::from("BLOCKED");
+		landing_state.status_check_rollup_state = Some(String::from("PENDING"));
+
+		let error = manual::validate_landing_state(
+			&landing_state,
+			"https://github.com/hack-ink/decodex/pull/64",
+			"main",
+			"XY-225",
+			"deadbeef",
+		)
+		.expect_err("pending checks should wait rather than report a generic blocked merge state");
+
+		assert!(error.to_string().contains("still waiting on checks"));
+		assert!(error.to_string().contains("statusCheckRollup=`PENDING`"));
 	}
 
 	#[test]
