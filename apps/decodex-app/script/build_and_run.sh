@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:-run}"
+PRODUCT_NAME="Decodex App"
+EXECUTABLE_NAME="DecodexApp"
+HELPER_NAME="decodex-app-helper"
+BUNDLE_ID="space.decodex.app"
+MIN_SYSTEM_VERSION="14.0"
+DEFAULT_SIGN_IDENTITY="x@acg.box"
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORKTREE_ROOT="$(git -C "$ROOT_DIR" rev-parse --show-toplevel)"
+COMMON_ROOT="$(cd "$(git -C "$ROOT_DIR" rev-parse --git-common-dir)/.." && pwd)"
+STAGE_DIR="${DECODEX_APP_STAGE_DIR:-$COMMON_ROOT/target/decodex-app}"
+APP_BUNDLE="$STAGE_DIR/$PRODUCT_NAME.app"
+APP_CONTENTS="$APP_BUNDLE/Contents"
+APP_MACOS="$APP_CONTENTS/MacOS"
+APP_HELPERS="$APP_CONTENTS/Helpers"
+APP_RESOURCES="$APP_CONTENTS/Resources"
+APP_BINARY="$APP_MACOS/$EXECUTABLE_NAME"
+APP_HELPER_BINARY="$APP_HELPERS/$HELPER_NAME"
+INFO_PLIST="$APP_CONTENTS/Info.plist"
+APP_ICON_SOURCE="$WORKTREE_ROOT/assets/app-icon/generated/app-icon.icns"
+APP_ICON_NAME="AppIcon.icns"
+STATUS_ICON_SOURCE="$WORKTREE_ROOT/assets/tray-icon/generated/tray-icon-template.png"
+STATUS_ICON_NAME="StatusBarIcon.png"
+SWIFT_BUILD_FLAGS=()
+RUST_BUILD_FLAGS=()
+RUST_TARGET_DIR=""
+BUILD_ROOT=""
+BUILD_BINARY=""
+HELPER_BINARY=""
+RESOLVED_SIGN_IDENTITY=""
+
+SWIFT_CONFIGURATION="${DECODEX_APP_SWIFT_CONFIGURATION:-debug}"
+if [[ "$SWIFT_CONFIGURATION" == "release" ]]; then
+	SWIFT_BUILD_FLAGS=(-c release)
+	RUST_BUILD_FLAGS=(--release)
+elif [[ "$SWIFT_CONFIGURATION" != "debug" ]]; then
+	echo "error: DECODEX_APP_SWIFT_CONFIGURATION must be debug or release." >&2
+	exit 2
+fi
+
+APP_VERSION="${DECODEX_APP_VERSION:-}"
+if [[ -z "$APP_VERSION" ]]; then
+	APP_VERSION="$(
+		sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' \
+			"$WORKTREE_ROOT/Cargo.toml" | head -n 1
+	)"
+fi
+APP_VERSION="${APP_VERSION:-0.1.0}"
+
+terminate_running_app() {
+	pkill -x "$EXECUTABLE_NAME" >/dev/null 2>&1 || true
+}
+
+write_info_plist() {
+	cat >"$INFO_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>$EXECUTABLE_NAME</string>
+  <key>CFBundleIdentifier</key>
+  <string>$BUNDLE_ID</string>
+  <key>CFBundleName</key>
+  <string>$PRODUCT_NAME</string>
+  <key>CFBundleDisplayName</key>
+  <string>$PRODUCT_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>${APP_ICON_NAME%.icns}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$APP_VERSION</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>$MIN_SYSTEM_VERSION</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+</dict>
+</plist>
+PLIST
+}
+
+resolve_signing_identity() {
+	local requested_identity identity_list identity
+
+	requested_identity="${DECODEX_APP_SIGN_IDENTITY:-$DEFAULT_SIGN_IDENTITY}"
+	identity_list="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+	if [[ -n "$requested_identity" ]]; then
+		while IFS= read -r line; do
+			identity="${line#*\"}"
+			identity="${identity%%\"*}"
+			if [[ -n "$identity" && "$identity" == *"$requested_identity"* ]]; then
+				RESOLVED_SIGN_IDENTITY="$identity"
+				return 0
+			fi
+		done <<<"$identity_list"
+	fi
+
+	while IFS= read -r line; do
+		identity="${line#*\"}"
+		identity="${identity%%\"*}"
+		if [[ -n "$identity" && "$identity" == Apple\ Development:* ]]; then
+			RESOLVED_SIGN_IDENTITY="$identity"
+			return 0
+		fi
+	done <<<"$identity_list"
+
+	return 1
+}
+
+sign_staged_app_bundle() {
+	local requested_identity entitlements_file
+
+	requested_identity="${DECODEX_APP_SIGN_IDENTITY:-$DEFAULT_SIGN_IDENTITY}"
+	if ! resolve_signing_identity; then
+		echo "error: no valid macOS codesigning identity matching \"$requested_identity\" was found." >&2
+		echo "error: import the real signing certificate or set DECODEX_APP_SIGN_IDENTITY to a valid identity." >&2
+		echo "error: Decodex App staging requires a stable codesigning identity." >&2
+		exit 1
+	fi
+
+	codesign \
+		--force \
+		--options runtime \
+		--sign "$RESOLVED_SIGN_IDENTITY" \
+		"$APP_HELPER_BINARY"
+
+	entitlements_file="$BUILD_ROOT/$EXECUTABLE_NAME-entitlement.plist"
+	if [[ -f "$entitlements_file" ]]; then
+		codesign \
+			--force \
+			--deep \
+			--options runtime \
+			--sign "$RESOLVED_SIGN_IDENTITY" \
+			--entitlements "$entitlements_file" \
+			"$APP_BUNDLE"
+	else
+		codesign \
+			--force \
+			--deep \
+			--options runtime \
+			--sign "$RESOLVED_SIGN_IDENTITY" \
+			"$APP_BUNDLE"
+	fi
+}
+
+stage_app_bundle() {
+	BUILD_ROOT="$(swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)"
+	BUILD_BINARY="$BUILD_ROOT/$EXECUTABLE_NAME"
+	RUST_TARGET_DIR="$COMMON_ROOT/target"
+
+	swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --product "$EXECUTABLE_NAME"
+	CARGO_TARGET_DIR="$RUST_TARGET_DIR" cargo build -p decodex --bin "$HELPER_NAME" "${RUST_BUILD_FLAGS[@]}"
+
+	if [[ "$SWIFT_CONFIGURATION" == "release" ]]; then
+		HELPER_BINARY="$RUST_TARGET_DIR/release/$HELPER_NAME"
+	else
+		HELPER_BINARY="$RUST_TARGET_DIR/debug/$HELPER_NAME"
+	fi
+
+	rm -rf "$APP_BUNDLE"
+	mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
+	cp "$BUILD_BINARY" "$APP_BINARY"
+	cp "$HELPER_BINARY" "$APP_HELPER_BINARY"
+	chmod +x "$APP_BINARY"
+	chmod +x "$APP_HELPER_BINARY"
+	if [[ -f "$APP_ICON_SOURCE" ]]; then
+		cp "$APP_ICON_SOURCE" "$APP_RESOURCES/$APP_ICON_NAME"
+	fi
+	if [[ -f "$STATUS_ICON_SOURCE" ]]; then
+		cp "$STATUS_ICON_SOURCE" "$APP_RESOURCES/$STATUS_ICON_NAME"
+	fi
+	write_info_plist
+	sign_staged_app_bundle
+	codesign --verify --deep --strict "$APP_BUNDLE"
+}
+
+if [[ "$MODE" != "stage" && "$MODE" != "--stage" ]]; then
+	terminate_running_app
+fi
+
+stage_app_bundle
+
+open_app() {
+	/usr/bin/open "$APP_BUNDLE"
+}
+
+case "$MODE" in
+	stage|--stage)
+		;;
+	run)
+		open_app
+		;;
+	--debug|debug)
+		lldb -- "$APP_BINARY"
+		;;
+	--logs|logs)
+		open_app
+		/usr/bin/log stream --info --style compact --predicate "process == \"$EXECUTABLE_NAME\""
+		;;
+	--verify|verify)
+		open_app
+		sleep 1
+		pgrep -x "$EXECUTABLE_NAME" >/dev/null
+		codesign --verify --deep --strict "$APP_BUNDLE"
+		;;
+	*)
+		echo "usage: $0 [run|stage|--debug|--logs|--verify]" >&2
+		exit 2
+		;;
+esac

@@ -15,6 +15,7 @@ use clap::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
+	accounts::{self, AccountImportRequest, AccountLoginRequest, AccountUseRequest},
 	agent,
 	archive_hygiene::{self, ArchiveHygieneRequest},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
@@ -61,6 +62,7 @@ impl Cli {
 			Command::Diagnose(args) => args.run(config_path),
 			Command::Recover(args) => args.run(config_path),
 			Command::ArchiveLinear(args) => args.run(config_path),
+			Command::Account(args) => args.run(),
 			Command::Probe(args) => args.run(),
 			Command::Attempt(args) => args.run(config_path),
 		}
@@ -135,11 +137,128 @@ enum Command {
 	Recover(RecoverCommand),
 	/// Dry-run or archive old terminal Linear issues by repo label.
 	ArchiveLinear(ArchiveLinearCommand),
+	/// Manage the global Decodex Codex account pool.
+	Account(AccountCommand),
 	/// Validate the local app-server integration boundary.
 	Probe(ProbeCommand),
 	/// Run one daemon-planned attempt from a structured request.
 	#[command(name = "_attempt", hide = true)]
 	Attempt(AttemptCommand),
+}
+
+#[derive(Debug, Args)]
+struct AccountCommand {
+	#[command(subcommand)]
+	command: AccountSubcommand,
+}
+impl AccountCommand {
+	fn run(&self) -> crate::prelude::Result<()> {
+		match &self.command {
+			AccountSubcommand::List(args) => accounts::run_account_list(args.json),
+			AccountSubcommand::Select(args) =>
+				accounts::run_account_select(&args.selector, args.json),
+			AccountSubcommand::Clear(args) => accounts::run_account_clear(args.json),
+			AccountSubcommand::Logout(args) =>
+				accounts::run_account_logout(&args.selector, args.json),
+			AccountSubcommand::ImportAuth(args) =>
+				accounts::run_account_import(&AccountImportRequest {
+					auth_json_path: args.auth_json.clone(),
+					json: args.json,
+				}),
+			AccountSubcommand::Use(args) => accounts::run_account_use(&AccountUseRequest {
+				selector: args.selector.clone(),
+				auth_json_path: args.auth_json.clone(),
+				json: args.json,
+			}),
+			AccountSubcommand::Login(args) => accounts::run_account_login(&AccountLoginRequest {
+				codex_bin: args.codex_bin.clone(),
+				keep_temp_home: args.keep_temp_home,
+			}),
+		}
+	}
+}
+
+#[derive(Debug, Subcommand)]
+enum AccountSubcommand {
+	/// List configured Codex accounts without printing token material.
+	List(AccountListCommand),
+	/// Pin new Decodex runs to one account.
+	Select(AccountSelectCommand),
+	/// Return new Decodex runs to balanced account selection.
+	Clear(AccountClearCommand),
+	/// Remove one account from the Decodex account pool.
+	Logout(AccountLogoutCommand),
+	/// Import an existing Codex `auth.json` into the Decodex account pool.
+	ImportAuth(AccountImportCommand),
+	/// Force Codex to use one stored account by overwriting its `auth.json`.
+	Use(AccountUseCommand),
+	/// Run Codex device login in an isolated temporary home, then import it.
+	Login(AccountLoginCommand),
+}
+
+#[derive(Debug, Args)]
+struct AccountListCommand {
+	/// Print the account list as JSON for app integrations.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct AccountSelectCommand {
+	/// Email, full account id, or redacted fingerprint to pin.
+	selector: String,
+	/// Print the updated account list as JSON for app integrations.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct AccountClearCommand {
+	/// Print the updated account list as JSON for app integrations.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct AccountLogoutCommand {
+	/// Email, full account id, or redacted fingerprint to remove.
+	selector: String,
+	/// Print the updated account list as JSON for app integrations.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct AccountImportCommand {
+	/// Path to a Codex `auth.json` file to import.
+	#[arg(value_name = "AUTH_JSON")]
+	auth_json: PathBuf,
+	/// Print the updated account list as JSON for app integrations.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct AccountUseCommand {
+	/// Email, full account id, or redacted fingerprint to write into Codex `auth.json`.
+	selector: String,
+	/// Override the Codex `auth.json` destination. Defaults to `$CODEX_HOME/auth.json`
+	/// or `~/.codex/auth.json`.
+	#[arg(long, value_name = "AUTH_JSON")]
+	auth_json: Option<PathBuf>,
+	/// Print the updated Codex auth selection as JSON for app integrations.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct AccountLoginCommand {
+	/// Codex CLI binary used for isolated device login.
+	#[arg(long, default_value = "codex")]
+	codex_bin: String,
+	/// Keep the temporary Codex home after login for manual inspection.
+	#[arg(long)]
+	keep_temp_home: bool,
 }
 
 #[derive(Debug, Args)]
@@ -604,10 +723,11 @@ mod tests {
 	use clap::Parser;
 
 	use crate::cli::{
-		AttemptCommand, Cli, Command, CommitCommand, DiagnoseCommand, LandCommand, ProbeCommand,
-		ProjectCommand, ProjectSubcommand, RecoverCommand, RecoverSubcommand,
-		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
-		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
+		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
+		CommitCommand, DiagnoseCommand, LandCommand, ProbeCommand, ProjectCommand,
+		ProjectSubcommand, RecoverCommand, RecoverSubcommand, ReviewHandoffDiagnoseCommand,
+		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
+		RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -765,6 +885,30 @@ mod tests {
 		assert!(matches!(
 			cli.command,
 			Command::Project(ProjectCommand { command: ProjectSubcommand::Enable(_) })
+		));
+	}
+
+	#[test]
+	fn parses_account_use_with_auth_json_override() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"account",
+			"use",
+			"copy@example.com",
+			"--auth-json",
+			"./auth.json",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Account(AccountCommand {
+				command: AccountSubcommand::Use(AccountUseCommand {
+					selector,
+					auth_json: Some(_),
+					json: true,
+				})
+			}) if selector == "copy@example.com"
 		));
 	}
 
