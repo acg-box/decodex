@@ -108,6 +108,7 @@ struct OperatorHistoryLedgerRecord {
 struct OperatorIssueDisplayMetadata {
 	issue_identifier: String,
 	title: Option<String>,
+	author: Option<String>,
 }
 
 struct WorktreeOwnership {
@@ -885,6 +886,7 @@ where
 						OperatorIssueDisplayMetadata {
 							issue_identifier: issue.identifier,
 							title: Some(issue.title),
+							author: issue.author,
 						},
 					)
 				})
@@ -980,6 +982,9 @@ fn apply_history_lane_issue_metadata(
 	if let Some(title) = metadata.title.as_ref().filter(|title| !title.trim().is_empty()) {
 		lane.title = Some(title.clone());
 	}
+	if let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty()) {
+		lane.author = Some(author.clone());
+	}
 }
 
 fn apply_run_issue_metadata(
@@ -992,6 +997,9 @@ fn apply_run_issue_metadata(
 
 	if let Some(title) = metadata.title.as_ref().filter(|title| !title.trim().is_empty()) {
 		run.title = Some(title.clone());
+	}
+	if let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty()) {
+		run.author = Some(author.clone());
 	}
 }
 
@@ -1013,6 +1021,11 @@ fn fill_missing_history_lane_issue_metadata(
 	{
 		lane.title = Some(title.clone());
 	}
+	if lane.author.as_ref().is_none_or(|author| author.trim().is_empty())
+		&& let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty())
+	{
+		lane.author = Some(author.clone());
+	}
 }
 
 fn fill_missing_run_issue_metadata(
@@ -1031,6 +1044,11 @@ fn fill_missing_run_issue_metadata(
 		&& let Some(title) = metadata.title.as_ref().filter(|title| !title.trim().is_empty())
 	{
 		run.title = Some(title.clone());
+	}
+	if run.author.as_ref().is_none_or(|author| author.trim().is_empty())
+		&& let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty())
+	{
+		run.author = Some(author.clone());
 	}
 }
 
@@ -1083,6 +1101,7 @@ fn hydrate_history_lane_from_ledger_records(
 	let metadata = OperatorIssueDisplayMetadata {
 		issue_identifier: record.record.issue_identifier.clone(),
 		title: None,
+		author: None,
 	};
 
 	fill_missing_history_lane_issue_metadata(lane, &metadata);
@@ -1419,6 +1438,7 @@ where
 		issue_id: issue.id,
 		issue_identifier: issue.identifier,
 		title: issue.title,
+		author: issue.author,
 		state: issue.state.name,
 		priority: issue.priority,
 		created_at: issue.created_at,
@@ -3362,6 +3382,7 @@ fn operator_run_status(
 		issue_id: run.issue_id().to_owned(),
 		issue_identifier,
 		title: None,
+		author: None,
 		attempt_number: run.attempt_number(),
 		status,
 		attempt_status: run.status().to_owned(),
@@ -4094,6 +4115,7 @@ fn operator_history_lanes(
 			issue_id: run.issue_id.clone(),
 			issue_identifier: run.issue_identifier.clone(),
 			title: run.title.clone(),
+			author: run.author.clone(),
 			issue_key: operator_run_issue_key(run),
 			attempt_count: 1,
 			ledger_outcome: not_loaded_history_ledger_outcome(),
@@ -4117,6 +4139,9 @@ fn hydrate_history_lane_from_run(lane: &mut OperatorHistoryLaneStatus, run: &Ope
 	}
 	if lane.title.is_none() {
 		lane.title = run.title.clone();
+	}
+	if lane.author.is_none() {
+		lane.author = run.author.clone();
 	}
 }
 
