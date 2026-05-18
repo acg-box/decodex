@@ -130,6 +130,13 @@ impl AppServerClient {
 		self.connection.request_with_handler("thread/resume", &params, REQUEST_TIMEOUT, handler)
 	}
 
+	pub(super) fn archive_thread(
+		&mut self,
+		params: ThreadArchiveRequest,
+	) -> Result<ThreadArchiveResponse> {
+		self.connection.request("thread/archive", &params, REQUEST_TIMEOUT)
+	}
+
 	#[allow(dead_code)]
 	pub(super) fn start_turn(&mut self, params: TurnStartRequest) -> Result<TurnStartResponse> {
 		self.start_turn_with_handler(params, |_connection, _message, request| {
@@ -318,6 +325,15 @@ pub(super) struct ThreadResumeRequest {
 	#[serde(rename = "developerInstructions", skip_serializing_if = "Option::is_none")]
 	pub(super) developer_instructions: Option<String>,
 }
+
+#[derive(Debug, Serialize)]
+pub(super) struct ThreadArchiveRequest {
+	#[serde(rename = "threadId")]
+	pub(super) thread_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ThreadArchiveResponse {}
 
 #[derive(Clone, Debug, Deserialize)]
 pub(super) struct ThreadSessionResponse {
