@@ -32,6 +32,16 @@ enum Palette {
 	static let black = NSColor(calibratedWhite: 0.0, alpha: 1)
 }
 
+enum TemplateMark {
+	static let canvasScale: CGFloat = 1.06
+	static let cloudScale: CGFloat = 0.97
+	static let boltCenter = NSPoint(x: 766, y: 378)
+	static let boltScale: CGFloat = 1.82
+	static let promptCenter = NSPoint(x: 456, y: 504)
+	static let promptOffset = NSSize(width: 18, height: 0)
+	static let promptScale: CGFloat = 0.88
+}
+
 func bitmap(size: Int = canvasSize, drawing: (CGContext) -> Void) throws -> NSBitmapImageRep {
 	guard let rep = NSBitmapImageRep(
 		bitmapDataPlanes: nil,
@@ -109,6 +119,17 @@ func boltPoints(center: NSPoint, scale: CGFloat) -> [NSPoint] {
 		NSPoint(x: center.x - 58 * scale, y: center.y - 142 * scale),
 		NSPoint(x: center.x + 104 * scale, y: center.y - 12 * scale),
 		NSPoint(x: center.x + 22 * scale, y: center.y - 12 * scale),
+	]
+}
+
+func templateBoltPoints(center: NSPoint, scale: CGFloat) -> [NSPoint] {
+	[
+		NSPoint(x: center.x + 48 * scale, y: center.y + 130 * scale),
+		NSPoint(x: center.x - 88 * scale, y: center.y + 18 * scale),
+		NSPoint(x: center.x - 16 * scale, y: center.y + 18 * scale),
+		NSPoint(x: center.x - 56 * scale, y: center.y - 128 * scale),
+		NSPoint(x: center.x + 96 * scale, y: center.y - 8 * scale),
+		NSPoint(x: center.x + 20 * scale, y: center.y - 8 * scale),
 	]
 }
 
@@ -195,18 +216,28 @@ func drawAppMark() {
 }
 
 func drawTemplateBolt() {
-	fillPolygon(boltPoints(center: NSPoint(x: 762, y: 386), scale: 2.04), color: .black)
+	fillPolygon(templateBoltPoints(center: TemplateMark.boltCenter, scale: TemplateMark.boltScale), color: .black)
 }
 
 func drawTemplateCloud() {
+	let context = NSGraphicsContext.current!.cgContext
+	context.saveGState()
+	context.translateBy(x: 512, y: 512)
+	context.scaleBy(x: TemplateMark.cloudScale, y: TemplateMark.cloudScale)
+	context.translateBy(x: -512, y: -512)
 	Palette.black.setFill()
 	cloudPath().fill()
+	context.restoreGState()
 }
 
 func clearTemplatePrompt() {
 	let context = NSGraphicsContext.current!.cgContext
 	context.saveGState()
 	context.setBlendMode(.clear)
+	context.translateBy(x: TemplateMark.promptOffset.width, y: TemplateMark.promptOffset.height)
+	context.translateBy(x: TemplateMark.promptCenter.x, y: TemplateMark.promptCenter.y)
+	context.scaleBy(x: TemplateMark.promptScale, y: TemplateMark.promptScale)
+	context.translateBy(x: -TemplateMark.promptCenter.x, y: -TemplateMark.promptCenter.y)
 	drawPromptMark(color: .clear, width: 108)
 	context.restoreGState()
 }
@@ -215,7 +246,7 @@ func drawTemplateMark() {
 	let context = NSGraphicsContext.current!.cgContext
 	context.saveGState()
 	context.translateBy(x: 512, y: 512)
-	context.scaleBy(x: 1.10, y: 1.10)
+	context.scaleBy(x: TemplateMark.canvasScale, y: TemplateMark.canvasScale)
 	context.translateBy(x: -512, y: -512)
 	drawTemplateBolt()
 	drawTemplateCloud()
