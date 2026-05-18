@@ -5,6 +5,7 @@ MODE="${1:-run}"
 PRODUCT_NAME="Decodex App"
 EXECUTABLE_NAME="DecodexApp"
 HELPER_NAME="decodex-app-helper"
+SERVER_NAME="decodex"
 BUNDLE_ID="space.decodex.app"
 MIN_SYSTEM_VERSION="14.0"
 DEFAULT_SIGN_IDENTITY="x@acg.box"
@@ -21,6 +22,7 @@ APP_HELPERS="$APP_CONTENTS/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$EXECUTABLE_NAME"
 APP_HELPER_BINARY="$APP_HELPERS/$HELPER_NAME"
+APP_SERVER_BINARY="$APP_HELPERS/$SERVER_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON_SOURCE="$WORKTREE_ROOT/assets/app-icon/generated/app-icon.icns"
 APP_ICON_NAME="AppIcon.icns"
@@ -32,6 +34,7 @@ RUST_TARGET_DIR=""
 BUILD_ROOT=""
 BUILD_BINARY=""
 HELPER_BINARY=""
+SERVER_BINARY=""
 RESOLVED_SIGN_IDENTITY=""
 
 SWIFT_CONFIGURATION="${DECODEX_APP_SWIFT_CONFIGURATION:-debug}"
@@ -135,6 +138,11 @@ sign_staged_app_bundle() {
 		--options runtime \
 		--sign "$RESOLVED_SIGN_IDENTITY" \
 		"$APP_HELPER_BINARY"
+	codesign \
+		--force \
+		--options runtime \
+		--sign "$RESOLVED_SIGN_IDENTITY" \
+		"$APP_SERVER_BINARY"
 
 	entitlements_file="$BUILD_ROOT/$EXECUTABLE_NAME-entitlement.plist"
 	if [[ -f "$entitlements_file" ]]; then
@@ -158,23 +166,28 @@ sign_staged_app_bundle() {
 stage_app_bundle() {
 	BUILD_ROOT="$(swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)"
 	BUILD_BINARY="$BUILD_ROOT/$EXECUTABLE_NAME"
-	RUST_TARGET_DIR="$COMMON_ROOT/target"
+	RUST_TARGET_DIR="$WORKTREE_ROOT/target"
 
 	swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --product "$EXECUTABLE_NAME"
 	CARGO_TARGET_DIR="$RUST_TARGET_DIR" cargo build -p decodex --bin "$HELPER_NAME" "${RUST_BUILD_FLAGS[@]}"
+	CARGO_TARGET_DIR="$RUST_TARGET_DIR" cargo build -p decodex --bin "$SERVER_NAME" "${RUST_BUILD_FLAGS[@]}"
 
 	if [[ "$SWIFT_CONFIGURATION" == "release" ]]; then
 		HELPER_BINARY="$RUST_TARGET_DIR/release/$HELPER_NAME"
+		SERVER_BINARY="$RUST_TARGET_DIR/release/$SERVER_NAME"
 	else
 		HELPER_BINARY="$RUST_TARGET_DIR/debug/$HELPER_NAME"
+		SERVER_BINARY="$RUST_TARGET_DIR/debug/$SERVER_NAME"
 	fi
 
 	rm -rf "$APP_BUNDLE"
 	mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
 	cp "$BUILD_BINARY" "$APP_BINARY"
 	cp "$HELPER_BINARY" "$APP_HELPER_BINARY"
+	cp "$SERVER_BINARY" "$APP_SERVER_BINARY"
 	chmod +x "$APP_BINARY"
 	chmod +x "$APP_HELPER_BINARY"
+	chmod +x "$APP_SERVER_BINARY"
 	if [[ -f "$APP_ICON_SOURCE" ]]; then
 		cp "$APP_ICON_SOURCE" "$APP_RESOURCES/$APP_ICON_NAME"
 	fi

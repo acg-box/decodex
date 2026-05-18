@@ -13,8 +13,10 @@ use serde::{Deserialize, Serialize};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
+	agent::CodexAccountPool,
 	prelude::{Result, eyre},
 	runtime,
+	state::CodexAccountActivitySummary,
 };
 
 pub(crate) struct AccountLoginRequest {
@@ -70,6 +72,18 @@ impl AccountStore {
 		let records = self.load_records()?;
 
 		self.response_from_records(&records)
+	}
+
+	fn list_with_usage(&self) -> Result<AccountListResponse> {
+		self.list_with_cached_usage(false)
+	}
+
+	fn list_with_cached_usage(&self, force_refresh: bool) -> Result<AccountListResponse> {
+		let mut response = self.list()?;
+
+		response.hydrate_usage_from_path(&self.accounts_path, force_refresh);
+
+		Ok(response)
 	}
 
 	fn select(&self, selector: &str) -> Result<AccountListResponse> {
@@ -259,6 +273,7 @@ impl AccountStore {
 			codex_auth: codex_auth.as_ref().map(AccountIdentity::summary),
 			control,
 			accounts,
+			usage_probe_error: None,
 		})
 	}
 
@@ -375,6 +390,29 @@ pub(crate) struct AccountListResponse {
 	pub(crate) codex_auth: Option<AccountIdentitySummary>,
 	pub(crate) control: AccountControlSummary,
 	pub(crate) accounts: Vec<AccountSummary>,
+	pub(crate) usage_probe_error: Option<String>,
+}
+impl AccountListResponse {
+	fn hydrate_usage_from_path(&mut self, accounts_path: &Path, force_refresh: bool) {
+		if self.accounts.is_empty() {
+			return;
+		}
+
+		match CodexAccountPool::from_accounts_path(accounts_path)
+			.and_then(|pool| pool.account_activity_summaries_cached(force_refresh))
+		{
+			Ok(summaries) => self.apply_usage_summaries(&summaries),
+			Err(error) => self.usage_probe_error = Some(error.to_string()),
+		}
+	}
+
+	fn apply_usage_summaries(&mut self, summaries: &[CodexAccountActivitySummary]) {
+		for account in &mut self.accounts {
+			if let Some(summary) = matching_usage_summary(account, summaries) {
+				account.apply_usage_summary(summary);
+			}
+		}
+	}
 }
 
 #[derive(Serialize)]
@@ -410,6 +448,44 @@ pub(crate) struct AccountSummary {
 	pub(crate) last_selected_at_unix_epoch: Option<i64>,
 	pub(crate) cooldown_until_unix_epoch: Option<i64>,
 	pub(crate) note: Option<String>,
+	pub(crate) plan_type: Option<String>,
+	pub(crate) refresh_status: Option<String>,
+	pub(crate) checked_at_unix_epoch: Option<i64>,
+	pub(crate) primary_window_seconds: Option<i64>,
+	pub(crate) primary_remaining_percent: Option<i64>,
+	pub(crate) primary_resets_at_unix_epoch: Option<i64>,
+	pub(crate) secondary_window_seconds: Option<i64>,
+	pub(crate) secondary_remaining_percent: Option<i64>,
+	pub(crate) secondary_resets_at_unix_epoch: Option<i64>,
+	pub(crate) credits_has_credits: Option<bool>,
+	pub(crate) credits_unlimited: Option<bool>,
+	pub(crate) credits_balance: Option<String>,
+	pub(crate) rate_limit_reached_type: Option<String>,
+}
+impl AccountSummary {
+	fn apply_usage_summary(&mut self, summary: &CodexAccountActivitySummary) {
+		self.status = summary.status.clone();
+		self.plan_type = summary.plan_type.clone();
+		self.refresh_status = Some(summary.refresh_status.clone());
+		self.checked_at_unix_epoch = summary.checked_at_unix_epoch;
+		self.primary_window_seconds = summary.primary_window_seconds;
+		self.primary_remaining_percent = summary.primary_remaining_percent;
+		self.primary_resets_at_unix_epoch = summary.primary_resets_at_unix_epoch;
+		self.secondary_window_seconds = summary.secondary_window_seconds;
+		self.secondary_remaining_percent = summary.secondary_remaining_percent;
+		self.secondary_resets_at_unix_epoch = summary.secondary_resets_at_unix_epoch;
+		self.credits_has_credits = summary.credits_has_credits;
+		self.credits_unlimited = summary.credits_unlimited;
+
+		self.credits_balance.clone_from(&summary.credits_balance);
+		self.rate_limit_reached_type.clone_from(&summary.rate_limit_reached_type);
+
+		if summary.cooldown_until_unix_epoch.is_some() {
+			self.cooldown_until_unix_epoch = summary.cooldown_until_unix_epoch;
+		}
+
+		self.note.clone_from(&summary.note);
+	}
 }
 
 #[derive(Clone)]
@@ -615,6 +691,19 @@ impl AccountPoolRecord {
 			last_selected_at_unix_epoch: self.last_selected_at_unix_epoch,
 			cooldown_until_unix_epoch: self.cooldown_until_unix_epoch,
 			note: Some(String::from("local account pool")),
+			plan_type: None,
+			refresh_status: None,
+			checked_at_unix_epoch: None,
+			primary_window_seconds: None,
+			primary_remaining_percent: None,
+			primary_resets_at_unix_epoch: None,
+			secondary_window_seconds: None,
+			secondary_remaining_percent: None,
+			secondary_resets_at_unix_epoch: None,
+			credits_has_credits: None,
+			credits_unlimited: None,
+			credits_balance: None,
+			rate_limit_reached_type: None,
 		}
 	}
 }
@@ -720,6 +809,22 @@ pub(crate) fn account_list() -> Result<AccountListResponse> {
 	AccountStore::global()?.list()
 }
 
+pub(crate) fn account_list_with_usage() -> Result<AccountListResponse> {
+	AccountStore::global()?.list_with_usage()
+}
+
+pub(crate) fn account_list_with_cached_usage(force_refresh: bool) -> Result<AccountListResponse> {
+	AccountStore::global()?.list_with_cached_usage(force_refresh)
+}
+
+pub(crate) fn hydrate_account_list_usage(mut response: AccountListResponse) -> AccountListResponse {
+	let accounts_path = PathBuf::from(&response.accounts_path);
+
+	response.hydrate_usage_from_path(&accounts_path, false);
+
+	response
+}
+
 pub(crate) fn account_select(selector: &str) -> Result<AccountListResponse> {
 	AccountStore::global()?.select(selector)
 }
@@ -760,6 +865,20 @@ pub(crate) fn account_login(
 	cleanup_login_home(&temp_home, request.keep_temp_home);
 
 	import_result
+}
+
+fn matching_usage_summary<'a>(
+	account: &AccountSummary,
+	summaries: &'a [CodexAccountActivitySummary],
+) -> Option<&'a CodexAccountActivitySummary> {
+	summaries.iter().find(|summary| {
+		account
+			.email
+			.as_deref()
+			.zip(summary.email.as_deref())
+			.is_some_and(|(account_email, summary_email)| account_email == summary_email)
+			|| account.account_fingerprint == summary.account_fingerprint
+	})
 }
 
 fn run_codex_device_login(
@@ -1124,7 +1243,10 @@ mod tests {
 
 	use tempfile::TempDir;
 
-	use crate::accounts::{AccountPoolRecord, AccountStore, AuthDotJson, CodexTokenData};
+	use crate::{
+		accounts::{AccountPoolRecord, AccountStore, AuthDotJson, CodexTokenData},
+		state::CodexAccountActivitySummary,
+	};
 
 	#[test]
 	fn imports_auth_json_without_printing_tokens() {
@@ -1260,6 +1382,53 @@ mod tests {
 		);
 		assert!(!response.accounts[0].codex_active);
 		assert!(response.accounts[1].codex_active);
+	}
+
+	#[test]
+	fn list_response_merges_usage_snapshot() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let store = AccountStore::new(
+			temp_dir.path().join("accounts.jsonl"),
+			temp_dir.path().join("config.toml"),
+		);
+
+		store
+			.save_records(&[account_record(
+				"copy@example.com",
+				"acct_123456",
+				"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+				"refresh-secret",
+			)])
+			.expect("records should save");
+
+		let mut response = store.list().expect("account list should load");
+
+		response.apply_usage_summaries(&[CodexAccountActivitySummary {
+			account_fingerprint: String::from("...123456"),
+			email: Some(String::from("copy@example.com")),
+			plan_type: Some(String::from("pro")),
+			status: String::from("available"),
+			refresh_status: String::from("not_needed"),
+			checked_at_unix_epoch: Some(1_800_000_000),
+			primary_window_seconds: Some(18_000),
+			primary_remaining_percent: Some(72),
+			primary_resets_at_unix_epoch: Some(1_800_018_000),
+			secondary_window_seconds: Some(604_800),
+			secondary_remaining_percent: Some(91),
+			secondary_resets_at_unix_epoch: Some(1_800_604_800),
+			credits_has_credits: Some(true),
+			credits_unlimited: Some(false),
+			credits_balance: Some(String::from("9.99")),
+			rate_limit_reached_type: None,
+			..CodexAccountActivitySummary::default()
+		}]);
+
+		assert_eq!(response.accounts[0].plan_type.as_deref(), Some("pro"));
+		assert_eq!(response.accounts[0].primary_window_seconds, Some(18_000));
+		assert_eq!(response.accounts[0].primary_remaining_percent, Some(72));
+		assert_eq!(response.accounts[0].secondary_window_seconds, Some(604_800));
+		assert_eq!(response.accounts[0].secondary_remaining_percent, Some(91));
+		assert_eq!(response.accounts[0].credits_balance.as_deref(), Some("9.99"));
 	}
 
 	fn account_record(

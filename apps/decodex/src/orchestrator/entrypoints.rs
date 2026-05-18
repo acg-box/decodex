@@ -105,6 +105,11 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 	if request.poll_interval.is_zero() {
 		eyre::bail!("serve interval must be greater than zero.");
 	}
+	if request.api_only && request.config_path.is_some() {
+		eyre::bail!(
+			"serve --api-only does not accept --config because it must not register or poll projects."
+		);
+	}
 
 	validate_daemon_runtime()?;
 
@@ -132,6 +137,7 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 		listen_address = %operator_state_endpoint.listen_address(),
 		path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
 		ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
+		api_only = request.api_only,
 		runtime_db_path = %runtime_db_path.display(),
 		global_config_path = %global_config_path.display(),
 		project_config_dir = %project_config_dir.display(),
@@ -140,7 +146,11 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 	loop {
 		let tick_started_at = Instant::now();
-		let snapshot = run_control_plane_tick(&state_store, &mut project_runtimes)?;
+		let snapshot = if request.api_only {
+			run_control_plane_api_only_tick(&state_store)?
+		} else {
+			run_control_plane_tick(&state_store, &mut project_runtimes)?
+		};
 
 		if let Err(error) = operator_state_endpoint.publish_snapshot(&snapshot) {
 			let _ = error;
@@ -374,6 +384,25 @@ fn run_control_plane_tick(
 
 		run_control_plane_project_tick(project, state_store, runtime, project_warnings)
 	}))
+}
+
+fn run_control_plane_api_only_tick(state_store: &StateStore) -> Result<OperatorStatusSnapshot> {
+	let registered_projects = state_store.list_projects()?;
+	let mut snapshot = empty_control_plane_snapshot(DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT);
+
+	if !registered_projects.iter().any(ProjectRegistration::enabled) {
+		add_operator_snapshot_warning(&mut snapshot, "no_enabled_projects");
+	}
+
+	add_operator_snapshot_warning(&mut snapshot, "automation_disabled");
+
+	snapshot.projects = registered_projects
+		.iter()
+		.map(operator_project_status_from_api_only_registration)
+		.collect();
+	snapshot.account_control = global_codex_account_control_status();
+
+	Ok(snapshot)
 }
 
 fn collect_control_plane_snapshot<F>(
@@ -777,5 +806,29 @@ fn operator_project_status_from_registration(
 		},
 		last_activity_at: None,
 		warning_count,
+	}
+}
+
+fn operator_project_status_from_api_only_registration(
+	project: &ProjectRegistration,
+) -> OperatorProjectStatus {
+	OperatorProjectStatus {
+		project_id: project.service_id().to_owned(),
+		config_path: project.config_path().display().to_string(),
+		repo_root: project.repo_root().display().to_string(),
+		enabled: project.enabled(),
+		active_run_count: 0,
+		queued_candidate_count: 0,
+		post_review_lane_count: 0,
+		retained_worktree_count: 0,
+		waiting_lane_count: 0,
+		attention_count: 0,
+		connector_state: if project.enabled() {
+			String::from("api_only")
+		} else {
+			String::from("disabled")
+		},
+		last_activity_at: None,
+		warning_count: usize::from(project.enabled()),
 	}
 }
