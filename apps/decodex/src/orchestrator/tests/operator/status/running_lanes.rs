@@ -216,14 +216,17 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 	assert_eq!(active_run.project_id, config.service_id());
 	assert_eq!(active_run.issue_identifier.as_deref(), Some("XY-392"));
 	assert_eq!(active_run.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
+	assert_eq!(active_run.author.as_deref(), Some("Yvette"));
 	assert_eq!(recent_run.issue_identifier.as_deref(), Some("XY-392"));
 	assert_eq!(recent_run.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
+	assert_eq!(recent_run.author.as_deref(), Some("Yvette"));
 	assert_eq!(snapshot_json["active_runs"][0]["project_id"], "pubfi");
 	assert_eq!(snapshot_json["active_runs"][0]["issue_identifier"], "XY-392");
 	assert_eq!(
 		snapshot_json["active_runs"][0]["title"],
 		"Hydrate issue display metadata on run rows"
 	);
+	assert_eq!(snapshot_json["active_runs"][0]["author"], "Yvette");
 }
 
 #[test]
