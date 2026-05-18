@@ -380,6 +380,9 @@ struct ServeCommand {
 	/// Operator UI listen address.
 	#[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8912")]
 	listen_address: String,
+	/// Serve only local operator HTTP/API endpoints without polling or dispatching projects.
+	#[arg(long)]
+	api_only: bool,
 }
 impl ServeCommand {
 	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
@@ -387,6 +390,7 @@ impl ServeCommand {
 			config_path,
 			poll_interval: self.interval,
 			listen_address: &self.listen_address,
+			api_only: self.api_only,
 		})
 	}
 }
@@ -863,9 +867,18 @@ mod tests {
 		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
 		assert!(matches!(
 			cli.command,
-			Command::Serve(ServeCommand { interval, listen_address })
-				if interval == Duration::from_secs(30) && listen_address == "127.0.0.1:9000"
+			Command::Serve(ServeCommand { interval, listen_address, api_only })
+				if interval == Duration::from_secs(30)
+					&& listen_address == "127.0.0.1:9000"
+					&& !api_only
 		));
+	}
+
+	#[test]
+	fn parses_serve_api_only() {
+		let cli = Cli::parse_from(["decodex", "serve", "--api-only"]);
+
+		assert!(matches!(cli.command, Command::Serve(ServeCommand { api_only: true, .. })));
 	}
 
 	#[test]
