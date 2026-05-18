@@ -53,6 +53,10 @@ impl CodexAccountPool {
 		)
 	}
 
+	pub(crate) fn from_accounts_path(path: impl AsRef<Path>) -> crate::prelude::Result<Self> {
+		Self::new_with_fixed_account(path, DEFAULT_USAGE_ENDPOINT, DEFAULT_REFRESH_ENDPOINT, None)
+	}
+
 	fn new_with_fixed_account(
 		path: impl AsRef<Path>,
 		usage_endpoint: impl Into<String>,
