@@ -7,6 +7,7 @@ struct AccountListResponse: Decodable {
 	let codexAuth: CodexAuthIdentity?
 	let control: AccountControl
 	let accounts: [CodexAccount]
+	let usageProbeError: String?
 
 	enum CodingKeys: String, CodingKey {
 		case accountsPath = "accounts_path"
@@ -15,6 +16,7 @@ struct AccountListResponse: Decodable {
 		case codexAuth = "codex_auth"
 		case control
 		case accounts
+		case usageProbeError = "usage_probe_error"
 	}
 }
 
@@ -67,6 +69,19 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	let lastSelectedAtUnixEpoch: Int?
 	let cooldownUntilUnixEpoch: Int?
 	let note: String?
+	let planType: String?
+	let refreshStatus: String?
+	let checkedAtUnixEpoch: Int?
+	let primaryWindowSeconds: Int?
+	let primaryRemainingPercent: Int?
+	let primaryResetsAtUnixEpoch: Int?
+	let secondaryWindowSeconds: Int?
+	let secondaryRemainingPercent: Int?
+	let secondaryResetsAtUnixEpoch: Int?
+	let creditsHasCredits: Bool?
+	let creditsUnlimited: Bool?
+	let creditsBalance: String?
+	let rateLimitReachedType: String?
 
 	var id: String {
 		email ?? accountFingerprint
@@ -77,6 +92,9 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	}
 
 	var statusLabel: String {
+		if isUsageLimited {
+			return "Limited"
+		}
 		if codexActive {
 			return "Codex active"
 		}
@@ -86,6 +104,8 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 
 		switch status {
 		case "available": return "Ready"
+		case "usage_limited": return "Limited"
+		case "probe_failed": return "Usage unknown"
 		case "expired": return "Refresh needed"
 		case "disabled": return "Disabled"
 		case "cooldown": return "Cooling"
@@ -95,6 +115,12 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	}
 
 	var statusTone: AccountTone {
+		if isUsageLimited {
+			return .danger
+		}
+		if status == "probe_failed" {
+			return .warning
+		}
 		if codexActive {
 			return .codexActive
 		}
@@ -107,6 +133,59 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case "expired", "unusable", "disabled": return .danger
 		default: return .neutral
 		}
+	}
+
+	var planLabel: String? {
+		guard let planType, !planType.isEmpty else {
+			return nil
+		}
+
+		return planType.replacingOccurrences(of: "_", with: " ").capitalized
+	}
+
+	var hasUsageWindowData: Bool {
+		primaryRemainingPercent != nil || secondaryRemainingPercent != nil
+	}
+
+	var isUsageLimited: Bool {
+		if let reached = rateLimitReachedType, !reached.isEmpty {
+			return true
+		}
+		return status.contains("limit")
+			|| primaryRemainingPercent == 0
+			|| secondaryRemainingPercent == 0
+	}
+
+	func windowLabel(seconds: Int?) -> String {
+		switch seconds {
+		case 18_000: return "5h"
+		case 604_800: return "7d"
+		case let value?:
+			let hours = value / 3_600
+			if hours > 0 && value % 3_600 == 0 {
+				return "\(hours)h"
+			}
+			let days = value / 86_400
+			if days > 0 && value % 86_400 == 0 {
+				return "\(days)d"
+			}
+			return "window"
+		case nil:
+			return "window"
+		}
+	}
+
+	func usageTone(remainingPercent: Int?) -> AccountTone {
+		guard let remainingPercent else {
+			return .neutral
+		}
+		if remainingPercent <= 10 {
+			return .danger
+		}
+		if remainingPercent <= 25 {
+			return .warning
+		}
+		return .ready
 	}
 
 	enum CodingKeys: String, CodingKey {
@@ -122,6 +201,19 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case lastSelectedAtUnixEpoch = "last_selected_at_unix_epoch"
 		case cooldownUntilUnixEpoch = "cooldown_until_unix_epoch"
 		case note
+		case planType = "plan_type"
+		case refreshStatus = "refresh_status"
+		case checkedAtUnixEpoch = "checked_at_unix_epoch"
+		case primaryWindowSeconds = "primary_window_seconds"
+		case primaryRemainingPercent = "primary_remaining_percent"
+		case primaryResetsAtUnixEpoch = "primary_resets_at_unix_epoch"
+		case secondaryWindowSeconds = "secondary_window_seconds"
+		case secondaryRemainingPercent = "secondary_remaining_percent"
+		case secondaryResetsAtUnixEpoch = "secondary_resets_at_unix_epoch"
+		case creditsHasCredits = "credits_has_credits"
+		case creditsUnlimited = "credits_unlimited"
+		case creditsBalance = "credits_balance"
+		case rateLimitReachedType = "rate_limit_reached_type"
 	}
 }
 

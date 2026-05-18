@@ -240,11 +240,13 @@ APP_PATH="$STAGE_DIR/Decodex App.app"
 test -d "$APP_PATH"
 test -x "$APP_PATH/Contents/MacOS/DecodexApp"
 test -x "$APP_PATH/Contents/Helpers/decodex-app-helper"
+test -x "$APP_PATH/Contents/Helpers/decodex"
 test -f "$APP_PATH/Contents/Info.plist"
 test -f "$APP_PATH/Contents/Resources/AppIcon.icns"
 test -f "$APP_PATH/Contents/Resources/StatusBarIcon.png"
 codesign --verify --deep --strict "$APP_PATH"
 codesign --verify --strict "$APP_PATH/Contents/Helpers/decodex-app-helper"
+codesign --verify --strict "$APP_PATH/Contents/Helpers/decodex"
 codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -q '^TeamIdentifier='
 codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -q 'flags=.*runtime'
 plutil -extract CFBundleName raw "$APP_PATH/Contents/Info.plist" | grep -qx 'Decodex App'

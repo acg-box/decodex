@@ -844,7 +844,7 @@ fn codex_account_activity_summaries(
 	};
 
 	match CodexAccountPool::from_config(accounts_config)
-		.and_then(|pool| pool.account_activity_summaries())
+		.and_then(|pool| pool.account_activity_summaries_cached(false))
 	{
 		Ok(accounts) => accounts,
 		Err(error) => {

@@ -5,7 +5,7 @@ use std::{
 	fs::{self, File, OpenOptions},
 	path::{Path, PathBuf},
 	process,
-	sync::Mutex,
+	sync::{Mutex, OnceLock},
 	time::Duration,
 };
 
@@ -24,6 +24,9 @@ const CODEX_USER_AGENT: &str = "codex-cli";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const TOKEN_REFRESH_INTERVAL_SECONDS: i64 = 8 * 24 * 60 * 60;
+const ACCOUNT_ACTIVITY_CACHE_TTL_SECONDS: i64 = 60;
+
+static ACCOUNT_ACTIVITY_CACHE: OnceLock<Mutex<Option<AccountActivityCacheEntry>>> = OnceLock::new();
 
 pub(crate) trait CodexAccountProvider {
 	fn select_account(&self) -> crate::prelude::Result<CodexAccountLogin>;
@@ -51,6 +54,10 @@ impl CodexAccountPool {
 			config.refresh_endpoint().unwrap_or(DEFAULT_REFRESH_ENDPOINT),
 			fixed_account.as_deref(),
 		)
+	}
+
+	pub(crate) fn from_accounts_path(path: impl AsRef<Path>) -> crate::prelude::Result<Self> {
+		Self::new_with_fixed_account(path, DEFAULT_USAGE_ENDPOINT, DEFAULT_REFRESH_ENDPOINT, None)
 	}
 
 	fn new_with_fixed_account(
@@ -89,6 +96,50 @@ impl CodexAccountPool {
 		let mut records = self.load_records()?;
 
 		self.probe_account_activity_summaries(&mut records)
+	}
+
+	pub(crate) fn account_activity_summaries_cached(
+		&self,
+		force_refresh: bool,
+	) -> crate::prelude::Result<Vec<CodexAccountActivitySummary>> {
+		let now = OffsetDateTime::now_utc().unix_timestamp();
+		let cache_key = self.cache_key();
+		let cache = ACCOUNT_ACTIVITY_CACHE.get_or_init(|| Mutex::new(None));
+
+		if !force_refresh {
+			let cached = cache
+				.lock()
+				.map_err(|error| eyre::eyre!("Codex account usage cache is poisoned: {error}"))?;
+
+			if let Some(entry) = cached.as_ref()
+				&& entry.key == cache_key
+				&& now.saturating_sub(entry.checked_at_unix_epoch)
+					< ACCOUNT_ACTIVITY_CACHE_TTL_SECONDS
+			{
+				return Ok(entry.summaries.clone());
+			}
+		}
+
+		let summaries = self.account_activity_summaries()?;
+		let mut cached = cache
+			.lock()
+			.map_err(|error| eyre::eyre!("Codex account usage cache is poisoned: {error}"))?;
+
+		*cached = Some(AccountActivityCacheEntry {
+			key: cache_key,
+			checked_at_unix_epoch: now,
+			summaries: summaries.clone(),
+		});
+
+		Ok(summaries)
+	}
+
+	fn cache_key(&self) -> AccountActivityCacheKey {
+		AccountActivityCacheKey {
+			path: self.path.clone(),
+			usage_endpoint: self.usage_endpoint.clone(),
+			refresh_endpoint: self.refresh_endpoint.clone(),
+		}
 	}
 
 	fn lock_records(&self) -> crate::prelude::Result<AccountPoolFileLock> {
@@ -661,6 +712,20 @@ impl CodexAccountLogin {
 
 		self
 	}
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct AccountActivityCacheKey {
+	path: PathBuf,
+	usage_endpoint: String,
+	refresh_endpoint: String,
+}
+
+#[derive(Clone)]
+struct AccountActivityCacheEntry {
+	key: AccountActivityCacheKey,
+	checked_at_unix_epoch: i64,
+	summaries: Vec<CodexAccountActivitySummary>,
 }
 
 struct AccountPoolFileLock {
