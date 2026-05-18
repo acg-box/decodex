@@ -3058,6 +3058,7 @@ exit 1\n",
 			#[cfg(test)]
 			project_slug: None,
 			title: String::from("Sample issue"),
+			author: None,
 			description: String::from(""),
 			priority: None,
 			created_at: String::from("2026-04-13T00:00:00Z"),
