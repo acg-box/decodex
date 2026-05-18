@@ -28,9 +28,9 @@ use self::protocol::{
 	ModelListParams, ModelListResponse, ModelProviderCapabilitiesReadResponse, ModelSummary,
 	PermissionGrantScope, PermissionsRequestApprovalResponse, PluginListParams, PluginListResponse,
 	ProbeDynamicToolHandler, RunOutcome, RuntimeConfigSummary, SkillsListParams,
-	SkillsListResponse, ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest,
-	ThreadStatusChangedNotification, ToolRequestUserInputResponse, TurnCompletedNotification,
-	TurnError, TurnStartRequest, UserInput,
+	SkillsListResponse, ThreadArchiveRequest, ThreadResumeRequest, ThreadSessionResponse,
+	ThreadStartRequest, ThreadStatusChangedNotification, ToolRequestUserInputResponse,
+	TurnCompletedNotification, TurnError, TurnStartRequest, UserInput,
 };
 use crate::{
 	agent::{
@@ -314,6 +314,16 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
 	pub(crate) continuation_guard: Option<&'a dyn TurnContinuationGuard>,
 	pub(crate) codex_account_provider: Option<&'a dyn CodexAccountProvider>,
+}
+
+pub(crate) struct AppServerThreadArchiveRequest<'a> {
+	pub(crate) run_id: &'a str,
+	pub(crate) issue_id: &'a str,
+	pub(crate) attempt_number: i64,
+	pub(crate) listen: &'a str,
+	pub(crate) process_env: &'a AppServerProcessEnv,
+	pub(crate) thread_id: &'a str,
+	pub(crate) sequence_number: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -908,6 +918,17 @@ pub(crate) fn execute_app_server_run(
 	result
 }
 
+pub(crate) fn archive_app_server_thread_after_success(
+	request: &AppServerThreadArchiveRequest<'_>,
+	state_store: &StateStore,
+) -> crate::prelude::Result<()> {
+	let result = archive_app_server_thread_after_success_inner(request);
+
+	record_thread_archive_result_best_effort(state_store, request, result.as_ref().err());
+
+	result
+}
+
 pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServerRunResult> {
 	let state_store = StateStore::open_in_memory()?;
 	let probe_tool_handler = ProbeDynamicToolHandler;
@@ -943,6 +964,64 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 	}
 
 	Ok(result)
+}
+
+fn archive_app_server_thread_after_success_inner(
+	request: &AppServerThreadArchiveRequest<'_>,
+) -> crate::prelude::Result<()> {
+	let expected_codex_home = request.process_env.resolve_codex_home_env()?;
+	let mut client = AppServerClient::spawn(request.listen, request.process_env)?;
+	let initialize_response = client.initialize(false)?;
+
+	validate_initialize_codex_home(&expected_codex_home, &initialize_response)?;
+
+	client.mark_initialized()?;
+	client.archive_thread(ThreadArchiveRequest { thread_id: request.thread_id.to_owned() })?;
+
+	Ok(())
+}
+
+fn record_thread_archive_result_best_effort(
+	state_store: &StateStore,
+	request: &AppServerThreadArchiveRequest<'_>,
+	error: Option<&Report>,
+) {
+	let (event_type, payload) = match error {
+		Some(error) => (
+			"thread/archive/failed",
+			serde_json::json!({
+				"threadId": request.thread_id,
+				"issueId": request.issue_id,
+				"attemptNumber": request.attempt_number,
+				"error": error.to_string(),
+			}),
+		),
+		None => (
+			"thread/archive",
+			serde_json::json!({
+				"threadId": request.thread_id,
+				"issueId": request.issue_id,
+				"attemptNumber": request.attempt_number,
+			}),
+		),
+	};
+
+	if let Err(record_error) = state_store.append_event(
+		request.run_id,
+		request.sequence_number,
+		event_type,
+		&payload.to_string(),
+	) {
+		tracing::warn!(
+			?record_error,
+			run_id = request.run_id,
+			issue_id = request.issue_id,
+			attempt = request.attempt_number,
+			thread_id = request.thread_id,
+			event_type,
+			"Failed to record app-server thread archive event."
+		);
+	}
 }
 
 fn classify_child_activity_event(
