@@ -54,7 +54,13 @@ struct AccountPanelView: View {
 				NoticeView(text: notice)
 			}
 
-			if store.accounts.isEmpty {
+			if let usageProbeError = store.accountList?.usageProbeError {
+				NoticeView(text: "Usage probe: \(usageProbeError)")
+			}
+
+			if store.isInitialLoading {
+				loadingState
+			} else if store.accounts.isEmpty {
 				emptyState
 			} else {
 				accountList
@@ -142,6 +148,19 @@ struct AccountPanelView: View {
 				.font(.caption)
 				.foregroundStyle(.secondary)
 				.fixedSize(horizontal: false, vertical: true)
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(12)
+		.modernGlassSurface(cornerRadius: 14)
+	}
+
+	private var loadingState: some View {
+		HStack(spacing: 10) {
+			ProgressView()
+				.controlSize(.small)
+			Text("Loading accounts")
+				.font(.subheadline.weight(.semibold))
+			Spacer()
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(12)
@@ -252,8 +271,13 @@ struct AccountPanelView: View {
 	}
 
 	private var accountListHeight: CGFloat {
-		min(
-			CGFloat(store.accounts.count) * 50 + CGFloat(max(store.accounts.count - 1, 0)) * 6 + 2,
+		let rows = store.accounts.reduce(CGFloat(0)) { total, account in
+			total + (account.hasUsageWindowData ? 72 : 50)
+		}
+		let spacing = CGFloat(max(store.accounts.count - 1, 0)) * 6 + 2
+
+		return min(
+			rows + spacing,
 			286
 		)
 	}
@@ -296,11 +320,35 @@ struct AccountRowView: View {
 								.lineLimit(1)
 								.truncationMode(.middle)
 							Text("·")
+							if let planLabel = account.planLabel {
+								Text(planLabel)
+									.lineLimit(1)
+								Text("·")
+							}
 							Text(account.statusLabel)
 								.lineLimit(1)
 						}
 						.font(.caption)
 						.foregroundStyle(.secondary)
+
+						if account.hasUsageWindowData {
+							HStack(spacing: 6) {
+								AccountUsageBadgeView(
+									label: account.windowLabel(seconds: account.primaryWindowSeconds),
+									remainingPercent: account.primaryRemainingPercent,
+									tone: account.usageTone(
+										remainingPercent: account.primaryRemainingPercent
+									)
+								)
+								AccountUsageBadgeView(
+									label: account.windowLabel(seconds: account.secondaryWindowSeconds),
+									remainingPercent: account.secondaryRemainingPercent,
+									tone: account.usageTone(
+										remainingPercent: account.secondaryRemainingPercent
+									)
+								)
+							}
+						}
 					}
 
 					Spacer()
@@ -356,6 +404,44 @@ struct AccountRowView: View {
 
 	private var detailLabel: String {
 		account.panelDetailLabel(emailsHidden: emailsHidden)
+	}
+}
+
+struct AccountUsageBadgeView: View {
+	let label: String
+	let remainingPercent: Int?
+	let tone: AccountTone
+
+	var body: some View {
+		HStack(spacing: 4) {
+			Text(label)
+				.font(.caption2.weight(.semibold))
+				.foregroundStyle(.secondary)
+			Text(remainingText)
+				.font(.caption2.monospacedDigit().weight(.semibold))
+		}
+		.padding(.horizontal, 6)
+		.padding(.vertical, 3)
+		.background(color.opacity(0.16), in: Capsule())
+	}
+
+	private var remainingText: String {
+		guard let remainingPercent else {
+			return "n/a"
+		}
+
+		return "\(remainingPercent)%"
+	}
+
+	private var color: Color {
+		switch tone {
+		case .codexActive: return .yellow
+		case .ready: return .green
+		case .selected: return .accentColor
+		case .warning: return .yellow
+		case .danger: return .red
+		case .neutral: return .secondary
+		}
 	}
 }
 

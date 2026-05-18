@@ -23,13 +23,23 @@ private enum AppAssets {
 @main
 struct DecodexApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-	@StateObject private var store = AccountStore()
+	@StateObject private var store: AccountStore
+
+	@MainActor
+	init() {
+		let accountStore = AccountStore()
+
+		_store = StateObject(wrappedValue: accountStore)
+		Task {
+			await accountStore.refreshIfNeeded()
+		}
+	}
 
 	var body: some Scene {
 		MenuBarExtra {
 			AccountPanelView(store: store)
 				.task {
-					await store.refresh()
+					await store.refreshIfNeeded()
 				}
 		} label: {
 			Label {
