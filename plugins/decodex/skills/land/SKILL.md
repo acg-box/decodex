@@ -28,8 +28,8 @@ with GitHub UI, `gh pr merge`, merge queue actions, raw `git`, or direct API mut
 
 ## Sequence
 
-1. Confirm the PR exists, the intended base and head are the ones being landed, and the
-   repository expects Decodex-owned landing.
+1. Confirm the PR exists, the intended base and head are the ones being landed, required
+   checks are green, and the repository expects Decodex-owned landing.
 2. Run `decodex land "<summary>"`.
 3. For a deliberate non-issue lane, run
    `decodex land --manual-authority --pr <URL> "<summary>"`.
@@ -52,6 +52,9 @@ but intentionally skips tracker closeout and active-label ownership checks.
 ## Fail-Closed Rules
 
 - If `decodex land` is required, it must run and succeed.
+- If `decodex land` reports that checks are still pending or expected, treat that as a
+  wait condition: keep the tracker issue in its retained review state, keep the active
+  ownership label in place, wait for CI, and retry `decodex land`.
 - Do not substitute `gh pr merge`, GitHub UI, merge queue, raw `git`, direct GitHub API
   mutation, or a hand-assembled merge for a failed or unavailable `decodex land`.
 - If GitHub merge already happened but `decodex land` stopped during closeout or
