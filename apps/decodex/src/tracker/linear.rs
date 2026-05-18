@@ -20,6 +20,11 @@ query IssuesWithLabel($labelName: String!, $after: String) {
       id
       identifier
       title
+      creator {
+        displayName
+        name
+        email
+      }
       description
       priority
       createdAt
@@ -85,6 +90,11 @@ query IssueByIdentifier($issueIdentifier: String!) {
     id
     identifier
     title
+    creator {
+      displayName
+      name
+      email
+    }
     description
     priority
     createdAt
@@ -146,6 +156,11 @@ query IssuesByIds($issueIds: [ID!], $after: String) {
       id
       identifier
       title
+      creator {
+        displayName
+        name
+        email
+      }
       description
       priority
       createdAt
@@ -711,6 +726,7 @@ struct LinearIssue {
 	id: String,
 	identifier: String,
 	title: String,
+	creator: Option<LinearUser>,
 	description: Option<String>,
 	priority: Option<i64>,
 	#[serde(rename = "createdAt")]
@@ -730,6 +746,14 @@ struct LinearTeam {
 	name: String,
 	states: StateConnection,
 	labels: LabelConnection,
+}
+
+#[derive(Deserialize)]
+struct LinearUser {
+	#[serde(rename = "displayName")]
+	display_name: Option<String>,
+	name: Option<String>,
+	email: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -893,12 +917,15 @@ fn map_blockers(relations: &[LinearIssueRelation]) -> Vec<TrackerIssueBlocker> {
 }
 
 fn map_issue(issue: LinearIssue, blockers: Vec<TrackerIssueBlocker>) -> TrackerIssue {
+	let author = linear_user_display_name(issue.creator.as_ref());
+
 	TrackerIssue {
 		id: issue.id,
 		identifier: issue.identifier,
 		#[cfg(test)]
 		project_slug: None,
 		title: issue.title,
+		author,
 		description: issue.description.unwrap_or_default(),
 		priority: issue.priority,
 		created_at: issue.created_at,
@@ -933,13 +960,25 @@ fn map_issue(issue: LinearIssue, blockers: Vec<TrackerIssueBlocker>) -> TrackerI
 	}
 }
 
+fn linear_user_display_name(user: Option<&LinearUser>) -> Option<String> {
+	let user = user?;
+
+	[&user.display_name, &user.name, &user.email]
+		.into_iter()
+		.filter_map(|value| value.as_deref())
+		.map(str::trim)
+		.find(|value| !value.is_empty())
+		.map(str::to_owned)
+}
+
 #[cfg(test)]
 mod tests {
 	use serde_json::json;
 
 	use crate::tracker::linear::{
 		GraphqlError, IssueRelationConnection, LabelConnection, LinearIssue, LinearIssueRelation,
-		LinearLabel, LinearRelatedIssue, LinearState, LinearTeam, PageInfo, StateConnection,
+		LinearLabel, LinearRelatedIssue, LinearState, LinearTeam, LinearUser, PageInfo,
+		StateConnection,
 	};
 
 	#[test]
@@ -948,6 +987,11 @@ mod tests {
 			id: String::from("issue-1"),
 			identifier: String::from("PUB-101"),
 			title: String::from("Implement ordering"),
+			creator: Some(LinearUser {
+				display_name: Some(String::from("Yvette")),
+				name: Some(String::from("yvette")),
+				email: Some(String::from("yvette@example.com")),
+			}),
 			description: Some(String::from("Body")),
 			priority: Some(2),
 			created_at: String::from("2026-03-13T04:16:17.133Z"),
@@ -996,6 +1040,7 @@ mod tests {
 		let mapped = super::map_issue(issue, blockers);
 
 		assert_eq!(mapped.priority, Some(2));
+		assert_eq!(mapped.author.as_deref(), Some("Yvette"));
 		assert_eq!(mapped.created_at, "2026-03-13T04:16:17.133Z");
 		assert_eq!(mapped.updated_at, "2026-03-14T04:16:17.133Z");
 		assert_eq!(mapped.blockers.len(), 1);
