@@ -13,9 +13,9 @@ enum DecodexAppBridgeError: LocalizedError {
 		case .launchFailed(let message):
 			return message
 		case .commandFailed(let code, let message):
-			return "Decodex App helper exited with status \(code): \(message)"
+			return "Decodex App bridge command failed with status \(code): \(message)"
 		case .invalidResponse(let message):
-			return "Invalid Decodex App helper response: \(message)"
+			return "Invalid Decodex App bridge response: \(message)"
 		}
 	}
 }
@@ -26,6 +26,8 @@ struct AppBridgeRequest: Encodable, Sendable {
 	let authJsonPath: String?
 	let codexBin: String?
 	let keepTempHome: Bool?
+	let includeUsage: Bool?
+	let forceRefresh: Bool?
 
 	enum CodingKeys: String, CodingKey {
 		case operation
@@ -33,25 +35,33 @@ struct AppBridgeRequest: Encodable, Sendable {
 		case authJsonPath = "auth_json_path"
 		case codexBin = "codex_bin"
 		case keepTempHome = "keep_temp_home"
+		case includeUsage = "include_usage"
 	}
 
-	static let accountList = AppBridgeRequest(operation: "account_list")
-	static let accountClear = AppBridgeRequest(operation: "account_clear")
+	static func accountList(forceRefresh: Bool = false) -> AppBridgeRequest {
+		AppBridgeRequest(
+			operation: "account_list",
+			includeUsage: true,
+			forceRefresh: forceRefresh
+		)
+	}
+
+	static let accountClear = AppBridgeRequest(operation: "account_clear", includeUsage: true)
 
 	static func accountUse(selector: String) -> AppBridgeRequest {
 		AppBridgeRequest(operation: "account_use", selector: selector)
 	}
 
 	static func accountSelect(selector: String) -> AppBridgeRequest {
-		AppBridgeRequest(operation: "account_select", selector: selector)
+		AppBridgeRequest(operation: "account_select", selector: selector, includeUsage: true)
 	}
 
 	static func accountLogout(selector: String) -> AppBridgeRequest {
-		AppBridgeRequest(operation: "account_logout", selector: selector)
+		AppBridgeRequest(operation: "account_logout", selector: selector, includeUsage: true)
 	}
 
 	static func accountLogin() -> AppBridgeRequest {
-		AppBridgeRequest(operation: "account_login")
+		AppBridgeRequest(operation: "account_login", includeUsage: true)
 	}
 
 	private init(
@@ -59,13 +69,17 @@ struct AppBridgeRequest: Encodable, Sendable {
 		selector: String? = nil,
 		authJsonPath: String? = nil,
 		codexBin: String? = nil,
-		keepTempHome: Bool? = nil
+		keepTempHome: Bool? = nil,
+		includeUsage: Bool? = nil,
+		forceRefresh: Bool? = nil
 	) {
 		self.operation = operation
 		self.selector = selector
 		self.authJsonPath = authJsonPath
 		self.codexBin = codexBin
 		self.keepTempHome = keepTempHome
+		self.includeUsage = includeUsage
+		self.forceRefresh = forceRefresh
 	}
 }
 
@@ -175,6 +189,15 @@ struct DecodexAppBridge: Sendable {
 		as type: T.Type,
 		onOutput: (@MainActor @Sendable (String) -> Void)?
 	) async throws -> T {
+		if onOutput == nil, try request.serverRoute() != nil {
+			return try await DecodexServerBridge.shared.run(request, as: type)
+		}
+		guard request.operation == "account_login" else {
+			throw DecodexAppBridgeError.invalidResponse(
+				"operation \(request.operation) must be served by Decodex server"
+			)
+		}
+
 		let helperURL = try helperExecutableURL()
 		let requestData = try JSONEncoder().encode(request)
 
