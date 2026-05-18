@@ -33,6 +33,7 @@ pub(crate) struct TrackerIssue {
 	#[cfg(test)]
 	pub(crate) project_slug: Option<String>,
 	pub(crate) title: String,
+	pub(crate) author: Option<String>,
 	pub(crate) description: String,
 	pub(crate) priority: Option<i64>,
 	pub(crate) created_at: String,

@@ -5615,6 +5615,16 @@
 				return facts.map(([label, value]) => renderRunMetaFact(label, value)).join("");
 			}
 
+			function runAuthor(run) {
+				return String(run?.author || run?.issue_author || "").trim();
+			}
+
+			function renderRunAuthorInline(run) {
+				const author = runAuthor(run);
+
+				return author ? renderRunMetaFact("author", author) : "";
+			}
+
 			function codexAccount(run) {
 				const selected = run?.account || run?.codex_account || null;
 				if (selected) {
@@ -6486,7 +6496,11 @@
 				}
 
 				function renderRunMetaLine(run) {
-					const items = [renderRunCodexAccountInline(run), renderRunTelemetryMetaItems(run)]
+					const items = [
+						renderRunAuthorInline(run),
+						renderRunCodexAccountInline(run),
+						renderRunTelemetryMetaItems(run),
+					]
 						.filter(Boolean)
 						.join("");
 
@@ -8591,6 +8605,7 @@
 										<summary>Debug Details</summary>
 									<div class="grid debug-grid">
 										${field("Run", run.run_id)}
+										${field("Author", runAuthor(run) || "none")}
 										${field("Attempt status", run.attempt_status || run.status)}
 										${field("Updated", formatTimestamp(run.updated_at))}
 										${field("Codex thread", runThreadSummary(run))}
@@ -9010,6 +9025,7 @@
 				for (const key of [
 					"issue_identifier",
 					"title",
+					"author",
 					"account",
 					"accounts",
 					"codex_account",

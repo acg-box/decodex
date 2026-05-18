@@ -520,6 +520,7 @@ repo_root = "."
 			#[cfg(test)]
 			project_slug: Some(String::from("decodex")),
 			title: format!("Issue {identifier}"),
+			author: None,
 			description: String::new(),
 			priority: None,
 			created_at: String::from("2026-02-01T00:00:00Z"),
