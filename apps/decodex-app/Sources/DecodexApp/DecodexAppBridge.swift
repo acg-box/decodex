@@ -13,9 +13,9 @@ enum DecodexAppBridgeError: LocalizedError {
 		case .launchFailed(let message):
 			return message
 		case .commandFailed(let code, let message):
-			return "Decodex App helper exited with status \(code): \(message)"
+			return "Decodex App bridge command failed with status \(code): \(message)"
 		case .invalidResponse(let message):
-			return "Invalid Decodex App helper response: \(message)"
+			return "Invalid Decodex App bridge response: \(message)"
 		}
 	}
 }
@@ -191,6 +191,11 @@ struct DecodexAppBridge: Sendable {
 	) async throws -> T {
 		if onOutput == nil, try request.serverRoute() != nil {
 			return try await DecodexServerBridge.shared.run(request, as: type)
+		}
+		guard request.operation == "account_login" else {
+			throw DecodexAppBridgeError.invalidResponse(
+				"operation \(request.operation) must be served by Decodex server"
+			)
 		}
 
 		let helperURL = try helperExecutableURL()
