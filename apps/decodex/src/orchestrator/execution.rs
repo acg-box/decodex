@@ -1,6 +1,7 @@
 use git_credentials::GitSigningConfig;
 use agent::CodexAccountPool;
 use agent::CodexAccountProvider;
+use agent::AppServerThreadArchiveRequest;
 
 struct AgentGitCredentialEnvironment {
 	process_env: AppServerProcessEnv,
@@ -37,6 +38,21 @@ struct TerminalFailureLifecycle<'a> {
 struct TerminalFailureWritebackRuntime<'a> {
 	service_id: &'a str,
 	state_store: Option<&'a StateStore>,
+}
+
+struct CompletedAppServerRun<'a, T>
+where
+	T: IssueTracker,
+{
+	tracker: &'a T,
+	project: &'a ServiceConfig,
+	workflow: &'a WorkflowDocument,
+	state_store: &'a StateStore,
+	issue_run: &'a IssueRunPlan,
+	tracker_tool_bridge: &'a TrackerToolBridge<'a>,
+	process_env: &'a AppServerProcessEnv,
+	transport: &'a str,
+	run_result: &'a AppServerRunResult,
 }
 
 fn execute_issue_run<T>(
@@ -427,7 +443,7 @@ where
 			run_id: issue_run.run_id.clone(),
 			issue_id: issue_run.issue.id.clone(),
 			attempt_number: issue_run.attempt_number,
-			listen: transport,
+			listen: transport.clone(),
 			cwd: issue_run.worktree.path.display().to_string(),
 			developer_instructions: build_run_developer_instructions(
 				tracker,
@@ -481,16 +497,82 @@ where
 		return Ok(continuation_boundary_summary(project, workflow, issue_run, &run_result));
 	}
 
-	apply_run_completion_disposition(
+	finalize_completed_app_server_run(CompletedAppServerRun {
 		tracker,
 		project,
 		workflow,
 		state_store,
 		issue_run,
-		&tracker_tool_bridge,
-	)?;
+		tracker_tool_bridge: &tracker_tool_bridge,
+		process_env: agent_git_credentials.process_env(),
+		transport: &transport,
+		run_result: &run_result,
+	})
+}
 
-	Ok(run_summary_from_issue_run(project.service_id(), issue_run))
+fn finalize_completed_app_server_run<T>(run: CompletedAppServerRun<'_, T>) -> Result<RunSummary>
+where
+	T: IssueTracker,
+{
+	apply_run_completion_disposition(
+		run.tracker,
+		run.project,
+		run.workflow,
+		run.state_store,
+		run.issue_run,
+		run.tracker_tool_bridge,
+	)?;
+	archive_completed_app_server_thread_best_effort(
+		run.project,
+		run.state_store,
+		run.issue_run,
+		run.process_env,
+		run.transport,
+		run.run_result,
+	);
+
+	Ok(run_summary_from_issue_run(run.project.service_id(), run.issue_run))
+}
+
+fn archive_completed_app_server_thread_best_effort(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	process_env: &AppServerProcessEnv,
+	transport: &str,
+	run_result: &AppServerRunResult,
+) {
+	let archive_request = AppServerThreadArchiveRequest {
+		run_id: &issue_run.run_id,
+		issue_id: &issue_run.issue.id,
+		attempt_number: issue_run.attempt_number,
+		listen: transport,
+		process_env,
+		thread_id: &run_result.thread_id,
+		sequence_number: run_result.event_count.saturating_add(1),
+	};
+
+	match agent::archive_app_server_thread_after_success(&archive_request, state_store) {
+		Ok(()) => tracing::info!(
+			project_id = project.service_id(),
+			issue_id = issue_run.issue.id,
+			issue = issue_run.issue.identifier,
+			run_id = issue_run.run_id,
+			attempt = issue_run.attempt_number,
+			thread_id = %run_result.thread_id,
+			"Archived completed app-server thread."
+		),
+		Err(error) => tracing::warn!(
+			?error,
+			project_id = project.service_id(),
+			issue_id = issue_run.issue.id,
+			issue = issue_run.issue.identifier,
+			run_id = issue_run.run_id,
+			attempt = issue_run.attempt_number,
+			thread_id = %run_result.thread_id,
+			"Failed to archive completed app-server thread; leaving completed run intact."
+		),
+	}
 }
 
 fn maybe_execute_deterministic_closeout<T>(
