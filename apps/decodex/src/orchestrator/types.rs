@@ -32,6 +32,7 @@ pub(crate) struct ServeRequest<'a> {
 	pub(crate) config_path: Option<&'a Path>,
 	pub(crate) poll_interval: Duration,
 	pub(crate) listen_address: &'a str,
+	pub(crate) api_only: bool,
 }
 
 /// Agent-readable runtime diagnosis request.

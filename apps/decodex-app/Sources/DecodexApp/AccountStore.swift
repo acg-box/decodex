@@ -10,6 +10,10 @@ final class AccountStore: ObservableObject {
 
 	private let bridge = DecodexAppBridge()
 
+	var isInitialLoading: Bool {
+		accountList == nil && isRefreshing
+	}
+
 	var accounts: [CodexAccount] {
 		accountList?.accounts ?? []
 	}
@@ -42,18 +46,33 @@ final class AccountStore: ObservableObject {
 		return "person.2.circle"
 	}
 
-	func refresh() async {
+	func refresh(force: Bool = false) async {
+		guard !isRefreshing else {
+			return
+		}
+
 		isRefreshing = true
 		defer {
 			isRefreshing = false
 		}
 
 		do {
-			accountList = try await bridge.runJSON(.accountList, as: AccountListResponse.self)
+			accountList = try await bridge.runJSON(
+				.accountList(forceRefresh: force),
+				as: AccountListResponse.self
+			)
 			notice = nil
 		} catch {
 			notice = error.localizedDescription
 		}
+	}
+
+	func refreshIfNeeded() async {
+		guard accountList == nil else {
+			return
+		}
+
+		await refresh()
 	}
 
 	func useInCodex(_ account: CodexAccount) async {
