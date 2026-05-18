@@ -97,7 +97,7 @@ struct AccountPanelView: View {
 				.foregroundStyle(.secondary)
 			Text("No accounts in the local pool")
 				.font(.subheadline.weight(.semibold))
-			Text("Add a ChatGPT login to use Decodex account selection for future runs.")
+			Text("Add a ChatGPT login before switching the Codex auth file.")
 				.font(.caption)
 				.foregroundStyle(.secondary)
 				.fixedSize(horizontal: false, vertical: true)
@@ -113,7 +113,12 @@ struct AccountPanelView: View {
 				ForEach(store.accounts) { account in
 					AccountRowView(
 						account: account,
-						select: {
+						useInCodex: {
+							Task {
+								await store.useInCodex(account)
+							}
+						},
+						pinForDecodex: {
 							Task {
 								await store.select(account)
 							}
@@ -158,17 +163,18 @@ struct AccountPanelView: View {
 
 struct AccountRowView: View {
 	let account: CodexAccount
-	let select: () -> Void
+	let useInCodex: () -> Void
+	let pinForDecodex: () -> Void
 	let logout: () -> Void
 
 	var body: some View {
 		HStack(spacing: 12) {
 			statusStripe
 
-			Button(action: select) {
+			Button(action: useInCodex) {
 				HStack(spacing: 10) {
-					Image(systemName: account.selected ? "checkmark.circle.fill" : "circle")
-						.foregroundStyle(account.selected ? .green : .secondary)
+					Image(systemName: account.codexActive ? "bolt.circle.fill" : "circle")
+						.foregroundStyle(account.codexActive ? .yellow : .secondary)
 						.frame(width: 18)
 
 					VStack(alignment: .leading, spacing: 4) {
@@ -188,6 +194,13 @@ struct AccountRowView: View {
 				.contentShape(Rectangle())
 			}
 			.buttonStyle(.plain)
+			.help("Use in Codex")
+
+			Button(action: pinForDecodex) {
+				Image(systemName: account.selected ? "pin.circle.fill" : "pin.circle")
+			}
+			.buttonStyle(.borderless)
+			.help(account.selected ? "Clear Decodex pin" : "Pin for Decodex runs")
 
 			Button(role: .destructive, action: logout) {
 				Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -207,13 +220,19 @@ struct AccountRowView: View {
 	}
 
 	private var rowBackground: some ShapeStyle {
-		account.selected ?
-			AnyShapeStyle(Color(nsColor: .selectedContentBackgroundColor).opacity(0.28)) :
-			AnyShapeStyle(.thinMaterial)
+		if account.codexActive {
+			return AnyShapeStyle(Color.yellow.opacity(0.16))
+		}
+		if account.selected {
+			return AnyShapeStyle(Color(nsColor: .selectedContentBackgroundColor).opacity(0.28))
+		}
+
+		return AnyShapeStyle(.thinMaterial)
 	}
 
 	private var statusColor: Color {
 		switch account.statusTone {
+		case .codexActive: return .yellow
 		case .ready: return .green
 		case .selected: return .accentColor
 		case .warning: return .yellow

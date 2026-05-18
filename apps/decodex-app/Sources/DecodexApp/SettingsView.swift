@@ -8,15 +8,16 @@ struct SettingsView: View {
 			Section("Paths") {
 				pathRow("Accounts", store.accountList?.accountsPath)
 				pathRow("Config", store.accountList?.globalConfigPath)
+				pathRow("Codex Auth", store.accountList?.codexAuthPath)
 			}
 
-			Section("CLI") {
-				Text(ProcessInfo.processInfo.environment["DECODEX_CLI"] ?? "decodex")
+			Section("Helper") {
+				Text(ProcessInfo.processInfo.environment["DECODEX_APP_HELPER"] ?? "Bundled decodex-app-helper")
 					.textSelection(.enabled)
 			}
 		}
 		.formStyle(.grouped)
-		.frame(width: 520, height: 220)
+		.frame(width: 520, height: 250)
 		.padding()
 		.task {
 			await store.refresh()

@@ -3,14 +3,44 @@ import Foundation
 struct AccountListResponse: Decodable {
 	let accountsPath: String
 	let globalConfigPath: String
+	let codexAuthPath: String
+	let codexAuth: CodexAuthIdentity?
 	let control: AccountControl
 	let accounts: [CodexAccount]
 
 	enum CodingKeys: String, CodingKey {
 		case accountsPath = "accounts_path"
 		case globalConfigPath = "global_config_path"
+		case codexAuthPath = "codex_auth_path"
+		case codexAuth = "codex_auth"
 		case control
 		case accounts
+	}
+}
+
+struct CodexAuthIdentity: Decodable {
+	let accountFingerprint: String
+	let email: String?
+	let selector: String
+
+	var displayName: String {
+		email ?? accountFingerprint
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case accountFingerprint = "account_fingerprint"
+		case email
+		case selector
+	}
+}
+
+struct CodexAuthUseResponse: Decodable {
+	let codexAuthPath: String
+	let account: CodexAuthIdentity
+
+	enum CodingKeys: String, CodingKey {
+		case codexAuthPath = "codex_auth_path"
+		case account
 	}
 }
 
@@ -30,6 +60,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	let selector: String
 	let status: String
 	let selected: Bool
+	let codexActive: Bool
 	let disabled: Bool
 	let refreshTokenPresent: Bool
 	let accessTokenExpiresAtUnixEpoch: Int?
@@ -46,6 +77,13 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	}
 
 	var statusLabel: String {
+		if codexActive {
+			return "Codex active"
+		}
+		if selected {
+			return "Decodex pinned"
+		}
+
 		switch status {
 		case "available": return "Ready"
 		case "expired": return "Refresh needed"
@@ -57,6 +95,9 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	}
 
 	var statusTone: AccountTone {
+		if codexActive {
+			return .codexActive
+		}
 		if selected {
 			return .selected
 		}
@@ -74,6 +115,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case selector
 		case status
 		case selected
+		case codexActive = "codex_active"
 		case disabled
 		case refreshTokenPresent = "refresh_token_present"
 		case accessTokenExpiresAtUnixEpoch = "access_token_expires_at_unix_epoch"
@@ -84,6 +126,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 }
 
 enum AccountTone {
+	case codexActive
 	case ready
 	case selected
 	case warning
