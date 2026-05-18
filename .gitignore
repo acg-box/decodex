@@ -1,6 +1,9 @@
 # AI
 .codex
 .decodex
+!apps/decodex-app/.codex/
+!apps/decodex-app/.codex/environments/
+!apps/decodex-app/.codex/environments/environment.toml
 
 # Editor
 .vscode
