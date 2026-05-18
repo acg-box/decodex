@@ -4,6 +4,7 @@ set -euo pipefail
 MODE="${1:-run}"
 PRODUCT_NAME="Decodex App"
 EXECUTABLE_NAME="DecodexApp"
+HELPER_NAME="decodex-app-helper"
 BUNDLE_ID="space.decodex.app"
 MIN_SYSTEM_VERSION="14.0"
 DEFAULT_SIGN_IDENTITY="x@acg.box"
@@ -15,21 +16,27 @@ STAGE_DIR="${DECODEX_APP_STAGE_DIR:-$COMMON_ROOT/target/decodex-app}"
 APP_BUNDLE="$STAGE_DIR/$PRODUCT_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_HELPERS="$APP_CONTENTS/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$EXECUTABLE_NAME"
+APP_HELPER_BINARY="$APP_HELPERS/$HELPER_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON_SOURCE="$WORKTREE_ROOT/assets/app-icon/generated/app-icon.icns"
 APP_ICON_NAME="AppIcon.icns"
 STATUS_ICON_SOURCE="$WORKTREE_ROOT/assets/tray-icon/generated/tray-icon-template.png"
 STATUS_ICON_NAME="StatusBarIcon.png"
 SWIFT_BUILD_FLAGS=()
+RUST_BUILD_FLAGS=()
+RUST_TARGET_DIR=""
 BUILD_ROOT=""
 BUILD_BINARY=""
+HELPER_BINARY=""
 RESOLVED_SIGN_IDENTITY=""
 
 SWIFT_CONFIGURATION="${DECODEX_APP_SWIFT_CONFIGURATION:-debug}"
 if [[ "$SWIFT_CONFIGURATION" == "release" ]]; then
 	SWIFT_BUILD_FLAGS=(-c release)
+	RUST_BUILD_FLAGS=(--release)
 elif [[ "$SWIFT_CONFIGURATION" != "debug" ]]; then
 	echo "error: DECODEX_APP_SWIFT_CONFIGURATION must be debug or release." >&2
 	exit 2
@@ -122,6 +129,12 @@ sign_staged_app_bundle() {
 		exit 1
 	fi
 
+	codesign \
+		--force \
+		--options runtime \
+		--sign "$RESOLVED_SIGN_IDENTITY" \
+		"$APP_HELPER_BINARY"
+
 	entitlements_file="$BUILD_ROOT/$EXECUTABLE_NAME-entitlement.plist"
 	if [[ -f "$entitlements_file" ]]; then
 		codesign \
@@ -144,13 +157,23 @@ sign_staged_app_bundle() {
 stage_app_bundle() {
 	BUILD_ROOT="$(swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)"
 	BUILD_BINARY="$BUILD_ROOT/$EXECUTABLE_NAME"
+	RUST_TARGET_DIR="$COMMON_ROOT/target"
 
 	swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --product "$EXECUTABLE_NAME"
+	CARGO_TARGET_DIR="$RUST_TARGET_DIR" cargo build -p decodex --bin "$HELPER_NAME" "${RUST_BUILD_FLAGS[@]}"
+
+	if [[ "$SWIFT_CONFIGURATION" == "release" ]]; then
+		HELPER_BINARY="$RUST_TARGET_DIR/release/$HELPER_NAME"
+	else
+		HELPER_BINARY="$RUST_TARGET_DIR/debug/$HELPER_NAME"
+	fi
 
 	rm -rf "$APP_BUNDLE"
-	mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+	mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
 	cp "$BUILD_BINARY" "$APP_BINARY"
+	cp "$HELPER_BINARY" "$APP_HELPER_BINARY"
 	chmod +x "$APP_BINARY"
+	chmod +x "$APP_HELPER_BINARY"
 	if [[ -f "$APP_ICON_SOURCE" ]]; then
 		cp "$APP_ICON_SOURCE" "$APP_RESOURCES/$APP_ICON_NAME"
 	fi
