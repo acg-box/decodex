@@ -1,9 +1,11 @@
 //! Decodex runtime bootstrap and CLI entrypoint.
 
+pub mod app_bridge;
 pub mod config;
 pub mod state;
 pub mod workflow;
 
+mod accounts;
 mod agent;
 mod archive_hygiene;
 mod cli;
