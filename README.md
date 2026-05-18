@@ -16,6 +16,7 @@ Repo-native agent orchestration and public Codex signal publishing.
 ## Feature Highlights
 
 - Rust CLI and runtime for repo-native retained coding-agent lanes.
+- Native macOS app for Decodex Codex account-pool management.
 - Explicit project registry under `~/.codex/decodex/projects/<service-id>/`.
 - Local operator listener with a dashboard at `/` and `/dashboard`, WebSocket
   snapshot/control traffic at `/dashboard/control`, and `GET /livez` for liveness.
@@ -55,6 +56,8 @@ runtime.
 ## Workspace posture
 
 - `apps/decodex/` owns the Rust package that builds the `decodex` CLI and runtime.
+- `apps/decodex-app/` owns the native macOS app that manages Decodex
+  Codex accounts through the bundled Rust app helper.
 - `site/` owns the Astro static site and checked-in public content.
 - `scripts/github/` owns deterministic GitHub bundle, release-delta, render, and
   validation scripts.
@@ -127,7 +130,10 @@ file, and project configs do not own an account-pool path override. Set
 `[codex.accounts].fixed_account` in `~/.codex/decodex/config.toml` to pin all new
 account-pool runs to one account. When that global selector is absent, Decodex balances
 new runs across the pool. The operator dashboard Accounts UI writes and clears the same
-global selector; project configs do not pin specific accounts.
+global selector; project configs do not pin specific accounts. To switch the account
+used by the Codex CLI itself, run `decodex account use <selector>` or use the Decodex
+App row action; this overwrites `$CODEX_HOME/auth.json` or `~/.codex/auth.json` from
+the matching `accounts.jsonl` entry.
 
 `decodex diagnose --json` writes the local agent evidence index under
 `~/.codex/decodex/agent-evidence/<service-id>/` and prints the same handoff index for
@@ -247,8 +253,8 @@ The tracked workspace currently keeps:
 - `docs/plans/` as historical saved plan artifacts from the static-site bootstrap
 - `dev/` as local development helpers outside `dev/skills/`, such as the operator
   dashboard mock server
-- `assets/` as shared static assets that are not owned by the Astro app's generated
-  output
+- `assets/` as generated Decodex App icon source notes, Icon Composer foreground,
+  generated `.icns`, and menu bar template assets
 - `.github/` as CI, release, Pages deployment, and content-refresh workflows
 
 Generated or local-only directories such as `target/`, `site/dist/`, `site/.astro/`,

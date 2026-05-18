@@ -17,6 +17,7 @@ should not be treated as repository source.
 | Path | Role |
 | --- | --- |
 | `apps/decodex/` | Rust package that builds the `decodex` CLI and runtime. Runtime, orchestration, tracker integration, app-server integration, operator HTTP, and local control-plane behavior live under `apps/decodex/src/`. |
+| `apps/decodex-app/` | SwiftPM macOS app for local Decodex Codex account-pool management. It talks to the bundled `decodex-app-helper`, which links the Rust account service directly, and does not own runtime scheduling or operator dashboard state. |
 | `site/` | Astro static site for the public Decodex signal surface. It renders checked-in content and generated JSON from `site/src/content/`; it is not backed by a live Decodex daemon. |
 | `scripts/github/` | Deterministic GitHub collection, normalization, render, validation, and sync scripts for public signal content. |
 | `scripts/config/` | Repository automation scripts for config-derived artifacts. |
@@ -32,7 +33,7 @@ should not be treated as repository source.
 | `docs/research/` | Machine-authored research run artifacts used by shipped research tooling. |
 | `docs/plans/` | Historical saved plan artifacts from the static-site bootstrap. These are not primary authority. |
 | `dev/` | Local development helpers outside `dev/skills/`, such as the operator dashboard mock server. |
-| `assets/` | Shared static assets that are not owned by the Astro app's generated output. |
+| `assets/` | Shared static assets that are not owned by the Astro app's generated output. Decodex App icons live under `assets/app-icon/{source,composer,generated}/`; menu bar template assets live under `assets/tray-icon/{source,generated}/`; `scripts/assets/render_decodex_app_icons.swift` regenerates the icon set. |
 | `.github/` | CI, release, Pages deployment, and content-refresh workflows. |
 | `Makefile.toml` | Repo-native task names and automation entrypoints. |
 | `decodex.example.toml` | Redacted template for a project `project.toml`; live project contracts live under `~/.codex/decodex/projects/<service-id>/`. |
@@ -163,4 +164,5 @@ structure:
 - `site/.astro/`: Astro local cache
 - `.worktrees/`: local Git worktree lanes
 - `.workspaces/`: local clone-backed workspace lanes from older workflows
-- `.codex/`: local agent/runtime state
+- `.codex/`: local agent/runtime state, except the app-local
+  `apps/decodex-app/.codex/environments/environment.toml` run action config
