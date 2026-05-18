@@ -459,6 +459,7 @@ fn sample_issue_with_project_slug_and_sort_fields(
 		#[cfg(test)]
 		project_slug: Some(_project_slug.to_owned()),
 		title: String::from("Implement orchestration"),
+		author: Some(String::from("Yvette")),
 		description: String::from("Body"),
 		priority,
 		created_at: created_at.to_owned(),

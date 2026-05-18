@@ -305,6 +305,7 @@ fn sample_issue() -> TrackerIssue {
 		#[cfg(test)]
 		project_slug: Some(String::from("decodex")),
 		title: String::from("Sample"),
+		author: None,
 		description: String::from("Body"),
 		priority: Some(3),
 		created_at: String::from("2026-03-13T04:16:17.133Z"),
