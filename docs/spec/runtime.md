@@ -109,8 +109,8 @@ Optional future expansion:
 
 Current runtime note:
 
-- The current hack-ink `decodex` runtime is a single-worker model, so project-level concurrency is one dispatch slot.
-- Active leases are the service-local claim set for that slot until a broader concurrency model lands.
+- Project-level concurrency is unlimited by default; a project may opt into a finite cap with `[execution] max_concurrent_agents = <positive integer>`.
+- Active leases are the service-local claim set for running lanes, and shared dispatch-slot locks coordinate cross-process capacity when a finite cap is configured.
 
 ## Lane model
 
