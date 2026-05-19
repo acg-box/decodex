@@ -194,7 +194,8 @@ The governing workflow lives at `docs/runbook/local-github-signal-workflow.md`.
 `decodex serve` owns the local operator listener. It serves the operator dashboard from
 `GET /` and `GET /dashboard`; published snapshots, active-run updates, and local
 dashboard controls flow through the `/dashboard/control` WebSocket. The HTTP surface is
-kept to dashboard pages/assets and `GET /livez`.
+kept to dashboard pages/assets, `GET /livez`, and the local account-control API used by
+Decodex App.
 
 For dashboard UI development, use the mock operator dashboard server:
 
