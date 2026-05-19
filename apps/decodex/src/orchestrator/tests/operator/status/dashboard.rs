@@ -416,7 +416,8 @@ fn operator_dashboard_renders_account_usage_controls() {
 
 	assert!(response.contains("function codexAccount(run)"));
 	assert!(response.contains("function codexAccounts(run)"));
-	assert!(response.contains("function renderRunAuthorInline(run)"));
+	assert!(!response.contains("function runAuthor(run)"));
+	assert!(!response.contains("function renderRunAuthorInline(run)"));
 	assert!(response.contains("function codexAccountDisplayName(account)"));
 	assert!(response.contains("function codexAccountTokenLabel(refreshStatus)"));
 	assert!(response.contains("function codexAccountWindowLabel(seconds)"));
@@ -1497,7 +1498,8 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("function snapshotWithLiveRunActivity(snapshot)"));
 	assert!(response.contains("\"issue_identifier\""));
 	assert!(response.contains("\"title\""));
-	assert!(response.contains("\"author\""));
+	assert!(!response.contains("field(\"Author\","));
+	assert!(!response.contains("\"author\",\n"));
 	assert!(response.contains("\"child_agent_activity\""));
 	assert!(response.contains("\"protocol_activity\""));
 	assert!(response.contains("!dashboardRunFieldHasValue(activityRun[key])"));
