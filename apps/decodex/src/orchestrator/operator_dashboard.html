@@ -4787,7 +4787,12 @@
 					facts.push(["Patch", "retained"]);
 				}
 				if (attention.process_alive != null) {
-					facts.push(["Process", attention.process_alive ? "alive" : "stopped"]);
+					facts.push([
+						"Process",
+						attention.process_alive
+							? "alive"
+							: processLivenessReasonLabel(attention.process_liveness_reason || "process_stopped"),
+					]);
 				}
 				if (attention.worktree_path) {
 					facts.push(["Worktree", attention.worktree_path]);
@@ -5355,7 +5360,33 @@
 				if (run.process_alive == null) {
 					return `${run.process_id} (unknown)`;
 				}
-				return `${run.process_id} (${run.process_alive ? "alive" : "stopped"})`;
+				const reason = run.process_alive
+					? "process_alive"
+					: run.process_liveness_reason || "process_stopped";
+				return `${run.process_id} (${processLivenessReasonLabel(reason)})`;
+			}
+
+			function processLivenessReasonLabel(reason) {
+				switch (reason) {
+					case "process_alive":
+						return "alive";
+					case "process_stopped":
+						return "stopped";
+					case "host_boot_id_missing":
+						return "boot identity missing";
+					case "host_boot_id_unavailable":
+						return "boot identity unavailable";
+					case "host_boot_id_mismatch":
+						return "previous boot";
+					case "process_start_identity_missing":
+						return "start identity missing";
+					case "process_start_identity_unavailable":
+						return "start identity unavailable";
+					case "process_start_identity_mismatch":
+						return "process identity changed";
+					default:
+						return reason ? reason.replaceAll("_", " ") : "unknown";
+				}
 			}
 
 			function runExecutionLivenessSummary(run) {
