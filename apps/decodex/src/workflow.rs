@@ -2,14 +2,18 @@
 
 use std::{
 	collections::{BTreeSet, HashMap},
+	fmt::{self, Formatter},
 	fs,
 	path::{Component, Path},
 };
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use serde::{Deserialize, Serialize};
+use serde::{
+	Deserialize, Deserializer, Serialize, Serializer,
+	de::{Error, Visitor},
+};
 
-use crate::prelude::{Result, eyre};
+use crate::prelude::eyre;
 
 const FRONTMATTER_DELIMITER: &str = "+++";
 
@@ -21,7 +25,7 @@ pub struct WorkflowDocument {
 }
 impl WorkflowDocument {
 	/// Parse a workflow document from Markdown text.
-	pub fn parse_markdown(input: &str) -> Result<Self> {
+	pub fn parse_markdown(input: &str) -> crate::prelude::Result<Self> {
 		let (frontmatter_input, body) = split_frontmatter(input)?;
 		let frontmatter = toml::from_str::<WorkflowFrontmatter>(&frontmatter_input)?;
 
@@ -31,7 +35,7 @@ impl WorkflowDocument {
 	}
 
 	/// Load a workflow document from the repository root.
-	pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
+	pub fn from_path(path: impl AsRef<Path>) -> crate::prelude::Result<Self> {
 		let input = fs::read_to_string(path)?;
 
 		Self::parse_markdown(&input)
@@ -48,7 +52,7 @@ impl WorkflowDocument {
 	}
 
 	/// Render the workflow back to Markdown for process-to-process handoff.
-	pub fn to_markdown(&self) -> Result<String> {
+	pub fn to_markdown(&self) -> crate::prelude::Result<String> {
 		let frontmatter = toml::to_string(&self.frontmatter)?;
 		let mut markdown = format!("{FRONTMATTER_DELIMITER}\n{frontmatter}{FRONTMATTER_DELIMITER}");
 
@@ -97,7 +101,7 @@ impl WorkflowFrontmatter {
 		&self.context
 	}
 
-	fn validate(&self) -> Result<()> {
+	fn validate(&self) -> crate::prelude::Result<()> {
 		if self.version != 1 {
 			eyre::bail!("Unsupported WORKFLOW.md version: {}", self.version);
 		}
@@ -224,7 +228,8 @@ pub struct WorkflowExecution {
 	max_attempts: u32,
 	max_turns: u32,
 	max_retry_backoff_ms: u64,
-	max_concurrent_agents: u32,
+	#[serde(default)]
+	max_concurrent_agents: WorkflowConcurrencyLimit,
 	canonicalize_commands: Vec<String>,
 	verify_commands: Vec<String>,
 	gate_profiles: HashMap<String, WorkflowGateProfile>,
@@ -267,7 +272,7 @@ impl WorkflowExecution {
 	}
 
 	/// Maximum concurrent agents allowed for this repository.
-	pub fn max_concurrent_agents(&self) -> u32 {
+	pub fn max_concurrent_agents(&self) -> WorkflowConcurrencyLimit {
 		self.max_concurrent_agents
 	}
 
@@ -310,10 +315,8 @@ impl WorkflowExecution {
 		self.default_repo_gate()
 	}
 
-	fn validate(&self) -> Result<()> {
-		if self.max_concurrent_agents == 0 {
-			eyre::bail!("`execution.max_concurrent_agents` must be greater than zero.");
-		}
+	fn validate(&self) -> crate::prelude::Result<()> {
+		self.max_concurrent_agents.validate()?;
 
 		validate_string_entries("execution.canonicalize_commands", &self.canonicalize_commands)?;
 		validate_string_entries("execution.verify_commands", &self.verify_commands)?;
@@ -363,7 +366,7 @@ impl WorkflowWorkspaceHooks {
 		self.timeout_seconds
 	}
 
-	fn validate(&self) -> Result<()> {
+	fn validate(&self) -> crate::prelude::Result<()> {
 		if self.timeout_seconds == 0 {
 			eyre::bail!("`execution.workspace_hooks.timeout_seconds` must be greater than zero.");
 		}
@@ -411,7 +414,7 @@ impl WorkflowGateProfile {
 		&self.verify_commands
 	}
 
-	fn validate(&self, profile_name: &str) -> Result<()> {
+	fn validate(&self, profile_name: &str) -> crate::prelude::Result<()> {
 		if self.paths.is_empty() {
 			eyre::bail!("`execution.gate_profiles.{profile_name}.paths` must not be empty.");
 		}
@@ -440,7 +443,10 @@ impl WorkflowGateProfile {
 		Ok(())
 	}
 
-	fn matches_changed_files(&self, changed_files: &BTreeSet<String>) -> Result<bool> {
+	fn matches_changed_files(
+		&self,
+		changed_files: &BTreeSet<String>,
+	) -> crate::prelude::Result<bool> {
 		let path_set = self.compile_path_set("runtime")?;
 
 		match self.match_mode {
@@ -449,7 +455,7 @@ impl WorkflowGateProfile {
 		}
 	}
 
-	fn compile_path_set(&self, profile_name: &str) -> Result<GlobSet> {
+	fn compile_path_set(&self, profile_name: &str) -> crate::prelude::Result<GlobSet> {
 		let mut builder = GlobSetBuilder::new();
 
 		for path in &self.paths {
@@ -504,8 +510,118 @@ impl WorkflowContext {
 		&self.read_first
 	}
 
-	fn validate(&self) -> Result<()> {
+	fn validate(&self) -> crate::prelude::Result<()> {
 		validate_repo_relative_paths("context.read_first", &self.read_first)
+	}
+}
+
+struct WorkflowConcurrencyLimitVisitor;
+impl<'de> Visitor<'de> for WorkflowConcurrencyLimitVisitor {
+	type Value = WorkflowConcurrencyLimit;
+
+	fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+		formatter.write_str("a positive integer or \"unlimited\"")
+	}
+
+	fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E>
+	where
+		E: Error,
+	{
+		if value <= 0 {
+			return Err(E::custom(
+				"`execution.max_concurrent_agents` must be greater than zero or \"unlimited\".",
+			));
+		}
+
+		u32::try_from(value)
+			.map(WorkflowConcurrencyLimit::Limited)
+			.map_err(|_error| E::custom("`execution.max_concurrent_agents` exceeds `u32::MAX`."))
+	}
+
+	fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+	where
+		E: Error,
+	{
+		if value == 0 {
+			return Err(E::custom(
+				"`execution.max_concurrent_agents` must be greater than zero or \"unlimited\".",
+			));
+		}
+
+		u32::try_from(value)
+			.map(WorkflowConcurrencyLimit::Limited)
+			.map_err(|_error| E::custom("`execution.max_concurrent_agents` exceeds `u32::MAX`."))
+	}
+
+	fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+	where
+		E: Error,
+	{
+		if value == "unlimited" {
+			return Ok(WorkflowConcurrencyLimit::Unlimited);
+		}
+
+		Err(E::custom(
+			"`execution.max_concurrent_agents` must be a positive integer or \"unlimited\".",
+		))
+	}
+}
+
+/// Project-level concurrent agent limit.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum WorkflowConcurrencyLimit {
+	/// No project-level concurrent-agent cap.
+	#[default]
+	Unlimited,
+	/// A positive project-level concurrent-agent cap.
+	Limited(u32),
+}
+impl WorkflowConcurrencyLimit {
+	/// Return whether `active_count` still leaves dispatch capacity.
+	pub fn has_capacity(self, active_count: usize) -> bool {
+		match self {
+			Self::Unlimited => true,
+			Self::Limited(limit) => active_count < limit as usize,
+		}
+	}
+
+	/// Return the finite dispatch-slot limit, or `None` when unlimited.
+	pub fn dispatch_slot_limit(self) -> Option<u32> {
+		match self {
+			Self::Unlimited => None,
+			Self::Limited(limit) => Some(limit),
+		}
+	}
+
+	fn validate(self) -> crate::prelude::Result<()> {
+		if matches!(self, Self::Limited(0)) {
+			eyre::bail!(
+				"`execution.max_concurrent_agents` must be greater than zero or \"unlimited\"."
+			);
+		}
+
+		Ok(())
+	}
+}
+
+impl<'de> Deserialize<'de> for WorkflowConcurrencyLimit {
+	fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		deserializer.deserialize_any(WorkflowConcurrencyLimitVisitor)
+	}
+}
+
+impl Serialize for WorkflowConcurrencyLimit {
+	fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		match self {
+			Self::Unlimited => serializer.serialize_str("unlimited"),
+			Self::Limited(limit) => serializer.serialize_u32(*limit),
+		}
 	}
 }
 
@@ -525,7 +641,7 @@ pub enum WorkflowGateMatchMode {
 	Only,
 }
 
-fn validate_string_entries(field_name: &str, values: &[String]) -> Result<()> {
+fn validate_string_entries(field_name: &str, values: &[String]) -> crate::prelude::Result<()> {
 	for value in values {
 		let trimmed = value.trim();
 
@@ -540,7 +656,7 @@ fn validate_string_entries(field_name: &str, values: &[String]) -> Result<()> {
 	Ok(())
 }
 
-fn validate_repo_relative_paths(field_name: &str, values: &[String]) -> Result<()> {
+fn validate_repo_relative_paths(field_name: &str, values: &[String]) -> crate::prelude::Result<()> {
 	validate_string_entries(field_name, values)?;
 
 	for value in values {
@@ -559,7 +675,7 @@ fn validate_repo_relative_paths(field_name: &str, values: &[String]) -> Result<(
 	Ok(())
 }
 
-fn split_frontmatter(input: &str) -> Result<(String, String)> {
+fn split_frontmatter(input: &str) -> crate::prelude::Result<(String, String)> {
 	let input = input.trim_start_matches(['\u{feff}', '\n', '\r']);
 	let mut lines = input.lines();
 
@@ -593,7 +709,7 @@ fn split_frontmatter(input: &str) -> Result<(String, String)> {
 	Ok((frontmatter_lines.join("\n"), body))
 }
 
-fn validate_trimmed_non_empty(field_name: &str, value: &str) -> Result<()> {
+fn validate_trimmed_non_empty(field_name: &str, value: &str) -> crate::prelude::Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("`{field_name}` must not be empty.");
 	}
@@ -604,7 +720,10 @@ fn validate_trimmed_non_empty(field_name: &str, value: &str) -> Result<()> {
 	Ok(())
 }
 
-fn validate_non_empty_string_list(field_name: &str, values: &[String]) -> Result<()> {
+fn validate_non_empty_string_list(
+	field_name: &str,
+	values: &[String],
+) -> crate::prelude::Result<()> {
 	if values.is_empty() {
 		eyre::bail!("`{field_name}` must not be empty.");
 	}
@@ -625,7 +744,9 @@ mod tests {
 
 	use crate::{
 		prelude::Result,
-		workflow::{TrackerProvider, WorkflowDocument, WorkflowGateMatchMode},
+		workflow::{
+			TrackerProvider, WorkflowConcurrencyLimit, WorkflowDocument, WorkflowGateMatchMode,
+		},
 	};
 
 	enum Edit<'a> {
@@ -694,7 +815,10 @@ Use `cargo make`.
 		assert_eq!(document.frontmatter().execution().max_attempts(), 3);
 		assert_eq!(document.frontmatter().execution().max_turns(), 4);
 		assert_eq!(document.frontmatter().execution().max_retry_backoff_ms(), 300_000);
-		assert_eq!(document.frontmatter().execution().max_concurrent_agents(), 2);
+		assert_eq!(
+			document.frontmatter().execution().max_concurrent_agents(),
+			WorkflowConcurrencyLimit::Limited(2)
+		);
 		assert_eq!(document.frontmatter().execution().canonicalize_commands(), ["cargo make fmt"]);
 		assert_eq!(document.frontmatter().execution().verify_commands(), ["cargo make test"]);
 		assert_eq!(
@@ -1617,6 +1741,33 @@ Then validate the lane.
 		.expect("rendered workflow should parse");
 
 		assert_eq!(reparsed, document);
+	}
+
+	#[test]
+	fn parses_unlimited_global_concurrency_limit() {
+		let document = parse_valid_workflow_with(|markdown| {
+			*markdown = markdown
+				.replace("max_concurrent_agents = 1", "max_concurrent_agents = \"unlimited\"");
+		})
+		.expect("unlimited global concurrency should parse");
+
+		assert_eq!(
+			document.frontmatter().execution().max_concurrent_agents(),
+			WorkflowConcurrencyLimit::Unlimited
+		);
+	}
+
+	#[test]
+	fn defaults_missing_global_concurrency_limit_to_unlimited() {
+		let document = parse_valid_workflow_with(|markdown| {
+			*markdown = markdown.replace("max_concurrent_agents = 1\n", "");
+		})
+		.expect("missing global concurrency should parse");
+
+		assert_eq!(
+			document.frontmatter().execution().max_concurrent_agents(),
+			WorkflowConcurrencyLimit::Unlimited
+		);
 	}
 
 	#[test]
