@@ -142,7 +142,7 @@ At minimum, the target repo should define:
 - `[execution] max_attempts`
 - `[execution] max_turns`
 - `[execution] max_retry_backoff_ms`
-- `[execution] max_concurrent_agents`
+- optional `[execution] max_concurrent_agents`; omit it, or set it to `"unlimited"`, to run without a project-level concurrent-agent cap
 - optional `[context] read_first = [...]` only when the repo truly needs extra repo-local files loaded in addition to the `WORKFLOW.md` body; treat this as a Decodex-local extension, not as the primary policy surface
 
 Child-run execution policy is not part of the project-owned `WORKFLOW.md` contract. `decodex` must let `codex app-server` inherit sandbox and approval behavior from the active Codex runtime instead of pinning repo-local overrides.
