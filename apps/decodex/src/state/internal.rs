@@ -1,5 +1,6 @@
 #[cfg(target_os = "macos")]
 use std::mem::MaybeUninit;
+use std::sync::atomic::AtomicU64;
 
 use libc::FD_CLOEXEC;
 use libc::F_GETFD;
@@ -12,6 +13,8 @@ use libc::{
 };
 #[cfg(target_os = "macos")]
 use process::Command;
+
+static RUN_ACTIVITY_MARKER_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct EffectiveRuntimeMarker<'a> {
 	pub(crate) thread_id: Option<&'a str>,
@@ -1855,7 +1858,6 @@ fn write_run_activity_marker_at(
 	last_activity_unix_epoch: i64,
 	last_protocol_activity_unix_epoch: Option<i64>,
 ) -> Result<()> {
-	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
 	let existing_marker = read_run_activity_marker_record(worktree_path)?;
 	let same_run_marker = existing_marker
 		.as_ref()
@@ -1873,7 +1875,7 @@ fn write_run_activity_marker_at(
 		marker.retry_ready_at_unix_epoch = same_run_marker.retry_ready_at_unix_epoch;
 	}
 
-	fs::write(marker_path, serialize_run_activity_marker_record(&marker))?;
+	write_run_activity_marker_record(worktree_path, &marker)?;
 
 	Ok(())
 }
@@ -2006,12 +2008,47 @@ fn write_run_activity_marker_record(
 	worktree_path: &Path,
 	marker: &RunActivityMarkerRecord,
 ) -> Result<()> {
-	fs::write(
-		worktree_path.join(RUN_ACTIVITY_MARKER_FILE),
-		serialize_run_activity_marker_record(marker),
-	)?;
+	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
+
+	write_run_activity_marker_body_atomic(&marker_path, &serialize_run_activity_marker_record(marker))?;
 
 	Ok(())
+}
+
+fn write_run_activity_marker_body_atomic(marker_path: &Path, body: &str) -> Result<()> {
+	let parent = marker_path.parent().ok_or_else(|| {
+		eyre::eyre!("activity marker path `{}` has no parent directory", marker_path.display())
+	})?;
+	let sequence = RUN_ACTIVITY_MARKER_WRITE_SEQUENCE.fetch_add(
+		1,
+		std::sync::atomic::Ordering::Relaxed,
+	);
+	let temp_path = parent.join(format!(
+		".{RUN_ACTIVITY_MARKER_FILE}.{}.{}.tmp",
+		process::id(),
+		sequence,
+	));
+	let result = (|| -> Result<()> {
+		let mut temp_file = OpenOptions::new()
+			.write(true)
+			.create_new(true)
+			.open(&temp_path)?;
+
+		temp_file.write_all(body.as_bytes())?;
+		temp_file.flush()?;
+
+		drop(temp_file);
+
+		fs::rename(&temp_path, marker_path)?;
+
+		Ok(())
+	})();
+
+	if result.is_err() {
+		let _ = fs::remove_file(&temp_path);
+	}
+
+	result
 }
 
 fn serialize_run_activity_marker_record(marker: &RunActivityMarkerRecord) -> String {
@@ -2189,7 +2226,7 @@ fn protocol_event_summary_from_events(events: &[ProtocolEventRecord]) -> Protoco
 	summary
 }
 
-fn compare_attempt_records(left: &RunAttemptRecord, right: &RunAttemptRecord) -> Ordering {
+fn compare_attempt_records(left: &RunAttemptRecord, right: &RunAttemptRecord) -> cmp::Ordering {
 	left.attempt_number
 		.cmp(&right.attempt_number)
 		.then_with(|| left.updated_at_unix.cmp(&right.updated_at_unix))
@@ -2199,14 +2236,14 @@ fn compare_attempt_records(left: &RunAttemptRecord, right: &RunAttemptRecord) ->
 fn compare_linear_execution_event_runtime_records(
 	left: &LinearExecutionEventRuntimeRecord,
 	right: &LinearExecutionEventRuntimeRecord,
-) -> Ordering {
+) -> cmp::Ordering {
 	left.event_unix
 		.cmp(&right.event_unix)
 		.then_with(|| left.recorded_at_unix.cmp(&right.recorded_at_unix))
 		.then_with(|| left.record.idempotency_key.cmp(&right.record.idempotency_key))
 }
 
-fn compare_project_run_status(left: &ProjectRunStatus, right: &ProjectRunStatus) -> Ordering {
+fn compare_project_run_status(left: &ProjectRunStatus, right: &ProjectRunStatus) -> cmp::Ordering {
 	right
 		.active_lease
 		.cmp(&left.active_lease)
