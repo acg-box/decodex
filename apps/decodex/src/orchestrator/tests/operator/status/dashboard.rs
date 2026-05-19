@@ -414,15 +414,18 @@ fn operator_dashboard_active_run_status_copy_stays_concise() {
 fn operator_dashboard_renders_account_usage_controls() {
 	let response = dashboard_response();
 
-	assert!(response.contains("function codexAccount(run)"));
+	assert!(response.contains("function codexAccount(run, snapshot = null)"));
 	assert!(response.contains("function codexAccounts(run)"));
+	assert!(response.contains("function selectedDashboardAccount(snapshot)"));
 	assert!(!response.contains("function runAuthor(run)"));
 	assert!(!response.contains("function renderRunAuthorInline(run)"));
 	assert!(response.contains("function codexAccountDisplayName(account)"));
 	assert!(response.contains("function codexAccountTokenLabel(refreshStatus)"));
 	assert!(response.contains("function codexAccountWindowLabel(seconds)"));
 	assert!(response.contains("function codexAccountStatusTone(account)"));
-	assert!(response.contains("function renderRunCodexAccountInline(run)"));
+	assert!(response.contains("function renderRunCodexAccountInline(run, snapshot)"));
+	assert!(response.contains("function renderRunMetaLine(run, snapshot = null)"));
+	assert!(response.contains("run account capture pending"));
 	assert!(response.contains("function renderAccountPool(snapshot)"));
 	assert!(response.contains("function renderAccountModeControl(snapshot)"));
 	assert!(response.contains("nodes.accountModeMeta.textContent = title;"));
@@ -806,12 +809,12 @@ fn operator_dashboard_accounts_keeps_identity_rows_compact() {
 	assert!(!response.contains("<path fill=\"currentColor\" d=\"M3.25 13.15c.48-2.65"));
 	assert!(!response.contains("fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M3.9 2.2h8.2"));
 	assert!(!response.contains("<circle cx=\"8\" cy=\"5.1\""));
-	assert!(response.contains("<strong class=\"account-name${identityClass}\" title=\"${escapeHtml(displayTitle)}\">${escapeHtml(visibleName)}</strong>"));
+	assert!(response.contains("<strong class=\"account-name${identityClass}\" title=\"${escapeHtml(pendingTitle)}\">${escapeHtml(visibleName)}</strong>"));
 	assert!(!response.contains("<strong class=\"machine-text\">${escapeHtml(`${value}%`)}</strong>"));
 	assert!(!response.contains("function codexAccountSecondaryLabel(account)"));
 	assert!(response.contains("const visibleName = codexAccountVisibleName(account);"));
 	assert!(response.contains("const displayTitle = codexAccountDisplayTitle(account);"));
-	assert!(response.contains("title=\"${escapeHtml(displayTitle)}\">${escapeHtml(visibleName)}</strong>"));
+	assert!(response.contains("title=\"${escapeHtml(pendingTitle)}\">${escapeHtml(visibleName)}</strong>"));
 	assert!(response.contains("text.startsWith(\"...\") && text.indexOf(\"...\", 3) === -1"));
 }
 
@@ -875,8 +878,8 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	assert!(!response.contains("<div class=\"account-quota-line\">"));
 	assert!(response.contains("<div class=\"account-window is-${escapeHtml(prefix)}${toneClass}\""));
 	assert!(!response.contains("codexAccountStatusBit(account)"));
-	assert!(response.contains("renderRunCodexAccountInline(run)"));
-	assert!(response.contains("function renderRunMetaLine(run)"));
+	assert!(response.contains("renderRunCodexAccountInline(run, snapshot)"));
+	assert!(response.contains("function renderRunMetaLine(run, snapshot = null)"));
 }
 
 #[test]
@@ -897,7 +900,9 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(!response.contains(
 		"field(\"Accounts\", codexAccountPoolDebugSummary(codexAccounts(run)))"
 	));
-	assert!(response.contains("field(\"Account\", codexAccountDebugSummary(codexAccount(run)))"));
+	assert!(response.contains(
+		"field(\"Account\", codexAccountDebugSummary(codexAccount(run, snapshot)))"
+	));
 	assert!(response.contains("facts.push([\"Account\", codexAccountHistorySummary(codexAccount(run))])"));
 	assert!(!response.contains("facts.push([\"Codex pool\""));
 	assert!(!response.contains("account <strong>"));
@@ -1495,11 +1500,16 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("function mergeDashboardRunRecord(snapshotRun, activityRun)"));
 	assert!(response.contains("function mergeDashboardActiveRuns(snapshot, activeRunRows)"));
 	assert!(response.contains("let dashboardLiveActiveRuns = [];"));
+	assert!(response.contains("let dashboardLiveAccounts = null;"));
+	assert!(response.contains("let dashboardLiveAccountControl = null;"));
 	assert!(response.contains("function snapshotWithLiveRunActivity(snapshot)"));
 	assert!(response.contains("\"issue_identifier\""));
 	assert!(response.contains("\"title\""));
 	assert!(!response.contains("field(\"Author\","));
 	assert!(!response.contains("\"author\",\n"));
+	assert!(response.contains("activityPayload.accountControl"));
+	assert!(response.contains("dashboardLiveAccounts = Array.isArray(payload.accounts)"));
+	assert!(response.contains("dashboardLiveAccountControl ="));
 	assert!(response.contains("\"child_agent_activity\""));
 	assert!(response.contains("\"protocol_activity\""));
 	assert!(response.contains("!dashboardRunFieldHasValue(activityRun[key])"));
@@ -1509,6 +1519,8 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	);
 	assert!(response.contains("dashboardLiveActiveRuns = payload.activeRuns"));
 	assert!(response.contains("snapshot: snapshotWithLiveRunActivity(payload.snapshot),"));
+	assert!(response.contains("account_control: accountControl,"));
+	assert!(response.contains("accounts,"));
 	assert!(response.contains("active_runs: mergedActiveRuns,"));
 	assert!(!response.contains("active_runs: activeRunRows,"));
 }
