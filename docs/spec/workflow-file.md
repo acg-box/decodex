@@ -139,9 +139,8 @@ Supported keys:
   - note: caps control-plane-owned failure retry backoff in milliseconds; clean continuation retries use a separate short fixed delay in runtime policy
 - `max_concurrent_agents`
   - type: integer or string `"unlimited"`
-  - optional
-  - default: `"unlimited"`
-  - note: when set to a positive integer, upper-bounds concurrent `decodex` runs per repository; when omitted or set to `"unlimited"`, Decodex does not apply a project-level concurrent-agent cap; Decodex does not apply separate per-state concurrency caps
+  - required
+  - note: set to `"unlimited"` to run without a project-level concurrent-agent cap; when set to a positive integer, upper-bounds concurrent `decodex` runs per repository; Decodex does not apply separate per-state concurrency caps
 - `canonicalize_commands`
   - type: array of string
   - required
