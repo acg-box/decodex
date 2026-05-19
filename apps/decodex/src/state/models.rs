@@ -388,6 +388,8 @@ pub(crate) struct RunActivityMarker {
 	run_id: String,
 	attempt_number: i64,
 	process_id: Option<u32>,
+	host_boot_id: Option<String>,
+	process_start_identity: Option<String>,
 	last_activity_unix_epoch: Option<i64>,
 	last_protocol_activity_unix_epoch: Option<i64>,
 	last_progress_unix_epoch: Option<i64>,
@@ -427,6 +429,14 @@ impl RunActivityMarker {
 
 	pub(crate) fn process_id(&self) -> Option<u32> {
 		self.process_id
+	}
+
+	pub(crate) fn host_boot_id(&self) -> Option<&str> {
+		self.host_boot_id.as_deref()
+	}
+
+	pub(crate) fn process_start_identity(&self) -> Option<&str> {
+		self.process_start_identity.as_deref()
 	}
 
 	pub(crate) fn last_activity_unix_epoch(&self) -> Option<i64> {
