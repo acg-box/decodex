@@ -427,7 +427,10 @@ fn candidate_selection_allows_multi_slot_dispatch_when_configured() {
 	)
 	.expect("workflow should parse");
 
-	assert_eq!(workflow.frontmatter().execution().max_concurrent_agents(), 2);
+	assert_eq!(
+		workflow.frontmatter().execution().max_concurrent_agents().dispatch_slot_limit(),
+		Some(2)
+	);
 
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
