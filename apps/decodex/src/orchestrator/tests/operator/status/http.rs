@@ -327,6 +327,103 @@ fn operator_dashboard_websocket_sends_current_snapshot_on_connect() {
 }
 
 #[test]
+fn operator_dashboard_websocket_sends_current_run_activity_on_connect() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
+	let address = listener.local_addr().expect("listener address should resolve");
+	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot {
+		snapshot_json: Some(
+			br#"{"project_id":"pubfi","active_runs":[],"account_control":{"mode":"balanced","account_selector":null}}"#.to_vec(),
+		),
+		last_publish_unix_epoch: Some(1_774_000_000),
+	}));
+	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let account = CodexAccountActivitySummary {
+		account_fingerprint: String::from("acct-1"),
+		status: String::from("available"),
+		refresh_status: String::from("ok"),
+		..Default::default()
+	};
+	let dashboard_events = DashboardEventHub::default();
+	let server_snapshot = Arc::clone(&snapshot);
+	let server_state_store = Arc::clone(&state_store);
+	let server_dashboard_events = dashboard_events.clone();
+
+	state_store.upsert_project(&registration).expect("project should register");
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease(config.service_id(), &issue.id, "run-1", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_account_marker(
+		&worktree_path,
+		&CodexAccountMarker {
+			run_id: "run-1",
+			attempt_number: 1,
+			account: &account,
+			accounts: slice::from_ref(&account),
+		},
+	)
+	.expect("account marker should write");
+
+	let server = thread::spawn(move || {
+		let (stream, _) = listener.accept().expect("listener should accept a connection");
+
+		orchestrator::handle_operator_state_endpoint_connection(
+			stream,
+			&server_snapshot,
+			&server_dashboard_events,
+			&server_state_store,
+		)
+		.expect("websocket handler should complete after client disconnect");
+	});
+	let (mut client, response, mut frame) = open_dashboard_websocket_client(address);
+
+	assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
+
+	let _initial_snapshot = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "snapshot"
+	});
+	let activity = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "runActivity"
+	});
+
+	assert_eq!(activity["payload"]["activeRuns"][0]["run_id"], "run-1");
+	assert_eq!(
+		activity["payload"]["activeRuns"][0]["account"]["account_fingerprint"],
+		"acct-1"
+	);
+	assert_eq!(
+		activity["payload"]["activeRuns"][0]["accounts"][0]["account_fingerprint"],
+		"acct-1"
+	);
+
+	drop(client);
+
+	dashboard_events.close_clients_for_test();
+	server.join().expect("server thread should complete");
+}
+
+#[test]
 fn operator_dashboard_websocket_accepts_subscription_and_project_pause_control() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
