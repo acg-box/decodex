@@ -802,6 +802,7 @@ fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_runnin
 	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
 	state::write_run_activity_marker_for_process(&worktree_path, "run-1", 1, process::id())
 		.expect("live process marker should write");
+
 	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
@@ -843,6 +844,7 @@ fn operator_status_snapshot_counts_reused_pid_as_attention_not_running() {
 	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
 	state::write_run_activity_marker_for_process(&worktree_path, "run-1", 1, process::id())
 		.expect("live process marker should write");
+
 	rewrite_run_activity_marker_process_start_identity(&worktree_path, "previous-process-start");
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)

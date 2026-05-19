@@ -63,6 +63,7 @@ where
 	sections.push(String::from(
 		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/1` JSON commit message.\n- Required fields: `schema`, `summary`, and `authority`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- Optional fields: `related` and `breaking`.\n- Do not encode landing mode, CI status, closeout state, or other process-state fields in the commit message.",
 	));
+
 	if let Some(recovery_context) = build_retry_recovery_context(issue_run.dispatch_mode) {
 		sections.push(recovery_context);
 	}
