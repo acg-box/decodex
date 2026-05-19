@@ -374,9 +374,10 @@ impl RunCommand {
 
 #[derive(Debug, Args)]
 struct ServeCommand {
-	/// Poll interval between control-plane ticks, for example `60s` or `5m`.
-	#[arg(long, value_name = "INTERVAL", default_value = "60s", value_parser = parse_duration_arg)]
-	interval: Duration,
+	/// Poll interval between control-plane ticks, for example `60s` or `5m`; unavailable with
+	/// `--api-only`.
+	#[arg(long, value_name = "INTERVAL", value_parser = parse_duration_arg)]
+	interval: Option<Duration>,
 	/// Operator UI listen address.
 	#[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8912")]
 	listen_address: String,
@@ -386,9 +387,19 @@ struct ServeCommand {
 }
 impl ServeCommand {
 	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+		if self.api_only && self.interval.is_some() {
+			eyre::bail!(
+				"serve --api-only does not accept --interval because API-only mode does not poll projects."
+			);
+		}
+
 		orchestrator::run_control_plane(ServeRequest {
 			config_path,
-			poll_interval: self.interval,
+			poll_interval: if self.api_only {
+				None
+			} else {
+				Some(self.interval.unwrap_or_else(|| Duration::from_secs(60)))
+			},
 			listen_address: &self.listen_address,
 			api_only: self.api_only,
 		})
@@ -868,7 +879,7 @@ mod tests {
 		assert!(matches!(
 			cli.command,
 			Command::Serve(ServeCommand { interval, listen_address, api_only })
-				if interval == Duration::from_secs(30)
+				if interval == Some(Duration::from_secs(30))
 					&& listen_address == "127.0.0.1:9000"
 					&& !api_only
 		));
@@ -878,7 +889,24 @@ mod tests {
 	fn parses_serve_api_only() {
 		let cli = Cli::parse_from(["decodex", "serve", "--api-only"]);
 
-		assert!(matches!(cli.command, Command::Serve(ServeCommand { api_only: true, .. })));
+		assert!(matches!(
+			cli.command,
+			Command::Serve(ServeCommand { interval: None, api_only: true, .. })
+		));
+	}
+
+	#[test]
+	fn rejects_serve_api_only_with_interval() {
+		let cli = Cli::parse_from(["decodex", "serve", "--api-only", "--interval", "30s"]);
+		let Command::Serve(command) = cli.command else {
+			panic!("expected serve command");
+		};
+		let error =
+			command.run(None).expect_err("api-only serve must reject interval configuration");
+		let message = error.to_string();
+
+		assert!(message.contains("--api-only"));
+		assert!(message.contains("--interval"));
 	}
 
 	#[test]
