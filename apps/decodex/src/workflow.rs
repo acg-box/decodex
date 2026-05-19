@@ -519,17 +519,20 @@ impl<'de> Visitor<'de> for WorkflowConcurrencyLimitVisitor {
 	type Value = WorkflowConcurrencyLimit;
 
 	fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-		formatter.write_str("a positive integer or \"unlimited\"")
+		formatter.write_str("an integer greater than or equal to zero")
 	}
 
 	fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E>
 	where
 		E: Error,
 	{
-		if value <= 0 {
+		if value < 0 {
 			return Err(E::custom(
-				"`execution.max_concurrent_agents` must be greater than zero or \"unlimited\".",
+				"`execution.max_concurrent_agents` must be greater than or equal to zero.",
 			));
+		}
+		if value == 0 {
+			return Ok(WorkflowConcurrencyLimit::Unlimited);
 		}
 
 		u32::try_from(value)
@@ -542,9 +545,7 @@ impl<'de> Visitor<'de> for WorkflowConcurrencyLimitVisitor {
 		E: Error,
 	{
 		if value == 0 {
-			return Err(E::custom(
-				"`execution.max_concurrent_agents` must be greater than zero or \"unlimited\".",
-			));
+			return Ok(WorkflowConcurrencyLimit::Unlimited);
 		}
 
 		u32::try_from(value)
@@ -552,16 +553,12 @@ impl<'de> Visitor<'de> for WorkflowConcurrencyLimitVisitor {
 			.map_err(|_error| E::custom("`execution.max_concurrent_agents` exceeds `u32::MAX`."))
 	}
 
-	fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+	fn visit_str<E>(self, _value: &str) -> std::result::Result<Self::Value, E>
 	where
 		E: Error,
 	{
-		if value == "unlimited" {
-			return Ok(WorkflowConcurrencyLimit::Unlimited);
-		}
-
 		Err(E::custom(
-			"`execution.max_concurrent_agents` must be a positive integer or \"unlimited\".",
+			"`execution.max_concurrent_agents` must be an integer greater than or equal to zero.",
 		))
 	}
 }
@@ -594,7 +591,7 @@ impl WorkflowConcurrencyLimit {
 	fn validate(self) -> crate::prelude::Result<()> {
 		if matches!(self, Self::Limited(0)) {
 			eyre::bail!(
-				"`execution.max_concurrent_agents` must be greater than zero or \"unlimited\"."
+				"`execution.max_concurrent_agents` finite limits must be greater than zero."
 			);
 		}
 
@@ -617,7 +614,7 @@ impl Serialize for WorkflowConcurrencyLimit {
 		S: Serializer,
 	{
 		match self {
-			Self::Unlimited => serializer.serialize_str("unlimited"),
+			Self::Unlimited => serializer.serialize_u32(0),
 			Self::Limited(limit) => serializer.serialize_u32(*limit),
 		}
 	}
@@ -1747,21 +1744,40 @@ Then validate the lane.
 	}
 
 	#[test]
-	fn parses_unlimited_global_concurrency_limit() {
+	fn parses_zero_global_concurrency_limit_as_unlimited() {
 		let document = parse_valid_workflow_with(|markdown| {
-			*markdown = markdown
-				.replace("max_concurrent_agents = 1", "max_concurrent_agents = \"unlimited\"");
+			*markdown = markdown.replace("max_concurrent_agents = 1", "max_concurrent_agents = 0");
 		})
-		.expect("unlimited global concurrency should parse");
+		.expect("zero global concurrency should parse");
 
 		assert_eq!(
 			document.frontmatter().execution().max_concurrent_agents(),
 			WorkflowConcurrencyLimit::Unlimited
 		);
+		assert!(
+			document
+				.to_markdown()
+				.expect("workflow markdown should render")
+				.contains("max_concurrent_agents = 0")
+		);
 	}
 
 	#[test]
-	fn rejects_zero_global_concurrency_limit() {
+	fn rejects_string_global_concurrency_limit() {
+		let result = parse_valid_workflow_with(|markdown| {
+			*markdown = markdown
+				.replace("max_concurrent_agents = 1", "max_concurrent_agents = \"unlimited\"");
+		});
+		let error = result.expect_err("string global concurrency should be invalid");
+
+		assert!(
+			error.to_string().contains("must be an integer greater than or equal to zero"),
+			"unexpected error: {error:?}"
+		);
+	}
+
+	#[test]
+	fn rejects_negative_global_concurrency_limit() {
 		let result = WorkflowDocument::parse_markdown(
 			r#"
 +++
@@ -1785,7 +1801,7 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 0
+max_concurrent_agents = -1
 gate_profiles = {}
 canonicalize_commands = []
 verify_commands = []
@@ -1800,8 +1816,12 @@ read_first = []
 +++
 			"#,
 		);
+		let error = result.expect_err("negative global concurrency should be invalid");
 
-		assert!(result.is_err(), "zero global concurrency should be invalid");
+		assert!(
+			error.to_string().contains("must be greater than or equal to zero"),
+			"unexpected error: {error:?}"
+		);
 	}
 
 	fn parse_valid_workflow_with(rewrite: impl FnOnce(&mut String)) -> Result<WorkflowDocument> {
