@@ -97,6 +97,57 @@ const TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN: &str = "someone-else";
 const TEST_SERVICE_ID: &str = "pubfi";
 const TEST_PROJECT_CONFIG_FILE: &str = "project.toml";
 
+fn rewrite_run_activity_marker_host_boot_id(worktree_path: &Path, host_boot_id: &str) {
+	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
+	let marker_body = fs::read_to_string(&marker_path).expect("marker body should load");
+	let mut host_boot_id_written = false;
+	let mut rewritten = marker_body
+		.lines()
+		.map(|line| {
+			if line.starts_with("host_boot_id=") {
+				host_boot_id_written = true;
+
+				format!("host_boot_id={host_boot_id}")
+			} else {
+				line.to_owned()
+			}
+		})
+		.collect::<Vec<_>>();
+
+	if !host_boot_id_written {
+		rewritten.push(format!("host_boot_id={host_boot_id}"));
+	}
+
+	fs::write(&marker_path, rewritten.join("\n") + "\n").expect("marker body should rewrite");
+}
+
+fn rewrite_run_activity_marker_process_start_identity(
+	worktree_path: &Path,
+	process_start_identity: &str,
+) {
+	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
+	let marker_body = fs::read_to_string(&marker_path).expect("marker body should load");
+	let mut process_start_identity_written = false;
+	let mut rewritten = marker_body
+		.lines()
+		.map(|line| {
+			if line.starts_with("process_start_identity=") {
+				process_start_identity_written = true;
+
+				format!("process_start_identity={process_start_identity}")
+			} else {
+				line.to_owned()
+			}
+		})
+		.collect::<Vec<_>>();
+
+	if !process_start_identity_written {
+		rewritten.push(format!("process_start_identity={process_start_identity}"));
+	}
+
+	fs::write(&marker_path, rewritten.join("\n") + "\n").expect("marker body should rewrite");
+}
+
 struct FakeTracker {
 	listed_issues: Vec<TrackerIssue>,
 	identifier_lookup_issues: Option<Vec<TrackerIssue>>,

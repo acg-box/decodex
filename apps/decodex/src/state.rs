@@ -8,7 +8,7 @@ use std::{
 	io::{Error, ErrorKind, Read, Seek, SeekFrom, Write},
 	path::{Path, PathBuf},
 	process,
-	sync::{Mutex, MutexGuard},
+	sync::{Mutex, MutexGuard, OnceLock},
 	time::Duration,
 };
 
