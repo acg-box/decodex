@@ -53,41 +53,71 @@ use crate::orchestrator::{ReviewHandoffMarker, ReviewOrchestrationMarker};
 
 // Workflow reload, intake eligibility, prompting, and candidate selection.
 include!("tests/intake/workflow_reload.rs");
+
 include!("tests/intake/eligibility.rs");
+
 include!("tests/intake/run_and_prompting.rs");
+
 include!("tests/intake/prepare_issue_run.rs");
+
 include!("tests/intake/candidate_selection.rs");
 
 // Retry scheduling, runtime failure classes, and recovery cleanup.
 include!("tests/retry/scheduling.rs");
+
 include!("tests/retry/selection.rs");
+
 include!("tests/runtime/repo_gate.rs");
+
 include!("tests/runtime/failure.rs");
+
 include!("tests/recovery/reconciliation.rs");
+
 include!("tests/recovery/terminal_support.rs");
+
 include!("tests/recovery/closeout/dispatch.rs");
+
 include!("tests/recovery/closeout/identity.rs");
+
 include!("tests/recovery/closeout/cleanup.rs");
+
 include!("tests/recovery/terminal_failures.rs");
+
 include!("tests/recovery/runtime_reentry.rs");
 
 // Operator status plus retained post-review review/landing behavior.
 include!("tests/operator/status_support.rs");
+
 include!("tests/operator/status/control_plane.rs");
+
 include!("tests/operator/status/running_lanes.rs");
+
 include!("tests/operator/status/history.rs");
+
 include!("tests/operator/status/text.rs");
+
 include!("tests/operator/status/publishing.rs");
+
 include!("tests/operator/status/queue.rs");
+
 include!("tests/operator/status/agent_evidence.rs");
+
 include!("tests/operator/status/http.rs");
+
 include!("tests/operator/status/dashboard.rs");
+
 include!("tests/review_landing/status_support.rs");
+
 include!("tests/review_landing/status_rows.rs");
+
 include!("tests/review_landing/orchestration.rs");
+
 include!("tests/review_landing/status_markers.rs");
+
 include!("tests/review_landing/classification_review.rs");
+
 include!("tests/review_landing/classification_checks.rs");
+
 include!("tests/review_landing/review_state.rs");
 
 const TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID: i64 = 991;
@@ -96,57 +126,6 @@ const TEST_EXTERNAL_REVIEW_AUTO_MERGE_ENABLED_AT: i64 = 1_763_600_120;
 const TEST_NON_EXTERNAL_REVIEW_ACTOR_LOGIN: &str = "someone-else";
 const TEST_SERVICE_ID: &str = "pubfi";
 const TEST_PROJECT_CONFIG_FILE: &str = "project.toml";
-
-fn rewrite_run_activity_marker_host_boot_id(worktree_path: &Path, host_boot_id: &str) {
-	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
-	let marker_body = fs::read_to_string(&marker_path).expect("marker body should load");
-	let mut host_boot_id_written = false;
-	let mut rewritten = marker_body
-		.lines()
-		.map(|line| {
-			if line.starts_with("host_boot_id=") {
-				host_boot_id_written = true;
-
-				format!("host_boot_id={host_boot_id}")
-			} else {
-				line.to_owned()
-			}
-		})
-		.collect::<Vec<_>>();
-
-	if !host_boot_id_written {
-		rewritten.push(format!("host_boot_id={host_boot_id}"));
-	}
-
-	fs::write(&marker_path, rewritten.join("\n") + "\n").expect("marker body should rewrite");
-}
-
-fn rewrite_run_activity_marker_process_start_identity(
-	worktree_path: &Path,
-	process_start_identity: &str,
-) {
-	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
-	let marker_body = fs::read_to_string(&marker_path).expect("marker body should load");
-	let mut process_start_identity_written = false;
-	let mut rewritten = marker_body
-		.lines()
-		.map(|line| {
-			if line.starts_with("process_start_identity=") {
-				process_start_identity_written = true;
-
-				format!("process_start_identity={process_start_identity}")
-			} else {
-				line.to_owned()
-			}
-		})
-		.collect::<Vec<_>>();
-
-	if !process_start_identity_written {
-		rewritten.push(format!("process_start_identity={process_start_identity}"));
-	}
-
-	fs::write(&marker_path, rewritten.join("\n") + "\n").expect("marker body should rewrite");
-}
 
 struct FakeTracker {
 	listed_issues: Vec<TrackerIssue>,
@@ -356,6 +335,57 @@ impl PullRequestReviewStateInspector for FakePullRequestReviewStateInspector {
 	fn inspect_review_state(&self, _cwd: &Path, _pr_url: &str) -> Result<PullRequestReviewState> {
 		self.responses.borrow_mut().remove(0)
 	}
+}
+
+fn rewrite_run_activity_marker_host_boot_id(worktree_path: &Path, host_boot_id: &str) {
+	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
+	let marker_body = fs::read_to_string(&marker_path).expect("marker body should load");
+	let mut host_boot_id_written = false;
+	let mut rewritten = marker_body
+		.lines()
+		.map(|line| {
+			if line.starts_with("host_boot_id=") {
+				host_boot_id_written = true;
+
+				format!("host_boot_id={host_boot_id}")
+			} else {
+				line.to_owned()
+			}
+		})
+		.collect::<Vec<_>>();
+
+	if !host_boot_id_written {
+		rewritten.push(format!("host_boot_id={host_boot_id}"));
+	}
+
+	fs::write(&marker_path, rewritten.join("\n") + "\n").expect("marker body should rewrite");
+}
+
+fn rewrite_run_activity_marker_process_start_identity(
+	worktree_path: &Path,
+	process_start_identity: &str,
+) {
+	let marker_path = worktree_path.join(RUN_ACTIVITY_MARKER_FILE);
+	let marker_body = fs::read_to_string(&marker_path).expect("marker body should load");
+	let mut process_start_identity_written = false;
+	let mut rewritten = marker_body
+		.lines()
+		.map(|line| {
+			if line.starts_with("process_start_identity=") {
+				process_start_identity_written = true;
+
+				format!("process_start_identity={process_start_identity}")
+			} else {
+				line.to_owned()
+			}
+		})
+		.collect::<Vec<_>>();
+
+	if !process_start_identity_written {
+		rewritten.push(format!("process_start_identity={process_start_identity}"));
+	}
+
+	fs::write(&marker_path, rewritten.join("\n") + "\n").expect("marker body should rewrite");
 }
 
 fn install_fake_post_issue_comment_gh_response(

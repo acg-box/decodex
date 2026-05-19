@@ -1,6 +1,17 @@
+#[cfg(target_os = "macos")]
+use std::mem::MaybeUninit;
+
 use libc::FD_CLOEXEC;
 use libc::F_GETFD;
 use libc::F_SETFD;
+#[cfg(target_os = "macos")]
+use libc::{
+	c_void,
+	proc_bsdinfo,
+	PROC_PIDTBSDINFO,
+};
+#[cfg(target_os = "macos")]
+use process::Command;
 
 pub(crate) struct EffectiveRuntimeMarker<'a> {
 	pub(crate) thread_id: Option<&'a str>,
@@ -1029,6 +1040,7 @@ pub(crate) fn write_run_operation_marker_for_process(
 	let mut marker = run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
 
 	set_run_activity_marker_process_identity(&mut marker, process_id);
+
 	marker.last_activity_unix_epoch = Some(now);
 	marker.last_progress_unix_epoch = Some(now);
 	marker.current_operation = Some(current_operation.to_owned());
@@ -1384,6 +1396,25 @@ pub(crate) fn read_run_activity_marker_snapshot(
 	}))
 }
 
+pub(crate) fn current_host_boot_id() -> Option<String> {
+	static CURRENT_HOST_BOOT_ID: OnceLock<Option<String>> = OnceLock::new();
+
+	CURRENT_HOST_BOOT_ID.get_or_init(read_current_host_boot_id).clone()
+}
+
+pub(crate) fn current_process_start_identity() -> Option<String> {
+	static CURRENT_PROCESS_START_IDENTITY: OnceLock<Option<String>> = OnceLock::new();
+
+	CURRENT_PROCESS_START_IDENTITY
+		.get_or_init(|| process_start_identity(process::id()))
+		.clone()
+}
+
+pub(crate) fn process_start_identity(process_id: u32) -> Option<String> {
+	read_platform_process_start_identity(process_id)
+		.and_then(|identity| normalized_process_start_identity(&identity))
+}
+
 fn normalize_accounts(
 	selected: &CodexAccountActivitySummary,
 	accounts: &[CodexAccountActivitySummary],
@@ -1411,25 +1442,6 @@ fn accounts_from_marker_record(
 	} else {
 		marker.accounts.clone()
 	}
-}
-
-pub(crate) fn current_host_boot_id() -> Option<String> {
-	static CURRENT_HOST_BOOT_ID: OnceLock<Option<String>> = OnceLock::new();
-
-	CURRENT_HOST_BOOT_ID.get_or_init(read_current_host_boot_id).clone()
-}
-
-pub(crate) fn current_process_start_identity() -> Option<String> {
-	static CURRENT_PROCESS_START_IDENTITY: OnceLock<Option<String>> = OnceLock::new();
-
-	CURRENT_PROCESS_START_IDENTITY
-		.get_or_init(|| process_start_identity(process::id()))
-		.clone()
-}
-
-pub(crate) fn process_start_identity(process_id: u32) -> Option<String> {
-	read_platform_process_start_identity(process_id)
-		.and_then(|identity| normalized_process_start_identity(&identity))
 }
 
 fn set_run_activity_marker_process_identity(
@@ -1478,7 +1490,7 @@ fn read_platform_host_boot_id() -> Option<String> {
 
 #[cfg(target_os = "macos")]
 fn read_platform_host_boot_id() -> Option<String> {
-	let output = process::Command::new("/usr/sbin/sysctl")
+	let output = Command::new("/usr/sbin/sysctl")
 		.args(["-n", "kern.boottime"])
 		.output()
 		.ok()?;
@@ -1518,23 +1530,25 @@ fn read_platform_process_start_identity(process_id: u32) -> Option<String> {
 	let Ok(pid) = i32::try_from(process_id) else {
 		return None;
 	};
+
 	if pid <= 0 {
 		return None;
 	}
 
-	let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
-	let Ok(info_size) = i32::try_from(std::mem::size_of::<libc::proc_bsdinfo>()) else {
+	let mut info = MaybeUninit::<proc_bsdinfo>::zeroed();
+	let Ok(info_size) = i32::try_from(mem::size_of::<proc_bsdinfo>()) else {
 		return None;
 	};
 	let read_size = unsafe {
 		libc::proc_pidinfo(
 			pid,
-			libc::PROC_PIDTBSDINFO,
+			PROC_PIDTBSDINFO,
 			0,
-			info.as_mut_ptr().cast::<libc::c_void>(),
+			info.as_mut_ptr().cast::<c_void>(),
 			info_size,
 		)
 	};
+
 	if read_size != info_size {
 		return None;
 	}
@@ -1849,6 +1863,7 @@ fn write_run_activity_marker_at(
 	let mut marker = run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
 
 	set_run_activity_marker_process_identity(&mut marker, process_id);
+
 	marker.last_activity_unix_epoch = Some(last_activity_unix_epoch);
 	marker.last_protocol_activity_unix_epoch = last_protocol_activity_unix_epoch
 		.or_else(|| same_run_marker.and_then(|marker| marker.last_protocol_activity_unix_epoch));
@@ -2086,27 +2101,47 @@ fn serialize_run_activity_marker_record(marker: &RunActivityMarkerRecord) -> Str
 	{
 		body.push_str(&format!("protocol_activity={summary_json}\n"));
 	}
+
+	append_run_activity_marker_account_fields(&mut body, marker);
+	append_run_activity_marker_retry_fields(&mut body, marker);
+	append_run_activity_marker_review_policy_fields(&mut body, marker);
+
+	body
+}
+
+fn append_run_activity_marker_account_fields(
+	body: &mut String,
+	marker: &RunActivityMarkerRecord,
+) {
 	if let Some(account) = &marker.account
 		&& let Ok(summary_json) = serde_json::to_string(account)
-		{
-			body.push_str(&format!("account={summary_json}\n"));
-		}
+	{
+		body.push_str(&format!("account={summary_json}\n"));
+	}
 
-		if !marker.accounts.is_empty()
-			&& let Ok(accounts_json) = serde_json::to_string(&marker.accounts)
-		{
-			body.push_str(&format!("accounts={accounts_json}\n"));
-		}
+	if !marker.accounts.is_empty()
+		&& let Ok(accounts_json) = serde_json::to_string(&marker.accounts)
+	{
+		body.push_str(&format!("accounts={accounts_json}\n"));
+	}
+}
 
-		if let Some(retry_budget_attempt_count) = marker.retry_budget_attempt_count {
-			body.push_str(&format!("retry_budget_attempt_count={retry_budget_attempt_count}\n"));
-		}
+fn append_run_activity_marker_retry_fields(body: &mut String, marker: &RunActivityMarkerRecord) {
+	if let Some(retry_budget_attempt_count) = marker.retry_budget_attempt_count {
+		body.push_str(&format!("retry_budget_attempt_count={retry_budget_attempt_count}\n"));
+	}
 	if let Some(retry_kind) = &marker.retry_kind {
 		body.push_str(&format!("retry_kind={retry_kind}\n"));
 	}
 	if let Some(retry_ready_at_unix_epoch) = marker.retry_ready_at_unix_epoch {
 		body.push_str(&format!("retry_ready_at_unix_epoch={retry_ready_at_unix_epoch}\n"));
 	}
+}
+
+fn append_run_activity_marker_review_policy_fields(
+	body: &mut String,
+	marker: &RunActivityMarkerRecord,
+) {
 	if let Some(review_policy_phase) = &marker.review_policy_phase {
 		body.push_str(&format!("review_policy_phase={review_policy_phase}\n"));
 	}
@@ -2119,8 +2154,6 @@ fn serialize_run_activity_marker_record(marker: &RunActivityMarkerRecord) -> Str
 	if let Some(review_policy_nonclean_rounds) = marker.review_policy_nonclean_rounds {
 		body.push_str(&format!("review_policy_nonclean_rounds={review_policy_nonclean_rounds}\n"));
 	}
-
-	body
 }
 
 fn parse_marker_list(value: &str) -> Vec<String> {
