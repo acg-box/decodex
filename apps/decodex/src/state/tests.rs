@@ -1058,6 +1058,7 @@ fn assert_run_activity_marker_round_trips_clearable_auxiliary_fields() {
 
 	assert_eq!(marker.run_id(), "run-1");
 	assert_eq!(marker.attempt_number(), 1);
+
 	if let Some(host_boot_id) = state::current_host_boot_id() {
 		assert_eq!(marker.host_boot_id(), Some(host_boot_id.as_str()));
 		assert!(
@@ -1076,6 +1077,7 @@ fn assert_run_activity_marker_round_trips_clearable_auxiliary_fields() {
 			"activity markers should record the process start identity for PID-reuse-safe liveness"
 		);
 	}
+
 	assert_eq!(marker.retry_kind(), Some("failure"));
 	assert_eq!(marker.retry_ready_at_unix_epoch(), Some(12_345));
 	assert_eq!(marker.review_policy_phase(), Some("handoff"));
