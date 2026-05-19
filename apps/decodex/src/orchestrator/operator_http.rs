@@ -390,6 +390,8 @@ fn run_operator_run_activity_websocket_broadcasts(
 
 fn build_operator_run_activity_event(state_store: &StateStore) -> Result<DashboardRunActivityEvent> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+	let account_control = global_codex_account_control_status();
+	let mut accounts = Vec::new();
 	let mut active_runs = Vec::new();
 
 	for registration in state_store.list_projects()? {
@@ -411,19 +413,36 @@ fn build_operator_run_activity_event(state_store: &StateStore) -> Result<Dashboa
 			},
 		};
 		let (runs, _) = state_store.list_project_runs(project.service_id(), 0)?;
+		let mut project_active_runs = Vec::new();
 
 		for run in runs {
 			let run_status = operator_run_status(&project, run, now_unix_epoch)?;
 
 			if operator_run_counts_as_active(&run_status) {
-				active_runs.push(run_status);
+				project_active_runs.push(run_status);
 			}
 		}
+
+		if project_active_runs.is_empty() {
+			continue;
+		}
+
+		let mut account_warnings = Vec::new();
+
+		accounts.extend(codex_account_activity_summaries(&project, &mut account_warnings));
+		active_runs.extend(project_active_runs);
 	}
 
-	let fingerprint = serde_json::to_vec(&active_runs)?;
+	let fingerprint_payload = json!({
+		"accountControl": &account_control,
+		"accounts": &accounts,
+		"activeRuns": &active_runs,
+	});
+	let fingerprint = serde_json::to_vec(&fingerprint_payload)?;
 	let payload = json!({
 		"emittedAtUnixEpoch": now_unix_epoch,
+		"accountControl": account_control,
+		"accounts": accounts,
 		"activeRuns": active_runs,
 	});
 
