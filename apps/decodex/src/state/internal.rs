@@ -936,6 +936,8 @@ struct RunActivityMarkerRecord {
 	run_id: Option<String>,
 	attempt_number: Option<i64>,
 	process_id: Option<u32>,
+	host_boot_id: Option<String>,
+	process_start_identity: Option<String>,
 	last_activity_unix_epoch: Option<i64>,
 	last_protocol_activity_unix_epoch: Option<i64>,
 	last_progress_unix_epoch: Option<i64>,
@@ -1026,7 +1028,7 @@ pub(crate) fn write_run_operation_marker_for_process(
 	let existing_marker = read_run_activity_marker_record(worktree_path)?;
 	let mut marker = run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
 
-	marker.process_id = Some(process_id);
+	set_run_activity_marker_process_identity(&mut marker, process_id);
 	marker.last_activity_unix_epoch = Some(now);
 	marker.last_progress_unix_epoch = Some(now);
 	marker.current_operation = Some(current_operation.to_owned());
@@ -1066,7 +1068,7 @@ pub(crate) fn write_run_protocol_activity_marker(
 	marker.run_id = Some(activity.run_id.to_owned());
 	marker.attempt_number = Some(activity.attempt_number);
 
-	marker.process_id.get_or_insert_with(process::id);
+	ensure_run_activity_marker_current_process_identity(&mut marker);
 
 	marker.last_activity_unix_epoch = Some(now);
 	marker.last_protocol_activity_unix_epoch = Some(now);
@@ -1095,7 +1097,7 @@ pub(crate) fn write_run_account_marker(
 	marker.run_id = Some(account.run_id.to_owned());
 	marker.attempt_number = Some(account.attempt_number);
 
-	marker.process_id.get_or_insert_with(process::id);
+	ensure_run_activity_marker_current_process_identity(&mut marker);
 
 	marker.current_operation = Some(RUN_OPERATION_AGENT_RUN.to_owned());
 	marker.account = Some(account.account.clone());
@@ -1119,7 +1121,7 @@ pub(crate) fn write_run_thread_marker(
 	marker.run_id = Some(run_id.to_owned());
 	marker.attempt_number = Some(attempt_number);
 
-	marker.process_id.get_or_insert_with(process::id);
+	ensure_run_activity_marker_current_process_identity(&mut marker);
 
 	marker.current_operation = Some(RUN_OPERATION_AGENT_RUN.to_owned());
 	marker.thread_id = Some(thread_id.to_owned());
@@ -1142,7 +1144,7 @@ pub(crate) fn write_run_turn_marker(
 	marker.run_id = Some(run_id.to_owned());
 	marker.attempt_number = Some(attempt_number);
 
-	marker.process_id.get_or_insert_with(process::id);
+	ensure_run_activity_marker_current_process_identity(&mut marker);
 
 	marker.current_operation = Some(RUN_OPERATION_AGENT_RUN.to_owned());
 	marker.turn_id = Some(turn_id.to_owned());
@@ -1168,7 +1170,7 @@ pub(crate) fn write_run_thread_status_marker(
 	marker.run_id = Some(run_id.to_owned());
 	marker.attempt_number = Some(attempt_number);
 
-	marker.process_id.get_or_insert_with(process::id);
+	ensure_run_activity_marker_current_process_identity(&mut marker);
 
 	marker.current_operation = Some(RUN_OPERATION_AGENT_RUN.to_owned());
 	marker.thread_id = thread_id.map(str::to_owned).or(marker.thread_id);
@@ -1194,7 +1196,7 @@ pub(crate) fn write_run_effective_runtime_marker(
 	marker.run_id = Some(run_id.to_owned());
 	marker.attempt_number = Some(attempt_number);
 
-	marker.process_id.get_or_insert_with(process::id);
+	ensure_run_activity_marker_current_process_identity(&mut marker);
 
 	marker.current_operation = Some(RUN_OPERATION_AGENT_RUN.to_owned());
 	marker.thread_id = runtime.thread_id.map(str::to_owned).or(marker.thread_id);
@@ -1248,7 +1250,7 @@ pub(crate) fn write_run_retry_budget_attempt_count(
 	marker.run_id = Some(run_id.to_owned());
 	marker.attempt_number = Some(attempt_number);
 
-	marker.process_id.get_or_insert_with(process::id);
+	ensure_run_activity_marker_current_process_identity(&mut marker);
 
 	marker.retry_budget_attempt_count = Some(retry_budget_attempt_count);
 
@@ -1307,7 +1309,7 @@ pub(crate) fn write_run_review_policy_state(
 	marker.run_id = Some(run_id.to_owned());
 	marker.attempt_number = Some(attempt_number);
 
-	marker.process_id.get_or_insert_with(process::id);
+	ensure_run_activity_marker_current_process_identity(&mut marker);
 
 	marker.review_policy_phase = Some(review_policy_phase.to_owned());
 	marker.review_policy_status = Some(review_policy_status.to_owned());
@@ -1345,13 +1347,15 @@ pub(crate) fn read_run_activity_marker_snapshot(
 	Ok(read_run_activity_marker_record(worktree_path)?.and_then(|marker| {
 		let accounts = accounts_from_marker_record(&marker);
 
-		Some(RunActivityMarker {
-			run_id: marker.run_id?,
-			attempt_number: marker.attempt_number?,
-			process_id: marker.process_id,
-			last_activity_unix_epoch: marker.last_activity_unix_epoch,
-			last_protocol_activity_unix_epoch: marker.last_protocol_activity_unix_epoch,
-			last_progress_unix_epoch: marker.last_progress_unix_epoch,
+			Some(RunActivityMarker {
+				run_id: marker.run_id?,
+				attempt_number: marker.attempt_number?,
+				process_id: marker.process_id,
+				host_boot_id: marker.host_boot_id,
+				process_start_identity: marker.process_start_identity,
+				last_activity_unix_epoch: marker.last_activity_unix_epoch,
+				last_protocol_activity_unix_epoch: marker.last_protocol_activity_unix_epoch,
+				last_progress_unix_epoch: marker.last_progress_unix_epoch,
 			current_operation: marker.current_operation,
 			thread_id: marker.thread_id,
 			turn_id: marker.turn_id,
@@ -1407,6 +1411,148 @@ fn accounts_from_marker_record(
 	} else {
 		marker.accounts.clone()
 	}
+}
+
+pub(crate) fn current_host_boot_id() -> Option<String> {
+	static CURRENT_HOST_BOOT_ID: OnceLock<Option<String>> = OnceLock::new();
+
+	CURRENT_HOST_BOOT_ID.get_or_init(read_current_host_boot_id).clone()
+}
+
+pub(crate) fn current_process_start_identity() -> Option<String> {
+	static CURRENT_PROCESS_START_IDENTITY: OnceLock<Option<String>> = OnceLock::new();
+
+	CURRENT_PROCESS_START_IDENTITY
+		.get_or_init(|| process_start_identity(process::id()))
+		.clone()
+}
+
+pub(crate) fn process_start_identity(process_id: u32) -> Option<String> {
+	read_platform_process_start_identity(process_id)
+		.and_then(|identity| normalized_process_start_identity(&identity))
+}
+
+fn set_run_activity_marker_process_identity(
+	marker: &mut RunActivityMarkerRecord,
+	process_id: u32,
+) {
+	marker.process_id = Some(process_id);
+	marker.host_boot_id = current_host_boot_id();
+	marker.process_start_identity = if process_id == process::id() {
+		current_process_start_identity()
+	} else {
+		process_start_identity(process_id)
+	};
+}
+
+fn ensure_run_activity_marker_current_process_identity(marker: &mut RunActivityMarkerRecord) {
+	let current_process_id = process::id();
+
+	match marker.process_id {
+		None => set_run_activity_marker_process_identity(marker, current_process_id),
+		Some(process_id)
+			if process_id == current_process_id
+				&& (marker.host_boot_id.is_none() || marker.process_start_identity.is_none()) =>
+		{
+			if marker.host_boot_id.is_none() {
+				marker.host_boot_id = current_host_boot_id();
+			}
+			if marker.process_start_identity.is_none() {
+				marker.process_start_identity = current_process_start_identity();
+			}
+		},
+		Some(_) => {},
+	}
+}
+
+fn read_current_host_boot_id() -> Option<String> {
+	read_platform_host_boot_id().and_then(|boot_id| normalized_host_boot_id(&boot_id))
+}
+
+#[cfg(target_os = "linux")]
+fn read_platform_host_boot_id() -> Option<String> {
+	fs::read_to_string("/proc/sys/kernel/random/boot_id")
+		.ok()
+		.map(|boot_id| format!("linux:{boot_id}"))
+}
+
+#[cfg(target_os = "macos")]
+fn read_platform_host_boot_id() -> Option<String> {
+	let output = process::Command::new("/usr/sbin/sysctl")
+		.args(["-n", "kern.boottime"])
+		.output()
+		.ok()?;
+
+	if !output.status.success() {
+		return None;
+	}
+
+	String::from_utf8(output.stdout)
+		.ok()
+		.map(|boot_id| format!("macos:{boot_id}"))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn read_platform_host_boot_id() -> Option<String> {
+	None
+}
+
+fn normalized_host_boot_id(boot_id: &str) -> Option<String> {
+	let normalized = boot_id.split_whitespace().collect::<Vec<_>>().join(" ");
+
+	(!normalized.is_empty()).then_some(normalized)
+}
+
+#[cfg(target_os = "linux")]
+fn read_platform_process_start_identity(process_id: u32) -> Option<String> {
+	let stat = fs::read_to_string(format!("/proc/{process_id}/stat")).ok()?;
+	let comm_end = stat.rfind(')')?;
+	let after_comm = stat.get(comm_end + 2..)?;
+	let start_time = after_comm.split_whitespace().nth(19)?;
+
+	Some(format!("linux_starttime:{start_time}"))
+}
+
+#[cfg(target_os = "macos")]
+fn read_platform_process_start_identity(process_id: u32) -> Option<String> {
+	let Ok(pid) = i32::try_from(process_id) else {
+		return None;
+	};
+	if pid <= 0 {
+		return None;
+	}
+
+	let mut info = std::mem::MaybeUninit::<libc::proc_bsdinfo>::zeroed();
+	let Ok(info_size) = i32::try_from(std::mem::size_of::<libc::proc_bsdinfo>()) else {
+		return None;
+	};
+	let read_size = unsafe {
+		libc::proc_pidinfo(
+			pid,
+			libc::PROC_PIDTBSDINFO,
+			0,
+			info.as_mut_ptr().cast::<libc::c_void>(),
+			info_size,
+		)
+	};
+	if read_size != info_size {
+		return None;
+	}
+
+	let info = unsafe { info.assume_init() };
+
+	Some(format!("macos_starttime:{}:{}", info.pbi_start_tvsec, info.pbi_start_tvusec))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn read_platform_process_start_identity(_process_id: u32) -> Option<String> {
+	None
+}
+
+fn normalized_process_start_identity(identity: &str) -> Option<String> {
+	let normalized = identity.split_whitespace().collect::<Vec<_>>().join(" ");
+
+	(!normalized.is_empty()).then_some(normalized)
 }
 
 fn persist_projects(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
@@ -1702,7 +1848,7 @@ fn write_run_activity_marker_at(
 		.filter(|marker| marker.run_id.as_deref() == Some(run_id) && marker.attempt_number == Some(attempt_number));
 	let mut marker = run_activity_marker_record_for_attempt(existing_marker.as_ref(), run_id, attempt_number);
 
-	marker.process_id = Some(process_id);
+	set_run_activity_marker_process_identity(&mut marker, process_id);
 	marker.last_activity_unix_epoch = Some(last_activity_unix_epoch);
 	marker.last_protocol_activity_unix_epoch = last_protocol_activity_unix_epoch
 		.or_else(|| same_run_marker.and_then(|marker| marker.last_protocol_activity_unix_epoch));
@@ -1726,12 +1872,15 @@ fn run_activity_marker_record_for_attempt(
 		.filter(|marker| marker.run_id.as_deref() == Some(run_id) && marker.attempt_number == Some(attempt_number));
 
 	RunActivityMarkerRecord {
-		run_id: Some(run_id.to_owned()),
-		attempt_number: Some(attempt_number),
-		process_id: same_run_marker.and_then(|marker| marker.process_id),
-		last_activity_unix_epoch: same_run_marker.and_then(|marker| marker.last_activity_unix_epoch),
-		last_protocol_activity_unix_epoch: same_run_marker
-			.and_then(|marker| marker.last_protocol_activity_unix_epoch),
+			run_id: Some(run_id.to_owned()),
+			attempt_number: Some(attempt_number),
+			process_id: same_run_marker.and_then(|marker| marker.process_id),
+			host_boot_id: same_run_marker.and_then(|marker| marker.host_boot_id.clone()),
+			process_start_identity: same_run_marker
+				.and_then(|marker| marker.process_start_identity.clone()),
+			last_activity_unix_epoch: same_run_marker.and_then(|marker| marker.last_activity_unix_epoch),
+			last_protocol_activity_unix_epoch: same_run_marker
+				.and_then(|marker| marker.last_protocol_activity_unix_epoch),
 		last_progress_unix_epoch: same_run_marker.and_then(|marker| marker.last_progress_unix_epoch),
 		current_operation: same_run_marker.and_then(|marker| marker.current_operation.clone()),
 		thread_id: same_run_marker.and_then(|marker| marker.thread_id.clone()),
@@ -1786,10 +1935,12 @@ fn read_run_activity_marker_record(
 
 		match key {
 			"run_id" => marker.run_id = Some(value.to_owned()),
-			"attempt_number" => marker.attempt_number = value.parse::<i64>().ok(),
-			"process_id" => marker.process_id = value.parse::<u32>().ok(),
-			"last_activity_unix_epoch" =>
-				marker.last_activity_unix_epoch = value.parse::<i64>().ok(),
+				"attempt_number" => marker.attempt_number = value.parse::<i64>().ok(),
+				"process_id" => marker.process_id = value.parse::<u32>().ok(),
+				"host_boot_id" => marker.host_boot_id = Some(value.to_owned()),
+				"process_start_identity" => marker.process_start_identity = Some(value.to_owned()),
+				"last_activity_unix_epoch" =>
+					marker.last_activity_unix_epoch = value.parse::<i64>().ok(),
 			"last_protocol_activity_unix_epoch" =>
 				marker.last_protocol_activity_unix_epoch = value.parse::<i64>().ok(),
 			"last_progress_unix_epoch" =>
@@ -1859,6 +2010,12 @@ fn serialize_run_activity_marker_record(marker: &RunActivityMarkerRecord) -> Str
 	}
 	if let Some(process_id) = marker.process_id {
 		body.push_str(&format!("process_id={process_id}\n"));
+	}
+	if let Some(host_boot_id) = &marker.host_boot_id {
+		body.push_str(&format!("host_boot_id={host_boot_id}\n"));
+	}
+	if let Some(process_start_identity) = &marker.process_start_identity {
+		body.push_str(&format!("process_start_identity={process_start_identity}\n"));
 	}
 	if let Some(last_activity_unix_epoch) = marker.last_activity_unix_epoch {
 		body.push_str(&format!("last_activity_unix_epoch={last_activity_unix_epoch}\n"));

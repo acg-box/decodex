@@ -1,6 +1,14 @@
 const PROMPT_ONLY_INTERNAL_REVIEW_INSTRUCTION: &str =
 	"Review your work repeatedly and fix any logic bugs until no new issues are found.";
 
+fn build_retry_recovery_context(dispatch_mode: IssueDispatchMode) -> Option<String> {
+	(dispatch_mode == IssueDispatchMode::Retry).then(|| {
+		String::from(
+			"Recovery context\n- This is retry-style re-entry after a prior attempt stopped or could not prove live execution.\n- Treat the current worktree, tracker state, protocol events, and marker files as the durable source of truth. Do not assume in-memory model output or tool results survived.\n- Before editing, inspect the current branch, diff, and recent validation evidence, reconcile partial work already present, and continue from that state instead of restarting from scratch.",
+		)
+	})
+}
+
 fn review_pull_request_title(issue: &TrackerIssue) -> String {
 	let title = issue.title.trim();
 	let prefix = format!("{}:", issue.identifier);
@@ -55,6 +63,9 @@ where
 	sections.push(String::from(
 		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/1` JSON commit message.\n- Required fields: `schema`, `summary`, and `authority`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- Optional fields: `related` and `breaking`.\n- Do not encode landing mode, CI status, closeout state, or other process-state fields in the commit message.",
 	));
+	if let Some(recovery_context) = build_retry_recovery_context(issue_run.dispatch_mode) {
+		sections.push(recovery_context);
+	}
 
 	let repair_architecture_guidance =
 		build_external_repair_architecture_guidance(project, state_store, issue_run);
@@ -150,6 +161,9 @@ where
 		.tracker()
 		.resolved_completed_state();
 	let internal_review_mode = project.codex().internal_review_mode();
+	let recovery_context = build_retry_recovery_context(issue_run.dispatch_mode)
+		.map(|section| format!("{section}\n\n"))
+		.unwrap_or_default();
 
 	match issue_run.dispatch_mode {
 			IssueDispatchMode::ReviewRepair => format!(
@@ -188,12 +202,13 @@ where
 			label_tool = ISSUE_LABEL_ADD_TOOL_NAME,
 			continuation_guidance = continuation_guidance,
 		),
-			_ => format!(
-				"Resolve Linear issue {identifier}: {title}\n\nDescription:\n{description}\n\nExecution checklist:\n- Move the issue to `{in_progress}` with `{transition_tool}`. Decodex already records the run-start Linear ledger, so do not leave a separate start comment.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n- Keep discovery bounded to the minimal implementation files needed for this issue; defer broader docs or upstream reading unless a concrete ambiguity blocks the change.\n- Implement the fix in the current worktree.\n{internal_review_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- Run the repository validation needed to justify a reviewable PR.\n- Commit the lane, push branch `{branch}`, and create or update a non-draft PR titled `{pr_title}` for that branch.\n{completion_guidance}- If the issue needs manual attention, add label `{needs_attention}` with `{label_tool}`, explain why in a comment, and then call `{terminal_finalize_tool}` with path `manual_attention`. Do not call `{review_handoff_tool}` in that case; `decodex` will stop the lane as a human-required failure without automatic retry.\n- Do not move the issue directly to `{success}` with `{transition_tool}`; `decodex` will finish that writeback after its own validation passes.\n- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}",
-				identifier = issue.identifier,
-				title = issue.title,
-				description = description,
-				transition_tool = ISSUE_TRANSITION_TOOL_NAME,
+				_ => format!(
+					"Resolve Linear issue {identifier}: {title}\n\nDescription:\n{description}\n\n{recovery_context}Execution checklist:\n- Move the issue to `{in_progress}` with `{transition_tool}`. Decodex already records the run-start Linear ledger, so do not leave a separate start comment.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n- Keep discovery bounded to the minimal implementation files needed for this issue; defer broader docs or upstream reading unless a concrete ambiguity blocks the change.\n- Implement the fix in the current worktree.\n{internal_review_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- Run the repository validation needed to justify a reviewable PR.\n- Commit the lane, push branch `{branch}`, and create or update a non-draft PR titled `{pr_title}` for that branch.\n{completion_guidance}- If the issue needs manual attention, add label `{needs_attention}` with `{label_tool}`, explain why in a comment, and then call `{terminal_finalize_tool}` with path `manual_attention`. Do not call `{review_handoff_tool}` in that case; `decodex` will stop the lane as a human-required failure without automatic retry.\n- Do not move the issue directly to `{success}` with `{transition_tool}`; `decodex` will finish that writeback after its own validation passes.\n- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}",
+					identifier = issue.identifier,
+					title = issue.title,
+					description = description,
+					recovery_context = recovery_context,
+					transition_tool = ISSUE_TRANSITION_TOOL_NAME,
 				label_tool = ISSUE_LABEL_ADD_TOOL_NAME,
 				progress_checkpoint_tool = ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 				review_handoff_tool = ISSUE_REVIEW_HANDOFF_TOOL_NAME,
