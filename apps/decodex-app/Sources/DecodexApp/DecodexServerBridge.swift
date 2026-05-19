@@ -11,7 +11,10 @@ actor DecodexServerBridge {
 
 	private let defaultBaseURL = URL(string: "http://127.0.0.1:8912")!
 	private let defaultListenAddress = "127.0.0.1:8912"
+	private let liveCheckFreshness: TimeInterval = 5
 	private var serverBaseURL: URL?
+	private var liveCheckBaseURL: URL?
+	private var liveCheckedAt: Date?
 	private var startedProcess: Process?
 
 	func run<T: Decodable & Sendable>(_ request: AppBridgeRequest, as type: T.Type) async throws -> T {
@@ -20,6 +23,24 @@ actor DecodexServerBridge {
 		}
 
 		let baseURL = try await ensureServer()
+		do {
+			return try await send(route, baseURL: baseURL, as: type)
+		} catch let error as DecodexAppBridgeError {
+			throw error
+		} catch let error as DecodingError {
+			throw error
+		} catch {
+			clearLive(baseURL)
+
+			return try await send(route, baseURL: try await ensureServer(), as: type)
+		}
+	}
+
+	private func send<T: Decodable & Sendable>(
+		_ route: ServerRoute,
+		baseURL: URL,
+		as type: T.Type
+	) async throws -> T {
 		let url = routeURL(baseURL: baseURL, route: route)
 		var urlRequest = URLRequest(url: url)
 
@@ -47,22 +68,30 @@ actor DecodexServerBridge {
 			)
 		}
 
+		noteLive(baseURL)
+
 		return try JSONDecoder().decode(type, from: data)
 	}
 
 	private func ensureServer() async throws -> URL {
+		if let serverBaseURL, hasFreshLiveCheck(serverBaseURL) {
+			return serverBaseURL
+		}
+
 		if let serverBaseURL, await isLive(serverBaseURL) {
+			noteLive(serverBaseURL)
+
 			return serverBaseURL
 		}
 
 		if let configured = configuredServerURL(), await isLive(configured) {
-			serverBaseURL = configured
+			noteLive(configured)
 
 			return configured
 		}
 
 		if await isLive(defaultBaseURL) {
-			serverBaseURL = defaultBaseURL
+			noteLive(defaultBaseURL)
 
 			return defaultBaseURL
 		}
@@ -71,7 +100,7 @@ actor DecodexServerBridge {
 
 		for _ in 0..<40 {
 			if await isLive(defaultBaseURL) {
-				serverBaseURL = defaultBaseURL
+				noteLive(defaultBaseURL)
 
 				return defaultBaseURL
 			}
@@ -86,6 +115,30 @@ actor DecodexServerBridge {
 		let value = ProcessInfo.processInfo.environment["DECODEX_APP_SERVER_URL"] ?? ""
 
 		return value.isEmpty ? nil : URL(string: value)
+	}
+
+	private func hasFreshLiveCheck(_ baseURL: URL) -> Bool {
+		guard liveCheckBaseURL == baseURL, let liveCheckedAt else {
+			return false
+		}
+
+		return Date().timeIntervalSince(liveCheckedAt) < liveCheckFreshness
+	}
+
+	private func noteLive(_ baseURL: URL) {
+		serverBaseURL = baseURL
+		liveCheckBaseURL = baseURL
+		liveCheckedAt = Date()
+	}
+
+	private func clearLive(_ baseURL: URL) {
+		if serverBaseURL == baseURL {
+			serverBaseURL = nil
+		}
+		if liveCheckBaseURL == baseURL {
+			liveCheckBaseURL = nil
+			liveCheckedAt = nil
+		}
 	}
 
 	private func isLive(_ baseURL: URL) async -> Bool {
@@ -117,7 +170,6 @@ actor DecodexServerBridge {
 			"serve",
 			"--api-only",
 			"--listen-address", defaultListenAddress,
-			"--interval", "30s",
 		]
 		process.standardOutput = nullDevice
 		process.standardError = nullDevice
