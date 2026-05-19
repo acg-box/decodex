@@ -13,7 +13,7 @@ use tempfile::TempDir;
 use crate::{
 	state::{
 		self, ChildAgentActivitySummary, CodexAccountActivitySummary, CodexAccountMarker,
-		EffectiveRuntimeMarker, PreacquiredLeaseGuards, ProjectRegistration,
+		DispatchSlotLimit, EffectiveRuntimeMarker, PreacquiredLeaseGuards, ProjectRegistration,
 		ProtocolActivityMarker, ProtocolActivitySummary, RUN_ACTIVITY_MARKER_FILE,
 		RUN_OPERATION_REPO_GATE, ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore,
 	},
@@ -513,6 +513,40 @@ fn shared_dispatch_slots_honor_configured_limit_across_process_local_stores() {
 		store_three
 			.try_acquire_lease("pubfi", "PUB-103", "run-3", IN_PROGRESS_STATE)
 			.expect("shared slot should reopen after one of the configured leases clears")
+	);
+}
+
+#[test]
+fn shared_dispatch_slots_support_unlimited_across_process_local_stores() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let store_one = StateStore::open_in_memory().expect("first store should open");
+	let store_two = StateStore::open_in_memory().expect("second store should open");
+	let store_three = StateStore::open_in_memory().expect("third store should open");
+
+	store_one
+		.configure_dispatch_slot_root("pubfi", temp_dir.path(), DispatchSlotLimit::Unlimited)
+		.expect("first store should configure unlimited dispatch slots");
+	store_two
+		.configure_dispatch_slot_root("pubfi", temp_dir.path(), DispatchSlotLimit::Unlimited)
+		.expect("second store should configure unlimited dispatch slots");
+	store_three
+		.configure_dispatch_slot_root("pubfi", temp_dir.path(), DispatchSlotLimit::Unlimited)
+		.expect("third store should configure unlimited dispatch slots");
+
+	assert!(
+		store_one
+			.try_acquire_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+			.expect("first shared lease acquisition should succeed")
+	);
+	assert!(
+		store_two
+			.try_acquire_lease("pubfi", "PUB-102", "run-2", IN_PROGRESS_STATE)
+			.expect("second store should acquire another shared slot")
+	);
+	assert!(
+		store_three
+			.try_acquire_lease("pubfi", "PUB-103", "run-3", IN_PROGRESS_STATE)
+			.expect("third store should acquire another shared slot")
 	);
 }
 
