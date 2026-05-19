@@ -2,7 +2,7 @@
 
 #[cfg(unix)] use std::os::fd::{AsRawFd, FromRawFd};
 use std::{
-	cmp::Ordering,
+	cmp,
 	collections::{HashMap, HashSet},
 	fs::{self, File, OpenOptions, TryLockError},
 	io::{Error, ErrorKind, Read, Seek, SeekFrom, Write},
