@@ -109,7 +109,7 @@ Optional future expansion:
 
 Current runtime note:
 
-- Project-level concurrency is unlimited by default; a project may opt into a finite cap with `[execution] max_concurrent_agents = <positive integer>`.
+- Project-level concurrency must be explicit; set `[execution] max_concurrent_agents = "unlimited"` for no project-level cap, or use a positive integer for a finite cap.
 - Active leases are the service-local claim set for running lanes, and shared dispatch-slot locks coordinate cross-process capacity when a finite cap is configured.
 
 ## Lane model

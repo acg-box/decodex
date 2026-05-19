@@ -228,7 +228,6 @@ pub struct WorkflowExecution {
 	max_attempts: u32,
 	max_turns: u32,
 	max_retry_backoff_ms: u64,
-	#[serde(default)]
 	max_concurrent_agents: WorkflowConcurrencyLimit,
 	canonicalize_commands: Vec<String>,
 	verify_commands: Vec<String>,
@@ -568,10 +567,9 @@ impl<'de> Visitor<'de> for WorkflowConcurrencyLimitVisitor {
 }
 
 /// Project-level concurrent agent limit.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkflowConcurrencyLimit {
 	/// No project-level concurrent-agent cap.
-	#[default]
 	Unlimited,
 	/// A positive project-level concurrent-agent cap.
 	Limited(u32),
@@ -1407,6 +1405,11 @@ transport = "stdio://"
 			),
 			("missing max_attempts", Remove("max_attempts = 3\n"), "max_attempts"),
 			(
+				"missing max_concurrent_agents",
+				Remove("max_concurrent_agents = 1\n"),
+				"max_concurrent_agents",
+			),
+			(
 				"empty terminal states",
 				Replace(
 					r#"terminal_states = ["Done", "Canceled", "Duplicate"]"#,
@@ -1750,19 +1753,6 @@ Then validate the lane.
 				.replace("max_concurrent_agents = 1", "max_concurrent_agents = \"unlimited\"");
 		})
 		.expect("unlimited global concurrency should parse");
-
-		assert_eq!(
-			document.frontmatter().execution().max_concurrent_agents(),
-			WorkflowConcurrencyLimit::Unlimited
-		);
-	}
-
-	#[test]
-	fn defaults_missing_global_concurrency_limit_to_unlimited() {
-		let document = parse_valid_workflow_with(|markdown| {
-			*markdown = markdown.replace("max_concurrent_agents = 1\n", "");
-		})
-		.expect("missing global concurrency should parse");
 
 		assert_eq!(
 			document.frontmatter().execution().max_concurrent_agents(),
