@@ -133,8 +133,12 @@ where
 		context.review_state_inspector,
 	)?;
 
-	while active_children.len()
-		< context.workflow.frontmatter().execution().max_concurrent_agents() as usize
+	while context
+		.workflow
+		.frontmatter()
+		.execution()
+		.max_concurrent_agents()
+		.has_capacity(active_children.len())
 	{
 		if !spawn_next_daemon_child(
 			config_path,
