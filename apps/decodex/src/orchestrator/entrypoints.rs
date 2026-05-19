@@ -102,18 +102,60 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 }
 
 pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
-	if request.poll_interval.is_zero() {
-		eyre::bail!("serve interval must be greater than zero.");
-	}
 	if request.api_only && request.config_path.is_some() {
 		eyre::bail!(
 			"serve --api-only does not accept --config because it must not register or poll projects."
+		);
+	}
+	if request.api_only && request.poll_interval.is_some() {
+		eyre::bail!(
+			"serve --api-only does not accept --interval because API-only mode does not poll projects."
 		);
 	}
 
 	validate_daemon_runtime()?;
 
 	let state_store = Arc::new(runtime::open_runtime_store()?);
+
+	if request.api_only {
+		let operator_state_endpoint =
+			OperatorStateEndpoint::start(request.listen_address, Arc::clone(&state_store))?;
+		let runtime_db_path = runtime::runtime_db_path()?;
+		let global_config_path = runtime::global_config_path()?;
+		let project_config_dir = runtime::project_config_dir()?;
+		let snapshot = run_control_plane_api_only_tick(&state_store)?;
+
+		if let Err(error) = operator_state_endpoint.publish_snapshot(&snapshot) {
+			let _ = error;
+
+			tracing::warn!(
+				"Operator snapshot publish failed; sensitive runtime details were withheld from control-plane logs."
+			);
+		}
+
+		tracing::info!(
+			listen_address = %operator_state_endpoint.listen_address(),
+			path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
+			ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
+			api_only = true,
+			runtime_db_path = %runtime_db_path.display(),
+			global_config_path = %global_config_path.display(),
+			project_config_dir = %project_config_dir.display(),
+			"Starting Decodex API-only operator endpoint."
+		);
+
+		loop {
+			thread::park();
+		}
+	}
+
+	let poll_interval = request
+		.poll_interval
+		.unwrap_or_else(|| Duration::from_secs(60));
+
+	if poll_interval.is_zero() {
+		eyre::bail!("serve interval must be greater than zero.");
+	}
 
 	if let Some(config_path) = request.config_path {
 		let Some(config_path) = resolve_config_path(Some(config_path), &state_store)? else {
@@ -133,11 +175,11 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 	let mut project_runtimes: HashMap<String, ProjectDaemonRuntime> = HashMap::new();
 
 	tracing::info!(
-		poll_interval_s = request.poll_interval.as_secs(),
+		poll_interval_s = poll_interval.as_secs(),
 		listen_address = %operator_state_endpoint.listen_address(),
 		path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
 		ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
-		api_only = request.api_only,
+		api_only = false,
 		runtime_db_path = %runtime_db_path.display(),
 		global_config_path = %global_config_path.display(),
 		project_config_dir = %project_config_dir.display(),
@@ -146,11 +188,7 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 	loop {
 		let tick_started_at = Instant::now();
-		let snapshot = if request.api_only {
-			run_control_plane_api_only_tick(&state_store)?
-		} else {
-			run_control_plane_tick(&state_store, &mut project_runtimes)?
-		};
+		let snapshot = run_control_plane_tick(&state_store, &mut project_runtimes)?;
 
 		if let Err(error) = operator_state_endpoint.publish_snapshot(&snapshot) {
 			let _ = error;
@@ -160,7 +198,7 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 			);
 		}
 
-		sleep_until_next_tick(request.poll_interval, tick_started_at);
+		sleep_until_next_tick(poll_interval, tick_started_at);
 	}
 }
 
