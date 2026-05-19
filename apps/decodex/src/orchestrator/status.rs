@@ -3315,6 +3315,7 @@ fn marker_process_liveness(marker: &RunActivityMarker) -> MarkerProcessLiveness 
 	let Some(current_host_boot_id) = state::current_host_boot_id() else {
 		return MarkerProcessLiveness { alive: false, reason: "host_boot_id_unavailable" };
 	};
+
 	if marker_host_boot_id != current_host_boot_id.as_str() {
 		return MarkerProcessLiveness { alive: false, reason: "host_boot_id_mismatch" };
 	}
@@ -3328,6 +3329,7 @@ fn marker_process_liveness(marker: &RunActivityMarker) -> MarkerProcessLiveness 
 			reason: "process_start_identity_unavailable",
 		};
 	};
+
 	if marker_process_start_identity != current_process_start_identity.as_str() {
 		return MarkerProcessLiveness {
 			alive: false,
