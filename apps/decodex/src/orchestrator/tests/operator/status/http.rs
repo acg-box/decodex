@@ -1045,8 +1045,16 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 	let (payload, _consumed) = websocket_text_payload(&message).expect("event should be a text frame");
 	let payload: Value = serde_json::from_slice(payload).expect("event data should be json");
 	let data = &payload["payload"];
+	let fingerprint: Value =
+		serde_json::from_slice(&event.fingerprint).expect("fingerprint should be json");
 
 	assert_eq!(payload["type"], "runActivity");
+	assert_eq!(data["accountControl"]["mode"], "balanced");
+	assert!(data["accounts"].is_array());
+	assert!(fingerprint.get("emittedAtUnixEpoch").is_none());
+	assert_eq!(fingerprint["accountControl"]["mode"], "balanced");
+	assert!(fingerprint["accounts"].is_array());
+	assert_eq!(fingerprint["activeRuns"][0]["run_id"], "run-1");
 	assert_eq!(data["activeRuns"][0]["run_id"], "run-1");
 	assert_eq!(data["activeRuns"][0]["project_id"], "pubfi");
 	assert_eq!(data["activeRuns"][0]["protocol_activity"]["waiting_reason"], "model");
