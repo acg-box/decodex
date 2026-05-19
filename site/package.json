@@ -14,7 +14,7 @@
     "@astrojs/check": "^0.9.9",
     "@tailwindcss/vite": "4.2.2",
     "astro": "^6.3.1",
-    "marked": "^18.0.3",
+    "marked": "^18.0.4",
     "tailwindcss": "4.2.2",
     "three": "^0.184.0",
     "typescript": "^5.9.3"
