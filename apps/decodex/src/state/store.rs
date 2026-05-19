@@ -1,5 +1,52 @@
 use std::mem;
 
+use crate::workflow::WorkflowConcurrencyLimit;
+
+/// Shared dispatch-slot capacity for one project.
+#[derive(Clone, Copy)]
+pub(crate) enum DispatchSlotLimit {
+	/// Fixed number of cross-process dispatch slots.
+	Limited(u32),
+	/// Allocate dispatch slots on demand without a fixed project cap.
+	Unlimited,
+}
+impl DispatchSlotLimit {
+	fn validate(self) -> Result<()> {
+		if matches!(self, Self::Limited(0)) {
+			eyre::bail!("dispatch slot limit must be greater than zero or unlimited");
+		}
+
+		Ok(())
+	}
+
+	fn includes(self, slot_index: usize) -> Result<bool> {
+		match self {
+			Self::Unlimited => Ok(true),
+			Self::Limited(limit) => Ok(slot_index
+				< usize::try_from(limit)
+					.map_err(|_error| eyre::eyre!("dispatch slot limit overflowed usize"))?),
+		}
+	}
+}
+impl From<u32> for DispatchSlotLimit {
+	fn from(value: u32) -> Self {
+		Self::Limited(value)
+	}
+}
+impl From<Option<u32>> for DispatchSlotLimit {
+	fn from(value: Option<u32>) -> Self {
+		match value {
+			Some(limit) => Self::Limited(limit),
+			None => Self::Unlimited,
+		}
+	}
+}
+impl From<WorkflowConcurrencyLimit> for DispatchSlotLimit {
+	fn from(value: WorkflowConcurrencyLimit) -> Self {
+		Self::from(value.dispatch_slot_limit())
+	}
+}
+
 /// Local runtime store for leases, attempts, worktrees, and protocol events.
 #[derive(Default)]
 pub struct StateStore {
@@ -55,20 +102,21 @@ impl StateStore {
 	}
 
 	/// Configure the shared cross-process dispatch-slot root for one project.
-	pub fn configure_dispatch_slot_root(
+	pub(crate) fn configure_dispatch_slot_root(
 		&self,
 		project_id: &str,
 		worktree_root: impl AsRef<Path>,
-		slot_limit: u32,
+		slot_limit: impl Into<DispatchSlotLimit>,
 	) -> Result<()> {
+		let slot_limit = slot_limit.into();
 		let mut state = self.lock()?;
 
+		slot_limit.validate()?;
 		state.dispatch_slot_configs.insert(
 			project_id.to_owned(),
 			DispatchSlotConfig {
 				root: worktree_root.as_ref().to_path_buf(),
-				slot_limit: usize::try_from(slot_limit)
-					.map_err(|_error| eyre::eyre!("dispatch slot limit overflowed usize"))?,
+				slot_limit,
 			},
 		);
 
@@ -201,9 +249,14 @@ impl StateStore {
 				.map(|guard| guard.slot_index)
 				.collect::<HashSet<_>>();
 			let mut acquired_guard = None;
+			let mut slot_index = 0;
 
-			for slot_index in 0..dispatch_slot_config.slot_limit {
+			while dispatch_slot_config.slot_limit.includes(slot_index)? {
 				if held_slot_indexes.contains(&slot_index) {
+					slot_index = slot_index
+						.checked_add(1)
+						.ok_or_else(|| eyre::eyre!("dispatch slot index overflowed usize"))?;
+
 					continue;
 				}
 
@@ -225,9 +278,13 @@ impl StateStore {
 
 						break;
 					},
-					Err(TryLockError::WouldBlock) => continue,
+					Err(TryLockError::WouldBlock) => {},
 					Err(TryLockError::Error(error)) => return Err(error.into()),
 				}
+
+				slot_index = slot_index
+					.checked_add(1)
+					.ok_or_else(|| eyre::eyre!("dispatch slot index overflowed usize"))?;
 			}
 
 			let Some(dispatch_slot_guard) = acquired_guard else {

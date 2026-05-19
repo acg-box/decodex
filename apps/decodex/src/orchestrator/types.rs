@@ -1056,7 +1056,7 @@ impl ConcurrencySnapshot {
 	}
 
 	fn has_global_capacity(&self, execution: &WorkflowExecution) -> bool {
-		self.total_active < execution.max_concurrent_agents() as usize
+		execution.max_concurrent_agents().has_capacity(self.total_active)
 	}
 }
 

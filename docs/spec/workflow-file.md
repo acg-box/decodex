@@ -138,9 +138,10 @@ Supported keys:
   - required
   - note: caps control-plane-owned failure retry backoff in milliseconds; clean continuation retries use a separate short fixed delay in runtime policy
 - `max_concurrent_agents`
-  - type: integer
-  - required
-  - note: upper-bounds concurrent `decodex` runs per repository; values must be greater than or equal to `1`; Decodex does not apply separate per-state concurrency caps
+  - type: integer or string `"unlimited"`
+  - optional
+  - default: `"unlimited"`
+  - note: when set to a positive integer, upper-bounds concurrent `decodex` runs per repository; when omitted or set to `"unlimited"`, Decodex does not apply a project-level concurrent-agent cap; Decodex does not apply separate per-state concurrency caps
 - `canonicalize_commands`
   - type: array of string
   - required
@@ -310,7 +311,7 @@ transport = "stdio://"
 max_attempts = 3
 max_turns = 1
 max_retry_backoff_ms = 300000
-max_concurrent_agents = 2
+max_concurrent_agents = "unlimited"
 canonicalize_commands = [
   "cargo make fmt",
   "cargo make lint",
