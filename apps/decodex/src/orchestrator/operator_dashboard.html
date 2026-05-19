@@ -3542,6 +3542,8 @@
 			let dashboardSocket = null;
 			let dashboardSocketReconnectTimer = null;
 			let dashboardLiveActiveRuns = [];
+			let dashboardLiveAccounts = null;
+			let dashboardLiveAccountControl = null;
 			let dashboardStreamState = {
 				supported: typeof window.WebSocket === "function",
 				connected: false,
@@ -5615,7 +5617,7 @@
 				return facts.map(([label, value]) => renderRunMetaFact(label, value)).join("");
 			}
 
-			function codexAccount(run) {
+			function codexAccount(run, snapshot = null) {
 				const selected = run?.account || run?.codex_account || null;
 				if (selected) {
 					return selected;
@@ -5629,7 +5631,39 @@
 						return status === "selected";
 					}) ||
 					accounts[0] ||
-					null
+					selectedDashboardAccount(snapshot)
+				);
+			}
+
+			function selectedDashboardAccount(snapshot) {
+				if (!snapshot) {
+					return null;
+				}
+
+				const accounts = Array.isArray(snapshot.accounts)
+					? snapshot.accounts.filter(Boolean)
+					: [];
+				if (!accounts.length) {
+					return null;
+				}
+
+				const selector = codexAccountConfiguredSelector(snapshot);
+				if (selector) {
+					const fixed = accounts.find(
+						(account) =>
+							selector === codexAccountEmail(account) ||
+							selector === codexAccountFingerprint(account),
+					);
+					if (fixed) {
+						return fixed;
+					}
+				}
+
+				return (
+					accounts.find((account) => {
+						const status = String(account?.status || "").toLowerCase();
+						return status === "selected";
+					}) || null
 				);
 			}
 
@@ -5663,6 +5697,11 @@
 					const fingerprint = codexAccountFingerprint(account);
 					if (fingerprint) {
 						return fingerprint;
+					}
+
+					const email = codexAccountEmail(account);
+					if (email) {
+						return email;
 					}
 
 					return account?.plan_type || "";
@@ -6454,8 +6493,9 @@
 					`;
 				}
 
-				function renderRunCodexAccountInline(run) {
-					const account = codexAccount(run);
+				function renderRunCodexAccountInline(run, snapshot) {
+					const capturedAccount = codexAccount(run);
+					const account = capturedAccount || selectedDashboardAccount(snapshot);
 					if (!account) {
 						return `
 							<span class="run-meta-item is-account is-missing" aria-label="account">
@@ -6472,6 +6512,9 @@
 					const displayTitle = codexAccountDisplayTitle(account);
 					const visibleName = codexAccountVisibleName(account);
 					const identityClass = codexAccountShowsEmail(account) ? " is-machine" : "";
+					const pendingTitle = capturedAccount
+						? displayTitle
+						: `${displayTitle || visibleName} · run account capture pending`;
 
 					return `
 						<span class="run-meta-item is-account" aria-label="account">
@@ -6480,14 +6523,14 @@
 									<path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M3.35 2.25h9.3c.61 0 1.1.49 1.1 1.1v9.3c0 .61-.49 1.1-1.1 1.1h-9.3c-.61 0-1.1-.49-1.1-1.1v-9.3c0-.61.49-1.1 1.1-1.1ZM8 4.15a1.8 1.8 0 1 1 0 3.6 1.8 1.8 0 0 1 0-3.6Zm0 4.78c2.02 0 3.26.96 3.7 2.78.08.35-.18.67-.54.67H4.84c-.36 0-.62-.32-.54-.67.44-1.82 1.68-2.78 3.7-2.78Z"></path>
 								</svg>
 							</span>
-							<strong class="account-name${identityClass}" title="${escapeHtml(displayTitle)}">${escapeHtml(visibleName)}</strong>
+							<strong class="account-name${identityClass}" title="${escapeHtml(pendingTitle)}">${escapeHtml(visibleName)}</strong>
 						</span>
 					`;
 				}
 
-				function renderRunMetaLine(run) {
+				function renderRunMetaLine(run, snapshot = null) {
 					const items = [
-						renderRunCodexAccountInline(run),
+						renderRunCodexAccountInline(run, snapshot),
 						renderRunTelemetryMetaItems(run),
 					]
 						.filter(Boolean)
@@ -8588,7 +8631,7 @@
 								</div>
 									<div class="status-line">${statusLineParts.join("")}</div>
 									${summary ? `<p class="row-summary">${escapeHtml(summary)}</p>` : ""}
-									${renderRunMetaLine(run)}
+									${renderRunMetaLine(run, snapshot)}
 									${renderChildAgentBreakdown(run)}
 									<details data-detail-key="${escapeHtml(detailKey)}"${detailsOpenAttribute(detailKey)}>
 										<summary>Debug Details</summary>
@@ -8725,7 +8768,7 @@
 										${field("Branch", run.branch_name || "none")}
 										${field("Worktree", run.worktree_path || "none")}
 										${field("Model", runModelSummary(run))}
-										${field("Account", codexAccountDebugSummary(codexAccount(run)))}
+										${field("Account", codexAccountDebugSummary(codexAccount(run, snapshot)))}
 										${field("Child agent", childAgentDebugSummary(childAgentActivity(run)))}
 										${field("Context pressure", childAgentContextSummary(childAgentActivity(run)))}
 										${field("Large outputs", childAgentLargeOutputSummary(childAgentActivity(run)))}
@@ -8999,6 +9042,9 @@
 				if (typeof value === "string") {
 					return value.trim() !== "";
 				}
+				if (value && typeof value === "object") {
+					return Object.keys(value).length > 0;
+				}
 
 				return value !== null && value !== undefined;
 			}
@@ -9084,7 +9130,7 @@
 				return mergedRuns;
 			}
 
-			function mergeDashboardRunActivity(snapshot, activeRuns) {
+			function mergeDashboardRunActivity(snapshot, activeRuns, activityPayload = {}) {
 				const activeRunRows = activeRuns
 					.filter((run) => run && typeof run === "object")
 					.map((run) => ({ ...run }));
@@ -9136,9 +9182,18 @@
 						};
 					})
 					: snapshot.projects;
+				const accounts = Array.isArray(activityPayload.accounts)
+					? activityPayload.accounts.filter(Boolean).map((account) => ({ ...account }))
+					: snapshot.accounts;
+				const accountControl =
+					activityPayload.accountControl && typeof activityPayload.accountControl === "object"
+						? { ...(snapshot.account_control || {}), ...activityPayload.accountControl }
+						: snapshot.account_control;
 
 				return {
 					...snapshot,
+					account_control: accountControl,
+					accounts,
 					active_runs: mergedActiveRuns,
 					recent_runs: recentRuns,
 					projects,
@@ -9146,11 +9201,22 @@
 			}
 
 			function snapshotWithLiveRunActivity(snapshot) {
-				if (!snapshot || !dashboardSocketIsOpen() || !dashboardLiveActiveRuns.length) {
+				if (!snapshot || !dashboardSocketIsOpen()) {
 					return snapshot;
 				}
 
-				return mergeDashboardRunActivity(snapshot, dashboardLiveActiveRuns);
+				if (
+					!dashboardLiveActiveRuns.length &&
+					!dashboardLiveAccounts &&
+					!dashboardLiveAccountControl
+				) {
+					return snapshot;
+				}
+
+				return mergeDashboardRunActivity(snapshot, dashboardLiveActiveRuns, {
+					accountControl: dashboardLiveAccountControl,
+					accounts: dashboardLiveAccounts,
+				});
 			}
 
 			function applyDashboardRunActivity(payload) {
@@ -9167,6 +9233,13 @@
 				dashboardLiveActiveRuns = payload.activeRuns
 					.filter((run) => run && typeof run === "object")
 					.map((run) => ({ ...run }));
+				dashboardLiveAccounts = Array.isArray(payload.accounts) && payload.accounts.length
+					? payload.accounts.filter(Boolean).map((account) => ({ ...account }))
+					: null;
+				dashboardLiveAccountControl =
+					payload.accountControl && typeof payload.accountControl === "object"
+						? { ...payload.accountControl }
+						: null;
 
 				if (!lastDashboardRender?.snapshot) {
 					updateDashboardStreamState({
@@ -9323,6 +9396,8 @@
 				};
 				dashboardSocket.onclose = () => {
 					dashboardLiveActiveRuns = [];
+					dashboardLiveAccounts = null;
+					dashboardLiveAccountControl = null;
 					updateDashboardStreamState({
 						connected: false,
 						error: true,
@@ -9331,6 +9406,8 @@
 				};
 				dashboardSocket.onerror = () => {
 					dashboardLiveActiveRuns = [];
+					dashboardLiveAccounts = null;
+					dashboardLiveAccountControl = null;
 					updateDashboardStreamState({
 						connected: false,
 						error: true,
