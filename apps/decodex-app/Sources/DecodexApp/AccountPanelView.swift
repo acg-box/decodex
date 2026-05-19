@@ -9,7 +9,7 @@ struct AccountPanelView: View {
 	var body: some View {
 		Group {
 			if #available(macOS 26.0, *) {
-				GlassEffectContainer(spacing: 10) {
+				GlassEffectContainer(spacing: 6) {
 					panelContent
 				}
 			} else {
@@ -46,7 +46,7 @@ struct AccountPanelView: View {
 	}
 
 	private var panelContent: some View {
-		VStack(alignment: .leading, spacing: 12) {
+		VStack(alignment: .leading, spacing: 8) {
 			header
 			accountSummary
 
@@ -68,24 +68,33 @@ struct AccountPanelView: View {
 
 			footer
 		}
-		.frame(width: 324)
-		.padding(14)
-		.modernGlassSurface(cornerRadius: 22)
+		.frame(width: 318)
+		.padding(10)
+		.modernGlassSurface(
+			cornerRadius: 18,
+			tint: Color.accentColor.opacity(0.035),
+			depth: .panel
+		)
 		.controlSize(.small)
 		.symbolRenderingMode(.hierarchical)
 	}
 
 	private var header: some View {
-		HStack(alignment: .center, spacing: 12) {
+		HStack(alignment: .center, spacing: 8) {
 			Image(systemName: store.menuSymbol)
-				.font(.system(size: 22, weight: .semibold))
-				.frame(width: 30, height: 30)
-				.foregroundStyle(.primary)
+				.font(.system(size: 15, weight: .semibold))
+				.foregroundStyle(Color.accentColor)
+				.frame(width: 28, height: 28)
+				.modernGlassSurface(
+					cornerRadius: 9,
+					tint: Color.accentColor.opacity(0.16),
+					depth: .control
+				)
 
-			VStack(alignment: .leading, spacing: 3) {
+			VStack(alignment: .leading, spacing: 2) {
 				Text("Decodex")
-					.font(.system(size: 15, weight: .semibold))
-				Text("\(store.accounts.count) account\(store.accounts.count == 1 ? "" : "s")")
+					.font(.system(size: 13, weight: .semibold))
+				Text(headerSubtitle)
 					.font(.caption2)
 					.foregroundStyle(.secondary)
 					.lineLimit(1)
@@ -93,54 +102,66 @@ struct AccountPanelView: View {
 
 			Spacer()
 
-			HStack(spacing: 6) {
-				Button {
-					accountPrivacy = emailsHidden ? AccountPrivacy.visibleValue : AccountPrivacy.hiddenValue
-				} label: {
-					Image(systemName: emailsHidden ? "eye.slash" : "eye")
-						.frame(width: 18, height: 18)
-				}
-				.iconPanelButtonStyle()
-				.help(emailsHidden ? "Show account emails" : "Hide account emails")
+			HStack(spacing: 4) {
+				PanelIconButtonView(
+					symbol: emailsHidden ? "eye.slash" : "eye",
+					tint: .secondary,
+					isActive: false,
+					action: {
+						accountPrivacy = emailsHidden ? AccountPrivacy.visibleValue : AccountPrivacy.hiddenValue
+					},
+					help: emailsHidden ? "Show account emails" : "Hide account emails"
+				)
 
-				Button {
-					Task {
-						await store.refresh(force: true)
-					}
-				} label: {
-					Image(systemName: store.isRefreshing ? "arrow.triangle.2.circlepath.circle" : "arrow.clockwise")
-						.frame(width: 18, height: 18)
-				}
-				.iconPanelButtonStyle()
-				.help("Refresh")
-				.disabled(store.isRefreshing)
+				PanelIconButtonView(
+					symbol: store.isRefreshing ? "arrow.triangle.2.circlepath.circle" : "arrow.clockwise",
+					tint: .secondary,
+					isActive: store.isRefreshing,
+					isDisabled: store.isRefreshing,
+					action: {
+						Task {
+							await store.refresh(force: true)
+						}
+					},
+					help: "Refresh"
+				)
 			}
 		}
 	}
 
 	private var accountSummary: some View {
-		VStack(spacing: 7) {
-			SummaryRowView(
+		HStack(spacing: 0) {
+			SummaryTileView(
 				title: "Codex",
 				value: codexAuthLabel,
 				symbol: "bolt.fill",
 				tint: .yellow
 			)
-			SummaryRowView(
-				title: "Decodex runs",
+
+			Divider()
+				.opacity(0.5)
+				.padding(.vertical, 3)
+
+			SummaryTileView(
+				title: "Runs",
 				value: decodexModeLabel,
 				symbol: hasFixedSelection ? "pin.fill" : "arrow.triangle.branch",
 				tint: hasFixedSelection ? .accentColor : .secondary
 			)
 		}
-		.padding(10)
-		.modernGlassSurface(cornerRadius: 14, tint: .primary.opacity(0.035))
+		.padding(.horizontal, 7)
+		.padding(.vertical, 5)
+		.modernGlassSurface(
+			cornerRadius: 11,
+			tint: Color.primary.opacity(0.045),
+			depth: .section
+		)
 	}
 
 	private var emptyState: some View {
-		VStack(alignment: .leading, spacing: 9) {
+		VStack(alignment: .leading, spacing: 6) {
 			Image(systemName: "person.crop.circle.badge.plus")
-				.font(.system(size: 24))
+				.font(.system(size: 19))
 				.foregroundStyle(.secondary)
 			Text("No accounts in the local pool")
 				.font(.subheadline.weight(.semibold))
@@ -150,12 +171,12 @@ struct AccountPanelView: View {
 				.fixedSize(horizontal: false, vertical: true)
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(12)
-		.modernGlassSurface(cornerRadius: 14)
+		.padding(8)
+		.modernGlassSurface(cornerRadius: 10, depth: .section)
 	}
 
 	private var loadingState: some View {
-		HStack(spacing: 10) {
+		HStack(spacing: 7) {
 			ProgressView()
 				.controlSize(.small)
 			Text("Loading accounts")
@@ -163,13 +184,13 @@ struct AccountPanelView: View {
 			Spacer()
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(12)
-		.modernGlassSurface(cornerRadius: 14)
+		.padding(8)
+		.modernGlassSurface(cornerRadius: 10, depth: .section)
 	}
 
 	private var accountList: some View {
 		ScrollView {
-			LazyVStack(spacing: 6) {
+			LazyVStack(spacing: 4) {
 				ForEach(store.accounts) { account in
 					AccountRowView(
 						account: account,
@@ -196,31 +217,32 @@ struct AccountPanelView: View {
 	}
 
 	private var footer: some View {
-		HStack(spacing: 8) {
-			Button {
-				loginPresented = true
-			} label: {
-				Label("Add Login", systemImage: "plus.circle")
-			}
-			.primaryPanelButtonStyle()
-
-			Button {
-				Task {
-					await store.clearSelection()
+		HStack(spacing: 5) {
+			PanelPrimaryButtonView(
+				title: "Add Login",
+				symbol: "plus.circle",
+				action: {
+					loginPresented = true
 				}
-			} label: {
-				Label("Balanced", systemImage: "arrow.triangle.branch")
-			}
-			.secondaryPanelButtonStyle()
-			.disabled(!hasFixedSelection)
+			)
 
-			Spacer()
+			PanelIconButtonView(
+				symbol: "arrow.triangle.branch",
+				tint: .accentColor,
+				isActive: false,
+				isDisabled: !hasFixedSelection,
+				action: {
+					Task {
+						await store.clearSelection()
+					}
+				},
+				help: "Return Decodex runs to balanced selection"
+			)
 
 			SettingsLink {
-				Image(systemName: "gearshape")
-					.frame(width: 18, height: 18)
+				PanelIconLabelView(symbol: "gearshape", tint: .secondary)
 			}
-			.iconPanelButtonStyle()
+			.buttonStyle(.plain)
 			.help("Settings")
 		}
 	}
@@ -272,14 +294,20 @@ struct AccountPanelView: View {
 
 	private var accountListHeight: CGFloat {
 		let rows = store.accounts.reduce(CGFloat(0)) { total, account in
-			total + (account.hasUsageWindowData ? 72 : 50)
+			total + (account.hasUsageWindowData ? 64 : 44)
 		}
-		let spacing = CGFloat(max(store.accounts.count - 1, 0)) * 6 + 2
+		let spacing = CGFloat(max(store.accounts.count - 1, 0)) * 4 + 2
 
 		return min(
 			rows + spacing,
-			286
+			248
 		)
+	}
+
+	private var headerSubtitle: String {
+		let count = store.accounts.count
+		let accountLabel = "\(count) account\(count == 1 ? "" : "s")"
+		return hasFixedSelection ? "\(accountLabel) / pinned runs" : "\(accountLabel) / balanced runs"
 	}
 
 	private var emailsHidden: Bool {
@@ -305,95 +333,102 @@ struct AccountRowView: View {
 	let logout: () -> Void
 
 	var body: some View {
-		HStack(spacing: 8) {
-			Button(action: useInCodex) {
-				HStack(spacing: 11) {
-					AccountAvatarView(account: account, title: displayName)
+		HStack(spacing: 7) {
+			AccountAvatarView(account: account, title: displayName)
 
-					VStack(alignment: .leading, spacing: 4) {
-						Text(displayName)
-							.font(.subheadline.weight(.semibold))
-							.lineLimit(1)
-							.truncationMode(.middle)
-						HStack(spacing: 6) {
-							Text(detailLabel)
-								.lineLimit(1)
-								.truncationMode(.middle)
-							Text("·")
-							if let planLabel = account.planLabel {
-								Text(planLabel)
-									.lineLimit(1)
-								Text("·")
-							}
-							Text(account.statusLabel)
-								.lineLimit(1)
-						}
-						.font(.caption)
-						.foregroundStyle(.secondary)
-
-						if account.hasUsageWindowData {
-							HStack(spacing: 6) {
-								AccountUsageBadgeView(
-									label: account.windowLabel(seconds: account.primaryWindowSeconds),
-									remainingPercent: account.primaryRemainingPercent,
-									tone: account.usageTone(
-										remainingPercent: account.primaryRemainingPercent
-									)
-								)
-								AccountUsageBadgeView(
-									label: account.windowLabel(seconds: account.secondaryWindowSeconds),
-									remainingPercent: account.secondaryRemainingPercent,
-									tone: account.usageTone(
-										remainingPercent: account.secondaryRemainingPercent
-									)
-								)
-							}
-						}
-					}
-
-					Spacer()
+			VStack(alignment: .leading, spacing: 2) {
+				HStack(spacing: 4) {
+					Text(displayName)
+						.font(.caption.weight(.semibold))
+						.lineLimit(1)
+						.truncationMode(.middle)
+						.layoutPriority(1)
 
 					if account.codexActive {
-						StatusPillView(title: "Active", symbol: "bolt.fill", tint: .yellow)
-					} else {
-						Text("Use")
-							.font(.caption.weight(.semibold))
-							.foregroundStyle(.secondary)
+						StatusMarkerView(symbol: "bolt.fill", tint: .yellow)
+					}
+
+					if account.selected {
+						StatusMarkerView(symbol: "pin.fill", tint: .accentColor)
 					}
 				}
-				.padding(.vertical, 6)
-				.padding(.leading, 8)
-				.padding(.trailing, 10)
-				.contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-			}
-			.buttonStyle(.plain)
-			.help("Use in Codex")
 
-			Menu {
-				Button(action: pinForDecodex) {
-					Label(
-						account.selected ? "Use balanced Decodex selection" : "Pin for Decodex runs",
-						systemImage: account.selected ? "pin.slash" : "pin"
-					)
+				HStack(spacing: 4) {
+					Text(detailLabel)
+						.lineLimit(1)
+						.truncationMode(.middle)
+					Text("·")
+					if let planLabel = account.planLabel {
+						Text(planLabel)
+							.lineLimit(1)
+						Text("·")
+					}
+					Text(account.statusLabel)
+						.lineLimit(1)
 				}
+				.font(.caption2)
+				.foregroundStyle(.secondary)
 
-				Divider()
-
-				Button(role: .destructive, action: logout) {
-					Label("Remove account", systemImage: "rectangle.portrait.and.arrow.right")
+				if account.hasUsageWindowData {
+					HStack(spacing: 4) {
+						AccountUsageBadgeView(
+							label: account.windowLabel(seconds: account.primaryWindowSeconds),
+							remainingPercent: account.primaryRemainingPercent,
+							tone: account.usageTone(
+								remainingPercent: account.primaryRemainingPercent
+							)
+						)
+						AccountUsageBadgeView(
+							label: account.windowLabel(seconds: account.secondaryWindowSeconds),
+							remainingPercent: account.secondaryRemainingPercent,
+							tone: account.usageTone(
+								remainingPercent: account.secondaryRemainingPercent
+							)
+						)
+					}
 				}
-			} label: {
-				Image(systemName: "ellipsis")
-					.frame(width: 18, height: 18)
 			}
-			.menuStyle(.button)
-			.buttonStyle(.borderless)
-			.help("More actions")
+			.frame(maxWidth: .infinity, alignment: .leading)
+
+			Spacer(minLength: 4)
+
+			HStack(spacing: 3) {
+				PanelIconButtonView(
+					symbol: account.codexActive ? "bolt.fill" : "bolt",
+					tint: .yellow,
+					isActive: account.codexActive,
+					size: 22,
+					action: useInCodex,
+					help: account.codexActive ? "Already active in Codex" : "Use in Codex"
+				)
+
+				PanelIconButtonView(
+					symbol: account.selected ? "pin.fill" : "pin",
+					tint: .accentColor,
+					isActive: account.selected,
+					size: 22,
+					action: pinForDecodex,
+					help: account.selected ? "Return Decodex to balanced selection" : "Pin for Decodex runs"
+				)
+
+				PanelIconButtonView(
+					symbol: "trash",
+					tint: .red,
+					isActive: false,
+					isDestructive: true,
+					size: 22,
+					action: logout,
+					help: "Remove account"
+				)
+			}
 		}
-		.padding(3)
+		.padding(.vertical, 5)
+		.padding(.leading, 6)
+		.padding(.trailing, 6)
 		.modernGlassSurface(
-			cornerRadius: 15,
+			cornerRadius: 11,
 			tint: account.rowTint,
+			depth: .row,
 			interactive: true
 		)
 	}
@@ -413,16 +448,20 @@ struct AccountUsageBadgeView: View {
 	let tone: AccountTone
 
 	var body: some View {
-		HStack(spacing: 4) {
+		HStack(spacing: 3) {
 			Text(label)
-				.font(.caption2.weight(.semibold))
+				.font(.caption2.weight(.medium))
 				.foregroundStyle(.secondary)
 			Text(remainingText)
 				.font(.caption2.monospacedDigit().weight(.semibold))
 		}
-		.padding(.horizontal, 6)
-		.padding(.vertical, 3)
-		.background(color.opacity(0.16), in: Capsule())
+		.padding(.horizontal, 4)
+		.padding(.vertical, 1)
+		.modernGlassSurface(
+			cornerRadius: 7,
+			tint: color.opacity(0.16),
+			depth: .badge
+		)
 	}
 
 	private var remainingText: String {
@@ -449,7 +488,7 @@ struct NoticeView: View {
 	let text: String
 
 	var body: some View {
-		HStack(alignment: .top, spacing: 8) {
+		HStack(alignment: .top, spacing: 7) {
 			Image(systemName: "exclamationmark.triangle")
 				.foregroundStyle(.yellow)
 			Text(text)
@@ -457,35 +496,170 @@ struct NoticeView: View {
 				.foregroundStyle(.secondary)
 				.fixedSize(horizontal: false, vertical: true)
 		}
-		.padding(10)
-		.modernGlassSurface(cornerRadius: 14, tint: .yellow.opacity(0.08))
+		.padding(8)
+		.modernGlassSurface(
+			cornerRadius: 10,
+			tint: .yellow.opacity(0.12),
+			depth: .section
+		)
 	}
 }
 
-struct SummaryRowView: View {
+struct SummaryTileView: View {
 	let title: String
 	let value: String
 	let symbol: String
 	let tint: Color
 
 	var body: some View {
-		HStack(spacing: 8) {
+		HStack(spacing: 5) {
 			Image(systemName: symbol)
-				.font(.caption.weight(.semibold))
+				.font(.caption2.weight(.semibold))
 				.foregroundStyle(tint)
-				.frame(width: 16)
+				.frame(width: 11)
 
-			Text(title)
-				.font(.caption)
-				.foregroundStyle(.secondary)
+			VStack(alignment: .leading, spacing: 1) {
+				Text(title)
+					.font(.caption2.weight(.medium))
+					.foregroundStyle(.secondary)
+					.lineLimit(1)
 
-			Spacer(minLength: 12)
-
-			Text(value)
-				.font(.caption.weight(.medium))
-				.lineLimit(1)
-				.truncationMode(.middle)
+				Text(value)
+					.font(.caption2.weight(.semibold))
+					.lineLimit(1)
+					.truncationMode(.middle)
+			}
 		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+}
+
+struct StatusMarkerView: View {
+	let symbol: String
+	let tint: Color
+
+	var body: some View {
+		Image(systemName: symbol)
+			.font(.system(size: 9, weight: .bold))
+			.foregroundStyle(tint)
+			.frame(width: 14, height: 14)
+			.modernGlassSurface(cornerRadius: 7, tint: tint.opacity(0.16), depth: .badge)
+	}
+}
+
+struct PanelPrimaryButtonView: View {
+	let title: String
+	let symbol: String
+	let action: () -> Void
+
+	var body: some View {
+		Button(action: action) {
+			Label(title, systemImage: symbol)
+				.font(.caption.weight(.semibold))
+				.frame(maxWidth: .infinity, minHeight: 24)
+				.contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+		}
+		.buttonStyle(.plain)
+		.foregroundStyle(.primary)
+		.modernGlassSurface(
+			cornerRadius: 9,
+			tint: Color.accentColor.opacity(0.2),
+			depth: .control,
+			interactive: true
+		)
+		.help(title)
+	}
+}
+
+struct PanelIconButtonView: View {
+	let symbol: String
+	let tint: Color
+	let isActive: Bool
+	let isDestructive: Bool
+	let isDisabled: Bool
+	let size: CGFloat
+	let action: () -> Void
+	let help: String
+
+	init(
+		symbol: String,
+		tint: Color,
+		isActive: Bool,
+		isDestructive: Bool = false,
+		isDisabled: Bool = false,
+		size: CGFloat = 24,
+		action: @escaping () -> Void,
+		help: String
+	) {
+		self.symbol = symbol
+		self.tint = tint
+		self.isActive = isActive
+		self.isDestructive = isDestructive
+		self.isDisabled = isDisabled
+		self.size = size
+		self.action = action
+		self.help = help
+	}
+
+	var body: some View {
+		Button(action: action) {
+			Image(systemName: symbol)
+				.font(.system(size: 10, weight: .semibold))
+				.foregroundStyle(foregroundColor)
+				.frame(width: size, height: size)
+				.contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+		}
+		.buttonStyle(.plain)
+		.disabled(isDisabled)
+		.modernGlassSurface(
+			cornerRadius: 7,
+			tint: surfaceTint,
+			depth: .control,
+			interactive: !isDisabled
+		)
+		.help(help)
+	}
+
+	private var foregroundColor: Color {
+		if isDisabled {
+			return Color.secondary.opacity(0.45)
+		}
+		if usesTint {
+			return tint
+		}
+		return .secondary
+	}
+
+	private var surfaceTint: Color {
+		if isDisabled {
+			return Color.primary.opacity(0.02)
+		}
+		if usesTint {
+			return tint.opacity(isDestructive ? 0.07 : 0.11)
+		}
+		return Color.primary.opacity(0.03)
+	}
+
+	private var usesTint: Bool {
+		isActive || isDestructive
+	}
+}
+
+struct PanelIconLabelView: View {
+	let symbol: String
+	let tint: Color
+
+	var body: some View {
+		Image(systemName: symbol)
+			.font(.system(size: 11, weight: .semibold))
+			.foregroundStyle(tint)
+			.frame(width: 24, height: 24)
+			.modernGlassSurface(
+				cornerRadius: 7,
+				tint: Color.primary.opacity(0.03),
+				depth: .control,
+				interactive: true
+			)
 	}
 }
 
@@ -496,43 +670,25 @@ struct AccountAvatarView: View {
 	var body: some View {
 		ZStack(alignment: .bottomTrailing) {
 			Circle()
-				.fill(account.statusColor.opacity(0.14))
+				.fill(account.statusColor.opacity(0.12))
 				.overlay {
 					Circle()
-						.strokeBorder(account.statusColor.opacity(0.26), lineWidth: 1)
+						.strokeBorder(account.statusColor.opacity(0.22), lineWidth: 1)
 				}
 
 			Text(AccountDisplay.initials(from: title))
-				.font(.caption.weight(.semibold))
+				.font(.caption2.weight(.semibold))
 				.foregroundStyle(.primary)
 
 			Circle()
 				.fill(account.statusColor)
-				.frame(width: 8, height: 8)
+				.frame(width: 6, height: 6)
 				.overlay {
 					Circle()
 						.stroke(.background, lineWidth: 1.5)
 				}
 		}
-		.frame(width: 29, height: 29)
-	}
-}
-
-struct StatusPillView: View {
-	let title: String
-	let symbol: String
-	let tint: Color
-
-	var body: some View {
-		HStack(spacing: 4) {
-			Image(systemName: symbol)
-			Text(title)
-		}
-		.font(.caption2.weight(.semibold))
-		.foregroundStyle(tint)
-		.padding(.horizontal, 7)
-		.padding(.vertical, 4)
-		.modernGlassSurface(cornerRadius: 9, tint: tint.opacity(0.12))
+		.frame(width: 22, height: 22)
 	}
 }
 
@@ -658,11 +814,20 @@ private enum AccountDisplay {
 	}
 }
 
+private enum GlassSurfaceDepth {
+	case panel
+	case section
+	case row
+	case control
+	case badge
+}
+
 private extension View {
 	@ViewBuilder
 	func modernGlassSurface(
 		cornerRadius: CGFloat,
 		tint: Color? = nil,
+		depth: GlassSurfaceDepth = .section,
 		interactive: Bool = false
 	) -> some View {
 		if #available(macOS 26.0, *) {
@@ -670,44 +835,29 @@ private extension View {
 				configuredGlass(tint: tint, interactive: interactive),
 				in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 			)
+			.glassSurfaceFinish(cornerRadius: cornerRadius, depth: depth)
 		} else {
 			self
 				.background(
 					tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.regularMaterial),
 					in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 				)
-				.overlay {
-					RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-						.strokeBorder(Color(nsColor: .separatorColor).opacity(0.28), lineWidth: 0.5)
-				}
+				.glassSurfaceFinish(cornerRadius: cornerRadius, depth: depth)
 		}
 	}
 
-	@ViewBuilder
-	func primaryPanelButtonStyle() -> some View {
-		if #available(macOS 26.0, *) {
-			self.buttonStyle(.glassProminent)
-		} else {
-			self.buttonStyle(.borderedProminent)
-		}
-	}
-
-	@ViewBuilder
-	func secondaryPanelButtonStyle() -> some View {
-		if #available(macOS 26.0, *) {
-			self.buttonStyle(.glass)
-		} else {
-			self.buttonStyle(.bordered)
-		}
-	}
-
-	@ViewBuilder
-	func iconPanelButtonStyle() -> some View {
-		if #available(macOS 26.0, *) {
-			self.buttonStyle(.glass)
-		} else {
-			self.buttonStyle(.borderless)
-		}
+	func glassSurfaceFinish(cornerRadius: CGFloat, depth: GlassSurfaceDepth) -> some View {
+		self
+			.overlay {
+				RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+					.strokeBorder(edgeGradient(for: depth), lineWidth: edgeWidth(for: depth))
+			}
+			.shadow(
+				color: Color.black.opacity(shadowOpacity(for: depth)),
+				radius: shadowRadius(for: depth),
+				x: 0,
+				y: shadowOffset(for: depth)
+			)
 	}
 
 	@available(macOS 26.0, *)
@@ -721,6 +871,88 @@ private extension View {
 		}
 
 		return glass
+	}
+
+	private func edgeGradient(for depth: GlassSurfaceDepth) -> LinearGradient {
+		LinearGradient(
+			colors: [
+				Color.white.opacity(edgeHighlightOpacity(for: depth)),
+				Color.white.opacity(edgeMidOpacity(for: depth)),
+				Color.black.opacity(edgeShadowOpacity(for: depth)),
+			],
+			startPoint: .topLeading,
+			endPoint: .bottomTrailing
+		)
+	}
+
+	private func edgeWidth(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 0.9
+		case .section: return 0.65
+		case .row: return 0.55
+		case .control: return 0.6
+		case .badge: return 0.45
+		}
+	}
+
+	private func edgeHighlightOpacity(for depth: GlassSurfaceDepth) -> Double {
+		switch depth {
+		case .panel: return 0.34
+		case .section: return 0.24
+		case .row: return 0.2
+		case .control: return 0.28
+		case .badge: return 0.18
+		}
+	}
+
+	private func edgeMidOpacity(for depth: GlassSurfaceDepth) -> Double {
+		switch depth {
+		case .panel: return 0.1
+		case .section: return 0.08
+		case .row: return 0.06
+		case .control: return 0.09
+		case .badge: return 0.05
+		}
+	}
+
+	private func edgeShadowOpacity(for depth: GlassSurfaceDepth) -> Double {
+		switch depth {
+		case .panel: return 0.18
+		case .section: return 0.12
+		case .row: return 0.1
+		case .control: return 0.12
+		case .badge: return 0.08
+		}
+	}
+
+	private func shadowOpacity(for depth: GlassSurfaceDepth) -> Double {
+		switch depth {
+		case .panel: return 0.18
+		case .section: return 0.1
+		case .row: return 0.07
+		case .control: return 0.08
+		case .badge: return 0.04
+		}
+	}
+
+	private func shadowRadius(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 18
+		case .section: return 8
+		case .row: return 5
+		case .control: return 5
+		case .badge: return 2
+		}
+	}
+
+	private func shadowOffset(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 10
+		case .section: return 4
+		case .row: return 2
+		case .control: return 2
+		case .badge: return 1
+		}
 	}
 }
 
