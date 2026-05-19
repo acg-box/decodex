@@ -61,11 +61,18 @@ impl PostReviewOrchestrationStatus {
 struct OperatorRunTiming {
 	process_id: Option<u32>,
 	process_alive: Option<bool>,
+	process_liveness_reason: Option<String>,
 	last_run_activity_unix_epoch: Option<i64>,
 	last_protocol_activity_unix_epoch: Option<i64>,
 	last_progress_unix_epoch: Option<i64>,
 	idle_for_seconds: Option<i64>,
 	protocol_idle_for_seconds: Option<i64>,
+}
+
+#[derive(Clone, Copy)]
+struct MarkerProcessLiveness {
+	alive: bool,
+	reason: &'static str,
 }
 
 struct OperatorRunAppServerState {
@@ -1536,6 +1543,7 @@ where
 		retry_budget_attempts,
 		worktree_has_tracked_changes,
 	);
+	let process_liveness = marker.as_ref().and_then(marker_process_liveness_for_marker);
 
 	Ok(Some(OperatorQueuedIssueAttentionStatus {
 		summary,
@@ -1572,7 +1580,8 @@ where
 			.and_then(RunActivityMarker::last_event_type)
 			.map(str::to_owned),
 		event_count: marker.as_ref().map_or(0, RunActivityMarker::event_count),
-		process_alive: marker.as_ref().and_then(|marker| marker.process_id().map(process_is_alive)),
+		process_alive: process_liveness.map(|liveness| liveness.alive),
+		process_liveness_reason: process_liveness.map(|liveness| liveness.reason.to_owned()),
 		worktree_path: worktree_path
 			.exists()
 			.then(|| relative_worktree_path_for_path(project, &worktree_path)),
@@ -3274,11 +3283,59 @@ fn recoverable_worktree_identifiers(worktree_root: &Path) -> crate::prelude::Res
 }
 
 fn worktree_activity_marker_is_fresh(marker: &RunActivityMarker, now_unix_epoch: i64) -> bool {
-	marker.process_id().is_some_and(process_is_alive)
+	marker_process_is_alive(marker)
 		&& marker
 			.last_activity_unix_epoch()
 			.and_then(|last_activity| observed_idle_duration(last_activity, now_unix_epoch))
 			.is_some_and(|idle_for| idle_for < ACTIVE_RUN_IDLE_TIMEOUT)
+}
+
+fn marker_process_is_alive(marker: &RunActivityMarker) -> bool {
+	marker_process_liveness(marker).alive
+}
+
+fn marker_process_liveness_for_marker(
+	marker: &RunActivityMarker,
+) -> Option<MarkerProcessLiveness> {
+	marker.process_id().map(|_| marker_process_liveness(marker))
+}
+
+fn marker_process_liveness(marker: &RunActivityMarker) -> MarkerProcessLiveness {
+	let Some(process_id) = marker.process_id() else {
+		return MarkerProcessLiveness { alive: false, reason: "process_id_missing" };
+	};
+
+	if !process_is_alive(process_id) {
+		return MarkerProcessLiveness { alive: false, reason: "process_stopped" };
+	}
+
+	let Some(marker_host_boot_id) = marker.host_boot_id() else {
+		return MarkerProcessLiveness { alive: false, reason: "host_boot_id_missing" };
+	};
+	let Some(current_host_boot_id) = state::current_host_boot_id() else {
+		return MarkerProcessLiveness { alive: false, reason: "host_boot_id_unavailable" };
+	};
+	if marker_host_boot_id != current_host_boot_id.as_str() {
+		return MarkerProcessLiveness { alive: false, reason: "host_boot_id_mismatch" };
+	}
+
+	let Some(marker_process_start_identity) = marker.process_start_identity() else {
+		return MarkerProcessLiveness { alive: false, reason: "process_start_identity_missing" };
+	};
+	let Some(current_process_start_identity) = state::process_start_identity(process_id) else {
+		return MarkerProcessLiveness {
+			alive: false,
+			reason: "process_start_identity_unavailable",
+		};
+	};
+	if marker_process_start_identity != current_process_start_identity.as_str() {
+		return MarkerProcessLiveness {
+			alive: false,
+			reason: "process_start_identity_mismatch",
+		};
+	}
+
+	MarkerProcessLiveness { alive: true, reason: "process_alive" }
 }
 
 fn process_is_alive(process_id: u32) -> bool {
@@ -3409,11 +3466,12 @@ fn operator_run_status(
 		suspected_stall,
 		last_event_type: protocol_summary.last_event_type,
 		last_event_at: protocol_summary.last_event_at,
-		event_count: protocol_summary.event_count,
-		process_id: timing.process_id,
-		process_alive: timing.process_alive,
-		retry_kind,
-		next_retry_at: format_optional_unix_timestamp(retry_ready_at_unix_epoch),
+			event_count: protocol_summary.event_count,
+			process_id: timing.process_id,
+			process_alive: timing.process_alive,
+			process_liveness_reason: timing.process_liveness_reason,
+			retry_kind,
+			next_retry_at: format_optional_unix_timestamp(retry_ready_at_unix_epoch),
 		effective_model: app_server_state.effective_model,
 		effective_model_provider: app_server_state.effective_model_provider,
 		effective_cwd: app_server_state.effective_cwd,
@@ -3460,9 +3518,11 @@ fn operator_run_timing(
 		marker.and_then(RunActivityMarker::last_progress_unix_epoch),
 		last_protocol_activity_unix_epoch,
 	);
+	let process_liveness = marker.and_then(marker_process_liveness_for_marker);
 
 	OperatorRunTiming {
-		process_alive: process_id.map(process_is_alive),
+		process_alive: process_liveness.map(|liveness| liveness.alive),
+		process_liveness_reason: process_liveness.map(|liveness| liveness.reason.to_owned()),
 		process_id,
 		last_run_activity_unix_epoch,
 		last_protocol_activity_unix_epoch,
@@ -4696,7 +4756,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let accounts = render_accounts_summary(&run.accounts);
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  process_id: {}\n  process_alive: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -4744,6 +4804,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 			|| String::from("none"),
 			|value| if value { String::from("yes") } else { String::from("no") },
 		),
+		run.process_liveness_reason.as_deref().unwrap_or("none"),
 		run.retry_kind.as_deref().unwrap_or("none"),
 		run.next_retry_at.as_deref().unwrap_or("none"),
 		run.effective_model.as_deref().unwrap_or("none"),
