@@ -310,6 +310,8 @@ fn handle_operator_dashboard_websocket_connection(
 		write_dashboard_websocket_event(&mut stream, "snapshot", &payload)?;
 	}
 
+	write_current_dashboard_run_activity_event(&mut stream, state_store, &session.subscription);
+
 	loop {
 		for frame in read_dashboard_websocket_client_frames(&mut stream, &mut client_frame_buffer)? {
 			match frame {
@@ -322,6 +324,13 @@ fn handle_operator_dashboard_websocket_connection(
 						&& let Some(payload) = dashboard_current_snapshot_event_payload(snapshot)?
 					{
 						write_dashboard_websocket_event(&mut stream, "snapshot", &payload)?;
+					}
+					if dashboard_control_ack_should_push_run_activity(&response) {
+						write_current_dashboard_run_activity_event(
+							&mut stream,
+							state_store,
+							&session.subscription,
+						);
 					}
 				},
 				DashboardClientFrame::Close => return Ok(()),
@@ -477,6 +486,48 @@ fn dashboard_control_ack_should_push_snapshot(ack: &Value) -> bool {
 			ack.get("action").and_then(Value::as_str),
 			Some("selectAccount" | "clearAccountSelection")
 		)
+}
+
+fn dashboard_control_ack_should_push_run_activity(ack: &Value) -> bool {
+	ack.get("accepted").and_then(Value::as_bool).unwrap_or(false)
+		&& matches!(
+			ack.get("action").and_then(Value::as_str),
+			Some("subscribe" | "focus" | "clearFocus" | "selectAccount" | "clearAccountSelection")
+		)
+}
+
+fn write_current_dashboard_run_activity_event(
+	stream: &mut TcpStream,
+	state_store: &StateStore,
+	subscription: &DashboardClientSubscription,
+) {
+	match build_operator_run_activity_event(state_store).and_then(|event| {
+		if let Some(event) = dashboard_event_for_subscription(&event.event, subscription) {
+			if !dashboard_run_activity_event_has_active_runs(&event) {
+				return Ok(());
+			}
+
+			write_dashboard_websocket_event(stream, event.event_type, &event.payload)?;
+		}
+
+		Ok(())
+	}) {
+		Ok(()) => {},
+		Err(error) => {
+			tracing::warn!(
+				?error,
+				"Skipped immediate dashboard run activity snapshot for a WebSocket client."
+			);
+		},
+	}
+}
+
+fn dashboard_run_activity_event_has_active_runs(event: &DashboardBroadcastEvent) -> bool {
+	event
+		.payload
+		.get("activeRuns")
+		.and_then(Value::as_array)
+		.is_some_and(|runs| !runs.is_empty())
 }
 
 fn write_dashboard_websocket_event(
