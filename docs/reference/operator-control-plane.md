@@ -63,7 +63,7 @@ Use `decodex diagnose --json` when an agent needs the current handoff index dire
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
 | Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, connector retry budgets |
 | GitHub | PR, checks, review comments, merge evidence, signed commit verification | queue selection or local lane ownership |
-| `.decodex-run-activity` | short-lived child activity heartbeat for the active attempt | durable ownership, review handoff identity, cleanup authority |
+| `.decodex-run-activity` | short-lived child activity heartbeat for the active attempt, including same-boot and same-process-start liveness | durable ownership, review handoff identity, cleanup authority |
 
 ## Operator Dashboard Sections
 
@@ -124,9 +124,14 @@ outside the local operator surface.
 Worktree visibility follows the owning dashboard section:
 
 - `Running Lanes` means the runtime DB still has an active lease, active attempt, or
-  child process/thread/protocol relationship for the path. `active_lease` is queue
-  lease ownership only; `execution_liveness` explains why the lane is still visible
-  when the queue lease is not held.
+  child process/thread/protocol relationship for the path. Process liveness requires
+  an alive PID plus matching `.decodex-run-activity` `host_boot_id` and
+  `process_start_identity`; a previous-boot marker, same-boot PID reuse, missing
+  identity, or unavailable current host/process identity is recovery input, not proof
+  of active execution. `process_liveness_reason` explains which identity check failed
+  when `process_alive` is false.
+  `active_lease` is queue lease ownership only; `execution_liveness` explains why
+  the lane is still visible when the queue lease is not held.
 - Running lanes derive CLI and dashboard text from the same `OperatorRunStatus`
   object. `protocol_activity`, when present, summarizes app-server structured
   notifications for turn status, waiting reason, and recent protocol events. The
@@ -210,7 +215,10 @@ map to an operator decision.
   snapshot fields.
 - Queue ownership and execution liveness are separate. `queue_lease_state` reports
   whether the local queue lease is held, while `execution_liveness` reports observed
-  process, app-server thread, or protocol activity.
+  process, app-server thread, or protocol activity. `process_alive` is true only
+  when `.decodex-run-activity` ties the PID to the current host boot identity and
+  current process start identity; `process_liveness_reason` keeps stopped process,
+  previous-boot, and PID-reuse cases distinguishable.
 - `status` is the operator-facing run status. If the raw attempt is still `starting`
   after app-server thread, model, or protocol evidence exists, `status` is shown as
   `running` and `attempt_status` preserves the raw persisted attempt value.

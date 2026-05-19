@@ -783,6 +783,7 @@ struct OperatorRunStatus {
 	event_count: i64,
 	process_id: Option<u32>,
 	process_alive: Option<bool>,
+	process_liveness_reason: Option<String>,
 	retry_kind: Option<String>,
 	next_retry_at: Option<String>,
 	effective_model: Option<String>,
@@ -832,6 +833,7 @@ struct OperatorQueuedIssueAttentionStatus {
 	last_event_type: Option<String>,
 	event_count: i64,
 	process_alive: Option<bool>,
+	process_liveness_reason: Option<String>,
 	worktree_path: Option<String>,
 	worktree_has_tracked_changes: bool,
 }
