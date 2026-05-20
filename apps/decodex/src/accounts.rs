@@ -364,6 +364,7 @@ impl AccountStore {
 			.iter()
 			.filter_map(|(key, value)| {
 				let key = key.trim();
+
 				(!key.is_empty()).then_some((
 					key.to_owned(),
 					normalize_random_name_offset(value.as_integer().unwrap_or_default()),
@@ -1327,6 +1328,7 @@ fn random_name_seed_for(account_fingerprint: &str, email: Option<String>) -> Str
 	if !account_fingerprint.trim().is_empty() {
 		return account_fingerprint.to_owned();
 	}
+
 	if let Some(email) = email.filter(|value| !value.trim().is_empty()) {
 		return email;
 	}

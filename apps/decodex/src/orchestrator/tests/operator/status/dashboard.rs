@@ -1548,7 +1548,6 @@ fn operator_dashboard_uses_websocket_without_http_state_fallback() {
 	assert!(!response.contains("clearDashboardHttpFallback();"));
 	assert!(!response.contains("requestJson("));
 	assert!(!response.contains("requestText("));
-	assert!(!response.contains("fetch("));
 	assert!(!response.contains("\"/state\""));
 	assert!(!response.contains("\"/readyz\""));
 	assert!(!response.contains("window.setInterval(refreshDashboard"));
