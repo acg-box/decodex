@@ -1,11 +1,11 @@
 //! Local Decodex control-plane runtime paths and project registry helpers.
 
+#[cfg(test)] use std::process;
 use std::{
 	cmp::Reverse,
 	env, fs,
 	io::ErrorKind,
 	path::{Path, PathBuf},
-	process,
 };
 
 use toml::Value;
@@ -59,6 +59,7 @@ pub(crate) fn global_fixed_account_selector() -> Result<Option<String>> {
 }
 
 /// Write the global fixed account selector. `None` returns the pool to balanced mode.
+#[cfg(test)]
 pub(crate) fn write_global_fixed_account_selector(selector: Option<&str>) -> Result<()> {
 	let config_path = global_config_path()?;
 	let input = match fs::read_to_string(&config_path) {
@@ -214,6 +215,7 @@ fn decodex_home_dir_from(home: PathBuf) -> PathBuf {
 	home.join(".codex").join("decodex")
 }
 
+#[cfg(test)]
 fn ensure_toml_table<'a>(table: &'a mut toml::Table, key: &str) -> Result<&'a mut toml::Table> {
 	if !table.contains_key(key) {
 		table.insert(String::from(key), toml::Table::new().into());

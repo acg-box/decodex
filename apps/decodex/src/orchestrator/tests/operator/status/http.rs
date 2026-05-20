@@ -535,6 +535,14 @@ fn assert_dashboard_account_selection_controls(
 ) {
 	let home = repo_root.parent().expect("fixture repo root should have a parent");
 	let _home_guard = TestEnvVarGuard::set("HOME", home.to_str().expect("fixture home should be UTF-8"));
+	let accounts_dir = home.join(".codex/decodex");
+
+	fs::create_dir_all(&accounts_dir).expect("account pool dir should create");
+	fs::write(
+		accounts_dir.join("accounts.jsonl"),
+		r#"{"email":"copy@example.com","tokens":{"access_token":"token","refresh_token":"refresh","account_id":"acct_123456"}}"#,
+	)
+	.expect("account pool should write");
 
 	client
 		.write_all(&websocket_client_text_frame(
@@ -1364,6 +1372,53 @@ fn operator_state_endpoint_serves_account_api_snapshot() {
 	assert!(data["accounts_path"].as_str().is_some_and(|path| {
 		path.ends_with(".codex/decodex/accounts.jsonl")
 	}));
+}
+
+#[test]
+fn operator_state_endpoint_persists_account_random_name_offset() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
+	let accounts_dir = temp_dir.path().join(".codex/decodex");
+	let accounts_path = accounts_dir.join("accounts.jsonl");
+
+	fs::create_dir_all(&accounts_dir).expect("accounts dir should create");
+	fs::write(
+		&accounts_path,
+		r#"{"email":"copy@example.com","tokens":{"access_token":"token","refresh_token":"refresh","account_id":"acct_123456"}}"#,
+	)
+	.expect("account pool should write");
+
+	let body = br#"{"selector":"copy@example.com"}"#;
+	let request = format!(
+		"POST /api/accounts/reroll-name HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+		body.len(),
+		String::from_utf8_lossy(body)
+	);
+	let response = String::from_utf8(
+		orchestrator::build_operator_state_http_response(request.as_bytes())
+			.expect("account reroll response should build"),
+	)
+	.expect("account reroll response should be utf-8");
+
+	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+
+	let data: Value = serde_json::from_str(
+		response
+			.split_once("\r\n\r\n")
+			.map(|(_, body)| body)
+			.expect("account reroll response should include body"),
+	)
+	.expect("account reroll response should be json");
+
+	assert_eq!(data["accounts"][0]["random_name_offset"], 1);
+	assert_eq!(data["accounts"][0]["random_name_key"], "df65f796");
+	assert_eq!(data["accounts"][0]["random_name"], "Logan");
+	assert!(
+		fs::read_to_string(accounts_dir.join("config.toml"))
+			.expect("global config should read")
+			.contains("df65f796 = 1")
+	);
 }
 
 #[test]

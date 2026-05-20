@@ -60,6 +60,9 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	let accountFingerprint: String
 	let email: String?
 	let selector: String
+	let randomName: String?
+	let randomNameKey: String?
+	let randomNameOffset: Int?
 	let status: String
 	let selected: Bool
 	let codexActive: Bool
@@ -91,6 +94,26 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		email ?? accountFingerprint
 	}
 
+	var authIdentity: CodexAuthIdentity {
+		CodexAuthIdentity(
+			accountFingerprint: accountFingerprint,
+			email: email,
+			selector: selector
+		)
+	}
+
+	var needsLogin: Bool {
+		status == "unusable" || status == "expired" || !refreshTokenPresent
+	}
+
+	var canUseInCodex: Bool {
+		!disabled && !needsLogin
+	}
+
+	var canRouteRuns: Bool {
+		!disabled && !needsLogin
+	}
+
 	var statusLabel: String {
 		if isUsageLimited {
 			return "Limited"
@@ -99,7 +122,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 			return "Codex active"
 		}
 		if selected {
-			return "Decodex pinned"
+			return "Runs routed"
 		}
 
 		switch status {
@@ -158,16 +181,16 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 
 	func windowLabel(seconds: Int?) -> String {
 		switch seconds {
-		case 18_000: return "5h"
-		case 604_800: return "7d"
+		case 18_000: return "5 hrs"
+		case 604_800: return "7 days"
 		case let value?:
 			let hours = value / 3_600
 			if hours > 0 && value % 3_600 == 0 {
-				return "\(hours)h"
+				return hours == 1 ? "1 hr" : "\(hours) hrs"
 			}
 			let days = value / 86_400
 			if days > 0 && value % 86_400 == 0 {
-				return "\(days)d"
+				return days == 1 ? "1 day" : "\(days) days"
 			}
 			return "window"
 		case nil:
@@ -188,10 +211,51 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		return .ready
 	}
 
+	func matchesSelector(_ value: String) -> Bool {
+		let selector = value.trimmingCharacters(in: .whitespacesAndNewlines)
+		return selector == email || selector == accountFingerprint || selector == self.selector
+	}
+
+	func withCodexActive(_ value: Bool) -> CodexAccount {
+		CodexAccount(
+			accountFingerprint: accountFingerprint,
+			email: email,
+			selector: selector,
+			randomName: randomName,
+			randomNameKey: randomNameKey,
+			randomNameOffset: randomNameOffset,
+			status: status,
+			selected: selected,
+			codexActive: value,
+			disabled: disabled,
+			refreshTokenPresent: refreshTokenPresent,
+			accessTokenExpiresAtUnixEpoch: accessTokenExpiresAtUnixEpoch,
+			lastSelectedAtUnixEpoch: lastSelectedAtUnixEpoch,
+			cooldownUntilUnixEpoch: cooldownUntilUnixEpoch,
+			note: note,
+			planType: planType,
+			refreshStatus: refreshStatus,
+			checkedAtUnixEpoch: checkedAtUnixEpoch,
+			primaryWindowSeconds: primaryWindowSeconds,
+			primaryRemainingPercent: primaryRemainingPercent,
+			primaryResetsAtUnixEpoch: primaryResetsAtUnixEpoch,
+			secondaryWindowSeconds: secondaryWindowSeconds,
+			secondaryRemainingPercent: secondaryRemainingPercent,
+			secondaryResetsAtUnixEpoch: secondaryResetsAtUnixEpoch,
+			creditsHasCredits: creditsHasCredits,
+			creditsUnlimited: creditsUnlimited,
+			creditsBalance: creditsBalance,
+			rateLimitReachedType: rateLimitReachedType
+		)
+	}
+
 	enum CodingKeys: String, CodingKey {
 		case accountFingerprint = "account_fingerprint"
 		case email
 		case selector
+		case randomName = "random_name"
+		case randomNameKey = "random_name_key"
+		case randomNameOffset = "random_name_offset"
 		case status
 		case selected
 		case codexActive = "codex_active"
