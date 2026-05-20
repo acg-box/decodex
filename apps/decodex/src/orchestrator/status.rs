@@ -186,6 +186,8 @@ fn build_operator_status_snapshot(
 			retained_worktree_count: 0,
 			waiting_lane_count: 0,
 			attention_count: 0,
+			cleanup_blocked_count: 0,
+			cleanup_pending_count: 0,
 			connector_state: String::from("ok"),
 			last_activity_at: None,
 			warning_count: 0,
@@ -488,6 +490,8 @@ fn refresh_operator_project_summary(snapshot: &mut OperatorStatusSnapshot) {
 	let retained_worktree_count = rendered_recovery_worktrees(snapshot).len();
 	let waiting_lane_count = project_waiting_lane_count(snapshot);
 	let attention_count = project_attention_count(snapshot);
+	let cleanup_blocked_count = project_cleanup_blocked_count(snapshot);
+	let cleanup_pending_count = project_cleanup_pending_count(snapshot);
 	let connector_state = project_connector_state(snapshot);
 	let last_activity_at = project_last_activity_at(snapshot);
 	let warning_count = snapshot.warnings.len();
@@ -499,6 +503,8 @@ fn refresh_operator_project_summary(snapshot: &mut OperatorStatusSnapshot) {
 		project_status.retained_worktree_count = retained_worktree_count;
 		project_status.waiting_lane_count = waiting_lane_count;
 		project_status.attention_count = attention_count;
+		project_status.cleanup_blocked_count = cleanup_blocked_count;
+		project_status.cleanup_pending_count = cleanup_pending_count;
 		project_status.connector_state = connector_state;
 		project_status.last_activity_at = last_activity_at;
 		project_status.warning_count = warning_count;
@@ -559,17 +565,62 @@ fn project_attention_count(snapshot: &OperatorStatusSnapshot) -> usize {
 		.filter(|lane| {
 			matches!(
 				lane.classification.as_str(),
-				"blocked" | "needs_review_repair" | "closeout_blocked" | "cleanup_blocked"
+				"blocked" | "needs_review_repair" | "closeout_blocked"
 			)
 		})
 		.count();
-	let hygiene_attention = snapshot
+
+	active_attention + queued_attention + review_attention
+}
+
+fn project_cleanup_blocked_count(snapshot: &OperatorStatusSnapshot) -> usize {
+	let mut cleanup_keys = HashSet::new();
+
+	for lane in snapshot
+		.post_review_lanes
+		.iter()
+		.filter(|lane| lane.classification == "cleanup_blocked")
+	{
+		cleanup_keys.insert(post_review_lane_cleanup_key(lane));
+	}
+	for worktree in snapshot.worktrees.iter().filter(|worktree| {
+		worktree.hygiene.as_ref().is_some_and(|hygiene| {
+			hygiene.dirty || hygiene.classification == "merged_dirty_worktree"
+		})
+	}) {
+		cleanup_keys.insert(worktree_cleanup_key(worktree));
+	}
+
+	cleanup_keys.len()
+}
+
+fn project_cleanup_pending_count(snapshot: &OperatorStatusSnapshot) -> usize {
+	snapshot
 		.worktrees
 		.iter()
-		.filter(|worktree| worktree.hygiene.is_some())
-		.count();
+		.filter(|worktree| {
+			worktree.hygiene.as_ref().is_some_and(|hygiene| {
+				!hygiene.dirty && hygiene.classification == "merged_worktree_cleanup_pending"
+			})
+		})
+		.map(worktree_cleanup_key)
+		.collect::<HashSet<_>>()
+		.len()
+}
 
-	active_attention + queued_attention + review_attention + hygiene_attention
+fn post_review_lane_cleanup_key(lane: &OperatorPostReviewLaneStatus) -> String {
+	if lane.issue_identifier.is_empty() {
+		return lane.issue_id.clone();
+	}
+
+	lane.issue_identifier.clone()
+}
+
+fn worktree_cleanup_key(worktree: &OperatorWorktreeStatus) -> String {
+	worktree
+		.issue_identifier
+		.clone()
+		.unwrap_or_else(|| worktree.issue_id.clone())
 }
 
 fn operator_run_counts_as_active(run: &OperatorRunStatus) -> bool {
