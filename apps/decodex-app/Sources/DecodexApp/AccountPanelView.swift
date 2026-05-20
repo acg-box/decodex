@@ -56,7 +56,9 @@ private enum PanelPalette {
 
 	static func accountRowTint(_ colorScheme: ColorScheme, isSelected: Bool, isCodexActive: Bool) -> Color {
 		if isSelected {
-			return actionBlue(colorScheme).opacity(colorScheme == .dark ? 0.13 : 0.16)
+			return colorScheme == .dark
+				? Color(red: 0.58, green: 0.72, blue: 0.9).opacity(0.17)
+				: Color(red: 0.88, green: 0.96, blue: 1).opacity(0.76)
 		}
 		if isCodexActive {
 			return colorScheme == .dark
@@ -232,9 +234,12 @@ struct AccountPanelView: View {
 
 	private var header: some View {
 		HStack(alignment: .center, spacing: 8) {
-			Image(systemName: store.menuSymbol)
-				.font(PanelFont.headerIcon)
+			Image(nsImage: AppAssets.statusBarIcon)
+				.resizable()
+				.renderingMode(.template)
+				.scaledToFit()
 				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
+				.frame(width: 16, height: 16)
 				.frame(width: 28, height: 28)
 				.modernGlassSurface(
 					cornerRadius: 8,
@@ -286,7 +291,7 @@ struct AccountPanelView: View {
 			SummaryTileView(
 				title: "Codex",
 				value: codexAuthLabel,
-				symbol: "bolt.fill",
+				symbol: "person.crop.circle",
 				tint: PanelPalette.activeGold(colorScheme)
 			)
 
@@ -298,7 +303,7 @@ struct AccountPanelView: View {
 			SummaryTileView(
 				title: "Runs",
 				value: decodexModeLabel,
-				symbol: hasFixedSelection ? "scope" : "arrow.triangle.branch",
+				symbol: "arrow.triangle.branch",
 				tint: hasFixedSelection ? PanelPalette.actionBlue(colorScheme) : PanelPalette.secondaryText(colorScheme)
 			)
 		}
@@ -394,7 +399,7 @@ struct AccountPanelView: View {
 
 			if hasFixedSelection {
 				PanelIconButtonView(
-					symbol: "arrow.triangle.branch",
+					symbol: "shuffle",
 					tint: PanelPalette.actionBlue(colorScheme),
 					isActive: false,
 					action: {
@@ -402,7 +407,7 @@ struct AccountPanelView: View {
 							await store.clearSelection()
 						}
 					},
-					help: "Use balanced run routing"
+					help: "Restore balanced run routing"
 				)
 			}
 
@@ -434,14 +439,15 @@ struct AccountPanelView: View {
 
 		if let selector = control.accountSelector, !selector.isEmpty {
 			if emailsHidden {
-				return account(matching: selector).map(AccountDisplay.alias) ?? "Account"
+				let value = account(matching: selector).map(AccountDisplay.alias) ?? "Account"
+				return "To \(value)"
 			}
 
 			if selector.contains("@") {
-				return AccountDisplay.compactEmail(selector)
+				return "To \(AccountDisplay.compactEmail(selector))"
 			}
 
-			return AccountDisplay.compactIdentity(selector)
+			return "To \(AccountDisplay.compactIdentity(selector))"
 		}
 
 		if control.mode == "balanced" {
@@ -474,7 +480,7 @@ struct AccountPanelView: View {
 	private var headerSubtitle: String {
 		let count = store.accounts.count
 		let accountLabel = "\(count) account\(count == 1 ? "" : "s")"
-		return hasFixedSelection ? "\(accountLabel) / routed runs" : "\(accountLabel) / balanced runs"
+		return hasFixedSelection ? "\(accountLabel) / run route set" : "\(accountLabel) / balanced runs"
 	}
 
 	private var emailsHidden: Bool {
@@ -534,23 +540,23 @@ struct AccountRowView: View {
 
 				HStack(spacing: 3) {
 					PanelIconButtonView(
-						symbol: account.codexActive ? "bolt.fill" : "bolt",
+						symbol: account.codexActive ? "person.crop.circle.fill" : "person.crop.circle",
 						tint: PanelPalette.activeGold(colorScheme),
 						isActive: account.codexActive,
 						isSubtle: true,
 						size: 22,
 						action: useInCodex,
-						help: account.codexActive ? "Already active in Codex" : "Use in Codex"
+						help: account.codexActive ? "Current Codex account" : "Use as Codex account"
 					)
 
 					PanelIconButtonView(
-						symbol: "scope",
+						symbol: "arrow.triangle.branch",
 						tint: PanelPalette.actionBlue(colorScheme),
 						isActive: account.selected,
 						isSubtle: true,
 						size: 22,
 						action: routeRunsHere,
-						help: account.selected ? "Use balanced run routing" : "Route Decodex runs here"
+						help: account.selected ? "Restore balanced run routing" : "Route Decodex runs here"
 					)
 
 					PanelIconButtonView(

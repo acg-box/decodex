@@ -32,20 +32,6 @@ final class AccountStore: ObservableObject {
 		return "Codex: \(codexLabel) / Decodex: \(decodexLabel)"
 	}
 
-	var menuSymbol: String {
-		if accounts.contains(where: \.codexActive) {
-			return "bolt.circle.fill"
-		}
-		if accounts.contains(where: \.selected) {
-			return "person.crop.circle.badge.checkmark"
-		}
-		if accounts.isEmpty {
-			return "person.crop.circle.badge.plus"
-		}
-
-		return "person.2.circle"
-	}
-
 	var loginPrompt: DeviceLoginPrompt? {
 		DeviceLoginPrompt.parse(loginTranscript)
 	}
