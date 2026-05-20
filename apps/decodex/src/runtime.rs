@@ -1,5 +1,6 @@
 //! Local Decodex control-plane runtime paths and project registry helpers.
 
+#[cfg(test)] use std::process;
 use std::{
 	cmp::Reverse,
 	env, fs,
@@ -103,7 +104,7 @@ pub(crate) fn write_global_fixed_account_selector(selector: Option<&str>) -> Res
 		.file_name()
 		.and_then(|name| name.to_str())
 		.ok_or_else(|| eyre::eyre!("Decodex global config path must end in a valid file name."))?;
-	let temp_path = parent.join(format!(".{file_name}.tmp-{}", std::process::id()));
+	let temp_path = parent.join(format!(".{file_name}.tmp-{}", process::id()));
 	let output = toml::to_string_pretty(&document)?;
 
 	fs::create_dir_all(parent)?;
