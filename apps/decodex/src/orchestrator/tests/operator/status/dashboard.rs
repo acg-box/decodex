@@ -338,8 +338,9 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("worktree.ownership_reason"));
 	assert!(response.contains("const hygiene = worktree.hygiene;"));
 	assert!(response.contains("hygiene.classification === \"merged_dirty_worktree\""));
-	assert!(response.contains("post-land dirty worktree"));
+	assert!(response.contains("post-land cleanup blocked"));
 	assert!(response.contains("post-land cleanup"));
+	assert!(response.contains("post-review cleanup blocked"));
 	assert!(response.contains("hygiene.reason ||"));
 	assert!(response.contains("function renderWorktreeHygieneFields(worktree)"));
 	assert!(response.contains("field(\"Cleanup state\", humanizeToken(hygiene.classification || \"cleanup_pending\"))"));
@@ -1152,6 +1153,8 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("return { label: \"running\", tone: \"tone-run\""));
 	assert!(response.contains("return { label: \"needs attention\", tone: \"tone-blocked\""));
 	assert!(response.contains("return { label: \"waiting\", tone: \"tone-wait\""));
+	assert!(response.contains("return { label: \"cleanup blocked\", tone: \"tone-wait\""));
+	assert!(response.contains("return { label: \"cleanup pending\", tone: \"tone-retained\""));
 	assert!(response.contains("label: \"sync backoff\""));
 	assert!(response.contains("label: \"sync degraded\""));
 	assert!(response.contains("return { label: \"ok\", tone: \"tone-ready\""));
@@ -1177,9 +1180,13 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("const running = project.active_run_count ?? 0;"));
 	assert!(response.contains("const waiting = project.waiting_lane_count ?? 0;"));
 	assert!(response.contains("const attention = project.attention_count ?? 0;"));
+	assert!(response.contains("const cleanup = (project.cleanup_blocked_count ?? 0) + (project.cleanup_pending_count ?? 0);"));
 	assert!(response.contains("`${project.active_run_count ?? 0} running`"));
 	assert!(response.contains("`${project.waiting_lane_count ?? 0} waiting`"));
 	assert!(response.contains("`${project.attention_count ?? 0} attention`"));
+	assert!(response.contains("`${cleanup} cleanup`"));
+	assert!(response.contains("projectNumber(project.cleanup_blocked_count)"));
+	assert!(response.contains("projectNumber(project.cleanup_pending_count)"));
 	assert!(!response.contains("[project.post_review_lane_count ?? 0, \"review/land\"]"));
 	assert!(!response.contains("[project.retained_worktree_count, \"recovery\"]"));
 	assert!(!response.contains("aria-label=\"Project capacity\""));
@@ -1192,6 +1199,7 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("class=\"project-work-ratio\""));
 	assert!(response.contains("function projectWorkInfoMarkup()"));
 	assert!(response.contains("data-project-work-info"));
+	assert!(response.contains("Work format: running / waiting / attention / cleanup"));
 	assert!(response.contains("class=\"project-work-tooltip\" role=\"tooltip\""));
 }
 
@@ -1288,7 +1296,7 @@ fn operator_dashboard_empty_lane_meta_uses_counts() {
 	assert!(!response.contains("COPY.waitingSnapshot"));
 	assert!(response.contains("runningLaneMetaText(derived),"));
 	assert!(response.contains(": \"0 issues · 0 attempts\","));
-	assert!(response.contains(": \"0 PRs · 0 need attention · 0 ready · 0 waiting\","));
+	assert!(response.contains(": \"0 PRs · 0 need attention · 0 ready · 0 waiting · 0 cleanup\","));
 	assert!(response.contains("const parts = [`${derived.liveRuns ?? 0} running`];"));
 	assert!(response.contains("const parts = [`${derived.queueBacklogCandidates.length} queued`];"));
 	assert!(response.contains("return \"0 queued\";"));
@@ -1311,12 +1319,15 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 	assert!(response.contains("attention.thread_status && attention.thread_status !== \"systemError\""));
 	assert!(response.contains("queueBacklogCandidates.filter(queuedCandidateNeedsAttention).length"));
 	assert!(response.contains(
-		"${pluralize(derived.postReviewLanes.length, \"PR\")} · ${pluralize(derived.reviewBlockerCount, \"needs attention\", \"need attention\")}"
+		"${pluralize(derived.postReviewLanes.length, \"PR\")} · ${pluralize(derived.reviewBlockerCount, \"needs attention\", \"need attention\")} · ${derived.readyItems.length} ready · ${derived.reviewWaitingCount} waiting · ${derived.cleanupCount} cleanup"
 	));
+	assert!(response.contains("const cleanupIssueKeys = new Set();"));
+	assert!(response.contains("const cleanupCount = cleanupIssueKeys.size;"));
 	assert!(response.contains("? pluralize(retainedWorktrees.length, \"worktree\")"));
 	assert!(!response.contains("retained or cleanup"));
 	assert!(response.contains("function recoveryWorktreeShouldDefaultOpen(renderedWorktree)"));
-	assert!(response.contains("role.tone === \"tone-blocked\" || role.label.startsWith(\"post-land\")"));
+	assert!(response.contains("role.tone === \"tone-blocked\" || role.label.includes(\"cleanup\")"));
+	assert!(response.contains("label: isDirty ? \"post-review cleanup blocked\" : \"post-review cleanup\""));
 	assert!(response.contains("retainedWorktrees.some(recoveryWorktreeShouldDefaultOpen)"));
 	assert!(!response.contains("syncDefaultDetailOpenState(nodes.panels.worktrees, retainedWorktrees.length > 0);"));
 	assert!(!response.contains("Ready, capacity-limited, or blocked issues appear here before they start."));

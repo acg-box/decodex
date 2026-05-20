@@ -118,6 +118,12 @@ fn operator_status_snapshot_surfaces_merged_dirty_ad_hoc_worktree() {
 		"hygiene state should mark the local changes"
 	);
 
+	let project = snapshot.projects.first().expect("project summary should exist");
+
+	assert_eq!(project.attention_count, 0);
+	assert_eq!(project.cleanup_blocked_count, 1);
+	assert_eq!(project.cleanup_pending_count, 0);
+
 	let error = orchestrator::ensure_project_has_no_merged_worktree_cleanup_debt(&config)
 		.expect_err("normal automation should stop while merged dirty worktrees remain");
 
@@ -174,6 +180,12 @@ fn operator_status_snapshot_updates_owned_merged_worktree_hygiene_without_global
 		worktree.hygiene.as_ref().is_some_and(|hygiene| hygiene.dirty),
 		"hygiene should still surface on the owned worktree row"
 	);
+
+	let project = snapshot.projects.first().expect("project summary should exist");
+
+	assert_eq!(project.attention_count, 0);
+	assert_eq!(project.cleanup_blocked_count, 1);
+	assert_eq!(project.cleanup_pending_count, 0);
 }
 
 #[test]
@@ -266,6 +278,8 @@ fn idle_operator_status_snapshot_has_no_runtime_or_recovery_noise() {
 	assert_eq!(project.retained_worktree_count, 0);
 	assert_eq!(project.waiting_lane_count, 0);
 	assert_eq!(project.attention_count, 0);
+	assert_eq!(project.cleanup_blocked_count, 0);
+	assert_eq!(project.cleanup_pending_count, 0);
 	assert_eq!(project.connector_state, "ok");
 	assert_eq!(project.last_activity_at, None);
 
