@@ -705,6 +705,8 @@ struct OperatorProjectStatus {
 	retained_worktree_count: usize,
 	waiting_lane_count: usize,
 	attention_count: usize,
+	cleanup_blocked_count: usize,
+	cleanup_pending_count: usize,
 	connector_state: String,
 	last_activity_at: Option<String>,
 	warning_count: usize,
