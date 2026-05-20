@@ -76,6 +76,7 @@ const PREFLIGHT_CHECK_MODEL_PROVIDER: &str = "model_provider";
 const PREFLIGHT_CHECK_SKILLS: &str = "skills";
 const PREFLIGHT_CHECK_PLUGINS: &str = "plugins";
 const PREFLIGHT_CHECK_MCP: &str = "mcp";
+const PREFLIGHT_PLUGIN_MARKETPLACE_KIND: &str = "local";
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32_601;
 const CHILD_BUCKET_MODEL: &str = "Model";
 const CHILD_BUCKET_PROTOCOL: &str = "Protocol";
@@ -1125,6 +1126,21 @@ fn protocol_activity_category(event_type: &str) -> &'static str {
 	if normalized.starts_with("account/") {
 		return "account";
 	}
+	if normalized == "deprecationnotice" {
+		return "deprecation";
+	}
+	if normalized == "warning" || normalized == "configwarning" || normalized == "guardianwarning" {
+		return "warning";
+	}
+	if normalized.starts_with("model/") {
+		return "model";
+	}
+	if normalized.contains("tokenusage") {
+		return "token_usage";
+	}
+	if normalized.contains("reasoning") {
+		return "reasoning";
+	}
 	if normalized == "item/tool/call/failure" {
 		return "protocol_error";
 	}
@@ -1145,6 +1161,8 @@ fn protocol_activity_category(event_type: &str) -> &'static str {
 }
 
 fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> Option<String> {
+	let normalized = event_type.to_ascii_lowercase();
+
 	if event_type == "thread/status/changed" {
 		return payload_value.and_then(|value| {
 			string_at_paths(value, &[&["params", "status", "type"], &["status", "type"]])
@@ -1171,6 +1189,37 @@ fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> 
 	if event_type.starts_with("account/") {
 		return protocol_account_detail(payload_value);
 	}
+	if normalized == "deprecationnotice"
+		|| normalized == "warning"
+		|| normalized == "configwarning"
+		|| normalized == "guardianwarning"
+	{
+		return warning_or_deprecation_detail(payload_value);
+	}
+	if event_type == "model/rerouted" {
+		return model_rerouted_detail(payload_value);
+	}
+	if event_type == "model/verification" {
+		return model_verification_detail(payload_value);
+	}
+	if normalized.contains("tokenusage") {
+		return token_usage_detail(payload_value);
+	}
+	if normalized.contains("reasoning") {
+		return payload_value.and_then(|value| {
+			string_at_paths(
+				value,
+				&[
+					&["params", "text"],
+					&["text"],
+					&["params", "summary"],
+					&["summary"],
+					&["params", "part", "text"],
+					&["part", "text"],
+				],
+			)
+		});
+	}
 	if event_type == "error" {
 		return payload_value
 			.and_then(|value| {
@@ -1183,6 +1232,70 @@ fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> 
 	}
 
 	None
+}
+
+fn warning_or_deprecation_detail(payload_value: Option<&Value>) -> Option<String> {
+	payload_value.and_then(|value| {
+		string_at_paths(
+			value,
+			&[
+				&["params", "summary"],
+				&["summary"],
+				&["params", "message"],
+				&["message"],
+				&["params", "details"],
+				&["details"],
+			],
+		)
+	})
+}
+
+fn model_rerouted_detail(payload_value: Option<&Value>) -> Option<String> {
+	let value = payload_value?;
+	let from_model = string_at_paths(value, &[&["params", "fromModel"], &["fromModel"]])?;
+	let to_model = string_at_paths(value, &[&["params", "toModel"], &["toModel"]])?;
+	let reason = string_at_paths(value, &[&["params", "reason"], &["reason"]]);
+
+	Some(match reason {
+		Some(reason) => format!("{from_model}->{to_model}/{reason}"),
+		None => format!("{from_model}->{to_model}"),
+	})
+}
+
+fn model_verification_detail(payload_value: Option<&Value>) -> Option<String> {
+	let value = payload_value?;
+	let verifications = value_at_paths(value, &[&["params", "verifications"], &["verifications"]])?;
+	let verification_count = verifications.as_array()?.len();
+
+	Some(format!("{verification_count} verification(s)"))
+}
+
+fn token_usage_detail(payload_value: Option<&Value>) -> Option<String> {
+	let value = payload_value?;
+	let input_tokens = value_at_paths(
+		value,
+		&[
+			&["params", "tokenUsage", "total", "inputTokens"],
+			&["tokenUsage", "total", "inputTokens"],
+		],
+	)
+	.and_then(json_number_to_i64);
+	let output_tokens = value_at_paths(
+		value,
+		&[
+			&["params", "tokenUsage", "total", "outputTokens"],
+			&["tokenUsage", "total", "outputTokens"],
+		],
+	)
+	.and_then(json_number_to_i64);
+
+	match (input_tokens, output_tokens) {
+		(Some(input_tokens), Some(output_tokens)) =>
+			Some(format!("input={input_tokens}, output={output_tokens}")),
+		(Some(input_tokens), None) => Some(format!("input={input_tokens}")),
+		(None, Some(output_tokens)) => Some(format!("output={output_tokens}")),
+		(None, None) => None,
+	}
 }
 
 fn protocol_account_detail(payload_value: Option<&Value>) -> Option<String> {
@@ -1967,7 +2080,7 @@ fn run_app_server_capability_preflight(
 	record_skills_preflight(&mut report, cwd, &skills);
 
 	let plugins = preflight_request(recorder, &report, "plugin/list", || {
-		client.list_plugins(&PluginListParams { cwds: Some(vec![cwd.to_owned()]) })
+		client.list_plugins(&plugin_list_params_for_preflight(cwd))
 	})?;
 
 	record_plugin_preflight(&mut report, &plugins);
@@ -1989,6 +2102,13 @@ fn run_app_server_capability_preflight(
 	}
 
 	Ok(report)
+}
+
+fn plugin_list_params_for_preflight(cwd: &str) -> PluginListParams {
+	PluginListParams {
+		cwds: Some(vec![cwd.to_owned()]),
+		marketplace_kinds: Some(vec![PREFLIGHT_PLUGIN_MARKETPLACE_KIND.to_owned()]),
+	}
 }
 
 fn preflight_method_failure<T>(
