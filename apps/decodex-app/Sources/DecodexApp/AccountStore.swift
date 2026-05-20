@@ -9,6 +9,11 @@ final class AccountStore: ObservableObject {
 	@Published var notice: String?
 
 	private let bridge = DecodexAppBridge()
+	private var automaticRefreshTask: Task<Void, Never>?
+
+	deinit {
+		automaticRefreshTask?.cancel()
+	}
 
 	var isInitialLoading: Bool {
 		accountList == nil && isRefreshing
@@ -82,14 +87,47 @@ final class AccountStore: ObservableObject {
 		await refresh()
 	}
 
+	func resetLoginSession() {
+		guard !isLoggingIn else {
+			return
+		}
+
+		loginTranscript = ""
+		notice = nil
+	}
+
+	func startAutomaticRefresh() {
+		guard automaticRefreshTask == nil else {
+			return
+		}
+
+		automaticRefreshTask = Task { [weak self] in
+			while !Task.isCancelled {
+				do {
+					try await Task.sleep(nanoseconds: 60_000_000_000)
+				} catch {
+					return
+				}
+
+				await self?.refresh(force: true)
+			}
+		}
+	}
+
 	func useInCodex(_ account: CodexAccount) async {
+		let previousAccountList = accountList
+		notice = nil
+		accountList = accountList?.updatingCodexAuth(account.authIdentity)
+
 		do {
-			_ = try await bridge.runJSON(
+			let response = try await bridge.runJSON(
 				.accountUse(selector: account.selector),
 				as: CodexAuthUseResponse.self
 			)
-			await refresh()
+			accountList = accountList?.updatingCodexAuth(response.account)
+			notice = nil
 		} catch {
+			accountList = previousAccountList
 			notice = error.localizedDescription
 		}
 	}
@@ -146,6 +184,22 @@ final class AccountStore: ObservableObject {
 		}
 
 		isLoggingIn = false
+	}
+}
+
+private extension AccountListResponse {
+	func updatingCodexAuth(_ identity: CodexAuthIdentity) -> AccountListResponse {
+		AccountListResponse(
+			accountsPath: accountsPath,
+			globalConfigPath: globalConfigPath,
+			codexAuthPath: codexAuthPath,
+			codexAuth: identity,
+			control: control,
+			accounts: accounts.map { account in
+				account.withCodexActive(account.matchesSelector(identity.selector))
+			},
+			usageProbeError: usageProbeError
+		)
 	}
 }
 
