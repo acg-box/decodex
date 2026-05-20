@@ -50,8 +50,5 @@ struct DecodexApp: App {
 		}
 		.menuBarExtraStyle(.window)
 
-		Settings {
-			SettingsView(store: store)
-		}
 	}
 }

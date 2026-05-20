@@ -532,18 +532,6 @@ struct AccountPanelView: View {
 				.transition(.opacity.combined(with: .scale(scale: 0.96)))
 			}
 
-			SettingsLink {
-				PanelIconLabelView(symbol: "gearshape", tint: PanelPalette.actionBlue(colorScheme))
-			}
-			.buttonStyle(
-				PanelInteractiveButtonStyle(
-					hoverLift: 0.55,
-					hoverScale: 1.01,
-					pressedScale: 0.982,
-					hoverShadowRadius: 3
-				)
-			)
-			.help("Settings")
 		}
 		.animation(PanelMotion.state, value: hasFixedSelection)
 	}
