@@ -38,6 +38,7 @@ enum OperatorRequestRoute {
 	AccountLogout,
 	AccountImport,
 	AccountUse,
+	AccountRerollName,
 }
 
 enum DashboardClientFrame {
@@ -127,6 +128,7 @@ struct DashboardClientMessage {
 struct OperatorAccountRequest {
 	selector: Option<String>,
 	auth_json_path: Option<String>,
+	random_name_offset: Option<i64>,
 }
 
 struct DashboardControlAck<'a> {
@@ -907,7 +909,11 @@ fn dashboard_account_selection_control_ack(
 	} else {
 		None
 	};
-	let result = runtime::write_global_fixed_account_selector(selector);
+	let result = if let Some(selector) = selector {
+		accounts::account_select(selector).map(|_| ())
+	} else {
+		accounts::account_clear().map(|_| ())
+	};
 	let (accepted, status, copy) = match (set_fixed, result) {
 		(true, Ok(())) => (
 			true,
@@ -1400,6 +1406,7 @@ fn operator_request_route_is_account_api(route: &OperatorRequestRoute) -> bool {
 			| OperatorRequestRoute::AccountLogout
 			| OperatorRequestRoute::AccountImport
 			| OperatorRequestRoute::AccountUse
+			| OperatorRequestRoute::AccountRerollName
 	)
 }
 
@@ -1474,6 +1481,20 @@ fn operator_account_http_response_body(
 
 			serde_json::to_vec(&response).map_err(Into::into)
 		},
+		OperatorRequestRoute::AccountRerollName => {
+			let body = operator_account_request_body(request)?;
+			let selector = body
+				.selector
+				.as_deref()
+				.filter(|selector| !selector.trim().is_empty())
+				.ok_or_else(|| eyre::eyre!("Account name reroll requires selector."))?;
+			let response = accounts::hydrate_account_list_usage(accounts::account_reroll_name(
+				selector,
+				body.random_name_offset,
+			)?);
+
+			serde_json::to_vec(&response).map_err(Into::into)
+		},
 		_ => eyre::bail!("Unsupported account API route."),
 	}
 }
@@ -1490,7 +1511,11 @@ fn operator_account_request_body(request: &[u8]) -> Result<OperatorAccountReques
 	let body = operator_http_request_body(request)?;
 
 	if body.is_empty() {
-		return Ok(OperatorAccountRequest { selector: None, auth_json_path: None });
+		return Ok(OperatorAccountRequest {
+			selector: None,
+			auth_json_path: None,
+			random_name_offset: None,
+		});
 	}
 
 	serde_json::from_slice(body)
@@ -1530,7 +1555,8 @@ fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> 
 		| OperatorRequestRoute::AccountClear
 		| OperatorRequestRoute::AccountLogout
 		| OperatorRequestRoute::AccountImport
-		| OperatorRequestRoute::AccountUse =>
+		| OperatorRequestRoute::AccountUse
+		| OperatorRequestRoute::AccountRerollName =>
 			http_response_bytes("405 Method Not Allowed", "text/plain; charset=utf-8", b"method not allowed"),
 	}
 }
@@ -1586,6 +1612,7 @@ fn parse_operator_state_request_route(
 		("POST", "/api/accounts/logout") => Ok(OperatorRequestRoute::AccountLogout),
 		("POST", "/api/accounts/import") => Ok(OperatorRequestRoute::AccountImport),
 		("POST", "/api/accounts/use") => Ok(OperatorRequestRoute::AccountUse),
+		("POST", "/api/accounts/reroll-name") => Ok(OperatorRequestRoute::AccountRerollName),
 		(_, OPERATOR_DASHBOARD_ENDPOINT_PATH
 			| OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH
 			| OPERATOR_DASHBOARD_WS_ENDPOINT_PATH
@@ -1595,7 +1622,8 @@ fn parse_operator_state_request_route(
 			| "/api/accounts/clear"
 			| "/api/accounts/logout"
 			| "/api/accounts/import"
-			| "/api/accounts/use") => Err(http_response_bytes(
+			| "/api/accounts/use"
+			| "/api/accounts/reroll-name") => Err(http_response_bytes(
 			"405 Method Not Allowed",
 			"text/plain; charset=utf-8",
 			b"method not allowed",

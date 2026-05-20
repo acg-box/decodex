@@ -3558,6 +3558,10 @@
 			let themeSelection = loadThemeSelection();
 			let accountEmailsHidden = loadAccountPrivacy();
 			let accountNameOffsets = loadAccountNameOffsets();
+			let accountApiSnapshot = null;
+			let accountApiRefreshInFlight = false;
+			let accountApiRefreshedAt = 0;
+			const pendingAccountNameOffsetSyncs = new Set();
 			let accountPoolSort = loadAccountPoolSort();
 			let accountSelectionConfirmation = null;
 			let projectFilterMode = loadProjectFilterMode();
@@ -4441,11 +4445,7 @@
 						Object.entries(parsed)
 							.map(([key, value]) => [key, Number(value)])
 							.filter(([key, value]) => key && Number.isInteger(value))
-							.map(([key, value]) => [
-								key,
-								((value % ACCOUNT_RANDOM_NAMES.length) + ACCOUNT_RANDOM_NAMES.length) %
-									ACCOUNT_RANDOM_NAMES.length,
-							]),
+							.map(([key, value]) => [key, normalizeAccountNameOffset(value)]),
 					);
 				} catch (_error) {
 					return {};
@@ -4461,6 +4461,87 @@
 				} catch (_error) {
 					/* Ignore storage failures and continue with the in-memory choice. */
 				}
+			}
+
+			function normalizeAccountNameOffset(value) {
+				const number = Number(value);
+				if (!Number.isInteger(number)) {
+					return 0;
+				}
+
+				return (
+					(number % ACCOUNT_RANDOM_NAMES.length) + ACCOUNT_RANDOM_NAMES.length
+				) % ACCOUNT_RANDOM_NAMES.length;
+			}
+
+			function accountApiAccounts() {
+				return Array.isArray(accountApiSnapshot?.accounts)
+					? accountApiSnapshot.accounts.filter(Boolean)
+					: [];
+			}
+
+			function noteAccountApiSnapshot(response) {
+				if (!response || !Array.isArray(response.accounts)) {
+					return false;
+				}
+
+				accountApiSnapshot = response;
+				accountApiRefreshedAt = Date.now();
+
+				return true;
+			}
+
+			async function refreshAccountApiSnapshot(force = false) {
+				const now = Date.now();
+				if (
+					accountApiRefreshInFlight ||
+					(!force && accountApiSnapshot && now - accountApiRefreshedAt < 15_000)
+				) {
+					return;
+				}
+
+				accountApiRefreshInFlight = true;
+				try {
+					const response = await fetch("/api/accounts", {
+						headers: { Accept: "application/json" },
+					});
+					if (!response.ok) {
+						return;
+					}
+					if (noteAccountApiSnapshot(await response.json()) && lastDashboardRender) {
+						renderDashboardState(lastDashboardRender);
+					}
+				} catch (_error) {
+					/* The websocket snapshot remains usable if the account API is unavailable. */
+				} finally {
+					accountApiRefreshInFlight = false;
+				}
+			}
+
+			async function postAccountNameOffset(account, offset = null) {
+				const selector = codexAccountControlSelector(account);
+				if (!selector) {
+					return false;
+				}
+
+				const body = { selector };
+				if (offset != null) {
+					body.random_name_offset = normalizeAccountNameOffset(offset);
+				}
+
+				const response = await fetch("/api/accounts/reroll-name", {
+					method: "POST",
+					headers: {
+						Accept: "application/json",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(body),
+				});
+				if (!response.ok) {
+					return false;
+				}
+
+				return noteAccountApiSnapshot(await response.json());
 			}
 
 			function isAccountPoolSortKey(value) {
@@ -5905,6 +5986,11 @@
 				}
 
 				function codexAccountRandomNameKey(account) {
+					const serverKey = String(account?.random_name_key || "").trim();
+					if (serverKey) {
+						return serverKey;
+					}
+
 					const identity =
 						codexAccountIdentity(account) ||
 						codexAccountEmail(account) ||
@@ -5914,14 +6000,36 @@
 					return codexAccountIdentityHash(identity).toString(16).padStart(8, "0");
 				}
 
-				function codexAccountRandomNameOffset(account) {
+				function codexAccountStoredRandomNameOffset(account) {
 					const key = codexAccountRandomNameKey(account);
-					const value = Number(accountNameOffsets[key] || 0);
+					if (!Object.prototype.hasOwnProperty.call(accountNameOffsets, key)) {
+						return null;
+					}
 
-					return Number.isInteger(value) ? value : 0;
+					return normalizeAccountNameOffset(accountNameOffsets[key]);
+				}
+
+				function codexAccountServerRandomNameOffset(account) {
+					const value = Number(account?.random_name_offset);
+
+					return Number.isInteger(value) ? normalizeAccountNameOffset(value) : null;
+				}
+
+				function codexAccountRandomNameOffset(account) {
+					return (
+						codexAccountStoredRandomNameOffset(account) ??
+						codexAccountServerRandomNameOffset(account) ??
+						0
+					);
 				}
 
 				function codexAccountRandomName(account) {
+					const storedOffset = codexAccountStoredRandomNameOffset(account);
+					const serverName = String(account?.random_name || "").trim();
+					if (storedOffset == null && serverName) {
+						return serverName;
+					}
+
 					const seed =
 						codexAccountIdentity(account) ||
 						codexAccountEmail(account) ||
@@ -5932,6 +6040,35 @@
 						(hash + codexAccountRandomNameOffset(account)) % ACCOUNT_RANDOM_NAMES.length;
 
 					return ACCOUNT_RANDOM_NAMES[index];
+				}
+
+				function syncStoredAccountNameOffsets(accounts) {
+					for (const account of accounts) {
+						const key = codexAccountRandomNameKey(account);
+						const storedOffset = codexAccountStoredRandomNameOffset(account);
+						const serverOffset = codexAccountServerRandomNameOffset(account) ?? 0;
+						if (
+							storedOffset == null ||
+							storedOffset === serverOffset ||
+							pendingAccountNameOffsetSyncs.has(key)
+						) {
+							continue;
+						}
+
+						pendingAccountNameOffsetSyncs.add(key);
+						postAccountNameOffset(account, storedOffset)
+							.then((updated) => {
+								if (updated) {
+									delete accountNameOffsets[key];
+									persistAccountNameOffsets();
+									if (lastDashboardRender) {
+										renderDashboardState(lastDashboardRender);
+									}
+								}
+							})
+							.catch(() => {})
+							.finally(() => pendingAccountNameOffsetSyncs.delete(key));
+					}
 				}
 
 				function codexAccountShowsEmail(account) {
@@ -6582,8 +6719,8 @@
 				function codexAccountPoolAccounts(snapshot) {
 					const accountsByIdentity = new Map();
 					const configuredAccounts = Array.isArray(snapshot?.accounts)
-						? snapshot.accounts.filter(Boolean)
-						: [];
+						? [...accountApiAccounts(), ...snapshot.accounts.filter(Boolean)]
+						: accountApiAccounts();
 					const runs = [
 						...(snapshot?.active_runs ?? []).map((run) => [run, true]),
 						...(snapshot?.recent_runs ?? []).map((run) => [run, false]),
@@ -6595,7 +6732,8 @@
 							continue;
 						}
 
-						accountsByIdentity.set(identity, account);
+						const existing = accountsByIdentity.get(identity);
+						accountsByIdentity.set(identity, existing ? { ...existing, ...account } : account);
 					}
 
 					for (const [run, isActiveRun] of runs) {
@@ -6724,6 +6862,7 @@
 
 				function renderAccountPool(snapshot) {
 					const accounts = codexAccountPoolAccounts(snapshot);
+					syncStoredAccountNameOffsets(accounts);
 					renderAccountModeControl(snapshot);
 					renderStableList(nodes.accountPool, renderCodexAccountPool(accounts, snapshot));
 					syncAccountSelectionConfirmationDom();
@@ -9541,6 +9680,7 @@
 				const derived = buildDerivedState(snapshot);
 				const reviewItems = reviewLaneItems(derived);
 
+				refreshAccountApiSnapshot();
 				renderHeader(snapshot, readiness, notices, snapshotPublishedAt, snapshotError);
 				renderFlow(snapshot, derived);
 				renderProjects(snapshot, derived);
@@ -9671,15 +9811,35 @@
 					return;
 				}
 
-				const current = Number(accountNameOffsets[key] || 0);
+				const account = lastDashboardRender
+					? codexAccountPoolAccounts(lastDashboardRender.snapshot).find(
+							(candidate) => codexAccountRandomNameKey(candidate) === key,
+						)
+					: null;
+				const current = account
+					? codexAccountRandomNameOffset(account)
+					: normalizeAccountNameOffset(accountNameOffsets[key]);
+				const next = normalizeAccountNameOffset(current + 1);
 				accountNameOffsets = {
 					...accountNameOffsets,
-					[key]: ((current + 1) % ACCOUNT_RANDOM_NAMES.length + ACCOUNT_RANDOM_NAMES.length) %
-						ACCOUNT_RANDOM_NAMES.length,
+					[key]: next,
 				};
 				persistAccountNameOffsets();
 				if (lastDashboardRender) {
 					renderDashboardState(lastDashboardRender);
+				}
+				if (account) {
+					postAccountNameOffset(account, next)
+						.then((updated) => {
+							if (updated) {
+								delete accountNameOffsets[key];
+								persistAccountNameOffsets();
+								if (lastDashboardRender) {
+									renderDashboardState(lastDashboardRender);
+								}
+							}
+						})
+						.catch(() => {});
 				}
 			});
 

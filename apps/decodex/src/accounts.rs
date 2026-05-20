@@ -1,5 +1,6 @@
 #[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 use std::{
+	collections::BTreeMap,
 	env, fs,
 	io::{self, ErrorKind, Read, Write as _},
 	path::{Path, PathBuf},
@@ -18,6 +19,14 @@ use crate::{
 	runtime,
 	state::CodexAccountActivitySummary,
 };
+
+const ACCOUNT_RANDOM_NAMES: &[&str] = &[
+	"Alex", "Avery", "Bailey", "Blake", "Casey", "Charlie", "Clara", "Dana", "Drew", "Eden",
+	"Elliot", "Emery", "Evan", "Finley", "Harper", "Hayden", "Iris", "Jamie", "Jordan", "Kai",
+	"Kendall", "Lane", "Liam", "Logan", "Mason", "Maya", "Mia", "Morgan", "Noah", "Nora", "Owen",
+	"Paige", "Parker", "Quinn", "Reese", "Remy", "Riley", "Rowan", "Sage", "Sasha", "Sidney",
+	"Taylor", "Theo", "Val",
+];
 
 pub(crate) struct AccountLoginRequest {
 	pub(crate) codex_bin: String,
@@ -145,6 +154,31 @@ impl AccountStore {
 		self.response_from_records(&records)
 	}
 
+	fn reroll_name(&self, selector: &str, offset: Option<i64>) -> Result<AccountListResponse> {
+		let selector = selector.trim();
+
+		if selector.is_empty() {
+			eyre::bail!("Codex account selector cannot be empty.");
+		}
+
+		let records = self.load_records()?;
+		let record = records
+			.iter()
+			.find(|record| record.matches_account_selector(selector))
+			.ok_or_else(|| eyre::eyre!("No Decodex account matches selector `{selector}`."))?;
+		let key = record.random_name_key();
+		let offsets = self.account_name_offsets()?;
+		let current = offsets.get(&key).copied().unwrap_or_default();
+		let next = offset.map_or_else(
+			|| normalize_random_name_offset(current + 1),
+			normalize_random_name_offset,
+		);
+
+		self.write_account_name_offset(&key, next)?;
+
+		self.response_from_records(&records)
+	}
+
 	fn import_auth_json(&self, auth_json_path: &Path) -> Result<AccountListResponse> {
 		let input = fs::read_to_string(auth_json_path).map_err(|error| {
 			eyre::eyre!("Failed to read Codex auth JSON `{}`: {error}", auth_json_path.display())
@@ -257,13 +291,14 @@ impl AccountStore {
 	fn response_from_records(&self, records: &[AccountPoolRecord]) -> Result<AccountListResponse> {
 		let selector = self.fixed_account_selector()?;
 		let codex_auth = self.codex_auth_identity().unwrap_or_default();
+		let name_offsets = self.account_name_offsets()?;
 		let control = AccountControlSummary {
 			mode: if selector.is_some() { String::from("fixed") } else { String::from("balanced") },
 			account_selector: selector.clone(),
 		};
 		let accounts = records
 			.iter()
-			.map(|record| record.summary(selector.as_deref(), codex_auth.as_ref()))
+			.map(|record| record.summary(selector.as_deref(), codex_auth.as_ref(), &name_offsets))
 			.collect::<Vec<_>>();
 
 		Ok(AccountListResponse {
@@ -297,17 +332,7 @@ impl AccountStore {
 	}
 
 	fn fixed_account_selector(&self) -> Result<Option<String>> {
-		let input = match fs::read_to_string(&self.global_config_path) {
-			Ok(input) => input,
-			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
-			Err(error) => {
-				eyre::bail!(
-					"Failed to read Decodex global config `{}`: {error}",
-					self.global_config_path.display()
-				);
-			},
-		};
-		let document = toml::from_str::<toml::Table>(&input)?;
+		let document = self.load_global_config_document()?;
 		let selector = document
 			.get("codex")
 			.and_then(toml::Value::as_table)
@@ -322,22 +347,51 @@ impl AccountStore {
 		Ok(selector)
 	}
 
+	fn account_name_offsets(&self) -> Result<BTreeMap<String, i64>> {
+		let document = self.load_global_config_document()?;
+		let Some(offsets) = document
+			.get("codex")
+			.and_then(toml::Value::as_table)
+			.and_then(|codex| codex.get("account_names"))
+			.and_then(toml::Value::as_table)
+			.and_then(|account_names| account_names.get("offsets"))
+			.and_then(toml::Value::as_table)
+		else {
+			return Ok(BTreeMap::new());
+		};
+
+		Ok(offsets
+			.iter()
+			.filter_map(|(key, value)| {
+				let key = key.trim();
+				(!key.is_empty()).then_some((
+					key.to_owned(),
+					normalize_random_name_offset(value.as_integer().unwrap_or_default()),
+				))
+			})
+			.collect())
+	}
+
+	fn write_account_name_offset(&self, key: &str, offset: i64) -> Result<()> {
+		let key = key.trim();
+
+		if key.is_empty() {
+			eyre::bail!("Codex account name key cannot be empty.");
+		}
+
+		let mut document = self.load_global_config_document()?;
+		let offsets = ensure_toml_table(
+			ensure_toml_table(ensure_toml_table(&mut document, "codex")?, "account_names")?,
+			"offsets",
+		)?;
+
+		offsets.insert(key.to_owned(), toml::Value::Integer(normalize_random_name_offset(offset)));
+
+		self.write_global_config_document(&document)
+	}
+
 	fn write_fixed_account_selector(&self, selector: Option<&str>) -> Result<()> {
-		let input = match fs::read_to_string(&self.global_config_path) {
-			Ok(input) => input,
-			Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
-			Err(error) => {
-				eyre::bail!(
-					"Failed to read Decodex global config `{}`: {error}",
-					self.global_config_path.display()
-				);
-			},
-		};
-		let mut document = if input.trim().is_empty() {
-			toml::Table::new()
-		} else {
-			toml::from_str::<toml::Table>(&input)?
-		};
+		let mut document = self.load_global_config_document()?;
 
 		match selector.map(str::trim).filter(|value| !value.is_empty()) {
 			Some(selector) => {
@@ -356,6 +410,25 @@ impl AccountStore {
 			},
 		}
 
+		self.write_global_config_document(&document)
+	}
+
+	fn load_global_config_document(&self) -> Result<toml::Table> {
+		let input = match fs::read_to_string(&self.global_config_path) {
+			Ok(input) => input,
+			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(toml::Table::new()),
+			Err(error) => {
+				eyre::bail!(
+					"Failed to read Decodex global config `{}`: {error}",
+					self.global_config_path.display()
+				);
+			},
+		};
+
+		if input.trim().is_empty() { Ok(toml::Table::new()) } else { Ok(toml::from_str(&input)?) }
+	}
+
+	fn write_global_config_document(&self, document: &toml::Table) -> Result<()> {
 		let parent = self.global_config_path.parent().ok_or_else(|| {
 			eyre::eyre!(
 				"Decodex global config `{}` must have a parent directory.",
@@ -439,6 +512,9 @@ pub(crate) struct AccountSummary {
 	pub(crate) account_fingerprint: String,
 	pub(crate) email: Option<String>,
 	pub(crate) selector: String,
+	pub(crate) random_name: String,
+	pub(crate) random_name_key: String,
+	pub(crate) random_name_offset: i64,
 	pub(crate) status: String,
 	pub(crate) selected: bool,
 	pub(crate) codex_active: bool,
@@ -648,6 +724,7 @@ impl AccountPoolRecord {
 		&self,
 		fixed_selector: Option<&str>,
 		codex_auth: Option<&AccountIdentity>,
+		name_offsets: &BTreeMap<String, i64>,
 	) -> AccountSummary {
 		let now = OffsetDateTime::now_utc().unix_timestamp();
 		let account_fingerprint = self
@@ -676,11 +753,17 @@ impl AccountPoolRecord {
 		} else {
 			"available"
 		};
+		let random_name_seed = random_name_seed_for(account_fingerprint.as_str(), self.email());
+		let random_name_key = random_name_key(&random_name_seed);
+		let random_name_offset = name_offsets.get(&random_name_key).copied().unwrap_or_default();
 
 		AccountSummary {
 			account_fingerprint,
 			email: self.email(),
 			selector,
+			random_name: random_name(&random_name_seed, random_name_offset),
+			random_name_key,
+			random_name_offset,
 			status: status.to_owned(),
 			selected,
 			codex_active: codex_auth
@@ -705,6 +788,17 @@ impl AccountPoolRecord {
 			credits_balance: None,
 			rate_limit_reached_type: None,
 		}
+	}
+
+	fn random_name_key(&self) -> String {
+		let account_fingerprint = self
+			.account_id()
+			.map(redact_account_id)
+			.or_else(|| self.email())
+			.unwrap_or_else(|| String::from("unknown"));
+		let seed = random_name_seed_for(account_fingerprint.as_str(), self.email());
+
+		random_name_key(&seed)
 	}
 }
 
@@ -835,6 +929,13 @@ pub(crate) fn account_clear() -> Result<AccountListResponse> {
 
 pub(crate) fn account_logout(selector: &str) -> Result<AccountListResponse> {
 	AccountStore::global()?.logout(selector)
+}
+
+pub(crate) fn account_reroll_name(
+	selector: &str,
+	offset: Option<i64>,
+) -> Result<AccountListResponse> {
+	AccountStore::global()?.reroll_name(selector, offset)
 }
 
 pub(crate) fn account_import(auth_json_path: &Path) -> Result<AccountListResponse> {
@@ -1222,6 +1323,45 @@ fn number_as_i64(value: &serde_json::Value) -> Option<i64> {
 		.or_else(|| value.as_f64().map(|number| number.round() as i64))
 }
 
+fn random_name_seed_for(account_fingerprint: &str, email: Option<String>) -> String {
+	if !account_fingerprint.trim().is_empty() {
+		return account_fingerprint.to_owned();
+	}
+	if let Some(email) = email.filter(|value| !value.trim().is_empty()) {
+		return email;
+	}
+
+	String::from("account")
+}
+
+fn random_name_key(seed: &str) -> String {
+	format!("{:08x}", account_identity_hash(seed))
+}
+
+fn random_name(seed: &str, offset: i64) -> String {
+	let index = (u64::from(account_identity_hash(seed))
+		+ u64::try_from(normalize_random_name_offset(offset)).unwrap_or_default())
+		% u64::try_from(ACCOUNT_RANDOM_NAMES.len()).unwrap_or(1);
+
+	ACCOUNT_RANDOM_NAMES[usize::try_from(index).unwrap_or_default()].to_owned()
+}
+
+fn account_identity_hash(value: &str) -> u32 {
+	let text = if value.trim().is_empty() { "account" } else { value };
+	let mut hash = 2_166_136_261_u32;
+
+	for unit in text.encode_utf16() {
+		hash ^= u32::from(unit);
+		hash = hash.wrapping_mul(16_777_619);
+	}
+
+	hash
+}
+
+fn normalize_random_name_offset(offset: i64) -> i64 {
+	offset.rem_euclid(i64::try_from(ACCOUNT_RANDOM_NAMES.len()).unwrap_or(1))
+}
+
 fn redact_account_id(account_id: &str) -> String {
 	let tail =
 		account_id.chars().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<String>();
@@ -1382,6 +1522,40 @@ mod tests {
 		);
 		assert!(!response.accounts[0].codex_active);
 		assert!(response.accounts[1].codex_active);
+	}
+
+	#[test]
+	fn reroll_name_persists_global_account_name_offset() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let store = AccountStore::new(
+			temp_dir.path().join("accounts.jsonl"),
+			temp_dir.path().join("config.toml"),
+		);
+
+		store
+			.save_records(&[account_record(
+				"copy@example.com",
+				"acct_123456",
+				"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+				"refresh-secret",
+			)])
+			.expect("records should save");
+
+		let initial = store.list().expect("account list should load");
+		let updated =
+			store.reroll_name("copy@example.com", None).expect("account name should reroll");
+		let reloaded = store.list().expect("account list should reload");
+
+		assert_eq!(initial.accounts[0].random_name_offset, 0);
+		assert_eq!(updated.accounts[0].random_name_offset, 1);
+		assert_ne!(initial.accounts[0].random_name, updated.accounts[0].random_name);
+		assert_eq!(reloaded.accounts[0].random_name, updated.accounts[0].random_name);
+		assert_eq!(reloaded.accounts[0].random_name_key, updated.accounts[0].random_name_key);
+		assert!(
+			fs::read_to_string(&store.global_config_path)
+				.expect("global config should read")
+				.contains("[codex.account_names.offsets]")
+		);
 	}
 
 	#[test]
