@@ -1033,6 +1033,7 @@ fn run_activity_marker_round_trips_marker_surfaces() {
 	assert_run_activity_marker_round_trips_child_agent_activity_summary();
 	assert_run_activity_marker_round_trips_account_summary();
 	assert_run_activity_marker_preserves_account_summary_after_activity_refresh();
+	assert_run_activity_marker_preserves_account_summary_after_stale_rewrite();
 }
 
 fn assert_run_activity_marker_round_trips_clearable_auxiliary_fields() {
@@ -1331,6 +1332,38 @@ fn assert_run_activity_marker_preserves_account_summary_after_activity_refresh()
 		.any(|entry| entry.file_name().to_string_lossy().contains(".decodex-run-activity."));
 
 	assert!(!leftover_temp_marker, "atomic marker rewrites should not leave temp files");
+}
+
+fn assert_run_activity_marker_preserves_account_summary_after_stale_rewrite() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let summary = sample_codex_account_activity_summary();
+
+	state::write_run_activity_marker_for_process(temp_dir.path(), "run-1", 1, process::id())
+		.expect("initial activity marker should write");
+
+	let stale_activity_marker = state::read_run_activity_marker_record(temp_dir.path())
+		.expect("activity marker should read")
+		.expect("activity marker should exist");
+
+	state::write_run_account_marker(
+		temp_dir.path(),
+		&CodexAccountMarker {
+			run_id: "run-1",
+			attempt_number: 1,
+			account: &summary,
+			accounts: slice::from_ref(&summary),
+		},
+	)
+	.expect("account summary should write");
+	state::write_run_activity_marker_record(temp_dir.path(), &stale_activity_marker)
+		.expect("stale activity marker rewrite should preserve current account");
+
+	let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
+		.expect("marker snapshot should load")
+		.expect("marker snapshot should exist");
+
+	assert_eq!(marker.account(), Some(&summary));
+	assert_eq!(marker.accounts(), slice::from_ref(&summary));
 }
 
 fn sample_codex_account_activity_summary() -> CodexAccountActivitySummary {
