@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -10,125 +11,64 @@ private enum PanelFont {
 		.system(size: size, weight: weight, design: design)
 	}
 
-	static let headerIcon = text(13.6, weight: .semibold)
-	static let headerTitle = text(13.6, weight: .semibold)
-	static let headerSubtitle = text(10.1, weight: .medium)
+	static let headerIcon = text(13.8, weight: .semibold)
+	static let headerTitle = text(14.2, weight: .semibold)
+	static let headerSubtitle = text(10.6, weight: .medium)
 	static let emptyIcon = text(16.5, weight: .medium)
-	static let emptyTitle = text(11.3, weight: .semibold)
-	static let emptyBody = text(10.1, weight: .regular)
-	static let notice = text(9.9, weight: .regular)
-	static let summaryIcon = text(9.7, weight: .medium)
-	static let summaryTitle = text(9.4, weight: .medium)
-	static let summaryValue = text(10.9, weight: .semibold)
-	static let accountName = text(11.9, weight: .semibold)
-	static let accountDetail = text(9.9, weight: .medium)
-	static let usage = text(8.45, weight: .medium)
-	static let usageMeta = text(7.85, weight: .medium)
-	static let primaryButton = text(10.7, weight: .semibold)
-	static let iconButton = text(10.7, weight: .semibold)
-	static let footerIcon = text(10.1, weight: .medium)
+	static let emptyTitle = text(11.8, weight: .semibold)
+	static let emptyBody = text(10.4, weight: .regular)
+	static let notice = text(10.1, weight: .regular)
+	static let summaryIcon = text(10, weight: .medium)
+	static let summaryTitle = text(9.8, weight: .medium)
+	static let summaryValue = text(11.3, weight: .semibold)
+	static let accountName = text(12.6, weight: .semibold)
+	static let accountDetail = text(10.4, weight: .medium)
+	static let usage = text(9.6, weight: .semibold)
+	static let usageMeta = text(8.9, weight: .medium)
+	static let iconButton = text(11, weight: .semibold)
 }
 
 private enum PanelPalette {
 	static func primaryText(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.88, green: 0.94, blue: 1).opacity(0.96)
-			: Color(red: 0.11, green: 0.17, blue: 0.26).opacity(0.94)
+			? Color(red: 0.95, green: 0.96, blue: 0.98).opacity(0.97)
+			: Color(red: 0.12, green: 0.14, blue: 0.18).opacity(0.94)
 	}
 
 	static func secondaryText(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.6, green: 0.7, blue: 0.82).opacity(0.82)
-			: Color(red: 0.3, green: 0.4, blue: 0.53).opacity(0.8)
-	}
-
-	static func panelTint(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.025, green: 0.075, blue: 0.13).opacity(0.68)
-			: Color(red: 0.46, green: 0.68, blue: 0.9).opacity(0.62)
-	}
-
-	static func summaryTint(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.16, green: 0.28, blue: 0.42).opacity(0.22)
-			: Color.white.opacity(0.58)
-	}
-
-	static func accountRowTint(_ colorScheme: ColorScheme, isSelected: Bool, isCodexActive: Bool) -> Color {
-		if isSelected {
-			return colorScheme == .dark
-				? Color(red: 0.16, green: 0.32, blue: 0.5).opacity(0.34)
-				: Color(red: 0.88, green: 0.96, blue: 1).opacity(0.76)
-		}
-		if isCodexActive {
-			return colorScheme == .dark
-				? Color(red: 0.13, green: 0.25, blue: 0.38).opacity(0.28)
-				: Color.white.opacity(0.62)
-		}
-
-		return colorScheme == .dark
-			? Color(red: 0.11, green: 0.2, blue: 0.32).opacity(0.24)
-			: Color.white.opacity(0.6)
-	}
-
-	static func usageTray(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.015, green: 0.045, blue: 0.08).opacity(0.54)
-			: Color.white.opacity(0.18)
-	}
-
-	static func usageTrayStroke(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.52, green: 0.72, blue: 0.94).opacity(0.16)
-			: Color.white.opacity(0.18)
-	}
-
-	static func addButtonTint(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.13, green: 0.31, blue: 0.5).opacity(0.48)
-			: Color(red: 0.86, green: 0.94, blue: 1).opacity(0.84)
-	}
-
-	static func addButtonStroke(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.5, green: 0.76, blue: 1).opacity(0.36)
-			: Color(red: 0.24, green: 0.43, blue: 0.64).opacity(0.42)
-	}
-
-	static func controlTint(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.16, green: 0.3, blue: 0.46).opacity(0.34)
-			: Color(red: 0.9, green: 0.96, blue: 1).opacity(0.86)
-	}
-
-	static func controlStroke(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.55, green: 0.76, blue: 1).opacity(0.28)
-			: Color(red: 0.28, green: 0.46, blue: 0.66).opacity(0.38)
+			? Color(red: 0.73, green: 0.76, blue: 0.82).opacity(0.84)
+			: Color(red: 0.34, green: 0.38, blue: 0.45).opacity(0.8)
 	}
 
 	static func separator(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color.white.opacity(0.065)
-			: Color(red: 0.42, green: 0.58, blue: 0.75).opacity(0.18)
+			: Color(red: 0.32, green: 0.38, blue: 0.46).opacity(0.14)
 	}
 
 	static func actionBlue(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.43, green: 0.74, blue: 1)
-			: Color(red: 0.1, green: 0.28, blue: 0.46)
+			? Color(red: 0.86, green: 0.89, blue: 0.94)
+			: Color(red: 0.18, green: 0.29, blue: 0.4)
 	}
 
-	static func activeGold(_ colorScheme: ColorScheme) -> Color {
+	static func codexAccent(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.95, green: 0.8, blue: 0.34)
-			: Color(red: 0.28, green: 0.42, blue: 0.55)
+			? Color(red: 0.86, green: 0.89, blue: 0.94)
+			: Color(red: 0.22, green: 0.38, blue: 0.52)
+	}
+
+	static func routeAccent(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color(red: 0.82, green: 0.87, blue: 0.94)
+			: Color(red: 0.18, green: 0.34, blue: 0.52)
 	}
 
 	static func usageMint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.36, green: 0.94, blue: 0.76)
-			: Color(red: 0.38, green: 0.56, blue: 0.64)
+			? Color(red: 0.78, green: 0.84, blue: 0.9)
+			: Color(red: 0.28, green: 0.38, blue: 0.5)
 	}
 
 	static func warning(_ colorScheme: ColorScheme) -> Color {
@@ -145,14 +85,14 @@ private enum PanelPalette {
 
 	static func progressTrack(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0, green: 0.025, blue: 0.055).opacity(0.62)
-			: Color(red: 0.12, green: 0.28, blue: 0.4).opacity(0.16)
+			? Color.white.opacity(0.09)
+			: Color(red: 0.15, green: 0.23, blue: 0.3).opacity(0.1)
 	}
 
 	static func progressEdge(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.56, green: 0.78, blue: 1).opacity(0.2)
-			: Color.white.opacity(0.24)
+			? Color.white.opacity(0.12)
+			: Color.white.opacity(0.22)
 	}
 }
 
@@ -262,21 +202,22 @@ private struct PanelInteractiveSurfaceModifier: ViewModifier {
 	}
 
 	private var pressBrightness: Double {
-		colorScheme == .dark ? -0.018 : -0.01
+		colorScheme == .dark ? 0.006 : -0.004
 	}
 
 	private var hoverShadowColor: Color {
 		colorScheme == .dark
 			? Color.black.opacity(0.18)
-			: Color(red: 0.1, green: 0.24, blue: 0.38).opacity(0.12)
+			: Color.black.opacity(0.09)
 	}
 }
 
 struct AccountPanelView: View {
 	@ObservedObject var store: AccountStore
+	@ObservedObject var loginWindowState: LoginWindowState
 	@Environment(\.colorScheme) private var colorScheme
+	@Environment(\.openWindow) private var openWindow
 	@State private var pendingLogout: CodexAccount?
-	@State private var loginPresented = false
 	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hiddenValue
 
 	var body: some View {
@@ -313,9 +254,6 @@ struct AccountPanelView: View {
 				Text("This removes \(displayName(for: account)) from the Decodex account pool on this Mac.")
 			}
 		}
-		.sheet(isPresented: $loginPresented) {
-			LoginSheetView(store: store)
-		}
 	}
 
 	private var panelContent: some View {
@@ -338,14 +276,11 @@ struct AccountPanelView: View {
 			} else {
 				accountList
 			}
-
-			footer
 		}
 		.frame(width: 310)
 		.padding(9)
 		.modernGlassSurface(
 			cornerRadius: 18,
-			tint: PanelPalette.panelTint(colorScheme),
 			depth: .panel
 		)
 		.controlSize(.small)
@@ -359,13 +294,8 @@ struct AccountPanelView: View {
 				.renderingMode(.template)
 				.scaledToFit()
 				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
-				.frame(width: 16, height: 16)
+				.frame(width: 20, height: 20)
 				.frame(width: 28, height: 28)
-				.modernGlassSurface(
-					cornerRadius: 8,
-					tint: PanelPalette.controlTint(colorScheme),
-					depth: .control
-				)
 
 			VStack(alignment: .leading, spacing: 2) {
 				Text("Decodex")
@@ -379,7 +309,7 @@ struct AccountPanelView: View {
 
 			Spacer()
 
-			HStack(spacing: 4) {
+			HStack(spacing: 5) {
 				PanelIconButtonView(
 					symbol: emailsHidden ? "eye.slash" : "eye",
 					tint: PanelPalette.secondaryText(colorScheme),
@@ -390,35 +320,49 @@ struct AccountPanelView: View {
 					help: emailsHidden ? "Show account emails" : "Hide account emails"
 				)
 
+				if hasFixedSelection {
+					PanelIconButtonView(
+						symbol: "shuffle",
+						tint: PanelPalette.actionBlue(colorScheme),
+						isActive: false,
+						action: {
+							Task {
+								await store.clearSelection()
+							}
+						},
+						help: "Restore balanced run routing"
+					)
+					.transition(.opacity.combined(with: .scale(scale: 0.96)))
+				}
+
 				PanelIconButtonView(
-					symbol: store.isRefreshing ? "arrow.triangle.2.circlepath.circle" : "arrow.clockwise",
-					tint: PanelPalette.secondaryText(colorScheme),
-					isActive: store.isRefreshing,
-					isDisabled: store.isRefreshing,
+					symbol: "plus",
+					tint: PanelPalette.actionBlue(colorScheme),
+					isActive: false,
+					isPrimary: true,
+					size: 25,
 					action: {
-						Task {
-							await store.refresh(force: true)
-						}
+						presentLogin(.add)
 					},
-					help: "Refresh"
+					help: "Add login"
 				)
 			}
 		}
+		.animation(PanelMotion.state, value: hasFixedSelection)
 	}
 
 	private var accountSummary: some View {
-		HStack(spacing: 0) {
+		HStack(spacing: 7) {
 			SummaryTileView(
 				title: "Codex",
 				value: codexAuthLabel,
 				symbol: "person.crop.circle",
-				tint: PanelPalette.activeGold(colorScheme)
+				tint: PanelPalette.codexAccent(colorScheme)
 			)
 
 			Rectangle()
 				.fill(PanelPalette.separator(colorScheme))
-				.frame(width: 0.5)
-				.padding(.vertical, 3)
+				.frame(width: 0.5, height: 16)
 
 			SummaryTileView(
 				title: "Runs",
@@ -427,13 +371,15 @@ struct AccountPanelView: View {
 				tint: hasFixedSelection ? PanelPalette.actionBlue(colorScheme) : PanelPalette.secondaryText(colorScheme)
 			)
 		}
-		.padding(.horizontal, 7)
-		.padding(.vertical, 4)
-		.modernGlassSurface(
-			cornerRadius: 9,
-			tint: PanelPalette.summaryTint(colorScheme),
-			depth: .row
-		)
+		.padding(.horizontal, 3)
+		.padding(.top, 1)
+		.padding(.bottom, 4)
+		.overlay(alignment: .bottom) {
+			Rectangle()
+				.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.72 : 0.9))
+				.frame(height: 0.5)
+				.allowsHitTesting(false)
+		}
 	}
 
 	private var emptyState: some View {
@@ -483,11 +429,12 @@ struct AccountPanelView: View {
 	}
 
 	private var accountRows: some View {
-		VStack(spacing: 5) {
-			ForEach(store.accounts) { account in
+		VStack(spacing: 0) {
+			ForEach(Array(store.accounts.enumerated()), id: \.element.id) { index, account in
 				AccountRowView(
 					account: account,
 					emailsHidden: emailsHidden,
+					showsDivider: index < store.accounts.count - 1,
 					useInCodex: {
 						Task {
 							await store.useInCodex(account)
@@ -498,42 +445,16 @@ struct AccountPanelView: View {
 							await store.select(account)
 						}
 					},
+					reauthenticate: {
+						presentLogin(.reauth(displayName(for: account)))
+					},
 					logout: {
 						pendingLogout = account
 					}
 				)
 			}
 		}
-		.padding(.vertical, 1)
-	}
-
-	private var footer: some View {
-		HStack(spacing: 5) {
-			PanelPrimaryButtonView(
-				title: "Add Login",
-				symbol: "plus.circle",
-				action: {
-					loginPresented = true
-				}
-			)
-
-			if hasFixedSelection {
-				PanelIconButtonView(
-					symbol: "shuffle",
-					tint: PanelPalette.actionBlue(colorScheme),
-					isActive: false,
-					action: {
-						Task {
-							await store.clearSelection()
-						}
-					},
-					help: "Restore balanced run routing"
-				)
-				.transition(.opacity.combined(with: .scale(scale: 0.96)))
-			}
-
-		}
-		.animation(PanelMotion.state, value: hasFixedSelection)
+		.padding(.top, 1)
 	}
 
 	private var codexAuthLabel: String {
@@ -587,13 +508,13 @@ struct AccountPanelView: View {
 
 	private var accountListHeight: CGFloat {
 		let rows = store.accounts.reduce(CGFloat(0)) { total, account in
-			total + (account.hasUsageSummary ? 82 : 44)
+			total + (account.hasUsageSummary ? 98 : 46)
 		}
 		let spacing = CGFloat(max(store.accounts.count - 1, 0)) * 5 + 2
 
 		return min(
 			rows + spacing,
-			278
+			312
 		)
 	}
 
@@ -616,20 +537,29 @@ struct AccountPanelView: View {
 			account.matchesSelector(selector)
 		}
 	}
+
+	private func presentLogin(_ mode: AccountLoginSheetMode) {
+		loginWindowState.mode = mode
+		store.resetLoginSession()
+		NSApp.activate(ignoringOtherApps: true)
+		openWindow(id: DecodexWindowID.login)
+	}
 }
 
 struct AccountRowView: View {
 	let account: CodexAccount
 	let emailsHidden: Bool
+	let showsDivider: Bool
 	let useInCodex: () -> Void
 	let routeRunsHere: () -> Void
+	let reauthenticate: () -> Void
 	let logout: () -> Void
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 4) {
-			HStack(alignment: .top, spacing: 8) {
-				VStack(alignment: .leading, spacing: 2) {
+		VStack(alignment: .leading, spacing: 6) {
+			HStack(alignment: .center, spacing: 8) {
+				HStack(alignment: .firstTextBaseline, spacing: 5) {
 					Text(displayName)
 						.font(PanelFont.accountName)
 						.foregroundStyle(PanelPalette.primaryText(colorScheme))
@@ -637,47 +567,69 @@ struct AccountRowView: View {
 						.truncationMode(.middle)
 						.layoutPriority(1)
 
-					if account.hasVisibleMetadata {
-						HStack(spacing: 4) {
-							if let planLabel = account.planLabel {
-								Text(planLabel)
-									.lineLimit(1)
-							}
-							if account.planLabel != nil, account.compactHealthLabel != nil {
-								Text("·")
-							}
-							if let healthLabel = account.compactHealthLabel {
-								Text(healthLabel)
-									.foregroundStyle(account.statusDisplayColor(colorScheme: colorScheme))
-									.lineLimit(1)
-							}
-						}
-						.font(PanelFont.accountDetail)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					if let planLabel = account.planLabel {
+						Text("·")
+							.font(PanelFont.accountDetail)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
+							.fixedSize(horizontal: true, vertical: false)
+
+						Text(planLabel)
+							.font(PanelFont.accountDetail)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+							.lineLimit(1)
+							.fixedSize(horizontal: true, vertical: false)
+					}
+
+					if let healthLabel = account.compactHealthLabel {
+						Text("·")
+							.font(PanelFont.accountDetail)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
+							.fixedSize(horizontal: true, vertical: false)
+
+						Text(healthLabel)
+							.font(PanelFont.accountDetail)
+							.foregroundStyle(account.statusDisplayColor(colorScheme: colorScheme))
+							.lineLimit(1)
+							.fixedSize(horizontal: true, vertical: false)
 					}
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
 
 				HStack(spacing: 3) {
-					PanelIconButtonView(
-						symbol: account.codexActive ? "person.crop.circle.fill" : "person.crop.circle",
-						tint: PanelPalette.activeGold(colorScheme),
-						isActive: account.codexActive,
-						isDisabled: account.codexActive,
-						isSubtle: true,
-						size: 23,
-						action: useInCodex,
-						help: account.codexActive ? "Current Codex account" : "Use as Codex account"
-					)
+					if account.needsLogin {
+						PanelIconButtonView(
+							symbol: "person.crop.circle.badge.plus",
+							tint: PanelPalette.warning(colorScheme),
+							isActive: false,
+							isPrimary: true,
+							size: 21,
+							action: reauthenticate,
+							help: "Re-authenticate account"
+						)
+					} else {
+						PanelIconButtonView(
+							symbol: account.codexActive ? "person.crop.circle.fill" : "person.crop.circle",
+							tint: PanelPalette.codexAccent(colorScheme),
+							isActive: account.codexActive,
+							isDisabled: account.codexActive || !account.canUseInCodex,
+							isSubtle: true,
+							size: 21,
+							action: useInCodex,
+							help: account.codexActive ? "Current Codex account" : "Use as Codex account"
+						)
+					}
 
 					PanelIconButtonView(
 						symbol: "arrow.triangle.branch",
-						tint: PanelPalette.actionBlue(colorScheme),
+						tint: account.selected
+							? PanelPalette.routeAccent(colorScheme)
+							: PanelPalette.actionBlue(colorScheme),
 						isActive: account.selected,
+						isDisabled: !account.canRouteRuns && !account.selected,
 						isSubtle: true,
-						size: 23,
+						size: 21,
 						action: routeRunsHere,
-						help: account.selected ? "Restore balanced run routing" : "Route Decodex runs here"
+						help: routeHelp
 					)
 
 					PanelIconButtonView(
@@ -685,7 +637,8 @@ struct AccountRowView: View {
 						tint: PanelPalette.destructive(colorScheme),
 						isActive: false,
 						isDestructive: true,
-						size: 23,
+						isSubtle: true,
+						size: 21,
 						action: logout,
 						help: "Remove account"
 					)
@@ -696,24 +649,19 @@ struct AccountRowView: View {
 				AccountUsageSummaryView(account: account)
 			}
 		}
-		.padding(.vertical, 5)
+		.padding(.vertical, 7)
 		.padding(.leading, 8)
 		.padding(.trailing, 7)
-		.modernGlassSurface(
-			cornerRadius: 9,
-			tint: PanelPalette.accountRowTint(
-				colorScheme,
-				isSelected: account.selected,
-				isCodexActive: account.codexActive
-			),
-			depth: .row
-		)
-		.panelInteractiveSurface(
-			hoverLift: 0.35,
-			hoverScale: 1.002,
-			pressedScale: 1,
-			hoverShadowRadius: 2
-		)
+		.overlay(alignment: .bottom) {
+			if showsDivider {
+				Rectangle()
+					.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.48 : 0.72))
+					.frame(height: 0.5)
+					.padding(.leading, 8)
+					.padding(.trailing, 7)
+					.allowsHitTesting(false)
+			}
+		}
 		.animation(PanelMotion.state, value: account.selected)
 		.animation(PanelMotion.state, value: account.codexActive)
 	}
@@ -722,6 +670,19 @@ struct AccountRowView: View {
 		account.panelDisplayName(emailsHidden: emailsHidden)
 	}
 
+	private var routeHelp: String {
+		if account.selected {
+			return "Restore balanced run routing"
+		}
+		if account.needsLogin {
+			return "Re-authenticate before routing runs"
+		}
+		if account.disabled {
+			return "Disabled account cannot route runs"
+		}
+
+		return "Route Decodex runs here"
+	}
 }
 
 struct AccountUsageSummaryView: View {
@@ -729,7 +690,7 @@ struct AccountUsageSummaryView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(spacing: 3) {
+		VStack(spacing: 5) {
 			if account.hasPrimaryUsageData {
 				AccountUsageMeterView(
 					label: account.windowLabel(seconds: account.primaryWindowSeconds),
@@ -749,29 +710,8 @@ struct AccountUsageSummaryView: View {
 			}
 		}
 		.frame(maxWidth: .infinity)
-		.padding(.horizontal, 5)
-		.padding(.vertical, 3)
-		.background {
-			RoundedRectangle(cornerRadius: 7, style: .continuous)
-				.fill(PanelPalette.usageTray(colorScheme))
-		}
-		.overlay {
-			RoundedRectangle(cornerRadius: 7, style: .continuous)
-				.strokeBorder(PanelPalette.usageTrayStroke(colorScheme), lineWidth: 0.35)
-				.allowsHitTesting(false)
-		}
-		.shadow(
-			color: usageTrayShadow,
-			radius: colorScheme == .dark ? 4.5 : 3.5,
-			x: 0,
-			y: colorScheme == .dark ? 1.4 : 1
-		)
-	}
-
-	private var usageTrayShadow: Color {
-		colorScheme == .dark
-			? Color(red: 0, green: 0.05, blue: 0.11).opacity(0.26)
-			: Color(red: 0.12, green: 0.28, blue: 0.42).opacity(0.055)
+		.padding(.horizontal, 1)
+		.padding(.vertical, 1)
 	}
 }
 
@@ -783,14 +723,14 @@ struct AccountUsageMeterView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 2) {
+		VStack(alignment: .leading, spacing: 3) {
 			HStack(spacing: 5) {
 				Text(label)
-					.frame(width: 37, alignment: .leading)
+					.frame(width: 42, alignment: .leading)
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 
 				Text(remainingText)
-					.frame(width: 32, alignment: .leading)
+					.frame(width: 40, alignment: .leading)
 					.foregroundStyle(valueColor)
 					.monospacedDigit()
 
@@ -808,9 +748,9 @@ struct AccountUsageMeterView: View {
 						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.68 : 0.78))
 						.lineLimit(1)
 						.truncationMode(.middle)
-				}
+					}
 			}
-			.frame(height: 10)
+			.frame(height: 12)
 
 			GeometryReader { proxy in
 				ZStack(alignment: .leading) {
@@ -827,37 +767,24 @@ struct AccountUsageMeterView: View {
 					Capsule()
 						.fill(fillStyle)
 						.frame(width: width)
+						.clipShape(Capsule())
 						.animation(PanelMotion.state, value: remainingPercent)
 						.shadow(
-							color: color.opacity(colorScheme == .dark ? 0.34 : 0.18),
-							radius: colorScheme == .dark ? 3.4 : 2.2,
+							color: color.opacity(colorScheme == .dark ? 0.09 : 0.07),
+							radius: colorScheme == .dark ? 1.2 : 1,
 							x: 0,
 							y: 0
 						)
-						.overlay(alignment: .top) {
-							Capsule()
-								.fill(Color.white.opacity(colorScheme == .dark ? 0.28 : 0.34))
-								.frame(height: 1)
-								.padding(.horizontal, 1.2)
-								.allowsHitTesting(false)
-						}
-						.overlay(alignment: .trailing) {
-							Capsule()
-								.fill(progressCapStyle)
-								.frame(width: min(13, max(4, width)), height: 5)
-								.opacity(progress > 0.04 ? 1 : 0)
-								.allowsHitTesting(false)
-						}
 					Capsule()
-						.strokeBorder(trackEdgeColor, lineWidth: 0.35)
+						.strokeBorder(trackEdgeColor, lineWidth: 0.24)
 						.allowsHitTesting(false)
 				}
 			}
-			.frame(height: 5.2)
+			.frame(height: 3.2)
 		}
 		.font(PanelFont.usage)
 		.lineLimit(1)
-		.frame(height: 18)
+		.frame(height: 20)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityLabel("\(label) remaining \(remainingText), \(resetDisplay.accessibility)")
 	}
@@ -888,9 +815,9 @@ struct AccountUsageMeterView: View {
 
 	private var color: Color {
 		switch tone {
-		case .codexActive: return PanelPalette.activeGold(colorScheme)
+		case .codexActive: return PanelPalette.codexAccent(colorScheme)
 		case .ready: return PanelPalette.usageMint(colorScheme)
-		case .selected: return PanelPalette.actionBlue(colorScheme)
+		case .selected: return PanelPalette.routeAccent(colorScheme)
 		case .warning: return PanelPalette.warning(colorScheme)
 		case .danger: return PanelPalette.destructive(colorScheme)
 		case .neutral: return PanelPalette.secondaryText(colorScheme)
@@ -921,9 +848,8 @@ struct AccountUsageMeterView: View {
 	private var fillStyle: LinearGradient {
 		LinearGradient(
 			colors: [
-				color.opacity(colorScheme == .dark ? 0.98 : 0.78),
-				color.opacity(colorScheme == .dark ? 0.82 : 0.64),
-				color.opacity(colorScheme == .dark ? 0.58 : 0.48),
+				color.opacity(colorScheme == .dark ? 0.78 : 0.68),
+				color.opacity(colorScheme == .dark ? 0.62 : 0.52),
 			],
 			startPoint: .leading,
 			endPoint: .trailing
@@ -933,27 +859,15 @@ struct AccountUsageMeterView: View {
 	private var trackInsetStyle: LinearGradient {
 		LinearGradient(
 			colors: [
-				Color.white.opacity(colorScheme == .dark ? 0.035 : 0.08),
+				Color.white.opacity(colorScheme == .dark ? 0.022 : 0.05),
 				Color.white.opacity(0),
-				Color.black.opacity(colorScheme == .dark ? 0.18 : 0.05),
+				Color.black.opacity(colorScheme == .dark ? 0.035 : 0.018),
 			],
 			startPoint: .top,
 			endPoint: .bottom
 		)
 	}
 
-	private var progressCapStyle: RadialGradient {
-		RadialGradient(
-			colors: [
-				Color.white.opacity(colorScheme == .dark ? 0.7 : 0.6),
-				color.opacity(colorScheme == .dark ? 0.5 : 0.36),
-				Color.white.opacity(0),
-			],
-			center: .center,
-			startRadius: 0,
-			endRadius: 7
-		)
-	}
 }
 
 private struct UsageResetDisplay {
@@ -1047,7 +961,6 @@ struct NoticeView: View {
 		.padding(8)
 		.modernGlassSurface(
 			cornerRadius: 9,
-			tint: PanelPalette.warning(colorScheme).opacity(0.12),
 			depth: .section
 		)
 	}
@@ -1061,66 +974,26 @@ struct SummaryTileView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		HStack(spacing: 5) {
+		HStack(spacing: 4) {
 			Image(systemName: symbol)
 				.font(PanelFont.summaryIcon)
 				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.78 : 0.82))
 				.frame(width: 11)
 
-			VStack(alignment: .leading, spacing: 1) {
-				Text(title)
-					.font(PanelFont.summaryTitle)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
-					.lineLimit(1)
+			Text(title)
+				.font(PanelFont.summaryTitle)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
+				.lineLimit(1)
+				.fixedSize(horizontal: true, vertical: false)
 
-				Text(value)
-					.font(PanelFont.summaryValue)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-					.lineLimit(1)
-					.truncationMode(.middle)
-			}
+			Text(value)
+				.font(PanelFont.summaryValue)
+				.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				.lineLimit(1)
+				.truncationMode(.middle)
+				.layoutPriority(1)
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
-	}
-}
-
-struct PanelPrimaryButtonView: View {
-	let title: String
-	let symbol: String
-	let action: () -> Void
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		Button(action: action) {
-			Label(title, systemImage: symbol)
-				.font(PanelFont.primaryButton)
-				.foregroundStyle(
-					colorScheme == .dark
-						? Color(red: 0.86, green: 0.93, blue: 1).opacity(0.94)
-						: PanelPalette.actionBlue(colorScheme)
-				)
-				.frame(maxWidth: .infinity, minHeight: 22)
-				.contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-				.modernGlassSurface(
-					cornerRadius: 9,
-					tint: PanelPalette.addButtonTint(colorScheme),
-					depth: .row
-				)
-				.overlay {
-					RoundedRectangle(cornerRadius: 9, style: .continuous)
-						.strokeBorder(PanelPalette.addButtonStroke(colorScheme), lineWidth: 0.55)
-						.allowsHitTesting(false)
-				}
-		}
-		.buttonStyle(
-			PanelInteractiveButtonStyle(
-				hoverLift: 0.6,
-				hoverScale: 1.004,
-				pressedScale: 0.992,
-				hoverShadowRadius: 3.5
-			)
-		)
-		.help(title)
 	}
 }
 
@@ -1131,6 +1004,7 @@ struct PanelIconButtonView: View {
 	let isDestructive: Bool
 	let isDisabled: Bool
 	let isSubtle: Bool
+	let isPrimary: Bool
 	let size: CGFloat
 	let action: () -> Void
 	let help: String
@@ -1143,6 +1017,7 @@ struct PanelIconButtonView: View {
 		isDestructive: Bool = false,
 		isDisabled: Bool = false,
 		isSubtle: Bool = false,
+		isPrimary: Bool = false,
 		size: CGFloat = 24,
 		action: @escaping () -> Void,
 		help: String
@@ -1153,6 +1028,7 @@ struct PanelIconButtonView: View {
 		self.isDestructive = isDestructive
 		self.isDisabled = isDisabled
 		self.isSubtle = isSubtle
+		self.isPrimary = isPrimary
 		self.size = size
 		self.action = action
 		self.help = help
@@ -1182,14 +1058,8 @@ struct PanelIconButtonView: View {
 			iconContent
 				.modernGlassSurface(
 					cornerRadius: iconCornerRadius,
-					tint: surfaceTint,
 					depth: .control
 				)
-				.overlay {
-					RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous)
-						.strokeBorder(buttonStrokeColor, lineWidth: isDestructive ? 0.62 : 0.54)
-						.allowsHitTesting(false)
-				}
 		} else {
 			iconContent
 				.opacity(isDisabled ? 0.34 : 0.82)
@@ -1215,67 +1085,27 @@ struct PanelIconButtonView: View {
 		if isDestructive {
 			return tint.opacity(colorScheme == .dark ? 0.96 : 0.9)
 		}
+		if isPrimary {
+			return tint.opacity(colorScheme == .dark ? 1 : 0.96)
+		}
 		if isSubtle {
 			return tint.opacity(colorScheme == .dark ? 0.86 : 0.82)
 		}
 		return PanelPalette.actionBlue(colorScheme).opacity(colorScheme == .dark ? 0.88 : 0.86)
 	}
 
-	private var surfaceTint: Color {
-		if isActive {
-			return tint.opacity(colorScheme == .dark ? 0.22 : 0.2)
-		}
-		if isDisabled {
-			return PanelPalette.controlTint(colorScheme).opacity(0.42)
-		}
-		if isDestructive {
-			return colorScheme == .dark
-				? tint.opacity(0.18)
-				: Color(red: 1, green: 0.84, blue: 0.86).opacity(0.72)
-		}
-		return PanelPalette.controlTint(colorScheme).opacity(isSubtle ? 0.94 : 1)
-	}
-
 	private var usesSurface: Bool {
-		true
-	}
-
-	private var buttonStrokeColor: Color {
-		if isDestructive {
-			return tint.opacity(colorScheme == .dark ? 0.38 : 0.34)
+		if isSubtle {
+			return false
 		}
-		if isActive {
-			return tint.opacity(colorScheme == .dark ? 0.4 : 0.34)
+		if isActive || isPrimary {
+			return true
 		}
-
-		return PanelPalette.controlStroke(colorScheme).opacity(isSubtle ? 1 : 0.92)
+		return true
 	}
 
 	private var iconCornerRadius: CGFloat {
-		min(8.5, max(7, size * 0.36))
-	}
-}
-
-struct PanelIconLabelView: View {
-	let symbol: String
-	let tint: Color
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		Image(systemName: symbol)
-			.font(PanelFont.footerIcon)
-			.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.84 : 0.86))
-			.frame(width: 24, height: 24)
-			.modernGlassSurface(
-				cornerRadius: 7,
-				tint: PanelPalette.controlTint(colorScheme),
-				depth: .control
-			)
-			.overlay {
-				RoundedRectangle(cornerRadius: 7, style: .continuous)
-					.strokeBorder(PanelPalette.controlStroke(colorScheme), lineWidth: 0.5)
-					.allowsHitTesting(false)
-			}
+		size * 0.5
 	}
 }
 
@@ -1399,13 +1229,11 @@ private enum GlassSurfaceDepth {
 private extension View {
 	func modernGlassSurface(
 		cornerRadius: CGFloat,
-		tint: Color? = nil,
 		depth: GlassSurfaceDepth = .section
 	) -> some View {
 		modifier(
 			ModernGlassSurfaceModifier(
 				cornerRadius: cornerRadius,
-				tint: tint,
 				depth: depth
 			)
 		)
@@ -1415,7 +1243,6 @@ private extension View {
 private struct ModernGlassSurfaceModifier: ViewModifier {
 	@Environment(\.colorScheme) private var colorScheme
 	let cornerRadius: CGFloat
-	let tint: Color?
 	let depth: GlassSurfaceDepth
 
 	@ViewBuilder
@@ -1424,40 +1251,21 @@ private struct ModernGlassSurfaceModifier: ViewModifier {
 
 		if #available(macOS 26.0, *) {
 			content
-				.background {
-					shape.fill(surfaceFill)
-				}
 				.glassEffect(
 					configuredGlass,
 					in: shape
 				)
-				.glassSurfaceFinish(
-					cornerRadius: cornerRadius,
-					depth: depth,
-					colorScheme: colorScheme
-				)
 		} else {
 			content
 				.background {
-					shape
-						.fill(materialStyle)
-					shape
-						.fill(surfaceFill)
+					shape.fill(materialStyle)
 				}
-				.glassSurfaceFinish(
-					cornerRadius: cornerRadius,
-					depth: depth,
-					colorScheme: colorScheme
-				)
 		}
 	}
 
 	@available(macOS 26.0, *)
 	private var configuredGlass: Glass {
-		var glass = Glass.regular
-		if let tint {
-			glass = glass.tint(tint)
-		}
+		var glass = Glass.clear
 		if depth == .control {
 			glass = glass.interactive()
 		}
@@ -1468,453 +1276,16 @@ private struct ModernGlassSurfaceModifier: ViewModifier {
 	private var materialStyle: AnyShapeStyle {
 		switch depth {
 		case .panel:
-			return AnyShapeStyle(.regularMaterial)
-		case .section, .row:
+			return AnyShapeStyle(.ultraThinMaterial)
+		case .section:
 			return AnyShapeStyle(.thinMaterial)
+		case .row:
+			return colorScheme == .dark ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial)
 		case .control:
 			return colorScheme == .dark ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial)
 		}
 	}
 
-	private var surfaceFill: Color {
-		if let tint {
-			return tint
-		}
-
-		if colorScheme == .dark {
-			switch depth {
-			case .panel:
-				return Color(hue: 0.59, saturation: 0.4, brightness: 0.38, opacity: 0.3)
-			case .section:
-				return Color(hue: 0.59, saturation: 0.25, brightness: 0.5, opacity: 0.12)
-			case .row:
-				return Color(hue: 0.59, saturation: 0.24, brightness: 0.52, opacity: 0.13)
-			case .control:
-				return Color(hue: 0.59, saturation: 0.27, brightness: 0.56, opacity: 0.115)
-			}
-		}
-
-		switch depth {
-		case .panel:
-			return Color(
-				hue: 0.6,
-				saturation: 0.18,
-				brightness: 1,
-				opacity: 0.1
-			)
-		case .section:
-			return Color(
-				hue: 0.6,
-				saturation: 0.08,
-				brightness: 1,
-				opacity: 0.12
-			)
-		case .row:
-			return Color(
-				hue: 0.6,
-				saturation: 0.07,
-				brightness: 1,
-				opacity: 0.135
-			)
-		case .control:
-			return Color.white.opacity(0.145)
-		}
-	}
-}
-
-private extension View {
-	func glassSurfaceFinish(
-		cornerRadius: CGFloat,
-		depth: GlassSurfaceDepth,
-		colorScheme: ColorScheme
-	) -> some View {
-		let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-
-		return self
-			.background {
-				shape
-					.fill(castShadowColor(for: depth, colorScheme: colorScheme))
-					.blur(radius: castShadowBlur(for: depth))
-					.offset(
-						x: castShadowXOffset(for: depth),
-						y: castShadowOffset(for: depth)
-					)
-					.opacity(castShadowOpacity(for: depth, colorScheme: colorScheme))
-					.allowsHitTesting(false)
-			}
-			.background(alignment: .bottom) {
-				shape
-					.fill(contactShadowGradient(for: depth, colorScheme: colorScheme))
-					.frame(height: contactShadowHeight(for: depth))
-					.blur(radius: contactShadowBlur(for: depth))
-					.offset(y: contactShadowOffset(for: depth))
-					.opacity(contactShadowOpacity(for: depth, colorScheme: colorScheme))
-					.allowsHitTesting(false)
-			}
-			.overlay {
-				shape
-					.fill(surfaceLiftGradient(for: depth, colorScheme: colorScheme))
-					.blendMode(colorScheme == .dark ? .screen : .softLight)
-					.allowsHitTesting(false)
-			}
-			.overlay {
-				shape
-					.fill(sheenGradient(for: depth, colorScheme: colorScheme))
-					.blendMode(.screen)
-					.allowsHitTesting(false)
-			}
-			.overlay {
-				shape
-					.strokeBorder(
-						edgeGradient(for: depth, colorScheme: colorScheme),
-						lineWidth: edgeWidth(for: depth)
-					)
-					.allowsHitTesting(false)
-			}
-			.shadow(
-				color: ambientShadowColor(for: depth, colorScheme: colorScheme),
-				radius: ambientShadowRadius(for: depth),
-				x: ambientShadowXOffset(for: depth),
-				y: ambientShadowOffset(for: depth)
-			)
-			.shadow(
-				color: keyShadowColor(for: depth, colorScheme: colorScheme),
-				radius: keyShadowRadius(for: depth),
-				x: keyShadowXOffset(for: depth),
-				y: keyShadowOffset(for: depth)
-			)
-	}
-
-	private func edgeGradient(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> LinearGradient {
-		LinearGradient(
-			colors: [
-				Color.white.opacity(edgeHighlightOpacity(for: depth, colorScheme: colorScheme)),
-				Color.white.opacity(edgeMidOpacity(for: depth, colorScheme: colorScheme)),
-				Color.black.opacity(edgeShadowOpacity(for: depth, colorScheme: colorScheme)),
-			],
-			startPoint: .topLeading,
-			endPoint: .bottomTrailing
-		)
-	}
-
-	private func surfaceLiftGradient(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> LinearGradient {
-		LinearGradient(
-			colors: [
-				Color.white.opacity(surfaceTopGlowOpacity(for: depth, colorScheme: colorScheme)),
-				Color.white.opacity(0),
-				Color.black.opacity(surfaceBottomShadeOpacity(for: depth, colorScheme: colorScheme)),
-			],
-			startPoint: .top,
-			endPoint: .bottom
-		)
-	}
-
-	private func sheenGradient(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> LinearGradient {
-		LinearGradient(
-			colors: [
-				Color.white.opacity(sheenOpacity(for: depth, colorScheme: colorScheme)),
-				Color.white.opacity(0),
-				Color.black.opacity(colorScheme == .dark ? 0.035 : 0.02),
-			],
-			startPoint: .topLeading,
-			endPoint: .bottomTrailing
-		)
-	}
-
-	private func contactShadowGradient(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> LinearGradient {
-		let color = contactShadowColor(for: depth, colorScheme: colorScheme)
-		return LinearGradient(
-			colors: [
-				color.opacity(0),
-				color,
-				color.opacity(0.35),
-				color.opacity(0),
-			],
-			startPoint: .top,
-			endPoint: .bottom
-		)
-	}
-
-	private func contactShadowColor(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Color {
-		if colorScheme == .dark {
-			switch depth {
-			case .panel:
-				return Color.black
-			case .section, .row:
-				return Color(red: 0.01, green: 0.04, blue: 0.08)
-			case .control:
-				return Color.black
-			}
-		}
-
-		switch depth {
-		case .panel:
-			return Color(red: 0.08, green: 0.18, blue: 0.3)
-		case .section, .row:
-			return Color(red: 0.12, green: 0.28, blue: 0.42)
-		case .control:
-			return Color(red: 0.1, green: 0.24, blue: 0.38)
-		}
-	}
-
-	private func castShadowColor(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Color {
-		if colorScheme == .dark {
-			switch depth {
-			case .panel:
-				return Color.black
-			case .section, .row:
-				return Color(red: 0.01, green: 0.035, blue: 0.07)
-			case .control:
-				return Color.black
-			}
-		}
-
-		switch depth {
-		case .panel:
-			return Color(red: 0.08, green: 0.18, blue: 0.3)
-		case .section, .row:
-			return Color(red: 0.1, green: 0.24, blue: 0.38)
-		case .control:
-			return Color(red: 0.08, green: 0.2, blue: 0.34)
-		}
-	}
-
-	private func castShadowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
-		switch depth {
-		case .panel:
-			return colorScheme == .dark ? 0.13 : 0.085
-		case .section:
-			return colorScheme == .dark ? 0.1 : 0.18
-		case .row:
-			return colorScheme == .dark ? 0.16 : 0.27
-		case .control:
-			return colorScheme == .dark ? 0.14 : 0.2
-		}
-	}
-
-	private func castShadowBlur(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 16
-		case .section: return 10
-		case .row: return 12
-		case .control: return 7
-		}
-	}
-
-	private func castShadowXOffset(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 0
-		case .section: return 0.5
-		case .row: return 0.7
-		case .control: return 0.4
-		}
-	}
-
-	private func castShadowOffset(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 8
-		case .section: return 6
-		case .row: return 8
-		case .control: return 4
-		}
-	}
-
-	private func contactShadowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
-		switch depth {
-		case .panel:
-			return colorScheme == .dark ? 0.1 : 0.085
-		case .section:
-			return colorScheme == .dark ? 0.13 : 0.32
-		case .row:
-			return colorScheme == .dark ? 0.18 : 0.42
-		case .control:
-			return colorScheme == .dark ? 0.14 : 0.24
-		}
-	}
-
-	private func contactShadowHeight(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 16
-		case .section: return 10
-		case .row: return 12
-		case .control: return 8
-		}
-	}
-
-	private func contactShadowBlur(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 7
-		case .section: return 3.2
-		case .row: return 3.6
-		case .control: return 3
-		}
-	}
-
-	private func contactShadowOffset(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 8
-		case .section: return 5.8
-		case .row: return 6.8
-		case .control: return 4
-		}
-	}
-
-	private func surfaceTopGlowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
-		switch depth {
-		case .panel:
-			return colorScheme == .dark ? 0.025 : 0.045
-		case .section:
-			return colorScheme == .dark ? 0.038 : 0.085
-		case .row:
-			return colorScheme == .dark ? 0.044 : 0.095
-		case .control:
-			return colorScheme == .dark ? 0.055 : 0.11
-		}
-	}
-
-	private func surfaceBottomShadeOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
-		switch depth {
-		case .panel:
-			return colorScheme == .dark ? 0.012 : 0.018
-		case .section:
-			return colorScheme == .dark ? 0.018 : 0.03
-		case .row:
-			return colorScheme == .dark ? 0.022 : 0.04
-		case .control:
-			return colorScheme == .dark ? 0.02 : 0.035
-		}
-	}
-
-	private func sheenOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
-		switch depth {
-		case .panel: return colorScheme == .dark ? 0.045 : 0.1
-		case .section: return colorScheme == .dark ? 0.04 : 0.11
-		case .row: return colorScheme == .dark ? 0.046 : 0.12
-		case .control: return colorScheme == .dark ? 0.058 : 0.13
-		}
-	}
-
-	private func edgeWidth(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 0.65
-		case .section: return 0.48
-		case .row: return 0.52
-		case .control: return 0.45
-		}
-	}
-
-	private func edgeHighlightOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
-		switch depth {
-		case .panel: return colorScheme == .dark ? 0.17 : 0.32
-		case .section: return colorScheme == .dark ? 0.14 : 0.34
-		case .row: return colorScheme == .dark ? 0.17 : 0.42
-		case .control: return colorScheme == .dark ? 0.2 : 0.38
-		}
-	}
-
-	private func edgeMidOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
-		switch depth {
-		case .panel: return colorScheme == .dark ? 0.045 : 0.105
-		case .section: return colorScheme == .dark ? 0.028 : 0.07
-		case .row: return colorScheme == .dark ? 0.03 : 0.065
-		case .control: return colorScheme == .dark ? 0.04 : 0.09
-		}
-	}
-
-	private func edgeShadowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
-		switch depth {
-		case .panel: return colorScheme == .dark ? 0.085 : 0.075
-		case .section: return colorScheme == .dark ? 0.045 : 0.075
-		case .row: return colorScheme == .dark ? 0.045 : 0.11
-		case .control: return colorScheme == .dark ? 0.06 : 0.09
-		}
-	}
-
-	private func ambientShadowColor(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Color {
-		let opacity: Double
-		switch depth {
-		case .panel:
-			opacity = colorScheme == .dark ? 0.24 : 0.065
-		case .section:
-			opacity = colorScheme == .dark ? 0.09 : 0.095
-		case .row:
-			opacity = colorScheme == .dark ? 0.18 : 0.15
-		case .control:
-			opacity = colorScheme == .dark ? 0.1 : 0.058
-		}
-
-		return Color.black.opacity(opacity)
-	}
-
-	private func keyShadowColor(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Color {
-		let opacity: Double
-		switch depth {
-		case .panel:
-			opacity = colorScheme == .dark ? 0.07 : 0.028
-		case .section:
-			opacity = colorScheme == .dark ? 0.065 : 0.055
-		case .row:
-			opacity = colorScheme == .dark ? 0.08 : 0.07
-		case .control:
-			opacity = colorScheme == .dark ? 0.07 : 0.046
-		}
-
-		return Color(red: 0.34, green: 0.67, blue: 1).opacity(opacity)
-	}
-
-	private func ambientShadowRadius(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 15
-		case .section: return 9
-		case .row: return 13
-		case .control: return 5.5
-		}
-	}
-
-	private func ambientShadowXOffset(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 0
-		case .section: return 0.6
-		case .row: return 0.8
-		case .control: return 0.4
-		}
-	}
-
-	private func ambientShadowOffset(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 6
-		case .section: return 4
-		case .row: return 8
-		case .control: return 2
-		}
-	}
-
-	private func keyShadowRadius(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 5
-		case .section: return 4
-		case .row: return 4.5
-		case .control: return 3
-		}
-	}
-
-	private func keyShadowXOffset(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 0
-		case .section: return 0.3
-		case .row: return 0.4
-		case .control: return 0.2
-		}
-	}
-
-	private func keyShadowOffset(for depth: GlassSurfaceDepth) -> CGFloat {
-		switch depth {
-		case .panel: return 2
-		case .section: return 2
-		case .row: return 2
-		case .control: return 1
-		}
-	}
 }
 
 private extension CodexAccount {
@@ -1946,19 +1317,14 @@ private extension CodexAccount {
 		return AccountDisplay.compactEmail(displayName)
 	}
 
-	func matchesSelector(_ value: String) -> Bool {
-		let selector = value.trimmingCharacters(in: .whitespacesAndNewlines)
-		return selector == email || selector == accountFingerprint || selector == self.selector
-	}
-
 	func statusDisplayColor(colorScheme: ColorScheme) -> Color {
 		switch statusTone {
 		case .codexActive:
-			return PanelPalette.activeGold(colorScheme)
+			return PanelPalette.codexAccent(colorScheme)
 		case .ready:
 			return PanelPalette.usageMint(colorScheme)
 		case .selected:
-			return PanelPalette.actionBlue(colorScheme)
+			return PanelPalette.routeAccent(colorScheme)
 		case .warning:
 			return PanelPalette.warning(colorScheme)
 		case .danger:
@@ -1978,10 +1344,6 @@ private extension CodexAccount {
 
 	var hasUsageSummary: Bool {
 		hasPrimaryUsageData || hasSecondaryUsageData
-	}
-
-	var hasVisibleMetadata: Bool {
-		planLabel != nil || compactHealthLabel != nil
 	}
 
 	var compactHealthLabel: String? {
