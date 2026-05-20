@@ -94,6 +94,26 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		email ?? accountFingerprint
 	}
 
+	var authIdentity: CodexAuthIdentity {
+		CodexAuthIdentity(
+			accountFingerprint: accountFingerprint,
+			email: email,
+			selector: selector
+		)
+	}
+
+	var needsLogin: Bool {
+		status == "unusable" || status == "expired" || !refreshTokenPresent
+	}
+
+	var canUseInCodex: Bool {
+		!disabled && !needsLogin
+	}
+
+	var canRouteRuns: Bool {
+		!disabled && !needsLogin
+	}
+
 	var statusLabel: String {
 		if isUsageLimited {
 			return "Limited"
@@ -189,6 +209,44 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 			return .warning
 		}
 		return .ready
+	}
+
+	func matchesSelector(_ value: String) -> Bool {
+		let selector = value.trimmingCharacters(in: .whitespacesAndNewlines)
+		return selector == email || selector == accountFingerprint || selector == self.selector
+	}
+
+	func withCodexActive(_ value: Bool) -> CodexAccount {
+		CodexAccount(
+			accountFingerprint: accountFingerprint,
+			email: email,
+			selector: selector,
+			randomName: randomName,
+			randomNameKey: randomNameKey,
+			randomNameOffset: randomNameOffset,
+			status: status,
+			selected: selected,
+			codexActive: value,
+			disabled: disabled,
+			refreshTokenPresent: refreshTokenPresent,
+			accessTokenExpiresAtUnixEpoch: accessTokenExpiresAtUnixEpoch,
+			lastSelectedAtUnixEpoch: lastSelectedAtUnixEpoch,
+			cooldownUntilUnixEpoch: cooldownUntilUnixEpoch,
+			note: note,
+			planType: planType,
+			refreshStatus: refreshStatus,
+			checkedAtUnixEpoch: checkedAtUnixEpoch,
+			primaryWindowSeconds: primaryWindowSeconds,
+			primaryRemainingPercent: primaryRemainingPercent,
+			primaryResetsAtUnixEpoch: primaryResetsAtUnixEpoch,
+			secondaryWindowSeconds: secondaryWindowSeconds,
+			secondaryRemainingPercent: secondaryRemainingPercent,
+			secondaryResetsAtUnixEpoch: secondaryResetsAtUnixEpoch,
+			creditsHasCredits: creditsHasCredits,
+			creditsUnlimited: creditsUnlimited,
+			creditsBalance: creditsBalance,
+			rateLimitReachedType: rateLimitReachedType
+		)
 	}
 
 	enum CodingKeys: String, CodingKey {

@@ -1,15 +1,59 @@
 import AppKit
 import SwiftUI
 
+enum AccountLoginSheetMode: Equatable {
+	case add
+	case reauth(String)
+
+	var title: String {
+		switch self {
+		case .add:
+			return "Device Login"
+		case .reauth:
+			return "Re-auth Account"
+		}
+	}
+
+	var icon: String {
+		switch self {
+		case .add:
+			return "person.crop.circle.badge.plus"
+		case .reauth:
+			return "person.crop.circle.badge.exclamationmark"
+		}
+	}
+
+	func subtitle(fallback: String, isActive: Bool) -> String {
+		switch self {
+		case .add:
+			return fallback
+		case .reauth(let name):
+			return !isActive && !name.isEmpty ? name : fallback
+		}
+	}
+}
+
 struct LoginSheetView: View {
 	@ObservedObject var store: AccountStore
+	let mode: AccountLoginSheetMode
 	@Environment(\.colorScheme) private var colorScheme
 	@Environment(\.dismiss) private var dismiss
+	@State private var requestStarted = false
+
+	init(store: AccountStore, mode: AccountLoginSheetMode = .add) {
+		self.store = store
+		self.mode = mode
+	}
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 11) {
 			header
 			codeCard
+
+			if isRequestingCode {
+				requestStatus
+					.transition(.opacity.combined(with: .move(edge: .top)))
+			}
 
 			if let notice = store.notice {
 				Text(notice)
@@ -34,11 +78,21 @@ struct LoginSheetView: View {
 				.strokeBorder(LoginPalette.panelStroke(colorScheme), lineWidth: 0.65)
 		}
 		.shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 20, y: 10)
+		.onChange(of: store.loginPrompt) { _, prompt in
+			if prompt != nil {
+				requestStarted = false
+			}
+		}
+		.onChange(of: store.notice) { _, notice in
+			if notice != nil {
+				requestStarted = false
+			}
+		}
 	}
 
 	private var header: some View {
 		HStack(spacing: 8) {
-			Image(systemName: "person.crop.circle.badge.plus")
+			Image(systemName: mode.icon)
 				.font(.system(size: 12.5, weight: .semibold))
 				.foregroundStyle(LoginPalette.accent(colorScheme))
 				.frame(width: 27, height: 27)
@@ -52,15 +106,44 @@ struct LoginSheetView: View {
 				}
 
 			VStack(alignment: .leading, spacing: 1) {
-				Text("Device Login")
+				Text(mode.title)
 					.font(LoginFont.title)
 					.foregroundStyle(LoginPalette.primaryText(colorScheme))
-				Text(store.loginStatusLabel)
+				Text(
+					mode.subtitle(
+						fallback: store.loginStatusLabel,
+						isActive: store.isLoggingIn || store.loginPrompt != nil || store.notice != nil
+					)
+				)
 					.font(LoginFont.caption)
 					.foregroundStyle(LoginPalette.secondaryText(colorScheme))
+					.lineLimit(1)
+					.truncationMode(.middle)
 			}
 
 			Spacer()
+		}
+	}
+
+	private var requestStatus: some View {
+		HStack(spacing: 7) {
+			ProgressView()
+				.controlSize(.small)
+				.scaleEffect(0.72)
+			Text("Requesting device code")
+				.font(LoginFont.caption)
+				.foregroundStyle(LoginPalette.secondaryText(colorScheme))
+			Spacer(minLength: 0)
+		}
+		.padding(.horizontal, 9)
+		.padding(.vertical, 6)
+		.background {
+			RoundedRectangle(cornerRadius: 9, style: .continuous)
+				.fill(LoginPalette.statusTint(colorScheme))
+		}
+		.overlay {
+			RoundedRectangle(cornerRadius: 9, style: .continuous)
+				.strokeBorder(LoginPalette.cardStroke(colorScheme), lineWidth: 0.5)
 		}
 	}
 
@@ -112,6 +195,7 @@ struct LoginSheetView: View {
 	private var actions: some View {
 		HStack(spacing: 7) {
 			Button("Cancel") {
+				requestStarted = false
 				dismiss()
 			}
 			.keyboardShortcut(.cancelAction)
@@ -120,19 +204,42 @@ struct LoginSheetView: View {
 			Spacer()
 
 			Button {
+				requestStarted = true
 				Task {
 					await store.login()
+					requestStarted = false
 					if store.notice == nil {
 						dismiss()
 					}
 				}
 			} label: {
-				Label(store.isLoggingIn ? "Waiting" : "Get Code", systemImage: store.isLoggingIn ? "clock" : "arrow.right.circle")
+				HStack(spacing: 5) {
+					if isRequestingCode {
+						ProgressView()
+							.controlSize(.small)
+							.scaleEffect(0.64)
+					} else {
+						Image(systemName: store.isLoggingIn ? "clock" : "arrow.right.circle")
+					}
+					Text(primaryActionTitle)
+				}
 			}
 			.keyboardShortcut(.defaultAction)
 			.buttonStyle(LoginTextButtonStyle(isPrimary: true))
-			.disabled(store.isLoggingIn)
+			.disabled(store.isLoggingIn || requestStarted)
 		}
+	}
+
+	private var isRequestingCode: Bool {
+		store.loginPrompt == nil && (requestStarted || store.isLoggingIn)
+	}
+
+	private var primaryActionTitle: String {
+		if isRequestingCode {
+			return "Requesting"
+		}
+
+		return store.isLoggingIn ? "Waiting" : "Get Code"
 	}
 
 	private var loginDestinationLabel: String {
@@ -158,6 +265,33 @@ struct LoginSheetView: View {
 		}
 
 		NSWorkspace.shared.open(url)
+	}
+}
+
+struct FloatingLoginWindowConfigurator: NSViewRepresentable {
+	func makeNSView(context: Context) -> NSView {
+		let view = NSView()
+		configureSoon(from: view)
+		return view
+	}
+
+	func updateNSView(_ nsView: NSView, context: Context) {
+		configureSoon(from: nsView)
+	}
+
+	private func configureSoon(from view: NSView) {
+		DispatchQueue.main.async {
+			guard let window = view.window else {
+				return
+			}
+
+			window.level = .floating
+			window.collectionBehavior.insert(.fullScreenAuxiliary)
+			window.isMovableByWindowBackground = true
+			window.titleVisibility = .hidden
+			window.titlebarAppearsTransparent = true
+			window.styleMask.insert(.fullSizeContentView)
+		}
 	}
 }
 
@@ -322,6 +456,12 @@ private enum LoginPalette {
 		colorScheme == .dark
 			? Color.white.opacity(0.13)
 			: Color(red: 0.42, green: 0.58, blue: 0.76).opacity(0.2)
+	}
+
+	static func statusTint(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color(red: 0.62, green: 0.78, blue: 1).opacity(0.11)
+			: Color(red: 0.86, green: 0.94, blue: 1).opacity(0.62)
 	}
 
 	static func controlTint(_ colorScheme: ColorScheme) -> Color {
