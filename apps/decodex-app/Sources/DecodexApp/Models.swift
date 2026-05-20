@@ -158,16 +158,16 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 
 	func windowLabel(seconds: Int?) -> String {
 		switch seconds {
-		case 18_000: return "5h"
-		case 604_800: return "7d"
+		case 18_000: return "5 hrs"
+		case 604_800: return "7 days"
 		case let value?:
 			let hours = value / 3_600
 			if hours > 0 && value % 3_600 == 0 {
-				return "\(hours)h"
+				return hours == 1 ? "1 hr" : "\(hours) hrs"
 			}
 			let days = value / 86_400
 			if days > 0 && value % 86_400 == 0 {
-				return "\(days)d"
+				return days == 1 ? "1 day" : "\(days) days"
 			}
 			return "window"
 		case nil:
