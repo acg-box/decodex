@@ -7,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 }
 
-private enum AppAssets {
+enum AppAssets {
 	static let statusBarIcon: NSImage = {
 		let image = NSImage(named: "StatusBarIcon")
 			?? Bundle.main.url(forResource: "StatusBarIcon", withExtension: "png")
