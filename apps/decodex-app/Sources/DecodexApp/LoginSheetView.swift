@@ -38,7 +38,7 @@ struct LoginSheetView: View {
 
 	private var header: some View {
 		HStack(spacing: 8) {
-			Image(systemName: "person.badge.key.fill")
+			Image(systemName: "person.crop.circle.badge.plus")
 				.font(.system(size: 12.5, weight: .semibold))
 				.foregroundStyle(LoginPalette.accent(colorScheme))
 				.frame(width: 27, height: 27)
