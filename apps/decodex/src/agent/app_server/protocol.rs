@@ -531,6 +531,8 @@ pub(super) struct SkillMetadata {
 pub(super) struct PluginListParams {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub(super) cwds: Option<Vec<String>>,
+	#[serde(rename = "marketplaceKinds", skip_serializing_if = "Option::is_none")]
+	pub(super) marketplace_kinds: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
