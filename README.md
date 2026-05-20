@@ -130,10 +130,14 @@ file, and project configs do not own an account-pool path override. Set
 `[codex.accounts].fixed_account` in `~/.codex/decodex/config.toml` to pin all new
 account-pool runs to one account. When that global selector is absent, Decodex balances
 new runs across the pool. The operator dashboard Accounts UI writes and clears the same
-global selector; project configs do not pin specific accounts. To switch the account
-used by the Codex CLI itself, run `decodex account use <selector>` or use the Decodex
-App row action; this overwrites `$CODEX_HOME/auth.json` or `~/.codex/auth.json` from
-the matching `accounts.jsonl` entry.
+global selector; project configs do not pin specific accounts. Account display-name
+rerolls are also global Decodex state under `[codex.account_names.offsets]` in
+`~/.codex/decodex/config.toml` so the operator dashboard and Decodex App show the same
+privacy-preserving names. Client-only presentation preferences such as theme, sorting,
+and whether identities are hidden remain local to each UI. To switch the account used
+by the Codex CLI itself, run `decodex account use <selector>` or use the Decodex App
+row action; this overwrites `$CODEX_HOME/auth.json` or `~/.codex/auth.json` from the
+matching `accounts.jsonl` entry.
 
 `decodex diagnose --json` writes the local agent evidence index under
 `~/.codex/decodex/agent-evidence/<service-id>/` and prints the same handoff index for
