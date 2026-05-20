@@ -25,83 +25,85 @@ private enum PanelFont {
 	static let usage = text(8.45, weight: .medium)
 	static let usageMeta = text(7.85, weight: .medium)
 	static let primaryButton = text(10.7, weight: .semibold)
-	static let iconButton = text(10, weight: .medium)
+	static let iconButton = text(10.7, weight: .semibold)
 	static let footerIcon = text(10.1, weight: .medium)
 }
 
 private enum PanelPalette {
 	static func primaryText(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.9, green: 0.94, blue: 0.99).opacity(0.94)
+			? Color(red: 0.88, green: 0.94, blue: 1).opacity(0.96)
 			: Color(red: 0.11, green: 0.17, blue: 0.26).opacity(0.94)
 	}
 
 	static func secondaryText(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.66, green: 0.74, blue: 0.84).opacity(0.78)
+			? Color(red: 0.6, green: 0.7, blue: 0.82).opacity(0.82)
 			: Color(red: 0.3, green: 0.4, blue: 0.53).opacity(0.8)
 	}
 
 	static func panelTint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.1, green: 0.18, blue: 0.28).opacity(0.5)
+			? Color(red: 0.025, green: 0.075, blue: 0.13).opacity(0.68)
 			: Color(red: 0.46, green: 0.68, blue: 0.9).opacity(0.62)
 	}
 
 	static func summaryTint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.63, green: 0.73, blue: 0.86).opacity(0.115)
+			? Color(red: 0.16, green: 0.28, blue: 0.42).opacity(0.22)
 			: Color.white.opacity(0.58)
 	}
 
 	static func accountRowTint(_ colorScheme: ColorScheme, isSelected: Bool, isCodexActive: Bool) -> Color {
 		if isSelected {
 			return colorScheme == .dark
-				? Color(red: 0.58, green: 0.72, blue: 0.9).opacity(0.17)
+				? Color(red: 0.16, green: 0.32, blue: 0.5).opacity(0.34)
 				: Color(red: 0.88, green: 0.96, blue: 1).opacity(0.76)
 		}
 		if isCodexActive {
 			return colorScheme == .dark
-				? Color(red: 0.62, green: 0.72, blue: 0.84).opacity(0.12)
+				? Color(red: 0.13, green: 0.25, blue: 0.38).opacity(0.28)
 				: Color.white.opacity(0.62)
 		}
 
 		return colorScheme == .dark
-			? Color(red: 0.58, green: 0.68, blue: 0.8).opacity(0.115)
+			? Color(red: 0.11, green: 0.2, blue: 0.32).opacity(0.24)
 			: Color.white.opacity(0.6)
 	}
 
 	static func usageTray(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.7, green: 0.8, blue: 0.93).opacity(0.045)
+			? Color(red: 0.015, green: 0.045, blue: 0.08).opacity(0.54)
 			: Color.white.opacity(0.18)
 	}
 
 	static func usageTrayStroke(_ colorScheme: ColorScheme) -> Color {
-		Color.white.opacity(colorScheme == .dark ? 0.055 : 0.18)
+		colorScheme == .dark
+			? Color(red: 0.52, green: 0.72, blue: 0.94).opacity(0.16)
+			: Color.white.opacity(0.18)
 	}
 
 	static func addButtonTint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.56, green: 0.72, blue: 0.92).opacity(0.3)
+			? Color(red: 0.13, green: 0.31, blue: 0.5).opacity(0.48)
 			: Color(red: 0.86, green: 0.94, blue: 1).opacity(0.84)
 	}
 
 	static func addButtonStroke(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.78, green: 0.9, blue: 1).opacity(0.3)
+			? Color(red: 0.5, green: 0.76, blue: 1).opacity(0.36)
 			: Color(red: 0.24, green: 0.43, blue: 0.64).opacity(0.42)
 	}
 
 	static func controlTint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.68, green: 0.8, blue: 0.94).opacity(0.2)
+			? Color(red: 0.16, green: 0.3, blue: 0.46).opacity(0.34)
 			: Color(red: 0.9, green: 0.96, blue: 1).opacity(0.86)
 	}
 
 	static func controlStroke(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.8, green: 0.9, blue: 1).opacity(0.18)
+			? Color(red: 0.55, green: 0.76, blue: 1).opacity(0.28)
 			: Color(red: 0.28, green: 0.46, blue: 0.66).opacity(0.38)
 	}
 
@@ -113,19 +115,19 @@ private enum PanelPalette {
 
 	static func actionBlue(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.72, green: 0.84, blue: 0.98)
+			? Color(red: 0.43, green: 0.74, blue: 1)
 			: Color(red: 0.1, green: 0.28, blue: 0.46)
 	}
 
 	static func activeGold(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.72, green: 0.82, blue: 0.93)
+			? Color(red: 0.95, green: 0.8, blue: 0.34)
 			: Color(red: 0.28, green: 0.42, blue: 0.55)
 	}
 
 	static func usageMint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.6, green: 0.73, blue: 0.82)
+			? Color(red: 0.36, green: 0.94, blue: 0.76)
 			: Color(red: 0.38, green: 0.56, blue: 0.64)
 	}
 
@@ -137,18 +139,136 @@ private enum PanelPalette {
 
 	static func destructive(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.82, green: 0.55, blue: 0.58)
-			: Color(red: 0.55, green: 0.31, blue: 0.35)
+			? Color(red: 1, green: 0.42, blue: 0.45)
+			: Color(red: 0.72, green: 0.13, blue: 0.18)
 	}
 
 	static func progressTrack(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.72, green: 0.82, blue: 0.92).opacity(0.095)
-			: Color(red: 0.13, green: 0.28, blue: 0.4).opacity(0.11)
+			? Color(red: 0, green: 0.025, blue: 0.055).opacity(0.62)
+			: Color(red: 0.12, green: 0.28, blue: 0.4).opacity(0.16)
 	}
 
 	static func progressEdge(_ colorScheme: ColorScheme) -> Color {
-		Color.white.opacity(colorScheme == .dark ? 0.1 : 0.18)
+		colorScheme == .dark
+			? Color(red: 0.56, green: 0.78, blue: 1).opacity(0.2)
+			: Color.white.opacity(0.24)
+	}
+}
+
+private enum PanelMotion {
+	static let hover = Animation.interactiveSpring(response: 0.22, dampingFraction: 0.86, blendDuration: 0.04)
+	static let press = Animation.interactiveSpring(response: 0.16, dampingFraction: 0.78, blendDuration: 0.02)
+	static let state = Animation.interactiveSpring(response: 0.24, dampingFraction: 0.88, blendDuration: 0.05)
+}
+
+private extension View {
+	func panelInteractiveSurface(
+		isPressed: Bool = false,
+		isDisabled: Bool = false,
+		hoverLift: CGFloat = 0.7,
+		hoverScale: CGFloat = 1.006,
+		pressedScale: CGFloat = 0.985,
+		hoverShadowRadius: CGFloat = 3
+	) -> some View {
+		modifier(
+			PanelInteractiveSurfaceModifier(
+				isPressed: isPressed,
+				isDisabled: isDisabled,
+				hoverLift: hoverLift,
+				hoverScale: hoverScale,
+				pressedScale: pressedScale,
+				hoverShadowRadius: hoverShadowRadius
+			)
+		)
+	}
+}
+
+private struct PanelInteractiveButtonStyle: ButtonStyle {
+	let isDisabled: Bool
+	let hoverLift: CGFloat
+	let hoverScale: CGFloat
+	let pressedScale: CGFloat
+	let hoverShadowRadius: CGFloat
+
+	init(
+		isDisabled: Bool = false,
+		hoverLift: CGFloat = 0.7,
+		hoverScale: CGFloat = 1.006,
+		pressedScale: CGFloat = 0.985,
+		hoverShadowRadius: CGFloat = 3
+	) {
+		self.isDisabled = isDisabled
+		self.hoverLift = hoverLift
+		self.hoverScale = hoverScale
+		self.pressedScale = pressedScale
+		self.hoverShadowRadius = hoverShadowRadius
+	}
+
+	func makeBody(configuration: Configuration) -> some View {
+		configuration.label
+			.panelInteractiveSurface(
+				isPressed: configuration.isPressed,
+				isDisabled: isDisabled,
+				hoverLift: hoverLift,
+				hoverScale: hoverScale,
+				pressedScale: pressedScale,
+				hoverShadowRadius: hoverShadowRadius
+			)
+	}
+}
+
+private struct PanelInteractiveSurfaceModifier: ViewModifier {
+	@Environment(\.colorScheme) private var colorScheme
+	@State private var isHovered = false
+	let isPressed: Bool
+	let isDisabled: Bool
+	let hoverLift: CGFloat
+	let hoverScale: CGFloat
+	let pressedScale: CGFloat
+	let hoverShadowRadius: CGFloat
+
+	func body(content: Content) -> some View {
+		let responds = !isDisabled
+		let hoverActive = responds && isHovered && !isPressed
+		let pressActive = responds && isPressed
+
+		content
+			.scaleEffect(pressActive ? pressedScale : (hoverActive ? hoverScale : 1))
+			.offset(y: hoverActive ? -hoverLift : 0)
+			.brightness(hoverActive ? hoverBrightness : (pressActive ? pressBrightness : 0))
+			.shadow(
+				color: hoverShadowColor.opacity(hoverActive ? 1 : 0),
+				radius: hoverActive ? hoverShadowRadius : 0,
+				x: 0,
+				y: hoverActive ? 1.8 : 0
+			)
+			.onHover { hovering in
+				guard responds else {
+					return
+				}
+
+				withAnimation(PanelMotion.hover) {
+					isHovered = hovering
+				}
+			}
+			.animation(PanelMotion.press, value: isPressed)
+			.animation(PanelMotion.hover, value: isHovered)
+			.animation(PanelMotion.state, value: isDisabled)
+	}
+
+	private var hoverBrightness: Double {
+		colorScheme == .dark ? 0.022 : 0.016
+	}
+
+	private var pressBrightness: Double {
+		colorScheme == .dark ? -0.018 : -0.01
+	}
+
+	private var hoverShadowColor: Color {
+		colorScheme == .dark
+			? Color.black.opacity(0.18)
+			: Color(red: 0.1, green: 0.24, blue: 0.38).opacity(0.12)
 	}
 }
 
@@ -409,14 +529,23 @@ struct AccountPanelView: View {
 					},
 					help: "Restore balanced run routing"
 				)
+				.transition(.opacity.combined(with: .scale(scale: 0.96)))
 			}
 
 			SettingsLink {
 				PanelIconLabelView(symbol: "gearshape", tint: PanelPalette.actionBlue(colorScheme))
 			}
-			.buttonStyle(.plain)
+			.buttonStyle(
+				PanelInteractiveButtonStyle(
+					hoverLift: 0.55,
+					hoverScale: 1.01,
+					pressedScale: 0.982,
+					hoverShadowRadius: 3
+				)
+			)
 			.help("Settings")
 		}
+		.animation(PanelMotion.state, value: hasFixedSelection)
 	}
 
 	private var codexAuthLabel: String {
@@ -425,6 +554,9 @@ struct AccountPanelView: View {
 		}
 
 		if emailsHidden {
+			if let account = account(matching: auth.selector) {
+				return account.panelDisplayName(emailsHidden: true)
+			}
 			let identity = auth.accountFingerprint.isEmpty ? auth.selector : auth.accountFingerprint
 			return AccountDisplay.alias(forIdentity: identity)
 		}
@@ -439,7 +571,7 @@ struct AccountPanelView: View {
 
 		if let selector = control.accountSelector, !selector.isEmpty {
 			if emailsHidden {
-				let value = account(matching: selector).map(AccountDisplay.alias) ?? "Account"
+				let value = account(matching: selector)?.panelDisplayName(emailsHidden: true) ?? "Account"
 				return "To \(value)"
 			}
 
@@ -543,8 +675,9 @@ struct AccountRowView: View {
 						symbol: account.codexActive ? "person.crop.circle.fill" : "person.crop.circle",
 						tint: PanelPalette.activeGold(colorScheme),
 						isActive: account.codexActive,
+						isDisabled: account.codexActive,
 						isSubtle: true,
-						size: 22,
+						size: 23,
 						action: useInCodex,
 						help: account.codexActive ? "Current Codex account" : "Use as Codex account"
 					)
@@ -554,7 +687,7 @@ struct AccountRowView: View {
 						tint: PanelPalette.actionBlue(colorScheme),
 						isActive: account.selected,
 						isSubtle: true,
-						size: 22,
+						size: 23,
 						action: routeRunsHere,
 						help: account.selected ? "Restore balanced run routing" : "Route Decodex runs here"
 					)
@@ -564,7 +697,7 @@ struct AccountRowView: View {
 						tint: PanelPalette.destructive(colorScheme),
 						isActive: false,
 						isDestructive: true,
-						size: 22,
+						size: 23,
 						action: logout,
 						help: "Remove account"
 					)
@@ -587,6 +720,14 @@ struct AccountRowView: View {
 			),
 			depth: .row
 		)
+		.panelInteractiveSurface(
+			hoverLift: 0.35,
+			hoverScale: 1.002,
+			pressedScale: 1,
+			hoverShadowRadius: 2
+		)
+		.animation(PanelMotion.state, value: account.selected)
+		.animation(PanelMotion.state, value: account.codexActive)
 	}
 
 	private var displayName: String {
@@ -633,15 +774,15 @@ struct AccountUsageSummaryView: View {
 		}
 		.shadow(
 			color: usageTrayShadow,
-			radius: colorScheme == .dark ? 3 : 3.5,
+			radius: colorScheme == .dark ? 4.5 : 3.5,
 			x: 0,
-			y: 1
+			y: colorScheme == .dark ? 1.4 : 1
 		)
 	}
 
 	private var usageTrayShadow: Color {
 		colorScheme == .dark
-			? Color.black.opacity(0.08)
+			? Color(red: 0, green: 0.05, blue: 0.11).opacity(0.26)
 			: Color(red: 0.12, green: 0.28, blue: 0.42).opacity(0.055)
 	}
 }
@@ -685,15 +826,38 @@ struct AccountUsageMeterView: View {
 
 			GeometryReader { proxy in
 				ZStack(alignment: .leading) {
+					let width = fillWidth(in: proxy.size.width)
+
 					Capsule()
 						.fill(trackColor)
+						.overlay {
+							Capsule()
+								.fill(trackInsetStyle)
+								.padding(.vertical, 0.8)
+								.allowsHitTesting(false)
+						}
 					Capsule()
 						.fill(fillStyle)
-						.frame(width: fillWidth(in: proxy.size.width))
+						.frame(width: width)
+						.animation(PanelMotion.state, value: remainingPercent)
+						.shadow(
+							color: color.opacity(colorScheme == .dark ? 0.34 : 0.18),
+							radius: colorScheme == .dark ? 3.4 : 2.2,
+							x: 0,
+							y: 0
+						)
 						.overlay(alignment: .top) {
 							Capsule()
-								.fill(Color.white.opacity(colorScheme == .dark ? 0.13 : 0.2))
-								.frame(height: 0.6)
+								.fill(Color.white.opacity(colorScheme == .dark ? 0.28 : 0.34))
+								.frame(height: 1)
+								.padding(.horizontal, 1.2)
+								.allowsHitTesting(false)
+						}
+						.overlay(alignment: .trailing) {
+							Capsule()
+								.fill(progressCapStyle)
+								.frame(width: min(13, max(4, width)), height: 5)
+								.opacity(progress > 0.04 ? 1 : 0)
 								.allowsHitTesting(false)
 						}
 					Capsule()
@@ -701,11 +865,11 @@ struct AccountUsageMeterView: View {
 						.allowsHitTesting(false)
 				}
 			}
-			.frame(height: 3.4)
+			.frame(height: 5.2)
 		}
 		.font(PanelFont.usage)
 		.lineLimit(1)
-		.frame(height: 16)
+		.frame(height: 18)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityLabel("\(label) remaining \(remainingText), \(resetDisplay.accessibility)")
 	}
@@ -731,7 +895,7 @@ struct AccountUsageMeterView: View {
 			return 0
 		}
 
-		return max(2, width * progress)
+		return max(4, width * progress)
 	}
 
 	private var color: Color {
@@ -748,9 +912,9 @@ struct AccountUsageMeterView: View {
 	private var valueColor: Color {
 		switch tone {
 		case .warning, .danger:
-			return color.opacity(colorScheme == .dark ? 0.78 : 0.68)
+			return color.opacity(colorScheme == .dark ? 0.95 : 0.78)
 		default:
-			return color.opacity(colorScheme == .dark ? 0.66 : 0.66)
+			return color.opacity(colorScheme == .dark ? 0.92 : 0.72)
 		}
 	}
 
@@ -769,11 +933,37 @@ struct AccountUsageMeterView: View {
 	private var fillStyle: LinearGradient {
 		LinearGradient(
 			colors: [
-				color.opacity(colorScheme == .dark ? 0.56 : 0.5),
-				color.opacity(colorScheme == .dark ? 0.4 : 0.37),
+				color.opacity(colorScheme == .dark ? 0.98 : 0.78),
+				color.opacity(colorScheme == .dark ? 0.82 : 0.64),
+				color.opacity(colorScheme == .dark ? 0.58 : 0.48),
 			],
 			startPoint: .leading,
 			endPoint: .trailing
+		)
+	}
+
+	private var trackInsetStyle: LinearGradient {
+		LinearGradient(
+			colors: [
+				Color.white.opacity(colorScheme == .dark ? 0.035 : 0.08),
+				Color.white.opacity(0),
+				Color.black.opacity(colorScheme == .dark ? 0.18 : 0.05),
+			],
+			startPoint: .top,
+			endPoint: .bottom
+		)
+	}
+
+	private var progressCapStyle: RadialGradient {
+		RadialGradient(
+			colors: [
+				Color.white.opacity(colorScheme == .dark ? 0.7 : 0.6),
+				color.opacity(colorScheme == .dark ? 0.5 : 0.36),
+				Color.white.opacity(0),
+			],
+			center: .center,
+			startRadius: 0,
+			endRadius: 7
 		)
 	}
 }
@@ -916,25 +1106,32 @@ struct PanelPrimaryButtonView: View {
 		Button(action: action) {
 			Label(title, systemImage: symbol)
 				.font(PanelFont.primaryButton)
+				.foregroundStyle(
+					colorScheme == .dark
+						? Color(red: 0.86, green: 0.93, blue: 1).opacity(0.94)
+						: PanelPalette.actionBlue(colorScheme)
+				)
 				.frame(maxWidth: .infinity, minHeight: 22)
 				.contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+				.modernGlassSurface(
+					cornerRadius: 9,
+					tint: PanelPalette.addButtonTint(colorScheme),
+					depth: .row
+				)
+				.overlay {
+					RoundedRectangle(cornerRadius: 9, style: .continuous)
+						.strokeBorder(PanelPalette.addButtonStroke(colorScheme), lineWidth: 0.55)
+						.allowsHitTesting(false)
+				}
 		}
-		.buttonStyle(.plain)
-		.foregroundStyle(
-			colorScheme == .dark
-				? Color(red: 0.86, green: 0.93, blue: 1).opacity(0.94)
-				: PanelPalette.actionBlue(colorScheme)
+		.buttonStyle(
+			PanelInteractiveButtonStyle(
+				hoverLift: 0.6,
+				hoverScale: 1.004,
+				pressedScale: 0.992,
+				hoverShadowRadius: 3.5
+			)
 		)
-		.modernGlassSurface(
-			cornerRadius: 9,
-			tint: PanelPalette.addButtonTint(colorScheme),
-			depth: .row
-		)
-		.overlay {
-			RoundedRectangle(cornerRadius: 9, style: .continuous)
-				.strokeBorder(PanelPalette.addButtonStroke(colorScheme), lineWidth: 0.55)
-				.allowsHitTesting(false)
-		}
 		.help(title)
 	}
 }
@@ -974,69 +1171,100 @@ struct PanelIconButtonView: View {
 	}
 
 	var body: some View {
+		Button(action: action) {
+			buttonLabel
+		}
+		.buttonStyle(
+			PanelInteractiveButtonStyle(
+				isDisabled: isDisabled,
+				hoverLift: 0,
+				hoverScale: isSubtle ? 1.004 : 1.006,
+				pressedScale: 0.952,
+				hoverShadowRadius: isSubtle ? 2.4 : 3
+			)
+		)
+		.disabled(isDisabled)
+		.opacity(isDisabled && !isActive ? 0.56 : 1)
+		.help(help)
+	}
+
+	@ViewBuilder
+	private var buttonLabel: some View {
 		if usesSurface {
-			baseButton
+			iconContent
 				.modernGlassSurface(
-					cornerRadius: 7,
+					cornerRadius: iconCornerRadius,
 					tint: surfaceTint,
 					depth: .control
 				)
 				.overlay {
-					RoundedRectangle(cornerRadius: 7, style: .continuous)
-						.strokeBorder(PanelPalette.controlStroke(colorScheme), lineWidth: 0.5)
+					RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous)
+						.strokeBorder(buttonStrokeColor, lineWidth: isDestructive ? 0.62 : 0.54)
 						.allowsHitTesting(false)
 				}
-				.help(help)
 		} else {
-			baseButton
+			iconContent
 				.opacity(isDisabled ? 0.34 : 0.82)
-				.help(help)
 		}
 	}
 
-	private var baseButton: some View {
-		Button(action: action) {
-			Image(systemName: symbol)
-				.font(PanelFont.iconButton)
-				.foregroundStyle(foregroundColor)
-				.frame(width: size, height: size)
-				.contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-		}
-		.buttonStyle(.plain)
-		.disabled(isDisabled)
+	private var iconContent: some View {
+		Image(systemName: symbol)
+			.font(PanelFont.iconButton)
+			.symbolRenderingMode(.monochrome)
+			.foregroundStyle(foregroundColor)
+			.frame(width: size, height: size)
+			.contentShape(RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
 	}
 
 	private var foregroundColor: Color {
+		if isActive {
+			return tint.opacity(colorScheme == .dark ? 0.98 : 0.92)
+		}
 		if isDisabled {
 			return PanelPalette.secondaryText(colorScheme).opacity(0.38)
 		}
-		if isActive {
-			return tint.opacity(colorScheme == .dark ? 0.9 : 0.86)
-		}
 		if isDestructive {
-			return tint.opacity(colorScheme == .dark ? 0.82 : 0.76)
+			return tint.opacity(colorScheme == .dark ? 0.96 : 0.9)
 		}
 		if isSubtle {
-			return tint.opacity(colorScheme == .dark ? 0.72 : 0.68)
+			return tint.opacity(colorScheme == .dark ? 0.86 : 0.82)
 		}
 		return PanelPalette.actionBlue(colorScheme).opacity(colorScheme == .dark ? 0.88 : 0.86)
 	}
 
 	private var surfaceTint: Color {
+		if isActive {
+			return tint.opacity(colorScheme == .dark ? 0.22 : 0.2)
+		}
 		if isDisabled {
 			return PanelPalette.controlTint(colorScheme).opacity(0.42)
 		}
-		if isActive {
-			return tint.opacity(colorScheme == .dark ? 0.105 : 0.12)
-		}
 		if isDestructive {
-			return tint.opacity(colorScheme == .dark ? 0.09 : 0.115)
+			return colorScheme == .dark
+				? tint.opacity(0.18)
+				: Color(red: 1, green: 0.84, blue: 0.86).opacity(0.72)
 		}
-		return PanelPalette.controlTint(colorScheme).opacity(isSubtle ? 0.76 : 1)
+		return PanelPalette.controlTint(colorScheme).opacity(isSubtle ? 0.94 : 1)
 	}
 
 	private var usesSurface: Bool {
 		true
+	}
+
+	private var buttonStrokeColor: Color {
+		if isDestructive {
+			return tint.opacity(colorScheme == .dark ? 0.38 : 0.34)
+		}
+		if isActive {
+			return tint.opacity(colorScheme == .dark ? 0.4 : 0.34)
+		}
+
+		return PanelPalette.controlStroke(colorScheme).opacity(isSubtle ? 1 : 0.92)
+	}
+
+	private var iconCornerRadius: CGFloat {
+		min(8.5, max(7, size * 0.36))
 	}
 }
 
@@ -1241,6 +1469,9 @@ private struct ModernGlassSurfaceModifier: ViewModifier {
 		var glass = Glass.regular
 		if let tint {
 			glass = glass.tint(tint)
+		}
+		if depth == .control {
+			glass = glass.interactive()
 		}
 
 		return glass
@@ -1463,13 +1694,13 @@ private extension View {
 	private func castShadowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
 		case .panel:
-			return colorScheme == .dark ? 0.16 : 0.085
+			return colorScheme == .dark ? 0.13 : 0.085
 		case .section:
-			return colorScheme == .dark ? 0.13 : 0.18
+			return colorScheme == .dark ? 0.1 : 0.18
 		case .row:
-			return colorScheme == .dark ? 0.22 : 0.27
+			return colorScheme == .dark ? 0.16 : 0.27
 		case .control:
-			return colorScheme == .dark ? 0.2 : 0.2
+			return colorScheme == .dark ? 0.14 : 0.2
 		}
 	}
 
@@ -1503,13 +1734,13 @@ private extension View {
 	private func contactShadowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
 		case .panel:
-			return colorScheme == .dark ? 0.14 : 0.085
+			return colorScheme == .dark ? 0.1 : 0.085
 		case .section:
-			return colorScheme == .dark ? 0.19 : 0.32
+			return colorScheme == .dark ? 0.13 : 0.32
 		case .row:
-			return colorScheme == .dark ? 0.27 : 0.42
+			return colorScheme == .dark ? 0.18 : 0.42
 		case .control:
-			return colorScheme == .dark ? 0.2 : 0.24
+			return colorScheme == .dark ? 0.14 : 0.24
 		}
 	}
 
@@ -1543,35 +1774,35 @@ private extension View {
 	private func surfaceTopGlowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
 		case .panel:
-			return colorScheme == .dark ? 0.035 : 0.045
+			return colorScheme == .dark ? 0.025 : 0.045
 		case .section:
-			return colorScheme == .dark ? 0.055 : 0.085
+			return colorScheme == .dark ? 0.038 : 0.085
 		case .row:
-			return colorScheme == .dark ? 0.06 : 0.095
+			return colorScheme == .dark ? 0.044 : 0.095
 		case .control:
-			return colorScheme == .dark ? 0.08 : 0.11
+			return colorScheme == .dark ? 0.055 : 0.11
 		}
 	}
 
 	private func surfaceBottomShadeOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
 		case .panel:
-			return colorScheme == .dark ? 0.025 : 0.018
+			return colorScheme == .dark ? 0.012 : 0.018
 		case .section:
-			return colorScheme == .dark ? 0.035 : 0.03
+			return colorScheme == .dark ? 0.018 : 0.03
 		case .row:
-			return colorScheme == .dark ? 0.045 : 0.04
+			return colorScheme == .dark ? 0.022 : 0.04
 		case .control:
-			return colorScheme == .dark ? 0.04 : 0.035
+			return colorScheme == .dark ? 0.02 : 0.035
 		}
 	}
 
 	private func sheenOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
-		case .panel: return colorScheme == .dark ? 0.075 : 0.1
-		case .section: return colorScheme == .dark ? 0.06 : 0.11
-		case .row: return colorScheme == .dark ? 0.07 : 0.12
-		case .control: return colorScheme == .dark ? 0.09 : 0.13
+		case .panel: return colorScheme == .dark ? 0.045 : 0.1
+		case .section: return colorScheme == .dark ? 0.04 : 0.11
+		case .row: return colorScheme == .dark ? 0.046 : 0.12
+		case .control: return colorScheme == .dark ? 0.058 : 0.13
 		}
 	}
 
@@ -1586,19 +1817,19 @@ private extension View {
 
 	private func edgeHighlightOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
-		case .panel: return colorScheme == .dark ? 0.23 : 0.32
-		case .section: return colorScheme == .dark ? 0.19 : 0.34
-		case .row: return colorScheme == .dark ? 0.23 : 0.42
-		case .control: return colorScheme == .dark ? 0.26 : 0.38
+		case .panel: return colorScheme == .dark ? 0.17 : 0.32
+		case .section: return colorScheme == .dark ? 0.14 : 0.34
+		case .row: return colorScheme == .dark ? 0.17 : 0.42
+		case .control: return colorScheme == .dark ? 0.2 : 0.38
 		}
 	}
 
 	private func edgeMidOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
-		case .panel: return colorScheme == .dark ? 0.07 : 0.105
-		case .section: return colorScheme == .dark ? 0.04 : 0.07
-		case .row: return colorScheme == .dark ? 0.04 : 0.065
-		case .control: return colorScheme == .dark ? 0.055 : 0.09
+		case .panel: return colorScheme == .dark ? 0.045 : 0.105
+		case .section: return colorScheme == .dark ? 0.028 : 0.07
+		case .row: return colorScheme == .dark ? 0.03 : 0.065
+		case .control: return colorScheme == .dark ? 0.04 : 0.09
 		}
 	}
 
@@ -1615,13 +1846,13 @@ private extension View {
 		let opacity: Double
 		switch depth {
 		case .panel:
-			opacity = colorScheme == .dark ? 0.21 : 0.065
+			opacity = colorScheme == .dark ? 0.24 : 0.065
 		case .section:
-			opacity = colorScheme == .dark ? 0.07 : 0.095
+			opacity = colorScheme == .dark ? 0.09 : 0.095
 		case .row:
-			opacity = colorScheme == .dark ? 0.125 : 0.15
+			opacity = colorScheme == .dark ? 0.18 : 0.15
 		case .control:
-			opacity = colorScheme == .dark ? 0.082 : 0.058
+			opacity = colorScheme == .dark ? 0.1 : 0.058
 		}
 
 		return Color.black.opacity(opacity)
@@ -1631,16 +1862,16 @@ private extension View {
 		let opacity: Double
 		switch depth {
 		case .panel:
-			opacity = colorScheme == .dark ? 0.048 : 0.028
+			opacity = colorScheme == .dark ? 0.07 : 0.028
 		case .section:
-			opacity = colorScheme == .dark ? 0.045 : 0.055
+			opacity = colorScheme == .dark ? 0.065 : 0.055
 		case .row:
-			opacity = colorScheme == .dark ? 0.06 : 0.07
+			opacity = colorScheme == .dark ? 0.08 : 0.07
 		case .control:
-			opacity = colorScheme == .dark ? 0.052 : 0.046
+			opacity = colorScheme == .dark ? 0.07 : 0.046
 		}
 
-		return Color(hue: 0.6, saturation: 0.32, brightness: 1).opacity(opacity)
+		return Color(red: 0.34, green: 0.67, blue: 1).opacity(opacity)
 	}
 
 	private func ambientShadowRadius(for depth: GlassSurfaceDepth) -> CGFloat {
@@ -1715,6 +1946,12 @@ private extension CodexAccount {
 
 	func panelDisplayName(emailsHidden: Bool) -> String {
 		if emailsHidden {
+			if let randomName = randomName?.trimmingCharacters(in: .whitespacesAndNewlines),
+				!randomName.isEmpty
+			{
+				return randomName
+			}
+
 			return AccountDisplay.alias(for: self)
 		}
 

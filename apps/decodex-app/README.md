@@ -27,6 +27,12 @@ The app does not schedule Decodex runs, own project registration, or replace
 `decodex serve`. It is a native UI over the shared Rust account-management service,
 not a wrapper around the `decodex` CLI binary.
 
+The app and operator dashboard share account-pool state through the Rust account API:
+stored accounts come from `~/.codex/decodex/accounts.jsonl`, run routing and account
+display-name offsets come from `~/.codex/decodex/config.toml`, and Codex CLI auth
+switching writes `auth.json`. Presentation-only choices such as local privacy
+visibility remain client-local.
+
 ## Development
 
 Build the SwiftPM app:

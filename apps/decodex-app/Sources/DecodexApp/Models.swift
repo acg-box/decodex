@@ -60,6 +60,9 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	let accountFingerprint: String
 	let email: String?
 	let selector: String
+	let randomName: String?
+	let randomNameKey: String?
+	let randomNameOffset: Int?
 	let status: String
 	let selected: Bool
 	let codexActive: Bool
@@ -192,6 +195,9 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case accountFingerprint = "account_fingerprint"
 		case email
 		case selector
+		case randomName = "random_name"
+		case randomNameKey = "random_name_key"
+		case randomNameOffset = "random_name_offset"
 		case status
 		case selected
 		case codexActive = "codex_active"
