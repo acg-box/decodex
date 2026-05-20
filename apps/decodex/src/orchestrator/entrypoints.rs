@@ -833,6 +833,8 @@ fn operator_project_status_from_registration(
 		retained_worktree_count: 0,
 		waiting_lane_count: 0,
 		attention_count: 0,
+		cleanup_blocked_count: 0,
+		cleanup_pending_count: 0,
 		connector_state: if project.enabled() {
 			if warning_count == 0 {
 				String::from("ok")
@@ -861,6 +863,8 @@ fn operator_project_status_from_api_only_registration(
 		retained_worktree_count: 0,
 		waiting_lane_count: 0,
 		attention_count: 0,
+		cleanup_blocked_count: 0,
+		cleanup_pending_count: 0,
 		connector_state: if project.enabled() {
 			String::from("api_only")
 		} else {

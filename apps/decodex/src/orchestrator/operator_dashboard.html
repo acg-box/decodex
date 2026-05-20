@@ -4142,6 +4142,7 @@
 					case "wait_for_review":
 						return "tone-review";
 					case "cleanup_blocked":
+						return "tone-wait";
 					case "closeout_blocked":
 					case "blocked":
 						return "tone-blocked";
@@ -7705,6 +7706,12 @@
 					(candidate) => candidate.classification === "closed",
 				);
 				const worktrees = snapshot?.worktrees ?? [];
+				const cleanupIssueKeys = new Set();
+				for (const worktree of worktrees) {
+					if (worktree.hygiene) {
+						cleanupIssueKeys.add(issueDisplayKey(worktree));
+					}
+				}
 				const waitingItems = [];
 				const readyItems = [];
 				const attentionItems = [];
@@ -7800,6 +7807,9 @@
 
 					if (isPostReviewBlocker(lane)) {
 						const blockerScope = postReviewBlockerScope(lane);
+						if (blockerScope === "Cleanup") {
+							cleanupIssueKeys.add(issueKey);
+						}
 						attentionItems.push({
 							tone,
 							scope: blockerScope,
@@ -7861,8 +7871,9 @@
 					(item) => item.scope === "Review",
 				).length;
 				const reviewBlockerCount = attentionItems.filter((item) =>
-					["Review", "Closeout", "Cleanup"].includes(item.scope),
+					["Review", "Closeout"].includes(item.scope),
 				).length;
+				const cleanupCount = cleanupIssueKeys.size;
 				const runningAttentionCount = attentionItems.filter((item) => item.scope === "Running").length;
 				const liveRuns = activeRuns.filter(runCountsAsRunning).length;
 				const intakeAttentionCount = queueBacklogCandidates.filter(queuedCandidateNeedsAttention).length;
@@ -7891,6 +7902,7 @@
 					readyItems,
 					reviewWaitingCount,
 					reviewBlockerCount,
+					cleanupCount,
 					runningAttentionCount,
 					sessionHistoryRuns: historyRuns,
 					worktrees,
@@ -7944,6 +7956,8 @@
 					(project.queued_candidate_count ?? 0) +
 					(project.waiting_lane_count ?? 0) +
 					(project.attention_count ?? 0) +
+					(project.cleanup_blocked_count ?? 0) +
+					(project.cleanup_pending_count ?? 0) +
 					(project.post_review_lane_count ?? 0);
 				const connector = projectConnectorSummary(project);
 				const syncNeedsAttention = project.enabled && ["backoff", "degraded", "stale"].includes(connector);
@@ -7968,6 +7982,9 @@
 				if ((project.waiting_lane_count ?? 0) > 0) {
 					return { label: "waiting", tone: "tone-wait", title: "Lanes waiting to resume" };
 				}
+				if ((project.cleanup_blocked_count ?? 0) > 0) {
+					return { label: "cleanup blocked", tone: "tone-wait", title: "Post-land cleanup needs operator action" };
+				}
 				if (project.connector_state === "backoff") {
 					return {
 						label: "sync backoff",
@@ -7979,17 +7996,27 @@
 					(project.warning_count ?? 0) > 0 ||
 					["degraded", "stale_cache"].includes(project.connector_state)
 				) {
+					if ((project.cleanup_pending_count ?? 0) > 0) {
+						return { label: "cleanup pending", tone: "tone-retained", title: "Post-land cleanup pending" };
+					}
+
 					return { label: "sync degraded", tone: "tone-wait", title: "Tracker sync or retry state degraded" };
+				}
+				if ((project.cleanup_pending_count ?? 0) > 0) {
+					return { label: "cleanup pending", tone: "tone-retained", title: "Post-land cleanup pending" };
 				}
 
 				return { label: "ok", tone: "tone-ready", title: "No project warnings" };
 			}
 
 			function projectCapacitySummary(project) {
+				const cleanup = (project.cleanup_blocked_count ?? 0) + (project.cleanup_pending_count ?? 0);
+
 				return [
 					`${project.active_run_count ?? 0} running`,
 					`${project.waiting_lane_count ?? 0} waiting`,
 					`${project.attention_count ?? 0} attention`,
+					`${cleanup} cleanup`,
 				].join(" · ");
 			}
 
@@ -8005,10 +8032,11 @@
 				const running = project.active_run_count ?? 0;
 				const waiting = project.waiting_lane_count ?? 0;
 				const attention = project.attention_count ?? 0;
+				const cleanup = (project.cleanup_blocked_count ?? 0) + (project.cleanup_pending_count ?? 0);
 
 				return `
-					<span class="project-work-ratio" role="cell" aria-label="${escapeHtml(`${running} running, ${waiting} waiting, ${attention} attention`)}" title="running / waiting / attention">
-						<strong>${escapeHtml(running)}</strong><span class="project-work-separator">/</span><strong>${escapeHtml(waiting)}</strong><span class="project-work-separator">/</span><strong>${escapeHtml(attention)}</strong>
+					<span class="project-work-ratio" role="cell" aria-label="${escapeHtml(`${running} running, ${waiting} waiting, ${attention} attention, ${cleanup} cleanup`)}" title="running / waiting / attention / cleanup">
+						<strong>${escapeHtml(running)}</strong><span class="project-work-separator">/</span><strong>${escapeHtml(waiting)}</strong><span class="project-work-separator">/</span><strong>${escapeHtml(attention)}</strong><span class="project-work-separator">/</span><strong>${escapeHtml(cleanup)}</strong>
 					</span>
 				`;
 			}
@@ -8019,6 +8047,12 @@
 				}
 				if ((project.attention_count ?? 0) > 0) {
 					return `${project.attention_count} attention`;
+				}
+				if ((project.cleanup_blocked_count ?? 0) > 0) {
+					return `${project.cleanup_blocked_count} cleanup blocked`;
+				}
+				if ((project.cleanup_pending_count ?? 0) > 0) {
+					return `${project.cleanup_pending_count} cleanup pending`;
 				}
 				if ((project.warning_count ?? 0) > 0) {
 					return pluralize(project.warning_count, "warning");
@@ -8079,14 +8113,14 @@
 			function projectWorkInfoMarkup() {
 				return `
 					<span class="project-work-info-wrap">
-						<button class="project-work-info" type="button" data-project-work-info aria-expanded="false" aria-label="Work format: running / waiting / attention">
+						<button class="project-work-info" type="button" data-project-work-info aria-expanded="false" aria-label="Work format: running / waiting / attention / cleanup">
 							<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
 								<circle cx="8" cy="8" r="6"></circle>
 								<path d="M8 7.3v3.8"></path>
 								<path d="M8 4.8h.01"></path>
 							</svg>
 						</button>
-						<span class="project-work-tooltip" role="tooltip">running / waiting / attention</span>
+						<span class="project-work-tooltip" role="tooltip">running / waiting / attention / cleanup</span>
 					</span>
 				`;
 			}
@@ -8195,6 +8229,8 @@
 					projectNumber(project.active_run_count),
 					projectNumber(project.waiting_lane_count),
 					projectNumber(project.attention_count),
+					projectNumber(project.cleanup_blocked_count),
+					projectNumber(project.cleanup_pending_count),
 				];
 			}
 
@@ -8271,20 +8307,29 @@
 				if ((project.active_run_count ?? 0) > 0) {
 					return 0;
 				}
-				if ((project.attention_count ?? 0) > 0 || (project.warning_count ?? 0) > 0) {
+				if ((project.attention_count ?? 0) > 0) {
 					return 1;
 				}
-				if (["backoff", "degraded", "stale_cache"].includes(project.connector_state)) {
+				if ((project.waiting_lane_count ?? 0) > 0) {
 					return 2;
 				}
-				if ((project.waiting_lane_count ?? 0) > 0) {
+				if ((project.cleanup_blocked_count ?? 0) > 0) {
 					return 3;
 				}
-				if (projectHasActiveWork(project)) {
+				if ((project.cleanup_pending_count ?? 0) > 0) {
 					return 4;
 				}
+				if (["backoff", "degraded", "stale_cache"].includes(project.connector_state)) {
+					return 5;
+				}
+				if ((project.warning_count ?? 0) > 0) {
+					return 6;
+				}
+				if (projectHasActiveWork(project)) {
+					return 7;
+				}
 
-				return 5;
+				return 8;
 			}
 
 			function compareProjectRowsStable(left, right) {
@@ -8846,6 +8891,20 @@
 					};
 				}
 				if (reviewMatch) {
+					if (hygiene) {
+						const isDirty = hygiene.classification === "merged_dirty_worktree" || hygiene.dirty === true;
+
+						return {
+							sortRank: 1,
+							tone: isDirty ? "tone-wait" : "tone-retained",
+							label: isDirty ? "post-review cleanup blocked" : "post-review cleanup",
+							summary:
+								hygiene.reason ||
+								worktree.ownership_reason ||
+								"Post-review cleanup pending.",
+						};
+					}
+
 					return {
 						sortRank: 1,
 						tone: toneForLane(reviewMatch),
@@ -8895,6 +8954,20 @@
 					};
 				}
 				if (worktree.ownership === "post_review_lane") {
+					if (hygiene) {
+						const isDirty = hygiene.classification === "merged_dirty_worktree" || hygiene.dirty === true;
+
+						return {
+							sortRank: 1,
+							tone: isDirty ? "tone-wait" : "tone-retained",
+							label: isDirty ? "post-review cleanup blocked" : "post-review cleanup",
+							summary:
+								hygiene.reason ||
+								worktree.ownership_reason ||
+								"Post-review cleanup pending.",
+						};
+					}
+
 					return {
 						sortRank: 1,
 						tone: "tone-retained",
@@ -8909,8 +8982,8 @@
 
 					return {
 						sortRank: 2,
-						tone: isDirty ? "tone-blocked" : "tone-retained",
-						label: isDirty ? "post-land dirty worktree" : "post-land cleanup",
+						tone: isDirty ? "tone-wait" : "tone-retained",
+						label: isDirty ? "post-land cleanup blocked" : "post-land cleanup",
 						summary:
 							hygiene.reason ||
 							worktree.ownership_reason ||
@@ -8953,7 +9026,7 @@
 			function recoveryWorktreeShouldDefaultOpen(renderedWorktree) {
 				const role = renderedWorktree.role;
 
-				return role.tone === "tone-blocked" || role.label.startsWith("post-land");
+				return role.tone === "tone-blocked" || role.label.includes("cleanup");
 			}
 
 			function renderWorktrees(snapshot) {
@@ -9486,8 +9559,8 @@
 				setPanelMeta(
 					nodes.reviewLanesMeta,
 					snapshot
-						? `${pluralize(derived.postReviewLanes.length, "PR")} · ${pluralize(derived.reviewBlockerCount, "needs attention", "need attention")} · ${derived.readyItems.length} ready · ${derived.reviewWaitingCount} waiting`
-						: "0 PRs · 0 need attention · 0 ready · 0 waiting",
+						? `${pluralize(derived.postReviewLanes.length, "PR")} · ${pluralize(derived.reviewBlockerCount, "needs attention", "need attention")} · ${derived.readyItems.length} ready · ${derived.reviewWaitingCount} waiting · ${derived.cleanupCount} cleanup`
+						: "0 PRs · 0 need attention · 0 ready · 0 waiting · 0 cleanup",
 				);
 				renderWorktrees(snapshot);
 			}
