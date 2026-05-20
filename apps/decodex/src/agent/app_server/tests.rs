@@ -645,6 +645,15 @@ fn capability_preflight_report_blocks_missing_runtime_state() {
 }
 
 #[test]
+fn plugin_list_preflight_uses_local_marketplaces() {
+	let params = super::plugin_list_params_for_preflight("/tmp/worktree");
+	let serialized = serde_json::to_value(&params).expect("plugin params should serialize");
+
+	assert_eq!(serialized["cwds"], serde_json::json!(["/tmp/worktree"]));
+	assert_eq!(serialized["marketplaceKinds"], serde_json::json!(["local"]));
+}
+
+#[test]
 fn capability_preflight_method_error_is_typed_operator_blocker() {
 	let mut report = AppServerCapabilityPreflightReport::new();
 
@@ -1277,6 +1286,63 @@ fn recorder_summarizes_v2_account_rate_limit_notifications() {
 	assert_eq!(summary.rate_limit_status.as_deref(), Some("workspace_member_usage_limit_reached"));
 	assert_eq!(event.category, "rate_limit");
 	assert_eq!(event.detail.as_deref(), Some("pro/workspace_member_usage_limit_reached"));
+}
+
+#[test]
+fn recorder_summarizes_codex_app_server_warning_and_model_notifications() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let marker_path = temp_dir.path().to_path_buf();
+	let mut recorder = RunRecorder::new(&state_store, "run-1", 1, Some(&marker_path));
+
+	for (event_type, payload) in [
+		(
+			"deprecationNotice",
+			r#"{"method":"deprecationNotice","params":{"summary":"persistExtendedHistory is ignored","details":"Remove the request field."}}"#,
+		),
+		(
+			"configWarning",
+			r#"{"method":"configWarning","params":{"summary":"unknown feature key in config","details":"builtin_mcp"}}"#,
+		),
+		(
+			"model/rerouted",
+			r#"{"method":"model/rerouted","params":{"threadId":"thread-1","turnId":"turn-1","fromModel":"gpt-5.4","toModel":"gpt-5.5","reason":"highRiskCyberActivity"}}"#,
+		),
+		(
+			"model/verification",
+			r#"{"method":"model/verification","params":{"threadId":"thread-1","turnId":"turn-1","verifications":["trustedAccessForCyber"]}}"#,
+		),
+		(
+			"thread/tokenUsage/updated",
+			r#"{"method":"thread/tokenUsage/updated","params":{"threadId":"thread-1","turnId":"turn-1","tokenUsage":{"last":{"inputTokens":10,"cachedInputTokens":0,"outputTokens":5,"reasoningOutputTokens":1,"totalTokens":16},"total":{"inputTokens":100,"cachedInputTokens":12,"outputTokens":30,"reasoningOutputTokens":8,"totalTokens":138},"modelContextWindow":200000}}}"#,
+		),
+	] {
+		recorder.record(event_type, payload).expect("protocol event should record");
+	}
+
+	let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
+		.expect("marker snapshot should load")
+		.expect("marker snapshot should exist");
+	let summary = marker.protocol_activity().expect("protocol activity should be captured");
+	let categories =
+		summary.recent_events.iter().map(|event| event.category.as_str()).collect::<Vec<_>>();
+
+	assert!(categories.contains(&"deprecation"));
+	assert!(categories.contains(&"warning"));
+	assert!(categories.contains(&"model"));
+	assert!(categories.contains(&"token_usage"));
+	assert!(summary.recent_events.iter().any(|event| {
+		event.event_type == "deprecationNotice"
+			&& event.detail.as_deref() == Some("persistExtendedHistory is ignored")
+	}));
+	assert!(summary.recent_events.iter().any(|event| {
+		event.event_type == "model/rerouted"
+			&& event.detail.as_deref() == Some("gpt-5.4->gpt-5.5/highRiskCyberActivity")
+	}));
+	assert!(summary.recent_events.iter().any(|event| {
+		event.event_type == "thread/tokenUsage/updated"
+			&& event.detail.as_deref() == Some("input=100, output=30")
+	}));
 }
 
 #[test]

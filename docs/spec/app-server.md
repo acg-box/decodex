@@ -34,6 +34,9 @@ codex app-server generate-json-schema --experimental --out target/decodex-app-se
 
 - `decodex` must treat the generated schema as more authoritative than stale handwritten assumptions.
 - `--experimental` is required when inspecting `dynamicTools` and related experimental fields in the generated bundle.
+- As of the 2026-05 refresh, the local compatibility baseline is
+  `codex-cli 0.132.0-alpha.1` from `PATH` and the Codex Beta app bundle's
+  `codex-cli 0.131.0-alpha.9`; both expose `PluginListParams.marketplaceKinds`.
 
 ## Implementation guidance
 
@@ -76,7 +79,8 @@ Decodex records a compact local protocol summary from high-value structured
 notifications instead of scraping transcripts. The summary may include
 `turn/started`, `turn/completed`, plan updates, diff updates, item
 start/completion, command output deltas, server request responses, account updates,
-and rate-limit updates. This summary is published through the operator status
+rate-limit updates, warning/deprecation notices, model reroutes/verifications, and
+thread token-usage updates. This summary is published through the operator status
 snapshot and dashboard only; high-frequency protocol details remain out of Linear
 unless an existing lifecycle event summarizes them.
 
@@ -99,7 +103,9 @@ The capability preflight is observational. It may inspect the effective app-serv
 config, model inventory, provider capabilities, skill inventory, plugin inventory,
 and MCP server state, but it must not install plugins, mutate marketplaces, or send
 model, personality, sandbox, or approval-policy overrides on behalf of
-`WORKFLOW.md`.
+`WORKFLOW.md`. `plugin/list` preflight must pass `marketplaceKinds = ["local"]`
+so remote catalog, featured-plugin, or marketplace-discovery failures do not gate a
+business lane before its thread is created.
 
 When dynamic tools are enabled, `decodex` must also:
 
