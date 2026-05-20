@@ -1063,6 +1063,9 @@ fn read_websocket_json_until(
 
 #[test]
 fn operator_dashboard_run_activity_event_summarizes_active_runs() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
