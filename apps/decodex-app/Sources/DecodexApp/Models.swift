@@ -99,7 +99,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 			return "Codex active"
 		}
 		if selected {
-			return "Decodex pinned"
+			return "Run target"
 		}
 
 		switch status {
