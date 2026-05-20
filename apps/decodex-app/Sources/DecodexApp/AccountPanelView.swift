@@ -45,34 +45,34 @@ private enum PanelPalette {
 	static func panelTint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color(red: 0.1, green: 0.18, blue: 0.28).opacity(0.5)
-			: Color(red: 0.56, green: 0.73, blue: 0.9).opacity(0.5)
+			: Color(red: 0.46, green: 0.68, blue: 0.9).opacity(0.62)
 	}
 
 	static func summaryTint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color(red: 0.63, green: 0.73, blue: 0.86).opacity(0.115)
-			: Color.white.opacity(0.48)
+			: Color.white.opacity(0.58)
 	}
 
 	static func accountRowTint(_ colorScheme: ColorScheme, isSelected: Bool, isCodexActive: Bool) -> Color {
 		if isSelected {
-			return actionBlue(colorScheme).opacity(colorScheme == .dark ? 0.13 : 0.12)
+			return actionBlue(colorScheme).opacity(colorScheme == .dark ? 0.13 : 0.16)
 		}
 		if isCodexActive {
 			return colorScheme == .dark
 				? Color(red: 0.62, green: 0.72, blue: 0.84).opacity(0.12)
-				: Color.white.opacity(0.48)
+				: Color.white.opacity(0.62)
 		}
 
 		return colorScheme == .dark
 			? Color(red: 0.58, green: 0.68, blue: 0.8).opacity(0.115)
-			: Color.white.opacity(0.44)
+			: Color.white.opacity(0.6)
 	}
 
 	static func usageTray(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color(red: 0.7, green: 0.8, blue: 0.93).opacity(0.045)
-			: Color.white.opacity(0.16)
+			: Color.white.opacity(0.18)
 	}
 
 	static func usageTrayStroke(_ colorScheme: ColorScheme) -> Color {
@@ -81,20 +81,20 @@ private enum PanelPalette {
 
 	static func addButtonTint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.56, green: 0.7, blue: 0.88).opacity(0.24)
+			? Color(red: 0.56, green: 0.72, blue: 0.92).opacity(0.3)
 			: Color(red: 0.86, green: 0.94, blue: 1).opacity(0.84)
 	}
 
 	static func addButtonStroke(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.78, green: 0.88, blue: 1).opacity(0.22)
+			? Color(red: 0.78, green: 0.9, blue: 1).opacity(0.3)
 			: Color(red: 0.24, green: 0.43, blue: 0.64).opacity(0.42)
 	}
 
 	static func controlTint(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color(red: 0.68, green: 0.8, blue: 0.94).opacity(0.2)
-			: Color(red: 0.92, green: 0.97, blue: 1).opacity(0.76)
+			: Color(red: 0.9, green: 0.96, blue: 1).opacity(0.86)
 	}
 
 	static func controlStroke(_ colorScheme: ColorScheme) -> Color {
@@ -298,7 +298,7 @@ struct AccountPanelView: View {
 			SummaryTileView(
 				title: "Runs",
 				value: decodexModeLabel,
-				symbol: hasFixedSelection ? "pin.fill" : "arrow.triangle.branch",
+				symbol: hasFixedSelection ? "scope" : "arrow.triangle.branch",
 				tint: hasFixedSelection ? PanelPalette.actionBlue(colorScheme) : PanelPalette.secondaryText(colorScheme)
 			)
 		}
@@ -307,7 +307,7 @@ struct AccountPanelView: View {
 		.modernGlassSurface(
 			cornerRadius: 9,
 			tint: PanelPalette.summaryTint(colorScheme),
-			depth: .section
+			depth: .row
 		)
 	}
 
@@ -326,7 +326,7 @@ struct AccountPanelView: View {
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(8)
-		.modernGlassSurface(cornerRadius: 9, depth: .section)
+		.modernGlassSurface(cornerRadius: 9, depth: .row)
 	}
 
 	private var loadingState: some View {
@@ -340,7 +340,7 @@ struct AccountPanelView: View {
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(8)
-		.modernGlassSurface(cornerRadius: 9, depth: .section)
+		.modernGlassSurface(cornerRadius: 9, depth: .row)
 	}
 
 	private var accountList: some View {
@@ -368,7 +368,7 @@ struct AccountPanelView: View {
 							await store.useInCodex(account)
 						}
 					},
-					pinForDecodex: {
+					routeRunsHere: {
 						Task {
 							await store.select(account)
 						}
@@ -392,18 +392,19 @@ struct AccountPanelView: View {
 				}
 			)
 
-			PanelIconButtonView(
-				symbol: "arrow.triangle.branch",
-				tint: PanelPalette.actionBlue(colorScheme),
-				isActive: false,
-				isDisabled: !hasFixedSelection,
-				action: {
-					Task {
-						await store.clearSelection()
-					}
-				},
-				help: "Return Decodex runs to balanced selection"
-			)
+			if hasFixedSelection {
+				PanelIconButtonView(
+					symbol: "arrow.triangle.branch",
+					tint: PanelPalette.actionBlue(colorScheme),
+					isActive: false,
+					action: {
+						Task {
+							await store.clearSelection()
+						}
+					},
+					help: "Use balanced run routing"
+				)
+			}
 
 			SettingsLink {
 				PanelIconLabelView(symbol: "gearshape", tint: PanelPalette.actionBlue(colorScheme))
@@ -473,7 +474,7 @@ struct AccountPanelView: View {
 	private var headerSubtitle: String {
 		let count = store.accounts.count
 		let accountLabel = "\(count) account\(count == 1 ? "" : "s")"
-		return hasFixedSelection ? "\(accountLabel) / pinned runs" : "\(accountLabel) / balanced runs"
+		return hasFixedSelection ? "\(accountLabel) / routed runs" : "\(accountLabel) / balanced runs"
 	}
 
 	private var emailsHidden: Bool {
@@ -495,7 +496,7 @@ struct AccountRowView: View {
 	let account: CodexAccount
 	let emailsHidden: Bool
 	let useInCodex: () -> Void
-	let pinForDecodex: () -> Void
+	let routeRunsHere: () -> Void
 	let logout: () -> Void
 	@Environment(\.colorScheme) private var colorScheme
 
@@ -543,13 +544,13 @@ struct AccountRowView: View {
 					)
 
 					PanelIconButtonView(
-						symbol: account.selected ? "pin.fill" : "pin",
+						symbol: "scope",
 						tint: PanelPalette.actionBlue(colorScheme),
 						isActive: account.selected,
 						isSubtle: true,
 						size: 22,
-						action: pinForDecodex,
-						help: account.selected ? "Return Decodex to balanced selection" : "Pin for Decodex runs"
+						action: routeRunsHere,
+						help: account.selected ? "Use balanced run routing" : "Route Decodex runs here"
 					)
 
 					PanelIconButtonView(
@@ -572,7 +573,7 @@ struct AccountRowView: View {
 		.padding(.leading, 8)
 		.padding(.trailing, 7)
 		.modernGlassSurface(
-			cornerRadius: 8,
+			cornerRadius: 9,
 			tint: PanelPalette.accountRowTint(
 				colorScheme,
 				isSelected: account.selected,
@@ -624,6 +625,18 @@ struct AccountUsageSummaryView: View {
 				.strokeBorder(PanelPalette.usageTrayStroke(colorScheme), lineWidth: 0.35)
 				.allowsHitTesting(false)
 		}
+		.shadow(
+			color: usageTrayShadow,
+			radius: colorScheme == .dark ? 3 : 3.5,
+			x: 0,
+			y: 1
+		)
+	}
+
+	private var usageTrayShadow: Color {
+		colorScheme == .dark
+			? Color.black.opacity(0.08)
+			: Color(red: 0.12, green: 0.28, blue: 0.42).opacity(0.055)
 	}
 }
 
@@ -901,14 +914,18 @@ struct PanelPrimaryButtonView: View {
 				.contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 		}
 		.buttonStyle(.plain)
-		.foregroundStyle(PanelPalette.actionBlue(colorScheme))
+		.foregroundStyle(
+			colorScheme == .dark
+				? Color(red: 0.86, green: 0.93, blue: 1).opacity(0.94)
+				: PanelPalette.actionBlue(colorScheme)
+		)
 		.modernGlassSurface(
-			cornerRadius: 8,
+			cornerRadius: 9,
 			tint: PanelPalette.addButtonTint(colorScheme),
 			depth: .row
 		)
 		.overlay {
-			RoundedRectangle(cornerRadius: 8, style: .continuous)
+			RoundedRectangle(cornerRadius: 9, style: .continuous)
 				.strokeBorder(PanelPalette.addButtonStroke(colorScheme), lineWidth: 0.55)
 				.allowsHitTesting(false)
 		}
@@ -1286,15 +1303,43 @@ private extension View {
 		depth: GlassSurfaceDepth,
 		colorScheme: ColorScheme
 	) -> some View {
-		self
+		let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+		return self
+			.background {
+				shape
+					.fill(castShadowColor(for: depth, colorScheme: colorScheme))
+					.blur(radius: castShadowBlur(for: depth))
+					.offset(
+						x: castShadowXOffset(for: depth),
+						y: castShadowOffset(for: depth)
+					)
+					.opacity(castShadowOpacity(for: depth, colorScheme: colorScheme))
+					.allowsHitTesting(false)
+			}
+			.background(alignment: .bottom) {
+				shape
+					.fill(contactShadowGradient(for: depth, colorScheme: colorScheme))
+					.frame(height: contactShadowHeight(for: depth))
+					.blur(radius: contactShadowBlur(for: depth))
+					.offset(y: contactShadowOffset(for: depth))
+					.opacity(contactShadowOpacity(for: depth, colorScheme: colorScheme))
+					.allowsHitTesting(false)
+			}
 			.overlay {
-				RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+				shape
+					.fill(surfaceLiftGradient(for: depth, colorScheme: colorScheme))
+					.blendMode(colorScheme == .dark ? .screen : .softLight)
+					.allowsHitTesting(false)
+			}
+			.overlay {
+				shape
 					.fill(sheenGradient(for: depth, colorScheme: colorScheme))
 					.blendMode(.screen)
 					.allowsHitTesting(false)
 			}
 			.overlay {
-				RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+				shape
 					.strokeBorder(
 						edgeGradient(for: depth, colorScheme: colorScheme),
 						lineWidth: edgeWidth(for: depth)
@@ -1304,13 +1349,13 @@ private extension View {
 			.shadow(
 				color: ambientShadowColor(for: depth, colorScheme: colorScheme),
 				radius: ambientShadowRadius(for: depth),
-				x: 0,
+				x: ambientShadowXOffset(for: depth),
 				y: ambientShadowOffset(for: depth)
 			)
 			.shadow(
 				color: keyShadowColor(for: depth, colorScheme: colorScheme),
 				radius: keyShadowRadius(for: depth),
-				x: 0,
+				x: keyShadowXOffset(for: depth),
 				y: keyShadowOffset(for: depth)
 			)
 	}
@@ -1327,6 +1372,18 @@ private extension View {
 		)
 	}
 
+	private func surfaceLiftGradient(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> LinearGradient {
+		LinearGradient(
+			colors: [
+				Color.white.opacity(surfaceTopGlowOpacity(for: depth, colorScheme: colorScheme)),
+				Color.white.opacity(0),
+				Color.black.opacity(surfaceBottomShadeOpacity(for: depth, colorScheme: colorScheme)),
+			],
+			startPoint: .top,
+			endPoint: .bottom
+		)
+	}
+
 	private func sheenGradient(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> LinearGradient {
 		LinearGradient(
 			colors: [
@@ -1339,30 +1396,194 @@ private extension View {
 		)
 	}
 
+	private func contactShadowGradient(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> LinearGradient {
+		let color = contactShadowColor(for: depth, colorScheme: colorScheme)
+		return LinearGradient(
+			colors: [
+				color.opacity(0),
+				color,
+				color.opacity(0.35),
+				color.opacity(0),
+			],
+			startPoint: .top,
+			endPoint: .bottom
+		)
+	}
+
+	private func contactShadowColor(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Color {
+		if colorScheme == .dark {
+			switch depth {
+			case .panel:
+				return Color.black
+			case .section, .row:
+				return Color(red: 0.01, green: 0.04, blue: 0.08)
+			case .control:
+				return Color.black
+			}
+		}
+
+		switch depth {
+		case .panel:
+			return Color(red: 0.08, green: 0.18, blue: 0.3)
+		case .section, .row:
+			return Color(red: 0.12, green: 0.28, blue: 0.42)
+		case .control:
+			return Color(red: 0.1, green: 0.24, blue: 0.38)
+		}
+	}
+
+	private func castShadowColor(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Color {
+		if colorScheme == .dark {
+			switch depth {
+			case .panel:
+				return Color.black
+			case .section, .row:
+				return Color(red: 0.01, green: 0.035, blue: 0.07)
+			case .control:
+				return Color.black
+			}
+		}
+
+		switch depth {
+		case .panel:
+			return Color(red: 0.08, green: 0.18, blue: 0.3)
+		case .section, .row:
+			return Color(red: 0.1, green: 0.24, blue: 0.38)
+		case .control:
+			return Color(red: 0.08, green: 0.2, blue: 0.34)
+		}
+	}
+
+	private func castShadowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
+		switch depth {
+		case .panel:
+			return colorScheme == .dark ? 0.16 : 0.085
+		case .section:
+			return colorScheme == .dark ? 0.13 : 0.18
+		case .row:
+			return colorScheme == .dark ? 0.22 : 0.27
+		case .control:
+			return colorScheme == .dark ? 0.2 : 0.2
+		}
+	}
+
+	private func castShadowBlur(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 16
+		case .section: return 10
+		case .row: return 12
+		case .control: return 7
+		}
+	}
+
+	private func castShadowXOffset(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 0
+		case .section: return 0.5
+		case .row: return 0.7
+		case .control: return 0.4
+		}
+	}
+
+	private func castShadowOffset(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 8
+		case .section: return 6
+		case .row: return 8
+		case .control: return 4
+		}
+	}
+
+	private func contactShadowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
+		switch depth {
+		case .panel:
+			return colorScheme == .dark ? 0.14 : 0.085
+		case .section:
+			return colorScheme == .dark ? 0.19 : 0.32
+		case .row:
+			return colorScheme == .dark ? 0.27 : 0.42
+		case .control:
+			return colorScheme == .dark ? 0.2 : 0.24
+		}
+	}
+
+	private func contactShadowHeight(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 16
+		case .section: return 10
+		case .row: return 12
+		case .control: return 8
+		}
+	}
+
+	private func contactShadowBlur(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 7
+		case .section: return 3.2
+		case .row: return 3.6
+		case .control: return 3
+		}
+	}
+
+	private func contactShadowOffset(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 8
+		case .section: return 5.8
+		case .row: return 6.8
+		case .control: return 4
+		}
+	}
+
+	private func surfaceTopGlowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
+		switch depth {
+		case .panel:
+			return colorScheme == .dark ? 0.035 : 0.045
+		case .section:
+			return colorScheme == .dark ? 0.055 : 0.085
+		case .row:
+			return colorScheme == .dark ? 0.06 : 0.095
+		case .control:
+			return colorScheme == .dark ? 0.08 : 0.11
+		}
+	}
+
+	private func surfaceBottomShadeOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
+		switch depth {
+		case .panel:
+			return colorScheme == .dark ? 0.025 : 0.018
+		case .section:
+			return colorScheme == .dark ? 0.035 : 0.03
+		case .row:
+			return colorScheme == .dark ? 0.045 : 0.04
+		case .control:
+			return colorScheme == .dark ? 0.04 : 0.035
+		}
+	}
+
 	private func sheenOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
-		case .panel: return colorScheme == .dark ? 0.075 : 0.11
-		case .section: return colorScheme == .dark ? 0.055 : 0.08
-		case .row: return colorScheme == .dark ? 0.06 : 0.085
-		case .control: return colorScheme == .dark ? 0.085 : 0.11
+		case .panel: return colorScheme == .dark ? 0.075 : 0.1
+		case .section: return colorScheme == .dark ? 0.06 : 0.11
+		case .row: return colorScheme == .dark ? 0.07 : 0.12
+		case .control: return colorScheme == .dark ? 0.09 : 0.13
 		}
 	}
 
 	private func edgeWidth(for depth: GlassSurfaceDepth) -> CGFloat {
 		switch depth {
 		case .panel: return 0.65
-		case .section: return 0.42
-		case .row: return 0.38
-		case .control: return 0.35
+		case .section: return 0.48
+		case .row: return 0.52
+		case .control: return 0.45
 		}
 	}
 
 	private func edgeHighlightOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
 		case .panel: return colorScheme == .dark ? 0.23 : 0.32
-		case .section: return colorScheme == .dark ? 0.145 : 0.2
-		case .row: return colorScheme == .dark ? 0.18 : 0.21
-		case .control: return colorScheme == .dark ? 0.23 : 0.28
+		case .section: return colorScheme == .dark ? 0.19 : 0.34
+		case .row: return colorScheme == .dark ? 0.23 : 0.42
+		case .control: return colorScheme == .dark ? 0.26 : 0.38
 		}
 	}
 
@@ -1378,9 +1599,9 @@ private extension View {
 	private func edgeShadowOpacity(for depth: GlassSurfaceDepth, colorScheme: ColorScheme) -> Double {
 		switch depth {
 		case .panel: return colorScheme == .dark ? 0.085 : 0.075
-		case .section: return colorScheme == .dark ? 0.04 : 0.06
-		case .row: return colorScheme == .dark ? 0.035 : 0.055
-		case .control: return colorScheme == .dark ? 0.055 : 0.07
+		case .section: return colorScheme == .dark ? 0.045 : 0.075
+		case .row: return colorScheme == .dark ? 0.045 : 0.11
+		case .control: return colorScheme == .dark ? 0.06 : 0.09
 		}
 	}
 
@@ -1390,11 +1611,11 @@ private extension View {
 		case .panel:
 			opacity = colorScheme == .dark ? 0.21 : 0.065
 		case .section:
-			opacity = colorScheme == .dark ? 0.052 : 0.04
+			opacity = colorScheme == .dark ? 0.07 : 0.095
 		case .row:
-			opacity = colorScheme == .dark ? 0.098 : 0.048
+			opacity = colorScheme == .dark ? 0.125 : 0.15
 		case .control:
-			opacity = colorScheme == .dark ? 0.072 : 0.038
+			opacity = colorScheme == .dark ? 0.082 : 0.058
 		}
 
 		return Color.black.opacity(opacity)
@@ -1406,11 +1627,11 @@ private extension View {
 		case .panel:
 			opacity = colorScheme == .dark ? 0.048 : 0.028
 		case .section:
-			opacity = colorScheme == .dark ? 0.035 : 0.026
+			opacity = colorScheme == .dark ? 0.045 : 0.055
 		case .row:
-			opacity = colorScheme == .dark ? 0.046 : 0.028
+			opacity = colorScheme == .dark ? 0.06 : 0.07
 		case .control:
-			opacity = colorScheme == .dark ? 0.048 : 0.028
+			opacity = colorScheme == .dark ? 0.052 : 0.046
 		}
 
 		return Color(hue: 0.6, saturation: 0.32, brightness: 1).opacity(opacity)
@@ -1419,18 +1640,27 @@ private extension View {
 	private func ambientShadowRadius(for depth: GlassSurfaceDepth) -> CGFloat {
 		switch depth {
 		case .panel: return 15
-		case .section: return 5.5
-		case .row: return 7.5
-		case .control: return 4.5
+		case .section: return 9
+		case .row: return 13
+		case .control: return 5.5
+		}
+	}
+
+	private func ambientShadowXOffset(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 0
+		case .section: return 0.6
+		case .row: return 0.8
+		case .control: return 0.4
 		}
 	}
 
 	private func ambientShadowOffset(for depth: GlassSurfaceDepth) -> CGFloat {
 		switch depth {
 		case .panel: return 6
-		case .section: return 2
-		case .row: return 4
-		case .control: return 1
+		case .section: return 4
+		case .row: return 8
+		case .control: return 2
 		}
 	}
 
@@ -1438,8 +1668,17 @@ private extension View {
 		switch depth {
 		case .panel: return 5
 		case .section: return 4
-		case .row: return 4
+		case .row: return 4.5
 		case .control: return 3
+		}
+	}
+
+	private func keyShadowXOffset(for depth: GlassSurfaceDepth) -> CGFloat {
+		switch depth {
+		case .panel: return 0
+		case .section: return 0.3
+		case .row: return 0.4
+		case .control: return 0.2
 		}
 	}
 
