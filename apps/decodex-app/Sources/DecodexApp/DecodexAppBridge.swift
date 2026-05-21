@@ -73,6 +73,8 @@ struct AppBridgeRequest: Encodable, Sendable {
 		AppBridgeRequest(operation: "codex_fast_mode_set", enabled: enabled)
 	}
 
+	static let operatorSnapshot = AppBridgeRequest(operation: "operator_snapshot")
+
 	private init(
 		operation: String,
 		selector: String? = nil,
