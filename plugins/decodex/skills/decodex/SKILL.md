@@ -11,10 +11,13 @@ Route agent work through the right Decodex surface without duplicating the runti
 specs. Decodex has two supported use modes:
 
 - Manual CLI mode: a human is driving local development, commits, PR preparation,
-  landing, status inspection, project registration, or dry-run checks.
+  landing, status inspection, project registration, account selection, or dry-run
+  checks.
 - Automation mode: Decodex owns retained-lane execution through registered project
   contracts, `serve`, `run`, tracker labels, issue-scoped tools, review handoff,
   landing, closeout, and operator status.
+- Planning support: agents shape Decodex-friendly issue sets, queue strategy,
+  dependency boundaries, and concurrency before retained-lane automation starts.
 
 ## First Steps
 
@@ -26,6 +29,7 @@ specs. Decodex has two supported use modes:
    directory supplied with `--config`.
 5. Use the narrow skill for the current action:
    - `manual-cli` for normal operator CLI use.
+   - `planning` for Decodex-friendly issue splitting, queue shaping, and concurrency.
    - `automation` for retained-lane control-plane use.
    - `commit` for `decodex commit`.
    - `land` for `decodex land`.
