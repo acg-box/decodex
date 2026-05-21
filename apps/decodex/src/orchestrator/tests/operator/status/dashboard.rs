@@ -513,7 +513,7 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	let response = dashboard_response();
 
 	assert!(response.contains("const ACCOUNT_PRIVACY_STORAGE_KEY = \"decodex.operator.accountPrivacy\";"));
-	assert!(response.contains("const ACCOUNT_NAME_OFFSET_STORAGE_KEY = \"decodex.operator.accountNameOffsets\";"));
+	assert!(!response.contains("const ACCOUNT_NAME_OFFSET_STORAGE_KEY = \"decodex.operator.accountNameOffsets\";"));
 	assert!(response.contains("const ACCOUNT_IDENTITY_EDGE_CHARS = 6;"));
 	assert!(response.contains("const ACCOUNT_IDENTITY_MIN_EDGE_CHARS = 3;"));
 	assert!(!response.contains("const ACCOUNT_EMAIL_LOCAL_HEAD_CHARS = 5;"));
@@ -529,13 +529,17 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(response.contains("function codexAccountEmail(account)"));
 	assert!(response.contains("function compactAccountEmail(email)"));
 	assert!(response.contains("function loadAccountPrivacy()"));
-	assert!(response.contains("function loadAccountNameOffsets()"));
+	assert!(!response.contains("function loadAccountNameOffsets()"));
 	assert!(response.contains("function persistAccountPrivacy(hidden)"));
-	assert!(response.contains("function persistAccountNameOffsets()"));
+	assert!(!response.contains("function persistAccountNameOffsets()"));
 	assert!(response.contains("function configuredDashboardAccounts(snapshot)"));
 	assert!(response.contains("function renderAccountPrivacyToggle()"));
 	assert!(response.contains("function codexAccountRandomNameKey(account)"));
 	assert!(response.contains("function codexAccountRandomNameOffset(account)"));
+	assert!(response.contains("function codexAccountPendingRandomNameOffset(account)"));
+	assert!(response.contains("let pendingAccountNameOffsets = {};"));
+	assert!(!response.contains("function codexAccountStoredRandomNameOffset(account)"));
+	assert!(!response.contains("function syncStoredAccountNameOffsets(accounts)"));
 	assert!(response.contains("function codexAccountDisplaySource(account, snapshot)"));
 	assert!(response.contains("function renderCodexAccountRandomNameButton(account)"));
 	assert!(response.contains("function codexAccountShowsEmail(account)"));
@@ -560,7 +564,7 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(response.contains("account-name-reroll"));
 	assert!(response.contains("data-account-name-reroll"));
 	assert!(response.contains("aria-label=\"Change account name\""));
-	assert!(!response.contains("\"Alex\""));
+	assert!(response.contains("\"Alex\""));
 	assert!(response.contains("return `${local.slice(0, 3)}...${local.slice(-3)}${domain}`;"));
 	assert!(response.contains("return ACCOUNT_RANDOM_NAMES[index];"));
 	assert!(response.contains("return status === \"selected\" ? 1 : 0;"));
@@ -576,7 +580,6 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(response.contains("renderAccountPrivacyToggle();"));
 	assert!(response.contains("renderAccountModeControl(snapshot);"));
 	assert!(response.contains("persistAccountPrivacy(accountEmailsHidden);"));
-	assert!(response.contains("persistAccountNameOffsets();"));
 	assert!(response.contains("let lastDashboardRender = null;"));
 	assert!(response.contains("lastDashboardRender = {"));
 	assert!(response.contains("function renderDashboardState({"));
