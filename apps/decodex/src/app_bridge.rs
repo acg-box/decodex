@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::{
 	accounts::{self, AccountListResponse, AccountLoginRequest, AccountUseRequest},
+	codex_config,
 	prelude::{Result, eyre},
 };
 
@@ -55,6 +56,10 @@ enum AppBridgeRequest {
 		#[serde(default)]
 		include_usage: bool,
 	},
+	#[serde(rename = "codex_fast_mode_status")]
+	FastModeStatus,
+	#[serde(rename = "codex_fast_mode_set")]
+	FastModeSet { enabled: bool },
 }
 
 #[derive(Serialize)]
@@ -129,6 +134,9 @@ fn handle_request(request: AppBridgeRequest) -> Result<()> {
 
 			emit_account_list_result(response, include_usage)
 		},
+		AppBridgeRequest::FastModeStatus => emit_result(&codex_config::fast_mode_status()?),
+		AppBridgeRequest::FastModeSet { enabled } =>
+			emit_result(&codex_config::set_fast_mode(enabled)?),
 	}
 }
 
@@ -178,5 +186,16 @@ mod tests {
 		.expect("bridge request should parse");
 
 		assert!(matches!(request, AppBridgeRequest::Use { .. }));
+	}
+
+	#[test]
+	fn parses_fast_mode_set_bridge_request() {
+		let request = serde_json::from_value::<AppBridgeRequest>(serde_json::json!({
+			"operation": "codex_fast_mode_set",
+			"enabled": true
+		}))
+		.expect("bridge request should parse");
+
+		assert!(matches!(request, AppBridgeRequest::FastModeSet { enabled: true }));
 	}
 }

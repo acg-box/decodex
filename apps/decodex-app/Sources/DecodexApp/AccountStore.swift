@@ -3,8 +3,10 @@ import Foundation
 @MainActor
 final class AccountStore: ObservableObject {
 	@Published private(set) var accountList: AccountListResponse?
+	@Published private(set) var fastMode: CodexFastModeResponse?
 	@Published private(set) var isRefreshing = false
 	@Published private(set) var isLoggingIn = false
+	@Published private(set) var isSettingFastMode = false
 	@Published var loginTranscript = ""
 	@Published var notice: String?
 
@@ -21,6 +23,10 @@ final class AccountStore: ObservableObject {
 
 	var accounts: [CodexAccount] {
 		accountList?.accounts ?? []
+	}
+
+	var fastModeEnabled: Bool {
+		fastMode?.enabled == true
 	}
 
 	var modeLabel: String {
@@ -74,6 +80,7 @@ final class AccountStore: ObservableObject {
 				as: AccountListResponse.self
 			)
 			notice = nil
+			await refreshFastMode()
 		} catch {
 			notice = error.localizedDescription
 		}
@@ -157,6 +164,33 @@ final class AccountStore: ObservableObject {
 		}
 	}
 
+	func setFastMode(_ enabled: Bool) async {
+		guard !isSettingFastMode else {
+			return
+		}
+
+		let previous = fastMode
+		fastMode = CodexFastModeResponse(
+			codexConfigPath: previous?.codexConfigPath ?? "",
+			enabled: enabled
+		)
+		isSettingFastMode = true
+		defer {
+			isSettingFastMode = false
+		}
+
+		do {
+			fastMode = try await bridge.runJSON(
+				.codexFastModeSet(enabled: enabled),
+				as: CodexFastModeResponse.self
+			)
+			notice = nil
+		} catch {
+			fastMode = previous
+			notice = error.localizedDescription
+		}
+	}
+
 	func logout(_ account: CodexAccount) async {
 		do {
 			accountList = try await bridge.runJSON(
@@ -179,11 +213,23 @@ final class AccountStore: ObservableObject {
 				self?.loginTranscript += chunk
 			}
 			notice = nil
+			await refreshFastMode()
 		} catch {
 			notice = error.localizedDescription
 		}
 
 		isLoggingIn = false
+	}
+
+	private func refreshFastMode() async {
+		do {
+			fastMode = try await bridge.runJSON(
+				.codexFastModeStatus,
+				as: CodexFastModeResponse.self
+			)
+		} catch {
+			notice = error.localizedDescription
+		}
 	}
 }
 
