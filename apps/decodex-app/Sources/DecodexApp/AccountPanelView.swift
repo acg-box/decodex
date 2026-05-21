@@ -480,7 +480,8 @@ struct AccountPanelView: View {
 
 		if let selector = control.accountSelector, !selector.isEmpty {
 			if emailsHidden {
-				let value = account(matching: selector)?.panelDisplayName(emailsHidden: true) ?? "Account"
+				let value = account(matching: selector)?.panelDisplayName(emailsHidden: true)
+					?? AccountDisplay.alias(forIdentity: selector)
 				return "To \(value)"
 			}
 
@@ -1116,7 +1117,6 @@ private enum AccountPrivacy {
 
 private enum AccountDisplay {
 	static let randomNames = [
-		"Alex",
 		"Avery",
 		"Bailey",
 		"Blake",
