@@ -35,7 +35,7 @@ Verification:
 Use the dry-run default before demos or large issue seeding:
 
 ```sh
-cargo run -p decodex -- archive-linear --repo-label repo:decodex --older-than-days 30
+cargo run -p decodex --bin decodex -- archive-linear --repo-label repo:decodex --older-than-days 30
 ```
 
 The command prints the terminal issues that would be archived, using `updatedAt`
@@ -44,7 +44,7 @@ as the age cutoff. It does not mutate Linear unless `--execute` is present.
 For another Decodex-managed repo, run from that registered checkout or pass its centralized config:
 
 ```sh
-cargo run -p decodex -- archive-linear --config ~/.codex/decodex/projects/ashen-vale --repo-label repo:ashen-vale --older-than-days 30
+cargo run -p decodex --bin decodex -- archive-linear --config ~/.codex/decodex/projects/ashen-vale --repo-label repo:ashen-vale --older-than-days 30
 ```
 
 ## Execute
@@ -53,7 +53,7 @@ After the dry run shows only issues that should leave the active tracker view,
 repeat the command with `--execute`:
 
 ```sh
-cargo run -p decodex -- archive-linear --repo-label repo:decodex --older-than-days 30 --execute
+cargo run -p decodex --bin decodex -- archive-linear --repo-label repo:decodex --older-than-days 30 --execute
 ```
 
 This archives issues through Linear `issueArchive` with `trash = false`. It does
