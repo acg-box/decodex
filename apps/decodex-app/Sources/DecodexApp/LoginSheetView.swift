@@ -2,32 +2,22 @@ import AppKit
 import SwiftUI
 
 enum AccountLoginSheetMode: Equatable {
-	case add
-	case reauth(String)
+	case newAccount
+	case account(String)
 
 	var title: String {
-		switch self {
-		case .add:
-			return "Device Login"
-		case .reauth:
-			return "Re-auth Account"
-		}
+		"Login"
 	}
 
 	var icon: String {
-		switch self {
-		case .add:
-			return "person.crop.circle.badge.plus"
-		case .reauth:
-			return "person.crop.circle.badge.exclamationmark"
-		}
+		"person.crop.circle.badge.plus"
 	}
 
 	func subtitle(fallback: String, isActive: Bool) -> String {
 		switch self {
-		case .add:
+		case .newAccount:
 			return fallback
-		case .reauth(let name):
+		case .account(let name):
 			return !isActive && !name.isEmpty ? name : fallback
 		}
 	}
@@ -37,16 +27,40 @@ struct LoginSheetView: View {
 	@ObservedObject var store: AccountStore
 	let mode: AccountLoginSheetMode
 	@Environment(\.colorScheme) private var colorScheme
-	@Environment(\.dismiss) private var dismiss
 	@State private var requestStarted = false
+	@State private var copyFeedback = false
+	@State private var copyFeedbackToken = UUID()
+	@State private var openFeedback = false
+	@State private var openFeedbackToken = UUID()
+	private let onCancel: () -> Void
+	private let onComplete: () -> Void
 
-	init(store: AccountStore, mode: AccountLoginSheetMode = .add) {
+	init(
+		store: AccountStore,
+		mode: AccountLoginSheetMode = .newAccount,
+		onCancel: @escaping () -> Void = {},
+		onComplete: @escaping () -> Void = {}
+	) {
 		self.store = store
 		self.mode = mode
+		self.onCancel = onCancel
+		self.onComplete = onComplete
 	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 11) {
+		Group {
+			if #available(macOS 26.0, *) {
+				GlassEffectContainer(spacing: 7) {
+					content
+				}
+			} else {
+				content
+			}
+		}
+	}
+
+	private var content: some View {
+		VStack(alignment: .leading, spacing: 7) {
 			header
 			codeCard
 
@@ -65,19 +79,11 @@ struct LoginSheetView: View {
 
 			actions
 		}
-		.frame(width: 322)
-		.padding(14)
-		.background {
-			RoundedRectangle(cornerRadius: 16, style: .continuous)
-				.fill(.regularMaterial)
-			RoundedRectangle(cornerRadius: 16, style: .continuous)
-				.fill(LoginPalette.panelTint(colorScheme))
-		}
-		.overlay {
-			RoundedRectangle(cornerRadius: 16, style: .continuous)
-				.strokeBorder(LoginPalette.panelStroke(colorScheme), lineWidth: 0.65)
-		}
-		.shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 20, y: 10)
+		.frame(width: 310)
+		.padding(9)
+		.modernGlassSurface(cornerRadius: 18, depth: .panel)
+		.controlSize(.small)
+		.symbolRenderingMode(.hierarchical)
 		.onChange(of: store.loginPrompt) { _, prompt in
 			if prompt != nil {
 				requestStarted = false
@@ -93,17 +99,10 @@ struct LoginSheetView: View {
 	private var header: some View {
 		HStack(spacing: 8) {
 			Image(systemName: mode.icon)
-				.font(.system(size: 12.5, weight: .semibold))
+				.font(LoginFont.icon)
 				.foregroundStyle(LoginPalette.accent(colorScheme))
-				.frame(width: 27, height: 27)
-				.background {
-					RoundedRectangle(cornerRadius: 8, style: .continuous)
-						.fill(LoginPalette.controlTint(colorScheme))
-				}
-				.overlay {
-					RoundedRectangle(cornerRadius: 8, style: .continuous)
-						.strokeBorder(LoginPalette.controlStroke(colorScheme), lineWidth: 0.55)
-				}
+				.frame(width: 28, height: 28)
+				.modernGlassSurface(cornerRadius: 9, depth: .control)
 
 			VStack(alignment: .leading, spacing: 1) {
 				Text(mode.title)
@@ -123,6 +122,7 @@ struct LoginSheetView: View {
 
 			Spacer()
 		}
+		.padding(.bottom, 1)
 	}
 
 	private var requestStatus: some View {
@@ -135,16 +135,9 @@ struct LoginSheetView: View {
 				.foregroundStyle(LoginPalette.secondaryText(colorScheme))
 			Spacer(minLength: 0)
 		}
-		.padding(.horizontal, 9)
-		.padding(.vertical, 6)
-		.background {
-			RoundedRectangle(cornerRadius: 9, style: .continuous)
-				.fill(LoginPalette.statusTint(colorScheme))
-		}
-		.overlay {
-			RoundedRectangle(cornerRadius: 9, style: .continuous)
-				.strokeBorder(LoginPalette.cardStroke(colorScheme), lineWidth: 0.5)
-		}
+		.padding(.horizontal, 8)
+		.padding(.vertical, 5)
+		.modernGlassSurface(cornerRadius: 9, depth: .section)
 	}
 
 	private var codeCard: some View {
@@ -153,50 +146,41 @@ struct LoginSheetView: View {
 
 			HStack(spacing: 6) {
 				Text(loginDestinationLabel)
-					.font(LoginFont.caption)
+					.font(LoginFont.destination)
 					.foregroundStyle(LoginPalette.secondaryText(colorScheme))
 					.lineLimit(1)
 					.truncationMode(.middle)
 
 				Spacer(minLength: 4)
 
-				Button {
-					copyCode()
-				} label: {
-					Image(systemName: "doc.on.doc")
-						.frame(width: 22, height: 20)
-				}
-				.buttonStyle(LoginSmallButtonStyle())
-				.disabled(store.loginPrompt == nil)
-				.help("Copy code")
+				LoginIconActionButton(
+					symbol: "doc.on.doc",
+					feedbackSymbol: "checkmark",
+					isFeedbackActive: copyFeedback,
+					isEnabled: store.loginPrompt != nil,
+					action: copyCode,
+					help: copyFeedback ? "Copied" : "Copy code"
+				)
 
-				Button {
-					openVerificationURL()
-				} label: {
-					Image(systemName: "arrow.up.forward.app")
-						.frame(width: 22, height: 20)
-				}
-				.buttonStyle(LoginSmallButtonStyle())
-				.disabled(store.loginPrompt?.verificationURL == nil)
-				.help("Open browser")
+				LoginIconActionButton(
+					symbol: "arrow.up.forward.app",
+					feedbackSymbol: nil,
+					isFeedbackActive: openFeedback,
+					isEnabled: store.loginPrompt?.verificationURL != nil,
+					action: openVerificationURL,
+					help: openFeedback ? "Opened browser" : "Open browser"
+				)
 			}
 		}
-		.padding(9)
-		.background {
-			RoundedRectangle(cornerRadius: 11, style: .continuous)
-				.fill(LoginPalette.cardTint(colorScheme))
-		}
-		.overlay {
-			RoundedRectangle(cornerRadius: 11, style: .continuous)
-				.strokeBorder(LoginPalette.cardStroke(colorScheme), lineWidth: 0.55)
-		}
+		.padding(8)
+		.modernGlassSurface(cornerRadius: 10, depth: .section)
 	}
 
 	private var actions: some View {
 		HStack(spacing: 7) {
 			Button("Cancel") {
 				requestStarted = false
-				dismiss()
+				onCancel()
 			}
 			.keyboardShortcut(.cancelAction)
 			.buttonStyle(LoginTextButtonStyle())
@@ -209,7 +193,7 @@ struct LoginSheetView: View {
 					await store.login()
 					requestStarted = false
 					if store.notice == nil {
-						dismiss()
+						onComplete()
 					}
 				}
 			} label: {
@@ -257,6 +241,7 @@ struct LoginSheetView: View {
 
 		NSPasteboard.general.clearContents()
 		NSPasteboard.general.setString(code, forType: .string)
+		showCopyFeedback()
 	}
 
 	private func openVerificationURL() {
@@ -264,33 +249,43 @@ struct LoginSheetView: View {
 			return
 		}
 
+		showOpenFeedback()
 		NSWorkspace.shared.open(url)
 	}
-}
 
-struct FloatingLoginWindowConfigurator: NSViewRepresentable {
-	func makeNSView(context: Context) -> NSView {
-		let view = NSView()
-		configureSoon(from: view)
-		return view
-	}
+	private func showCopyFeedback() {
+		let token = UUID()
+		copyFeedbackToken = token
+		withAnimation(PanelMotion.state) {
+			copyFeedback = true
+		}
 
-	func updateNSView(_ nsView: NSView, context: Context) {
-		configureSoon(from: nsView)
-	}
-
-	private func configureSoon(from view: NSView) {
-		DispatchQueue.main.async {
-			guard let window = view.window else {
+		Task { @MainActor in
+			try? await Task.sleep(nanoseconds: 850_000_000)
+			guard copyFeedbackToken == token else {
 				return
 			}
+			withAnimation(PanelMotion.state) {
+				copyFeedback = false
+			}
+		}
+	}
 
-			window.level = .floating
-			window.collectionBehavior.insert(.fullScreenAuxiliary)
-			window.isMovableByWindowBackground = true
-			window.titleVisibility = .hidden
-			window.titlebarAppearsTransparent = true
-			window.styleMask.insert(.fullSizeContentView)
+	private func showOpenFeedback() {
+		let token = UUID()
+		openFeedbackToken = token
+		withAnimation(PanelMotion.state) {
+			openFeedback = true
+		}
+
+		Task { @MainActor in
+			try? await Task.sleep(nanoseconds: 650_000_000)
+			guard openFeedbackToken == token else {
+				return
+			}
+			withAnimation(PanelMotion.state) {
+				openFeedback = false
+			}
 		}
 	}
 }
@@ -312,14 +307,7 @@ private struct LoginCodeBoxesView: View {
 					.monospacedDigit()
 					.foregroundStyle(LoginPalette.primaryText(colorScheme))
 					.frame(width: 22, height: 30)
-					.background {
-						RoundedRectangle(cornerRadius: 7, style: .continuous)
-							.fill(LoginPalette.codeCellTint(colorScheme, isEmpty: code.isEmpty))
-					}
-					.overlay {
-						RoundedRectangle(cornerRadius: 7, style: .continuous)
-							.strokeBorder(LoginPalette.codeCellStroke(colorScheme), lineWidth: 0.55)
-					}
+					.modernGlassSurface(cornerRadius: 7, depth: .control)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .center)
@@ -342,23 +330,98 @@ private struct LoginCodeBoxesView: View {
 	}
 }
 
+private struct LoginIconActionButton: View {
+	let symbol: String
+	let feedbackSymbol: String?
+	let isFeedbackActive: Bool
+	let isEnabled: Bool
+	let action: () -> Void
+	let help: String
+	@State private var isHovered = false
+
+	var body: some View {
+		Button(action: action) {
+			Image(systemName: isFeedbackActive ? (feedbackSymbol ?? symbol) : symbol)
+				.frame(width: 23, height: 22)
+		}
+		.buttonStyle(
+			LoginSmallButtonStyle(
+				isProminent: isHovered,
+				isFeedbackActive: isFeedbackActive
+			)
+		)
+		.disabled(!isEnabled)
+		.onHover { hovering in
+			withAnimation(PanelMotion.hover) {
+				isHovered = hovering
+			}
+		}
+		.help(help)
+	}
+}
+
 private struct LoginSmallButtonStyle: ButtonStyle {
+	var isProminent = false
+	var isFeedbackActive = false
 	@Environment(\.colorScheme) private var colorScheme
 	@Environment(\.isEnabled) private var isEnabled
 
 	func makeBody(configuration: Configuration) -> some View {
 		configuration.label
 			.font(LoginFont.icon)
-			.foregroundStyle(LoginPalette.accent(colorScheme).opacity(isEnabled ? 0.9 : 0.34))
-			.background {
-				RoundedRectangle(cornerRadius: 7, style: .continuous)
-					.fill(LoginPalette.controlTint(colorScheme).opacity(configuration.isPressed ? 0.72 : 1))
-			}
+			.foregroundStyle(foreground)
+			.modernGlassSurface(cornerRadius: 8, depth: .control)
 			.overlay {
-				RoundedRectangle(cornerRadius: 7, style: .continuous)
-					.strokeBorder(LoginPalette.controlStroke(colorScheme), lineWidth: 0.5)
+				RoundedRectangle(cornerRadius: 8, style: .continuous)
+					.strokeBorder(stroke, lineWidth: 0.55)
+					.allowsHitTesting(false)
 			}
-			.opacity(configuration.isPressed ? 0.78 : 1)
+			.shadow(
+				color: shadowColor,
+				radius: isFeedbackActive ? 4 : (isProminent ? 2.4 : 0),
+				y: isFeedbackActive ? 1.2 : (isProminent ? 0.8 : 0)
+			)
+			.scaleEffect(configuration.isPressed ? 0.91 : (isFeedbackActive ? 1.055 : 1))
+			.opacity(isEnabled ? 1 : 0.38)
+			.animation(PanelMotion.press, value: configuration.isPressed)
+			.animation(PanelMotion.hover, value: isProminent)
+			.animation(PanelMotion.state, value: isFeedbackActive)
+	}
+
+	private var foreground: Color {
+		if !isEnabled {
+			return LoginPalette.secondaryText(colorScheme).opacity(0.62)
+		}
+		if isFeedbackActive {
+			return LoginPalette.feedback(colorScheme)
+		}
+		if isProminent {
+			return LoginPalette.accent(colorScheme).opacity(colorScheme == .dark ? 1 : 0.95)
+		}
+		return LoginPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.9 : 0.78)
+	}
+
+	private var stroke: Color {
+		if !isEnabled {
+			return LoginPalette.secondaryText(colorScheme).opacity(0.08)
+		}
+		if isFeedbackActive {
+			return LoginPalette.feedback(colorScheme).opacity(colorScheme == .dark ? 0.36 : 0.26)
+		}
+		if isProminent {
+			return LoginPalette.accent(colorScheme).opacity(colorScheme == .dark ? 0.22 : 0.18)
+		}
+		return LoginPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.1 : 0.12)
+	}
+
+	private var shadowColor: Color {
+		if isFeedbackActive {
+			return LoginPalette.feedback(colorScheme).opacity(colorScheme == .dark ? 0.22 : 0.16)
+		}
+		if isProminent {
+			return Color.black.opacity(colorScheme == .dark ? 0.22 : 0.1)
+		}
+		return .clear
 	}
 }
 
@@ -371,17 +434,12 @@ private struct LoginTextButtonStyle: ButtonStyle {
 		configuration.label
 			.font(LoginFont.button)
 			.foregroundStyle(foreground)
-			.padding(.horizontal, 11)
-			.frame(height: 25)
-			.background {
-				RoundedRectangle(cornerRadius: 8, style: .continuous)
-					.fill(background.opacity(configuration.isPressed ? 0.72 : 1))
-			}
-			.overlay {
-				RoundedRectangle(cornerRadius: 8, style: .continuous)
-					.strokeBorder(stroke, lineWidth: 0.55)
-			}
-			.opacity(isEnabled ? 1 : 0.46)
+			.padding(.horizontal, isPrimary ? 11 : 9)
+			.frame(height: 24)
+			.modernGlassSurface(cornerRadius: 12, depth: .control)
+			.scaleEffect(configuration.isPressed ? 0.965 : 1)
+			.opacity(isEnabled ? 1 : 0.64)
+			.animation(.interactiveSpring(response: 0.16, dampingFraction: 0.78), value: configuration.isPressed)
 	}
 
 	private var foreground: Color {
@@ -392,117 +450,41 @@ private struct LoginTextButtonStyle: ButtonStyle {
 		return LoginPalette.secondaryText(colorScheme)
 	}
 
-	private var background: Color {
-		isPrimary ? LoginPalette.primaryButtonTint(colorScheme) : LoginPalette.controlTint(colorScheme)
-	}
-
-	private var stroke: Color {
-		isPrimary ? LoginPalette.primaryButtonStroke(colorScheme) : LoginPalette.controlStroke(colorScheme)
-	}
 }
 
 private enum LoginFont {
-	static let title = Font.system(size: 13.4, weight: .semibold)
-	static let caption = Font.system(size: 9.6, weight: .medium)
-	static let button = Font.system(size: 10.3, weight: .semibold)
-	static let icon = Font.system(size: 10.5, weight: .medium)
-	static let code = Font.system(size: 15.8, weight: .semibold, design: .monospaced)
+	static let title = Font.system(size: 14.6, weight: .semibold)
+	static let caption = Font.system(size: 10.6, weight: .medium)
+	static let destination = Font.system(size: 10.8, weight: .semibold)
+	static let button = Font.system(size: 10.8, weight: .semibold)
+	static let icon = Font.system(size: 11.4, weight: .semibold)
+	static let code = Font.system(size: 16.2, weight: .semibold, design: .monospaced)
 }
 
 private enum LoginPalette {
 	static func primaryText(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.9, green: 0.94, blue: 0.99).opacity(0.95)
-			: Color(red: 0.12, green: 0.17, blue: 0.24).opacity(0.92)
+			? Color(red: 0.98, green: 0.985, blue: 1).opacity(0.99)
+			: Color(red: 0.09, green: 0.11, blue: 0.15).opacity(0.96)
 	}
 
 	static func secondaryText(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.68, green: 0.76, blue: 0.86).opacity(0.78)
-			: Color(red: 0.34, green: 0.43, blue: 0.55).opacity(0.72)
+			? Color(red: 0.86, green: 0.89, blue: 0.95).opacity(0.94)
+			: Color(red: 0.28, green: 0.33, blue: 0.4).opacity(0.86)
 	}
 
 	static func accent(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.72, green: 0.84, blue: 0.98)
-			: Color(red: 0.16, green: 0.34, blue: 0.54)
+		PanelPalette.actionBlue(colorScheme)
 	}
 
 	static func warning(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.88, green: 0.58, blue: 0.35)
-			: Color(red: 0.58, green: 0.31, blue: 0.17)
+		PanelPalette.warning(colorScheme)
 	}
 
-	static func panelTint(_ colorScheme: ColorScheme) -> Color {
+	static func feedback(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color(red: 0.13, green: 0.2, blue: 0.3).opacity(0.42)
-			: Color(red: 0.72, green: 0.84, blue: 0.95).opacity(0.34)
-	}
-
-	static func panelStroke(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color.white.opacity(0.18)
-			: Color.white.opacity(0.58)
-	}
-
-	static func cardTint(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.72, green: 0.84, blue: 0.98).opacity(0.095)
-			: Color.white.opacity(0.62)
-	}
-
-	static func cardStroke(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color.white.opacity(0.13)
-			: Color(red: 0.42, green: 0.58, blue: 0.76).opacity(0.2)
-	}
-
-	static func statusTint(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.62, green: 0.78, blue: 1).opacity(0.11)
-			: Color(red: 0.86, green: 0.94, blue: 1).opacity(0.62)
-	}
-
-	static func controlTint(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.7, green: 0.8, blue: 0.92).opacity(0.15)
-			: Color.white.opacity(0.74)
-	}
-
-	static func controlStroke(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color.white.opacity(0.14)
-			: Color(red: 0.36, green: 0.52, blue: 0.72).opacity(0.22)
-	}
-
-	static func codeCellTint(_ colorScheme: ColorScheme, isEmpty: Bool) -> Color {
-		if isEmpty {
-			return colorScheme == .dark
-				? Color.white.opacity(0.045)
-				: Color.white.opacity(0.38)
-		}
-
-		return colorScheme == .dark
-			? Color(red: 0.72, green: 0.84, blue: 0.98).opacity(0.16)
-			: Color(red: 0.9, green: 0.96, blue: 1).opacity(0.84)
-	}
-
-	static func codeCellStroke(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color.white.opacity(0.16)
-			: Color.white.opacity(0.66)
-	}
-
-	static func primaryButtonTint(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.56, green: 0.7, blue: 0.9).opacity(0.18)
-			: Color(red: 0.88, green: 0.95, blue: 1).opacity(0.84)
-	}
-
-	static func primaryButtonStroke(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color(red: 0.8, green: 0.9, blue: 1).opacity(0.2)
-			: Color(red: 0.34, green: 0.54, blue: 0.72).opacity(0.3)
+			? Color(red: 0.86, green: 0.93, blue: 1)
+			: Color(red: 0.13, green: 0.32, blue: 0.52)
 	}
 }

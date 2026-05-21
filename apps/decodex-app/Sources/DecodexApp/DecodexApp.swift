@@ -20,13 +20,10 @@ enum AppAssets {
 	}()
 }
 
-enum DecodexWindowID {
-	static let login = "decodex-login"
-}
-
 @MainActor
 final class LoginWindowState: ObservableObject {
-	@Published var mode = AccountLoginSheetMode.add
+	@Published var mode = AccountLoginSheetMode.newAccount
+	@Published var isPresented = false
 }
 
 @main
@@ -57,12 +54,6 @@ struct DecodexApp: App {
 			}
 		}
 		.menuBarExtraStyle(.window)
-
-		Window("Decodex Login", id: DecodexWindowID.login) {
-			LoginSheetView(store: store, mode: loginWindowState.mode)
-				.background(FloatingLoginWindowConfigurator())
-		}
-		.windowResizability(.contentSize)
 	}
 
 	@ViewBuilder

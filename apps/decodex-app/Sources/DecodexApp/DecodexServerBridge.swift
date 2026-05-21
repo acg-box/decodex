@@ -6,6 +6,12 @@ struct ServerRoute {
 	let body: Data?
 }
 
+private enum DecodexServerProbe: Equatable {
+	case live
+	case reachable(String)
+	case unreachable
+}
+
 actor DecodexServerBridge {
 	static let shared = DecodexServerBridge()
 
@@ -78,28 +84,44 @@ actor DecodexServerBridge {
 			return serverBaseURL
 		}
 
-		if let serverBaseURL, await isLive(serverBaseURL) {
+		if let serverBaseURL, await probeServer(serverBaseURL) == .live {
 			noteLive(serverBaseURL)
 
 			return serverBaseURL
 		}
 
-		if let configured = configuredServerURL(), await isLive(configured) {
-			noteLive(configured)
+		if let configured = configuredServerURL() {
+			switch await probeServer(configured) {
+			case .live:
+				noteLive(configured)
 
-			return configured
+				return configured
+			case .reachable(let reason):
+				throw DecodexAppBridgeError.invalidResponse(
+					"Decodex server at \(configured.absoluteString) is reachable but not app-compatible: \(reason)"
+				)
+			case .unreachable:
+				break
+			}
 		}
 
-		if await isLive(defaultBaseURL) {
+		switch await probeServer(defaultBaseURL) {
+		case .live:
 			noteLive(defaultBaseURL)
 
 			return defaultBaseURL
+		case .reachable(let reason):
+			throw DecodexAppBridgeError.invalidResponse(
+				"Port \(defaultListenAddress) already has a server, but it is not app-compatible: \(reason). Decodex App will not start its bundled server over an existing process."
+			)
+		case .unreachable:
+			break
 		}
 
 		try startBundledServer()
 
 		for _ in 0..<40 {
-			if await isLive(defaultBaseURL) {
+			if await probeServer(defaultBaseURL) == .live {
 				noteLive(defaultBaseURL)
 
 				return defaultBaseURL
@@ -142,6 +164,10 @@ actor DecodexServerBridge {
 	}
 
 	private func isLive(_ baseURL: URL) async -> Bool {
+		await probeServer(baseURL) == .live
+	}
+
+	private func probeServer(_ baseURL: URL) async -> DecodexServerProbe {
 		let url = baseURL.appendingPathComponent("livez")
 		var request = URLRequest(url: url)
 
@@ -149,11 +175,17 @@ actor DecodexServerBridge {
 
 		do {
 			let (data, response) = try await URLSession.shared.data(for: request)
+			guard let httpResponse = response as? HTTPURLResponse else {
+				return .reachable("non-HTTP response from /livez")
+			}
 			let body = String(decoding: data, as: UTF8.self)
+			if httpResponse.statusCode == 200 && body.trimmingCharacters(in: .whitespacesAndNewlines) == "ok" {
+				return .live
+			}
 
-			return (response as? HTTPURLResponse)?.statusCode == 200 && body == "ok"
+			return .reachable("/livez returned HTTP \(httpResponse.statusCode)")
 		} catch {
-			return false
+			return .unreachable
 		}
 	}
 
