@@ -1140,7 +1140,8 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("return projects.filter(projectHasActiveWork);"));
 	assert!(response.contains("project.queued_candidate_count ?? 0"));
 	assert!(response.contains("project.post_review_lane_count ?? 0"));
-	assert!(response.contains("return workCount > 0 || (project.warning_count ?? 0) > 0 || syncNeedsAttention;"));
+	assert!(response.contains("return workCount > 0;"));
+	assert!(!response.contains("syncNeedsAttention"));
 	assert!(!response.contains("project.retained_worktree_count ?? 0);"));
 	assert!(!response.contains("projectHasRecentActivity(project)"));
 	assert!(response.contains("class=\"project-activity\""));
@@ -1157,6 +1158,7 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("return { label: \"cleanup pending\", tone: \"tone-retained\""));
 	assert!(response.contains("label: \"sync backoff\""));
 	assert!(response.contains("label: \"sync degraded\""));
+	assert!(response.contains("label: \"sync degraded\", tone: \"tone-muted\""));
 	assert!(response.contains("return { label: \"ok\", tone: \"tone-ready\""));
 	assert!(!response.contains("function projectSyncMeta(project, health)"));
 	assert!(!response.contains("const connectorCopy = projectSyncMeta(project, health);"));
@@ -1326,7 +1328,8 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 	assert!(response.contains("? pluralize(retainedWorktrees.length, \"worktree\")"));
 	assert!(!response.contains("retained or cleanup"));
 	assert!(response.contains("function recoveryWorktreeShouldDefaultOpen(renderedWorktree)"));
-	assert!(response.contains("role.tone === \"tone-blocked\" || role.label.includes(\"cleanup\")"));
+	assert!(response.contains("role.tone === \"tone-blocked\""));
+	assert!(!response.contains("role.label.includes(\"cleanup\")"));
 	assert!(response.contains("label: isDirty ? \"post-review cleanup blocked\" : \"post-review cleanup\""));
 	assert!(response.contains("retainedWorktrees.some(recoveryWorktreeShouldDefaultOpen)"));
 	assert!(!response.contains("syncDefaultDetailOpenState(nodes.panels.worktrees, retainedWorktrees.length > 0);"));
