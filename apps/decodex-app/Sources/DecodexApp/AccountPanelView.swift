@@ -1117,6 +1117,7 @@ private enum AccountPrivacy {
 
 private enum AccountDisplay {
 	static let randomNames = [
+		"Alex",
 		"Avery",
 		"Bailey",
 		"Blake",
