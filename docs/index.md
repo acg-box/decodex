@@ -16,7 +16,7 @@ The split below is by question type, not by human-versus-agent audience.
   `~/.codex/decodex/projects/<service-id>/` when the question is about validation,
   tracker routing, or execution policy.
 - Read `plugins/decodex/skills/decodex/SKILL.md` when the question is how an agent
-  should use Decodex in manual CLI mode or runtime-owned automation mode.
+  should plan for Decodex, use manual CLI mode, or use runtime-owned automation mode.
 - Then choose one primary lane:
   - `docs/spec/index.md` when the question is "what must be true?"
   - `docs/runbook/index.md` when the question is "which sequence should I execute?"
