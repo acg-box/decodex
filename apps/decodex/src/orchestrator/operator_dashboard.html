@@ -6139,7 +6139,7 @@
 				}
 
 				function codexAccountPlanLabel(account) {
-					return account?.plan_type ? humanizeToken(account.plan_type) : "not reported";
+					return account?.plan_type ? humanizeToken(account.plan_type) : "-";
 				}
 
 				function codexAccountTokenLabel(refreshStatus) {
@@ -6297,9 +6297,9 @@
 					const distance = codexAccountResetDistance(data.resetAt);
 					if (resetAt === "unknown" && distance.short === "unknown") {
 						return {
-							short: "not reported",
+							short: "-",
 							date: "",
-							aria: "reset not reported",
+							aria: "reset unavailable",
 						};
 					}
 
@@ -6445,7 +6445,7 @@
 						return balance;
 					}
 					if (account.credits_has_credits === true) {
-						return "not reported";
+						return "-";
 					}
 
 					return null;
@@ -6515,18 +6515,18 @@
 					const data = codexAccountWindowData(account, prefix);
 					const label = codexAccountWindowLabel(data.windowSeconds);
 					const remaining =
-						data.remainingPercent == null ? "not reported" : `${data.remainingPercent}%`;
+						data.remainingPercent == null ? "-" : `${data.remainingPercent}%`;
 					const reset = codexAccountResetDisplay(data);
 					const windowTone = codexAccountWindowTone(data.remainingPercent);
 					const toneClass = windowTone ? ` is-${windowTone}` : "";
-					const isUnreported = data.remainingPercent == null && reset.short === "not reported";
+					const isUnreported = data.remainingPercent == null && reset.short === "-";
 					const resetTitle = `${label} ${remaining}, ${reset.aria}`;
 
 					if (isUnreported) {
 						return `
-							<div class="account-window is-${escapeHtml(prefix)}${toneClass}" aria-label="${escapeHtml(label)} usage not reported" title="${escapeHtml(resetTitle)}">
+							<div class="account-window is-${escapeHtml(prefix)}${toneClass}" aria-label="${escapeHtml(label)} usage unavailable" title="${escapeHtml(resetTitle)}">
 								<span class="account-window-label" aria-hidden="true">${escapeHtml(label)}</span>
-								<strong>not reported</strong>
+								<strong>-</strong>
 							</div>
 						`;
 					}
@@ -6570,7 +6570,7 @@
 							${renderCodexAccountPoolWindow(account, "secondary")}
 							<div class="account-row-credit${creditClass}">
 								<span>credits</span>
-								<strong>${escapeHtml(credits || "not reported")}</strong>
+								<strong>${escapeHtml(credits || "-")}</strong>
 							</div>
 							<div class="account-row-state">
 								<strong class="account-status">${escapeHtml(codexAccountStatusLabel(account))}</strong>
