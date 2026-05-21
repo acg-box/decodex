@@ -28,6 +28,7 @@ struct AppBridgeRequest: Encodable, Sendable {
 	let keepTempHome: Bool?
 	let includeUsage: Bool?
 	let forceRefresh: Bool?
+	let enabled: Bool?
 
 	enum CodingKeys: String, CodingKey {
 		case operation
@@ -36,6 +37,8 @@ struct AppBridgeRequest: Encodable, Sendable {
 		case codexBin = "codex_bin"
 		case keepTempHome = "keep_temp_home"
 		case includeUsage = "include_usage"
+		case forceRefresh = "force_refresh"
+		case enabled
 	}
 
 	static func accountList(forceRefresh: Bool = false) -> AppBridgeRequest {
@@ -64,6 +67,12 @@ struct AppBridgeRequest: Encodable, Sendable {
 		AppBridgeRequest(operation: "account_login", includeUsage: true)
 	}
 
+	static let codexFastModeStatus = AppBridgeRequest(operation: "codex_fast_mode_status")
+
+	static func codexFastModeSet(enabled: Bool) -> AppBridgeRequest {
+		AppBridgeRequest(operation: "codex_fast_mode_set", enabled: enabled)
+	}
+
 	private init(
 		operation: String,
 		selector: String? = nil,
@@ -71,7 +80,8 @@ struct AppBridgeRequest: Encodable, Sendable {
 		codexBin: String? = nil,
 		keepTempHome: Bool? = nil,
 		includeUsage: Bool? = nil,
-		forceRefresh: Bool? = nil
+		forceRefresh: Bool? = nil,
+		enabled: Bool? = nil
 	) {
 		self.operation = operation
 		self.selector = selector
@@ -80,6 +90,7 @@ struct AppBridgeRequest: Encodable, Sendable {
 		self.keepTempHome = keepTempHome
 		self.includeUsage = includeUsage
 		self.forceRefresh = forceRefresh
+		self.enabled = enabled
 	}
 }
 
@@ -192,7 +203,7 @@ struct DecodexAppBridge: Sendable {
 		if onOutput == nil, try request.serverRoute() != nil {
 			return try await DecodexServerBridge.shared.run(request, as: type)
 		}
-		guard request.operation == "account_login" else {
+		guard request.requiresHelper else {
 			throw DecodexAppBridgeError.invalidResponse(
 				"operation \(request.operation) must be served by Decodex server"
 			)
@@ -276,5 +287,16 @@ struct DecodexAppBridge: Sendable {
 		throw DecodexAppBridgeError.helperMissing(
 			"Bundled Decodex App helper is missing. Rebuild the app bundle with apps/decodex-app/script/build_and_run.sh."
 		)
+	}
+}
+
+private extension AppBridgeRequest {
+	var requiresHelper: Bool {
+		switch operation {
+		case "account_login", "codex_fast_mode_status", "codex_fast_mode_set":
+			return true
+		default:
+			return false
+		}
 	}
 }

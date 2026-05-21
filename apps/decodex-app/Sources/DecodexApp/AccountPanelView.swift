@@ -77,6 +77,12 @@ private enum PanelPalette {
 			: Color(red: 0.62, green: 0.36, blue: 0.14)
 	}
 
+	static func fastModeAccent(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color(red: 0.98, green: 0.84, blue: 0.48)
+			: Color(red: 0.42, green: 0.31, blue: 0.09)
+	}
+
 	static func destructive(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color(red: 1, green: 0.42, blue: 0.45)
@@ -318,6 +324,20 @@ struct AccountPanelView: View {
 						accountPrivacy = emailsHidden ? AccountPrivacy.visibleValue : AccountPrivacy.hiddenValue
 					},
 					help: emailsHidden ? "Show account emails" : "Hide account emails"
+				)
+
+				PanelIconButtonView(
+					symbol: store.fastModeEnabled ? "bolt.fill" : "bolt",
+					tint: PanelPalette.fastModeAccent(colorScheme),
+					isActive: store.fastModeEnabled,
+					isDisabled: store.isSettingFastMode,
+					size: 25,
+					action: {
+						Task {
+							await store.setFastMode(!store.fastModeEnabled)
+						}
+					},
+					help: store.fastModeEnabled ? "Turn fast mode off" : "Turn fast mode on"
 				)
 
 				if hasFixedSelection {
