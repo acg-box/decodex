@@ -25,7 +25,7 @@ should not be treated as repository source.
 | `artifacts/archive/` | Checked-in manifests for cold Radar archive batches stored as GitHub Release assets. |
 | `artifacts/social/` | Checked-in Publisher social post drafts and publication evidence. |
 | `dev/skills/` | Repository-development skills for Radar upstream triage, code analysis, release analysis, GitHub signal drafting, and X post drafting. These are not part of installable plugin distribution. |
-| `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including manual CLI, automation, commit, land, and labels. |
+| `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including planning, manual CLI, automation, commit, land, and labels. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |
@@ -46,7 +46,7 @@ The root `Cargo.toml` is a workspace manifest. It does not define a root package
 layout. Use package-qualified commands when invoking the runtime from the workspace root:
 
 ```sh
-cargo run -p decodex -- --help
+cargo run -p decodex --bin decodex -- --help
 cargo build -p decodex
 cargo install --path apps/decodex --force
 ```

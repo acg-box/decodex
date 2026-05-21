@@ -1,7 +1,7 @@
 {
   "name": "decodex",
   "version": "0.1.0",
-  "description": "Agent-facing workflows for using Decodex in manual CLI and runtime-owned automation modes.",
+  "description": "Agent-facing workflows for planning, using, and operating Decodex in manual CLI and runtime-owned automation modes.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Decodex",
     "shortDescription": "Use Decodex manually or as an automated retained-lane control plane.",
-    "longDescription": "Routes Codex agents through Decodex's two supported use modes: manual CLI development workflows such as commit, land, status, project registration, and dry runs; and runtime-owned automation workflows such as serve, registered project contracts, Linear labels, tracker tools, review handoff, landing, closeout, and operator status. The plugin keeps Decodex-specific instructions with the Decodex runtime instead of duplicating them in generic playbooks.",
+    "longDescription": "Routes Codex agents through Decodex's planning and usage surfaces: Decodex-friendly issue splitting, queue shaping, and concurrency; manual CLI development workflows such as commit, land, status, project registration, account selection, and dry runs; and runtime-owned automation workflows such as serve, registered project contracts, Linear labels, tracker tools, review handoff, landing, closeout, and operator status. The plugin keeps Decodex-specific instructions with the Decodex runtime instead of duplicating them in generic playbooks.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -33,6 +33,7 @@
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
       "Use Decodex to inspect this lane.",
+      "Split this feature into Decodex-friendly independent issues.",
       "Run the Decodex automation preflight.",
       "Land this PR through Decodex."
     ],
