@@ -22,7 +22,8 @@ runtime-owned retained-lane lifecycle.
 ## Command Surface
 
 Use the installed `decodex` binary when the operator is working from an installed
-runtime. Use `cargo run -p decodex -- ...` when developing this repository itself.
+runtime. Use `cargo run -p decodex --bin decodex -- ...` when developing this
+repository itself.
 
 Common manual checks and dry-run probes:
 
@@ -38,11 +39,11 @@ decodex archive-linear --repo-label repo:<name> --older-than-days 30
 Development equivalents from the Decodex repo root:
 
 ```sh
-cargo run -p decodex -- probe stdio://
-cargo run -p decodex -- project add "$HOME/.codex/decodex/projects/<service-id>"
-cargo run -p decodex -- status
-cargo run -p decodex -- run --dry-run
-cargo run -p decodex -- archive-linear --repo-label repo:<name> --older-than-days 30
+cargo run -p decodex --bin decodex -- probe stdio://
+cargo run -p decodex --bin decodex -- project add "$HOME/.codex/decodex/projects/<service-id>"
+cargo run -p decodex --bin decodex -- status
+cargo run -p decodex --bin decodex -- run --dry-run
+cargo run -p decodex --bin decodex -- archive-linear --repo-label repo:<name> --older-than-days 30
 ```
 
 Live `run` commands enter the runtime-owned automation path, even when an operator
@@ -51,8 +52,8 @@ starts one pass manually:
 ```sh
 decodex run
 decodex run <ISSUE>
-cargo run -p decodex -- run
-cargo run -p decodex -- run <ISSUE>
+cargo run -p decodex --bin decodex -- run
+cargo run -p decodex --bin decodex -- run <ISSUE>
 ```
 
 Before starting a live run, read the `automation` skill and the registered project's

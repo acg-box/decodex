@@ -27,8 +27,8 @@ Repo-native agent orchestration and public Codex signal publishing.
   signal drafting, and X post drafting.
 - Publisher workflow for checked-in upstream impact classification and reviewable X
   drafts for `@decodexspace`.
-- Installable Decodex plugin with reusable agent-facing skills for manual CLI,
-  automation, commit, land, and labels.
+- Installable Decodex plugin with reusable agent-facing skills for planning,
+  manual CLI, automation, commit, land, and labels.
 - Repository documentation split by question type into spec, runbook, reference, and
   decision lanes.
 
@@ -96,13 +96,13 @@ without publishing every low-level or skipped item to the static site or Git his
 From the workspace root:
 
 ```sh
-cargo run -p decodex -- --help
-cargo run -p decodex -- probe stdio://
-cargo run -p decodex -- project list
-cargo run -p decodex -- status
-cargo run -p decodex -- diagnose --json
-cargo run -p decodex -- run --dry-run
-cargo run -p decodex -- serve --interval 60s --listen-address 127.0.0.1:8912
+cargo run -p decodex --bin decodex -- --help
+cargo run -p decodex --bin decodex -- probe stdio://
+cargo run -p decodex --bin decodex -- project list
+cargo run -p decodex --bin decodex -- status
+cargo run -p decodex --bin decodex -- diagnose --json
+cargo run -p decodex --bin decodex -- run --dry-run
+cargo run -p decodex --bin decodex -- serve --interval 60s --listen-address 127.0.0.1:8912
 ```
 
 ### Install from Source
