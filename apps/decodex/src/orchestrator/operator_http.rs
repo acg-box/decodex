@@ -19,6 +19,7 @@ const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] = include_bytes!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../site/public/assets/logo-touch.png"
 ));
+const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[cfg(test)]
 static DASHBOARD_RUN_INTERRUPTER_FOR_TEST: Mutex<Option<DashboardRunInterrupterForTest>> =
@@ -211,8 +212,9 @@ fn handle_operator_state_endpoint_connection(
 	dashboard_events: &DashboardEventHub,
 	state_store: &Arc<StateStore>,
 ) -> Result<()> {
-	stream.set_read_timeout(Some(Duration::from_millis(250)))?;
-	stream.set_write_timeout(Some(Duration::from_millis(250)))?;
+	stream.set_nonblocking(false)?;
+	stream.set_read_timeout(Some(OPERATOR_HTTP_READ_TIMEOUT))?;
+	stream.set_write_timeout(None)?;
 
 	let request = read_operator_state_request_headers(&mut stream)?;
 	let route = match parse_operator_state_request_route(&request) {
