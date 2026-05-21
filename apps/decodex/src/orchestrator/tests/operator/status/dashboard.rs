@@ -1326,7 +1326,8 @@ fn operator_dashboard_flow_counts_distinguish_intake_attention() {
 	assert!(response.contains("? pluralize(retainedWorktrees.length, \"worktree\")"));
 	assert!(!response.contains("retained or cleanup"));
 	assert!(response.contains("function recoveryWorktreeShouldDefaultOpen(renderedWorktree)"));
-	assert!(response.contains("role.tone === \"tone-blocked\" || role.label.includes(\"cleanup\")"));
+	assert!(response.contains("role.tone === \"tone-blocked\""));
+	assert!(!response.contains("role.label.includes(\"cleanup\")"));
 	assert!(response.contains("label: isDirty ? \"post-review cleanup blocked\" : \"post-review cleanup\""));
 	assert!(response.contains("retainedWorktrees.some(recoveryWorktreeShouldDefaultOpen)"));
 	assert!(!response.contains("syncDefaultDetailOpenState(nodes.panels.worktrees, retainedWorktrees.length > 0);"));
