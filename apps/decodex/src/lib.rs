@@ -9,6 +9,7 @@ mod accounts;
 mod agent;
 mod archive_hygiene;
 mod cli;
+mod codex_config;
 mod commit_message;
 mod default_branch_sync;
 mod git_credentials;
