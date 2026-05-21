@@ -3441,7 +3441,6 @@
 			const ACCOUNT_IDENTITY_EDGE_CHARS = 6;
 			const ACCOUNT_IDENTITY_MIN_EDGE_CHARS = 3;
 			const ACCOUNT_RANDOM_NAMES = [
-				"Alex",
 				"Avery",
 				"Bailey",
 				"Blake",
@@ -4478,6 +4477,12 @@
 				return Array.isArray(accountApiSnapshot?.accounts)
 					? accountApiSnapshot.accounts.filter(Boolean)
 					: [];
+			}
+
+			function configuredDashboardAccounts(snapshot) {
+				return Array.isArray(snapshot?.accounts)
+					? [...accountApiAccounts(), ...snapshot.accounts.filter(Boolean)]
+					: accountApiAccounts();
 			}
 
 			function noteAccountApiSnapshot(response) {
@@ -5753,9 +5758,7 @@
 					return null;
 				}
 
-				const accounts = Array.isArray(snapshot.accounts)
-					? snapshot.accounts.filter(Boolean)
-					: [];
+				const accounts = configuredDashboardAccounts(snapshot);
 				if (!accounts.length) {
 					return null;
 				}
@@ -5840,6 +5843,52 @@
 						selector === codexAccountEmail(account) ||
 						selector === codexAccountFingerprint(account)
 					);
+				}
+
+				function configuredCodexAccountFor(account, snapshot) {
+					const identity = codexAccountIdentity(account);
+					const email = codexAccountEmail(account);
+					const fingerprint = codexAccountFingerprint(account);
+					if (!identity && !email && !fingerprint) {
+						return null;
+					}
+
+					return (
+						configuredDashboardAccounts(snapshot).find(
+							(candidate) =>
+								(identity && codexAccountIdentity(candidate) === identity) ||
+								(email && codexAccountEmail(candidate) === email) ||
+								(fingerprint && codexAccountFingerprint(candidate) === fingerprint),
+						) || null
+					);
+				}
+
+				function codexAccountDisplaySource(account, snapshot) {
+					const configured = configuredCodexAccountFor(account, snapshot);
+					if (!configured) {
+						return account;
+					}
+
+					const merged = { ...configured, ...account };
+					if (!String(merged.random_name || "").trim()) {
+						merged.random_name = configured.random_name;
+					}
+					if (!String(merged.random_name_key || "").trim()) {
+						merged.random_name_key = configured.random_name_key;
+					}
+					const accountOffset = account?.random_name_offset;
+					const accountHasOffset =
+						accountOffset != null &&
+						!(typeof accountOffset === "string" && !accountOffset.trim()) &&
+						Number.isInteger(Number(accountOffset));
+					if (
+						!accountHasOffset &&
+						Number.isInteger(Number(configured.random_name_offset))
+					) {
+						merged.random_name_offset = configured.random_name_offset;
+					}
+
+					return merged;
 				}
 
 				function accountSelectionConfirmationKey(action, selector) {
@@ -6136,6 +6185,17 @@
 					return identity
 						? compactAccountIdentity(identity)
 						: codexAccountDisplayName(account);
+				}
+
+				function codexAccountFallbackName(value) {
+					const selector = String(value || "").trim();
+					if (!selector) {
+						return "account";
+					}
+
+					return accountEmailsHidden
+						? codexAccountRandomName({ account_fingerprint: selector })
+						: compactAccountIdentity(selector);
 				}
 
 				function codexAccountPlanLabel(account) {
@@ -6638,7 +6698,7 @@
 						return `Fixed · ${label}`;
 					}
 
-					return `Fixed · ${accountEmailsHidden ? "account" : compactAccountIdentity(selector)}`;
+					return `Fixed · ${codexAccountFallbackName(selector)}`;
 				}
 
 				function renderAccountModeControl(snapshot) {
@@ -6678,9 +6738,10 @@
 						`;
 					}
 
-					const displayTitle = codexAccountDisplayTitle(account);
-					const visibleName = codexAccountVisibleName(account);
-					const identityClass = codexAccountShowsEmail(account) ? " is-machine" : "";
+					const displayAccount = codexAccountDisplaySource(account, snapshot);
+					const displayTitle = codexAccountDisplayTitle(displayAccount);
+					const visibleName = codexAccountVisibleName(displayAccount);
+					const identityClass = codexAccountShowsEmail(displayAccount) ? " is-machine" : "";
 					const pendingTitle = capturedAccount
 						? displayTitle
 						: `${displayTitle || visibleName} · run account capture pending`;
@@ -6718,9 +6779,7 @@
 
 				function codexAccountPoolAccounts(snapshot) {
 					const accountsByIdentity = new Map();
-					const configuredAccounts = Array.isArray(snapshot?.accounts)
-						? [...accountApiAccounts(), ...snapshot.accounts.filter(Boolean)]
-						: accountApiAccounts();
+					const configuredAccounts = configuredDashboardAccounts(snapshot);
 					const runs = [
 						...(snapshot?.active_runs ?? []).map((run) => [run, true]),
 						...(snapshot?.recent_runs ?? []).map((run) => [run, false]),
@@ -7468,7 +7527,17 @@
 
 			function runIssueTitle(run, derived) {
 				const issueRecord = runIssueRecord(run, derived);
-				return run.title || run.issue_title || issueRecord?.title || humanizeToken(run.current_operation || run.phase);
+				const operationFallback = humanizeToken(run.current_operation || run.phase);
+				const fallback = issueDisplayKey(run);
+
+				for (const value of [run.title, run.issue_title, issueRecord?.title]) {
+					const title = String(value || "").trim();
+					if (title && !(fallback !== "unknown" && title === operationFallback)) {
+						return title;
+					}
+				}
+
+				return fallback !== "unknown" ? fallback : operationFallback;
 			}
 
 			function runHealthText(run) {
@@ -9312,8 +9381,23 @@
 						merged[key] = snapshotRun[key];
 					}
 				}
+				if (
+					dashboardRunTitleIsOperationFallback(activityRun) &&
+					dashboardRunFieldHasValue(snapshotRun.title)
+				) {
+					merged.title = snapshotRun.title;
+				}
 
 				return merged;
+			}
+
+			function dashboardRunTitleIsOperationFallback(run) {
+				const title = String(run?.title || "").trim();
+				if (!title || issueDisplayKey(run) === "unknown") {
+					return false;
+				}
+
+				return title === humanizeToken(run?.current_operation || run?.phase);
 			}
 
 			function dashboardRunIdentityKeys(run) {
