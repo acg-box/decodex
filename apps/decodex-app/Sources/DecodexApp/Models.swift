@@ -138,7 +138,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		switch status {
 		case "available": return "Ready"
 		case "usage_limited": return "Limited"
-		case "probe_failed": return "Usage unknown"
+		case "probe_failed": return "-"
 		case "expired": return "Refresh needed"
 		case "disabled": return "Disabled"
 		case "cooldown": return "Cooling"
@@ -152,7 +152,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 			return .danger
 		}
 		if status == "probe_failed" {
-			return .warning
+			return .neutral
 		}
 		if codexActive {
 			return .codexActive
