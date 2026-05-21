@@ -8098,10 +8098,8 @@
 					(project.cleanup_blocked_count ?? 0) +
 					(project.cleanup_pending_count ?? 0) +
 					(project.post_review_lane_count ?? 0);
-				const connector = projectConnectorSummary(project);
-				const syncNeedsAttention = project.enabled && ["backoff", "degraded", "stale"].includes(connector);
 
-				return workCount > 0 || (project.warning_count ?? 0) > 0 || syncNeedsAttention;
+				return workCount > 0;
 			}
 
 			function activeProjects(projects) {
@@ -8124,6 +8122,9 @@
 				if ((project.cleanup_blocked_count ?? 0) > 0) {
 					return { label: "cleanup blocked", tone: "tone-wait", title: "Post-land cleanup needs operator action" };
 				}
+				if ((project.cleanup_pending_count ?? 0) > 0) {
+					return { label: "cleanup pending", tone: "tone-retained", title: "Post-land cleanup pending" };
+				}
 				if (project.connector_state === "backoff") {
 					return {
 						label: "sync backoff",
@@ -8135,14 +8136,7 @@
 					(project.warning_count ?? 0) > 0 ||
 					["degraded", "stale_cache"].includes(project.connector_state)
 				) {
-					if ((project.cleanup_pending_count ?? 0) > 0) {
-						return { label: "cleanup pending", tone: "tone-retained", title: "Post-land cleanup pending" };
-					}
-
-					return { label: "sync degraded", tone: "tone-wait", title: "Tracker sync or retry state degraded" };
-				}
-				if ((project.cleanup_pending_count ?? 0) > 0) {
-					return { label: "cleanup pending", tone: "tone-retained", title: "Post-land cleanup pending" };
+					return { label: "sync degraded", tone: "tone-muted", title: "Tracker sync or retry state degraded" };
 				}
 
 				return { label: "ok", tone: "tone-ready", title: "No project warnings" };
@@ -8458,13 +8452,13 @@
 				if ((project.cleanup_pending_count ?? 0) > 0) {
 					return 4;
 				}
-				if (["backoff", "degraded", "stale_cache"].includes(project.connector_state)) {
+				if (projectHasActiveWork(project)) {
 					return 5;
 				}
-				if ((project.warning_count ?? 0) > 0) {
+				if (["backoff", "degraded", "stale_cache"].includes(project.connector_state)) {
 					return 6;
 				}
-				if (projectHasActiveWork(project)) {
+				if ((project.warning_count ?? 0) > 0) {
 					return 7;
 				}
 
@@ -9165,7 +9159,7 @@
 			function recoveryWorktreeShouldDefaultOpen(renderedWorktree) {
 				const role = renderedWorktree.role;
 
-				return role.tone === "tone-blocked" || role.label.includes("cleanup");
+				return role.tone === "tone-blocked";
 			}
 
 			function renderWorktrees(snapshot) {
