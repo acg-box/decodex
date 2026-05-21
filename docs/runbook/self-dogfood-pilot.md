@@ -4,7 +4,7 @@ Goal: Run the `decodex` MVP against one target repository and a bounded set of q
 Read this when: You are preparing a dry run or live self-dogfood pilot and need the bounded operator procedure for config, target-repo requirements, and expected run behavior.
 Preconditions: `codex app-server` is available locally; `gh` is available locally for live PR-backed handoff validation, merge inspection, and retained branch cleanup; the target repository exists on disk; the project contract exists under `~/.codex/decodex/projects/<service-id>/`; referenced `WORKFLOW.md [context.read_first]` files exist in `[paths].repo_root`; the Linear team exposes the required workflow states; and the tracker and GitHub token env-var names are configured through `tracker.api_key_env_var` and `github.token_env_var` in the centralized project config.
 Depends on: `docs/spec/runtime.md`, `docs/spec/workflow-file.md`, `docs/spec/app-server.md`, the registered project `WORKFLOW.md`, and `Makefile.toml` for repo-native verification tasks.
-Verification: `cargo run -p decodex -- probe`; `cargo run -p decodex -- project add ~/.codex/decodex/projects/decodex`; `cargo run -p decodex -- project list`; `cargo run -p decodex -- run --dry-run`; and, when the environment is ready, `cargo run -p decodex -- run`.
+Verification: `cargo run -p decodex --bin decodex -- probe`; `cargo run -p decodex --bin decodex -- project add ~/.codex/decodex/projects/decodex`; `cargo run -p decodex --bin decodex -- project list`; `cargo run -p decodex --bin decodex -- run --dry-run`; and, when the environment is ready, `cargo run -p decodex --bin decodex -- run`.
 
 ## Alignment note
 
@@ -27,7 +27,7 @@ Verification: `cargo run -p decodex -- probe`; `cargo run -p decodex -- project 
 Recommended first-run check:
 
 ```sh
-cargo run -p decodex -- probe
+cargo run -p decodex --bin decodex -- probe
 ```
 
 If `decodex probe` does not return `PROBE_OK`, stop there. The orchestrator loop depends on the same direct `app-server` contract.
@@ -170,9 +170,9 @@ Use `decodex` itself as the first target repo and keep intake bounded by applyin
 Use dry run first to validate config loading, issue discovery, and worktree planning without mutating Linear or creating worktree directories.
 
 ```sh
-cargo run -p decodex -- project add ~/.codex/decodex/projects/decodex
-cargo run -p decodex -- project list
-cargo run -p decodex -- run --dry-run
+cargo run -p decodex --bin decodex -- project add ~/.codex/decodex/projects/decodex
+cargo run -p decodex --bin decodex -- project list
+cargo run -p decodex --bin decodex -- run --dry-run
 ```
 
 Expected behavior:
@@ -191,7 +191,7 @@ dry run: no Decodex project config supplied or registered; nothing to execute.
 ### Live run
 
 ```sh
-cargo run -p decodex -- run
+cargo run -p decodex --bin decodex -- run
 ```
 
 On a normal successful run, `decodex` will:
@@ -276,7 +276,7 @@ is still unmerged, use the normal reviewed lane checkout instead.
 After `probe`, `project add`, `run --dry-run`, and `run` all behave as expected, use `serve` for the long-running pilot loop:
 
 ```sh
-cargo run -p decodex -- serve --interval 60s
+cargo run -p decodex --bin decodex -- serve --interval 60s
 ```
 
 ### Installed-binary observer loop
@@ -570,7 +570,7 @@ Decodex is intentionally Unix-only, and the control plane relies on Unix file-de
 decodex serve --interval 60s --listen-address 127.0.0.1:8912
 ```
 
-The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `cargo run -p decodex -- status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as active queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
+The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `cargo run -p decodex --bin decodex -- status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as active queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
 
 - `GET /` or `GET /dashboard`: the same single-page operator console
 - `GET /dashboard/control`: WebSocket transport for snapshots, live run activity, and local dashboard control acknowledgements
@@ -648,8 +648,8 @@ git -C /absolute/path/to/hack-ink/decodex/.worktrees/XY-123 log --oneline --deco
 Before dropping to local storage internals, inspect the supported runtime surface:
 
 ```sh
-cargo run -p decodex -- status
-cargo run -p decodex -- status --json
+cargo run -p decodex --bin decodex -- status
+cargo run -p decodex --bin decodex -- status --json
 ```
 
 Use the human-readable view when you need the current leased run, lane worktree ownership, and session-history summary at a glance. Use `--json` when you want a machine-readable snapshot with stable identifiers such as `run_id`, `issue_id`, `thread_id`, `branch`, and repository-relative `worktree_path`.
@@ -712,9 +712,9 @@ Use the operator dashboard or `status` for run ids, attempts, and failure class;
 When changing `decodex` itself, keep the pilot path healthy with:
 
 ```sh
-cargo run -p decodex -- probe
-cargo run -p decodex -- project add ~/.codex/decodex/projects/decodex
-cargo run -p decodex -- run --dry-run
+cargo run -p decodex --bin decodex -- probe
+cargo run -p decodex --bin decodex -- project add ~/.codex/decodex/projects/decodex
+cargo run -p decodex --bin decodex -- run --dry-run
 cargo make fmt
 cargo make lint
 cargo make check
