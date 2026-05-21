@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import SwiftUI
 
-private enum PanelFont {
+enum PanelFont {
 	private static func text(
 		_ size: CGFloat,
 		weight: Font.Weight,
@@ -28,7 +28,7 @@ private enum PanelFont {
 	static let iconButton = text(11, weight: .semibold)
 }
 
-private enum PanelPalette {
+enum PanelPalette {
 	static func primaryText(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color(red: 0.95, green: 0.96, blue: 0.98).opacity(0.97)
@@ -102,7 +102,7 @@ private enum PanelPalette {
 	}
 }
 
-private enum PanelMotion {
+enum PanelMotion {
 	static let hover = Animation.interactiveSpring(response: 0.22, dampingFraction: 0.86, blendDuration: 0.04)
 	static let press = Animation.interactiveSpring(response: 0.16, dampingFraction: 0.78, blendDuration: 0.02)
 	static let state = Animation.interactiveSpring(response: 0.24, dampingFraction: 0.88, blendDuration: 0.05)
@@ -222,8 +222,9 @@ struct AccountPanelView: View {
 	@ObservedObject var store: AccountStore
 	@ObservedObject var loginWindowState: LoginWindowState
 	@Environment(\.colorScheme) private var colorScheme
-	@Environment(\.openWindow) private var openWindow
 	@State private var pendingLogout: CodexAccount?
+	@State private var armedLogoutAccountID: String?
+	@State private var logoutArmToken = UUID()
 	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hiddenValue
 
 	var body: some View {
@@ -243,13 +244,15 @@ struct AccountPanelView: View {
 				set: { visible in
 					if !visible {
 						pendingLogout = nil
+						disarmLogout()
 					}
 				}
 			),
 			titleVisibility: .visible
 		) {
 			if let account = pendingLogout {
-				Button("Log Out \(displayName(for: account))", role: .destructive) {
+				Button("Remove \(displayName(for: account))", role: .destructive) {
+					disarmLogout()
 					Task {
 						await store.logout(account)
 					}
@@ -259,6 +262,10 @@ struct AccountPanelView: View {
 			if let account = pendingLogout {
 				Text("This removes \(displayName(for: account)) from the Decodex account pool on this Mac.")
 			}
+		}
+		.background {
+			LoginPanelPresenter(store: store, state: loginWindowState)
+				.frame(width: 0, height: 0)
 		}
 	}
 
@@ -362,7 +369,7 @@ struct AccountPanelView: View {
 					isPrimary: true,
 					size: 25,
 					action: {
-						presentLogin(.add)
+						presentLogin(.newAccount)
 					},
 					help: "Add login"
 				)
@@ -455,6 +462,7 @@ struct AccountPanelView: View {
 					account: account,
 					emailsHidden: emailsHidden,
 					showsDivider: index < store.accounts.count - 1,
+					isLogoutArmed: armedLogoutAccountID == account.id,
 					useInCodex: {
 						Task {
 							await store.useInCodex(account)
@@ -465,11 +473,11 @@ struct AccountPanelView: View {
 							await store.select(account)
 						}
 					},
-					reauthenticate: {
-						presentLogin(.reauth(displayName(for: account)))
+					login: {
+						presentLogin(.account(displayName(for: account)))
 					},
 					logout: {
-						pendingLogout = account
+						requestLogout(account)
 					}
 				)
 			}
@@ -559,11 +567,42 @@ struct AccountPanelView: View {
 		}
 	}
 
+	private func requestLogout(_ account: CodexAccount) {
+		if armedLogoutAccountID == account.id {
+			pendingLogout = account
+			disarmLogout()
+			return
+		}
+
+		let token = UUID()
+		logoutArmToken = token
+		withAnimation(PanelMotion.state) {
+			armedLogoutAccountID = account.id
+		}
+
+		Task { @MainActor in
+			try? await Task.sleep(nanoseconds: 2_400_000_000)
+			guard logoutArmToken == token, armedLogoutAccountID == account.id else {
+				return
+			}
+			withAnimation(PanelMotion.state) {
+				armedLogoutAccountID = nil
+			}
+		}
+	}
+
+	private func disarmLogout() {
+		logoutArmToken = UUID()
+		withAnimation(PanelMotion.state) {
+			armedLogoutAccountID = nil
+		}
+	}
+
 	private func presentLogin(_ mode: AccountLoginSheetMode) {
 		loginWindowState.mode = mode
 		store.resetLoginSession()
 		NSApp.activate(ignoringOtherApps: true)
-		openWindow(id: DecodexWindowID.login)
+		loginWindowState.isPresented = true
 	}
 }
 
@@ -571,9 +610,10 @@ struct AccountRowView: View {
 	let account: CodexAccount
 	let emailsHidden: Bool
 	let showsDivider: Bool
+	let isLogoutArmed: Bool
 	let useInCodex: () -> Void
 	let routeRunsHere: () -> Void
-	let reauthenticate: () -> Void
+	let login: () -> Void
 	let logout: () -> Void
 	@Environment(\.colorScheme) private var colorScheme
 
@@ -624,8 +664,8 @@ struct AccountRowView: View {
 							isActive: false,
 							isPrimary: true,
 							size: 21,
-							action: reauthenticate,
-							help: "Re-authenticate account"
+							action: login,
+							help: "Login account"
 						)
 					} else {
 						PanelIconButtonView(
@@ -654,15 +694,16 @@ struct AccountRowView: View {
 					)
 
 					PanelIconButtonView(
-						symbol: "trash",
+						symbol: isLogoutArmed ? "trash.fill" : "trash",
 						tint: PanelPalette.destructive(colorScheme),
-						isActive: false,
+						isActive: isLogoutArmed,
 						isDestructive: true,
-						isSubtle: true,
+						isSubtle: !isLogoutArmed,
 						size: 21,
 						action: logout,
-						help: "Remove account"
+						help: isLogoutArmed ? "Click again to confirm removal" : "Remove account"
 					)
+					.modifier(DeleteArmedShakeModifier(isArmed: isLogoutArmed))
 				}
 			}
 
@@ -685,6 +726,7 @@ struct AccountRowView: View {
 		}
 		.animation(PanelMotion.state, value: account.selected)
 		.animation(PanelMotion.state, value: account.codexActive)
+		.animation(PanelMotion.state, value: isLogoutArmed)
 	}
 
 	private var displayName: String {
@@ -696,7 +738,7 @@ struct AccountRowView: View {
 			return "Restore balanced run routing"
 		}
 		if account.needsLogin {
-			return "Re-authenticate before routing runs"
+			return "Login before routing runs"
 		}
 		if account.disabled {
 			return "Disabled account cannot route runs"
@@ -1130,6 +1172,36 @@ struct PanelIconButtonView: View {
 	}
 }
 
+private struct DeleteArmedShakeModifier: ViewModifier {
+	let isArmed: Bool
+	@State private var shakeTrigger = 0
+
+	func body(content: Content) -> some View {
+		content
+			.modifier(DeleteShakeEffect(animatableData: CGFloat(shakeTrigger)))
+			.scaleEffect(isArmed ? 1.045 : 1)
+			.onChange(of: isArmed) { _, armed in
+				guard armed else {
+					return
+				}
+				withAnimation(.linear(duration: 0.42)) {
+					shakeTrigger += 1
+				}
+			}
+	}
+}
+
+private struct DeleteShakeEffect: GeometryEffect {
+	var travel: CGFloat = 1.8
+	var shakesPerUnit: CGFloat = 3
+	var animatableData: CGFloat
+
+	func effectValue(size: CGSize) -> ProjectionTransform {
+		let xOffset = travel * sin(animatableData * .pi * shakesPerUnit * 2)
+		return ProjectionTransform(CGAffineTransform(translationX: xOffset, y: 0))
+	}
+}
+
 private enum AccountPrivacy {
 	static let hiddenValue = "hidden"
 	static let visibleValue = "visible"
@@ -1240,14 +1312,14 @@ private enum AccountDisplay {
 	}
 }
 
-private enum GlassSurfaceDepth {
+enum GlassSurfaceDepth {
 	case panel
 	case section
 	case row
 	case control
 }
 
-private extension View {
+extension View {
 	func modernGlassSurface(
 		cornerRadius: CGFloat,
 		depth: GlassSurfaceDepth = .section
@@ -1261,7 +1333,7 @@ private extension View {
 	}
 }
 
-private struct ModernGlassSurfaceModifier: ViewModifier {
+struct ModernGlassSurfaceModifier: ViewModifier {
 	@Environment(\.colorScheme) private var colorScheme
 	let cornerRadius: CGFloat
 	let depth: GlassSurfaceDepth
@@ -1286,12 +1358,33 @@ private struct ModernGlassSurfaceModifier: ViewModifier {
 
 	@available(macOS 26.0, *)
 	private var configuredGlass: Glass {
-		var glass = Glass.clear
+		var glass = Glass.regular.tint(glassTint)
 		if depth == .control {
 			glass = glass.interactive()
 		}
 
 		return glass
+	}
+
+	private var glassTint: Color? {
+		switch depth {
+		case .panel:
+			return colorScheme == .dark
+				? Color(red: 0.66, green: 0.74, blue: 0.86).opacity(0.06)
+				: Color.white.opacity(0.05)
+		case .section:
+			return colorScheme == .dark
+				? Color(red: 0.72, green: 0.8, blue: 0.92).opacity(0.1)
+				: Color.white.opacity(0.08)
+		case .row:
+			return colorScheme == .dark
+				? Color(red: 0.7, green: 0.78, blue: 0.9).opacity(0.08)
+				: Color.white.opacity(0.06)
+		case .control:
+			return colorScheme == .dark
+				? Color(red: 0.78, green: 0.86, blue: 0.98).opacity(0.14)
+				: Color.white.opacity(0.11)
+		}
 	}
 
 	private var materialStyle: AnyShapeStyle {
