@@ -1737,7 +1737,7 @@ private extension CodexAccount {
 		case "usage_limited":
 			return "Limited"
 		case "probe_failed":
-			return "Usage unknown"
+			return "-"
 		case "expired":
 			return "Refresh needed"
 		case "disabled":
