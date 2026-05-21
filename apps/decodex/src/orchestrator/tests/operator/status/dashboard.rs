@@ -13,6 +13,25 @@ fn dashboard_response() -> String {
 }
 
 #[test]
+fn operator_app_snapshot_endpoint_returns_json() {
+	let response = String::from_utf8(
+		orchestrator::build_operator_state_http_response(
+			format!(
+				"GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+				orchestrator::OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH
+			)
+			.as_bytes(),
+		)
+		.expect("app snapshot response should build"),
+	)
+	.expect("app snapshot response should be utf-8");
+
+	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+	assert!(response.contains("Content-Type: application/json\r\n"));
+	assert!(response.ends_with("\r\n\r\n{}"));
+}
+
+#[test]
 fn operator_dashboard_background_wash_stays_viewport_fixed() {
 	let response = dashboard_response();
 
