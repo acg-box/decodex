@@ -791,7 +791,7 @@ fn operator_dashboard_accounts_keeps_identity_rows_compact() {
 	assert!(response.contains("text-align: center;"));
 	assert!(response.contains("function codexAccountPlanLabel(account)"));
 	assert!(response.contains(
-		"return account?.plan_type ? humanizeToken(account.plan_type) : \"not reported\";"
+		"return account?.plan_type ? humanizeToken(account.plan_type) : \"-\";"
 	));
 	assert!(response.contains("const plan = codexAccountPlanLabel(account);"));
 	assert!(response.contains("const identityClass = codexAccountShowsEmail(account) ? \" is-machine\" : \"\";"));
@@ -921,7 +921,7 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(response.contains("const credits = codexAccountCreditsSummary(account);"));
 	assert!(response.contains("const creditTone = codexAccountCreditsTone(account);"));
 	assert!(response.contains("<span>credits</span>"));
-	assert!(response.contains("<strong>${escapeHtml(credits || \"not reported\")}</strong>"));
+	assert!(response.contains("<strong>${escapeHtml(credits || \"-\")}</strong>"));
 
 	let account_credit_index = response
 		.find("<div class=\"account-row-credit${creditClass}\">")
@@ -937,7 +937,7 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(response.contains("return \"Ready\";"));
 	assert!(response.contains("return \"Refresh failed\";"));
 	assert!(response.contains("return codexAccountTokenValue(account.refresh_status);"));
-	assert!(response.contains("return \"not reported\";"));
+	assert!(response.contains("return \"-\";"));
 	assert!(!response.contains("depleted"));
 	assert!(response.contains("rate_limit_reached_type"));
 	assert!(response.contains("if (normalizedStatus === \"available\")"));
@@ -957,10 +957,10 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(response.contains("return { short, phrase: `resets in ${short}`, isPast: false };"));
 	assert!(response.contains("date: \"\","));
 	assert!(response.contains("date: resetAt,"));
-	assert!(response.contains("aria: \"reset not reported\","));
+	assert!(response.contains("aria: \"reset unavailable\","));
 	assert!(response.contains("reset at ${resetAt}, ${distance.phrase}"));
-	assert!(response.contains("data.remainingPercent == null ? \"not reported\" : `${data.remainingPercent}%`;"));
-	assert!(response.contains("aria-label=\"${escapeHtml(label)} usage not reported\""));
+	assert!(response.contains("data.remainingPercent == null ? \"-\" : `${data.remainingPercent}%`;"));
+	assert!(response.contains("aria-label=\"${escapeHtml(label)} usage unavailable\""));
 	assert!(response.contains("const resetTitle = `${label} ${remaining}, ${reset.aria}`;"));
 	assert!(response.contains("<span class=\"account-window-reset\">${escapeHtml(reset.short)}</span>"));
 	assert!(response.contains("${reset.date ? `<span class=\"account-window-date\">${escapeHtml(reset.date)}</span>` : \"\"}"));
