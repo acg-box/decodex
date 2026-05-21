@@ -38,19 +38,20 @@ decodex serve --interval 60s
 From the Decodex repo while developing the runtime:
 
 ```sh
-cargo run -p decodex -- probe stdio://
-cargo run -p decodex -- project add "$HOME/.codex/decodex/projects/<service-id>"
-cargo run -p decodex -- status
-cargo run -p decodex -- run --dry-run
-cargo run -p decodex -- run
-cargo run -p decodex -- serve --interval 60s
+cargo run -p decodex --bin decodex -- probe stdio://
+cargo run -p decodex --bin decodex -- project add "$HOME/.codex/decodex/projects/<service-id>"
+cargo run -p decodex --bin decodex -- status
+cargo run -p decodex --bin decodex -- run --dry-run
+cargo run -p decodex --bin decodex -- run
+cargo run -p decodex --bin decodex -- serve --interval 60s
 ```
 
-Use `decodex serve --config <project-dir>` or `cargo run -p decodex -- serve --config
-<project-dir>` when the operator wants to register that project and start the scheduler
-in one command.
-Use `decodex run <ISSUE>` or `cargo run -p decodex -- run <ISSUE>` only for a deliberate one-issue
-automation pass; it still uses the same retained-lane eligibility and lifecycle rules.
+Use `decodex serve --config <project-dir>` or
+`cargo run -p decodex --bin decodex -- serve --config <project-dir>` when the operator
+wants to register that project and start the scheduler in one command.
+Use `decodex run <ISSUE>` or `cargo run -p decodex --bin decodex -- run <ISSUE>` only
+for a deliberate one-issue automation pass; it still uses the same retained-lane
+eligibility and lifecycle rules.
 
 ## Intake and Ownership
 
