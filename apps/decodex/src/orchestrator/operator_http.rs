@@ -304,9 +304,9 @@ fn build_operator_app_snapshot_http_response(snapshot: &Arc<Mutex<PublishedOpera
 			b"{}",
 		);
 	};
-
 	let body = snapshot_json_with_live_account_control(snapshot_json);
 	let mut headers = vec![("Cache-Control", String::from("no-store"))];
+
 	if let Some(published_at) = snapshot.last_publish_unix_epoch {
 		headers.push(("X-Decodex-Snapshot-Unix-Epoch", published_at.to_string()));
 	}
