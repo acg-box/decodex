@@ -9165,7 +9165,7 @@
 			function recoveryWorktreeShouldDefaultOpen(renderedWorktree) {
 				const role = renderedWorktree.role;
 
-				return role.tone === "tone-blocked" || role.label.includes("cleanup");
+				return role.tone === "tone-blocked";
 			}
 
 			function renderWorktrees(snapshot) {
