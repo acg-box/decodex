@@ -3410,7 +3410,6 @@
 			const FOLD_PANEL_ANIMATION_MS = 220;
 			const THEME_STORAGE_KEY = "decodex.operator.theme";
 			const ACCOUNT_PRIVACY_STORAGE_KEY = "decodex.operator.accountPrivacy";
-			const ACCOUNT_NAME_OFFSET_STORAGE_KEY = "decodex.operator.accountNameOffsets";
 			const ACCOUNT_POOL_SORT_STORAGE_KEY = "decodex.operator.accountSort";
 			const PROJECT_FILTER_STORAGE_KEY = "decodex.operator.projectFilter";
 			const PROJECT_LOCATION_PRIVACY_STORAGE_KEY = "decodex.operator.projectLocationPrivacy";
@@ -3441,6 +3440,7 @@
 			const ACCOUNT_IDENTITY_EDGE_CHARS = 6;
 			const ACCOUNT_IDENTITY_MIN_EDGE_CHARS = 3;
 			const ACCOUNT_RANDOM_NAMES = [
+				"Alex",
 				"Avery",
 				"Bailey",
 				"Blake",
@@ -3556,11 +3556,10 @@
 			const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 			let themeSelection = loadThemeSelection();
 			let accountEmailsHidden = loadAccountPrivacy();
-			let accountNameOffsets = loadAccountNameOffsets();
+			let pendingAccountNameOffsets = {};
 			let accountApiSnapshot = null;
 			let accountApiRefreshInFlight = false;
 			let accountApiRefreshedAt = 0;
-			const pendingAccountNameOffsetSyncs = new Set();
 			let accountPoolSort = loadAccountPoolSort();
 			let accountSelectionConfirmation = null;
 			let projectFilterMode = loadProjectFilterMode();
@@ -4426,36 +4425,6 @@
 					window.localStorage.setItem(
 						ACCOUNT_PRIVACY_STORAGE_KEY,
 						hidden ? "hidden" : "visible",
-					);
-				} catch (_error) {
-					/* Ignore storage failures and continue with the in-memory choice. */
-				}
-			}
-
-			function loadAccountNameOffsets() {
-				try {
-					const stored = window.localStorage.getItem(ACCOUNT_NAME_OFFSET_STORAGE_KEY);
-					const parsed = stored ? JSON.parse(stored) : {};
-					if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-						return {};
-					}
-
-					return Object.fromEntries(
-						Object.entries(parsed)
-							.map(([key, value]) => [key, Number(value)])
-							.filter(([key, value]) => key && Number.isInteger(value))
-							.map(([key, value]) => [key, normalizeAccountNameOffset(value)]),
-					);
-				} catch (_error) {
-					return {};
-				}
-			}
-
-			function persistAccountNameOffsets() {
-				try {
-					window.localStorage.setItem(
-						ACCOUNT_NAME_OFFSET_STORAGE_KEY,
-						JSON.stringify(accountNameOffsets),
 					);
 				} catch (_error) {
 					/* Ignore storage failures and continue with the in-memory choice. */
@@ -6049,13 +6018,13 @@
 					return codexAccountIdentityHash(identity).toString(16).padStart(8, "0");
 				}
 
-				function codexAccountStoredRandomNameOffset(account) {
+				function codexAccountPendingRandomNameOffset(account) {
 					const key = codexAccountRandomNameKey(account);
-					if (!Object.prototype.hasOwnProperty.call(accountNameOffsets, key)) {
+					if (!Object.prototype.hasOwnProperty.call(pendingAccountNameOffsets, key)) {
 						return null;
 					}
 
-					return normalizeAccountNameOffset(accountNameOffsets[key]);
+					return normalizeAccountNameOffset(pendingAccountNameOffsets[key]);
 				}
 
 				function codexAccountServerRandomNameOffset(account) {
@@ -6066,16 +6035,16 @@
 
 				function codexAccountRandomNameOffset(account) {
 					return (
-						codexAccountStoredRandomNameOffset(account) ??
+						codexAccountPendingRandomNameOffset(account) ??
 						codexAccountServerRandomNameOffset(account) ??
 						0
 					);
 				}
 
 				function codexAccountRandomName(account) {
-					const storedOffset = codexAccountStoredRandomNameOffset(account);
+					const pendingOffset = codexAccountPendingRandomNameOffset(account);
 					const serverName = String(account?.random_name || "").trim();
-					if (storedOffset == null && serverName) {
+					if (pendingOffset == null && serverName) {
 						return serverName;
 					}
 
@@ -6089,35 +6058,6 @@
 						(hash + codexAccountRandomNameOffset(account)) % ACCOUNT_RANDOM_NAMES.length;
 
 					return ACCOUNT_RANDOM_NAMES[index];
-				}
-
-				function syncStoredAccountNameOffsets(accounts) {
-					for (const account of accounts) {
-						const key = codexAccountRandomNameKey(account);
-						const storedOffset = codexAccountStoredRandomNameOffset(account);
-						const serverOffset = codexAccountServerRandomNameOffset(account) ?? 0;
-						if (
-							storedOffset == null ||
-							storedOffset === serverOffset ||
-							pendingAccountNameOffsetSyncs.has(key)
-						) {
-							continue;
-						}
-
-						pendingAccountNameOffsetSyncs.add(key);
-						postAccountNameOffset(account, storedOffset)
-							.then((updated) => {
-								if (updated) {
-									delete accountNameOffsets[key];
-									persistAccountNameOffsets();
-									if (lastDashboardRender) {
-										renderDashboardState(lastDashboardRender);
-									}
-								}
-							})
-							.catch(() => {})
-							.finally(() => pendingAccountNameOffsetSyncs.delete(key));
-					}
 				}
 
 				function codexAccountShowsEmail(account) {
@@ -6921,7 +6861,6 @@
 
 				function renderAccountPool(snapshot) {
 					const accounts = codexAccountPoolAccounts(snapshot);
-					syncStoredAccountNameOffsets(accounts);
 					renderAccountModeControl(snapshot);
 					renderStableList(nodes.accountPool, renderCodexAccountPool(accounts, snapshot));
 					syncAccountSelectionConfirmationDom();
@@ -9896,13 +9835,12 @@
 					: null;
 				const current = account
 					? codexAccountRandomNameOffset(account)
-					: normalizeAccountNameOffset(accountNameOffsets[key]);
+					: normalizeAccountNameOffset(pendingAccountNameOffsets[key]);
 				const next = normalizeAccountNameOffset(current + 1);
-				accountNameOffsets = {
-					...accountNameOffsets,
+				pendingAccountNameOffsets = {
+					...pendingAccountNameOffsets,
 					[key]: next,
 				};
-				persistAccountNameOffsets();
 				if (lastDashboardRender) {
 					renderDashboardState(lastDashboardRender);
 				}
@@ -9910,8 +9848,7 @@
 					postAccountNameOffset(account, next)
 						.then((updated) => {
 							if (updated) {
-								delete accountNameOffsets[key];
-								persistAccountNameOffsets();
+								delete pendingAccountNameOffsets[key];
 								if (lastDashboardRender) {
 									renderDashboardState(lastDashboardRender);
 								}

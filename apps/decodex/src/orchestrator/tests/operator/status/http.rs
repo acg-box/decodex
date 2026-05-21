@@ -1413,7 +1413,7 @@ fn operator_state_endpoint_persists_account_random_name_offset() {
 
 	assert_eq!(data["accounts"][0]["random_name_offset"], 1);
 	assert_eq!(data["accounts"][0]["random_name_key"], "df65f796");
-	assert_eq!(data["accounts"][0]["random_name"], "Taylor");
+	assert_eq!(data["accounts"][0]["random_name"], "Logan");
 	assert!(
 		fs::read_to_string(accounts_dir.join("config.toml"))
 			.expect("global config should read")
