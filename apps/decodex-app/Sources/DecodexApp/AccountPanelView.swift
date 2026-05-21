@@ -791,7 +791,7 @@ struct AccountUsageMeterView: View {
 
 	private var remainingText: String {
 		guard let remainingPercent else {
-			return "n/a"
+			return "-"
 		}
 
 		return "\(remainingPercent)%"
@@ -878,9 +878,9 @@ private struct UsageResetDisplay {
 	static func make(resetAtUnixEpoch: Int?) -> UsageResetDisplay {
 		guard let seconds = resetAtUnixEpoch, seconds > 0 else {
 			return UsageResetDisplay(
-				short: "not reported",
+				short: "-",
 				date: "",
-				accessibility: "reset not reported"
+				accessibility: "reset unavailable"
 			)
 		}
 
