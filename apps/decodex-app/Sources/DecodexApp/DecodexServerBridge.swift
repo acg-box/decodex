@@ -23,6 +23,12 @@ actor DecodexServerBridge {
 	private var liveCheckedAt: Date?
 	private var startedProcess: Process?
 
+	func dashboardURL() async throws -> URL {
+		let baseURL = try await ensureServer()
+
+		return baseURL.appendingPathComponent("dashboard")
+	}
+
 	func run<T: Decodable & Sendable>(_ request: AppBridgeRequest, as type: T.Type) async throws -> T {
 		guard let route = try request.serverRoute() else {
 			throw DecodexAppBridgeError.invalidResponse("request is not supported by Decodex server")
@@ -266,6 +272,8 @@ extension AppBridgeRequest {
 			return try jsonPost("api/accounts/import")
 		case "account_use":
 			return try jsonPost("api/accounts/use")
+		case "operator_snapshot":
+			return ServerRoute(method: "GET", path: "api/operator-snapshot", body: nil)
 		default:
 			return nil
 		}

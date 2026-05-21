@@ -32,6 +32,7 @@ enum OperatorRequestRoute {
 	DashboardLogoTouchPng,
 	DashboardWs,
 	Live,
+	AppSnapshot,
 	AccountList { force_refresh: bool },
 	AccountSelect,
 	AccountClear,
@@ -230,6 +231,13 @@ fn handle_operator_state_endpoint_connection(
 
 		return Ok(());
 	}
+	if route == OperatorRequestRoute::AppSnapshot {
+		let response = build_operator_app_snapshot_http_response(snapshot);
+
+		stream.write_all(&response)?;
+
+		return Ok(());
+	}
 	if route == OperatorRequestRoute::DashboardWs {
 		handle_operator_dashboard_websocket_connection(
 			stream,
@@ -275,6 +283,35 @@ fn snapshot_json_with_live_account_control(snapshot_json: &[u8]) -> Vec<u8> {
 		Ok(output) => output,
 		Err(_) => snapshot_json.to_vec(),
 	}
+}
+
+fn build_operator_app_snapshot_http_response(snapshot: &Arc<Mutex<PublishedOperatorSnapshot>>) -> Vec<u8> {
+	let snapshot = match snapshot.lock() {
+		Ok(snapshot) => snapshot,
+		Err(error) => {
+			return http_response_bytes(
+				"500 Internal Server Error",
+				"text/plain; charset=utf-8",
+				format!("operator snapshot lock poisoned: {error}").as_bytes(),
+			);
+		},
+	};
+	let Some(snapshot_json) = snapshot.snapshot_json.as_deref() else {
+		return http_response_bytes_with_headers(
+			"200 OK",
+			"application/json",
+			&[("Cache-Control", String::from("no-store"))],
+			b"{}",
+		);
+	};
+
+	let body = snapshot_json_with_live_account_control(snapshot_json);
+	let mut headers = vec![("Cache-Control", String::from("no-store"))];
+	if let Some(published_at) = snapshot.last_publish_unix_epoch {
+		headers.push(("X-Decodex-Snapshot-Unix-Epoch", published_at.to_string()));
+	}
+
+	http_response_bytes_with_headers("200 OK", "application/json", &headers, &body)
 }
 
 fn handle_operator_dashboard_websocket_connection(
@@ -1547,6 +1584,9 @@ fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> 
 			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG)
 		},
 		OperatorRequestRoute::DashboardWs => websocket_upgrade_required_response(),
+		OperatorRequestRoute::AppSnapshot => {
+			http_response_bytes("200 OK", "application/json", b"{}")
+		},
 		OperatorRequestRoute::Live => {
 			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok")
 		},
@@ -1604,6 +1644,7 @@ fn parse_operator_state_request_route(
 		("GET", "/assets/logo-touch.png") => Ok(OperatorRequestRoute::DashboardLogoTouchPng),
 		("GET", OPERATOR_DASHBOARD_WS_ENDPOINT_PATH) => Ok(OperatorRequestRoute::DashboardWs),
 		("GET", OPERATOR_LIVE_ENDPOINT_PATH) => Ok(OperatorRequestRoute::Live),
+		("GET", OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AppSnapshot),
 		("GET", OPERATOR_ACCOUNTS_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AccountList {
 			force_refresh: operator_query_has_flag(query, "refresh"),
 		}),
@@ -1617,6 +1658,7 @@ fn parse_operator_state_request_route(
 			| OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH
 			| OPERATOR_DASHBOARD_WS_ENDPOINT_PATH
 			| OPERATOR_LIVE_ENDPOINT_PATH
+			| OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH
 			| OPERATOR_ACCOUNTS_ENDPOINT_PATH
 			| "/api/accounts/select"
 			| "/api/accounts/clear"

@@ -274,6 +274,14 @@ struct AccountPanelView: View {
 			header
 			accountSummary
 
+			if let snapshot = store.operatorSnapshot, snapshot.shouldDisplayInPanel {
+				OperatorStatusStripView(
+					snapshot: snapshot,
+					updatedAt: store.operatorSnapshotUpdatedAt,
+					refreshIntervalSeconds: AccountStore.operatorSnapshotRefreshIntervalSeconds
+				)
+			}
+
 			if let notice = store.notice {
 				NoticeView(text: notice)
 			}
@@ -318,9 +326,11 @@ struct AccountPanelView: View {
 					.font(PanelFont.headerSubtitle)
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 					.lineLimit(1)
+					.minimumScaleFactor(0.9)
 			}
+			.layoutPriority(1)
 
-			Spacer()
+			Spacer(minLength: 4)
 
 			HStack(spacing: 5) {
 				PanelIconButtonView(
@@ -345,6 +355,18 @@ struct AccountPanelView: View {
 						}
 					},
 					help: store.fastModeEnabled ? "Turn fast mode off" : "Turn fast mode on"
+				)
+
+				PanelIconButtonView(
+					symbol: "safari",
+					tint: PanelPalette.actionBlue(colorScheme),
+					isActive: false,
+					action: {
+						Task {
+							await store.openWebUI()
+						}
+					},
+					help: "Open Decodex WebUI"
 				)
 
 				if hasFixedSelection {
@@ -458,8 +480,12 @@ struct AccountPanelView: View {
 	private var accountRows: some View {
 		VStack(spacing: 0) {
 			ForEach(Array(store.accounts.enumerated()), id: \.element.id) { index, account in
+				let runs = operatorRuns(for: account)
+
 				AccountRowView(
 					account: account,
+					runs: runs,
+					runCount: operatorRunCount(for: account),
 					emailsHidden: emailsHidden,
 					showsDivider: index < store.accounts.count - 1,
 					isLogoutArmed: armedLogoutAccountID == account.id,
@@ -537,7 +563,7 @@ struct AccountPanelView: View {
 
 	private var accountListHeight: CGFloat {
 		let rows = store.accounts.reduce(CGFloat(0)) { total, account in
-			total + (account.hasUsageSummary ? 98 : 46)
+			total + accountRowHeight(for: account)
 		}
 		let spacing = CGFloat(max(store.accounts.count - 1, 0)) * 5 + 2
 
@@ -550,7 +576,7 @@ struct AccountPanelView: View {
 	private var headerSubtitle: String {
 		let count = store.accounts.count
 		let accountLabel = "\(count) account\(count == 1 ? "" : "s")"
-		return hasFixedSelection ? "\(accountLabel) / run route set" : "\(accountLabel) / balanced runs"
+		return hasFixedSelection ? "\(accountLabel) / routed" : "\(accountLabel) / balanced"
 	}
 
 	private var emailsHidden: Bool {
@@ -559,6 +585,21 @@ struct AccountPanelView: View {
 
 	private func displayName(for account: CodexAccount) -> String {
 		account.panelDisplayName(emailsHidden: emailsHidden)
+	}
+
+	private func operatorRuns(for account: CodexAccount) -> [OperatorRunStatus] {
+		store.operatorSnapshot?.activeRuns(for: account) ?? []
+	}
+
+	private func operatorRunCount(for account: CodexAccount) -> Int? {
+		store.operatorSnapshot?.runningCount(for: account)
+	}
+
+	private func accountRowHeight(for account: CodexAccount) -> CGFloat {
+		let base: CGFloat = account.hasUsageSummary ? 98 : 46
+		let runSignal: CGFloat = operatorRuns(for: account).isEmpty ? 0 : 22
+
+		return base + runSignal
 	}
 
 	private func account(matching selector: String) -> CodexAccount? {
@@ -608,6 +649,8 @@ struct AccountPanelView: View {
 
 struct AccountRowView: View {
 	let account: CodexAccount
+	let runs: [OperatorRunStatus]
+	let runCount: Int?
 	let emailsHidden: Bool
 	let showsDivider: Bool
 	let isLogoutArmed: Bool
@@ -650,6 +693,23 @@ struct AccountRowView: View {
 						Text(healthLabel)
 							.font(PanelFont.accountDetail)
 							.foregroundStyle(account.statusDisplayColor(colorScheme: colorScheme))
+							.lineLimit(1)
+							.fixedSize(horizontal: true, vertical: false)
+					}
+
+					if let runCount {
+						Text("·")
+							.font(PanelFont.accountDetail)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
+							.fixedSize(horizontal: true, vertical: false)
+
+						Text(runCount == 1 ? "1 running" : "\(runCount) running")
+							.font(PanelFont.accountDetail)
+							.foregroundStyle(
+								runCount > 0
+									? PanelPalette.routeAccent(colorScheme)
+									: PanelPalette.secondaryText(colorScheme).opacity(0.84)
+							)
 							.lineLimit(1)
 							.fixedSize(horizontal: true, vertical: false)
 					}
@@ -707,6 +767,10 @@ struct AccountRowView: View {
 				}
 			}
 
+			if !runs.isEmpty {
+				AccountRunSummaryView(runs: runs)
+			}
+
 			if account.hasUsageSummary {
 				AccountUsageSummaryView(account: account)
 			}
@@ -745,6 +809,82 @@ struct AccountRowView: View {
 		}
 
 		return "Route Decodex runs here"
+	}
+}
+
+struct AccountRunSummaryView: View {
+	let runs: [OperatorRunStatus]
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(spacing: 5) {
+			ForEach(Array(runs.prefix(2))) { run in
+				AccountRunChipView(run: run)
+			}
+
+			if runs.count > 2 {
+				Text("+\(runs.count - 2)")
+					.font(PanelFont.summaryTitle)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.frame(height: 18)
+					.padding(.horizontal, 6)
+					.modernGlassSurface(cornerRadius: 9, depth: .control)
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+}
+
+struct AccountRunChipView: View {
+	let run: OperatorRunStatus
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(spacing: 4) {
+			Image(systemName: symbol)
+				.font(PanelFont.summaryIcon)
+				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.9 : 0.78))
+				.frame(width: 10)
+
+			Text(run.compactTitle)
+				.font(PanelFont.summaryTitle)
+				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.92))
+				.lineLimit(1)
+				.truncationMode(.middle)
+
+			Text(run.compactDetail)
+				.font(PanelFont.summaryTitle)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.lineLimit(1)
+				.truncationMode(.tail)
+		}
+		.frame(height: 18)
+		.frame(maxWidth: 132, alignment: .leading)
+		.padding(.horizontal, 6)
+		.modernGlassSurface(cornerRadius: 9, depth: .control)
+		.layoutPriority(1)
+	}
+
+	private var symbol: String {
+		if run.hasAttentionTone {
+			return "exclamationmark.triangle.fill"
+		}
+		if run.isWaiting {
+			return "clock"
+		}
+
+		return "play.fill"
+	}
+
+	private var tint: Color {
+		if run.hasAttentionTone {
+			return PanelPalette.warning(colorScheme)
+		}
+		if run.isWaiting {
+			return PanelPalette.secondaryText(colorScheme)
+		}
+
+		return PanelPalette.routeAccent(colorScheme)
 	}
 }
 
@@ -1026,6 +1166,132 @@ struct NoticeView: View {
 			cornerRadius: 9,
 			depth: .section
 		)
+	}
+}
+
+struct OperatorStatusStripView: View {
+	let snapshot: OperatorSnapshotResponse
+	let updatedAt: Date?
+	let refreshIntervalSeconds: Int
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 4) {
+			HStack(spacing: 0) {
+				OperatorFlowMetricView(
+					title: "Intake",
+					value: snapshot.queuedCount,
+					unit: "Issues",
+					tint: PanelPalette.secondaryText(colorScheme)
+				)
+
+				flowDivider
+
+				OperatorFlowMetricView(
+					title: "Running",
+					value: snapshot.activeRunCount,
+					unit: "Lanes",
+					tint: PanelPalette.routeAccent(colorScheme)
+				)
+
+				flowDivider
+
+				OperatorFlowMetricView(
+					title: "Review",
+					value: snapshot.reviewCount,
+					unit: "PRs",
+					tint: PanelPalette.codexAccent(colorScheme)
+				)
+
+				flowDivider
+
+				OperatorFlowMetricView(
+					title: "Landing",
+					value: snapshot.landingCount,
+					unit: "PRs",
+					tint: PanelPalette.fastModeAccent(colorScheme)
+				)
+			}
+			.frame(height: 30)
+
+			if let warning = snapshot.warningSummary {
+				HStack(spacing: 5) {
+					Image(systemName: "exclamationmark.circle")
+						.font(PanelFont.summaryIcon)
+						.foregroundStyle(PanelPalette.warning(colorScheme).opacity(0.82))
+						.frame(width: 10)
+
+					Text(warning)
+						.font(PanelFont.summaryTitle)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.lineLimit(1)
+						.truncationMode(.tail)
+
+					Spacer(minLength: 4)
+
+					Text(refreshMeta)
+						.font(PanelFont.summaryTitle)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.68))
+						.monospacedDigit()
+				}
+				.frame(height: 14)
+				.help("Operator snapshot refreshes every \(refreshIntervalSeconds) seconds.")
+			}
+		}
+		.padding(.horizontal, 6)
+		.padding(.vertical, 5)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.modernGlassSurface(cornerRadius: 10, depth: .section)
+	}
+
+	private var flowDivider: some View {
+		Rectangle()
+			.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.72 : 0.9))
+			.frame(width: 0.5, height: 20)
+	}
+
+	private var refreshMeta: String {
+		guard let updatedAt else {
+			return "\(refreshIntervalSeconds)s refresh"
+		}
+
+		let age = max(0, Int(Date().timeIntervalSince(updatedAt).rounded()))
+		if age < 2 {
+			return "\(refreshIntervalSeconds)s refresh"
+		}
+
+		return "\(age)s ago"
+	}
+}
+
+struct OperatorFlowMetricView: View {
+	let title: String
+	let value: Int
+	let unit: String
+	let tint: Color
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 1) {
+			Text(title)
+				.font(PanelFont.summaryTitle)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.lineLimit(1)
+
+			HStack(alignment: .firstTextBaseline, spacing: 3) {
+				Text("\(value)")
+					.font(PanelFont.summaryValue)
+					.foregroundStyle(value > 0 ? tint : PanelPalette.primaryText(colorScheme))
+					.monospacedDigit()
+
+				Text(unit)
+					.font(PanelFont.summaryTitle)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
+					.lineLimit(1)
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(.horizontal, 5)
 	}
 }
 

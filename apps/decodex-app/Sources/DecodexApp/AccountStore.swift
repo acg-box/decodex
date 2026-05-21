@@ -1,9 +1,12 @@
+import AppKit
 import Foundation
 
 @MainActor
 final class AccountStore: ObservableObject {
 	@Published private(set) var accountList: AccountListResponse?
 	@Published private(set) var fastMode: CodexFastModeResponse?
+	@Published private(set) var operatorSnapshot: OperatorSnapshotResponse?
+	@Published private(set) var operatorSnapshotUpdatedAt: Date?
 	@Published private(set) var isRefreshing = false
 	@Published private(set) var isLoggingIn = false
 	@Published private(set) var isSettingFastMode = false
@@ -12,9 +15,12 @@ final class AccountStore: ObservableObject {
 
 	private let bridge = DecodexAppBridge()
 	private var automaticRefreshTask: Task<Void, Never>?
+	private var automaticOperatorRefreshTask: Task<Void, Never>?
+	static let operatorSnapshotRefreshIntervalSeconds = 10
 
 	deinit {
 		automaticRefreshTask?.cancel()
+		automaticOperatorRefreshTask?.cancel()
 	}
 
 	var isInitialLoading: Bool {
@@ -81,7 +87,9 @@ final class AccountStore: ObservableObject {
 			)
 			notice = nil
 			await refreshFastMode()
+			await refreshOperatorSnapshot()
 		} catch {
+			operatorSnapshot = nil
 			notice = error.localizedDescription
 		}
 	}
@@ -92,6 +100,30 @@ final class AccountStore: ObservableObject {
 		}
 
 		await refresh()
+	}
+
+	func refreshOperatorSnapshot() async {
+		do {
+			operatorSnapshot = try await bridge.runJSON(
+				.operatorSnapshot,
+				as: OperatorSnapshotResponse.self
+			)
+			operatorSnapshotUpdatedAt = Date()
+		} catch {
+			operatorSnapshot = nil
+			operatorSnapshotUpdatedAt = nil
+		}
+	}
+
+	func openWebUI() async {
+		do {
+			let url = try await DecodexServerBridge.shared.dashboardURL()
+
+			NSWorkspace.shared.open(url)
+			notice = nil
+		} catch {
+			notice = error.localizedDescription
+		}
 	}
 
 	func resetLoginSession() {
@@ -117,6 +149,28 @@ final class AccountStore: ObservableObject {
 				}
 
 				await self?.refresh(force: true)
+			}
+		}
+
+		startAutomaticOperatorRefresh()
+	}
+
+	private func startAutomaticOperatorRefresh() {
+		guard automaticOperatorRefreshTask == nil else {
+			return
+		}
+
+		automaticOperatorRefreshTask = Task { [weak self] in
+			while !Task.isCancelled {
+				do {
+					try await Task.sleep(
+						nanoseconds: UInt64(Self.operatorSnapshotRefreshIntervalSeconds) * 1_000_000_000
+					)
+				} catch {
+					return
+				}
+
+				await self?.refreshOperatorSnapshot()
 			}
 		}
 	}
