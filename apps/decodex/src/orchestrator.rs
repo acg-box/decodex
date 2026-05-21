@@ -80,6 +80,7 @@ const OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH: &str = "/dashboard";
 const OPERATOR_DASHBOARD_WS_ENDPOINT_PATH: &str = "/dashboard/control";
 const OPERATOR_LIVE_ENDPOINT_PATH: &str = "/livez";
 const OPERATOR_ACCOUNTS_ENDPOINT_PATH: &str = "/api/accounts";
+const OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH: &str = "/api/operator-snapshot";
 const OPERATOR_STATE_MAX_REQUEST_BYTES: usize = 8_192;
 const OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES: usize = 64 * 1_024;
 const OPERATOR_STATE_HEADER_TERMINATOR: &[u8] = b"\r\n\r\n";
