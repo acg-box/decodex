@@ -532,9 +532,11 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(response.contains("function loadAccountNameOffsets()"));
 	assert!(response.contains("function persistAccountPrivacy(hidden)"));
 	assert!(response.contains("function persistAccountNameOffsets()"));
+	assert!(response.contains("function configuredDashboardAccounts(snapshot)"));
 	assert!(response.contains("function renderAccountPrivacyToggle()"));
 	assert!(response.contains("function codexAccountRandomNameKey(account)"));
 	assert!(response.contains("function codexAccountRandomNameOffset(account)"));
+	assert!(response.contains("function codexAccountDisplaySource(account, snapshot)"));
 	assert!(response.contains("function renderCodexAccountRandomNameButton(account)"));
 	assert!(response.contains("function codexAccountShowsEmail(account)"));
 	assert!(response.contains("function codexAccountPrivacyLabel(account)"));
@@ -551,12 +553,14 @@ fn operator_dashboard_account_privacy_controls_use_compact_identities() {
 	assert!(response.contains(": codexAccountVisibleName(account);"));
 	assert!(response.contains("return \"Balanced\";"));
 	assert!(response.contains("return `Fixed · ${label}`;"));
-	assert!(response.contains("return `Fixed · ${accountEmailsHidden ? \"account\" : compactAccountIdentity(selector)}`;"));
+	assert!(response.contains("function codexAccountFallbackName(value)"));
+	assert!(response.contains("return `Fixed · ${codexAccountFallbackName(selector)}`;"));
 	assert!(response.contains("const title = codexAccountControlStatusLabel(snapshot);"));
 	assert!(!response.contains("const title = `Mode ${modeLabel}`;"));
 	assert!(response.contains("account-name-reroll"));
 	assert!(response.contains("data-account-name-reroll"));
 	assert!(response.contains("aria-label=\"Change account name\""));
+	assert!(!response.contains("\"Alex\""));
 	assert!(response.contains("return `${local.slice(0, 3)}...${local.slice(-3)}${domain}`;"));
 	assert!(response.contains("return ACCOUNT_RANDOM_NAMES[index];"));
 	assert!(response.contains("return status === \"selected\" ? 1 : 0;"));
@@ -1513,6 +1517,10 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 
 	assert!(response.contains("function mergeDashboardRunRecord(snapshotRun, activityRun)"));
 	assert!(response.contains("function mergeDashboardActiveRuns(snapshot, activeRunRows)"));
+	assert!(response.contains("function dashboardRunTitleIsOperationFallback(run)"));
+	assert!(response.contains("const operationFallback = humanizeToken(run.current_operation || run.phase);"));
+	assert!(response.contains("!(fallback !== \"unknown\" && title === operationFallback)"));
+	assert!(response.contains("return fallback !== \"unknown\" ? fallback : operationFallback;"));
 	assert!(response.contains("let dashboardLiveActiveRuns = [];"));
 	assert!(response.contains("let dashboardLiveAccounts = null;"));
 	assert!(response.contains("let dashboardLiveAccountControl = null;"));
@@ -1528,6 +1536,8 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("\"protocol_activity\""));
 	assert!(response.contains("!dashboardRunFieldHasValue(activityRun[key])"));
 	assert!(response.contains("merged[key] = snapshotRun[key];"));
+	assert!(response.contains("dashboardRunTitleIsOperationFallback(activityRun)"));
+	assert!(response.contains("merged.title = snapshotRun.title;"));
 	assert!(
 		response.contains("const mergedActiveRuns = mergeDashboardActiveRuns(snapshot, activeRunRows);")
 	);
