@@ -54,7 +54,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 	}
 
 	var shouldDisplayInPanel: Bool {
-		hasVisibleSignal && !isAPIOnlySnapshot
+		hasVisibleSignal && (activeRunCount > 0 || !isAPIOnlySnapshot)
 	}
 
 	var warningSummary: String? {
@@ -188,16 +188,29 @@ struct OperatorPostReviewLaneStatus: Decodable, Sendable {
 }
 
 struct OperatorRunStatus: Decodable, Identifiable, Sendable {
+	let projectID: String?
 	let runID: String
+	let issueID: String?
 	let issueIdentifier: String?
 	let title: String?
 	let status: String?
 	let attemptStatus: String?
+	let attemptNumber: Int?
 	let phase: String?
 	let waitReason: String?
 	let currentOperation: String?
 	let threadStatus: String?
 	let idleForSeconds: Int?
+	let protocolIdleForSeconds: Int?
+	let updatedAt: String?
+	let lastProgressAt: String?
+	let nextRetryAt: String?
+	let lastEventType: String?
+	let eventCount: Int?
+	let processAlive: Bool?
+	let activeLease: Bool?
+	let branchName: String?
+	let worktreePath: String?
 	let suspectedStall: Bool
 	let childAgentActivity: OperatorChildAgentActivity?
 	let account: OperatorRunAccountSummary?
@@ -258,22 +271,33 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	}
 
 	func isAssigned(to account: CodexAccount) -> Bool {
-		let runAccounts = ([self.account].compactMap { $0 }) + accounts
-
-		return runAccounts.contains { $0.matches(account) }
+		self.account?.matches(account) == true
 	}
 
 	enum CodingKeys: String, CodingKey {
+		case projectID = "project_id"
 		case runID = "run_id"
+		case issueID = "issue_id"
 		case issueIdentifier = "issue_identifier"
 		case title
 		case status
 		case attemptStatus = "attempt_status"
+		case attemptNumber = "attempt_number"
 		case phase
 		case waitReason = "wait_reason"
 		case currentOperation = "current_operation"
 		case threadStatus = "thread_status"
 		case idleForSeconds = "idle_for_seconds"
+		case protocolIdleForSeconds = "protocol_idle_for_seconds"
+		case updatedAt = "updated_at"
+		case lastProgressAt = "last_progress_at"
+		case nextRetryAt = "next_retry_at"
+		case lastEventType = "last_event_type"
+		case eventCount = "event_count"
+		case processAlive = "process_alive"
+		case activeLease = "active_lease"
+		case branchName = "branch_name"
+		case worktreePath = "worktree_path"
 		case suspectedStall = "suspected_stall"
 		case childAgentActivity = "child_agent_activity"
 		case account
@@ -283,16 +307,29 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 
+		projectID = try container.decodeIfPresent(String.self, forKey: .projectID)
 		runID = try container.decodeIfPresent(String.self, forKey: .runID) ?? UUID().uuidString
+		issueID = try container.decodeIfPresent(String.self, forKey: .issueID)
 		issueIdentifier = try container.decodeIfPresent(String.self, forKey: .issueIdentifier)
 		title = try container.decodeIfPresent(String.self, forKey: .title)
 		status = try container.decodeIfPresent(String.self, forKey: .status)
 		attemptStatus = try container.decodeIfPresent(String.self, forKey: .attemptStatus)
+		attemptNumber = try container.decodeIfPresent(Int.self, forKey: .attemptNumber)
 		phase = try container.decodeIfPresent(String.self, forKey: .phase)
 		waitReason = try container.decodeIfPresent(String.self, forKey: .waitReason)
 		currentOperation = try container.decodeIfPresent(String.self, forKey: .currentOperation)
 		threadStatus = try container.decodeIfPresent(String.self, forKey: .threadStatus)
 		idleForSeconds = try container.decodeIfPresent(Int.self, forKey: .idleForSeconds)
+		protocolIdleForSeconds = try container.decodeIfPresent(Int.self, forKey: .protocolIdleForSeconds)
+		updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+		lastProgressAt = try container.decodeIfPresent(String.self, forKey: .lastProgressAt)
+		nextRetryAt = try container.decodeIfPresent(String.self, forKey: .nextRetryAt)
+		lastEventType = try container.decodeIfPresent(String.self, forKey: .lastEventType)
+		eventCount = try container.decodeIfPresent(Int.self, forKey: .eventCount)
+		processAlive = try container.decodeIfPresent(Bool.self, forKey: .processAlive)
+		activeLease = try container.decodeIfPresent(Bool.self, forKey: .activeLease)
+		branchName = try container.decodeIfPresent(String.self, forKey: .branchName)
+		worktreePath = try container.decodeIfPresent(String.self, forKey: .worktreePath)
 		suspectedStall = try container.decodeIfPresent(Bool.self, forKey: .suspectedStall) ?? false
 		childAgentActivity = try container.decodeIfPresent(
 			OperatorChildAgentActivity.self,
@@ -306,12 +343,32 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 struct OperatorChildAgentActivity: Decodable, Sendable {
 	let currentBucket: String?
 	let currentDetail: String?
+	let currentElapsedSeconds: Int?
+	let eventCount: Int
+	let inputTokensCumulative: Int
+	let inputTokensCurrent: Int?
+	let inputTokensMax: Int?
+	let largestToolOutputBytes: Int?
+	let largestToolOutputTool: String?
+	let outputTokensCumulative: Int
 	let toolCallCount: Int
+	let wallSeconds: Int
+	let buckets: [OperatorChildAgentBucket]
 
 	enum CodingKeys: String, CodingKey {
 		case currentBucket = "current_bucket"
 		case currentDetail = "current_detail"
+		case currentElapsedSeconds = "current_elapsed_seconds"
+		case eventCount = "event_count"
+		case inputTokensCumulative = "input_tokens_cumulative"
+		case inputTokensCurrent = "input_tokens_current"
+		case inputTokensMax = "input_tokens_max"
+		case largestToolOutputBytes = "largest_tool_output_bytes"
+		case largestToolOutputTool = "largest_tool_output_tool"
+		case outputTokensCumulative = "output_tokens_cumulative"
 		case toolCallCount = "tool_call_count"
+		case wallSeconds = "wall_seconds"
+		case buckets
 	}
 
 	init(from decoder: Decoder) throws {
@@ -319,7 +376,53 @@ struct OperatorChildAgentActivity: Decodable, Sendable {
 
 		currentBucket = try container.decodeIfPresent(String.self, forKey: .currentBucket)
 		currentDetail = try container.decodeIfPresent(String.self, forKey: .currentDetail)
+		currentElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .currentElapsedSeconds)
+		eventCount = try container.decodeIfPresent(Int.self, forKey: .eventCount) ?? 0
+		inputTokensCumulative = try container.decodeIfPresent(Int.self, forKey: .inputTokensCumulative) ?? 0
+		inputTokensCurrent = try container.decodeIfPresent(Int.self, forKey: .inputTokensCurrent)
+		inputTokensMax = try container.decodeIfPresent(Int.self, forKey: .inputTokensMax)
+		largestToolOutputBytes = try container.decodeIfPresent(Int.self, forKey: .largestToolOutputBytes)
+		largestToolOutputTool = try container.decodeIfPresent(String.self, forKey: .largestToolOutputTool)
+		outputTokensCumulative = try container.decodeIfPresent(Int.self, forKey: .outputTokensCumulative) ?? 0
 		toolCallCount = try container.decodeIfPresent(Int.self, forKey: .toolCallCount) ?? 0
+		wallSeconds = try container.decodeIfPresent(Int.self, forKey: .wallSeconds) ?? 0
+		buckets = try container.decodeIfPresent([OperatorChildAgentBucket].self, forKey: .buckets) ?? []
+	}
+}
+
+struct OperatorChildAgentBucket: Decodable, Identifiable, Sendable {
+	let name: String
+	let eventCount: Int
+	let inputTokens: Int
+	let outputBytes: Int
+	let outputTokens: Int
+	let toolCallCount: Int
+	let wallSeconds: Int
+
+	var id: String {
+		name
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case name
+		case eventCount = "event_count"
+		case inputTokens = "input_tokens"
+		case outputBytes = "output_bytes"
+		case outputTokens = "output_tokens"
+		case toolCallCount = "tool_call_count"
+		case wallSeconds = "wall_seconds"
+	}
+
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+
+		name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Activity"
+		eventCount = try container.decodeIfPresent(Int.self, forKey: .eventCount) ?? 0
+		inputTokens = try container.decodeIfPresent(Int.self, forKey: .inputTokens) ?? 0
+		outputBytes = try container.decodeIfPresent(Int.self, forKey: .outputBytes) ?? 0
+		outputTokens = try container.decodeIfPresent(Int.self, forKey: .outputTokens) ?? 0
+		toolCallCount = try container.decodeIfPresent(Int.self, forKey: .toolCallCount) ?? 0
+		wallSeconds = try container.decodeIfPresent(Int.self, forKey: .wallSeconds) ?? 0
 	}
 }
 
