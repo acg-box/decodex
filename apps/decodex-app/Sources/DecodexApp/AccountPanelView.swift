@@ -2,33 +2,6 @@ import AppKit
 import Foundation
 import SwiftUI
 
-enum PanelFont {
-	private static func text(
-		_ size: CGFloat,
-		weight: Font.Weight,
-		design: Font.Design = .default
-	) -> Font {
-		.system(size: size, weight: weight, design: design)
-	}
-
-	static let headerIcon = text(14.1, weight: .semibold)
-	static let headerTitle = text(14.8, weight: .semibold)
-	static let headerSubtitle = text(11.1, weight: .medium)
-	static let emptyIcon = text(16.8, weight: .medium)
-	static let emptyTitle = text(12.2, weight: .semibold)
-	static let emptyBody = text(10.9, weight: .regular)
-	static let notice = text(10.6, weight: .regular)
-	static let summaryIcon = text(10.4, weight: .medium)
-	static let metricLabel = text(10.4, weight: .medium)
-	static let metricValue = text(11.9, weight: .semibold)
-	static let accountName = text(13.1, weight: .semibold)
-	static let accountDetail = text(10.9, weight: .medium)
-	static let usageLabel = text(10.4, weight: .medium)
-	static let usageValue = text(10.7, weight: .semibold)
-	static let tertiary = text(9.7, weight: .medium)
-	static let iconButton = text(11.2, weight: .semibold)
-}
-
 enum PanelPalette {
 	static func primaryText(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
@@ -841,17 +814,10 @@ struct AccountRunSummaryView: View {
 
 	var body: some View {
 		HStack(spacing: 5) {
-			ForEach(Array(runs.prefix(2))) { run in
-				AccountRunChipView(run: run)
-			}
+			AccountRunChipView(run: runs[0])
 
-			if runs.count > 2 {
-				Text("+\(runs.count - 2)")
-					.font(PanelFont.metricLabel)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.frame(height: 19)
-					.padding(.horizontal, 6)
-					.modernGlassSurface(cornerRadius: 9, depth: .control)
+			if runs.count > 1 {
+				AccountRunOverflowView(runs: runs)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
@@ -863,29 +829,22 @@ struct AccountRunChipView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		HStack(spacing: 4) {
+		HStack(spacing: 5) {
 			Image(systemName: symbol)
 				.font(PanelFont.summaryIcon)
-				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.9 : 0.78))
-				.frame(width: 10)
+				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.88 : 0.76))
+				.frame(width: 11)
 
 			Text(run.compactTitle)
-				.font(PanelFont.metricLabel)
+				.font(PanelFont.metricValue)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.92))
 				.lineLimit(1)
 				.truncationMode(.middle)
-
-			Text(run.compactDetail)
-				.font(PanelFont.metricLabel)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.lineLimit(1)
-				.truncationMode(.tail)
 		}
-		.frame(height: 19)
-		.frame(maxWidth: 132, alignment: .leading)
-		.padding(.horizontal, 6)
-		.modernGlassSurface(cornerRadius: 9, depth: .control)
-		.layoutPriority(1)
+		.frame(height: 21)
+		.padding(.horizontal, 8)
+		.modernGlassSurface(cornerRadius: 10.5, depth: .control)
+		.fixedSize(horizontal: true, vertical: false)
 	}
 
 	private var symbol: String {
@@ -908,6 +867,132 @@ struct AccountRunChipView: View {
 		}
 
 		return PanelPalette.routeAccent(colorScheme)
+	}
+}
+
+struct AccountRunOverflowView: View {
+	let runs: [OperatorRunStatus]
+	@Environment(\.colorScheme) private var colorScheme
+	@State private var isHovered = false
+	@State private var showsPopover = false
+
+	var body: some View {
+		Text("+\(max(0, runs.count - 1))")
+			.font(PanelFont.metricLabel)
+			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			.frame(height: 21)
+			.padding(.horizontal, 7)
+			.background {
+				RoundedRectangle(cornerRadius: 10.5, style: .continuous)
+					.fill(isHovered ? PanelPalette.routeAccent(colorScheme).opacity(0.08) : Color.clear)
+			}
+			.modernGlassSurface(cornerRadius: 10.5, depth: .control)
+			.fixedSize(horizontal: true, vertical: false)
+			.contentShape(RoundedRectangle(cornerRadius: 10.5, style: .continuous))
+			.onHover { hovering in
+				withAnimation(PanelMotion.hover) {
+					isHovered = hovering
+				}
+				showsPopover = hovering
+			}
+			.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
+				AccountRunOverflowPopoverView(runs: runs)
+					.frame(width: 240)
+					.padding(10)
+			}
+	}
+}
+
+struct AccountRunOverflowPopoverView: View {
+	let runs: [OperatorRunStatus]
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 7) {
+			HStack(spacing: 7) {
+				Image(systemName: "arrow.triangle.branch")
+					.font(PanelFont.summaryIcon)
+					.foregroundStyle(PanelPalette.routeAccent(colorScheme).opacity(0.86))
+					.frame(width: 12)
+
+				Text("\(runs.count) running")
+					.font(PanelFont.lanePopoverTitle)
+					.foregroundStyle(PanelPalette.primaryText(colorScheme))
+					.lineLimit(1)
+			}
+
+			VStack(spacing: 0) {
+				ForEach(runs) { run in
+					AccountRunOverflowRowView(run: run)
+				}
+			}
+		}
+		.padding(10)
+		.modernGlassSurface(cornerRadius: 12, depth: .section)
+		.accessibilityLabel("\(runs.count) account lanes")
+	}
+}
+
+struct AccountRunOverflowRowView: View {
+	let run: OperatorRunStatus
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(spacing: 7) {
+			Image(systemName: symbol)
+				.font(PanelFont.summaryIcon)
+				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.9 : 0.76))
+				.frame(width: 12)
+
+			Text(run.compactTitle)
+				.font(PanelFont.laneTitle)
+				.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				.lineLimit(1)
+				.truncationMode(.middle)
+
+			Spacer(minLength: 6)
+
+			Text(statusLabel)
+				.font(PanelFont.tertiary)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.monospacedDigit()
+				.lineLimit(1)
+		}
+		.frame(height: 25)
+		.padding(.horizontal, 2)
+	}
+
+	private var symbol: String {
+		if run.hasAttentionTone {
+			return "exclamationmark.triangle.fill"
+		}
+		if run.isWaiting {
+			return "clock"
+		}
+
+		return "play.fill"
+	}
+
+	private var tint: Color {
+		if run.hasAttentionTone {
+			return PanelPalette.warning(colorScheme)
+		}
+		if run.isWaiting {
+			return PanelPalette.secondaryText(colorScheme)
+		}
+
+		return PanelPalette.routeAccent(colorScheme)
+	}
+
+	private var statusLabel: String {
+		if run.hasAttentionTone {
+			return "attention"
+		}
+		if run.isWaiting {
+			return "waiting"
+		}
+
+		return humanizedPanelToken(run.phase ?? run.status ?? "running")
 	}
 }
 
@@ -1448,9 +1533,10 @@ struct OperatorStatusStripView: View {
 	let updatedAt: Date?
 	let refreshIntervalSeconds: Int
 	@Environment(\.colorScheme) private var colorScheme
+	@State private var showsAllLanes = false
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 4) {
+		VStack(alignment: .leading, spacing: 5) {
 			if !metrics.isEmpty {
 				HStack(spacing: 0) {
 					ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
@@ -1462,6 +1548,11 @@ struct OperatorStatusStripView: View {
 					}
 				}
 				.frame(height: 32)
+			}
+
+			if !snapshot.activeRuns.isEmpty {
+				OperatorLaneListView(runs: snapshot.activeRuns, showsAllLanes: $showsAllLanes)
+					.padding(.top, metrics.isEmpty ? 0 : 1)
 			}
 
 			if let warning = snapshot.warningSummary {
@@ -1546,6 +1637,578 @@ struct OperatorStatusStripView: View {
 		}
 
 		return "\(age)s ago"
+	}
+}
+
+struct OperatorLaneListView: View {
+	let runs: [OperatorRunStatus]
+	@Binding var showsAllLanes: Bool
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		VStack(spacing: 0) {
+			ForEach(visibleRuns) { run in
+				OperatorLaneRowView(run: run)
+			}
+
+			if hasOverflow {
+				Button {
+					withAnimation(PanelMotion.state) {
+						showsAllLanes.toggle()
+					}
+				} label: {
+					HStack(spacing: 5) {
+						Text(toggleLabel)
+							.font(PanelFont.tertiary)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+							.lineLimit(1)
+						Spacer(minLength: 4)
+						Image(systemName: showsAllLanes ? "chevron.up" : "chevron.down")
+							.font(PanelFont.summaryIcon)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+							.frame(width: 12)
+					}
+					.frame(height: 20)
+					.contentShape(Rectangle())
+				}
+				.buttonStyle(.plain)
+				.help(showsAllLanes ? "Collapse running lanes" : "Show all running lanes")
+			}
+		}
+		.overlay(alignment: .top) {
+			Rectangle()
+				.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.58 : 0.78))
+				.frame(height: 0.5)
+				.allowsHitTesting(false)
+		}
+		.overlay(alignment: .bottom) {
+			Rectangle()
+				.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.36 : 0.5))
+				.frame(height: 0.5)
+				.allowsHitTesting(false)
+		}
+		.accessibilityLabel("\(runs.count) running lanes")
+	}
+
+	private var visibleRuns: [OperatorRunStatus] {
+		showsAllLanes ? runs : Array(runs.prefix(3))
+	}
+
+	private var hasOverflow: Bool {
+		runs.count > 3
+	}
+
+	private var toggleLabel: String {
+		if showsAllLanes {
+			return "Show 3 lanes"
+		}
+
+		return "\(runs.count - 3) more lane\(runs.count - 3 == 1 ? "" : "s")"
+	}
+}
+
+struct OperatorLaneRowView: View {
+	let run: OperatorRunStatus
+	@Environment(\.colorScheme) private var colorScheme
+	@State private var isHovered = false
+	@State private var showsPopover = false
+
+	var body: some View {
+		HStack(spacing: 7) {
+			Image(systemName: symbol)
+				.font(PanelFont.summaryIcon)
+				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.96 : 0.82))
+				.frame(width: 12)
+
+			Text(run.compactTitle)
+				.font(PanelFont.laneTitle)
+				.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				.lineLimit(1)
+				.truncationMode(.middle)
+				.frame(maxWidth: .infinity, alignment: .leading)
+
+			Text(statusLabel)
+				.font(PanelFont.laneStatus)
+				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.9 : 0.78))
+				.monospacedDigit()
+				.lineLimit(1)
+				.fixedSize(horizontal: true, vertical: false)
+		}
+		.frame(height: 25)
+		.padding(.horizontal, 2)
+		.background {
+			RoundedRectangle(cornerRadius: 7, style: .continuous)
+				.fill(isHovered ? tint.opacity(colorScheme == .dark ? 0.08 : 0.07) : Color.clear)
+		}
+		.contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+		.onHover { hovering in
+			withAnimation(PanelMotion.hover) {
+				isHovered = hovering
+			}
+			showsPopover = hovering
+		}
+		.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
+			OperatorLanePopoverView(run: run)
+				.frame(width: 360)
+				.padding(8)
+		}
+	}
+
+	private var symbol: String {
+		if run.hasAttentionTone {
+			return "exclamationmark.triangle.fill"
+		}
+		if run.isWaiting {
+			return "clock"
+		}
+		if run.processAlive == false {
+			return "checkmark.circle"
+		}
+
+		return "play.fill"
+	}
+
+	private var statusLabel: String {
+		if run.hasAttentionTone {
+			return "attention"
+		}
+		if run.isWaiting {
+			return "waiting"
+		}
+		if run.processAlive == false {
+			return "done"
+		}
+
+		return humanizedPanelToken(run.phase ?? run.status ?? "running")
+	}
+
+	private var tint: Color {
+		if run.hasAttentionTone {
+			return PanelPalette.warning(colorScheme)
+		}
+		if run.isWaiting {
+			return PanelPalette.secondaryText(colorScheme)
+		}
+		if run.processAlive == false {
+			return PanelPalette.landingAccent(colorScheme)
+		}
+
+		return PanelPalette.routeAccent(colorScheme)
+	}
+}
+
+struct OperatorLanePopoverView: View {
+	let run: OperatorRunStatus
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 7) {
+			header
+
+			if let modelBucket {
+				OperatorLaneProgressReadoutRow(
+					title: "Model",
+					percent: bucketPercent(modelBucket),
+					elapsed: formatActivityDuration(modelBucket.wallSeconds) ?? "0s",
+					total: formatActivityDuration(totalWallSeconds) ?? "0s",
+					barShare: bucketShare(modelBucket)
+				)
+				OperatorLaneReadoutDivider()
+			}
+
+			ForEach(detailBuckets) { bucket in
+				OperatorLaneReadoutRow(title: humanizedPanelToken(bucket.name), items: bucketReadoutItems(bucket))
+			}
+
+			if !contextReadoutItems.isEmpty {
+				OperatorLaneReadoutDivider()
+				OperatorLaneReadoutRow(title: "Context", items: contextReadoutItems)
+			}
+		}
+		.padding(9)
+		.modernGlassSurface(cornerRadius: 12, depth: .section)
+		.accessibilityLabel("Lane activity for \(run.compactTitle)")
+	}
+
+	private var tint: Color {
+		if run.hasAttentionTone {
+			return PanelPalette.warning(colorScheme)
+		}
+		if run.isWaiting {
+			return PanelPalette.secondaryText(colorScheme)
+		}
+
+		return PanelPalette.routeAccent(colorScheme)
+	}
+
+	private var activity: OperatorChildAgentActivity? {
+		run.childAgentActivity
+	}
+
+	private var currentSummary: String {
+			guard let activity else {
+				return "Waiting for child activity"
+			}
+
+		let label = panelTrimmed(activity.currentDetail)
+			?? panelTrimmed(activity.currentBucket).map(humanizedPanelToken)
+			?? "Active"
+		if let elapsed = formatActivityDuration(activity.currentElapsedSeconds) {
+			return "\(humanizedPanelToken(label)) · \(elapsed)"
+		}
+
+		return humanizedPanelToken(label)
+	}
+
+	private var header: some View {
+		OperatorLaneReadoutRow(title: "Activity", items: [
+			OperatorLaneReadoutItem(label: nil, value: currentSummary, tone: .primary),
+		], trailing: run.compactTitle)
+	}
+
+	private var modelBucket: OperatorChildAgentBucket? {
+		orderedBuckets.first { bucket in
+			bucket.name.caseInsensitiveCompare("Model") == .orderedSame
+		}
+	}
+
+	private var detailBuckets: [OperatorChildAgentBucket] {
+		orderedBuckets.filter { bucket in
+			bucket.name.caseInsensitiveCompare("Model") != .orderedSame
+				&& !bucketReadoutItems(bucket).isEmpty
+		}
+	}
+
+	private var orderedBuckets: [OperatorChildAgentBucket] {
+		bucketRows.sorted { left, right in
+			let leftPriority = bucketPriority(left.name)
+			let rightPriority = bucketPriority(right.name)
+			if leftPriority != rightPriority {
+				return leftPriority < rightPriority
+			}
+			if left.wallSeconds != right.wallSeconds {
+				return left.wallSeconds > right.wallSeconds
+			}
+			if left.eventCount != right.eventCount {
+				return left.eventCount > right.eventCount
+			}
+
+			return left.name < right.name
+		}
+	}
+
+	private var contextReadoutItems: [OperatorLaneReadoutItem] {
+		guard let activity else {
+			return []
+		}
+
+		var items = [OperatorLaneReadoutItem]()
+		if let current = activity.inputTokensCurrent {
+			items.append(OperatorLaneReadoutItem(label: "current", value: "\(formatCompactCount(current)) tok"))
+		}
+		if let peak = activity.inputTokensMax, peak != activity.inputTokensCurrent {
+			items.append(OperatorLaneReadoutItem(label: "peak", value: "\(formatCompactCount(peak)) tok"))
+		}
+		if activity.inputTokensCumulative > 0 {
+			items.append(OperatorLaneReadoutItem(label: "input", value: "\(formatCompactCount(activity.inputTokensCumulative)) tok"))
+		}
+		if activity.toolCallCount > 0 {
+			items.append(OperatorLaneReadoutItem(label: "tool_calls", value: formatCompactCount(activity.toolCallCount)))
+		}
+		if let largestOutput = activity.largestToolOutputBytes, largestOutput > 0 {
+			items.append(OperatorLaneReadoutItem(label: "largest output", value: formatCompactBytes(largestOutput)))
+		}
+
+		return items
+	}
+
+	private var bucketRows: [OperatorChildAgentBucket] {
+		activity?.buckets ?? []
+	}
+
+	private var totalWallSeconds: Int {
+		max(
+			1,
+			activity?.wallSeconds ?? 0,
+			bucketRows.reduce(0) { $0 + max(0, $1.wallSeconds) }
+			)
+	}
+
+	private func bucketReadoutItems(_ bucket: OperatorChildAgentBucket) -> [OperatorLaneReadoutItem] {
+		let normalizedName = bucket.name.lowercased()
+		var items = [OperatorLaneReadoutItem]()
+
+		if normalizedName.contains("tracker"), bucket.wallSeconds > 0 {
+			items.append(OperatorLaneReadoutItem(label: "wall", value: formatActivityDuration(bucket.wallSeconds) ?? "0s"))
+		}
+		if bucket.eventCount > 0 {
+			items.append(OperatorLaneReadoutItem(label: "events", value: formatCompactCount(bucket.eventCount)))
+		}
+		if normalizedName.contains("protocol") {
+			if bucket.inputTokens > 0 {
+				items.append(OperatorLaneReadoutItem(label: "input", value: "\(formatCompactCount(bucket.inputTokens)) tok"))
+			}
+			if bucket.outputTokens > 0 {
+				items.append(OperatorLaneReadoutItem(label: "output", value: "\(formatCompactCount(bucket.outputTokens)) tok"))
+			}
+		} else {
+			if bucket.toolCallCount > 0 {
+				items.append(OperatorLaneReadoutItem(label: "tool_calls", value: formatCompactCount(bucket.toolCallCount)))
+			}
+			if bucket.outputBytes > 0 {
+				items.append(OperatorLaneReadoutItem(label: "output bytes", value: formatCompactBytes(bucket.outputBytes)))
+			}
+			if !normalizedName.contains("tracker") {
+				if bucket.inputTokens > 0 {
+					items.append(OperatorLaneReadoutItem(label: "input", value: "\(formatCompactCount(bucket.inputTokens)) tok"))
+				}
+				if bucket.outputTokens > 0 {
+					items.append(OperatorLaneReadoutItem(label: "output", value: "\(formatCompactCount(bucket.outputTokens)) tok"))
+				}
+			}
+		}
+
+		return items
+	}
+
+	private func bucketPriority(_ name: String) -> Int {
+		let normalizedName = name.lowercased()
+		if normalizedName.contains("model") {
+			return 0
+		}
+		if normalizedName.contains("protocol") {
+			return 1
+		}
+		if normalizedName.contains("tracker") {
+			return 2
+		}
+
+		return 10
+	}
+
+	private func bucketShare(_ bucket: OperatorChildAgentBucket) -> CGFloat {
+		guard bucket.wallSeconds > 0 else {
+			return 0
+		}
+
+		return min(1, max(0.02, CGFloat(bucket.wallSeconds) / CGFloat(max(1, totalWallSeconds))))
+	}
+
+	private func bucketPercent(_ bucket: OperatorChildAgentBucket) -> Int {
+		Int((Double(bucket.wallSeconds) / Double(max(1, totalWallSeconds)) * 100).rounded())
+	}
+}
+
+struct OperatorLaneReadoutItem: Identifiable {
+	enum Tone {
+		case primary
+		case secondary
+	}
+
+	let label: String?
+	let value: String
+	let tone: Tone
+
+	init(label: String?, value: String, tone: Tone = .secondary) {
+		self.label = label
+		self.value = value
+		self.tone = tone
+	}
+
+	var id: String {
+		"\(label ?? "value")-\(value)"
+	}
+}
+
+struct OperatorLaneReadoutRow: View {
+	let title: String
+	let items: [OperatorLaneReadoutItem]
+	let trailing: String?
+	@Environment(\.colorScheme) private var colorScheme
+
+	init(title: String, items: [OperatorLaneReadoutItem], trailing: String? = nil) {
+		self.title = title
+		self.items = items
+		self.trailing = trailing
+	}
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: 8) {
+			Text(title)
+				.font(PanelFont.lanePopoverLabel)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.lineLimit(1)
+				.frame(width: 62, alignment: .leading)
+
+			OperatorLaneReadoutFlowLayout(spacing: 8, rowSpacing: 4) {
+				ForEach(items) { item in
+					OperatorLaneReadoutItemView(item: item)
+				}
+			}
+			.frame(maxWidth: .infinity, alignment: .leading)
+
+			if let trailing = panelTrimmed(trailing) {
+				Text(trailing)
+					.font(PanelFont.lanePopoverMeta)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.76))
+					.lineLimit(1)
+					.truncationMode(.middle)
+					.frame(maxWidth: 78, alignment: .trailing)
+			}
+		}
+	}
+}
+
+struct OperatorLaneProgressReadoutRow: View {
+	let title: String
+	let percent: Int
+	let elapsed: String
+	let total: String
+	let barShare: CGFloat
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(alignment: .center, spacing: 8) {
+			Text(title)
+				.font(PanelFont.lanePopoverLabel)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.lineLimit(1)
+				.frame(width: 62, alignment: .leading)
+
+			ZStack(alignment: .leading) {
+				Capsule()
+					.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.42 : 0.56))
+				Capsule()
+					.fill(PanelPalette.routeAccent(colorScheme).opacity(colorScheme == .dark ? 0.74 : 0.62))
+					.frame(maxWidth: .infinity)
+					.scaleEffect(x: barShare, y: 1, anchor: .leading)
+			}
+			.frame(height: 5)
+			.frame(maxWidth: .infinity)
+
+			Text("\(percent)% · \(elapsed) / \(total)")
+				.font(PanelFont.lanePopoverMeta)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.monospacedDigit()
+				.lineLimit(1)
+				.fixedSize(horizontal: true, vertical: false)
+		}
+		.frame(height: 22)
+	}
+}
+
+struct OperatorLaneReadoutItemView: View {
+	let item: OperatorLaneReadoutItem
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: 3) {
+			if let label = item.label {
+				Text(label)
+					.font(PanelFont.lanePopoverMeta)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.lineLimit(1)
+			}
+
+			Text(item.value)
+				.font(PanelFont.lanePopoverValue)
+				.foregroundStyle(valueColor)
+				.monospacedDigit()
+				.lineLimit(1)
+				.minimumScaleFactor(0.78)
+		}
+		.fixedSize(horizontal: true, vertical: false)
+	}
+
+	private var valueColor: Color {
+		switch item.tone {
+		case .primary:
+			return PanelPalette.primaryText(colorScheme)
+		case .secondary:
+			return PanelPalette.primaryText(colorScheme).opacity(colorScheme == .dark ? 0.9 : 0.84)
+		}
+	}
+}
+
+struct OperatorLaneReadoutDivider: View {
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		Rectangle()
+			.fill(PanelPalette.separator(colorScheme))
+			.frame(height: 0.5)
+			.padding(.vertical, 1)
+	}
+}
+
+struct OperatorLaneReadoutFlowLayout: Layout {
+	let spacing: CGFloat
+	let rowSpacing: CGFloat
+
+	init(spacing: CGFloat = 8, rowSpacing: CGFloat = 4) {
+		self.spacing = spacing
+		self.rowSpacing = rowSpacing
+	}
+
+	func sizeThatFits(
+		proposal: ProposedViewSize,
+		subviews: Subviews,
+		cache: inout Void
+	) -> CGSize {
+		let maxWidth = max(0, proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.reduce(0, +))
+		var currentX: CGFloat = 0
+		var currentY: CGFloat = 0
+		var rowHeight: CGFloat = 0
+		var measuredWidth: CGFloat = 0
+
+		for subview in subviews {
+			let size = subview.sizeThatFits(.unspecified)
+			if currentX > 0, currentX + spacing + size.width > maxWidth {
+				currentY += rowHeight + rowSpacing
+				currentX = 0
+				rowHeight = 0
+			}
+
+			if currentX > 0 {
+				currentX += spacing
+			}
+			currentX += size.width
+			rowHeight = max(rowHeight, size.height)
+			measuredWidth = max(measuredWidth, currentX)
+		}
+
+		return CGSize(width: proposal.width ?? measuredWidth, height: currentY + rowHeight)
+	}
+
+	func placeSubviews(
+		in bounds: CGRect,
+		proposal: ProposedViewSize,
+		subviews: Subviews,
+		cache: inout Void
+	) {
+		let maxWidth = bounds.width
+		var currentX: CGFloat = bounds.minX
+		var currentY: CGFloat = bounds.minY
+		var rowHeight: CGFloat = 0
+
+		for subview in subviews {
+			let size = subview.sizeThatFits(.unspecified)
+			if currentX > bounds.minX, currentX + spacing + size.width > bounds.minX + maxWidth {
+				currentY += rowHeight + rowSpacing
+				currentX = bounds.minX
+				rowHeight = 0
+			}
+
+			if currentX > bounds.minX {
+				currentX += spacing
+			}
+			subview.place(
+				at: CGPoint(x: currentX, y: currentY),
+				proposal: ProposedViewSize(size)
+			)
+			currentX += size.width
+			rowHeight = max(rowHeight, size.height)
+		}
 	}
 }
 
@@ -1926,6 +2589,160 @@ private func compactUsageDate(_ value: String) -> String {
 	formatter.locale = Locale(identifier: "en_US_POSIX")
 	formatter.dateFormat = "MMM d"
 	return formatter.string(from: date)
+}
+
+private func panelTrimmed(_ value: String?) -> String? {
+	value?.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+private func humanizedPanelToken(_ value: String) -> String {
+	let words = value
+		.replacingOccurrences(of: "-", with: " ")
+		.replacingOccurrences(of: "_", with: " ")
+		.split(separator: " ")
+		.map { word in
+			let text = String(word)
+			guard let first = text.first else {
+				return text
+			}
+
+			return first.uppercased() + String(text.dropFirst())
+		}
+
+	return words.joined(separator: " ")
+}
+
+private func formatLaneDuration(_ seconds: Int?) -> String? {
+	guard let seconds else {
+		return nil
+	}
+
+	let value = max(0, seconds)
+	if value < 60 {
+		return "<1m"
+	}
+
+	let days = value / 86_400
+	let hours = (value % 86_400) / 3_600
+	let minutes = (value % 3_600) / 60
+	if days > 0 {
+		return hours > 0 ? "\(days)d \(hours)h" : "\(days)d"
+	}
+	if hours > 0 {
+		return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
+	}
+
+	return "\(minutes)m"
+}
+
+private func formatActivityDuration(_ seconds: Int?) -> String? {
+	guard let seconds else {
+		return nil
+	}
+
+	let value = max(0, seconds)
+	if value < 60 {
+		return "\(value)s"
+	}
+
+	let hours = value / 3_600
+	let minutes = (value % 3_600) / 60
+	let remainderSeconds = value % 60
+	if hours > 0 {
+		return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
+	}
+	if minutes > 0 {
+		return remainderSeconds > 0 ? "\(minutes)m \(remainderSeconds)s" : "\(minutes)m"
+	}
+
+	return "\(remainderSeconds)s"
+}
+
+private func formatCompactCount(_ value: Int) -> String {
+	let absoluteValue = abs(Double(value))
+	let sign = value < 0 ? "-" : ""
+
+	if absoluteValue >= 1_000_000_000 {
+		return "\(sign)\(formatCompactDecimal(absoluteValue / 1_000_000_000))B"
+	}
+	if absoluteValue >= 1_000_000 {
+		return "\(sign)\(formatCompactDecimal(absoluteValue / 1_000_000))M"
+	}
+	if absoluteValue >= 1_000 {
+		return "\(sign)\(formatCompactDecimal(absoluteValue / 1_000))K"
+	}
+
+	return "\(value)"
+}
+
+private func formatCompactBytes(_ value: Int) -> String {
+	let absoluteValue = max(0, Double(value))
+	if absoluteValue >= 1_073_741_824 {
+		return "\(formatCompactDecimal(absoluteValue / 1_073_741_824))GB"
+	}
+	if absoluteValue >= 1_048_576 {
+		return "\(formatCompactDecimal(absoluteValue / 1_048_576))MB"
+	}
+	if absoluteValue >= 1_024 {
+		return "\(formatCompactDecimal(absoluteValue / 1_024))KB"
+	}
+
+	return "\(max(0, value))B"
+}
+
+private func formatCompactDecimal(_ value: Double) -> String {
+	let rounded = (value * 10).rounded() / 10
+	if rounded >= 10 || rounded.rounded() == rounded {
+		return String(format: "%.0f", rounded)
+	}
+
+	return String(format: "%.1f", rounded)
+}
+
+private func formatPanelTimestamp(_ value: String?) -> String? {
+	guard let value = panelTrimmed(value) else {
+		return nil
+	}
+
+	let date = parsePanelTimestamp(value)
+	guard let date else {
+		return value
+	}
+
+	let formatter = DateFormatter()
+	formatter.locale = Locale(identifier: "en_US_POSIX")
+	let calendar = Calendar(identifier: .gregorian)
+	formatter.dateFormat = calendar.component(.year, from: date) == calendar.component(.year, from: Date())
+		? "MMM d HH:mm"
+		: "MMM d yyyy HH:mm"
+	return formatter.string(from: date)
+}
+
+private func parsePanelTimestamp(_ value: String) -> Date? {
+	let fractionalFormatter = ISO8601DateFormatter()
+	fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+	if let date = fractionalFormatter.date(from: value) {
+		return date
+	}
+
+	return ISO8601DateFormatter().date(from: value)
+}
+
+private func compactLanePath(_ value: String?) -> String? {
+	guard var text = panelTrimmed(value), !text.isEmpty else {
+		return nil
+	}
+
+	if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
+		text = text.replacingOccurrences(of: home, with: "~")
+	}
+	if text.count <= 42 {
+		return text
+	}
+
+	let prefix = text.prefix(18)
+	let suffix = text.suffix(20)
+	return "\(prefix)...\(suffix)"
 }
 
 enum GlassSurfaceDepth {
