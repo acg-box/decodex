@@ -16,7 +16,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 
 	var queuedCount: Int {
 		max(
-			queuedCandidates.filter { !$0.isClosed }.count,
+			queuedCandidates.filter { $0.isClosed == false }.count,
 			projects.reduce(0) { $0 + $1.queuedCandidateCount }
 		)
 	}
@@ -50,15 +50,15 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 			|| waitingCount > 0
 			|| attentionCount > 0
 			|| cleanupCount > 0
-			|| !warnings.isEmpty
+			|| warnings.isEmpty == false
 	}
 
 	var shouldDisplayInPanel: Bool {
-		hasVisibleSignal && (activeRunCount > 0 || !isAPIOnlySnapshot)
+		hasVisibleSignal && (activeRunCount > 0 || isAPIOnlySnapshot == false)
 	}
 
 	var warningSummary: String? {
-		let labels = warnings.compactMap(Self.warningLabel).filter { !$0.isEmpty }
+		let labels = warnings.compactMap(Self.warningLabel).filter { $0.isEmpty == false }
 		guard let first = labels.first else {
 			return nil
 		}
@@ -300,10 +300,10 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	}
 
 	var compactTitle: String {
-		if let issueIdentifier = trimmed(issueIdentifier), !issueIdentifier.isEmpty {
+		if let issueIdentifier = trimmed(issueIdentifier), issueIdentifier.isEmpty == false {
 			return issueIdentifier
 		}
-		if let title = trimmed(title), !title.isEmpty {
+		if let title = trimmed(title), title.isEmpty == false {
 			return title
 		}
 
@@ -311,25 +311,25 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	}
 
 	var compactDetail: String {
-		if let currentDetail = trimmed(childAgentActivity?.currentDetail), !currentDetail.isEmpty {
+		if let currentDetail = trimmed(childAgentActivity?.currentDetail), currentDetail.isEmpty == false {
 			return currentDetail
 		}
-		if let currentBucket = trimmed(childAgentActivity?.currentBucket), !currentBucket.isEmpty {
+		if let currentBucket = trimmed(childAgentActivity?.currentBucket), currentBucket.isEmpty == false {
 			return readable(currentBucket)
 		}
-		if let waitReason = trimmed(waitReason), !waitReason.isEmpty {
+		if let waitReason = trimmed(waitReason), waitReason.isEmpty == false {
 			return readable(waitReason)
 		}
-		if let operation = trimmed(currentOperation), !operation.isEmpty, operation != "idle" {
+		if let operation = trimmed(currentOperation), operation.isEmpty == false, operation != "idle" {
 			return readable(operation)
 		}
-		if let phase = trimmed(phase), !phase.isEmpty {
+		if let phase = trimmed(phase), phase.isEmpty == false {
 			return readable(phase)
 		}
-		if let threadStatus = trimmed(threadStatus), !threadStatus.isEmpty {
+		if let threadStatus = trimmed(threadStatus), threadStatus.isEmpty == false {
 			return readable(threadStatus)
 		}
-		if let status = trimmed(status), !status.isEmpty {
+		if let status = trimmed(status), status.isEmpty == false {
 			return readable(status)
 		}
 
@@ -386,7 +386,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	}
 
 	private func mergedTitle(from activity: OperatorRunStatus) -> String? {
-		if let title = activity.title, !title.isEmpty, !activity.titleIsOperationFallback {
+		if let title = activity.title, title.isEmpty == false, activity.titleIsOperationFallback == false {
 			return title
 		}
 
@@ -394,7 +394,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	}
 
 	private var titleIsOperationFallback: Bool {
-		guard let title, !title.isEmpty else {
+		guard let title, title.isEmpty == false else {
 			return false
 		}
 
@@ -643,7 +643,7 @@ struct OperatorRunAccountSummary: Decodable, Sendable {
 	let email: String?
 
 	func matches(_ account: CodexAccount) -> Bool {
-		if !accountFingerprint.isEmpty, accountFingerprint == account.accountFingerprint {
+		if accountFingerprint.isEmpty == false, accountFingerprint == account.accountFingerprint {
 			return true
 		}
 		if let email, let accountEmail = account.email {
