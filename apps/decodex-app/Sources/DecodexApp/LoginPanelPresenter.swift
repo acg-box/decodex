@@ -132,7 +132,7 @@ struct LoginPanelPresenter: NSViewRepresentable {
 		private func origin(for panelSize: NSSize) -> NSPoint {
 			let parentWindow = hostView?.window
 			let screen = parentWindow?.screen ?? NSScreen.main
-			let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+			let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1_280, height: 800)
 			let margin: CGFloat = 8
 
 			var x: CGFloat
@@ -158,7 +158,7 @@ struct LoginPanelPresenter: NSViewRepresentable {
 			}
 			panel = nil
 			hostingView = nil
-			guard !isClosingProgrammatically else {
+			guard isClosingProgrammatically == false else {
 				return
 			}
 
