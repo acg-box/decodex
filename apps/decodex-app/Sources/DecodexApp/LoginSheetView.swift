@@ -452,15 +452,6 @@ private struct LoginTextButtonStyle: ButtonStyle {
 
 }
 
-private enum LoginFont {
-	static let title = Font.system(size: 14.6, weight: .semibold)
-	static let caption = Font.system(size: 10.6, weight: .medium)
-	static let destination = Font.system(size: 10.8, weight: .semibold)
-	static let button = Font.system(size: 10.8, weight: .semibold)
-	static let icon = Font.system(size: 11.4, weight: .semibold)
-	static let code = Font.system(size: 16.2, weight: .semibold, design: .monospaced)
-}
-
 private enum LoginPalette {
 	static func primaryText(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
