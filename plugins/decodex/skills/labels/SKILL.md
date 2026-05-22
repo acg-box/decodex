@@ -30,8 +30,8 @@ The project config is usually under:
 $HOME/.codex/decodex/projects/<service-id>/project.toml
 ```
 
-If a command supplies `--config <project-dir>`, read that project's `project.toml`
-instead.
+If a project-scoped command supplies `--config <project-dir>`, read that project's
+`project.toml` instead.
 
 ## Human Label Actions
 
