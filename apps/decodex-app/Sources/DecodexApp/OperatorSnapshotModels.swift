@@ -54,7 +54,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 	}
 
 	var shouldDisplayInPanel: Bool {
-		!isAPIOnlySnapshot
+		hasVisibleSignal && !isAPIOnlySnapshot
 	}
 
 	var warningSummary: String? {

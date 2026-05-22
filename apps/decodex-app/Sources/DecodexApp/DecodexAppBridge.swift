@@ -295,7 +295,16 @@ struct DecodexAppBridge: Sendable {
 private extension AppBridgeRequest {
 	var requiresHelper: Bool {
 		switch operation {
-		case "account_login", "codex_fast_mode_status", "codex_fast_mode_set":
+		case
+			"account_clear",
+			"account_import",
+			"account_list",
+			"account_login",
+			"account_logout",
+			"account_select",
+			"account_use",
+			"codex_fast_mode_status",
+			"codex_fast_mode_set":
 			return true
 		default:
 			return false

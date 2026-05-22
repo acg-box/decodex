@@ -298,6 +298,7 @@ private extension AccountListResponse {
 			accounts: accounts.map { account in
 				account.withCodexActive(account.matchesSelector(identity.selector))
 			},
+			usageEstimate: usageEstimate,
 			usageProbeError: usageProbeError
 		)
 	}
