@@ -464,6 +464,7 @@ fn run_control_plane_tick(
 fn run_control_plane_api_only_tick(state_store: &StateStore) -> Result<OperatorStatusSnapshot> {
 	let registered_projects = state_store.list_projects()?;
 	let mut snapshot = empty_control_plane_snapshot(DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT);
+	let mut project_statuses = Vec::new();
 
 	if !registered_projects.iter().any(ProjectRegistration::enabled) {
 		add_operator_snapshot_warning(&mut snapshot, "no_enabled_projects");
@@ -471,10 +472,51 @@ fn run_control_plane_api_only_tick(state_store: &StateStore) -> Result<OperatorS
 
 	add_operator_snapshot_warning(&mut snapshot, "automation_disabled");
 
-	snapshot.projects = registered_projects
-		.iter()
-		.map(operator_project_status_from_api_only_registration)
-		.collect();
+	for registration in &registered_projects {
+		let mut project_status = operator_project_status_from_api_only_registration(registration);
+
+		if registration.enabled() {
+			match ServiceConfig::from_path(registration.config_path()).and_then(|project| {
+				build_operator_status_snapshot(
+					&project,
+					state_store,
+					DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
+				)
+			}) {
+				Ok(project_snapshot) => {
+					if let Some(local_status) = project_snapshot.projects.first() {
+						project_status.active_run_count = local_status.active_run_count;
+						project_status.retained_worktree_count = local_status.retained_worktree_count;
+						project_status.waiting_lane_count = local_status.waiting_lane_count;
+						project_status.attention_count = local_status.attention_count;
+						project_status.cleanup_blocked_count = local_status.cleanup_blocked_count;
+						project_status.cleanup_pending_count = local_status.cleanup_pending_count;
+						project_status.last_activity_at = local_status.last_activity_at.clone();
+						project_status.warning_count =
+							project_status.warning_count.saturating_add(local_status.warning_count);
+					} else {
+						project_status.active_run_count = project_snapshot.active_runs.len();
+					}
+
+					append_control_plane_project_snapshot(&mut snapshot, project_snapshot);
+				},
+				Err(error) => {
+					let _ = error;
+
+					project_status.warning_count = project_status.warning_count.saturating_add(1);
+					add_operator_snapshot_warning(&mut snapshot, "operator_snapshot_build_failed");
+					tracing::warn!(
+						project_id = registration.service_id(),
+						"API-only operator snapshot local run hydration failed; sensitive runtime details were withheld."
+					);
+				},
+			}
+		}
+
+		project_statuses.push(project_status);
+	}
+
+	snapshot.projects = project_statuses;
 	snapshot.account_control = global_codex_account_control_status();
 
 	Ok(snapshot)
