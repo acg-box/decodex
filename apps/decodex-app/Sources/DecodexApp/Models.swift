@@ -7,6 +7,7 @@ struct AccountListResponse: Decodable {
 	let codexAuth: CodexAuthIdentity?
 	let control: AccountControl
 	let accounts: [CodexAccount]
+	let usageEstimate: AccountUsageEstimate?
 	let usageProbeError: String?
 
 	enum CodingKeys: String, CodingKey {
@@ -16,6 +17,7 @@ struct AccountListResponse: Decodable {
 		case codexAuth = "codex_auth"
 		case control
 		case accounts
+		case usageEstimate = "usage_estimate"
 		case usageProbeError = "usage_probe_error"
 	}
 }
@@ -66,6 +68,44 @@ struct CodexFastModeResponse: Decodable, Equatable {
 	}
 }
 
+struct AccountUsageEstimate: Decodable, Equatable {
+	let windowDays: Int
+	let accountCount: Int
+	let accountEstimateCount: Int
+	let totalCapacityPercent: Int
+	let totalUsedPercent: Int
+	let totalUsedOfCapacityPercent: Double
+	let averageDailyUsedPercent: Double
+	let averageDailyPoolPercent: Double
+
+	enum CodingKeys: String, CodingKey {
+		case windowDays = "window_days"
+		case accountCount = "account_count"
+		case accountEstimateCount = "account_estimate_count"
+		case totalCapacityPercent = "total_capacity_percent"
+		case totalUsedPercent = "total_used_percent"
+		case totalUsedOfCapacityPercent = "total_used_of_capacity_percent"
+		case averageDailyUsedPercent = "average_daily_used_percent"
+		case averageDailyPoolPercent = "average_daily_pool_percent"
+	}
+}
+
+struct AccountUsageRecord: Decodable, Identifiable, Equatable {
+	let date: String
+	let usedPercent: Int
+	let checkedAtUnixEpoch: Int
+
+	var id: String {
+		"\(date)-\(checkedAtUnixEpoch)"
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case date
+		case usedPercent = "used_percent"
+		case checkedAtUnixEpoch = "checked_at_unix_epoch"
+	}
+}
+
 struct CodexAccount: Decodable, Identifiable, Equatable {
 	let accountFingerprint: String
 	let email: String?
@@ -95,6 +135,9 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	let creditsUnlimited: Bool?
 	let creditsBalance: String?
 	let rateLimitReachedType: String?
+	let sevenDayUsedPercent: Int?
+	let sevenDayDailyAveragePercent: Double?
+	let usageRecords: [AccountUsageRecord]?
 
 	var id: String {
 		email ?? accountFingerprint
@@ -190,22 +233,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	}
 
 	func windowLabel(seconds: Int?) -> String {
-		switch seconds {
-		case 18_000: return "5 hrs"
-		case 604_800: return "7 days"
-		case let value?:
-			let hours = value / 3_600
-			if hours > 0 && value % 3_600 == 0 {
-				return hours == 1 ? "1 hr" : "\(hours) hrs"
-			}
-			let days = value / 86_400
-			if days > 0 && value % 86_400 == 0 {
-				return days == 1 ? "1 day" : "\(days) days"
-			}
-			return "window"
-		case nil:
-			return "window"
-		}
+		UsageWindowLabel.make(seconds: seconds)
 	}
 
 	func usageTone(remainingPercent: Int?) -> AccountTone {
@@ -255,7 +283,10 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 			creditsHasCredits: creditsHasCredits,
 			creditsUnlimited: creditsUnlimited,
 			creditsBalance: creditsBalance,
-			rateLimitReachedType: rateLimitReachedType
+			rateLimitReachedType: rateLimitReachedType,
+			sevenDayUsedPercent: sevenDayUsedPercent,
+			sevenDayDailyAveragePercent: sevenDayDailyAveragePercent,
+			usageRecords: usageRecords
 		)
 	}
 
@@ -288,6 +319,9 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case creditsUnlimited = "credits_unlimited"
 		case creditsBalance = "credits_balance"
 		case rateLimitReachedType = "rate_limit_reached_type"
+		case sevenDayUsedPercent = "seven_day_used_percent"
+		case sevenDayDailyAveragePercent = "seven_day_daily_average_percent"
+		case usageRecords = "usage_records"
 	}
 }
 
@@ -298,4 +332,31 @@ enum AccountTone {
 	case warning
 	case danger
 	case neutral
+}
+
+enum UsageWindowLabel {
+	static func make(seconds: Int?) -> String {
+		guard let seconds, seconds > 0 else {
+			return "-"
+		}
+
+		if seconds == 18_000 {
+			return "5h"
+		}
+		if seconds == 604_800 {
+			return "7d"
+		}
+		if seconds % 86_400 == 0 {
+			return days(seconds / 86_400)
+		}
+		if seconds % 3_600 == 0 {
+			return "\(seconds / 3_600)h"
+		}
+
+		return "-"
+	}
+
+	static func days(_ value: Int) -> String {
+		"\(value)d"
+	}
 }
