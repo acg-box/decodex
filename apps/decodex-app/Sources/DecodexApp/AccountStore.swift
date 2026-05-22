@@ -41,7 +41,7 @@ final class AccountStore: ObservableObject {
 		}
 
 		let codexLabel = accountList?.codexAuth?.displayName ?? "no Codex auth"
-		if let selector = control.accountSelector, !selector.isEmpty {
+		if let selector = control.accountSelector, selector.isEmpty == false {
 			return "Codex: \(codexLabel) / Decodex: \(selector)"
 		}
 
@@ -71,7 +71,7 @@ final class AccountStore: ObservableObject {
 	}
 
 	func refresh(force: Bool = false) async {
-		guard !isRefreshing else {
+		guard isRefreshing == false else {
 			return
 		}
 
@@ -112,7 +112,7 @@ final class AccountStore: ObservableObject {
 	}
 
 	func resetLoginSession() {
-		guard !isLoggingIn else {
+		guard isLoggingIn == false else {
 			return
 		}
 
@@ -126,7 +126,7 @@ final class AccountStore: ObservableObject {
 		}
 
 		automaticRefreshTask = Task { [weak self] in
-			while !Task.isCancelled {
+			while Task.isCancelled == false {
 				do {
 					try await Task.sleep(nanoseconds: 60_000_000_000)
 				} catch {
@@ -151,7 +151,7 @@ final class AccountStore: ObservableObject {
 	}
 
 	private func runOperatorSnapshotStream() async {
-		while !Task.isCancelled {
+		while Task.isCancelled == false {
 			do {
 				try await connectOperatorSnapshotStream()
 			} catch {
@@ -176,7 +176,7 @@ final class AccountStore: ObservableObject {
 			socket.cancel(with: .normalClosure, reason: nil)
 		}
 
-		while !Task.isCancelled {
+		while Task.isCancelled == false {
 			let event = try await receiveOperatorDashboardEvent(from: socket)
 
 			applyOperatorDashboardEvent(event)
@@ -281,7 +281,7 @@ final class AccountStore: ObservableObject {
 	}
 
 	func setFastMode(_ enabled: Bool) async {
-		guard !isSettingFastMode else {
+		guard isSettingFastMode == false else {
 			return
 		}
 
@@ -434,7 +434,7 @@ struct DeviceLoginPrompt: Equatable {
 
 	private static func normalizedCode(from line: String) -> String? {
 		let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !trimmed.isEmpty else {
+		guard trimmed.isEmpty == false else {
 			return nil
 		}
 

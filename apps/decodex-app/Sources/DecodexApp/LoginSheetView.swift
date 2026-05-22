@@ -18,7 +18,7 @@ enum AccountLoginSheetMode: Equatable {
 		case .newAccount:
 			return fallback
 		case .account(let name):
-			return !isActive && !name.isEmpty ? name : fallback
+			return isActive == false && name.isEmpty == false ? name : fallback
 		}
 	}
 }
@@ -350,7 +350,7 @@ private struct LoginIconActionButton: View {
 				isFeedbackActive: isFeedbackActive
 			)
 		)
-		.disabled(!isEnabled)
+		.disabled(isEnabled == false)
 		.onHover { hovering in
 			withAnimation(PanelMotion.hover) {
 				isHovered = hovering
@@ -389,7 +389,7 @@ private struct LoginSmallButtonStyle: ButtonStyle {
 	}
 
 	private var foreground: Color {
-		if !isEnabled {
+		if isEnabled == false {
 			return LoginPalette.secondaryText(colorScheme).opacity(0.62)
 		}
 		if isFeedbackActive {
@@ -402,7 +402,7 @@ private struct LoginSmallButtonStyle: ButtonStyle {
 	}
 
 	private var stroke: Color {
-		if !isEnabled {
+		if isEnabled == false {
 			return LoginPalette.secondaryText(colorScheme).opacity(0.08)
 		}
 		if isFeedbackActive {

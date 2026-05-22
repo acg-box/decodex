@@ -15,7 +15,7 @@ private enum DecodexServerProbe: Equatable {
 actor DecodexServerBridge {
 	static let shared = DecodexServerBridge()
 
-	private let defaultBaseURL = URL(string: "http://127.0.0.1:8912")!
+	private let defaultBaseURL = DecodexServerBridge.makeDefaultBaseURL()
 	private let defaultListenAddress = "127.0.0.1:8912"
 	private let liveCheckFreshness: TimeInterval = 5
 	private var serverBaseURL: URL?
@@ -70,7 +70,7 @@ actor DecodexServerBridge {
 		baseURL: URL,
 		as type: T.Type
 	) async throws -> T {
-		let url = routeURL(baseURL: baseURL, route: route)
+		let url = try routeURL(baseURL: baseURL, route: route)
 		var urlRequest = URLRequest(url: url)
 
 		urlRequest.httpMethod = route.method
@@ -239,7 +239,7 @@ actor DecodexServerBridge {
 	}
 
 	private func decodexExecutableURL() throws -> URL {
-		if let override = ProcessInfo.processInfo.environment["DECODEX_APP_DECODEX"], !override.isEmpty {
+		if let override = ProcessInfo.processInfo.environment["DECODEX_APP_DECODEX"], override.isEmpty == false {
 			let overrideURL = URL(fileURLWithPath: override)
 			if FileManager.default.isExecutableFile(atPath: overrideURL.path) {
 				return overrideURL
@@ -259,16 +259,30 @@ actor DecodexServerBridge {
 		)
 	}
 
-	private func routeURL(baseURL: URL, route: ServerRoute) -> URL {
+	private func routeURL(baseURL: URL, route: ServerRoute) throws -> URL {
 		let parts = route.path.split(separator: "?", maxSplits: 1).map(String.init)
-		var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
+		guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+			throw DecodexAppBridgeError.invalidResponse("Decodex server URL is invalid")
+		}
 
 		components.path = "/" + parts[0]
 		if parts.count == 2 {
 			components.query = parts[1]
 		}
 
-		return components.url!
+		guard let url = components.url else {
+			throw DecodexAppBridgeError.invalidResponse("Decodex server route URL is invalid")
+		}
+
+		return url
+	}
+
+	private static func makeDefaultBaseURL() -> URL {
+		guard let url = URL(string: "http://127.0.0.1:8912") else {
+			preconditionFailure("default Decodex server URL must be valid")
+		}
+
+		return url
 	}
 }
 
