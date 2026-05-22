@@ -203,7 +203,7 @@ pub(crate) fn registered_config_path_for_cwd(
 
 	if ambiguous {
 		eyre::bail!(
-			"Current directory `{}` matches multiple registered Decodex projects; pass `--config <PROJECT_DIR>`.",
+			"Current directory `{}` matches multiple registered Decodex projects; pass the command's `--config <PROJECT_DIR>`.",
 			cwd.display()
 		);
 	}

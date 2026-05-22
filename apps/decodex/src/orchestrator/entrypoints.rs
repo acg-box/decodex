@@ -39,7 +39,7 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 		}
 
 		eyre::bail!(
-			"No Decodex project config found. Pass --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
+			"No Decodex project config found. Pass this command's --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
 		);
 	};
 
@@ -158,7 +158,7 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 	if let Some(config_path) = request.config_path {
 		let Some(config_path) = resolve_config_path(Some(config_path), &state_store)? else {
 			eyre::bail!(
-				"No Decodex project config found. Pass --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
+				"No Decodex project config found. Pass this command's --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
 			);
 		};
 
@@ -213,7 +213,7 @@ pub(crate) fn print_status(
 	let state_store = runtime::open_runtime_store()?;
 	let Some(config_path) = resolve_config_path(config_path, &state_store)? else {
 		eyre::bail!(
-			"No Decodex project config found. Pass --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
+			"No Decodex project config found. Pass this command's --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
 		);
 	};
 	let config = ServiceConfig::from_path(&config_path)?;
@@ -271,7 +271,7 @@ pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
 	let state_store = runtime::open_runtime_store()?;
 	let Some(config_path) = resolve_config_path(request.config_path, &state_store)? else {
 		eyre::bail!(
-			"No Decodex project config found. Pass --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
+			"No Decodex project config found. Pass this command's --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
 		);
 	};
 	let config = ServiceConfig::from_path(&config_path)?;
