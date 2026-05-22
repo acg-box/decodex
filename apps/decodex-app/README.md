@@ -13,10 +13,10 @@ The first Decodex App release manages the shared Codex account pool through the
 bundled Rust app helper so account UI stays on the same CLI-owned files even when a
 long-running local `decodex serve` is older than the app bundle. On launch the app also
 connects to an existing `decodex serve` on the default local endpoint when one is
-available; otherwise it starts the bundled `decodex serve --api-only` binary for
-operator snapshot and WebUI routes. App-started servers do not poll registered projects
-or dispatch Linear work. The helper owns account operations and interactive login flows
-that need streamed command output:
+available; otherwise it starts the bundled Decodex binary in its hidden API-only
+operator endpoint mode for operator snapshot and WebUI routes. App-started servers do
+not poll registered projects or dispatch Linear work. The helper owns account
+operations and interactive login flows that need streamed command output:
 
 - list accounts without printing token material
 - pin future Decodex runs to one account

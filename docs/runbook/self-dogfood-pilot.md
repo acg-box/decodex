@@ -54,7 +54,7 @@ For the recommended first deployment, collect each project contract under `~/.co
 
 `decodex` resolves config in this order:
 
-1. `--config <PROJECT_DIR>`
+1. `--config <PROJECT_DIR>` on project-scoped commands that accept it
 2. the global project registry entry whose `repo_root` or `worktree_root` owns the current directory
 
 Projects must be registered explicitly. Keep project configs in the canonical
@@ -402,9 +402,9 @@ wants to observe the self-bootstrap loop without reading source code.
    local runtime database. Passing `--config` refreshes that project registration
    before the scheduler starts.
 
-   Pass `--config <PROJECT_DIR>` when you want `serve` to refresh one project registration
-   before it starts. Omit it when the registry already contains the enabled projects
-   you want the control plane to monitor.
+   Pass `decodex serve --config <PROJECT_DIR>` when you want `serve` to refresh one
+   project registration before it starts. Omit it when the registry already contains
+   the enabled projects you want the control plane to monitor.
 
 5. Open the operator dashboard:
 

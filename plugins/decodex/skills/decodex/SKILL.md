@@ -26,7 +26,7 @@ specs. Decodex has two supported use modes:
 3. Read `Makefile.toml` before running repository validation.
 4. For automation questions, read the registered project `project.toml` and
    `WORKFLOW.md` under `~/.codex/decodex/projects/<service-id>/` or the project
-   directory supplied with `--config`.
+   directory supplied through a project-scoped command's `--config`.
 5. Use the narrow skill for the current action:
    - `manual-cli` for normal operator CLI use.
    - `planning` for Decodex-friendly issue splitting, queue shaping, and concurrency.
