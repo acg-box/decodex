@@ -77,6 +77,46 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		activeRuns(for: account).count
 	}
 
+	func mergingRunActivity(_ activityRuns: [OperatorRunStatus]) -> OperatorSnapshotResponse {
+		let snapshotRunsByID = activeRuns.reduce(into: [String: OperatorRunStatus]()) { runsByID, run in
+			runsByID[run.runID] = run
+		}
+		let mergedRuns = activityRuns.map { activityRun in
+			snapshotRunsByID[activityRun.runID]?.mergingActivity(activityRun) ?? activityRun
+		}
+		let activeCountsByProject = Dictionary(grouping: mergedRuns.compactMap(\.projectID)) { $0 }
+			.mapValues(\.count)
+		let mergedProjects = projects.map { project in
+			guard let projectID = project.projectID else {
+				return project
+			}
+
+			return project.withActiveRunCount(activeCountsByProject[projectID] ?? 0)
+		}
+
+		return OperatorSnapshotResponse(
+			warnings: warnings,
+			projects: mergedProjects,
+			activeRuns: mergedRuns,
+			queuedCandidates: queuedCandidates,
+			postReviewLanes: postReviewLanes
+		)
+	}
+
+	private init(
+		warnings: [String],
+		projects: [OperatorProjectStatus],
+		activeRuns: [OperatorRunStatus],
+		queuedCandidates: [OperatorQueuedIssueStatus],
+		postReviewLanes: [OperatorPostReviewLaneStatus]
+	) {
+		self.warnings = warnings
+		self.projects = projects
+		self.activeRuns = activeRuns
+		self.queuedCandidates = queuedCandidates
+		self.postReviewLanes = postReviewLanes
+	}
+
 	private var isAPIOnlySnapshot: Bool {
 		warnings.contains("automation_disabled")
 			&& projects.allSatisfy { $0.connectorState == "api_only" }
@@ -129,6 +169,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 }
 
 struct OperatorProjectStatus: Decodable, Sendable {
+	let projectID: String?
 	let connectorState: String?
 	let activeRunCount: Int
 	let queuedCandidateCount: Int
@@ -138,7 +179,22 @@ struct OperatorProjectStatus: Decodable, Sendable {
 	let cleanupBlockedCount: Int
 	let cleanupPendingCount: Int
 
+	func withActiveRunCount(_ count: Int) -> OperatorProjectStatus {
+		OperatorProjectStatus(
+			projectID: projectID,
+			connectorState: connectorState,
+			activeRunCount: count,
+			queuedCandidateCount: queuedCandidateCount,
+			postReviewLaneCount: postReviewLaneCount,
+			waitingLaneCount: waitingLaneCount,
+			attentionCount: attentionCount,
+			cleanupBlockedCount: cleanupBlockedCount,
+			cleanupPendingCount: cleanupPendingCount
+		)
+	}
+
 	enum CodingKeys: String, CodingKey {
+		case projectID = "project_id"
 		case connectorState = "connector_state"
 		case activeRunCount = "active_run_count"
 		case queuedCandidateCount = "queued_candidate_count"
@@ -152,6 +208,7 @@ struct OperatorProjectStatus: Decodable, Sendable {
 	init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 
+		projectID = try container.decodeIfPresent(String.self, forKey: .projectID)
 		connectorState = try container.decodeIfPresent(String.self, forKey: .connectorState)
 		activeRunCount = try container.decodeIfPresent(Int.self, forKey: .activeRunCount) ?? 0
 		queuedCandidateCount = try container.decodeIfPresent(Int.self, forKey: .queuedCandidateCount) ?? 0
@@ -160,6 +217,28 @@ struct OperatorProjectStatus: Decodable, Sendable {
 		attentionCount = try container.decodeIfPresent(Int.self, forKey: .attentionCount) ?? 0
 		cleanupBlockedCount = try container.decodeIfPresent(Int.self, forKey: .cleanupBlockedCount) ?? 0
 		cleanupPendingCount = try container.decodeIfPresent(Int.self, forKey: .cleanupPendingCount) ?? 0
+	}
+
+	private init(
+		projectID: String?,
+		connectorState: String?,
+		activeRunCount: Int,
+		queuedCandidateCount: Int,
+		postReviewLaneCount: Int,
+		waitingLaneCount: Int,
+		attentionCount: Int,
+		cleanupBlockedCount: Int,
+		cleanupPendingCount: Int
+	) {
+		self.projectID = projectID
+		self.connectorState = connectorState
+		self.activeRunCount = activeRunCount
+		self.queuedCandidateCount = queuedCandidateCount
+		self.postReviewLaneCount = postReviewLaneCount
+		self.waitingLaneCount = waitingLaneCount
+		self.attentionCount = attentionCount
+		self.cleanupBlockedCount = cleanupBlockedCount
+		self.cleanupPendingCount = cleanupPendingCount
 	}
 }
 
@@ -274,6 +353,54 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		self.account?.matches(account) == true
 	}
 
+	func mergingActivity(_ activity: OperatorRunStatus) -> OperatorRunStatus {
+		OperatorRunStatus(
+			projectID: activity.projectID ?? projectID,
+			runID: activity.runID,
+			issueID: activity.issueID ?? issueID,
+			issueIdentifier: activity.issueIdentifier ?? issueIdentifier,
+			title: mergedTitle(from: activity),
+			status: activity.status ?? status,
+			attemptStatus: activity.attemptStatus ?? attemptStatus,
+			attemptNumber: activity.attemptNumber ?? attemptNumber,
+			phase: activity.phase ?? phase,
+			waitReason: activity.waitReason ?? waitReason,
+			currentOperation: activity.currentOperation ?? currentOperation,
+			threadStatus: activity.threadStatus ?? threadStatus,
+			idleForSeconds: activity.idleForSeconds ?? idleForSeconds,
+			protocolIdleForSeconds: activity.protocolIdleForSeconds ?? protocolIdleForSeconds,
+			updatedAt: activity.updatedAt ?? updatedAt,
+			lastProgressAt: activity.lastProgressAt ?? lastProgressAt,
+			nextRetryAt: activity.nextRetryAt ?? nextRetryAt,
+			lastEventType: activity.lastEventType ?? lastEventType,
+			eventCount: activity.eventCount ?? eventCount,
+			processAlive: activity.processAlive ?? processAlive,
+			activeLease: activity.activeLease ?? activeLease,
+			branchName: activity.branchName ?? branchName,
+			worktreePath: activity.worktreePath ?? worktreePath,
+			suspectedStall: activity.suspectedStall || suspectedStall,
+			childAgentActivity: activity.childAgentActivity ?? childAgentActivity,
+			account: activity.account ?? account,
+			accounts: activity.accounts.isEmpty ? accounts : activity.accounts
+		)
+	}
+
+	private func mergedTitle(from activity: OperatorRunStatus) -> String? {
+		if let title = activity.title, !title.isEmpty, !activity.titleIsOperationFallback {
+			return title
+		}
+
+		return title ?? activity.title
+	}
+
+	private var titleIsOperationFallback: Bool {
+		guard let title, !title.isEmpty else {
+			return false
+		}
+
+		return title == readable(currentOperation ?? phase ?? "")
+	}
+
 	enum CodingKeys: String, CodingKey {
 		case projectID = "project_id"
 		case runID = "run_id"
@@ -337,6 +464,91 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		)
 		account = try container.decodeIfPresent(OperatorRunAccountSummary.self, forKey: .account)
 		accounts = try container.decodeIfPresent([OperatorRunAccountSummary].self, forKey: .accounts) ?? []
+	}
+
+	private init(
+		projectID: String?,
+		runID: String,
+		issueID: String?,
+		issueIdentifier: String?,
+		title: String?,
+		status: String?,
+		attemptStatus: String?,
+		attemptNumber: Int?,
+		phase: String?,
+		waitReason: String?,
+		currentOperation: String?,
+		threadStatus: String?,
+		idleForSeconds: Int?,
+		protocolIdleForSeconds: Int?,
+		updatedAt: String?,
+		lastProgressAt: String?,
+		nextRetryAt: String?,
+		lastEventType: String?,
+		eventCount: Int?,
+		processAlive: Bool?,
+		activeLease: Bool?,
+		branchName: String?,
+		worktreePath: String?,
+		suspectedStall: Bool,
+		childAgentActivity: OperatorChildAgentActivity?,
+		account: OperatorRunAccountSummary?,
+		accounts: [OperatorRunAccountSummary]
+	) {
+		self.projectID = projectID
+		self.runID = runID
+		self.issueID = issueID
+		self.issueIdentifier = issueIdentifier
+		self.title = title
+		self.status = status
+		self.attemptStatus = attemptStatus
+		self.attemptNumber = attemptNumber
+		self.phase = phase
+		self.waitReason = waitReason
+		self.currentOperation = currentOperation
+		self.threadStatus = threadStatus
+		self.idleForSeconds = idleForSeconds
+		self.protocolIdleForSeconds = protocolIdleForSeconds
+		self.updatedAt = updatedAt
+		self.lastProgressAt = lastProgressAt
+		self.nextRetryAt = nextRetryAt
+		self.lastEventType = lastEventType
+		self.eventCount = eventCount
+		self.processAlive = processAlive
+		self.activeLease = activeLease
+		self.branchName = branchName
+		self.worktreePath = worktreePath
+		self.suspectedStall = suspectedStall
+		self.childAgentActivity = childAgentActivity
+		self.account = account
+		self.accounts = accounts
+	}
+}
+
+struct OperatorDashboardSocketEvent: Decodable, Sendable {
+	let type: String
+	let payload: OperatorDashboardSocketPayload?
+}
+
+struct OperatorDashboardSocketPayload: Decodable, Sendable {
+	let emittedAtUnixEpoch: Int64?
+	let snapshotPublishedAtUnixEpoch: Int64?
+	let snapshot: OperatorSnapshotResponse?
+	let activeRuns: [OperatorRunStatus]?
+
+	var emittedAt: Date? {
+		date(fromUnixEpoch: emittedAtUnixEpoch)
+	}
+
+	var snapshotPublishedAt: Date? {
+		date(fromUnixEpoch: snapshotPublishedAtUnixEpoch)
+	}
+
+	enum CodingKeys: String, CodingKey {
+		case emittedAtUnixEpoch
+		case snapshotPublishedAtUnixEpoch
+		case snapshot
+		case activeRuns
 	}
 }
 
@@ -473,4 +685,12 @@ private func readable(_ value: String) -> String {
 		}
 
 	return words.joined(separator: " ")
+}
+
+private func date(fromUnixEpoch value: Int64?) -> Date? {
+	guard let value else {
+		return nil
+	}
+
+	return Date(timeIntervalSince1970: TimeInterval(value))
 }
