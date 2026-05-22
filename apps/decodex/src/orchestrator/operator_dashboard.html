@@ -1798,10 +1798,83 @@
 
 			.account-pool {
 				display: grid;
-				gap: 0;
+				gap: 10px;
 				min-width: 0;
 				overflow-x: auto;
 				padding-bottom: 2px;
+			}
+
+			.account-pool-summary {
+				display: grid;
+				grid-template-columns: repeat(3, minmax(0, 1fr));
+				gap: 0;
+				min-width: 0;
+				padding: 8px 0 8px var(--space-row-indent);
+				border-bottom: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+				color: var(--muted);
+			}
+
+			.account-pool-metric {
+				display: grid;
+				gap: 3px;
+				min-width: 0;
+				padding: 0 14px;
+				border-left: 1px solid var(--line);
+				font-family: var(--mono);
+				font-variant-numeric: tabular-nums;
+			}
+
+			.account-pool-metric:first-child {
+				padding-left: 0;
+				border-left: 0;
+			}
+
+			.account-pool-metric-label {
+				overflow: hidden;
+				color: var(--muted);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+				line-height: 1.15;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-pool-metric-value {
+				overflow: hidden;
+				color: var(--muted-strong);
+				font-size: var(--type-row-title);
+				font-weight: var(--weight-label);
+				letter-spacing: 0;
+				line-height: 1.15;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-pool-metric-value[data-tone="run"] {
+				color: var(--tone-run);
+			}
+
+			.account-pool-metric-value[data-tone="warning"] {
+				color: var(--warning);
+			}
+
+			.account-pool-metric-value[data-tone="danger"] {
+				color: var(--danger);
+			}
+
+			.account-pool-metric-value[data-tone="muted"] {
+				color: var(--muted);
+			}
+
+			.account-pool-summary-note {
+				grid-column: 1 / -1;
+				margin-top: 2px;
+				color: var(--muted);
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				line-height: 1.2;
 			}
 
 			.account-pool-list {
@@ -6231,6 +6304,148 @@
 					return Math.max(0, Math.min(100, Math.round(number)));
 				}
 
+				function formatUsagePercent(value) {
+					if (value == null || value === "") {
+						return "-";
+					}
+					const number = Number(value);
+					if (!Number.isFinite(number)) {
+						return "-";
+					}
+
+					const rounded = Math.round(number);
+					if (Math.abs(number - rounded) < 0.05) {
+						return `${rounded}%`;
+					}
+
+					return `${number.toFixed(1)}%`;
+				}
+
+				function formatDailyUsageRate(value) {
+					const percent = formatUsagePercent(value);
+					return percent === "-" ? "-" : `${percent}/d`;
+				}
+
+				function formatPercentagePointDelta(value) {
+					if (value == null || value === "") {
+						return "-";
+					}
+					const number = Number(value);
+					if (!Number.isFinite(number)) {
+						return "-";
+					}
+
+					const absValue = Math.abs(number);
+					const sign = number > 0.05 ? "+" : number < -0.05 ? "-" : "";
+					const rounded = Math.round(absValue);
+					if (Math.abs(absValue - rounded) < 0.05) {
+						return `${sign}${rounded}pp`;
+					}
+
+					return `${sign}${absValue.toFixed(1)}pp`;
+				}
+
+				function codexAccountUsageRecords(account) {
+					return Array.isArray(account?.usage_records)
+						? account.usage_records.filter((record) => record?.date)
+						: [];
+				}
+
+				function previousUsageDate(value) {
+					const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+					if (!match) {
+						return "";
+					}
+
+					const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+					if (Number.isNaN(date.getTime())) {
+						return "";
+					}
+					date.setUTCDate(date.getUTCDate() - 1);
+
+					return date.toISOString().slice(0, 10);
+				}
+
+				function usageRecordForDate(account, date) {
+					return codexAccountUsageRecords(account)
+						.filter((record) => record.date === date)
+						.sort(
+							(left, right) =>
+								Number(right.checked_at_unix_epoch || 0) -
+								Number(left.checked_at_unix_epoch || 0),
+						)[0] || null;
+				}
+
+				function accountPoolUsageEstimate(snapshot) {
+					return accountApiSnapshot?.usage_estimate || snapshot?.usage_estimate || null;
+				}
+
+				function accountPoolDayDeltaPercentagePoints(accounts, estimate) {
+					const measuredAccounts = accounts.filter(
+						(account) => codexAccountNumber(account?.seven_day_used_percent) != null,
+					);
+					const totalCapacity = codexAccountNumber(estimate?.total_capacity_percent);
+					const currentPoolUsed = codexAccountNumber(estimate?.total_used_of_capacity_percent);
+					if (!measuredAccounts.length || !totalCapacity || currentPoolUsed == null) {
+						return null;
+					}
+
+					const latestDate = measuredAccounts
+						.flatMap(codexAccountUsageRecords)
+						.map((record) => record.date)
+						.sort()
+						.at(-1);
+					if (!latestDate) {
+						return currentPoolUsed;
+					}
+
+					const previousDate = previousUsageDate(latestDate);
+					if (!previousDate) {
+						return currentPoolUsed;
+					}
+
+					const previousUsedPercent = measuredAccounts.reduce((total, account) => {
+						const record = usageRecordForDate(account, previousDate);
+						return total + (codexAccountNumber(record?.used_percent) || 0);
+					}, 0);
+					const previousPoolPercent = (previousUsedPercent / totalCapacity) * 100;
+
+					return currentPoolUsed - previousPoolPercent;
+				}
+
+				function accountPoolUsageTone(used) {
+					if (used == null || used === "") {
+						return "muted";
+					}
+					const value = Number(used);
+					if (!Number.isFinite(value)) {
+						return "muted";
+					}
+					if (value >= 90) {
+						return "danger";
+					}
+					if (value >= 75) {
+						return "warning";
+					}
+
+					return "run";
+				}
+
+				function accountPoolDayDeltaTone(delta, used) {
+					if (delta == null || delta === "") {
+						return "muted";
+					}
+					const value = Number(delta);
+					if (!Number.isFinite(value) || Math.abs(value) <= 0.05) {
+						return "muted";
+					}
+					if (value < -0.05) {
+						return "muted";
+					}
+
+					return accountPoolUsageTone(used);
+				}
+
 				function codexAccountUnixTimestamp(value) {
 					const seconds = codexAccountNumber(value);
 					if (seconds == null || seconds <= 0) {
@@ -6647,13 +6862,64 @@
 					nodes.accountModeMeta.title = title;
 				}
 
+				function renderCodexAccountPoolUsageSummary(accounts, snapshot) {
+					const estimate = accountPoolUsageEstimate(snapshot);
+					if (!estimate) {
+						return "";
+					}
+
+					const used = codexAccountNumber(estimate.total_used_of_capacity_percent);
+					const delta = accountPoolDayDeltaPercentagePoints(accounts, estimate);
+					const metrics = [
+						{
+							label: "Pool used",
+							value: formatUsagePercent(used),
+							tone: accountPoolUsageTone(used),
+						},
+						{
+							label: "Day Δ",
+							value: delta == null ? "-" : formatPercentagePointDelta(delta),
+							tone: accountPoolDayDeltaTone(delta, used),
+						},
+						{
+							label: "Daily avg",
+							value: formatDailyUsageRate(estimate.average_daily_pool_percent),
+							tone: "muted",
+						},
+					];
+					const measured = Number(estimate.account_estimate_count || 0);
+					const accountCount = Number(estimate.account_count || 0);
+					const note =
+						accountCount > 0 && measured > 0 && measured < accountCount
+							? `<span class="account-pool-summary-note">${escapeHtml(`${measured}/${accountCount} accounts measured`)}</span>`
+							: "";
+					const label = `Pool usage: ${metrics.map((metric) => `${metric.label} ${metric.value}`).join(", ")}`;
+
+					return `
+						<div class="account-pool-summary" data-render-key="account-pool-summary" aria-label="${escapeHtml(label)}">
+							${metrics
+								.map(
+									(metric) => `
+										<div class="account-pool-metric">
+											<span class="account-pool-metric-label">${escapeHtml(metric.label)}</span>
+											<strong class="account-pool-metric-value" data-tone="${escapeHtml(metric.tone)}">${escapeHtml(metric.value)}</strong>
+										</div>
+									`,
+								)
+								.join("")}
+							${note}
+						</div>
+					`;
+				}
+
 			function renderCodexAccountPool(accounts, snapshot) {
 				if (!accounts.length) {
 					return "";
 				}
 
 					return `
-						<div class="account-pool-list" aria-label="Accounts">
+						${renderCodexAccountPoolUsageSummary(accounts, snapshot)}
+						<div class="account-pool-list" data-render-key="account-pool-list" aria-label="Accounts">
 							<div class="account-pool-guide">
 								${ACCOUNT_POOL_SORT_COLUMNS.map(renderCodexAccountPoolGuideCell).join("")}
 							</div>
