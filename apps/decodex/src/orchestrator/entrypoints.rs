@@ -504,7 +504,9 @@ fn run_control_plane_api_only_tick(state_store: &StateStore) -> Result<OperatorS
 					let _ = error;
 
 					project_status.warning_count = project_status.warning_count.saturating_add(1);
+
 					add_operator_snapshot_warning(&mut snapshot, "operator_snapshot_build_failed");
+
 					tracing::warn!(
 						project_id = registration.service_id(),
 						"API-only operator snapshot local run hydration failed; sensitive runtime details were withheld."
