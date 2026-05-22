@@ -21,6 +21,8 @@ enum AppBridgeRequest {
 	List {
 		#[serde(default)]
 		include_usage: bool,
+		#[serde(default)]
+		force_refresh: bool,
 	},
 	#[serde(rename = "account_select")]
 	Select {
@@ -99,9 +101,9 @@ pub fn run() -> Result<()> {
 
 fn handle_request(request: AppBridgeRequest) -> Result<()> {
 	match request {
-		AppBridgeRequest::List { include_usage } =>
+		AppBridgeRequest::List { include_usage, force_refresh } =>
 			if include_usage {
-				emit_result(&accounts::account_list_with_usage()?)
+				emit_result(&accounts::account_list_with_cached_usage(force_refresh)?)
 			} else {
 				emit_result(&accounts::account_list()?)
 			},
@@ -186,6 +188,21 @@ mod tests {
 		.expect("bridge request should parse");
 
 		assert!(matches!(request, AppBridgeRequest::Use { .. }));
+	}
+
+	#[test]
+	fn parses_account_list_bridge_request_with_force_refresh() {
+		let request = serde_json::from_value::<AppBridgeRequest>(serde_json::json!({
+			"operation": "account_list",
+			"include_usage": true,
+			"force_refresh": true
+		}))
+		.expect("bridge request should parse");
+
+		assert!(matches!(
+			request,
+			AppBridgeRequest::List { include_usage: true, force_refresh: true }
+		));
 	}
 
 	#[test]
