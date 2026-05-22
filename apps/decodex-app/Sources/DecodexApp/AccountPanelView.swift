@@ -155,8 +155,8 @@ private struct PanelInteractiveSurfaceModifier: ViewModifier {
 	let hoverShadowRadius: CGFloat
 
 	func body(content: Content) -> some View {
-		let responds = !isDisabled
-		let hoverActive = responds && isHovered && !isPressed
+		let responds = isDisabled == false
+		let hoverActive = responds && isHovered && isPressed == false
 		let pressActive = responds && isPressed
 
 		content
@@ -222,7 +222,7 @@ struct AccountPanelView: View {
 			isPresented: Binding(
 				get: { pendingLogout != nil },
 				set: { visible in
-					if !visible {
+					if visible == false {
 						pendingLogout = nil
 						disarmLogout()
 					}
@@ -334,7 +334,7 @@ struct AccountPanelView: View {
 					size: 25,
 					action: {
 						Task {
-							await store.setFastMode(!store.fastModeEnabled)
+							await store.setFastMode(store.fastModeEnabled == false)
 						}
 					},
 					help: store.fastModeEnabled ? "Turn fast mode off" : "Turn fast mode on"
@@ -515,7 +515,7 @@ struct AccountPanelView: View {
 			return "Not loaded"
 		}
 
-		if let selector = control.accountSelector, !selector.isEmpty {
+		if let selector = control.accountSelector, selector.isEmpty == false {
 			if emailsHidden {
 				let value = account(matching: selector)?.panelDisplayName(emailsHidden: true)
 					?? AccountDisplay.alias(forIdentity: selector)
@@ -541,7 +541,7 @@ struct AccountPanelView: View {
 			return false
 		}
 
-		return !selector.isEmpty
+		return selector.isEmpty == false
 	}
 
 	private var accountListHeight: CGFloat {
@@ -727,7 +727,7 @@ struct AccountRowView: View {
 							symbol: account.codexActive ? "person.crop.circle.fill" : "person.crop.circle",
 							tint: PanelPalette.codexAccent(colorScheme),
 							isActive: account.codexActive,
-							isDisabled: account.codexActive || !account.canUseInCodex,
+							isDisabled: account.codexActive || account.canUseInCodex == false,
 							isSubtle: true,
 							size: 21,
 							action: useInCodex,
@@ -741,7 +741,7 @@ struct AccountRowView: View {
 							? PanelPalette.routeAccent(colorScheme)
 							: PanelPalette.actionBlue(colorScheme),
 						isActive: account.selected,
-						isDisabled: !account.canRouteRuns && !account.selected,
+						isDisabled: account.canRouteRuns == false && account.selected == false,
 						isSubtle: true,
 						size: 21,
 						action: routeRunsHere,
@@ -753,7 +753,7 @@ struct AccountRowView: View {
 						tint: PanelPalette.destructive(colorScheme),
 						isActive: isLogoutArmed,
 						isDestructive: true,
-						isSubtle: !isLogoutArmed,
+						isSubtle: isLogoutArmed == false,
 						size: 21,
 						action: logout,
 						help: isLogoutArmed ? "Click again to confirm removal" : "Remove account"
@@ -762,7 +762,7 @@ struct AccountRowView: View {
 				}
 			}
 
-			if !runs.isEmpty {
+			if runs.isEmpty == false {
 				AccountRunSummaryView(runs: runs)
 			}
 
@@ -1096,7 +1096,7 @@ struct AccountPoolUsageEstimateView: View {
 		let measuredAccounts = accounts.filter { account in
 			account.sevenDayUsedPercent != nil
 		}
-		guard !measuredAccounts.isEmpty, estimate.totalCapacityPercent > 0 else {
+		guard measuredAccounts.isEmpty == false, estimate.totalCapacityPercent > 0 else {
 			return nil
 		}
 
@@ -1305,7 +1305,7 @@ struct AccountUsageMeterView: View {
 					.monospacedDigit()
 					.lineLimit(1)
 
-				if !resetDisplay.date.isEmpty {
+				if resetDisplay.date.isEmpty == false {
 					Text(resetDisplay.date)
 						.font(PanelFont.tertiary)
 						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.68 : 0.78))
@@ -1535,7 +1535,7 @@ struct OperatorStatusStripView: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 5) {
-			if !metrics.isEmpty {
+			if metrics.isEmpty == false {
 				HStack(spacing: 0) {
 					ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
 						if index > 0 {
@@ -1548,7 +1548,7 @@ struct OperatorStatusStripView: View {
 				.frame(height: 32)
 			}
 
-			if !snapshot.activeRuns.isEmpty {
+			if snapshot.activeRuns.isEmpty == false {
 				OperatorLaneListView(runs: snapshot.activeRuns, showsAllLanes: $showsAllLanes)
 					.padding(.top, metrics.isEmpty ? 0 : 1)
 			}
@@ -1817,7 +1817,7 @@ struct OperatorLanePopoverView: View {
 				OperatorLaneReadoutRow(title: humanizedPanelToken(bucket.name), items: bucketReadoutItems(bucket))
 			}
 
-			if !contextReadoutItems.isEmpty {
+			if contextReadoutItems.isEmpty == false {
 				OperatorLaneReadoutDivider()
 				OperatorLaneReadoutRow(title: "Context", items: contextReadoutItems)
 			}
@@ -1872,7 +1872,7 @@ struct OperatorLanePopoverView: View {
 	private var detailBuckets: [OperatorChildAgentBucket] {
 		orderedBuckets.filter { bucket in
 			bucket.name.caseInsensitiveCompare("Model") != .orderedSame
-				&& !bucketReadoutItems(bucket).isEmpty
+				&& bucketReadoutItems(bucket).isEmpty == false
 		}
 	}
 
@@ -1955,7 +1955,7 @@ struct OperatorLanePopoverView: View {
 			if bucket.outputBytes > 0 {
 				items.append(OperatorLaneReadoutItem(label: "output bytes", value: formatCompactBytes(bucket.outputBytes)))
 			}
-			if !normalizedName.contains("tracker") {
+			if normalizedName.contains("tracker") == false {
 				if bucket.inputTokens > 0 {
 					items.append(OperatorLaneReadoutItem(label: "input", value: "\(formatCompactCount(bucket.inputTokens)) tok"))
 				}
@@ -2329,7 +2329,7 @@ struct PanelIconButtonView: View {
 			)
 		)
 		.disabled(isDisabled)
-		.opacity(isDisabled && !isActive ? 0.56 : 1)
+		.opacity(isDisabled && isActive == false ? 0.56 : 1)
 		.help(help)
 	}
 
@@ -2575,7 +2575,7 @@ private func compactUsageDate(_ value: String) -> String {
 
 	var components = DateComponents()
 	components.calendar = Calendar(identifier: .gregorian)
-	components.year = 2000
+	components.year = 2_000
 	components.month = month
 	components.day = day
 	guard let date = components.date else {
@@ -2726,11 +2726,11 @@ private func parsePanelTimestamp(_ value: String) -> Date? {
 }
 
 private func compactLanePath(_ value: String?) -> String? {
-	guard var text = panelTrimmed(value), !text.isEmpty else {
+	guard var text = panelTrimmed(value), text.isEmpty == false else {
 		return nil
 	}
 
-	if let home = ProcessInfo.processInfo.environment["HOME"], !home.isEmpty {
+	if let home = ProcessInfo.processInfo.environment["HOME"], home.isEmpty == false {
 		text = text.replacingOccurrences(of: home, with: "~")
 	}
 	if text.count <= 42 {
@@ -2834,13 +2834,13 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 
 private extension CodexAccount {
 	var randomNameSeed: String {
-		if !accountFingerprint.isEmpty {
+		if accountFingerprint.isEmpty == false {
 			return accountFingerprint
 		}
-		if let email, !email.isEmpty {
+		if let email, email.isEmpty == false {
 			return email
 		}
-		if let planType, !planType.isEmpty {
+		if let planType, planType.isEmpty == false {
 			return planType
 		}
 
@@ -2850,7 +2850,7 @@ private extension CodexAccount {
 	func panelDisplayName(emailsHidden: Bool) -> String {
 		if emailsHidden {
 			if let randomName = randomName?.trimmingCharacters(in: .whitespacesAndNewlines),
-				!randomName.isEmpty
+				randomName.isEmpty == false
 			{
 				return randomName
 			}
