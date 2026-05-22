@@ -551,7 +551,7 @@ fn resolve_manual_config_path(explicit: Option<&Path>, cwd: &Path) -> Result<Pat
 	}
 
 	eyre::bail!(
-		"Decodex project config is required for this command. Pass `--config <PROJECT_DIR>` or register one with `decodex project add <PROJECT_DIR>`."
+		"Decodex project config is required for this command. Pass this command's `--config <PROJECT_DIR>` or register one with `decodex project add <PROJECT_DIR>`."
 	);
 }
 
