@@ -43,63 +43,29 @@ use crate::{
 	styles = styles(),
 )]
 pub(crate) struct Cli {
-	/// Override the Decodex project directory or its `project.toml` path.
-	#[arg(short = 'c', long, global = true, value_name = "PROJECT_DIR")]
-	config: Option<PathBuf>,
 	#[command(subcommand)]
 	command: Command,
 }
 impl Cli {
 	pub(crate) fn run(&self) -> crate::prelude::Result<()> {
-		let config_path = self.config.as_deref();
-
 		match &self.command {
-			Command::Commit(args) => args.run(config_path),
-			Command::Land(args) => args.run(config_path),
-			Command::Run(args) => args.run(config_path),
-			Command::Serve(args) => args.run(config_path),
+			Command::Commit(args) => args.run(),
+			Command::Land(args) => args.run(),
+			Command::Run(args) => args.run(),
+			Command::Serve(args) => args.run(),
 			Command::Project(args) => args.run(),
-			Command::Status(args) => args.run(config_path),
-			Command::Diagnose(args) => args.run(config_path),
-			Command::Recover(args) => args.run(config_path),
-			Command::ArchiveLinear(args) => args.run(config_path),
+			Command::Status(args) => args.run(),
+			Command::Diagnose(args) => args.run(),
+			Command::Recover(args) => args.run(),
+			Command::ArchiveLinear(args) => args.run(),
 			Command::Maintenance(args) => args.run(),
 			Command::Account(args) => args.run(),
 			Command::Probe(args) => args.run(),
-			Command::Attempt(args) => args.run(config_path),
+			Command::Attempt(args) => args.run(),
 		}
 	}
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum AttemptDispatchMode {
-	Normal,
-	Retry,
-	ReviewRepair,
-	Closeout,
-}
-impl From<IssueDispatchMode> for AttemptDispatchMode {
-	fn from(value: IssueDispatchMode) -> Self {
-		match value {
-			IssueDispatchMode::Normal => Self::Normal,
-			IssueDispatchMode::Retry => Self::Retry,
-			IssueDispatchMode::ReviewRepair => Self::ReviewRepair,
-			IssueDispatchMode::Closeout => Self::Closeout,
-		}
-	}
-}
-
-impl From<AttemptDispatchMode> for IssueDispatchMode {
-	fn from(value: AttemptDispatchMode) -> Self {
-		match value {
-			AttemptDispatchMode::Normal => Self::Normal,
-			AttemptDispatchMode::Retry => Self::Retry,
-			AttemptDispatchMode::ReviewRepair => Self::ReviewRepair,
-			AttemptDispatchMode::Closeout => Self::Closeout,
-		}
-	}
-}
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct AttemptRequest {
 	#[serde(default)]
@@ -119,35 +85,17 @@ pub(crate) struct AttemptRequest {
 	pub(crate) workflow_snapshot: String,
 }
 
-#[derive(Debug, Subcommand)]
-enum Command {
-	/// Create a signed local commit with a `decodex/commit/1` message.
-	Commit(CommitCommand),
-	/// Land the current reviewed lane with a GitHub admin merge commit.
-	Land(LandCommand),
-	/// Run one orchestration pass.
-	Run(RunCommand),
-	/// Run the local multi-project Decodex control plane.
-	Serve(ServeCommand),
-	/// Manage the local Decodex project registry.
-	Project(ProjectCommand),
-	/// Inspect the current local runtime state for one configured project.
-	Status(StatusCommand),
-	/// Write and print the agent-readable local evidence index.
-	Diagnose(DiagnoseCommand),
-	/// Diagnose or explicitly repair supported retained-lane recovery cases.
-	Recover(RecoverCommand),
-	/// Dry-run or archive old terminal Linear issues by repo label.
-	ArchiveLinear(ArchiveLinearCommand),
-	/// Maintain local Decodex logs, evidence, backups, and runtime storage.
-	Maintenance(MaintenanceCommand),
-	/// Manage the global Decodex Codex account pool.
-	Account(AccountCommand),
-	/// Validate the local app-server integration boundary.
-	Probe(ProbeCommand),
-	/// Run one daemon-planned attempt from a structured request.
-	#[command(name = "_attempt", hide = true)]
-	Attempt(AttemptCommand),
+#[derive(Debug, Args)]
+struct ProjectConfigArgs {
+	/// Use this Decodex project directory or `project.toml` instead of resolving from the
+	/// registered current checkout.
+	#[arg(short = 'c', long, value_name = "PROJECT_DIR")]
+	config: Option<PathBuf>,
+}
+impl ProjectConfigArgs {
+	fn as_path(&self) -> Option<&Path> {
+		self.config.as_deref()
+	}
 }
 
 #[derive(Debug, Args)]
@@ -182,27 +130,9 @@ impl AccountCommand {
 	}
 }
 
-#[derive(Debug, Subcommand)]
-enum AccountSubcommand {
-	/// List configured Codex accounts without printing token material.
-	List(AccountListCommand),
-	/// Pin new Decodex runs to one account.
-	Select(AccountSelectCommand),
-	/// Return new Decodex runs to balanced account selection.
-	Clear(AccountClearCommand),
-	/// Remove one account from the Decodex account pool.
-	Logout(AccountLogoutCommand),
-	/// Import an existing Codex `auth.json` into the Decodex account pool.
-	ImportAuth(AccountImportCommand),
-	/// Force Codex to use one stored account by overwriting its `auth.json`.
-	Use(AccountUseCommand),
-	/// Run Codex device login in an isolated temporary home, then import it.
-	Login(AccountLoginCommand),
-}
-
 #[derive(Debug, Args)]
 struct AccountListCommand {
-	/// Print the account list as JSON for app integrations.
+	/// Emit structured JSON instead of human-readable text.
 	#[arg(long)]
 	json: bool,
 }
@@ -211,14 +141,14 @@ struct AccountListCommand {
 struct AccountSelectCommand {
 	/// Email, full account id, or redacted fingerprint to pin.
 	selector: String,
-	/// Print the updated account list as JSON for app integrations.
+	/// Emit structured JSON instead of human-readable text.
 	#[arg(long)]
 	json: bool,
 }
 
 #[derive(Debug, Args)]
 struct AccountClearCommand {
-	/// Print the updated account list as JSON for app integrations.
+	/// Emit structured JSON instead of human-readable text.
 	#[arg(long)]
 	json: bool,
 }
@@ -227,7 +157,7 @@ struct AccountClearCommand {
 struct AccountLogoutCommand {
 	/// Email, full account id, or redacted fingerprint to remove.
 	selector: String,
-	/// Print the updated account list as JSON for app integrations.
+	/// Emit structured JSON instead of human-readable text.
 	#[arg(long)]
 	json: bool,
 }
@@ -237,7 +167,7 @@ struct AccountImportCommand {
 	/// Path to a Codex `auth.json` file to import.
 	#[arg(value_name = "AUTH_JSON")]
 	auth_json: PathBuf,
-	/// Print the updated account list as JSON for app integrations.
+	/// Emit structured JSON instead of human-readable text.
 	#[arg(long)]
 	json: bool,
 }
@@ -250,7 +180,7 @@ struct AccountUseCommand {
 	/// or `~/.codex/auth.json`.
 	#[arg(long, value_name = "AUTH_JSON")]
 	auth_json: Option<PathBuf>,
-	/// Print the updated Codex auth selection as JSON for app integrations.
+	/// Emit structured JSON instead of human-readable text.
 	#[arg(long)]
 	json: bool,
 }
@@ -261,12 +191,14 @@ struct AccountLoginCommand {
 	#[arg(long, default_value = "codex")]
 	codex_bin: String,
 	/// Keep the temporary Codex home after login for manual inspection.
-	#[arg(long)]
+	#[arg(long, hide = true)]
 	keep_temp_home: bool,
 }
 
 #[derive(Debug, Args)]
 struct CommitCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
 	/// Tree-change summary for the new commit message.
 	#[arg(value_name = "SUMMARY")]
 	summary: String,
@@ -284,9 +216,9 @@ struct CommitCommand {
 	breaking: bool,
 }
 impl CommitCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+	fn run(&self) -> crate::prelude::Result<()> {
 		manual::run_commit(
-			config_path,
+			self.project_config.as_path(),
 			&ManualCommitRequest {
 				summary: self.summary.clone(),
 				authority: self.authority.clone(),
@@ -300,6 +232,8 @@ impl CommitCommand {
 
 #[derive(Debug, Args)]
 struct LandCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
 	/// Tree-change summary for the landed change record.
 	#[arg(value_name = "SUMMARY")]
 	summary: String,
@@ -307,10 +241,11 @@ struct LandCommand {
 	/// name.
 	#[arg(long, value_name = "ISSUE", conflicts_with = "manual_authority")]
 	authority: Option<String>,
-	/// Use reserved authority `manual` instead of a Linear issue.
-	#[arg(long, conflicts_with = "authority")]
+	/// Use reserved authority `manual` instead of a Linear issue; requires `--pr`.
+	#[arg(long, conflicts_with = "authority", requires = "pr")]
 	manual_authority: bool,
-	/// Pull request URL to land. Defaults to the current review handoff marker.
+	/// Pull request URL to land. Required with `--manual-authority`; otherwise defaults to the
+	/// current review handoff marker.
 	#[arg(long, value_name = "URL")]
 	pr: Option<String>,
 	/// Additional related issues for the landed change record.
@@ -321,9 +256,9 @@ struct LandCommand {
 	breaking: bool,
 }
 impl LandCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+	fn run(&self) -> crate::prelude::Result<()> {
 		manual::run_land(
-			config_path,
+			self.project_config.as_path(),
 			&ManualLandRequest {
 				summary: self.summary.clone(),
 				authority: self.authority.clone(),
@@ -338,26 +273,22 @@ impl LandCommand {
 
 #[derive(Debug, Args)]
 struct RunCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
 	/// Run a specific leased or queued issue by Linear identifier or tracker issue id.
 	#[arg(value_name = "ISSUE")]
 	issue: Option<String>,
-	/// Skip external side effects where the later implementation allows it.
+	/// Validate project loading, queue eligibility, and lane planning without tracker mutation.
 	#[arg(long)]
 	dry_run: bool,
 	/// Explain current queued candidates without preparing or dispatching a lane.
-	#[arg(long, requires = "dry_run")]
+	#[arg(long, requires = "dry_run", conflicts_with = "issue")]
 	explain: bool,
 }
 impl RunCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
-		if self.explain && self.issue.is_some() {
-			eyre::bail!(
-				"`decodex run --dry-run --explain` explains the project queue and does not accept a positional issue."
-			);
-		}
-
+	fn run(&self) -> crate::prelude::Result<()> {
 		orchestrator::run_once(RunOnceRequest {
-			config_path,
+			config_path: self.project_config.as_path(),
 			dry_run: self.dry_run,
 			explain_queue: self.explain,
 			preferred_issue_id: self.issue.as_deref(),
@@ -378,19 +309,20 @@ impl RunCommand {
 
 #[derive(Debug, Args)]
 struct ServeCommand {
-	/// Poll interval between control-plane ticks, for example `60s` or `5m`; unavailable with
-	/// `--api-only`.
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
+	/// Poll interval between control-plane ticks, for example `60s` or `5m`.
 	#[arg(long, value_name = "INTERVAL", value_parser = parse_duration_arg)]
 	interval: Option<Duration>,
 	/// Operator UI listen address.
 	#[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8912")]
 	listen_address: String,
 	/// Serve only local operator HTTP/API endpoints without polling or dispatching projects.
-	#[arg(long)]
+	#[arg(long, hide = true)]
 	api_only: bool,
 }
 impl ServeCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+	fn run(&self) -> crate::prelude::Result<()> {
 		if self.api_only && self.interval.is_some() {
 			eyre::bail!(
 				"serve --api-only does not accept --interval because API-only mode does not poll projects."
@@ -398,7 +330,7 @@ impl ServeCommand {
 		}
 
 		orchestrator::run_control_plane(ServeRequest {
-			config_path,
+			config_path: self.project_config.as_path(),
 			poll_interval: if self.api_only {
 				None
 			} else {
@@ -464,18 +396,6 @@ impl ProjectCommand {
 	}
 }
 
-#[derive(Debug, Subcommand)]
-enum ProjectSubcommand {
-	/// Register or refresh one Decodex project config.
-	Add(ProjectAddCommand),
-	/// List registered local projects.
-	List,
-	/// Enable one registered project for `decodex serve`.
-	Enable(ProjectToggleCommand),
-	/// Disable one registered project for `decodex serve`.
-	Disable(ProjectToggleCommand),
-}
-
 #[derive(Debug, Args)]
 struct ProjectAddCommand {
 	/// Path to a Decodex project directory containing `project.toml` and `WORKFLOW.md`.
@@ -492,6 +412,8 @@ struct ProjectToggleCommand {
 
 #[derive(Debug, Args)]
 struct StatusCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
 	/// Emit structured JSON instead of human-readable text.
 	#[arg(long)]
 	json: bool,
@@ -500,13 +422,15 @@ struct StatusCommand {
 	limit: usize,
 }
 impl StatusCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
-		orchestrator::print_status(config_path, self.json, self.limit)
+	fn run(&self) -> crate::prelude::Result<()> {
+		orchestrator::print_status(self.project_config.as_path(), self.json, self.limit)
 	}
 }
 
 #[derive(Debug, Args)]
 struct DiagnoseCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
 	/// Emit the agent handoff index JSON instead of a one-line path summary.
 	#[arg(long)]
 	json: bool,
@@ -515,9 +439,9 @@ struct DiagnoseCommand {
 	limit: usize,
 }
 impl DiagnoseCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+	fn run(&self) -> crate::prelude::Result<()> {
 		orchestrator::run_diagnose(DiagnoseRequest {
-			config_path,
+			config_path: self.project_config.as_path(),
 			json: self.json,
 			limit: self.limit,
 		})
@@ -526,21 +450,17 @@ impl DiagnoseCommand {
 
 #[derive(Debug, Args)]
 struct RecoverCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
 	#[command(subcommand)]
 	command: RecoverSubcommand,
 }
 impl RecoverCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+	fn run(&self) -> crate::prelude::Result<()> {
 		match &self.command {
-			RecoverSubcommand::ReviewHandoff(args) => args.run(config_path),
+			RecoverSubcommand::ReviewHandoff(args) => args.run(self.project_config.as_path()),
 		}
 	}
-}
-
-#[derive(Debug, Subcommand)]
-enum RecoverSubcommand {
-	/// Recover retained review lanes whose handoff marker is missing.
-	ReviewHandoff(ReviewHandoffRecoveryCommand),
 }
 
 #[derive(Debug, Args)]
@@ -568,14 +488,6 @@ impl ReviewHandoffRecoveryCommand {
 	}
 }
 
-#[derive(Debug, Subcommand)]
-enum ReviewHandoffRecoverySubcommand {
-	/// Read-only diagnosis for orphaned retained review lanes.
-	Diagnose(ReviewHandoffDiagnoseCommand),
-	/// Explicitly bind a validated PR URL to one retained review lane.
-	Rebind(ReviewHandoffRebindCommand),
-}
-
 #[derive(Debug, Args)]
 struct ReviewHandoffDiagnoseCommand {
 	/// Issue identifier to inspect. Omit to inspect all retained review worktrees.
@@ -601,6 +513,8 @@ struct ReviewHandoffRebindCommand {
 
 #[derive(Debug, Args)]
 struct ArchiveLinearCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
 	/// Repo label scope to inspect, for example `repo:decodex`.
 	#[arg(long = "repo-label", value_name = "LABEL", required = true)]
 	repo_labels: Vec<String>,
@@ -612,9 +526,9 @@ struct ArchiveLinearCommand {
 	execute: bool,
 }
 impl ArchiveLinearCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+	fn run(&self) -> crate::prelude::Result<()> {
 		archive_hygiene::run(
-			config_path,
+			self.project_config.as_path(),
 			&ArchiveHygieneRequest {
 				repo_labels: self.repo_labels.clone(),
 				older_than_days: self.older_than_days,
@@ -637,15 +551,9 @@ impl MaintenanceCommand {
 	}
 }
 
-#[derive(Debug, Subcommand)]
-enum MaintenanceSubcommand {
-	/// Inspect or apply local Decodex storage retention.
-	Prune(MaintenancePruneCommand),
-}
-
 #[derive(Debug, Args)]
 struct MaintenancePruneCommand {
-	/// Report candidates without applying retention changes.
+	/// Report candidates without applying retention changes. This is the default mode.
 	#[arg(long, conflicts_with = "apply")]
 	dry_run: bool,
 	/// Apply safe file retention, state-aware runtime compaction, and WAL checkpointing.
@@ -696,16 +604,18 @@ impl ProbeCommand {
 
 #[derive(Debug, Args)]
 struct AttemptCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
 	/// Structured request file path, or `-` to read the request from stdin.
 	#[arg(value_name = "REQUEST", default_value = "-")]
 	request: String,
 }
 impl AttemptCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+	fn run(&self) -> crate::prelude::Result<()> {
 		let request = read_attempt_request(&self.request)?;
 
 		orchestrator::run_once(RunOnceRequest {
-			config_path,
+			config_path: self.project_config.as_path(),
 			dry_run: request.dry_run,
 			explain_queue: false,
 			preferred_issue_id: Some(request.issue_id.as_str()),
@@ -722,6 +632,117 @@ impl AttemptCommand {
 			preferred_workflow_snapshot: Some(request.workflow_snapshot.as_str()),
 		})
 	}
+}
+
+impl From<AttemptDispatchMode> for IssueDispatchMode {
+	fn from(value: AttemptDispatchMode) -> Self {
+		match value {
+			AttemptDispatchMode::Normal => Self::Normal,
+			AttemptDispatchMode::Retry => Self::Retry,
+			AttemptDispatchMode::ReviewRepair => Self::ReviewRepair,
+			AttemptDispatchMode::Closeout => Self::Closeout,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum AttemptDispatchMode {
+	Normal,
+	Retry,
+	ReviewRepair,
+	Closeout,
+}
+impl From<IssueDispatchMode> for AttemptDispatchMode {
+	fn from(value: IssueDispatchMode) -> Self {
+		match value {
+			IssueDispatchMode::Normal => Self::Normal,
+			IssueDispatchMode::Retry => Self::Retry,
+			IssueDispatchMode::ReviewRepair => Self::ReviewRepair,
+			IssueDispatchMode::Closeout => Self::Closeout,
+		}
+	}
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+	/// Create a signed local commit with a `decodex/commit/1` message.
+	Commit(CommitCommand),
+	/// Land the current reviewed lane with a GitHub admin merge commit.
+	Land(LandCommand),
+	/// Run one orchestration pass.
+	Run(RunCommand),
+	/// Run the local multi-project Decodex control plane.
+	Serve(ServeCommand),
+	/// Manage the local Decodex project registry.
+	Project(ProjectCommand),
+	/// Inspect the current local runtime state for one configured project.
+	Status(StatusCommand),
+	/// Write and print the agent-readable local evidence index.
+	Diagnose(DiagnoseCommand),
+	/// Diagnose or explicitly repair supported retained-lane recovery cases.
+	Recover(RecoverCommand),
+	/// Dry-run or archive old terminal Linear issues by repo label.
+	ArchiveLinear(ArchiveLinearCommand),
+	/// Maintain local Decodex logs, evidence, backups, and runtime storage.
+	Maintenance(MaintenanceCommand),
+	/// Manage the global Decodex Codex account pool.
+	Account(AccountCommand),
+	/// Validate the local app-server integration boundary.
+	Probe(ProbeCommand),
+	/// Run one daemon-planned attempt from a structured request.
+	#[command(name = "_attempt", hide = true)]
+	Attempt(AttemptCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum AccountSubcommand {
+	/// List configured Codex accounts without printing token material.
+	List(AccountListCommand),
+	/// Pin new Decodex runs to one account.
+	Select(AccountSelectCommand),
+	/// Return new Decodex runs to balanced account selection.
+	Clear(AccountClearCommand),
+	/// Remove one account from the Decodex account pool.
+	Logout(AccountLogoutCommand),
+	/// Import an existing Codex `auth.json` into the Decodex account pool.
+	ImportAuth(AccountImportCommand),
+	/// Force Codex to use one stored account by overwriting its `auth.json`.
+	Use(AccountUseCommand),
+	/// Run Codex device login in an isolated temporary home, then import it.
+	Login(AccountLoginCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum ProjectSubcommand {
+	/// Register or refresh one Decodex project config.
+	Add(ProjectAddCommand),
+	/// List registered local projects.
+	List,
+	/// Enable one registered project for `decodex serve`.
+	Enable(ProjectToggleCommand),
+	/// Disable one registered project for `decodex serve`.
+	Disable(ProjectToggleCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum RecoverSubcommand {
+	/// Recover retained review lanes whose handoff marker is missing.
+	ReviewHandoff(ReviewHandoffRecoveryCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum ReviewHandoffRecoverySubcommand {
+	/// Read-only diagnosis for orphaned retained review lanes.
+	Diagnose(ReviewHandoffDiagnoseCommand),
+	/// Explicitly bind a validated PR URL to one retained review lane.
+	Rebind(ReviewHandoffRebindCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum MaintenanceSubcommand {
+	/// Inspect or apply local Decodex storage retention.
+	Prune(MaintenancePruneCommand),
 }
 
 fn parse_duration_arg(raw: &str) -> std::result::Result<Duration, String> {
@@ -780,16 +801,16 @@ fn styles() -> Styles {
 
 #[cfg(test)]
 mod tests {
-	use std::{path::PathBuf, time::Duration};
+	use std::{path::Path, time::Duration};
 
 	use clap::Parser;
 
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
 		CommitCommand, DiagnoseCommand, LandCommand, ProbeCommand, ProjectCommand,
-		ProjectSubcommand, RecoverCommand, RecoverSubcommand, ReviewHandoffDiagnoseCommand,
-		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
-		RunCommand, ServeCommand, StatusCommand,
+		ProjectConfigArgs, ProjectSubcommand, RecoverCommand, RecoverSubcommand,
+		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
+		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -859,6 +880,15 @@ mod tests {
 	}
 
 	#[test]
+	fn land_manual_authority_requires_pr() {
+		let error = Cli::try_parse_from(["decodex", "land", "ship hotfix", "--manual-authority"])
+			.expect_err("manual authority land should require an explicit PR");
+
+		assert!(error.to_string().contains("--manual-authority"));
+		assert!(error.to_string().contains("--pr"));
+	}
+
+	#[test]
 	fn commit_rejects_authority_and_manual_authority_together() {
 		let error = Cli::try_parse_from([
 			"decodex",
@@ -880,7 +910,7 @@ mod tests {
 
 		assert!(matches!(
 			cli.command,
-			Command::Run(RunCommand { issue: Some(_), dry_run: true, explain: false })
+			Command::Run(RunCommand { issue: Some(_), dry_run: true, explain: false, .. })
 		));
 	}
 
@@ -890,7 +920,7 @@ mod tests {
 
 		assert!(matches!(
 			cli.command,
-			Command::Run(RunCommand { issue: None, dry_run: false, explain: false })
+			Command::Run(RunCommand { issue: None, dry_run: false, explain: false, .. })
 		));
 	}
 
@@ -900,35 +930,46 @@ mod tests {
 
 		assert!(matches!(
 			cli.command,
-			Command::Run(RunCommand { issue: None, dry_run: true, explain: true })
+			Command::Run(RunCommand { issue: None, dry_run: true, explain: true, .. })
 		));
 
 		let error = Cli::try_parse_from(["decodex", "run", "--explain"])
 			.expect_err("explain should require dry-run");
 
 		assert!(error.to_string().contains("--dry-run"));
+
+		let error = Cli::try_parse_from(["decodex", "run", "issue-1", "--dry-run", "--explain"])
+			.expect_err("explain should reject positional issue");
+
+		assert!(error.to_string().contains("--explain"));
+		assert!(error.to_string().contains("[ISSUE]"));
 	}
 
 	#[test]
-	fn parses_serve_with_interval_listen_address_and_global_config() {
+	fn parses_serve_with_interval_listen_address_and_project_config() {
 		let cli = Cli::parse_from([
 			"decodex",
+			"serve",
 			"--config",
 			"./project.toml",
-			"serve",
 			"--interval",
 			"30s",
 			"--listen-address",
 			"127.0.0.1:9000",
 		]);
 
-		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
 		assert!(matches!(
 			cli.command,
-			Command::Serve(ServeCommand { interval, listen_address, api_only })
+			Command::Serve(ServeCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				interval,
+				listen_address,
+				api_only,
+			})
 				if interval == Some(Duration::from_secs(30))
 					&& listen_address == "127.0.0.1:9000"
 					&& !api_only
+					&& config == Path::new("./project.toml")
 		));
 	}
 
@@ -948,8 +989,7 @@ mod tests {
 		let Command::Serve(command) = cli.command else {
 			panic!("expected serve command");
 		};
-		let error =
-			command.run(None).expect_err("api-only serve must reject interval configuration");
+		let error = command.run().expect_err("api-only serve must reject interval configuration");
 		let message = error.to_string();
 
 		assert!(message.contains("--api-only"));
@@ -1001,13 +1041,32 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_hidden_attempt_with_stdin_request() {
-		let cli = Cli::parse_from(["decodex", "--config", "./project.toml", "_attempt", "-"]);
+	fn account_commands_reject_project_config() {
+		let error =
+			Cli::try_parse_from(["decodex", "account", "list", "--config", "./project.toml"])
+				.expect_err("global account commands should not accept project config");
 
-		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
+		assert!(error.to_string().contains("--config"));
+	}
+
+	#[test]
+	fn project_config_must_belong_to_project_scoped_command() {
+		let error = Cli::try_parse_from(["decodex", "--config", "./project.toml", "status"])
+			.expect_err("project config should not be accepted at root");
+
+		assert!(error.to_string().contains("--config"));
+	}
+
+	#[test]
+	fn parses_hidden_attempt_with_stdin_request() {
+		let cli = Cli::parse_from(["decodex", "_attempt", "--config", "./project.toml", "-"]);
+
 		assert!(matches!(
 			cli.command,
-			Command::Attempt(AttemptCommand { request }) if request == "-"
+			Command::Attempt(AttemptCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				request,
+			}) if request == "-" && config == Path::new("./project.toml")
 		));
 	}
 
@@ -1022,60 +1081,72 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_status_with_json_limit_and_global_config() {
+	fn parses_status_with_json_limit_and_project_config() {
 		let cli = Cli::parse_from([
 			"decodex",
+			"status",
 			"--config",
 			"./project.toml",
-			"status",
 			"--json",
 			"--limit",
 			"5",
 		]);
 
-		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
-		assert!(matches!(cli.command, Command::Status(StatusCommand { json: true, limit: 5 })));
+		assert!(matches!(
+			cli.command,
+			Command::Status(StatusCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				json: true,
+				limit: 5,
+			}) if config == Path::new("./project.toml")
+		));
 	}
 
 	#[test]
-	fn parses_diagnose_with_json_limit_and_global_config() {
+	fn parses_diagnose_with_json_limit_and_project_config() {
 		let cli = Cli::parse_from([
 			"decodex",
+			"diagnose",
 			"--config",
 			"./project.toml",
-			"diagnose",
 			"--json",
 			"--limit",
 			"5",
 		]);
 
-		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
-		assert!(matches!(cli.command, Command::Diagnose(DiagnoseCommand { json: true, limit: 5 })));
+		assert!(matches!(
+			cli.command,
+			Command::Diagnose(DiagnoseCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				json: true,
+				limit: 5,
+			}) if config == Path::new("./project.toml")
+		));
 	}
 
 	#[test]
 	fn parses_review_handoff_diagnose_with_issue_and_json() {
 		let cli = Cli::parse_from([
 			"decodex",
+			"recover",
 			"--config",
 			"./project.toml",
-			"recover",
 			"review-handoff",
 			"diagnose",
 			"PUB-718",
 			"--json",
 		]);
 
-		assert_eq!(cli.config, Some(PathBuf::from("./project.toml")));
 		assert!(matches!(
 			cli.command,
 			Command::Recover(RecoverCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
 				command: RecoverSubcommand::ReviewHandoff(ReviewHandoffRecoveryCommand {
 					command: ReviewHandoffRecoverySubcommand::Diagnose(
 						ReviewHandoffDiagnoseCommand { issue: Some(_), json: true }
 					)
 				})
-			})
+			}) if config == Path::new("./project.toml")
 		));
 	}
 
@@ -1099,7 +1170,8 @@ mod tests {
 					command: ReviewHandoffRecoverySubcommand::Rebind(
 						ReviewHandoffRebindCommand { issue, pr, dry_run: true }
 					)
-				})
+				}),
+				..
 			}) if issue == "PUB-718"
 				&& pr == "https://github.com/hack-ink/pubfi-mono-v2/pull/14"
 		));
