@@ -117,6 +117,8 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 	let state_store = Arc::new(runtime::open_runtime_store()?);
 
+	run_control_plane_maintenance("startup");
+
 	if request.api_only {
 		let operator_state_endpoint =
 			OperatorStateEndpoint::start(request.listen_address, Arc::clone(&state_store))?;
@@ -173,6 +175,7 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 	let global_config_path = runtime::global_config_path()?;
 	let project_config_dir = runtime::project_config_dir()?;
 	let mut project_runtimes: HashMap<String, ProjectDaemonRuntime> = HashMap::new();
+	let mut next_maintenance_at = Instant::now() + Duration::from_secs(60 * 60);
 
 	tracing::info!(
 		poll_interval_s = poll_interval.as_secs(),
@@ -188,6 +191,13 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 	loop {
 		let tick_started_at = Instant::now();
+
+		if tick_started_at >= next_maintenance_at {
+			run_control_plane_maintenance("scheduled");
+
+			next_maintenance_at = tick_started_at + Duration::from_secs(60 * 60);
+		}
+
 		let snapshot = run_control_plane_tick(&state_store, &mut project_runtimes)?;
 
 		if let Err(error) = operator_state_endpoint.publish_snapshot(&snapshot) {
@@ -331,6 +341,33 @@ pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
 	}
 
 	Ok(())
+}
+
+fn run_control_plane_maintenance(trigger: &'static str) {
+	match maintenance::run_auto_safe_prune() {
+		Ok(report) => {
+			tracing::info!(
+				trigger = trigger,
+				log_rotated_files = report.logs.rotated_files,
+				evidence_rotated_files = report.agent_evidence.rotated_files,
+				backup_deleted_files = report.backups.deleted_files,
+				wal_checkpoint_mode = report
+					.wal_checkpoint
+					.as_ref()
+					.map(|checkpoint| checkpoint.mode)
+					.unwrap_or("skipped"),
+				"Completed Decodex auto-safe maintenance."
+			);
+		},
+		Err(error) => {
+			let _ = error;
+
+			tracing::warn!(
+				trigger = trigger,
+				"Decodex auto-safe maintenance failed; sensitive runtime details were withheld from control-plane logs."
+			);
+		},
+	}
 }
 
 fn runtime_recovery_warning(prefix: &str, error: &Report) -> String {
