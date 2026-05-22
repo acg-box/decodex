@@ -132,6 +132,13 @@ blocker count, run capsule count, warning count, and connector backoff count. Th
 stream exists so a future agent can identify when evidence changed without diffing
 all JSON files.
 
+The event stream is append-only between maintenance windows, but it is not permanent
+runtime authority. `decodex maintenance prune --apply` and the auto-safe maintenance
+subset in `decodex serve` may copy-truncate an oversized `events.jsonl` into a rotated
+local sibling file and later delete old rotated event files. The current
+`handoff-index.json`, blocker snapshots, and run capsules remain the compact diagnostic
+surface for repair agents.
+
 ## Privacy Boundary
 
 Agent evidence may include local filesystem paths, issue identifiers, PR URLs,
