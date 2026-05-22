@@ -14,6 +14,7 @@ mod commit_message;
 mod default_branch_sync;
 mod git_credentials;
 mod github;
+mod maintenance;
 mod manual;
 mod orchestrator;
 mod pull_request;
@@ -57,8 +58,8 @@ fn init_tracing() -> Result<WorkerGuard> {
 
 	let (non_blocking, guard) = tracing_appender::non_blocking(
 		RollingFileAppender::builder()
-			.rotation(Rotation::WEEKLY)
-			.max_log_files(3)
+			.rotation(Rotation::DAILY)
+			.max_log_files(30)
 			.filename_suffix("log")
 			.build(log_dir)?,
 	);
