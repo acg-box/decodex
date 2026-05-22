@@ -125,21 +125,13 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 		let runtime_db_path = runtime::runtime_db_path()?;
 		let global_config_path = runtime::global_config_path()?;
 		let project_config_dir = runtime::project_config_dir()?;
-		let snapshot = run_control_plane_api_only_tick(&state_store)?;
-
-		if let Err(error) = operator_state_endpoint.publish_snapshot(&snapshot) {
-			let _ = error;
-
-			tracing::warn!(
-				"Operator snapshot publish failed; sensitive runtime details were withheld from control-plane logs."
-			);
-		}
 
 		tracing::info!(
 			listen_address = %operator_state_endpoint.listen_address(),
 			path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
 			ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
 			api_only = true,
+			stream_interval_s = OPERATOR_API_ONLY_SNAPSHOT_STREAM_INTERVAL.as_secs(),
 			runtime_db_path = %runtime_db_path.display(),
 			global_config_path = %global_config_path.display(),
 			project_config_dir = %project_config_dir.display(),
@@ -147,7 +139,11 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 		);
 
 		loop {
-			thread::park();
+			let tick_started_at = Instant::now();
+			let snapshot = run_control_plane_api_only_tick(&state_store)?;
+
+			publish_operator_snapshot(&operator_state_endpoint, &snapshot);
+			sleep_until_next_tick(OPERATOR_API_ONLY_SNAPSHOT_STREAM_INTERVAL, tick_started_at);
 		}
 	}
 
@@ -200,14 +196,7 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 		let snapshot = run_control_plane_tick(&state_store, &mut project_runtimes)?;
 
-		if let Err(error) = operator_state_endpoint.publish_snapshot(&snapshot) {
-			let _ = error;
-
-			tracing::warn!(
-				"Operator snapshot publish failed; sensitive runtime details were withheld from control-plane logs."
-			);
-		}
-
+		publish_operator_snapshot(&operator_state_endpoint, &snapshot);
 		sleep_until_next_tick(poll_interval, tick_started_at);
 	}
 }
@@ -341,6 +330,19 @@ pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
 	}
 
 	Ok(())
+}
+
+fn publish_operator_snapshot(
+	operator_state_endpoint: &OperatorStateEndpoint,
+	snapshot: &OperatorStatusSnapshot,
+) {
+	if let Err(error) = operator_state_endpoint.publish_snapshot(snapshot) {
+		let _ = error;
+
+		tracing::warn!(
+			"Operator snapshot publish failed; sensitive runtime details were withheld from control-plane logs."
+		);
+	}
 }
 
 fn run_control_plane_maintenance(trigger: &'static str) {

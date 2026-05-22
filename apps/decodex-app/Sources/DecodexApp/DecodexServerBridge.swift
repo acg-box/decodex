@@ -29,6 +29,23 @@ actor DecodexServerBridge {
 		return baseURL.appendingPathComponent("dashboard")
 	}
 
+	func dashboardWebSocketURL() async throws -> URL {
+		let baseURL = try await ensureServer()
+		guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+			throw DecodexAppBridgeError.invalidResponse("Decodex server URL is invalid")
+		}
+
+		components.scheme = baseURL.scheme == "https" ? "wss" : "ws"
+		components.path = "/dashboard/control"
+		components.query = nil
+
+		guard let url = components.url else {
+			throw DecodexAppBridgeError.invalidResponse("Decodex dashboard WebSocket URL is invalid")
+		}
+
+		return url
+	}
+
 	func run<T: Decodable & Sendable>(_ request: AppBridgeRequest, as type: T.Type) async throws -> T {
 		guard let route = try request.serverRoute() else {
 			throw DecodexAppBridgeError.invalidResponse("request is not supported by Decodex server")
@@ -272,8 +289,6 @@ extension AppBridgeRequest {
 			return try jsonPost("api/accounts/import")
 		case "account_use":
 			return try jsonPost("api/accounts/use")
-		case "operator_snapshot":
-			return ServerRoute(method: "GET", path: "api/operator-snapshot", body: nil)
 		default:
 			return nil
 		}
