@@ -47,7 +47,7 @@ pub(crate) fn run(config_path: Option<&Path>, request: &ArchiveHygieneRequest) -
 	let state_store = runtime::open_runtime_store()?;
 	let Some(config_path) = resolve_config_path(config_path, &state_store)? else {
 		eyre::bail!(
-			"No Decodex project config found. Pass --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
+			"No Decodex project config found. Pass this command's --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
 		);
 	};
 	let config = ServiceConfig::from_path(&config_path)?;
