@@ -114,7 +114,7 @@ private final class AppBridgeEventParser<Response: Decodable>: @unchecked Sendab
 	}
 
 	func append(_ data: Data) throws {
-		guard !data.isEmpty else {
+		guard data.isEmpty == false else {
 			return
 		}
 
@@ -134,7 +134,7 @@ private final class AppBridgeEventParser<Response: Decodable>: @unchecked Sendab
 		buffer = ""
 		lock.unlock()
 
-		if !remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+		if remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
 			try handle(remainder)
 		}
 
@@ -161,7 +161,7 @@ private final class AppBridgeEventParser<Response: Decodable>: @unchecked Sendab
 
 	private func handle(_ line: String) throws {
 		let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !trimmed.isEmpty else {
+		guard trimmed.isEmpty == false else {
 			return
 		}
 		guard let data = trimmed.data(using: .utf8) else {
@@ -269,7 +269,7 @@ struct DecodexAppBridge: Sendable {
 	}
 
 	private func helperExecutableURL() throws -> URL {
-		if let override = ProcessInfo.processInfo.environment["DECODEX_APP_HELPER"], !override.isEmpty {
+		if let override = ProcessInfo.processInfo.environment["DECODEX_APP_HELPER"], override.isEmpty == false {
 			let overrideURL = URL(fileURLWithPath: override)
 			if FileManager.default.isExecutableFile(atPath: overrideURL.path) {
 				return overrideURL
