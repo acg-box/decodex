@@ -15,12 +15,12 @@ final class AccountStore: ObservableObject {
 
 	private let bridge = DecodexAppBridge()
 	private var automaticRefreshTask: Task<Void, Never>?
-	private var automaticOperatorRefreshTask: Task<Void, Never>?
-	static let operatorSnapshotRefreshIntervalSeconds = 10
+	private var operatorSnapshotStreamTask: Task<Void, Never>?
+	private var pendingRunActivity: [OperatorRunStatus]?
 
 	deinit {
 		automaticRefreshTask?.cancel()
-		automaticOperatorRefreshTask?.cancel()
+		operatorSnapshotStreamTask?.cancel()
 	}
 
 	var isInitialLoading: Bool {
@@ -87,9 +87,7 @@ final class AccountStore: ObservableObject {
 			)
 			notice = nil
 			await refreshFastMode()
-			await refreshOperatorSnapshot()
 		} catch {
-			operatorSnapshot = nil
 			notice = error.localizedDescription
 		}
 	}
@@ -100,19 +98,6 @@ final class AccountStore: ObservableObject {
 		}
 
 		await refresh()
-	}
-
-	func refreshOperatorSnapshot() async {
-		do {
-			operatorSnapshot = try await bridge.runJSON(
-				.operatorSnapshot,
-				as: OperatorSnapshotResponse.self
-			)
-			operatorSnapshotUpdatedAt = Date()
-		} catch {
-			operatorSnapshot = nil
-			operatorSnapshotUpdatedAt = nil
-		}
 	}
 
 	func openWebUI() async {
@@ -152,26 +137,103 @@ final class AccountStore: ObservableObject {
 			}
 		}
 
-		startAutomaticOperatorRefresh()
+		startOperatorSnapshotStream()
 	}
 
-	private func startAutomaticOperatorRefresh() {
-		guard automaticOperatorRefreshTask == nil else {
+	func startOperatorSnapshotStream() {
+		guard operatorSnapshotStreamTask == nil else {
 			return
 		}
 
-		automaticOperatorRefreshTask = Task { [weak self] in
-			while !Task.isCancelled {
-				do {
-					try await Task.sleep(
-						nanoseconds: UInt64(Self.operatorSnapshotRefreshIntervalSeconds) * 1_000_000_000
-					)
-				} catch {
-					return
-				}
+		operatorSnapshotStreamTask = Task { [weak self] in
+			await self?.runOperatorSnapshotStream()
+		}
+	}
 
-				await self?.refreshOperatorSnapshot()
+	private func runOperatorSnapshotStream() async {
+		while !Task.isCancelled {
+			do {
+				try await connectOperatorSnapshotStream()
+			} catch {
+				operatorSnapshot = nil
+				operatorSnapshotUpdatedAt = nil
 			}
+
+			do {
+				try await Task.sleep(nanoseconds: 1_000_000_000)
+			} catch {
+				return
+			}
+		}
+	}
+
+	private func connectOperatorSnapshotStream() async throws {
+		let url = try await DecodexServerBridge.shared.dashboardWebSocketURL()
+		let socket = URLSession.shared.webSocketTask(with: url)
+
+		socket.resume()
+		defer {
+			socket.cancel(with: .normalClosure, reason: nil)
+		}
+
+		while !Task.isCancelled {
+			let event = try await receiveOperatorDashboardEvent(from: socket)
+
+			applyOperatorDashboardEvent(event)
+		}
+	}
+
+	private func receiveOperatorDashboardEvent(
+		from socket: URLSessionWebSocketTask
+	) async throws -> OperatorDashboardSocketEvent {
+		let message = try await socket.receive()
+		let data: Data
+
+		switch message {
+		case .string(let text):
+			guard let textData = text.data(using: .utf8) else {
+				throw DecodexAppBridgeError.invalidResponse("dashboard WebSocket event is not UTF-8")
+			}
+
+			data = textData
+		case .data(let binary):
+			data = binary
+		@unknown default:
+			throw DecodexAppBridgeError.invalidResponse("dashboard WebSocket event type is unsupported")
+		}
+
+		return try JSONDecoder().decode(OperatorDashboardSocketEvent.self, from: data)
+	}
+
+	private func applyOperatorDashboardEvent(_ event: OperatorDashboardSocketEvent) {
+		guard let payload = event.payload else {
+			return
+		}
+
+		switch event.type {
+		case "snapshot":
+			guard let snapshot = payload.snapshot else {
+				return
+			}
+
+			if let pendingRunActivity {
+				operatorSnapshot = snapshot.mergingRunActivity(pendingRunActivity)
+			} else {
+				operatorSnapshot = snapshot
+			}
+			operatorSnapshotUpdatedAt = payload.snapshotPublishedAt ?? Date()
+		case "runActivity":
+			guard let activeRuns = payload.activeRuns else {
+				return
+			}
+
+			pendingRunActivity = activeRuns
+			if let operatorSnapshot {
+				self.operatorSnapshot = operatorSnapshot.mergingRunActivity(activeRuns)
+			}
+			operatorSnapshotUpdatedAt = payload.emittedAt ?? Date()
+		default:
+			break
 		}
 	}
 

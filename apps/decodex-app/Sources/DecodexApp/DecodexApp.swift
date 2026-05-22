@@ -61,7 +61,7 @@ struct DecodexApp: App {
 		let content = AccountPanelView(store: store, loginWindowState: loginWindowState)
 			.task {
 				await store.refreshIfNeeded()
-				await store.refreshOperatorSnapshot()
+				store.startOperatorSnapshotStream()
 			}
 
 		if #available(macOS 15.0, *) {
