@@ -101,6 +101,7 @@ cargo run -p decodex --bin decodex -- probe stdio://
 cargo run -p decodex --bin decodex -- project list
 cargo run -p decodex --bin decodex -- status
 cargo run -p decodex --bin decodex -- diagnose --json
+cargo run -p decodex --bin decodex -- maintenance prune --dry-run
 cargo run -p decodex --bin decodex -- run --dry-run
 cargo run -p decodex --bin decodex -- serve --interval 60s --listen-address 127.0.0.1:8912
 ```
@@ -142,6 +143,13 @@ matching `accounts.jsonl` entry.
 `decodex diagnose --json` writes the local agent evidence index under
 `~/.codex/decodex/agent-evidence/<service-id>/` and prints the same handoff index for
 repair agents.
+
+`decodex maintenance prune --dry-run` reports local Decodex storage retention
+candidates without applying retention changes. Add `--apply` to rotate
+oversized local logs and agent-evidence event streams, prune old backup files, compact
+old terminal-run protocol events after preserving their summary, and checkpoint the
+SQLite WAL. `decodex serve` also runs the auto-safe subset at startup and periodically
+while it is polling.
 
 ## Static Site
 
