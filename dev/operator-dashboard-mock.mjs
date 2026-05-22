@@ -82,6 +82,12 @@ function nowUnix() {
 	return Math.floor(Date.now() / 1000);
 }
 
+function usageDate(daysAgo) {
+	const date = new Date(Date.now() - daysAgo * 86_400_000);
+
+	return date.toISOString().slice(0, 10);
+}
+
 function unixToIso(seconds) {
 	return new Date(seconds * 1000).toISOString();
 }
@@ -112,6 +118,8 @@ function account({
 	creditsUnlimited = false,
 	note = "usage probe ok",
 	selected = false,
+	sevenDayUsed = 18,
+	previousSevenDayUsed = Math.max(0, sevenDayUsed - 4),
 }) {
 	return {
 		account_email: email,
@@ -133,6 +141,20 @@ function account({
 		rate_limit_reached_type: null,
 		cooldown_until_unix_epoch: null,
 		note,
+		seven_day_used_percent: sevenDayUsed,
+		seven_day_daily_average_percent: sevenDayUsed / 7,
+		usage_records: [
+			{
+				date: usageDate(1),
+				used_percent: previousSevenDayUsed,
+				checked_at_unix_epoch: nowUnix() - 86_400,
+			},
+			{
+				date: usageDate(0),
+				used_percent: sevenDayUsed,
+				checked_at_unix_epoch: nowUnix() - 30,
+			},
+		],
 	};
 }
 
@@ -144,6 +166,8 @@ function mockAccounts() {
 			primary: 96,
 			secondary: 92,
 			selected: true,
+			sevenDayUsed: 22,
+			previousSevenDayUsed: 17,
 		}),
 		account({
 			email: "mock-weekly-limited@decodex.test",
@@ -153,6 +177,8 @@ function mockAccounts() {
 			secondary: 0,
 			creditsBalance: "0",
 			creditsHasCredits: false,
+			sevenDayUsed: 100,
+			previousSevenDayUsed: 92,
 		}),
 		account({
 			email: "mock-nightly@decodex.test",
@@ -160,6 +186,8 @@ function mockAccounts() {
 			primary: 44,
 			secondary: 78,
 			creditsBalance: "4.20",
+			sevenDayUsed: 37,
+			previousSevenDayUsed: 35,
 		}),
 	];
 }
@@ -518,6 +546,31 @@ function accountsWithSelection(accounts, fixedAccountSelector) {
 	});
 }
 
+function usageEstimate(accounts) {
+	const measuredAccounts = accounts.filter((item) => Number.isFinite(Number(item.seven_day_used_percent)));
+	if (!accounts.length || !measuredAccounts.length) {
+		return null;
+	}
+
+	const totalUsedPercent = measuredAccounts.reduce(
+		(total, account) => total + Number(account.seven_day_used_percent || 0),
+		0,
+	);
+	const totalCapacityPercent = accounts.length * 100;
+	const totalUsedOfCapacityPercent = (totalUsedPercent / totalCapacityPercent) * 100;
+
+	return {
+		window_days: 7,
+		account_count: accounts.length,
+		account_estimate_count: measuredAccounts.length,
+		total_capacity_percent: totalCapacityPercent,
+		total_used_percent: totalUsedPercent,
+		total_used_of_capacity_percent: totalUsedOfCapacityPercent,
+		average_daily_used_percent: totalUsedPercent / 7,
+		average_daily_pool_percent: totalUsedOfCapacityPercent / 7,
+	};
+}
+
 function buildSnapshot(accounts, fixedAccountSelector) {
 	const controlledAccounts = accountsWithSelection(accounts, fixedAccountSelector);
 	const activeRuns = [
@@ -842,6 +895,28 @@ async function main() {
 			if (url.pathname === "/" || url.pathname === "/dashboard") {
 				const html = await fs.readFile(options.dashboardHtml, "utf8");
 				send(response, 200, "text/html; charset=utf-8", html);
+				return;
+			}
+			if (url.pathname === "/api/accounts") {
+				const controlledAccounts = accountsWithSelection(staticAccounts, fixedAccountSelector);
+				send(
+					response,
+					200,
+					"application/json; charset=utf-8",
+					JSON.stringify({
+						accounts_path: "/tmp/decodex-mock/accounts.jsonl",
+						global_config_path: "/tmp/decodex-mock/config.toml",
+						codex_auth_path: "/tmp/decodex-mock/auth.json",
+						codex_auth: null,
+						control: {
+							mode: fixedAccountSelector ? "fixed" : "balanced",
+							account_selector: fixedAccountSelector || null,
+						},
+						accounts: controlledAccounts,
+						usage_estimate: usageEstimate(controlledAccounts),
+						usage_probe_error: null,
+					}),
+				);
 				return;
 			}
 				if (url.pathname === "/livez") {

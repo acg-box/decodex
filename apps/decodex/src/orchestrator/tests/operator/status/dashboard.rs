@@ -443,6 +443,13 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("function codexAccountTokenLabel(refreshStatus)"));
 	assert!(response.contains("function codexAccountWindowLabel(seconds)"));
 	assert!(response.contains("function codexAccountStatusTone(account)"));
+	assert!(response.contains("function renderCodexAccountPoolUsageSummary(accounts, snapshot)"));
+	assert!(response.contains("function accountPoolDayDeltaPercentagePoints(accounts, estimate)"));
+	assert!(response.contains("accountApiSnapshot?.usage_estimate"));
+	assert!(response.contains("Pool used"));
+	assert!(response.contains("Day Δ"));
+	assert!(response.contains("Daily avg"));
+	assert!(response.contains("accounts measured"));
 	assert!(response.contains("function renderRunCodexAccountInline(run, snapshot)"));
 	assert!(response.contains("function renderRunMetaLine(run, snapshot = null)"));
 	assert!(response.contains("run account capture pending"));
