@@ -18,6 +18,7 @@ use crate::{
 	accounts::{self, AccountImportRequest, AccountLoginRequest, AccountUseRequest},
 	agent,
 	archive_hygiene::{self, ArchiveHygieneRequest},
+	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
 	orchestrator::{self, DiagnoseRequest, IssueDispatchMode, RunOnceRequest, ServeRequest},
 	prelude::eyre,
@@ -62,6 +63,7 @@ impl Cli {
 			Command::Diagnose(args) => args.run(config_path),
 			Command::Recover(args) => args.run(config_path),
 			Command::ArchiveLinear(args) => args.run(config_path),
+			Command::Maintenance(args) => args.run(),
 			Command::Account(args) => args.run(),
 			Command::Probe(args) => args.run(),
 			Command::Attempt(args) => args.run(config_path),
@@ -137,6 +139,8 @@ enum Command {
 	Recover(RecoverCommand),
 	/// Dry-run or archive old terminal Linear issues by repo label.
 	ArchiveLinear(ArchiveLinearCommand),
+	/// Maintain local Decodex logs, evidence, backups, and runtime storage.
+	Maintenance(MaintenanceCommand),
 	/// Manage the global Decodex Codex account pool.
 	Account(AccountCommand),
 	/// Validate the local app-server integration boundary.
@@ -617,6 +621,49 @@ impl ArchiveLinearCommand {
 				execute: self.execute,
 			},
 		)
+	}
+}
+
+#[derive(Debug, Args)]
+struct MaintenanceCommand {
+	#[command(subcommand)]
+	command: MaintenanceSubcommand,
+}
+impl MaintenanceCommand {
+	fn run(&self) -> crate::prelude::Result<()> {
+		match &self.command {
+			MaintenanceSubcommand::Prune(args) => args.run(),
+		}
+	}
+}
+
+#[derive(Debug, Subcommand)]
+enum MaintenanceSubcommand {
+	/// Inspect or apply local Decodex storage retention.
+	Prune(MaintenancePruneCommand),
+}
+
+#[derive(Debug, Args)]
+struct MaintenancePruneCommand {
+	/// Report candidates without applying retention changes.
+	#[arg(long, conflicts_with = "apply")]
+	dry_run: bool,
+	/// Apply safe file retention, state-aware runtime compaction, and WAL checkpointing.
+	#[arg(long, conflicts_with = "dry_run")]
+	apply: bool,
+	/// Emit the maintenance report as JSON.
+	#[arg(long)]
+	json: bool,
+}
+impl MaintenancePruneCommand {
+	fn run(&self) -> crate::prelude::Result<()> {
+		let mode = if self.apply { MaintenanceMode::Apply } else { MaintenanceMode::DryRun };
+
+		maintenance::run_prune_command(MaintenancePruneRequest {
+			mode,
+			scope: MaintenanceScope::Full,
+			json: self.json,
+		})
 	}
 }
 

@@ -355,7 +355,21 @@ After a process restart, recent-run history, active lease ownership, retained po
 ## Retention and cleanup
 
 - Lease and session mappings: remove when the run closes.
-- Attempt and event journals: retain in the runtime database until explicit cleanup policy removes old rows.
+- Attempt records, terminal outcome, and locally cached Linear execution ledger links
+  remain runtime history. Raw protocol event rows for terminal runs may be compacted by
+  `decodex maintenance prune --apply` once the latest event is at least 14 days old,
+  but only after Decodex writes the compact run summary and confirms that no active
+  lease, retained worktree, review handoff, review orchestration, or cleanup blocker
+  still owns that run or issue.
+- `decodex maintenance prune --dry-run` is the read-only retention path for inspecting
+  local cleanup candidates without applying retention changes. The `--apply` mode owns
+  state-aware protocol-event
+  compaction, old backup pruning, local log and agent-evidence event-stream rotation,
+  and SQLite WAL checkpointing. Operators must not delete `runtime.sqlite3-wal`
+  directly.
+- `decodex serve` runs the auto-safe maintenance subset at startup and periodically
+  while polling. That subset may rotate oversized local files, prune old backups, and
+  run a passive WAL checkpoint, but it must not compact runtime protocol events.
 - Worktrees: retain while the issue is non-terminal, and also retain terminal owned lanes while authoritative post-merge closeout or deterministic cleanup is still incomplete.
 - Terminal issue cleanup: once the issue reaches a terminal tracker state and no authoritative post-merge tail remains pending, remove the worktree during reconciliation or startup cleanup.
 - If an issue becomes non-terminal but no longer eligible while `decodex` is still preparing the lane, keep the worktree and skip execution for that pass.
