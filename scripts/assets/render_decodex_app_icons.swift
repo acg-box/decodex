@@ -13,7 +13,7 @@ for directory in [appIconGenerated, appIconComposerAssets, trayIconGenerated] {
 	try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 }
 
-let canvasSize = 1024
+let canvasSize = 1_024
 let appIconURL = appIconGenerated.appendingPathComponent("app-icon-flat.png")
 let previewURL = appIconGenerated.appendingPathComponent("app-icon-default-preview.png")
 let composerLayerURL = appIconComposerAssets.appendingPathComponent("app-icon-composer-layer.png")
@@ -42,6 +42,22 @@ enum TemplateMark {
 	static let promptScale: CGFloat = 0.88
 }
 
+func requiredGradient(colors: [NSColor]) -> NSGradient {
+	guard let gradient = NSGradient(colors: colors) else {
+		preconditionFailure("icon gradient colors must be valid")
+	}
+
+	return gradient
+}
+
+func currentCGContext() -> CGContext {
+	guard let context = NSGraphicsContext.current?.cgContext else {
+		preconditionFailure("icon drawing requires a graphics context")
+	}
+
+	return context
+}
+
 func bitmap(size: Int = canvasSize, drawing: (CGContext) -> Void) throws -> NSBitmapImageRep {
 	guard let rep = NSBitmapImageRep(
 		bitmapDataPlanes: nil,
@@ -59,12 +75,18 @@ func bitmap(size: Int = canvasSize, drawing: (CGContext) -> Void) throws -> NSBi
 	}
 
 	NSGraphicsContext.saveGraphicsState()
-	NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-	NSGraphicsContext.current?.cgContext.setShouldAntialias(true)
-	NSGraphicsContext.current?.cgContext.setAllowsAntialiasing(true)
-	NSGraphicsContext.current?.cgContext.interpolationQuality = .high
-	drawing(NSGraphicsContext.current!.cgContext)
-	NSGraphicsContext.restoreGraphicsState()
+	defer {
+		NSGraphicsContext.restoreGraphicsState()
+	}
+	guard let graphicsContext = NSGraphicsContext(bitmapImageRep: rep) else {
+		throw NSError(domain: "DecodexIconRender", code: 3)
+	}
+	NSGraphicsContext.current = graphicsContext
+	let context = graphicsContext.cgContext
+	context.setShouldAntialias(true)
+	context.setAllowsAntialiasing(true)
+	context.interpolationQuality = .high
+	drawing(context)
 
 	return rep
 }
@@ -157,7 +179,7 @@ func appBoltCorePoints() -> [NSPoint] {
 
 func drawTile() {
 	let tile = roundedRect(NSRect(x: 58, y: 58, width: 908, height: 908), radius: 222)
-	NSGradient(colors: [Palette.fieldTop, Palette.fieldBottom])!.draw(in: tile, angle: -48)
+	requiredGradient(colors: [Palette.fieldTop, Palette.fieldBottom]).draw(in: tile, angle: -48)
 
 	Palette.white.withAlphaComponent(0.11).setStroke()
 	let rim = roundedRect(NSRect(x: 82, y: 82, width: 860, height: 860), radius: 198)
@@ -186,7 +208,7 @@ func drawCloudContainer() {
 	cloudPath().fill()
 	NSShadow().set()
 
-	NSGradient(colors: [Palette.cloudTop, Palette.cloudBottom])!.draw(in: cloudPath(), angle: -58)
+	requiredGradient(colors: [Palette.cloudTop, Palette.cloudBottom]).draw(in: cloudPath(), angle: -58)
 }
 
 func drawPromptMark(color: NSColor, width: CGFloat, alpha: CGFloat = 1) {
@@ -220,7 +242,7 @@ func drawTemplateBolt() {
 }
 
 func drawTemplateCloud() {
-	let context = NSGraphicsContext.current!.cgContext
+	let context = currentCGContext()
 	context.saveGState()
 	context.translateBy(x: 512, y: 512)
 	context.scaleBy(x: TemplateMark.cloudScale, y: TemplateMark.cloudScale)
@@ -231,7 +253,7 @@ func drawTemplateCloud() {
 }
 
 func clearTemplatePrompt() {
-	let context = NSGraphicsContext.current!.cgContext
+	let context = currentCGContext()
 	context.saveGState()
 	context.setBlendMode(.clear)
 	context.translateBy(x: TemplateMark.promptOffset.width, y: TemplateMark.promptOffset.height)
@@ -243,7 +265,7 @@ func clearTemplatePrompt() {
 }
 
 func drawTemplateMark() {
-	let context = NSGraphicsContext.current!.cgContext
+	let context = currentCGContext()
 	context.saveGState()
 	context.translateBy(x: 512, y: 512)
 	context.scaleBy(x: TemplateMark.canvasScale, y: TemplateMark.canvasScale)
@@ -274,9 +296,12 @@ func drawTrayIcon() throws -> NSBitmapImageRep {
 }
 
 func scaledPNG(from source: NSBitmapImageRep, size: Int, to url: URL) throws {
+	guard let sourceImage = source.cgImage else {
+		throw NSError(domain: "DecodexIconRender", code: 4)
+	}
 	let rep = try bitmap(size: size) { ctx in
 		ctx.interpolationQuality = .high
-		ctx.draw(source.cgImage!, in: CGRect(x: 0, y: 0, width: size, height: size))
+		ctx.draw(sourceImage, in: CGRect(x: 0, y: 0, width: size, height: size))
 	}
 	try writePNG(rep, to: url)
 }
@@ -297,7 +322,7 @@ func buildICNS(from source: NSBitmapImageRep) throws {
 		("icon_256x256.png", 256),
 		("icon_256x256@2x.png", 512),
 		("icon_512x512.png", 512),
-		("icon_512x512@2x.png", 1024),
+		("icon_512x512@2x.png", 1_024),
 	]
 	for (name, size) in sizes {
 		try scaledPNG(from: source, size: size, to: iconset.appendingPathComponent(name))
