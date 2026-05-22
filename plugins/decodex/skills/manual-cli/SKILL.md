@@ -70,8 +70,8 @@ Manual commit and landing are separate narrow workflows:
 - The project directory must contain `project.toml` and `WORKFLOW.md`.
 - `project.toml` owns `[paths].repo_root`, service identity, and credential env-var
   names.
-- Commands without `--config` resolve through the explicit registry; they do not scan
-  arbitrary checkouts for repo-local config files.
+- Project-scoped commands without `--config` resolve through the explicit registry;
+  they do not scan arbitrary checkouts for repo-local config files.
 
 ## Status and Dry Run
 
