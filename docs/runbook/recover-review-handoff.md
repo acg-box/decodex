@@ -17,7 +17,7 @@ Run from the project repo or pass the registered project directory:
 
 ```sh
 decodex recover review-handoff diagnose <ISSUE>
-decodex --config "$HOME/.codex/decodex/projects/<service-id>" recover review-handoff diagnose <ISSUE>
+decodex recover --config "$HOME/.codex/decodex/projects/<service-id>" review-handoff diagnose <ISSUE>
 ```
 
 Omit `<ISSUE>` to inspect every retained review worktree for the configured project.

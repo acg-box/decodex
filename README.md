@@ -85,9 +85,9 @@ without publishing every low-level or skipped item to the static site or Git his
 - The Decodex runtime contract is Unix-only: macOS and Linux.
 - Windows is outside the runtime contract.
 - The public site is static and deploys through GitHub Pages.
-- Starting `decodex serve` without `--config` loads enabled projects from the explicit
-  registry only. It does not scan Codex history, repo-local config files, or currently
-  open worktrees to infer projects.
+- Starting `decodex serve` without its `--config` option loads enabled projects from
+  the explicit registry only. It does not scan Codex history, repo-local config files,
+  or currently open worktrees to infer projects.
 
 ## Usage
 
@@ -105,6 +105,9 @@ cargo run -p decodex --bin decodex -- maintenance prune --dry-run
 cargo run -p decodex --bin decodex -- run --dry-run
 cargo run -p decodex --bin decodex -- serve --interval 60s --listen-address 127.0.0.1:8912
 ```
+
+Project-scoped commands accept `--config <PROJECT_DIR>` after the subcommand when the
+operator wants to override registry-based project resolution for that command.
 
 ### Install from Source
 
@@ -147,8 +150,8 @@ matching `accounts.jsonl` entry.
 `~/.codex/decodex/agent-evidence/<service-id>/` and prints the same handoff index for
 repair agents.
 
-`decodex maintenance prune --dry-run` reports local Decodex storage retention
-candidates without applying retention changes. Add `--apply` to rotate
+`decodex maintenance prune` defaults to the same read-only report as
+`decodex maintenance prune --dry-run`. Add `--apply` to rotate
 oversized local logs and agent-evidence event streams, prune old backup files, compact
 old terminal-run protocol events after preserving their summary, and checkpoint the
 SQLite WAL. `decodex serve` also runs the auto-safe subset at startup and periodically

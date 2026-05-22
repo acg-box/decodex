@@ -755,9 +755,9 @@ fn spawn_run_once_child(request: SpawnRunOnceChildRequest<'_>) -> Result<Child> 
 	let mut command = Command::new(executable);
 
 	command
-		.args(["--config"])
+		.args(["_attempt", "--config"])
 		.arg(request.config_path)
-		.args(["_attempt", "-"])
+		.arg("-")
 		.stdin(Stdio::piped())
 		.stdout(Stdio::inherit())
 		.stderr(Stdio::inherit());
