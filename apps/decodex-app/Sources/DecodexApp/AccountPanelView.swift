@@ -261,8 +261,7 @@ struct AccountPanelView: View {
 			if let snapshot = store.operatorSnapshot, snapshot.shouldDisplayInPanel {
 				OperatorStatusStripView(
 					snapshot: snapshot,
-					updatedAt: store.operatorSnapshotUpdatedAt,
-					refreshIntervalSeconds: AccountStore.operatorSnapshotRefreshIntervalSeconds
+					updatedAt: store.operatorSnapshotUpdatedAt
 				)
 			}
 
@@ -1531,7 +1530,6 @@ struct NoticeView: View {
 struct OperatorStatusStripView: View {
 	let snapshot: OperatorSnapshotResponse
 	let updatedAt: Date?
-	let refreshIntervalSeconds: Int
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var showsAllLanes = false
 
@@ -1576,7 +1574,6 @@ struct OperatorStatusStripView: View {
 						.monospacedDigit()
 				}
 				.frame(height: 16)
-				.help("Operator snapshot refreshes every \(refreshIntervalSeconds) seconds.")
 			}
 		}
 		.padding(.horizontal, 6)
@@ -1628,12 +1625,12 @@ struct OperatorStatusStripView: View {
 
 	private var refreshMeta: String {
 		guard let updatedAt else {
-			return "\(refreshIntervalSeconds)s refresh"
+			return "WS live"
 		}
 
 		let age = max(0, Int(Date().timeIntervalSince(updatedAt).rounded()))
 		if age < 2 {
-			return "\(refreshIntervalSeconds)s refresh"
+			return "live"
 		}
 
 		return "\(age)s ago"
