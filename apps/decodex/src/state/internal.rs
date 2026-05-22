@@ -249,6 +249,16 @@ CREATE TABLE IF NOT EXISTS protocol_events (
 	created_at_unix INTEGER NOT NULL,
 	PRIMARY KEY (run_id, sequence_number)
 );
+CREATE TABLE IF NOT EXISTS protocol_event_summaries (
+	run_id TEXT PRIMARY KEY NOT NULL,
+	event_count INTEGER NOT NULL,
+	last_sequence_number INTEGER,
+	last_event_type TEXT,
+	last_event_at TEXT,
+	last_event_at_unix INTEGER,
+	compacted_at TEXT NOT NULL,
+	compacted_at_unix INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS worktrees (
 	issue_id TEXT PRIMARY KEY NOT NULL,
 	project_id TEXT NOT NULL,
@@ -306,7 +316,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	value TEXT NOT NULL
 );
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '3')
+VALUES ('schema_version', '4')
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 "#,
 		)?;
@@ -595,6 +605,8 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	}
 
 	fn load_protocol_event_summaries(&self, state: &mut StateData) -> Result<()> {
+		self.load_compacted_protocol_event_summaries(state)?;
+
 		let mut statement = self.connection.prepare(
 			"SELECT totals.run_id, totals.event_count, totals.last_sequence_number, \
 			 last.event_type, last.created_at, last.created_at_unix \
@@ -616,6 +628,33 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 					last_event_type: Some(row.get(3)?),
 					last_event_at: Some(row.get(4)?),
 					last_event_at_unix: Some(row.get(5)?),
+				},
+			))
+		})?;
+
+		for row in rows {
+			let (run_id, summary) = row?;
+
+			state.event_summaries.insert(run_id, summary);
+		}
+
+		Ok(())
+	}
+
+	fn load_compacted_protocol_event_summaries(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, event_count, last_sequence_number, last_event_type, last_event_at, \
+			 last_event_at_unix FROM protocol_event_summaries ORDER BY run_id",
+		)?;
+		let rows = statement.query_map([], |row| {
+			Ok((
+				row.get::<_, String>(0)?,
+				ProtocolEventSummaryRecord {
+					event_count: row.get(1)?,
+					last_sequence_number: row.get(2)?,
+					last_event_type: row.get(3)?,
+					last_event_at: row.get(4)?,
+					last_event_at_unix: row.get(5)?,
 				},
 			))
 		})?;
