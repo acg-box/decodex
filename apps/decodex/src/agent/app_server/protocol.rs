@@ -4,23 +4,23 @@ use std::{
 	time::Duration,
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error};
 use serde_json::Value;
 
-use crate::{
-	agent::{
-		app_server::REQUEST_TIMEOUT,
-		json_rpc::{AppServerProcessEnv, JsonRpcConnection, JsonRpcRequest, WireMessage},
-		tracker_tool_bridge::{DynamicToolCallResponse, DynamicToolHandler, DynamicToolSpec},
-	},
-	prelude::Result,
+use crate::agent::{
+	app_server::REQUEST_TIMEOUT,
+	json_rpc::{AppServerProcessEnv, JsonRpcConnection, JsonRpcRequest, WireMessage},
+	tracker_tool_bridge::{DynamicToolCallResponse, DynamicToolHandler, DynamicToolSpec},
 };
 
 pub(super) struct AppServerClient {
 	pub(super) connection: JsonRpcConnection,
 }
 impl AppServerClient {
-	pub(super) fn spawn(listen: &str, process_env: &AppServerProcessEnv) -> Result<Self> {
+	pub(super) fn spawn(
+		listen: &str,
+		process_env: &AppServerProcessEnv,
+	) -> crate::prelude::Result<Self> {
 		Ok(Self { connection: JsonRpcConnection::spawn_app_server(listen, process_env)? })
 	}
 
@@ -28,7 +28,7 @@ impl AppServerClient {
 	pub(super) fn initialize(
 		&mut self,
 		enable_experimental_api: bool,
-	) -> Result<InitializeResponse> {
+	) -> crate::prelude::Result<InitializeResponse> {
 		self.initialize_with_handler(enable_experimental_api, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `initialize`.",
@@ -41,9 +41,13 @@ impl AppServerClient {
 		&mut self,
 		enable_experimental_api: bool,
 		handler: H,
-	) -> Result<InitializeResponse>
+	) -> crate::prelude::Result<InitializeResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler(
 			"initialize",
@@ -62,7 +66,7 @@ impl AppServerClient {
 		)
 	}
 
-	pub(super) fn mark_initialized(&mut self) -> Result<()> {
+	pub(super) fn mark_initialized(&mut self) -> crate::prelude::Result<()> {
 		self.connection.notify::<Value>("initialized", None)
 	}
 
@@ -70,9 +74,13 @@ impl AppServerClient {
 		&mut self,
 		params: LoginAccountParams,
 		handler: H,
-	) -> Result<LoginAccountResponse>
+	) -> crate::prelude::Result<LoginAccountResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler(
 			"account/login/start",
@@ -86,7 +94,7 @@ impl AppServerClient {
 	pub(super) fn start_thread(
 		&mut self,
 		params: ThreadStartRequest,
-	) -> Result<ThreadSessionResponse> {
+	) -> crate::prelude::Result<ThreadSessionResponse> {
 		self.start_thread_with_handler(params, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `thread/start`.",
@@ -99,9 +107,13 @@ impl AppServerClient {
 		&mut self,
 		params: ThreadStartRequest,
 		handler: H,
-	) -> Result<ThreadSessionResponse>
+	) -> crate::prelude::Result<ThreadSessionResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler("thread/start", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -110,7 +122,7 @@ impl AppServerClient {
 	pub(super) fn resume_thread(
 		&mut self,
 		params: ThreadResumeRequest,
-	) -> Result<ThreadSessionResponse> {
+	) -> crate::prelude::Result<ThreadSessionResponse> {
 		self.resume_thread_with_handler(params, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `thread/resume`.",
@@ -123,9 +135,13 @@ impl AppServerClient {
 		&mut self,
 		params: ThreadResumeRequest,
 		handler: H,
-	) -> Result<ThreadSessionResponse>
+	) -> crate::prelude::Result<ThreadSessionResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler("thread/resume", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -133,12 +149,15 @@ impl AppServerClient {
 	pub(super) fn archive_thread(
 		&mut self,
 		params: ThreadArchiveRequest,
-	) -> Result<ThreadArchiveResponse> {
+	) -> crate::prelude::Result<ThreadArchiveResponse> {
 		self.connection.request("thread/archive", &params, REQUEST_TIMEOUT)
 	}
 
 	#[allow(dead_code)]
-	pub(super) fn start_turn(&mut self, params: TurnStartRequest) -> Result<TurnStartResponse> {
+	pub(super) fn start_turn(
+		&mut self,
+		params: TurnStartRequest,
+	) -> crate::prelude::Result<TurnStartResponse> {
 		self.start_turn_with_handler(params, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `turn/start`.",
@@ -151,9 +170,13 @@ impl AppServerClient {
 		&mut self,
 		params: TurnStartRequest,
 		handler: H,
-	) -> Result<TurnStartResponse>
+	) -> crate::prelude::Result<TurnStartResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler("turn/start", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -161,21 +184,27 @@ impl AppServerClient {
 	pub(super) fn command_exec(
 		&mut self,
 		params: &CommandExecParams,
-	) -> Result<CommandExecResponse> {
+	) -> crate::prelude::Result<CommandExecResponse> {
 		self.connection.request("command/exec", params, params.request_timeout())
 	}
 
-	pub(super) fn read_config(&mut self, params: &ConfigReadParams) -> Result<ConfigReadResponse> {
+	pub(super) fn read_config(
+		&mut self,
+		params: &ConfigReadParams,
+	) -> crate::prelude::Result<ConfigReadResponse> {
 		self.connection.request("config/read", params, REQUEST_TIMEOUT)
 	}
 
-	pub(super) fn list_models(&mut self, params: &ModelListParams) -> Result<ModelListResponse> {
+	pub(super) fn list_models(
+		&mut self,
+		params: &ModelListParams,
+	) -> crate::prelude::Result<ModelListResponse> {
 		self.connection.request("model/list", params, REQUEST_TIMEOUT)
 	}
 
 	pub(super) fn read_model_provider_capabilities(
 		&mut self,
-	) -> Result<ModelProviderCapabilitiesReadResponse> {
+	) -> crate::prelude::Result<ModelProviderCapabilitiesReadResponse> {
 		self.connection.request(
 			"modelProvider/capabilities/read",
 			&ModelProviderCapabilitiesReadParams {},
@@ -183,11 +212,17 @@ impl AppServerClient {
 		)
 	}
 
-	pub(super) fn list_skills(&mut self, params: &SkillsListParams) -> Result<SkillsListResponse> {
+	pub(super) fn list_skills(
+		&mut self,
+		params: &SkillsListParams,
+	) -> crate::prelude::Result<SkillsListResponse> {
 		self.connection.request("skills/list", params, REQUEST_TIMEOUT)
 	}
 
-	pub(super) fn list_plugins(&mut self, params: &PluginListParams) -> Result<PluginListResponse> {
+	pub(super) fn list_plugins(
+		&mut self,
+		params: &PluginListParams,
+	) -> crate::prelude::Result<PluginListResponse> {
 		self.connection.request("plugin/list", params, REQUEST_TIMEOUT)
 	}
 
@@ -195,16 +230,19 @@ impl AppServerClient {
 		&mut self,
 		params: &ListMcpServerStatusParams,
 		timeout: Duration,
-	) -> Result<ListMcpServerStatusResponse> {
+	) -> crate::prelude::Result<ListMcpServerStatusResponse> {
 		self.connection.request("mcpServerStatus/list", params, timeout)
 	}
 
-	pub(super) fn recv(&mut self, timeout: Option<Duration>) -> Result<WireMessage> {
+	pub(super) fn recv(
+		&mut self,
+		timeout: Option<Duration>,
+	) -> crate::prelude::Result<WireMessage> {
 		self.connection.recv(timeout)
 	}
 
 	#[allow(dead_code)]
-	pub(super) fn respond<R>(&mut self, id: &Value, result: &R) -> Result<()>
+	pub(super) fn respond<R>(&mut self, id: &Value, result: &R) -> crate::prelude::Result<()>
 	where
 		R: Serialize,
 	{
@@ -212,7 +250,12 @@ impl AppServerClient {
 	}
 
 	#[allow(dead_code)]
-	pub(super) fn respond_error(&mut self, id: &Value, code: i64, message: &str) -> Result<()> {
+	pub(super) fn respond_error(
+		&mut self,
+		id: &Value,
+		code: i64,
+		message: &str,
+	) -> crate::prelude::Result<()> {
 		self.connection.respond_error(id, code, message)
 	}
 
@@ -596,14 +639,35 @@ pub(super) struct TurnStatusPayload {
 	pub(super) error: Option<TurnError>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub(super) struct TurnError {
 	pub(super) message: String,
-	#[serde(rename = "codexErrorInfo")]
 	pub(super) codex_error_info: Option<String>,
 	#[allow(dead_code)]
-	#[serde(rename = "additionalDetails")]
 	pub(super) additional_details: Option<Value>,
+}
+impl<'de> Deserialize<'de> for TurnError {
+	fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let value = Value::deserialize(deserializer)?;
+		let entries = value
+			.as_object()
+			.ok_or_else(|| Error::custom("expected app-server turn error object"))?;
+		let message = entries
+			.get("message")
+			.and_then(string_like_json_value)
+			.ok_or_else(|| Error::custom("expected app-server turn error message"))?;
+		let codex_error_info = entries
+			.get("codexErrorInfo")
+			.or_else(|| entries.get("codex_error_info"))
+			.and_then(string_like_json_value);
+		let additional_details =
+			entries.get("additionalDetails").or_else(|| entries.get("additional_details")).cloned();
+
+		Ok(Self { message, codex_error_info, additional_details })
+	}
 }
 
 #[derive(Debug, Eq, PartialEq, Deserialize)]
@@ -661,15 +725,39 @@ pub(super) struct TurnCompletedNotification {
 	pub(super) turn: TurnStatusPayload,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub(super) struct ErrorNotification {
 	pub(super) error: TurnError,
-	#[serde(rename = "willRetry")]
 	pub(super) will_retry: Option<bool>,
-	#[serde(rename = "threadId")]
 	pub(super) thread_id: Option<String>,
-	#[serde(rename = "turnId")]
 	pub(super) turn_id: Option<String>,
+}
+impl<'de> Deserialize<'de> for ErrorNotification {
+	fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let value = Value::deserialize(deserializer)?;
+		let entries = value
+			.as_object()
+			.ok_or_else(|| Error::custom("expected app-server error notification object"))?;
+		let error_value = entries
+			.get("error")
+			.ok_or_else(|| Error::custom("expected app-server error notification error"))?;
+		let error = TurnError::deserialize(error_value.clone()).map_err(Error::custom)?;
+		let will_retry =
+			entries.get("willRetry").or_else(|| entries.get("will_retry")).and_then(Value::as_bool);
+		let thread_id = entries
+			.get("threadId")
+			.or_else(|| entries.get("thread_id"))
+			.and_then(string_like_json_value);
+		let turn_id = entries
+			.get("turnId")
+			.or_else(|| entries.get("turn_id"))
+			.and_then(string_like_json_value);
+
+		Ok(Self { error, will_retry, thread_id, turn_id })
+	}
 }
 
 #[derive(Debug, Deserialize)]
@@ -795,6 +883,25 @@ pub(super) enum UserInput {
 	Text { text: String },
 }
 
+fn string_like_json_value(value: &Value) -> Option<String> {
+	match value {
+		Value::String(text) if !text.is_empty() => Some(text.clone()),
+		Value::Number(number) => Some(number.to_string()),
+		Value::Bool(value) => Some(value.to_string()),
+		Value::Object(entries) =>
+			["message", "text", "id", "codexErrorInfo", "type", "kind", "code", "reason", "name"]
+				.iter()
+				.find_map(|key| entries.get(*key).and_then(string_like_json_value))
+				.or_else(|| {
+					(entries.len() == 1)
+						.then(|| entries.values().next().and_then(string_like_json_value))
+						.flatten()
+				}),
+		Value::Array(items) => items.iter().find_map(string_like_json_value),
+		_ => None,
+	}
+}
+
 fn externally_tagged_value_name(value: &Value) -> Option<String> {
 	match value {
 		Value::String(value) if !value.is_empty() => Some(value.clone()),
@@ -831,6 +938,31 @@ mod tests {
 
 		assert_eq!(notification.error.codex_error_info.as_deref(), Some("usageLimitExceeded"));
 		assert_eq!(notification.will_retry, None);
+	}
+
+	#[test]
+	fn error_notifications_accept_structured_string_fields() {
+		let notification: super::ErrorNotification = serde_json::from_value(serde_json::json!({
+			"error": {
+				"message": {
+					"type": "streamDisconnected",
+					"message": "stream disconnected"
+				},
+				"codexErrorInfo": {
+					"type": "transientNetworkError"
+				}
+			},
+			"threadId": { "id": "thread-1" },
+			"turnId": { "id": "turn-1" },
+			"willRetry": true
+		}))
+		.expect("structured error notification should parse");
+
+		assert_eq!(notification.error.message, "stream disconnected");
+		assert_eq!(notification.error.codex_error_info.as_deref(), Some("transientNetworkError"));
+		assert_eq!(notification.thread_id.as_deref(), Some("thread-1"));
+		assert_eq!(notification.turn_id.as_deref(), Some("turn-1"));
+		assert_eq!(notification.will_retry, Some(true));
 	}
 
 	#[test]
