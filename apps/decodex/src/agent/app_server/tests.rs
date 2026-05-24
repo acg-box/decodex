@@ -406,6 +406,166 @@ fn command_exec_health_check_uses_bounded_standalone_request() {
 }
 
 #[test]
+fn turn_completion_ignores_orphan_json_rpc_response() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let worktree_path = temp_dir.path().join("worktree");
+	let marker_path = temp_dir.path().join("activity");
+	let fake_bin_dir = install_fake_codex_script(&temp_dir, orphan_response_fake_codex_script());
+	let path_env = env::var("PATH").unwrap_or_default();
+	let _path_guard =
+		TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_bin_dir.display()));
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut request = minimal_run_request();
+
+	fs::create_dir_all(&worktree_path).expect("worktree directory should create");
+
+	request.run_id = String::from("orphan-response-run");
+	request.issue_id = String::from("orphan-response-issue");
+	request.cwd = worktree_path.display().to_string();
+	request.timeout = Duration::from_secs(5);
+	request.activity_marker_path = Some(marker_path.clone());
+
+	let result = super::execute_app_server_run(&request, &state_store)
+		.expect("orphan response during turn wait should not fail the run");
+
+	assert_eq!(result.thread_id, "thread-1");
+	assert_eq!(result.turn_id, "turn-1");
+	assert_eq!(result.final_output, "ORPHAN_OK");
+
+	let marker = state::read_run_activity_marker_snapshot(&marker_path)
+		.expect("marker snapshot should load")
+		.expect("marker snapshot should exist");
+	let protocol_activity =
+		marker.protocol_activity().expect("protocol activity should be captured");
+
+	assert!(state_store.event_count(&request.run_id).expect("event count should load") > 0);
+	assert!(
+		protocol_activity.recent_events.iter().any(|event| event.event_type == "json-rpc/response")
+	);
+	assert_eq!(marker.last_event_type(), Some("turn/completed"));
+}
+
+fn install_fake_codex_script(temp_dir: &TempDir, script: &str) -> PathBuf {
+	let fake_bin_dir = temp_dir.path().join("fake-bin");
+	let fake_codex_path = fake_bin_dir.join("codex");
+
+	fs::create_dir_all(&fake_bin_dir).expect("fake bin directory should create");
+	fs::write(&fake_codex_path, script).expect("fake codex script should write");
+
+	let mut permissions =
+		fs::metadata(&fake_codex_path).expect("fake codex metadata should read").permissions();
+
+	#[cfg(unix)]
+	PermissionsExt::set_mode(&mut permissions, 0o755);
+	fs::set_permissions(&fake_codex_path, permissions)
+		.expect("fake codex script should be executable");
+
+	fake_bin_dir
+}
+
+fn orphan_response_fake_codex_script() -> &'static str {
+	r#"#!/usr/bin/env python3
+import json
+import os
+import sys
+
+def send(value):
+    print(json.dumps(value), flush=True)
+
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get("method")
+    message_id = message.get("id")
+    params = message.get("params") or {}
+
+    def reply(result):
+        send({"id": message_id, "result": result})
+
+    if method == "initialize":
+        reply({
+            "userAgent": "fake-codex",
+            "codexHome": os.environ["CODEX_HOME"],
+            "platformFamily": "unix",
+            "platformOs": "macos"
+        })
+    elif method == "initialized":
+        continue
+    elif method == "config/read":
+        reply({"config": {
+            "model": "gpt-5.5",
+            "model_provider": "openai",
+            "approval_policy": {"type": "never"},
+            "sandbox_mode": {"type": "dangerFullAccess"}
+        }})
+    elif method == "model/list":
+        reply({"data": [{
+            "id": "gpt-5.5",
+            "model": "gpt-5.5",
+            "displayName": "GPT-5.5",
+            "isDefault": True,
+            "hidden": False
+        }], "nextCursor": None})
+    elif method == "modelProvider/capabilities/read":
+        reply({"imageGeneration": True, "namespaceTools": True, "webSearch": True})
+    elif method == "skills/list":
+        cwd = params.get("cwds", [""])[0]
+        reply({"data": [{"cwd": cwd, "errors": [], "skills": [{
+            "enabled": True,
+            "name": "fake-skill",
+            "scope": "user"
+        }]}]})
+    elif method == "plugin/list":
+        reply({"marketplaces": [{"name": "fake", "plugins": [{
+            "enabled": True,
+            "id": "fake-plugin",
+            "installed": True,
+            "name": "Fake Plugin"
+        }]}], "marketplaceLoadErrors": []})
+    elif method == "mcpServerStatus/list":
+        reply({"data": [], "nextCursor": None})
+    elif method == "thread/start":
+        cwd = params.get("cwd")
+        reply({
+            "thread": {"id": "thread-1"},
+            "model": "gpt-5.5",
+            "modelProvider": "openai",
+            "serviceTier": None,
+            "cwd": cwd,
+            "instructionSources": [],
+            "approvalPolicy": {"type": "never"},
+            "approvalsReviewer": "user",
+            "sandbox": {"type": "dangerFullAccess"},
+            "reasoningEffort": None
+        })
+    elif method == "turn/start":
+        reply({"turn": {"id": "turn-1", "status": "running", "error": None}})
+        send({"method": "thread/status/changed", "params": {
+            "threadId": "thread-1",
+            "status": {"type": "active", "activeFlags": []}
+        }})
+        send({"method": "turn/started", "params": {
+            "threadId": "thread-1",
+            "turn": {"id": "turn-1", "status": "running", "error": None}
+        }})
+        send({"id": 999, "result": {"late": True}})
+        send({"method": "item/completed", "params": {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "item": {"type": "agentMessage", "text": "ORPHAN_OK"}
+        }})
+        send({"method": "turn/completed", "params": {
+            "threadId": "thread-1",
+            "turn": {"id": "turn-1", "status": "completed", "error": None}
+        }})
+    else:
+        send({"id": message_id, "error": {
+            "code": -32601,
+            "message": "unexpected method " + str(method)
+        }})
+"#
+}
+
+#[test]
 fn archive_thread_after_success_calls_app_server_archive_and_records_event() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let fake_bin_dir = temp_dir.path().join("fake-bin");
