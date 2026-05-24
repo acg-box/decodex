@@ -1105,14 +1105,20 @@ struct AccountPoolUsageEstimateView: View {
 			.map(\.date)
 			.max()
 		guard let latestDate else {
-			return estimate.totalUsedOfCapacityPercent
+			return estimate.averageDailyPoolPercent
 		}
 		guard let previousDate = previousUsageDate(before: latestDate) else {
-			return estimate.totalUsedOfCapacityPercent
+			return estimate.averageDailyPoolPercent
 		}
 
-		let previousUsedPercent = measuredAccounts.reduce(0) { total, account in
-			total + (usageRecord(for: account, on: previousDate)?.usedPercent ?? 0)
+		let previousRecords = measuredAccounts.compactMap { account in
+			usageRecord(for: account, on: previousDate)
+		}
+		guard previousRecords.count == measuredAccounts.count else {
+			return estimate.averageDailyPoolPercent
+		}
+		let previousUsedPercent = previousRecords.reduce(0) { total, record in
+			total + record.usedPercent
 		}
 		let previousPoolPercent =
 			(Double(previousUsedPercent) / Double(estimate.totalCapacityPercent)) * 100
