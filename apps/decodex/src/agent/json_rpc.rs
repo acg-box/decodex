@@ -378,9 +378,20 @@ impl JsonRpcConnection {
 					));
 				},
 				JsonRpcMessage::Request(request) => handle_request(self, &wire_message, request)?,
-				JsonRpcMessage::Response(_) | JsonRpcMessage::Error(_) => {
+				JsonRpcMessage::Response(response) => {
+					tracing::debug!(
+						method,
+						response_id = %response.id,
+						expected_id = %expected_id,
+						"Recorded and ignored orphan app-server JSON-RPC response while waiting for request."
+					);
+				},
+				JsonRpcMessage::Error(error) => {
 					return Err(eyre::eyre!(
-						"Received an unexpected JSON-RPC response while waiting for `{method}`."
+						"Received an unexpected JSON-RPC error while waiting for `{method}`: id {} failed with {}: {}",
+						error.id,
+						error.error.code,
+						error.error.message
 					));
 				},
 			}
@@ -688,9 +699,8 @@ mod tests {
 		path::PathBuf,
 		process::{Command, Stdio},
 		sync::{Arc, Mutex, mpsc},
+		time::Duration,
 	};
-
-	use serde_json::json;
 
 	use crate::agent::json_rpc::{
 		AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
@@ -708,7 +718,7 @@ mod tests {
 		match message.message {
 			JsonRpcMessage::Notification(notification) => {
 				assert_eq!(notification.method, "thread/status/changed");
-				assert_eq!(notification.params["threadId"], json!("thread-1"));
+				assert_eq!(notification.params["threadId"], serde_json::json!("thread-1"));
 			},
 			other => panic!("unexpected message: {other:?}"),
 		}
@@ -722,11 +732,29 @@ mod tests {
 
 		match message.message {
 			JsonRpcMessage::Response(response) => {
-				assert_eq!(response.id, json!(1));
-				assert_eq!(response.result["userAgent"], json!("decodex-test"));
+				assert_eq!(response.id, serde_json::json!(1));
+				assert_eq!(response.result["userAgent"], serde_json::json!("decodex-test"));
 			},
 			other => panic!("unexpected message: {other:?}"),
 		}
+	}
+
+	#[test]
+	fn request_wait_ignores_orphan_response_before_expected_response() {
+		let mut connection = test_connection_with_messages([
+			r#"{"id":99,"result":{"late":true}}"#,
+			r#"{"id":1,"result":{"ok":true}}"#,
+		]);
+		let response: serde_json::Value = connection
+			.request_with_handler(
+				"thread/start",
+				&serde_json::json!({}),
+				Duration::from_secs(1),
+				|_, _, _| Ok(()),
+			)
+			.expect("orphan response should not fail the pending request");
+
+		assert_eq!(response, serde_json::json!({"ok": true}));
 	}
 
 	#[test]
@@ -935,5 +963,30 @@ mod tests {
 		.wrap_err("outer context");
 
 		assert!(error.downcast_ref::<AppServerTransportFailure>().is_some());
+	}
+
+	fn test_connection_with_messages<const N: usize>(messages: [&str; N]) -> JsonRpcConnection {
+		let mut child = Command::new("sh")
+			.args(["-c", "cat >/dev/null"])
+			.stdin(Stdio::piped())
+			.stdout(Stdio::null())
+			.stderr(Stdio::null())
+			.spawn()
+			.expect("child process should spawn");
+		let stdin = child.stdin.take().expect("child stdin should be captured");
+		let (stdout_tx, stdout_rx) = mpsc::channel();
+
+		for message in messages {
+			stdout_tx.send(message.to_owned()).expect("test message should send");
+		}
+
+		JsonRpcConnection {
+			child,
+			stdin,
+			stdout_rx,
+			stderr_tail: Arc::new(Mutex::new(VecDeque::new())),
+			pending_messages: VecDeque::new(),
+			next_request_id: 1,
+		}
 	}
 }
