@@ -1,10 +1,11 @@
-# Recover Missing Review Handoff
+# Recover Review Handoff
 
 Purpose: Diagnose and explicitly repair retained review lanes that are blocked by a
-missing runtime DB handoff marker.
+missing or stale runtime DB review-handoff marker.
 
-Use this when: `decodex status` or the dashboard shows a `Review & Landing`
-lane blocked with `missing_review_handoff_record`.
+Use this when: `decodex status` or the dashboard shows a `Review & Landing` lane
+blocked with `missing_review_handoff_record`, a review handoff/orchestration head
+mismatch, or a similar retained review marker mismatch after manual repair or rebase.
 
 Do not use this for: healthy PR handoffs, review repair, landing, closeout, cleanup-only
 worktrees, or manual PR landing.
@@ -25,7 +26,9 @@ Use `--json` for a structured report.
 
 The diagnostic is read-only. It reports the issue, tracker state, branch, worktree,
 local branch, local head, worktree cleanliness, existing PR URL when one is already
-bound, active automation label presence, and the suggested next command.
+bound, stored handoff head, stored orchestration head, PR base/head when readable,
+the mismatched field when one is known, active automation label presence, and the
+suggested next command.
 
 ## Explicit Rebind
 
@@ -34,8 +37,9 @@ This is a break-glass path. Healthy lanes should keep using
 operators should not use rebind just because a normal review handoff is still in
 progress.
 
-Only rebind when the diagnosis says the review handoff marker is absent and the PR
-lineage has been checked.
+Only rebind when the diagnosis says the review handoff marker is absent, or says the
+existing same-branch same-PR marker must be refreshed after the retained worktree and
+PR head have been checked.
 
 ```sh
 decodex recover review-handoff rebind <ISSUE> --pr <PR_URL> --dry-run
@@ -43,8 +47,10 @@ decodex recover review-handoff rebind <ISSUE> --pr <PR_URL>
 ```
 
 The non-dry-run command writes runtime DB handoff/orchestration markers and records a
-`review_handoff_rebind` audit event on the tracker issue. It does not merge the PR,
-change issue state, queue follow-up issues, or clean worktrees.
+`review_handoff_rebind` audit event on the tracker issue. For a stale existing marker,
+it refreshes only the same branch and same PR after validating the clean retained
+worktree head matches the PR head. It does not merge the PR, change issue state, queue
+follow-up issues, or clean worktrees.
 
 The command rejects the rebind unless all of these are true:
 
@@ -57,7 +63,8 @@ The command rejects the rebind unless all of these are true:
 - the PR targets the configured default branch
 - the PR is open and non-draft
 - the PR head branch and head SHA match the retained worktree
-- no review handoff marker already exists for the issue/branch
+- no review handoff marker already exists for the issue/branch, or the existing marker
+  is for the same branch and PR and needs a head/orchestration refresh
 
 After a successful rebind, run:
 
@@ -69,3 +76,23 @@ decodex run --dry-run
 The lane should leave `missing_review_handoff_record` and return to the existing
 post-review lifecycle classification such as waiting for review, ready to land, review
 repair required, or blocked for a different concrete reason.
+
+## Active Ownership Recovery
+
+If diagnosis reports `classification: review_handoff_bound` but
+`active_label_present: false`, do not run rebind just to restore ownership. First
+verify the issue is still meant to continue the retained post-review lifecycle for this
+service, then restore the issue to the workflow success state and add
+`decodex:active:<service-id>`. If the issue still has `decodex:needs-attention`, clear
+that label only after the recorded blocker has been repaired.
+
+After restoring explicit ownership, rerun:
+
+```sh
+decodex recover review-handoff diagnose <ISSUE>
+decodex status
+```
+
+Continue with `decodex land` or the normal retained post-review lifecycle only when the
+diagnosis remains bound and status reports a landable or otherwise concrete
+post-review state.
