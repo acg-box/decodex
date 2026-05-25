@@ -21,11 +21,19 @@ fn completion_disposition_allows_manual_attention_exit_without_review_handoff() 
 	let comment_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_COMMENT_TOOL_NAME,
-		serde_json::json!({ "body": "Blocked on missing tracker permission; handing off for manual repair." }),
+		manual_attention_comment_args(),
 	);
 
 	assert!(response.success);
 	assert!(comment_response.success);
+
+	let comment = tracker.comments.borrow().first().expect("manual attention comment should write").clone();
+	let record = records::parse_linear_execution_event_record(&comment)
+		.expect("manual attention comment should include a ledger record");
+
+	assert_eq!(record.event_type, "needs_attention");
+	assert_eq!(record.error_class.as_deref(), Some("operator_decision_required"));
+	assert_eq!(record.terminal_path.as_deref(), Some("manual_attention"));
 	assert_eq!(
 		bridge.completion_disposition().expect("manual attention should be accepted"),
 		RunCompletionDisposition::ManualAttention
