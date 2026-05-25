@@ -49,7 +49,7 @@ The follow-up MVP should support these issue-scoped operations:
   - add an exceptional human-readable comment to the current issue for
     manual-attention blockers or explicit collaboration notes
 - `issue_progress_checkpoint`
-  - record the current durable execution-state snapshot for the current issue without changing lifecycle authority
+  - append the current durable execution-state snapshot to private runtime evidence and publish only the low-frequency public projection when the public lifecycle signal changes
 - `issue_review_checkpoint`
   - record the normalized repo-native bounded-review result for the current handoff or repair phase
 - `issue_review_handoff`
@@ -89,10 +89,23 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - The tool bridge should reject transitions that violate the current repo workflow contract.
 - Generic `issue_transition` must not move the current issue directly into the configured success state.
 - `issue_progress_checkpoint` is available during any owned run phase, including retained repair and closeout runs.
-- `issue_progress_checkpoint` must keep the routed issue description generic; the durable execution-state payload belongs in issue-scoped checkpoint comments, not in the description.
+- `issue_progress_checkpoint` must keep the routed issue description generic. The full
+  structured checkpoint payload belongs in private runtime execution events, not in
+  the issue description or Linear comments.
 - `issue_progress_checkpoint` must accept only the normalized execution phases `probing`, `implementing`, `verifying`, `blocked`, `ready_for_review`, `review_repair`, `ready_to_land`, and `closeout`.
 - `issue_progress_checkpoint` must not replace `issue_review_checkpoint`, `issue_review_handoff`, `issue_review_repair_complete`, `issue_closeout_complete`, or `issue_terminal_finalize`.
 - `decodex` treats `issue_progress_checkpoint` as execution memory only. Checkpoint phase, focus, next action, blockers, or evidence do not by themselves authorize review handoff, repair completion, merge, closeout, or terminal success.
+- `issue_progress_checkpoint` must persist the full normalized checkpoint payload to
+  `private_execution_events` before attempting any Linear write.
+- The Linear-facing checkpoint record is only a public projection. It may include the
+  ledger envelope, `phase`, `summary`, `branch`, repository-relative `worktree_path`,
+  and `pr_url`. It must not include raw `focus`, `next_action`, `blockers`,
+  `evidence`, `verification`, local head evidence, host-local paths, identity-routing
+  details, account details, token names, or other private runtime evidence.
+- `issue_progress_checkpoint` must publish a new Linear projection only when the
+  public lifecycle signal changes materially, such as the normalized phase or public
+  branch/PR projection anchor changing. Repeated private evidence updates inside the
+  same public signal must append private runtime events without adding Linear comments.
 - `issue_review_checkpoint` is available only when `codex.internal_review_mode = "loop"`, and only during the pre-PR handoff phase and retained review-repair runs; `closeout` does not expose it.
 - `issue_review_checkpoint` must accept only these normalized statuses: `clean`, `findings`, `needs_architecture_review`, `blocked`.
 - `issue_review_checkpoint` must bind every checkpoint to an explicit `head_sha` for the currently reviewed lane head.
@@ -117,19 +130,22 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - Comment bodies should remain repository-controlled or agent-authored, but all tool calls must be journaled by `decodex` for recovery and audit.
 - Routine start and progress visibility should use Linear execution ledger records
   instead of ad hoc `issue_comment` text. A normal run start is represented by one
-  `run_started` ledger record, and ordinary progress uses `issue_progress_checkpoint`
+  `run_started` ledger record. Ordinary progress uses `issue_progress_checkpoint`
   only when execution phase, focus, next action, blockers, evidence, or verification
-  changes materially.
+  changes materially, but Linear receives only the safe public projection for material
+  public lifecycle changes.
 - Structured Linear execution event comments must conform to
   [`linear-execution-ledger.md`](./linear-execution-ledger.md).
 - Structured comment fields such as `worktree_path` must use repository-relative paths;
   absolute host paths should be rejected before writing to the tracker.
-- `issue_comment` and `issue_progress_checkpoint` text is public/team-visible. Before
-  either tool writes to Linear, Decodex must reject known leakage-shaped text such as
-  host-local paths, routed identity details, credential-like names, private account
-  details, private config file names, emails, tokens, or secrets. This baseline guard
-  does not replace the longer-term local-private ledger boundary; detailed runtime
-  evidence remains local/operator-only.
+- `issue_comment` text is public/team-visible and must pass the public-text guard
+  before it writes to Linear. `issue_progress_checkpoint` payload text is private
+  runtime evidence; only its rendered public projection is public/team-visible and
+  subject to Linear event validation. Before any Linear write, Decodex must reject
+  known leakage-shaped public projection text such as host-local paths, routed
+  identity details, credential-like names, private account details, private config
+  file names, emails, tokens, or secrets. Detailed checkpoint evidence remains
+  local/operator-only.
 - Dynamic tool names must satisfy the `codex app-server` identifier restriction `^[a-zA-Z0-9_-]+$`; dotted names are invalid.
 
 ## Failure handling
