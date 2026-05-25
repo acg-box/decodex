@@ -68,6 +68,22 @@ Consumers must ignore prose outside the fenced JSON object except for display.
 Producers must not put secrets, access tokens, absolute host paths, or local user names
 in ledger records.
 
+## Public text baseline
+
+Linear comments are public/team-visible tracker text. Before Decodex serializes a new
+Linear execution event, free-text fields such as `summary`, `focus`, `next_action`,
+`blockers`, `evidence`, `verification`, `failed_command`, and `raw_error` must pass the
+baseline public-text guard. The guard rejects known structured leakage shapes,
+including host-local paths, routed identity configuration details, credential-like
+names, private account details, private config file names, emails, tokens, and secrets.
+
+The guard is a baseline structural stop, not the final privacy boundary. Full runtime
+evidence, local identity routing, account state, and high-frequency diagnostics must
+stay in the local runtime database, operator-only evidence files, logs, or short-lived
+activity markers. Linear records should continue to use public collaboration
+identifiers such as PR URLs, issue identifiers, branch names, commit SHAs, and
+repository-relative paths.
+
 ## Record envelope
 
 All field names are snake_case.
