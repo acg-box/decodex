@@ -405,6 +405,13 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn delete_project(&mut self, service_id: &str) -> Result<()> {
+		self.connection
+			.execute("DELETE FROM projects WHERE service_id = ?1", params![service_id])?;
+
+		Ok(())
+	}
+
 	fn upsert_run_attempt(&self, attempt: &RunAttemptRecord) -> Result<()> {
 		self.connection.execute(
 			"INSERT OR REPLACE INTO run_attempts (

@@ -718,7 +718,10 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains("run-meta-line"));
 	assert!(response.contains("account-pool-list"));
 	assert!(response.contains("account-pool-guide"));
+	assert!(response.contains("<div class=\"account-pool-summary\""));
 	assert!(!response.contains("account-pool-window-heads"));
+	assert!(!response.contains("account-pool-summary-head"));
+	assert!(!response.contains("account-pool-track"));
 	assert!(response.contains("<div class=\"account-pool-guide\">"));
 	assert!(response.contains("[\"account\", \"Account\"]"));
 	assert!(response.contains("[\"plan\", \"Plan\"]"));
@@ -1190,8 +1193,12 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("return { label: \"cleanup blocked\", tone: \"tone-wait\""));
 	assert!(response.contains("return { label: \"cleanup pending\", tone: \"tone-retained\""));
 	assert!(response.contains("label: \"sync backoff\""));
+	assert!(response.contains("label: \"config error\""));
 	assert!(response.contains("label: \"sync degraded\""));
 	assert!(response.contains("label: \"sync degraded\", tone: \"tone-muted\""));
+	assert!(response.contains("project.connector_state === \"config_error\""));
+	assert!(response.contains("title: projectSummary"));
+	assert!(response.contains("remove it or re-register the project"));
 	assert!(response.contains("return { label: \"ok\", tone: \"tone-ready\""));
 	assert!(!response.contains("function projectSyncMeta(project, health)"));
 	assert!(!response.contains("const connectorCopy = projectSyncMeta(project, health);"));
