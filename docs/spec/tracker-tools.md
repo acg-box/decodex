@@ -46,8 +46,11 @@ The follow-up MVP should support these issue-scoped operations:
 - `issue_transition`
   - move the current issue to an allowed target state
 - `issue_comment`
-  - add an exceptional human-readable comment to the current issue for
-    manual-attention blockers or explicit collaboration notes
+  - add an allowlisted public comment summary to the current issue for a known
+    lifecycle case
+  - current automation kind: `manual_attention`
+  - the tool accepts structured public fields and renders the Linear comment itself;
+    it must not accept arbitrary agent-authored comment bodies
 - `issue_progress_checkpoint`
   - append the current durable execution-state snapshot to private runtime evidence and publish only the low-frequency public projection when the public lifecycle signal changes
 - `issue_review_checkpoint`
@@ -116,8 +119,18 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - `issue_review_repair_complete` must validate that the supplied PR belongs to the current repository and retained lane branch, points at the validated lane HEAD, is open, and is ready for fresh review before `decodex` accepts retained repair completion.
 - `issue_review_handoff` records the success metadata during the turn, but `decodex` owns the final completion comment and `In Review` transition after service-side validation succeeds.
 - `issue_review_repair_complete` records retained repair completion metadata during the turn, but `decodex` owns the final completion comment and refreshed retained-lineage marker after service-side validation succeeds.
-- Adding the configured `needs_attention_label` is an explicit human-required failure exit for the active lane. In that case the agent must leave a comment explaining the blocker, must not also record `issue_review_handoff`, and `decodex` must stop automatic retries for that attempt.
-- Human-attention comments must describe the exact observed blocker and should include the failed command plus raw error text when available. The agent must not speculate about capabilities or environment restrictions that it did not directly verify.
+- Adding the configured `needs_attention_label` is an explicit human-required
+  failure exit for the active lane. In that case the agent must call
+  `issue_comment` with kind `manual_attention` so Decodex can render the
+  explanatory `needs_attention` ledger comment, must not also record
+  `issue_review_handoff`, and `decodex` must stop automatic retries for that
+  attempt.
+- Human-attention comments must describe the exact observed blocker through
+  structured public fields: `error_class`, `next_action`, `blockers`, and
+  `evidence`. `failed_command` and `raw_error` may be included only when their
+  values are public-safe. The tool must reject private-looking command or error
+  text before any Linear mutation. The agent must not speculate about
+  capabilities or environment restrictions that it did not directly verify.
 - The human-attention exit is not complete until the explanatory comment is successfully written after the label request. A label-only signal must be rejected as an invalid completion disposition.
 - The run is not complete until `issue_terminal_finalize` succeeds against the matching terminal path. An execution-state checkpoint or an agent summary message is not a substitute.
 - Issues that carry the configured `needs_attention_label` must remain ineligible for future automatic selection until a human clears the label.
@@ -127,7 +140,9 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - `decodex` must preflight the local GitHub CLI dependency at the PR-backed review boundary itself:
   - when a normal lane is about to validate and write back `issue_review_handoff`
   - when a retained post-review lane is about to re-enter `review_repair`
-- Comment bodies should remain repository-controlled or agent-authored, but all tool calls must be journaled by `decodex` for recovery and audit.
+- Decodex execution comment bodies should be rendered by Decodex from
+  structured, validated fields. All tool calls must be journaled by `decodex`
+  for recovery and audit.
 - Routine start and progress visibility should use Linear execution ledger records
   instead of ad hoc `issue_comment` text. A normal run start is represented by one
   `run_started` ledger record. Ordinary progress uses `issue_progress_checkpoint`
@@ -138,13 +153,17 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   [`linear-execution-ledger.md`](./linear-execution-ledger.md).
 - Structured comment fields such as `worktree_path` must use repository-relative paths;
   absolute host paths should be rejected before writing to the tracker.
-- `issue_comment` text is public/team-visible and must pass the public-text guard
-  before it writes to Linear. `issue_progress_checkpoint` payload text is private
-  runtime evidence; only its rendered public projection is public/team-visible and
-  subject to Linear event validation. Before any Linear write, Decodex must reject
-  known leakage-shaped public projection text such as host-local paths, routed
-  identity details, credential-like names, private account details, private config
-  file names, emails, tokens, or secrets. Detailed checkpoint evidence remains
+- `issue_comment` is public/team-visible but not free-form. It must accept only
+  allowlisted public comment kinds and structured public fields. For
+  `manual_attention`, Decodex renders a `needs_attention` Linear execution ledger
+  comment from those fields. Unsupported kinds, arbitrary `body` arguments, and
+  private-looking `failed_command` or `raw_error` values must be rejected before
+  any Linear write. `issue_progress_checkpoint` payload text is private runtime
+  evidence; only its rendered public projection is public/team-visible and subject
+  to Linear event validation. Before any Linear write, Decodex must reject known
+  leakage-shaped public projection text such as host-local paths, routed identity
+  details, credential-like names, private account details, private config file
+  names, emails, tokens, or secrets. Detailed checkpoint evidence remains
   local/operator-only.
 - Dynamic tool names must satisfy the `codex app-server` identifier restriction `^[a-zA-Z0-9_-]+$`; dotted names are invalid.
 

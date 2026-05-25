@@ -598,10 +598,20 @@ struct TransitionArgs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CommentArgs {
 	#[serde(flatten)]
 	scope: ScopeArgs,
-	body: String,
+	kind: String,
+	error_class: Option<String>,
+	next_action: Option<String>,
+	#[serde(default)]
+	blockers: Vec<String>,
+	#[serde(default)]
+	evidence: Vec<String>,
+	failed_command: Option<String>,
+	raw_error: Option<String>,
+	summary: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
