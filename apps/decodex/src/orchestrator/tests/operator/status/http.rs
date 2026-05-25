@@ -1107,6 +1107,7 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 		config.repo_root(),
 		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
 	);
+
 	state_store.upsert_project(&registration).expect("project should register");
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "running")
