@@ -18,6 +18,13 @@ internal_review_mode    = "loop"
 # `[codex.accounts].fixed_account` in `~/.codex/decodex/config.toml`.
 # [codex.accounts]
 
+# Optional local-only classifier for Linear public projection text.
+# The classifier is a secondary guard; schema-controlled public projections remain
+# the primary privacy boundary. Omit this block to disable classifier calls.
+# [privacy_classifier]
+# endpoint   = "http://127.0.0.1:9123/classify"
+# timeout_ms = 1000
+
 # Required project paths. Project configs are managed outside checkouts, for example under
 # `~/.codex/decodex/projects/<service-id>/project.toml`.
 # Omit `worktree_root` to use `<repo_root>/.worktrees`.
