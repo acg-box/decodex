@@ -543,15 +543,26 @@ impl<'a> TrackerToolBridge<'a> {
 		state_store: &StateStore,
 		public_projection: &LinearExecutionEventRecord,
 	) -> Result<bool, String> {
-		if self.progress_checkpoint_projection_cached(state_store, public_projection)? {
+		let projection = tracker::prepare_linear_execution_event_comment(
+			"",
+			public_projection,
+			self.public_projection_privacy_classifier,
+		)
+		.map_err(|error| {
+			format!(
+				"Failed to prepare the public progress projection for issue `{}`: {error}",
+				self.issue.identifier
+			)
+		})?;
+
+		if self.progress_checkpoint_projection_cached(state_store, &projection.record)? {
 			return Ok(false);
 		}
 
-		let comment_created = match tracker::create_linear_execution_event_comment(
+		let comment_created = match tracker::create_prepared_linear_execution_event_comment(
 			self.tracker,
 			&self.issue.id,
-			"",
-			public_projection,
+			&projection,
 		) {
 			Ok(comment_created) => comment_created,
 			Err(error) =>
@@ -561,7 +572,7 @@ impl<'a> TrackerToolBridge<'a> {
 				)),
 		};
 
-		state_store.record_linear_execution_event(public_projection).map_err(|error| {
+		state_store.record_linear_execution_event(&projection.record).map_err(|error| {
 			format!(
 				"Failed to persist the public progress projection cache for issue `{}`: {error}",
 				self.issue.identifier
@@ -700,22 +711,22 @@ impl<'a> TrackerToolBridge<'a> {
 		};
 		let record = self.manual_attention_execution_event(review_context, &comment);
 		let body = format_manual_attention_comment(review_context, &comment);
-
-		if let Err(error) = records::validate_linear_execution_event_record(&record) {
-			return DynamicToolCallResponse::failure(error);
-		}
-		if let Err(error) = tracker_tool_bridge::validate_public_comment_body(&body) {
-			return DynamicToolCallResponse::failure(error);
-		}
-
-		match tracker::create_linear_execution_event_comment(
-			self.tracker,
-			&self.issue.id,
+		let projection = match tracker::prepare_linear_execution_event_comment(
 			&body,
 			&record,
+			self.public_projection_privacy_classifier,
+		) {
+			Ok(projection) => projection,
+			Err(error) => return DynamicToolCallResponse::failure(error.to_string()),
+		};
+
+		match tracker::create_prepared_linear_execution_event_comment(
+			self.tracker,
+			&self.issue.id,
+			&projection,
 		) {
 			Ok(created) => {
-				if let Err(error) = state_store.record_linear_execution_event(&record) {
+				if let Err(error) = state_store.record_linear_execution_event(&projection.record) {
 					return DynamicToolCallResponse::failure(format!(
 						"Failed to persist the public manual-attention summary for issue `{}`: {error}",
 						self.issue.identifier

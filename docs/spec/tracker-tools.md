@@ -122,6 +122,14 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   and `pr_url`. It must not include raw `focus`, `next_action`, `blockers`,
   `evidence`, `verification`, local head evidence, host-local paths, identity-routing
   details, account details, token names, or other private runtime evidence.
+- When a project configures a local public-projection privacy classifier, Decodex must
+  run only Linear projection text fields through that local classifier before writing
+  the Linear comment. The classifier is not the primary boundary and must not receive
+  raw checkpoint `focus`, `next_action`, `blockers`, `evidence`, `verification`,
+  local runtime events, or other private ledger payloads.
+- Suspicious or classifier-unavailable projection fields must fail closed: optional
+  fields are omitted, and required text fields are replaced with fixed public-safe
+  fallback text before any Linear mutation.
 - `issue_progress_checkpoint` must publish a new Linear projection only when the
   public lifecycle signal changes materially, such as the normalized phase or public
   branch/PR projection anchor changing. Repeated private evidence updates inside the
