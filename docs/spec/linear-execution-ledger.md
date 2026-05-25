@@ -93,6 +93,14 @@ fields. `failed_command` and `raw_error` are optional and must be omitted or rej
 when they contain host-local paths, credential-like names, private identity details,
 tokens, secrets, or other private runtime evidence.
 
+Linear frequency is deliberately sparse. A lane should normally create one start
+record, a new public progress projection only when the material public lifecycle signal
+changes, PR/handoff records when review state changes, and terminal failure, landing,
+closeout, or cleanup records at those coarse boundaries. Private-only updates such as a
+new checkpoint focus, next action, evidence item, verification note, raw command output,
+heartbeat, token pressure, or retry detail belong in runtime SQLite, agent evidence, or
+diagnostic logs, not in another Linear comment.
+
 ## Record envelope
 
 All field names are snake_case.

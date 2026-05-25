@@ -31,6 +31,15 @@ evidence that should not be mirrored to Linear. Agent evidence files may point a
 toward the current runtime context, but they do not replace the private execution
 event store.
 
+Boundary summary:
+
+| Surface | Role |
+| --- | --- |
+| Runtime SQLite private execution events | Authoritative structured local evidence for a run/attempt. |
+| Agent evidence files | Derived local handoff index, blocker snapshots, run capsules, and event-stream breadcrumbs for repair agents. |
+| Process logs | Diagnostic text for control-plane and process failures. Logs are not the private evidence ledger. |
+| Linear execution ledger comments | Public lifecycle mirror. Agent evidence must not be mirrored there. |
+
 ## Path Layout
 
 Agent evidence lives under the local Decodex home:

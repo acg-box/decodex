@@ -115,10 +115,21 @@ Runtime state that belongs to the local operator, not to this repository, lives 
 `~/.codex/decodex/`:
 
 - `runtime.sqlite3` is the single-machine control-plane database for all registered
-  projects.
+  projects. It owns active leases, attempts, private execution events, tracker/PR
+  caches, retained PR state, retry state, and project registration.
+- `agent-evidence/<service-id>/` stores local agent-readable diagnosis artifacts,
+  including `handoff-index.json`, `events.jsonl`, `blockers/*.json`, and
+  `runs/<yyyy-mm>/<run-id>/capsule.json`. This is a derived handoff view, not the
+  runtime source of truth and not a public mirror.
 - `accounts.jsonl` stores the optional shared ChatGPT account pool used for
   Codex app-server auth token injection and refresh.
-- `logs/` stores Decodex process logs.
+- `logs/` stores Decodex process logs. Logs are diagnostic text; structured execution
+  evidence belongs in `runtime.sqlite3`.
+- `projects/<service-id>/project.toml` stores the central service config for one
+  registered project.
+- `projects/<service-id>/WORKFLOW.md` stores that project's execution policy.
+- Project discovery comes from explicit registration, not from scanning Codex history
+  or repo-local config files.
 
 Repo-local Radar history that belongs to the current checkout, not to Git, lives under
 `.decodex/`:
@@ -128,14 +139,6 @@ Repo-local Radar history that belongs to the current checkout, not to Git, lives
 
 `.decodex/` is ignored by Git. Public curated artifacts and archive manifests remain in
 the checked-in tree.
-- `agent-evidence/<service-id>/` stores local agent-readable diagnosis artifacts,
-  including `handoff-index.json`, `events.jsonl`, `blockers/*.json`, and
-  `runs/<yyyy-mm>/<run-id>/capsule.json`.
-- `projects/<service-id>/project.toml` stores the central service config for one
-  registered project.
-- `projects/<service-id>/WORKFLOW.md` stores that project's execution policy.
-- Project discovery comes from explicit registration, not from scanning Codex history
-  or repo-local config files.
 
 This local control-plane state chooses registered projects. Once a checkout is selected,
 the matching project directory's `WORKFLOW.md` remains the execution contract for gates,
