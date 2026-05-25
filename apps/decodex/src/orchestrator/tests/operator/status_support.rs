@@ -206,6 +206,7 @@ fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
 
 	orchestrator::OperatorRunStatus {
 		project_id: String::from("pubfi"),
+		project_display_name: String::from("hack-ink/pubfi-mono-v2"),
 		run_id: String::from("run-1"),
 		issue_id: String::from("issue-1"),
 		issue_identifier: Some(String::from("PUB-101")),
