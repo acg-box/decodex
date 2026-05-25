@@ -141,6 +141,7 @@ args = [
 # | task             | type      | cwd |
 # | ---------------- | --------- | --- |
 # | lint             | composite |     |
+# | lint-fix         | extend    |     |
 # | lint-rust        | command   |     |
 # | lint-vstyle      | composite |     |
 # | lint-vstyle-rust | command   |     |
@@ -151,6 +152,9 @@ dependencies = [
 	"lint-rust",
 	"lint-vstyle",
 ]
+
+[tasks.lint-fix]
+extend = "lint"
 
 [tasks.lint-rust]
 workspace = false
