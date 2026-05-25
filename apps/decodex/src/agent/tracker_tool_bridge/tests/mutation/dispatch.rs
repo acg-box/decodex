@@ -784,7 +784,19 @@ fn rejects_public_comments_with_sensitive_or_unknown_paths() {
 		),
 		(
 			"decodex run failed and will retry\n\n- worktree_path: `C:/absolute/path/to/repo/.worktrees/DEC-1`",
-			"`worktree_path` must be repository-relative, not `C:/absolute/path/to/repo/.worktrees/DEC-1`.",
+			"`body` must be public/team-visible text; host-local paths are not allowed.",
+		),
+		(
+			"decodex run failed and will retry\n\nMissing credential GITHUB_PAT_Y.",
+			"`body` must be public/team-visible text; credential-like names are not allowed.",
+		),
+		(
+			"decodex run failed and will retry\n\nSelected account user@example.com.",
+			"`body` must be public/team-visible text; private identity details are not allowed.",
+		),
+		(
+			"decodex run failed and will retry\n\ncodex.github-identity resolved to a private route.",
+			"`body` must be public/team-visible text; local identity or account-routing details are not allowed.",
 		),
 	] {
 		let tracker = FakeTracker::new();
