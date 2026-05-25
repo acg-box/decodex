@@ -66,6 +66,37 @@ fn control_plane_api_only_snapshot_does_not_tick_enabled_projects() {
 }
 
 #[test]
+fn control_plane_api_only_snapshot_marks_unloadable_project_config() {
+	let (temp_dir, config, _workflow) = temp_project_layout();
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let missing_config_path = temp_dir.path().join("missing/project.toml");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&missing_config_path,
+		&config,
+		true,
+		"test-fingerprint",
+	);
+
+	state_store.upsert_project(&registration).expect("project should register");
+
+	let snapshot = orchestrator::run_control_plane_api_only_tick(&state_store)
+		.expect("api-only snapshot should still build");
+	let project = snapshot.projects.first().expect("enabled project should be listed");
+
+	assert_eq!(snapshot.projects.len(), 1);
+	assert_eq!(project.project_id, "pubfi");
+	assert!(project.enabled);
+	assert_eq!(project.connector_state, "config_error");
+	assert_eq!(project.warning_count, 2);
+	assert!(snapshot.active_runs.is_empty());
+	assert!(snapshot.warnings.contains(&String::from("automation_disabled")));
+	assert!(snapshot.warnings.contains(&String::from("operator_snapshot_build_failed")));
+}
+
+#[test]
 fn control_plane_api_only_snapshot_includes_local_active_runs() {
 	let (temp_dir, config, _workflow) = temp_project_layout();
 	let _home_guard =
