@@ -153,6 +153,12 @@ Worktree visibility follows the owning dashboard section:
   this as an orphaned retained review lane: inspect it with
   `decodex recover review-handoff diagnose <ISSUE>`, then use the explicit rebind path
   only after the PR URL and retained worktree lineage match exactly.
+- Review handoff or orchestration head mismatch reasons mean Decodex found a retained
+  marker but one stored field no longer matches the clean retained worktree and PR
+  head. `decodex status` keeps the bound PR URL visible when it can identify the
+  marker, and `decodex recover review-handoff diagnose <ISSUE>` reports the stored
+  marker head, orchestration head, PR head, and mismatched field before any explicit
+  rebind refresh.
 - `Intake Queue` means queued attention still owns the path, including partial retained
   progress after retries.
 - `Recovery Worktrees` means the path is retained local state after the authoritative

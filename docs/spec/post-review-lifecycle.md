@@ -72,15 +72,25 @@ not infer a PR lineage from branch names, current heads, PR titles, or Linear co
 and `decodex run` must not repair this state automatically.
 
 The supported operator recovery surface is `decodex recover review-handoff`. This is a
-break-glass recovery path for orphaned retained review lanes, not part of the normal
-automation success path.
+break-glass recovery path for orphaned retained review lanes and stale retained marker
+heads after explicit manual repair or rebase. It is not part of the normal automation
+success path.
 
 - `diagnose` is read-only. It reports the project, issue, branch, worktree, local head,
-  active automation label, existing PR URL when present, and the missing marker reason.
+  active automation label, existing PR URL when present, stored handoff head, stored
+  orchestration head, PR base/head when readable, and the missing or mismatched marker
+  reason. A diagnostic may report a bound marker, a missing marker, an unverified PR
+  read, or a concrete field mismatch that requires explicit rebind.
 - `rebind` is mutating and requires an explicit issue identifier plus PR URL. It must
   validate the configured project, tracker issue, success-state compatibility, active
   automation ownership, retained worktree branch, clean worktree, PR repository, PR base,
   PR head branch, PR head SHA, and open non-draft PR state before writing markers.
+- If no review handoff marker exists, `rebind` restores the missing handoff and
+  orchestration markers from the validated PR and retained worktree. If a marker already
+  exists for the same branch and PR but its stored handoff or orchestration head is
+  stale, `rebind` may refresh that marker to the validated PR head. It must reject an
+  existing marker for a different PR, and it must reject a current same-branch same-PR
+  marker as a no-op.
 - A successful rebind writes the same runtime DB handoff and orchestration marker shapes
   as normal `issue_review_handoff` needs, and records a `review_handoff_rebind` audit
   event. It does not land the PR, queue follow-up work, or substitute for healthy lanes'
