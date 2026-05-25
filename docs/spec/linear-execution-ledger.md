@@ -86,6 +86,15 @@ activity markers. Linear records should continue to use public collaboration
 identifiers such as PR URLs, issue identifiers, branch names, commit SHAs, and
 repository-relative paths.
 
+Decodex may additionally run public projection free-text through an optional local
+privacy classifier before publishing the Linear comment. That classifier is a secondary
+semantic warning layer after schema allowlisting and the deterministic public-text
+guard. It must receive only fields already selected for the public projection, never
+the private runtime ledger or full checkpoint payload. If the configured local
+classifier reports suspicious text or is unavailable, Decodex must fail closed by
+omitting optional public text fields or replacing required public text fields with a
+fixed public-safe summary.
+
 Agent-requested manual-attention comments are not arbitrary Linear comment bodies.
 They are `needs_attention` ledger records rendered from the allowlisted
 `issue_comment` kind `manual_attention`. The agent supplies only structured public

@@ -15,12 +15,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
+#[cfg(test)]
+use crate::tracker::privacy_classifier::DISABLED_PUBLIC_PROJECTION_PRIVACY_CLASSIFIER;
 use crate::{
 	config::InternalReviewMode,
 	github,
 	prelude::eyre,
 	state::StateStore,
-	tracker::{IssueTracker, TrackerIssue, public_text},
+	tracker::{IssueTracker, TrackerIssue, privacy_classifier::PublicProjectionPrivacyClassifier},
 	workflow::WorkflowDocument,
 };
 
@@ -117,6 +119,7 @@ pub(crate) struct TrackerToolBridge<'a> {
 	workflow: &'a WorkflowDocument,
 	review_context: Option<ReviewHandoffContext>,
 	state_store: Option<&'a StateStore>,
+	public_projection_privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
 	pull_request_inspector: &'a dyn PullRequestInspector,
 	local_repo_inspector: &'a dyn LocalRepoInspector,
 	local_issue_state_name: RefCell<String>,
@@ -140,6 +143,7 @@ impl<'a> TrackerToolBridge<'a> {
 			workflow,
 			review_context: None,
 			state_store: None,
+			public_projection_privacy_classifier: &DISABLED_PUBLIC_PROJECTION_PRIVACY_CLASSIFIER,
 			pull_request_inspector: &GH_PULL_REQUEST_INSPECTOR,
 			local_repo_inspector: &LOCAL_GIT_REPO_INSPECTOR,
 			local_issue_state_name: RefCell::new(issue.state.name.clone()),
@@ -154,6 +158,7 @@ impl<'a> TrackerToolBridge<'a> {
 		}
 	}
 
+	#[cfg(test)]
 	fn with_review_handoff_inspectors(
 		tracker: &'a dyn IssueTracker,
 		issue: &'a TrackerIssue,
@@ -163,14 +168,37 @@ impl<'a> TrackerToolBridge<'a> {
 		pull_request_inspector: &'a dyn PullRequestInspector,
 		local_repo_inspector: &'a dyn LocalRepoInspector,
 	) -> Self {
+		Self::with_review_handoff_options(
+			tracker,
+			issue,
+			workflow,
+			review_context,
+			TrackerToolBridgeOptions {
+				state_store,
+				public_projection_privacy_classifier:
+					&DISABLED_PUBLIC_PROJECTION_PRIVACY_CLASSIFIER,
+				pull_request_inspector,
+				local_repo_inspector,
+			},
+		)
+	}
+
+	fn with_review_handoff_options(
+		tracker: &'a dyn IssueTracker,
+		issue: &'a TrackerIssue,
+		workflow: &'a WorkflowDocument,
+		review_context: ReviewHandoffContext,
+		options: TrackerToolBridgeOptions<'a>,
+	) -> Self {
 		Self {
 			tracker,
 			issue,
 			workflow,
 			review_context: Some(review_context),
-			state_store,
-			pull_request_inspector,
-			local_repo_inspector,
+			state_store: options.state_store,
+			public_projection_privacy_classifier: options.public_projection_privacy_classifier,
+			pull_request_inspector: options.pull_request_inspector,
+			local_repo_inspector: options.local_repo_inspector,
 			local_issue_state_name: RefCell::new(issue.state.name.clone()),
 			local_opt_out_requested: RefCell::new(
 				issue.has_label(workflow.frontmatter().tracker().opt_out_label()),
@@ -248,6 +276,7 @@ impl<'a> TrackerToolBridge<'a> {
 		)
 	}
 
+	#[cfg(test)]
 	pub(crate) fn with_run_context_and_state_store(
 		tracker: &'a dyn IssueTracker,
 		issue: &'a TrackerIssue,
@@ -255,14 +284,63 @@ impl<'a> TrackerToolBridge<'a> {
 		review_context: ReviewHandoffContext,
 		state_store: &'a StateStore,
 	) -> Self {
-		Self::with_review_handoff_inspectors(
+		Self::with_review_handoff_options(
 			tracker,
 			issue,
 			workflow,
 			review_context,
-			Some(state_store),
-			&GH_PULL_REQUEST_INSPECTOR,
-			&LOCAL_GIT_REPO_INSPECTOR,
+			TrackerToolBridgeOptions {
+				state_store: Some(state_store),
+				public_projection_privacy_classifier:
+					&DISABLED_PUBLIC_PROJECTION_PRIVACY_CLASSIFIER,
+				pull_request_inspector: &GH_PULL_REQUEST_INSPECTOR,
+				local_repo_inspector: &LOCAL_GIT_REPO_INSPECTOR,
+			},
+		)
+	}
+
+	pub(crate) fn with_run_context_state_store_and_privacy_classifier(
+		tracker: &'a dyn IssueTracker,
+		issue: &'a TrackerIssue,
+		workflow: &'a WorkflowDocument,
+		review_context: ReviewHandoffContext,
+		state_store: &'a StateStore,
+		public_projection_privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
+	) -> Self {
+		Self::with_review_handoff_options(
+			tracker,
+			issue,
+			workflow,
+			review_context,
+			TrackerToolBridgeOptions {
+				state_store: Some(state_store),
+				public_projection_privacy_classifier,
+				pull_request_inspector: &GH_PULL_REQUEST_INSPECTOR,
+				local_repo_inspector: &LOCAL_GIT_REPO_INSPECTOR,
+			},
+		)
+	}
+
+	#[cfg(test)]
+	pub(crate) fn with_review_handoff_classifier_for_test(
+		tracker: &'a dyn IssueTracker,
+		issue: &'a TrackerIssue,
+		workflow: &'a WorkflowDocument,
+		review_context: ReviewHandoffContext,
+		public_projection_privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
+		local_repo_inspector: &'a dyn LocalRepoInspector,
+	) -> Self {
+		Self::with_review_handoff_options(
+			tracker,
+			issue,
+			workflow,
+			review_context,
+			TrackerToolBridgeOptions {
+				state_store: Some(Self::leaked_test_state_store()),
+				public_projection_privacy_classifier,
+				pull_request_inspector: &GH_PULL_REQUEST_INSPECTOR,
+				local_repo_inspector,
+			},
 		)
 	}
 
@@ -495,6 +573,13 @@ impl Display for ReviewPolicyStopRequested {
 }
 
 impl Error for ReviewPolicyStopRequested {}
+
+struct TrackerToolBridgeOptions<'a> {
+	state_store: Option<&'a StateStore>,
+	public_projection_privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
+	pull_request_inspector: &'a dyn PullRequestInspector,
+	local_repo_inspector: &'a dyn LocalRepoInspector,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PendingReviewAction {
@@ -1081,10 +1166,6 @@ fn parse_github_remote_with_authority(remote_url: &str) -> std::result::Result<&
 	}
 
 	Ok(path)
-}
-
-fn validate_public_comment_body(body: &str) -> Result<(), String> {
-	public_text::validate_public_comment_body(body)
 }
 
 fn normalize_summary(summary: &str) -> String {
