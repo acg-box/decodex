@@ -86,6 +86,13 @@ activity markers. Linear records should continue to use public collaboration
 identifiers such as PR URLs, issue identifiers, branch names, commit SHAs, and
 repository-relative paths.
 
+Agent-requested manual-attention comments are not arbitrary Linear comment bodies.
+They are `needs_attention` ledger records rendered from the allowlisted
+`issue_comment` kind `manual_attention`. The agent supplies only structured public
+fields. `failed_command` and `raw_error` are optional and must be omitted or rejected
+when they contain host-local paths, credential-like names, private identity details,
+tokens, secrets, or other private runtime evidence.
+
 ## Record envelope
 
 All field names are snake_case.
@@ -189,6 +196,12 @@ Every event requires the record envelope. Additional required fields are listed 
 that writes the event. For normal review handoff this is `review_handoff`; for retained
 repair completion this is `review_repair`; for explicit human-required exits this is
 `manual_attention`.
+
+`failed_command` and `raw_error` are public-summary fields, not private evidence
+escape hatches. Producers must validate those values before writing a Linear comment.
+When the exact failed command or raw error contains private information, producers must
+omit it and use public `error_class`, `next_action`, `blockers`, and `evidence`
+instead.
 
 `review_handoff_rebind` is only for an explicit operator recovery command that restores a
 missing runtime DB review handoff marker after validating the retained worktree and PR
