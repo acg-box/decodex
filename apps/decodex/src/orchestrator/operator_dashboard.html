@@ -7923,7 +7923,7 @@
 					) {
 						continue;
 					}
-					const message = warningNotice(warning);
+					const message = warningNotice(warning, snapshot);
 					notices.push({
 						tone: message.tone,
 						title: message.title,
@@ -8013,7 +8013,40 @@
 					return notices;
 				}
 
-				function warningNotice(warning) {
+				function snapshotBuildFailureProjects(snapshot) {
+					const warnings = new Set(snapshot?.warnings ?? []);
+					const apiOnlyBaseline = warnings.has("automation_disabled");
+
+					return (snapshot?.projects ?? []).filter((project) => {
+						if (!project?.enabled) {
+							return false;
+						}
+						if (project.connector_state === "config_error") {
+							return true;
+						}
+						if (apiOnlyBaseline && (project.warning_count ?? 0) > 1) {
+							return true;
+						}
+
+						return project.connector_state === "degraded" && (project.warning_count ?? 0) > 0;
+					});
+				}
+
+				function snapshotBuildFailureProjectSummary(snapshot) {
+					const projectIDs = snapshotBuildFailureProjects(snapshot)
+						.map((project) => project.project_id)
+						.filter(Boolean);
+					if (!projectIDs.length) {
+						return "";
+					}
+					if (projectIDs.length === 1) {
+						return projectIDs[0];
+					}
+
+					return `${projectIDs[0]} +${projectIDs.length - 1}`;
+				}
+
+				function warningNotice(warning, snapshot) {
 					if (warning === "tracker_rate_limited") {
 						return {
 							tone: "warning",
@@ -8026,6 +8059,19 @@
 							tone: "warning",
 							title: "External sync skipped",
 							copy: "Snapshot used local state without live tracker refresh.",
+						};
+					}
+					if (warning === "operator_snapshot_build_failed") {
+						const projectSummary = snapshotBuildFailureProjectSummary(snapshot);
+
+						return {
+							tone: "warning",
+							title: projectSummary
+								? `Snapshot build failed: ${projectSummary}`
+								: "Snapshot build failed",
+							copy: projectSummary
+								? "A registered project could not be loaded from its config path; remove it or re-register the project."
+								: "A registered project could not be loaded from its config path.",
 						};
 					}
 
@@ -8406,6 +8452,13 @@
 						title: "Tracker sync paused by rate limit.",
 					};
 				}
+				if (project.connector_state === "config_error") {
+					return {
+						label: "config error",
+						tone: "tone-wait",
+						title: "Registered project config could not be loaded.",
+					};
+				}
 				if (
 					(project.warning_count ?? 0) > 0 ||
 					["degraded", "stale_cache"].includes(project.connector_state)
@@ -8461,6 +8514,9 @@
 				if ((project.cleanup_pending_count ?? 0) > 0) {
 					return `${project.cleanup_pending_count} cleanup pending`;
 				}
+				if (project.connector_state === "config_error") {
+					return "config error";
+				}
 				if ((project.warning_count ?? 0) > 0) {
 					return pluralize(project.warning_count, "warning");
 				}
@@ -8483,6 +8539,9 @@
 				}
 				if (project.connector_state === "degraded") {
 					return "degraded";
+				}
+				if (project.connector_state === "config_error") {
+					return "config error";
 				}
 
 				return "ok";
@@ -8729,7 +8788,7 @@
 				if (projectHasActiveWork(project)) {
 					return 5;
 				}
-				if (["backoff", "degraded", "stale_cache"].includes(project.connector_state)) {
+				if (["backoff", "config_error", "degraded", "stale_cache"].includes(project.connector_state)) {
 					return 6;
 				}
 				if ((project.warning_count ?? 0) > 0) {
