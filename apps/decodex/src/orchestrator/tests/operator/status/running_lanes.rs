@@ -22,6 +22,7 @@ fn operator_status_snapshot_includes_active_runs_and_repo_relative_paths() {
 		config.repo_root(),
 		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
 	);
+
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -213,6 +214,7 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 		config.repo_root(),
 		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
 	);
+
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 
 	state_store
