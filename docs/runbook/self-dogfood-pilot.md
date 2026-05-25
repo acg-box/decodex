@@ -70,6 +70,11 @@ decodex project list
 `.codex` history, repo-local config files, or currently open worktrees to infer
 projects.
 
+Commands that refresh a project config keep the current enabled or disabled registry
+toggle. Use `decodex project add <project-dir>` or `decodex project enable
+<service-id>` when the intended action is to enable a project for scheduling, and use
+`decodex project disable <service-id>` before a protected pause.
+
 If the project uses managed ChatGPT accounts, enable `[codex.accounts]` in
 `project.toml` and keep the JSONL pool at `~/.codex/decodex/accounts.jsonl`. Do not
 store the shared pool under a project directory or configure a project-local account
