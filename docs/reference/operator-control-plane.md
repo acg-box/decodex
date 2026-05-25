@@ -58,10 +58,10 @@ Use `decodex diagnose --json` when an agent needs the current handoff index dire
 
 | Surface | Owns | Does Not Own |
 | --- | --- | --- |
-| Runtime SQLite DB | active leases, attempts, protocol events, worktree mappings, retry state, retained PR state, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
+| Runtime SQLite DB | active leases, attempts, protocol events, private execution events, worktree mappings, retry state, retained PR state, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
 | Central project config | `service_id`, repo root, worktree root, tracker/GitHub credential env-var names, enabled project registration | per-run state or issue ownership |
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
-| Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, connector retry budgets |
+| Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, private execution evidence, connector retry budgets |
 | GitHub | PR, checks, review comments, merge evidence, signed commit verification | queue selection or local lane ownership |
 | `.decodex-run-activity` | short-lived child activity heartbeat for the active attempt, including same-boot and same-process-start liveness | durable ownership, review handoff identity, cleanup authority |
 
@@ -253,8 +253,10 @@ rate-limited, or unavailable.
   from local runtime DB state while external sync is paused.
 - Linear writes should stay coarse: one run-start ledger, material progress
   checkpoints, PR-ready/handoff, blocked/failed, landed, done, and cleanup summaries.
+  Full structured execution evidence belongs in private runtime SQLite events.
 - Fine-grained retry budgets, raw attempts, heartbeat, child buckets, token pressure,
-  and recovery details stay local.
+  recovery details, and process logs stay local. Logs are diagnostic text; private
+  execution events are structured runtime evidence.
 - Completed lanes without Decodex Linear execution ledger records are reported as
   `missing` / `execution_ledger_missing`. Tracker terminal state, local attempt
   success, and non-ledger comments never satisfy the Run Ledger outcome contract.

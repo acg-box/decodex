@@ -98,6 +98,7 @@ struct StateData {
 	event_summaries: HashMap<String, ProtocolEventSummaryRecord>,
 	worktrees: HashMap<String, WorktreeMappingRecord>,
 	linear_execution_events: HashMap<String, LinearExecutionEventRuntimeRecord>,
+	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
 	review_handoffs: HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
 	review_orchestrations: HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
 	dispatch_slot_configs: HashMap<String, DispatchSlotConfig>,
@@ -113,6 +114,7 @@ impl StateData {
 		self.event_summaries = loaded.event_summaries;
 		self.worktrees = loaded.worktrees;
 		self.linear_execution_events = loaded.linear_execution_events;
+		self.private_execution_events = loaded.private_execution_events;
 		self.review_handoffs = loaded.review_handoffs;
 		self.review_orchestrations = loaded.review_orchestrations;
 	}
@@ -183,6 +185,16 @@ impl StateData {
 		{
 			attempt.project_id = Some(project_id.to_owned());
 		}
+	}
+
+	fn next_private_execution_event_id(&self) -> Result<i64> {
+		self.private_execution_events
+			.iter()
+			.map(|record| record.record_id)
+			.max()
+			.unwrap_or(0)
+			.checked_add(1)
+			.ok_or_else(|| eyre::eyre!("Private execution event row id overflowed i64."))
 	}
 }
 
@@ -311,12 +323,47 @@ CREATE TABLE IF NOT EXISTS review_orchestrations (
 	updated_at_unix INTEGER NOT NULL,
 	PRIMARY KEY (project_id, issue_id, branch_name, run_id, attempt_number)
 );
+"#,
+		)?;
+		self.bootstrap_private_execution_events_schema()?;
+		self.record_schema_version()?;
+
+		Ok(())
+	}
+
+	fn bootstrap_private_execution_events_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS private_execution_events (
+	record_id INTEGER PRIMARY KEY AUTOINCREMENT,
+	project_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	attempt_number INTEGER NOT NULL,
+	event_type TEXT NOT NULL,
+	payload_json TEXT NOT NULL,
+	recorded_at TEXT NOT NULL,
+	recorded_at_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS private_execution_events_attempt_idx
+ON private_execution_events (
+	project_id, issue_id, run_id, attempt_number, record_id
+);
+"#,
+		)?;
+
+		Ok(())
+	}
+
+	fn record_schema_version(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
 CREATE TABLE IF NOT EXISTS schema_meta (
 	key TEXT PRIMARY KEY NOT NULL,
 	value TEXT NOT NULL
 );
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '4')
+VALUES ('schema_version', '5')
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 "#,
 		)?;
@@ -333,6 +380,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_protocol_event_summaries(&mut state)?;
 		self.load_worktrees(&mut state)?;
 		self.load_linear_execution_events(&mut state)?;
+		self.load_private_execution_events(&mut state)?;
 		self.load_review_handoffs(&mut state)?;
 		self.load_review_orchestrations(&mut state)?;
 
@@ -348,6 +396,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_protocol_events(&transaction, state)?;
 		persist_worktrees(&transaction, state)?;
 		persist_linear_execution_events(&transaction, state)?;
+		persist_private_execution_events(&transaction, state)?;
 		persist_review_handoffs(&transaction, state)?;
 		persist_review_orchestrations(&transaction, state)?;
 
@@ -428,6 +477,32 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 
 		Ok(())
+	}
+
+	fn insert_private_execution_event(
+		&self,
+		record: &PrivateExecutionEventRuntimeRecord,
+	) -> Result<i64> {
+		let payload_json = serde_json::to_string(&record.payload)?;
+
+		self.connection.execute(
+			"INSERT INTO private_execution_events (
+					project_id, issue_id, run_id, attempt_number, event_type, payload_json,
+					recorded_at, recorded_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+			params![
+				&record.project_id,
+				&record.issue_id,
+				&record.run_id,
+				record.attempt_number,
+				&record.event_type,
+				payload_json,
+				&record.recorded_at,
+				record.recorded_at_unix,
+			],
+		)?;
+
+		Ok(self.connection.last_insert_rowid())
 	}
 
 	fn delete_lease(&mut self, issue_id: &str) -> Result<()> {
@@ -727,6 +802,57 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn load_private_execution_events(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT record_id, project_id, issue_id, run_id, attempt_number, event_type, \
+			 payload_json, recorded_at, recorded_at_unix \
+			 FROM private_execution_events \
+			 ORDER BY record_id ASC",
+		)?;
+		let rows = statement.query_map([], |row| {
+			Ok((
+				row.get::<_, i64>(0)?,
+				row.get::<_, String>(1)?,
+				row.get::<_, String>(2)?,
+				row.get::<_, String>(3)?,
+				row.get::<_, i64>(4)?,
+				row.get::<_, String>(5)?,
+				row.get::<_, String>(6)?,
+				row.get::<_, String>(7)?,
+				row.get::<_, i64>(8)?,
+			))
+		})?;
+
+		for row in rows {
+			let (
+				record_id,
+				project_id,
+				issue_id,
+				run_id,
+				attempt_number,
+				event_type,
+				payload_json,
+				recorded_at,
+				recorded_at_unix,
+			) = row?;
+			let payload = serde_json::from_str::<Value>(&payload_json)?;
+
+			state.private_execution_events.push(PrivateExecutionEventRuntimeRecord {
+				record_id,
+				project_id,
+				issue_id,
+				run_id,
+				attempt_number,
+				event_type,
+				payload,
+				recorded_at,
+				recorded_at_unix,
+			});
+		}
+
+		Ok(())
+	}
+
 	fn load_review_handoffs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, branch_name, run_id, attempt_number, pr_url, \
@@ -900,6 +1026,34 @@ struct LinearExecutionEventRuntimeRecord {
 	event_unix: Option<i64>,
 	recorded_at: String,
 	recorded_at_unix: i64,
+}
+
+#[derive(Clone, Debug)]
+struct PrivateExecutionEventRuntimeRecord {
+	record_id: i64,
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	attempt_number: i64,
+	event_type: String,
+	payload: Value,
+	recorded_at: String,
+	recorded_at_unix: i64,
+}
+impl PrivateExecutionEventRuntimeRecord {
+	fn as_public(&self) -> PrivateExecutionEvent {
+		PrivateExecutionEvent {
+			record_id: self.record_id,
+			project_id: self.project_id.clone(),
+			issue_id: self.issue_id.clone(),
+			run_id: self.run_id.clone(),
+			attempt_number: self.attempt_number,
+			event_type: self.event_type.clone(),
+			payload: self.payload.clone(),
+			recorded_at: self.recorded_at.clone(),
+			recorded_at_unix: self.recorded_at_unix,
+		}
+	}
 }
 
 #[derive(Clone, Debug)]
@@ -1744,6 +1898,35 @@ fn persist_linear_execution_events(
 	Ok(())
 }
 
+fn persist_private_execution_events(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for record in &state.private_execution_events {
+		let payload_json = serde_json::to_string(&record.payload)?;
+
+		transaction.execute(
+			"INSERT OR REPLACE INTO private_execution_events (
+					record_id, project_id, issue_id, run_id, attempt_number, event_type,
+					payload_json, recorded_at, recorded_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+			params![
+				record.record_id,
+				&record.project_id,
+				&record.issue_id,
+				&record.run_id,
+				record.attempt_number,
+				&record.event_type,
+				payload_json,
+				&record.recorded_at,
+				record.recorded_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
 fn persist_review_handoffs(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for record in state.review_handoffs.values() {
 		transaction.execute(
@@ -2312,6 +2495,32 @@ fn parse_linear_execution_event_unix(record: &LinearExecutionEventRecord) -> Opt
 		.map(|timestamp| timestamp.unix_timestamp())
 }
 
+fn validate_private_execution_event_inputs(
+	project_id: &str,
+	issue_id: &str,
+	run_id: &str,
+	attempt_number: i64,
+	event_type: &str,
+) -> Result<()> {
+	if project_id.trim().is_empty() {
+		eyre::bail!("Private execution event project_id must not be empty.");
+	}
+	if issue_id.trim().is_empty() {
+		eyre::bail!("Private execution event issue_id must not be empty.");
+	}
+	if run_id.trim().is_empty() {
+		eyre::bail!("Private execution event run_id must not be empty.");
+	}
+	if attempt_number < 1 {
+		eyre::bail!("Private execution event attempt_number must be greater than zero.");
+	}
+	if event_type.trim().is_empty() {
+		eyre::bail!("Private execution event event_type must not be empty.");
+	}
+
+	Ok(())
+}
+
 fn protocol_event_summary_from_events(events: &[ProtocolEventRecord]) -> ProtocolEventSummaryRecord {
 	let mut summary = ProtocolEventSummaryRecord::default();
 
@@ -2337,6 +2546,13 @@ fn compare_linear_execution_event_runtime_records(
 		.cmp(&right.event_unix)
 		.then_with(|| left.recorded_at_unix.cmp(&right.recorded_at_unix))
 		.then_with(|| left.record.idempotency_key.cmp(&right.record.idempotency_key))
+}
+
+fn compare_private_execution_event_runtime_records(
+	left: &PrivateExecutionEventRuntimeRecord,
+	right: &PrivateExecutionEventRuntimeRecord,
+) -> cmp::Ordering {
+	left.record_id.cmp(&right.record_id)
 }
 
 fn compare_project_run_status(left: &ProjectRunStatus, right: &ProjectRunStatus) -> cmp::Ordering {
