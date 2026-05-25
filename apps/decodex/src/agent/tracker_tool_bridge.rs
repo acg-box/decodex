@@ -631,6 +631,24 @@ struct ProgressCheckpointArgs {
 	pr_url: Option<String>,
 }
 
+#[derive(Debug)]
+struct NormalizedProgressCheckpoint {
+	phase: ExecutionProgressPhase,
+	focus: String,
+	next_action: String,
+	blockers: Vec<String>,
+	evidence: Vec<String>,
+	verification: Vec<String>,
+	head_sha: Option<String>,
+	branch: Option<String>,
+	pr_url: Option<String>,
+}
+impl NormalizedProgressCheckpoint {
+	fn public_branch(&self, review_context: &ReviewHandoffContext) -> String {
+		self.branch.clone().unwrap_or_else(|| review_context.branch_name.clone())
+	}
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LabelArgs {
