@@ -31,10 +31,14 @@ Defines: The runtime scope, source-of-truth boundaries, eligibility rules, lane 
 
 ## Source of truth boundaries
 
-- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, protocol events, worktree mappings, retained PR state, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
+- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, protocol events, private execution events, worktree mappings, retained PR state, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
 - Linear remains the team-visible tracker surface for issue lifecycle, queue/active/manual-attention labels, and coarse lifecycle summaries such as start, PR-ready, blocked, failed, landed, and done.
 - Versioned Linear execution event comments use the schema in
   [`linear-execution-ledger.md`](./linear-execution-ledger.md), but fine-grained runtime truth must not be rebuilt from comments every tick.
+- Private execution events are structured runtime evidence rows scoped by
+  `project_id`, `issue_id`, `run_id`, and `attempt_number`. They hold full local
+  evidence that should be queryable through `StateStore` without being mirrored to
+  Linear execution ledger payloads.
 - Centralized project directories under `~/.codex/decodex/projects/<service-id>/`
   form the project contract. Each directory contains `project.toml` for service
   paths and credentials plus `WORKFLOW.md` for execution policy. They do not store
@@ -49,6 +53,7 @@ The following facts are local runtime truth and must not be rebuilt from Linear 
 
 - lane attempts: `run_id`, `attempt_number`, attempt status, and terminal classification
 - protocol events, event counts, event timestamps, and thread/liveness hydration fields
+- private execution events carrying structured local evidence for an issue/run/attempt
 - retry and backoff state: queued retry kind, due time, retry budget, and connector backoff
 - phase timing and operator activity summaries
 - retained worktree mappings, retained PR handoff identity, post-review phase, and cleanup or repair ownership
@@ -306,6 +311,7 @@ The runtime database stores at least:
 - active leases and dispatch ownership
 - run attempts and attempt status
 - protocol event journals
+- private execution events scoped by project, issue, run, and attempt
 - worktree mappings
 - retained PR and post-review state
 - retry state and retry budgets
@@ -339,6 +345,11 @@ The minimum supported surface is:
 - a local status command that renders the current service snapshot in both human-readable and JSON forms
 - an agent evidence command, `decodex diagnose`, that writes a compact derived handoff index, blocker snapshots, run capsules, and an append-only evidence event stream under `~/.codex/decodex/agent-evidence/<service-id>/`
 
+Structured logs remain diagnostic. They may help explain a live failure, but they are
+not the structured private evidence ledger. Private execution events belong in the
+runtime SQLite store; Linear execution events remain the constrained public mirror for
+coarse lifecycle records.
+
 The status surface should describe runtime DB-backed execution state, plus low-frequency connector refreshes and retained `.worktrees` lanes, for example:
 
 - active leased runs
@@ -355,12 +366,14 @@ After a process restart, recent-run history, active lease ownership, retained po
 ## Retention and cleanup
 
 - Lease and session mappings: remove when the run closes.
-- Attempt records, terminal outcome, and locally cached Linear execution ledger links
-  remain runtime history. Raw protocol event rows for terminal runs may be compacted by
-  `decodex maintenance prune --apply` once the latest event is at least 14 days old,
-  but only after Decodex writes the compact run summary and confirms that no active
-  lease, retained worktree, review handoff, review orchestration, or cleanup blocker
-  still owns that run or issue.
+- Attempt records, terminal outcome, private execution events, and locally cached
+  Linear execution ledger links remain runtime history. Raw protocol event rows for
+  terminal runs may be compacted by `decodex maintenance prune --apply` once the
+  latest event is at least 14 days old, but only after Decodex writes the compact run
+  summary and confirms that no active lease, retained worktree, review handoff, review
+  orchestration, or cleanup blocker still owns that run or issue. The first private
+  execution event schema has no compaction path; add one only when runtime maintenance
+  owns a concrete retention policy for that structured evidence.
 - `decodex maintenance prune --dry-run` is the read-only retention path for inspecting
   local cleanup candidates without applying retention changes. The `--apply` mode owns
   state-aware protocol-event
