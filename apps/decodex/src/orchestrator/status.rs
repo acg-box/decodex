@@ -3494,6 +3494,7 @@ fn operator_run_status(
 		branch_name.as_deref(),
 		worktree_path.as_deref(),
 	);
+	let private_evidence = operator_run_private_evidence(project, &run, issue_identifier.as_deref());
 	let execution_liveness =
 		operator_run_execution_liveness(&status, &timing, &app_server_state, &protocol_summary);
 
@@ -3530,12 +3531,13 @@ fn operator_run_status(
 		suspected_stall,
 		last_event_type: protocol_summary.last_event_type,
 		last_event_at: protocol_summary.last_event_at,
-			event_count: protocol_summary.event_count,
-			process_id: timing.process_id,
-			process_alive: timing.process_alive,
-			process_liveness_reason: timing.process_liveness_reason,
-			retry_kind,
-			next_retry_at: format_optional_unix_timestamp(retry_ready_at_unix_epoch),
+		event_count: protocol_summary.event_count,
+		private_evidence,
+		process_id: timing.process_id,
+		process_alive: timing.process_alive,
+		process_liveness_reason: timing.process_liveness_reason,
+		retry_kind,
+		next_retry_at: format_optional_unix_timestamp(retry_ready_at_unix_epoch),
 		effective_model: app_server_state.effective_model,
 		effective_model_provider: app_server_state.effective_model_provider,
 		effective_cwd: app_server_state.effective_cwd,
@@ -3549,6 +3551,20 @@ fn operator_run_status(
 		branch_name,
 		worktree_path,
 	})
+}
+
+fn operator_run_private_evidence(
+	project: &ServiceConfig,
+	run: &ProjectRunStatus,
+	issue_identifier: Option<&str>,
+) -> AgentPrivateEvidenceRef {
+	private_evidence_ref_for_run_fields(
+		project.service_id(),
+		run.issue_id(),
+		issue_identifier,
+		run.run_id(),
+		run.attempt_number(),
+	)
 }
 
 fn load_operator_run_marker(

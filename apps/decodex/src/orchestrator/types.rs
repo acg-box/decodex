@@ -793,6 +793,7 @@ struct OperatorRunStatus {
 	last_event_type: Option<String>,
 	last_event_at: Option<String>,
 	event_count: i64,
+	private_evidence: AgentPrivateEvidenceRef,
 	process_id: Option<u32>,
 	process_alive: Option<bool>,
 	process_liveness_reason: Option<String>,
