@@ -56,6 +56,12 @@ operator snapshot and exists so a repair agent can quickly open one handoff inde
 related blocker snapshots, and run capsules. It is not scheduling authority, not a
 replacement for the runtime database, and not a Linear or GitHub collaboration record.
 Use `decodex diagnose --json` when an agent needs the current handoff index directly.
+When Linear shows only a public lifecycle summary, inspect local private execution
+evidence with `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json`.
+The evidence command reads runtime SQLite directly, so it remains useful when tracker
+or GitHub connectors are unavailable. By default it prints compact payload summaries
+rather than full structured payloads; add `--include-payload` only for local repair
+work that needs full private payload values.
 
 ## State Ownership
 
@@ -123,6 +129,30 @@ outside the local operator surface.
 | `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. |
 | `Recovery Worktrees` | Retained local worktrees that are not currently owned by `Running Lanes`, `Review & Landing`, or queued attention in `Intake Queue`. This is the cleanup or recovery inbox for recovered paths, retained PR leftovers, and cleanup-only local worktrees. Empty is the normal healthy state. |
 | `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Raw local attempts and heartbeat details stay in debug expansion. |
+
+## Private Evidence Readback
+
+Private execution evidence is local runtime evidence, not public tracker history.
+Use it when a Linear execution ledger comment is intentionally brief and an operator
+or repair agent needs to answer what failed, what was verified, or what the next
+local recovery step is.
+
+Recommended readback sequence:
+
+1. Run `decodex status` or `decodex diagnose --json` and identify the issue, run id,
+   and attempt number. Status rows and run capsules include a `private_evidence`
+   command reference for this tuple. Operator JSON snapshots carry the same compact
+   reference; they do not embed private event payloads.
+2. Run `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json`.
+3. If `event_count` is `0` and warnings include
+   `private_execution_evidence_missing`, use the status row, run capsule, protocol
+   summary, retained worktree, and Linear public summary as the available evidence.
+4. Use `--include-payload` only when compact payload summaries are insufficient for
+   local repair. Do not paste full payloads into Linear or GitHub.
+
+The command does not require live Linear or GitHub observer access. It resolves known
+local runs from the runtime database and can also perform a direct lookup when both
+`--run-id` and `--attempt` are supplied.
 
 Worktree visibility follows the owning dashboard section:
 
