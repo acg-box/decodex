@@ -1986,7 +1986,7 @@ fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 		"pubfi",
 		"pubfi refresh should stay scoped to the same service id"
 	);
-	assert!(project.enabled(), "pubfi refresh should replace the previously disabled row");
+	assert!(!project.enabled(), "pubfi refresh should preserve the existing disabled state");
 	assert_eq!(
 		project.config_fingerprint(),
 		"def456",
