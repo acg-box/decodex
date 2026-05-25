@@ -3429,6 +3429,17 @@ fn hydrate_status_snapshot_state(
 	Ok(())
 }
 
+fn append_primary_account_if_missing(
+	accounts: &mut Vec<CodexAccountActivitySummary>,
+	account: Option<&CodexAccountActivitySummary>,
+) {
+	if accounts.is_empty()
+		&& let Some(account) = account
+	{
+		accounts.push(account.clone());
+	}
+}
+
 fn operator_run_status(
 	project: &ServiceConfig,
 	project_display_name: &str,
@@ -3481,11 +3492,7 @@ fn operator_run_status(
 		.map(|marker| marker.accounts().to_vec())
 		.unwrap_or_default();
 
-	if accounts.is_empty()
-		&& let Some(account) = &account
-	{
-		accounts.push(account.clone());
-	}
+	append_primary_account_if_missing(&mut accounts, account.as_ref());
 
 	let branch_name = run.branch_name().map(str::to_owned);
 	let worktree_path = run

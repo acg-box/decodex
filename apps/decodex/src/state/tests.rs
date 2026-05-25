@@ -2034,6 +2034,7 @@ fn remove_project_deletes_persistent_registry_row() {
 	};
 
 	store.upsert_project(&registration).expect("project should persist");
+
 	let removed = store.remove_project("vibe-mono").expect("project should remove");
 
 	assert_eq!(removed.service_id(), "vibe-mono");
