@@ -514,32 +514,28 @@ fn render_private_evidence_reference(run: &OperatorRunStatus) -> String {
 }
 
 fn agent_private_evidence_ref(run: &OperatorRunStatus) -> AgentPrivateEvidenceRef {
-	AgentPrivateEvidenceRef {
-		evidence_ref: private_evidence_ref_for_parts(
-			&run.project_id,
-			&run.issue_id,
-			&run.run_id,
-			run.attempt_number,
-		),
-		source: String::from("runtime_sqlite"),
-		default_view: String::from("summarized_payloads"),
-		read_command: private_evidence_read_command_for_run(run, true),
-	}
+	run.private_evidence.clone()
 }
 
-fn private_evidence_read_command_for_run(
-	run: &OperatorRunStatus,
-	json: bool,
-) -> String {
-	let issue_selector = run.issue_identifier.as_deref().unwrap_or(&run.issue_id);
-
-	private_evidence_read_command(
-		issue_selector,
-		Some(&run.run_id),
-		Some(run.attempt_number),
-		json,
-		false,
-	)
+fn private_evidence_ref_for_run_fields(
+	project_id: &str,
+	issue_id: &str,
+	issue_identifier: Option<&str>,
+	run_id: &str,
+	attempt_number: i64,
+) -> AgentPrivateEvidenceRef {
+	AgentPrivateEvidenceRef {
+		evidence_ref: private_evidence_ref_for_parts(project_id, issue_id, run_id, attempt_number),
+		source: String::from("runtime_sqlite"),
+		default_view: String::from("summarized_payloads"),
+		read_command: private_evidence_read_command(
+			issue_identifier.unwrap_or(issue_id),
+			Some(run_id),
+			Some(attempt_number),
+			true,
+			false,
+		),
+	}
 }
 
 fn private_evidence_read_command(
@@ -687,6 +683,21 @@ fn resolve_private_evidence_target(
 		});
 	}
 	if let (Some(run_id), Some(attempt_number)) = (run_id, attempt_number) {
+		let events = state_store.list_private_execution_events_for_run_attempt(
+			project.service_id(),
+			run_id,
+			attempt_number,
+		)?;
+
+		if let Some(issue_id) = private_evidence_direct_lookup_issue_id(&events, selector)? {
+			return Ok(PrivateEvidenceTarget {
+				issue_identifier: (issue_id != selector).then(|| selector.to_owned()),
+				issue_id,
+				run_id: run_id.to_owned(),
+				attempt_number,
+			});
+		}
+
 		return Ok(PrivateEvidenceTarget {
 			issue_id: selector.to_owned(),
 			issue_identifier: None,
@@ -698,6 +709,30 @@ fn resolve_private_evidence_target(
 	eyre::bail!(
 		"No local run matched issue `{selector}` in project `{}`. Pass --run-id and --attempt for direct runtime-store lookup, or run `decodex status --json` to find local run ids.",
 		project.service_id()
+	)
+}
+
+fn private_evidence_direct_lookup_issue_id(
+	events: &[PrivateExecutionEvent],
+	selector: &str,
+) -> Result<Option<String>> {
+	let issue_ids = events
+		.iter()
+		.map(PrivateExecutionEvent::issue_id)
+		.collect::<collections::BTreeSet<_>>();
+
+	if issue_ids.is_empty() {
+		return Ok(None);
+	}
+	if issue_ids.len() == 1 {
+		return Ok(issue_ids.iter().next().map(|issue_id| (*issue_id).to_owned()));
+	}
+	if issue_ids.contains(selector) {
+		return Ok(Some(selector.to_owned()));
+	}
+
+	eyre::bail!(
+		"Direct private evidence lookup for issue `{selector}` matched multiple local issue ids for the supplied run and attempt; pass the local issue id from `decodex status --json`."
 	)
 }
 

@@ -232,6 +232,46 @@ fn private_evidence_readback_reports_missing_events_for_known_run() {
 	);
 }
 
+#[test]
+fn private_evidence_readback_direct_lookup_uses_stored_issue_id() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			"issue-1",
+			"run-detached",
+			3,
+			"progress_checkpoint",
+			serde_json::json!({
+				"summary": "private checkpoint stayed local",
+			}),
+		)
+		.expect("private evidence should append without run metadata");
+
+	let request = EvidenceRequest {
+		config_path: None,
+		issue: "PUB-101",
+		run_id: Some("run-detached"),
+		attempt_number: Some(3),
+		json: true,
+		include_payload: false,
+	};
+	let readback = orchestrator::build_private_evidence_readback(
+		&state_store,
+		&config,
+		&request,
+	)
+	.expect("direct private evidence lookup should infer stored issue id");
+
+	assert_eq!(readback.event_count, 1);
+	assert_eq!(readback.issue_id, "issue-1");
+	assert_eq!(readback.issue_identifier.as_deref(), Some("PUB-101"));
+	assert_eq!(readback.latest_event_type.as_deref(), Some("progress_checkpoint"));
+	assert!(readback.warnings.is_empty());
+}
+
 fn read_json_file(path: &Path) -> Value {
 	let body = fs::read_to_string(path).expect("JSON file should exist");
 
