@@ -38,8 +38,8 @@ use crate::{
 		codex_accounts::{CodexAccountLogin, CodexAccountProvider},
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
-			JsonRpcConnection, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest,
-			ResolvedAppServerCodexHomeEnv, WireMessage,
+			JsonRpcConnection, JsonRpcError, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest,
+			JsonRpcResponse, ResolvedAppServerCodexHomeEnv, WireMessage,
 		},
 		tracker_tool_bridge::{
 			self, DynamicToolCallResponse, DynamicToolContentItem, DynamicToolHandler,
@@ -2956,16 +2956,14 @@ fn wait_for_turn_completion(
 	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
 
 	loop {
-		let now = Instant::now();
-		let Some(wait_timeout) = remaining_idle_budget(last_activity_at, now, timeout) else {
-			return Err(turn_wait_timeout_error(
-				target_thread_id,
-				target_turn_id,
-				latest_turn_failure,
-			));
-		};
-		let wire_message =
-			recv_turn_wire_message(client, wait_timeout, latest_turn_failure.as_ref())?;
+		let wire_message = next_turn_wire_message(
+			client,
+			last_activity_at,
+			timeout,
+			target_thread_id,
+			target_turn_id,
+			latest_turn_failure.as_ref(),
+		)?;
 
 		if !targets_thread(&wire_message, Some(target_thread_id)) {
 			tracing::debug!(raw = %wire_message.raw, "Ignoring app-server message for another thread.");
@@ -3050,25 +3048,74 @@ fn wait_for_turn_completion(
 				},
 				_ => {},
 			},
-			JsonRpcMessage::Request(request) => handle_server_request_during_turn_execution(
+			JsonRpcMessage::Request(request) => handle_turn_execution_request(
 				client,
 				recorder,
 				request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::TurnExecution,
-					dynamic_tool_handler,
-					codex_account_provider,
-					Some(target_thread_id),
-					Some(target_turn_id),
-				),
+				target_thread_id,
+				target_turn_id,
+				dynamic_tool_handler,
+				codex_account_provider,
 			)?,
-			JsonRpcMessage::Response(_) | JsonRpcMessage::Error(_) => {
-				eyre::bail!(
-					"Received an unexpected JSON-RPC response while waiting for turn completion."
-				);
+			JsonRpcMessage::Response(response) => {
+				ignore_unexpected_json_rpc_response_during_turn(&wire_message.raw, response);
+			},
+			JsonRpcMessage::Error(error) => {
+				latest_turn_failure = Some(turn_failure_from_json_rpc_error_response(
+					target_thread_id,
+					target_turn_id,
+					error,
+				));
 			},
 		}
 	}
+}
+
+fn next_turn_wire_message(
+	client: &mut AppServerClient,
+	last_activity_at: Instant,
+	timeout: Duration,
+	target_thread_id: &str,
+	target_turn_id: &str,
+	latest_turn_failure: Option<&AppServerTurnFailure>,
+) -> crate::prelude::Result<WireMessage> {
+	let now = Instant::now();
+	let wait_timeout = remaining_idle_budget(last_activity_at, now, timeout).ok_or_else(|| {
+		turn_wait_timeout_error(target_thread_id, target_turn_id, latest_turn_failure.cloned())
+	})?;
+
+	recv_turn_wire_message(client, wait_timeout, latest_turn_failure)
+}
+
+fn handle_turn_execution_request(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &JsonRpcRequest,
+	target_thread_id: &str,
+	target_turn_id: &str,
+	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
+	codex_account_provider: Option<&dyn CodexAccountProvider>,
+) -> crate::prelude::Result<()> {
+	handle_server_request_during_turn_execution(
+		client,
+		recorder,
+		request,
+		RequestDispatchContext::new(
+			RequestWaitPhase::TurnExecution,
+			dynamic_tool_handler,
+			codex_account_provider,
+			Some(target_thread_id),
+			Some(target_turn_id),
+		),
+	)
+}
+
+fn ignore_unexpected_json_rpc_response_during_turn(raw: &str, response: &JsonRpcResponse) {
+	tracing::debug!(
+		id = %response.id,
+		raw = %raw,
+		"Ignoring unexpected JSON-RPC response while waiting for turn completion."
+	);
 }
 
 fn turn_wait_timeout_error(
@@ -3144,6 +3191,30 @@ fn turn_failure_from_turn_error(
 		status,
 		error.message.clone(),
 		error.codex_error_info.clone(),
+	)
+}
+
+fn turn_failure_from_json_rpc_error_response(
+	thread_id: &str,
+	turn_id: &str,
+	error: &JsonRpcError,
+) -> AppServerTurnFailure {
+	tracing::warn!(
+		id = %error.id,
+		code = error.error.code,
+		message = %error.error.message,
+		"Received JSON-RPC error response while waiting for turn completion."
+	);
+
+	AppServerTurnFailure::new(
+		thread_id,
+		Some(turn_id.to_owned()),
+		"failed",
+		format!(
+			"app-server JSON-RPC error response while waiting for turn completion: code {}: {}",
+			error.error.code, error.error.message
+		),
+		None,
 	)
 }
 
