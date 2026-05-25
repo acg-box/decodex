@@ -397,6 +397,15 @@ impl ProjectCommand {
 
 				println!("disabled project {}", args.service_id);
 			},
+			ProjectSubcommand::Remove(args) => {
+				let removed = state_store.remove_project(&args.service_id)?;
+
+				println!(
+					"removed project {} at {}",
+					removed.service_id(),
+					removed.config_path().display()
+				);
+			},
 		}
 
 		Ok(())
@@ -764,6 +773,8 @@ enum ProjectSubcommand {
 	Enable(ProjectToggleCommand),
 	/// Disable one registered project for `decodex serve`.
 	Disable(ProjectToggleCommand),
+	/// Remove one registered project from the local registry.
+	Remove(ProjectToggleCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1054,6 +1065,16 @@ mod tests {
 		assert!(matches!(
 			cli.command,
 			Command::Project(ProjectCommand { command: ProjectSubcommand::Enable(_) })
+		));
+	}
+
+	#[test]
+	fn parses_project_remove() {
+		let cli = Cli::parse_from(["decodex", "project", "remove", "vibe-mono"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Project(ProjectCommand { command: ProjectSubcommand::Remove(_) })
 		));
 	}
 

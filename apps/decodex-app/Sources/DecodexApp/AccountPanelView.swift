@@ -57,6 +57,12 @@ enum PanelPalette {
 			: Color(red: 0.62, green: 0.4, blue: 0.12)
 	}
 
+	static func usageCyan(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color(red: 0.35, green: 0.78, blue: 0.86)
+			: Color(red: 0.1, green: 0.53, blue: 0.62)
+	}
+
 	static func fastModeAccent(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color(red: 0.98, green: 0.84, blue: 0.48)
@@ -79,6 +85,18 @@ enum PanelPalette {
 		colorScheme == .dark
 			? Color.white.opacity(0.12)
 			: Color.white.opacity(0.22)
+	}
+
+	static func glassStroke(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color.white.opacity(0.1)
+			: Color.white.opacity(0.5)
+	}
+
+	static func glassInnerShadow(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color.black.opacity(0.18)
+			: Color.black.opacity(0.055)
 	}
 }
 
@@ -468,7 +486,6 @@ struct AccountPanelView: View {
 				AccountRowView(
 					account: account,
 					runs: runs,
-					runCount: operatorRunCount(for: account),
 					emailsHidden: emailsHidden,
 					showsDivider: index < store.accounts.count - 1,
 					isLogoutArmed: armedLogoutAccountID == account.id,
@@ -575,14 +592,6 @@ struct AccountPanelView: View {
 		store.operatorSnapshot?.activeRuns(for: account) ?? []
 	}
 
-	private func operatorRunCount(for account: CodexAccount) -> Int? {
-		guard let count = store.operatorSnapshot?.runningCount(for: account), count > 0 else {
-			return nil
-		}
-
-		return count
-	}
-
 	private func accountRowHeight(for account: CodexAccount) -> CGFloat {
 		let base: CGFloat
 		if account.hasUsageWindowSummary {
@@ -645,7 +654,6 @@ struct AccountPanelView: View {
 struct AccountRowView: View {
 	let account: CodexAccount
 	let runs: [OperatorRunStatus]
-	let runCount: Int?
 	let emailsHidden: Bool
 	let showsDivider: Bool
 	let isLogoutArmed: Bool
@@ -692,22 +700,6 @@ struct AccountRowView: View {
 							.fixedSize(horizontal: true, vertical: false)
 					}
 
-					if let runCount {
-						Text("·")
-							.font(PanelFont.accountDetail)
-							.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
-							.fixedSize(horizontal: true, vertical: false)
-
-						Text(runCount == 1 ? "1 running" : "\(runCount) running")
-							.font(PanelFont.accountDetail)
-							.foregroundStyle(
-								runCount > 0
-									? PanelPalette.routeAccent(colorScheme)
-									: PanelPalette.secondaryText(colorScheme).opacity(0.84)
-							)
-							.lineLimit(1)
-							.fixedSize(horizontal: true, vertical: false)
-					}
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
 
@@ -813,19 +805,31 @@ struct AccountRunSummaryView: View {
 
 	var body: some View {
 		HStack(spacing: 5) {
-			AccountRunChipView(run: runs[0])
+			ForEach(visibleRuns) { run in
+				AccountRunChipView(run: run)
+			}
 
-			if runs.count > 1 {
-				AccountRunOverflowView(runs: runs)
+			if hiddenRuns.isEmpty == false {
+				AccountRunOverflowView(runs: runs, hiddenRunCount: hiddenRuns.count)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+
+	private var visibleRuns: [OperatorRunStatus] {
+		Array(runs.prefix(3))
+	}
+
+	private var hiddenRuns: [OperatorRunStatus] {
+		Array(runs.dropFirst(3))
 	}
 }
 
 struct AccountRunChipView: View {
 	let run: OperatorRunStatus
 	@Environment(\.colorScheme) private var colorScheme
+	@State private var isHovered = false
+	@State private var showsPopover = false
 
 	var body: some View {
 		HStack(spacing: 5) {
@@ -842,8 +846,24 @@ struct AccountRunChipView: View {
 		}
 		.frame(height: 21)
 		.padding(.horizontal, 8)
+		.frame(maxWidth: 88, alignment: .leading)
+		.background {
+			RoundedRectangle(cornerRadius: 10.5, style: .continuous)
+				.fill(isHovered ? tint.opacity(colorScheme == .dark ? 0.09 : 0.07) : Color.clear)
+		}
 		.modernGlassSurface(cornerRadius: 10.5, depth: .control)
-		.fixedSize(horizontal: true, vertical: false)
+		.contentShape(RoundedRectangle(cornerRadius: 10.5, style: .continuous))
+		.onHover { hovering in
+			withAnimation(PanelMotion.hover) {
+				isHovered = hovering
+			}
+			showsPopover = hovering
+		}
+		.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
+			OperatorLanePopoverView(run: run)
+				.frame(width: 360)
+				.padding(8)
+		}
 	}
 
 	private var symbol: String {
@@ -871,12 +891,13 @@ struct AccountRunChipView: View {
 
 struct AccountRunOverflowView: View {
 	let runs: [OperatorRunStatus]
+	let hiddenRunCount: Int
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var isHovered = false
 	@State private var showsPopover = false
 
 	var body: some View {
-		Text("+\(max(0, runs.count - 1))")
+		Text("+\(hiddenRunCount)")
 			.font(PanelFont.metricLabel)
 			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 			.frame(height: 21)
@@ -895,103 +916,48 @@ struct AccountRunOverflowView: View {
 				showsPopover = hovering
 			}
 			.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
-				AccountRunOverflowPopoverView(runs: runs)
-					.frame(width: 240)
-					.padding(10)
+				OperatorLaneDetailsListView(
+					title: "\(runs.count) running lane\(runs.count == 1 ? "" : "s")",
+					runs: runs
+				)
+				.frame(width: 372)
+				.padding(8)
 			}
 	}
 }
 
-struct AccountRunOverflowPopoverView: View {
+struct OperatorLaneDetailsListView: View {
+	let title: String
 	let runs: [OperatorRunStatus]
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 7) {
+		VStack(alignment: .leading, spacing: 8) {
 			HStack(spacing: 7) {
 				Image(systemName: "arrow.triangle.branch")
 					.font(PanelFont.summaryIcon)
 					.foregroundStyle(PanelPalette.routeAccent(colorScheme).opacity(0.86))
 					.frame(width: 12)
 
-				Text("\(runs.count) running")
+				Text(title)
 					.font(PanelFont.lanePopoverTitle)
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
 					.lineLimit(1)
 			}
 
-			VStack(spacing: 0) {
-				ForEach(runs) { run in
-					AccountRunOverflowRowView(run: run)
+			ScrollView {
+				VStack(alignment: .leading, spacing: 8) {
+					ForEach(runs) { run in
+						OperatorLanePopoverView(run: run)
+					}
 				}
 			}
+			.frame(maxHeight: 430)
+			.scrollIndicators(.hidden)
 		}
 		.padding(10)
 		.modernGlassSurface(cornerRadius: 12, depth: .section)
-		.accessibilityLabel("\(runs.count) account lanes")
-	}
-}
-
-struct AccountRunOverflowRowView: View {
-	let run: OperatorRunStatus
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		HStack(spacing: 7) {
-			Image(systemName: symbol)
-				.font(PanelFont.summaryIcon)
-				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.9 : 0.76))
-				.frame(width: 12)
-
-			Text(run.compactTitle)
-				.font(PanelFont.laneTitle)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				.lineLimit(1)
-				.truncationMode(.middle)
-
-			Spacer(minLength: 6)
-
-			Text(statusLabel)
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.monospacedDigit()
-				.lineLimit(1)
-		}
-		.frame(height: 25)
-		.padding(.horizontal, 2)
-	}
-
-	private var symbol: String {
-		if run.hasAttentionTone {
-			return "exclamationmark.triangle.fill"
-		}
-		if run.isWaiting {
-			return "clock"
-		}
-
-		return "play.fill"
-	}
-
-	private var tint: Color {
-		if run.hasAttentionTone {
-			return PanelPalette.warning(colorScheme)
-		}
-		if run.isWaiting {
-			return PanelPalette.secondaryText(colorScheme)
-		}
-
-		return PanelPalette.routeAccent(colorScheme)
-	}
-
-	private var statusLabel: String {
-		if run.hasAttentionTone {
-			return "attention"
-		}
-		if run.isWaiting {
-			return "waiting"
-		}
-
-		return humanizedPanelToken(run.phase ?? run.status ?? "running")
+		.accessibilityLabel(title)
 	}
 }
 
@@ -1401,16 +1367,16 @@ struct AccountUsageMeterView: View {
 		}
 	}
 
+	private var resetDisplay: UsageResetDisplay {
+		UsageResetDisplay.make(resetAtUnixEpoch: resetAtUnixEpoch)
+	}
+
 	private var trackColor: Color {
 		PanelPalette.progressTrack(colorScheme)
 	}
 
 	private var trackEdgeColor: Color {
 		PanelPalette.progressEdge(colorScheme)
-	}
-
-	private var resetDisplay: UsageResetDisplay {
-		UsageResetDisplay.make(resetAtUnixEpoch: resetAtUnixEpoch)
 	}
 
 	private var fillStyle: LinearGradient {
@@ -1435,7 +1401,86 @@ struct AccountUsageMeterView: View {
 			endPoint: .bottom
 		)
 	}
+}
 
+private struct UsageGlassTrackView: View {
+	let progress: CGFloat
+	let tint: Color
+	let markers: [CGFloat]
+	let alertMarker: CGFloat?
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		GeometryReader { proxy in
+			let trackWidth = proxy.size.width
+			let boundedProgress = max(0, min(1, progress))
+			let fillWidth = max(boundedProgress > 0 ? 5 : 0, trackWidth * boundedProgress)
+
+			ZStack(alignment: .leading) {
+				Capsule()
+					.fill(trackFill)
+					.overlay {
+						Capsule()
+							.strokeBorder(PanelPalette.progressEdge(colorScheme), lineWidth: 0.4)
+					}
+
+				Capsule()
+					.fill(fillFill)
+					.frame(width: fillWidth)
+					.shadow(color: tint.opacity(colorScheme == .dark ? 0.18 : 0.12), radius: 2, x: 0, y: 0)
+					.animation(PanelMotion.state, value: progress)
+
+				ForEach(markers, id: \.self) { marker in
+					Rectangle()
+						.fill(markerColor)
+						.frame(width: 1.2)
+						.padding(.vertical, 0.8)
+						.offset(x: markerOffset(marker, in: trackWidth))
+				}
+
+				if let alertMarker {
+					Rectangle()
+						.fill(PanelPalette.destructive(colorScheme))
+						.frame(width: 2)
+						.padding(.vertical, 0.2)
+						.offset(x: markerOffset(alertMarker, in: trackWidth))
+				}
+			}
+		}
+		.accessibilityHidden(true)
+	}
+
+	private var trackFill: LinearGradient {
+		LinearGradient(
+			colors: [
+				PanelPalette.progressTrack(colorScheme).opacity(0.92),
+				PanelPalette.progressTrack(colorScheme).opacity(colorScheme == .dark ? 0.72 : 0.82),
+			],
+			startPoint: .top,
+			endPoint: .bottom
+		)
+	}
+
+	private var fillFill: LinearGradient {
+		LinearGradient(
+			colors: [
+				tint.opacity(colorScheme == .dark ? 0.9 : 0.78),
+				tint.opacity(colorScheme == .dark ? 0.72 : 0.64),
+			],
+			startPoint: .leading,
+			endPoint: .trailing
+		)
+	}
+
+	private var markerColor: Color {
+		colorScheme == .dark
+			? Color.white.opacity(0.48)
+			: Color.white.opacity(0.76)
+	}
+
+	private func markerOffset(_ marker: CGFloat, in width: CGFloat) -> CGFloat {
+		max(0, min(width - 1.2, width * max(0, min(1, marker))))
+	}
 }
 
 private struct UsageResetDisplay {
@@ -1537,27 +1582,19 @@ struct OperatorStatusStripView: View {
 	let snapshot: OperatorSnapshotResponse
 	let updatedAt: Date?
 	@Environment(\.colorScheme) private var colorScheme
-	@State private var showsAllLanes = false
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 5) {
-			if metrics.isEmpty == false {
-				HStack(spacing: 0) {
-					ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
-						if index > 0 {
-							flowDivider
-						}
-
-						OperatorFlowMetricView(metric: metric)
+			HStack(spacing: 0) {
+				ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
+					if index > 0 {
+						flowDivider
 					}
-				}
-				.frame(height: 32)
-			}
 
-			if snapshot.activeRuns.isEmpty == false {
-				OperatorLaneListView(runs: snapshot.activeRuns, showsAllLanes: $showsAllLanes)
-					.padding(.top, metrics.isEmpty ? 0 : 1)
+					OperatorFlowMetricView(metric: metric)
+				}
 			}
+			.frame(height: 32)
 
 			if let warning = snapshot.warningSummary {
 				HStack(spacing: 5) {
@@ -1624,9 +1661,7 @@ struct OperatorStatusStripView: View {
 				unitPlural: "PRs",
 				tint: PanelPalette.landingAccent(colorScheme)
 			),
-		].filter { metric in
-			metric.value > 0
-		}
+		]
 	}
 
 	private var refreshMeta: String {
@@ -1643,163 +1678,6 @@ struct OperatorStatusStripView: View {
 	}
 }
 
-struct OperatorLaneListView: View {
-	let runs: [OperatorRunStatus]
-	@Binding var showsAllLanes: Bool
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		VStack(spacing: 0) {
-			ForEach(visibleRuns) { run in
-				OperatorLaneRowView(run: run)
-			}
-
-			if hasOverflow {
-				Button {
-					withAnimation(PanelMotion.state) {
-						showsAllLanes.toggle()
-					}
-				} label: {
-					HStack(spacing: 5) {
-						Text(toggleLabel)
-							.font(PanelFont.tertiary)
-							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-							.lineLimit(1)
-						Spacer(minLength: 4)
-						Image(systemName: showsAllLanes ? "chevron.up" : "chevron.down")
-							.font(PanelFont.summaryIcon)
-							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-							.frame(width: 12)
-					}
-					.frame(height: 20)
-					.contentShape(Rectangle())
-				}
-				.buttonStyle(.plain)
-				.help(showsAllLanes ? "Collapse running lanes" : "Show all running lanes")
-			}
-		}
-		.overlay(alignment: .top) {
-			Rectangle()
-				.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.58 : 0.78))
-				.frame(height: 0.5)
-				.allowsHitTesting(false)
-		}
-		.overlay(alignment: .bottom) {
-			Rectangle()
-				.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.36 : 0.5))
-				.frame(height: 0.5)
-				.allowsHitTesting(false)
-		}
-		.accessibilityLabel("\(runs.count) running lanes")
-	}
-
-	private var visibleRuns: [OperatorRunStatus] {
-		showsAllLanes ? runs : Array(runs.prefix(3))
-	}
-
-	private var hasOverflow: Bool {
-		runs.count > 3
-	}
-
-	private var toggleLabel: String {
-		if showsAllLanes {
-			return "Show 3 lanes"
-		}
-
-		return "\(runs.count - 3) more lane\(runs.count - 3 == 1 ? "" : "s")"
-	}
-}
-
-struct OperatorLaneRowView: View {
-	let run: OperatorRunStatus
-	@Environment(\.colorScheme) private var colorScheme
-	@State private var isHovered = false
-	@State private var showsPopover = false
-
-	var body: some View {
-		HStack(spacing: 7) {
-			Image(systemName: symbol)
-				.font(PanelFont.summaryIcon)
-				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.96 : 0.82))
-				.frame(width: 12)
-
-			Text(run.compactTitle)
-				.font(PanelFont.laneTitle)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				.lineLimit(1)
-				.truncationMode(.middle)
-				.frame(maxWidth: .infinity, alignment: .leading)
-
-			Text(statusLabel)
-				.font(PanelFont.laneStatus)
-				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.9 : 0.78))
-				.monospacedDigit()
-				.lineLimit(1)
-				.fixedSize(horizontal: true, vertical: false)
-		}
-		.frame(height: 25)
-		.padding(.horizontal, 2)
-		.background {
-			RoundedRectangle(cornerRadius: 7, style: .continuous)
-				.fill(isHovered ? tint.opacity(colorScheme == .dark ? 0.08 : 0.07) : Color.clear)
-		}
-		.contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-		.onHover { hovering in
-			withAnimation(PanelMotion.hover) {
-				isHovered = hovering
-			}
-			showsPopover = hovering
-		}
-		.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
-			OperatorLanePopoverView(run: run)
-				.frame(width: 360)
-				.padding(8)
-		}
-	}
-
-	private var symbol: String {
-		if run.hasAttentionTone {
-			return "exclamationmark.triangle.fill"
-		}
-		if run.isWaiting {
-			return "clock"
-		}
-		if run.processAlive == false {
-			return "checkmark.circle"
-		}
-
-		return "play.fill"
-	}
-
-	private var statusLabel: String {
-		if run.hasAttentionTone {
-			return "attention"
-		}
-		if run.isWaiting {
-			return "waiting"
-		}
-		if run.processAlive == false {
-			return "done"
-		}
-
-		return humanizedPanelToken(run.phase ?? run.status ?? "running")
-	}
-
-	private var tint: Color {
-		if run.hasAttentionTone {
-			return PanelPalette.warning(colorScheme)
-		}
-		if run.isWaiting {
-			return PanelPalette.secondaryText(colorScheme)
-		}
-		if run.processAlive == false {
-			return PanelPalette.landingAccent(colorScheme)
-		}
-
-		return PanelPalette.routeAccent(colorScheme)
-	}
-}
-
 struct OperatorLanePopoverView: View {
 	let run: OperatorRunStatus
 	@Environment(\.colorScheme) private var colorScheme
@@ -1807,6 +1685,10 @@ struct OperatorLanePopoverView: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: 7) {
 			header
+
+			if let projectReadout {
+				OperatorLaneReadoutRow(title: "Project", items: [projectReadout])
+			}
 
 			if let modelBucket {
 				OperatorLaneProgressReadoutRow(
@@ -1867,6 +1749,14 @@ struct OperatorLanePopoverView: View {
 		OperatorLaneReadoutRow(title: "Activity", items: [
 			OperatorLaneReadoutItem(label: nil, value: currentSummary, tone: .primary),
 		], trailing: run.compactTitle)
+	}
+
+	private var projectReadout: OperatorLaneReadoutItem? {
+		guard let projectName = panelTrimmed(run.projectDisplayName) ?? panelTrimmed(run.projectID) else {
+			return nil
+		}
+
+		return OperatorLaneReadoutItem(label: nil, value: projectName, tone: .primary)
 	}
 
 	private var modelBucket: OperatorChildAgentBucket? {
@@ -2078,15 +1968,13 @@ struct OperatorLaneProgressReadoutRow: View {
 				.lineLimit(1)
 				.frame(width: 62, alignment: .leading)
 
-			ZStack(alignment: .leading) {
-				Capsule()
-					.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.42 : 0.56))
-				Capsule()
-					.fill(PanelPalette.routeAccent(colorScheme).opacity(colorScheme == .dark ? 0.74 : 0.62))
-					.frame(maxWidth: .infinity)
-					.scaleEffect(x: barShare, y: 1, anchor: .leading)
-			}
-			.frame(height: 5)
+			UsageGlassTrackView(
+				progress: barShare,
+				tint: PanelPalette.usageCyan(colorScheme),
+				markers: [0.25, 0.5, 0.75],
+				alertMarker: nil
+			)
+			.frame(height: 5.5)
 			.frame(maxWidth: .infinity)
 
 			Text("\(percent)% · \(elapsed) / \(total)")
@@ -2222,6 +2110,20 @@ struct OperatorFlowMetric: Identifiable {
 	let unitPlural: String
 	let tint: Color
 
+	init(
+		title: String,
+		value: Int,
+		unitSingular: String,
+		unitPlural: String,
+		tint: Color
+	) {
+		self.title = title
+		self.value = value
+		self.unitSingular = unitSingular
+		self.unitPlural = unitPlural
+		self.tint = tint
+	}
+
 	var id: String {
 		title
 	}
@@ -2244,12 +2146,19 @@ struct OperatorFlowMetricView: View {
 
 			Text("\(metric.value) \(metric.unit)")
 				.font(PanelFont.metricValue)
-				.foregroundStyle(metric.tint)
+				.foregroundStyle(valueTint)
 				.monospacedDigit()
 				.lineLimit(1)
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(.horizontal, 5)
+		.help(metric.title)
+	}
+
+	private var valueTint: Color {
+		metric.value > 0
+			? metric.tint
+			: PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.64 : 0.72)
 	}
 }
 
@@ -2784,11 +2693,33 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 					configuredGlass,
 					in: shape
 				)
+				.overlay {
+					shape
+						.strokeBorder(surfaceStroke, lineWidth: strokeWidth)
+						.allowsHitTesting(false)
+				}
+				.shadow(
+					color: surfaceShadow,
+					radius: shadowRadius,
+					x: 0,
+					y: shadowY
+				)
 		} else {
 			content
 				.background {
 					shape.fill(materialStyle)
 				}
+				.overlay {
+					shape
+						.strokeBorder(surfaceStroke, lineWidth: strokeWidth)
+						.allowsHitTesting(false)
+				}
+				.shadow(
+					color: surfaceShadow,
+					radius: shadowRadius,
+					x: 0,
+					y: shadowY
+				)
 		}
 	}
 
@@ -2836,6 +2767,61 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 		}
 	}
 
+	private var surfaceStroke: Color {
+		switch depth {
+		case .panel:
+			return PanelPalette.glassStroke(colorScheme)
+		case .section:
+			return PanelPalette.glassStroke(colorScheme).opacity(colorScheme == .dark ? 0.82 : 0.72)
+		case .row:
+			return PanelPalette.glassStroke(colorScheme).opacity(colorScheme == .dark ? 0.62 : 0.58)
+		case .control:
+			return PanelPalette.glassStroke(colorScheme).opacity(colorScheme == .dark ? 0.55 : 0.5)
+		}
+	}
+
+	private var strokeWidth: CGFloat {
+		depth == .panel ? 0.8 : 0.55
+	}
+
+	private var surfaceShadow: Color {
+		switch depth {
+		case .panel:
+			return PanelPalette.glassInnerShadow(colorScheme)
+		case .section:
+			return PanelPalette.glassInnerShadow(colorScheme).opacity(0.72)
+		case .row:
+			return PanelPalette.glassInnerShadow(colorScheme).opacity(0.5)
+		case .control:
+			return PanelPalette.glassInnerShadow(colorScheme).opacity(0.34)
+		}
+	}
+
+	private var shadowRadius: CGFloat {
+		switch depth {
+		case .panel:
+			return 18
+		case .section:
+			return 9
+		case .row:
+			return 5
+		case .control:
+			return 3
+		}
+	}
+
+	private var shadowY: CGFloat {
+		switch depth {
+		case .panel:
+			return 10
+		case .section:
+			return 5
+		case .row:
+			return 2
+		case .control:
+			return 1
+		}
+	}
 }
 
 private extension CodexAccount {
