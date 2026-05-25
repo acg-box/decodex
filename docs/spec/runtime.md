@@ -209,6 +209,27 @@ If the resolved terminal path is not explicitly finalized through `issue_termina
 The explanatory comment for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text when available instead of speculating about unverified capability limits.
 Execution-state checkpoints are durable progress overlays only. Their phase, focus, next action, blockers, evidence, or verification fields are never a substitute for the explicit terminal-finalization call.
 
+### Progress checkpoint writeback
+
+`issue_progress_checkpoint` is private-first. Each accepted call appends the full
+normalized checkpoint payload to `private_execution_events` in the runtime SQLite
+database before attempting any Linear write. The private payload includes phase, focus,
+next action, blockers, evidence, verification, resolved lane head, branch,
+repository-relative worktree path, and PR URL when present.
+
+Linear receives only the public projection of that checkpoint. The projection is a
+`decodex.linear_execution_event` with `event_type = "progress_checkpoint"` and only
+allowlisted public fields such as phase, summary, branch, repository-relative worktree
+path, and PR URL. Raw checkpoint focus, next action, blockers, evidence, verification,
+local head evidence, host-local paths, identity-routing details, account details, and
+token names must stay out of Linear.
+
+The local `linear_execution_events` table remains the public mirror cache for rendered
+Linear records. It is not the private evidence source. Repeated checkpoint calls that
+only change private payload fields must append private execution events but must not
+append new Linear comments. A new Linear progress projection is written only when the
+material public lifecycle signal changes.
+
 When `decodex` runs the repo-native gate during `validating`, it must preserve the repo-gate failure class instead of collapsing everything into one generic failure bucket:
 
 - `canonicalize_commands` non-zero exit: continued repair in the retained lane
