@@ -8,6 +8,7 @@ use std::{
 	process::{self, Command},
 };
 
+use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::{
@@ -442,6 +443,18 @@ fn sample_review_context() -> ReviewHandoffContext {
 		mode: ReviewExecutionMode::Handoff,
 		recorded_pr_url: None,
 	}
+}
+
+fn manual_attention_comment_args() -> Value {
+	serde_json::json!({
+		"kind": "manual_attention",
+		"error_class": "operator_decision_required",
+		"next_action": "resolve the blocker manually, clear the needs-attention label, then restart automation if desired",
+		"blockers": ["operator decision is required before automation can continue"],
+		"evidence": ["agent selected the manual-attention path for this run"],
+		"failed_command": "cargo make test",
+		"raw_error": "repo gate failed with public test output"
+	})
 }
 
 fn sample_review_context_in(cwd: &Path) -> ReviewHandoffContext {

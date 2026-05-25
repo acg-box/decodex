@@ -203,12 +203,12 @@ Before applying success or failure writeback, `decodex` must classify the finish
 | Disposition | Required agent signal | Forbidden co-signal | Runtime effect |
 | --- | --- | --- | --- |
 | `review_handoff` | `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")` | `decodex:needs-attention` | Run the repo-native gate, revalidate PR state, post completion comment, transition to `In Review`. |
-| `manual_attention` | `decodex:needs-attention` plus an explanatory issue comment, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
+| `manual_attention` | `decodex:needs-attention` plus an explanatory public issue summary, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
 
 If neither signal exists, or both signals exist, `decodex` must fail the attempt instead of inferring operator intent.
 If the label is recorded without the required explanatory comment, `decodex` must also fail the attempt instead of treating it as a valid `manual_attention` exit.
 If the resolved terminal path is not explicitly finalized through `issue_terminal_finalize`, the app-server wrapper must fail the turn before `decodex` records the attempt as successful.
-The explanatory comment for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text when available instead of speculating about unverified capability limits.
+The explanatory public summary for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text only when those values are public-safe, instead of speculating about unverified capability limits.
 Execution-state checkpoints are durable progress overlays only. Their phase, focus, next action, blockers, evidence, or verification fields are never a substitute for the explicit terminal-finalization call.
 
 ### Progress checkpoint writeback
@@ -288,7 +288,8 @@ This path applies to retryable failures, retry exhaustion, and explicit `manual_
 
 Retryable failures with remaining budget:
 
-- Keep the issue in `In Progress`, typically through an agent-authored retry comment.
+- Keep the issue in `In Progress`, typically through a runtime-owned retry ledger
+  comment.
 - Queue the retry in the runtime database rather than immediately redispatching inside the same poll tick.
 - Clean worker exits after a nonterminal continuation boundary schedule a short continuation retry.
 - Abnormal worker exits schedule exponential backoff capped by `execution.max_retry_backoff_ms`.
@@ -307,6 +308,11 @@ Retry-exhausted or human-required failures:
 4. Finalize the terminal path with `issue_terminal_finalize(path = "manual_attention")`.
 
 If the coding agent explicitly requests human attention by adding `decodex:needs-attention`, `decodex` must stop automatic retries for that attempt, skip PR-backed success writeback, and treat the lane as a human-required failure immediately.
+The paired explanatory comment must use the issue-scoped `issue_comment` allowlist,
+currently kind `manual_attention`, so the Linear-visible summary is rendered from
+structured public fields instead of an arbitrary agent-authored body. Private command
+or error details must remain in local runtime evidence when they cannot pass the
+public-text guard.
 Runtime-owned review-policy stops use the same human-required failure path, but with dedicated `error_class` values:
 
 - `review_policy_exhausted`
