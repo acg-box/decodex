@@ -426,10 +426,11 @@ impl<'a> TrackerToolBridge<'a> {
 			"review_handoff",
 			&pending_review_handoff.summary,
 		);
-
-		tracker_tool_bridge::validate_public_comment_body(&completion_comment)
-			.map_err(|error| eyre::eyre!(error))?;
-
+		let projection = tracker::prepare_linear_execution_event_comment(
+			&completion_comment,
+			&handoff_record,
+			self.public_projection_privacy_classifier,
+		)?;
 		let success_state = self.workflow.frontmatter().tracker().success_state();
 		let success_state_id = self.issue.state_id_for_name(success_state).ok_or_else(|| {
 			eyre::eyre!(
@@ -461,11 +462,10 @@ impl<'a> TrackerToolBridge<'a> {
 			None,
 		);
 
-		if let Err(error) = tracker::create_linear_execution_event_comment(
+		if let Err(error) = tracker::create_prepared_linear_execution_event_comment(
 			self.tracker,
 			&self.issue.id,
-			&completion_comment,
-			&handoff_record,
+			&projection,
 		) {
 			return Err(Report::new(ReviewHandoffWritebackFailed {
 				issue_identifier: self.issue.identifier.clone(),
@@ -476,7 +476,7 @@ impl<'a> TrackerToolBridge<'a> {
 			}));
 		}
 
-		self.persist_linear_execution_event(&handoff_record)?;
+		self.persist_linear_execution_event(&projection.record)?;
 		self.persist_review_handoff_marker(review_context, &handoff_marker)?;
 		self.persist_review_orchestration_marker(review_context, &orchestration_marker)?;
 
@@ -544,10 +544,11 @@ impl<'a> TrackerToolBridge<'a> {
 			pull_request.head_ref_name.clone(),
 			pull_request.head_ref_oid.clone(),
 		);
-
-		tracker_tool_bridge::validate_public_comment_body(&completion_comment)
-			.map_err(|error| eyre::eyre!(error))?;
-
+		let projection = tracker::prepare_linear_execution_event_comment(
+			&completion_comment,
+			&handoff_record,
+			self.public_projection_privacy_classifier,
+		)?;
 		let state_store = self.state_store.ok_or_else(|| {
 			eyre::eyre!(
 				"Runtime state store is required to read review orchestration for issue `{}`.",
@@ -574,14 +575,13 @@ impl<'a> TrackerToolBridge<'a> {
 			if marker.external_round_count() >= 4 { 0 } else { marker.external_round_count() }
 		});
 
-		tracker::create_linear_execution_event_comment(
+		tracker::create_prepared_linear_execution_event_comment(
 			self.tracker,
 			&self.issue.id,
-			&completion_comment,
-			&handoff_record,
+			&projection,
 		)?;
 
-		self.persist_linear_execution_event(&handoff_record)?;
+		self.persist_linear_execution_event(&projection.record)?;
 		self.persist_review_handoff_marker(review_context, &review_handoff)?;
 		self.persist_review_orchestration_marker(
 			review_context,
@@ -713,17 +713,19 @@ impl<'a> TrackerToolBridge<'a> {
 			review_context.worktree_path,
 			summary,
 		);
-
-		tracker_tool_bridge::validate_public_comment_body(&closeout_comment)
-			.map_err(|error| eyre::eyre!(error))?;
-		tracker::create_linear_execution_event_comment(
-			self.tracker,
-			&self.issue.id,
+		let projection = tracker::prepare_linear_execution_event_comment(
 			&closeout_comment,
 			&closeout_record,
+			self.public_projection_privacy_classifier,
 		)?;
 
-		self.persist_linear_execution_event(&closeout_record)?;
+		tracker::create_prepared_linear_execution_event_comment(
+			self.tracker,
+			&self.issue.id,
+			&projection,
+		)?;
+
+		self.persist_linear_execution_event(&projection.record)?;
 
 		Ok(())
 	}
