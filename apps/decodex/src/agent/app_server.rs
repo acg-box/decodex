@@ -210,8 +210,7 @@ impl AppServerCapabilityPreflightFailure {
 
 	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
 		format!(
-			"inspect Codex app-server preflight blocker `{}`, repair the local Codex config/model/provider/skills/plugin/MCP state, restart `decodex serve`, {recovery_gate}",
-			self.blocker_summary()
+			"inspect the Codex app-server preflight status, repair the local Codex runtime configuration, restart `decodex serve`, {recovery_gate}"
 		)
 	}
 

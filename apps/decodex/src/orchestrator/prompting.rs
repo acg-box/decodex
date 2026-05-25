@@ -1,3 +1,6 @@
+pub(crate) const TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION: &str =
+	"Tracker public text boundary\n- Linear tracker text is public/team-visible. Do not include local host paths, routed identity details, account details, credential-like names, private config paths, tokens, or secrets in issue comments, progress checkpoints, review summaries, closeout summaries, blockers, evidence, verification, failed commands, or raw errors.\n- Use public collaboration identifiers when needed: PR URLs, issue identifiers, branch names, commit SHAs, and repository-relative paths.";
+
 const PROMPT_ONLY_INTERNAL_REVIEW_INSTRUCTION: &str =
 	"Review your work repeatedly and fix any logic bugs until no new issues are found.";
 
@@ -63,6 +66,7 @@ where
 	sections.push(String::from(
 		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/1` JSON commit message.\n- Required fields: `schema`, `summary`, and `authority`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- Optional fields: `related` and `breaking`.\n- Do not encode landing mode, CI status, closeout state, or other process-state fields in the commit message.",
 	));
+	sections.push(String::from(TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION));
 
 	if let Some(recovery_context) = build_retry_recovery_context(issue_run.dispatch_mode) {
 		sections.push(recovery_context);

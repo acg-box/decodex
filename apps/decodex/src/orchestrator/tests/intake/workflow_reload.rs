@@ -1,3 +1,5 @@
+use orchestrator::TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION;
+
 #[test]
 fn daemon_workflow_reload_keeps_last_known_good_on_same_path_failure() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
@@ -170,6 +172,9 @@ fn expected_developer_instructions(
 		));
 	sections.push(String::from(
 		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/1` JSON commit message.\n- Required fields: `schema`, `summary`, and `authority`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- Optional fields: `related` and `breaking`.\n- Do not encode landing mode, CI status, closeout state, or other process-state fields in the commit message.",
+	));
+	sections.push(String::from(
+		TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION,
 	));
 
 		sections.push(format!(

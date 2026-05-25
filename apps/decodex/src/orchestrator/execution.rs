@@ -1044,7 +1044,8 @@ where
 			"Run failed and remains retryable."
 		);
 
-		tracker.create_comment(
+		tracker::create_public_comment(
+			tracker,
 			&issue_run.issue.id,
 			&format_retry_comment(RetryComment {
 				run_id: &issue_run.run_id,
