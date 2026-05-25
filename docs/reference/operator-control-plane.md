@@ -141,7 +141,8 @@ Recommended readback sequence:
 
 1. Run `decodex status` or `decodex diagnose --json` and identify the issue, run id,
    and attempt number. Status rows and run capsules include a `private_evidence`
-   command reference for this tuple.
+   command reference for this tuple. Operator JSON snapshots carry the same compact
+   reference; they do not embed private event payloads.
 2. Run `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json`.
 3. If `event_count` is `0` and warnings include
    `private_execution_evidence_missing`, use the status row, run capsule, protocol
