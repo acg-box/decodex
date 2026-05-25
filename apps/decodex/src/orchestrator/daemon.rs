@@ -1248,11 +1248,13 @@ where
 		child.run_id, issue.identifier
 		))
 	};
+	let privacy_classifier = configured_public_projection_privacy_classifier(context.project)?;
 	let outcome = apply_terminal_failure_writeback(
 		context.tracker,
 		TerminalFailureWritebackRuntime {
 			service_id: context.project.service_id(),
 			state_store: Some(context.state_store),
+			privacy_classifier: &privacy_classifier,
 		},
 		context.workflow,
 		&issue_run,

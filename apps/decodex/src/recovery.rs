@@ -23,6 +23,7 @@ use crate::{
 	tracker::{
 		self, IssueTracker, TrackerIssue,
 		linear::LinearClient,
+		privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier,
 		records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
 	},
 	workflow::WorkflowDocument,
@@ -1067,12 +1068,16 @@ fn write_rebind_audit(
 		validation.issue.identifier,
 		landing_url(&validation.landing_state)
 	);
+	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
+		context.config.privacy_classifier(),
+	)?;
+	let projection =
+		tracker::prepare_linear_execution_event_comment(&body, event, &privacy_classifier)?;
 
-	tracker::create_linear_execution_event_comment(
+	tracker::create_prepared_linear_execution_event_comment(
 		&context.tracker,
 		&validation.issue.id,
-		&body,
-		event,
+		&projection,
 	)?;
 
 	Ok(())
