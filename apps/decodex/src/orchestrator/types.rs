@@ -763,6 +763,7 @@ struct OperatorHistoryLedgerOutcome {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct OperatorRunStatus {
 	project_id: String,
+	project_display_name: String,
 	run_id: String,
 	issue_id: String,
 	issue_identifier: Option<String>,

@@ -3061,13 +3061,20 @@ fn wait_for_turn_completion(
 					Some(target_turn_id),
 				),
 			)?,
-			JsonRpcMessage::Response(_) | JsonRpcMessage::Error(_) => {
-				eyre::bail!(
-					"Received an unexpected JSON-RPC response while waiting for turn completion."
-				);
-			},
+			JsonRpcMessage::Response(_) => ignore_orphan_turn_json_rpc_response(),
+			JsonRpcMessage::Error(_) => reject_unexpected_turn_json_rpc_error()?,
 		}
 	}
+}
+
+fn ignore_orphan_turn_json_rpc_response() {
+	tracing::debug!(
+		"Recorded and ignored orphan app-server JSON-RPC response while waiting for turn completion."
+	);
+}
+
+fn reject_unexpected_turn_json_rpc_error() -> crate::prelude::Result<()> {
+	eyre::bail!("Received an unexpected JSON-RPC error while waiting for turn completion.");
 }
 
 fn turn_wait_timeout_error(

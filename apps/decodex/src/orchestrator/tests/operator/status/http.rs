@@ -1103,6 +1103,11 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 		..Default::default()
 	};
 
+	git_status_success(
+		config.repo_root(),
+		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
+	);
+
 	state_store.upsert_project(&registration).expect("project should register");
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "running")
@@ -1164,8 +1169,13 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 	assert_eq!(fingerprint["accountControl"]["mode"], "balanced");
 	assert!(fingerprint["accounts"].is_array());
 	assert_eq!(fingerprint["activeRuns"][0]["run_id"], "run-1");
+	assert_eq!(
+		fingerprint["activeRuns"][0]["project_display_name"],
+		"hack-ink/pubfi-mono-v2"
+	);
 	assert_eq!(data["activeRuns"][0]["run_id"], "run-1");
 	assert_eq!(data["activeRuns"][0]["project_id"], "pubfi");
+	assert_eq!(data["activeRuns"][0]["project_display_name"], "hack-ink/pubfi-mono-v2");
 	assert_eq!(data["activeRuns"][0]["protocol_activity"]["waiting_reason"], "model");
 	assert_eq!(data["activeRuns"][0]["account"]["account_fingerprint"], "acct-1");
 	assert_eq!(data["activeRuns"][0]["accounts"][0]["account_fingerprint"], "acct-1");
