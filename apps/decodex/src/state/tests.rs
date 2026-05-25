@@ -2013,3 +2013,36 @@ fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 		"pubfi refresh should replace the stale workflow path"
 	);
 }
+
+#[test]
+fn remove_project_deletes_persistent_registry_row() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.db");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let registration = ProjectRegistration {
+		service_id: String::from("vibe-mono"),
+		config_path: temp_dir.path().join("project.toml"),
+		repo_root: temp_dir.path().join("repo"),
+		worktree_root: temp_dir.path().join("repo/.worktrees"),
+		workflow_path: temp_dir.path().join("repo/WORKFLOW.md"),
+		tracker_api_key_env_var: String::from("LINEAR_API_KEY_HACKINK"),
+		github_token_env_var: String::from("GITHUB_PAT_Y"),
+		enabled: true,
+		config_fingerprint: String::from("abc123"),
+		updated_at: String::from("2026-05-25T00:00:00Z"),
+		updated_at_unix: 1_779_667_200,
+	};
+
+	store.upsert_project(&registration).expect("project should persist");
+	let removed = store.remove_project("vibe-mono").expect("project should remove");
+
+	assert_eq!(removed.service_id(), "vibe-mono");
+	assert!(store.list_projects().expect("projects should list").is_empty());
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+
+	assert!(
+		reopened.list_projects().expect("project registry should load").is_empty(),
+		"removed project must not remain in SQLite registry"
+	);
+}

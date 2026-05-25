@@ -527,6 +527,7 @@ fn run_control_plane_api_only_tick(state_store: &StateStore) -> Result<OperatorS
 				Err(error) => {
 					let _ = error;
 
+					project_status.connector_state = String::from("config_error");
 					project_status.warning_count = project_status.warning_count.saturating_add(1);
 
 					add_operator_snapshot_warning(&mut snapshot, "operator_snapshot_build_failed");

@@ -146,13 +146,14 @@ fn build_operator_status_snapshot(
 ) -> crate::prelude::Result<OperatorStatusSnapshot> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let (active_runs, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
+	let project_display_name = operator_project_display_name(project);
 	let recent_runs = recent_runs
 		.into_iter()
-		.map(|run| operator_run_status(project, run, now_unix_epoch))
+		.map(|run| operator_run_status(project, &project_display_name, run, now_unix_epoch))
 		.collect::<crate::prelude::Result<Vec<_>>>()?;
 	let mut active_runs = active_runs
 		.into_iter()
-		.map(|run| operator_run_status(project, run, now_unix_epoch))
+		.map(|run| operator_run_status(project, &project_display_name, run, now_unix_epoch))
 		.collect::<crate::prelude::Result<Vec<_>>>()?
 		.into_iter()
 		.filter(operator_run_counts_as_active)
@@ -3430,6 +3431,7 @@ fn hydrate_status_snapshot_state(
 
 fn operator_run_status(
 	project: &ServiceConfig,
+	project_display_name: &str,
 	run: ProjectRunStatus,
 	now_unix_epoch: i64,
 ) -> crate::prelude::Result<OperatorRunStatus> {
@@ -3500,6 +3502,7 @@ fn operator_run_status(
 
 	Ok(OperatorRunStatus {
 		project_id: project.service_id().to_owned(),
+		project_display_name: project_display_name.to_owned(),
 		run_id: run.run_id().to_owned(),
 		issue_id: run.issue_id().to_owned(),
 		issue_identifier,
@@ -3565,6 +3568,84 @@ fn operator_run_private_evidence(
 		run.run_id(),
 		run.attempt_number(),
 	)
+}
+
+fn operator_project_display_name(project: &ServiceConfig) -> String {
+	github_repo_slug_from_origin(project.repo_root())
+		.or_else(|| repo_root_path_display_name(project.repo_root()))
+		.unwrap_or_else(|| project.service_id().to_owned())
+}
+
+fn github_repo_slug_from_origin(repo_root: &Path) -> Option<String> {
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(repo_root)
+		.args(["config", "--get", "remote.origin.url"])
+		.output()
+		.ok()?;
+
+	if !output.status.success() {
+		return None;
+	}
+
+	let remote_url = String::from_utf8(output.stdout).ok()?;
+
+	parse_github_remote_slug(remote_url.trim())
+}
+
+fn parse_github_remote_slug(remote_url: &str) -> Option<String> {
+	let path = remote_url
+		.strip_prefix("git@github.com:")
+		.or_else(|| remote_url.strip_prefix("git@github.com-x:"))
+		.or_else(|| remote_url.strip_prefix("git@github.com-y:"))
+		.or_else(|| github_remote_path_with_authority(remote_url))?;
+	let path = path.trim_start_matches('/').trim_end_matches(".git");
+	let mut components = path.split('/').filter(|component| !component.trim().is_empty());
+	let owner = components.next()?.trim();
+	let repo = components.next()?.trim();
+
+	if components.next().is_some() {
+		return None;
+	}
+
+	Some(format!("{owner}/{repo}"))
+}
+
+fn github_remote_path_with_authority(remote_url: &str) -> Option<&str> {
+	let rest = remote_url
+		.strip_prefix("https://")
+		.or_else(|| remote_url.strip_prefix("http://"))
+		.or_else(|| remote_url.strip_prefix("ssh://"))?;
+	let (authority, path) = rest.split_once('/')?;
+	let host = authority.rsplit('@').next().unwrap_or(authority);
+	let host = host.split(':').next().unwrap_or(host);
+
+	if !matches!(host, "github.com" | "github.com-x" | "github.com-y") {
+		return None;
+	}
+
+	Some(path)
+}
+
+fn repo_root_path_display_name(repo_root: &Path) -> Option<String> {
+	let repo = repo_root.file_name()?.to_string_lossy();
+	let repo = repo.trim();
+
+	if repo.is_empty() {
+		return None;
+	}
+
+	let Some(parent) = repo_root.parent().and_then(Path::file_name) else {
+		return Some(repo.to_owned());
+	};
+	let parent = parent.to_string_lossy();
+	let parent = parent.trim();
+
+	if parent.is_empty() {
+		return Some(repo.to_owned());
+	}
+
+	Some(format!("{parent}/{repo}"))
 }
 
 fn load_operator_run_marker(
