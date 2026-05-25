@@ -64,6 +64,23 @@ The follow-up MVP should support these issue-scoped operations:
 
 Additional operations such as richer metadata updates may be added later, but they are not required for the first PR-backed self-dogfood pilot.
 
+## Private And Public Outputs
+
+Tracker tools must keep local execution evidence private by default:
+
+- `issue_progress_checkpoint` stores the full normalized checkpoint payload in
+  runtime SQLite `private_execution_events` before any Linear write is attempted.
+- Its Linear output is only the public `progress_checkpoint` projection defined by
+  [`linear-execution-ledger.md`](./linear-execution-ledger.md). That projection is
+  keyed by public lifecycle signal, so private-only checkpoint changes do not create
+  another Linear comment.
+- `issue_comment` is not a generic comment escape hatch. It accepts only allowlisted
+  public comment kinds, currently `manual_attention`, and Decodex renders the
+  corresponding Linear ledger record from structured public fields.
+- Logs and `.decodex-run-activity` markers are diagnostic inputs for local operators.
+  They must not be copied into Linear through tracker tools and must not replace
+  private execution events.
+
 ## Completion signal contract
 
 At turn completion, the issue-scoped tool bridge must leave `decodex` with exactly one terminal completion signal for the leased issue and a matching explicit terminal-finalization call:
