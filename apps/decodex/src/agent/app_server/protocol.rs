@@ -4,23 +4,23 @@ use std::{
 	time::Duration,
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-use crate::{
-	agent::{
-		app_server::REQUEST_TIMEOUT,
-		json_rpc::{AppServerProcessEnv, JsonRpcConnection, JsonRpcRequest, WireMessage},
-		tracker_tool_bridge::{DynamicToolCallResponse, DynamicToolHandler, DynamicToolSpec},
-	},
-	prelude::Result,
+use crate::agent::{
+	app_server::REQUEST_TIMEOUT,
+	json_rpc::{AppServerProcessEnv, JsonRpcConnection, JsonRpcRequest, WireMessage},
+	tracker_tool_bridge::{DynamicToolCallResponse, DynamicToolHandler, DynamicToolSpec},
 };
 
 pub(super) struct AppServerClient {
 	pub(super) connection: JsonRpcConnection,
 }
 impl AppServerClient {
-	pub(super) fn spawn(listen: &str, process_env: &AppServerProcessEnv) -> Result<Self> {
+	pub(super) fn spawn(
+		listen: &str,
+		process_env: &AppServerProcessEnv,
+	) -> crate::prelude::Result<Self> {
 		Ok(Self { connection: JsonRpcConnection::spawn_app_server(listen, process_env)? })
 	}
 
@@ -28,7 +28,7 @@ impl AppServerClient {
 	pub(super) fn initialize(
 		&mut self,
 		enable_experimental_api: bool,
-	) -> Result<InitializeResponse> {
+	) -> crate::prelude::Result<InitializeResponse> {
 		self.initialize_with_handler(enable_experimental_api, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `initialize`.",
@@ -41,9 +41,13 @@ impl AppServerClient {
 		&mut self,
 		enable_experimental_api: bool,
 		handler: H,
-	) -> Result<InitializeResponse>
+	) -> crate::prelude::Result<InitializeResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler(
 			"initialize",
@@ -62,7 +66,7 @@ impl AppServerClient {
 		)
 	}
 
-	pub(super) fn mark_initialized(&mut self) -> Result<()> {
+	pub(super) fn mark_initialized(&mut self) -> crate::prelude::Result<()> {
 		self.connection.notify::<Value>("initialized", None)
 	}
 
@@ -70,9 +74,13 @@ impl AppServerClient {
 		&mut self,
 		params: LoginAccountParams,
 		handler: H,
-	) -> Result<LoginAccountResponse>
+	) -> crate::prelude::Result<LoginAccountResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler(
 			"account/login/start",
@@ -86,7 +94,7 @@ impl AppServerClient {
 	pub(super) fn start_thread(
 		&mut self,
 		params: ThreadStartRequest,
-	) -> Result<ThreadSessionResponse> {
+	) -> crate::prelude::Result<ThreadSessionResponse> {
 		self.start_thread_with_handler(params, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `thread/start`.",
@@ -99,9 +107,13 @@ impl AppServerClient {
 		&mut self,
 		params: ThreadStartRequest,
 		handler: H,
-	) -> Result<ThreadSessionResponse>
+	) -> crate::prelude::Result<ThreadSessionResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler("thread/start", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -110,7 +122,7 @@ impl AppServerClient {
 	pub(super) fn resume_thread(
 		&mut self,
 		params: ThreadResumeRequest,
-	) -> Result<ThreadSessionResponse> {
+	) -> crate::prelude::Result<ThreadSessionResponse> {
 		self.resume_thread_with_handler(params, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `thread/resume`.",
@@ -123,9 +135,13 @@ impl AppServerClient {
 		&mut self,
 		params: ThreadResumeRequest,
 		handler: H,
-	) -> Result<ThreadSessionResponse>
+	) -> crate::prelude::Result<ThreadSessionResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler("thread/resume", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -133,12 +149,15 @@ impl AppServerClient {
 	pub(super) fn archive_thread(
 		&mut self,
 		params: ThreadArchiveRequest,
-	) -> Result<ThreadArchiveResponse> {
+	) -> crate::prelude::Result<ThreadArchiveResponse> {
 		self.connection.request("thread/archive", &params, REQUEST_TIMEOUT)
 	}
 
 	#[allow(dead_code)]
-	pub(super) fn start_turn(&mut self, params: TurnStartRequest) -> Result<TurnStartResponse> {
+	pub(super) fn start_turn(
+		&mut self,
+		params: TurnStartRequest,
+	) -> crate::prelude::Result<TurnStartResponse> {
 		self.start_turn_with_handler(params, |_connection, _message, request| {
 			color_eyre::eyre::bail!(
 				"Unexpected inbound JSON-RPC request `{}` while waiting for `turn/start`.",
@@ -151,9 +170,13 @@ impl AppServerClient {
 		&mut self,
 		params: TurnStartRequest,
 		handler: H,
-	) -> Result<TurnStartResponse>
+	) -> crate::prelude::Result<TurnStartResponse>
 	where
-		H: FnMut(&mut JsonRpcConnection, &WireMessage, &JsonRpcRequest) -> Result<()>,
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
 	{
 		self.connection.request_with_handler("turn/start", &params, REQUEST_TIMEOUT, handler)
 	}
@@ -161,21 +184,27 @@ impl AppServerClient {
 	pub(super) fn command_exec(
 		&mut self,
 		params: &CommandExecParams,
-	) -> Result<CommandExecResponse> {
+	) -> crate::prelude::Result<CommandExecResponse> {
 		self.connection.request("command/exec", params, params.request_timeout())
 	}
 
-	pub(super) fn read_config(&mut self, params: &ConfigReadParams) -> Result<ConfigReadResponse> {
+	pub(super) fn read_config(
+		&mut self,
+		params: &ConfigReadParams,
+	) -> crate::prelude::Result<ConfigReadResponse> {
 		self.connection.request("config/read", params, REQUEST_TIMEOUT)
 	}
 
-	pub(super) fn list_models(&mut self, params: &ModelListParams) -> Result<ModelListResponse> {
+	pub(super) fn list_models(
+		&mut self,
+		params: &ModelListParams,
+	) -> crate::prelude::Result<ModelListResponse> {
 		self.connection.request("model/list", params, REQUEST_TIMEOUT)
 	}
 
 	pub(super) fn read_model_provider_capabilities(
 		&mut self,
-	) -> Result<ModelProviderCapabilitiesReadResponse> {
+	) -> crate::prelude::Result<ModelProviderCapabilitiesReadResponse> {
 		self.connection.request(
 			"modelProvider/capabilities/read",
 			&ModelProviderCapabilitiesReadParams {},
@@ -183,11 +212,17 @@ impl AppServerClient {
 		)
 	}
 
-	pub(super) fn list_skills(&mut self, params: &SkillsListParams) -> Result<SkillsListResponse> {
+	pub(super) fn list_skills(
+		&mut self,
+		params: &SkillsListParams,
+	) -> crate::prelude::Result<SkillsListResponse> {
 		self.connection.request("skills/list", params, REQUEST_TIMEOUT)
 	}
 
-	pub(super) fn list_plugins(&mut self, params: &PluginListParams) -> Result<PluginListResponse> {
+	pub(super) fn list_plugins(
+		&mut self,
+		params: &PluginListParams,
+	) -> crate::prelude::Result<PluginListResponse> {
 		self.connection.request("plugin/list", params, REQUEST_TIMEOUT)
 	}
 
@@ -195,16 +230,19 @@ impl AppServerClient {
 		&mut self,
 		params: &ListMcpServerStatusParams,
 		timeout: Duration,
-	) -> Result<ListMcpServerStatusResponse> {
+	) -> crate::prelude::Result<ListMcpServerStatusResponse> {
 		self.connection.request("mcpServerStatus/list", params, timeout)
 	}
 
-	pub(super) fn recv(&mut self, timeout: Option<Duration>) -> Result<WireMessage> {
+	pub(super) fn recv(
+		&mut self,
+		timeout: Option<Duration>,
+	) -> crate::prelude::Result<WireMessage> {
 		self.connection.recv(timeout)
 	}
 
 	#[allow(dead_code)]
-	pub(super) fn respond<R>(&mut self, id: &Value, result: &R) -> Result<()>
+	pub(super) fn respond<R>(&mut self, id: &Value, result: &R) -> crate::prelude::Result<()>
 	where
 		R: Serialize,
 	{
@@ -212,32 +250,18 @@ impl AppServerClient {
 	}
 
 	#[allow(dead_code)]
-	pub(super) fn respond_error(&mut self, id: &Value, code: i64, message: &str) -> Result<()> {
+	pub(super) fn respond_error(
+		&mut self,
+		id: &Value,
+		code: i64,
+		message: &str,
+	) -> crate::prelude::Result<()> {
 		self.connection.respond_error(id, code, message)
 	}
 
 	pub(super) fn drain_pending(&mut self) -> Vec<WireMessage> {
 		self.connection.drain_pending()
 	}
-}
-
-#[derive(Serialize)]
-#[serde(tag = "type")]
-pub(super) enum LoginAccountParams {
-	#[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
-	ChatgptAuthTokens {
-		access_token: String,
-		chatgpt_account_id: String,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		chatgpt_plan_type: Option<String>,
-	},
-}
-
-#[derive(Debug, Eq, PartialEq, Deserialize)]
-#[serde(tag = "type")]
-pub(super) enum LoginAccountResponse {
-	#[serde(rename = "chatgptAuthTokens")]
-	ChatgptAuthTokens {},
 }
 
 #[derive(Default)]
@@ -598,8 +622,10 @@ pub(super) struct TurnStatusPayload {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct TurnError {
+	#[serde(deserialize_with = "deserialize_stringish")]
 	pub(super) message: String,
 	#[serde(rename = "codexErrorInfo")]
+	#[serde(deserialize_with = "deserialize_optional_stringish")]
 	pub(super) codex_error_info: Option<String>,
 	#[allow(dead_code)]
 	#[serde(rename = "additionalDetails")]
@@ -692,20 +718,8 @@ pub(super) struct CommandExecutionRequestApprovalResponse {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) enum CommandExecutionApprovalDecision {
-	Decline,
-}
-
-#[derive(Debug, Serialize)]
 pub(super) struct FileChangeRequestApprovalResponse {
 	pub(super) decision: FileChangeApprovalDecision,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) enum FileChangeApprovalDecision {
-	Decline,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -730,12 +744,6 @@ pub(super) struct McpServerElicitationRequestResponse {
 	pub(super) meta: Option<Value>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) enum McpServerElicitationAction {
-	Decline,
-}
-
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct PermissionsRequestApprovalResponse {
@@ -746,13 +754,6 @@ pub(super) struct PermissionsRequestApprovalResponse {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct GrantedPermissionProfile {}
-
-#[derive(Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) enum PermissionGrantScope {
-	#[default]
-	Turn,
-}
 
 pub(super) struct ProbeDynamicToolHandler;
 impl DynamicToolHandler for ProbeDynamicToolHandler {
@@ -788,11 +789,85 @@ impl DynamicToolHandler for ProbeDynamicToolHandler {
 	}
 }
 
+#[derive(Serialize)]
+#[serde(tag = "type")]
+pub(super) enum LoginAccountParams {
+	#[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
+	ChatgptAuthTokens {
+		access_token: String,
+		chatgpt_account_id: String,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		chatgpt_plan_type: Option<String>,
+	},
+}
+
+#[derive(Debug, Eq, PartialEq, Deserialize)]
+#[serde(tag = "type")]
+pub(super) enum LoginAccountResponse {
+	#[serde(rename = "chatgptAuthTokens")]
+	ChatgptAuthTokens {},
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum CommandExecutionApprovalDecision {
+	Decline,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum FileChangeApprovalDecision {
+	Decline,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum McpServerElicitationAction {
+	Decline,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum PermissionGrantScope {
+	#[default]
+	Turn,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "type")]
 pub(super) enum UserInput {
 	#[serde(rename = "text")]
 	Text { text: String },
+}
+
+fn deserialize_stringish<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	let value = Value::deserialize(deserializer)?;
+
+	Ok(stringish_value(value))
+}
+
+fn deserialize_optional_stringish<'de, D>(
+	deserializer: D,
+) -> std::result::Result<Option<String>, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	let value = Value::deserialize(deserializer)?;
+
+	Ok(match value {
+		Value::Null => None,
+		value => Some(stringish_value(value)),
+	})
+}
+
+fn stringish_value(value: Value) -> String {
+	match value {
+		Value::String(value) => value,
+		value => value.to_string(),
+	}
 }
 
 fn externally_tagged_value_name(value: &Value) -> Option<String> {
@@ -831,6 +906,35 @@ mod tests {
 
 		assert_eq!(notification.error.codex_error_info.as_deref(), Some("usageLimitExceeded"));
 		assert_eq!(notification.will_retry, None);
+	}
+
+	#[test]
+	fn error_notifications_stringify_structured_error_fields() {
+		let notification: super::ErrorNotification = serde_json::from_value(serde_json::json!({
+			"error": {
+				"message": {
+					"kind": "protocolFailure",
+					"detail": "unexpected response"
+				},
+				"codexErrorInfo": {
+					"type": "appServerProtocolMismatch"
+				}
+			},
+			"threadId": "thread-1",
+			"turnId": "turn-1",
+			"willRetry": false
+		}))
+		.expect("structured error notification should parse");
+
+		assert!(notification.error.message.contains("protocolFailure"));
+		assert!(
+			notification
+				.error
+				.codex_error_info
+				.as_deref()
+				.is_some_and(|value| value.contains("appServerProtocolMismatch"))
+		);
+		assert_eq!(notification.will_retry, Some(false));
 	}
 
 	#[test]
