@@ -2572,9 +2572,9 @@ where
 		let local_head_oid = match validate_post_review_lane_worktree(snapshot, review_handoff) {
 			Ok(local_head_oid) => local_head_oid,
 			Err(reason) => {
-				return Ok(PostReviewLaneStateLoad::Classification(blocked_post_review_lane(
-					reason,
-				)));
+				return Ok(PostReviewLaneStateLoad::Classification(
+					blocked_post_review_lane_from_handoff(review_handoff, reason),
+				));
 			},
 		};
 		let review_state = match review_state_inspector
@@ -2956,6 +2956,17 @@ fn blocked_post_review_lane(reason: &str) -> PostReviewLaneClassification {
 		check_state: None,
 		unresolved_review_threads: None,
 	}
+}
+
+fn blocked_post_review_lane_from_handoff(
+	review_handoff: &ReviewHandoffMarker,
+	reason: &str,
+) -> PostReviewLaneClassification {
+	let mut classification = blocked_post_review_lane(reason);
+
+	classification.pr_url = Some(review_handoff.pr_url().to_owned());
+
+	classification
 }
 
 fn blocked_post_review_lane_status(

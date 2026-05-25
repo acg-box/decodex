@@ -39,7 +39,8 @@ Question this index answers: "which sequence should I execute?"
 - [`social-publishing-workflow.md`](./social-publishing-workflow.md) for turning Radar
   evidence into reviewed `@decodexspace` X drafts and recording publication evidence.
 - [`recover-review-handoff.md`](./recover-review-handoff.md) for diagnosing and
-  explicitly rebinding retained review lanes blocked by a missing runtime DB handoff
+  explicitly rebinding retained review lanes blocked by a missing or stale runtime DB
+  handoff
   marker.
 - [`self-dogfood-pilot.md`](./self-dogfood-pilot.md) for the retained-lane pilot run
   against `decodex` itself and the bounded live-operation sequence.
