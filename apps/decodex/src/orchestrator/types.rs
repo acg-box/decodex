@@ -42,6 +42,16 @@ pub(crate) struct DiagnoseRequest<'a> {
 	pub(crate) limit: usize,
 }
 
+/// Local private execution evidence readback request.
+pub(crate) struct EvidenceRequest<'a> {
+	pub(crate) config_path: Option<&'a Path>,
+	pub(crate) issue: &'a str,
+	pub(crate) run_id: Option<&'a str>,
+	pub(crate) attempt_number: Option<i64>,
+	pub(crate) json: bool,
+	pub(crate) include_payload: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RunSummary {
 	project_id: String,
