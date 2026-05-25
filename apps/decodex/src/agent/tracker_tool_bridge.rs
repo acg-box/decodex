@@ -6,7 +6,7 @@ use std::{
 	env,
 	error::Error,
 	fmt::{Display, Formatter},
-	path::{Component, PathBuf},
+	path::{Path, PathBuf},
 	process::Command,
 };
 
@@ -20,7 +20,7 @@ use crate::{
 	github,
 	prelude::eyre,
 	state::StateStore,
-	tracker::{IssueTracker, TrackerIssue},
+	tracker::{IssueTracker, TrackerIssue, public_text},
 	workflow::WorkflowDocument,
 };
 
@@ -68,17 +68,14 @@ pub(crate) trait DynamicToolHandler {
 pub(crate) trait PullRequestInspector {
 	fn inspect_pull_request(
 		&self,
-		cwd: &std::path::Path,
+		cwd: &Path,
 		pr_url: &str,
 		github_token: &str,
 	) -> std::result::Result<PullRequestDetails, String>;
 }
 
 pub(crate) trait LocalRepoInspector {
-	fn inspect_local_repo(
-		&self,
-		cwd: &std::path::Path,
-	) -> std::result::Result<LocalRepoDetails, String>;
+	fn inspect_local_repo(&self, cwd: &Path) -> std::result::Result<LocalRepoDetails, String>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -509,7 +506,7 @@ struct GhPullRequestInspector;
 impl PullRequestInspector for GhPullRequestInspector {
 	fn inspect_pull_request(
 		&self,
-		cwd: &std::path::Path,
+		cwd: &Path,
 		pr_url: &str,
 		github_token: &str,
 	) -> std::result::Result<PullRequestDetails, String> {
@@ -561,10 +558,7 @@ impl PullRequestInspector for GhPullRequestInspector {
 
 struct LocalGitRepoInspector;
 impl LocalRepoInspector for LocalGitRepoInspector {
-	fn inspect_local_repo(
-		&self,
-		cwd: &std::path::Path,
-	) -> std::result::Result<LocalRepoDetails, String> {
+	fn inspect_local_repo(&self, cwd: &Path) -> std::result::Result<LocalRepoDetails, String> {
 		let head_oid =
 			run_command_for_stdout("git", &["rev-parse", "HEAD"], cwd, "inspect lane HEAD")?;
 		let default_branch = resolve_lane_default_branch(cwd)?;
@@ -910,7 +904,7 @@ fn resolve_review_handoff_github_token(
 fn run_command_for_stdout(
 	command: &str,
 	args: &[&str],
-	cwd: &std::path::Path,
+	cwd: &Path,
 	purpose: &str,
 ) -> std::result::Result<String, String> {
 	let output = Command::new(command)
@@ -941,7 +935,7 @@ fn run_command_for_stdout(
 	Ok(value.to_owned())
 }
 
-fn resolve_lane_default_branch(cwd: &std::path::Path) -> std::result::Result<String, String> {
+fn resolve_lane_default_branch(cwd: &Path) -> std::result::Result<String, String> {
 	if let Some(default_branch) = resolve_lane_default_branch_from_local_cache(cwd)? {
 		return Ok(default_branch);
 	}
@@ -962,7 +956,7 @@ fn resolve_lane_default_branch(cwd: &std::path::Path) -> std::result::Result<Str
 }
 
 fn resolve_lane_default_branch_from_remote(
-	cwd: &std::path::Path,
+	cwd: &Path,
 ) -> std::result::Result<Option<String>, String> {
 	let remote_probe = Command::new("git")
 		.args(["ls-remote", "--symref", "origin", "HEAD"])
@@ -986,7 +980,7 @@ fn resolve_lane_default_branch_from_remote(
 }
 
 fn resolve_lane_default_branch_from_local_cache(
-	cwd: &std::path::Path,
+	cwd: &Path,
 ) -> std::result::Result<Option<String>, String> {
 	let symbolic_ref = Command::new("git")
 		.args(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
@@ -1062,58 +1056,7 @@ fn parse_github_remote_with_authority(remote_url: &str) -> std::result::Result<&
 }
 
 fn validate_public_comment_body(body: &str) -> Result<(), String> {
-	for line in body.lines() {
-		let Some((field_name, value)) = extract_structured_field(line) else {
-			continue;
-		};
-
-		if field_name == "worktree_path" {
-			validate_repo_relative_path(value, field_name)?;
-
-			continue;
-		}
-		if field_name.ends_with("_path") {
-			return Err(format!(
-				"Unsupported structured field `{field_name}` in public issue comments."
-			));
-		}
-	}
-
-	Ok(())
-}
-
-fn extract_structured_field(line: &str) -> Option<(&str, &str)> {
-	let trimmed = line.trim();
-	let trimmed = trimmed.strip_prefix("- ").unwrap_or(trimmed);
-	let (key, value) = trimmed.split_once(':')?;
-
-	Some((key.trim(), value.trim().trim_matches('`')))
-}
-
-fn validate_repo_relative_path(path: &str, field_name: &str) -> Result<(), String> {
-	if path.is_empty() {
-		return Err(format!("`{field_name}` must not be empty."));
-	}
-	if path.starts_with('/') || path.starts_with("~/") || has_drive_root_prefix(path) {
-		return Err(format!("`{field_name}` must be repository-relative, not `{path}`."));
-	}
-
-	let components = std::path::Path::new(path).components();
-
-	if components.into_iter().any(|component| matches!(component, Component::ParentDir)) {
-		return Err(format!("`{field_name}` must stay within the repository, not `{path}`."));
-	}
-
-	Ok(())
-}
-
-fn has_drive_root_prefix(path: &str) -> bool {
-	let bytes = path.as_bytes();
-
-	bytes.len() >= 3
-		&& bytes[0].is_ascii_alphabetic()
-		&& bytes[1] == b':'
-		&& matches!(bytes[2], b'\\' | b'/')
+	public_text::validate_public_comment_body(body)
 }
 
 fn normalize_summary(summary: &str) -> String {

@@ -1,4 +1,5 @@
 pub(crate) mod linear;
+pub(crate) mod public_text;
 pub(crate) mod records;
 
 use std::slice;
@@ -229,6 +230,7 @@ where
 	T: IssueTracker + ?Sized,
 {
 	records::validate_linear_execution_event_record(record).map_err(|error| eyre::eyre!(error))?;
+	public_text::validate_public_comment_body(body).map_err(|error| eyre::eyre!(error))?;
 
 	let comments = tracker.list_comments(issue_id)?;
 
@@ -248,6 +250,15 @@ where
 	Ok(true)
 }
 
+pub(crate) fn create_public_comment<T>(tracker: &T, issue_id: &str, body: &str) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	public_text::validate_public_comment_body(body).map_err(|error| eyre::eyre!(error))?;
+
+	tracker.create_comment(issue_id, body)
+}
+
 pub(crate) fn create_linear_execution_event_comment_without_remote_scan<T>(
 	tracker: &T,
 	issue_id: &str,
@@ -258,6 +269,7 @@ where
 	T: IssueTracker + ?Sized,
 {
 	records::validate_linear_execution_event_record(record).map_err(|error| eyre::eyre!(error))?;
+	public_text::validate_public_comment_body(body).map_err(|error| eyre::eyre!(error))?;
 
 	let comment_body = records::append_structured_comment_record(body, record)?;
 

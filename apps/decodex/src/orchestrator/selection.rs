@@ -207,14 +207,11 @@ fn terminal_failure_comment_details(
 				"inspect the worktree and app-server activity for the stalled lane, resolve the blocker manually, {recovery_gate}"
 			),
 		)
-	} else if let Some(credentials_failure) =
-		error.downcast_ref::<AgentGitCredentialsUnavailable>()
-	{
+	} else if error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some() {
 		(
 			"github_credentials_unavailable",
 			format!(
-				"configure `{}` for the routed GitHub identity, verify noninteractive Git credentials, {recovery_gate}",
-				credentials_failure.token_env_var
+				"repair GitHub authentication for this lane, verify noninteractive Git access, {recovery_gate}"
 			),
 		)
 	} else if let Some(app_server_failure) =

@@ -3,7 +3,7 @@ use std::path::{Component, Path};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Error;
 
-use crate::tracker::TrackerComment;
+use crate::tracker::{TrackerComment, public_text};
 
 #[cfg(test)]
 pub(crate) const REVIEW_HANDOFF_RECORD_TYPE: &str = "review-handoff-record/1";
@@ -201,6 +201,7 @@ pub(crate) fn validate_linear_execution_event_record(
 ) -> Result<(), String> {
 	validate_linear_execution_event_envelope(record)?;
 	validate_linear_execution_event_fields(record)?;
+	validate_linear_execution_event_public_text(record)?;
 
 	if let Some(worktree_path) = record.worktree_path.as_deref() {
 		validate_repo_relative_path(worktree_path, "worktree_path")?;
@@ -229,6 +230,33 @@ pub(crate) fn parse_linear_execution_event_record(
 ) -> Option<LinearExecutionEventRecord> {
 	parse_structured_comment::<LinearExecutionEventRecord>(body)
 		.filter(|record| validate_linear_execution_event_record(record).is_ok())
+}
+
+fn validate_linear_execution_event_public_text(
+	record: &LinearExecutionEventRecord,
+) -> Result<(), String> {
+	for (field_name, value) in [
+		("summary", record.summary.as_deref()),
+		("focus", record.focus.as_deref()),
+		("next_action", record.next_action.as_deref()),
+		("failed_command", record.failed_command.as_deref()),
+		("raw_error", record.raw_error.as_deref()),
+	] {
+		if let Some(value) = value {
+			public_text::validate_public_text_field(field_name, value)?;
+		}
+	}
+	for (field_name, values) in [
+		("blockers", record.blockers.as_ref()),
+		("evidence", record.evidence.as_ref()),
+		("verification", record.verification.as_ref()),
+	] {
+		if let Some(values) = values {
+			public_text::validate_public_text_items(field_name, values)?;
+		}
+	}
+
+	Ok(())
 }
 
 fn parse_structured_comment<T>(body: &str) -> Option<T>
@@ -433,4 +461,68 @@ fn has_drive_root_prefix(path: &str) -> bool {
 		&& bytes[0].is_ascii_alphabetic()
 		&& bytes[1] == b':'
 		&& matches!(bytes[2], b'\\' | b'/')
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord};
+
+	fn progress_record() -> LinearExecutionEventRecord {
+		let mut record = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: "decodex",
+				issue_id: "issue-id",
+				issue_identifier: "XY-519",
+				run_id: "xy-519-attempt-1",
+				attempt_number: 1,
+			},
+			"progress_checkpoint",
+			String::from("2026-05-25T00:00:00Z"),
+			"anchor",
+		);
+
+		record.phase = Some(String::from("implementing"));
+		record.focus =
+			Some(String::from("Keep PR https://github.com/hack-ink/decodex/pull/42 reviewable."));
+		record.next_action = Some(String::from(
+			"Update apps/decodex/src/tracker/records.rs on branch y/decodex-xy-519.",
+		));
+		record.blockers = Some(Vec::new());
+		record.evidence = Some(vec![String::from("Issue XY-519 remains scoped.")]);
+
+		record
+	}
+
+	#[test]
+	fn validates_public_progress_checkpoint_text() {
+		super::validate_linear_execution_event_record(&progress_record())
+			.expect("public collaboration identifiers should validate");
+	}
+
+	#[test]
+	fn rejects_private_progress_checkpoint_text() {
+		for (field_name, private_text) in [
+			("focus", "Inspect /Users/example/code/private checkout."),
+			("next_action", "Read codex.github-identity before pushing."),
+			("blockers", "Missing LINEAR_API_KEY_HACKINK prevented tracker write."),
+			("evidence", "Selected account user@example.com was active."),
+			("verification", "Checked C:\\Users\\example\\repo."),
+		] {
+			let mut record = progress_record();
+
+			match field_name {
+				"focus" => record.focus = Some(String::from(private_text)),
+				"next_action" => record.next_action = Some(String::from(private_text)),
+				"blockers" => record.blockers = Some(vec![String::from(private_text)]),
+				"evidence" => record.evidence = Some(vec![String::from(private_text)]),
+				"verification" => record.verification = Some(vec![String::from(private_text)]),
+				_ => unreachable!("test field names are exhaustive"),
+			}
+
+			let error = super::validate_linear_execution_event_record(&record)
+				.expect_err("private free-text should not serialize");
+
+			assert!(error.contains("public/team-visible"));
+		}
+	}
 }

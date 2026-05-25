@@ -124,6 +124,12 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   [`linear-execution-ledger.md`](./linear-execution-ledger.md).
 - Structured comment fields such as `worktree_path` must use repository-relative paths;
   absolute host paths should be rejected before writing to the tracker.
+- `issue_comment` and `issue_progress_checkpoint` text is public/team-visible. Before
+  either tool writes to Linear, Decodex must reject known leakage-shaped text such as
+  host-local paths, routed identity details, credential-like names, private account
+  details, private config file names, emails, tokens, or secrets. This baseline guard
+  does not replace the longer-term local-private ledger boundary; detailed runtime
+  evidence remains local/operator-only.
 - Dynamic tool names must satisfy the `codex app-server` identifier restriction `^[a-zA-Z0-9_-]+$`; dotted names are invalid.
 
 ## Failure handling
