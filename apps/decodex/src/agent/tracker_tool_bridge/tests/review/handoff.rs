@@ -176,9 +176,7 @@ fn terminal_finalize_accepts_matching_manual_attention_path() {
 	let comment_response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_COMMENT_TOOL_NAME,
-		serde_json::json!({
-			"body": "Blocked on missing tracker permission; handing off for manual repair."
-		}),
+		manual_attention_comment_args(),
 	);
 	let finalize_response = DynamicToolHandler::handle_call(
 		&bridge,
