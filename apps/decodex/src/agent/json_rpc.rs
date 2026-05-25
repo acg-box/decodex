@@ -170,7 +170,7 @@ impl AppServerHomePreflightFailure {
 
 	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
 		format!(
-			"inspect the local `decodex serve` HOME and app-server Codex home resolution, keep CODEX_HOME/CODEX_SQLITE_HOME shared instead of per-account, restart `decodex serve`, {recovery_gate}"
+			"inspect the local Decodex and Codex home sharing, restart `decodex serve`, {recovery_gate}"
 		)
 	}
 }

@@ -525,6 +525,7 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains("Keep pre-edit discovery bounded"));
 	assert!(instructions.contains("Do not browse upstream references"));
 	assert!(instructions.contains("Tracker tool contract"));
+	assert!(instructions.contains("Linear tracker text is public/team-visible"));
 	assert!(instructions.contains("You own issue-scoped tracker writes for `PUB-101`."));
 	assert!(instructions.contains("Decodex already records the run-start Linear ledger"));
 	assert!(!instructions.contains("started work on run"));

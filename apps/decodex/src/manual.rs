@@ -1255,7 +1255,8 @@ fn apply_closeout(
 		branch_name,
 		landed_change_record,
 	)? {
-		prepared.tracker.create_comment(
+		tracker::create_public_comment(
+			&prepared.tracker,
 			prepared.issue.id.as_str(),
 			format!(
 				"decodex land completed\n\n- pr_url: `{pr_url}`\n- merge_commit: `{merge_commit}`\n- branch: `{branch_name}`\n- landed_change: `{landed_change_record}`"
