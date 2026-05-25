@@ -47,6 +47,16 @@ Defines: The runtime scope, source-of-truth boundaries, eligibility rules, lane 
   runtime ownership.
 - The local SQLite database must not become a replacement for the human issue backlog. It is the operator control-plane state for this machine.
 
+The evidence boundary is ordered from private runtime authority to public collaboration
+mirror:
+
+| Surface | Boundary |
+| --- | --- |
+| Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, and recovery detail belong. |
+| Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
+| Logs under `~/.codex/decodex/logs/` and `.decodex-run-activity` | Diagnostic process and liveness signals. They may explain what a local process did, but they are not the structured execution ledger and must not be replayed as tracker state. |
+| Linear execution ledger comments | Low-frequency public projection for team-visible lifecycle state. They carry coarse start, progress phase, PR, handoff, failure, landing, closeout, and cleanup summaries only. |
+
 ### Operator snapshot recovery boundary
 
 Operator snapshots are local runtime views. They must remain useful when Linear is unavailable by reading the Decodex runtime SQLite database, retained worktrees, and locally cached connector state that already belong to this machine.

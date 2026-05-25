@@ -154,6 +154,28 @@ The command does not require live Linear or GitHub observer access. It resolves 
 local runs from the runtime database and can also perform a direct lookup when both
 `--run-id` and `--attempt` are supplied.
 
+## Sparse Linear Updates
+
+Sparse Linear updates are expected. A healthy lane may have only a run-start record,
+one or more phase-level progress projections, a PR handoff, and a terminal landing,
+closeout, cleanup, or needs-attention record. The absence of detailed checkpoint text,
+raw command output, heartbeat messages, token-pressure notes, or retry diagnostics in
+Linear does not mean that evidence is missing.
+
+Interpret the surfaces in this order:
+
+1. Use `status`, the dashboard, or `diagnose --json` for current local ownership,
+   run ids, attempts, health, and private-evidence references.
+2. Use `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json` for full
+   structured local evidence when the public summary is too terse.
+3. Use logs only to explain process diagnostics such as startup failures, connector
+   backoff, or maintenance warnings.
+4. Use Linear for public team-visible lifecycle state and collaboration context.
+
+Do not backfill Linear with private evidence just to make the issue history look like a
+complete execution transcript. If a teammate needs a public update, write or wait for
+the next allowlisted lifecycle summary instead of pasting local evidence payloads.
+
 Worktree visibility follows the owning dashboard section:
 
 - `Running Lanes` means the runtime DB still has an active lease, active attempt, or
