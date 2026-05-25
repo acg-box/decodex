@@ -71,11 +71,13 @@ in ledger records.
 ## Public text baseline
 
 Linear comments are public/team-visible tracker text. Before Decodex serializes a new
-Linear execution event, free-text fields such as `summary`, `focus`, `next_action`,
-`blockers`, `evidence`, `verification`, `failed_command`, and `raw_error` must pass the
-baseline public-text guard. The guard rejects known structured leakage shapes,
-including host-local paths, routed identity configuration details, credential-like
-names, private account details, private config file names, emails, tokens, and secrets.
+Linear execution event, public free-text fields such as `summary`, `next_action`,
+`blockers`, `evidence`, `failed_command`, and `raw_error` must pass the baseline
+public-text guard. The guard rejects known structured leakage shapes, including
+host-local paths, routed identity configuration details, credential-like names, private
+account details, private config file names, emails, tokens, and secrets. Current
+`progress_checkpoint` events must render a public projection instead of copying raw
+checkpoint `focus`, `next_action`, `blockers`, `evidence`, or `verification` text.
 
 The guard is a baseline structural stop, not the final privacy boundary. Full runtime
 evidence, local identity routing, account state, and high-frequency diagnostics must
@@ -119,9 +121,9 @@ These fields are optional globally and become required for specific event types 
 | `pr_base_ref` | string | PR base ref name when a PR exists or is the event subject. |
 | `summary` | string | Short human-readable summary of the event. |
 | `validation_result` | string | Repo-gate or PR validation result when validation is the event subject. |
-| `phase` | string | Execution-state phase for progress checkpoint records. |
-| `focus` | string | Current execution-state focus for progress checkpoint records. |
-| `next_action` | string | Next execution action for progress checkpoint or failure records. |
+| `phase` | string | Public execution-state phase for progress checkpoint records. |
+| `focus` | string | Legacy progress focus field or private-runtime-only checkpoint input; current progress projections must not emit it. |
+| `next_action` | string | Next execution action for failure records; current progress projections must not emit raw checkpoint next-action text. |
 | `blockers` | array of strings | Concrete blockers, empty when none are present. |
 | `evidence` | array of strings | Short factual evidence items. |
 | `verification` | array of strings | Verification commands or checks already run. |
@@ -171,7 +173,7 @@ Every event requires the record envelope. Additional required fields are listed 
 | `lease_acquired` | `branch` | `worktree_path`, `summary`; legacy read-only startup record |
 | `worktree_prepared` | `branch`, `worktree_path`, `commit_sha` | `summary`; legacy read-only startup record |
 | `agent_started` | `branch`, `worktree_path` | `transport`, `summary`; legacy read-only startup record |
-| `progress_checkpoint` | `phase`, `focus`, `next_action`, `blockers`, `evidence` | `branch`, `worktree_path`, `commit_sha`, `pr_url`, `verification`, `summary` |
+| `progress_checkpoint` | `phase`, `summary` | `branch`, `worktree_path`, `pr_url` |
 | `pr_opened` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
 | `pr_updated` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
 | `review_handoff` | `branch`, `worktree_path`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `terminal_path` | `verification` |
@@ -195,8 +197,10 @@ ran, and must not be emitted automatically from `decodex run`.
 
 ## Progress checkpoint records
 
-`progress_checkpoint` records are the Linear form of durable execution memory. They
-preserve task-local progress without changing lifecycle authority.
+`progress_checkpoint` records are the Linear public projection of private durable
+execution memory. They expose low-frequency lifecycle progress without changing
+lifecycle authority. The full checkpoint payload from `issue_progress_checkpoint`
+lives in private runtime execution events, not in Linear.
 
 Required `phase` values are the same normalized phases accepted by
 `issue_progress_checkpoint`:
@@ -213,6 +217,19 @@ Required `phase` values are the same normalized phases accepted by
 `progress_checkpoint` records must not be interpreted as review handoff, repair
 completion, merge readiness, closeout, cleanup completion, or terminal success. Those
 transitions require their dedicated event type and the governing runtime/tool contract.
+
+Current progress projections must contain only the allowlisted public fields in the
+event table above. They must not emit raw `focus`, `next_action`, `blockers`,
+`evidence`, `verification`, local head evidence, host-local paths, routed identity
+details, account details, token names, or other private runtime evidence. Producers must
+render a short public `summary` from the public lifecycle signal, for example the
+normalized phase, instead of copying agent-authored checkpoint prose.
+
+Progress projection idempotency is anchored to the material public signal, such as the
+normalized phase plus public branch/worktree/PR projection anchor. Retrying a checkpoint
+or adding new private focus, next-action, evidence, blocker, or verification details
+inside the same public signal must append private runtime evidence without adding a new
+Linear comment.
 
 ## Ledger-only comment contract
 
@@ -252,7 +269,7 @@ commit SHA, PR head SHA, terminal path, or checkpoint sequence key.
 Use Linear comments for team-visible, low-frequency records:
 
 - lane run start, including branch, worktree, current commit, and transport
-- durable progress checkpoints
+- public progress checkpoint projections
 - PR opened or updated events
 - review handoff and retained repair handoff
 - landed, closeout, needs-attention, terminal failure, and cleanup-complete events
@@ -271,6 +288,8 @@ runtime telemetry:
 - token counts, largest tool-output sizes, and context-pressure warnings
 - review-policy convergence counters that only guide the current retained-lane retry
   loop
+- full `issue_progress_checkpoint` payloads, including raw focus, next action,
+  blockers, evidence, verification, and local head evidence
 - transient diagnostic details that help the local operator understand whether an active
   process is busy, idle, or stalled
 
