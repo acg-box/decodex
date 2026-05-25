@@ -47,7 +47,7 @@ impl From<WorkflowConcurrencyLimit> for DispatchSlotLimit {
 	}
 }
 
-/// Local runtime store for leases, attempts, worktrees, and protocol events.
+/// Local runtime store for leases, attempts, worktrees, protocol events, and private evidence.
 #[derive(Default)]
 pub struct StateStore {
 	inner: Mutex<StateData>,
@@ -170,6 +170,13 @@ impl StateStore {
 			.filter(|attempt| attempt.issue_id == previous_issue_id)
 		{
 			attempt.issue_id = canonical_issue_id.to_owned();
+		}
+		for record in state
+			.private_execution_events
+			.iter_mut()
+			.filter(|record| record.issue_id == previous_issue_id)
+		{
+			record.issue_id = canonical_issue_id.to_owned();
 		}
 
 		self.persist_runtime_state_locked(&state)?;
@@ -960,6 +967,74 @@ impl StateStore {
 		Ok(records.into_iter().map(|record| record.record).collect())
 	}
 
+	/// Append one private execution event to the local runtime evidence ledger.
+	pub fn append_private_execution_event(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		run_id: &str,
+		attempt_number: i64,
+		event_type: &str,
+		payload: Value,
+	) -> Result<PrivateExecutionEvent> {
+		validate_private_execution_event_inputs(
+			project_id,
+			issue_id,
+			run_id,
+			attempt_number,
+			event_type,
+		)?;
+
+		let now = timestamp_parts();
+		let mut state = self.lock_without_refresh()?;
+		let mut record = PrivateExecutionEventRuntimeRecord {
+			record_id: 0,
+			project_id: project_id.to_owned(),
+			issue_id: issue_id.to_owned(),
+			run_id: run_id.to_owned(),
+			attempt_number,
+			event_type: event_type.to_owned(),
+			payload,
+			recorded_at: now.text,
+			recorded_at_unix: now.unix,
+		};
+
+		record.record_id = match self.insert_private_execution_event_locked(&record)? {
+			Some(record_id) => record_id,
+			None => state.next_private_execution_event_id()?,
+		};
+
+		state.private_execution_events.push(record.clone());
+
+		Ok(record.as_public())
+	}
+
+	/// List private execution events for one project/issue/run/attempt tuple.
+	pub fn list_private_execution_events(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		run_id: &str,
+		attempt_number: i64,
+	) -> Result<Vec<PrivateExecutionEvent>> {
+		let state = self.lock()?;
+		let mut records = state
+			.private_execution_events
+			.iter()
+			.filter(|record| {
+				record.project_id == project_id
+					&& record.issue_id == issue_id
+					&& record.run_id == run_id
+					&& record.attempt_number == attempt_number
+			})
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_private_execution_event_runtime_records);
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
 	/// Count protocol journal records for one run.
 	pub fn event_count(&self, run_id: &str) -> Result<i64> {
 		let state = self.lock()?;
@@ -1270,6 +1345,20 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_linear_execution_event(idempotency_key)
+	}
+
+	fn insert_private_execution_event_locked(
+		&self,
+		record: &PrivateExecutionEventRuntimeRecord,
+	) -> Result<Option<i64>> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(None);
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.insert_private_execution_event(record).map(Some)
 	}
 
 	fn delete_lease_locked(&self, issue_id: &str) -> Result<()> {
