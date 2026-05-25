@@ -38,7 +38,9 @@ Defines: The runtime scope, source-of-truth boundaries, eligibility rules, lane 
 - Private execution events are structured runtime evidence rows scoped by
   `project_id`, `issue_id`, `run_id`, and `attempt_number`. They hold full local
   evidence that should be queryable through `StateStore` without being mirrored to
-  Linear execution ledger payloads.
+  Linear execution ledger payloads. The operator CLI readback path is
+  `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N>`, which reads the local
+  runtime store and summarizes payloads by default.
 - Centralized project directories under `~/.codex/decodex/projects/<service-id>/`
   form the project contract. Each directory contains `project.toml` for service
   paths and credentials plus `WORKFLOW.md` for execution policy. They do not store
