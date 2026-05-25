@@ -24,6 +24,9 @@ Decodex currently runs as a local, single-machine control plane:
 - Each project directory uses fixed filenames: `project.toml` for service paths and
   credentials, plus `WORKFLOW.md` for execution policy.
 - Projects are registered explicitly with `decodex project add <project-dir>`.
+- Registry refresh paths preserve the existing enabled or disabled toggle; use
+  `decodex project add`, `decodex project enable`, or `decodex project disable` for
+  deliberate enablement changes.
 - `decodex serve` does not scan `.codex` history, repo-local config files, or
   open worktrees to infer projects.
 - Each project row is scoped by `project_id` and canonical `repo_root`.

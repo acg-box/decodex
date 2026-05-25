@@ -67,15 +67,29 @@ impl StateStore {
 		Ok(Self::default())
 	}
 
-	/// Create or replace a registered project row in the local control-plane registry.
-	pub(crate) fn upsert_project(&self, registration: &ProjectRegistration) -> Result<()> {
+	/// Create or refresh a registered project row in the local control-plane registry.
+	///
+	/// Project refreshes preserve an existing enablement toggle. Use
+	/// [`StateStore::set_project_enabled`] for explicit operator enable/disable changes.
+	pub(crate) fn upsert_project(
+		&self,
+		registration: &ProjectRegistration,
+	) -> Result<ProjectRegistration> {
 		let mut state = self.lock()?;
+		let mut registration = registration.clone();
+
+		if let Some(enabled) = state.projects.get(registration.service_id()).map(ProjectRegistration::enabled)
+			&& registration.enabled() != enabled
+		{
+			registration.set_enabled(enabled);
+		}
 
 		state
 			.projects
 			.insert(registration.service_id().to_owned(), registration.clone());
+		self.persist_runtime_state_locked(&state)?;
 
-		self.persist_runtime_state_locked(&state)
+		Ok(registration)
 	}
 
 	/// List all registered projects known to this local Decodex installation.
