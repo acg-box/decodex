@@ -102,6 +102,20 @@ impl StateStore {
 		Ok(projects)
 	}
 
+	/// Remove one registered project from the local control-plane registry.
+	pub(crate) fn remove_project(&self, service_id: &str) -> Result<ProjectRegistration> {
+		let mut state = self.lock()?;
+		let removed = state
+			.projects
+			.remove(service_id)
+			.ok_or_else(|| eyre::eyre!("Decodex project `{service_id}` is not registered."))?;
+
+		self.persist_runtime_state_locked(&state)?;
+		self.delete_project_locked(service_id)?;
+
+		Ok(removed)
+	}
+
 	/// Enable or disable one registered project.
 	pub(crate) fn set_project_enabled(&self, service_id: &str, enabled: bool) -> Result<()> {
 		let mut state = self.lock()?;
@@ -1332,6 +1346,17 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.persist_runtime_state(state)
+	}
+
+	fn delete_project_locked(&self, service_id: &str) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let mut sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.delete_project(service_id)
 	}
 
 	fn upsert_run_attempt_locked(&self, attempt: &RunAttemptRecord) -> Result<()> {

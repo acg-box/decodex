@@ -463,10 +463,12 @@ fn build_operator_run_activity_event(state_store: &StateStore) -> Result<Dashboa
 			},
 		};
 		let (runs, _) = state_store.list_project_runs(project.service_id(), 0)?;
+		let project_display_name = operator_project_display_name(&project);
 		let mut project_active_runs = Vec::new();
 
 		for run in runs {
-			let run_status = operator_run_status(&project, run, now_unix_epoch)?;
+			let run_status =
+				operator_run_status(&project, &project_display_name, run, now_unix_epoch)?;
 
 			if operator_run_counts_as_active(&run_status) {
 				project_active_runs.push(run_status);
