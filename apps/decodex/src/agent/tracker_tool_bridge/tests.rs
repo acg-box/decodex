@@ -28,6 +28,9 @@ use crate::{
 	state::{self, ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore},
 	tracker::{
 		IssueTracker, TrackerComment, TrackerIssue, TrackerLabel, TrackerState, TrackerTeam,
+		privacy_classifier::{
+			PublicProjectionPrivacyClassification, PublicProjectionPrivacyClassifier,
+		},
 		records,
 	},
 	workflow::WorkflowDocument,

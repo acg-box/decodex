@@ -1,4 +1,5 @@
 pub(crate) mod linear;
+pub(crate) mod privacy_classifier;
 pub(crate) mod public_text;
 pub(crate) mod records;
 
@@ -7,7 +8,8 @@ use std::slice;
 use color_eyre::Report;
 
 use crate::prelude::{Result, eyre};
-use records::LinearExecutionEventRecord;
+use privacy_classifier::PublicProjectionPrivacyClassifier;
+use records::{LinearExecutionEventPublicProjection, LinearExecutionEventRecord};
 
 pub(crate) trait IssueTracker {
 	fn list_issues_with_label(&self, label_name: &str) -> Result<Vec<TrackerIssue>>;
@@ -220,30 +222,45 @@ where
 	Ok(())
 }
 
-pub(crate) fn create_linear_execution_event_comment<T>(
-	tracker: &T,
-	issue_id: &str,
+pub(crate) fn prepare_linear_execution_event_comment(
 	body: &str,
 	record: &LinearExecutionEventRecord,
+	privacy_classifier: &dyn PublicProjectionPrivacyClassifier,
+) -> Result<LinearExecutionEventPublicProjection> {
+	let projection =
+		records::linear_execution_event_public_projection(body, record, privacy_classifier);
+
+	records::validate_linear_execution_event_record(&projection.record)
+		.map_err(|error| eyre::eyre!(error))?;
+	public_text::validate_public_comment_body(&projection.body)
+		.map_err(|error| eyre::eyre!(error))?;
+
+	Ok(projection)
+}
+
+pub(crate) fn create_prepared_linear_execution_event_comment<T>(
+	tracker: &T,
+	issue_id: &str,
+	projection: &LinearExecutionEventPublicProjection,
 ) -> Result<bool>
 where
 	T: IssueTracker + ?Sized,
 {
-	records::validate_linear_execution_event_record(record).map_err(|error| eyre::eyre!(error))?;
-	public_text::validate_public_comment_body(body).map_err(|error| eyre::eyre!(error))?;
-
 	let comments = tracker.list_comments(issue_id)?;
 
 	if records::has_linear_execution_event_record(
 		&comments,
-		&record.service_id,
-		&record.issue_id,
-		&record.idempotency_key,
+		&projection.record.service_id,
+		&projection.record.issue_id,
+		&projection.record.idempotency_key,
 	) {
 		return Ok(false);
 	}
 
-	let comment_body = records::append_structured_comment_record(body, record)?;
+	log_privacy_classifier_withheld_projection(projection);
+
+	let comment_body =
+		records::append_structured_comment_record(&projection.body, &projection.record)?;
 
 	tracker.create_comment(issue_id, &comment_body)?;
 
@@ -259,19 +276,29 @@ where
 	tracker.create_comment(issue_id, body)
 }
 
-pub(crate) fn create_linear_execution_event_comment_without_remote_scan<T>(
+pub(crate) fn create_prepared_linear_execution_event_comment_without_remote_scan<T>(
 	tracker: &T,
 	issue_id: &str,
-	body: &str,
-	record: &LinearExecutionEventRecord,
+	projection: &LinearExecutionEventPublicProjection,
 ) -> Result<()>
 where
 	T: IssueTracker + ?Sized,
 {
-	records::validate_linear_execution_event_record(record).map_err(|error| eyre::eyre!(error))?;
-	public_text::validate_public_comment_body(body).map_err(|error| eyre::eyre!(error))?;
+	log_privacy_classifier_withheld_projection(projection);
 
-	let comment_body = records::append_structured_comment_record(body, record)?;
+	let comment_body =
+		records::append_structured_comment_record(&projection.body, &projection.record)?;
 
 	tracker.create_comment(issue_id, &comment_body)
+}
+
+fn log_privacy_classifier_withheld_projection(projection: &LinearExecutionEventPublicProjection) {
+	if projection.classifier_withheld_text {
+		tracing::warn!(
+			service_id = projection.record.service_id,
+			issue_id = projection.record.issue_id,
+			event_type = projection.record.event_type,
+			"Local privacy classifier withheld Linear public projection text."
+		);
+	}
 }

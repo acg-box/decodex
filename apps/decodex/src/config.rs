@@ -10,6 +10,7 @@ use std::{
 	process::Command,
 };
 
+use reqwest::Url;
 use serde::Deserialize;
 
 use crate::prelude::{Result, eyre};
@@ -27,6 +28,7 @@ pub struct ServiceConfig {
 	tracker: ProjectTrackerConfig,
 	github: ProjectGitHubConfig,
 	codex: ProjectCodexConfig,
+	privacy_classifier: ProjectPrivacyClassifierConfig,
 }
 impl ServiceConfig {
 	/// Parse service configuration from TOML text.
@@ -87,6 +89,11 @@ impl ServiceConfig {
 		&self.codex
 	}
 
+	/// Optional local classifier for Linear public projection text.
+	pub fn privacy_classifier(&self) -> &ProjectPrivacyClassifierConfig {
+		&self.privacy_classifier
+	}
+
 	fn from_document(document: ServiceConfigDocument, config_dir: &Path) -> Result<Self> {
 		document.validate()?;
 
@@ -102,6 +109,7 @@ impl ServiceConfig {
 			tracker: document.tracker,
 			github: document.github,
 			codex: document.codex.resolve_paths(config_dir)?,
+			privacy_classifier: document.privacy_classifier,
 		})
 	}
 }
@@ -209,6 +217,47 @@ impl Default for ProjectCodexConfig {
 	}
 }
 
+/// Optional local-only classifier for public Linear projection text.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectPrivacyClassifierConfig {
+	endpoint: Option<String>,
+	#[serde(default = "default_privacy_classifier_timeout_ms")]
+	timeout_ms: u64,
+}
+impl ProjectPrivacyClassifierConfig {
+	/// Loopback HTTP endpoint for an operator-managed local classifier runtime.
+	pub fn endpoint(&self) -> Option<&str> {
+		self.endpoint.as_deref()
+	}
+
+	/// Per-field local classifier request timeout.
+	pub fn timeout_ms(&self) -> u64 {
+		self.timeout_ms
+	}
+
+	fn validate(&self) -> Result<()> {
+		if self.timeout_ms == 0 {
+			eyre::bail!("`privacy_classifier.timeout_ms` must be greater than zero.");
+		}
+		if self.timeout_ms > 30_000 {
+			eyre::bail!("`privacy_classifier.timeout_ms` must be 30000 or less.");
+		}
+
+		if let Some(endpoint) = self.endpoint.as_deref() {
+			validate_local_privacy_classifier_endpoint(endpoint)?;
+		}
+
+		Ok(())
+	}
+}
+
+impl Default for ProjectPrivacyClassifierConfig {
+	fn default() -> Self {
+		Self { endpoint: None, timeout_ms: default_privacy_classifier_timeout_ms() }
+	}
+}
+
 /// Optional JSONL ChatGPT accounts for Codex app-server runs.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -297,6 +346,8 @@ struct ServiceConfigDocument {
 	#[serde(default)]
 	codex: ProjectCodexConfig,
 	#[serde(default)]
+	privacy_classifier: ProjectPrivacyClassifierConfig,
+	#[serde(default)]
 	paths: ProjectPathsConfig,
 }
 impl ServiceConfigDocument {
@@ -306,6 +357,7 @@ impl ServiceConfigDocument {
 		self.tracker.validate()?;
 		self.github.validate()?;
 		self.codex.validate()?;
+		self.privacy_classifier.validate()?;
 		self.paths.validate()?;
 
 		Ok(())
@@ -378,6 +430,32 @@ const fn default_external_review_enabled() -> bool {
 
 const fn default_internal_review_mode() -> InternalReviewMode {
 	InternalReviewMode::Loop
+}
+
+const fn default_privacy_classifier_timeout_ms() -> u64 {
+	1_000
+}
+
+fn validate_local_privacy_classifier_endpoint(endpoint: &str) -> Result<()> {
+	let url = Url::parse(endpoint)
+		.map_err(|error| eyre::eyre!("`privacy_classifier.endpoint` must be a URL: {error}"))?;
+
+	if url.scheme() != "http" {
+		eyre::bail!("`privacy_classifier.endpoint` must use `http` on a loopback host.");
+	}
+	if !url.username().is_empty() || url.password().is_some() {
+		eyre::bail!("`privacy_classifier.endpoint` must not contain credentials.");
+	}
+
+	let Some(host) = url.host_str() else {
+		eyre::bail!("`privacy_classifier.endpoint` must include a loopback host.");
+	};
+
+	if !matches!(host, "localhost" | "127.0.0.1" | "::1") {
+		eyre::bail!("`privacy_classifier.endpoint` must point to a loopback host, not `{host}`.");
+	}
+
+	Ok(())
 }
 
 fn shared_repo_root_for_checkout(
@@ -1070,6 +1148,81 @@ mod tests {
 			assert_eq!(config.codex().internal_review_mode(), expected_mode);
 			assert_eq!(config.codex().external_review_enabled(), expected_external_review);
 		}
+	}
+
+	#[test]
+	fn project_privacy_classifier_defaults_to_disabled() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let config_path = write_config_file(
+			temp_dir.path(),
+			r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+			"#,
+		);
+		let config =
+			ServiceConfig::from_path(&config_path).expect("service config should load from disk");
+
+		assert_eq!(config.privacy_classifier().endpoint(), None);
+		assert_eq!(config.privacy_classifier().timeout_ms(), 1_000);
+	}
+
+	#[test]
+	fn parses_loopback_privacy_classifier_endpoint() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let config_path = write_config_file(
+			temp_dir.path(),
+			r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+
+				[privacy_classifier]
+				endpoint = "http://127.0.0.1:9123/classify"
+				timeout_ms = 250
+			"#,
+		);
+		let config =
+			ServiceConfig::from_path(&config_path).expect("service config should load from disk");
+
+		assert_eq!(config.privacy_classifier().endpoint(), Some("http://127.0.0.1:9123/classify"));
+		assert_eq!(config.privacy_classifier().timeout_ms(), 250);
+	}
+
+	#[test]
+	fn rejects_remote_privacy_classifier_endpoint() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let config_path = write_config_file(
+			temp_dir.path(),
+			r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+
+				[privacy_classifier]
+				endpoint = "https://example.com/classify"
+			"#,
+		);
+		let error = ServiceConfig::from_path(&config_path)
+			.expect_err("remote classifier endpoints should be rejected");
+
+		assert!(
+			error.to_string().contains("loopback"),
+			"error should explain local-only classifier routing: {error:?}"
+		);
 	}
 
 	#[test]
