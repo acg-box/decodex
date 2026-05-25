@@ -25,6 +25,12 @@ diagnosis. Agent evidence is a stable file projection of that snapshot so a repa
 agent can start from one compact index instead of reconstructing state from logs,
 Markdown notes, worktree names, and ad hoc SQL.
 
+Private execution events are structured rows in the runtime SQLite database scoped by
+project, issue, run, and attempt. They are the local-only ledger for full execution
+evidence that should not be mirrored to Linear. Agent evidence files may point agents
+toward the current runtime context, but they do not replace the private execution
+event store.
+
 ## Path Layout
 
 Agent evidence lives under the local Decodex home:
@@ -39,6 +45,8 @@ Agent evidence lives under the local Decodex home:
 
 These files are local-only operator state. They are not committed to target
 repositories, mirrored to Linear, or used as external collaboration records.
+They are also not process logs; logs stay diagnostic, while private execution events
+stay structured runtime evidence in SQLite.
 
 ## Write Triggers
 
