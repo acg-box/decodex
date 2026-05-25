@@ -155,6 +155,33 @@ pub(crate) struct LinearExecutionEventIdentity<'a> {
 	pub(crate) attempt_number: i64,
 }
 
+/// Render the low-frequency public Linear projection for a private progress checkpoint.
+pub(crate) fn render_progress_checkpoint_public_projection(
+	identity: LinearExecutionEventIdentity<'_>,
+	event_timestamp: String,
+	phase: &str,
+	branch: Option<&str>,
+	worktree_path: Option<&str>,
+	pr_url: Option<&str>,
+) -> LinearExecutionEventRecord {
+	let anchor = stable_event_anchor(&[
+		phase,
+		branch.unwrap_or_default(),
+		worktree_path.unwrap_or_default(),
+		pr_url.unwrap_or_default(),
+	]);
+	let mut record =
+		LinearExecutionEventRecord::new(identity, "progress_checkpoint", event_timestamp, &anchor);
+
+	record.phase = Some(phase.to_owned());
+	record.branch = branch.map(ToOwned::to_owned);
+	record.worktree_path = worktree_path.map(ToOwned::to_owned);
+	record.pr_url = pr_url.map(ToOwned::to_owned);
+	record.summary = Some(format!("Execution phase: {phase}."));
+
+	record
+}
+
 pub(crate) fn format_structured_comment<T>(record: &T) -> std::result::Result<String, Error>
 where
 	T: Serialize,
@@ -357,11 +384,9 @@ fn validate_linear_execution_event_fields(
 		},
 		"progress_checkpoint" => {
 			require_string(record.phase.as_deref(), "phase")?;
-			require_string(record.focus.as_deref(), "focus")?;
-			require_string(record.next_action.as_deref(), "next_action")?;
-			require_vec(record.blockers.as_ref(), "blockers")?;
+			require_string(record.summary.as_deref(), "summary")?;
 
-			require_vec(record.evidence.as_ref(), "evidence")
+			reject_progress_checkpoint_private_fields(record)
 		},
 		"pr_opened" | "pr_updated" => validate_pr_event_fields(record),
 		"review_handoff" | "repair_handoff" => {
@@ -413,6 +438,29 @@ fn validate_linear_execution_event_fields(
 		},
 		other => Err(format!("Unsupported Linear execution event type `{other}`.")),
 	}
+}
+
+fn reject_progress_checkpoint_private_fields(
+	record: &LinearExecutionEventRecord,
+) -> Result<(), String> {
+	for field in [
+		("focus", record.focus.is_some()),
+		("next_action", record.next_action.is_some()),
+		("blockers", record.blockers.is_some()),
+		("evidence", record.evidence.is_some()),
+		("verification", record.verification.is_some()),
+		("commit_sha", record.commit_sha.is_some()),
+	] {
+		let (field_name, present) = field;
+
+		if present {
+			return Err(format!(
+				"`progress_checkpoint` Linear events must use the public projection; `{field_name}` belongs in private execution events."
+			));
+		}
+	}
+
+	Ok(())
 }
 
 fn validate_pr_event_fields(record: &LinearExecutionEventRecord) -> Result<(), String> {
@@ -468,7 +516,7 @@ mod tests {
 	use crate::tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord};
 
 	fn progress_record() -> LinearExecutionEventRecord {
-		let mut record = LinearExecutionEventRecord::new(
+		LinearExecutionEventRecord::new(
 			LinearExecutionEventIdentity {
 				service_id: "decodex",
 				issue_id: "issue-id",
@@ -479,50 +527,58 @@ mod tests {
 			"progress_checkpoint",
 			String::from("2026-05-25T00:00:00Z"),
 			"anchor",
+		)
+	}
+
+	#[test]
+	fn validates_public_progress_checkpoint_projection() {
+		let record = super::render_progress_checkpoint_public_projection(
+			LinearExecutionEventIdentity {
+				service_id: "decodex",
+				issue_id: "issue-id",
+				issue_identifier: "XY-519",
+				run_id: "xy-519-attempt-1",
+				attempt_number: 1,
+			},
+			String::from("2026-05-25T00:00:00Z"),
+			"implementing",
+			Some("y/decodex-xy-519"),
+			Some(".worktrees/XY-519"),
+			Some("https://github.com/hack-ink/decodex/pull/42"),
 		);
 
-		record.phase = Some(String::from("implementing"));
-		record.focus =
-			Some(String::from("Keep PR https://github.com/hack-ink/decodex/pull/42 reviewable."));
-		record.next_action = Some(String::from(
-			"Update apps/decodex/src/tracker/records.rs on branch y/decodex-xy-519.",
-		));
-		record.blockers = Some(Vec::new());
-		record.evidence = Some(vec![String::from("Issue XY-519 remains scoped.")]);
-
-		record
-	}
-
-	#[test]
-	fn validates_public_progress_checkpoint_text() {
-		super::validate_linear_execution_event_record(&progress_record())
+		super::validate_linear_execution_event_record(&record)
 			.expect("public collaboration identifiers should validate");
+
+		assert_eq!(record.summary.as_deref(), Some("Execution phase: implementing."));
+		assert!(record.focus.is_none());
+		assert!(record.next_action.is_none());
+		assert!(record.evidence.is_none());
 	}
 
 	#[test]
-	fn rejects_private_progress_checkpoint_text() {
-		for (field_name, private_text) in [
-			("focus", "Inspect /Users/example/code/private checkout."),
-			("next_action", "Read codex.github-identity before pushing."),
-			("blockers", "Missing LINEAR_API_KEY_HACKINK prevented tracker write."),
-			("evidence", "Selected account user@example.com was active."),
-			("verification", "Checked C:\\Users\\example\\repo."),
-		] {
+	fn rejects_private_progress_checkpoint_fields_in_linear_projection() {
+		for field_name in ["focus", "next_action", "blockers", "evidence", "verification"] {
 			let mut record = progress_record();
 
+			record.phase = Some(String::from("implementing"));
+			record.summary = Some(String::from("Execution phase: implementing."));
+
 			match field_name {
-				"focus" => record.focus = Some(String::from(private_text)),
-				"next_action" => record.next_action = Some(String::from(private_text)),
-				"blockers" => record.blockers = Some(vec![String::from(private_text)]),
-				"evidence" => record.evidence = Some(vec![String::from(private_text)]),
-				"verification" => record.verification = Some(vec![String::from(private_text)]),
+				"focus" => record.focus = Some(String::from("private focus")),
+				"next_action" => record.next_action = Some(String::from("private action")),
+				"blockers" => record.blockers = Some(vec![String::from("private blocker")]),
+				"evidence" => record.evidence = Some(vec![String::from("private evidence")]),
+				"verification" => {
+					record.verification = Some(vec![String::from("private verification")]);
+				},
 				_ => unreachable!("test field names are exhaustive"),
 			}
 
 			let error = super::validate_linear_execution_event_record(&record)
-				.expect_err("private free-text should not serialize");
+				.expect_err("private progress fields should not serialize");
 
-			assert!(error.contains("public/team-visible"));
+			assert!(error.contains("belongs in private execution events"));
 		}
 	}
 }
