@@ -229,6 +229,10 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 	assert_eq!(active_run.issue_identifier.as_deref(), Some("XY-392"));
 	assert_eq!(active_run.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
 	assert_eq!(active_run.author.as_deref(), Some("Yvette"));
+	assert_eq!(
+		active_run.private_evidence.read_command,
+		format!("decodex evidence XY-392 --run-id {run_id} --attempt 1 --json")
+	);
 	assert_eq!(recent_run.issue_identifier.as_deref(), Some("XY-392"));
 	assert_eq!(recent_run.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
 	assert_eq!(recent_run.author.as_deref(), Some("Yvette"));
@@ -239,6 +243,10 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 		"Hydrate issue display metadata on run rows"
 	);
 	assert_eq!(snapshot_json["active_runs"][0]["author"], "Yvette");
+	assert_eq!(
+		snapshot_json["active_runs"][0]["private_evidence"]["read_command"],
+		format!("decodex evidence XY-392 --run-id {run_id} --attempt 1 --json")
+	);
 }
 
 #[test]
