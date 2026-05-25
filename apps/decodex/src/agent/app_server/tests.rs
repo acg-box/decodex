@@ -23,8 +23,8 @@ use crate::{
 		},
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
-			JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, ResolvedAppServerCodexHomeEnv,
-			WireMessage,
+			JsonRpcError, JsonRpcErrorPayload, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest,
+			ResolvedAppServerCodexHomeEnv, WireMessage,
 		},
 		tracker_tool_bridge::{
 			DynamicToolCallResponse, DynamicToolContentItem, DynamicToolHandler, DynamicToolSpec,
@@ -913,6 +913,51 @@ fn app_server_turn_failure_classifies_operator_attention() {
 			assert!(failure.to_string().contains(&code));
 		}
 	}
+}
+
+#[test]
+fn structured_error_notification_becomes_turn_failure() {
+	let notification = JsonRpcNotification {
+		method: String::from("error"),
+		params: serde_json::json!({
+			"error": {
+				"message": {
+					"kind": "protocolFailure",
+					"detail": "unexpected response"
+				},
+				"codexErrorInfo": {
+					"type": "appServerProtocolMismatch"
+				}
+			},
+			"threadId": "thread-1",
+			"turnId": "turn-1",
+			"willRetry": false
+		}),
+	};
+	let (failure, will_retry) =
+		super::failure_from_error_notification(&notification, "thread-1", "turn-1")
+			.expect("structured error payload should parse")
+			.expect("matching error notification should produce a failure");
+	let failure_message = failure.to_string();
+
+	assert!(failure_message.contains("protocolFailure"));
+	assert!(failure_message.contains("appServerProtocolMismatch"));
+	assert_eq!(will_retry, Some(false));
+}
+
+#[test]
+fn json_rpc_error_response_becomes_recoverable_turn_failure() {
+	let error = JsonRpcError {
+		id: serde_json::json!(7),
+		error: JsonRpcErrorPayload { code: -32_000, message: String::from("late response") },
+	};
+	let failure = super::turn_failure_from_json_rpc_error_response("thread-1", "turn-1", &error);
+	let failure_message = failure.to_string();
+
+	assert!(failure_message.contains("thread-1"));
+	assert!(failure_message.contains("turn-1"));
+	assert!(failure_message.contains("code -32000"));
+	assert!(failure_message.contains("late response"));
 }
 
 #[test]
