@@ -195,3 +195,42 @@ fn progress_checkpoint_retries_do_not_duplicate_same_ledger_event() {
 	assert!(second.success);
 	assert_eq!(tracker.comments.borrow().len(), 1);
 }
+
+#[test]
+fn progress_checkpoint_rejects_private_public_text_before_write() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		sample_review_context_in(temp_dir.path()),
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"phase": "implementing",
+			"focus": "Inspected /Users/example/code/private checkout.",
+			"next_action": "Continue implementation.",
+			"blockers": [],
+			"evidence": ["Missing GITHUB_PAT_Y was observed."],
+			"head_sha": sample_local_repo().head_oid
+		}),
+	);
+
+	assert!(!response.success);
+	assert!(
+		response
+			.content_items
+			.iter()
+			.any(|item| matches!(item, DynamicToolContentItem::InputText { text } if text.contains("public/team-visible")))
+	);
+	assert!(tracker.comments.borrow().is_empty());
+}

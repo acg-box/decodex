@@ -289,14 +289,14 @@ fn app_server_failures_skip_retry_and_require_attention() {
 			"skills/list returned no enabled skills.",
 		)),
 		"app_server_runtime_preflight_failed",
-		"repair the local Codex config/model/provider/skills/plugin/MCP state",
+		"repair the local Codex runtime configuration",
 	);
 	assert_app_server_failure_requires_attention(
 		Report::new(AppServerHomePreflightFailure::resolution_failed(String::from(
 			"app_server_preflight_failed: HOME is not set, so Decodex cannot resolve the shared Codex home for app-server dispatch.",
 		))),
 		"app_server_codex_home_preflight_failed",
-		"keep CODEX_HOME/CODEX_SQLITE_HOME shared instead of per-account",
+		"inspect the local Decodex and Codex home sharing",
 	);
 	assert_app_server_failure_requires_attention(
 		Report::new(AppServerHomePreflightFailure::initialize_mismatch(
