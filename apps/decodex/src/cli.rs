@@ -356,6 +356,10 @@ impl ProjectCommand {
 				let registration =
 					runtime::register_project_config(&state_store, &args.config, true)?;
 
+				if !registration.enabled() {
+					state_store.set_project_enabled(registration.service_id(), true)?;
+				}
+
 				println!(
 					"registered project {} at {}",
 					registration.service_id(),
@@ -715,7 +719,7 @@ enum AccountSubcommand {
 
 #[derive(Debug, Subcommand)]
 enum ProjectSubcommand {
-	/// Register or refresh one Decodex project config.
+	/// Register or refresh one Decodex project config and enable it.
 	Add(ProjectAddCommand),
 	/// List registered local projects.
 	List,
