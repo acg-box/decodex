@@ -83,7 +83,8 @@ Required fields:
 - `warnings`: typed operator snapshot or diagnose warning strings
 - `connector_backoffs`: typed connector wait records from the operator snapshot
 - `blockers`: compact blocker refs with reason codes, next action, and snapshot path
-- `run_capsules`: compact run refs with capsule paths
+- `run_capsules`: compact run refs with capsule paths and `private_evidence`
+  references
 - `recovery_worktrees`: retained local worktrees that need cleanup or recovery context
 - `recovery_contracts`: commands or next actions an agent can use for supported
   recovery classes
@@ -124,12 +125,36 @@ worktree:
 - thread, turn, process, protocol event, idle, and progress fields
 - effective model/provider/cwd/approval/sandbox fields when known
 - branch and worktree path
+- `private_evidence`: a compact reference to local runtime SQLite evidence for the
+  same project, issue, run, and attempt, including a `decodex evidence ... --json`
+  read command
 - optional Run Ledger outcome
 - `diagnosis.attention_required`, `diagnosis.reason_code`, and
   `diagnosis.next_action`
 
 Capsules are rewritten snapshots, not append-only event logs. The append-only stream
 is `events.jsonl`.
+
+## Private Execution Readback
+
+`decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json` reads private
+execution events from the local runtime SQLite database and prints
+`decodex.private_execution_evidence_readback/1`.
+
+The readback includes:
+
+- project id, issue id or identifier, run id, attempt number, and evidence ref
+- event count, latest event type, and latest event timestamp
+- compact event rows with record id, event type, recorded timestamp, and payload
+  summaries
+- `private_execution_evidence_missing` when the selected run is known but has no
+  private execution events
+
+The default readback summarizes payloads and redacts transcript-like, raw output,
+log, token, and secret-shaped payload keys. Operators may pass `--include-payload`
+for full structured local payloads when a repair requires them. This flag still
+reads from the local runtime store only; it must not mirror payloads into Linear,
+GitHub, or agent-evidence files.
 
 ## Event Stream
 
