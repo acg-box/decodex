@@ -14,8 +14,8 @@ standards for keeping, merging, or deleting tests.
 
 ## Current Snapshot
 
-This cleanup keeps 685 `nextest` tests plus one ignored live app-server test. Regenerate
-the runnable inventory with:
+This snapshot lists 805 `nextest` tests. The repo gate run for this inventory reported
+805 passed tests and 1 skipped test. Regenerate the runnable inventory with:
 
 ```sh
 cargo nextest list --workspace --all-targets --all-features
@@ -36,13 +36,13 @@ cargo nextest list --workspace --all-targets --all-features 2>/dev/null \
 
 | Group | Count | Primary surfaces | Owns |
 | --- | ---: | --- | --- |
-| Orchestrator | 359 | `apps/decodex/src/orchestrator/tests.rs`, `apps/decodex/src/orchestrator/tests/**/*.rs` | Intake, retry, review/landing, runtime cleanup, operator status, repo gates |
+| Orchestrator | 405 | `apps/decodex/src/orchestrator/tests.rs`, `apps/decodex/src/orchestrator/tests/**/*.rs` | Intake, retry, review/landing, runtime cleanup, operator status, repo gates |
 | Tracker tool bridge | 85 | `apps/decodex/src/agent/tracker_tool_bridge/tests.rs`, `apps/decodex/src/agent/tracker_tool_bridge/tests/**/*.rs` | Dynamic tracker tools, continuation guards, review handoff writes, closeout writes |
-| App-server protocol/runtime | 38 | `apps/decodex/src/agent/app_server/tests.rs`, `apps/decodex/src/agent/json_rpc.rs`, app-server protocol tests | JSON-RPC parsing, turn execution, dynamic tools, thread config, transport failures |
-| Runtime state and locks | 39 | `state::tests`, `runtime::tests` | Persistent local state, lock ownership, runtime database contracts |
-| Workflow and config parsing | 53 | `workflow::tests`, `config::tests` | `WORKFLOW.md`, project config, removed-field rejection, default policy |
-| Git, worktree, and landing helpers | 93 | `worktree::tests`, `manual::tests`, `commit_message::tests`, `github::tests`, `default_branch_sync::tests`, `pull_request::tests` | Git/worktree behavior, manual landing, GitHub/PR helpers, commit-message policy |
-| CLI, archive, and tracker integration | 18 | `cli::tests`, `archive_hygiene::tests`, `tracker::linear::tests` | User-facing commands, archive hygiene, direct Linear adapter behavior |
+| App-server protocol/runtime | 59 | `apps/decodex/src/agent/app_server/tests.rs`, `apps/decodex/src/agent/json_rpc.rs`, app-server protocol tests | JSON-RPC parsing, turn execution, dynamic tools, thread config, transport failures |
+| Runtime state, locks, and maintenance | 45 | `state::tests`, `runtime::tests`, `maintenance::tests` | Persistent local state, lock ownership, runtime database contracts, local retention |
+| Workflow and config parsing | 44 | `workflow::tests`, `config::tests`, `codex_config::tests` | `WORKFLOW.md`, project config, Codex config edits, removed-field rejection, default policy |
+| Git, worktree, landing, and recovery helpers | 108 | `worktree::tests`, `manual::tests`, `commit_message::tests`, `github::tests`, `default_branch_sync::tests`, `pull_request::tests`, `recovery::tests`, `git_credentials::tests` | Git/worktree behavior, manual landing, GitHub/PR helpers, recovery commands, commit-message policy |
+| Account, CLI, archive, and tracker integration | 59 | `accounts::tests`, `agent::codex_accounts::tests`, `agent::decodex_tool_bridge::tests`, `app_bridge::tests`, `cli::tests`, `archive_hygiene::tests`, `tracker::*::tests` | User-facing commands, account pools, app bridge parsing, archive hygiene, direct tracker adapter and public-text behavior |
 
 ## Orchestrator Inventory
 
@@ -53,46 +53,47 @@ large catch-all test file unless the behavior crosses several of these stages.
 | --- | ---: | --- |
 | `apps/decodex/src/orchestrator/tests/intake/workflow_reload.rs` | 4 | Workflow reload and cached policy snapshots |
 | `apps/decodex/src/orchestrator/tests/intake/eligibility.rs` | 7 | Intake eligibility and queue label safety |
-| `apps/decodex/src/orchestrator/tests/intake/run_and_prompting.rs` | 38 | Prompt construction, machine-only redaction, run setup |
+| `apps/decodex/src/orchestrator/tests/intake/run_and_prompting.rs` | 33 | Prompt construction, machine-only redaction, run setup |
 | `apps/decodex/src/orchestrator/tests/intake/prepare_issue_run.rs` | 10 | Worktree preparation and pre-run guards |
-| `apps/decodex/src/orchestrator/tests/intake/candidate_selection.rs` | 24 | Candidate ordering, retained lane preference, closeout dispatch policy |
-| `apps/decodex/src/orchestrator/tests/retry/scheduling.rs` | 28 | Retry timing, dry-run behavior, retry marker semantics |
-| `apps/decodex/src/orchestrator/tests/retry/selection.rs` | 16 | Retry queue selection and blocked retry candidates |
+| `apps/decodex/src/orchestrator/tests/intake/candidate_selection.rs` | 22 | Candidate ordering, retained lane preference, closeout dispatch policy |
+| `apps/decodex/src/orchestrator/tests/retry/scheduling.rs` | 24 | Retry timing, dry-run behavior, retry marker semantics |
+| `apps/decodex/src/orchestrator/tests/retry/selection.rs` | 14 | Retry queue selection and blocked retry candidates |
 | `apps/decodex/src/orchestrator/tests/runtime/repo_gate.rs` | 8 | Repo gate command selection, cleanliness, shell fallback, and failure classification |
-| `apps/decodex/src/orchestrator/tests/runtime/failure.rs` | 35 | Failure comments, runtime credentials, cleanup, lease release |
-| `apps/decodex/src/orchestrator/tests/recovery/reconciliation.rs` | 18 | Stale lease, recovery worktree, and reconciliation behavior |
+| `apps/decodex/src/orchestrator/tests/runtime/failure.rs` | 30 | Failure comments, runtime credentials, cleanup, lease release |
+| `apps/decodex/src/orchestrator/tests/recovery/reconciliation.rs` | 17 | Stale lease, recovery worktree, and reconciliation behavior |
 | `apps/decodex/src/orchestrator/tests/recovery/terminal_support.rs` | 0 | Shared retained recovery and closeout fixtures |
-| `apps/decodex/src/orchestrator/tests/recovery/closeout/dispatch.rs` | 4 | Direct closeout dispatch and PR validation |
-| `apps/decodex/src/orchestrator/tests/recovery/closeout/identity.rs` | 6 | Closeout identity reuse after retained runs |
+| `apps/decodex/src/orchestrator/tests/recovery/closeout/dispatch.rs` | 5 | Direct closeout dispatch and PR validation |
+| `apps/decodex/src/orchestrator/tests/recovery/closeout/identity.rs` | 4 | Closeout identity reuse after retained runs |
 | `apps/decodex/src/orchestrator/tests/recovery/closeout/cleanup.rs` | 6 | Retained closeout cleanup and cleanup blockers |
 | `apps/decodex/src/orchestrator/tests/recovery/terminal_failures.rs` | 8 | Terminal failure labeling and nonretryable attention |
-| `apps/decodex/src/orchestrator/tests/recovery/runtime_reentry.rs` | 25 | Runtime reentry, recovered worktrees, liveness, and live-run recovery |
+| `apps/decodex/src/orchestrator/tests/recovery/runtime_reentry.rs` | 27 | Runtime reentry, recovered worktrees, liveness, and live-run recovery |
 | `apps/decodex/src/orchestrator/tests/operator/status_support.rs` | 0 | Shared operator status fixtures |
-| `apps/decodex/src/orchestrator/tests/operator/status/control_plane.rs` | 3 | Registered project control-plane rows |
-| `apps/decodex/src/orchestrator/tests/operator/status/running_lanes.rs` | 22 | Running lanes, stalled lanes, active-run hydration, and local worktrees |
-| `apps/decodex/src/orchestrator/tests/operator/status/history.rs` | 4 | Run ledger and Linear history hydration |
-| `apps/decodex/src/orchestrator/tests/operator/status/text.rs` | 4 | Human-readable operator status text |
-| `apps/decodex/src/orchestrator/tests/operator/status/publishing.rs` | 6 | Snapshot publishing, degraded observers, and tracker backoff |
-| `apps/decodex/src/orchestrator/tests/operator/status/queue.rs` | 8 | Intake queue classifications and shared-claim visibility |
-| `apps/decodex/src/orchestrator/tests/operator/status/http.rs` | 17 | Operator dashboard HTTP pages/assets, `/livez`, WebSocket control, and removed snapshot-route responses |
-| `apps/decodex/src/orchestrator/tests/operator/status/dashboard.rs` | 33 | Dashboard client rendering contracts |
+| `apps/decodex/src/orchestrator/tests/operator/status/control_plane.rs` | 5 | Registered project control-plane rows |
+| `apps/decodex/src/orchestrator/tests/operator/status/running_lanes.rs` | 29 | Running lanes, stalled lanes, active-run hydration, and local worktrees |
+| `apps/decodex/src/orchestrator/tests/operator/status/history.rs` | 6 | Run ledger and Linear history hydration |
+| `apps/decodex/src/orchestrator/tests/operator/status/text.rs` | 8 | Human-readable operator status text |
+| `apps/decodex/src/orchestrator/tests/operator/status/publishing.rs` | 7 | Snapshot publishing, degraded observers, and tracker backoff |
+| `apps/decodex/src/orchestrator/tests/operator/status/queue.rs` | 10 | Intake queue classifications and shared-claim visibility |
+| `apps/decodex/src/orchestrator/tests/operator/status/http.rs` | 21 | Operator dashboard HTTP pages/assets, `/livez`, WebSocket control, and removed snapshot-route responses |
+| `apps/decodex/src/orchestrator/tests/operator/status/dashboard.rs` | 34 | Dashboard client rendering contracts |
+| `apps/decodex/src/orchestrator/tests/operator/status/agent_evidence.rs` | 4 | Agent evidence snapshots and private evidence readback |
 | `apps/decodex/src/orchestrator/tests/review_landing/status_support.rs` | 0 | Shared Review & Landing status fixtures |
-| `apps/decodex/src/orchestrator/tests/review_landing/status_rows.rs` | 18 | Review & Landing status rows and handoff lineage |
-| `apps/decodex/src/orchestrator/tests/review_landing/orchestration.rs` | 12 | Review orchestration, admin merge, and repair routing |
-| `apps/decodex/src/orchestrator/tests/review_landing/status_markers.rs` | 2 | Review orchestration marker handling and recovered targeted visibility |
-| `apps/decodex/src/orchestrator/tests/review_landing/classification_review.rs` | 13 | Review repair, request-pending, stale handoff, merged PR classification |
-| `apps/decodex/src/orchestrator/tests/review_landing/classification_checks.rs` | 15 | Required checks, GitHub token gates, GraphQL pagination/query shape |
+| `apps/decodex/src/orchestrator/tests/review_landing/status_rows.rs` | 17 | Review & Landing status rows and handoff lineage |
+| `apps/decodex/src/orchestrator/tests/review_landing/orchestration.rs` | 16 | Review orchestration, admin merge, and repair routing |
+| `apps/decodex/src/orchestrator/tests/review_landing/status_markers.rs` | 1 | Review orchestration marker handling and recovered targeted visibility |
+| `apps/decodex/src/orchestrator/tests/review_landing/classification_review.rs` | 12 | Review repair, request-pending, stale handoff, merged PR classification |
+| `apps/decodex/src/orchestrator/tests/review_landing/classification_checks.rs` | 14 | Required checks, GitHub token gates, GraphQL pagination/query shape |
 | `apps/decodex/src/orchestrator/tests/review_landing/review_state.rs` | 2 | Pull-request review-state conversion from GitHub GraphQL nodes |
 
 ## Tracker Bridge Inventory
 
 | File | Count | Group |
 | --- | ---: | --- |
-| `apps/decodex/src/agent/tracker_tool_bridge/tests/mutation/dispatch.rs` | 22 | Tool argument validation, state transitions, label mutations, closeout dispatch |
+| `apps/decodex/src/agent/tracker_tool_bridge/tests/mutation/dispatch.rs` | 24 | Tool argument validation, state transitions, label mutations, closeout dispatch |
 | `apps/decodex/src/agent/tracker_tool_bridge/tests/mutation/continuation.rs` | 13 | Continuation-blocking writes and reactivation safety |
-| `apps/decodex/src/agent/tracker_tool_bridge/tests/mutation/progress.rs` | 5 | Progress checkpoint comments and worktree path handling |
+| `apps/decodex/src/agent/tracker_tool_bridge/tests/mutation/progress.rs` | 7 | Progress checkpoint comments and worktree path handling |
 | `apps/decodex/src/agent/tracker_tool_bridge/tests/review/policy.rs` | 22 | Internal-review stop policy, repair/writeback behavior, checkpoint handling |
-| `apps/decodex/src/agent/tracker_tool_bridge/tests/review/handoff.rs` | 23 | Review handoff, repair complete, terminal finalize, closeout complete |
+| `apps/decodex/src/agent/tracker_tool_bridge/tests/review/handoff.rs` | 19 | Review handoff, repair complete, terminal finalize, closeout complete |
 
 ## Keep Standards
 
