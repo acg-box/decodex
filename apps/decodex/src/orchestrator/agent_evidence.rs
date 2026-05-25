@@ -1,9 +1,13 @@
 use std::collections::{self, BTreeMap};
 
+use state::PrivateExecutionEvent;
+
 const AGENT_HANDOFF_INDEX_SCHEMA: &str = "decodex.agent_handoff_index/1";
 const AGENT_BLOCKER_SNAPSHOT_SCHEMA: &str = "decodex.blocker_snapshot/1";
 const AGENT_RUN_CAPSULE_SCHEMA: &str = "decodex.run_capsule/1";
 const AGENT_EVIDENCE_EVENT_SCHEMA: &str = "decodex.agent_evidence_event/1";
+const PRIVATE_EVIDENCE_READBACK_SCHEMA: &str = "decodex.private_execution_evidence_readback/1";
+const PRIVATE_EVIDENCE_PAYLOAD_PREVIEW_LIMIT: usize = 160;
 const HANDOFF_INDEX_FILE_NAME: &str = "handoff-index.json";
 const BLOCKERS_DIR_NAME: &str = "blockers";
 const RUNS_DIR_NAME: &str = "runs";
@@ -80,6 +84,14 @@ struct AgentConnectorBackoff {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct AgentPrivateEvidenceRef {
+	evidence_ref: String,
+	source: String,
+	default_view: String,
+	read_command: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct AgentBlocker {
 	evidence_ref: String,
 	project_id: String,
@@ -118,6 +130,7 @@ struct AgentRunCapsuleRef {
 	phase: String,
 	current_operation: String,
 	path: String,
+	private_evidence: AgentPrivateEvidenceRef,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -168,6 +181,7 @@ struct AgentRunCapsule {
 	effective_sandbox_mode: Option<String>,
 	branch_name: Option<String>,
 	worktree_path: Option<String>,
+	private_evidence: AgentPrivateEvidenceRef,
 	ledger_outcome: Option<AgentRunLedgerOutcome>,
 	diagnosis: AgentRunDiagnosis,
 }
@@ -228,6 +242,52 @@ struct AgentEvidenceEvent {
 	run_capsule_count: usize,
 	warning_count: usize,
 	connector_backoff_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+struct PrivateEvidenceReadback {
+	schema: &'static str,
+	project_id: String,
+	issue_selector: String,
+	issue_id: String,
+	issue_identifier: Option<String>,
+	run_id: String,
+	attempt_number: i64,
+	source: &'static str,
+	evidence_ref: String,
+	read_command: String,
+	payload_mode: &'static str,
+	event_count: usize,
+	latest_event_type: Option<String>,
+	latest_event_at: Option<String>,
+	events: Vec<PrivateEvidenceReadbackEvent>,
+	warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+struct PrivateEvidenceReadbackEvent {
+	record_id: i64,
+	event_type: String,
+	recorded_at: String,
+	payload_summary: PrivateEvidencePayloadSummary,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	payload: Option<Value>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PrivateEvidencePayloadSummary {
+	kind: String,
+	byte_count: usize,
+	keys: Vec<String>,
+	preview: Vec<String>,
+	redacted_default_keys: Vec<String>,
+}
+
+struct PrivateEvidenceTarget {
+	issue_id: String,
+	issue_identifier: Option<String>,
+	run_id: String,
+	attempt_number: i64,
 }
 
 struct AgentEvidenceFileWriteContext<'a> {
@@ -441,6 +501,421 @@ fn render_agent_evidence_write_result(result: &AgentEvidenceWriteResult) -> Stri
 	)
 }
 
+fn render_private_evidence_reference(run: &OperatorRunStatus) -> String {
+	let private_evidence = agent_private_evidence_ref(run);
+
+	format!(
+		"ref={} source={} default_view={} read=`{}`",
+		private_evidence.evidence_ref,
+		private_evidence.source,
+		private_evidence.default_view,
+		private_evidence.read_command
+	)
+}
+
+fn agent_private_evidence_ref(run: &OperatorRunStatus) -> AgentPrivateEvidenceRef {
+	AgentPrivateEvidenceRef {
+		evidence_ref: private_evidence_ref_for_parts(
+			&run.project_id,
+			&run.issue_id,
+			&run.run_id,
+			run.attempt_number,
+		),
+		source: String::from("runtime_sqlite"),
+		default_view: String::from("summarized_payloads"),
+		read_command: private_evidence_read_command_for_run(run, true),
+	}
+}
+
+fn private_evidence_read_command_for_run(
+	run: &OperatorRunStatus,
+	json: bool,
+) -> String {
+	let issue_selector = run.issue_identifier.as_deref().unwrap_or(&run.issue_id);
+
+	private_evidence_read_command(
+		issue_selector,
+		Some(&run.run_id),
+		Some(run.attempt_number),
+		json,
+		false,
+	)
+}
+
+fn private_evidence_read_command(
+	issue_selector: &str,
+	run_id: Option<&str>,
+	attempt_number: Option<i64>,
+	json: bool,
+	include_payload: bool,
+) -> String {
+	let mut command = format!("decodex evidence {}", shell_quote(issue_selector));
+
+	if let Some(run_id) = run_id {
+		command.push_str(&format!(" --run-id {}", shell_quote(run_id)));
+	}
+	if let Some(attempt_number) = attempt_number {
+		command.push_str(&format!(" --attempt {attempt_number}"));
+	}
+
+	if json {
+		command.push_str(" --json");
+	}
+	if include_payload {
+		command.push_str(" --include-payload");
+	}
+
+	command
+}
+
+fn private_evidence_ref_for_parts(
+	project_id: &str,
+	issue_id: &str,
+	run_id: &str,
+	attempt_number: i64,
+) -> String {
+	format!("private-evidence:{project_id}/{issue_id}/{run_id}/{attempt_number}")
+}
+
+fn shell_quote(raw: &str) -> String {
+	if !raw.is_empty()
+		&& raw
+			.bytes()
+			.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/' | b':'))
+	{
+		return raw.to_owned();
+	}
+
+	format!("'{}'", raw.replace('\'', "'\\''"))
+}
+
+fn build_private_evidence_readback(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	request: &EvidenceRequest<'_>,
+) -> Result<PrivateEvidenceReadback> {
+	let target = resolve_private_evidence_target(
+		state_store,
+		project,
+		request.issue,
+		request.run_id,
+		request.attempt_number,
+	)?;
+	let events = state_store.list_private_execution_events(
+		project.service_id(),
+		&target.issue_id,
+		&target.run_id,
+		target.attempt_number,
+	)?;
+	let latest_event = events.last();
+	let warnings = if events.is_empty() {
+		vec![String::from("private_execution_evidence_missing")]
+	} else {
+		Vec::new()
+	};
+	let issue_selector = target
+		.issue_identifier
+		.as_deref()
+		.unwrap_or(&target.issue_id)
+		.to_owned();
+	let read_command = private_evidence_read_command(
+		&issue_selector,
+		Some(&target.run_id),
+		Some(target.attempt_number),
+		true,
+		request.include_payload,
+	);
+
+	Ok(PrivateEvidenceReadback {
+		schema: PRIVATE_EVIDENCE_READBACK_SCHEMA,
+		project_id: project.service_id().to_owned(),
+		issue_selector: request.issue.to_owned(),
+		issue_id: target.issue_id.clone(),
+		issue_identifier: target.issue_identifier,
+		run_id: target.run_id.clone(),
+		attempt_number: target.attempt_number,
+		source: "runtime_sqlite",
+		evidence_ref: private_evidence_ref_for_parts(
+			project.service_id(),
+			&target.issue_id,
+			&target.run_id,
+			target.attempt_number,
+		),
+		read_command,
+		payload_mode: if request.include_payload { "full_payloads" } else { "summarized_payloads" },
+		event_count: events.len(),
+		latest_event_type: latest_event.map(|event| event.event_type().to_owned()),
+		latest_event_at: latest_event.map(|event| event.recorded_at().to_owned()),
+		events: events
+			.iter()
+			.map(|event| private_evidence_readback_event(event, request.include_payload))
+			.collect(),
+		warnings,
+	})
+}
+
+fn resolve_private_evidence_target(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	issue_selector: &str,
+	run_id: Option<&str>,
+	attempt_number: Option<i64>,
+) -> Result<PrivateEvidenceTarget> {
+	let (_, runs) = state_store.list_project_runs(project.service_id(), usize::MAX)?;
+	let selector = issue_selector.trim();
+	let matching_run = runs
+		.iter()
+		.filter(|run| private_evidence_run_matches_issue(project, run, selector))
+		.filter(|run| run_id.is_none_or(|run_id| run.run_id() == run_id)).find(|run| attempt_number.is_none_or(|attempt| run.attempt_number() == attempt));
+
+	if let Some(run) = matching_run {
+		let branch_name = run.branch_name().map(str::to_owned);
+		let worktree_path = run
+			.worktree_path()
+			.map(|path| relative_worktree_path_for_path(project, path));
+		let issue_identifier = operator_run_issue_identifier_from_fields(
+			run.run_id(),
+			branch_name.as_deref(),
+			worktree_path.as_deref(),
+		);
+
+		return Ok(PrivateEvidenceTarget {
+			issue_id: run.issue_id().to_owned(),
+			issue_identifier,
+			run_id: run.run_id().to_owned(),
+			attempt_number: run.attempt_number(),
+		});
+	}
+	if let (Some(run_id), Some(attempt_number)) = (run_id, attempt_number) {
+		return Ok(PrivateEvidenceTarget {
+			issue_id: selector.to_owned(),
+			issue_identifier: None,
+			run_id: run_id.to_owned(),
+			attempt_number,
+		});
+	}
+
+	eyre::bail!(
+		"No local run matched issue `{selector}` in project `{}`. Pass --run-id and --attempt for direct runtime-store lookup, or run `decodex status --json` to find local run ids.",
+		project.service_id()
+	)
+}
+
+fn private_evidence_run_matches_issue(
+	project: &ServiceConfig,
+	run: &ProjectRunStatus,
+	selector: &str,
+) -> bool {
+	if run.issue_id() == selector {
+		return true;
+	}
+
+	let branch_name = run.branch_name().map(str::to_owned);
+	let worktree_path = run
+		.worktree_path()
+		.map(|path| relative_worktree_path_for_path(project, path));
+	let issue_identifier = operator_run_issue_identifier_from_fields(
+		run.run_id(),
+		branch_name.as_deref(),
+		worktree_path.as_deref(),
+	);
+
+	issue_identifier
+		.as_deref()
+		.is_some_and(|issue_identifier| issue_identifier.eq_ignore_ascii_case(selector))
+}
+
+fn private_evidence_readback_event(
+	event: &PrivateExecutionEvent,
+	include_payload: bool,
+) -> PrivateEvidenceReadbackEvent {
+	PrivateEvidenceReadbackEvent {
+		record_id: event.record_id(),
+		event_type: event.event_type().to_owned(),
+		recorded_at: event.recorded_at().to_owned(),
+		payload_summary: summarize_private_evidence_payload(event.payload()),
+		payload: include_payload.then(|| event.payload().clone()),
+	}
+}
+
+fn summarize_private_evidence_payload(payload: &Value) -> PrivateEvidencePayloadSummary {
+	let encoded = serde_json::to_vec(payload).unwrap_or_default();
+	let mut keys = Vec::new();
+	let mut preview = Vec::new();
+	let mut redacted_default_keys = Vec::new();
+	let kind = match payload {
+		Value::Object(object) => {
+			for (key, value) in object {
+				keys.push(key.clone());
+
+				if private_evidence_payload_key_is_sensitive(key) {
+					redacted_default_keys.push(key.clone());
+					preview.push(format!("{key}=<redacted by default>"));
+				} else {
+					preview.push(format!("{key}={}", summarize_private_evidence_payload_value(value)));
+				}
+			}
+
+			String::from("object")
+		},
+		Value::Array(values) => {
+			preview.push(format!("array_len={}", values.len()));
+
+			String::from("array")
+		},
+		Value::String(value) => {
+			preview.push(truncate_private_evidence_payload_preview(value));
+
+			String::from("string")
+		},
+		Value::Number(value) => {
+			preview.push(value.to_string());
+
+			String::from("number")
+		},
+		Value::Bool(value) => {
+			preview.push(value.to_string());
+
+			String::from("bool")
+		},
+		Value::Null => String::from("null"),
+	};
+
+	PrivateEvidencePayloadSummary {
+		kind,
+		byte_count: encoded.len(),
+		keys,
+		preview,
+		redacted_default_keys,
+	}
+}
+
+fn summarize_private_evidence_payload_value(value: &Value) -> String {
+	match value {
+		Value::Null => String::from("null"),
+		Value::Bool(value) => value.to_string(),
+		Value::Number(value) => value.to_string(),
+		Value::String(value) => truncate_private_evidence_payload_preview(value),
+		Value::Array(values) => format!("array(len={})", values.len()),
+		Value::Object(object) => format!("object(keys={})", object.len()),
+	}
+}
+
+fn private_evidence_payload_key_is_sensitive(key: &str) -> bool {
+	let key = key.to_ascii_lowercase();
+
+	key.contains("transcript")
+		|| key.contains("message")
+		|| key.contains("conversation")
+		|| key.contains("raw")
+		|| key.contains("stdout")
+		|| key.contains("stderr")
+		|| key.contains("log")
+		|| key.contains("token")
+		|| key.contains("secret")
+}
+
+fn truncate_private_evidence_payload_preview(value: &str) -> String {
+	let mut preview = String::new();
+	let mut truncated = false;
+
+	for character in value.chars() {
+		if preview.len() + character.len_utf8() > PRIVATE_EVIDENCE_PAYLOAD_PREVIEW_LIMIT {
+			truncated = true;
+
+			break;
+		}
+
+		preview.push(character);
+	}
+
+	if truncated {
+		preview.push_str("...");
+	}
+
+	preview
+}
+
+fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> String {
+	let mut output = String::new();
+
+	output.push_str(&format!("Project: {}\n", readback.project_id));
+	output.push_str("Private Execution Evidence\n");
+	output.push_str(&format!("issue_selector: {}\n", readback.issue_selector));
+	output.push_str(&format!("issue_id: {}\n", readback.issue_id));
+	output.push_str(&format!(
+		"issue_identifier: {}\n",
+		readback.issue_identifier.as_deref().unwrap_or("none")
+	));
+	output.push_str(&format!("run_id: {}\n", readback.run_id));
+	output.push_str(&format!("attempt: {}\n", readback.attempt_number));
+	output.push_str(&format!("source: {}\n", readback.source));
+	output.push_str(&format!("evidence_ref: {}\n", readback.evidence_ref));
+	output.push_str(&format!("payload_mode: {}\n", readback.payload_mode));
+	output.push_str(&format!("event_count: {}\n", readback.event_count));
+	output.push_str(&format!(
+		"latest_event_type: {}\n",
+		readback.latest_event_type.as_deref().unwrap_or("none")
+	));
+	output.push_str(&format!(
+		"latest_event_at: {}\n",
+		readback.latest_event_at.as_deref().unwrap_or("none")
+	));
+
+	if !readback.warnings.is_empty() {
+		output.push_str(&format!("warnings: {}\n", readback.warnings.join(", ")));
+	}
+
+	output.push_str("\nEvents\n");
+
+	if readback.events.is_empty() {
+		output.push_str("- none\n");
+
+		return output;
+	}
+
+	for event in &readback.events {
+		output.push_str(&format!(
+			"- record_id: {}\n  event_type: {}\n  recorded_at: {}\n  payload: {}\n",
+			event.record_id,
+			event.event_type,
+			event.recorded_at,
+			render_private_evidence_payload_summary(&event.payload_summary)
+		));
+
+		if let Some(payload) = &event.payload {
+			output.push_str(&format!("  full_payload: {}\n", payload));
+		}
+	}
+
+	output
+}
+
+fn render_private_evidence_payload_summary(
+	summary: &PrivateEvidencePayloadSummary,
+) -> String {
+	let keys = if summary.keys.is_empty() {
+		String::from("none")
+	} else {
+		summary.keys.join(",")
+	};
+	let preview = if summary.preview.is_empty() {
+		String::from("none")
+	} else {
+		summary.preview.join("; ")
+	};
+	let redacted = if summary.redacted_default_keys.is_empty() {
+		String::from("none")
+	} else {
+		summary.redacted_default_keys.join(",")
+	};
+
+	format!(
+		"kind={} bytes={} keys={} preview={} redacted_default_keys={}",
+		summary.kind, summary.byte_count, keys, preview, redacted
+	)
+}
+
 fn lane_issue_belongs_to_project(
 	issue_id: &str,
 	project_id: &str,
@@ -563,6 +1038,7 @@ fn agent_run_capsule(
 ) -> AgentRunCapsule {
 	let path = run_capsule_path(runs_dir, month_bucket, &run.run_id);
 	let diagnosis = agent_run_diagnosis(run);
+	let private_evidence = agent_private_evidence_ref(run);
 
 	AgentRunCapsule {
 		schema: AGENT_RUN_CAPSULE_SCHEMA,
@@ -611,6 +1087,7 @@ fn agent_run_capsule(
 		effective_sandbox_mode: run.effective_sandbox_mode.clone(),
 		branch_name: run.branch_name.clone(),
 		worktree_path: run.worktree_path.clone(),
+		private_evidence,
 		ledger_outcome,
 		diagnosis,
 	}
@@ -627,6 +1104,7 @@ fn run_capsule_ref(capsule: &AgentRunCapsule) -> AgentRunCapsuleRef {
 		phase: capsule.phase.clone(),
 		current_operation: capsule.current_operation.clone(),
 		path: capsule.path.clone(),
+		private_evidence: capsule.private_evidence.clone(),
 	}
 }
 

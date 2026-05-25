@@ -60,6 +60,14 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	assert_eq!(index_json["summary"]["blocker_count"], 3);
 	assert_eq!(index_json["summary"]["run_capsule_count"], 1);
 	assert_eq!(
+		index_json["run_capsules"][0]["private_evidence"]["evidence_ref"],
+		"private-evidence:pubfi/issue-1/run-1/1"
+	);
+	assert_eq!(
+		index_json["run_capsules"][0]["private_evidence"]["read_command"],
+		"decodex evidence PUB-101 --run-id run-1 --attempt 1 --json"
+	);
+	assert_eq!(
 		index_json["blockers"][0]["blocker_snapshot_path"],
 		temp_dir
 			.path()
@@ -83,6 +91,10 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	assert_eq!(capsule_json["schema"], "decodex.run_capsule/1");
 	assert_eq!(capsule_json["run_id"], "run-1");
 	assert_eq!(capsule_json["diagnosis"]["reason_code"], "suspected_stall");
+	assert_eq!(
+		capsule_json["private_evidence"]["default_view"],
+		"summarized_payloads"
+	);
 
 	let blocker_json = read_json_file(
 		&temp_dir
@@ -104,6 +116,120 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 
 	assert_eq!(event_json["schema"], "decodex.agent_evidence_event/1");
 	assert_eq!(event_json["blocker_count"], 3);
+}
+
+#[test]
+fn private_evidence_readback_summarizes_payloads_without_connector() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+
+	state_store
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			"issue-1",
+			"x/pubfi-pub-101",
+			".worktrees/PUB-101",
+		)
+		.expect("worktree should persist");
+	state_store
+		.record_run_attempt("run-1", "issue-1", 1, "failed")
+		.expect("run should persist");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			"issue-1",
+			"run-1",
+			1,
+			"command_failed",
+			serde_json::json!({
+				"summary": "cargo make test failed",
+				"next_action": "repair the failing assertion",
+				"stdout": "full command output stays hidden by default",
+			}),
+		)
+		.expect("private evidence should append");
+
+	let request = EvidenceRequest {
+		config_path: None,
+		issue: "PUB-101",
+		run_id: Some("run-1"),
+		attempt_number: Some(1),
+		json: true,
+		include_payload: false,
+	};
+	let readback = orchestrator::build_private_evidence_readback(
+		&state_store,
+		&config,
+		&request,
+	)
+	.expect("private evidence should read from local state");
+
+	assert_eq!(readback.event_count, 1);
+	assert_eq!(readback.issue_id, "issue-1");
+	assert_eq!(readback.issue_identifier.as_deref(), Some("PUB-101"));
+	assert_eq!(readback.latest_event_type.as_deref(), Some("command_failed"));
+	assert!(readback.warnings.is_empty());
+	assert_eq!(readback.events[0].payload, None);
+	assert!(
+		readback.events[0]
+			.payload_summary
+			.preview
+			.iter()
+			.any(|preview| preview.contains("summary=cargo make test failed"))
+	);
+	assert_eq!(
+		readback.events[0].payload_summary.redacted_default_keys,
+		vec![String::from("stdout")]
+	);
+
+	let rendered = orchestrator::render_private_evidence_readback(&readback);
+
+	assert!(rendered.contains("event_count: 1"));
+	assert!(rendered.contains("redacted_default_keys=stdout"));
+	assert!(!rendered.contains("full command output stays hidden by default"));
+}
+
+#[test]
+fn private_evidence_readback_reports_missing_events_for_known_run() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+
+	state_store
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			"issue-2",
+			"x/pubfi-pub-102",
+			".worktrees/PUB-102",
+		)
+		.expect("worktree should persist");
+	state_store
+		.record_run_attempt("run-empty", "issue-2", 1, "running")
+		.expect("run should persist");
+
+	let request = EvidenceRequest {
+		config_path: None,
+		issue: "PUB-102",
+		run_id: Some("run-empty"),
+		attempt_number: Some(1),
+		json: false,
+		include_payload: false,
+	};
+	let readback = orchestrator::build_private_evidence_readback(
+		&state_store,
+		&config,
+		&request,
+	)
+	.expect("missing private evidence should still produce readback");
+
+	assert_eq!(readback.event_count, 0);
+	assert_eq!(
+		readback.warnings,
+		vec![String::from("private_execution_evidence_missing")]
+	);
+	assert!(
+		orchestrator::render_private_evidence_readback(&readback)
+			.contains("- none")
+	);
 }
 
 fn read_json_file(path: &Path) -> Value {
