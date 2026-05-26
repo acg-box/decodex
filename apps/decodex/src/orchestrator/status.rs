@@ -1582,6 +1582,10 @@ where
 		(reason == "issue_needs_attention").then(|| String::from("needs_attention_label"));
 	let attention_record =
 		operator_queued_issue_latest_attention_record(tracker, project, state_store, issue);
+	let attention_error_class =
+		attention_record.as_ref().and_then(|record| record.error_class.clone());
+	let attention_next_action =
+		attention_record.as_ref().and_then(|record| record.next_action.clone());
 	let attempt_status = marker
 		.as_ref()
 		.and_then(|marker| state_store.run_attempt(marker.run_id()).transpose())
@@ -1594,6 +1598,7 @@ where
 		attempt_status.as_deref(),
 		retry_budget_attempts,
 		worktree_has_tracked_changes,
+		attention_error_class.as_deref(),
 	);
 	let process_liveness = marker.as_ref().and_then(marker_process_liveness_for_marker);
 
@@ -1611,12 +1616,8 @@ where
 			.map(str::to_owned),
 		attempt_status,
 		auto_retry_blocked_reason,
-		attention_error_class: attention_record
-			.as_ref()
-			.and_then(|record| record.error_class.clone()),
-		attention_next_action: attention_record
-			.as_ref()
-			.and_then(|record| record.next_action.clone()),
+		attention_error_class,
+		attention_next_action,
 		retry_budget_attempt_count,
 		retry_budget_max_attempts,
 		last_activity_at: marker
@@ -1717,10 +1718,16 @@ fn operator_queued_issue_attention_summary(
 	attempt_status: Option<&str>,
 	retry_budget_attempts: i64,
 	worktree_has_tracked_changes: bool,
+	attention_error_class: Option<&str>,
 ) -> String {
 	if retry_budget_attempts > 0 && worktree_has_tracked_changes {
 		return format!(
 			"Partial worktree changes are retained after {retry_budget_attempts} failed attempts; inspect the patch, finish validation, then land or reset manually."
+		);
+	}
+	if attention_error_class == Some("app_server_plugin_list_timeout") {
+		return String::from(
+			"app_server_preflight_failed: plugin/list timed out during Codex app-server preflight; operator recovery required.",
 		);
 	}
 	if marker

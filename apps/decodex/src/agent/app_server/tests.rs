@@ -18,8 +18,9 @@ use crate::{
 			AppServerDynamicToolFailure, AppServerRunResult, AppServerThreadArchiveRequest,
 			AppServerTurnFailure, CommandExecHealthCheck, CommandExecResponse,
 			EffectiveThreadConfig, InitializeResponse, ModelProviderCapabilitiesReadResponse,
-			PluginListResponse, ProbeDynamicToolHandler, RequestWaitPhase, RunRecorder,
-			RuntimeConfigSummary, SkillsListResponse, TurnContinuationGuard, UserInput,
+			PluginListResponse, ProbeDynamicToolHandler, REQUEST_TIMEOUT, RequestWaitPhase,
+			RunRecorder, RuntimeConfigSummary, SkillsListResponse, TurnContinuationGuard,
+			UserInput,
 		},
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
@@ -852,6 +853,79 @@ fn capability_preflight_request_error_records_method_blocker() {
 	assert!(failure.to_string().contains("model/list"));
 	assert!(failure.to_string().contains("Method not found"));
 	assert!(failure.report().has_blockers());
+	assert_eq!(state_store.event_count("run-1").expect("event count should load"), 1);
+}
+
+#[test]
+fn plugin_list_preflight_timeout_retries_once_before_success() {
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut recorder = RunRecorder::new(&state_store, "run-1", 1, None);
+	let report = AppServerCapabilityPreflightReport::new();
+	let mut attempts = 0;
+	let response = super::preflight_request_with_timeout_retry(
+		&mut recorder,
+		&report,
+		"plugin/list",
+		REQUEST_TIMEOUT,
+		2,
+		|| {
+			attempts += 1;
+
+			if attempts == 1 { Err(Report::new(AppServerOutputTimeout)) } else { Ok("plugins-ok") }
+		},
+	)
+	.expect("second plugin/list attempt should recover");
+
+	assert_eq!(response, "plugins-ok");
+	assert_eq!(attempts, 2);
+	assert_eq!(state_store.event_count("run-1").expect("event count should load"), 0);
+}
+
+#[test]
+fn plugin_list_preflight_timeout_failure_is_typed_operator_blocker() {
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut recorder = RunRecorder::new(&state_store, "run-1", 1, None);
+	let report = AppServerCapabilityPreflightReport::new();
+	let mut attempts = 0;
+	let error = super::preflight_request_with_timeout_retry::<(), _>(
+		&mut recorder,
+		&report,
+		"plugin/list",
+		REQUEST_TIMEOUT,
+		2,
+		|| {
+			attempts += 1;
+
+			Err(Report::new(AppServerOutputTimeout))
+		},
+	)
+	.expect_err("exhausted plugin/list timeout should fail preflight");
+	let failure = error
+		.downcast_ref::<AppServerCapabilityPreflightFailure>()
+		.expect("plugin/list timeout should be typed");
+	let check = &failure.report().checks()[0];
+	let timeout_seconds = REQUEST_TIMEOUT.as_secs().to_string();
+
+	assert_eq!(attempts, 2);
+	assert_eq!(failure.error_class(), "app_server_plugin_list_timeout");
+	assert!(failure.to_string().contains("app_server_preflight_failed"));
+	assert!(failure.to_string().contains("plugin/list"));
+	assert!(failure.to_string().contains("timed out"));
+	assert!(
+		failure
+			.terminal_next_action("clear label `decodex:needs-attention`")
+			.contains("app_server_preflight_failed evidence for the `plugin/list` timeout")
+	);
+	assert!(failure.report().has_blockers());
+	assert_eq!(check.name, "plugins");
+	assert_eq!(check.status, super::AppServerCapabilityPreflightStatus::Blocked);
+	assert_eq!(check.details.get("failure_reason").map(String::as_str), Some("timeout"));
+	assert_eq!(check.details.get("attempt_count").map(String::as_str), Some("2"));
+	assert_eq!(check.details.get("retry_count").map(String::as_str), Some("1"));
+	assert_eq!(
+		check.details.get("timeout_seconds").map(String::as_str),
+		Some(timeout_seconds.as_str())
+	);
 	assert_eq!(state_store.event_count("run-1").expect("event count should load"), 1);
 }
 
