@@ -398,6 +398,66 @@ fn live_operator_status_snapshot_surfaces_needs_attention_event_cause() {
 }
 
 #[test]
+fn live_operator_status_snapshot_surfaces_plugin_list_preflight_timeout() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-needs-attention",
+		"PUB-109",
+		"Todo",
+		&["decodex:needs-attention"],
+		Some(2),
+		"2026-03-13T09:16:17.133Z",
+	);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	tracker.issue_comments.borrow_mut().insert(
+		issue.id.clone(),
+		vec![linear_execution_history_comment(
+			&issue,
+			"terminal_failure",
+			"2026-03-13T09:20:00Z",
+			"app-server-plugin-list-timeout",
+			|record| {
+				record.error_class = Some(String::from("app_server_plugin_list_timeout"));
+				record.next_action = Some(String::from(
+					"inspect local app_server_preflight_failed evidence for the `plugin/list` timeout, restart `decodex serve`, run `decodex probe`, clear label `decodex:needs-attention`",
+				));
+				record.summary = Some(String::from("Decodex run failed and needs attention."));
+				record.blockers = Some(vec![String::from(
+					"plugin/list timed out during app-server preflight",
+				)]);
+				record.evidence = Some(vec![String::from(
+					"app_server_preflight_failed happened before thread/start",
+				)]);
+			},
+		)],
+	);
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let candidate = snapshot
+		.queued_candidates
+		.iter()
+		.find(|candidate| candidate.issue_identifier == "PUB-109")
+		.expect("needs-attention queued issue should exist");
+	let attention = candidate.attention.as_ref().expect("attention details should render");
+	let rendered = orchestrator::render_operator_status(&snapshot);
+
+	assert_eq!(attention.attention_error_class.as_deref(), Some("app_server_plugin_list_timeout"));
+	assert!(attention.summary.contains("app_server_preflight_failed: plugin/list timed out"));
+	assert!(rendered.contains("attention_cause: app_server_plugin_list_timeout"));
+	assert!(rendered.contains("attention_next_action: inspect local app_server_preflight_failed"));
+	assert!(rendered.contains("plugin/list"));
+}
+
+#[test]
 fn live_operator_status_snapshot_surfaces_retained_partial_progress() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
