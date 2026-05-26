@@ -144,6 +144,11 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - `issue_review_repair_complete` must validate that the supplied PR belongs to the current repository and retained lane branch, points at the validated lane HEAD, is open, and is ready for fresh review before `decodex` accepts retained repair completion.
 - `issue_review_handoff` records the success metadata during the turn, but `decodex` owns the final completion comment and `In Review` transition after service-side validation succeeds.
 - `issue_review_repair_complete` records retained repair completion metadata during the turn, but `decodex` owns the final completion comment and refreshed retained-lineage marker after service-side validation succeeds.
+- Agent-authored PR lifecycle summaries are public text inputs. If the summary recorded
+  by `issue_review_handoff`, `issue_review_repair_complete`, or `issue_closeout_complete`
+  fails the public-text guard during Decodex-owned writeback, Decodex must use fixed
+  public-safe fallback summary text for the Linear comment and ledger record instead
+  of failing the otherwise valid PR lifecycle transition.
 - Adding the configured `needs_attention_label` is an explicit human-required
   failure exit for the active lane. In that case the agent must call
   `issue_comment` with kind `manual_attention` so Decodex can render the
@@ -206,6 +211,11 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - If the turn completes without a valid recorded `issue_review_handoff` and without an explicit human-attention exit, `decodex` must treat the run as failed rather than silently moving the issue to `In Review`.
 - If the turn completes without a matching `issue_terminal_finalize` call for the resolved terminal path, `decodex` must treat the run as failed before reporting the attempt as successful.
 - If PR-backed success writeback partially succeeds, for example the issue reaches `In Review` but the completion comment fails to post, `decodex` must treat the lane as human-required and must not place it back on the automatic retry path.
+- If a remaining public writeback validation failure occurs after successful PR
+  validation, Decodex must classify it as `review_handoff_writeback_failed`, preserve
+  the PR URL in the public recovery record when available, and stop in a recoverable
+  human-required state instead of downgrading the completed implementation work to a
+  generic coding failure.
 
 ## Future expansion
 
