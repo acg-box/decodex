@@ -70,6 +70,11 @@ decodex project list
 `.codex` history, repo-local config files, or currently open worktrees to infer
 projects.
 
+Commands that refresh a project config keep the current enabled or disabled registry
+toggle. Use `decodex project add <project-dir>` or `decodex project enable
+<service-id>` when the intended action is to enable a project for scheduling, and use
+`decodex project disable <service-id>` before a protected pause.
+
 If the project uses managed ChatGPT accounts, enable `[codex.accounts]` in
 `project.toml` and keep the JSONL pool at `~/.codex/decodex/accounts.jsonl`. Do not
 store the shared pool under a project directory or configure a project-local account
@@ -106,6 +111,11 @@ token_env_var = "GITHUB_TOKEN"
 internal_review_mode = "prompt"
 external_review_enabled = false
 
+# Optional secondary public-projection privacy guard.
+# [privacy_classifier]
+# endpoint   = "http://127.0.0.1:9123/classify"
+# timeout_ms = 1000
+
 [paths]
 repo_root = "/path/to/hack-ink/decodex"
 ```
@@ -122,6 +132,9 @@ Notes:
 - For the self-dogfood pilot, use `codex.internal_review_mode = "loop"` for the runtime-owned self-review checkpoint loop, `"prompt"` to add only `Review your work repeatedly and fix any logic bugs until no new issues are found.`, or `"off"` to skip internal self-review. If omitted, the default is `"loop"`.
 - Keep `codex.external_review_enabled = false` when the retained lane should skip the runtime-owned `@codex review` request and rely on the PR-backed handoff plus the normal PR landing checks.
 - With `codex.external_review_enabled = false`, a one-shot `decodex run` may continue draining the same retained lane after review handoff if the retained landing gates are already satisfied. If those gates are still pending, the run exits cleanly at the retained waiting boundary instead of spinning.
+- `[privacy_classifier]` is optional and disabled when omitted. If enabled, `endpoint`
+  must be an operator-managed loopback HTTP service; Decodex sends only rendered
+  public projection text fields to it, never private runtime evidence.
 - Automatic intake is driven by the service-scoped Linear label `decodex:queued:<service-id>` derived from the registered project config `service_id`. Keep the pilot bounded by applying that label only to the small issue set you want `decodex` to own.
 
 ## Target repository contract
@@ -522,45 +535,68 @@ wants to observe the self-bootstrap loop without reading source code.
    Worktrees`, the runtime DB-backed status view, the latest coarse Linear summaries,
    and the retained worktree named on the card.
 
-### Local versus Linear state
+### Local Evidence, Diagnostics, And Linear State
 
-Use this boundary when the dashboard, retained worktrees, and Linear issue state disagree.
+Use this boundary when the dashboard, retained worktrees, local evidence, logs, and
+Linear issue state disagree.
 
-Decodex stores runtime state in one SQLite database owned by the local Decodex
-installation:
+Decodex stores private runtime evidence in one SQLite database owned by the local
+Decodex installation:
 
 - registered projects and config fingerprints
 - active leases, dispatch slots, run attempts, retry schedules, protocol events, and
   local `Run Ledger` attempt rows
+- private execution events for full checkpoint payloads, verification notes, local head
+  evidence, and recovery details scoped by project, issue, run, and attempt
 - linked Git worktrees under `.worktrees/<ISSUE>` plus shared Git administration under
   `.git/worktrees/*`
-- short-lived worktree heartbeat markers such as `.decodex-run-activity`
 - current `status` and dashboard snapshots derived from the runtime DB, live process,
   retained worktrees, and low-frequency connector cache
 
-Linear stores the collaboration surface that teammates and later machines can see:
+Decodex writes derived local handoff evidence under
+`~/.codex/decodex/agent-evidence/<service-id>/`. Use it to hand a repair agent a
+compact `handoff-index.json`, blocker snapshots, run capsules, and a pointer to
+`decodex evidence`. Do not treat those files as scheduling authority, GitHub/Linear
+collaboration records, or a replacement for SQLite.
+
+Logs and `.decodex-run-activity` are diagnostic. Logs explain process failures and
+maintenance warnings. The activity marker explains live child process and protocol
+liveness. Neither surface is the structured private evidence ledger, and neither should
+be pasted into Linear as execution history.
+
+Linear stores the public collaboration surface that teammates and later machines can
+see:
 
 - issue state such as `Todo`, `In Progress`, `In Review`, and terminal states
 - Decodex control labels such as `decodex:queued:<service-id>`,
   `decodex:active:<service-id>`, `decodex:manual-only`, and
   `decodex:needs-attention`
-- issue comments, including Linear execution ledger records for completed lane
-  outcomes, progress checkpoints, handoff notes, failure explanations, and human
-  replies
-- issue description, attachments, linked documents, and PR references that provide
-  shared issue context
+- Linear execution ledger comments for low-frequency lifecycle records such as
+  run-start, material progress phase, PR handoff, failure, landing, closeout, and
+  cleanup summaries
+- issue description, attachments, linked documents, human comments, and PR references
+  that provide shared issue context
 
 Do not treat Linear comments as the real-time runtime backend. Fine-grained timing,
-retry state, raw attempt history, agent activity, connector backoff, and recovery
-details belong in the Decodex runtime DB. If teammates need to understand the
-team-visible outcome of a completed lane, keep Linear issue state, labels, execution
-ledger comments, attachments, or the PR link current at the coarse lifecycle boundary.
+retry state, raw attempt history, full checkpoint text, agent activity, connector
+backoff, private evidence payloads, and recovery details belong in runtime SQLite or
+local diagnostic surfaces. Sparse Linear history is healthy when the public lifecycle
+summary is current and the full evidence can be read locally.
 
-For recovery, start with the operator dashboard or `status`, then inspect Linear state
-and comments for the team-visible lifecycle record. A retained worktree or runtime DB
-recovery row means "inspect this local lane"; it does not mean the team-visible issue
-state changed. Removing a short-lived heartbeat marker does not erase the runtime DB row
-or the Linear summary.
+For recovery, start with the operator dashboard or `status`, then inspect private
+evidence when the public summary is too terse:
+
+```sh
+decodex status --json
+decodex evidence XY-123 --run-id <RUN_ID> --attempt <N> --json
+```
+
+Use `--include-payload` only for local repair. Do not paste full payloads into Linear or
+GitHub. Inspect Linear state and comments after local readback when you need the
+team-visible lifecycle record. A retained worktree or runtime DB recovery row means
+"inspect this local lane"; it does not mean the team-visible issue state changed.
+Removing a short-lived heartbeat marker does not erase the runtime DB row or the Linear
+summary.
 
 Decodex is intentionally Unix-only, and the control plane relies on Unix file-descriptor inheritance when the parent process hands the project dispatch-slot lock to the spawned hidden `_attempt` child.
 
@@ -615,16 +651,42 @@ After running manual commands from a lane, check `decodex project list` or the o
 
 ## Inspecting a failed run
 
-Start with Linear:
+Start with local runtime readback:
+
+```sh
+cargo run -p decodex --bin decodex -- status
+cargo run -p decodex --bin decodex -- status --json
+```
+
+Use the human-readable view when you need the current leased run, lane worktree
+ownership, and session-history summary at a glance. Use `--json` when you want stable
+identifiers such as `run_id`, `issue_id`, `thread_id`, `branch`, and
+repository-relative `worktree_path`.
+
+If the status row or run capsule points to private evidence, inspect it before treating
+the Linear summary as complete:
+
+```sh
+cargo run -p decodex --bin decodex -- evidence XY-123 --run-id <RUN_ID> --attempt <N> --json
+```
+
+Then inspect Linear for the public collaboration state:
 
 - check the issue state
-- read the latest `decodex` comment for `run_id`, attempt number, timestamps, and next action
+- read the latest Decodex ledger comment for public `run_id`, attempt number,
+  timestamps, phase, and next action
 - if retries were exhausted, look for the `decodex:needs-attention` label
-- if the agent explicitly requested human attention, expect the issue to move back to `Todo` with `decodex:needs-attention` immediately instead of retrying
-- any issue that still carries `decodex:needs-attention` is intentionally ineligible for another automatic run until a human clears that label
-- if the failure comment says the label was unavailable on the team, expect the issue to remain in a non-startable guard state such as `In Progress` until a human moves it back to a startable state manually
-- if the issue is already terminal, expect the worktree to disappear on the next live pass or startup reconciliation
-- if the run failed as `stalled_run_detected`, expect the worktree to remain in place so you can inspect the partially completed lane before re-enabling automation
+- if the agent explicitly requested human attention, expect the issue to move back to
+  `Todo` with `decodex:needs-attention` immediately instead of retrying
+- any issue that still carries `decodex:needs-attention` is intentionally ineligible
+  for another automatic run until a human clears that label
+- if the failure comment says the label was unavailable on the team, expect the issue to
+  remain in a non-startable guard state such as `In Progress` until a human moves it
+  back to a startable state manually
+- if the issue is already terminal, expect the worktree to disappear on the next live
+  pass or startup reconciliation
+- if the run failed as `stalled_run_detected`, expect the worktree to remain in place so
+  you can inspect the partially completed lane before re-enabling automation
 
 Parent repo-gate retry note:
 
@@ -638,21 +700,12 @@ Parent repo-gate retry note:
   Linear reaches `Done` with the service queue/active labels and
   `decodex:needs-attention` cleaned up.
 
-Then inspect the worktree mentioned in the comment:
+Then inspect the worktree mentioned by status, private evidence, or the public ledger:
 
 ```sh
 git -C /absolute/path/to/hack-ink/decodex/.worktrees/XY-123 status --short
 git -C /absolute/path/to/hack-ink/decodex/.worktrees/XY-123 log --oneline --decorate -5
 ```
-
-Before dropping to local storage internals, inspect the supported runtime surface:
-
-```sh
-cargo run -p decodex --bin decodex -- status
-cargo run -p decodex --bin decodex -- status --json
-```
-
-Use the human-readable view when you need the current leased run, lane worktree ownership, and session-history summary at a glance. Use `--json` when you want a machine-readable snapshot with stable identifiers such as `run_id`, `issue_id`, `thread_id`, `branch`, and repository-relative `worktree_path`.
 
 The operator snapshot also exposes coarse liveness semantics so you do not have to infer progress from worktree file churn alone:
 
@@ -677,7 +730,7 @@ For the running-lane fields:
 
 If you pass `--limit`, it only caps the recent-run section. Running lanes remain uncapped in both the human-readable and JSON status views so the currently leased lanes stay visible.
 
-The runtime SQLite database is the supported recovery store, but operators should not debug it through ad hoc SQL first. If `status` is insufficient, inspect the tracker summary plus retained worktree lane directly:
+The runtime SQLite database is the supported recovery store, but operators should not debug it through ad hoc SQL first. If `status` and `decodex evidence` are insufficient, inspect the public tracker summary plus retained worktree lane directly:
 
 1. Read the Linear issue state, labels, comments, attachments, and linked PR for `XY-123`.
 2. Inspect the retained worktree:
@@ -687,7 +740,10 @@ The runtime SQLite database is the supported recovery store, but operators shoul
    git -C /absolute/path/to/hack-ink/decodex/.worktrees/XY-123 log --oneline --decorate -5
    ```
 
-Use the operator dashboard or `status` for run ids, attempts, and failure class; use the retained worktree when the failure happened inside `app-server` transport or thread lifecycle rather than during repo gate commands. Linear should carry only the coarse team-visible failure summary.
+Use the operator dashboard, `status`, and `decodex evidence` for run ids, attempts,
+failure class, and private execution evidence. Use the retained worktree when the
+failure happened inside `app-server` transport or thread lifecycle rather than during
+repo gate commands. Linear should carry only the coarse team-visible failure summary.
 
 ## Re-running after failure
 

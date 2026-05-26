@@ -1803,6 +1803,134 @@ fn state_store_open_persists_runtime_history_across_instances() {
 }
 
 #[test]
+fn private_execution_events_persist_reload_and_keep_append_order() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let first = store
+		.append_private_execution_event(
+			"decodex",
+			"XY-520",
+			"run-1",
+			2,
+			"evidence_snapshot",
+			serde_json::json!({
+				"summary": "first private snapshot",
+				"evidence": ["runtime-db", "local-only"],
+			}),
+		)
+		.expect("first private event should append");
+	let second = store
+		.append_private_execution_event(
+			"decodex",
+			"XY-520",
+			"run-1",
+			2,
+			"review_pass",
+			serde_json::json!({
+				"summary": "second private snapshot",
+				"outcome": "clean",
+			}),
+		)
+		.expect("second private event should append");
+
+	assert!(
+		first.record_id() < second.record_id(),
+		"private event row ids should preserve append order"
+	);
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+	let events = reopened
+		.list_private_execution_events("decodex", "XY-520", "run-1", 2)
+		.expect("private events should reload");
+
+	assert_eq!(events.len(), 2);
+	assert_eq!(events[0].record_id(), first.record_id());
+	assert_eq!(events[0].project_id(), "decodex");
+	assert_eq!(events[0].issue_id(), "XY-520");
+	assert_eq!(events[0].run_id(), "run-1");
+	assert_eq!(events[0].attempt_number(), 2);
+	assert_eq!(events[0].event_type(), "evidence_snapshot");
+	assert_eq!(events[0].payload()["evidence"], serde_json::json!(["runtime-db", "local-only"]));
+	assert_eq!(events[1].record_id(), second.record_id());
+	assert_eq!(events[1].event_type(), "review_pass");
+	assert_eq!(events[1].payload()["outcome"], serde_json::json!("clean"));
+	assert!(events[0].recorded_at_unix() <= events[1].recorded_at_unix());
+	assert!(!events[0].recorded_at().is_empty());
+}
+
+#[test]
+fn private_execution_events_filter_issue_run_attempt_and_stay_out_of_linear_cache() {
+	let store = StateStore::open_in_memory().expect("in-memory state store should open");
+
+	store
+		.append_private_execution_event(
+			"decodex",
+			"XY-520",
+			"run-1",
+			1,
+			"kept",
+			serde_json::json!({"match": true}),
+		)
+		.expect("matching private event should append");
+	store
+		.append_private_execution_event(
+			"decodex",
+			"XY-521",
+			"run-1",
+			1,
+			"other_issue",
+			serde_json::json!({"match": false}),
+		)
+		.expect("other issue private event should append");
+	store
+		.append_private_execution_event(
+			"decodex",
+			"XY-520",
+			"run-2",
+			1,
+			"other_run",
+			serde_json::json!({"match": false}),
+		)
+		.expect("other run private event should append");
+	store
+		.append_private_execution_event(
+			"decodex",
+			"XY-520",
+			"run-1",
+			2,
+			"other_attempt",
+			serde_json::json!({"match": false}),
+		)
+		.expect("other attempt private event should append");
+	store
+		.append_private_execution_event(
+			"pubfi",
+			"XY-520",
+			"run-1",
+			1,
+			"other_project",
+			serde_json::json!({"match": false}),
+		)
+		.expect("other project private event should append");
+
+	let events = store
+		.list_private_execution_events("decodex", "XY-520", "run-1", 1)
+		.expect("private events should list");
+
+	assert_eq!(events.len(), 1);
+	assert_eq!(events[0].event_type(), "kept");
+	assert_eq!(events[0].payload()["match"], serde_json::json!(true));
+	assert!(
+		store
+			.list_linear_execution_events("decodex", "XY-520")
+			.expect("linear event cache should read")
+			.is_empty(),
+		"private execution events must not populate the public Linear mirror cache"
+	);
+}
+
+#[test]
 fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.db");
@@ -1858,7 +1986,7 @@ fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 		"pubfi",
 		"pubfi refresh should stay scoped to the same service id"
 	);
-	assert!(project.enabled(), "pubfi refresh should replace the previously disabled row");
+	assert!(!project.enabled(), "pubfi refresh should preserve the existing disabled state");
 	assert_eq!(
 		project.config_fingerprint(),
 		"def456",
@@ -1883,5 +2011,39 @@ fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 		project.workflow_path(),
 		refreshed_workflow_path.as_path(),
 		"pubfi refresh should replace the stale workflow path"
+	);
+}
+
+#[test]
+fn remove_project_deletes_persistent_registry_row() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.db");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let registration = ProjectRegistration {
+		service_id: String::from("vibe-mono"),
+		config_path: temp_dir.path().join("project.toml"),
+		repo_root: temp_dir.path().join("repo"),
+		worktree_root: temp_dir.path().join("repo/.worktrees"),
+		workflow_path: temp_dir.path().join("repo/WORKFLOW.md"),
+		tracker_api_key_env_var: String::from("LINEAR_API_KEY_HACKINK"),
+		github_token_env_var: String::from("GITHUB_PAT_Y"),
+		enabled: true,
+		config_fingerprint: String::from("abc123"),
+		updated_at: String::from("2026-05-25T00:00:00Z"),
+		updated_at_unix: 1_779_667_200,
+	};
+
+	store.upsert_project(&registration).expect("project should persist");
+
+	let removed = store.remove_project("vibe-mono").expect("project should remove");
+
+	assert_eq!(removed.service_id(), "vibe-mono");
+	assert!(store.list_projects().expect("projects should list").is_empty());
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+
+	assert!(
+		reopened.list_projects().expect("project registry should load").is_empty(),
+		"removed project must not remain in SQLite registry"
 	);
 }

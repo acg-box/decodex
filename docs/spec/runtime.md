@@ -31,15 +31,31 @@ Defines: The runtime scope, source-of-truth boundaries, eligibility rules, lane 
 
 ## Source of truth boundaries
 
-- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, protocol events, worktree mappings, retained PR state, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
+- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, protocol events, private execution events, worktree mappings, retained PR state, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
 - Linear remains the team-visible tracker surface for issue lifecycle, queue/active/manual-attention labels, and coarse lifecycle summaries such as start, PR-ready, blocked, failed, landed, and done.
 - Versioned Linear execution event comments use the schema in
   [`linear-execution-ledger.md`](./linear-execution-ledger.md), but fine-grained runtime truth must not be rebuilt from comments every tick.
+- Private execution events are structured runtime evidence rows scoped by
+  `project_id`, `issue_id`, `run_id`, and `attempt_number`. They hold full local
+  evidence that should be queryable through `StateStore` without being mirrored to
+  Linear execution ledger payloads. The operator CLI readback path is
+  `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N>`, which reads the local
+  runtime store and summarizes payloads by default.
 - Centralized project directories under `~/.codex/decodex/projects/<service-id>/`
   form the project contract. Each directory contains `project.toml` for service
   paths and credentials plus `WORKFLOW.md` for execution policy. They do not store
   runtime ownership.
 - The local SQLite database must not become a replacement for the human issue backlog. It is the operator control-plane state for this machine.
+
+The evidence boundary is ordered from private runtime authority to public collaboration
+mirror:
+
+| Surface | Boundary |
+| --- | --- |
+| Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, and recovery detail belong. |
+| Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
+| Logs under `~/.codex/decodex/logs/` and `.decodex-run-activity` | Diagnostic process and liveness signals. They may explain what a local process did, but they are not the structured execution ledger and must not be replayed as tracker state. |
+| Linear execution ledger comments | Low-frequency public projection for team-visible lifecycle state. They carry coarse start, progress phase, PR, handoff, failure, landing, closeout, and cleanup summaries only. |
 
 ### Operator snapshot recovery boundary
 
@@ -49,6 +65,7 @@ The following facts are local runtime truth and must not be rebuilt from Linear 
 
 - lane attempts: `run_id`, `attempt_number`, attempt status, and terminal classification
 - protocol events, event counts, event timestamps, and thread/liveness hydration fields
+- private execution events carrying structured local evidence for an issue/run/attempt
 - retry and backoff state: queued retry kind, due time, retry budget, and connector backoff
 - phase timing and operator activity summaries
 - retained worktree mappings, retained PR handoff identity, post-review phase, and cleanup or repair ownership
@@ -196,13 +213,44 @@ Before applying success or failure writeback, `decodex` must classify the finish
 | Disposition | Required agent signal | Forbidden co-signal | Runtime effect |
 | --- | --- | --- | --- |
 | `review_handoff` | `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")` | `decodex:needs-attention` | Run the repo-native gate, revalidate PR state, post completion comment, transition to `In Review`. |
-| `manual_attention` | `decodex:needs-attention` plus an explanatory issue comment, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
+| `manual_attention` | `decodex:needs-attention` plus an explanatory public issue summary, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
 
 If neither signal exists, or both signals exist, `decodex` must fail the attempt instead of inferring operator intent.
 If the label is recorded without the required explanatory comment, `decodex` must also fail the attempt instead of treating it as a valid `manual_attention` exit.
 If the resolved terminal path is not explicitly finalized through `issue_terminal_finalize`, the app-server wrapper must fail the turn before `decodex` records the attempt as successful.
-The explanatory comment for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text when available instead of speculating about unverified capability limits.
+The explanatory public summary for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text only when those values are public-safe, instead of speculating about unverified capability limits.
 Execution-state checkpoints are durable progress overlays only. Their phase, focus, next action, blockers, evidence, or verification fields are never a substitute for the explicit terminal-finalization call.
+
+### Progress checkpoint writeback
+
+`issue_progress_checkpoint` is private-first. Each accepted call appends the full
+normalized checkpoint payload to `private_execution_events` in the runtime SQLite
+database before attempting any Linear write. The private payload includes phase, focus,
+next action, blockers, evidence, verification, resolved lane head, branch,
+repository-relative worktree path, and PR URL when present.
+
+Linear receives only the public projection of that checkpoint. The projection is a
+`decodex.linear_execution_event` with `event_type = "progress_checkpoint"` and only
+allowlisted public fields such as phase, summary, branch, repository-relative worktree
+path, and PR URL. Raw checkpoint focus, next action, blockers, evidence, verification,
+local head evidence, host-local paths, identity-routing details, account details, and
+token names must stay out of Linear.
+
+If the project configures a local public-projection privacy classifier, Decodex applies
+that classifier only after the schema-controlled public projection has been rendered.
+The classifier receives public projection text fields, not private execution events or
+the full checkpoint payload. It is a secondary semantic guard: schema allowlisting and
+the deterministic public-text guard remain the primary privacy boundary. Suspicious
+classifier verdicts and classifier-unavailable results fail closed by withholding
+optional public text or replacing required public text with fixed public-safe fallback
+text; private execution-event persistence still succeeds independently of Linear
+projection classification.
+
+The local `linear_execution_events` table remains the public mirror cache for rendered
+Linear records. It is not the private evidence source. Repeated checkpoint calls that
+only change private payload fields must append private execution events but must not
+append new Linear comments. A new Linear progress projection is written only when the
+material public lifecycle signal changes.
 
 When `decodex` runs the repo-native gate during `validating`, it must preserve the repo-gate failure class instead of collapsing everything into one generic failure bucket:
 
@@ -260,7 +308,8 @@ This path applies to retryable failures, retry exhaustion, and explicit `manual_
 
 Retryable failures with remaining budget:
 
-- Keep the issue in `In Progress`, typically through an agent-authored retry comment.
+- Keep the issue in `In Progress`, typically through a runtime-owned retry ledger
+  comment.
 - Queue the retry in the runtime database rather than immediately redispatching inside the same poll tick.
 - Clean worker exits after a nonterminal continuation boundary schedule a short continuation retry.
 - Abnormal worker exits schedule exponential backoff capped by `execution.max_retry_backoff_ms`.
@@ -279,6 +328,11 @@ Retry-exhausted or human-required failures:
 4. Finalize the terminal path with `issue_terminal_finalize(path = "manual_attention")`.
 
 If the coding agent explicitly requests human attention by adding `decodex:needs-attention`, `decodex` must stop automatic retries for that attempt, skip PR-backed success writeback, and treat the lane as a human-required failure immediately.
+The paired explanatory comment must use the issue-scoped `issue_comment` allowlist,
+currently kind `manual_attention`, so the Linear-visible summary is rendered from
+structured public fields instead of an arbitrary agent-authored body. Private command
+or error details must remain in local runtime evidence when they cannot pass the
+public-text guard.
 Runtime-owned review-policy stops use the same human-required failure path, but with dedicated `error_class` values:
 
 - `review_policy_exhausted`
@@ -298,7 +352,12 @@ and idempotency fields are defined by
 
 The local runtime store is the global Decodex SQLite database for one local installation. It lives at `~/.codex/decodex/runtime.sqlite3`, not inside any registered project checkout or worktree. Every row that belongs to a repo is scoped by `project_id`. Decodex logs live beside that database under `~/.codex/decodex/logs/`, the optional shared Codex account pool lives at `~/.codex/decodex/accounts.jsonl`, global operator config lives at `~/.codex/decodex/config.toml`, bounded local account usage estimates live at `~/.codex/decodex/account-usage-history.jsonl`, and agent-readable derived evidence lives under `~/.codex/decodex/agent-evidence/<service-id>/`; vendor-qualified app-data directories and per-project runtime databases are not part of the runtime contract. Global operator config owns account-pool routing and shared account display-name offsets. Account usage history owns local seven-day display estimates only; it does not contain token material and does not decide scheduling. UI-only preferences such as theme, table sorting, and local privacy visibility are not runtime state.
 
-Project contracts live outside registered repositories under `~/.codex/decodex/projects/<service-id>/`. Each project directory must contain `project.toml` and `WORKFLOW.md`; arbitrary project file names such as `<service-id>.toml` are not part of the contract. `project.toml` must set `[paths].repo_root` so the project contract is explicit. Project registration stores the centralized `config_path`, target `repo_root`, `worktree_root`, and workflow path in the global runtime database. Commands that start inside a registered checkout or lane worktree resolve the project through that registry; they do not discover or trust worktree-local config files. `decodex serve` loads enabled registered projects from the global runtime database. It must not scan `.codex` history, repo-local config files, or currently open worktrees to infer additional projects.
+Project contracts live outside registered repositories under `~/.codex/decodex/projects/<service-id>/`. Each project directory must contain `project.toml` and `WORKFLOW.md`; arbitrary project file names such as `<service-id>.toml` are not part of the contract. `project.toml` must set `[paths].repo_root` so the project contract is explicit. Project registration stores the centralized `config_path`, target `repo_root`, `worktree_root`, and workflow path in the global runtime database. Commands that start inside a registered checkout or lane worktree resolve the project through that registry; they do not discover or trust worktree-local config files. Project config refreshes preserve an existing enabled or disabled registry toggle; only explicit operator commands such as `decodex project add <project-dir>`, `decodex project enable <service-id>`, and `decodex project disable <service-id>` may change that toggle. `decodex serve` loads enabled registered projects from the global runtime database. It must not scan `.codex` history, repo-local config files, or currently open worktrees to infer additional projects.
+
+`project.toml` may also configure `[privacy_classifier]` with a loopback HTTP
+`endpoint` and bounded `timeout_ms` for an operator-managed local classifier runtime.
+Remote classifier endpoints are invalid. When omitted, the classifier adapter is
+disabled and public projections rely on the schema and deterministic guard only.
 
 The runtime database stores at least:
 
@@ -306,6 +365,7 @@ The runtime database stores at least:
 - active leases and dispatch ownership
 - run attempts and attempt status
 - protocol event journals
+- private execution events scoped by project, issue, run, and attempt
 - worktree mappings
 - retained PR and post-review state
 - retry state and retry budgets
@@ -339,6 +399,11 @@ The minimum supported surface is:
 - a local status command that renders the current service snapshot in both human-readable and JSON forms
 - an agent evidence command, `decodex diagnose`, that writes a compact derived handoff index, blocker snapshots, run capsules, and an append-only evidence event stream under `~/.codex/decodex/agent-evidence/<service-id>/`
 
+Structured logs remain diagnostic. They may help explain a live failure, but they are
+not the structured private evidence ledger. Private execution events belong in the
+runtime SQLite store; Linear execution events remain the constrained public mirror for
+coarse lifecycle records.
+
 The status surface should describe runtime DB-backed execution state, plus low-frequency connector refreshes and retained `.worktrees` lanes, for example:
 
 - active leased runs
@@ -355,12 +420,14 @@ After a process restart, recent-run history, active lease ownership, retained po
 ## Retention and cleanup
 
 - Lease and session mappings: remove when the run closes.
-- Attempt records, terminal outcome, and locally cached Linear execution ledger links
-  remain runtime history. Raw protocol event rows for terminal runs may be compacted by
-  `decodex maintenance prune --apply` once the latest event is at least 14 days old,
-  but only after Decodex writes the compact run summary and confirms that no active
-  lease, retained worktree, review handoff, review orchestration, or cleanup blocker
-  still owns that run or issue.
+- Attempt records, terminal outcome, private execution events, and locally cached
+  Linear execution ledger links remain runtime history. Raw protocol event rows for
+  terminal runs may be compacted by `decodex maintenance prune --apply` once the
+  latest event is at least 14 days old, but only after Decodex writes the compact run
+  summary and confirms that no active lease, retained worktree, review handoff, review
+  orchestration, or cleanup blocker still owns that run or issue. The first private
+  execution event schema has no compaction path; add one only when runtime maintenance
+  owns a concrete retention policy for that structured evidence.
 - `decodex maintenance prune --dry-run` is the read-only retention path for inspecting
   local cleanup candidates without applying retention changes. The `--apply` mode owns
   state-aware protocol-event

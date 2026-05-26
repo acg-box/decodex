@@ -2,6 +2,7 @@ use std::{panic, slice};
 
 use orchestrator::{OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus, OperatorWorktreeStatus};
 use serde_json::Value;
+use orchestrator::AgentPrivateEvidenceRef;
 
 fn successful_linear_execution_history_comments(issue: &TrackerIssue) -> Vec<TrackerComment> {
 	vec![
@@ -205,6 +206,7 @@ fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
 
 	orchestrator::OperatorRunStatus {
 		project_id: String::from("pubfi"),
+		project_display_name: String::from("hack-ink/pubfi-mono-v2"),
 		run_id: String::from("run-1"),
 		issue_id: String::from("issue-1"),
 		issue_identifier: Some(String::from("PUB-101")),
@@ -234,11 +236,19 @@ fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
 		suspected_stall: false,
 		last_event_type: Some(String::from("turn/completed")),
 		last_event_at: Some(String::from("2026-03-14 10:00:01")),
-			event_count: 4,
-			process_id: Some(1_234),
-			process_alive: Some(true),
-			process_liveness_reason: Some(String::from("process_alive")),
-			retry_kind: None,
+		event_count: 4,
+		private_evidence: AgentPrivateEvidenceRef {
+			evidence_ref: String::from("private-evidence:pubfi/issue-1/run-1/1"),
+			source: String::from("runtime_sqlite"),
+			default_view: String::from("summarized_payloads"),
+			read_command: String::from(
+				"decodex evidence PUB-101 --run-id run-1 --attempt 1 --json",
+			),
+		},
+		process_id: Some(1_234),
+		process_alive: Some(true),
+		process_liveness_reason: Some(String::from("process_alive")),
+		retry_kind: None,
 		next_retry_at: None,
 		effective_model: Some(String::from("gpt-5.4")),
 		effective_model_provider: Some(String::from("openai")),

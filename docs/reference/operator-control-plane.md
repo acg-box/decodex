@@ -24,6 +24,9 @@ Decodex currently runs as a local, single-machine control plane:
 - Each project directory uses fixed filenames: `project.toml` for service paths and
   credentials, plus `WORKFLOW.md` for execution policy.
 - Projects are registered explicitly with `decodex project add <project-dir>`.
+- Registry refresh paths preserve the existing enabled or disabled toggle; use
+  `decodex project add`, `decodex project enable`, or `decodex project disable` for
+  deliberate enablement changes.
 - `decodex serve` does not scan `.codex` history, repo-local config files, or
   open worktrees to infer projects.
 - Each project row is scoped by `project_id` and canonical `repo_root`.
@@ -53,15 +56,21 @@ operator snapshot and exists so a repair agent can quickly open one handoff inde
 related blocker snapshots, and run capsules. It is not scheduling authority, not a
 replacement for the runtime database, and not a Linear or GitHub collaboration record.
 Use `decodex diagnose --json` when an agent needs the current handoff index directly.
+When Linear shows only a public lifecycle summary, inspect local private execution
+evidence with `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json`.
+The evidence command reads runtime SQLite directly, so it remains useful when tracker
+or GitHub connectors are unavailable. By default it prints compact payload summaries
+rather than full structured payloads; add `--include-payload` only for local repair
+work that needs full private payload values.
 
 ## State Ownership
 
 | Surface | Owns | Does Not Own |
 | --- | --- | --- |
-| Runtime SQLite DB | active leases, attempts, protocol events, worktree mappings, retry state, retained PR state, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
+| Runtime SQLite DB | active leases, attempts, protocol events, private execution events, worktree mappings, retry state, retained PR state, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
 | Central project config | `service_id`, repo root, worktree root, tracker/GitHub credential env-var names, enabled project registration | per-run state or issue ownership |
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
-| Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, connector retry budgets |
+| Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, private execution evidence, connector retry budgets |
 | GitHub | PR, checks, review comments, merge evidence, signed commit verification | queue selection or local lane ownership |
 | `.decodex-run-activity` | short-lived child activity heartbeat for the active attempt, including same-boot and same-process-start liveness | durable ownership, review handoff identity, cleanup authority |
 
@@ -120,6 +129,52 @@ outside the local operator surface.
 | `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. |
 | `Recovery Worktrees` | Retained local worktrees that are not currently owned by `Running Lanes`, `Review & Landing`, or queued attention in `Intake Queue`. This is the cleanup or recovery inbox for recovered paths, retained PR leftovers, and cleanup-only local worktrees. Empty is the normal healthy state. |
 | `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Raw local attempts and heartbeat details stay in debug expansion. |
+
+## Private Evidence Readback
+
+Private execution evidence is local runtime evidence, not public tracker history.
+Use it when a Linear execution ledger comment is intentionally brief and an operator
+or repair agent needs to answer what failed, what was verified, or what the next
+local recovery step is.
+
+Recommended readback sequence:
+
+1. Run `decodex status` or `decodex diagnose --json` and identify the issue, run id,
+   and attempt number. Status rows and run capsules include a `private_evidence`
+   command reference for this tuple. Operator JSON snapshots carry the same compact
+   reference; they do not embed private event payloads.
+2. Run `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json`.
+3. If `event_count` is `0` and warnings include
+   `private_execution_evidence_missing`, use the status row, run capsule, protocol
+   summary, retained worktree, and Linear public summary as the available evidence.
+4. Use `--include-payload` only when compact payload summaries are insufficient for
+   local repair. Do not paste full payloads into Linear or GitHub.
+
+The command does not require live Linear or GitHub observer access. It resolves known
+local runs from the runtime database and can also perform a direct lookup when both
+`--run-id` and `--attempt` are supplied.
+
+## Sparse Linear Updates
+
+Sparse Linear updates are expected. A healthy lane may have only a run-start record,
+one or more phase-level progress projections, a PR handoff, and a terminal landing,
+closeout, cleanup, or needs-attention record. The absence of detailed checkpoint text,
+raw command output, heartbeat messages, token-pressure notes, or retry diagnostics in
+Linear does not mean that evidence is missing.
+
+Interpret the surfaces in this order:
+
+1. Use `status`, the dashboard, or `diagnose --json` for current local ownership,
+   run ids, attempts, health, and private-evidence references.
+2. Use `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json` for full
+   structured local evidence when the public summary is too terse.
+3. Use logs only to explain process diagnostics such as startup failures, connector
+   backoff, or maintenance warnings.
+4. Use Linear for public team-visible lifecycle state and collaboration context.
+
+Do not backfill Linear with private evidence just to make the issue history look like a
+complete execution transcript. If a teammate needs a public update, write or wait for
+the next allowlisted lifecycle summary instead of pasting local evidence payloads.
 
 Worktree visibility follows the owning dashboard section:
 
@@ -253,8 +308,10 @@ rate-limited, or unavailable.
   from local runtime DB state while external sync is paused.
 - Linear writes should stay coarse: one run-start ledger, material progress
   checkpoints, PR-ready/handoff, blocked/failed, landed, done, and cleanup summaries.
+  Full structured execution evidence belongs in private runtime SQLite events.
 - Fine-grained retry budgets, raw attempts, heartbeat, child buckets, token pressure,
-  and recovery details stay local.
+  recovery details, and process logs stay local. Logs are diagnostic text; private
+  execution events are structured runtime evidence.
 - Completed lanes without Decodex Linear execution ledger records are reported as
   `missing` / `execution_ledger_missing`. Tracker terminal state, local attempt
   success, and non-ledger comments never satisfy the Run Ledger outcome contract.
