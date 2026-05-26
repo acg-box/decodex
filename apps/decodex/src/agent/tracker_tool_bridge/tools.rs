@@ -7,17 +7,31 @@ use crate::{
 		ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
 		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
-		ISSUE_TRANSITION_TOOL_NAME, LabelArgs, PendingReviewAction, PendingReviewCompletion,
-		ProgressCheckpointArgs, ReviewCheckpointArgs, ReviewExecutionMode, ReviewHandoffArgs,
-		ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus, RunCompletionDisposition,
-		TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
+		ISSUE_TRANSITION_TOOL_NAME, LabelArgs, NormalizedProgressCheckpoint, PendingReviewAction,
+		PendingReviewCompletion, ProgressCheckpointArgs, ReviewCheckpointArgs, ReviewExecutionMode,
+		ReviewHandoffArgs, ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus,
+		RunCompletionDisposition, TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
 	},
-	state,
+	state::{self, StateStore},
 	tracker::{
 		self, records,
 		records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
 	},
 };
+
+const COMMENT_KIND_MANUAL_ATTENTION: &str = "manual_attention";
+const MANUAL_ATTENTION_TERMINAL_PATH: &str = "manual_attention";
+
+#[derive(Debug)]
+struct NormalizedManualAttentionComment {
+	error_class: String,
+	next_action: String,
+	blockers: Vec<String>,
+	evidence: Vec<String>,
+	failed_command: Option<String>,
+	raw_error: Option<String>,
+	summary: Option<String>,
+}
 
 impl<'a> TrackerToolBridge<'a> {
 	pub(super) fn build_tool_specs(&self) -> Vec<DynamicToolSpec> {
@@ -95,15 +109,31 @@ impl<'a> TrackerToolBridge<'a> {
 	pub(super) fn comment_tool_specs(&self) -> Vec<DynamicToolSpec> {
 		vec![DynamicToolSpec::new(
 			ISSUE_COMMENT_TOOL_NAME,
-			"Add an exceptional human-readable comment to the currently leased issue for manual-attention blockers or explicit collaboration notes. Use progress checkpoints for routine progress.",
+			"Add an allowlisted public summary comment to the currently leased issue. The supported automation kind is `manual_attention`; Decodex renders the Linear comment from structured public fields.",
 			serde_json::json!({
-					"type": "object",
-					"properties": {
+				"type": "object",
+				"properties": {
 					"issue_id": { "type": "string" },
 					"issue_identifier": { "type": "string" },
-					"body": { "type": "string" }
+					"kind": {
+						"type": "string",
+						"enum": [COMMENT_KIND_MANUAL_ATTENTION]
+					},
+					"error_class": { "type": "string" },
+					"next_action": { "type": "string" },
+					"blockers": {
+						"type": "array",
+						"items": { "type": "string" }
+					},
+					"evidence": {
+						"type": "array",
+						"items": { "type": "string" }
+					},
+					"failed_command": { "type": "string" },
+					"raw_error": { "type": "string" },
+					"summary": { "type": "string" }
 				},
-				"required": ["body"],
+				"required": ["kind", "error_class", "next_action", "blockers", "evidence"],
 				"additionalProperties": false
 			}),
 		)]
@@ -112,7 +142,7 @@ impl<'a> TrackerToolBridge<'a> {
 	pub(super) fn progress_checkpoint_tool_specs(&self) -> [DynamicToolSpec; 1] {
 		[DynamicToolSpec::new(
 			ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
-			"Record the current execution-state snapshot for the leased issue as a durable Linear-backed progress checkpoint without changing lifecycle authority. On retained lanes, omit `head_sha` to capture the exact current lane HEAD automatically, or pass a matching current-lane HEAD SHA.",
+			"Record the current execution-state snapshot for the leased issue as private runtime evidence, then publish only a low-frequency public Linear projection when the public lifecycle signal changes. On retained lanes, omit `head_sha` to capture the exact current lane HEAD automatically, or pass a matching current-lane HEAD SHA.",
 			serde_json::json!({
 				"type": "object",
 				"properties": {
@@ -359,56 +389,140 @@ impl<'a> TrackerToolBridge<'a> {
 			return DynamicToolCallResponse::failure(error);
 		}
 
-		let phase = match ExecutionProgressPhase::parse(&parsed.phase) {
-			Ok(phase) => phase,
+		let checkpoint = match self.normalize_progress_checkpoint(parsed) {
+			Ok(checkpoint) => checkpoint,
 			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
+		let (review_context, state_store) = match self.progress_checkpoint_context() {
+			Ok(context) => context,
+			Err(error) => return DynamicToolCallResponse::failure(error),
+		};
+
+		if let Err(error) =
+			self.append_private_progress_checkpoint(review_context, state_store, &checkpoint)
+		{
+			return DynamicToolCallResponse::failure(error);
+		}
+
+		let public_projection =
+			self.render_progress_checkpoint_projection(review_context, &checkpoint);
+
+		match self.publish_progress_checkpoint_projection(state_store, &public_projection) {
+			Ok(true) => DynamicToolCallResponse::success(format!(
+				"Recorded private `{}` execution state for issue `{}` and published the public Linear projection.",
+				checkpoint.phase.as_str(),
+				self.issue.identifier
+			)),
+			Ok(false) => DynamicToolCallResponse::success(format!(
+				"Recorded private `{}` execution state for issue `{}`; public Linear projection is unchanged.",
+				checkpoint.phase.as_str(),
+				self.issue.identifier
+			)),
+			Err(error) => DynamicToolCallResponse::failure(error),
+		}
+	}
+
+	fn normalize_progress_checkpoint(
+		&self,
+		parsed: ProgressCheckpointArgs,
+	) -> Result<NormalizedProgressCheckpoint, String> {
+		let phase = ExecutionProgressPhase::parse(&parsed.phase)?;
 		let focus = tracker_tool_bridge::normalize_summary(&parsed.focus);
 		let next_action = tracker_tool_bridge::normalize_summary(&parsed.next_action);
 		let blockers = tracker_tool_bridge::normalize_progress_list(parsed.blockers);
 		let evidence = tracker_tool_bridge::normalize_progress_list(parsed.evidence);
 		let verification = tracker_tool_bridge::normalize_progress_list(parsed.verification);
-		let head_sha = match self.resolve_progress_checkpoint_head_sha(parsed.head_sha) {
-			Ok(head_sha) => head_sha,
-			Err(error) => return DynamicToolCallResponse::failure(error),
-		};
+		let head_sha = self.resolve_progress_checkpoint_head_sha(parsed.head_sha)?;
 		let branch = tracker_tool_bridge::normalize_optional_progress_field(parsed.branch);
 		let pr_url = tracker_tool_bridge::normalize_optional_progress_field(parsed.pr_url);
 
 		if focus.is_empty() {
-			return DynamicToolCallResponse::failure(String::from(
-				"`issue_progress_checkpoint` requires a non-empty `focus`.",
-			));
+			return Err(String::from("`issue_progress_checkpoint` requires a non-empty `focus`."));
 		}
 		if next_action.is_empty() {
-			return DynamicToolCallResponse::failure(String::from(
+			return Err(String::from(
 				"`issue_progress_checkpoint` requires a non-empty `next_action`.",
 			));
 		}
 		if phase == ExecutionProgressPhase::Blocked && blockers.is_empty() {
-			return DynamicToolCallResponse::failure(String::from(
+			return Err(String::from(
 				"`issue_progress_checkpoint` phase `blocked` requires at least one blocker.",
 			));
 		}
 
-		let Some(review_context) = self.review_context.as_ref() else {
-			return DynamicToolCallResponse::failure(String::from(
-				"`issue_progress_checkpoint` requires an active Decodex run context.",
-			));
-		};
-		let branch = branch.or_else(|| Some(review_context.branch_name.clone()));
-		let anchor = records::stable_event_anchor(&[
-			phase.as_str(),
-			focus.as_str(),
-			next_action.as_str(),
-			head_sha.as_deref().unwrap_or_default(),
-			branch.as_deref().unwrap_or_default(),
-			pr_url.as_deref().unwrap_or_default(),
-			&blockers.join("\n"),
-			&evidence.join("\n"),
-			&verification.join("\n"),
-		]);
-		let mut checkpoint = LinearExecutionEventRecord::new(
+		Ok(NormalizedProgressCheckpoint {
+			phase,
+			focus,
+			next_action,
+			blockers,
+			evidence,
+			verification,
+			head_sha,
+			branch,
+			pr_url,
+		})
+	}
+
+	fn progress_checkpoint_context(&self) -> Result<(&ReviewHandoffContext, &StateStore), String> {
+		let review_context = self.review_context.as_ref().ok_or_else(|| {
+			String::from("`issue_progress_checkpoint` requires an active Decodex run context.")
+		})?;
+		let state_store = self.state_store.ok_or_else(|| {
+			format!(
+				"`issue_progress_checkpoint` requires the Decodex runtime state store for issue `{}`.",
+				self.issue.identifier
+			)
+		})?;
+
+		Ok((review_context, state_store))
+	}
+
+	fn append_private_progress_checkpoint(
+		&self,
+		review_context: &ReviewHandoffContext,
+		state_store: &StateStore,
+		checkpoint: &NormalizedProgressCheckpoint,
+	) -> Result<(), String> {
+		let branch = checkpoint.public_branch(review_context);
+		let private_payload = serde_json::json!({
+			"phase": checkpoint.phase.as_str(),
+			"focus": checkpoint.focus.as_str(),
+			"next_action": checkpoint.next_action.as_str(),
+			"blockers": &checkpoint.blockers,
+			"evidence": &checkpoint.evidence,
+			"verification": &checkpoint.verification,
+			"head_sha": checkpoint.head_sha.as_deref(),
+			"branch": branch.as_str(),
+			"worktree_path": review_context.worktree_path.as_str(),
+			"pr_url": checkpoint.pr_url.as_deref(),
+		});
+
+		state_store
+			.append_private_execution_event(
+				&review_context.service_id,
+				&self.issue.id,
+				&review_context.run_id,
+				review_context.attempt_number,
+				"progress_checkpoint",
+				private_payload,
+			)
+			.map(|_| ())
+			.map_err(|error| {
+				format!(
+					"Failed to persist the private execution-state checkpoint for issue `{}`: {error}",
+					self.issue.identifier
+				)
+			})
+	}
+
+	fn render_progress_checkpoint_projection(
+		&self,
+		review_context: &ReviewHandoffContext,
+		checkpoint: &NormalizedProgressCheckpoint,
+	) -> LinearExecutionEventRecord {
+		let branch = checkpoint.public_branch(review_context);
+
+		records::render_progress_checkpoint_public_projection(
 			LinearExecutionEventIdentity {
 				service_id: &review_context.service_id,
 				issue_id: &self.issue.id,
@@ -416,49 +530,76 @@ impl<'a> TrackerToolBridge<'a> {
 				run_id: &review_context.run_id,
 				attempt_number: review_context.attempt_number,
 			},
-			"progress_checkpoint",
 			tracker_tool_bridge::current_timestamp(),
-			&anchor,
-		);
+			checkpoint.phase.as_str(),
+			Some(branch.as_str()),
+			Some(review_context.worktree_path.as_str()),
+			checkpoint.pr_url.as_deref(),
+		)
+	}
 
-		checkpoint.phase = Some(phase.as_str().to_owned());
-		checkpoint.focus = Some(focus);
-		checkpoint.next_action = Some(next_action);
-		checkpoint.blockers = Some(blockers);
-		checkpoint.evidence = Some(evidence);
-		checkpoint.verification = Some(verification);
-		checkpoint.commit_sha = head_sha;
-		checkpoint.branch = branch;
-		checkpoint.worktree_path = Some(review_context.worktree_path.clone());
-		checkpoint.pr_url = pr_url;
+	fn publish_progress_checkpoint_projection(
+		&self,
+		state_store: &StateStore,
+		public_projection: &LinearExecutionEventRecord,
+	) -> Result<bool, String> {
+		let projection = tracker::prepare_linear_execution_event_comment(
+			"",
+			public_projection,
+			self.public_projection_privacy_classifier,
+		)
+		.map_err(|error| {
+			format!(
+				"Failed to prepare the public progress projection for issue `{}`: {error}",
+				self.issue.identifier
+			)
+		})?;
 
-		match tracker::create_linear_execution_event_comment(
+		if self.progress_checkpoint_projection_cached(state_store, &projection.record)? {
+			return Ok(false);
+		}
+
+		let comment_created = match tracker::create_prepared_linear_execution_event_comment(
 			self.tracker,
 			&self.issue.id,
-			"",
-			&checkpoint,
+			&projection,
 		) {
-			Ok(_) => {
-				if let Some(state_store) = self.state_store
-					&& let Err(error) = state_store.record_linear_execution_event(&checkpoint)
-				{
-					return DynamicToolCallResponse::failure(format!(
-						"Failed to persist the local execution-state checkpoint for issue `{}`: {error}",
-						self.issue.identifier
-					));
-				}
-
-				DynamicToolCallResponse::success(format!(
-					"Recorded `{}` execution state for issue `{}`.",
-					phase.as_str(),
+			Ok(comment_created) => comment_created,
+			Err(error) =>
+				return Err(format!(
+					"Failed to record an execution-state checkpoint for issue `{}`: {error}",
 					self.issue.identifier
-				))
-			},
-			Err(error) => DynamicToolCallResponse::failure(format!(
-				"Failed to record an execution-state checkpoint for issue `{}`: {error}",
+				)),
+		};
+
+		state_store.record_linear_execution_event(&projection.record).map_err(|error| {
+			format!(
+				"Failed to persist the public progress projection cache for issue `{}`: {error}",
 				self.issue.identifier
-			)),
-		}
+			)
+		})?;
+
+		Ok(comment_created)
+	}
+
+	fn progress_checkpoint_projection_cached(
+		&self,
+		state_store: &StateStore,
+		public_projection: &LinearExecutionEventRecord,
+	) -> Result<bool, String> {
+		let records = state_store
+			.list_linear_execution_events(
+				&public_projection.service_id,
+				&public_projection.issue_id,
+			)
+			.map_err(|error| {
+				format!(
+					"Failed to read the public progress projection cache for issue `{}`: {error}",
+					self.issue.identifier
+				)
+			})?;
+
+		Ok(records.iter().any(|record| record.idempotency_key == public_projection.idempotency_key))
 	}
 
 	pub(super) fn handle_transition(&self, arguments: Value) -> DynamicToolCallResponse {
@@ -531,32 +672,162 @@ impl<'a> TrackerToolBridge<'a> {
 			return DynamicToolCallResponse::failure(error);
 		}
 
-		if parsed.body.trim().is_empty() {
-			return DynamicToolCallResponse::failure(String::from(
-				"`issue.comment` requires a non-empty `body`.",
+		match parsed.kind.as_str() {
+			COMMENT_KIND_MANUAL_ATTENTION => self.handle_manual_attention_comment(parsed),
+			other => DynamicToolCallResponse::failure(format!(
+				"Unsupported `{ISSUE_COMMENT_TOOL_NAME}` kind `{other}`. Supported kinds: `{COMMENT_KIND_MANUAL_ATTENTION}`."
+			)),
+		}
+	}
+
+	fn handle_manual_attention_comment(&self, parsed: CommentArgs) -> DynamicToolCallResponse {
+		if !*self.manual_attention_requested.borrow() {
+			return DynamicToolCallResponse::failure(format!(
+				"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` requires a successful `{ISSUE_LABEL_ADD_TOOL_NAME}` call for label `{}` before writing the explanatory comment.",
+				self.workflow.frontmatter().tracker().needs_attention_label()
 			));
 		}
 
-		if let Err(error) = tracker_tool_bridge::validate_public_comment_body(&parsed.body) {
-			return DynamicToolCallResponse::failure(error);
-		}
+		let review_context = match self.review_context.as_ref() {
+			Some(review_context) => review_context,
+			None => {
+				return DynamicToolCallResponse::failure(format!(
+					"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` requires an active Decodex run context."
+				));
+			},
+		};
+		let state_store = match self.state_store {
+			Some(state_store) => state_store,
+			None => {
+				return DynamicToolCallResponse::failure(format!(
+					"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` requires the Decodex runtime state store for issue `{}`.",
+					self.issue.identifier
+				));
+			},
+		};
+		let comment = match Self::normalize_manual_attention_comment(parsed) {
+			Ok(comment) => comment,
+			Err(error) => return DynamicToolCallResponse::failure(error),
+		};
+		let record = self.manual_attention_execution_event(review_context, &comment);
+		let body = format_manual_attention_comment(review_context, &comment);
+		let projection = match tracker::prepare_linear_execution_event_comment(
+			&body,
+			&record,
+			self.public_projection_privacy_classifier,
+		) {
+			Ok(projection) => projection,
+			Err(error) => return DynamicToolCallResponse::failure(error.to_string()),
+		};
 
-		match self.tracker.create_comment(&self.issue.id, &parsed.body) {
-			Ok(()) => {
-				if *self.manual_attention_requested.borrow() {
-					self.manual_attention_comment_recorded.replace(true);
+		match tracker::create_prepared_linear_execution_event_comment(
+			self.tracker,
+			&self.issue.id,
+			&projection,
+		) {
+			Ok(created) => {
+				if let Err(error) = state_store.record_linear_execution_event(&projection.record) {
+					return DynamicToolCallResponse::failure(format!(
+						"Failed to persist the public manual-attention summary for issue `{}`: {error}",
+						self.issue.identifier
+					));
 				}
 
+				self.manual_attention_comment_recorded.replace(true);
+
+				let verb = if created { "added" } else { "already existed for" };
+
 				DynamicToolCallResponse::success(format!(
-					"Comment added to issue `{}`.",
+					"Manual-attention public summary {verb} issue `{}`.",
 					self.issue.identifier
 				))
 			},
 			Err(error) => DynamicToolCallResponse::failure(format!(
-				"Failed to add a comment to issue `{}`: {error}",
+				"Failed to add a manual-attention public summary to issue `{}`: {error}",
 				self.issue.identifier
 			)),
 		}
+	}
+
+	fn normalize_manual_attention_comment(
+		parsed: CommentArgs,
+	) -> Result<NormalizedManualAttentionComment, String> {
+		let error_class = normalize_required_comment_field(parsed.error_class, "error_class")?;
+		let next_action = normalize_required_comment_field(parsed.next_action, "next_action")?;
+		let blockers = tracker_tool_bridge::normalize_progress_list(parsed.blockers);
+		let evidence = tracker_tool_bridge::normalize_progress_list(parsed.evidence);
+		let failed_command =
+			tracker_tool_bridge::normalize_optional_progress_field(parsed.failed_command);
+		let raw_error = tracker_tool_bridge::normalize_optional_progress_field(parsed.raw_error);
+		let summary = tracker_tool_bridge::normalize_optional_progress_field(parsed.summary);
+
+		validate_public_error_class(&error_class)?;
+
+		if blockers.is_empty() {
+			return Err(format!(
+				"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` requires at least one public `blockers` item."
+			));
+		}
+		if evidence.is_empty() {
+			return Err(format!(
+				"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` requires at least one public `evidence` item."
+			));
+		}
+
+		Ok(NormalizedManualAttentionComment {
+			error_class,
+			next_action,
+			blockers,
+			evidence,
+			failed_command,
+			raw_error,
+			summary,
+		})
+	}
+
+	fn manual_attention_execution_event(
+		&self,
+		review_context: &ReviewHandoffContext,
+		comment: &NormalizedManualAttentionComment,
+	) -> LinearExecutionEventRecord {
+		let anchor = records::stable_event_anchor(&[
+			COMMENT_KIND_MANUAL_ATTENTION,
+			comment.error_class.as_str(),
+			comment.next_action.as_str(),
+			comment.failed_command.as_deref().unwrap_or_default(),
+			comment.raw_error.as_deref().unwrap_or_default(),
+		]);
+		let mut record = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: &review_context.service_id,
+				issue_id: &self.issue.id,
+				issue_identifier: &self.issue.identifier,
+				run_id: &review_context.run_id,
+				attempt_number: review_context.attempt_number,
+			},
+			"needs_attention",
+			tracker_tool_bridge::current_timestamp(),
+			&anchor,
+		);
+
+		record.branch = Some(review_context.branch_name.clone());
+		record.worktree_path = Some(review_context.worktree_path.clone());
+		record.pr_url = review_context.recorded_pr_url.clone();
+		record.summary = Some(
+			comment
+				.summary
+				.clone()
+				.unwrap_or_else(|| format!("Manual attention required: {}.", comment.error_class)),
+		);
+		record.error_class = Some(comment.error_class.clone());
+		record.next_action = Some(comment.next_action.clone());
+		record.blockers = Some(comment.blockers.clone());
+		record.evidence = Some(comment.evidence.clone());
+		record.terminal_path = Some(String::from(MANUAL_ATTENTION_TERMINAL_PATH));
+		record.failed_command = comment.failed_command.clone();
+		record.raw_error = comment.raw_error.clone();
+
+		record
 	}
 
 	pub(super) fn handle_review_checkpoint(&self, arguments: Value) -> DynamicToolCallResponse {
@@ -1061,4 +1332,71 @@ impl<'a> TrackerToolBridge<'a> {
 			self.issue.identifier
 		))
 	}
+}
+
+fn normalize_required_comment_field(
+	value: Option<String>,
+	field_name: &str,
+) -> Result<String, String> {
+	let value = tracker_tool_bridge::normalize_optional_progress_field(value).ok_or_else(|| {
+		format!(
+			"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` requires `{field_name}`."
+		)
+	})?;
+
+	Ok(value)
+}
+
+fn validate_public_error_class(error_class: &str) -> Result<(), String> {
+	let mut chars = error_class.chars();
+	let Some(first) = chars.next() else {
+		return Err(String::from("`error_class` must be a public snake_case identifier."));
+	};
+
+	if !first.is_ascii_lowercase()
+		|| !chars.all(|character| {
+			character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+		}) {
+		return Err(String::from("`error_class` must be a public snake_case identifier."));
+	}
+
+	Ok(())
+}
+
+fn format_manual_attention_comment(
+	review_context: &ReviewHandoffContext,
+	comment: &NormalizedManualAttentionComment,
+) -> String {
+	let mut lines = vec![
+		String::from("decodex run needs manual attention"),
+		String::new(),
+		format!("- run_id: `{}`", review_context.run_id),
+		format!("- attempt: `{}`", review_context.attempt_number),
+		format!("- reported_at: `{}`", tracker_tool_bridge::current_timestamp()),
+		format!("- branch: `{}`", review_context.branch_name),
+		format!("- worktree_path: `{}`", review_context.worktree_path),
+		format!("- comment_kind: `{COMMENT_KIND_MANUAL_ATTENTION}`"),
+		format!("- error_class: `{}`", comment.error_class),
+		format!("- next_action: {}", comment.next_action),
+	];
+
+	if let Some(summary) = comment.summary.as_deref() {
+		lines.push(format!("- summary: {summary}"));
+	}
+
+	for blocker in &comment.blockers {
+		lines.push(format!("- blocker: {blocker}"));
+	}
+	for evidence in &comment.evidence {
+		lines.push(format!("- evidence: {evidence}"));
+	}
+
+	if let Some(failed_command) = comment.failed_command.as_deref() {
+		lines.push(format!("- failed_command: {failed_command}"));
+	}
+	if let Some(raw_error) = comment.raw_error.as_deref() {
+		lines.push(format!("- raw_error: {raw_error}"));
+	}
+
+	lines.join("\n")
 }

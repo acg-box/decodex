@@ -68,6 +68,54 @@ Consumers must ignore prose outside the fenced JSON object except for display.
 Producers must not put secrets, access tokens, absolute host paths, or local user names
 in ledger records.
 
+## Public text baseline
+
+Linear comments are public/team-visible tracker text. Before Decodex serializes a new
+Linear execution event, public free-text fields such as `summary`, `next_action`,
+`blockers`, `evidence`, `failed_command`, and `raw_error` must pass the baseline
+public-text guard. The guard rejects known structured leakage shapes, including
+host-local paths, routed identity configuration details, credential-like names, private
+account details, private config file names, emails, tokens, and secrets. Current
+`progress_checkpoint` events must render a public projection instead of copying raw
+checkpoint `focus`, `next_action`, `blockers`, `evidence`, or `verification` text.
+
+The guard is a baseline structural stop, not the final privacy boundary. Full runtime
+evidence, local identity routing, account state, and high-frequency diagnostics must
+stay in the local runtime database, operator-only evidence files, logs, or short-lived
+activity markers. Linear records should continue to use public collaboration
+identifiers such as PR URLs, issue identifiers, branch names, commit SHAs, and
+repository-relative paths.
+
+PR lifecycle writeback must not copy an agent-authored review, repair, or closeout
+summary into Linear when that summary fails the baseline public-text guard. The
+writeback must replace the rejected summary with fixed public-safe fallback text before
+rendering the Linear comment and ledger record. This fallback does not weaken the guard:
+the rejected private text remains absent from the public record.
+
+Decodex may additionally run public projection free-text through an optional local
+privacy classifier before publishing the Linear comment. That classifier is a secondary
+semantic warning layer after schema allowlisting and the deterministic public-text
+guard. It must receive only fields already selected for the public projection, never
+the private runtime ledger or full checkpoint payload. If the configured local
+classifier reports suspicious text or is unavailable, Decodex must fail closed by
+omitting optional public text fields or replacing required public text fields with a
+fixed public-safe summary.
+
+Agent-requested manual-attention comments are not arbitrary Linear comment bodies.
+They are `needs_attention` ledger records rendered from the allowlisted
+`issue_comment` kind `manual_attention`. The agent supplies only structured public
+fields. `failed_command` and `raw_error` are optional and must be omitted or rejected
+when they contain host-local paths, credential-like names, private identity details,
+tokens, secrets, or other private runtime evidence.
+
+Linear frequency is deliberately sparse. A lane should normally create one start
+record, a new public progress projection only when the material public lifecycle signal
+changes, PR/handoff records when review state changes, and terminal failure, landing,
+closeout, or cleanup records at those coarse boundaries. Private-only updates such as a
+new checkpoint focus, next action, evidence item, verification note, raw command output,
+heartbeat, token pressure, or retry detail belong in runtime SQLite, agent evidence, or
+diagnostic logs, not in another Linear comment.
+
 ## Record envelope
 
 All field names are snake_case.
@@ -103,9 +151,9 @@ These fields are optional globally and become required for specific event types 
 | `pr_base_ref` | string | PR base ref name when a PR exists or is the event subject. |
 | `summary` | string | Short human-readable summary of the event. |
 | `validation_result` | string | Repo-gate or PR validation result when validation is the event subject. |
-| `phase` | string | Execution-state phase for progress checkpoint records. |
-| `focus` | string | Current execution-state focus for progress checkpoint records. |
-| `next_action` | string | Next execution action for progress checkpoint or failure records. |
+| `phase` | string | Public execution-state phase for progress checkpoint records. |
+| `focus` | string | Legacy progress focus field or private-runtime-only checkpoint input; current progress projections must not emit it. |
+| `next_action` | string | Next execution action for failure records; current progress projections must not emit raw checkpoint next-action text. |
 | `blockers` | array of strings | Concrete blockers, empty when none are present. |
 | `evidence` | array of strings | Short factual evidence items. |
 | `verification` | array of strings | Verification commands or checks already run. |
@@ -155,7 +203,7 @@ Every event requires the record envelope. Additional required fields are listed 
 | `lease_acquired` | `branch` | `worktree_path`, `summary`; legacy read-only startup record |
 | `worktree_prepared` | `branch`, `worktree_path`, `commit_sha` | `summary`; legacy read-only startup record |
 | `agent_started` | `branch`, `worktree_path` | `transport`, `summary`; legacy read-only startup record |
-| `progress_checkpoint` | `phase`, `focus`, `next_action`, `blockers`, `evidence` | `branch`, `worktree_path`, `commit_sha`, `pr_url`, `verification`, `summary` |
+| `progress_checkpoint` | `phase`, `summary` | `branch`, `worktree_path`, `pr_url` |
 | `pr_opened` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
 | `pr_updated` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
 | `review_handoff` | `branch`, `worktree_path`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `terminal_path` | `verification` |
@@ -172,6 +220,12 @@ that writes the event. For normal review handoff this is `review_handoff`; for r
 repair completion this is `review_repair`; for explicit human-required exits this is
 `manual_attention`.
 
+`failed_command` and `raw_error` are public-summary fields, not private evidence
+escape hatches. Producers must validate those values before writing a Linear comment.
+When the exact failed command or raw error contains private information, producers must
+omit it and use public `error_class`, `next_action`, `blockers`, and `evidence`
+instead.
+
 `review_handoff_rebind` is only for an explicit operator recovery command that restores a
 missing runtime DB review handoff marker after validating the retained worktree and PR
 lineage. It is not a normal agent terminal signal, does not imply `issue_terminal_finalize`
@@ -179,8 +233,10 @@ ran, and must not be emitted automatically from `decodex run`.
 
 ## Progress checkpoint records
 
-`progress_checkpoint` records are the Linear form of durable execution memory. They
-preserve task-local progress without changing lifecycle authority.
+`progress_checkpoint` records are the Linear public projection of private durable
+execution memory. They expose low-frequency lifecycle progress without changing
+lifecycle authority. The full checkpoint payload from `issue_progress_checkpoint`
+lives in private runtime execution events, not in Linear.
 
 Required `phase` values are the same normalized phases accepted by
 `issue_progress_checkpoint`:
@@ -197,6 +253,19 @@ Required `phase` values are the same normalized phases accepted by
 `progress_checkpoint` records must not be interpreted as review handoff, repair
 completion, merge readiness, closeout, cleanup completion, or terminal success. Those
 transitions require their dedicated event type and the governing runtime/tool contract.
+
+Current progress projections must contain only the allowlisted public fields in the
+event table above. They must not emit raw `focus`, `next_action`, `blockers`,
+`evidence`, `verification`, local head evidence, host-local paths, routed identity
+details, account details, token names, or other private runtime evidence. Producers must
+render a short public `summary` from the public lifecycle signal, for example the
+normalized phase, instead of copying agent-authored checkpoint prose.
+
+Progress projection idempotency is anchored to the material public signal, such as the
+normalized phase plus public branch/worktree/PR projection anchor. Retrying a checkpoint
+or adding new private focus, next-action, evidence, blocker, or verification details
+inside the same public signal must append private runtime evidence without adding a new
+Linear comment.
 
 ## Ledger-only comment contract
 
@@ -236,7 +305,7 @@ commit SHA, PR head SHA, terminal path, or checkpoint sequence key.
 Use Linear comments for team-visible, low-frequency records:
 
 - lane run start, including branch, worktree, current commit, and transport
-- durable progress checkpoints
+- public progress checkpoint projections
 - PR opened or updated events
 - review handoff and retained repair handoff
 - landed, closeout, needs-attention, terminal failure, and cleanup-complete events
@@ -255,6 +324,8 @@ runtime telemetry:
 - token counts, largest tool-output sizes, and context-pressure warnings
 - review-policy convergence counters that only guide the current retained-lane retry
   loop
+- full `issue_progress_checkpoint` payloads, including raw focus, next action,
+  blockers, evidence, verification, and local head evidence
 - transient diagnostic details that help the local operator understand whether an active
   process is busy, idle, or stalled
 

@@ -39,7 +39,7 @@ use crate::{
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
 			JsonRpcConnection, JsonRpcError, JsonRpcMessage, JsonRpcNotification, JsonRpcRequest,
-			JsonRpcResponse, ResolvedAppServerCodexHomeEnv, WireMessage,
+			ResolvedAppServerCodexHomeEnv, WireMessage,
 		},
 		tracker_tool_bridge::{
 			self, DynamicToolCallResponse, DynamicToolContentItem, DynamicToolHandler,
@@ -210,8 +210,7 @@ impl AppServerCapabilityPreflightFailure {
 
 	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
 		format!(
-			"inspect Codex app-server preflight blocker `{}`, repair the local Codex config/model/provider/skills/plugin/MCP state, restart `decodex serve`, {recovery_gate}",
-			self.blocker_summary()
+			"inspect the Codex app-server preflight status, repair the local Codex runtime configuration, restart `decodex serve`, {recovery_gate}"
 		)
 	}
 
@@ -3057,9 +3056,7 @@ fn wait_for_turn_completion(
 				dynamic_tool_handler,
 				codex_account_provider,
 			)?,
-			JsonRpcMessage::Response(response) => {
-				ignore_unexpected_json_rpc_response_during_turn(&wire_message.raw, response);
-			},
+			JsonRpcMessage::Response(_) => ignore_orphan_turn_json_rpc_response(),
 			JsonRpcMessage::Error(error) => {
 				latest_turn_failure = Some(turn_failure_from_json_rpc_error_response(
 					target_thread_id,
@@ -3110,11 +3107,9 @@ fn handle_turn_execution_request(
 	)
 }
 
-fn ignore_unexpected_json_rpc_response_during_turn(raw: &str, response: &JsonRpcResponse) {
+fn ignore_orphan_turn_json_rpc_response() {
 	tracing::debug!(
-		id = %response.id,
-		raw = %raw,
-		"Ignoring unexpected JSON-RPC response while waiting for turn completion."
+		"Recorded and ignored orphan app-server JSON-RPC response while waiting for turn completion."
 	);
 }
 

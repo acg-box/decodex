@@ -332,6 +332,28 @@ pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
 	Ok(())
 }
 
+pub(crate) fn print_private_evidence(request: EvidenceRequest<'_>) -> Result<()> {
+	let state_store = runtime::open_runtime_store()?;
+	let Some(config_path) = resolve_config_path(request.config_path, &state_store)? else {
+		eyre::bail!(
+			"No Decodex project config found. Pass this command's --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
+		);
+	};
+	let config = ServiceConfig::from_path(&config_path)?;
+
+	runtime::register_project_config(&state_store, &config_path, true)?;
+
+	let readback = build_private_evidence_readback(&state_store, &config, &request)?;
+
+	if request.json {
+		println!("{}", serde_json::to_string_pretty(&readback)?);
+	} else {
+		print!("{}", render_private_evidence_readback(&readback));
+	}
+
+	Ok(())
+}
+
 fn publish_operator_snapshot(
 	operator_state_endpoint: &OperatorStateEndpoint,
 	snapshot: &OperatorStatusSnapshot,
@@ -505,6 +527,7 @@ fn run_control_plane_api_only_tick(state_store: &StateStore) -> Result<OperatorS
 				Err(error) => {
 					let _ = error;
 
+					project_status.connector_state = String::from("config_error");
 					project_status.warning_count = project_status.warning_count.saturating_add(1);
 
 					add_operator_snapshot_warning(&mut snapshot, "operator_snapshot_build_failed");

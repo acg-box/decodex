@@ -42,6 +42,16 @@ pub(crate) struct DiagnoseRequest<'a> {
 	pub(crate) limit: usize,
 }
 
+/// Local private execution evidence readback request.
+pub(crate) struct EvidenceRequest<'a> {
+	pub(crate) config_path: Option<&'a Path>,
+	pub(crate) issue: &'a str,
+	pub(crate) run_id: Option<&'a str>,
+	pub(crate) attempt_number: Option<i64>,
+	pub(crate) json: bool,
+	pub(crate) include_payload: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RunSummary {
 	project_id: String,
@@ -337,14 +347,15 @@ impl Error for ManualAttentionRequested {}
 #[derive(Debug)]
 struct ReviewHandoffNeedsAttention {
 	issue_identifier: String,
+	pr_url: String,
 	run_id: String,
 }
 impl Display for ReviewHandoffNeedsAttention {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(
 			f,
-			"Run `{}` for issue `{}` partially applied review handoff writeback; stop retries and repair the issue manually.",
-			self.run_id, self.issue_identifier
+			"Run `{}` for issue `{}` partially applied review handoff writeback for PR `{}`; stop retries and repair the issue manually.",
+			self.run_id, self.issue_identifier, self.pr_url
 		)
 	}
 }
@@ -753,6 +764,7 @@ struct OperatorHistoryLedgerOutcome {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct OperatorRunStatus {
 	project_id: String,
+	project_display_name: String,
 	run_id: String,
 	issue_id: String,
 	issue_identifier: Option<String>,
@@ -783,6 +795,7 @@ struct OperatorRunStatus {
 	last_event_type: Option<String>,
 	last_event_at: Option<String>,
 	event_count: i64,
+	private_evidence: AgentPrivateEvidenceRef,
 	process_id: Option<u32>,
 	process_alive: Option<bool>,
 	process_liveness_reason: Option<String>,
