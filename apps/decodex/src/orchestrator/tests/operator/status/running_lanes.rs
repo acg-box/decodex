@@ -18,6 +18,11 @@ fn operator_status_snapshot_includes_active_runs_and_repo_relative_paths() {
 	let issue = sample_issue("Todo", &[]);
 	let worktree_path = config.worktree_root().join("PUB-101");
 
+	git_status_success(
+		config.repo_root(),
+		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
+	);
+
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "running")
 		.expect("run attempt should record");
@@ -44,6 +49,7 @@ fn operator_status_snapshot_includes_active_runs_and_repo_relative_paths() {
 	assert_eq!(snapshot.active_runs.len(), 1);
 	assert_eq!(snapshot.recent_runs.len(), 1);
 	assert_eq!(snapshot.active_runs[0].project_id, "pubfi");
+	assert_eq!(snapshot.active_runs[0].project_display_name, "hack-ink/pubfi-mono-v2");
 	assert_eq!(snapshot.active_runs[0].run_id, "run-1");
 	assert_eq!(snapshot.active_runs[0].phase, "executing");
 	assert_eq!(snapshot.active_runs[0].current_operation, state::RUN_OPERATION_AGENT_RUN);
@@ -204,6 +210,11 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 
 	issue.title = String::from("Hydrate issue display metadata on run rows");
 
+	git_status_success(
+		config.repo_root(),
+		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
+	);
+
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 
 	state_store
@@ -226,19 +237,32 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
 
 	assert_eq!(active_run.project_id, config.service_id());
+	assert_eq!(active_run.project_display_name, "hack-ink/pubfi-mono-v2");
 	assert_eq!(active_run.issue_identifier.as_deref(), Some("XY-392"));
 	assert_eq!(active_run.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
 	assert_eq!(active_run.author.as_deref(), Some("Yvette"));
+	assert_eq!(
+		active_run.private_evidence.read_command,
+		format!("decodex evidence XY-392 --run-id {run_id} --attempt 1 --json")
+	);
 	assert_eq!(recent_run.issue_identifier.as_deref(), Some("XY-392"));
 	assert_eq!(recent_run.title.as_deref(), Some("Hydrate issue display metadata on run rows"));
 	assert_eq!(recent_run.author.as_deref(), Some("Yvette"));
 	assert_eq!(snapshot_json["active_runs"][0]["project_id"], "pubfi");
+	assert_eq!(
+		snapshot_json["active_runs"][0]["project_display_name"],
+		"hack-ink/pubfi-mono-v2"
+	);
 	assert_eq!(snapshot_json["active_runs"][0]["issue_identifier"], "XY-392");
 	assert_eq!(
 		snapshot_json["active_runs"][0]["title"],
 		"Hydrate issue display metadata on run rows"
 	);
 	assert_eq!(snapshot_json["active_runs"][0]["author"], "Yvette");
+	assert_eq!(
+		snapshot_json["active_runs"][0]["private_evidence"]["read_command"],
+		format!("decodex evidence XY-392 --run-id {run_id} --attempt 1 --json")
+	);
 }
 
 #[test]

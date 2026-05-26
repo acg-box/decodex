@@ -58,7 +58,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 	}
 
 	var warningSummary: String? {
-		let labels = warnings.compactMap(Self.warningLabel).filter { $0.isEmpty == false }
+		let labels = warnings.compactMap(warningLabel).filter { $0.isEmpty == false }
 		guard let first = labels.first else {
 			return nil
 		}
@@ -122,14 +122,47 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 			&& projects.allSatisfy { $0.connectorState == "api_only" }
 	}
 
-	private static func warningLabel(_ value: String) -> String? {
+	private var snapshotBuildFailureProjectIDs: [String] {
+		let apiOnlyBaseline = warnings.contains("automation_disabled")
+
+		return projects.compactMap { project in
+			guard project.enabled, let projectID = project.projectID, projectID.isEmpty == false else {
+				return nil
+			}
+			if project.connectorState == "config_error" {
+				return projectID
+			}
+			if apiOnlyBaseline && project.warningCount > 1 {
+				return projectID
+			}
+			if project.connectorState == "degraded" && project.warningCount > 0 {
+				return projectID
+			}
+
+			return nil
+		}
+	}
+
+	private func snapshotBuildFailureLabel() -> String {
+		let projectIDs = snapshotBuildFailureProjectIDs
+		guard let first = projectIDs.first else {
+			return "Snapshot build failed"
+		}
+		if projectIDs.count == 1 {
+			return "Snapshot build failed: \(first)"
+		}
+
+		return "Snapshot build failed: \(first) +\(projectIDs.count - 1)"
+	}
+
+	private func warningLabel(_ value: String) -> String? {
 		switch value {
 		case "automation_disabled":
 			return nil
 		case "control_plane_tick_context_failed":
 			return "Control-plane context unavailable"
 		case "operator_snapshot_build_failed":
-			return "Snapshot build failed"
+			return snapshotBuildFailureLabel()
 		case "control_plane_tick_failed":
 			return "Control-plane tick failed"
 		case "tracker_rate_limited":
@@ -170,7 +203,9 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 
 struct OperatorProjectStatus: Decodable, Sendable {
 	let projectID: String?
+	let enabled: Bool
 	let connectorState: String?
+	let warningCount: Int
 	let activeRunCount: Int
 	let queuedCandidateCount: Int
 	let postReviewLaneCount: Int
@@ -182,7 +217,9 @@ struct OperatorProjectStatus: Decodable, Sendable {
 	func withActiveRunCount(_ count: Int) -> OperatorProjectStatus {
 		OperatorProjectStatus(
 			projectID: projectID,
+			enabled: enabled,
 			connectorState: connectorState,
+			warningCount: warningCount,
 			activeRunCount: count,
 			queuedCandidateCount: queuedCandidateCount,
 			postReviewLaneCount: postReviewLaneCount,
@@ -195,7 +232,9 @@ struct OperatorProjectStatus: Decodable, Sendable {
 
 	enum CodingKeys: String, CodingKey {
 		case projectID = "project_id"
+		case enabled
 		case connectorState = "connector_state"
+		case warningCount = "warning_count"
 		case activeRunCount = "active_run_count"
 		case queuedCandidateCount = "queued_candidate_count"
 		case postReviewLaneCount = "post_review_lane_count"
@@ -209,7 +248,9 @@ struct OperatorProjectStatus: Decodable, Sendable {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 
 		projectID = try container.decodeIfPresent(String.self, forKey: .projectID)
+		enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
 		connectorState = try container.decodeIfPresent(String.self, forKey: .connectorState)
+		warningCount = try container.decodeIfPresent(Int.self, forKey: .warningCount) ?? 0
 		activeRunCount = try container.decodeIfPresent(Int.self, forKey: .activeRunCount) ?? 0
 		queuedCandidateCount = try container.decodeIfPresent(Int.self, forKey: .queuedCandidateCount) ?? 0
 		postReviewLaneCount = try container.decodeIfPresent(Int.self, forKey: .postReviewLaneCount) ?? 0
@@ -221,7 +262,9 @@ struct OperatorProjectStatus: Decodable, Sendable {
 
 	private init(
 		projectID: String?,
+		enabled: Bool,
 		connectorState: String?,
+		warningCount: Int,
 		activeRunCount: Int,
 		queuedCandidateCount: Int,
 		postReviewLaneCount: Int,
@@ -231,7 +274,9 @@ struct OperatorProjectStatus: Decodable, Sendable {
 		cleanupPendingCount: Int
 	) {
 		self.projectID = projectID
+		self.enabled = enabled
 		self.connectorState = connectorState
+		self.warningCount = warningCount
 		self.activeRunCount = activeRunCount
 		self.queuedCandidateCount = queuedCandidateCount
 		self.postReviewLaneCount = postReviewLaneCount
@@ -268,6 +313,7 @@ struct OperatorPostReviewLaneStatus: Decodable, Sendable {
 
 struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	let projectID: String?
+	let projectDisplayName: String?
 	let runID: String
 	let issueID: String?
 	let issueIdentifier: String?
@@ -356,6 +402,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	func mergingActivity(_ activity: OperatorRunStatus) -> OperatorRunStatus {
 		OperatorRunStatus(
 			projectID: activity.projectID ?? projectID,
+			projectDisplayName: activity.projectDisplayName ?? projectDisplayName,
 			runID: activity.runID,
 			issueID: activity.issueID ?? issueID,
 			issueIdentifier: activity.issueIdentifier ?? issueIdentifier,
@@ -403,6 +450,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 
 	enum CodingKeys: String, CodingKey {
 		case projectID = "project_id"
+		case projectDisplayName = "project_display_name"
 		case runID = "run_id"
 		case issueID = "issue_id"
 		case issueIdentifier = "issue_identifier"
@@ -435,6 +483,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 
 		projectID = try container.decodeIfPresent(String.self, forKey: .projectID)
+		projectDisplayName = try container.decodeIfPresent(String.self, forKey: .projectDisplayName)
 		runID = try container.decodeIfPresent(String.self, forKey: .runID) ?? UUID().uuidString
 		issueID = try container.decodeIfPresent(String.self, forKey: .issueID)
 		issueIdentifier = try container.decodeIfPresent(String.self, forKey: .issueIdentifier)
@@ -468,6 +517,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 
 	private init(
 		projectID: String?,
+		projectDisplayName: String?,
 		runID: String,
 		issueID: String?,
 		issueIdentifier: String?,
@@ -496,6 +546,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		accounts: [OperatorRunAccountSummary]
 	) {
 		self.projectID = projectID
+		self.projectDisplayName = projectDisplayName
 		self.runID = runID
 		self.issueID = issueID
 		self.issueIdentifier = issueIdentifier

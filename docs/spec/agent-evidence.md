@@ -25,6 +25,21 @@ diagnosis. Agent evidence is a stable file projection of that snapshot so a repa
 agent can start from one compact index instead of reconstructing state from logs,
 Markdown notes, worktree names, and ad hoc SQL.
 
+Private execution events are structured rows in the runtime SQLite database scoped by
+project, issue, run, and attempt. They are the local-only ledger for full execution
+evidence that should not be mirrored to Linear. Agent evidence files may point agents
+toward the current runtime context, but they do not replace the private execution
+event store.
+
+Boundary summary:
+
+| Surface | Role |
+| --- | --- |
+| Runtime SQLite private execution events | Authoritative structured local evidence for a run/attempt. |
+| Agent evidence files | Derived local handoff index, blocker snapshots, run capsules, and event-stream breadcrumbs for repair agents. |
+| Process logs | Diagnostic text for control-plane and process failures. Logs are not the private evidence ledger. |
+| Linear execution ledger comments | Public lifecycle mirror. Agent evidence must not be mirrored there. |
+
 ## Path Layout
 
 Agent evidence lives under the local Decodex home:
@@ -39,6 +54,8 @@ Agent evidence lives under the local Decodex home:
 
 These files are local-only operator state. They are not committed to target
 repositories, mirrored to Linear, or used as external collaboration records.
+They are also not process logs; logs stay diagnostic, while private execution events
+stay structured runtime evidence in SQLite.
 
 ## Write Triggers
 
@@ -75,7 +92,8 @@ Required fields:
 - `warnings`: typed operator snapshot or diagnose warning strings
 - `connector_backoffs`: typed connector wait records from the operator snapshot
 - `blockers`: compact blocker refs with reason codes, next action, and snapshot path
-- `run_capsules`: compact run refs with capsule paths
+- `run_capsules`: compact run refs with capsule paths and `private_evidence`
+  references
 - `recovery_worktrees`: retained local worktrees that need cleanup or recovery context
 - `recovery_contracts`: commands or next actions an agent can use for supported
   recovery classes
@@ -116,12 +134,36 @@ worktree:
 - thread, turn, process, protocol event, idle, and progress fields
 - effective model/provider/cwd/approval/sandbox fields when known
 - branch and worktree path
+- `private_evidence`: a compact reference to local runtime SQLite evidence for the
+  same project, issue, run, and attempt, including a `decodex evidence ... --json`
+  read command
 - optional Run Ledger outcome
 - `diagnosis.attention_required`, `diagnosis.reason_code`, and
   `diagnosis.next_action`
 
 Capsules are rewritten snapshots, not append-only event logs. The append-only stream
 is `events.jsonl`.
+
+## Private Execution Readback
+
+`decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N> --json` reads private
+execution events from the local runtime SQLite database and prints
+`decodex.private_execution_evidence_readback/1`.
+
+The readback includes:
+
+- project id, issue id or identifier, run id, attempt number, and evidence ref
+- event count, latest event type, and latest event timestamp
+- compact event rows with record id, event type, recorded timestamp, and payload
+  summaries
+- `private_execution_evidence_missing` when the selected run is known but has no
+  private execution events
+
+The default readback summarizes payloads and redacts transcript-like, raw output,
+log, token, and secret-shaped payload keys. Operators may pass `--include-payload`
+for full structured local payloads when a repair requires them. This flag still
+reads from the local runtime store only; it must not mirror payloads into Linear,
+GitHub, or agent-evidence files.
 
 ## Event Stream
 

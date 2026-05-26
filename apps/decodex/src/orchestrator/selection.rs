@@ -149,15 +149,22 @@ fn format_terminal_failure_comment(
 	attempt_number: i64,
 	worktree_path: String,
 	branch_name: &str,
+	pr_url: Option<&str>,
 	error_class: &str,
 	next_action: &str,
 ) -> String {
+	let pr_url_line = pr_url.map_or_else(String::new, |pr_url| format!("\n- pr_url: `{pr_url}`"));
+
 	format!(
-		"decodex run failed and needs attention\n\n- run_id: `{run_id}`\n- attempt: `{attempt_number}`\n- failed_at: `{failed_at}`\n- branch: `{branch}`\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `Sensitive runtime details were withheld from the tracker comment; inspect the local lane for the full failure context.`",
+		"decodex run failed and needs attention\n\n- run_id: `{run_id}`\n- attempt: `{attempt_number}`\n- failed_at: `{failed_at}`\n- branch: `{branch}`{pr_url_line}\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `Sensitive runtime details were withheld from the tracker comment; inspect the local lane for the full failure context.`",
 		failed_at = current_timestamp(),
 		branch = branch_name,
 		worktree = worktree_path
 	)
+}
+
+fn terminal_failure_pr_url(error: &Report) -> Option<&str> {
+	error.downcast_ref::<ReviewHandoffNeedsAttention>().map(|error| error.pr_url.as_str())
 }
 
 fn terminal_failure_comment_details(
@@ -207,14 +214,11 @@ fn terminal_failure_comment_details(
 				"inspect the worktree and app-server activity for the stalled lane, resolve the blocker manually, {recovery_gate}"
 			),
 		)
-	} else if let Some(credentials_failure) =
-		error.downcast_ref::<AgentGitCredentialsUnavailable>()
-	{
+	} else if error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some() {
 		(
 			"github_credentials_unavailable",
 			format!(
-				"configure `{}` for the routed GitHub identity, verify noninteractive Git credentials, {recovery_gate}",
-				credentials_failure.token_env_var
+				"repair GitHub authentication for this lane, verify noninteractive Git access, {recovery_gate}"
 			),
 		)
 	} else if let Some(app_server_failure) =
