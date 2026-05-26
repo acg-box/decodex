@@ -463,6 +463,14 @@ fn app_server_terminal_failures_preserve_specific_error_classes() {
 			"repair the local Codex runtime configuration",
 		),
 		(
+			Report::new(AppServerCapabilityPreflightFailure::method_timed_out_for_test(
+				"plugin/list",
+				String::from("Timed out while waiting for app-server output."),
+			)),
+			"app_server_plugin_list_timeout",
+			"app_server_preflight_failed evidence for the `plugin/list` timeout",
+		),
+		(
 			Report::new(AppServerHomePreflightFailure::resolution_failed(String::from(
 				"app_server_preflight_failed: HOME is not set, so Decodex cannot resolve the shared Codex home for app-server dispatch.",
 			))),
