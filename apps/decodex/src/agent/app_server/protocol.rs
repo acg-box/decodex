@@ -264,25 +264,6 @@ impl AppServerClient {
 	}
 }
 
-#[derive(Serialize)]
-#[serde(tag = "type")]
-pub(super) enum LoginAccountParams {
-	#[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
-	ChatgptAuthTokens {
-		access_token: String,
-		chatgpt_account_id: String,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		chatgpt_plan_type: Option<String>,
-	},
-}
-
-#[derive(Debug, Eq, PartialEq, Deserialize)]
-#[serde(tag = "type")]
-pub(super) enum LoginAccountResponse {
-	#[serde(rename = "chatgptAuthTokens")]
-	ChatgptAuthTokens {},
-}
-
 #[derive(Default)]
 pub(super) struct RunOutcome {
 	pub(super) final_output: String,
@@ -780,20 +761,8 @@ pub(super) struct CommandExecutionRequestApprovalResponse {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) enum CommandExecutionApprovalDecision {
-	Decline,
-}
-
-#[derive(Debug, Serialize)]
 pub(super) struct FileChangeRequestApprovalResponse {
 	pub(super) decision: FileChangeApprovalDecision,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) enum FileChangeApprovalDecision {
-	Decline,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -818,12 +787,6 @@ pub(super) struct McpServerElicitationRequestResponse {
 	pub(super) meta: Option<Value>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) enum McpServerElicitationAction {
-	Decline,
-}
-
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct PermissionsRequestApprovalResponse {
@@ -834,13 +797,6 @@ pub(super) struct PermissionsRequestApprovalResponse {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct GrantedPermissionProfile {}
-
-#[derive(Debug, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) enum PermissionGrantScope {
-	#[default]
-	Turn,
-}
 
 pub(super) struct ProbeDynamicToolHandler;
 impl DynamicToolHandler for ProbeDynamicToolHandler {
@@ -874,6 +830,50 @@ impl DynamicToolHandler for ProbeDynamicToolHandler {
 
 		DynamicToolCallResponse::success(text.to_owned())
 	}
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type")]
+pub(super) enum LoginAccountParams {
+	#[serde(rename = "chatgptAuthTokens", rename_all = "camelCase")]
+	ChatgptAuthTokens {
+		access_token: String,
+		chatgpt_account_id: String,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		chatgpt_plan_type: Option<String>,
+	},
+}
+
+#[derive(Debug, Eq, PartialEq, Deserialize)]
+#[serde(tag = "type")]
+pub(super) enum LoginAccountResponse {
+	#[serde(rename = "chatgptAuthTokens")]
+	ChatgptAuthTokens {},
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum CommandExecutionApprovalDecision {
+	Decline,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum FileChangeApprovalDecision {
+	Decline,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum McpServerElicitationAction {
+	Decline,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum PermissionGrantScope {
+	#[default]
+	Turn,
 }
 
 #[derive(Debug, Serialize)]
@@ -938,6 +938,35 @@ mod tests {
 
 		assert_eq!(notification.error.codex_error_info.as_deref(), Some("usageLimitExceeded"));
 		assert_eq!(notification.will_retry, None);
+	}
+
+	#[test]
+	fn error_notifications_stringify_structured_error_fields() {
+		let notification: super::ErrorNotification = serde_json::from_value(serde_json::json!({
+			"error": {
+				"message": {
+					"kind": "protocolFailure",
+					"detail": "unexpected response"
+				},
+				"codexErrorInfo": {
+					"type": "appServerProtocolMismatch"
+				}
+			},
+			"threadId": "thread-1",
+			"turnId": "turn-1",
+			"willRetry": false
+		}))
+		.expect("structured error notification should parse");
+
+		assert!(notification.error.message.contains("protocolFailure"));
+		assert!(
+			notification
+				.error
+				.codex_error_info
+				.as_deref()
+				.is_some_and(|value| value.contains("appServerProtocolMismatch"))
+		);
+		assert_eq!(notification.will_retry, Some(false));
 	}
 
 	#[test]
