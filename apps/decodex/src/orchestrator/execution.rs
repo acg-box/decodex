@@ -32,6 +32,7 @@ impl Drop for AgentGitCredentialEnvironment {
 struct TerminalFailureLifecycle<'a> {
 	error_class: &'a str,
 	next_action: &'a str,
+	pr_url: Option<&'a str>,
 	target_state: &'a str,
 	worktree_path: &'a str,
 	manual_attention_requested: bool,
@@ -370,6 +371,7 @@ fn terminal_failure_lifecycle_event(
 		issue_run.attempt_number
 	)]);
 	record.summary = Some(String::from("Decodex run failed and needs attention."));
+	record.pr_url = failure.pr_url.map(ToOwned::to_owned);
 	record.target_state = Some(failure.target_state.to_owned());
 
 	if failure.manual_attention_requested {
@@ -843,6 +845,7 @@ where
 				{
 					Report::new(ReviewHandoffNeedsAttention {
 						issue_identifier: writeback_error.issue_identifier.clone(),
+						pr_url: writeback_error.pr_url.clone(),
 						run_id: writeback_error.run_id.clone(),
 					})
 					.wrap_err(error)
@@ -1297,11 +1300,13 @@ where
 	);
 	let (error_class, next_action) =
 		terminal_failure_comment_details(manual_attention_requested, error, &recovery_gate);
+	let pr_url = terminal_failure_pr_url(error);
 	let comment = format_terminal_failure_comment(
 		&issue_run.run_id,
 		issue_run.attempt_number,
 		worktree_path.to_owned(),
 		&issue_run.worktree.branch_name,
+		pr_url,
 		error_class,
 		&next_action,
 	);
@@ -1311,6 +1316,7 @@ where
 		TerminalFailureLifecycle {
 			error_class,
 			next_action: &next_action,
+			pr_url,
 			target_state: terminal_failure_state_name,
 			worktree_path,
 			manual_attention_requested,
