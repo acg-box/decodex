@@ -2,10 +2,12 @@ use color_eyre::Report;
 
 use crate::{
 	agent::tracker_tool_bridge::{
-		self, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
-		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
-		ISSUE_TRANSITION_TOOL_NAME, LocalRepoDetails, PendingReviewCompletion, PullRequestDetails,
-		REVIEW_POLICY_CONVERGENCE_BUDGET, ReviewExecutionMode, ReviewHandoffContext,
+		self, CLOSEOUT_PUBLIC_SUMMARY_FALLBACK, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
+		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LocalRepoDetails,
+		PendingReviewAction, PendingReviewCompletion, PullRequestDetails,
+		REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK, REVIEW_POLICY_CONVERGENCE_BUDGET,
+		REVIEW_REPAIR_PUBLIC_SUMMARY_FALLBACK, ReviewExecutionMode, ReviewHandoffContext,
 		ReviewHandoffWritebackFailed, ReviewPolicyPhase, ReviewPolicyState, ReviewPolicyStatus,
 		ReviewPolicyStopReason, ReviewPolicyStopRequested, RunCompletionDisposition, ScopeArgs,
 		TrackerToolBridge,
@@ -14,7 +16,7 @@ use crate::{
 	state::{self, ReviewHandoffMarker, ReviewOrchestrationMarker},
 	tracker::{
 		self, TrackerIssue,
-		records::{self},
+		records::{self, LinearExecutionEventPublicProjection},
 	},
 };
 
@@ -414,23 +416,6 @@ impl<'a> TrackerToolBridge<'a> {
 		let pull_request = self
 			.validate_review_action_pr(review_context, &pending_review_handoff.pr_url)
 			.map_err(|error| eyre::eyre!(error))?;
-		let completion_comment = tracker_tool_bridge::format_review_handoff_comment(
-			review_context,
-			&pending_review_handoff,
-		);
-		let handoff_record = linear_execution_review_event(
-			self.issue,
-			review_context,
-			&pull_request,
-			"review_handoff",
-			"review_handoff",
-			&pending_review_handoff.summary,
-		);
-		let projection = tracker::prepare_linear_execution_event_comment(
-			&completion_comment,
-			&handoff_record,
-			self.public_projection_privacy_classifier,
-		)?;
 		let success_state = self.workflow.frontmatter().tracker().success_state();
 		let success_state_id = self.issue.state_id_for_name(success_state).ok_or_else(|| {
 			eyre::eyre!(
@@ -438,6 +423,12 @@ impl<'a> TrackerToolBridge<'a> {
 				self.issue.identifier
 			)
 		})?;
+		let projection = self.prepare_review_handoff_projection(
+			review_context,
+			&pending_review_handoff,
+			&pull_request,
+			success_state,
+		)?;
 		let handoff_marker = ReviewHandoffMarker::new(
 			review_context.run_id.clone(),
 			review_context.attempt_number,
@@ -499,6 +490,47 @@ impl<'a> TrackerToolBridge<'a> {
 		Ok(())
 	}
 
+	fn prepare_review_handoff_projection(
+		&self,
+		review_context: &ReviewHandoffContext,
+		pending_review_handoff: &PendingReviewAction,
+		pull_request: &PullRequestDetails,
+		success_state: &str,
+	) -> crate::prelude::Result<LinearExecutionEventPublicProjection> {
+		let public_summary = tracker_tool_bridge::public_summary_or_fallback(
+			&pending_review_handoff.summary,
+			REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK,
+		);
+		let completion_comment = tracker_tool_bridge::format_review_handoff_comment(
+			review_context,
+			pending_review_handoff,
+			public_summary.as_ref(),
+		);
+		let handoff_record = linear_execution_review_event(
+			self.issue,
+			review_context,
+			pull_request,
+			"review_handoff",
+			"review_handoff",
+			public_summary.as_ref(),
+		);
+
+		tracker::prepare_linear_execution_event_comment(
+			&completion_comment,
+			&handoff_record,
+			self.public_projection_privacy_classifier,
+		)
+		.map_err(|error| {
+			Report::new(ReviewHandoffWritebackFailed {
+				issue_identifier: self.issue.identifier.clone(),
+				run_id: review_context.run_id.clone(),
+				pr_url: pull_request.url.clone(),
+				success_state: success_state.to_owned(),
+				source: format!("failed to prepare the tracker review handoff record: {error}"),
+			})
+		})
+	}
+
 	pub(crate) fn apply_review_repair(&self) -> crate::prelude::Result<()> {
 		let Some(review_context) = self.review_context.as_ref() else {
 			eyre::bail!(
@@ -523,9 +555,14 @@ impl<'a> TrackerToolBridge<'a> {
 		let pull_request = self
 			.validate_review_action_pr(review_context, &pending_review_repair.pr_url)
 			.map_err(|error| eyre::eyre!(error))?;
+		let public_summary = tracker_tool_bridge::public_summary_or_fallback(
+			&pending_review_repair.summary,
+			REVIEW_REPAIR_PUBLIC_SUMMARY_FALLBACK,
+		);
 		let completion_comment = tracker_tool_bridge::format_review_repair_comment(
 			review_context,
 			&pending_review_repair,
+			public_summary.as_ref(),
 		);
 		let handoff_record = linear_execution_review_event(
 			self.issue,
@@ -533,7 +570,7 @@ impl<'a> TrackerToolBridge<'a> {
 			&pull_request,
 			"repair_handoff",
 			"review_repair",
-			&pending_review_repair.summary,
+			public_summary.as_ref(),
 		);
 		let review_handoff = ReviewHandoffMarker::new(
 			review_context.run_id.clone(),
@@ -701,8 +738,16 @@ impl<'a> TrackerToolBridge<'a> {
 			self.validate_closeout_issue_completed_state().map_err(|error| eyre::eyre!(error))?;
 		}
 
-		let closeout_record =
-			linear_execution_closeout_event(self.issue, review_context, &pull_request, summary);
+		let public_summary = tracker_tool_bridge::public_summary_or_fallback(
+			summary,
+			CLOSEOUT_PUBLIC_SUMMARY_FALLBACK,
+		);
+		let closeout_record = linear_execution_closeout_event(
+			self.issue,
+			review_context,
+			&pull_request,
+			public_summary.as_ref(),
+		);
 		let closeout_comment = format!(
 			"decodex closeout completed\n\n- run_id: `{}`\n- attempt: `{}`\n- finished_at: `{}`\n- branch: `{}`\n- pr_url: `{}`\n- worktree_path: `{}`\n- summary: {}",
 			review_context.run_id,
@@ -711,7 +756,7 @@ impl<'a> TrackerToolBridge<'a> {
 			review_context.branch_name,
 			pull_request.url,
 			review_context.worktree_path,
-			summary,
+			public_summary,
 		);
 		let projection = tracker::prepare_linear_execution_event_comment(
 			&closeout_comment,
