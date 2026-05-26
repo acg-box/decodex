@@ -2,6 +2,7 @@ mod review;
 mod tools;
 
 use std::{
+	borrow::Cow,
 	cell::RefCell,
 	env,
 	error::Error,
@@ -22,7 +23,10 @@ use crate::{
 	github,
 	prelude::eyre,
 	state::StateStore,
-	tracker::{IssueTracker, TrackerIssue, privacy_classifier::PublicProjectionPrivacyClassifier},
+	tracker::{
+		IssueTracker, TrackerIssue, privacy_classifier::PublicProjectionPrivacyClassifier,
+		public_text,
+	},
 	workflow::WorkflowDocument,
 };
 
@@ -37,6 +41,11 @@ pub(crate) const ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME: &str = "issue_close
 pub(crate) const ISSUE_TERMINAL_FINALIZE_TOOL_NAME: &str = "issue_terminal_finalize";
 
 const REVIEW_POLICY_CONVERGENCE_BUDGET: i64 = 3;
+const REVIEW_HANDOFF_PUBLIC_SUMMARY_FALLBACK: &str =
+	"Implementation completed and the PR is ready for review.";
+const REVIEW_REPAIR_PUBLIC_SUMMARY_FALLBACK: &str =
+	"Review repair completed and the PR is ready for fresh review.";
+const CLOSEOUT_PUBLIC_SUMMARY_FALLBACK: &str = "Retained closeout completed for the merged PR.";
 
 static GH_PULL_REQUEST_INSPECTOR: GhPullRequestInspector = GhPullRequestInspector;
 static LOCAL_GIT_REPO_INSPECTOR: LocalGitRepoInspector = LocalGitRepoInspector;
@@ -1184,9 +1193,18 @@ fn normalize_optional_progress_field(value: Option<String>) -> Option<String> {
 	})
 }
 
+fn public_summary_or_fallback<'a>(summary: &'a str, fallback: &'static str) -> Cow<'a, str> {
+	if public_text::validate_public_text_field("summary", summary).is_ok() {
+		Cow::Borrowed(summary)
+	} else {
+		Cow::Borrowed(fallback)
+	}
+}
+
 fn format_review_handoff_comment(
 	review_context: &ReviewHandoffContext,
 	pending_review_handoff: &PendingReviewAction,
+	summary: &str,
 ) -> String {
 	format!(
 		"decodex run completed and is ready for review\n\n- run_id: `{run_id}`\n- attempt: `{attempt}`\n- finished_at: `{finished_at}`\n- branch: `{branch}`\n- pr_url: `{pr_url}`\n- worktree_path: `{worktree_path}`\n- validation_result: `passed`\n- summary: {summary}",
@@ -1196,13 +1214,14 @@ fn format_review_handoff_comment(
 		branch = review_context.branch_name,
 		pr_url = pending_review_handoff.pr_url,
 		worktree_path = review_context.worktree_path,
-		summary = pending_review_handoff.summary,
+		summary = summary,
 	)
 }
 
 fn format_review_repair_comment(
 	review_context: &ReviewHandoffContext,
 	pending_review_repair: &PendingReviewAction,
+	summary: &str,
 ) -> String {
 	format!(
 		"decodex review repair completed and requested fresh review\n\n- run_id: `{run_id}`\n- attempt: `{attempt}`\n- finished_at: `{finished_at}`\n- branch: `{branch}`\n- pr_url: `{pr_url}`\n- worktree_path: `{worktree_path}`\n- validation_result: `passed`\n- summary: {summary}",
@@ -1212,7 +1231,7 @@ fn format_review_repair_comment(
 		branch = review_context.branch_name,
 		pr_url = pending_review_repair.pr_url,
 		worktree_path = review_context.worktree_path,
-		summary = pending_review_repair.summary,
+		summary = summary,
 	)
 }
 

@@ -86,6 +86,12 @@ activity markers. Linear records should continue to use public collaboration
 identifiers such as PR URLs, issue identifiers, branch names, commit SHAs, and
 repository-relative paths.
 
+PR lifecycle writeback must not copy an agent-authored review, repair, or closeout
+summary into Linear when that summary fails the baseline public-text guard. The
+writeback must replace the rejected summary with fixed public-safe fallback text before
+rendering the Linear comment and ledger record. This fallback does not weaken the guard:
+the rejected private text remains absent from the public record.
+
 Decodex may additionally run public projection free-text through an optional local
 privacy classifier before publishing the Linear comment. That classifier is a secondary
 semantic warning layer after schema allowlisting and the deterministic public-text
