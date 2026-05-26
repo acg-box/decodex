@@ -106,6 +106,12 @@ model, personality, sandbox, or approval-policy overrides on behalf of
 `WORKFLOW.md`. `plugin/list` preflight must pass `marketplaceKinds = ["local"]`
 so remote catalog, featured-plugin, or marketplace-discovery failures do not gate a
 business lane before its thread is created.
+Because `plugin/list` is observational and local-marketplace-only, Decodex may retry
+one app-server output timeout before failing the lane. If the retry is exhausted,
+the terminal failure must remain an app-server preflight failure, report
+`app_server_plugin_list_timeout`, and include the `plugin/list` timeout cause in local
+preflight evidence and operator recovery output rather than looking like a repository
+implementation failure.
 
 When dynamic tools are enabled, `decodex` must also:
 
