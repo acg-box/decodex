@@ -347,14 +347,15 @@ impl Error for ManualAttentionRequested {}
 #[derive(Debug)]
 struct ReviewHandoffNeedsAttention {
 	issue_identifier: String,
+	pr_url: String,
 	run_id: String,
 }
 impl Display for ReviewHandoffNeedsAttention {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(
 			f,
-			"Run `{}` for issue `{}` partially applied review handoff writeback; stop retries and repair the issue manually.",
-			self.run_id, self.issue_identifier
+			"Run `{}` for issue `{}` partially applied review handoff writeback for PR `{}`; stop retries and repair the issue manually.",
+			self.run_id, self.issue_identifier, self.pr_url
 		)
 	}
 }
