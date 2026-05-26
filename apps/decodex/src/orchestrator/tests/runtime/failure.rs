@@ -59,6 +59,7 @@ fn terminal_failure_comments_surface_actionable_error_classes() {
 			1,
 			String::from(".worktrees/PUB-101"),
 			"x/pubfi-pub-101",
+			None,
 			error_class,
 			next_action,
 		);
@@ -70,6 +71,23 @@ fn terminal_failure_comments_surface_actionable_error_classes() {
 			assert!(comment.contains(expected_snippet), "{error_class} missing {expected_snippet}");
 		}
 	}
+}
+
+#[test]
+fn terminal_failure_comments_surface_review_handoff_pr_url_when_available() {
+	let pr_url = "https://github.com/hack-ink/decodex/pull/101";
+	let comment = orchestrator::format_terminal_failure_comment(
+		"pub-101-attempt-1-123",
+		1,
+		String::from(".worktrees/PUB-101"),
+		"x/pubfi-pub-101",
+		Some(pr_url),
+		"review_handoff_writeback_failed",
+		"repair the incomplete review handoff manually",
+	);
+
+	assert!(comment.contains(&format!("- pr_url: `{pr_url}`")));
+	assert!(comment.contains("- error_class: `review_handoff_writeback_failed`"));
 }
 
 #[test]
@@ -249,6 +267,7 @@ fn review_policy_terminal_failure_comments_use_runtime_owned_error_classes() {
 			1,
 			String::from(".worktrees/PUB-101"),
 			"x/pubfi-pub-101",
+			None,
 			error_class,
 			next_action,
 		);
