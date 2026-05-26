@@ -46,10 +46,13 @@ The follow-up MVP should support these issue-scoped operations:
 - `issue_transition`
   - move the current issue to an allowed target state
 - `issue_comment`
-  - add an exceptional human-readable comment to the current issue for
-    manual-attention blockers or explicit collaboration notes
+  - add an allowlisted public comment summary to the current issue for a known
+    lifecycle case
+  - current automation kind: `manual_attention`
+  - the tool accepts structured public fields and renders the Linear comment itself;
+    it must not accept arbitrary agent-authored comment bodies
 - `issue_progress_checkpoint`
-  - record the current durable execution-state snapshot for the current issue without changing lifecycle authority
+  - append the current durable execution-state snapshot to private runtime evidence and publish only the low-frequency public projection when the public lifecycle signal changes
 - `issue_review_checkpoint`
   - record the normalized repo-native bounded-review result for the current handoff or repair phase
 - `issue_review_handoff`
@@ -60,6 +63,23 @@ The follow-up MVP should support these issue-scoped operations:
   - explicitly finalize the current run's terminal tracker path after the required tracker writes already exist
 
 Additional operations such as richer metadata updates may be added later, but they are not required for the first PR-backed self-dogfood pilot.
+
+## Private And Public Outputs
+
+Tracker tools must keep local execution evidence private by default:
+
+- `issue_progress_checkpoint` stores the full normalized checkpoint payload in
+  runtime SQLite `private_execution_events` before any Linear write is attempted.
+- Its Linear output is only the public `progress_checkpoint` projection defined by
+  [`linear-execution-ledger.md`](./linear-execution-ledger.md). That projection is
+  keyed by public lifecycle signal, so private-only checkpoint changes do not create
+  another Linear comment.
+- `issue_comment` is not a generic comment escape hatch. It accepts only allowlisted
+  public comment kinds, currently `manual_attention`, and Decodex renders the
+  corresponding Linear ledger record from structured public fields.
+- Logs and `.decodex-run-activity` markers are diagnostic inputs for local operators.
+  They must not be copied into Linear through tracker tools and must not replace
+  private execution events.
 
 ## Completion signal contract
 
@@ -89,10 +109,31 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - The tool bridge should reject transitions that violate the current repo workflow contract.
 - Generic `issue_transition` must not move the current issue directly into the configured success state.
 - `issue_progress_checkpoint` is available during any owned run phase, including retained repair and closeout runs.
-- `issue_progress_checkpoint` must keep the routed issue description generic; the durable execution-state payload belongs in issue-scoped checkpoint comments, not in the description.
+- `issue_progress_checkpoint` must keep the routed issue description generic. The full
+  structured checkpoint payload belongs in private runtime execution events, not in
+  the issue description or Linear comments.
 - `issue_progress_checkpoint` must accept only the normalized execution phases `probing`, `implementing`, `verifying`, `blocked`, `ready_for_review`, `review_repair`, `ready_to_land`, and `closeout`.
 - `issue_progress_checkpoint` must not replace `issue_review_checkpoint`, `issue_review_handoff`, `issue_review_repair_complete`, `issue_closeout_complete`, or `issue_terminal_finalize`.
 - `decodex` treats `issue_progress_checkpoint` as execution memory only. Checkpoint phase, focus, next action, blockers, or evidence do not by themselves authorize review handoff, repair completion, merge, closeout, or terminal success.
+- `issue_progress_checkpoint` must persist the full normalized checkpoint payload to
+  `private_execution_events` before attempting any Linear write.
+- The Linear-facing checkpoint record is only a public projection. It may include the
+  ledger envelope, `phase`, `summary`, `branch`, repository-relative `worktree_path`,
+  and `pr_url`. It must not include raw `focus`, `next_action`, `blockers`,
+  `evidence`, `verification`, local head evidence, host-local paths, identity-routing
+  details, account details, token names, or other private runtime evidence.
+- When a project configures a local public-projection privacy classifier, Decodex must
+  run only Linear projection text fields through that local classifier before writing
+  the Linear comment. The classifier is not the primary boundary and must not receive
+  raw checkpoint `focus`, `next_action`, `blockers`, `evidence`, `verification`,
+  local runtime events, or other private ledger payloads.
+- Suspicious or classifier-unavailable projection fields must fail closed: optional
+  fields are omitted, and required text fields are replaced with fixed public-safe
+  fallback text before any Linear mutation.
+- `issue_progress_checkpoint` must publish a new Linear projection only when the
+  public lifecycle signal changes materially, such as the normalized phase or public
+  branch/PR projection anchor changing. Repeated private evidence updates inside the
+  same public signal must append private runtime events without adding Linear comments.
 - `issue_review_checkpoint` is available only when `codex.internal_review_mode = "loop"`, and only during the pre-PR handoff phase and retained review-repair runs; `closeout` does not expose it.
 - `issue_review_checkpoint` must accept only these normalized statuses: `clean`, `findings`, `needs_architecture_review`, `blocked`.
 - `issue_review_checkpoint` must bind every checkpoint to an explicit `head_sha` for the currently reviewed lane head.
@@ -103,8 +144,23 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - `issue_review_repair_complete` must validate that the supplied PR belongs to the current repository and retained lane branch, points at the validated lane HEAD, is open, and is ready for fresh review before `decodex` accepts retained repair completion.
 - `issue_review_handoff` records the success metadata during the turn, but `decodex` owns the final completion comment and `In Review` transition after service-side validation succeeds.
 - `issue_review_repair_complete` records retained repair completion metadata during the turn, but `decodex` owns the final completion comment and refreshed retained-lineage marker after service-side validation succeeds.
-- Adding the configured `needs_attention_label` is an explicit human-required failure exit for the active lane. In that case the agent must leave a comment explaining the blocker, must not also record `issue_review_handoff`, and `decodex` must stop automatic retries for that attempt.
-- Human-attention comments must describe the exact observed blocker and should include the failed command plus raw error text when available. The agent must not speculate about capabilities or environment restrictions that it did not directly verify.
+- Agent-authored PR lifecycle summaries are public text inputs. If the summary recorded
+  by `issue_review_handoff`, `issue_review_repair_complete`, or `issue_closeout_complete`
+  fails the public-text guard during Decodex-owned writeback, Decodex must use fixed
+  public-safe fallback summary text for the Linear comment and ledger record instead
+  of failing the otherwise valid PR lifecycle transition.
+- Adding the configured `needs_attention_label` is an explicit human-required
+  failure exit for the active lane. In that case the agent must call
+  `issue_comment` with kind `manual_attention` so Decodex can render the
+  explanatory `needs_attention` ledger comment, must not also record
+  `issue_review_handoff`, and `decodex` must stop automatic retries for that
+  attempt.
+- Human-attention comments must describe the exact observed blocker through
+  structured public fields: `error_class`, `next_action`, `blockers`, and
+  `evidence`. `failed_command` and `raw_error` may be included only when their
+  values are public-safe. The tool must reject private-looking command or error
+  text before any Linear mutation. The agent must not speculate about
+  capabilities or environment restrictions that it did not directly verify.
 - The human-attention exit is not complete until the explanatory comment is successfully written after the label request. A label-only signal must be rejected as an invalid completion disposition.
 - The run is not complete until `issue_terminal_finalize` succeeds against the matching terminal path. An execution-state checkpoint or an agent summary message is not a substitute.
 - Issues that carry the configured `needs_attention_label` must remain ineligible for future automatic selection until a human clears the label.
@@ -114,16 +170,31 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - `decodex` must preflight the local GitHub CLI dependency at the PR-backed review boundary itself:
   - when a normal lane is about to validate and write back `issue_review_handoff`
   - when a retained post-review lane is about to re-enter `review_repair`
-- Comment bodies should remain repository-controlled or agent-authored, but all tool calls must be journaled by `decodex` for recovery and audit.
+- Decodex execution comment bodies should be rendered by Decodex from
+  structured, validated fields. All tool calls must be journaled by `decodex`
+  for recovery and audit.
 - Routine start and progress visibility should use Linear execution ledger records
   instead of ad hoc `issue_comment` text. A normal run start is represented by one
-  `run_started` ledger record, and ordinary progress uses `issue_progress_checkpoint`
+  `run_started` ledger record. Ordinary progress uses `issue_progress_checkpoint`
   only when execution phase, focus, next action, blockers, evidence, or verification
-  changes materially.
+  changes materially, but Linear receives only the safe public projection for material
+  public lifecycle changes.
 - Structured Linear execution event comments must conform to
   [`linear-execution-ledger.md`](./linear-execution-ledger.md).
 - Structured comment fields such as `worktree_path` must use repository-relative paths;
   absolute host paths should be rejected before writing to the tracker.
+- `issue_comment` is public/team-visible but not free-form. It must accept only
+  allowlisted public comment kinds and structured public fields. For
+  `manual_attention`, Decodex renders a `needs_attention` Linear execution ledger
+  comment from those fields. Unsupported kinds, arbitrary `body` arguments, and
+  private-looking `failed_command` or `raw_error` values must be rejected before
+  any Linear write. `issue_progress_checkpoint` payload text is private runtime
+  evidence; only its rendered public projection is public/team-visible and subject
+  to Linear event validation. Before any Linear write, Decodex must reject known
+  leakage-shaped public projection text such as host-local paths, routed identity
+  details, credential-like names, private account details, private config file
+  names, emails, tokens, or secrets. Detailed checkpoint evidence remains
+  local/operator-only.
 - Dynamic tool names must satisfy the `codex app-server` identifier restriction `^[a-zA-Z0-9_-]+$`; dotted names are invalid.
 
 ## Failure handling
@@ -140,6 +211,11 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - If the turn completes without a valid recorded `issue_review_handoff` and without an explicit human-attention exit, `decodex` must treat the run as failed rather than silently moving the issue to `In Review`.
 - If the turn completes without a matching `issue_terminal_finalize` call for the resolved terminal path, `decodex` must treat the run as failed before reporting the attempt as successful.
 - If PR-backed success writeback partially succeeds, for example the issue reaches `In Review` but the completion comment fails to post, `decodex` must treat the lane as human-required and must not place it back on the automatic retry path.
+- If a remaining public writeback validation failure occurs after successful PR
+  validation, Decodex must classify it as `review_handoff_writeback_failed`, preserve
+  the PR URL in the public recovery record when available, and stop in a recoverable
+  human-required state instead of downgrading the completed implementation work to a
+  generic coding failure.
 
 ## Future expansion
 

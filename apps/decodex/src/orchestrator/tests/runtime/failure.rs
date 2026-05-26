@@ -59,6 +59,7 @@ fn terminal_failure_comments_surface_actionable_error_classes() {
 			1,
 			String::from(".worktrees/PUB-101"),
 			"x/pubfi-pub-101",
+			None,
 			error_class,
 			next_action,
 		);
@@ -70,6 +71,23 @@ fn terminal_failure_comments_surface_actionable_error_classes() {
 			assert!(comment.contains(expected_snippet), "{error_class} missing {expected_snippet}");
 		}
 	}
+}
+
+#[test]
+fn terminal_failure_comments_surface_review_handoff_pr_url_when_available() {
+	let pr_url = "https://github.com/hack-ink/decodex/pull/101";
+	let comment = orchestrator::format_terminal_failure_comment(
+		"pub-101-attempt-1-123",
+		1,
+		String::from(".worktrees/PUB-101"),
+		"x/pubfi-pub-101",
+		Some(pr_url),
+		"review_handoff_writeback_failed",
+		"repair the incomplete review handoff manually",
+	);
+
+	assert!(comment.contains(&format!("- pr_url: `{pr_url}`")));
+	assert!(comment.contains("- error_class: `review_handoff_writeback_failed`"));
 }
 
 #[test]
@@ -249,6 +267,7 @@ fn review_policy_terminal_failure_comments_use_runtime_owned_error_classes() {
 			1,
 			String::from(".worktrees/PUB-101"),
 			"x/pubfi-pub-101",
+			None,
 			error_class,
 			next_action,
 		);
@@ -441,14 +460,14 @@ fn app_server_terminal_failures_preserve_specific_error_classes() {
 				"configured model was not present in model/list.",
 			)),
 			"app_server_runtime_preflight_failed",
-			"repair the local Codex config/model/provider/skills/plugin/MCP state",
+			"repair the local Codex runtime configuration",
 		),
 		(
 			Report::new(AppServerHomePreflightFailure::resolution_failed(String::from(
 				"app_server_preflight_failed: HOME is not set, so Decodex cannot resolve the shared Codex home for app-server dispatch.",
 			))),
 			"app_server_codex_home_preflight_failed",
-			"keep CODEX_HOME/CODEX_SQLITE_HOME shared instead of per-account",
+			"inspect the local Decodex and Codex home sharing",
 		),
 		(
 			Report::new(AppServerHomePreflightFailure::initialize_mismatch(
@@ -739,8 +758,8 @@ fn missing_agent_git_credentials_stop_without_retry() {
 
 	assert_eq!(credentials_error.token_env_var, missing_env_var);
 	assert_eq!(error_class, "github_credentials_unavailable");
-	assert!(next_action.contains("configure"));
-	assert!(next_action.contains(&missing_env_var));
+	assert!(next_action.contains("repair GitHub authentication"));
+	assert!(!next_action.contains(&missing_env_var));
 }
 
 #[test]

@@ -20,7 +20,9 @@ use crate::{
 	archive_hygiene::{self, ArchiveHygieneRequest},
 	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
-	orchestrator::{self, DiagnoseRequest, IssueDispatchMode, RunOnceRequest, ServeRequest},
+	orchestrator::{
+		self, DiagnoseRequest, EvidenceRequest, IssueDispatchMode, RunOnceRequest, ServeRequest,
+	},
 	prelude::eyre,
 	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
 	runtime,
@@ -56,6 +58,7 @@ impl Cli {
 			Command::Project(args) => args.run(),
 			Command::Status(args) => args.run(),
 			Command::Diagnose(args) => args.run(),
+			Command::Evidence(args) => args.run(),
 			Command::Recover(args) => args.run(),
 			Command::ArchiveLinear(args) => args.run(),
 			Command::Maintenance(args) => args.run(),
@@ -356,6 +359,10 @@ impl ProjectCommand {
 				let registration =
 					runtime::register_project_config(&state_store, &args.config, true)?;
 
+				if !registration.enabled() {
+					state_store.set_project_enabled(registration.service_id(), true)?;
+				}
+
 				println!(
 					"registered project {} at {}",
 					registration.service_id(),
@@ -389,6 +396,15 @@ impl ProjectCommand {
 				state_store.set_project_enabled(&args.service_id, false)?;
 
 				println!("disabled project {}", args.service_id);
+			},
+			ProjectSubcommand::Remove(args) => {
+				let removed = state_store.remove_project(&args.service_id)?;
+
+				println!(
+					"removed project {} at {}",
+					removed.service_id(),
+					removed.config_path().display()
+				);
 			},
 		}
 
@@ -444,6 +460,38 @@ impl DiagnoseCommand {
 			config_path: self.project_config.as_path(),
 			json: self.json,
 			limit: self.limit,
+		})
+	}
+}
+
+#[derive(Debug, Args)]
+struct EvidenceCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
+	/// Issue identifier or local issue id to inspect.
+	issue: String,
+	/// Restrict readback to one run id. Defaults to the latest local run for the issue.
+	#[arg(long, value_name = "RUN_ID")]
+	run_id: Option<String>,
+	/// Restrict readback to one attempt number. Defaults to the selected run attempt.
+	#[arg(long, value_name = "NUMBER")]
+	attempt: Option<i64>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+	/// Include full structured payload values instead of compact payload summaries only.
+	#[arg(long)]
+	include_payload: bool,
+}
+impl EvidenceCommand {
+	fn run(&self) -> crate::prelude::Result<()> {
+		orchestrator::print_private_evidence(EvidenceRequest {
+			config_path: self.project_config.as_path(),
+			issue: &self.issue,
+			run_id: self.run_id.as_deref(),
+			attempt_number: self.attempt,
+			json: self.json,
+			include_payload: self.include_payload,
 		})
 	}
 }
@@ -680,6 +728,8 @@ enum Command {
 	Status(StatusCommand),
 	/// Write and print the agent-readable local evidence index.
 	Diagnose(DiagnoseCommand),
+	/// Inspect local-only private execution evidence for one issue or run.
+	Evidence(EvidenceCommand),
 	/// Diagnose or explicitly repair supported retained-lane recovery cases.
 	Recover(RecoverCommand),
 	/// Dry-run or archive old terminal Linear issues by repo label.
@@ -715,7 +765,7 @@ enum AccountSubcommand {
 
 #[derive(Debug, Subcommand)]
 enum ProjectSubcommand {
-	/// Register or refresh one Decodex project config.
+	/// Register or refresh one Decodex project config and enable it.
 	Add(ProjectAddCommand),
 	/// List registered local projects.
 	List,
@@ -723,6 +773,8 @@ enum ProjectSubcommand {
 	Enable(ProjectToggleCommand),
 	/// Disable one registered project for `decodex serve`.
 	Disable(ProjectToggleCommand),
+	/// Remove one registered project from the local registry.
+	Remove(ProjectToggleCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -807,7 +859,7 @@ mod tests {
 
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
-		CommitCommand, DiagnoseCommand, LandCommand, ProbeCommand, ProjectCommand,
+		CommitCommand, DiagnoseCommand, EvidenceCommand, LandCommand, ProbeCommand, ProjectCommand,
 		ProjectConfigArgs, ProjectSubcommand, RecoverCommand, RecoverSubcommand,
 		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
 		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
@@ -1017,6 +1069,16 @@ mod tests {
 	}
 
 	#[test]
+	fn parses_project_remove() {
+		let cli = Cli::parse_from(["decodex", "project", "remove", "vibe-mono"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Project(ProjectCommand { command: ProjectSubcommand::Remove(_) })
+		));
+	}
+
+	#[test]
 	fn parses_account_use_with_auth_json_override() {
 		let cli = Cli::parse_from([
 			"decodex",
@@ -1121,6 +1183,35 @@ mod tests {
 				json: true,
 				limit: 5,
 			}) if config == Path::new("./project.toml")
+		));
+	}
+
+	#[test]
+	fn parses_evidence_with_issue_run_attempt_json_payload_and_project_config() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"evidence",
+			"--config",
+			"./project.toml",
+			"PUB-101",
+			"--run-id",
+			"run-1",
+			"--attempt",
+			"2",
+			"--json",
+			"--include-payload",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Evidence(EvidenceCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				issue,
+				run_id: Some(_),
+				attempt: Some(2),
+				json: true,
+				include_payload: true,
+			}) if config == Path::new("./project.toml") && issue == "PUB-101"
 		));
 	}
 

@@ -1113,9 +1113,14 @@ where
 	};
 	let worktree_path =
 		relative_worktree_path_for_path(project, synthetic_issue_run.worktree.path.as_path());
+	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
 	let _ = apply_terminal_failure_writeback(
 		tracker,
-		TerminalFailureWritebackRuntime { service_id: project.service_id(), state_store: None },
+		TerminalFailureWritebackRuntime {
+			service_id: project.service_id(),
+			state_store: None,
+			privacy_classifier: &privacy_classifier,
+		},
 		workflow,
 		&synthetic_issue_run,
 		&worktree_path,

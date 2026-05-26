@@ -3,6 +3,8 @@ use agent::CodexAccountPool;
 use agent::CodexAccountProvider;
 use agent::AppServerThreadArchiveRequest;
 
+use crate::tracker::privacy_classifier::PublicProjectionPrivacyClassifier;
+
 struct AgentGitCredentialEnvironment {
 	process_env: AppServerProcessEnv,
 	askpass_path: PathBuf,
@@ -30,14 +32,22 @@ impl Drop for AgentGitCredentialEnvironment {
 struct TerminalFailureLifecycle<'a> {
 	error_class: &'a str,
 	next_action: &'a str,
+	pr_url: Option<&'a str>,
 	target_state: &'a str,
 	worktree_path: &'a str,
 	manual_attention_requested: bool,
 }
 
+struct RunStartedLifecycleFields<'a> {
+	worktree_path: &'a str,
+	commit_sha: &'a str,
+	privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
+}
+
 struct TerminalFailureWritebackRuntime<'a> {
 	service_id: &'a str,
 	state_store: Option<&'a StateStore>,
+	privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
 }
 
 struct CompletedAppServerRun<'a, T>
@@ -196,6 +206,14 @@ fn sanitize_run_id_for_path(run_id: &str) -> String {
 	if sanitized.is_empty() { String::from("run") } else { sanitized }
 }
 
+fn configured_public_projection_privacy_classifier(
+	project: &ServiceConfig,
+) -> Result<tracker::privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier> {
+	tracker::privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier::from_config(
+		project.privacy_classifier(),
+	)
+}
+
 fn lifecycle_event_identity<'a>(
 	project: &'a ServiceConfig,
 	issue_run: &'a IssueRunPlan,
@@ -214,18 +232,23 @@ fn write_lifecycle_event<T>(
 	state_store: &StateStore,
 	issue_id: &str,
 	record: &records::LinearExecutionEventRecord,
+	privacy_classifier: &dyn PublicProjectionPrivacyClassifier,
 ) -> Result<()>
 where
 	T: IssueTracker + ?Sized,
 {
 	let body = format!("Decodex execution event: {}", record.event_type);
+	let projection =
+		tracker::prepare_linear_execution_event_comment(&body, record, privacy_classifier)?;
 
-	if state_store.record_linear_execution_event(record)?
-		&& let Err(error) = tracker::create_linear_execution_event_comment_without_remote_scan(
-			tracker, issue_id, &body, record,
+	if state_store.record_linear_execution_event(&projection.record)?
+		&& let Err(error) = tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
+			tracker,
+			issue_id,
+			&projection,
 		)
 	{
-		state_store.forget_linear_execution_event(&record.idempotency_key)?;
+		state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
 
 		return Err(error);
 	}
@@ -244,6 +267,7 @@ where
 	T: IssueTracker + ?Sized,
 {
 	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
+	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
 	let commit_sha = worktree_head_oid(&issue_run.worktree.path)?.ok_or_else(|| {
 		eyre::eyre!(
 			"Prepared worktree `{}` for issue `{}` did not expose a HEAD commit.",
@@ -258,8 +282,11 @@ where
 		workflow,
 		state_store,
 		issue_run,
-		&worktree_path,
-		&commit_sha,
+		RunStartedLifecycleFields {
+			worktree_path: &worktree_path,
+			commit_sha: &commit_sha,
+			privacy_classifier: &privacy_classifier,
+		},
 	)
 }
 
@@ -269,8 +296,7 @@ fn write_run_started_lifecycle_event<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
-	worktree_path: &str,
-	commit_sha: &str,
+	fields: RunStartedLifecycleFields<'_>,
 ) -> Result<()>
 where
 	T: IssueTracker + ?Sized,
@@ -279,7 +305,7 @@ where
 	let anchor = records::stable_event_anchor(&[
 		issue_run.dispatch_mode.as_str(),
 		&issue_run.worktree.branch_name,
-		commit_sha,
+		fields.commit_sha,
 		transport,
 	]);
 	let mut record = records::LinearExecutionEventRecord::new(
@@ -290,15 +316,21 @@ where
 	);
 
 	record.branch = Some(issue_run.worktree.branch_name.clone());
-	record.worktree_path = Some(worktree_path.to_owned());
-	record.commit_sha = Some(commit_sha.to_owned());
+	record.worktree_path = Some(fields.worktree_path.to_owned());
+	record.commit_sha = Some(fields.commit_sha.to_owned());
 	record.transport = Some(transport.to_owned());
 	record.summary = Some(format!(
 		"Decodex started a {} run for this issue.",
 		issue_run.dispatch_mode.as_str()
 	));
 
-	write_lifecycle_event(tracker, state_store, &issue_run.issue.id, &record)
+	write_lifecycle_event(
+		tracker,
+		state_store,
+		&issue_run.issue.id,
+		&record,
+		fields.privacy_classifier,
+	)
 }
 
 fn terminal_failure_lifecycle_event(
@@ -339,6 +371,7 @@ fn terminal_failure_lifecycle_event(
 		issue_run.attempt_number
 	)]);
 	record.summary = Some(String::from("Decodex run failed and needs attention."));
+	record.pr_url = failure.pr_url.map(ToOwned::to_owned);
 	record.target_state = Some(failure.target_state.to_owned());
 
 	if failure.manual_attention_requested {
@@ -360,6 +393,7 @@ where
 	T: IssueTracker + ?Sized,
 {
 	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
+	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
 	let anchor = records::stable_event_anchor(&[
 		&issue_run.worktree.branch_name,
 		commit_sha.unwrap_or_default(),
@@ -379,7 +413,13 @@ where
 	record.pr_url = pr_url.map(ToOwned::to_owned);
 	record.commit_sha = commit_sha.map(ToOwned::to_owned);
 
-	write_lifecycle_event(tracker, state_store, &issue_run.issue.id, &record)
+	write_lifecycle_event(
+		tracker,
+		state_store,
+		&issue_run.issue.id,
+		&record,
+		&privacy_classifier,
+	)
 }
 
 fn execute_issue_run_inner<T>(
@@ -393,13 +433,15 @@ where
 	T: IssueTracker,
 {
 	let transport = workflow.frontmatter().agent().transport().to_owned();
+	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
 	let review_context = build_review_run_context(project, state_store, issue_run)?;
-	let tracker_tool_bridge = TrackerToolBridge::with_run_context_and_state_store(
+	let tracker_tool_bridge = TrackerToolBridge::with_run_context_state_store_and_privacy_classifier(
 		tracker,
 		&issue_run.issue,
 		workflow,
 		review_context.clone(),
 		state_store,
+		&privacy_classifier,
 	);
 
 	if let Some(summary) = maybe_execute_deterministic_closeout(
@@ -803,6 +845,7 @@ where
 				{
 					Report::new(ReviewHandoffNeedsAttention {
 						issue_identifier: writeback_error.issue_identifier.clone(),
+						pr_url: writeback_error.pr_url.clone(),
 						run_id: writeback_error.run_id.clone(),
 					})
 					.wrap_err(error)
@@ -1044,7 +1087,8 @@ where
 			"Run failed and remains retryable."
 		);
 
-		tracker.create_comment(
+		tracker::create_public_comment(
+			tracker,
 			&issue_run.issue.id,
 			&format_retry_comment(RetryComment {
 				run_id: &issue_run.run_id,
@@ -1074,11 +1118,13 @@ where
 		&worktree_path,
 	);
 	let terminal_error = retained_partial_progress.as_ref().unwrap_or(error);
+	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
 	let outcome = apply_terminal_failure_writeback(
 		tracker,
 		TerminalFailureWritebackRuntime {
 			service_id: project.service_id(),
 			state_store: Some(state_store),
+			privacy_classifier: &privacy_classifier,
 		},
 		workflow,
 		issue_run,
@@ -1254,11 +1300,13 @@ where
 	);
 	let (error_class, next_action) =
 		terminal_failure_comment_details(manual_attention_requested, error, &recovery_gate);
+	let pr_url = terminal_failure_pr_url(error);
 	let comment = format_terminal_failure_comment(
 		&issue_run.run_id,
 		issue_run.attempt_number,
 		worktree_path.to_owned(),
 		&issue_run.worktree.branch_name,
+		pr_url,
 		error_class,
 		&next_action,
 	);
@@ -1268,31 +1316,35 @@ where
 		TerminalFailureLifecycle {
 			error_class,
 			next_action: &next_action,
+			pr_url,
 			target_state: terminal_failure_state_name,
 			worktree_path,
 			manual_attention_requested,
 		},
 	);
+	let projection = tracker::prepare_linear_execution_event_comment(
+		&comment,
+		&event,
+		runtime.privacy_classifier,
+	)?;
 
 	if let Some(state_store) = runtime.state_store {
-		if state_store.record_linear_execution_event(&event)?
-			&& let Err(error) = tracker::create_linear_execution_event_comment_without_remote_scan(
+		if state_store.record_linear_execution_event(&projection.record)?
+			&& let Err(error) = tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
 				tracker,
 				&issue_run.issue.id,
-				&comment,
-				&event,
+				&projection,
 			)
 		{
-			state_store.forget_linear_execution_event(&event.idempotency_key)?;
+			state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
 
 			return Err(error);
 		}
 	} else {
-		tracker::create_linear_execution_event_comment(
+		tracker::create_prepared_linear_execution_event_comment(
 			tracker,
 			&issue_run.issue.id,
-			&comment,
-			&event,
+			&projection,
 		)?;
 	}
 

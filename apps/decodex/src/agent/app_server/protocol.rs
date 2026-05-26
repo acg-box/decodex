@@ -4,7 +4,7 @@ use std::{
 	time::Duration,
 };
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error};
 use serde_json::Value;
 
 use crate::agent::{
@@ -620,16 +620,35 @@ pub(super) struct TurnStatusPayload {
 	pub(super) error: Option<TurnError>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub(super) struct TurnError {
-	#[serde(deserialize_with = "deserialize_stringish")]
 	pub(super) message: String,
-	#[serde(rename = "codexErrorInfo")]
-	#[serde(deserialize_with = "deserialize_optional_stringish")]
 	pub(super) codex_error_info: Option<String>,
 	#[allow(dead_code)]
-	#[serde(rename = "additionalDetails")]
 	pub(super) additional_details: Option<Value>,
+}
+impl<'de> Deserialize<'de> for TurnError {
+	fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let value = Value::deserialize(deserializer)?;
+		let entries = value
+			.as_object()
+			.ok_or_else(|| Error::custom("expected app-server turn error object"))?;
+		let message = entries
+			.get("message")
+			.and_then(string_like_json_value)
+			.ok_or_else(|| Error::custom("expected app-server turn error message"))?;
+		let codex_error_info = entries
+			.get("codexErrorInfo")
+			.or_else(|| entries.get("codex_error_info"))
+			.and_then(string_like_json_value);
+		let additional_details =
+			entries.get("additionalDetails").or_else(|| entries.get("additional_details")).cloned();
+
+		Ok(Self { message, codex_error_info, additional_details })
+	}
 }
 
 #[derive(Debug, Eq, PartialEq, Deserialize)]
@@ -687,15 +706,39 @@ pub(super) struct TurnCompletedNotification {
 	pub(super) turn: TurnStatusPayload,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub(super) struct ErrorNotification {
 	pub(super) error: TurnError,
-	#[serde(rename = "willRetry")]
 	pub(super) will_retry: Option<bool>,
-	#[serde(rename = "threadId")]
 	pub(super) thread_id: Option<String>,
-	#[serde(rename = "turnId")]
 	pub(super) turn_id: Option<String>,
+}
+impl<'de> Deserialize<'de> for ErrorNotification {
+	fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let value = Value::deserialize(deserializer)?;
+		let entries = value
+			.as_object()
+			.ok_or_else(|| Error::custom("expected app-server error notification object"))?;
+		let error_value = entries
+			.get("error")
+			.ok_or_else(|| Error::custom("expected app-server error notification error"))?;
+		let error = TurnError::deserialize(error_value.clone()).map_err(Error::custom)?;
+		let will_retry =
+			entries.get("willRetry").or_else(|| entries.get("will_retry")).and_then(Value::as_bool);
+		let thread_id = entries
+			.get("threadId")
+			.or_else(|| entries.get("thread_id"))
+			.and_then(string_like_json_value);
+		let turn_id = entries
+			.get("turnId")
+			.or_else(|| entries.get("turn_id"))
+			.and_then(string_like_json_value);
+
+		Ok(Self { error, will_retry, thread_id, turn_id })
+	}
 }
 
 #[derive(Debug, Deserialize)]
@@ -840,33 +883,22 @@ pub(super) enum UserInput {
 	Text { text: String },
 }
 
-fn deserialize_stringish<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
-where
-	D: Deserializer<'de>,
-{
-	let value = Value::deserialize(deserializer)?;
-
-	Ok(stringish_value(value))
-}
-
-fn deserialize_optional_stringish<'de, D>(
-	deserializer: D,
-) -> std::result::Result<Option<String>, D::Error>
-where
-	D: Deserializer<'de>,
-{
-	let value = Value::deserialize(deserializer)?;
-
-	Ok(match value {
-		Value::Null => None,
-		value => Some(stringish_value(value)),
-	})
-}
-
-fn stringish_value(value: Value) -> String {
+fn string_like_json_value(value: &Value) -> Option<String> {
 	match value {
-		Value::String(value) => value,
-		value => value.to_string(),
+		Value::String(text) if !text.is_empty() => Some(text.clone()),
+		Value::Number(number) => Some(number.to_string()),
+		Value::Bool(value) => Some(value.to_string()),
+		Value::Object(entries) =>
+			["message", "text", "id", "codexErrorInfo", "type", "kind", "code", "reason", "name"]
+				.iter()
+				.find_map(|key| entries.get(*key).and_then(string_like_json_value))
+				.or_else(|| {
+					(entries.len() == 1)
+						.then(|| entries.values().next().and_then(string_like_json_value))
+						.flatten()
+				}),
+		Value::Array(items) => items.iter().find_map(string_like_json_value),
+		_ => None,
 	}
 }
 
@@ -935,6 +967,31 @@ mod tests {
 				.is_some_and(|value| value.contains("appServerProtocolMismatch"))
 		);
 		assert_eq!(notification.will_retry, Some(false));
+	}
+
+	#[test]
+	fn error_notifications_accept_structured_string_fields() {
+		let notification: super::ErrorNotification = serde_json::from_value(serde_json::json!({
+			"error": {
+				"message": {
+					"type": "streamDisconnected",
+					"message": "stream disconnected"
+				},
+				"codexErrorInfo": {
+					"type": "transientNetworkError"
+				}
+			},
+			"threadId": { "id": "thread-1" },
+			"turnId": { "id": "turn-1" },
+			"willRetry": true
+		}))
+		.expect("structured error notification should parse");
+
+		assert_eq!(notification.error.message, "stream disconnected");
+		assert_eq!(notification.error.codex_error_info.as_deref(), Some("transientNetworkError"));
+		assert_eq!(notification.thread_id.as_deref(), Some("thread-1"));
+		assert_eq!(notification.turn_id.as_deref(), Some("turn-1"));
+		assert_eq!(notification.will_retry, Some(true));
 	}
 
 	#[test]
