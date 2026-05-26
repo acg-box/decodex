@@ -58,6 +58,7 @@ pub(crate) const ACTIVE_RUN_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const MCP_PREFLIGHT_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+const PLUGIN_PREFLIGHT_MAX_ATTEMPTS: u32 = 2;
 const PROBE_RUN_ID: &str = "protocol-probe-run";
 const PROBE_ISSUE_ID: &str = "protocol-probe";
 const PROBE_EXPECTED_OUTPUT: &str = "PROBE_OK";
@@ -185,7 +186,26 @@ impl AppServerCapabilityPreflightFailure {
 		report: AppServerCapabilityPreflightReport,
 	) -> Self {
 		Self {
-			kind: AppServerCapabilityPreflightFailureKind::MethodFailed { method, error },
+			kind: AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method,
+				error,
+				timed_out: false,
+			},
+			report,
+		}
+	}
+
+	fn method_timed_out(
+		method: &'static str,
+		error: String,
+		report: AppServerCapabilityPreflightReport,
+	) -> Self {
+		Self {
+			kind: AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method,
+				error,
+				timed_out: true,
+			},
 			report,
 		}
 	}
@@ -199,8 +219,28 @@ impl AppServerCapabilityPreflightFailure {
 		Self::blocked(report)
 	}
 
+	#[cfg(test)]
+	pub(crate) fn method_timed_out_for_test(method: &'static str, error: String) -> Self {
+		let mut report = AppServerCapabilityPreflightReport::new();
+
+		report.push_blocked(
+			check_name_for_method(method),
+			format!("`{method}` timed out."),
+			BTreeMap::new(),
+		);
+
+		Self::method_timed_out(method, error, report)
+	}
+
 	pub(crate) fn error_class(&self) -> &'static str {
-		match self.kind {
+		match &self.kind {
+			AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method: "plugin/list",
+				timed_out: true,
+				..
+			} => "app_server_plugin_list_timeout",
+			AppServerCapabilityPreflightFailureKind::MethodFailed { timed_out: true, .. } =>
+				"app_server_preflight_timeout",
 			AppServerCapabilityPreflightFailureKind::MethodFailed { .. } =>
 				"app_server_introspection_method_failed",
 			AppServerCapabilityPreflightFailureKind::BlockedState =>
@@ -209,14 +249,39 @@ impl AppServerCapabilityPreflightFailure {
 	}
 
 	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
-		format!(
-			"inspect the Codex app-server preflight status, repair the local Codex runtime configuration, restart `decodex serve`, {recovery_gate}"
-		)
+		match &self.kind {
+			AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method: "plugin/list",
+				timed_out: true,
+				..
+			} => format!(
+				"inspect local app_server_preflight_failed evidence for the `plugin/list` timeout, restart `decodex serve` if the app-server is stale, run `decodex probe` to confirm plugin inventory recovers, {recovery_gate}"
+			),
+			AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method,
+				timed_out: true,
+				..
+			} => format!(
+				"inspect local app_server_preflight_failed evidence for the `{method}` timeout, restart `decodex serve` if the app-server is stale, run `decodex probe` to confirm app-server preflight recovers, {recovery_gate}"
+			),
+			AppServerCapabilityPreflightFailureKind::MethodFailed { .. }
+			| AppServerCapabilityPreflightFailureKind::BlockedState => format!(
+				"inspect the Codex app-server preflight status, repair the local Codex runtime configuration, restart `decodex serve`, {recovery_gate}"
+			),
+		}
 	}
 
 	fn blocker_summary(&self) -> String {
 		match &self.kind {
-			AppServerCapabilityPreflightFailureKind::MethodFailed { method, error } => {
+			AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method,
+				error,
+				timed_out: true,
+			} => format!(
+				"{}: `{method}` timed out during preflight: {error}",
+				check_name_for_method(method)
+			),
+			AppServerCapabilityPreflightFailureKind::MethodFailed { method, error, .. } => {
 				format!("{}: `{method}` returned {error}", check_name_for_method(method))
 			},
 			AppServerCapabilityPreflightFailureKind::BlockedState => self.report.blocker_summary(),
@@ -859,7 +924,7 @@ enum AppServerCapabilityPreflightStatus {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum AppServerCapabilityPreflightFailureKind {
-	MethodFailed { method: &'static str, error: String },
+	MethodFailed { method: &'static str, error: String, timed_out: bool },
 	BlockedState,
 }
 
@@ -2078,9 +2143,14 @@ fn run_app_server_capability_preflight(
 
 	record_skills_preflight(&mut report, cwd, &skills);
 
-	let plugins = preflight_request(recorder, &report, "plugin/list", || {
-		client.list_plugins(&plugin_list_params_for_preflight(cwd))
-	})?;
+	let plugins = preflight_request_with_timeout_retry(
+		recorder,
+		&report,
+		"plugin/list",
+		REQUEST_TIMEOUT,
+		PLUGIN_PREFLIGHT_MAX_ATTEMPTS,
+		|| client.list_plugins(&plugin_list_params_for_preflight(cwd)),
+	)?;
 
 	record_plugin_preflight(&mut report, &plugins);
 
@@ -2090,7 +2160,14 @@ fn run_app_server_capability_preflight(
 			record_mcp_preflight_degraded(&mut report, &error);
 		},
 		Err(error) => {
-			return preflight_method_failure(recorder, &report, "mcpServerStatus/list", error);
+			return preflight_method_failure(
+				recorder,
+				&report,
+				"mcpServerStatus/list",
+				MCP_PREFLIGHT_REQUEST_TIMEOUT,
+				1,
+				error,
+			);
 		},
 	}
 
@@ -2114,27 +2191,47 @@ fn preflight_method_failure<T>(
 	recorder: &mut RunRecorder<'_>,
 	report: &AppServerCapabilityPreflightReport,
 	method: &'static str,
+	request_timeout: Duration,
+	attempt_count: u32,
 	error: Report,
 ) -> crate::prelude::Result<T> {
 	let error_message = error.to_string();
+	let timed_out = preflight_error_timed_out(&error);
+	let retry_count = attempt_count.saturating_sub(1);
 	let mut failed_report = report.clone();
 	let mut details = BTreeMap::new();
 
 	details.insert(String::from("method"), method.to_owned());
 	details.insert(String::from("error"), error_message.clone());
+	details.insert(String::from("attempt_count"), attempt_count.to_string());
+
+	if retry_count > 0 {
+		details.insert(String::from("retry_count"), retry_count.to_string());
+	}
+	if timed_out {
+		details.insert(String::from("failure_reason"), String::from("timeout"));
+		details.insert(String::from("timeout_seconds"), request_timeout.as_secs().to_string());
+	}
+
 	failed_report.push_blocked(
 		check_name_for_method(method),
-		format!("`{method}` failed before thread/start."),
+		if timed_out {
+			format!("`{method}` timed out before thread/start after {attempt_count} attempts.")
+		} else {
+			format!("`{method}` failed before thread/start.")
+		},
 		details,
 	);
 
 	record_app_server_preflight_report(recorder, &failed_report)?;
 
-	Err(Report::new(AppServerCapabilityPreflightFailure::method_failed(
-		method,
-		error_message,
-		failed_report,
-	)))
+	let failure = if timed_out {
+		AppServerCapabilityPreflightFailure::method_timed_out(method, error_message, failed_report)
+	} else {
+		AppServerCapabilityPreflightFailure::method_failed(method, error_message, failed_report)
+	};
+
+	Err(Report::new(failure))
 }
 
 fn preflight_request<T, F>(
@@ -2148,7 +2245,48 @@ where
 {
 	match request() {
 		Ok(response) => Ok(response),
-		Err(error) => preflight_method_failure(recorder, report, method, error),
+		Err(error) => preflight_method_failure(recorder, report, method, REQUEST_TIMEOUT, 1, error),
+	}
+}
+
+fn preflight_request_with_timeout_retry<T, F>(
+	recorder: &mut RunRecorder<'_>,
+	report: &AppServerCapabilityPreflightReport,
+	method: &'static str,
+	request_timeout: Duration,
+	max_attempts: u32,
+	mut request: F,
+) -> crate::prelude::Result<T>
+where
+	F: FnMut() -> crate::prelude::Result<T>,
+{
+	let max_attempts = max_attempts.max(1);
+	let mut attempt_count = 1;
+
+	loop {
+		match request() {
+			Ok(response) => return Ok(response),
+			Err(error) if preflight_error_timed_out(&error) && attempt_count < max_attempts => {
+				tracing::warn!(
+					method,
+					attempt = attempt_count,
+					max_attempts,
+					"Retrying app-server preflight method after timeout."
+				);
+
+				attempt_count += 1;
+			},
+			Err(error) => {
+				return preflight_method_failure(
+					recorder,
+					report,
+					method,
+					request_timeout,
+					attempt_count,
+					error,
+				);
+			},
+		}
 	}
 }
 
@@ -2425,6 +2563,10 @@ fn record_mcp_preflight(
 }
 
 fn mcp_preflight_can_degrade(error: &Report) -> bool {
+	preflight_error_timed_out(error)
+}
+
+fn preflight_error_timed_out(error: &Report) -> bool {
 	error.downcast_ref::<AppServerOutputTimeout>().is_some()
 }
 
