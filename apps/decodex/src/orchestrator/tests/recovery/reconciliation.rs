@@ -1000,6 +1000,90 @@ fn stalled_run_reconciliation_routes_to_needs_attention_without_cleanup() {
 }
 
 #[test]
+fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktree() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::new(vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
+	let issue = sample_issue("In Progress", &[]);
+	let run_id = "run-stalled-dirty";
+	let worktree_path = config.worktree_root().join("PUB-102");
+
+	git_status_success(
+		config.repo_root(),
+		&["worktree", "add", "-b", "x/pubfi-pub-102", ".worktrees/PUB-102", "main"],
+	);
+
+	fs::write(worktree_path.join("README.md"), "retained partial work\n")
+		.expect("tracked worktree file should change");
+
+	state_store
+		.record_run_attempt(run_id, &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, run_id, "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-102",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	let action = ActiveRunReconciliation {
+		issue: issue.clone(),
+		run_attempt: state_store
+			.run_attempt(run_id)
+			.expect("run attempt query should succeed")
+			.expect("run attempt should exist"),
+		worktree_mapping: state_store
+			.worktree_for_issue(&issue.id)
+			.expect("worktree query should succeed"),
+		disposition: ActiveRunDisposition::Stalled {
+			idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+		},
+		workflow: workflow.clone(),
+	};
+
+	orchestrator::apply_active_run_reconciliation(
+		&tracker,
+		&config,
+		&state_store,
+		&worktree_manager,
+		vec![action],
+	)
+	.expect("reconciliation should succeed");
+
+	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none());
+	assert!(
+		state_store
+			.worktree_for_issue(&issue.id)
+			.expect("worktree lookup should succeed")
+			.is_some()
+	);
+	assert_eq!(
+		state_store
+			.run_attempt(run_id)
+			.expect("run attempt lookup should succeed")
+			.expect("run attempt should exist")
+			.status(),
+		"stalled"
+	);
+
+	let comments = tracker.comments.borrow();
+
+	assert!(comments.iter().any(|comment| {
+		comment.contains("partial_progress_retained")
+			&& comment.contains("finish validation and PR handoff or reset the patch manually")
+			&& comment.contains(".worktrees/PUB-102")
+	}));
+	assert!(comments.iter().all(|comment| !comment.contains("stalled_run_detected")));
+}
+
+#[test]
 fn project_reconciliation_routes_orphaned_active_worktree_run_to_needs_attention() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = reconciliation_sample_service_owned_issue("In Progress");
