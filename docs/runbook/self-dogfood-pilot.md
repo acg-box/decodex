@@ -366,6 +366,13 @@ wants to observe the self-bootstrap loop without reading source code.
    `app_server_preflight_failed` evidence for the `plugin/list` timeout, restart
    `decodex serve` if the app-server process is stale, and run `decodex probe` until
    plugin inventory responds before clearing `decodex:needs-attention`.
+   If preflight evidence shows `skills/list` enabled skills with scan diagnostics,
+   keep the diagnostics as compatibility evidence and do not uninstall official skills
+   solely to clear the scan error. Only missing cwd coverage or zero enabled skills are
+   `skills/list` blockers; for those, inspect `first_error_path` and `first_error`,
+   update the local Codex/Decodex compatibility or skill metadata as needed, restart
+   `decodex serve`, and rerun `decodex probe` before clearing
+   `decodex:needs-attention`.
 
 4. In Linear, choose two or three small `decodex` issues for the demo batch. Keep each
    issue in a startable state such as `Todo`, make sure it does not carry
@@ -768,6 +775,11 @@ repo gate commands. Linear should carry only the coarse team-visible failure sum
   worktree's local preflight evidence for `plugin/list`, restart `decodex serve` if
   stale, verify `decodex probe`, then clear `decodex:needs-attention` and move the
   issue back to a startable state only when another automated run is desired.
+- If status or Linear terminal failure includes a `skills/list` preflight blocker,
+  inspect the attached `first_error_path` and `first_error` details before changing
+  local plugins or skills. Scan diagnostics with enabled skills are not blockers by
+  themselves; missing cwd coverage or zero enabled skills require local
+  Codex/Decodex compatibility repair before requeueing.
 - If `status` reports retained partial progress or the dashboard shows `Partial patch held`, inspect the named worktree first. Treat the retained patch as local recovery evidence: finish the repo gate and PR handoff if the patch is useful, or reset the worktree before clearing `decodex:needs-attention`.
 - If the run moved back to `Todo` with `decodex:needs-attention`, inspect the worktree, fix the blocking problem, clear `decodex:needs-attention`, and then move the issue back into a startable state for another automated attempt.
 - If the issue should never be automated again, add `decodex:manual-only`.
