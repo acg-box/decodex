@@ -6,6 +6,7 @@ use std::{
 	collections::{HashMap, HashSet},
 	fs::{self, File, OpenOptions, TryLockError},
 	io::{Error, ErrorKind, Read, Seek, SeekFrom, Write},
+	mem,
 	path::{Path, PathBuf},
 	process,
 	sync::{Mutex, MutexGuard, OnceLock},
