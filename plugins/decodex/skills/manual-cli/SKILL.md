@@ -80,6 +80,13 @@ Manual commit and landing are separate narrow workflows:
 - Use `run --dry-run` before live automation to validate project loading, issue
   discovery, eligibility, and worktree planning without tracker mutation.
 - Use `probe stdio://` before relying on the Codex app-server boundary.
+- Treat hidden `serve --api-only` as Decodex App infrastructure only. It serves
+  dashboard, account, and app snapshot APIs, but it does not register projects, poll
+  Linear, or dispatch work.
+- For `skills/list` app-server preflight output, enabled skills plus scan diagnostics
+  are local evidence, not a lane blocker. Missing cwd coverage or zero enabled skills
+  are blockers; inspect `first_error_path` and `first_error` before changing plugin or
+  skill installs.
 
 ## Boundaries
 
