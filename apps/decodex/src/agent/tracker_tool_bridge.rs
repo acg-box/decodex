@@ -604,7 +604,7 @@ impl PullRequestInspector for GhPullRequestInspector {
 		pr_url: &str,
 		github_token: &str,
 	) -> std::result::Result<PullRequestDetails, String> {
-		let mut command = Command::new("gh");
+		let mut command = github::gh_command();
 
 		command.args([
 			"pr",

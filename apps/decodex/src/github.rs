@@ -1,5 +1,7 @@
 use std::{
-	path::Path,
+	env,
+	ffi::OsString,
+	path::{Path, PathBuf},
 	process::{Command, Output},
 	thread,
 	time::{Duration, Instant},
@@ -54,6 +56,9 @@ query($owner: String!, $name: String!, $number: Int!, $reviewThreadsAfter: Strin
   }
 }
 "#;
+const GH_BINARY: &str = "gh";
+const GH_FALLBACK_PATHS: &[&str] =
+	&["/run/current-system/sw/bin/gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"];
 
 #[derive(Debug)]
 pub(crate) struct PullRequestLocator {
@@ -223,6 +228,14 @@ pub(crate) fn configure_gh_command(command: &mut Command, github_token: &str) {
 		.env("GCM_INTERACTIVE", "never");
 }
 
+pub(crate) fn gh_command() -> Command {
+	Command::new(gh_command_program())
+}
+
+pub(crate) fn gh_command_program() -> PathBuf {
+	gh_command_program_from_env(env::var_os("PATH"), env::var_os("HOME"))
+}
+
 pub(crate) fn parse_pull_request_url(pr_url: &str) -> Result<PullRequestLocator> {
 	let normalized = pr_url.trim().trim_end_matches('/');
 	let suffix = normalized.strip_prefix("https://github.com/").ok_or_else(|| {
@@ -269,7 +282,7 @@ pub(crate) fn post_pull_request_issue_comment(
 	let locator = parse_pull_request_url(pr_url)?;
 	let endpoint =
 		format!("repos/{}/{}/issues/{}/comments", locator.owner, locator.repo, locator.number);
-	let mut command = Command::new("gh");
+	let mut command = gh_command();
 
 	command.args(["api", endpoint.as_str(), "-f", &format!("body={body}")]);
 	command.current_dir(cwd);
@@ -343,7 +356,7 @@ pub(crate) fn inspect_repository_context(
 	cwd: &Path,
 	github_token: &str,
 ) -> Result<RepositoryContext> {
-	let mut command = Command::new("gh");
+	let mut command = gh_command();
 
 	command.args(["repo", "view", "--json", "name,owner,defaultBranchRef,mergeCommitAllowed"]);
 	command.current_dir(cwd);
@@ -402,7 +415,7 @@ pub(crate) fn admin_merge_pull_request(
 	merge_subject: Option<&str>,
 	github_token: &str,
 ) -> Result<()> {
-	let mut command = Command::new("gh");
+	let mut command = gh_command();
 
 	configure_admin_merge_command(&mut command, pr_url, reviewed_head_sha, merge_subject);
 
@@ -472,7 +485,7 @@ pub(crate) fn inspect_commit_subject(
 	github_token: &str,
 ) -> Result<String> {
 	let locator = parse_pull_request_url(pr_url)?;
-	let mut command = Command::new("gh");
+	let mut command = gh_command();
 
 	command
 		.args(["api", &format!("repos/{}/{}/commits/{}", locator.owner, locator.repo, commit_oid)]);
@@ -539,6 +552,41 @@ pub(crate) fn pull_request_is_merged_at_head(
 	Ok(response.state == "MERGED" && response.head_ref_oid.as_deref() == Some(expected_head_sha))
 }
 
+fn gh_command_program_from_env(path_env: Option<OsString>, home: Option<OsString>) -> PathBuf {
+	if let Some(path_env) = path_env {
+		for path_entry in env::split_paths(&path_env) {
+			let candidate = path_entry.join(GH_BINARY);
+
+			if candidate.is_file() {
+				return candidate;
+			}
+		}
+	}
+	if let Some(home) = home {
+		let home = PathBuf::from(home);
+
+		for relative_candidate in [[".local", "bin", GH_BINARY], [".cargo", "bin", GH_BINARY]] {
+			let candidate = relative_candidate
+				.iter()
+				.fold(home.clone(), |path, component| path.join(*component));
+
+			if candidate.is_file() {
+				return candidate;
+			}
+		}
+	}
+
+	for candidate in GH_FALLBACK_PATHS {
+		let candidate = PathBuf::from(candidate);
+
+		if candidate.is_file() {
+			return candidate;
+		}
+	}
+
+	PathBuf::from(GH_BINARY)
+}
+
 fn delete_repository_branch_if_present(
 	cwd: &Path,
 	owner: &str,
@@ -552,7 +600,7 @@ fn delete_repository_branch_if_present(
 
 	let endpoint =
 		format!("repos/{owner}/{repo}/git/refs/heads/{}", github_api_ref_path(branch_name));
-	let mut command = Command::new("gh");
+	let mut command = gh_command();
 
 	command.args(["api", "--method", "DELETE", "--silent", endpoint.as_str()]);
 	command.current_dir(cwd);
@@ -579,7 +627,7 @@ fn inspect_pull_request_merge_response(
 	pr_url: &str,
 	github_token: &str,
 ) -> Result<PullRequestMergeViewResponse> {
-	let mut command = Command::new("gh");
+	let mut command = gh_command();
 
 	command.args(["pr", "view", pr_url, "--json", "state,headRefOid,mergeCommit"]);
 	command.current_dir(cwd);
@@ -650,7 +698,7 @@ fn query_pull_request_landing_state_page(
 	pr_url: &str,
 	github_token: &str,
 ) -> Result<PullRequestLandingStateNode> {
-	let mut command = Command::new("gh");
+	let mut command = gh_command();
 
 	command.args(["api", "graphql", "-f", &format!("query={PULL_REQUEST_LANDING_STATE_QUERY}")]);
 	command.args(["-F", &format!("owner={owner}")]);
@@ -775,7 +823,10 @@ fn commit_subject_wait_error_is_retryable(error: &Report) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use std::ffi::OsStr;
+	use std::{
+		ffi::{OsStr, OsString},
+		fs,
+	};
 
 	use crate::prelude::eyre;
 
@@ -853,6 +904,43 @@ mod tests {
 				.is_some_and(|value| value == OsStr::new("never")),
 			"configure_gh_command should disable credential-manager prompts"
 		);
+	}
+
+	#[test]
+	fn gh_command_program_prefers_path_candidate() {
+		let temp_dir = tempfile::TempDir::new().expect("temp dir should exist");
+		let gh_path = temp_dir.path().join("gh");
+
+		fs::write(&gh_path, "").expect("fake gh should write");
+
+		let resolved = super::gh_command_program_from_env(
+			Some(OsString::from(temp_dir.path().as_os_str())),
+			None,
+		);
+
+		assert_eq!(resolved, gh_path);
+	}
+
+	#[test]
+	fn gh_command_program_falls_back_to_home_local_bin() {
+		let temp_dir = tempfile::TempDir::new().expect("temp dir should exist");
+		let bin_dir = temp_dir.path().join(".local/bin");
+		let gh_path = bin_dir.join("gh");
+
+		fs::create_dir_all(&bin_dir).expect("fake home bin should exist");
+		fs::write(&gh_path, "").expect("fake gh should write");
+
+		let resolved = super::gh_command_program_from_env(
+			Some(OsString::new()),
+			Some(OsString::from(temp_dir.path().as_os_str())),
+		);
+
+		assert_eq!(resolved, gh_path);
+	}
+
+	#[test]
+	fn gh_command_program_knows_nix_profile_fallback() {
+		assert!(super::GH_FALLBACK_PATHS.contains(&"/run/current-system/sw/bin/gh"));
 	}
 
 	#[test]

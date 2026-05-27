@@ -2131,11 +2131,13 @@ fn post_review_lane_status_from_classification(
 		classification: classification.decision.as_str().to_owned(),
 		reason: classification.reason,
 		pr_url: classification.pr_url,
+		pr_head_sha: classification.pr_head_sha,
 		pr_state: classification.pr_state,
 		review_decision: classification.review_decision,
 		mergeable: classification.mergeable,
 		check_state: classification.check_state,
 		unresolved_review_threads: classification.unresolved_review_threads,
+		readback_warning: classification.readback_warning,
 	}
 }
 
@@ -2667,9 +2669,12 @@ where
 		{
 			Ok(review_state) => review_state,
 			Err(_error) => {
-				return Ok(PostReviewLaneStateLoad::Classification(blocked_post_review_lane(
-					"pull_request_state_read_failed",
-				)));
+				return Ok(PostReviewLaneStateLoad::Classification(
+					readback_degraded_post_review_lane_from_handoff(
+						review_handoff,
+						"pull_request_state_read_failed",
+					),
+				));
 			},
 		};
 
@@ -3010,11 +3015,13 @@ fn initial_post_review_lane_classification(
 		decision: PostReviewLaneDecision::WaitForReview,
 		reason: String::from("waiting_for_review_or_checks"),
 		pr_url: Some(review_state.url.clone()),
+		pr_head_sha: Some(review_state.head_ref_oid.clone()),
 		pr_state: Some(review_state.state.clone()),
 		review_decision: review_state.review_decision.clone(),
 		mergeable: Some(review_state.mergeable.clone()),
 		check_state: review_state.status_check_rollup_state.clone(),
 		unresolved_review_threads: Some(review_state.unresolved_review_threads),
+		readback_warning: None,
 	}
 }
 
@@ -3035,11 +3042,13 @@ fn blocked_post_review_lane(reason: &str) -> PostReviewLaneClassification {
 		decision: PostReviewLaneDecision::Block,
 		reason: reason.to_owned(),
 		pr_url: None,
+		pr_head_sha: None,
 		pr_state: None,
 		review_decision: None,
 		mergeable: None,
 		check_state: None,
 		unresolved_review_threads: None,
+		readback_warning: None,
 	}
 }
 
@@ -3050,8 +3059,27 @@ fn blocked_post_review_lane_from_handoff(
 	let mut classification = blocked_post_review_lane(reason);
 
 	classification.pr_url = Some(review_handoff.pr_url().to_owned());
+	classification.pr_head_sha = Some(review_handoff.pr_head_oid().to_owned());
 
 	classification
+}
+
+fn readback_degraded_post_review_lane_from_handoff(
+	review_handoff: &ReviewHandoffMarker,
+	reason: &str,
+) -> PostReviewLaneClassification {
+	PostReviewLaneClassification {
+		decision: PostReviewLaneDecision::WaitForReview,
+		reason: reason.to_owned(),
+		pr_url: Some(review_handoff.pr_url().to_owned()),
+		pr_head_sha: Some(review_handoff.pr_head_oid().to_owned()),
+		pr_state: None,
+		review_decision: None,
+		mergeable: None,
+		check_state: None,
+		unresolved_review_threads: None,
+		readback_warning: Some(reason.to_owned()),
+	}
 }
 
 fn blocked_post_review_lane_status(
@@ -3069,11 +3097,13 @@ fn blocked_post_review_lane_status(
 		classification: String::from("blocked"),
 		reason: String::from(reason),
 		pr_url: None,
+		pr_head_sha: None,
 		pr_state: None,
 		review_decision: None,
 		mergeable: None,
 		check_state: None,
 		unresolved_review_threads: None,
+		readback_warning: None,
 	}
 }
 
@@ -4222,7 +4252,7 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	} else {
 		for lane in &snapshot.post_review_lanes {
 			output.push_str(&format!(
-				"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n",
+				"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n",
 				lane.issue_id,
 				lane.issue_identifier,
 				lane.issue_state,
@@ -4231,13 +4261,15 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 				lane.branch_name,
 				lane.worktree_path,
 				lane.pr_url.as_deref().unwrap_or("none"),
+				lane.pr_head_sha.as_deref().unwrap_or("none"),
 				lane.pr_state.as_deref().unwrap_or("none"),
 				lane.review_decision.as_deref().unwrap_or("none"),
 				lane.mergeable.as_deref().unwrap_or("none"),
 				lane.check_state.as_deref().unwrap_or("none"),
 				lane
 					.unresolved_review_threads
-					.map_or_else(|| String::from("none"), |value| value.to_string())
+					.map_or_else(|| String::from("none"), |value| value.to_string()),
+				lane.readback_warning.as_deref().unwrap_or("none")
 			));
 		}
 	}
