@@ -564,6 +564,10 @@ fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_eviden
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("In Progress", &[]);
+	let _env_guard = TestEnvVarGuard::set(
+		"DECODEX_TEST_ZERO_EVIDENCE_SECRET_TOKEN",
+		"synthetic-secret-token",
+	);
 	let issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -594,7 +598,7 @@ fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_eviden
 		&config,
 		&state_store,
 		&issue_run,
-		Report::msg("synthetic startup failure"),
+		Report::msg("synthetic startup failure: synthetic-secret-token"),
 	);
 
 	assert!(
@@ -619,6 +623,18 @@ fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_eviden
 	);
 	assert_eq!(events[0].payload()["protocol_event_count"], 0);
 	assert_eq!(events[0].payload()["thread_recorded"], false);
+	assert_eq!(
+		events[0].payload()["source_error_summary"],
+		"synthetic startup failure: <redacted env:DECODEX_TEST_ZERO_EVIDENCE_SECRET_TOKEN>"
+	);
+	assert_eq!(
+		events[0].payload()["source_error_chain"][0],
+		"synthetic startup failure: <redacted env:DECODEX_TEST_ZERO_EVIDENCE_SECRET_TOKEN>"
+	);
+	assert!(
+		!events[0].payload().to_string().contains("synthetic-secret-token"),
+		"private diagnostic payload must redact known secret env values"
+	);
 
 	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
 		.expect("terminal failure handling should succeed");
