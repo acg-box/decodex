@@ -1002,15 +1002,21 @@ impl StateStore {
 		service_id: &str,
 		issue_id: &str,
 	) -> Result<Vec<LinearExecutionEventRecord>> {
-		let state = self.lock()?;
-		let mut records = state
-			.linear_execution_events
-			.values()
-			.filter(|record| {
-				record.record.service_id == service_id && record.record.issue_id == issue_id
-			})
-			.cloned()
-			.collect::<Vec<_>>();
+		let mut records = match self.list_persisted_linear_execution_events(service_id, issue_id)? {
+			Some(records) => records,
+			None => {
+				let state = self.lock_without_refresh()?;
+
+				state
+					.linear_execution_events
+					.values()
+					.filter(|record| {
+						record.record.service_id == service_id && record.record.issue_id == issue_id
+					})
+					.cloned()
+					.collect::<Vec<_>>()
+			},
+		};
 
 		records.sort_by(compare_linear_execution_event_runtime_records);
 
@@ -1453,6 +1459,21 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_linear_execution_event(idempotency_key)
+	}
+
+	fn list_persisted_linear_execution_events(
+		&self,
+		service_id: &str,
+		issue_id: &str,
+	) -> Result<Option<Vec<LinearExecutionEventRuntimeRecord>>> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(None);
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.list_linear_execution_events(service_id, issue_id).map(Some)
 	}
 
 	fn insert_private_execution_event_locked(
