@@ -71,6 +71,13 @@ If these signals disagree and the disagreement cannot be resolved without guessi
 not infer a PR lineage from branch names, current heads, PR titles, or Linear comments,
 and `decodex run` must not repair this state automatically.
 
+When the retained review handoff marker exists but a direct PR-state read fails,
+operator status must degrade the readback instead of replacing the bound lane with a
+null-PR blocked state. The status row must keep the issue identifier, retained branch,
+marker PR URL, and marker head SHA, and it may expose
+`readback_warning = "pull_request_state_read_failed"` until the next successful PR
+state refresh.
+
 The supported operator recovery surface is `decodex recover review-handoff`. This is a
 break-glass recovery path for orphaned retained review lanes and stale retained marker
 heads after explicit manual repair or rebase. It is not part of the normal automation

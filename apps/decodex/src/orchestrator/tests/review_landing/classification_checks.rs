@@ -390,7 +390,7 @@ fn classify_post_review_lane_blocks_checkout_branch_mismatch() {
 }
 
 #[test]
-fn classify_post_review_lane_blocks_pull_request_state_read_failures() {
+fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_handoff_marker() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = sample_issue("In Review", &[]);
@@ -423,7 +423,7 @@ fn classify_post_review_lane_blocks_pull_request_state_read_failures() {
 			&head_oid,
 		)),
 		local_branch_name: Some(String::from("x/pubfi-pub-101")),
-		local_head_oid: Some(head_oid),
+		local_head_oid: Some(head_oid.clone()),
 	};
 	let classification = orchestrator::classify_post_review_lane(
 		&snapshot,
@@ -433,25 +433,44 @@ fn classify_post_review_lane_blocks_pull_request_state_read_failures() {
 			"gh api failed"
 		))]),
 	)
-	.expect("classification should degrade to blocked");
+	.expect("classification should preserve handoff marker readback");
 
-	assert_eq!(classification.decision, PostReviewLaneDecision::Block);
+	assert_eq!(classification.decision, PostReviewLaneDecision::WaitForReview);
 	assert_eq!(classification.reason, "pull_request_state_read_failed");
+	assert_eq!(
+		classification.pr_url.as_deref(),
+		Some("https://github.com/hack-ink/decodex/pull/174")
+	);
+	assert_eq!(classification.pr_head_sha.as_deref(), Some(head_oid.as_str()));
+	assert_eq!(
+		classification.readback_warning.as_deref(),
+		Some("pull_request_state_read_failed")
+	);
 }
 
 #[test]
-fn classify_post_review_lane_blocks_missing_or_blank_github_token_env_var() {
+fn classify_post_review_lane_degrades_missing_or_blank_github_token_env_var() {
 	let missing = classify_post_review_lane_with_github_token_env_var(None);
 
-	assert_eq!(missing.decision, PostReviewLaneDecision::Block);
+	assert_eq!(missing.decision, PostReviewLaneDecision::WaitForReview);
 	assert_eq!(missing.reason, "pull_request_state_read_failed");
+	assert_eq!(missing.pr_url.as_deref(), Some("https://github.com/hack-ink/decodex/pull/174"));
+	assert_eq!(
+		missing.readback_warning.as_deref(),
+		Some("pull_request_state_read_failed")
+	);
 
 	let env_var = format!("DECODEX_TEST_BLANK_STATUS_GITHUB_TOKEN_ENV_{}", process::id());
 	let _env_guard = TestEnvVarGuard::set(&env_var, "");
 	let blank = classify_post_review_lane_with_github_token_env_var(Some(env_var));
 
-	assert_eq!(blank.decision, PostReviewLaneDecision::Block);
+	assert_eq!(blank.decision, PostReviewLaneDecision::WaitForReview);
 	assert_eq!(blank.reason, "pull_request_state_read_failed");
+	assert_eq!(blank.pr_url.as_deref(), Some("https://github.com/hack-ink/decodex/pull/174"));
+	assert_eq!(
+		blank.readback_warning.as_deref(),
+		Some("pull_request_state_read_failed")
+	);
 }
 
 fn classify_post_review_lane_with_github_token_env_var(
