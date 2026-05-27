@@ -170,6 +170,8 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - `decodex` must preflight the local GitHub CLI dependency at the PR-backed review boundary itself:
   - when a normal lane is about to validate and write back `issue_review_handoff`
   - when a retained post-review lane is about to re-enter `review_repair`
+  - using the same resolved `gh` executable path that PR inspection will use, not a
+    narrower lookup path for preflight than for `issue_review_handoff`
 - Decodex execution comment bodies should be rendered by Decodex from
   structured, validated fields. All tool calls must be journaled by `decodex`
   for recovery and audit.
