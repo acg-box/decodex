@@ -2,6 +2,7 @@ use git_credentials::GitSigningConfig;
 use agent::CodexAccountPool;
 use agent::CodexAccountProvider;
 use agent::AppServerThreadArchiveRequest;
+use records::LinearExecutionEventPublicProjection;
 
 use crate::tracker::privacy_classifier::PublicProjectionPrivacyClassifier;
 
@@ -44,10 +45,28 @@ struct RunStartedLifecycleFields<'a> {
 	privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
 }
 
+#[derive(Clone, Copy)]
 struct TerminalFailureWritebackRuntime<'a> {
 	service_id: &'a str,
 	state_store: Option<&'a StateStore>,
 	privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
+}
+
+struct PreparedTerminalFailureWriteback {
+	failure_state_id: String,
+	needs_attention_label: String,
+	needs_attention_label_id: Option<String>,
+	terminal_failure_state_name: String,
+	projection: LinearExecutionEventPublicProjection,
+	error_class: &'static str,
+	retry_guarded_by_state: bool,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum TerminalFailureEventRecordStatus {
+	Recorded,
+	Duplicate,
+	NoLocalStore,
 }
 
 struct CompletedAppServerRun<'a, T>
@@ -1374,6 +1393,45 @@ fn apply_terminal_failure_writeback<T>(
 where
 	T: IssueTracker,
 {
+	let writeback = prepare_terminal_failure_writeback(
+		tracker,
+		runtime,
+		workflow,
+		issue_run,
+		worktree_path,
+		manual_attention_requested,
+		error,
+	)?;
+	let event_status = record_terminal_failure_writeback_event(runtime, issue_run, &writeback)?;
+
+	if event_status == TerminalFailureEventRecordStatus::Duplicate {
+		return Ok(terminal_failure_outcome(&writeback));
+	}
+
+	let writeback_result =
+		apply_terminal_failure_tracker_writeback(tracker, runtime, issue_run, &writeback);
+
+	if let Err(error) = writeback_result {
+		forget_terminal_failure_writeback_event(runtime, event_status, &writeback)?;
+
+		return Err(error);
+	}
+
+	Ok(terminal_failure_outcome(&writeback))
+}
+
+fn prepare_terminal_failure_writeback<T>(
+	tracker: &T,
+	runtime: TerminalFailureWritebackRuntime<'_>,
+	workflow: &WorkflowDocument,
+	issue_run: &IssueRunPlan,
+	worktree_path: &str,
+	manual_attention_requested: bool,
+	error: &Report,
+) -> Result<PreparedTerminalFailureWriteback>
+where
+	T: IssueTracker,
+{
 	let tracker_policy = workflow.frontmatter().tracker();
 	let needs_attention_label = tracker_policy.needs_attention_label();
 	let needs_attention_label_id = tracker::issue_team_label_id_with_server_confirmation(
@@ -1384,9 +1442,8 @@ where
 	let failure_state_name = tracker_policy.failure_state();
 	let failure_state_is_startable =
 		tracker_policy.startable_states().iter().any(|state| state == failure_state_name);
-	let guard_with_nonstartable_state =
-		needs_attention_label_id.is_none() && failure_state_is_startable;
-	let terminal_failure_state_name = if guard_with_nonstartable_state {
+	let retry_guarded_by_state = needs_attention_label_id.is_none() && failure_state_is_startable;
+	let terminal_failure_state_name = if retry_guarded_by_state {
 		tracker_policy.in_progress_state()
 	} else {
 		failure_state_name
@@ -1399,21 +1456,10 @@ where
 				issue_run.issue.identifier
 			)
 		})?;
-
-	tracker.update_issue_state(&issue_run.issue.id, failure_state_id)?;
-
-	let needs_attention_label_available = apply_needs_attention_label(
-		tracker,
-		issue_run,
-		runtime.service_id,
-		needs_attention_label,
-		needs_attention_label_id,
-		terminal_failure_state_name,
-	)?;
 	let recovery_gate = terminal_failure_recovery_gate(
 		needs_attention_label,
-		needs_attention_label_available,
-		guard_with_nonstartable_state,
+		needs_attention_label_id.is_some(),
+		retry_guarded_by_state,
 		tracker_policy.in_progress_state(),
 	);
 	let (error_class, next_action) =
@@ -1446,30 +1492,101 @@ where
 		runtime.privacy_classifier,
 	)?;
 
-	if let Some(state_store) = runtime.state_store {
-		if state_store.record_linear_execution_event(&projection.record)?
-			&& let Err(error) = tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
-				tracker,
-				&issue_run.issue.id,
-				&projection,
-			)
-		{
-			state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
+	Ok(PreparedTerminalFailureWriteback {
+		failure_state_id: failure_state_id.to_owned(),
+		needs_attention_label: needs_attention_label.to_owned(),
+		needs_attention_label_id,
+		terminal_failure_state_name: terminal_failure_state_name.to_owned(),
+		projection,
+		error_class,
+		retry_guarded_by_state,
+	})
+}
 
-			return Err(error);
-		}
+fn record_terminal_failure_writeback_event(
+	runtime: TerminalFailureWritebackRuntime<'_>,
+	issue_run: &IssueRunPlan,
+	writeback: &PreparedTerminalFailureWriteback,
+) -> Result<TerminalFailureEventRecordStatus> {
+	let Some(state_store) = runtime.state_store else {
+		return Ok(TerminalFailureEventRecordStatus::NoLocalStore);
+	};
+
+	if state_store.record_linear_execution_event(&writeback.projection.record)? {
+		return Ok(TerminalFailureEventRecordStatus::Recorded);
+	}
+
+	tracing::debug!(
+		service_id = runtime.service_id,
+		issue_id = issue_run.issue.id,
+		issue = issue_run.issue.identifier,
+		run_id = issue_run.run_id,
+		attempt = issue_run.attempt_number,
+		event_type = writeback.projection.record.event_type,
+		"Skipping duplicate terminal failure writeback."
+	);
+
+	Ok(TerminalFailureEventRecordStatus::Duplicate)
+}
+
+fn apply_terminal_failure_tracker_writeback<T>(
+	tracker: &T,
+	runtime: TerminalFailureWritebackRuntime<'_>,
+	issue_run: &IssueRunPlan,
+	writeback: &PreparedTerminalFailureWriteback,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	tracker.update_issue_state(&issue_run.issue.id, &writeback.failure_state_id)?;
+
+	apply_needs_attention_label(
+		tracker,
+		issue_run,
+		runtime.service_id,
+		&writeback.needs_attention_label,
+		writeback.needs_attention_label_id.clone(),
+		&writeback.terminal_failure_state_name,
+	)?;
+
+	if runtime.state_store.is_some() {
+		tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
+			tracker,
+			&issue_run.issue.id,
+			&writeback.projection,
+		)?;
 	} else {
 		tracker::create_prepared_linear_execution_event_comment(
 			tracker,
 			&issue_run.issue.id,
-			&projection,
+			&writeback.projection,
 		)?;
 	}
 
-	Ok(TerminalFailureOutcome {
-		error_class,
-		retry_guarded_by_state: guard_with_nonstartable_state,
-	})
+	Ok(())
+}
+
+fn forget_terminal_failure_writeback_event(
+	runtime: TerminalFailureWritebackRuntime<'_>,
+	event_status: TerminalFailureEventRecordStatus,
+	writeback: &PreparedTerminalFailureWriteback,
+) -> Result<()> {
+	if event_status == TerminalFailureEventRecordStatus::Recorded
+		&& let Some(state_store) = runtime.state_store
+	{
+		state_store.forget_linear_execution_event(&writeback.projection.record.idempotency_key)?;
+	}
+
+	Ok(())
+}
+
+fn terminal_failure_outcome(
+	writeback: &PreparedTerminalFailureWriteback,
+) -> TerminalFailureOutcome {
+	TerminalFailureOutcome {
+		error_class: writeback.error_class,
+		retry_guarded_by_state: writeback.retry_guarded_by_state,
+	}
 }
 
 fn apply_needs_attention_label<T>(
