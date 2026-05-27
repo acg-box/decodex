@@ -205,11 +205,13 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 			classification: String::from("cleanup_blocked"),
 			reason: String::from("retry_budget_exhausted"),
 			pr_url: Some(String::from(pr_url)),
+			pr_head_sha: Some(String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6")),
 			pr_state: Some(String::from("MERGED")),
 			review_decision: Some(String::from("APPROVED")),
 			mergeable: Some(String::from("MERGEABLE")),
 			check_state: Some(String::from("SUCCESS")),
 			unresolved_review_threads: Some(0),
+			readback_warning: None,
 		}],
 	};
 	let rendered = orchestrator::render_operator_status(&snapshot);

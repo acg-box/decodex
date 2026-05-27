@@ -7,7 +7,7 @@ fn query_pull_request_review_state_page(
 	pr_url: &str,
 	github_token: &str,
 ) -> Result<PullRequestReviewStateRepository> {
-	let mut command = Command::new("gh");
+	let mut command = github::gh_command();
 
 	command.args(["api", "graphql", "-f", &format!("query={PULL_REQUEST_REVIEW_STATE_QUERY}")]);
 	command.args(["-F", &format!("owner={owner}")]);
@@ -51,7 +51,7 @@ fn query_pull_request_issue_comments_page(
 	pr_url: &str,
 	github_token: &str,
 ) -> Result<PullRequestIssueCommentsNode> {
-	let mut command = Command::new("gh");
+	let mut command = github::gh_command();
 
 	command.args(["api", "graphql", "-f", &format!("query={PULL_REQUEST_ISSUE_COMMENTS_QUERY}")]);
 	command.args(["-F", &format!("owner={owner}")]);

@@ -27,6 +27,13 @@ criteria for future simplification.
 | Remote lane branch cleanup | `gh api --method DELETE repos/<owner>/<repo>/git/refs/heads/<branch>` in `apps/decodex/src/github.rs` | Replaced custom git plumbing | Decodex only needs idempotent GitHub ref deletion. `gh` removes the prior `git ls-remote` plus `git push --delete` path and the extra askpass helper just for cleanup. |
 | Default branch sync and local branch/worktree cleanup | Git commands in `apps/decodex/src/default_branch_sync.rs` and `apps/decodex/src/orchestrator/git_ops.rs` | Keep local Git | These steps mutate or inspect the local repository/worktree state. `gh` does not replace the required local checkout synchronization and linked-worktree cleanup. |
 
+Decodex resolves the `gh` executable through the runtime helper before these
+operations. The helper checks `PATH`, then common local install locations such as
+`$HOME/.local/bin`, `$HOME/.cargo/bin`, `/run/current-system/sw/bin`,
+`/opt/homebrew/bin`, and `/usr/local/bin` so a long-running GUI-started control plane
+uses the same GitHub CLI binary an operator can run from a shell when validating PR
+handoff state.
+
 ## Replacement Criteria
 
 Prefer `gh` for GitHub operations when all are true:
