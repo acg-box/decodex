@@ -545,6 +545,92 @@ fn persistent_project_listing_does_not_refresh_full_event_journal() {
 }
 
 #[test]
+fn persistent_retry_budget_queries_do_not_refresh_full_event_journal() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let observer = StateStore::open(&state_path).expect("observer state store should open");
+	let writer = StateStore::open(&state_path).expect("writer state store should open");
+
+	writer
+		.record_run_attempt("run-a", "PUB-101", 1, "interrupted")
+		.expect("writer retry attempt should record");
+	writer.record_run_attempt("run-b", "PUB-102", 1, "running").expect("writer run should record");
+	writer
+		.append_event("run-b", 1, "item/agentMessage/delta", "{}")
+		.expect("writer event should append");
+
+	assert_eq!(observer.retry_budget_attempt_count("PUB-101").expect("retry count should read"), 1);
+	assert!(
+		observer
+			.issue_has_retry_budget_attempt_after("PUB-101", 0)
+			.expect("retry after query should read")
+	);
+	assert!(
+		!observer
+			.issue_has_retry_budget_attempt_after("PUB-101", 1)
+			.expect("retry after query should read")
+	);
+
+	let state = observer.inner.lock().expect("test should inspect the local cache");
+
+	assert!(
+		!state.events.contains_key("run-b"),
+		"retry-budget queries should not refresh the full persistent event journal into the local cache"
+	);
+	assert!(
+		!state.event_summaries.contains_key("run-b"),
+		"retry-budget queries should not refresh protocol summaries unrelated to the issue"
+	);
+	assert!(
+		!state.run_attempts.contains_key("run-a"),
+		"retry-budget queries should use issue-scoped persistent reads instead of a full runtime refresh"
+	);
+}
+
+#[test]
+fn persistent_shared_claim_check_does_not_refresh_full_event_journal() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let observer = StateStore::open(&state_path).expect("observer state store should open");
+	let holder = StateStore::open(&state_path).expect("holder state store should open");
+	let writer = StateStore::open(&state_path).expect("writer state store should open");
+	let slot_root = temp_dir.path().join("slots");
+
+	observer
+		.configure_dispatch_slot_root("pubfi", &slot_root, 2)
+		.expect("observer slot root should configure");
+	holder
+		.configure_dispatch_slot_root("pubfi", &slot_root, 2)
+		.expect("holder slot root should configure");
+	writer.record_run_attempt("run-b", "PUB-102", 1, "running").expect("writer run should record");
+	writer
+		.append_event("run-b", 1, "item/agentMessage/delta", "{}")
+		.expect("writer event should append");
+
+	assert!(
+		holder
+			.try_acquire_lease("pubfi", "PUB-101", "run-a", IN_PROGRESS_STATE)
+			.expect("holder should acquire the shared issue claim")
+	);
+	assert!(
+		observer
+			.issue_has_active_shared_claim("pubfi", "PUB-101")
+			.expect("shared claim check should read")
+	);
+
+	let state = observer.inner.lock().expect("test should inspect the local cache");
+
+	assert!(
+		!state.events.contains_key("run-b"),
+		"shared claim checks should not refresh the full persistent event journal into the local cache"
+	);
+	assert!(
+		!state.event_summaries.contains_key("run-b"),
+		"shared claim checks should not refresh protocol summaries unrelated to the issue"
+	);
+}
+
+#[test]
 fn persistent_linear_execution_event_listing_does_not_refresh_full_ledger() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
