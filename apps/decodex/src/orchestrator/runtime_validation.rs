@@ -45,7 +45,12 @@ fn validate_daemon_runtime() -> Result<()> {
 }
 
 fn validate_command_available(command: &str, purpose: &str) -> Result<()> {
-	let output = Command::new(command).arg("--version").output().map_err(|error| {
+	let mut command_runner = if command == "gh" {
+		github::gh_command()
+	} else {
+		Command::new(command)
+	};
+	let output = command_runner.arg("--version").output().map_err(|error| {
 		eyre::eyre!("Required command `{command}` is unavailable for {purpose}: {error}")
 	})?;
 

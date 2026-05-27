@@ -188,6 +188,11 @@ After each `app-server` turn completes, `decodex` must resolve one continuation 
   - when a retained post-review lane is about to re-enter review repair
   - when a retained closeout lane is about to validate merged PR state or delete the
     retained remote branch ref
+- GitHub CLI discovery for those boundaries must use the same resolved `gh` command
+  path as PR inspection, including normal `PATH` lookup and the runtime's known local
+  install fallbacks. A valid PR that `gh pr view` can inspect with the routed project
+  token must not fail review handoff solely because the long-running Decodex process
+  started with a narrower shell path.
 
 ## Linear writeback model
 

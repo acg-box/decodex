@@ -411,11 +411,13 @@ fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus>
 		classification: String::from("ready_to_land"),
 		reason: String::from("checks_green"),
 		pr_url: Some(String::from("https://github.com/hack-ink/decodex/pull/103")),
+		pr_head_sha: Some(String::from("08a20f7dfb9526e7421a5f095b1c6adec84e52d6")),
 		pr_state: Some(String::from("OPEN")),
 		review_decision: Some(String::from("APPROVED")),
 		mergeable: Some(String::from("MERGEABLE")),
 		check_state: Some(String::from("SUCCESS")),
 		unresolved_review_threads: Some(0),
+		readback_warning: None,
 	}]
 }
 

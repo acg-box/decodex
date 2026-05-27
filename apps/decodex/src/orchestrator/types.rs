@@ -883,11 +883,13 @@ struct OperatorPostReviewLaneStatus {
 	classification: String,
 	reason: String,
 	pr_url: Option<String>,
+	pr_head_sha: Option<String>,
 	pr_state: Option<String>,
 	review_decision: Option<String>,
 	mergeable: Option<String>,
 	check_state: Option<String>,
 	unresolved_review_threads: Option<usize>,
+	readback_warning: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -926,11 +928,13 @@ struct PostReviewLaneClassification {
 	decision: PostReviewLaneDecision,
 	reason: String,
 	pr_url: Option<String>,
+	pr_head_sha: Option<String>,
 	pr_state: Option<String>,
 	review_decision: Option<String>,
 	mergeable: Option<String>,
 	check_state: Option<String>,
 	unresolved_review_threads: Option<usize>,
+	readback_warning: Option<String>,
 }
 
 struct RetainedReviewLaneBlocked {
