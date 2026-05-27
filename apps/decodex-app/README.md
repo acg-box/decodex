@@ -13,9 +13,10 @@ The first Decodex App release manages the shared Codex account pool through the
 bundled Rust app helper so account UI stays on the same CLI-owned files even when a
 long-running local `decodex serve` is older than the app bundle. On launch the app also
 connects to an existing `decodex serve` on the default local endpoint when one is
-available; otherwise it starts the bundled Decodex binary in its hidden API-only
-operator endpoint mode for operator snapshot and WebUI routes. App-started servers do
-not poll registered projects or dispatch Linear work. The helper owns account
+available; otherwise it starts the bundled Decodex binary in its hidden dev endpoint
+mode as `decodex serve --dev --listen-address 127.0.0.1:8912` for operator snapshot
+and WebUI routes. App-started servers do not poll registered projects or dispatch
+Linear work. The helper owns account
 operations and interactive login flows that need streamed command output:
 
 - list accounts without printing token material
@@ -70,6 +71,12 @@ DECODEX_APP_DECODEX="$(pwd)/target/debug/decodex" \
 DECODEX_APP_HELPER="$(pwd)/target/debug/decodex-app-helper" \
 swift run --package-path apps/decodex-app DecodexApp
 ```
+
+The app-started server path is the main reason to use `decodex serve --dev`
+manually: it lets you test the same local account APIs, app snapshot API, and
+dashboard routes without starting the scheduler. Do not use `--dev` to validate
+project registration, Linear polling, queue intake, or retained-lane execution; use
+ordinary `decodex serve --interval ...` for those paths.
 
 The staging script follows the local Rsnap-style signing path: it writes
 `target/decodex-app/Decodex App.app`, signs the bundle with an Apple Development
