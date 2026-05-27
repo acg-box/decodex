@@ -125,6 +125,11 @@ struct ZeroEvidenceAppServerStartFailureContext {
 	turn_recorded: bool,
 }
 
+struct ZeroEvidenceAppServerStartFailureDiagnostic {
+	source_error_summary: String,
+	source_error_chain: Vec<String>,
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum TerminalFailureEventRecordStatus {
 	Recorded,
@@ -1253,11 +1258,14 @@ fn promote_zero_evidence_app_server_start_failure(
 
 	match zero_evidence_app_server_start_failure_context(project, state_store, issue_run) {
 		Ok(Some(context)) => {
+			let diagnostic = zero_evidence_app_server_start_failure_diagnostic(&error);
+
 			if let Err(record_error) = record_zero_evidence_app_server_start_failure(
 				project,
 				state_store,
 				issue_run,
 				&context,
+				&diagnostic,
 			) {
 				tracing::warn!(
 					?record_error,
@@ -1328,6 +1336,7 @@ fn record_zero_evidence_app_server_start_failure(
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
 	context: &ZeroEvidenceAppServerStartFailureContext,
+	diagnostic: &ZeroEvidenceAppServerStartFailureDiagnostic,
 ) -> Result<()> {
 	state_store
 		.append_private_execution_event(
@@ -1347,9 +1356,71 @@ fn record_zero_evidence_app_server_start_failure(
 				"private_event_count": context.private_event_count,
 				"thread_recorded": context.thread_recorded,
 				"turn_recorded": context.turn_recorded,
+				"source_error_summary": diagnostic.source_error_summary.as_str(),
+				"source_error_chain": &diagnostic.source_error_chain,
 			}),
 		)
 		.map(|_| ())
+}
+
+fn zero_evidence_app_server_start_failure_diagnostic(
+	error: &Report,
+) -> ZeroEvidenceAppServerStartFailureDiagnostic {
+	let source_error_chain = error
+		.chain()
+		.map(|cause| sanitize_private_diagnostic_text(&cause.to_string()))
+		.collect::<Vec<_>>();
+	let source_error_summary = source_error_chain
+		.first()
+		.cloned()
+		.unwrap_or_else(|| String::from("unknown app-server startup failure"));
+
+	ZeroEvidenceAppServerStartFailureDiagnostic { source_error_summary, source_error_chain }
+}
+
+fn sanitize_private_diagnostic_text(text: &str) -> String {
+	let mut sanitized = text.to_owned();
+
+	for (name, value) in env::vars() {
+		if !diagnostic_env_var_name_is_sensitive(&name) || value.len() < 6 {
+			continue;
+		}
+
+		let replacement = format!("<redacted env:{name}>");
+
+		sanitized = sanitized.replace(&value, &replacement);
+	}
+
+	truncate_private_diagnostic_text(&sanitized)
+}
+
+fn diagnostic_env_var_name_is_sensitive(name: &str) -> bool {
+	let normalized = name.to_ascii_lowercase();
+
+	normalized.contains("token")
+		|| normalized.contains("secret")
+		|| normalized.contains("password")
+		|| normalized.contains("credential")
+		|| normalized.contains("api_key")
+		|| normalized.contains("apikey")
+		|| normalized.ends_with("_pat")
+		|| normalized.starts_with("pat_")
+		|| normalized.contains("_pat_")
+		|| normalized.contains("auth")
+}
+
+fn truncate_private_diagnostic_text(text: &str) -> String {
+	const MAX_PRIVATE_DIAGNOSTIC_TEXT_CHARS: usize = 2_000;
+
+	if text.chars().count() <= MAX_PRIVATE_DIAGNOSTIC_TEXT_CHARS {
+		return text.to_owned();
+	}
+
+	let mut truncated = text.chars().take(MAX_PRIVATE_DIAGNOSTIC_TEXT_CHARS).collect::<String>();
+
+	truncated.push_str("...<truncated>");
+
+	truncated
 }
 
 fn run_failure_requires_terminal_attention(error: &Report) -> bool {
