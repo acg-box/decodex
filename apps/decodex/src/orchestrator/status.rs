@@ -1482,6 +1482,12 @@ where
 {
 	let queue_label = tracker::automation_queue_label(project.service_id());
 	let concurrency = ConcurrencySnapshot::new(project.service_id(), state_store)?;
+	let retained_post_review_issue_ids = state_store
+		.list_worktrees(project.service_id())?
+		.into_iter()
+		.map(|mapping| mapping.issue_id().to_owned())
+		.collect::<HashSet<_>>();
+	let success_state = workflow.frontmatter().tracker().success_state();
 	let mut issues = tracker.list_issues_with_label(&queue_label)?;
 
 	issues.sort_by(compare_issue_candidates);
@@ -1489,6 +1495,13 @@ where
 	issues
 		.into_iter()
 		.filter(|issue| !is_terminal_issue(issue, workflow))
+		.filter(|issue| {
+			!queued_issue_is_retained_post_review_lane(
+				issue,
+				success_state,
+				&retained_post_review_issue_ids,
+			)
+		})
 		.map(|issue| {
 			operator_queued_issue_status(
 				tracker,
@@ -1500,6 +1513,14 @@ where
 			)
 		})
 		.collect()
+}
+
+fn queued_issue_is_retained_post_review_lane(
+	issue: &TrackerIssue,
+	success_state: &str,
+	retained_post_review_issue_ids: &HashSet<String>,
+) -> bool {
+	issue.state.name == success_state && retained_post_review_issue_ids.contains(&issue.id)
 }
 
 fn operator_queued_issue_status<T>(
@@ -1515,6 +1536,7 @@ where
 {
 	let (classification, reason) =
 		classify_queued_issue(tracker, project, workflow, state_store, concurrency, &issue)?;
+	let blocker_identifiers = queued_issue_blocker_identifiers(&issue, workflow, reason);
 	let attention = operator_queued_issue_attention_status(
 		tracker,
 		project,
@@ -1535,8 +1557,25 @@ where
 		classification: classification.to_owned(),
 		reason: reason.to_owned(),
 		attention,
-		blocker_identifiers: issue.blockers.into_iter().map(|blocker| blocker.identifier).collect(),
+		blocker_identifiers,
 	})
+}
+
+fn queued_issue_blocker_identifiers(
+	issue: &TrackerIssue,
+	workflow: &WorkflowDocument,
+	reason: &str,
+) -> Vec<String> {
+	if reason != "open_tracker_blockers" {
+		return Vec::new();
+	}
+
+	issue
+		.blockers
+		.iter()
+		.filter(|blocker| !state_name_is_terminal(&blocker.state.name, workflow))
+		.map(|blocker| blocker.identifier.clone())
+		.collect()
 }
 
 fn classify_queued_issue<T>(
