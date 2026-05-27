@@ -32,7 +32,7 @@ decodex project add "$HOME/.codex/decodex/projects/<service-id>"
 decodex status
 decodex run --dry-run
 decodex run
-decodex serve --interval 60s
+decodex serve
 ```
 
 From the Decodex repo while developing the runtime:
@@ -43,7 +43,7 @@ cargo run -p decodex --bin decodex -- project add "$HOME/.codex/decodex/projects
 cargo run -p decodex --bin decodex -- status
 cargo run -p decodex --bin decodex -- run --dry-run
 cargo run -p decodex --bin decodex -- run
-cargo run -p decodex --bin decodex -- serve --interval 60s
+cargo run -p decodex --bin decodex -- serve
 ```
 
 Use `decodex serve --config <project-dir>` or
@@ -52,11 +52,11 @@ wants to register that project and start the scheduler in one command.
 Use `decodex run <ISSUE>` or `cargo run -p decodex --bin decodex -- run <ISSUE>` only
 for a deliberate one-issue automation pass; it still uses the same retained-lane
 eligibility and lifecycle rules.
-Do not use hidden `serve --dev` for automation. That mode belongs to Decodex App and
-local development: it serves local dashboard/account/app snapshot APIs, but it does
-not register projects, poll Linear, or dispatch lanes, and it rejects `--config` and
-`--interval`. Use it only when testing the app-owned endpoint without starting the
-scheduler.
+Do not use hidden `serve --dev` for automation. That mode is for isolated local
+development: it serves local dashboard/account/app snapshot APIs, but it does not
+register projects, poll Linear, or dispatch lanes, and it rejects `--config` and
+`--interval`. Decodex App's fallback server uses ordinary `serve` when no compatible
+local listener is already running.
 
 ## Intake and Ownership
 
