@@ -65,6 +65,13 @@ where
 	run_result: &'a AppServerRunResult,
 }
 
+struct ThreadArchiveCandidate {
+	run_id: String,
+	attempt_number: i64,
+	thread_id: String,
+	sequence_number: i64,
+}
+
 fn execute_issue_run<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -564,7 +571,7 @@ where
 		run.issue_run,
 		run.tracker_tool_bridge,
 	)?;
-	archive_completed_app_server_thread_best_effort(
+	archive_completed_issue_threads_best_effort(
 		run.project,
 		run.state_store,
 		run.issue_run,
@@ -576,7 +583,7 @@ where
 	Ok(run_summary_from_issue_run(run.project.service_id(), run.issue_run))
 }
 
-fn archive_completed_app_server_thread_best_effort(
+fn archive_completed_issue_threads_best_effort(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -584,14 +591,125 @@ fn archive_completed_app_server_thread_best_effort(
 	transport: &str,
 	run_result: &AppServerRunResult,
 ) {
+	let candidates =
+		match completed_issue_thread_archive_candidates(state_store, issue_run, run_result) {
+			Ok(candidates) => candidates,
+			Err(error) => {
+				tracing::warn!(
+					?error,
+					project_id = project.service_id(),
+					issue_id = issue_run.issue.id,
+					issue = issue_run.issue.identifier,
+					run_id = issue_run.run_id,
+					attempt = issue_run.attempt_number,
+					thread_id = %run_result.thread_id,
+					"Failed to list completed issue threads for archive; archiving current thread only."
+				);
+
+				vec![ThreadArchiveCandidate {
+					run_id: issue_run.run_id.clone(),
+					attempt_number: issue_run.attempt_number,
+					thread_id: run_result.thread_id.clone(),
+					sequence_number: run_result.event_count.saturating_add(1),
+				}]
+			},
+		};
+
+	for candidate in candidates {
+		archive_completed_issue_thread_best_effort(
+			project,
+			state_store,
+			issue_run,
+			process_env,
+			transport,
+			&candidate,
+		);
+	}
+}
+
+fn completed_issue_thread_archive_candidates(
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	run_result: &AppServerRunResult,
+) -> Result<Vec<ThreadArchiveCandidate>> {
+	let mut seen_thread_ids = HashSet::new();
+	let mut candidates = Vec::new();
+
+	push_thread_archive_candidate(
+		state_store,
+		&mut candidates,
+		&mut seen_thread_ids,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		&run_result.thread_id,
+	)?;
+
+	for attempt in state_store.list_run_attempts_for_issue(&issue_run.issue.id)? {
+		if attempt.run_id() == issue_run.run_id
+			|| !completed_issue_archive_attempt_status(attempt.status())
+		{
+			continue;
+		}
+
+		if let Some(thread_id) = attempt.thread_id() {
+			push_thread_archive_candidate(
+				state_store,
+				&mut candidates,
+				&mut seen_thread_ids,
+				attempt.run_id(),
+				attempt.attempt_number(),
+				thread_id,
+			)?;
+		}
+	}
+
+	Ok(candidates)
+}
+
+fn completed_issue_archive_attempt_status(status: &str) -> bool {
+	matches!(status, "succeeded" | "failed" | "interrupted" | TERMINAL_GUARDED_RUN_STATUS)
+}
+
+fn push_thread_archive_candidate(
+	state_store: &StateStore,
+	candidates: &mut Vec<ThreadArchiveCandidate>,
+	seen_thread_ids: &mut HashSet<String>,
+	run_id: &str,
+	attempt_number: i64,
+	thread_id: &str,
+) -> Result<()> {
+	if !seen_thread_ids.insert(thread_id.to_owned())
+		|| state_store.run_has_protocol_event(run_id, "thread/archive")?
+	{
+		return Ok(());
+	}
+
+	candidates.push(ThreadArchiveCandidate {
+		run_id: run_id.to_owned(),
+		attempt_number,
+		thread_id: thread_id.to_owned(),
+		sequence_number: state_store.event_count(run_id)?.saturating_add(1),
+	});
+
+	Ok(())
+}
+
+fn archive_completed_issue_thread_best_effort(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	process_env: &AppServerProcessEnv,
+	transport: &str,
+	candidate: &ThreadArchiveCandidate,
+) {
 	let archive_request = AppServerThreadArchiveRequest {
-		run_id: &issue_run.run_id,
+		run_id: &candidate.run_id,
 		issue_id: &issue_run.issue.id,
-		attempt_number: issue_run.attempt_number,
+		attempt_number: candidate.attempt_number,
 		listen: transport,
 		process_env,
-		thread_id: &run_result.thread_id,
-		sequence_number: run_result.event_count.saturating_add(1),
+		thread_id: &candidate.thread_id,
+		sequence_number: candidate.sequence_number,
 	};
 
 	match agent::archive_app_server_thread_after_success(&archive_request, state_store) {
@@ -599,20 +717,20 @@ fn archive_completed_app_server_thread_best_effort(
 			project_id = project.service_id(),
 			issue_id = issue_run.issue.id,
 			issue = issue_run.issue.identifier,
-			run_id = issue_run.run_id,
-			attempt = issue_run.attempt_number,
-			thread_id = %run_result.thread_id,
-			"Archived completed app-server thread."
+			run_id = candidate.run_id,
+			attempt = candidate.attempt_number,
+			thread_id = %candidate.thread_id,
+			"Archived completed issue app-server thread."
 		),
 		Err(error) => tracing::warn!(
 			?error,
 			project_id = project.service_id(),
 			issue_id = issue_run.issue.id,
 			issue = issue_run.issue.identifier,
-			run_id = issue_run.run_id,
-			attempt = issue_run.attempt_number,
-			thread_id = %run_result.thread_id,
-			"Failed to archive completed app-server thread; leaving completed run intact."
+			run_id = candidate.run_id,
+			attempt = candidate.attempt_number,
+			thread_id = %candidate.thread_id,
+			"Failed to archive completed issue app-server thread; leaving completed run intact."
 		),
 	}
 }
