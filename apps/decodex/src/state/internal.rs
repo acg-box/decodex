@@ -802,6 +802,35 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn retry_budget_attempt_count(&self, issue_id: &str) -> Result<i64> {
+		self.connection
+			.query_row(
+				"SELECT COUNT(*) FROM run_attempts \
+				 WHERE issue_id = ?1 AND status IN ('failed', 'interrupted', 'terminal_guarded')",
+				params![issue_id],
+				|row| row.get(0),
+			)
+			.map_err(Into::into)
+	}
+
+	fn issue_has_retry_budget_attempt_after(
+		&self,
+		issue_id: &str,
+		attempt_number: i64,
+	) -> Result<bool> {
+		let count = self.connection.query_row(
+			"SELECT COUNT(*) FROM run_attempts \
+			 WHERE issue_id = ?1 \
+			 AND attempt_number > ?2 \
+			 AND status IN ('failed', 'interrupted', 'terminal_guarded') \
+			 LIMIT 1",
+			params![issue_id, attempt_number],
+			|row| row.get::<_, i64>(0),
+		)?;
+
+		Ok(count > 0)
+	}
+
 	fn load_protocol_event_summaries(&self, state: &mut StateData) -> Result<()> {
 		self.load_compacted_protocol_event_summaries(state)?;
 

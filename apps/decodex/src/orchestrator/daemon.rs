@@ -191,7 +191,12 @@ where
 	let mut snapshot = if warnings.is_empty() {
 		build_control_plane_operator_status_snapshot(tracker, project, workflow, state_store, limit)?
 	} else {
-		build_operator_status_snapshot(project, state_store, limit)?
+		build_operator_status_snapshot_with_account_mode(
+			project,
+			state_store,
+			limit,
+			AccountActivityMode::Snapshot,
+		)?
 	};
 
 	if !warnings.is_empty() {
