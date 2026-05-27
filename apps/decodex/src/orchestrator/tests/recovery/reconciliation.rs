@@ -661,6 +661,82 @@ fn active_run_reconciliation_uses_worktree_activity_marker_from_child_process() 
 }
 
 #[test]
+fn active_run_reconciliation_allows_running_model_execution_until_model_timeout() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let run_id = "run-model-execution-idle";
+	let worktree_path = config.worktree_root().join("PUB-101-model");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(run_id, &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, run_id, "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101-model",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	let last_activity = state_store
+		.last_run_activity_unix_epoch(run_id)
+		.expect("last activity lookup should succeed")
+		.expect("run activity should exist");
+	let protocol_activity =
+		r#"{"turn_status":"running","waiting_reason":"model_execution","rate_limit_status":null,"recent_events":[]}"#;
+
+	fs::write(
+		worktree_path.join(RUN_ACTIVITY_MARKER_FILE),
+		format!(
+			"run_id={run_id}\nattempt_number=1\nlast_activity_unix_epoch={last_activity}\nlast_protocol_activity_unix_epoch={last_activity}\nlast_progress_unix_epoch={last_activity}\nprotocol_activity={protocol_activity}\n"
+		),
+	)
+	.expect("activity marker should write");
+
+	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		None,
+		last_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+	)
+	.expect("active run inspection should succeed");
+
+	assert!(
+		actions.is_empty(),
+		"running model execution should not stall on the generic active idle timeout"
+	);
+
+	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		None,
+		last_activity + MODEL_EXECUTION_IDLE_TIMEOUT.as_secs() as i64 + 1,
+	)
+	.expect("active run inspection should succeed");
+
+	assert!(actions.iter().any(|action| {
+		action.issue.id == issue.id
+			&& matches!(
+				action.disposition,
+				ActiveRunDisposition::Stalled{ idle_for }
+					if idle_for >= MODEL_EXECUTION_IDLE_TIMEOUT
+			)
+	}));
+}
+
+#[test]
 fn stalled_protocol_idle_duration_ignores_future_protocol_activity() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "run-protocol-future-activity";
@@ -921,6 +997,129 @@ fn stalled_run_reconciliation_routes_to_needs_attention_without_cleanup() {
 			&& comment.contains("needs attention")
 			&& comment.contains("clear label `decodex:needs-attention`")
 	}));
+}
+
+#[test]
+fn project_reconciliation_routes_orphaned_active_worktree_run_to_needs_attention() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = reconciliation_sample_service_owned_issue("In Progress");
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
+	let run_id = "run-orphaned-active";
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(run_id, &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	state::write_run_activity_marker_for_process(&worktree_path, run_id, 1, u32::MAX)
+		.expect("stopped process marker should write");
+	orchestrator::reconcile_project_state(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&worktree_manager,
+	)
+	.expect("project reconciliation should succeed");
+
+	assert!(state_store.lease_for_issue(&issue.id).expect("lease lookup should succeed").is_none());
+	assert!(
+		state_store
+			.worktree_for_issue(&issue.id)
+			.expect("worktree lookup should succeed")
+			.is_some(),
+		"orphaned active worktree must stay available for operator recovery"
+	);
+	assert_eq!(
+		state_store
+			.run_attempt(run_id)
+			.expect("run attempt lookup should succeed")
+			.expect("run attempt should exist")
+			.status(),
+		"stalled"
+	);
+	assert_eq!(
+		tracker.label_additions.borrow().as_slice(),
+		[(issue.id.clone(), vec![String::from("label-needs-attention")])]
+	);
+	assert_eq!(
+		tracker.label_removals.borrow().as_slice(),
+		[(issue.id.clone(), vec![String::from("label-active")])]
+	);
+	assert!(tracker.comments.borrow().iter().any(|comment| {
+		comment.contains("stalled_run_detected")
+			&& comment.contains("needs attention")
+			&& comment.contains("run-orphaned-active")
+	}));
+}
+
+#[test]
+fn project_reconciliation_marks_orphaned_attention_worktree_run_stalled_without_tracker_writes() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("Todo", &["decodex:needs-attention"]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
+	let run_id = "run-attention-orphan";
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(run_id, &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	state::write_run_activity_marker_for_process(&worktree_path, run_id, 1, u32::MAX)
+		.expect("stopped process marker should write");
+	orchestrator::reconcile_project_state(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&worktree_manager,
+	)
+	.expect("project reconciliation should succeed");
+
+	assert_eq!(
+		state_store
+			.run_attempt(run_id)
+			.expect("run attempt lookup should succeed")
+			.expect("run attempt should exist")
+			.status(),
+		"stalled"
+	);
+	assert!(
+		state_store
+			.worktree_for_issue(&issue.id)
+			.expect("worktree lookup should succeed")
+			.is_some(),
+		"attention worktree must stay available for operator recovery"
+	);
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
+	assert!(tracker.comments.borrow().is_empty());
 }
 
 #[test]
