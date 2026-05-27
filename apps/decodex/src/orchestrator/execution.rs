@@ -1605,7 +1605,6 @@ fn retained_partial_progress_error(
 fn terminal_failure_has_specific_error_class(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
-		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
 		|| error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some()
 		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
 		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
