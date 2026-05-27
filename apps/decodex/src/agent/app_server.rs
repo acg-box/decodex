@@ -163,7 +163,7 @@ impl AppServerCapabilityPreflightReport {
 			.checks
 			.iter()
 			.filter(|check| check.status == AppServerCapabilityPreflightStatus::Blocked)
-			.map(|check| format!("{}: {}", check.name, check.summary))
+			.map(preflight_check_blocker_summary)
 			.collect::<Vec<_>>();
 
 		if blockers.is_empty() { String::from("no blockers recorded") } else { blockers.join("; ") }
@@ -220,6 +220,19 @@ impl AppServerCapabilityPreflightFailure {
 	}
 
 	#[cfg(test)]
+	pub(crate) fn blocked_for_test_with_details(
+		check: &'static str,
+		summary: &str,
+		details: BTreeMap<String, String>,
+	) -> Self {
+		let mut report = AppServerCapabilityPreflightReport::new();
+
+		report.push_blocked(check, summary, details);
+
+		Self::blocked(report)
+	}
+
+	#[cfg(test)]
 	pub(crate) fn method_timed_out_for_test(method: &'static str, error: String) -> Self {
 		let mut report = AppServerCapabilityPreflightReport::new();
 
@@ -264,10 +277,16 @@ impl AppServerCapabilityPreflightFailure {
 			} => format!(
 				"inspect local app_server_preflight_failed evidence for the `{method}` timeout, restart `decodex serve` if the app-server is stale, run `decodex probe` to confirm app-server preflight recovers, {recovery_gate}"
 			),
-			AppServerCapabilityPreflightFailureKind::MethodFailed { .. }
-			| AppServerCapabilityPreflightFailureKind::BlockedState => format!(
+			AppServerCapabilityPreflightFailureKind::MethodFailed { .. } => format!(
 				"inspect the Codex app-server preflight status, repair the local Codex runtime configuration, restart `decodex serve`, {recovery_gate}"
 			),
+			AppServerCapabilityPreflightFailureKind::BlockedState => {
+				let blocker_summary = self.blocker_summary();
+
+				format!(
+					"inspect local app_server_preflight_failed evidence for `{blocker_summary}`, repair the local Codex runtime configuration, restart `decodex serve`, {recovery_gate}"
+				)
+			},
 		}
 	}
 
@@ -1029,6 +1048,24 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 	}
 
 	Ok(result)
+}
+
+fn preflight_check_blocker_summary(check: &AppServerCapabilityPreflightCheck) -> String {
+	let first_error_path = check.details.get("first_error_path");
+	let first_error = check.details.get("first_error");
+	let mut summary = format!("{}: {}", check.name, check.summary);
+
+	if first_error_path.is_some() || first_error.is_some() {
+		let path = first_error_path.map_or("unknown", String::as_str);
+		let error = first_error.map_or("unknown", String::as_str);
+
+		summary.push_str(" first_error_path=");
+		summary.push_str(path);
+		summary.push_str("; first_error=");
+		summary.push_str(error);
+	}
+
+	summary
 }
 
 fn archive_app_server_thread_after_success_inner(
@@ -2453,6 +2490,7 @@ fn record_skills_preflight(
 	details.insert(String::from("entry_count"), skills.data.len().to_string());
 	details.insert(String::from("skill_count"), all_skill_count.to_string());
 	details.insert(String::from("enabled_skill_count"), enabled_skill_count.to_string());
+	details.insert(String::from("error_count"), errors.len().to_string());
 
 	if let Some(first_error) = errors.first() {
 		details.insert(String::from("first_error_path"), first_error.path.clone());
@@ -2465,20 +2503,20 @@ fn record_skills_preflight(
 			"skills/list did not return an entry for the run cwd.",
 			details,
 		);
-	} else if !errors.is_empty() {
-		report.push_blocked(
-			PREFLIGHT_CHECK_SKILLS,
-			"skills/list returned skill scan errors.",
-			details,
-		);
 	} else if enabled_skill_count == 0 {
 		report.push_blocked(
 			PREFLIGHT_CHECK_SKILLS,
 			"skills/list returned no enabled skills.",
 			details,
 		);
-	} else {
+	} else if errors.is_empty() {
 		report.push_ok(PREFLIGHT_CHECK_SKILLS, "skills/list returned enabled skills.", details);
+	} else {
+		report.push_ok(
+			PREFLIGHT_CHECK_SKILLS,
+			"skills/list returned enabled skills with scan diagnostics.",
+			details,
+		);
 	}
 }
 
