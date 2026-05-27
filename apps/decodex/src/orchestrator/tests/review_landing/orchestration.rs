@@ -425,7 +425,23 @@ fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallbac
 
 #[test]
 fn reconcile_post_review_orchestration_runs_admin_merge_without_external_review_when_disabled() {
+	assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_review(
+		InternalReviewMode::Loop,
+	);
+}
+
+#[test]
+fn reconcile_post_review_orchestration_runs_admin_merge_in_prompt_internal_review_mode() {
+	assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_review(
+		InternalReviewMode::Prompt,
+	);
+}
+
+fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_review(
+	internal_review_mode: InternalReviewMode,
+) {
 	let (temp_dir, config, workflow) = temp_project_layout();
+	let config = service_config_with_internal_review_mode(&config, internal_review_mode);
 	let config = service_config_with_external_review_enabled(
 		&service_config_with_github_token_env_var(&config, "PATH"),
 		false,
