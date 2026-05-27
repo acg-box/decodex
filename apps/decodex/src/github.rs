@@ -57,6 +57,8 @@ query($owner: String!, $name: String!, $number: Int!, $reviewThreadsAfter: Strin
 }
 "#;
 const GH_BINARY: &str = "gh";
+const GH_FALLBACK_PATHS: &[&str] =
+	&["/run/current-system/sw/bin/gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"];
 
 #[derive(Debug)]
 pub(crate) struct PullRequestLocator {
@@ -574,7 +576,7 @@ fn gh_command_program_from_env(path_env: Option<OsString>, home: Option<OsString
 		}
 	}
 
-	for candidate in ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"] {
+	for candidate in GH_FALLBACK_PATHS {
 		let candidate = PathBuf::from(candidate);
 
 		if candidate.is_file() {
@@ -934,6 +936,11 @@ mod tests {
 		);
 
 		assert_eq!(resolved, gh_path);
+	}
+
+	#[test]
+	fn gh_command_program_knows_nix_profile_fallback() {
+		assert!(super::GH_FALLBACK_PATHS.contains(&"/run/current-system/sw/bin/gh"));
 	}
 
 	#[test]
