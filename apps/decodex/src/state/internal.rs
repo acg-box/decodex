@@ -126,6 +126,10 @@ impl StateData {
 		self.worktrees = loaded.worktrees;
 	}
 
+	fn replace_project_registry_state(&mut self, loaded: Self) {
+		self.projects = loaded.projects;
+	}
+
 	fn project_run_status(
 		&self,
 		project_id: &str,
@@ -394,13 +398,21 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(state)
 	}
 
-	fn load_project_run_state(&self) -> Result<StateData> {
+	fn load_project_run_state_for_project(&self, project_id: &str) -> Result<StateData> {
 		let mut state = StateData::default();
 
 		self.load_leases(&mut state)?;
 		self.load_run_attempts(&mut state)?;
-		self.load_protocol_event_summaries(&mut state)?;
 		self.load_worktrees(&mut state)?;
+		self.load_protocol_event_summaries_for_project_runs(&mut state, project_id)?;
+
+		Ok(state)
+	}
+
+	fn load_project_registry_state(&self) -> Result<StateData> {
+		let mut state = StateData::default();
+
+		self.load_projects(&mut state)?;
 
 		Ok(state)
 	}
@@ -827,6 +839,64 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn load_protocol_event_summaries_for_project_runs(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
+		let mut run_ids = state
+			.run_attempts
+			.values()
+			.filter(|attempt| state.project_run_status(project_id, attempt).is_some())
+			.map(|attempt| attempt.run_id.clone())
+			.collect::<Vec<_>>();
+
+		run_ids.sort();
+		run_ids.dedup();
+
+		for run_id in run_ids {
+			self.load_compacted_protocol_event_summary_for_run(state, &run_id)?;
+			self.load_protocol_event_summary_for_run(state, &run_id)?;
+		}
+
+		Ok(())
+	}
+
+	fn load_protocol_event_summary_for_run(
+		&self,
+		state: &mut StateData,
+		run_id: &str,
+	) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT totals.event_count, totals.last_sequence_number, last.event_type, \
+			 last.created_at, last.created_at_unix \
+			 FROM (
+			 SELECT COUNT(*) AS event_count, MAX(sequence_number) AS last_sequence_number \
+			 FROM protocol_events WHERE run_id = ?1
+			 ) totals \
+			 JOIN protocol_events last \
+			 ON last.run_id = ?1 \
+			 AND last.sequence_number = totals.last_sequence_number",
+		)?;
+		let summary = statement
+			.query_row(params![run_id], |row| {
+				Ok(ProtocolEventSummaryRecord {
+					event_count: row.get(0)?,
+					last_sequence_number: Some(row.get(1)?),
+					last_event_type: Some(row.get(2)?),
+					last_event_at: Some(row.get(3)?),
+					last_event_at_unix: Some(row.get(4)?),
+				})
+			})
+			.optional()?;
+
+		if let Some(summary) = summary {
+			state.event_summaries.insert(run_id.to_owned(), summary);
+		}
+
+		Ok(())
+	}
+
 	fn load_compacted_protocol_event_summaries(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, event_count, last_sequence_number, last_event_type, last_event_at, \
@@ -849,6 +919,34 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			let (run_id, summary) = row?;
 
 			state.event_summaries.insert(run_id, summary);
+		}
+
+		Ok(())
+	}
+
+	fn load_compacted_protocol_event_summary_for_run(
+		&self,
+		state: &mut StateData,
+		run_id: &str,
+	) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT event_count, last_sequence_number, last_event_type, last_event_at, \
+			 last_event_at_unix FROM protocol_event_summaries WHERE run_id = ?1",
+		)?;
+		let summary = statement
+			.query_row(params![run_id], |row| {
+				Ok(ProtocolEventSummaryRecord {
+					event_count: row.get(0)?,
+					last_sequence_number: row.get(1)?,
+					last_event_type: row.get(2)?,
+					last_event_at: row.get(3)?,
+					last_event_at_unix: row.get(4)?,
+				})
+			})
+			.optional()?;
+
+		if let Some(summary) = summary {
+			state.event_summaries.insert(run_id.to_owned(), summary);
 		}
 
 		Ok(())
