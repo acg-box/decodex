@@ -92,7 +92,10 @@ impl StateStore {
 
 	/// List all registered projects known to this local Decodex installation.
 	pub(crate) fn list_projects(&self) -> Result<Vec<ProjectRegistration>> {
-		let state = self.lock()?;
+		let mut state = self.lock_without_refresh()?;
+
+		self.refresh_project_registry_state_locked(&mut state)?;
+
 		let mut projects = state.projects.values().cloned().collect::<Vec<_>>();
 
 		projects.sort_by(|left, right| left.service_id().cmp(right.service_id()));
@@ -350,7 +353,10 @@ impl StateStore {
 
 	/// List all active leases.
 	pub fn list_leases(&self, project_id: &str) -> Result<Vec<IssueLease>> {
-		let state = self.lock()?;
+		let mut state = self.lock_without_refresh()?;
+
+		self.refresh_project_run_state_locked(&mut state, project_id)?;
+
 		let mut leases = state
 			.leases
 			.values()
@@ -366,7 +372,10 @@ impl StateStore {
 	/// List all active shared leases by combining local claims with other processes' issue claims.
 	pub fn list_active_shared_leases(&self, project_id: &str) -> Result<Vec<IssueLease>> {
 		let (mut leases_by_issue, dispatch_slot_config) = {
-			let state = self.lock()?;
+			let mut state = self.lock_without_refresh()?;
+
+			self.refresh_project_run_state_locked(&mut state, project_id)?;
+
 			let leases = state
 				.leases
 				.values()
@@ -856,7 +865,7 @@ impl StateStore {
 	) -> Result<Vec<ProjectRunStatus>> {
 		let mut state = self.lock_without_refresh()?;
 
-		self.refresh_project_run_state_locked(&mut state)?;
+		self.refresh_project_run_state_locked(&mut state, project_id)?;
 
 		let mut runs = state
 			.run_attempts
@@ -878,7 +887,7 @@ impl StateStore {
 	) -> Result<(Vec<ProjectRunStatus>, Vec<ProjectRunStatus>)> {
 		let mut state = self.lock_without_refresh()?;
 
-		self.refresh_project_run_state_locked(&mut state)?;
+		self.refresh_project_run_state_locked(&mut state, project_id)?;
 
 		let mut runs = state
 			.run_attempts
@@ -905,7 +914,7 @@ impl StateStore {
 	pub fn list_active_runs(&self, project_id: &str) -> Result<Vec<ProjectRunStatus>> {
 		let mut state = self.lock_without_refresh()?;
 
-		self.refresh_project_run_state_locked(&mut state)?;
+		self.refresh_project_run_state_locked(&mut state, project_id)?;
 
 		let mut runs = state
 			.run_attempts
@@ -1321,7 +1330,7 @@ impl StateStore {
 	pub fn list_worktrees(&self, project_id: &str) -> Result<Vec<WorktreeMapping>> {
 		let mut state = self.lock_without_refresh()?;
 
-		self.refresh_project_run_state_locked(&mut state)?;
+		self.refresh_project_run_state_locked(&mut state, project_id)?;
 
 		let mut mappings = state
 			.worktrees
@@ -1375,16 +1384,34 @@ impl StateStore {
 		Ok(())
 	}
 
-	fn refresh_project_run_state_locked(&self, state: &mut StateData) -> Result<()> {
+	fn refresh_project_run_state_locked(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
 		let sqlite = sqlite
 			.lock()
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
-		let loaded = sqlite.load_project_run_state()?;
+		let loaded = sqlite.load_project_run_state_for_project(project_id)?;
 
 		state.replace_project_run_state(loaded);
+
+		Ok(())
+	}
+
+	fn refresh_project_registry_state_locked(&self, state: &mut StateData) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let loaded = sqlite.load_project_registry_state()?;
+
+		state.replace_project_registry_state(loaded);
 
 		Ok(())
 	}
