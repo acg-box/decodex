@@ -65,7 +65,7 @@ large catch-all test file unless the behavior crosses several of these stages.
 | `apps/decodex/src/orchestrator/tests/recovery/closeout/dispatch.rs` | 5 | Direct closeout dispatch and PR validation |
 | `apps/decodex/src/orchestrator/tests/recovery/closeout/identity.rs` | 4 | Closeout identity reuse after retained runs |
 | `apps/decodex/src/orchestrator/tests/recovery/closeout/cleanup.rs` | 6 | Retained closeout cleanup and cleanup blockers |
-| `apps/decodex/src/orchestrator/tests/recovery/terminal_failures.rs` | 10 | Terminal failure labeling, nonretryable attention, and duplicate writeback idempotency |
+| `apps/decodex/src/orchestrator/tests/recovery/terminal_failures.rs` | 11 | Terminal failure labeling, nonretryable attention, and local/remote duplicate writeback idempotency |
 | `apps/decodex/src/orchestrator/tests/recovery/runtime_reentry.rs` | 27 | Runtime reentry, recovered worktrees, liveness, and live-run recovery |
 | `apps/decodex/src/orchestrator/tests/operator/status_support.rs` | 0 | Shared operator status fixtures |
 | `apps/decodex/src/orchestrator/tests/operator/status/control_plane.rs` | 5 | Registered project control-plane rows |
