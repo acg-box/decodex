@@ -12,12 +12,12 @@ type DashboardRunInterrupterForTest = fn(u32) -> Result<()>;
 const OPERATOR_DASHBOARD_HTML: &str =
 	include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/operator_dashboard.html"));
 const OPERATOR_DASHBOARD_ICON_PNG: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/public/assets/icon.png"));
+	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/icon.png"));
 const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
-	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/public/assets/logo.ico"));
+	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo.ico"));
 const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] = include_bytes!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
-	"/../../site/public/assets/logo-touch.png"
+	"/src/orchestrator/assets/logo-touch.png"
 ));
 const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
 
