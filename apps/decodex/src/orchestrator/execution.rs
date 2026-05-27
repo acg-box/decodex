@@ -1402,7 +1402,8 @@ where
 		manual_attention_requested,
 		error,
 	)?;
-	let event_status = record_terminal_failure_writeback_event(runtime, issue_run, &writeback)?;
+	let event_status =
+		record_terminal_failure_writeback_event(tracker, runtime, issue_run, &writeback)?;
 
 	if event_status == TerminalFailureEventRecordStatus::Duplicate {
 		return Ok(terminal_failure_outcome(&writeback));
@@ -1503,30 +1504,77 @@ where
 	})
 }
 
-fn record_terminal_failure_writeback_event(
+fn record_terminal_failure_writeback_event<T>(
+	tracker: &T,
 	runtime: TerminalFailureWritebackRuntime<'_>,
 	issue_run: &IssueRunPlan,
 	writeback: &PreparedTerminalFailureWriteback,
-) -> Result<TerminalFailureEventRecordStatus> {
-	let Some(state_store) = runtime.state_store else {
-		return Ok(TerminalFailureEventRecordStatus::NoLocalStore);
+) -> Result<TerminalFailureEventRecordStatus>
+where
+	T: IssueTracker,
+{
+	let event_status = if let Some(state_store) = runtime.state_store {
+		if !state_store.record_linear_execution_event(&writeback.projection.record)? {
+			return Ok(TerminalFailureEventRecordStatus::Duplicate);
+		}
+
+		TerminalFailureEventRecordStatus::Recorded
+	} else {
+		TerminalFailureEventRecordStatus::NoLocalStore
 	};
 
-	if state_store.record_linear_execution_event(&writeback.projection.record)? {
-		return Ok(TerminalFailureEventRecordStatus::Recorded);
+	if remote_terminal_failure_writeback_exists(
+		tracker,
+		runtime,
+		issue_run,
+		writeback,
+		event_status,
+	)? {
+		return Ok(TerminalFailureEventRecordStatus::Duplicate);
+	}
+
+	Ok(event_status)
+}
+
+fn remote_terminal_failure_writeback_exists<T>(
+	tracker: &T,
+	runtime: TerminalFailureWritebackRuntime<'_>,
+	issue_run: &IssueRunPlan,
+	writeback: &PreparedTerminalFailureWriteback,
+	event_status: TerminalFailureEventRecordStatus,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	let comments = match tracker.list_comments(&issue_run.issue.id) {
+		Ok(comments) => comments,
+		Err(error) => {
+			forget_terminal_failure_writeback_event(runtime, event_status, writeback)?;
+
+			return Err(error);
+		},
+	};
+
+	if !records::has_linear_execution_event_record(
+		&comments,
+		&writeback.projection.record.service_id,
+		&writeback.projection.record.issue_id,
+		&writeback.projection.record.idempotency_key,
+	) {
+		return Ok(false);
 	}
 
 	tracing::debug!(
-		service_id = runtime.service_id,
+		service_id = writeback.projection.record.service_id,
 		issue_id = issue_run.issue.id,
 		issue = issue_run.issue.identifier,
 		run_id = issue_run.run_id,
 		attempt = issue_run.attempt_number,
 		event_type = writeback.projection.record.event_type,
-		"Skipping duplicate terminal failure writeback."
+		"Skipping terminal failure writeback already present in remote Linear ledger."
 	);
 
-	Ok(TerminalFailureEventRecordStatus::Duplicate)
+	Ok(true)
 }
 
 fn apply_terminal_failure_tracker_writeback<T>(

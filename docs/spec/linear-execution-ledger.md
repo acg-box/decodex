@@ -290,8 +290,9 @@ be replayed as the active state machine.
   data-quality warning instead of guessing which record is authoritative.
 - Producers that perform side effects for a `needs_attention` or `terminal_failure`
   record must treat the idempotency key as guarding the whole writeback. A duplicate
-  terminal event must not reapply the tracker state transition, automation-label
-  mutations, or public comment.
+  terminal event in the local runtime store or the remote Linear comment ledger must
+  not reapply the tracker state transition, automation-label mutations, or public
+  comment.
 - Event ordering is by `event_timestamp`, with Linear comment creation time as a
   fallback tiebreaker. Consumers must tolerate delayed comments and duplicate retries.
 
