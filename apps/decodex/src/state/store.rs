@@ -854,7 +854,10 @@ impl StateStore {
 		project_id: &str,
 		limit: usize,
 	) -> Result<Vec<ProjectRunStatus>> {
-		let state = self.lock()?;
+		let mut state = self.lock_without_refresh()?;
+
+		self.refresh_project_run_state_locked(&mut state)?;
+
 		let mut runs = state
 			.run_attempts
 			.values()
@@ -873,7 +876,10 @@ impl StateStore {
 		project_id: &str,
 		base_recent_limit: usize,
 	) -> Result<(Vec<ProjectRunStatus>, Vec<ProjectRunStatus>)> {
-		let state = self.lock()?;
+		let mut state = self.lock_without_refresh()?;
+
+		self.refresh_project_run_state_locked(&mut state)?;
+
 		let mut runs = state
 			.run_attempts
 			.values()
@@ -897,7 +903,10 @@ impl StateStore {
 
 	/// List all active leased runs for one project without applying the recent-run limit.
 	pub fn list_active_runs(&self, project_id: &str) -> Result<Vec<ProjectRunStatus>> {
-		let state = self.lock()?;
+		let mut state = self.lock_without_refresh()?;
+
+		self.refresh_project_run_state_locked(&mut state)?;
+
 		let mut runs = state
 			.run_attempts
 			.values()
@@ -1310,7 +1319,10 @@ impl StateStore {
 
 	/// List all known worktree mappings.
 	pub fn list_worktrees(&self, project_id: &str) -> Result<Vec<WorktreeMapping>> {
-		let state = self.lock()?;
+		let mut state = self.lock_without_refresh()?;
+
+		self.refresh_project_run_state_locked(&mut state)?;
+
 		let mut mappings = state
 			.worktrees
 			.values()
@@ -1359,6 +1371,20 @@ impl StateStore {
 		let loaded = sqlite.load_state()?;
 
 		state.replace_durable_state(loaded);
+
+		Ok(())
+	}
+
+	fn refresh_project_run_state_locked(&self, state: &mut StateData) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let loaded = sqlite.load_project_run_state()?;
+
+		state.replace_project_run_state(loaded);
 
 		Ok(())
 	}
