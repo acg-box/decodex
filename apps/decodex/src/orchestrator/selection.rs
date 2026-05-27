@@ -207,6 +207,10 @@ fn terminal_failure_comment_details(
 				partial_progress.worktree_path
 			),
 		)
+	} else if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerZeroEvidenceStartFailure>()
+	{
+		(app_server_failure.error_class(), app_server_failure.terminal_next_action(recovery_gate))
 	} else if error.downcast_ref::<StalledRunNeedsAttention>().is_some() {
 		(
 			"stalled_run_detected",
