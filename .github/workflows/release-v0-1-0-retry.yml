@@ -10,6 +10,7 @@ env:
   LINUX_CLI_ASSET: decodex-x86_64-unknown-linux-gnu.tar.gz
   MACOS_APP_ASSET: decodex-app-aarch64-apple-darwin.zip
   MACOS_CLI_ASSET: decodex-aarch64-apple-darwin.zip
+  CRATE_INDEX_URL: https://index.crates.io/de/co/decodex
   RELEASE_TAG: v0.1.0
   RELEASE_VERSION: 0.1.0
   RUST_BACKTRACE: full
@@ -93,27 +94,29 @@ jobs:
             exit 1
           fi
 
-          crate_response="${RUNNER_TEMP}/crate-response.json"
+          crate_index="${RUNNER_TEMP}/crate-index.jsonl"
           crate_status="$(
             curl \
               --location \
-              --output "${crate_response}" \
+              --output "${crate_index}" \
               --silent \
               --show-error \
               --write-out "%{http_code}" \
-              "https://crates.io/api/v1/crates/${CLI_BINARY_NAME}/${RELEASE_VERSION}"
+              "${CRATE_INDEX_URL}"
           )"
 
           case "${crate_status}" in
             200)
-              echo "${CLI_BINARY_NAME} ${RELEASE_VERSION} is already published on crates.io."
-              exit 0
+              if grep -Eq "\"vers\":\"${RELEASE_VERSION//./\\.}\"" "${crate_index}"; then
+                echo "${CLI_BINARY_NAME} ${RELEASE_VERSION} is already published on crates.io."
+                exit 0
+              fi
               ;;
             404)
               ;;
             *)
-              cat "${crate_response}" >&2
-              echo "Unexpected crates.io API status: ${crate_status}" >&2
+              cat "${crate_index}" >&2
+              echo "Unexpected crates.io index status: ${crate_status}" >&2
               exit 1
               ;;
           esac
