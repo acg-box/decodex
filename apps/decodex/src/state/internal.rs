@@ -434,6 +434,46 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn upsert_lease_and_remember_run_project(&mut self, lease: &IssueLease) -> Result<()> {
+		let transaction = self.connection.transaction()?;
+
+		transaction.execute(
+			"INSERT OR REPLACE INTO leases (issue_id, project_id, run_id, issue_state)
+			 VALUES (?1, ?2, ?3, ?4)",
+			params![lease.issue_id(), lease.project_id(), lease.run_id(), lease.issue_state()],
+		)?;
+
+		update_run_attempt_project(&transaction, lease.project_id(), lease.issue_id(), Some(lease.run_id()))?;
+
+		transaction.commit()?;
+
+		Ok(())
+	}
+
+	fn upsert_worktree_and_remember_run_project(
+		&mut self,
+		mapping: &WorktreeMappingRecord,
+	) -> Result<()> {
+		let transaction = self.connection.transaction()?;
+
+		transaction.execute(
+			"INSERT OR REPLACE INTO worktrees (issue_id, project_id, branch_name, worktree_path)
+			 VALUES (?1, ?2, ?3, ?4)",
+			params![
+				&mapping.issue_id,
+				&mapping.project_id,
+				&mapping.branch_name,
+				mapping.worktree_path.to_string_lossy().as_ref(),
+			],
+		)?;
+
+		update_run_attempt_project(&transaction, &mapping.project_id, &mapping.issue_id, None)?;
+
+		transaction.commit()?;
+
+		Ok(())
+	}
+
 	fn append_protocol_event(&self, run_id: &str, event: &ProtocolEventRecord) -> Result<bool> {
 		let changed = self.connection.execute(
 			"INSERT OR IGNORE INTO protocol_events (
@@ -519,14 +559,60 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
-	fn delete_previous_issue_identity(&mut self, previous_issue_id: &str) -> Result<()> {
+	fn retarget_issue_identity(
+		&mut self,
+		previous_issue_id: &str,
+		canonical_issue_id: &str,
+	) -> Result<()> {
 		let transaction = self.connection.transaction()?;
 
+		transaction.execute(
+			"INSERT OR IGNORE INTO leases (issue_id, project_id, run_id, issue_state)
+			 SELECT ?2, project_id, run_id, issue_state FROM leases WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
 		transaction.execute("DELETE FROM leases WHERE issue_id = ?1", params![previous_issue_id])?;
+		transaction.execute(
+			"INSERT OR IGNORE INTO worktrees (issue_id, project_id, branch_name, worktree_path)
+			 SELECT ?2, project_id, branch_name, worktree_path FROM worktrees WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
 		transaction.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![previous_issue_id])?;
+		transaction.execute(
+			"UPDATE run_attempts SET issue_id = ?2 WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
+		transaction.execute(
+			"UPDATE private_execution_events SET issue_id = ?2 WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
+		transaction.execute(
+			"INSERT OR IGNORE INTO review_handoffs (
+					project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
+					target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at, updated_at_unix
+				)
+			 SELECT project_id, ?2, branch_name, run_id, attempt_number, pr_url,
+					target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at, updated_at_unix
+			 FROM review_handoffs WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
 		transaction.execute(
 			"DELETE FROM review_handoffs WHERE issue_id = ?1",
 			params![previous_issue_id],
+		)?;
+		transaction.execute(
+			"INSERT OR IGNORE INTO review_orchestrations (
+					project_id, issue_id, branch_name, run_id, attempt_number, pr_url, head_sha,
+					phase, request_comment_database_id, request_created_at_unix_epoch,
+					request_description_thumbs_up_count, request_retry_count, external_round_count,
+					auto_merge_enabled_at_unix_epoch, updated_at, updated_at_unix
+				)
+			 SELECT project_id, ?2, branch_name, run_id, attempt_number, pr_url, head_sha,
+					phase, request_comment_database_id, request_created_at_unix_epoch,
+					request_description_thumbs_up_count, request_retry_count, external_round_count,
+					auto_merge_enabled_at_unix_epoch, updated_at, updated_at_unix
+			 FROM review_orchestrations WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
 			"DELETE FROM review_orchestrations WHERE issue_id = ?1",
@@ -1794,6 +1880,30 @@ fn persist_projects(transaction: &Transaction<'_>, state: &StateData) -> Result<
 				project.updated_at_unix(),
 			],
 		)?;
+	}
+
+	Ok(())
+}
+
+fn update_run_attempt_project(
+	transaction: &Transaction<'_>,
+	project_id: &str,
+	issue_id: &str,
+	run_id: Option<&str>,
+) -> Result<()> {
+	match run_id {
+		Some(run_id) => {
+			transaction.execute(
+				"UPDATE run_attempts SET project_id = ?1 WHERE issue_id = ?2 AND run_id = ?3",
+				params![project_id, issue_id, run_id],
+			)?;
+		},
+		None => {
+			transaction.execute(
+				"UPDATE run_attempts SET project_id = ?1 WHERE issue_id = ?2",
+				params![project_id, issue_id],
+			)?;
+		},
 	}
 
 	Ok(())
