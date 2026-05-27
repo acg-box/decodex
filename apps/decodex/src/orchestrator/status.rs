@@ -1751,10 +1751,17 @@ fn operator_queued_issue_attention_summary(
 	worktree_has_tracked_changes: bool,
 	attention_error_class: Option<&str>,
 ) -> String {
-	if retry_budget_attempts > 0 && worktree_has_tracked_changes {
-		return format!(
-			"Partial worktree changes are retained after {retry_budget_attempts} failed attempts; inspect the patch, finish validation, then land or reset manually."
-		);
+	if worktree_has_tracked_changes {
+		if retry_budget_attempts > 0 {
+			return format!(
+				"Partial worktree changes are retained after {retry_budget_attempts} failed attempts; inspect the patch, finish validation, then land or reset manually."
+			);
+		}
+		if attention_error_class == Some("partial_progress_retained") {
+			return String::from(
+				"Partial worktree changes are retained after a stalled or failed attempt; inspect the patch, finish validation, then land or reset manually.",
+			);
+		}
 	}
 	if attention_error_class == Some("app_server_plugin_list_timeout") {
 		return String::from(
