@@ -431,18 +431,42 @@ fn persistent_project_run_listing_does_not_refresh_full_event_journal() {
 		.append_event("run-b", 1, "item/agentMessage/delta", "{}")
 		.expect("writer event should append");
 
+	let mut writer_record = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: "pubfi",
+			issue_id: "PUB-102",
+			issue_identifier: "PUB-102",
+			run_id: "run-b",
+			attempt_number: 1,
+		},
+		"closeout",
+		String::from("2026-04-29T10:12:00Z"),
+		"closeout",
+	);
+
+	writer_record.summary = Some(String::from("Writer closeout."));
+	writer_record.pr_url = Some(String::from("https://github.com/hack-ink/decodex/pull/102"));
+	writer_record.commit_sha = Some(String::from("2222222222222222222222222222222222222222"));
+
+	writer
+		.record_linear_execution_event(&writer_record)
+		.expect("writer ledger event should persist");
+
 	let runs = observer.list_active_runs("pubfi").expect("active runs should load");
+	let worktrees = observer.list_worktrees("pubfi").expect("worktrees should load");
 
 	assert_eq!(runs.len(), 1);
 	assert_eq!(runs[0].run_id(), "run-a");
 	assert_eq!(runs[0].event_count(), 1);
 	assert_eq!(runs[0].last_event_type(), Some("item/started"));
+	assert_eq!(worktrees.len(), 1);
+	assert_eq!(worktrees[0].issue_id(), "PUB-101");
 
 	let state = observer.inner.lock().expect("test should inspect the local cache");
 
 	assert!(
-		state.events.is_empty(),
-		"operator run listing should refresh event summaries without materializing event rows"
+		!state.events.contains_key("run-b"),
+		"operator run listing should refresh event summaries without materializing unrelated event rows"
 	);
 	assert_eq!(
 		state
@@ -451,6 +475,10 @@ fn persistent_project_run_listing_does_not_refresh_full_event_journal() {
 			.expect("unrelated persistent run should have a summary")
 			.event_count,
 		1
+	);
+	assert!(
+		!state.linear_execution_events.contains_key(&writer_record.idempotency_key),
+		"operator run and worktree listing should not refresh the full persistent ledger into the local cache"
 	);
 }
 

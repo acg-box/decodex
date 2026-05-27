@@ -119,6 +119,13 @@ impl StateData {
 		self.review_orchestrations = loaded.review_orchestrations;
 	}
 
+	fn replace_project_run_state(&mut self, loaded: Self) {
+		self.leases = loaded.leases;
+		self.run_attempts = loaded.run_attempts;
+		self.event_summaries = loaded.event_summaries;
+		self.worktrees = loaded.worktrees;
+	}
+
 	fn project_run_status(
 		&self,
 		project_id: &str,
@@ -383,6 +390,17 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_private_execution_events(&mut state)?;
 		self.load_review_handoffs(&mut state)?;
 		self.load_review_orchestrations(&mut state)?;
+
+		Ok(state)
+	}
+
+	fn load_project_run_state(&self) -> Result<StateData> {
+		let mut state = StateData::default();
+
+		self.load_leases(&mut state)?;
+		self.load_run_attempts(&mut state)?;
+		self.load_protocol_event_summaries(&mut state)?;
+		self.load_worktrees(&mut state)?;
 
 		Ok(state)
 	}
