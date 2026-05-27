@@ -348,6 +348,11 @@ Structured needs-attention and terminal-failure comments are Linear execution le
 records. Their required identity, error, next-action, blocker, evidence, terminal-path,
 and idempotency fields are defined by
 [`linear-execution-ledger.md`](./linear-execution-ledger.md).
+The idempotency boundary covers the whole terminal writeback, not only the Linear
+comment: once the same `needs_attention` or `terminal_failure` ledger event is already
+recorded locally, reconciliation or child-exit recovery must not reapply the failure
+state transition, automation-label mutations, or duplicate comment for that logical
+event.
 
 ## Local operational state
 

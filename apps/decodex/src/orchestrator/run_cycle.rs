@@ -20,6 +20,19 @@ struct RetainedReviewRuntime<'a, T> {
 	now_unix_epoch: i64,
 }
 
+struct PassiveRetainedAttentionRuntime<'a, T> {
+	tracker: &'a T,
+	project: &'a ServiceConfig,
+	workflow: &'a WorkflowDocument,
+	state_store: &'a StateStore,
+}
+impl<T> Clone for PassiveRetainedAttentionRuntime<'_, T> {
+	fn clone(&self) -> Self {
+		*self
+	}
+}
+impl<T> Copy for PassiveRetainedAttentionRuntime<'_, T> {}
+
 struct ProjectStateReconciliationContext<'a, T> {
 	tracker: &'a T,
 	project: &'a ServiceConfig,
@@ -227,9 +240,7 @@ where
 			RetainedReviewLaneLoad::Skip => continue,
 			RetainedReviewLaneLoad::Blocked(blocked) => {
 				apply_passive_retained_manual_attention_with_run_identity(
-					tracker,
-					project,
-					workflow,
+					PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 					&blocked.issue,
 					&blocked.worktree,
 					&blocked.run_identity,
@@ -247,9 +258,7 @@ where
 			&lane.orchestration_marker,
 		) {
 			apply_passive_retained_manual_attention(
-				tracker,
-				project,
-				workflow,
+				PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 				&lane.snapshot.issue,
 				&lane.snapshot.worktree,
 				&lane.orchestration_marker,
@@ -511,6 +520,7 @@ where
 			tracker,
 			project,
 			workflow,
+			state_store,
 			lane,
 			now_unix_epoch,
 			"external_review_merge_visibility_timeout",
@@ -538,6 +548,7 @@ where
 			tracker,
 			project,
 			workflow,
+			state_store,
 			lane,
 			now_unix_epoch,
 			"internal_review_only_merge_visibility_timeout",
@@ -616,9 +627,7 @@ where
 		},
 		ExternalReviewRequestCiGate::ManualAttention(reason) => {
 			return apply_passive_retained_manual_attention(
-				tracker,
-				project,
-				workflow,
+				PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 				&lane.snapshot.issue,
 				&lane.snapshot.worktree,
 				&lane.orchestration_marker,
@@ -703,9 +712,7 @@ where
 	}
 
 	apply_passive_retained_manual_attention(
-		tracker,
-		project,
-		workflow,
+		PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,
 		&lane.orchestration_marker,
@@ -783,9 +790,7 @@ where
 	}
 	if external_review_result_arrived(&lane.review_state, &lane.orchestration_marker) {
 		return apply_passive_retained_manual_attention(
-			runtime.tracker,
-			runtime.project,
-			runtime.workflow,
+			passive_attention_runtime(runtime),
 			&lane.snapshot.issue,
 			&lane.snapshot.worktree,
 			&lane.orchestration_marker,
@@ -809,6 +814,7 @@ fn handle_waiting_for_merge_phase<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
+	state_store: &StateStore,
 	lane: &RetainedReviewLane,
 	now_unix_epoch: i64,
 	timeout_reason: &str,
@@ -829,9 +835,7 @@ where
 	}
 
 	apply_passive_retained_manual_attention(
-		tracker,
-		project,
-		workflow,
+		PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,
 		&lane.orchestration_marker,
@@ -902,9 +906,7 @@ where
 {
 	if !lane.review_state.merge_commit_allowed {
 		return apply_passive_retained_manual_attention(
-			runtime.tracker,
-			runtime.project,
-			runtime.workflow,
+			passive_attention_runtime(runtime),
 			&lane.snapshot.issue,
 			&lane.snapshot.worktree,
 			&lane.orchestration_marker,
@@ -924,9 +926,7 @@ where
 			);
 
 			return apply_passive_retained_manual_attention(
-				runtime.tracker,
-				runtime.project,
-				runtime.workflow,
+				passive_attention_runtime(runtime),
 				&lane.snapshot.issue,
 				&lane.snapshot.worktree,
 				&lane.orchestration_marker,
@@ -968,9 +968,7 @@ where
 	}
 
 	apply_passive_retained_manual_attention(
-		runtime.tracker,
-		runtime.project,
-		runtime.workflow,
+		passive_attention_runtime(runtime),
 		&lane.snapshot.issue,
 		&lane.snapshot.worktree,
 		&lane.orchestration_marker,
@@ -1065,9 +1063,7 @@ fn ensure_review_orchestration_marker(
 }
 
 fn apply_passive_retained_manual_attention<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
+	runtime: PassiveRetainedAttentionRuntime<'_, T>,
 	issue: &TrackerIssue,
 	worktree: &WorktreeMapping,
 	orchestration_marker: &ReviewOrchestrationMarker,
@@ -1077,9 +1073,7 @@ where
 	T: IssueTracker,
 {
 	apply_passive_retained_manual_attention_with_run_identity(
-		tracker,
-		project,
-		workflow,
+		runtime,
 		issue,
 		worktree,
 		&RetainedReviewRunIdentity {
@@ -1091,9 +1085,7 @@ where
 }
 
 fn apply_passive_retained_manual_attention_with_run_identity<T>(
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
+	runtime: PassiveRetainedAttentionRuntime<'_, T>,
 	issue: &TrackerIssue,
 	worktree: &WorktreeMapping,
 	run_identity: &RetainedReviewRunIdentity,
@@ -1120,16 +1112,16 @@ where
 		retry_budget_base: 0,
 	};
 	let worktree_path =
-		relative_worktree_path_for_path(project, synthetic_issue_run.worktree.path.as_path());
-	let privacy_classifier = configured_public_projection_privacy_classifier(project)?;
+		relative_worktree_path_for_path(runtime.project, synthetic_issue_run.worktree.path.as_path());
+	let privacy_classifier = configured_public_projection_privacy_classifier(runtime.project)?;
 	let _ = apply_terminal_failure_writeback(
-		tracker,
+		runtime.tracker,
 		TerminalFailureWritebackRuntime {
-			service_id: project.service_id(),
-			state_store: None,
+			service_id: runtime.project.service_id(),
+			state_store: Some(runtime.state_store),
 			privacy_classifier: &privacy_classifier,
 		},
-		workflow,
+		runtime.workflow,
 		&synthetic_issue_run,
 		&worktree_path,
 		true,
@@ -1137,6 +1129,17 @@ where
 	)?;
 
 	Ok(())
+}
+
+fn passive_attention_runtime<'a, T>(
+	runtime: &'a RetainedReviewRuntime<'_, T>,
+) -> PassiveRetainedAttentionRuntime<'a, T> {
+	PassiveRetainedAttentionRuntime {
+		tracker: runtime.tracker,
+		project: runtime.project,
+		workflow: runtime.workflow,
+		state_store: runtime.state_store,
+	}
 }
 
 fn plan_project_issue_run_with_exclusions<T>(
