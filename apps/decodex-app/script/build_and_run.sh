@@ -38,12 +38,31 @@ SERVER_BINARY=""
 RESOLVED_SIGN_IDENTITY=""
 
 SWIFT_CONFIGURATION="${DECODEX_APP_SWIFT_CONFIGURATION:-debug}"
+RUST_PROFILE="${DECODEX_APP_RUST_PROFILE:-}"
 if [[ "$SWIFT_CONFIGURATION" == "release" ]]; then
 	SWIFT_BUILD_FLAGS=(-c release)
-	RUST_BUILD_FLAGS=(--release)
+	RUST_PROFILE="${RUST_PROFILE:-release}"
 elif [[ "$SWIFT_CONFIGURATION" != "debug" ]]; then
 	echo "error: DECODEX_APP_SWIFT_CONFIGURATION must be debug or release." >&2
 	exit 2
+else
+	RUST_PROFILE="${RUST_PROFILE:-debug}"
+fi
+
+case "$RUST_PROFILE" in
+	debug)
+		RUST_BUILD_FLAGS=()
+		;;
+	release)
+		RUST_BUILD_FLAGS=(--release)
+		;;
+	*)
+		RUST_BUILD_FLAGS=(--profile "$RUST_PROFILE")
+		;;
+esac
+
+if [[ "${DECODEX_APP_CARGO_LOCKED:-0}" == "1" ]]; then
+	RUST_BUILD_FLAGS+=(--locked)
 fi
 
 APP_VERSION="${DECODEX_APP_VERSION:-}"
@@ -127,7 +146,7 @@ sign_staged_app_bundle() {
 
 	requested_identity="${DECODEX_APP_SIGN_IDENTITY:-$DEFAULT_SIGN_IDENTITY}"
 	if ! resolve_signing_identity; then
-		echo "error: no valid macOS codesigning identity matching \"$requested_identity\" was found." >&2
+		echo "error: no valid macOS codesigning identity matching the configured signing selector was found." >&2
 		echo "error: import the real signing certificate or set DECODEX_APP_SIGN_IDENTITY to a valid identity." >&2
 		echo "error: Decodex App staging requires a stable codesigning identity." >&2
 		exit 1
@@ -172,13 +191,8 @@ stage_app_bundle() {
 	CARGO_TARGET_DIR="$RUST_TARGET_DIR" cargo build -p decodex --bin "$HELPER_NAME" "${RUST_BUILD_FLAGS[@]}"
 	CARGO_TARGET_DIR="$RUST_TARGET_DIR" cargo build -p decodex --bin "$SERVER_NAME" "${RUST_BUILD_FLAGS[@]}"
 
-	if [[ "$SWIFT_CONFIGURATION" == "release" ]]; then
-		HELPER_BINARY="$RUST_TARGET_DIR/release/$HELPER_NAME"
-		SERVER_BINARY="$RUST_TARGET_DIR/release/$SERVER_NAME"
-	else
-		HELPER_BINARY="$RUST_TARGET_DIR/debug/$HELPER_NAME"
-		SERVER_BINARY="$RUST_TARGET_DIR/debug/$SERVER_NAME"
-	fi
+	HELPER_BINARY="$RUST_TARGET_DIR/$RUST_PROFILE/$HELPER_NAME"
+	SERVER_BINARY="$RUST_TARGET_DIR/$RUST_PROFILE/$SERVER_NAME"
 
 	rm -rf "$APP_BUNDLE"
 	mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
