@@ -1,0 +1,126 @@
+name: Release v0.1.0 Retry
+
+permissions:
+  contents: read
+
+env:
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  CARGO_TERM_COLOR: always
+  CLI_BINARY_NAME: decodex
+  LINUX_CLI_ASSET: decodex-x86_64-unknown-linux-gnu.tar.gz
+  MACOS_APP_ASSET: decodex-app-aarch64-apple-darwin.zip
+  MACOS_CLI_ASSET: decodex-aarch64-apple-darwin.zip
+  RELEASE_TAG: v0.1.0
+  RELEASE_VERSION: 0.1.0
+  RUST_BACKTRACE: full
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-v0-1-0-retry.yml"
+
+jobs:
+  verify-release-assets:
+    name: Verify v0.1.0 release assets
+    if: contains(github.event.head_commit.message, '"summary":"Retry v0.1.0 crate publish"')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify existing release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          required_assets=(
+            "${MACOS_APP_ASSET}"
+            "${MACOS_CLI_ASSET}"
+            "${LINUX_CLI_ASSET}"
+          )
+
+          mapfile -t published_assets < <(
+            gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json assets \
+              --jq '.assets[].name'
+          )
+
+          for asset in "${required_assets[@]}"; do
+            if ! printf '%s\n' "${published_assets[@]}" | grep -Fxq "${asset}"; then
+              echo "Release ${RELEASE_TAG} is missing ${asset}." >&2
+              exit 1
+            fi
+
+            curl \
+              --fail \
+              --location \
+              --output /dev/null \
+              --range 0-0 \
+              --retry 5 \
+              --retry-delay 2 \
+              --silent \
+              --show-error \
+              "https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${asset}"
+          done
+
+  publish-on-crates-io:
+    name: Publish v0.1.0 on crates.io
+    if: contains(github.event.head_commit.message, '"summary":"Retry v0.1.0 crate publish"')
+    runs-on: ubuntu-latest
+    needs: [verify-release-assets]
+    steps:
+      - name: Fetch latest code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1.16.1
+        with:
+          cache: true
+
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          version="$(
+            sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml |
+              head -n 1
+          )"
+          if [[ "${version}" != "${RELEASE_VERSION}" ]]; then
+            echo "Cargo workspace version ${version} does not match ${RELEASE_VERSION}." >&2
+            exit 1
+          fi
+
+          crate_response="${RUNNER_TEMP}/crate-response.json"
+          crate_status="$(
+            curl \
+              --location \
+              --output "${crate_response}" \
+              --silent \
+              --show-error \
+              --write-out "%{http_code}" \
+              "https://crates.io/api/v1/crates/${CLI_BINARY_NAME}/${RELEASE_VERSION}"
+          )"
+
+          case "${crate_status}" in
+            200)
+              echo "${CLI_BINARY_NAME} ${RELEASE_VERSION} is already published on crates.io."
+              exit 0
+              ;;
+            404)
+              ;;
+            *)
+              cat "${crate_response}" >&2
+              echo "Unexpected crates.io API status: ${crate_status}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "${CARGO_REGISTRY_TOKEN:-}" ]]; then
+            echo "Missing required secret: CARGO_REGISTRY_TOKEN" >&2
+            exit 1
+          fi
+
+          cargo publish --locked --package "${CLI_BINARY_NAME}"
