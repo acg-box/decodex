@@ -29,9 +29,10 @@ criteria for future simplification.
 
 Decodex resolves the `gh` executable through the runtime helper before these
 operations. The helper checks `PATH`, then common local install locations such as
-`$HOME/.local/bin`, `$HOME/.cargo/bin`, `/opt/homebrew/bin`, and `/usr/local/bin` so a
-long-running GUI-started control plane uses the same GitHub CLI binary an operator can
-run from a shell when validating PR handoff state.
+`$HOME/.local/bin`, `$HOME/.cargo/bin`, `/run/current-system/sw/bin`,
+`/opt/homebrew/bin`, and `/usr/local/bin` so a long-running GUI-started control plane
+uses the same GitHub CLI binary an operator can run from a shell when validating PR
+handoff state.
 
 ## Replacement Criteria
 
