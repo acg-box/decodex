@@ -426,6 +426,10 @@ wants to observe the self-bootstrap loop without reading source code.
    local runtime database. Passing `--config` refreshes that project registration
    before the scheduler starts.
 
+   Do not use `decodex serve --dev` for this step. Dev mode is only for Decodex App
+   and local account/app snapshot API development; it does not register projects,
+   poll Linear, dispatch work, or accept `--config` or `--interval`.
+
    Pass `decodex serve --config <PROJECT_DIR>` when you want `serve` to refresh one
    project registration before it starts. Omit it when the registry already contains
    the enabled projects you want the control plane to monitor.
@@ -616,6 +620,10 @@ Decodex is intentionally Unix-only, and the control plane relies on Unix file-de
 ```sh
 decodex serve --interval 60s --listen-address 127.0.0.1:8912
 ```
+
+Use hidden `decodex serve --dev` only for Decodex App or local account/app snapshot API
+development. It is not a scheduler and must not be used for this runbook's automation,
+queue intake, project registration, or retained-lane recovery steps.
 
 The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `cargo run -p decodex --bin decodex -- status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as active queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
 
