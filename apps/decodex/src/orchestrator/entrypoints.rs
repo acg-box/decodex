@@ -102,14 +102,14 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 }
 
 pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
-	if request.api_only && request.config_path.is_some() {
+	if request.dev && request.config_path.is_some() {
 		eyre::bail!(
-			"serve --api-only does not accept --config because it must not register or poll projects."
+			"serve --dev does not accept --config because it must not register or poll projects."
 		);
 	}
-	if request.api_only && request.poll_interval.is_some() {
+	if request.dev && request.poll_interval.is_some() {
 		eyre::bail!(
-			"serve --api-only does not accept --interval because API-only mode does not poll projects."
+			"serve --dev does not accept --interval because dev mode does not poll projects."
 		);
 	}
 
@@ -119,7 +119,7 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 	run_control_plane_maintenance("startup");
 
-	if request.api_only {
+	if request.dev {
 		let operator_state_endpoint =
 			OperatorStateEndpoint::start(request.listen_address, Arc::clone(&state_store))?;
 		let runtime_db_path = runtime::runtime_db_path()?;
@@ -130,20 +130,20 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 			listen_address = %operator_state_endpoint.listen_address(),
 			path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
 			ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
-			api_only = true,
-			stream_interval_s = OPERATOR_API_ONLY_SNAPSHOT_STREAM_INTERVAL.as_secs(),
+			dev = true,
+			stream_interval_s = OPERATOR_DEV_SNAPSHOT_STREAM_INTERVAL.as_secs(),
 			runtime_db_path = %runtime_db_path.display(),
 			global_config_path = %global_config_path.display(),
 			project_config_dir = %project_config_dir.display(),
-			"Starting Decodex API-only operator endpoint."
+			"Starting Decodex dev operator endpoint."
 		);
 
 		loop {
 			let tick_started_at = Instant::now();
-			let snapshot = run_control_plane_api_only_tick(&state_store)?;
+			let snapshot = run_control_plane_dev_tick(&state_store)?;
 
 			publish_operator_snapshot(&operator_state_endpoint, &snapshot);
-			sleep_until_next_tick(OPERATOR_API_ONLY_SNAPSHOT_STREAM_INTERVAL, tick_started_at);
+			sleep_until_next_tick(OPERATOR_DEV_SNAPSHOT_STREAM_INTERVAL, tick_started_at);
 		}
 	}
 
@@ -178,7 +178,7 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 		listen_address = %operator_state_endpoint.listen_address(),
 		path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
 		ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
-		api_only = false,
+		dev = false,
 		runtime_db_path = %runtime_db_path.display(),
 		global_config_path = %global_config_path.display(),
 		project_config_dir = %project_config_dir.display(),
@@ -485,7 +485,7 @@ fn run_control_plane_tick(
 	}))
 }
 
-fn run_control_plane_api_only_tick(state_store: &StateStore) -> Result<OperatorStatusSnapshot> {
+fn run_control_plane_dev_tick(state_store: &StateStore) -> Result<OperatorStatusSnapshot> {
 	let registered_projects = state_store.list_projects()?;
 	let mut snapshot = empty_control_plane_snapshot(DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT);
 	let mut project_statuses = Vec::new();
@@ -497,7 +497,7 @@ fn run_control_plane_api_only_tick(state_store: &StateStore) -> Result<OperatorS
 	add_operator_snapshot_warning(&mut snapshot, "automation_disabled");
 
 	for registration in &registered_projects {
-		let mut project_status = operator_project_status_from_api_only_registration(registration);
+		let mut project_status = operator_project_status_from_dev_registration(registration);
 
 		if registration.enabled() {
 			match ServiceConfig::from_path(registration.config_path()).and_then(|project| {
@@ -534,7 +534,7 @@ fn run_control_plane_api_only_tick(state_store: &StateStore) -> Result<OperatorS
 
 					tracing::warn!(
 						project_id = registration.service_id(),
-						"API-only operator snapshot local run hydration failed; sensitive runtime details were withheld."
+						"Dev operator snapshot local run hydration failed; sensitive runtime details were withheld."
 					);
 				},
 			}
@@ -955,7 +955,7 @@ fn operator_project_status_from_registration(
 	}
 }
 
-fn operator_project_status_from_api_only_registration(
+fn operator_project_status_from_dev_registration(
 	project: &ProjectRegistration,
 ) -> OperatorProjectStatus {
 	OperatorProjectStatus {
@@ -972,7 +972,7 @@ fn operator_project_status_from_api_only_registration(
 		cleanup_blocked_count: 0,
 		cleanup_pending_count: 0,
 		connector_state: if project.enabled() {
-			String::from("api_only")
+			String::from("dev")
 		} else {
 			String::from("disabled")
 		},

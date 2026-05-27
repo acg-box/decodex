@@ -223,6 +223,13 @@ node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399
 node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-codex-auth
 ```
 
+Use hidden `decodex serve --dev --listen-address 127.0.0.1:8912` only when
+developing Decodex App's bundled server path or the local account/app snapshot APIs
+against real runtime state. Dev mode deliberately does not register projects, poll
+Linear, dispatch work, or accept `--config` or `--interval`. For real automation,
+use ordinary `decodex serve --interval ...`; for dashboard-only UI work, prefer the
+mock server above.
+
 The dashboard semantics and local-vs-external state boundary live in
 `docs/reference/operator-control-plane.md`.
 
