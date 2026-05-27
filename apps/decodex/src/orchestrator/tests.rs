@@ -22,7 +22,8 @@ use time::OffsetDateTime;
 use crate::tracker::records;
 #[rustfmt::skip]
 	use crate::agent::{
-		ACTIVE_RUN_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure,
+		ACTIVE_RUN_IDLE_TIMEOUT, MODEL_EXECUTION_IDLE_TIMEOUT,
+		AppServerCapabilityPreflightFailure,
 		AppServerHomePreflightFailure, AppServerTransportFailure, AppServerTurnFailure,
 		DynamicToolHandler, ReviewPolicyStopReason, ReviewPolicyStopRequested, TrackerToolBridge,
 		TurnContinuationGuard,

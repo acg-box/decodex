@@ -1377,6 +1377,7 @@ pub(crate) enum ActiveRunDisposition {
 	Terminal,
 	NonActive,
 	Stalled { idle_for: Duration },
+	StalledAlreadyNeedsAttention { idle_for: Duration },
 }
 
 enum RetainedReviewLaneLoad {

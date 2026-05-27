@@ -54,6 +54,7 @@ use crate::{
 };
 
 pub(crate) const ACTIVE_RUN_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+pub(crate) const MODEL_EXECUTION_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
@@ -80,6 +81,7 @@ const PREFLIGHT_CHECK_MCP: &str = "mcp";
 const PREFLIGHT_PLUGIN_MARKETPLACE_KIND: &str = "local";
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32_601;
 const CHILD_BUCKET_MODEL: &str = "Model";
+const WAITING_REASON_MODEL_EXECUTION: &str = "model_execution";
 const CHILD_BUCKET_PROTOCOL: &str = "Protocol";
 const CHILD_BUCKET_TOOL: &str = "Tool";
 const CHILD_BUCKET_SHELL: &str = "Shell";
@@ -969,6 +971,17 @@ impl RequestWaitPhase {
 	}
 }
 
+pub(crate) fn protocol_activity_idle_timeout(
+	protocol_activity: Option<&state::ProtocolActivitySummary>,
+	base_timeout: Duration,
+) -> Duration {
+	if protocol_activity.is_some_and(running_model_execution_protocol_activity) {
+		return base_timeout.max(MODEL_EXECUTION_IDLE_TIMEOUT);
+	}
+
+	base_timeout
+}
+
 pub(crate) fn execute_app_server_run(
 	request: &AppServerRunRequest<'_>,
 	state_store: &StateStore,
@@ -1048,6 +1061,13 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 	}
 
 	Ok(result)
+}
+
+fn running_model_execution_protocol_activity(
+	protocol_activity: &state::ProtocolActivitySummary,
+) -> bool {
+	protocol_activity.turn_status.as_deref() == Some("running")
+		&& protocol_activity.waiting_reason.as_deref() == Some(WAITING_REASON_MODEL_EXECUTION)
 }
 
 fn preflight_check_blocker_summary(check: &AppServerCapabilityPreflightCheck) -> String {
@@ -3135,10 +3155,12 @@ fn wait_for_turn_completion(
 	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
 
 	loop {
+		let idle_timeout =
+			protocol_activity_idle_timeout(Some(&recorder.protocol_activity.summary), timeout);
 		let wire_message = next_turn_wire_message(
 			client,
 			last_activity_at,
-			timeout,
+			idle_timeout,
 			target_thread_id,
 			target_turn_id,
 			latest_turn_failure.as_ref(),
