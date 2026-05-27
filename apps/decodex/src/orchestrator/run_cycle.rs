@@ -20,6 +20,14 @@ struct RetainedReviewRuntime<'a, T> {
 	now_unix_epoch: i64,
 }
 
+struct ProjectStateReconciliationContext<'a, T> {
+	tracker: &'a T,
+	project: &'a ServiceConfig,
+	workflow: &'a WorkflowDocument,
+	state_store: &'a StateStore,
+	worktree_manager: &'a WorktreeManager,
+}
+
 #[derive(Clone, Copy)]
 struct RetainedReviewOrchestrationMarkerFields {
 	request_comment_database_id: Option<i64>,
@@ -2448,92 +2456,243 @@ where
 		.into_iter()
 		.map(|issue| (issue.id.clone(), issue))
 		.collect::<HashMap<_, _>>();
+	let reconciliation_context = ProjectStateReconciliationContext {
+		tracker,
+		project,
+		workflow,
+		state_store,
+		worktree_manager,
+	};
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let mut cleared_terminal_lane_issue_ids = HashSet::new();
 
-	for lease in &leases {
-		if let Some(issue) = issues_by_id.get(lease.issue_id())
-			&& issue.state.name == workflow.frontmatter().tracker().success_state()
-			&& retained_review_lease_matches_run(state_store, lease)?
-		{
-			mark_run_attempt_if_active(state_store, lease.run_id(), "succeeded")?;
+	reconcile_active_project_leases(
+		&reconciliation_context,
+		&leases,
+		&issues_by_id,
+		now_unix_epoch,
+		&mut cleared_terminal_lane_issue_ids,
+	)?;
+	reconcile_orphaned_active_worktree_runs(
+		&reconciliation_context,
+		&leases,
+		&worktrees,
+		&issues_by_id,
+		now_unix_epoch,
+	)?;
+	cleanup_terminal_project_worktrees(
+		&reconciliation_context,
+		&worktrees,
+		&issues_by_id,
+		&mut cleared_terminal_lane_issue_ids,
+	)?;
 
-			state_store.clear_lease(lease.issue_id())?;
+	Ok(())
+}
 
+fn reconcile_active_project_leases<T>(
+	context: &ProjectStateReconciliationContext<'_, T>,
+	leases: &[IssueLease],
+	issues_by_id: &HashMap<String, TrackerIssue>,
+	now_unix_epoch: i64,
+	cleared_terminal_lane_issue_ids: &mut HashSet<String>,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	for lease in leases {
+		if reconcile_success_retained_review_lease(context, lease, issues_by_id)? {
 			continue;
 		}
-		if let Some(issue) = issues_by_id.get(lease.issue_id())
-				&& terminal_issue_keeps_retained_closeout(
-					tracker,
-					issue,
-					project,
-					workflow,
-					state_store,
-				)?
-		{
-			if retained_closeout_lease_has_fresh_activity(
-				lease,
-				issue,
-				project,
-				now_unix_epoch,
-			)? {
-				continue;
-			}
-
-			clear_terminal_lane_labels_once(
-				tracker,
-				project,
-				issue,
-				&mut cleared_terminal_lane_issue_ids,
-			)?;
-			mark_run_attempt_if_active(state_store, lease.run_id(), "interrupted")?;
-
-			state_store.clear_lease(lease.issue_id())?;
-
+		if reconcile_terminal_retained_closeout_lease(
+			context,
+			lease,
+			issues_by_id,
+			now_unix_epoch,
+			cleared_terminal_lane_issue_ids,
+		)? {
 			continue;
 		}
 
-		let reconciled_status = match issues_by_id.get(lease.issue_id()) {
-			Some(issue) if is_terminal_issue(issue, workflow) => "terminated",
-			Some(_) | None => "interrupted",
+		reconcile_stale_project_lease(
+			context,
+			lease,
+			issues_by_id,
+			cleared_terminal_lane_issue_ids,
+		)?;
+	}
+
+	Ok(())
+}
+
+fn reconcile_success_retained_review_lease<T>(
+	context: &ProjectStateReconciliationContext<'_, T>,
+	lease: &IssueLease,
+	issues_by_id: &HashMap<String, TrackerIssue>,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	if let Some(issue) = issues_by_id.get(lease.issue_id())
+		&& issue.state.name == context.workflow.frontmatter().tracker().success_state()
+		&& retained_review_lease_matches_run(context.state_store, lease)?
+	{
+		mark_run_attempt_if_active(context.state_store, lease.run_id(), "succeeded")?;
+
+		context.state_store.clear_lease(lease.issue_id())?;
+
+		return Ok(true);
+	}
+
+	Ok(false)
+}
+
+fn reconcile_terminal_retained_closeout_lease<T>(
+	context: &ProjectStateReconciliationContext<'_, T>,
+	lease: &IssueLease,
+	issues_by_id: &HashMap<String, TrackerIssue>,
+	now_unix_epoch: i64,
+	cleared_terminal_lane_issue_ids: &mut HashSet<String>,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	let Some(issue) = issues_by_id.get(lease.issue_id()) else {
+		return Ok(false);
+	};
+
+	if !terminal_issue_keeps_retained_closeout(
+		context.tracker,
+		issue,
+		context.project,
+		context.workflow,
+		context.state_store,
+	)? {
+		return Ok(false);
+	}
+	if retained_closeout_lease_has_fresh_activity(
+		lease,
+		issue,
+		context.project,
+		now_unix_epoch,
+	)? {
+		return Ok(true);
+	}
+
+	clear_terminal_lane_labels_once(
+		context.tracker,
+		context.project,
+		issue,
+		cleared_terminal_lane_issue_ids,
+	)?;
+	mark_run_attempt_if_active(context.state_store, lease.run_id(), "interrupted")?;
+
+	context.state_store.clear_lease(lease.issue_id())?;
+
+	Ok(true)
+}
+
+fn reconcile_stale_project_lease<T>(
+	context: &ProjectStateReconciliationContext<'_, T>,
+	lease: &IssueLease,
+	issues_by_id: &HashMap<String, TrackerIssue>,
+	cleared_terminal_lane_issue_ids: &mut HashSet<String>,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	let reconciled_status = match issues_by_id.get(lease.issue_id()) {
+		Some(issue) if is_terminal_issue(issue, context.workflow) => "terminated",
+		Some(_) | None => "interrupted",
+	};
+
+	if let Some(issue) = issues_by_id.get(lease.issue_id())
+		&& is_terminal_issue(issue, context.workflow)
+	{
+		clear_terminal_lane_labels_once(
+			context.tracker,
+			context.project,
+			issue,
+			cleared_terminal_lane_issue_ids,
+		)?;
+	}
+
+	mark_run_attempt_if_active(context.state_store, lease.run_id(), reconciled_status)?;
+
+	context.state_store.clear_lease(lease.issue_id())
+}
+
+fn reconcile_orphaned_active_worktree_runs<T>(
+	context: &ProjectStateReconciliationContext<'_, T>,
+	leases: &[IssueLease],
+	worktrees: &[WorktreeMapping],
+	issues_by_id: &HashMap<String, TrackerIssue>,
+	now_unix_epoch: i64,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	let mut orphaned_actions = Vec::new();
+
+	for mapping in worktrees {
+		if leases.iter().any(|lease| lease.issue_id() == mapping.issue_id()) {
+			continue;
+		}
+
+		let Some(issue) = issues_by_id.get(mapping.issue_id()) else {
+			continue;
+		};
+		let Some(action) = inspect_orphaned_active_worktree_reconciliation(
+			context,
+			issue,
+			mapping,
+			now_unix_epoch,
+		)? else {
+			continue;
 		};
 
-		if let Some(issue) = issues_by_id.get(lease.issue_id())
-			&& is_terminal_issue(issue, workflow)
-		{
-			clear_terminal_lane_labels_once(
-				tracker,
-				project,
-				issue,
-				&mut cleared_terminal_lane_issue_ids,
-			)?;
-		}
-
-		mark_run_attempt_if_active(state_store, lease.run_id(), reconciled_status)?;
-
-		state_store.clear_lease(lease.issue_id())?;
+		orphaned_actions.push(action);
 	}
-	for mapping in &worktrees {
+
+	apply_active_run_reconciliation(
+		context.tracker,
+		context.project,
+		context.state_store,
+		context.worktree_manager,
+		orphaned_actions,
+	)
+}
+
+fn cleanup_terminal_project_worktrees<T>(
+	context: &ProjectStateReconciliationContext<'_, T>,
+	worktrees: &[WorktreeMapping],
+	issues_by_id: &HashMap<String, TrackerIssue>,
+	cleared_terminal_lane_issue_ids: &mut HashSet<String>,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	for mapping in worktrees {
 		if let Some(issue) = issues_by_id.get(mapping.issue_id())
-			&& is_terminal_issue(issue, workflow)
-				&& !terminal_issue_keeps_retained_closeout(
-					tracker,
-					issue,
-					project,
-					workflow,
-					state_store,
-				)?
+			&& is_terminal_issue(issue, context.workflow)
+			&& !terminal_issue_keeps_retained_closeout(
+				context.tracker,
+				issue,
+				context.project,
+				context.workflow,
+				context.state_store,
+			)?
 		{
 			clear_terminal_lane_labels_once(
-				tracker,
-				project,
+				context.tracker,
+				context.project,
 				issue,
-				&mut cleared_terminal_lane_issue_ids,
+				cleared_terminal_lane_issue_ids,
 			)?;
 			cleanup_worktree_mapping(
-				state_store,
-				worktree_manager,
-				workflow,
+				context.state_store,
+				context.worktree_manager,
+				context.workflow,
 				&issue.identifier,
 				mapping,
 			)?;
@@ -2541,6 +2700,93 @@ where
 	}
 
 	Ok(())
+}
+
+fn inspect_orphaned_active_worktree_reconciliation<T>(
+	context: &ProjectStateReconciliationContext<'_, T>,
+	issue: &TrackerIssue,
+	worktree_mapping: &WorktreeMapping,
+	now_unix_epoch: i64,
+) -> Result<Option<ActiveRunReconciliation>>
+where
+	T: IssueTracker,
+{
+	let has_service_ownership =
+		issue_has_service_ownership(context.tracker, issue, context.project.service_id())?;
+	let needs_attention = issue
+		.has_label(context.workflow.frontmatter().tracker().needs_attention_label());
+
+	if !has_service_ownership && !needs_attention {
+		return Ok(None);
+	}
+
+	let Some(run_attempt) = context.state_store.latest_run_attempt_for_issue(&issue.id)? else {
+		return Ok(None);
+	};
+	let Some(idle_for) =
+		orphaned_active_run_idle_duration(
+			context.state_store,
+			&run_attempt,
+			worktree_mapping,
+			now_unix_epoch,
+		)?
+	else {
+		return Ok(None);
+	};
+	let disposition = if needs_attention {
+		ActiveRunDisposition::StalledAlreadyNeedsAttention { idle_for }
+	} else if is_issue_active_for_run(issue, context.workflow) {
+		ActiveRunDisposition::Stalled { idle_for }
+	} else {
+		return Ok(None);
+	};
+
+	Ok(Some(ActiveRunReconciliation {
+		issue: issue.clone(),
+		run_attempt,
+		worktree_mapping: Some(worktree_mapping.clone()),
+		disposition,
+		workflow: context.workflow.clone(),
+	}))
+}
+
+fn orphaned_active_run_idle_duration(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+	worktree_mapping: &WorktreeMapping,
+	now_unix_epoch: i64,
+) -> Result<Option<Duration>> {
+	if !matches!(run_attempt.status(), "starting" | "running") {
+		return Ok(None);
+	}
+
+	let marker = state::read_run_activity_marker_snapshot(worktree_mapping.worktree_path())?
+		.filter(|marker| {
+			marker.run_id() == run_attempt.run_id()
+				&& marker.attempt_number() == run_attempt.attempt_number()
+		});
+
+	if let Some(marker) = marker.as_ref()
+		&& marker.process_id().is_some()
+	{
+		if marker_process_is_alive(marker) {
+			return Ok(None);
+		}
+
+		return Ok(Some(
+			marker
+				.last_activity_unix_epoch()
+				.and_then(|last_activity| observed_idle_duration(last_activity, now_unix_epoch))
+				.unwrap_or(Duration::ZERO),
+		));
+	}
+
+	stalled_idle_duration(
+		state_store,
+		run_attempt,
+		Some(worktree_mapping),
+		now_unix_epoch,
+	)
 }
 
 fn clear_terminal_lane_labels_once<T>(
