@@ -320,27 +320,27 @@ struct ServeCommand {
 	/// Operator UI listen address.
 	#[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8912")]
 	listen_address: String,
-	/// Serve only local operator HTTP/API endpoints without polling or dispatching projects.
+	/// Start the Decodex App/dev endpoint without polling or dispatching projects.
 	#[arg(long, hide = true)]
-	api_only: bool,
+	dev: bool,
 }
 impl ServeCommand {
 	fn run(&self) -> crate::prelude::Result<()> {
-		if self.api_only && self.interval.is_some() {
+		if self.dev && self.interval.is_some() {
 			eyre::bail!(
-				"serve --api-only does not accept --interval because API-only mode does not poll projects."
+				"serve --dev does not accept --interval because dev mode does not poll projects."
 			);
 		}
 
 		orchestrator::run_control_plane(ServeRequest {
 			config_path: self.project_config.as_path(),
-			poll_interval: if self.api_only {
+			poll_interval: if self.dev {
 				None
 			} else {
 				Some(self.interval.unwrap_or_else(|| Duration::from_secs(60)))
 			},
 			listen_address: &self.listen_address,
-			api_only: self.api_only,
+			dev: self.dev,
 		})
 	}
 }
@@ -1016,35 +1016,35 @@ mod tests {
 				project_config: ProjectConfigArgs { config: Some(config) },
 				interval,
 				listen_address,
-				api_only,
+				dev,
 			})
 				if interval == Some(Duration::from_secs(30))
 					&& listen_address == "127.0.0.1:9000"
-					&& !api_only
+					&& !dev
 					&& config == Path::new("./project.toml")
 		));
 	}
 
 	#[test]
-	fn parses_serve_api_only() {
-		let cli = Cli::parse_from(["decodex", "serve", "--api-only"]);
+	fn parses_serve_dev() {
+		let cli = Cli::parse_from(["decodex", "serve", "--dev"]);
 
 		assert!(matches!(
 			cli.command,
-			Command::Serve(ServeCommand { interval: None, api_only: true, .. })
+			Command::Serve(ServeCommand { interval: None, dev: true, .. })
 		));
 	}
 
 	#[test]
-	fn rejects_serve_api_only_with_interval() {
-		let cli = Cli::parse_from(["decodex", "serve", "--api-only", "--interval", "30s"]);
+	fn rejects_serve_dev_with_interval() {
+		let cli = Cli::parse_from(["decodex", "serve", "--dev", "--interval", "30s"]);
 		let Command::Serve(command) = cli.command else {
 			panic!("expected serve command");
 		};
-		let error = command.run().expect_err("api-only serve must reject interval configuration");
+		let error = command.run().expect_err("dev serve must reject interval configuration");
 		let message = error.to_string();
 
-		assert!(message.contains("--api-only"));
+		assert!(message.contains("--dev"));
 		assert!(message.contains("--interval"));
 	}
 
