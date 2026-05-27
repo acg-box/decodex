@@ -52,6 +52,9 @@ wants to register that project and start the scheduler in one command.
 Use `decodex run <ISSUE>` or `cargo run -p decodex --bin decodex -- run <ISSUE>` only
 for a deliberate one-issue automation pass; it still uses the same retained-lane
 eligibility and lifecycle rules.
+Do not use hidden `serve --api-only` for automation. That mode belongs to Decodex App:
+it serves local dashboard/account/app snapshot APIs, but it does not register
+projects, poll Linear, or dispatch lanes.
 
 ## Intake and Ownership
 
@@ -78,6 +81,11 @@ terminal automation signal.
   wait, retained repair, closeout, recovery worktrees, and cleanup debt.
 - Treat runtime DB rows, app-server protocol activity, and Linear execution-ledger
   comments as different evidence surfaces.
+- When app-server preflight mentions `skills/list`, distinguish non-blocking scan
+  diagnostics from real blockers. If the run cwd is present and at least one skill is
+  enabled, preserve `error_count`, `first_error_path`, and `first_error` as evidence
+  but do not stop the lane solely because unrelated installed skill metadata failed to
+  scan. Missing cwd coverage or zero enabled skills remain blockers.
 - Before assuming a lane is stuck, compare lane phase, wait reason, last run activity,
   protocol activity, active lease state, and child-agent activity when present.
 
