@@ -786,26 +786,28 @@ mod tests {
 		assert_eq!(envs.get("GIT_TERMINAL_PROMPT").map(String::as_str), Some("0"));
 		assert_eq!(envs.get("GCM_INTERACTIVE").map(String::as_str), Some("never"));
 		assert_eq!(envs.get("GIT_ASKPASS").map(String::as_str), Some("/tmp/decodex-askpass.sh"));
-		assert_eq!(envs.get("GIT_CONFIG_COUNT").map(String::as_str), Some("9"));
+		assert_eq!(envs.get("GIT_CONFIG_COUNT").map(String::as_str), Some("10"));
+		assert_eq!(envs.get("GIT_CONFIG_KEY_0").map(String::as_str), Some("credential.helper"));
+		assert_eq!(envs.get("GIT_CONFIG_VALUE_0").map(String::as_str), Some(""));
 		assert_eq!(
-			envs.get("GIT_CONFIG_KEY_1").map(String::as_str),
+			envs.get("GIT_CONFIG_KEY_2").map(String::as_str),
 			Some("url.https://github.com/.insteadOf")
 		);
-		assert_eq!(envs.get("GIT_CONFIG_VALUE_1").map(String::as_str), Some("git@github.com-x:"));
+		assert_eq!(envs.get("GIT_CONFIG_VALUE_2").map(String::as_str), Some("git@github.com-x:"));
 		assert_eq!(
-			envs.get("GIT_CONFIG_KEY_5").map(String::as_str),
+			envs.get("GIT_CONFIG_KEY_6").map(String::as_str),
 			Some("url.https://github.com/.insteadOf")
 		);
 		assert_eq!(
-			envs.get("GIT_CONFIG_VALUE_5").map(String::as_str),
+			envs.get("GIT_CONFIG_VALUE_6").map(String::as_str),
 			Some("ssh://git@github.com-y/")
 		);
-		assert_eq!(envs.get("GIT_CONFIG_KEY_6").map(String::as_str), Some("commit.gpgsign"));
-		assert_eq!(envs.get("GIT_CONFIG_VALUE_6").map(String::as_str), Some("false"));
-		assert_eq!(envs.get("GIT_CONFIG_KEY_7").map(String::as_str), Some("tag.gpgsign"));
+		assert_eq!(envs.get("GIT_CONFIG_KEY_7").map(String::as_str), Some("commit.gpgsign"));
 		assert_eq!(envs.get("GIT_CONFIG_VALUE_7").map(String::as_str), Some("false"));
-		assert_eq!(envs.get("GIT_CONFIG_KEY_8").map(String::as_str), Some("user.signingkey"));
-		assert_eq!(envs.get("GIT_CONFIG_VALUE_8").map(String::as_str), Some(""));
+		assert_eq!(envs.get("GIT_CONFIG_KEY_8").map(String::as_str), Some("tag.gpgsign"));
+		assert_eq!(envs.get("GIT_CONFIG_VALUE_8").map(String::as_str), Some("false"));
+		assert_eq!(envs.get("GIT_CONFIG_KEY_9").map(String::as_str), Some("user.signingkey"));
+		assert_eq!(envs.get("GIT_CONFIG_VALUE_9").map(String::as_str), Some(""));
 	}
 
 	#[test]

@@ -106,6 +106,9 @@ impl GitCredentialEnvironment {
 		let mut git_config_entries = Vec::new();
 
 		if self.github_token.is_some() && self.git_askpass_path.is_some() {
+			// Empty helper resets inherited helpers so routed askpass owns GitHub auth.
+			git_config_entries.push((String::from("credential.helper"), String::new()));
+
 			for ssh_prefix in GITHUB_SSH_URL_PREFIXES {
 				git_config_entries.push((
 					format!("url.{GITHUB_HTTPS_URL_BASE}.insteadOf"),
