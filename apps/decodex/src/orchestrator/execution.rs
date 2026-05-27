@@ -6,6 +6,40 @@ use records::LinearExecutionEventPublicProjection;
 
 use crate::tracker::privacy_classifier::PublicProjectionPrivacyClassifier;
 
+#[derive(Debug)]
+pub(crate) struct AppServerZeroEvidenceStartFailure {
+	issue_identifier: String,
+	run_id: String,
+}
+impl AppServerZeroEvidenceStartFailure {
+	fn new(issue_identifier: String, run_id: String) -> Self {
+		Self { issue_identifier, run_id }
+	}
+
+	fn error_class(&self) -> &'static str {
+		"app_server_zero_evidence_start_failed"
+	}
+
+	fn terminal_next_action(&self, recovery_gate: &str) -> String {
+		format!(
+			"inspect local app-server startup logs and Decodex account/runtime state for run `{}`, verify `decodex probe stdio://`, restart `decodex serve` if needed, {recovery_gate}",
+			self.run_id
+		)
+	}
+}
+
+impl Display for AppServerZeroEvidenceStartFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(
+			formatter,
+			"App-server run `{}` for issue `{}` failed before Decodex recorded a thread, turn, protocol event, or private execution event.",
+			self.run_id, self.issue_identifier
+		)
+	}
+}
+
+impl Error for AppServerZeroEvidenceStartFailure {}
+
 struct AgentGitCredentialEnvironment {
 	process_env: AppServerProcessEnv,
 	askpass_path: PathBuf,
@@ -62,13 +96,6 @@ struct PreparedTerminalFailureWriteback {
 	retry_guarded_by_state: bool,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum TerminalFailureEventRecordStatus {
-	Recorded,
-	Duplicate,
-	NoLocalStore,
-}
-
 struct CompletedAppServerRun<'a, T>
 where
 	T: IssueTracker,
@@ -89,6 +116,20 @@ struct ThreadArchiveCandidate {
 	attempt_number: i64,
 	thread_id: String,
 	sequence_number: i64,
+}
+
+struct ZeroEvidenceAppServerStartFailureContext {
+	protocol_event_count: i64,
+	private_event_count: usize,
+	thread_recorded: bool,
+	turn_recorded: bool,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum TerminalFailureEventRecordStatus {
+	Recorded,
+	Duplicate,
+	NoLocalStore,
 }
 
 fn execute_issue_run<T>(
@@ -491,19 +532,14 @@ where
 	let closeout_review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
 	};
-	let continuation_guard = IssueTurnContinuationGuard {
+	let continuation_guard = build_issue_turn_continuation_guard(
 		tracker,
-		tracker_tool_bridge: &tracker_tool_bridge,
+		&tracker_tool_bridge,
 		workflow,
-		service_id: project.service_id(),
-		issue_id: &issue_run.issue.id,
-		issue_identifier: &issue_run.issue.identifier,
-		initial_issue_state: &issue_run.initial_issue_state,
-		#[cfg(test)]
-		retry_project_slug: "",
-		dispatch_mode: issue_run.dispatch_mode,
-		review_state_inspector: Some(&closeout_review_state_inspector),
-	};
+		project,
+		issue_run,
+		Some(&closeout_review_state_inspector),
+	);
 	let decodex_tool_bridge =
 		DecodexToolBridge::new(&tracker_tool_bridge, build_decodex_run_context(workflow, issue_run));
 	let run_result = agent::execute_app_server_run(
@@ -553,10 +589,12 @@ where
 		state_store,
 	)
 	.map_err(|error| {
-		preserve_manual_attention_request(
-			tracker_tool_bridge.completion_disposition(),
+		preserve_and_promote_app_server_run_failure(
+			project,
+			state_store,
 			issue_run,
 			workflow,
+			tracker_tool_bridge.completion_disposition(),
 			error,
 		)
 	})?;
@@ -576,6 +614,32 @@ where
 		transport: &transport,
 		run_result: &run_result,
 	})
+}
+
+fn build_issue_turn_continuation_guard<'a, T>(
+	tracker: &'a T,
+	tracker_tool_bridge: &'a TrackerToolBridge<'a>,
+	workflow: &'a WorkflowDocument,
+	project: &'a ServiceConfig,
+	issue_run: &'a IssueRunPlan,
+	review_state_inspector: Option<&'a dyn PullRequestReviewStateInspector>,
+) -> IssueTurnContinuationGuard<'a, T>
+where
+	T: IssueTracker,
+{
+	IssueTurnContinuationGuard {
+		tracker,
+		tracker_tool_bridge,
+		workflow,
+		service_id: project.service_id(),
+		issue_id: &issue_run.issue.id,
+		issue_identifier: &issue_run.issue.identifier,
+		initial_issue_state: &issue_run.initial_issue_state,
+		#[cfg(test)]
+		retry_project_slug: "",
+		dispatch_mode: issue_run.dispatch_mode,
+		review_state_inspector,
+	}
 }
 
 fn finalize_completed_app_server_run<T>(run: CompletedAppServerRun<'_, T>) -> Result<RunSummary>
@@ -1163,8 +1227,134 @@ fn preserve_manual_attention_request(
 	error
 }
 
+fn preserve_and_promote_app_server_run_failure(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	workflow: &WorkflowDocument,
+	completion_disposition: Result<RunCompletionDisposition>,
+	error: Report,
+) -> Report {
+	let error =
+		preserve_manual_attention_request(completion_disposition, issue_run, workflow, error);
+
+	promote_zero_evidence_app_server_start_failure(project, state_store, issue_run, error)
+}
+
+fn promote_zero_evidence_app_server_start_failure(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	error: Report,
+) -> Report {
+	if run_failure_requires_terminal_attention(&error) {
+		return error;
+	}
+
+	match zero_evidence_app_server_start_failure_context(project, state_store, issue_run) {
+		Ok(Some(context)) => {
+			if let Err(record_error) = record_zero_evidence_app_server_start_failure(
+				project,
+				state_store,
+				issue_run,
+				&context,
+			) {
+				tracing::warn!(
+					?record_error,
+					project_id = project.service_id(),
+					issue_id = issue_run.issue.id,
+					issue = issue_run.issue.identifier,
+					run_id = issue_run.run_id,
+					attempt = issue_run.attempt_number,
+					"Failed to record zero-evidence app-server start failure evidence."
+				);
+			}
+
+			Report::new(AppServerZeroEvidenceStartFailure::new(
+				issue_run.issue.identifier.clone(),
+				issue_run.run_id.clone(),
+			))
+			.wrap_err(error)
+		},
+		Ok(None) => error,
+		Err(context_error) => {
+			tracing::warn!(
+				?context_error,
+				project_id = project.service_id(),
+				issue_id = issue_run.issue.id,
+				issue = issue_run.issue.identifier,
+				run_id = issue_run.run_id,
+				attempt = issue_run.attempt_number,
+				"Failed to classify app-server start failure evidence."
+			);
+
+			error
+		},
+	}
+}
+
+fn zero_evidence_app_server_start_failure_context(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+) -> Result<Option<ZeroEvidenceAppServerStartFailureContext>> {
+	let protocol_event_count = state_store.event_count(&issue_run.run_id)?;
+	let private_event_count = state_store
+		.list_private_execution_events(
+			project.service_id(),
+			&issue_run.issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+		)?
+		.len();
+	let run_attempt = state_store.run_attempt(&issue_run.run_id)?;
+	let thread_recorded = run_attempt.as_ref().and_then(|attempt| attempt.thread_id()).is_some();
+	let turn_recorded = run_attempt.as_ref().and_then(|attempt| attempt.turn_id()).is_some();
+
+	if protocol_event_count == 0 && private_event_count == 0 && !thread_recorded && !turn_recorded {
+		Ok(Some(ZeroEvidenceAppServerStartFailureContext {
+			protocol_event_count,
+			private_event_count,
+			thread_recorded,
+			turn_recorded,
+		}))
+	} else {
+		Ok(None)
+	}
+}
+
+fn record_zero_evidence_app_server_start_failure(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	context: &ZeroEvidenceAppServerStartFailureContext,
+) -> Result<()> {
+	state_store
+		.append_private_execution_event(
+			project.service_id(),
+			&issue_run.issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+			"app_server_zero_evidence_start_failure",
+			json!({
+				"error_class": "app_server_zero_evidence_start_failed",
+				"summary": "App-server dispatch failed before Decodex recorded a thread, turn, protocol event, or private execution event.",
+				"issue_identifier": issue_run.issue.identifier.as_str(),
+				"attempt_number": issue_run.attempt_number,
+				"branch": issue_run.worktree.branch_name.as_str(),
+				"worktree_path": issue_run.worktree.path.display().to_string(),
+				"protocol_event_count": context.protocol_event_count,
+				"private_event_count": context.private_event_count,
+				"thread_recorded": context.thread_recorded,
+				"turn_recorded": context.turn_recorded,
+			}),
+		)
+		.map(|_| ())
+}
+
 fn run_failure_requires_terminal_attention(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
+		|| error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
 		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
 		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
