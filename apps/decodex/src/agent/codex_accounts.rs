@@ -134,6 +134,30 @@ impl CodexAccountPool {
 		Ok(summaries)
 	}
 
+	pub(crate) fn account_activity_summaries_snapshot(
+		&self,
+	) -> crate::prelude::Result<Vec<CodexAccountActivitySummary>> {
+		let now = OffsetDateTime::now_utc().unix_timestamp();
+		let cache_key = self.cache_key();
+		let cache = ACCOUNT_ACTIVITY_CACHE.get_or_init(|| Mutex::new(None));
+		let cached = cache
+			.lock()
+			.map_err(|error| eyre::eyre!("Codex account usage cache is poisoned: {error}"))?;
+
+		if let Some(entry) = cached.as_ref()
+			&& entry.key == cache_key
+		{
+			return Ok(entry.summaries.clone());
+		}
+
+		drop(cached);
+
+		let _guard = self.lock_records()?;
+		let records = self.load_records()?;
+
+		Ok(records.iter().filter_map(|record| record.configured_activity_summary(now)).collect())
+	}
+
 	fn cache_key(&self) -> AccountActivityCacheKey {
 		AccountActivityCacheKey {
 			path: self.path.clone(),
@@ -1455,6 +1479,34 @@ mod tests {
 		assert_eq!(account.account_id(), "acct_copy");
 		assert_eq!(account.summary().email.as_deref(), Some("copy@example.com"));
 		assert_eq!(account.account_summaries().len(), 1);
+	}
+
+	#[test]
+	fn account_activity_snapshot_uses_configured_records_without_usage_probe() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let accounts_path = temp_dir.path().join("accounts.jsonl");
+
+		fs::write(
+			&accounts_path,
+			r#"{"email":"snapshot@example.com","auth_mode":"chatgpt","tokens":{"access_token":"access-snapshot","refresh_token":"refresh-snapshot","account_id":"acct_snapshot"}}"#,
+		)
+		.expect("accounts fixture should write");
+
+		let pool = CodexAccountPool::new_with_fixed_account(
+			&accounts_path,
+			"http://127.0.0.1:9/usage",
+			DEFAULT_REFRESH_ENDPOINT,
+			None,
+		)
+		.expect("account pool should initialize");
+		let summaries = pool.account_activity_summaries_snapshot().expect("snapshot should load");
+
+		assert_eq!(summaries.len(), 1);
+		assert_eq!(summaries[0].email.as_deref(), Some("snapshot@example.com"));
+		assert_eq!(summaries[0].status, "available");
+		assert_eq!(summaries[0].refresh_status, "not_checked");
+		assert_eq!(summaries[0].primary_remaining_percent, None);
+		assert_eq!(summaries[0].note.as_deref(), Some("configured account"));
 	}
 
 	#[test]
