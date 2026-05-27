@@ -86,7 +86,7 @@ const OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES: usize = 64 * 1_024;
 const OPERATOR_STATE_HEADER_TERMINATOR: &[u8] = b"\r\n\r\n";
 const OPERATOR_DASHBOARD_WS_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
 const OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL: Duration = Duration::from_secs(1);
-const OPERATOR_API_ONLY_SNAPSHOT_STREAM_INTERVAL: Duration = Duration::from_secs(1);
+const OPERATOR_DEV_SNAPSHOT_STREAM_INTERVAL: Duration = Duration::from_secs(1);
 const PULL_REQUEST_REVIEW_STATE_QUERY: &str = r#"
 query($owner: String!, $name: String!, $number: Int!, $reviewThreadsAfter: String) {
   repository(owner: $owner, name: $name) {
