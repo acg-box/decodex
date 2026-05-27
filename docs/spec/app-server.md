@@ -106,6 +106,10 @@ model, personality, sandbox, or approval-policy overrides on behalf of
 `WORKFLOW.md`. `plugin/list` preflight must pass `marketplaceKinds = ["local"]`
 so remote catalog, featured-plugin, or marketplace-discovery failures do not gate a
 business lane before its thread is created.
+`skills/list` scan errors are diagnostics when the response still includes the run
+cwd and at least one enabled skill. Decodex must preserve the scan error count and
+first error details in local preflight evidence, but it must not block the lane solely
+because unrelated installed skill metadata failed to scan.
 Because `plugin/list` is observational and local-marketplace-only, Decodex may retry
 one app-server output timeout before failing the lane. If the retry is exhausted,
 the terminal failure must remain an app-server preflight failure, report
