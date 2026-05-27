@@ -127,6 +127,7 @@ fn live_operator_status_snapshot_routes_retained_success_state_lane_out_of_queue
 	let worktree_path = config.worktree_root().join(&issue.identifier);
 
 	issue.blockers = vec![sample_blocker("issue-done", "PUB-105", "Done")];
+
 	state_store
 		.upsert_worktree(
 			config.service_id(),
