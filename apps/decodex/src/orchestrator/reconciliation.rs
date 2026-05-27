@@ -217,6 +217,9 @@ where
 					*idle_for,
 				)?;
 			},
+			ActiveRunDisposition::StalledAlreadyNeedsAttention { idle_for } => {
+				reconcile_stalled_attention_run(project, state_store, &action, *idle_for)?;
+			},
 		}
 	}
 
@@ -353,6 +356,27 @@ where
 	)?;
 
 	Ok(())
+}
+
+fn reconcile_stalled_attention_run(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	action: &ActiveRunReconciliation,
+	idle_for: Duration,
+) -> Result<()> {
+	tracing::warn!(
+		project_id = project.service_id(),
+		issue_id = action.issue.id,
+		issue = action.issue.identifier,
+		run_id = action.run_attempt.run_id(),
+		disposition = "stalled_already_needs_attention",
+		idle_for_s = idle_for.as_secs(),
+		"Reconciling stalled run that is already blocked for operator attention."
+	);
+
+	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
+
+	state_store.clear_lease(&action.issue.id)
 }
 
 fn write_reconciliation_operation_marker_best_effort(
