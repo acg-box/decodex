@@ -259,11 +259,45 @@ jobs:
           ls -la artifacts
 
       - name: Publish
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
-        with:
-          discussion_category_name: Announcements
-          generate_release_notes: true
-          files: artifacts/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          required_assets=(
+            "${MACOS_APP_ASSET}"
+            "${MACOS_CLI_ASSET}"
+            "${LINUX_CLI_ASSET}"
+          )
+
+          for asset in "${required_assets[@]}"; do
+            test -f "artifacts/${asset}"
+          done
+
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            mapfile -t published_assets < <(
+              gh release view "${GITHUB_REF_NAME}" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --json assets \
+                --jq '.assets[].name'
+            )
+
+            for asset in "${required_assets[@]}"; do
+              if ! printf '%s\n' "${published_assets[@]}" | grep -Fxq "${asset}"; then
+                echo "Release ${GITHUB_REF_NAME} already exists but is missing ${asset}." >&2
+                exit 1
+              fi
+            done
+
+            echo "Release ${GITHUB_REF_NAME} already exists with all expected assets."
+            exit 0
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" \
+            artifacts/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --generate-notes \
+            --title "${GITHUB_REF_NAME}"
 
   publish-on-crates-io:
     name: Publish on crates.io
