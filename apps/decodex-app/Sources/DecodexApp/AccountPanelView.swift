@@ -220,6 +220,7 @@ struct AccountPanelView: View {
 	@ObservedObject var store: AccountStore
 	@ObservedObject var loginWindowState: LoginWindowState
 	@Environment(\.colorScheme) private var colorScheme
+	@State private var accountScrollOffset: CGFloat = 0
 	@State private var pendingLogout: CodexAccount?
 	@State private var armedLogoutAccountID: String?
 	@State private var logoutArmToken = UUID()
@@ -466,14 +467,27 @@ struct AccountPanelView: View {
 
 	private var accountList: some View {
 		Group {
-			if store.accounts.count <= 3 {
-				accountRows
-			} else {
-				ScrollView {
+			if accountListNeedsScrolling {
+				ScrollView(.vertical, showsIndicators: false) {
 					accountRows
+						.background(accountScrollProbe)
 				}
-				.frame(height: accountListHeight)
-				.scrollIndicators(.hidden)
+				.coordinateSpace(name: AccountPanelLayout.accountListScrollSpace)
+				.frame(height: accountListViewportHeight)
+				.overlay(alignment: .trailing) {
+					AccountListScrollIndicatorView(
+						contentHeight: accountListContentHeight,
+						viewportHeight: accountListViewportHeight,
+						scrollOffset: accountScrollOffset
+					)
+					.padding(.trailing, 1)
+				}
+				.onPreferenceChange(AccountScrollOffsetPreferenceKey.self) { minY in
+					let maxOffset = max(0, accountListContentHeight - accountListViewportHeight)
+					accountScrollOffset = min(max(0, -minY), maxOffset)
+				}
+			} else {
+				accountRows
 			}
 		}
 	}
@@ -486,7 +500,7 @@ struct AccountPanelView: View {
 				AccountRowView(
 					account: account,
 					runs: runs,
-					emailsHidden: emailsHidden,
+					displayName: displayName(for: account),
 					showsDivider: index < store.accounts.count - 1,
 					isLogoutArmed: armedLogoutAccountID == account.id,
 					useInCodex: {
@@ -518,7 +532,7 @@ struct AccountPanelView: View {
 
 		if emailsHidden {
 			if let account = account(matching: auth.selector) {
-				return account.panelDisplayName(emailsHidden: true)
+				return displayName(for: account)
 			}
 			let identity = auth.accountFingerprint.isEmpty ? auth.selector : auth.accountFingerprint
 			return AccountDisplay.alias(forIdentity: identity)
@@ -534,9 +548,11 @@ struct AccountPanelView: View {
 
 		if let selector = control.accountSelector, selector.isEmpty == false {
 			if emailsHidden {
-				let value = account(matching: selector)?.panelDisplayName(emailsHidden: true)
-					?? AccountDisplay.alias(forIdentity: selector)
-				return "To \(value)"
+				if let account = account(matching: selector) {
+					return "To \(displayName(for: account))"
+				}
+
+				return "To \(AccountDisplay.alias(forIdentity: selector))"
 			}
 
 			if selector.contains("@") {
@@ -561,16 +577,64 @@ struct AccountPanelView: View {
 		return selector.isEmpty == false
 	}
 
-	private var accountListHeight: CGFloat {
-		let rows = store.accounts.reduce(CGFloat(0)) { total, account in
+	private var accountListContentHeight: CGFloat {
+		store.accounts.reduce(CGFloat(1)) { total, account in
 			total + accountRowHeight(for: account)
 		}
-		let spacing = CGFloat(max(store.accounts.count - 1, 0)) * 5 + 2
+	}
 
-		return min(
-			rows + spacing,
-			312
+	private var accountListViewportHeight: CGFloat {
+		min(accountListContentHeight, accountListAvailableHeight)
+	}
+
+	private var accountListNeedsScrolling: Bool {
+		accountListContentHeight > accountListAvailableHeight + 1
+	}
+
+	private var accountListAvailableHeight: CGFloat {
+		let visibleHeight = AccountPanelLayout.activeScreenVisibleHeight()
+		let availableHeight = visibleHeight - accountPanelChromeHeight
+		let minimumHeight = min(
+			AccountPanelLayout.minimumScrollableListHeight,
+			max(140, visibleHeight * 0.42)
 		)
+
+		return max(minimumHeight, availableHeight)
+	}
+
+	private var accountPanelChromeHeight: CGFloat {
+		var height = AccountPanelLayout.screenVerticalMargin
+			+ AccountPanelLayout.panelVerticalPadding
+			+ AccountPanelLayout.headerHeight
+			+ AccountPanelLayout.accountSummaryHeight
+			+ AccountPanelLayout.sectionSpacing
+
+		if store.accountList?.usageEstimate != nil {
+			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.poolUsageHeight
+		}
+		if let snapshot = store.operatorSnapshot, snapshot.shouldDisplayInPanel {
+			height += AccountPanelLayout.sectionSpacing
+				+ (snapshot.warningSummary == nil
+					? AccountPanelLayout.operatorStatusHeight
+					: AccountPanelLayout.operatorStatusHeightWithWarning)
+		}
+		if store.notice != nil {
+			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.noticeHeight
+		}
+		if store.accountList?.usageProbeError != nil {
+			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.noticeHeight
+		}
+
+		return height
+	}
+
+	private var accountScrollProbe: some View {
+		GeometryReader { proxy in
+			Color.clear.preference(
+				key: AccountScrollOffsetPreferenceKey.self,
+				value: proxy.frame(in: .named(AccountPanelLayout.accountListScrollSpace)).minY
+			)
+		}
 	}
 
 	private var headerSubtitle: String {
@@ -585,7 +649,12 @@ struct AccountPanelView: View {
 	}
 
 	private func displayName(for account: CodexAccount) -> String {
-		account.panelDisplayName(emailsHidden: emailsHidden)
+		if emailsHidden {
+			return AccountDisplay.aliases(for: store.accounts)[account.id]
+				?? account.panelDisplayName(emailsHidden: true)
+		}
+
+		return account.panelDisplayName(emailsHidden: false)
 	}
 
 	private func operatorRuns(for account: CodexAccount) -> [OperatorRunStatus] {
@@ -654,7 +723,7 @@ struct AccountPanelView: View {
 struct AccountRowView: View {
 	let account: CodexAccount
 	let runs: [OperatorRunStatus]
-	let emailsHidden: Bool
+	let displayName: String
 	let showsDivider: Bool
 	let isLogoutArmed: Bool
 	let useInCodex: () -> Void
@@ -780,10 +849,6 @@ struct AccountRowView: View {
 		.animation(PanelMotion.state, value: isLogoutArmed)
 	}
 
-	private var displayName: String {
-		account.panelDisplayName(emailsHidden: emailsHidden)
-	}
-
 	private var routeHelp: String {
 		if account.selected {
 			return "Restore balanced run routing"
@@ -804,7 +869,19 @@ struct AccountRunSummaryView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		HStack(spacing: 5) {
+		ViewThatFits(in: .horizontal) {
+			runRow(visibleCount: 3)
+			runRow(visibleCount: 2)
+			runRow(visibleCount: 1)
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+
+	private func runRow(visibleCount: Int) -> some View {
+		let visibleRuns = Array(runs.prefix(visibleCount))
+		let hiddenRuns = Array(runs.dropFirst(visibleCount))
+
+		return HStack(spacing: 5) {
 			ForEach(visibleRuns) { run in
 				AccountRunChipView(run: run)
 			}
@@ -813,16 +890,79 @@ struct AccountRunSummaryView: View {
 				AccountRunOverflowView(runs: runs, hiddenRunCount: hiddenRuns.count)
 			}
 		}
-		.frame(maxWidth: .infinity, alignment: .leading)
+		.fixedSize(horizontal: true, vertical: false)
+	}
+}
+
+private enum AccountPanelLayout {
+	static let accountListScrollSpace = "account-list-scroll"
+	static let screenVerticalMargin: CGFloat = 44
+	static let panelVerticalPadding: CGFloat = 18
+	static let sectionSpacing: CGFloat = 6
+	static let headerHeight: CGFloat = 28
+	static let accountSummaryHeight: CGFloat = 31
+	static let poolUsageHeight: CGFloat = 58
+	static let operatorStatusHeight: CGFloat = 42
+	static let operatorStatusHeightWithWarning: CGFloat = 63
+	static let noticeHeight: CGFloat = 44
+	static let minimumScrollableListHeight: CGFloat = 312
+
+	static func activeScreenVisibleHeight() -> CGFloat {
+		let mouseLocation = NSEvent.mouseLocation
+		let screen = NSScreen.screens.first { screen in
+			screen.frame.contains(mouseLocation)
+		} ?? NSScreen.main
+
+		return screen?.visibleFrame.height ?? 760
+	}
+}
+
+private struct AccountScrollOffsetPreferenceKey: PreferenceKey {
+	static let defaultValue: CGFloat = 0
+
+	static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+		value = nextValue()
+	}
+}
+
+private struct AccountListScrollIndicatorView: View {
+	let contentHeight: CGFloat
+	let viewportHeight: CGFloat
+	let scrollOffset: CGFloat
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		if contentHeight > viewportHeight + 1 {
+			ZStack(alignment: .top) {
+				Capsule(style: .continuous)
+					.fill(PanelPalette.secondaryText(colorScheme).opacity(0.12))
+					.frame(width: 3, height: viewportHeight)
+
+				Capsule(style: .continuous)
+					.fill(PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.42 : 0.34))
+					.frame(width: 3.5, height: thumbHeight)
+					.offset(y: thumbOffset)
+			}
+			.frame(width: 8, height: viewportHeight)
+			.allowsHitTesting(false)
+		}
 	}
 
-	private var visibleRuns: [OperatorRunStatus] {
-		Array(runs.prefix(3))
+	private var thumbHeight: CGFloat {
+		max(30, viewportHeight * min(1, viewportHeight / max(contentHeight, 1)))
 	}
 
-	private var hiddenRuns: [OperatorRunStatus] {
-		Array(runs.dropFirst(3))
+	private var thumbOffset: CGFloat {
+		let maxScrollOffset = max(1, contentHeight - viewportHeight)
+		let maxThumbOffset = max(0, viewportHeight - thumbHeight)
+		let progress = min(1, max(0, scrollOffset / maxScrollOffset))
+
+		return maxThumbOffset * progress
 	}
+}
+
+private enum AccountRunChipLayout {
+	static let maxWidth: CGFloat = 108
 }
 
 struct AccountRunChipView: View {
@@ -846,7 +986,7 @@ struct AccountRunChipView: View {
 		}
 		.frame(height: 21)
 		.padding(.horizontal, 8)
-		.frame(maxWidth: 88, alignment: .leading)
+		.frame(maxWidth: AccountRunChipLayout.maxWidth, alignment: .leading)
 		.background {
 			RoundedRectangle(cornerRadius: 10.5, style: .continuous)
 				.fill(isHovered ? tint.opacity(colorScheme == .dark ? 0.09 : 0.07) : Color.clear)
@@ -2389,7 +2529,23 @@ private enum AccountDisplay {
 	]
 
 	static func alias(for account: CodexAccount) -> String {
-		alias(forIdentity: account.randomNameSeed)
+		randomNames[preferredNameIndex(for: account)]
+	}
+
+	static func aliases(for accounts: [CodexAccount]) -> [String: String] {
+		var usedNames = Set<String>()
+		var aliases = [String: String]()
+		let orderedAccounts = accounts.sorted { left, right in
+			aliasSortKey(for: left) < aliasSortKey(for: right)
+		}
+
+		for account in orderedAccounts {
+			let alias = uniqueAlias(startingAt: preferredNameIndex(for: account), usedNames: usedNames)
+			usedNames.insert(alias)
+			aliases[account.id] = alias
+		}
+
+		return aliases
 	}
 
 	static func alias(forIdentity identity: String) -> String {
@@ -2442,6 +2598,63 @@ private enum AccountDisplay {
 		}
 
 		return hash
+	}
+
+	private static func aliasSortKey(for account: CodexAccount) -> String {
+		if let key = account.randomNameKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+			key.isEmpty == false
+		{
+			return key
+		}
+
+		return account.randomNameSeed
+	}
+
+	private static func preferredNameIndex(for account: CodexAccount) -> Int {
+		if let randomName = account.randomName?.trimmingCharacters(in: .whitespacesAndNewlines),
+			let index = randomNames.firstIndex(of: randomName)
+		{
+			return index
+		}
+
+		let hash = randomNameHash(for: account)
+		let offset = normalizedOffset(account.randomNameOffset ?? 0)
+
+		return (Int(hash % UInt32(randomNames.count)) + offset) % randomNames.count
+	}
+
+	private static func randomNameHash(for account: CodexAccount) -> UInt32 {
+		if let key = account.randomNameKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+			key.isEmpty == false,
+			let hash = UInt32(key, radix: 16)
+		{
+			return hash
+		}
+
+		return identityHash(account.randomNameSeed)
+	}
+
+	private static func normalizedOffset(_ offset: Int) -> Int {
+		((offset % randomNames.count) + randomNames.count) % randomNames.count
+	}
+
+	private static func uniqueAlias(startingAt startIndex: Int, usedNames: Set<String>) -> String {
+		for probe in 0..<randomNames.count {
+			let name = randomNames[(startIndex + probe) % randomNames.count]
+			if usedNames.contains(name) == false {
+				return name
+			}
+		}
+
+		let baseName = randomNames[startIndex % randomNames.count]
+		var suffix = 2
+		while true {
+			let name = "\(baseName) \(suffix)"
+			if usedNames.contains(name) == false {
+				return name
+			}
+			suffix += 1
+		}
 	}
 }
 
