@@ -1,6 +1,6 @@
 #[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 use std::{
-	collections::BTreeMap,
+	collections::{BTreeMap, BTreeSet},
 	env, fs,
 	io::{self, ErrorKind, Read, Write as _},
 	path::{Path, PathBuf},
@@ -294,10 +294,12 @@ impl AccountStore {
 			mode: if selector.is_some() { String::from("fixed") } else { String::from("balanced") },
 			account_selector: selector.clone(),
 		};
-		let accounts = records
+		let mut accounts = records
 			.iter()
 			.map(|record| record.summary(selector.as_deref(), codex_auth.as_ref(), &name_offsets))
 			.collect::<Vec<_>>();
+
+		assign_unique_random_names(&mut accounts);
 
 		Ok(AccountListResponse {
 			accounts_path: self.accounts_path.display().to_string(),
@@ -1687,6 +1689,59 @@ fn random_name(seed: &str, offset: i64) -> String {
 	ACCOUNT_RANDOM_NAMES[usize::try_from(index).unwrap_or_default()].to_owned()
 }
 
+fn assign_unique_random_names(accounts: &mut [AccountSummary]) {
+	if accounts.len() < 2 {
+		return;
+	}
+
+	let mut account_indexes = (0..accounts.len()).collect::<Vec<_>>();
+
+	account_indexes.sort_by(|left, right| {
+		accounts[*left]
+			.random_name_key
+			.cmp(&accounts[*right].random_name_key)
+			.then_with(|| accounts[*left].selector.cmp(&accounts[*right].selector))
+	});
+
+	let mut used_names = BTreeSet::new();
+
+	for index in account_indexes {
+		let preferred_index = random_name_index(&accounts[index].random_name).unwrap_or_default();
+		let name = unique_random_name_from(preferred_index, &used_names);
+
+		used_names.insert(name.clone());
+
+		accounts[index].random_name = name;
+	}
+}
+
+fn random_name_index(name: &str) -> Option<usize> {
+	ACCOUNT_RANDOM_NAMES.iter().position(|candidate| *candidate == name)
+}
+
+fn unique_random_name_from(start_index: usize, used_names: &BTreeSet<String>) -> String {
+	for probe in 0..ACCOUNT_RANDOM_NAMES.len() {
+		let name = ACCOUNT_RANDOM_NAMES[(start_index + probe) % ACCOUNT_RANDOM_NAMES.len()];
+
+		if !used_names.contains(name) {
+			return name.to_owned();
+		}
+	}
+
+	let base_name = ACCOUNT_RANDOM_NAMES[start_index % ACCOUNT_RANDOM_NAMES.len()];
+	let mut suffix = 2;
+
+	loop {
+		let name = format!("{base_name} {suffix}");
+
+		if !used_names.contains(&name) {
+			return name;
+		}
+
+		suffix += 1;
+	}
+}
+
 fn account_identity_hash(value: &str) -> u32 {
 	let text = if value.trim().is_empty() { "account" } else { value };
 	let mut hash = 2_166_136_261_u32;
@@ -1897,6 +1952,38 @@ mod tests {
 				.expect("global config should read")
 				.contains("[codex.account_names.offsets]")
 		);
+	}
+
+	#[test]
+	fn list_response_disambiguates_colliding_random_names() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let store = AccountStore::new(
+			temp_dir.path().join("accounts.jsonl"),
+			temp_dir.path().join("config.toml"),
+		);
+
+		store
+			.save_records(&[
+				account_record(
+					"first@example.com",
+					"acct_000023",
+					"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+					"refresh-secret-1",
+				),
+				account_record(
+					"second@example.com",
+					"acct_000030",
+					"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+					"refresh-secret-2",
+				),
+			])
+			.expect("records should save");
+
+		let response = store.list().expect("account list should load");
+
+		assert_eq!(response.accounts[0].random_name, "Reese");
+		assert_eq!(response.accounts[1].random_name, "Remy");
+		assert_ne!(response.accounts[0].random_name, response.accounts[1].random_name);
 	}
 
 	#[test]
