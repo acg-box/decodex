@@ -36,15 +36,13 @@ Decodex currently runs as a local, single-machine control plane:
 Decodex App is a native shell over the same local runtime and account-pool state. On
 launch it connects to an existing default local listener when one is reachable; if
 not, it starts the bundled `decodex` binary as
-`decodex serve --dev --listen-address 127.0.0.1:8912`. Dev mode serves the dashboard,
-account APIs, and `GET /api/operator-snapshot` for the app, but it does not register
-projects, poll Linear, dispatch work, or accept `--config` or `--interval`. Use
-ordinary `decodex serve --interval ...` for the automation loop.
+`decodex serve --listen-address 127.0.0.1:8912`. The app fallback is a normal
+control-plane server: it loads the enabled project registry, uses the CLI-owned default
+15-second poll interval, and serves the dashboard, account APIs, and
+`GET /api/operator-snapshot` from the single local listener.
 
-Use `--dev` only for local development and app-owned startup:
+Use `--dev` only for isolated local development:
 
-- Decodex App may start the bundled server with `--dev` when no compatible default
-  listener is already running.
 - Developers may use `--dev` to exercise real account APIs, `GET /api/operator-snapshot`,
   and dashboard routes against local runtime state without starting automation.
 - Do not use `--dev` for operator automation, queue intake, retained-lane recovery,

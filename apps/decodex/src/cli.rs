@@ -314,13 +314,13 @@ impl RunCommand {
 struct ServeCommand {
 	#[command(flatten)]
 	project_config: ProjectConfigArgs,
-	/// Poll interval between control-plane ticks, for example `60s` or `5m`.
+	/// Override the scheduler poll interval, for example `15s` or `5m`.
 	#[arg(long, value_name = "INTERVAL", value_parser = parse_duration_arg)]
 	interval: Option<Duration>,
 	/// Operator UI listen address.
 	#[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8912")]
 	listen_address: String,
-	/// Start the Decodex App/dev endpoint without polling or dispatching projects.
+	/// Start the local dev endpoint without polling or dispatching projects.
 	#[arg(long, hide = true)]
 	dev: bool,
 }
@@ -334,11 +334,7 @@ impl ServeCommand {
 
 		orchestrator::run_control_plane(ServeRequest {
 			config_path: self.project_config.as_path(),
-			poll_interval: if self.dev {
-				None
-			} else {
-				Some(self.interval.unwrap_or_else(|| Duration::from_secs(60)))
-			},
+			poll_interval: if self.dev { None } else { self.interval },
 			listen_address: &self.listen_address,
 			dev: self.dev,
 		})
