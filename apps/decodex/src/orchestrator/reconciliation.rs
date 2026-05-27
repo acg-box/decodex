@@ -441,12 +441,37 @@ fn stalled_idle_duration(
 	let Some(idle_for) = observed_idle_duration(last_activity, now_unix_epoch) else {
 		return Ok(None);
 	};
+	let idle_timeout = active_run_idle_timeout(run_attempt, worktree_mapping)?;
 
-	if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT {
+	if idle_for >= idle_timeout {
 		return Ok(Some(idle_for));
 	}
 
 	Ok(None)
+}
+
+fn active_run_idle_timeout(
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<Duration> {
+	let Some(worktree_mapping) = worktree_mapping else {
+		return Ok(ACTIVE_RUN_IDLE_TIMEOUT);
+	};
+	let Some(marker) = state::read_run_activity_marker_snapshot(worktree_mapping.worktree_path())?
+	else {
+		return Ok(ACTIVE_RUN_IDLE_TIMEOUT);
+	};
+
+	if marker.run_id() != run_attempt.run_id()
+		|| marker.attempt_number() != run_attempt.attempt_number()
+	{
+		return Ok(ACTIVE_RUN_IDLE_TIMEOUT);
+	}
+
+	Ok(agent::protocol_activity_idle_timeout(
+		marker.protocol_activity(),
+		ACTIVE_RUN_IDLE_TIMEOUT,
+	))
 }
 
 fn last_observed_run_activity_unix_epoch(
