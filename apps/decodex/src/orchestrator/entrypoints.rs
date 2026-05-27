@@ -149,7 +149,7 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 	let poll_interval = request
 		.poll_interval
-		.unwrap_or_else(|| Duration::from_secs(60));
+		.unwrap_or(DEFAULT_CONTROL_PLANE_POLL_INTERVAL);
 
 	if poll_interval.is_zero() {
 		eyre::bail!("serve interval must be greater than zero.");

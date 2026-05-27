@@ -80,10 +80,11 @@ Manual commit and landing are separate narrow workflows:
 - Use `run --dry-run` before live automation to validate project loading, issue
   discovery, eligibility, and worktree planning without tracker mutation.
 - Use `probe stdio://` before relying on the Codex app-server boundary.
-- Treat hidden `serve --dev` as Decodex App and local-development infrastructure
-  only. It serves dashboard, account, and app snapshot APIs, but it does not register
-  projects, poll Linear, dispatch work, or accept `--config` or `--interval`. Use it
-  only when testing the app-owned endpoint without starting the scheduler.
+- Treat hidden `serve --dev` as isolated local-development infrastructure only. It
+  serves dashboard, account, and app snapshot APIs, but it does not register projects,
+  poll Linear, dispatch work, or accept `--config` or `--interval`. Decodex App's
+  fallback server uses ordinary `serve` when no compatible local listener is already
+  running.
 - For `skills/list` app-server preflight output, enabled skills plus scan diagnostics
   are local evidence, not a lane blocker. Missing cwd coverage or zero enabled skills
   are blockers; inspect `first_error_path` and `first_error` before changing plugin or
