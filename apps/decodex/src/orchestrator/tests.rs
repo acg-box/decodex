@@ -71,6 +71,8 @@ include!("tests/runtime/repo_gate.rs");
 
 include!("tests/runtime/failure.rs");
 
+include!("tests/runtime/thread_archive.rs");
+
 include!("tests/recovery/reconciliation.rs");
 
 include!("tests/recovery/terminal_support.rs");
