@@ -65,6 +65,9 @@ codex app-server generate-json-schema --experimental --out target/decodex-app-se
   - `thread/start`
   - `thread/resume` when retrying a persisted same-thread continuation
   - `turn/start`
+  - `thread/archive` after successful completion writeback, for every locally
+    recorded terminal attempt thread on the issue that has not already recorded a
+    successful archive event
 - Required notifications for the MVP:
   - `thread/started`
   - `thread/status/changed`
@@ -98,6 +101,9 @@ unless an existing lifecycle event summarizes them.
 7. Consume notifications until that turn reaches a terminal outcome.
 8. If the project-owned continuation policy allows another same-thread turn, send another `turn/start` on the same thread.
 9. Persist the local run journal and classify the bounded run result.
+10. After successful completion writeback, best-effort archive all locally recorded
+    terminal attempt threads for the issue so prior failed retry attempts do not keep
+    the Codex conversation list visible.
 
 The capability preflight is observational. It may inspect the effective app-server
 config, model inventory, provider capabilities, skill inventory, plugin inventory,

@@ -826,6 +826,34 @@ impl StateStore {
 		Ok(attempt)
 	}
 
+	/// List all locally recorded run attempts for one issue.
+	pub fn list_run_attempts_for_issue(&self, issue_id: &str) -> Result<Vec<RunAttempt>> {
+		let state = self.lock()?;
+		let mut attempts = state
+			.run_attempts
+			.values()
+			.filter(|attempt| attempt.issue_id == issue_id)
+			.map(RunAttemptRecord::as_public)
+			.collect::<Vec<_>>();
+
+		attempts.sort_by(|left, right| {
+			left.attempt_number()
+				.cmp(&right.attempt_number())
+				.then_with(|| left.run_id().cmp(right.run_id()))
+		});
+
+		Ok(attempts)
+	}
+
+	/// Return whether one run already has a matching protocol event.
+	pub fn run_has_protocol_event(&self, run_id: &str, event_type: &str) -> Result<bool> {
+		let state = self.lock()?;
+
+		Ok(state.events.get(run_id).is_some_and(|events| {
+			events.iter().any(|event| event.event_type == event_type)
+		}))
+	}
+
 	/// List recent run attempts for one project, including lease and protocol summary fields.
 	pub fn list_recent_runs(
 		&self,
