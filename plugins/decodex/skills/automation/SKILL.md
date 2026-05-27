@@ -52,9 +52,11 @@ wants to register that project and start the scheduler in one command.
 Use `decodex run <ISSUE>` or `cargo run -p decodex --bin decodex -- run <ISSUE>` only
 for a deliberate one-issue automation pass; it still uses the same retained-lane
 eligibility and lifecycle rules.
-Do not use hidden `serve --api-only` for automation. That mode belongs to Decodex App:
-it serves local dashboard/account/app snapshot APIs, but it does not register
-projects, poll Linear, or dispatch lanes.
+Do not use hidden `serve --dev` for automation. That mode belongs to Decodex App and
+local development: it serves local dashboard/account/app snapshot APIs, but it does
+not register projects, poll Linear, or dispatch lanes, and it rejects `--config` and
+`--interval`. Use it only when testing the app-owned endpoint without starting the
+scheduler.
 
 ## Intake and Ownership
 
