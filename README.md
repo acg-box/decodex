@@ -19,7 +19,8 @@ Repo-native agent orchestration and public Codex signal publishing.
 - Native macOS app for Decodex Codex account-pool management.
 - Explicit project registry under `~/.codex/decodex/projects/<service-id>/`.
 - Local operator listener with a dashboard at `/` and `/dashboard`, WebSocket
-  snapshot/control traffic at `/dashboard/control`, and `GET /livez` for liveness.
+  snapshot/control traffic at `/dashboard/control`, Decodex App snapshot/account
+  APIs under `/api/`, and `GET /livez` for liveness.
 - Static Astro site that publishes GitHub-backed Codex change signals.
 - Deterministic GitHub signal pipeline for change bundles, release deltas, rendered
   signal entries, and content validation.
