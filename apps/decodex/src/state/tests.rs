@@ -31,6 +31,35 @@ fn fd_has_close_on_exec(fd: i32) -> bool {
 	flags & FD_CLOEXEC != 0
 }
 
+fn sample_pub_101_review_handoff() -> ReviewHandoffMarker {
+	ReviewHandoffMarker::new(
+		"run-1",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"main",
+		"x/decodex-pub-101",
+		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+	)
+}
+
+fn sample_pub_101_review_orchestration() -> ReviewOrchestrationMarker {
+	ReviewOrchestrationMarker::new(
+		"run-1",
+		1,
+		"x/decodex-pub-101",
+		"https://github.com/hack-ink/decodex/pull/101",
+		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+		"request_pending",
+		None,
+		None,
+		None,
+		0,
+		0,
+		None,
+	)
+}
+
 #[test]
 fn review_markers_roundtrip_preserve_required_fields() {
 	let store = StateStore::open_in_memory().expect("state store should open");
@@ -1649,6 +1678,92 @@ fn persistent_clear_worktree_deletes_review_markers() {
 			.review_orchestration_marker("pubfi", "PUB-101", &handoff)
 			.expect("orchestration lookup should succeed")
 			.is_none()
+	);
+}
+
+#[test]
+fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let stale_store = StateStore::open(&state_path).expect("stale state store should open");
+	let writer = StateStore::open(&state_path).expect("writer state store should open");
+	let handoff = sample_pub_101_review_handoff();
+	let orchestration = sample_pub_101_review_orchestration();
+
+	writer
+		.record_run_attempt("run-1", "PUB-101", 1, "running")
+		.expect("run attempt should persist");
+	writer
+		.upsert_worktree("pubfi", "PUB-101", "x/decodex-pub-101", "/tmp/worktrees/pub-101")
+		.expect("worktree mapping should persist");
+	writer
+		.upsert_lease("pubfi", "PUB-101", "run-1", IN_PROGRESS_STATE)
+		.expect("lease should persist");
+	writer
+		.append_private_execution_event(
+			"pubfi",
+			"PUB-101",
+			"run-1",
+			1,
+			"progress_checkpoint",
+			serde_json::json!({ "summary": "cached on visible tracker key" }),
+		)
+		.expect("private evidence should persist");
+	writer
+		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
+		.expect("handoff marker should persist");
+	writer
+		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
+		.expect("orchestration marker should persist");
+	stale_store
+		.canonicalize_issue_identity("PUB-101", "linear-id-101")
+		.expect("identity should canonicalize from SQLite rows");
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+	let run = reopened
+		.run_attempt("run-1")
+		.expect("run attempt should read")
+		.expect("run attempt should exist");
+
+	assert_eq!(run.issue_id(), "linear-id-101");
+	assert!(reopened.lease_for_issue("PUB-101").expect("old lease lookup should read").is_none());
+	assert!(
+		reopened.worktree_for_issue("PUB-101").expect("old worktree lookup should read").is_none()
+	);
+	assert_eq!(
+		reopened
+			.lease_for_issue("linear-id-101")
+			.expect("canonical lease lookup should read")
+			.expect("canonical lease should exist")
+			.run_id(),
+		"run-1"
+	);
+	assert_eq!(
+		reopened
+			.worktree_for_issue("linear-id-101")
+			.expect("canonical worktree lookup should read")
+			.expect("canonical worktree should exist")
+			.branch_name(),
+		"x/decodex-pub-101"
+	);
+	assert_eq!(
+		reopened
+			.list_private_execution_events("pubfi", "linear-id-101", "run-1", 1)
+			.expect("canonical private evidence should read")
+			.len(),
+		1
+	);
+	assert_eq!(
+		reopened
+			.review_handoff_marker("pubfi", "linear-id-101", "x/decodex-pub-101")
+			.expect("canonical handoff should read"),
+		Some(handoff.clone())
+	);
+	assert_eq!(
+		reopened
+			.review_orchestration_marker("pubfi", "linear-id-101", &handoff)
+			.expect("canonical orchestration should read"),
+		Some(orchestration)
 	);
 }
 

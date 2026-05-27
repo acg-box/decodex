@@ -217,6 +217,9 @@ where
 					*idle_for,
 				)?;
 			},
+			ActiveRunDisposition::StalledAlreadyNeedsAttention { idle_for } => {
+				reconcile_stalled_attention_run(project, state_store, &action, *idle_for)?;
+			},
 		}
 	}
 
@@ -355,6 +358,27 @@ where
 	Ok(())
 }
 
+fn reconcile_stalled_attention_run(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	action: &ActiveRunReconciliation,
+	idle_for: Duration,
+) -> Result<()> {
+	tracing::warn!(
+		project_id = project.service_id(),
+		issue_id = action.issue.id,
+		issue = action.issue.identifier,
+		run_id = action.run_attempt.run_id(),
+		disposition = "stalled_already_needs_attention",
+		idle_for_s = idle_for.as_secs(),
+		"Reconciling stalled run that is already blocked for operator attention."
+	);
+
+	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
+
+	state_store.clear_lease(&action.issue.id)
+}
+
 fn write_reconciliation_operation_marker_best_effort(
 	worktree_path: &Path,
 	run_id: &str,
@@ -417,12 +441,37 @@ fn stalled_idle_duration(
 	let Some(idle_for) = observed_idle_duration(last_activity, now_unix_epoch) else {
 		return Ok(None);
 	};
+	let idle_timeout = active_run_idle_timeout(run_attempt, worktree_mapping)?;
 
-	if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT {
+	if idle_for >= idle_timeout {
 		return Ok(Some(idle_for));
 	}
 
 	Ok(None)
+}
+
+fn active_run_idle_timeout(
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<Duration> {
+	let Some(worktree_mapping) = worktree_mapping else {
+		return Ok(ACTIVE_RUN_IDLE_TIMEOUT);
+	};
+	let Some(marker) = state::read_run_activity_marker_snapshot(worktree_mapping.worktree_path())?
+	else {
+		return Ok(ACTIVE_RUN_IDLE_TIMEOUT);
+	};
+
+	if marker.run_id() != run_attempt.run_id()
+		|| marker.attempt_number() != run_attempt.attempt_number()
+	{
+		return Ok(ACTIVE_RUN_IDLE_TIMEOUT);
+	}
+
+	Ok(agent::protocol_activity_idle_timeout(
+		marker.protocol_activity(),
+		ACTIVE_RUN_IDLE_TIMEOUT,
+	))
 }
 
 fn last_observed_run_activity_unix_epoch(

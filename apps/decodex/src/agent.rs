@@ -4,13 +4,14 @@ mod decodex_tool_bridge;
 mod json_rpc;
 mod tracker_tool_bridge;
 
+#[cfg(test)] pub(crate) use self::app_server::MODEL_EXECUTION_IDLE_TIMEOUT;
 #[cfg(test)] pub(crate) use self::tracker_tool_bridge::DynamicToolHandler;
 pub(crate) use self::{
 	app_server::{
 		ACTIVE_RUN_IDLE_TIMEOUT, AppServerCapabilityPreflightFailure, AppServerDynamicToolFailure,
 		AppServerRunRequest, AppServerRunResult, AppServerThreadArchiveRequest,
 		AppServerTurnFailure, TurnContinuationGuard, archive_app_server_thread_after_success,
-		execute_app_server_run, probe_app_server,
+		execute_app_server_run, probe_app_server, protocol_activity_idle_timeout,
 	},
 	codex_accounts::{CodexAccountPool, CodexAccountProvider},
 	decodex_tool_bridge::{DecodexRunContext, DecodexToolBridge},

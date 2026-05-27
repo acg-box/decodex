@@ -1,5 +1,3 @@
-use std::mem;
-
 use crate::workflow::WorkflowConcurrencyLimit;
 
 /// Shared dispatch-slot capacity for one project.
@@ -161,7 +159,7 @@ impl StateStore {
 			return Ok(());
 		}
 
-		let mut state = self.lock()?;
+		let mut state = self.lock_without_refresh()?;
 
 		if let Some(mut lease) = state.leases.remove(previous_issue_id) {
 			lease.issue_id = canonical_issue_id.to_owned();
@@ -207,9 +205,7 @@ impl StateStore {
 			record.issue_id = canonical_issue_id.to_owned();
 		}
 
-		self.persist_runtime_state_locked(&state)?;
-
-		self.delete_previous_issue_identity_locked(previous_issue_id)
+		self.retarget_issue_identity_locked(previous_issue_id, canonical_issue_id)
 	}
 
 	/// Create or replace the active lease for one issue.
@@ -220,20 +216,18 @@ impl StateStore {
 		run_id: &str,
 		issue_state: &str,
 	) -> Result<()> {
-		let mut state = self.lock()?;
+		let lease = IssueLease {
+			project_id: project_id.to_owned(),
+			issue_id: issue_id.to_owned(),
+			run_id: run_id.to_owned(),
+			issue_state: issue_state.to_owned(),
+		};
+		let mut state = self.lock_without_refresh()?;
 
-		state.leases.insert(
-			issue_id.to_owned(),
-			IssueLease {
-				project_id: project_id.to_owned(),
-				issue_id: issue_id.to_owned(),
-				run_id: run_id.to_owned(),
-				issue_state: issue_state.to_owned(),
-			},
-		);
+		state.leases.insert(issue_id.to_owned(), lease.clone());
 		state.remember_run_project(project_id, issue_id, Some(run_id));
 
-		self.persist_runtime_state_locked(&state)
+		self.upsert_lease_and_remember_run_project_locked(&lease)
 	}
 
 	/// Try to acquire one issue claim plus one shared dispatch slot for one issue.
@@ -1151,20 +1145,18 @@ impl StateStore {
 		branch_name: &str,
 		worktree_path: &str,
 	) -> Result<()> {
-		let mut state = self.lock()?;
+		let mapping = WorktreeMappingRecord {
+			project_id: project_id.to_owned(),
+			issue_id: issue_id.to_owned(),
+			branch_name: branch_name.to_owned(),
+			worktree_path: PathBuf::from(worktree_path),
+		};
+		let mut state = self.lock_without_refresh()?;
 
-		state.worktrees.insert(
-			issue_id.to_owned(),
-			WorktreeMappingRecord {
-				project_id: project_id.to_owned(),
-				issue_id: issue_id.to_owned(),
-				branch_name: branch_name.to_owned(),
-				worktree_path: PathBuf::from(worktree_path),
-			},
-		);
+		state.worktrees.insert(issue_id.to_owned(), mapping.clone());
 		state.remember_run_project(project_id, issue_id, None);
 
-		self.persist_runtime_state_locked(&state)
+		self.upsert_worktree_and_remember_run_project_locked(&mapping)
 	}
 
 	/// Create or replace the retained review handoff marker for one issue lane.
@@ -1398,6 +1390,31 @@ impl StateStore {
 		sqlite.upsert_run_attempt(attempt)
 	}
 
+	fn upsert_lease_and_remember_run_project_locked(&self, lease: &IssueLease) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let mut sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_lease_and_remember_run_project(lease)
+	}
+
+	fn upsert_worktree_and_remember_run_project_locked(
+		&self,
+		mapping: &WorktreeMappingRecord,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let mut sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_worktree_and_remember_run_project(mapping)
+	}
+
 	fn append_protocol_event_locked(
 		&self,
 		run_id: &str,
@@ -1463,7 +1480,11 @@ impl StateStore {
 		sqlite.delete_lease(issue_id)
 	}
 
-	fn delete_previous_issue_identity_locked(&self, previous_issue_id: &str) -> Result<()> {
+	fn retarget_issue_identity_locked(
+		&self,
+		previous_issue_id: &str,
+		canonical_issue_id: &str,
+	) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
 		};
@@ -1471,7 +1492,7 @@ impl StateStore {
 			.lock()
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
-		sqlite.delete_previous_issue_identity(previous_issue_id)
+		sqlite.retarget_issue_identity(previous_issue_id, canonical_issue_id)
 	}
 
 	fn delete_worktree_and_review_markers_locked(&self, issue_id: &str) -> Result<()> {
@@ -1526,21 +1547,22 @@ fn retarget_review_handoff_issue(
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
 ) {
-	let existing = mem::take(records);
+	let previous_keys = records
+		.keys()
+		.filter(|key| key.issue_id == previous_issue_id)
+		.cloned()
+		.collect::<Vec<_>>();
 
-	for (key, mut record) in existing {
-		let next_issue_id = if key.issue_id == previous_issue_id {
-			canonical_issue_id
-		} else {
-			key.issue_id.as_str()
+	for key in previous_keys {
+		let Some(mut record) = records.remove(&key) else {
+			continue;
 		};
 
-		record.issue_id = next_issue_id.to_owned();
+		record.issue_id = canonical_issue_id.to_owned();
 
-		records.insert(
-			ReviewMarkerKey::new(&key.project_id, next_issue_id, &key.branch_name),
-			record,
-		);
+		records
+			.entry(ReviewMarkerKey::new(&key.project_id, canonical_issue_id, &key.branch_name))
+			.or_insert(record);
 	}
 }
 
@@ -1553,26 +1575,27 @@ fn retarget_review_orchestration_issue(
 	previous_issue_id: &str,
 	canonical_issue_id: &str,
 ) {
-	let existing = mem::take(records);
+	let previous_keys = records
+		.keys()
+		.filter(|key| key.issue_id == previous_issue_id)
+		.cloned()
+		.collect::<Vec<_>>();
 
-	for (key, mut record) in existing {
-		let next_issue_id = if key.issue_id == previous_issue_id {
-			canonical_issue_id
-		} else {
-			key.issue_id.as_str()
+	for key in previous_keys {
+		let Some(mut record) = records.remove(&key) else {
+			continue;
 		};
 
-		record.issue_id = next_issue_id.to_owned();
+		record.issue_id = canonical_issue_id.to_owned();
 
-		records.insert(
-			ReviewOrchestrationKey::new(
+		records
+			.entry(ReviewOrchestrationKey::new(
 				&key.project_id,
-				next_issue_id,
+				canonical_issue_id,
 				&key.branch_name,
 				&key.run_id,
 				key.attempt_number,
-			),
-			record,
-		);
+			))
+			.or_insert(record);
 	}
 }

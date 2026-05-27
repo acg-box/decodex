@@ -21,6 +21,7 @@ use serde_json::{self, Value};
 use crate::git_credentials::{GitCredentialEnvironment, GitSigningConfig};
 
 const APP_SERVER_STDERR_TAIL_LINES: usize = 20;
+const CODEX_APP_SERVER_BINARY: &str = "codex";
 const CODEX_HOME_ENV_VAR: &str = "CODEX_HOME";
 const CODEX_SQLITE_HOME_ENV_VAR: &str = "CODEX_SQLITE_HOME";
 const CODEX_HOME_DIR_NAME: &str = ".codex";
@@ -234,7 +235,7 @@ impl JsonRpcConnection {
 		listen: &str,
 		process_env: &AppServerProcessEnv,
 	) -> crate::prelude::Result<Self> {
-		let mut command = Command::new("codex");
+		let mut command = Command::new(app_server_command_program());
 		let _codex_home_env = configure_app_server_command(&mut command, listen, process_env)?;
 		let mut child = command.spawn()?;
 		let stdin =
@@ -691,11 +692,48 @@ fn configure_app_server_command(
 	process_env.apply_to(command)
 }
 
+fn app_server_command_program() -> PathBuf {
+	app_server_command_program_from_env(env::var_os("PATH"), env::var_os("HOME"))
+}
+
+fn app_server_command_program_from_env(
+	path_env: Option<OsString>,
+	home: Option<OsString>,
+) -> PathBuf {
+	if let Some(path_env) = path_env {
+		for path_entry in env::split_paths(&path_env) {
+			let candidate = path_entry.join(CODEX_APP_SERVER_BINARY);
+
+			if candidate.is_file() {
+				return candidate;
+			}
+		}
+	}
+	if let Some(home) = home {
+		let home = PathBuf::from(home);
+
+		for relative_candidate in
+			[[".local", "bin", CODEX_APP_SERVER_BINARY], [".cargo", "bin", CODEX_APP_SERVER_BINARY]]
+		{
+			let candidate = relative_candidate
+				.iter()
+				.fold(home.clone(), |path, component| path.join(*component));
+
+			if candidate.is_file() {
+				return candidate;
+			}
+		}
+	}
+
+	PathBuf::from(CODEX_APP_SERVER_BINARY)
+}
+
 #[cfg(test)]
 mod tests {
 	use std::{
 		collections::{HashMap, VecDeque},
 		ffi::OsString,
+		fs,
 		path::PathBuf,
 		process::{Command, Stdio},
 		sync::{Arc, Mutex, mpsc},
@@ -808,6 +846,25 @@ mod tests {
 		assert_eq!(envs.get("GIT_CONFIG_VALUE_8").map(String::as_str), Some("false"));
 		assert_eq!(envs.get("GIT_CONFIG_KEY_9").map(String::as_str), Some("user.signingkey"));
 		assert_eq!(envs.get("GIT_CONFIG_VALUE_9").map(String::as_str), Some(""));
+	}
+
+	#[test]
+	fn app_server_program_falls_back_to_home_local_codex_when_path_is_sparse() {
+		let temp_dir = tempfile::tempdir().expect("tempdir should create");
+		let local_bin = temp_dir.path().join(".local/bin");
+
+		fs::create_dir_all(&local_bin).expect("local bin should create");
+
+		let codex_path = local_bin.join("codex");
+
+		fs::write(&codex_path, "#!/bin/sh\n").expect("codex fixture should write");
+
+		let resolved = super::app_server_command_program_from_env(
+			Some(OsString::from("/usr/bin:/bin")),
+			Some(temp_dir.path().as_os_str().to_owned()),
+		);
+
+		assert_eq!(resolved, codex_path);
 	}
 
 	#[test]
