@@ -33,6 +33,14 @@ Decodex currently runs as a local, single-machine control plane:
 - The project-owned `WORKFLOW.md` remains the execution-policy contract for that
   registered repo.
 
+Decodex App is a native shell over the same local runtime and account-pool state. On
+launch it connects to an existing default local listener when one is reachable; if
+not, it starts the bundled `decodex` binary as
+`decodex serve --api-only --listen-address 127.0.0.1:8912`. API-only mode serves the
+dashboard, account APIs, and `GET /api/operator-snapshot` for the app, but it does
+not register projects, poll Linear, dispatch work, or accept `--config` or
+`--interval`. Use ordinary `decodex serve --interval ...` for the automation loop.
+
 Project registration is not service intake. The `Projects` dashboard section may show
 multiple enabled projects with visible work at once, and its filter can reveal the full
 registered-project table, but a service is only eligible to intake
@@ -110,10 +118,12 @@ service queue label before treating it as a connector problem.
 The browser dashboard reads the complete published state from the local
 `GET /dashboard/control` WebSocket. That socket is the dashboard authority for
 published snapshots, active-lane activity updates, and local dashboard control
-acknowledgements; there is no separate HTTP snapshot polling route. The current
-browser UI keeps live updates unscoped and exposes explicit stop controls for active
-lanes with a known live child process plus account-pool selection controls; project
-watch, project pause/resume, and manual retry controls are intentionally not shown.
+acknowledgements. `GET /api/operator-snapshot` is the Decodex App read API over the
+same runtime database, not a browser-dashboard polling authority and not a sign that
+an API-only listener owns scheduling. The current browser UI keeps live updates
+unscoped and exposes explicit stop controls for active lanes with a known live child
+process plus account-pool selection controls; project watch, project pause/resume,
+and manual retry controls are intentionally not shown.
 The stop control signals the recorded child process for that run, marks the local
 attempt interrupted, and releases the local queue lease. `ack` is dashboard-local
 acknowledgement only. The socket is not a browser connection to Codex app-server,
