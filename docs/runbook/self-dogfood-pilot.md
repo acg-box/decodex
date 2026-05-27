@@ -289,7 +289,7 @@ is still unmerged, use the normal reviewed lane checkout instead.
 After `probe`, `project add`, `run --dry-run`, and `run` all behave as expected, use `serve` for the long-running pilot loop:
 
 ```sh
-cargo run -p decodex --bin decodex -- serve --interval 60s
+cargo run -p decodex --bin decodex -- serve
 ```
 
 ### Installed-binary observer loop
@@ -419,16 +419,16 @@ wants to observe the self-bootstrap loop without reading source code.
    ```sh
    decodex project add ~/.codex/decodex/projects/decodex
    decodex project list
-   decodex serve --interval 60s --listen-address 127.0.0.1:8912
+   decodex serve --listen-address 127.0.0.1:8912
    ```
 
    `serve` owns one operator UI and schedules all enabled registered projects from the
    local runtime database. Passing `--config` refreshes that project registration
    before the scheduler starts.
 
-   Do not use `decodex serve --dev` for this step. Dev mode is only for Decodex App
-   and local account/app snapshot API development; it does not register projects,
-   poll Linear, dispatch work, or accept `--config` or `--interval`.
+   Do not use `decodex serve --dev` for this step. Dev mode is only for local
+   account/app snapshot API development while avoiding scheduler activity; it does not
+   register projects, poll Linear, dispatch work, or accept `--config` or `--interval`.
 
    Pass `decodex serve --config <PROJECT_DIR>` when you want `serve` to refresh one
    project registration before it starts. Omit it when the registry already contains
@@ -618,12 +618,18 @@ Decodex is intentionally Unix-only, and the control plane relies on Unix file-de
 `decodex serve` owns the local operator console. Use `--listen-address` when you need a non-default bind address:
 
 ```sh
-decodex serve --interval 60s --listen-address 127.0.0.1:8912
+decodex serve --listen-address 127.0.0.1:8912
 ```
 
-Use hidden `decodex serve --dev` only for Decodex App or local account/app snapshot API
-development. It is not a scheduler and must not be used for this runbook's automation,
-queue intake, project registration, or retained-lane recovery steps.
+Omit `--interval` to use the CLI default 15-second scheduler cadence. Pass
+`--interval <INTERVAL>` only when this runbook step deliberately needs a non-default
+poll interval.
+
+Use hidden `decodex serve --dev` only for local account/app snapshot API development
+while deliberately avoiding scheduler activity. Decodex App's fallback server uses
+ordinary `decodex serve` and leaves scheduler cadence to the CLI default. Dev mode is
+not a scheduler and must not be used for this runbook's automation, queue intake,
+project registration, or retained-lane recovery steps.
 
 The listener serves the operator console from the canonical `GET /` and `GET /dashboard` routes, the same JSON operator snapshot used by `cargo run -p decodex --bin decodex -- status --json` through the `/dashboard/control` WebSocket, and the minimal `GET /livez` liveness probe on the same listener. The single console keeps `Projects`, `Running Lanes`, `Intake Queue`, `Review & Landing`, `Recovery Worktrees`, and `Run Ledger` visible together. Intake candidates that are already claimed by a running lane are shown as active queue echoes, capacity-bound candidates are shown as waiting rather than blocked, running lane worktrees stay with their owning lane, and retained/recovery worktrees remain folded until diagnostics are needed:
 
