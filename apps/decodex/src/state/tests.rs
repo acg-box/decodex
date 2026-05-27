@@ -455,6 +455,47 @@ fn persistent_project_run_listing_does_not_refresh_full_event_journal() {
 }
 
 #[test]
+fn persistent_linear_execution_event_listing_does_not_refresh_full_ledger() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let observer = StateStore::open(&state_path).expect("observer state store should open");
+	let writer = StateStore::open(&state_path).expect("writer state store should open");
+	let mut writer_record = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: "pubfi",
+			issue_id: "PUB-102",
+			issue_identifier: "PUB-102",
+			run_id: "run-b",
+			attempt_number: 1,
+		},
+		"closeout",
+		String::from("2026-04-29T10:12:00Z"),
+		"closeout",
+	);
+
+	writer_record.summary = Some(String::from("Writer closeout."));
+	writer_record.pr_url = Some(String::from("https://github.com/hack-ink/decodex/pull/102"));
+	writer_record.commit_sha = Some(String::from("2222222222222222222222222222222222222222"));
+
+	writer
+		.record_linear_execution_event(&writer_record)
+		.expect("writer ledger event should persist");
+
+	let observed = observer
+		.list_linear_execution_events("pubfi", "PUB-102")
+		.expect("observer should read issue-scoped ledger events");
+
+	assert_eq!(observed, vec![writer_record.clone()]);
+
+	let state = observer.inner.lock().expect("test should inspect the local cache");
+
+	assert!(
+		!state.linear_execution_events.contains_key(&writer_record.idempotency_key),
+		"issue-scoped ledger listing should not refresh the full persistent ledger into the local cache"
+	);
+}
+
+#[test]
 fn manages_issue_leases() {
 	let store = StateStore::open_in_memory().expect("in-memory state store should open");
 
