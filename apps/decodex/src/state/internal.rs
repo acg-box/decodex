@@ -1,5 +1,5 @@
 #[cfg(target_os = "macos")]
-use std::mem::MaybeUninit;
+use std::mem::{self, MaybeUninit};
 use std::sync::atomic::AtomicU64;
 
 use libc::FD_CLOEXEC;
