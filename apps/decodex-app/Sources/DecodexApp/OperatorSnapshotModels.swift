@@ -54,7 +54,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 	}
 
 	var shouldDisplayInPanel: Bool {
-		hasVisibleSignal && (activeRunCount > 0 || isAPIOnlySnapshot == false)
+		hasVisibleSignal && (activeRunCount > 0 || isDevSnapshot == false)
 	}
 
 	var warningSummary: String? {
@@ -117,9 +117,9 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		self.postReviewLanes = postReviewLanes
 	}
 
-	private var isAPIOnlySnapshot: Bool {
+	private var isDevSnapshot: Bool {
 		warnings.contains("automation_disabled")
-			&& projects.allSatisfy { $0.connectorState == "api_only" }
+			&& projects.allSatisfy { $0.connectorState == "api_only" || $0.connectorState == "dev" }
 	}
 
 	private var snapshotBuildFailureProjectIDs: [String] {

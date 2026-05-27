@@ -223,7 +223,7 @@ actor DecodexServerBridge {
 		process.executableURL = try decodexExecutableURL()
 		process.arguments = [
 			"serve",
-			"--api-only",
+			"--dev",
 			"--listen-address", defaultListenAddress,
 		]
 		process.standardOutput = nullDevice
