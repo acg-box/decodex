@@ -33,7 +33,7 @@ fn control_plane_snapshot_lists_disabled_registered_projects() {
 }
 
 #[test]
-fn control_plane_api_only_snapshot_does_not_tick_enabled_projects() {
+fn control_plane_dev_snapshot_does_not_tick_enabled_projects() {
 	let (temp_dir, config, _workflow) = temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
@@ -48,14 +48,14 @@ fn control_plane_api_only_snapshot_does_not_tick_enabled_projects() {
 
 	state_store.upsert_project(&registration).expect("project should register");
 
-	let snapshot = orchestrator::run_control_plane_api_only_tick(&state_store)
-		.expect("api-only snapshot should build");
+	let snapshot =
+		orchestrator::run_control_plane_dev_tick(&state_store).expect("dev snapshot should build");
 	let project = snapshot.projects.first().expect("enabled project should be listed");
 
 	assert_eq!(snapshot.projects.len(), 1);
 	assert_eq!(project.project_id, "pubfi");
 	assert!(project.enabled);
-	assert_eq!(project.connector_state, "api_only");
+	assert_eq!(project.connector_state, "dev");
 	assert_eq!(project.active_run_count, 0);
 	assert_eq!(project.queued_candidate_count, 0);
 	assert_eq!(project.warning_count, 1);
@@ -66,7 +66,7 @@ fn control_plane_api_only_snapshot_does_not_tick_enabled_projects() {
 }
 
 #[test]
-fn control_plane_api_only_snapshot_marks_unloadable_project_config() {
+fn control_plane_dev_snapshot_marks_unloadable_project_config() {
 	let (temp_dir, config, _workflow) = temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
@@ -82,8 +82,8 @@ fn control_plane_api_only_snapshot_marks_unloadable_project_config() {
 
 	state_store.upsert_project(&registration).expect("project should register");
 
-	let snapshot = orchestrator::run_control_plane_api_only_tick(&state_store)
-		.expect("api-only snapshot should still build");
+	let snapshot = orchestrator::run_control_plane_dev_tick(&state_store)
+		.expect("dev snapshot should still build");
 	let project = snapshot.projects.first().expect("enabled project should be listed");
 
 	assert_eq!(snapshot.projects.len(), 1);
@@ -97,7 +97,7 @@ fn control_plane_api_only_snapshot_marks_unloadable_project_config() {
 }
 
 #[test]
-fn control_plane_api_only_snapshot_includes_local_active_runs() {
+fn control_plane_dev_snapshot_includes_local_active_runs() {
 	let (temp_dir, config, _workflow) = temp_project_layout();
 	let _home_guard =
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
@@ -119,13 +119,13 @@ fn control_plane_api_only_snapshot_includes_local_active_runs() {
 		.upsert_lease(config.service_id(), &issue.id, "run-active", "In Progress")
 		.expect("active lease should record");
 
-	let snapshot = orchestrator::run_control_plane_api_only_tick(&state_store)
-		.expect("api-only snapshot should build");
+	let snapshot =
+		orchestrator::run_control_plane_dev_tick(&state_store).expect("dev snapshot should build");
 	let project = snapshot.projects.first().expect("enabled project should be listed");
 
 	assert_eq!(snapshot.projects.len(), 1);
 	assert_eq!(project.project_id, "pubfi");
-	assert_eq!(project.connector_state, "api_only");
+	assert_eq!(project.connector_state, "dev");
 	assert_eq!(project.active_run_count, 1);
 	assert_eq!(snapshot.active_runs.len(), 1);
 	assert_eq!(snapshot.active_runs[0].run_id, "run-active");

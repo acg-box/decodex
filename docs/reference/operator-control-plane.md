@@ -36,10 +36,22 @@ Decodex currently runs as a local, single-machine control plane:
 Decodex App is a native shell over the same local runtime and account-pool state. On
 launch it connects to an existing default local listener when one is reachable; if
 not, it starts the bundled `decodex` binary as
-`decodex serve --api-only --listen-address 127.0.0.1:8912`. API-only mode serves the
-dashboard, account APIs, and `GET /api/operator-snapshot` for the app, but it does
-not register projects, poll Linear, dispatch work, or accept `--config` or
-`--interval`. Use ordinary `decodex serve --interval ...` for the automation loop.
+`decodex serve --dev --listen-address 127.0.0.1:8912`. Dev mode serves the dashboard,
+account APIs, and `GET /api/operator-snapshot` for the app, but it does not register
+projects, poll Linear, dispatch work, or accept `--config` or `--interval`. Use
+ordinary `decodex serve --interval ...` for the automation loop.
+
+Use `--dev` only for local development and app-owned startup:
+
+- Decodex App may start the bundled server with `--dev` when no compatible default
+  listener is already running.
+- Developers may use `--dev` to exercise real account APIs, `GET /api/operator-snapshot`,
+  and dashboard routes against local runtime state without starting automation.
+- Do not use `--dev` for operator automation, queue intake, retained-lane recovery,
+  project registration refresh, or service scheduling. It is hidden from CLI help and
+  intentionally rejects `--config` and `--interval`.
+- For browser-only dashboard UI work, use `dev/operator-dashboard-mock.mjs` instead
+  of `--dev`.
 
 Project registration is not service intake. The `Projects` dashboard section may show
 multiple enabled projects with visible work at once, and its filter can reveal the full
@@ -120,7 +132,7 @@ The browser dashboard reads the complete published state from the local
 published snapshots, active-lane activity updates, and local dashboard control
 acknowledgements. `GET /api/operator-snapshot` is the Decodex App read API over the
 same runtime database, not a browser-dashboard polling authority and not a sign that
-an API-only listener owns scheduling. The current browser UI keeps live updates
+the dev listener owns scheduling. The current browser UI keeps live updates
 unscoped and exposes explicit stop controls for active lanes with a known live child
 process plus account-pool selection controls; project watch, project pause/resume,
 and manual retry controls are intentionally not shown.
