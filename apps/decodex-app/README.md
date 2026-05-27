@@ -75,8 +75,16 @@ The staging script follows the local Rsnap-style signing path: it writes
 `target/decodex-app/Decodex App.app`, signs the bundle with an Apple Development
 identity, enables hardened runtime, and verifies the signature before launch. Override
 the signing identity with `DECODEX_APP_SIGN_IDENTITY`; override the staging directory
-with `DECODEX_APP_STAGE_DIR`. This is local development signing, not a notarized
-distribution build.
+with `DECODEX_APP_STAGE_DIR`. Override the Rust profile with
+`DECODEX_APP_RUST_PROFILE`; release CI uses `final-release`.
+
+Release tags package the app through `.github/workflows/release.yml`. The workflow
+imports `APPLE_CERTIFICATE_P12_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, and
+`APPLE_SIGNING_IDENTITY`, builds the Swift app in release mode, bundles the
+`final-release` Rust `decodex` and `decodex-app-helper` executables, then publishes
+`decodex-app-aarch64-apple-darwin.zip` beside the CLI archives. If
+`APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_KEY_P8` are set, the workflow notarizes and
+staples the staged app before packaging; `APPLE_NOTARY_ISSUER` is used when present.
 
 The "Use in Codex" action overwrites Codex's `auth.json` from one stored
 `~/.codex/decodex/accounts.jsonl` entry. The destination is `$CODEX_HOME/auth.json`
