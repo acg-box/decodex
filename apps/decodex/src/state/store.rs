@@ -450,7 +450,7 @@ impl StateStore {
 
 	/// Report whether one issue is actively claimed by this or another process.
 	pub fn issue_has_active_shared_claim(&self, project_id: &str, issue_id: &str) -> Result<bool> {
-		let state = self.lock()?;
+		let state = self.lock_without_refresh()?;
 
 		if state.leases.contains_key(issue_id) {
 			return Ok(true);
@@ -677,7 +677,15 @@ impl StateStore {
 
 	/// Count attempts that consume the retry budget for one issue.
 	pub fn retry_budget_attempt_count(&self, issue_id: &str) -> Result<i64> {
-		let state = self.lock()?;
+		if let Some(sqlite) = self.sqlite.as_ref() {
+			let sqlite = sqlite
+				.lock()
+				.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+			return sqlite.retry_budget_attempt_count(issue_id);
+		}
+
+		let state = self.lock_without_refresh()?;
 		let retry_budget_attempts = state
 			.run_attempts
 			.values()
@@ -699,7 +707,15 @@ impl StateStore {
 		issue_id: &str,
 		attempt_number: i64,
 	) -> Result<bool> {
-		let state = self.lock()?;
+		if let Some(sqlite) = self.sqlite.as_ref() {
+			let sqlite = sqlite
+				.lock()
+				.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+			return sqlite.issue_has_retry_budget_attempt_after(issue_id, attempt_number);
+		}
+
+		let state = self.lock_without_refresh()?;
 
 		Ok(state.run_attempts.values().any(|attempt| {
 			attempt.issue_id == issue_id

@@ -481,7 +481,11 @@ fn build_operator_run_activity_event(state_store: &StateStore) -> Result<Dashboa
 
 		let mut account_warnings = Vec::new();
 
-		accounts.extend(codex_account_activity_summaries(&project, &mut account_warnings));
+		accounts.extend(codex_account_activity_summaries(
+			&project,
+			&mut account_warnings,
+			AccountActivityMode::Snapshot,
+		));
 		active_runs.extend(project_active_runs);
 	}
 
