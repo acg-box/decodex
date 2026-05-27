@@ -123,6 +123,12 @@ struct WorktreeOwnership {
 	reason: String,
 }
 
+#[derive(Clone, Copy)]
+enum AccountActivityMode {
+	Probe,
+	Snapshot,
+}
+
 pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
 	project: &ServiceConfig,
 ) -> crate::prelude::Result<()> {
@@ -143,6 +149,20 @@ fn build_operator_status_snapshot(
 	project: &ServiceConfig,
 	state_store: &StateStore,
 	limit: usize,
+) -> crate::prelude::Result<OperatorStatusSnapshot> {
+	build_operator_status_snapshot_with_account_mode(
+		project,
+		state_store,
+		limit,
+		AccountActivityMode::Probe,
+	)
+}
+
+fn build_operator_status_snapshot_with_account_mode(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	limit: usize,
+	account_activity_mode: AccountActivityMode,
 ) -> crate::prelude::Result<OperatorStatusSnapshot> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let (active_runs, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
@@ -170,7 +190,7 @@ fn build_operator_status_snapshot(
 
 	let history_lanes = operator_history_lanes(&active_runs, &recent_runs);
 	let (worktrees, mut warnings) = operator_status_worktrees(project, state_store)?;
-	let accounts = codex_account_activity_summaries(project, &mut warnings);
+	let accounts = codex_account_activity_summaries(project, &mut warnings, account_activity_mode);
 	let mut snapshot = OperatorStatusSnapshot {
 		project_id: project.service_id().to_owned(),
 		run_limit: limit,
@@ -238,6 +258,7 @@ where
 		state_store,
 		limit,
 		true,
+		AccountActivityMode::Probe,
 	)
 }
 
@@ -258,6 +279,7 @@ where
 		state_store,
 		limit,
 		false,
+		AccountActivityMode::Snapshot,
 	)
 }
 
@@ -268,6 +290,7 @@ fn build_live_operator_status_snapshot_with_history_ledger<T>(
 	state_store: &StateStore,
 	limit: usize,
 	hydrate_history_ledger: bool,
+	account_activity_mode: AccountActivityMode,
 ) -> crate::prelude::Result<OperatorStatusSnapshot>
 where
 	T: IssueTracker,
@@ -281,7 +304,12 @@ where
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
 	};
-	let mut snapshot = build_operator_status_snapshot(project, state_store, limit)?;
+	let mut snapshot = build_operator_status_snapshot_with_account_mode(
+		project,
+		state_store,
+		limit,
+		account_activity_mode,
+	)?;
 
 	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
 
@@ -898,14 +926,17 @@ fn format_merged_worktree_cleanup_debts(
 fn codex_account_activity_summaries(
 	project: &ServiceConfig,
 	warnings: &mut Vec<String>,
+	mode: AccountActivityMode,
 ) -> Vec<CodexAccountActivitySummary> {
 	let Some(accounts_config) = project.codex().accounts() else {
 		return Vec::new();
 	};
+	let accounts = CodexAccountPool::from_config(accounts_config).and_then(|pool| match mode {
+		AccountActivityMode::Probe => pool.account_activity_summaries_cached(false),
+		AccountActivityMode::Snapshot => pool.account_activity_summaries_snapshot(),
+	});
 
-	match CodexAccountPool::from_config(accounts_config)
-		.and_then(|pool| pool.account_activity_summaries_cached(false))
-	{
+	match accounts {
 		Ok(accounts) => accounts,
 		Err(error) => {
 			tracing::warn!(
