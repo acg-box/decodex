@@ -234,6 +234,11 @@ Worktree visibility follows the owning dashboard section:
   marker, and `decodex recover review-handoff diagnose <ISSUE>` reports the stored
   marker head, orchestration head, PR head, and mismatched field before any explicit
   rebind refresh.
+- `pull_request_state_read_failed` in `Review & Landing` is a degraded PR readback
+  warning when the retained review handoff marker still exists. `decodex status`
+  must keep the issue identifier, branch, marker PR URL, and marker PR head SHA visible
+  so operators can retry status, inspect the PR directly, or run the explicit recovery
+  path without losing the bound PR identity.
 - `Intake Queue` means queued attention still owns the path, including partial retained
   progress after retries.
 - `Recovery Worktrees` means the path is retained local state after the authoritative
