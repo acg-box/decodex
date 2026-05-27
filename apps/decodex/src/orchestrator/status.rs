@@ -3357,7 +3357,14 @@ fn worktree_activity_marker_is_fresh(marker: &RunActivityMarker, now_unix_epoch:
 		&& marker
 			.last_activity_unix_epoch()
 			.and_then(|last_activity| observed_idle_duration(last_activity, now_unix_epoch))
-			.is_some_and(|idle_for| idle_for < ACTIVE_RUN_IDLE_TIMEOUT)
+			.is_some_and(|idle_for| idle_for < run_activity_idle_timeout(Some(marker)))
+}
+
+fn run_activity_idle_timeout(marker: Option<&RunActivityMarker>) -> Duration {
+	agent::protocol_activity_idle_timeout(
+		marker.and_then(RunActivityMarker::protocol_activity),
+		ACTIVE_RUN_IDLE_TIMEOUT,
+	)
 }
 
 fn marker_process_is_alive(marker: &RunActivityMarker) -> bool {
@@ -3475,8 +3482,12 @@ fn operator_run_status(
 		&phase,
 		marker.as_ref().and_then(RunActivityMarker::current_operation),
 	);
-	let suspected_stall =
-		operator_run_is_suspected_stall(&phase, timing.last_progress_unix_epoch, now_unix_epoch);
+	let suspected_stall = operator_run_is_suspected_stall(
+		&phase,
+		timing.last_progress_unix_epoch,
+		now_unix_epoch,
+		run_activity_idle_timeout(marker.as_ref()),
+	);
 	let child_agent_activity = operator_run_child_agent_activity(marker.as_ref(), now_unix_epoch);
 	let protocol_activity = operator_run_protocol_activity(
 		marker.as_ref(),
@@ -3502,9 +3513,7 @@ fn operator_run_status(
 	append_primary_account_if_missing(&mut accounts, account.as_ref());
 
 	let branch_name = run.branch_name().map(str::to_owned);
-	let worktree_path = run
-		.worktree_path()
-		.map(|path| relative_worktree_path_for_path(project, path));
+	let worktree_path = operator_run_relative_worktree_path(project, &run);
 	let issue_identifier = operator_run_issue_identifier_from_fields(
 		run.run_id(),
 		branch_name.as_deref(),
@@ -3568,6 +3577,14 @@ fn operator_run_status(
 		branch_name,
 		worktree_path,
 	})
+}
+
+fn operator_run_relative_worktree_path(
+	project: &ServiceConfig,
+	run: &ProjectRunStatus,
+) -> Option<String> {
+	run.worktree_path()
+		.map(|path| relative_worktree_path_for_path(project, path))
 }
 
 fn operator_run_private_evidence(
@@ -3965,6 +3982,7 @@ fn operator_run_is_suspected_stall(
 	phase: &str,
 	last_progress_unix_epoch: Option<i64>,
 	now_unix_epoch: i64,
+	idle_timeout: Duration,
 ) -> bool {
 	if phase != "executing" {
 		return false;
@@ -3973,13 +3991,13 @@ fn operator_run_is_suspected_stall(
 	last_progress_unix_epoch
 		.and_then(|last_progress| observed_idle_duration(last_progress, now_unix_epoch))
 		.is_some_and(|idle_for| {
-			idle_for >= suspected_operator_run_stall_threshold()
-				&& idle_for < ACTIVE_RUN_IDLE_TIMEOUT
+			idle_for >= suspected_operator_run_stall_threshold(idle_timeout)
+				&& idle_for < idle_timeout
 		})
 }
 
-fn suspected_operator_run_stall_threshold() -> Duration {
-	Duration::from_secs((ACTIVE_RUN_IDLE_TIMEOUT.as_secs() / 2).max(1))
+fn suspected_operator_run_stall_threshold(idle_timeout: Duration) -> Duration {
+	Duration::from_secs((idle_timeout.as_secs() / 2).max(1))
 }
 
 fn visible_operator_run_retry_schedule(
