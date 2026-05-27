@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use orchestrator::{
 	AgentGitCredentialEnvironment, AgentGitCredentialsUnavailable, RepoGateFailureKind,
 };
@@ -516,6 +518,35 @@ fn app_server_terminal_failures_preserve_specific_error_classes() {
 		assert!(next_action.contains(expected_action));
 		assert!(next_action.contains("clear label `decodex:needs-attention`"));
 	}
+}
+
+#[test]
+fn app_server_preflight_terminal_action_surfaces_first_scan_error() {
+	let mut details = BTreeMap::new();
+
+	details.insert(
+		String::from("first_error_path"),
+		String::from("/tmp/plugins/build-web-data-visualization/skills/chart/SKILL.md"),
+	);
+	details.insert(
+		String::from("first_error"),
+		String::from("name: exceeds maximum length of 64 characters"),
+	);
+
+	let error = Report::new(AppServerCapabilityPreflightFailure::blocked_for_test_with_details(
+		"skills",
+		"skills/list returned no enabled skills.",
+		details,
+	));
+	let (error_class, next_action) = orchestrator::terminal_failure_comment_details(
+		false,
+		&error,
+		"clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired",
+	);
+
+	assert_eq!(error_class, "app_server_runtime_preflight_failed");
+	assert!(next_action.contains("first_error_path=/tmp/plugins/build-web-data-visualization"));
+	assert!(next_action.contains("first_error=name: exceeds maximum length of 64 characters"));
 }
 
 #[test]
