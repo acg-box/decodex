@@ -755,6 +755,42 @@ fn capability_preflight_report_accepts_available_runtime_state() {
 }
 
 #[test]
+fn capability_preflight_report_allows_enabled_skills_with_scan_diagnostics() {
+	let skills = SkillsListResponse {
+		data: vec![super::protocol::SkillsListEntry {
+			cwd: String::from("/tmp/worktree"),
+			errors: vec![super::protocol::SkillErrorInfo {
+				message: String::from("name: exceeds maximum length of 64 characters"),
+				path: String::from(
+					"/tmp/plugins/build-web-data-visualization/skills/chart/SKILL.md",
+				),
+			}],
+			skills: vec![super::protocol::SkillMetadata {
+				enabled: true,
+				name: String::from("playbook:rust"),
+				scope: String::from("user"),
+			}],
+		}],
+	};
+	let mut report = AppServerCapabilityPreflightReport::new();
+
+	super::record_skills_preflight(&mut report, "/tmp/worktree", &skills);
+
+	assert!(!report.has_blockers());
+	assert_eq!(report.checks()[0].status, super::AppServerCapabilityPreflightStatus::Ok);
+	assert_eq!(
+		report.checks()[0].summary,
+		"skills/list returned enabled skills with scan diagnostics."
+	);
+	assert_eq!(report.checks()[0].details["enabled_skill_count"], "1");
+	assert_eq!(report.checks()[0].details["error_count"], "1");
+	assert_eq!(
+		report.checks()[0].details["first_error"],
+		"name: exceeds maximum length of 64 characters"
+	);
+}
+
+#[test]
 fn capability_preflight_report_blocks_missing_runtime_state() {
 	let config = RuntimeConfigSummary {
 		model: Some(String::from("missing-model")),
@@ -801,7 +837,7 @@ fn capability_preflight_report_blocks_missing_runtime_state() {
 	assert!(report.has_blockers());
 	assert_eq!(
 		report.blocker_summary(),
-		"model: configured model was not present in model/list.; skills: skills/list returned skill scan errors.; plugins: plugin/list returned marketplace load errors.; mcp: mcpServerStatus/list returned MCP servers that are not logged in."
+		"model: configured model was not present in model/list.; skills: skills/list returned no enabled skills. first_error_path=/tmp/worktree/.codex/skills/bad/SKILL.md; first_error=bad skill metadata; plugins: plugin/list returned marketplace load errors. first_error_path=/tmp/plugins.json; first_error=invalid marketplace; mcp: mcpServerStatus/list returned MCP servers that are not logged in."
 	);
 }
 
