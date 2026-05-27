@@ -104,11 +104,13 @@ cargo run -p decodex --bin decodex -- status
 cargo run -p decodex --bin decodex -- diagnose --json
 cargo run -p decodex --bin decodex -- maintenance prune --dry-run
 cargo run -p decodex --bin decodex -- run --dry-run
-cargo run -p decodex --bin decodex -- serve --interval 60s --listen-address 127.0.0.1:8912
+cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8912
 ```
 
 Project-scoped commands accept `--config <PROJECT_DIR>` after the subcommand when the
 operator wants to override registry-based project resolution for that command.
+`decodex serve` owns the default scheduler cadence of 15 seconds; pass
+`--interval <INTERVAL>` only when deliberately overriding that poll interval.
 
 ### Install from Source
 
@@ -224,11 +226,13 @@ node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-code
 ```
 
 Use hidden `decodex serve --dev --listen-address 127.0.0.1:8912` only when
-developing Decodex App's bundled server path or the local account/app snapshot APIs
-against real runtime state. Dev mode deliberately does not register projects, poll
-Linear, dispatch work, or accept `--config` or `--interval`. For real automation,
-use ordinary `decodex serve --interval ...`; for dashboard-only UI work, prefer the
-mock server above.
+developing local account/app snapshot APIs against real runtime state while explicitly
+avoiding scheduler activity. Dev mode deliberately does not register projects, poll
+Linear, dispatch work, or accept `--config` or `--interval`. Decodex App's normal
+fallback server is ordinary `decodex serve --listen-address 127.0.0.1:8912`; the CLI
+owns the default scheduler interval, currently 15 seconds. App launch connects to an
+existing live default listener instead of starting a duplicate server. For
+dashboard-only UI work, prefer the mock server above.
 
 The dashboard semantics and local-vs-external state boundary live in
 `docs/reference/operator-control-plane.md`.

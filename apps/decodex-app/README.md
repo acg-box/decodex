@@ -13,11 +13,11 @@ The first Decodex App release manages the shared Codex account pool through the
 bundled Rust app helper so account UI stays on the same CLI-owned files even when a
 long-running local `decodex serve` is older than the app bundle. On launch the app also
 connects to an existing `decodex serve` on the default local endpoint when one is
-available; otherwise it starts the bundled Decodex binary in its hidden dev endpoint
-mode as `decodex serve --dev --listen-address 127.0.0.1:8912` for operator snapshot
-and WebUI routes. App-started servers do not poll registered projects or dispatch
-Linear work. The helper owns account
-operations and interactive login flows that need streamed command output:
+available; otherwise it starts the bundled Decodex binary as a normal scheduler with
+`decodex serve --listen-address 127.0.0.1:8912`. The CLI owns the default scheduler
+interval, currently 15 seconds. App-started servers load the enabled project registry
+and own the same operator listener as a manually started `decodex serve`. The helper
+owns account operations and interactive login flows that need streamed command output:
 
 - list accounts without printing token material
 - pin future Decodex runs to one account
@@ -26,9 +26,10 @@ operations and interactive login flows that need streamed command output:
 - run isolated Codex device login, then import the resulting auth file
 - remove a stored account from the local pool
 
-The app does not schedule Decodex runs, own project registration, or replace
-`decodex serve`. It is a native UI over the shared Rust account-management service,
-not a wrapper around the `decodex` CLI binary.
+The app does not schedule Decodex runs itself, own project registration, or replace the
+Rust control plane. It is a native UI over the shared Rust account-management service
+and uses the bundled `decodex` server only when no compatible local server is already
+running.
 
 The app and operator dashboard share account-pool state through the Rust account API:
 stored accounts come from `~/.codex/decodex/accounts.jsonl`, run routing and account
@@ -72,11 +73,11 @@ DECODEX_APP_HELPER="$(pwd)/target/debug/decodex-app-helper" \
 swift run --package-path apps/decodex-app DecodexApp
 ```
 
-The app-started server path is the main reason to use `decodex serve --dev`
-manually: it lets you test the same local account APIs, app snapshot API, and
-dashboard routes without starting the scheduler. Do not use `--dev` to validate
-project registration, Linear polling, queue intake, or retained-lane execution; use
-ordinary `decodex serve --interval ...` for those paths.
+Use hidden `decodex serve --dev` only when manually testing local account APIs, the app
+snapshot API, or dashboard routes while deliberately avoiding scheduler activity. The
+normal app fallback is ordinary `decodex serve --listen-address 127.0.0.1:8912`. Do
+not use `--dev` to validate project registration, Linear polling, queue intake, or
+retained-lane execution; use ordinary `decodex serve` for those paths.
 
 The staging script follows the local Rsnap-style signing path: it writes
 `target/decodex-app/Decodex App.app`, signs the bundle with an Apple Development
