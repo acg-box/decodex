@@ -367,6 +367,17 @@ where
 		return Ok(Vec::new());
 	};
 	let worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
+
+	if let Some(disposition) = superseded_run_disposition(state_store, &run_attempt)? {
+		return Ok(vec![ActiveRunReconciliation {
+			issue: issue.clone(),
+			run_attempt,
+			worktree_mapping,
+			disposition,
+			workflow: workflow.clone(),
+		}]);
+	}
+
 	let action_workflow = active_reconciliation_workflow_for_lease(
 		workflow,
 		Some(ActiveWorkflowOverride { child, workflow: child_context.workflow }),
@@ -1022,6 +1033,13 @@ where
 	let Some(run_attempt) = context.state_store.run_attempt(run_attempt.run_id())? else {
 		return Ok(());
 	};
+
+	if superseded_run_disposition(context.state_store, &run_attempt)?.is_some() {
+		clear_retry_schedule_and_release(context.retry_queue, context.state_store, child.issue_id)?;
+
+		return Ok(());
+	}
+
 	let issue_id = run_attempt.issue_id();
 	let Some(issue) = refresh_issue(context.tracker, issue_id)? else {
 		clear_retry_schedule_and_release(context.retry_queue, context.state_store, issue_id)?;
