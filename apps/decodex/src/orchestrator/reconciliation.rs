@@ -36,15 +36,17 @@ where
 			&issue,
 			&run_attempt,
 		);
-	let retained_closeout =
-		terminal_issue_keeps_retained_closeout(
+		let retained_closeout = terminal_issue_keeps_retained_closeout(
 			tracker,
 			&issue,
 			project,
 			action_workflow,
 			state_store,
 		)?;
-		let disposition = if !retained_closeout && is_terminal_issue(&issue, action_workflow) {
+		let disposition =
+			if let Some(disposition) = superseded_run_disposition(state_store, &run_attempt)? {
+				Some(disposition)
+			} else if !retained_closeout && is_terminal_issue(&issue, action_workflow) {
 			Some(ActiveRunDisposition::Terminal)
 		} else if !retained_closeout
 			&& is_issue_nonactive_for_run(&issue, action_workflow)
@@ -125,6 +127,16 @@ where
 	};
 	let worktree_mapping = state_store.worktree_for_issue(issue_id)?;
 
+	if let Some(disposition) = superseded_run_disposition(state_store, &run_attempt)? {
+		return Ok(vec![ActiveRunReconciliation {
+			issue,
+			run_attempt,
+			worktree_mapping,
+			disposition,
+			workflow: workflow.clone(),
+		}]);
+	}
+
 	if run_attempt.status() != "failed" || !is_issue_active_for_run(&issue, workflow) {
 		return Ok(Vec::new());
 	}
@@ -178,6 +190,18 @@ where
 			ActiveRunDisposition::RetainedReviewComplete => {
 				reconcile_retained_review_complete_active_run(project, state_store, &action)?;
 			},
+			ActiveRunDisposition::Superseded {
+				newer_run_id,
+				newer_attempt_number,
+			} => {
+				reconcile_superseded_active_run(
+					project,
+					state_store,
+					&action,
+					newer_run_id,
+					*newer_attempt_number,
+				)?;
+			},
 			ActiveRunDisposition::Terminal => {
 				tracing::info!(
 					project_id = project.service_id(),
@@ -221,6 +245,36 @@ where
 				reconcile_stalled_attention_run(project, state_store, &action, *idle_for)?;
 			},
 		}
+	}
+
+	Ok(())
+}
+
+fn reconcile_superseded_active_run(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	action: &ActiveRunReconciliation,
+	newer_run_id: &str,
+	newer_attempt_number: i64,
+) -> Result<()> {
+	tracing::info!(
+		project_id = project.service_id(),
+		issue_id = action.issue.id,
+		issue = action.issue.identifier,
+		run_id = action.run_attempt.run_id(),
+		attempt = action.run_attempt.attempt_number(),
+		superseded_by_run_id = newer_run_id,
+		superseded_by_attempt = newer_attempt_number,
+		disposition = "superseded",
+		"Reconciling superseded active run without tracker writeback."
+	);
+
+	mark_run_attempt_if_active(state_store, action.run_attempt.run_id(), "interrupted")?;
+
+	if let Some(lease) = state_store.lease_for_issue(&action.issue.id)?
+		&& lease.run_id() == action.run_attempt.run_id()
+	{
+		state_store.clear_lease(&action.issue.id)?;
 	}
 
 	Ok(())
@@ -421,6 +475,25 @@ fn retained_review_handoff_matches_run(
 	Ok(marker.run_id() == run_attempt.run_id()
 		&& marker.attempt_number() == run_attempt.attempt_number()
 		&& marker.branch_name() == worktree_mapping.branch_name())
+}
+
+fn superseded_run_disposition(
+	state_store: &StateStore,
+	run_attempt: &RunAttempt,
+) -> Result<Option<ActiveRunDisposition>> {
+	let Some(latest_attempt) = state_store.latest_run_attempt_for_issue(run_attempt.issue_id())?
+	else {
+		return Ok(None);
+	};
+
+	if latest_attempt.attempt_number() <= run_attempt.attempt_number() {
+		return Ok(None);
+	}
+
+	Ok(Some(ActiveRunDisposition::Superseded {
+		newer_run_id: latest_attempt.run_id().to_owned(),
+		newer_attempt_number: latest_attempt.attempt_number(),
+	}))
 }
 
 fn stalled_idle_duration(
