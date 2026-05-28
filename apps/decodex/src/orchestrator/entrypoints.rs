@@ -1,8 +1,20 @@
+use state::{ConnectorBackoff, ConnectorBackoffInput};
+
 use crate::runtime;
 
 struct ControlPlaneProjectTick {
 	snapshot: Option<OperatorStatusSnapshot>,
 	project_status: Option<OperatorProjectStatus>,
+}
+
+struct ConnectorBackoffStatusParts<'a> {
+	project_id: &'a str,
+	connector: &'a str,
+	sync_phase: &'a str,
+	quota_class: &'a str,
+	reset_unix_epoch: i64,
+	reset_source: &'a str,
+	warning: &'a str,
 }
 
 impl TrackerConnectorBackoff {
@@ -11,21 +23,18 @@ impl TrackerConnectorBackoff {
 		project_id: &str,
 		now_unix_epoch: i64,
 	) -> OperatorConnectorBackoffStatus {
-		OperatorConnectorBackoffStatus {
-			project_id: project_id.to_owned(),
-			connector: String::from("linear"),
-			sync_phase: self.sync_phase.to_owned(),
-			quota_class: String::from("linear_graphql_api"),
-			reset_at: format_optional_unix_timestamp(Some(self.reset_unix_epoch))
-				.unwrap_or_else(|| self.reset_unix_epoch.to_string()),
-			reset_unix_epoch: self.reset_unix_epoch,
-			reset_source: self.reset_source.to_owned(),
-			retry_after_seconds: self.reset_unix_epoch.saturating_sub(now_unix_epoch).max(0),
-			next_action: String::from(
-				"Wait for the reset window; keep monitoring local running lanes.",
-			),
-			warning: String::from(TRACKER_RATE_LIMIT_WARNING),
-		}
+		operator_connector_backoff_status(
+			ConnectorBackoffStatusParts {
+				project_id,
+				connector: "linear",
+				sync_phase: self.sync_phase,
+				quota_class: "linear_graphql_api",
+				reset_unix_epoch: self.reset_unix_epoch,
+				reset_source: self.reset_source,
+				warning: TRACKER_RATE_LIMIT_WARNING,
+			},
+			now_unix_epoch,
+		)
 	}
 }
 
@@ -45,6 +54,17 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 
 	runtime::register_project_config(&state_store, &config_path, true)?;
 
+	let config = ServiceConfig::from_path(&config_path)?;
+	let workflow = load_configured_cycle_workflow(&config, request.preferred_workflow_snapshot)?;
+
+	if let Some(status) =
+		active_stored_tracker_backoff_status(&state_store, config.service_id())?
+	{
+		print!("{}", render_tracker_backoff_cli_message("run", &status));
+
+		return Ok(());
+	}
+
 	let preferred_run_identity = match (request.preferred_run_id, request.preferred_attempt_number)
 	{
 		(Some(run_id), Some(attempt_number)) =>
@@ -61,18 +81,37 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 			eyre::bail!("queue explanation does not accept a preferred issue.");
 		}
 
-		let config = ServiceConfig::from_path(&config_path)?;
-		let workflow = load_configured_cycle_workflow(&config, request.preferred_workflow_snapshot)?;
 		let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
-		let queued_candidates =
-			build_queued_candidate_statuses(&tracker, &config, &workflow, &state_store)?;
+		let queued_candidates = match build_queued_candidate_statuses(
+			&tracker,
+			&config,
+			&workflow,
+			&state_store,
+		) {
+			Ok(queued_candidates) => queued_candidates,
+			Err(error) => {
+				let Some(backoff) =
+					tracker_rate_limit_backoff(&error, Instant::now(), "queue_explain")
+				else {
+					return Err(error);
+				};
+				let status = backoff
+					.to_operator_status(config.service_id(), OffsetDateTime::now_utc().unix_timestamp());
+
+				persist_tracker_backoff_state(&state_store, config.service_id(), &backoff);
+
+				print!("{}", render_tracker_backoff_cli_message("run", &status));
+
+				return Ok(());
+			},
+		};
 
 		print!("{}", render_queue_explain(&config, &queued_candidates));
 
 		return Ok(());
 	}
 
-	if let Some(summary) = run_configured_cycle(RunCycleRequest {
+	let run_summary = match run_configured_cycle(RunCycleRequest {
 		config_path: &config_path,
 		state_store: &state_store,
 		dry_run: request.dry_run,
@@ -87,14 +126,33 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 		preferred_run_identity,
 		preferred_retry_budget_base: request.preferred_retry_budget_base,
 		preferred_workflow_snapshot: request.preferred_workflow_snapshot,
-	})? {
+	}) {
+		Ok(summary) => summary,
+		Err(error) => {
+			let Some(backoff) = tracker_rate_limit_backoff(&error, Instant::now(), "run_cycle")
+			else {
+				return Err(error);
+			};
+			let status = backoff
+				.to_operator_status(config.service_id(), OffsetDateTime::now_utc().unix_timestamp());
+
+			persist_tracker_backoff_state(&state_store, config.service_id(), &backoff);
+
+			print!("{}", render_tracker_backoff_cli_message("run", &status));
+
+			return Ok(());
+		},
+	};
+
+	if let Some(summary) = run_summary {
+		clear_tracker_backoff_state_best_effort(&state_store, config.service_id());
+
 		println!("{}", format_run_once_summary(&summary, request.dry_run));
 
 		return Ok(());
 	}
 
-	let config = ServiceConfig::from_path(&config_path)?;
-	let workflow = load_configured_cycle_workflow(&config, request.preferred_workflow_snapshot)?;
+	clear_tracker_backoff_state_best_effort(&state_store, config.service_id());
 
 	println!("{}", format_no_eligible_issue_message(&config, &workflow));
 
@@ -218,10 +276,21 @@ pub(crate) fn print_status(
 	};
 	let config = ServiceConfig::from_path(&config_path)?;
 	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
-	let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
 
 	runtime::register_project_config(&state_store, &config_path, true)?;
 
+	if let Some(status) =
+		active_stored_tracker_backoff_status(&state_store, config.service_id())?
+	{
+		let snapshot =
+			build_operator_status_snapshot_for_tracker_backoff(&config, &state_store, limit, &status)?;
+
+		print_operator_status_snapshot(&snapshot, json)?;
+
+		return Ok(());
+	}
+
+	let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
 	let recovered_state = recover_runtime_state_from_tracker_and_worktrees(
 		&tracker,
 		&config,
@@ -234,6 +303,28 @@ pub(crate) fn print_status(
 		Ok(recovered_state) =>
 			hydrate_status_snapshot_state(&config, &state_store, recovered_state)?,
 		Err(error) => {
+			if let Some(backoff) =
+				tracker_rate_limit_backoff(&error, Instant::now(), "runtime_recovery")
+			{
+				let status = backoff.to_operator_status(
+					config.service_id(),
+					OffsetDateTime::now_utc().unix_timestamp(),
+				);
+
+				persist_tracker_backoff_state(&state_store, config.service_id(), &backoff);
+
+				let snapshot = build_operator_status_snapshot_for_tracker_backoff(
+					&config,
+					&state_store,
+					limit,
+					&status,
+				)?;
+
+				print_operator_status_snapshot(&snapshot, json)?;
+
+				return Ok(());
+			}
+
 			let warning = runtime_recovery_warning("runtime_recovery_unavailable", &error);
 
 			tracing::warn!(
@@ -245,8 +336,30 @@ pub(crate) fn print_status(
 		},
 	}
 
-	let mut snapshot =
-		build_live_operator_status_snapshot(&tracker, &config, &workflow, &state_store, limit)?;
+	let mut snapshot = match build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		limit,
+	) {
+		Ok(snapshot) => snapshot,
+		Err(error) => {
+			let Some(backoff) =
+				tracker_rate_limit_backoff(&error, Instant::now(), "operator_status_refresh")
+			else {
+				return Err(error);
+			};
+			let status = backoff.to_operator_status(
+				config.service_id(),
+				OffsetDateTime::now_utc().unix_timestamp(),
+			);
+
+			persist_tracker_backoff_state(&state_store, config.service_id(), &backoff);
+
+			build_operator_status_snapshot_for_tracker_backoff(&config, &state_store, limit, &status)?
+		},
+	};
 
 	for warning in snapshot_warnings {
 		add_operator_snapshot_warning(&mut snapshot, &warning);
@@ -254,11 +367,15 @@ pub(crate) fn print_status(
 
 	refresh_operator_project_summary(&mut snapshot);
 
-	if json {
-		println!("{}", serde_json::to_string_pretty(&snapshot)?);
-	} else {
-		print!("{}", render_operator_status(&snapshot));
+	if !snapshot
+		.connector_backoffs
+		.iter()
+		.any(|backoff| backoff.connector == "linear")
+	{
+		clear_tracker_backoff_state_best_effort(&state_store, config.service_id());
 	}
+
+	print_operator_status_snapshot(&snapshot, json)?;
 
 	Ok(())
 }
@@ -352,6 +469,174 @@ pub(crate) fn print_private_evidence(request: EvidenceRequest<'_>) -> Result<()>
 	}
 
 	Ok(())
+}
+
+fn print_operator_status_snapshot(
+	snapshot: &OperatorStatusSnapshot,
+	json: bool,
+) -> Result<()> {
+	if json {
+		println!("{}", serde_json::to_string_pretty(snapshot)?);
+	} else {
+		print!("{}", render_operator_status(snapshot));
+	}
+
+	Ok(())
+}
+
+fn operator_connector_backoff_status(
+	parts: ConnectorBackoffStatusParts<'_>,
+	now_unix_epoch: i64,
+) -> OperatorConnectorBackoffStatus {
+	OperatorConnectorBackoffStatus {
+		project_id: parts.project_id.to_owned(),
+		connector: parts.connector.to_owned(),
+		sync_phase: parts.sync_phase.to_owned(),
+		quota_class: parts.quota_class.to_owned(),
+		reset_at: format_optional_unix_timestamp(Some(parts.reset_unix_epoch))
+			.unwrap_or_else(|| parts.reset_unix_epoch.to_string()),
+		reset_unix_epoch: parts.reset_unix_epoch,
+		reset_source: parts.reset_source.to_owned(),
+		retry_after_seconds: parts.reset_unix_epoch.saturating_sub(now_unix_epoch).max(0),
+		next_action: String::from(
+			"Wait for the reset window; keep monitoring local running lanes.",
+		),
+		warning: parts.warning.to_owned(),
+	}
+}
+
+fn connector_backoff_record_to_operator_status(
+	backoff: &ConnectorBackoff,
+	now_unix_epoch: i64,
+) -> OperatorConnectorBackoffStatus {
+	operator_connector_backoff_status(
+		ConnectorBackoffStatusParts {
+			project_id: backoff.project_id(),
+			connector: backoff.connector(),
+			sync_phase: backoff.sync_phase(),
+			quota_class: backoff.quota_class(),
+			reset_unix_epoch: backoff.reset_unix_epoch(),
+			reset_source: backoff.reset_source(),
+			warning: backoff.warning(),
+		},
+		now_unix_epoch,
+	)
+}
+
+fn active_stored_tracker_backoff_status(
+	state_store: &StateStore,
+	project_id: &str,
+) -> Result<Option<OperatorConnectorBackoffStatus>> {
+	let Some(backoff) = state_store.connector_backoff(project_id, "linear")? else {
+		return Ok(None);
+	};
+	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+
+	if backoff.reset_unix_epoch() <= now_unix_epoch {
+		state_store.clear_connector_backoff(project_id, "linear")?;
+
+		return Ok(None);
+	}
+
+	Ok(Some(connector_backoff_record_to_operator_status(&backoff, now_unix_epoch)))
+}
+
+fn active_stored_tracker_backoff_status_best_effort(
+	state_store: &StateStore,
+	project_id: &str,
+) -> Option<OperatorConnectorBackoffStatus> {
+	match active_stored_tracker_backoff_status(state_store, project_id) {
+		Ok(status) => status,
+		Err(error) => {
+			let _ = error;
+
+			tracing::warn!(
+				project_id = project_id,
+				"Failed to read persisted tracker backoff; sensitive runtime details were withheld."
+			);
+
+			None
+		},
+	}
+}
+
+fn persist_tracker_backoff_state(
+	state_store: &StateStore,
+	project_id: &str,
+	backoff: &TrackerConnectorBackoff,
+) {
+	if let Err(error) = state_store.upsert_connector_backoff(ConnectorBackoffInput {
+		project_id,
+		connector: "linear",
+		sync_phase: backoff.sync_phase,
+		quota_class: "linear_graphql_api",
+		reset_unix_epoch: backoff.reset_unix_epoch,
+		reset_source: backoff.reset_source,
+		warning: TRACKER_RATE_LIMIT_WARNING,
+	}) {
+		let _ = error;
+
+		tracing::warn!(
+			project_id = project_id,
+			"Failed to persist tracker backoff; sensitive runtime details were withheld."
+		);
+	}
+}
+
+fn clear_tracker_backoff_state_best_effort(state_store: &StateStore, project_id: &str) {
+	if let Err(error) = state_store.clear_connector_backoff(project_id, "linear") {
+		let _ = error;
+
+		tracing::warn!(
+			project_id = project_id,
+			"Failed to clear persisted tracker backoff; sensitive runtime details were withheld."
+		);
+	}
+}
+
+fn render_tracker_backoff_cli_message(
+	command: &str,
+	status: &OperatorConnectorBackoffStatus,
+) -> String {
+	format!(
+		"Linear connector is in backoff for project `{}`; `{}` skipped tracker reads for `{}` until {} (retry_after_seconds={}).\n",
+		status.project_id,
+		command,
+		status.sync_phase,
+		status.reset_at,
+		status.retry_after_seconds
+	)
+}
+
+fn build_operator_status_snapshot_for_tracker_backoff(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	limit: usize,
+	status: &OperatorConnectorBackoffStatus,
+) -> Result<OperatorStatusSnapshot> {
+	let review_state_inspector = GhPullRequestReviewStateInspector {
+		github_token_env_var: Some(project.github().token_env_var().to_owned()),
+	};
+	let mut snapshot = build_operator_status_snapshot_with_account_mode(
+		project,
+		state_store,
+		limit,
+		AccountActivityMode::Snapshot,
+	)?;
+
+	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
+
+	snapshot.post_review_lanes =
+		build_degraded_post_review_lane_statuses(project, state_store, &review_state_inspector)?;
+
+	add_operator_snapshot_warning(&mut snapshot, TRACKER_RATE_LIMIT_WARNING);
+
+	snapshot.connector_backoffs.push(status.clone());
+
+	add_operator_snapshot_warning(&mut snapshot, "external_observer_status_skipped");
+	refresh_operator_project_summary(&mut snapshot);
+
+	Ok(snapshot)
 }
 
 fn publish_operator_snapshot(
@@ -642,7 +927,29 @@ fn run_control_plane_project_tick(
 	if tracker_backoff_active(runtime, Instant::now()) {
 		snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
 
-		return control_plane_project_local_snapshot(project, state_store, runtime, snapshot_warnings);
+		let connector_backoffs = active_connector_backoff_statuses(project.service_id(), runtime);
+
+		return control_plane_project_local_snapshot(
+			project,
+			state_store,
+			runtime,
+			snapshot_warnings,
+			&connector_backoffs,
+		);
+	}
+
+	if let Some(connector_backoff) =
+		active_stored_tracker_backoff_status_best_effort(state_store, project.service_id())
+	{
+		snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
+
+		return control_plane_project_local_snapshot(
+			project,
+			state_store,
+			runtime,
+			snapshot_warnings,
+			slice::from_ref(&connector_backoff),
+		);
 	}
 
 	match load_daemon_tick_context(project.config_path(), &mut runtime.workflow_cache) {
@@ -678,17 +985,21 @@ fn tracker_backoff_active(runtime: &mut ProjectDaemonRuntime, now: Instant) -> b
 
 fn remember_tracker_backoff(
 	runtime: &mut ProjectDaemonRuntime,
+	state_store: &StateStore,
+	project_id: &str,
 	error: &Report,
 	now: Instant,
 	sync_phase: &'static str,
-) -> bool {
-	let Some(backoff) = tracker_rate_limit_backoff(error, now, sync_phase) else {
-		return false;
-	};
+) -> Option<OperatorConnectorBackoffStatus> {
+	let backoff = tracker_rate_limit_backoff(error, now, sync_phase)?;
+	let status =
+		backoff.to_operator_status(project_id, OffsetDateTime::now_utc().unix_timestamp());
+
+	persist_tracker_backoff_state(state_store, project_id, &backoff);
 
 	runtime.tracker_backoff = Some(backoff);
 
-	true
+	Some(status)
 }
 
 fn tracker_rate_limit_backoff(
@@ -745,6 +1056,7 @@ fn control_plane_project_local_snapshot(
 	state_store: &StateStore,
 	runtime: &mut ProjectDaemonRuntime,
 	snapshot_warnings: &mut Vec<&'static str>,
+	connector_backoffs: &[OperatorConnectorBackoffStatus],
 ) -> ControlPlaneProjectTick {
 	match load_daemon_tick_context(project.config_path(), &mut runtime.workflow_cache) {
 		Ok(context) => match build_operator_state_snapshot_for_publish(
@@ -754,7 +1066,7 @@ fn control_plane_project_local_snapshot(
 			state_store,
 			DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
 			snapshot_warnings,
-			&active_connector_backoff_statuses(project.service_id(), runtime),
+			connector_backoffs,
 		) {
 			Ok(snapshot) => {
 				write_agent_evidence_best_effort(&snapshot, AgentEvidenceSource::ServeTick);
@@ -820,7 +1132,14 @@ fn control_plane_project_snapshot(
 		&mut runtime.retry_queue,
 		context,
 	) {
-		if remember_tracker_backoff(runtime, &error, Instant::now(), "control_plane_tick") {
+		if let Some(connector_backoff) = remember_tracker_backoff(
+			runtime,
+			state_store,
+			project.service_id(),
+			&error,
+			Instant::now(),
+			"control_plane_tick",
+		) {
 			snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
 
 			return control_plane_project_local_snapshot(
@@ -828,6 +1147,7 @@ fn control_plane_project_snapshot(
 				state_store,
 				runtime,
 				snapshot_warnings,
+				slice::from_ref(&connector_backoff),
 			);
 		}
 
@@ -851,7 +1171,11 @@ fn control_plane_project_snapshot(
 		&[],
 	) {
 		Ok(snapshot) => {
-			runtime.tracker_backoff = None;
+			if !operator_snapshot_has_linear_backoff(&snapshot) {
+				runtime.tracker_backoff = None;
+
+				clear_tracker_backoff_state_best_effort(state_store, project.service_id());
+			}
 
 			write_agent_evidence_best_effort(&snapshot, AgentEvidenceSource::ServeTick);
 
@@ -865,7 +1189,14 @@ fn control_plane_project_snapshot(
 			}
 		},
 		Err(error) => {
-			if remember_tracker_backoff(runtime, &error, Instant::now(), "operator_snapshot_refresh") {
+			if let Some(connector_backoff) = remember_tracker_backoff(
+				runtime,
+				state_store,
+				project.service_id(),
+				&error,
+				Instant::now(),
+				"operator_snapshot_refresh",
+			) {
 				snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
 
 				return control_plane_project_local_snapshot(
@@ -873,6 +1204,7 @@ fn control_plane_project_snapshot(
 					state_store,
 					runtime,
 					snapshot_warnings,
+					slice::from_ref(&connector_backoff),
 				);
 			}
 
@@ -891,6 +1223,10 @@ fn control_plane_project_snapshot(
 			}
 		},
 	}
+}
+
+fn operator_snapshot_has_linear_backoff(snapshot: &OperatorStatusSnapshot) -> bool {
+	snapshot.connector_backoffs.iter().any(|backoff| backoff.connector == "linear")
 }
 
 fn complete_project_status(
