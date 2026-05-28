@@ -203,8 +203,9 @@ Worktree visibility follows the owning dashboard section:
   an alive PID plus matching `.decodex-run-activity` `host_boot_id` and
   `process_start_identity`; a previous-boot marker, same-boot PID reuse, missing
   identity, or unavailable current host/process identity is recovery input, not proof
-  of active execution. `process_liveness_reason` explains which identity check failed
-  when `process_alive` is false.
+  of active execution. `execution_liveness = process_identity_mismatch` is the stable
+  summary for previous-boot or PID-reuse evidence, while `process_liveness_reason`
+  explains the exact failed identity check when `process_alive` is false.
   `active_lease` is queue lease ownership only; `execution_liveness` explains why
   the lane is still visible when the queue lease is not held.
 - Running lanes derive CLI and dashboard text from the same `OperatorRunStatus`
@@ -241,6 +242,11 @@ Worktree visibility follows the owning dashboard section:
   path without losing the bound PR identity.
 - `Intake Queue` means queued attention still owns the path, including partial retained
   progress after retries.
+- `linear_active_label_present` in `Intake Queue` means the issue still carries
+  service active ownership while it is also queued, but local status could not prove a
+  matching active lease. Treat it as a recovery/attention row, not ready work. If its
+  attention cause is `evidence_missing`, use the retained marker, worktree, and public
+  Linear state as the available recovery evidence before retrying or cleaning labels.
 - `Recovery Worktrees` means the path is retained local state after the authoritative
   runtime owner is gone or cannot explain it as active, review/landing, or queued
   work.
