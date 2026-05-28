@@ -79,12 +79,13 @@ repair required, or blocked for a different concrete reason.
 
 ## Active Ownership Recovery
 
-If diagnosis reports `classification: review_handoff_bound` but
-`active_label_present: false`, do not run rebind just to restore ownership. First
-verify the issue is still meant to continue the retained post-review lifecycle for this
-service, then restore the issue to the workflow success state and add
-`decodex:active:<service-id>`. If the issue still has `decodex:needs-attention`, clear
-that label only after the recorded blocker has been repaired.
+If diagnosis reports `classification: review_handoff_ownership_drift`,
+`reason: active_ownership_label_missing`, and `active_label_present: false`, do not run
+rebind just to restore ownership. First verify the issue is still meant to continue the
+retained post-review lifecycle for this service, then restore the issue to the workflow
+success state and add `decodex:active:<service-id>`. If the issue still has
+`decodex:needs-attention`, clear that label only after the recorded blocker has been
+repaired.
 
 After restoring explicit ownership, rerun:
 

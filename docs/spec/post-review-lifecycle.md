@@ -78,6 +78,13 @@ marker PR URL, and marker head SHA, and it may expose
 `readback_warning = "pull_request_state_read_failed"` until the next successful PR
 state refresh.
 
+When Linear issue metadata readback is degraded by connector backoff, operator status
+must still keep locally retained handoff rows visible with the marker PR URL and head
+SHA and must mark the row as tracker-readback degraded instead of presenting the PR or
+code state as failed. If the handoff is bound but `decodex:active:<service-id>` is
+missing, recovery diagnosis must classify the state as ownership drift and give the
+single label repair action instead of recommending rebind.
+
 The supported operator recovery surface is `decodex recover review-handoff`. This is a
 break-glass recovery path for orphaned retained review lanes and stale retained marker
 heads after explicit manual repair or rebase. It is not part of the normal automation
@@ -86,8 +93,9 @@ success path.
 - `diagnose` is read-only. It reports the project, issue, branch, worktree, local head,
   active automation label, existing PR URL when present, stored handoff head, stored
   orchestration head, PR base/head when readable, and the missing or mismatched marker
-  reason. A diagnostic may report a bound marker, a missing marker, an unverified PR
-  read, or a concrete field mismatch that requires explicit rebind.
+  reason. A diagnostic may report a bound marker, active ownership drift, a missing
+  marker, an unverified PR read, or a concrete field mismatch that requires explicit
+  rebind.
 - `rebind` is mutating and requires an explicit issue identifier plus PR URL. It must
   validate the configured project, tracker issue, success-state compatibility, active
   automation ownership, retained worktree branch, clean worktree, PR repository, PR base,
