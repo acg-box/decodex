@@ -1412,6 +1412,7 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 		"facts.push([\"Auto retry\", autoRetryBlockedReasonText(attention.auto_retry_blocked_reason)]);"
 	));
 	assert!(response.contains("return \"needs-attention label set\";"));
+	assert!(response.contains("return \"active label present\";"));
 	assert!(reason_text.contains("return \"auto retry paused\";"));
 	assert!(response.contains("function queuedCandidateInlineReason(candidate)"));
 	assert!(response.contains("displayTextRepeats(reason, sentenceToken(candidate.attention.attention_error_class))"));
