@@ -101,6 +101,7 @@ struct StateData {
 	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
 	review_handoffs: HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
 	review_orchestrations: HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
+	connector_backoffs: HashMap<(String, String), ConnectorBackoff>,
 	dispatch_slot_configs: HashMap<String, DispatchSlotConfig>,
 	issue_claim_guards: HashMap<String, IssueClaimGuard>,
 	dispatch_slot_guards: HashMap<String, DispatchSlotGuard>,
@@ -117,6 +118,7 @@ impl StateData {
 		self.private_execution_events = loaded.private_execution_events;
 		self.review_handoffs = loaded.review_handoffs;
 		self.review_orchestrations = loaded.review_orchestrations;
+		self.connector_backoffs = loaded.connector_backoffs;
 	}
 
 	fn replace_project_run_state(&mut self, loaded: Self) {
@@ -336,8 +338,30 @@ CREATE TABLE IF NOT EXISTS review_orchestrations (
 );
 "#,
 		)?;
+		self.bootstrap_connector_backoffs_schema()?;
 		self.bootstrap_private_execution_events_schema()?;
 		self.record_schema_version()?;
+
+		Ok(())
+	}
+
+	fn bootstrap_connector_backoffs_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS connector_backoffs (
+	project_id TEXT NOT NULL,
+	connector TEXT NOT NULL,
+	sync_phase TEXT NOT NULL,
+	quota_class TEXT NOT NULL,
+	reset_unix_epoch INTEGER NOT NULL,
+	reset_source TEXT NOT NULL,
+	warning TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, connector)
+);
+"#,
+		)?;
 
 		Ok(())
 	}
@@ -374,7 +398,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	value TEXT NOT NULL
 );
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '5')
+VALUES ('schema_version', '6')
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 "#,
 		)?;
@@ -394,6 +418,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_private_execution_events(&mut state)?;
 		self.load_review_handoffs(&mut state)?;
 		self.load_review_orchestrations(&mut state)?;
+		self.load_connector_backoffs(&mut state)?;
 
 		Ok(state)
 	}
@@ -429,6 +454,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_private_execution_events(&transaction, state)?;
 		persist_review_handoffs(&transaction, state)?;
 		persist_review_orchestrations(&transaction, state)?;
+		persist_connector_backoffs(&transaction, state)?;
 
 		transaction.commit()?;
 
@@ -436,8 +462,23 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	}
 
 	fn delete_project(&mut self, service_id: &str) -> Result<()> {
-		self.connection
-			.execute("DELETE FROM projects WHERE service_id = ?1", params![service_id])?;
+		let transaction = self.connection.transaction()?;
+
+		transaction.execute("DELETE FROM projects WHERE service_id = ?1", params![service_id])?;
+		transaction.execute(
+			"DELETE FROM connector_backoffs WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.commit()?;
+
+		Ok(())
+	}
+
+	fn delete_connector_backoff(&self, project_id: &str, connector: &str) -> Result<()> {
+		self.connection.execute(
+			"DELETE FROM connector_backoffs WHERE project_id = ?1 AND connector = ?2",
+			params![project_id, connector],
+		)?;
 
 		Ok(())
 	}
@@ -1225,6 +1266,40 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			let (key, record) = row?;
 
 			state.review_orchestrations.insert(key, record);
+		}
+
+		Ok(())
+	}
+
+	fn load_connector_backoffs(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, connector, sync_phase, quota_class, reset_unix_epoch, \
+			 reset_source, warning, updated_at, updated_at_unix FROM connector_backoffs",
+		)?;
+		let rows = statement.query_map([], |row| {
+			let project_id: String = row.get(0)?;
+			let connector: String = row.get(1)?;
+
+			Ok((
+				(project_id.clone(), connector.clone()),
+				ConnectorBackoff {
+					project_id,
+					connector,
+					sync_phase: row.get(2)?,
+					quota_class: row.get(3)?,
+					reset_unix_epoch: row.get(4)?,
+					reset_source: row.get(5)?,
+					warning: row.get(6)?,
+					updated_at: row.get(7)?,
+					updated_at_unix: row.get(8)?,
+				},
+			))
+		})?;
+
+		for row in rows {
+			let (key, record) = row?;
+
+			state.connector_backoffs.insert(key, record);
 		}
 
 		Ok(())
@@ -2277,6 +2352,30 @@ fn persist_review_orchestrations(transaction: &Transaction<'_>, state: &StateDat
 				record.marker.request_retry_count,
 				record.marker.external_round_count,
 				record.marker.auto_merge_enabled_at_unix_epoch,
+				record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
+fn persist_connector_backoffs(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
+	for record in state.connector_backoffs.values() {
+		transaction.execute(
+			"INSERT OR REPLACE INTO connector_backoffs (
+					project_id, connector, sync_phase, quota_class, reset_unix_epoch,
+					reset_source, warning, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+			params![
+				record.project_id,
+				record.connector,
+				record.sync_phase,
+				record.quota_class,
+				record.reset_unix_epoch,
+				record.reset_source,
+				record.warning,
 				record.updated_at,
 				record.updated_at_unix,
 			],
