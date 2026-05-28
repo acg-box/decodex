@@ -851,6 +851,7 @@ fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_runnin
 	assert_eq!(run.phase, "executing");
 	assert_eq!(run.process_id, Some(process::id()));
 	assert_eq!(run.process_alive, Some(false));
+	assert_eq!(run.execution_liveness, "process_identity_mismatch");
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("host_boot_id_mismatch"));
 	assert_eq!(project.active_run_count, 0);
 	assert_eq!(project.attention_count, 1);
@@ -893,6 +894,7 @@ fn operator_status_snapshot_counts_reused_pid_as_attention_not_running() {
 	assert_eq!(run.phase, "executing");
 	assert_eq!(run.process_id, Some(process::id()));
 	assert_eq!(run.process_alive, Some(false));
+	assert_eq!(run.execution_liveness, "process_identity_mismatch");
 	assert_eq!(
 		run.process_liveness_reason.as_deref(),
 		Some("process_start_identity_mismatch")

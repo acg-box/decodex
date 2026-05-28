@@ -4,6 +4,10 @@ use crate::pull_request::{self, PullRequestLandingGateView};
 use crate::worktree;
 use crate::worktree::MergedWorktreeCleanupDebt;
 
+const QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT: &str = "linear_active_label_present";
+const ATTENTION_ERROR_EVIDENCE_MISSING: &str = "evidence_missing";
+const EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH: &str = "process_identity_mismatch";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RetainedCloseoutPrMergeGate {
 	Merged,
@@ -673,7 +677,10 @@ fn worktree_has_queued_attention_owner(
 	snapshot: &OperatorStatusSnapshot,
 ) -> bool {
 	snapshot.queued_candidates.iter().any(|candidate| {
-		candidate.reason == "issue_needs_attention"
+		matches!(
+			candidate.reason.as_str(),
+			"issue_needs_attention" | QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT
+		)
 			&& (candidate
 				.attention
 				.as_ref()
@@ -1807,6 +1814,13 @@ where
 	if state_store.issue_has_active_shared_claim(project.service_id(), &issue.id)? {
 		return Ok(("claimed", "shared_claim_present"));
 	}
+	if tracker::issue_has_label_with_server_confirmation(
+		tracker,
+		issue,
+		&tracker::automation_active_label(project.service_id()),
+	)? {
+		return Ok(("blocked", QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT));
+	}
 	if tracker_policy.terminal_states().iter().any(|state| state == &issue.state.name) {
 		return Ok(("closed", "terminal_state"));
 	}
@@ -1849,7 +1863,12 @@ fn operator_queued_issue_attention_status<T>(
 where
 	T: IssueTracker,
 {
-	if !matches!(reason, "issue_needs_attention" | "retry_budget_exhausted") {
+	if !matches!(
+		reason,
+		"issue_needs_attention"
+			| "retry_budget_exhausted"
+			| QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT
+	) {
 		return Ok(None);
 	}
 
@@ -1861,12 +1880,27 @@ where
 	let retry_budget_attempts = state_retry_attempts.max(marker_retry_attempts);
 	let retry_budget_attempt_count = (retry_budget_attempts > 0).then_some(retry_budget_attempts);
 	let retry_budget_max_attempts = i64::from(workflow.frontmatter().execution().max_attempts());
-	let auto_retry_blocked_reason =
-		(reason == "issue_needs_attention").then(|| String::from("needs_attention_label"));
+	let auto_retry_blocked_reason = match reason {
+		"issue_needs_attention" => Some(String::from("needs_attention_label")),
+		QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT => {
+			Some(String::from(QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT))
+		},
+		_ => None,
+	};
 	let attention_record =
 		operator_queued_issue_latest_attention_record(tracker, project, state_store, issue);
-	let attention_error_class =
-		attention_record.as_ref().and_then(|record| record.error_class.clone());
+	let private_evidence_missing = operator_queued_issue_private_evidence_missing(
+		project,
+		state_store,
+		issue,
+		marker.as_ref(),
+		reason,
+	)?;
+	let attention_error_class = if private_evidence_missing {
+		Some(String::from(ATTENTION_ERROR_EVIDENCE_MISSING))
+	} else {
+		attention_record.as_ref().and_then(|record| record.error_class.clone())
+	};
 	let attention_next_action =
 		attention_record.as_ref().and_then(|record| record.next_action.clone());
 	let attempt_status = marker
@@ -1923,6 +1957,30 @@ where
 			.then(|| relative_worktree_path_for_path(project, &worktree_path)),
 		worktree_has_tracked_changes,
 	}))
+}
+
+fn operator_queued_issue_private_evidence_missing(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+	marker: Option<&RunActivityMarker>,
+	reason: &str,
+) -> crate::prelude::Result<bool> {
+	if reason != QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT {
+		return Ok(false);
+	}
+
+	let Some(marker) = marker else {
+		return Ok(true);
+	};
+	let events = state_store.list_private_execution_events(
+		project.service_id(),
+		&issue.id,
+		marker.run_id(),
+		marker.attempt_number(),
+	)?;
+
+	Ok(events.is_empty())
 }
 
 fn operator_queued_issue_latest_attention_record<T>(
@@ -2003,6 +2061,33 @@ fn operator_queued_issue_attention_summary(
 	worktree_has_tracked_changes: bool,
 	attention_error_class: Option<&str>,
 ) -> String {
+	if reason == QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT {
+		if worktree_has_tracked_changes {
+			return String::from(
+				"Linear active ownership is still present with retained worktree changes; inspect the patch and reconcile the lane before dispatch.",
+			);
+		}
+		if attention_error_class == Some(ATTENTION_ERROR_EVIDENCE_MISSING) {
+			return if marker.is_some() {
+				String::from(
+					"Linear active ownership is still present but private execution evidence is missing; inspect the retained marker and reconcile before dispatch.",
+				)
+			} else {
+				String::from(
+					"Linear active ownership is still present but the retained marker or private execution evidence is missing; reconcile before dispatch.",
+				)
+			};
+		}
+		if marker.is_some() {
+			return String::from(
+				"Linear active ownership is still present alongside queue intake; inspect the retained marker before dispatch.",
+			);
+		}
+
+		return String::from(
+			"Linear active ownership is still present without a matching local active lease; reconcile before dispatch.",
+		);
+	}
 	if worktree_has_tracked_changes {
 		if retry_budget_attempts > 0 {
 			return format!(
@@ -4275,6 +4360,10 @@ fn operator_run_execution_liveness(
 		return String::from("process_alive");
 	}
 	if timing.process_alive == Some(false) {
+		if process_liveness_reason_is_identity_mismatch(timing.process_liveness_reason.as_deref()) {
+			return String::from(EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH);
+		}
+
 		return String::from("process_stopped");
 	}
 	if matches!(app_server_state.thread_status.as_deref(), Some("active"))
@@ -4287,6 +4376,10 @@ fn operator_run_execution_liveness(
 	}
 
 	String::from("not_captured")
+}
+
+fn process_liveness_reason_is_identity_mismatch(reason: Option<&str>) -> bool {
+	matches!(reason, Some("host_boot_id_mismatch" | "process_start_identity_mismatch"))
 }
 
 fn operator_run_child_agent_activity(
@@ -5015,7 +5108,10 @@ fn rendered_worktree_role<'a>(
 		return "post_review_lane";
 	}
 	if snapshot.queued_candidates.iter().any(|candidate| {
-		candidate.reason == "issue_needs_attention"
+		matches!(
+			candidate.reason.as_str(),
+			"issue_needs_attention" | QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT
+		)
 			&& (candidate
 				.attention
 				.as_ref()
@@ -5453,6 +5549,9 @@ fn operator_run_queue_lease_summary(run: &OperatorRunStatus) -> String {
 		"thread_active" => String::from("not_held (thread_active keeps lane visible)"),
 		"protocol_observed" => String::from("not_held (protocol_observed keeps lane visible)"),
 		"process_stopped" => String::from("not_held (process_stopped needs attention)"),
+		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH => {
+			String::from("not_held (process_identity_mismatch needs attention)")
+		},
 		_ => String::from("not_held"),
 	}
 }
