@@ -258,6 +258,66 @@ impl WorktreeMapping {
 	}
 }
 
+/// Project-scoped external connector backoff retained in the runtime store.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConnectorBackoff {
+	project_id: String,
+	connector: String,
+	sync_phase: String,
+	quota_class: String,
+	reset_unix_epoch: i64,
+	reset_source: String,
+	warning: String,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl ConnectorBackoff {
+	/// Local project identifier affected by this connector backoff.
+	pub fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	/// Connector name, such as `linear`.
+	pub fn connector(&self) -> &str {
+		&self.connector
+	}
+
+	/// Runtime phase that last observed the connector backoff.
+	pub fn sync_phase(&self) -> &str {
+		&self.sync_phase
+	}
+
+	/// Quota class backing the pause.
+	pub fn quota_class(&self) -> &str {
+		&self.quota_class
+	}
+
+	/// Unix epoch when Decodex may retry the connector.
+	pub fn reset_unix_epoch(&self) -> i64 {
+		self.reset_unix_epoch
+	}
+
+	/// Source for the reset time.
+	pub fn reset_source(&self) -> &str {
+		&self.reset_source
+	}
+
+	/// Snapshot warning represented by this backoff.
+	pub fn warning(&self) -> &str {
+		&self.warning
+	}
+
+	/// Timestamp when Decodex stored the backoff.
+	pub fn updated_at(&self) -> &str {
+		&self.updated_at
+	}
+
+	/// Unix timestamp when Decodex stored the backoff.
+	pub fn updated_at_unix(&self) -> i64 {
+		self.updated_at_unix
+	}
+}
+
 /// Unix file-descriptor handoff for a daemon-planned lease adopted by a child process.
 pub struct PreacquiredLeaseGuards {
 	/// The inherited issue-claim lock fd that keeps one issue single-owned across processes.
