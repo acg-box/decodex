@@ -4278,7 +4278,10 @@
 				if (candidate.classification === "closed") {
 					return "tone-muted";
 				}
-				if (candidate.reason === "issue_needs_attention") {
+				if (
+					candidate.reason === "issue_needs_attention" ||
+					candidate.reason === "linear_active_label_present"
+				) {
 					return "tone-blocked";
 				}
 				return "tone-wait";
@@ -4342,6 +4345,8 @@
 						return "Automation is disabled for this issue.";
 					case "issue_needs_attention":
 						return "";
+					case "linear_active_label_present":
+						return "Active ownership is still present; reconcile before dispatch.";
 					case "non_startable_state":
 						return `${candidate.state} cannot start.`;
 					case "terminal_state":
@@ -4389,6 +4394,9 @@
 				if (candidate.reason === "issue_needs_attention") {
 					return "needs attention";
 				}
+				if (candidate.reason === "linear_active_label_present") {
+					return "active label present";
+				}
 				if (candidate.attention?.retry_budget_attempt_count != null) {
 					return "auto retry paused";
 				}
@@ -4431,6 +4439,7 @@
 				return Boolean(
 					candidate.attention ||
 						candidate.reason === "issue_needs_attention" ||
+						candidate.reason === "linear_active_label_present" ||
 						candidate.reason === "retry_budget_exhausted",
 				);
 			}
@@ -4949,6 +4958,9 @@
 			function autoRetryBlockedReasonText(reason) {
 				if (reason === "needs_attention_label") {
 					return "needs-attention label set";
+				}
+				if (reason === "linear_active_label_present") {
+					return "active label present";
 				}
 
 				return `blocked by ${sentenceToken(reason)}`;
@@ -5513,6 +5525,8 @@
 						return "start identity unavailable";
 					case "process_start_identity_mismatch":
 						return "process identity changed";
+					case "process_identity_mismatch":
+						return "process identity changed";
 					default:
 						return reason ? reason.replaceAll("_", " ") : "unknown";
 				}
@@ -5528,6 +5542,8 @@
 						return "protocol active";
 					case "process_stopped":
 						return "process stopped";
+					case "process_identity_mismatch":
+						return "process identity mismatch";
 					case "not_running":
 						return "not running";
 					default:
@@ -5551,6 +5567,8 @@
 						return "no lease; protocol active";
 					case "process_stopped":
 						return "no lease; stopped process";
+					case "process_identity_mismatch":
+						return "no lease; process identity mismatch";
 					default:
 						return "no lease";
 				}
@@ -9384,7 +9402,8 @@
 					const attentionWorktree = candidate.attention?.worktree_path;
 
 					return (
-						candidate.reason === "issue_needs_attention" &&
+						(candidate.reason === "issue_needs_attention" ||
+							candidate.reason === "linear_active_label_present") &&
 						(attentionWorktree === worktree.worktree_path ||
 							candidate.issue_id === worktree.issue_id ||
 							candidate.issue_identifier === worktree.issue_id)
