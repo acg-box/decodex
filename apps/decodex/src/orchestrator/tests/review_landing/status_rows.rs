@@ -64,6 +64,10 @@ fn build_post_review_lane_statuses_reports_ready_to_land() {
 	assert_eq!(lanes[0].classification, "ready_to_land");
 	assert_eq!(lanes[0].reason, "external_review_passed_strict");
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
+	assert_eq!(
+		lanes[0].readback_warning.as_deref(),
+		Some("active_ownership_label_missing")
+	);
 }
 
 #[test]

@@ -1,5 +1,16 @@
 use crate::workflow::WorkflowConcurrencyLimit;
 
+/// Input fields for recording a project-scoped external connector backoff.
+pub(crate) struct ConnectorBackoffInput<'a> {
+	pub(crate) project_id: &'a str,
+	pub(crate) connector: &'a str,
+	pub(crate) sync_phase: &'a str,
+	pub(crate) quota_class: &'a str,
+	pub(crate) reset_unix_epoch: i64,
+	pub(crate) reset_source: &'a str,
+	pub(crate) warning: &'a str,
+}
+
 /// Shared dispatch-slot capacity for one project.
 #[derive(Clone, Copy)]
 pub(crate) enum DispatchSlotLimit {
@@ -128,6 +139,61 @@ impl StateStore {
 		project.set_enabled(enabled);
 
 		self.persist_runtime_state_locked(&state)
+	}
+
+	/// Create or replace a project-scoped external connector backoff.
+	pub(crate) fn upsert_connector_backoff(
+		&self,
+		input: ConnectorBackoffInput<'_>,
+	) -> Result<ConnectorBackoff> {
+		let now = timestamp_parts();
+		let record = ConnectorBackoff {
+			project_id: input.project_id.to_owned(),
+			connector: input.connector.to_owned(),
+			sync_phase: input.sync_phase.to_owned(),
+			quota_class: input.quota_class.to_owned(),
+			reset_unix_epoch: input.reset_unix_epoch,
+			reset_source: input.reset_source.to_owned(),
+			warning: input.warning.to_owned(),
+			updated_at: now.text,
+			updated_at_unix: now.unix,
+		};
+		let mut state = self.lock()?;
+
+		state.connector_backoffs.insert(
+			(input.project_id.to_owned(), input.connector.to_owned()),
+			record.clone(),
+		);
+		self.persist_runtime_state_locked(&state)?;
+
+		Ok(record)
+	}
+
+	/// Read a project-scoped connector backoff from the runtime store.
+	pub(crate) fn connector_backoff(
+		&self,
+		project_id: &str,
+		connector: &str,
+	) -> Result<Option<ConnectorBackoff>> {
+		let state = self.lock()?;
+
+		Ok(state
+			.connector_backoffs
+			.get(&(project_id.to_owned(), connector.to_owned()))
+			.cloned())
+	}
+
+	/// Clear a project-scoped connector backoff from the runtime store.
+	pub(crate) fn clear_connector_backoff(
+		&self,
+		project_id: &str,
+		connector: &str,
+	) -> Result<()> {
+		let mut state = self.lock()?;
+
+		state.connector_backoffs.remove(&(project_id.to_owned(), connector.to_owned()));
+
+		self.delete_connector_backoff_locked(project_id, connector)
 	}
 
 	/// Configure the shared cross-process dispatch-slot root for one project.
@@ -1452,6 +1518,17 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_project(service_id)
+	}
+
+	fn delete_connector_backoff_locked(&self, project_id: &str, connector: &str) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.delete_connector_backoff(project_id, connector)
 	}
 
 	fn upsert_run_attempt_locked(&self, attempt: &RunAttemptRecord) -> Result<()> {
