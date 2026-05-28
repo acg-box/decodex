@@ -19,6 +19,18 @@ enum ExternalReviewRequestCiGate {
 	ManualAttention(&'static str),
 }
 
+#[derive(Clone, Copy)]
+enum AccountActivityMode {
+	Probe,
+	Snapshot,
+}
+
+enum TrackerObserverOutcome {
+	Ok,
+	Unavailable,
+	RateLimited(TrackerConnectorBackoff),
+}
+
 struct PostReviewOrchestrationStatus {
 	phase: ReviewOrchestrationPhase,
 	request_acknowledged: bool,
@@ -96,6 +108,15 @@ struct OperatorRunProtocolSummary {
 	event_count: i64,
 }
 
+struct LiveOperatorStatusObserverContext<'a, T> {
+	tracker: &'a T,
+	project: &'a ServiceConfig,
+	workflow: &'a WorkflowDocument,
+	state_store: &'a StateStore,
+	review_state_inspector: &'a GhPullRequestReviewStateInspector,
+	hydrate_history_ledger: bool,
+}
+
 struct PostReviewLaneBuildContext<'a, I> {
 	project: &'a ServiceConfig,
 	workflow: &'a WorkflowDocument,
@@ -121,12 +142,6 @@ struct OperatorIssueDisplayMetadata {
 struct WorktreeOwnership {
 	kind: &'static str,
 	reason: String,
-}
-
-#[derive(Clone, Copy)]
-enum AccountActivityMode {
-	Probe,
-	Snapshot,
 }
 
 pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
@@ -312,50 +327,17 @@ where
 	)?;
 
 	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
-
-	if hydrate_operator_run_rows_from_tracker(
-		tracker,
-		project,
-		&mut snapshot,
-	) {
-		add_operator_snapshot_warning(&mut snapshot, "run_issue_metadata_unavailable");
-	}
-	if hydrate_history_ledger && hydrate_history_lanes_from_linear_ledger(tracker, project, &mut snapshot) {
-		add_operator_snapshot_warning(&mut snapshot, "execution_ledger_status_unavailable");
-	}
-
-	match build_queued_candidate_statuses(tracker, project, workflow, state_store) {
-		Ok(queued_candidates) => snapshot.queued_candidates = queued_candidates,
-		Err(error) => {
-			let _ = error;
-
-			tracing::warn!(
-				"Skipped queued candidate status while publishing an operator snapshot; sensitive runtime details were withheld."
-			);
-
-			add_operator_snapshot_warning(&mut snapshot, "queued_candidate_status_unavailable");
+	hydrate_live_operator_external_observers(
+		LiveOperatorStatusObserverContext {
+			tracker,
+			project,
+			workflow,
+			state_store,
+			review_state_inspector: &review_state_inspector,
+			hydrate_history_ledger,
 		},
-	}
-	match build_post_review_lane_statuses_and_hydrate_worktrees(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		&review_state_inspector,
 		&mut snapshot,
-	) {
-		Ok(post_review_lanes) => snapshot.post_review_lanes = post_review_lanes,
-		Err(error) => {
-			let _ = error;
-
-			tracing::warn!(
-				"Skipped post-review lane status while publishing an operator snapshot; sensitive runtime details were withheld."
-			);
-
-			add_operator_snapshot_warning(&mut snapshot, "post_review_lane_status_unavailable");
-		},
-	}
-
+	)?;
 	refresh_worktree_ownership(
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
@@ -363,6 +345,219 @@ where
 	refresh_operator_project_summary(&mut snapshot);
 
 	Ok(snapshot)
+}
+
+fn hydrate_live_operator_external_observers<T>(
+	context: LiveOperatorStatusObserverContext<'_, T>,
+	snapshot: &mut OperatorStatusSnapshot,
+) -> crate::prelude::Result<()>
+where
+	T: IssueTracker,
+{
+	let mut paused =
+		pause_operator_snapshot_for_stored_tracker_backoff(&context, snapshot)?;
+
+	if !paused {
+		paused = apply_tracker_observer_outcome(
+			hydrate_operator_run_rows_from_tracker(context.tracker, context.project, snapshot),
+			snapshot,
+			context.state_store,
+			context.project,
+			"run_issue_metadata_unavailable",
+		);
+	}
+	if !paused && context.hydrate_history_ledger {
+		paused = apply_tracker_observer_outcome(
+			hydrate_history_lanes_from_linear_ledger(context.tracker, context.project, snapshot),
+			snapshot,
+			context.state_store,
+			context.project,
+			"execution_ledger_status_unavailable",
+		);
+	}
+	if !paused {
+		paused = hydrate_queued_candidate_status_observer(&context, snapshot);
+	}
+	if !paused {
+		paused = hydrate_post_review_lane_status_observer(&context, snapshot)?;
+	}
+	if paused {
+		if snapshot.post_review_lanes.is_empty() {
+			snapshot.post_review_lanes = build_degraded_post_review_lane_statuses(
+				context.project,
+				context.state_store,
+				context.review_state_inspector,
+			)?;
+		}
+
+		add_operator_snapshot_warning(snapshot, "external_observer_status_skipped");
+	}
+
+	Ok(())
+}
+
+fn pause_operator_snapshot_for_stored_tracker_backoff<T>(
+	context: &LiveOperatorStatusObserverContext<'_, T>,
+	snapshot: &mut OperatorStatusSnapshot,
+) -> crate::prelude::Result<bool> {
+	let Some(backoff) =
+		active_stored_tracker_backoff_status(context.state_store, context.project.service_id())?
+	else {
+		return Ok(false);
+	};
+
+	add_tracker_backoff_to_operator_snapshot(snapshot, &backoff);
+
+	Ok(true)
+}
+
+fn apply_tracker_observer_outcome(
+	outcome: TrackerObserverOutcome,
+	snapshot: &mut OperatorStatusSnapshot,
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	unavailable_warning: &'static str,
+) -> bool {
+	match outcome {
+		TrackerObserverOutcome::Ok => false,
+		TrackerObserverOutcome::Unavailable => {
+			add_operator_snapshot_warning(snapshot, unavailable_warning);
+
+			false
+		},
+		TrackerObserverOutcome::RateLimited(backoff) => {
+			pause_operator_snapshot_for_rate_limit(snapshot, state_store, project, &backoff);
+
+			true
+		},
+	}
+}
+
+fn pause_operator_snapshot_for_rate_limit(
+	snapshot: &mut OperatorStatusSnapshot,
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	backoff: &TrackerConnectorBackoff,
+) {
+	persist_tracker_backoff_state(state_store, project.service_id(), backoff);
+
+	let backoff = backoff.to_operator_status(
+		project.service_id(),
+		OffsetDateTime::now_utc().unix_timestamp(),
+	);
+
+	add_tracker_backoff_to_operator_snapshot(snapshot, &backoff);
+}
+
+fn hydrate_queued_candidate_status_observer<T>(
+	context: &LiveOperatorStatusObserverContext<'_, T>,
+	snapshot: &mut OperatorStatusSnapshot,
+) -> bool
+where
+	T: IssueTracker,
+{
+	match build_queued_candidate_statuses(
+		context.tracker,
+		context.project,
+		context.workflow,
+		context.state_store,
+	) {
+		Ok(queued_candidates) => {
+			snapshot.queued_candidates = queued_candidates;
+
+			false
+		},
+		Err(error) => {
+			let Some(backoff) =
+				tracker_rate_limit_backoff(&error, Instant::now(), "queued_candidate_status")
+			else {
+				let _ = error;
+
+				tracing::warn!(
+					"Skipped queued candidate status while publishing an operator snapshot; sensitive runtime details were withheld."
+				);
+
+				add_operator_snapshot_warning(snapshot, "queued_candidate_status_unavailable");
+
+				return false;
+			};
+
+			pause_operator_snapshot_for_rate_limit(
+				snapshot,
+				context.state_store,
+				context.project,
+				&backoff,
+			);
+
+			true
+		},
+	}
+}
+
+fn hydrate_post_review_lane_status_observer<T>(
+	context: &LiveOperatorStatusObserverContext<'_, T>,
+	snapshot: &mut OperatorStatusSnapshot,
+) -> crate::prelude::Result<bool>
+where
+	T: IssueTracker,
+{
+	match build_post_review_lane_statuses_and_hydrate_worktrees(
+		context.tracker,
+		context.project,
+		context.workflow,
+		context.state_store,
+		context.review_state_inspector,
+		snapshot,
+	) {
+		Ok(post_review_lanes) => {
+			snapshot.post_review_lanes = post_review_lanes;
+
+			Ok(false)
+		},
+		Err(error) => {
+			let Some(backoff) =
+				tracker_rate_limit_backoff(&error, Instant::now(), "post_review_lane_status")
+			else {
+				let _ = error;
+
+				tracing::warn!(
+					"Skipped post-review lane status while publishing an operator snapshot; sensitive runtime details were withheld."
+				);
+
+				add_operator_snapshot_warning(snapshot, "post_review_lane_status_unavailable");
+
+				return Ok(false);
+			};
+
+			pause_operator_snapshot_for_rate_limit(
+				snapshot,
+				context.state_store,
+				context.project,
+				&backoff,
+			);
+
+			snapshot.post_review_lanes = build_degraded_post_review_lane_statuses(
+				context.project,
+				context.state_store,
+				context.review_state_inspector,
+			)?;
+
+			Ok(true)
+		},
+	}
+}
+
+fn add_tracker_backoff_to_operator_snapshot(
+	snapshot: &mut OperatorStatusSnapshot,
+	backoff: &OperatorConnectorBackoffStatus,
+) {
+	add_operator_snapshot_warning(snapshot, TRACKER_RATE_LIMIT_WARNING);
+
+	if !snapshot.connector_backoffs.iter().any(|existing| {
+		existing.project_id == backoff.project_id && existing.connector == backoff.connector
+	}) {
+		snapshot.connector_backoffs.push(backoff.clone());
+	}
 }
 
 fn hydrate_history_lanes_from_local_ledger(
@@ -956,14 +1151,14 @@ fn hydrate_operator_run_rows_from_tracker<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	snapshot: &mut OperatorStatusSnapshot,
-) -> bool
+) -> TrackerObserverOutcome
 where
 	T: IssueTracker,
 {
 	let issue_ids = operator_snapshot_run_issue_ids(snapshot);
 
 	if issue_ids.is_empty() {
-		return false;
+		return TrackerObserverOutcome::Ok;
 	}
 
 	match tracker.refresh_issues(&issue_ids) {
@@ -984,9 +1179,15 @@ where
 
 			hydrate_operator_snapshot_run_rows(snapshot, &metadata_by_issue_id);
 
-			false
+			TrackerObserverOutcome::Ok
 		},
 		Err(error) => {
+			if let Some(backoff) =
+				tracker_rate_limit_backoff(&error, Instant::now(), "run_issue_metadata")
+			{
+				return TrackerObserverOutcome::RateLimited(backoff);
+			}
+
 			let _ = error;
 
 			tracing::warn!(
@@ -994,7 +1195,7 @@ where
 				"Skipped tracker issue metadata hydration for operator run rows; sensitive tracker details were withheld."
 			);
 
-			true
+			TrackerObserverOutcome::Unavailable
 		},
 	}
 }
@@ -1146,7 +1347,7 @@ fn hydrate_history_lanes_from_linear_ledger<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	snapshot: &mut OperatorStatusSnapshot,
-) -> bool
+) -> TrackerObserverOutcome
 where
 	T: IssueTracker,
 {
@@ -1163,6 +1364,14 @@ where
 				lane.ledger_outcome = operator_history_ledger_outcome(&records);
 			},
 			Err(error) => {
+				if let Some(backoff) =
+					tracker_rate_limit_backoff(&error, Instant::now(), "execution_ledger_status")
+				{
+					lane.ledger_outcome = unavailable_history_ledger_outcome();
+
+					return TrackerObserverOutcome::RateLimited(backoff);
+				}
+
 				let _ = error;
 
 				tracing::warn!(
@@ -1176,7 +1385,11 @@ where
 		}
 	}
 
-	unavailable
+	if unavailable {
+		TrackerObserverOutcome::Unavailable
+	} else {
+		TrackerObserverOutcome::Ok
+	}
 }
 
 fn hydrate_history_lane_from_ledger_records(
@@ -1972,6 +2185,89 @@ where
 		.collect())
 }
 
+fn build_degraded_post_review_lane_statuses<I>(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	review_state_inspector: &I,
+) -> crate::prelude::Result<Vec<OperatorPostReviewLaneStatus>>
+where
+	I: PullRequestReviewStateInspector,
+{
+	let mut lanes = Vec::new();
+
+	for worktree in state_store.list_worktrees(project.service_id())? {
+		let Some(review_handoff) = state_store.review_handoff_marker(
+			project.service_id(),
+			worktree.issue_id(),
+			worktree.branch_name(),
+		)? else {
+			continue;
+		};
+		let issue_identifier = retained_issue_identifier_from_worktree(&worktree);
+		let review_state = review_state_inspector
+			.inspect_review_state(worktree.worktree_path(), review_handoff.pr_url())
+			.ok();
+		let (
+			pr_head_sha,
+			pr_state,
+			review_decision,
+			mergeable,
+			check_state,
+			unresolved_review_threads,
+		) = match review_state {
+			Some(review_state) => (
+				Some(review_state.head_ref_oid),
+				Some(review_state.state),
+				review_state.review_decision,
+				Some(review_state.mergeable),
+				review_state.status_check_rollup_state,
+				Some(review_state.unresolved_review_threads),
+			),
+			None => (
+				Some(review_handoff.pr_head_oid().to_owned()),
+				None,
+				None,
+				None,
+				None,
+				None,
+			),
+		};
+
+		lanes.push(OperatorPostReviewLaneStatus {
+			issue_id: worktree.issue_id().to_owned(),
+			issue_identifier,
+			issue_state: String::from("tracker_readback_degraded"),
+			branch_name: worktree.branch_name().to_owned(),
+			worktree_path: relative_worktree_path_for_path(project, worktree.worktree_path()),
+			classification: String::from("wait_for_review"),
+			reason: String::from("tracker_issue_readback_degraded"),
+			pr_url: Some(review_handoff.pr_url().to_owned()),
+			pr_head_sha,
+			pr_state,
+			review_decision,
+			mergeable,
+			check_state,
+			unresolved_review_threads,
+			readback_warning: Some(String::from("tracker_issue_readback_degraded")),
+		});
+	}
+
+	lanes.sort_by(|left, right| left.issue_identifier.cmp(&right.issue_identifier));
+
+	Ok(lanes)
+}
+
+fn retained_issue_identifier_from_worktree(worktree: &WorktreeMapping) -> String {
+	worktree
+		.worktree_path()
+		.file_name()
+		.and_then(|name| name.to_str())
+		.map(str::trim)
+		.filter(|name| !name.is_empty())
+		.unwrap_or_else(|| worktree.issue_id())
+		.to_ascii_uppercase()
+}
+
 fn build_post_review_lane_statuses_from_worktree_issues<I>(
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -2107,11 +2403,36 @@ where
 		);
 	}
 
+	apply_active_ownership_warning_to_post_review_lane(
+		context.project,
+		context.success_state,
+		&snapshot,
+		&mut classification,
+	);
+
 	Ok(Some(post_review_lane_status_from_classification(
 		context.project,
 		&snapshot,
 		classification,
 	)))
+}
+
+fn apply_active_ownership_warning_to_post_review_lane(
+	project: &ServiceConfig,
+	success_state: &str,
+	snapshot: &PostReviewLaneSnapshot,
+	classification: &mut PostReviewLaneClassification,
+) {
+	if snapshot.review_handoff.is_none()
+		|| snapshot.issue.state.name != success_state
+		|| !snapshot.issue.labels_complete
+		|| snapshot.issue.has_label(&tracker::automation_active_label(project.service_id()))
+	{
+		return;
+	}
+	if classification.readback_warning.is_none() {
+		classification.readback_warning = Some(String::from("active_ownership_label_missing"));
+	}
 }
 
 fn post_review_lane_status_from_classification(

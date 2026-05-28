@@ -7,6 +7,7 @@ use std::{
 	process::Command,
 };
 
+use color_eyre::Report;
 use serde::Serialize;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
@@ -17,8 +18,8 @@ use crate::{
 	pull_request::PullRequestLandingState,
 	runtime,
 	state::{
-		RUN_ACTIVITY_MARKER_FILE, ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore,
-		WorktreeMapping,
+		ConnectorBackoffInput, RUN_ACTIVITY_MARKER_FILE, ReviewHandoffMarker,
+		ReviewOrchestrationMarker, StateStore, WorktreeMapping,
 	},
 	tracker::{
 		self, IssueTracker, TrackerIssue,
@@ -32,11 +33,14 @@ use crate::{
 const MISSING_HANDOFF_REASON: &str = "missing_review_handoff_record";
 const ORPHANED_REVIEW_HANDOFF_CLASSIFICATION: &str = "orphaned_review_handoff";
 const REVIEW_HANDOFF_BOUND_CLASSIFICATION: &str = "review_handoff_bound";
+const REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION: &str = "review_handoff_ownership_drift";
 const REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION: &str = "review_handoff_rebind_required";
 const REVIEW_HANDOFF_UNVERIFIED_CLASSIFICATION: &str = "review_handoff_unverified";
 const REVIEW_HANDOFF_MISMATCH_CLASSIFICATION: &str = "review_handoff_mismatch";
 const REVIEW_HANDOFF_REBIND_EVENT: &str = "review_handoff_rebind";
 const REBOUND_ORCHESTRATION_PHASE: &str = "request_pending";
+const LINEAR_CONNECTOR_BACKOFF_WARNING: &str = "tracker_rate_limited";
+const LINEAR_CONNECTOR_BACKOFF_SECS: i64 = 15 * 60;
 
 /// Read-only retained review handoff diagnostic request.
 #[derive(Debug)]
@@ -171,9 +175,32 @@ pub(crate) fn run_review_handoff_diagnose(
 	request: &ReviewHandoffDiagnoseRequest,
 ) -> Result<()> {
 	let context = load_recovery_context(config_path)?;
-	let diagnostics = match request.issue.as_deref() {
-		Some(issue_identifier) => vec![diagnose_issue(&context, issue_identifier)?],
-		None => diagnose_all_retained_review_worktrees(&context)?,
+
+	if let Some(message) = active_recovery_tracker_backoff_message(&context)? {
+		println!("{message}");
+
+		return Ok(());
+	}
+
+	let diagnostics = match match request.issue.as_deref() {
+		Some(issue_identifier) =>
+			diagnose_issue(&context, issue_identifier).map(|diagnostic| vec![diagnostic]),
+		None => diagnose_all_retained_review_worktrees(&context),
+	} {
+		Ok(diagnostics) => diagnostics,
+		Err(error) => {
+			if let Some(message) = remember_recovery_tracker_backoff_message(
+				&context,
+				&error,
+				"review_handoff_recovery",
+			) {
+				println!("{message}");
+
+				return Ok(());
+			}
+
+			return Err(error);
+		},
 	};
 	let report = ReviewHandoffRecoveryReport {
 		project_id: context.config.service_id().to_owned(),
@@ -237,6 +264,88 @@ fn load_recovery_context(config_path: Option<&Path>) -> Result<RecoveryContext> 
 	runtime::register_project_config(&state_store, &config_path, true)?;
 
 	Ok(RecoveryContext { config, workflow, state_store, tracker })
+}
+
+fn active_recovery_tracker_backoff_message(context: &RecoveryContext) -> Result<Option<String>> {
+	let Some(backoff) =
+		context.state_store.connector_backoff(context.config.service_id(), "linear")?
+	else {
+		return Ok(None);
+	};
+	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+
+	if backoff.reset_unix_epoch() <= now_unix_epoch {
+		context.state_store.clear_connector_backoff(context.config.service_id(), "linear")?;
+
+		return Ok(None);
+	}
+
+	Ok(Some(recovery_tracker_backoff_message(
+		context.config.service_id(),
+		backoff.sync_phase(),
+		backoff.reset_unix_epoch(),
+		backoff.reset_unix_epoch().saturating_sub(now_unix_epoch),
+	)))
+}
+
+fn remember_recovery_tracker_backoff_message(
+	context: &RecoveryContext,
+	error: &Report,
+	sync_phase: &str,
+) -> Option<String> {
+	let message = format!("{error:#}");
+
+	if !message.contains("Linear connector is rate limited") {
+		return None;
+	}
+
+	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+	let (reset_unix_epoch, reset_source) =
+		match parse_recovery_rate_limit_reset_unix_epoch(&message) {
+			Some(reset) if reset > now_unix_epoch => (reset, "linear"),
+			_ => (now_unix_epoch.saturating_add(LINEAR_CONNECTOR_BACKOFF_SECS), "local_default"),
+		};
+
+	if let Err(store_error) = context.state_store.upsert_connector_backoff(ConnectorBackoffInput {
+		project_id: context.config.service_id(),
+		connector: "linear",
+		sync_phase,
+		quota_class: "linear_graphql_api",
+		reset_unix_epoch,
+		reset_source,
+		warning: LINEAR_CONNECTOR_BACKOFF_WARNING,
+	}) {
+		let _ = store_error;
+
+		tracing::warn!(
+			project_id = context.config.service_id(),
+			"Failed to persist recovery tracker backoff; sensitive runtime details were withheld."
+		);
+	}
+
+	Some(recovery_tracker_backoff_message(
+		context.config.service_id(),
+		sync_phase,
+		reset_unix_epoch,
+		reset_unix_epoch.saturating_sub(now_unix_epoch),
+	))
+}
+
+fn parse_recovery_rate_limit_reset_unix_epoch(message: &str) -> Option<i64> {
+	let reset = message.split("rate limited until `").nth(1)?.split('`').next()?;
+
+	reset.parse().ok()
+}
+
+fn recovery_tracker_backoff_message(
+	service_id: &str,
+	sync_phase: &str,
+	reset_unix_epoch: i64,
+	retry_after_seconds: i64,
+) -> String {
+	format!(
+		"Linear connector is in backoff for project `{service_id}`; recovery skipped tracker reads for `{sync_phase}` until unix_epoch={reset_unix_epoch} (retry_after_seconds={retry_after_seconds})."
+	)
 }
 
 fn resolve_recovery_config_path(
@@ -434,6 +543,20 @@ fn diagnostic_binding(request: HandoffDiagnosticRequest<'_>) -> HandoffBindingDi
 		return diagnostic;
 	}
 
+	if request.active_label_present == Some(false) {
+		return HandoffBindingDiagnostic {
+			classification: String::from(REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION),
+			reason: String::from("active_ownership_label_missing"),
+			pr_base_ref,
+			pr_head_oid,
+			mismatched_field: Some(String::from("issue.labels")),
+			next_action: bound_handoff_next_action(
+				request.service_id,
+				request.active_label_present,
+			),
+		};
+	}
+
 	HandoffBindingDiagnostic {
 		classification: String::from(REVIEW_HANDOFF_BOUND_CLASSIFICATION),
 		reason: String::from("review_handoff_record_present"),
@@ -618,7 +741,7 @@ fn missing_handoff_next_action(service_id: &str, issue_identifier: &str) -> Stri
 fn bound_handoff_next_action(service_id: &str, active_label_present: Option<bool>) -> String {
 	if active_label_present == Some(false) {
 		return format!(
-			"Restore explicit lane ownership with label `{}`, then continue the existing post-review lifecycle.",
+			"Restore explicit lane ownership with label `{}`, then rerun `decodex recover review-handoff diagnose <ISSUE>` and continue the existing post-review lifecycle.",
 			tracker::automation_active_label(service_id)
 		);
 	}
@@ -1218,8 +1341,8 @@ mod tests {
 	use crate::{
 		pull_request::PullRequestLandingState,
 		recovery::{
-			REVIEW_HANDOFF_BOUND_CLASSIFICATION, REVIEW_HANDOFF_REBIND_EVENT,
-			REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION,
+			REVIEW_HANDOFF_BOUND_CLASSIFICATION, REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION,
+			REVIEW_HANDOFF_REBIND_EVENT, REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION,
 		},
 		state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore, WorktreeMapping},
 		tracker::records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
@@ -1483,8 +1606,9 @@ mod tests {
 			active_label_present: Some(false),
 		});
 
-		assert_eq!(diagnostic.classification, REVIEW_HANDOFF_BOUND_CLASSIFICATION);
-		assert_eq!(diagnostic.reason, "review_handoff_record_present");
+		assert_eq!(diagnostic.classification, REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION);
+		assert_eq!(diagnostic.reason, "active_ownership_label_missing");
+		assert_eq!(diagnostic.mismatched_field.as_deref(), Some("issue.labels"));
 		assert!(diagnostic.next_action.contains("decodex:active:pubfi"));
 		assert!(diagnostic.next_action.contains("Restore explicit lane ownership"));
 	}
