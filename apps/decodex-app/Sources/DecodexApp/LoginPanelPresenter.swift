@@ -26,6 +26,9 @@ struct LoginPanelPresenter: NSViewRepresentable {
 		private weak var state: LoginWindowState?
 		private var panel: LoginFloatingPanel?
 		private var hostingView: NSHostingView<LoginSheetView>?
+		private weak var lastPlacementParent: NSWindow?
+		private var lastPanelSize: NSSize?
+		private var hasPlacedPanel = false
 		private var isClosingProgrammatically = false
 
 		@MainActor
@@ -40,8 +43,8 @@ struct LoginPanelPresenter: NSViewRepresentable {
 			let rootView = makeRootView(store: store, state: state)
 			if let panel, let hostingView {
 				hostingView.rootView = rootView
-				resizeAndPlace(panel, hostingView: hostingView)
-				show(panel)
+				let parentChanged = show(panel)
+				resizeAndPlace(panel, hostingView: hostingView, forcePlacement: parentChanged)
 				return
 			}
 
@@ -69,7 +72,7 @@ struct LoginPanelPresenter: NSViewRepresentable {
 
 			self.panel = panel
 			self.hostingView = hostingView
-			resizeAndPlace(panel, hostingView: hostingView)
+			resizeAndPlace(panel, hostingView: hostingView, forcePlacement: true)
 			show(panel)
 		}
 
@@ -99,57 +102,83 @@ struct LoginPanelPresenter: NSViewRepresentable {
 			isClosingProgrammatically = false
 			self.panel = nil
 			hostingView = nil
+			lastPlacementParent = nil
+			lastPanelSize = nil
+			hasPlacedPanel = false
 		}
 
 		@MainActor
-		private func resizeAndPlace(_ panel: NSPanel, hostingView: NSHostingView<LoginSheetView>) {
+		private func resizeAndPlace(
+			_ panel: NSPanel,
+			hostingView: NSHostingView<LoginSheetView>,
+			forcePlacement: Bool = false
+		) {
 			hostingView.layoutSubtreeIfNeeded()
 			let fittingSize = hostingView.fittingSize
-			let panelSize = NSSize(
-				width: max(328, fittingSize.width),
-				height: max(190, fittingSize.height)
-			)
-			panel.setContentSize(panelSize)
-			panel.setFrameOrigin(origin(for: panelSize))
-		}
-
-		@MainActor
-		private func show(_ panel: NSPanel) {
-			guard let parentWindow = hostView?.window else {
-				panel.orderFrontRegardless()
+			let panelSize = LoginPanelLayout.panelSize(for: fittingSize)
+			let parentWindow = hostView?.window
+			let parentChanged = windowsDiffer(lastPlacementParent, parentWindow)
+			let sizeChanged = lastPanelSize.map { LoginPanelLayout.sizeDiffers($0, panelSize) } ?? true
+			guard forcePlacement || parentChanged || sizeChanged else {
 				return
 			}
 
+			let currentFrame = hasPlacedPanel ? panel.frame : nil
+			let frame = NSRect(
+				origin: origin(for: panelSize, parentWindow: parentWindow, currentFrame: currentFrame),
+				size: panelSize
+			)
+			panel.setFrame(frame, display: true)
+			lastPlacementParent = parentWindow
+			lastPanelSize = panelSize
+			hasPlacedPanel = true
+		}
+
+		@MainActor
+		@discardableResult
+		private func show(_ panel: NSPanel) -> Bool {
+			guard let parentWindow = hostView?.window else {
+				let hadParent = panel.parent != nil
+				panel.parent?.removeChildWindow(panel)
+				panel.orderFrontRegardless()
+				return hadParent || windowsDiffer(lastPlacementParent, nil)
+			}
+
+			let parentChanged = panel.parent !== parentWindow
 			if panel.parent !== parentWindow {
 				panel.parent?.removeChildWindow(panel)
 				parentWindow.addChildWindow(panel, ordered: .above)
 			}
 			panel.level = parentWindow.level
 			panel.orderFrontRegardless()
+			return parentChanged
 		}
 
 		@MainActor
-		private func origin(for panelSize: NSSize) -> NSPoint {
-			let parentWindow = hostView?.window
+		private func origin(
+			for panelSize: NSSize,
+			parentWindow: NSWindow?,
+			currentFrame: NSRect?
+		) -> NSPoint {
 			let screen = parentWindow?.screen ?? NSScreen.main
-			let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1_280, height: 800)
-			let margin: CGFloat = 8
+			return LoginPanelLayout.origin(
+				for: panelSize,
+				parentFrame: parentWindow?.frame,
+				currentFrame: currentFrame,
+				mouseLocation: NSEvent.mouseLocation,
+				visibleFrame: screen?.visibleFrame ?? LoginPanelLayout.fallbackVisibleFrame
+			)
+		}
 
-			var x: CGFloat
-			var y: CGFloat
-			if let parentFrame = parentWindow?.frame {
-				x = parentFrame.midX - panelSize.width / 2
-				y = parentFrame.maxY - panelSize.height - 68
-			} else {
-				let mouse = NSEvent.mouseLocation
-				x = mouse.x - panelSize.width / 2
-				y = mouse.y - panelSize.height - 18
+		private func windowsDiffer(_ lhs: NSWindow?, _ rhs: NSWindow?) -> Bool {
+			switch (lhs, rhs) {
+			case (nil, nil):
+				return false
+			case (.some(let lhs), .some(let rhs)):
+				return lhs !== rhs
+			default:
+				return true
 			}
-
-			x = min(max(x, visibleFrame.minX + margin), visibleFrame.maxX - panelSize.width - margin)
-			y = min(max(y, visibleFrame.minY + margin), visibleFrame.maxY - panelSize.height - margin)
-
-			return NSPoint(x: x, y: y)
 		}
 
 		func windowWillClose(_ notification: Notification) {
@@ -158,6 +187,9 @@ struct LoginPanelPresenter: NSViewRepresentable {
 			}
 			panel = nil
 			hostingView = nil
+			lastPlacementParent = nil
+			lastPanelSize = nil
+			hasPlacedPanel = false
 			guard isClosingProgrammatically == false else {
 				return
 			}
@@ -166,6 +198,69 @@ struct LoginPanelPresenter: NSViewRepresentable {
 				state?.isPresented = false
 			}
 		}
+	}
+}
+
+enum LoginPanelLayout {
+	static let minimumSize = NSSize(width: 328, height: 190)
+	static let fallbackVisibleFrame = NSRect(x: 0, y: 0, width: 1_280, height: 800)
+	private static let parentTopOffset: CGFloat = 68
+	private static let mouseTopOffset: CGFloat = 18
+	private static let placementMargin: CGFloat = 8
+	private static let sizeTolerance: CGFloat = 0.5
+
+	static func panelSize(for fittingSize: NSSize) -> NSSize {
+		NSSize(
+			width: ceil(max(minimumSize.width, fittingSize.width)),
+			height: ceil(max(minimumSize.height, fittingSize.height))
+		)
+	}
+
+	static func origin(
+		for panelSize: NSSize,
+		parentFrame: NSRect?,
+		currentFrame: NSRect?,
+		mouseLocation: NSPoint,
+		visibleFrame: NSRect
+	) -> NSPoint {
+		let proposedOrigin: NSPoint
+		if let parentFrame {
+			proposedOrigin = NSPoint(
+				x: parentFrame.midX - panelSize.width / 2,
+				y: parentFrame.maxY - panelSize.height - parentTopOffset
+			)
+		} else if let currentFrame {
+			proposedOrigin = NSPoint(
+				x: currentFrame.midX - panelSize.width / 2,
+				y: currentFrame.maxY - panelSize.height
+			)
+		} else {
+			proposedOrigin = NSPoint(
+				x: mouseLocation.x - panelSize.width / 2,
+				y: mouseLocation.y - panelSize.height - mouseTopOffset
+			)
+		}
+
+		return NSPoint(
+			x: clamped(
+				proposedOrigin.x,
+				min: visibleFrame.minX + placementMargin,
+				max: visibleFrame.maxX - panelSize.width - placementMargin
+			),
+			y: clamped(
+				proposedOrigin.y,
+				min: visibleFrame.minY + placementMargin,
+				max: visibleFrame.maxY - panelSize.height - placementMargin
+			)
+		)
+	}
+
+	static func sizeDiffers(_ lhs: NSSize, _ rhs: NSSize) -> Bool {
+		abs(lhs.width - rhs.width) > sizeTolerance || abs(lhs.height - rhs.height) > sizeTolerance
+	}
+
+	private static func clamped(_ value: CGFloat, min: CGFloat, max: CGFloat) -> CGFloat {
+		Swift.min(Swift.max(value, min), max)
 	}
 }
 
