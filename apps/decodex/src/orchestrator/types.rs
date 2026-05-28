@@ -1378,6 +1378,10 @@ pub(crate) enum RetryDispatchDecision {
 #[derive(Clone, Debug)]
 pub(crate) enum ActiveRunDisposition {
 	RetainedReviewComplete,
+	Superseded {
+		newer_run_id: String,
+		newer_attempt_number: i64,
+	},
 	Terminal,
 	NonActive,
 	Stalled { idle_for: Duration },
