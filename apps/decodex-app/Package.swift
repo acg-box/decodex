@@ -10,5 +10,6 @@ let package = Package(
 	],
 	targets: [
 		.executableTarget(name: "DecodexApp"),
+		.testTarget(name: "DecodexAppTests", dependencies: ["DecodexApp"]),
 	],
 )
