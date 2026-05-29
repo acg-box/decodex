@@ -135,8 +135,10 @@ struct FakeTracker {
 	identifier_lookup_issues: Option<Vec<TrackerIssue>>,
 	issues_by_label: HashMap<String, Vec<TrackerIssue>>,
 	team_label_ids_by_name: HashMap<(String, String), String>,
+	identifier_queries: RefCell<Vec<String>>,
 	refresh_snapshots: RefCell<Vec<Vec<TrackerIssue>>>,
 	refresh_error: RefCell<Option<String>>,
+	refresh_queries: RefCell<Vec<Vec<String>>>,
 	label_queries: RefCell<Vec<String>>,
 	comment_queries: RefCell<Vec<String>>,
 	comments: RefCell<Vec<String>>,
@@ -168,8 +170,10 @@ impl FakeTracker {
 			identifier_lookup_issues: None,
 			issues_by_label: HashMap::new(),
 			team_label_ids_by_name: HashMap::new(),
+			identifier_queries: RefCell::new(Vec::new()),
 			refresh_snapshots: RefCell::new(refresh_snapshots),
 			refresh_error: RefCell::new(None),
+			refresh_queries: RefCell::new(Vec::new()),
 			label_queries: RefCell::new(Vec::new()),
 			comment_queries: RefCell::new(Vec::new()),
 			comments: RefCell::new(Vec::new()),
@@ -258,6 +262,8 @@ impl IssueTracker for FakeTracker {
 	}
 
 	fn get_issue_by_identifier(&self, issue_identifier: &str) -> Result<Option<TrackerIssue>> {
+		self.identifier_queries.borrow_mut().push(issue_identifier.to_owned());
+
 		let issues = self.identifier_lookup_issues.as_ref().unwrap_or(&self.listed_issues);
 
 		Ok(issues
@@ -267,6 +273,8 @@ impl IssueTracker for FakeTracker {
 	}
 
 	fn refresh_issues(&self, issue_ids: &[String]) -> Result<Vec<TrackerIssue>> {
+		self.refresh_queries.borrow_mut().push(issue_ids.to_vec());
+
 		if let Some(message) = self.refresh_error.borrow_mut().take() {
 			return Err(Report::msg(message));
 		}
