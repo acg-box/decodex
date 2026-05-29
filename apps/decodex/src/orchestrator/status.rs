@@ -1255,6 +1255,7 @@ fn operator_snapshot_run_issue_ids(
 	for run in &snapshot.active_runs {
 		append_operator_run_issue_id(&mut issue_ids, run);
 	}
+
 	if matches!(hydration, RunIssueMetadataHydration::AllRows) {
 		for run in &snapshot.recent_runs {
 			append_operator_run_issue_id(&mut issue_ids, run);
@@ -3892,6 +3893,7 @@ where
 	if known_identifiers.contains(&canonical_identifier) {
 		return Ok(());
 	}
+
 	let now = Instant::now();
 
 	if let Some(cache) = recoverable_worktree_skip_cache.as_deref_mut()
@@ -3920,6 +3922,7 @@ where
 			labels_complete = issue.labels_complete,
 			"Skipping retained worktree recovery because the tracker issue is not explicitly owned by this service."
 		);
+
 		if let Some(cache) = recoverable_worktree_skip_cache {
 			cache.remember(&canonical_identifier, now);
 		}
