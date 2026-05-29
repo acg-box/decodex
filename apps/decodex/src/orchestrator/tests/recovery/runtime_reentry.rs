@@ -1,3 +1,5 @@
+use orchestrator::RecoverableWorktreeSkipCache;
+
 #[test]
 fn exited_child_reconciliation_detects_stalled_failed_runs_from_protocol_idle() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
@@ -1097,7 +1099,7 @@ fn recovery_skip_cache_suppresses_repeated_unowned_worktree_lookup() {
 	let tracker = FakeTracker::new(Vec::new()).with_identifier_lookup_issues(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_path = config.worktree_root().join(&issue.identifier);
-	let mut skip_cache = orchestrator::RecoverableWorktreeSkipCache::default();
+	let mut skip_cache = RecoverableWorktreeSkipCache::default();
 
 	fs::create_dir_all(&worktree_path).expect("stale worktree directory should exist");
 
@@ -1121,7 +1123,8 @@ fn recovery_skip_cache_suppresses_repeated_unowned_worktree_lookup() {
 
 	assert!(first.active_issues.is_empty());
 	assert!(second.active_issues.is_empty());
-	assert_eq!(identifier_queries.as_slice(), std::slice::from_ref(&issue.identifier));
+	assert_eq!(identifier_queries.len(), 1);
+	assert_eq!(identifier_queries[0], issue.identifier);
 	assert!(
 		tracker.refresh_queries.borrow().is_empty(),
 		"empty known issue sets should not call tracker refresh"
