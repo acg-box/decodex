@@ -1370,6 +1370,7 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 			review_state_inspector: &FakePullRequestReviewStateInspector::new(vec![Ok(
 				review_state,
 			)]),
+			recoverable_worktree_skip_cache: None,
 		},
 	);
 
@@ -1487,6 +1488,7 @@ fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 					&head_oid,
 				),
 			)]),
+			recoverable_worktree_skip_cache: None,
 		},
 	)
 	.expect("daemon tick should not fail on stale terminal worktree state");

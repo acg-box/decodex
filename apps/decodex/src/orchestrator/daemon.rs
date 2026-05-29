@@ -13,6 +13,7 @@ struct DaemonTickRuntimeContext<'a, T, I> {
 	workflow: &'a WorkflowDocument,
 	worktree_manager: &'a WorktreeManager,
 	review_state_inspector: &'a I,
+	recoverable_worktree_skip_cache: Option<&'a mut RecoverableWorktreeSkipCache>,
 }
 
 fn load_daemon_tick_context(
@@ -73,6 +74,7 @@ fn run_daemon_tick(
 	state_store: &StateStore,
 	active_children: &mut Vec<DaemonRunChild>,
 	retry_queue: &mut RetryQueue,
+	recoverable_worktree_skip_cache: &mut RecoverableWorktreeSkipCache,
 	context: &DaemonTickContext,
 ) -> Result<()> {
 	let review_state_inspector = GhPullRequestReviewStateInspector {
@@ -90,6 +92,7 @@ fn run_daemon_tick(
 			workflow: &context.workflow,
 			worktree_manager: &context.worktree_manager,
 			review_state_inspector: &review_state_inspector,
+			recoverable_worktree_skip_cache: Some(recoverable_worktree_skip_cache),
 		},
 	)
 }
@@ -99,7 +102,7 @@ fn run_daemon_tick_with_review_state_inspector<T, I>(
 	state_store: &StateStore,
 	active_children: &mut Vec<DaemonRunChild>,
 	retry_queue: &mut RetryQueue,
-	context: DaemonTickRuntimeContext<'_, T, I>,
+	mut context: DaemonTickRuntimeContext<'_, T, I>,
 ) -> Result<()>
 where
 	T: IssueTracker,
@@ -116,12 +119,15 @@ where
 	)?;
 
 	if active_children.is_empty() {
+		let recoverable_worktree_skip_cache = context.recoverable_worktree_skip_cache.as_deref_mut();
+
 		recover_and_reconcile_idle_daemon_state(
 			context.tracker,
 			context.project,
 			context.workflow,
 			state_store,
 			context.worktree_manager,
+			recoverable_worktree_skip_cache,
 		)?;
 	}
 
@@ -162,15 +168,17 @@ fn recover_and_reconcile_idle_daemon_state<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	worktree_manager: &WorktreeManager,
+	recoverable_worktree_skip_cache: Option<&mut RecoverableWorktreeSkipCache>,
 ) -> Result<()>
 where
 	T: IssueTracker,
 {
-	let _ = recover_runtime_state_from_tracker_and_worktrees(
+	let _ = recover_runtime_state_from_tracker_and_worktrees_with_skip_cache(
 		tracker,
 		project,
 		workflow,
 		state_store,
+		recoverable_worktree_skip_cache,
 	)?;
 
 	reconcile_project_state(tracker, project, workflow, state_store, worktree_manager)
