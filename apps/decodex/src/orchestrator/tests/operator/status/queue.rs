@@ -254,6 +254,56 @@ fn live_operator_status_snapshot_excludes_claimed_candidates_from_waiting_intake
 }
 
 #[test]
+fn live_operator_status_snapshot_prioritizes_needs_attention_over_shared_claim() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-attention-claimed",
+		"PUB-113",
+		"Todo",
+		&["decodex:needs-attention"],
+		Some(3),
+		"2026-03-13T06:16:17.133Z",
+	);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+
+	state_store
+		.record_run_attempt("run-attention-claimed", &issue.id, 1, "running")
+		.expect("active run should record");
+	state_store
+		.upsert_lease(config.service_id(), &issue.id, "run-attention-claimed", "In Progress")
+		.expect("active lease should record");
+
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("snapshot should build");
+	let project = snapshot.projects.first().expect("project summary should exist");
+	let candidate = snapshot
+		.queued_candidates
+		.iter()
+		.find(|candidate| candidate.issue_identifier == "PUB-113")
+		.expect("needs-attention claimed issue should remain visible");
+	let attention = candidate.attention.as_ref().expect("attention details should render");
+
+	assert_eq!(candidate.classification, "blocked");
+	assert_eq!(candidate.reason, "issue_needs_attention");
+	assert_eq!(
+		attention.auto_retry_blocked_reason.as_deref(),
+		Some("needs_attention_label")
+	);
+	assert_eq!(project.attention_count, 1);
+	assert_eq!(
+		project.queued_candidate_count, 1,
+		"needs-attention queue echoes remain in blocked intake while also counting as attention"
+	);
+}
+
+#[test]
 fn live_operator_status_snapshot_blocks_active_plus_queued_label_without_local_claim() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
