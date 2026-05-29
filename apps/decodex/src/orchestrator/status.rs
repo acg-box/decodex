@@ -1,4 +1,11 @@
+use std::mem;
+use std::mem::MaybeUninit;
+
 use records::LinearExecutionEventRecord;
+use libc::PROC_PIDTBSDINFO;
+use libc::SZOMB;
+use libc::c_void;
+use libc::proc_bsdinfo;
 
 use crate::pull_request::{self, PullRequestLandingGateView};
 use crate::worktree;
@@ -1811,6 +1818,12 @@ where
 {
 	let tracker_policy = workflow.frontmatter().tracker();
 
+	if tracker_policy.terminal_states().iter().any(|state| state == &issue.state.name) {
+		return Ok(("closed", "terminal_state"));
+	}
+	if issue.has_label(tracker_policy.needs_attention_label()) {
+		return Ok(("blocked", "issue_needs_attention"));
+	}
 	if state_store.issue_has_active_shared_claim(project.service_id(), &issue.id)? {
 		return Ok(("claimed", "shared_claim_present"));
 	}
@@ -1821,17 +1834,11 @@ where
 	)? {
 		return Ok(("blocked", QUEUE_REASON_LINEAR_ACTIVE_LABEL_PRESENT));
 	}
-	if tracker_policy.terminal_states().iter().any(|state| state == &issue.state.name) {
-		return Ok(("closed", "terminal_state"));
-	}
 	if !tracker_policy.startable_states().iter().any(|state| state == &issue.state.name) {
 		return Ok(("blocked", "non_startable_state"));
 	}
 	if issue.has_label(tracker_policy.opt_out_label()) {
 		return Ok(("blocked", "issue_opted_out"));
-	}
-	if issue.has_label(tracker_policy.needs_attention_label()) {
-		return Ok(("blocked", "issue_needs_attention"));
 	}
 	if !todo_blocker_rule_passes(issue, workflow) {
 		return Ok(("blocked", "open_tracker_blockers"));
@@ -3942,10 +3949,84 @@ fn process_is_alive(process_id: u32) -> bool {
 	// Use the kernel liveness probe directly so recovery does not depend on a shell
 	// builtin or `kill` binary being present on PATH.
 	match unsafe { libc::kill(process_id, 0) } {
-		0 => true,
-		-1 => matches!(std::io::Error::last_os_error().raw_os_error(), Some(libc::EPERM)),
+		0 => !process_is_zombie_or_uninspectable_after_signalable_probe(process_id),
+		-1 => {
+			matches!(std::io::Error::last_os_error().raw_os_error(), Some(libc::EPERM))
+				&& !process_is_zombie(process_id)
+		},
 		_ => false,
 	}
+}
+
+fn process_is_zombie_or_uninspectable_after_signalable_probe(process_id: pid_t) -> bool {
+	process_is_zombie_or_uninspectable(process_id)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn process_is_zombie_or_uninspectable(process_id: pid_t) -> bool {
+	process_is_zombie(process_id)
+}
+
+#[cfg(target_os = "linux")]
+fn process_is_zombie(process_id: pid_t) -> bool {
+	let Ok(stat) = fs::read_to_string(format!("/proc/{process_id}/stat")) else {
+		return false;
+	};
+	let Some(comm_end) = stat.rfind(')') else {
+		return false;
+	};
+	let Some(after_comm) = stat.get(comm_end + 2..) else {
+		return false;
+	};
+
+	after_comm.split_whitespace().next() == Some("Z")
+}
+
+#[cfg(target_os = "macos")]
+fn process_is_zombie_or_uninspectable(process_id: pid_t) -> bool {
+	match macos_process_bsd_status(process_id) {
+		Some(status) => status == SZOMB,
+		None => true,
+	}
+}
+
+#[cfg(target_os = "macos")]
+fn process_is_zombie(process_id: pid_t) -> bool {
+	macos_process_bsd_status(process_id) == Some(SZOMB)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_bsd_status(process_id: pid_t) -> Option<u32> {
+	if process_id <= 0 {
+		return None;
+	}
+
+	let mut info = MaybeUninit::<proc_bsdinfo>::zeroed();
+	let Ok(info_size) = i32::try_from(mem::size_of::<proc_bsdinfo>()) else {
+		return None;
+	};
+	let read_size = unsafe {
+		libc::proc_pidinfo(
+			process_id,
+			PROC_PIDTBSDINFO,
+			0,
+			info.as_mut_ptr().cast::<c_void>(),
+			info_size,
+		)
+	};
+
+	if read_size != info_size {
+		return None;
+	}
+
+	let info = unsafe { info.assume_init() };
+
+	Some(info.pbi_status)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn process_is_zombie(_process_id: pid_t) -> bool {
+	false
 }
 
 fn hydrate_status_snapshot_state(
