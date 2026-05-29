@@ -512,6 +512,30 @@ impl RetryQueue {
 	}
 }
 
+#[derive(Default)]
+struct RecoverableWorktreeSkipCache {
+	entries: HashMap<String, Instant>,
+}
+impl RecoverableWorktreeSkipCache {
+	fn is_suppressed(&mut self, issue_identifier: &str, now: Instant) -> bool {
+		self.retain_active(now);
+
+		self.entries.get(&issue_identifier.to_ascii_uppercase()).is_some_and(|until| *until > now)
+	}
+
+	fn remember(&mut self, issue_identifier: &str, now: Instant) {
+		self.retain_active(now);
+		self.entries.insert(
+			issue_identifier.to_ascii_uppercase(),
+			now + RECOVERABLE_WORKTREE_SKIP_TTL,
+		);
+	}
+
+	fn retain_active(&mut self, now: Instant) {
+		self.entries.retain(|_, until| *until > now);
+	}
+}
+
 struct DaemonTickContext {
 	config: ServiceConfig,
 	workflow: WorkflowDocument,
@@ -525,6 +549,7 @@ struct ProjectDaemonRuntime {
 	retry_queue: RetryQueue,
 	tracker_backoff: Option<TrackerConnectorBackoff>,
 	workflow_cache: Option<CachedWorkflowDocument>,
+	recoverable_worktree_skip_cache: RecoverableWorktreeSkipCache,
 }
 
 	#[derive(Clone, Debug)]
