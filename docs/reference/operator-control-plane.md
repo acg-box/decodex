@@ -202,10 +202,11 @@ Worktree visibility follows the owning dashboard section:
   child process/thread/protocol relationship for the path. Process liveness requires
   an alive PID plus matching `.decodex-run-activity` `host_boot_id` and
   `process_start_identity`; a previous-boot marker, same-boot PID reuse, missing
-  identity, or unavailable current host/process identity is recovery input, not proof
-  of active execution. `execution_liveness = process_identity_mismatch` is the stable
-  summary for previous-boot or PID-reuse evidence, while `process_liveness_reason`
-  explains the exact failed identity check when `process_alive` is false.
+  identity, an unreaped zombie PID, or unavailable current host/process identity is
+  recovery input, not proof of active execution. `execution_liveness =
+  process_identity_mismatch` is the stable summary for previous-boot or PID-reuse
+  evidence, while `process_liveness_reason` explains the exact failed identity check
+  when `process_alive` is false.
   `active_lease` is queue lease ownership only; `execution_liveness` explains why
   the lane is still visible when the queue lease is not held.
 - Running lanes derive CLI and dashboard text from the same `OperatorRunStatus`
