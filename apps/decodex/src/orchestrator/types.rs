@@ -525,7 +525,6 @@ impl RecoverableWorktreeSkipCache {
 
 	fn remember(&mut self, issue_identifier: &str, now: Instant) {
 		self.retain_active(now);
-
 		self.entries.insert(
 			issue_identifier.to_ascii_uppercase(),
 			now + RECOVERABLE_WORKTREE_SKIP_TTL,
