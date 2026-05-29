@@ -2344,7 +2344,7 @@ struct OperatorFlowMetricView: View {
 	private var valueTint: Color {
 		metric.value > 0
 			? metric.tint
-			: PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.64 : 0.72)
+			: PanelPalette.primaryText(colorScheme).opacity(colorScheme == .dark ? 0.76 : 0.66)
 	}
 }
 

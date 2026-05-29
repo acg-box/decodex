@@ -7,6 +7,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 }
 
+@MainActor
+final class AppAppearanceStore: ObservableObject {
+	@Published private(set) var colorScheme = AppAppearanceStore.currentColorScheme()
+	private var observation: NSKeyValueObservation?
+
+	init() {
+		colorScheme = Self.currentColorScheme()
+		observation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+			Task { @MainActor in
+				self?.colorScheme = Self.currentColorScheme()
+			}
+		}
+	}
+
+	private static func currentColorScheme() -> ColorScheme {
+		let darkAppearances: [NSAppearance.Name] = [
+			.darkAqua,
+			.vibrantDark,
+			.accessibilityHighContrastDarkAqua,
+			.accessibilityHighContrastVibrantDark,
+		]
+		let lightAppearances: [NSAppearance.Name] = [
+			.aqua,
+			.vibrantLight,
+			.accessibilityHighContrastAqua,
+			.accessibilityHighContrastVibrantLight,
+		]
+		let match = NSApp.effectiveAppearance.bestMatch(from: darkAppearances + lightAppearances)
+
+		return darkAppearances.contains { $0 == match } ? .dark : .light
+	}
+}
+
 enum AppAssets {
 	static let statusBarIcon: NSImage = {
 		let image = NSImage(named: "StatusBarIcon")
@@ -29,6 +62,7 @@ final class LoginWindowState: ObservableObject {
 @main
 struct DecodexApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+	@StateObject private var appAppearance = AppAppearanceStore()
 	@StateObject private var store: AccountStore
 	@StateObject private var loginWindowState = LoginWindowState()
 
@@ -59,6 +93,8 @@ struct DecodexApp: App {
 	@ViewBuilder
 	private var menuBarContent: some View {
 		let content = AccountPanelView(store: store, loginWindowState: loginWindowState)
+			.environment(\.colorScheme, appAppearance.colorScheme)
+			.preferredColorScheme(appAppearance.colorScheme)
 			.task {
 				await store.refreshIfNeeded()
 				store.startOperatorSnapshotStream()
