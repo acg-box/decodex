@@ -42,6 +42,19 @@ enum AccountActivityMode {
 	Snapshot,
 }
 
+#[derive(Clone, Copy)]
+enum RunIssueMetadataHydration {
+	AllRows,
+	ActiveRowsOnly,
+}
+
+#[derive(Clone, Copy)]
+struct LiveOperatorStatusSnapshotOptions {
+	hydrate_history_ledger: bool,
+	run_issue_metadata_hydration: RunIssueMetadataHydration,
+	account_activity_mode: AccountActivityMode,
+}
+
 enum TrackerObserverOutcome {
 	Ok,
 	Unavailable,
@@ -132,6 +145,7 @@ struct LiveOperatorStatusObserverContext<'a, T> {
 	state_store: &'a StateStore,
 	review_state_inspector: &'a GhPullRequestReviewStateInspector,
 	hydrate_history_ledger: bool,
+	run_issue_metadata_hydration: RunIssueMetadataHydration,
 }
 
 struct PostReviewLaneBuildContext<'a, I> {
@@ -289,8 +303,11 @@ where
 		workflow,
 		state_store,
 		limit,
-		true,
-		AccountActivityMode::Probe,
+		LiveOperatorStatusSnapshotOptions {
+			hydrate_history_ledger: true,
+			run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
+			account_activity_mode: AccountActivityMode::Probe,
+		},
 	)
 }
 
@@ -310,8 +327,11 @@ where
 		workflow,
 		state_store,
 		limit,
-		false,
-		AccountActivityMode::Snapshot,
+		LiveOperatorStatusSnapshotOptions {
+			hydrate_history_ledger: false,
+			run_issue_metadata_hydration: RunIssueMetadataHydration::ActiveRowsOnly,
+			account_activity_mode: AccountActivityMode::Snapshot,
+		},
 	)
 }
 
@@ -321,8 +341,7 @@ fn build_live_operator_status_snapshot_with_history_ledger<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	limit: usize,
-	hydrate_history_ledger: bool,
-	account_activity_mode: AccountActivityMode,
+	options: LiveOperatorStatusSnapshotOptions,
 ) -> crate::prelude::Result<OperatorStatusSnapshot>
 where
 	T: IssueTracker,
@@ -340,7 +359,7 @@ where
 		project,
 		state_store,
 		limit,
-		account_activity_mode,
+		options.account_activity_mode,
 	)?;
 
 	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
@@ -351,7 +370,8 @@ where
 			workflow,
 			state_store,
 			review_state_inspector: &review_state_inspector,
-			hydrate_history_ledger,
+			hydrate_history_ledger: options.hydrate_history_ledger,
+			run_issue_metadata_hydration: options.run_issue_metadata_hydration,
 		},
 		&mut snapshot,
 	)?;
@@ -376,7 +396,12 @@ where
 
 	if !paused {
 		paused = apply_tracker_observer_outcome(
-			hydrate_operator_run_rows_from_tracker(context.tracker, context.project, snapshot),
+			hydrate_operator_run_rows_from_tracker(
+				context.tracker,
+				context.project,
+				snapshot,
+				context.run_issue_metadata_hydration,
+			),
 			snapshot,
 			context.state_store,
 			context.project,
@@ -1171,11 +1196,12 @@ fn hydrate_operator_run_rows_from_tracker<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	snapshot: &mut OperatorStatusSnapshot,
+	hydration: RunIssueMetadataHydration,
 ) -> TrackerObserverOutcome
 where
 	T: IssueTracker,
 {
-	let issue_ids = operator_snapshot_run_issue_ids(snapshot);
+	let issue_ids = operator_snapshot_run_issue_ids(snapshot, hydration);
 
 	if issue_ids.is_empty() {
 		return TrackerObserverOutcome::Ok;
@@ -1220,17 +1246,26 @@ where
 	}
 }
 
-fn operator_snapshot_run_issue_ids(snapshot: &OperatorStatusSnapshot) -> Vec<String> {
+fn operator_snapshot_run_issue_ids(
+	snapshot: &OperatorStatusSnapshot,
+	hydration: RunIssueMetadataHydration,
+) -> Vec<String> {
 	let mut issue_ids = BTreeSet::new();
 
-	for run in snapshot.active_runs.iter().chain(snapshot.recent_runs.iter()) {
+	for run in &snapshot.active_runs {
 		append_operator_run_issue_id(&mut issue_ids, run);
 	}
-	for lane in &snapshot.history_lanes {
-		append_operator_run_issue_id(&mut issue_ids, &lane.latest_run);
 
-		for attempt in &lane.attempts {
-			append_operator_run_issue_id(&mut issue_ids, attempt);
+	if matches!(hydration, RunIssueMetadataHydration::AllRows) {
+		for run in &snapshot.recent_runs {
+			append_operator_run_issue_id(&mut issue_ids, run);
+		}
+		for lane in &snapshot.history_lanes {
+			append_operator_run_issue_id(&mut issue_ids, &lane.latest_run);
+
+			for attempt in &lane.attempts {
+				append_operator_run_issue_id(&mut issue_ids, attempt);
+			}
 		}
 	}
 
@@ -3672,6 +3707,25 @@ fn recover_runtime_state_from_tracker_and_worktrees<T>(
 where
 	T: IssueTracker,
 {
+	recover_runtime_state_from_tracker_and_worktrees_with_skip_cache(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		None,
+	)
+}
+
+fn recover_runtime_state_from_tracker_and_worktrees_with_skip_cache<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	mut recoverable_worktree_skip_cache: Option<&mut RecoverableWorktreeSkipCache>,
+) -> crate::prelude::Result<RecoveredRuntimeState>
+where
+	T: IssueTracker,
+{
 	let worktree_manager =
 		WorktreeManager::new(project.service_id(), project.repo_root(), project.worktree_root());
 	let mut issue_ids = state_store
@@ -3686,7 +3740,11 @@ where
 		}
 	}
 
-	let mut issues = tracker.refresh_issues(&issue_ids)?;
+	let mut issues = if issue_ids.is_empty() && recoverable_worktree_skip_cache.is_some() {
+		Vec::new()
+	} else {
+		tracker.refresh_issues(&issue_ids)?
+	};
 	let mut known_identifiers =
 		issues.iter().map(|issue| issue.identifier.to_ascii_uppercase()).collect::<BTreeSet<_>>();
 
@@ -3697,6 +3755,7 @@ where
 			&issue_identifier,
 			&mut known_identifiers,
 			&mut issues,
+			recoverable_worktree_skip_cache.as_deref_mut(),
 		)?;
 	}
 
@@ -3824,6 +3883,7 @@ fn append_recoverable_tracker_issue<T>(
 	issue_identifier: &str,
 	known_identifiers: &mut BTreeSet<String>,
 	issues: &mut Vec<TrackerIssue>,
+	mut recoverable_worktree_skip_cache: Option<&mut RecoverableWorktreeSkipCache>,
 ) -> crate::prelude::Result<()>
 where
 	T: IssueTracker,
@@ -3834,7 +3894,24 @@ where
 		return Ok(());
 	}
 
+	let now = Instant::now();
+
+	if let Some(cache) = recoverable_worktree_skip_cache.as_deref_mut()
+		&& cache.is_suppressed(&canonical_identifier, now)
+	{
+		tracing::debug!(
+			issue = canonical_identifier,
+			"Skipped retained worktree tracker lookup because a recent recovery probe already found no service ownership."
+		);
+
+		return Ok(());
+	}
+
 	let Some(issue) = tracker.get_issue_by_identifier(issue_identifier)? else {
+		if let Some(cache) = recoverable_worktree_skip_cache {
+			cache.remember(&canonical_identifier, now);
+		}
+
 		return Ok(());
 	};
 
@@ -3845,6 +3922,10 @@ where
 			labels_complete = issue.labels_complete,
 			"Skipping retained worktree recovery because the tracker issue is not explicitly owned by this service."
 		);
+
+		if let Some(cache) = recoverable_worktree_skip_cache {
+			cache.remember(&canonical_identifier, now);
+		}
 
 		return Ok(());
 	}

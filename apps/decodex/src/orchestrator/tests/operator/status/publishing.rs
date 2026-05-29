@@ -337,6 +337,117 @@ fn operator_state_snapshot_publish_does_not_derive_history_outcome_without_execu
 }
 
 #[test]
+fn operator_state_snapshot_publish_skips_terminal_run_metadata_refresh() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-1",
+		"XY-355",
+		"Done",
+		&[],
+		Some(3),
+		"2026-04-29T10:11:00Z",
+	);
+	let tracker = FakeTracker::with_refresh_error(
+		vec![issue.clone()],
+		"Linear connector is rate limited: Rate limit exceeded. Only 2500 requests are allowed per 1 hour.",
+	);
+
+	state_store
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"y/decodex-xy-355",
+			&config.worktree_root().join(&issue.identifier).display().to_string(),
+		)
+		.expect("worktree should remember project ownership");
+	state_store
+		.record_run_attempt("xy-355-attempt-1", &issue.id, 1, "succeeded")
+		.expect("successful attempt should record");
+	state_store
+		.clear_worktree(&issue.id)
+		.expect("completed lane cleanup should clear local worktree");
+
+	let snapshot = orchestrator::build_operator_state_snapshot_for_publish(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+		&[],
+		&[],
+	)
+	.expect("terminal-only publish should avoid Linear metadata refresh");
+
+	assert_eq!(snapshot.history_lanes.len(), 1);
+	assert!(
+		!snapshot
+			.warnings
+			.iter()
+			.any(|warning| warning == orchestrator::TRACKER_RATE_LIMIT_WARNING),
+		"terminal-only publish should not enter backoff from run metadata"
+	);
+	assert!(
+		tracker.refresh_queries.borrow().is_empty(),
+		"control-plane publish should not refresh terminal recent/history run metadata"
+	);
+}
+
+#[test]
+fn operator_state_snapshot_publish_still_refreshes_active_run_metadata() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue_with_sort_fields(
+		"issue-1",
+		"XY-355",
+		"In Progress",
+		&[],
+		Some(3),
+		"2026-04-29T10:11:00Z",
+	);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+
+	state_store
+		.record_run_attempt("xy-355-attempt-1", &issue.id, 1, "running")
+		.expect("running attempt should record");
+	state_store
+		.upsert_lease(TEST_SERVICE_ID, &issue.id, "xy-355-attempt-1", "In Progress")
+		.expect("active lease should record");
+	state_store
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			&issue.id,
+			"y/decodex-xy-355",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should remember project ownership");
+
+	let snapshot = orchestrator::build_operator_state_snapshot_for_publish(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+		&[],
+		&[],
+	)
+	.expect("active publish should build");
+	let refresh_queries = tracker.refresh_queries.borrow();
+
+	assert!(
+		refresh_queries
+			.iter()
+			.any(|query| query.len() == 1 && query.first() == Some(&issue.id)),
+		"active publish should still refresh the active run issue metadata"
+	);
+	assert_eq!(snapshot.active_runs.len(), 1);
+	assert_eq!(snapshot.active_runs[0].issue_identifier.as_deref(), Some("XY-355"));
+	assert_eq!(snapshot.active_runs[0].title.as_deref(), Some("Implement orchestration"));
+	assert_eq!(snapshot.active_runs[0].author.as_deref(), Some("Yvette"));
+}
+
+#[test]
 fn operator_state_snapshot_publish_reads_local_completed_ledger_details_without_comment_replay() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
