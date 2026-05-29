@@ -870,20 +870,29 @@ struct AccountRunSummaryView: View {
 
 	var body: some View {
 		ViewThatFits(in: .horizontal) {
-			runRow(visibleCount: 3)
-			runRow(visibleCount: 2)
-			runRow(visibleCount: 1)
+			runRow(visibleCount: 2, style: .detailed)
+			runRow(visibleCount: 1, style: .detailed)
+			runRow(visibleCount: 3, style: .compact)
+			runRow(visibleCount: 2, style: .compact)
+			runRow(visibleCount: 1, style: .compact)
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 
-	private func runRow(visibleCount: Int) -> some View {
+	private func runRow(
+		visibleCount: Int,
+		style: AccountRunChipStyle
+	) -> some View {
 		let visibleRuns = Array(runs.prefix(visibleCount))
 		let hiddenRuns = Array(runs.dropFirst(visibleCount))
 
 		return HStack(spacing: 5) {
 			ForEach(visibleRuns) { run in
-				AccountRunChipView(run: run)
+				AccountRunChipView(
+					run: run,
+					style: style,
+					maxWidth: chipMaxWidth(style: style, visibleCount: visibleRuns.count)
+				)
 			}
 
 			if hiddenRuns.isEmpty == false {
@@ -891,6 +900,20 @@ struct AccountRunSummaryView: View {
 			}
 		}
 		.fixedSize(horizontal: true, vertical: false)
+	}
+
+	private func chipMaxWidth(
+		style: AccountRunChipStyle,
+		visibleCount: Int
+	) -> CGFloat {
+		switch style {
+		case .detailed:
+			return visibleCount <= 1
+				? AccountRunChipLayout.wideDetailedMaxWidth
+				: AccountRunChipLayout.detailedMaxWidth
+		case .compact:
+			return AccountRunChipLayout.compactMaxWidth
+		}
 	}
 }
 
@@ -962,11 +985,20 @@ private struct AccountListScrollIndicatorView: View {
 }
 
 private enum AccountRunChipLayout {
-	static let maxWidth: CGFloat = 108
+	static let compactMaxWidth: CGFloat = 108
+	static let detailedMaxWidth: CGFloat = 132
+	static let wideDetailedMaxWidth: CGFloat = 218
+}
+
+enum AccountRunChipStyle {
+	case detailed
+	case compact
 }
 
 struct AccountRunChipView: View {
 	let run: OperatorRunStatus
+	let style: AccountRunChipStyle
+	let maxWidth: CGFloat
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var isHovered = false
 	@State private var showsPopover = false
@@ -983,10 +1015,24 @@ struct AccountRunChipView: View {
 				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.92))
 				.lineLimit(1)
 				.truncationMode(.middle)
+				.fixedSize(horizontal: true, vertical: false)
+
+			if style == .detailed {
+				Text("·")
+					.font(PanelFont.metricLabel)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
+					.fixedSize(horizontal: true, vertical: false)
+
+				Text(run.compactDetail)
+					.font(PanelFont.metricLabel)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.lineLimit(1)
+					.truncationMode(.tail)
+			}
 		}
 		.frame(height: 21)
 		.padding(.horizontal, 8)
-		.frame(maxWidth: AccountRunChipLayout.maxWidth, alignment: .leading)
+		.frame(maxWidth: maxWidth, alignment: .leading)
 		.background {
 			RoundedRectangle(cornerRadius: 10.5, style: .continuous)
 				.fill(isHovered ? tint.opacity(colorScheme == .dark ? 0.09 : 0.07) : Color.clear)
