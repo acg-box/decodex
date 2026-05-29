@@ -1,10 +1,16 @@
+#[cfg(target_os = "macos")]
 use std::mem;
+#[cfg(target_os = "macos")]
 use std::mem::MaybeUninit;
 
 use records::LinearExecutionEventRecord;
+#[cfg(target_os = "macos")]
 use libc::PROC_PIDTBSDINFO;
+#[cfg(target_os = "macos")]
 use libc::SZOMB;
+#[cfg(target_os = "macos")]
 use libc::c_void;
+#[cfg(target_os = "macos")]
 use libc::proc_bsdinfo;
 
 use crate::pull_request::{self, PullRequestLandingGateView};
