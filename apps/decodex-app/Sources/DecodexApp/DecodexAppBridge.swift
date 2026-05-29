@@ -200,7 +200,7 @@ struct DecodexAppBridge: Sendable {
 		as type: T.Type,
 		onOutput: (@MainActor @Sendable (String) -> Void)?
 	) async throws -> T {
-		if onOutput == nil, try request.serverRoute() != nil {
+		if request.requiresHelper == false, onOutput == nil, try request.serverRoute() != nil {
 			return try await DecodexServerBridge.shared.run(request, as: type)
 		}
 		guard request.requiresHelper else {
