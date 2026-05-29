@@ -1130,6 +1130,7 @@ fn control_plane_project_snapshot(
 		state_store,
 		&mut runtime.active_children,
 		&mut runtime.retry_queue,
+		&mut runtime.recoverable_worktree_skip_cache,
 		context,
 	) {
 		if let Some(connector_backoff) = remember_tracker_backoff(
