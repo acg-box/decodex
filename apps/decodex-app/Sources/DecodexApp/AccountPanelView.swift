@@ -1016,19 +1016,6 @@ struct AccountRunChipView: View {
 				.lineLimit(1)
 				.truncationMode(.middle)
 				.fixedSize(horizontal: true, vertical: false)
-
-			if style == .detailed {
-				Text("·")
-					.font(PanelFont.metricLabel)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
-					.fixedSize(horizontal: true, vertical: false)
-
-				Text(run.compactDetail)
-					.font(PanelFont.metricLabel)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.lineLimit(1)
-					.truncationMode(.tail)
-			}
 		}
 		.frame(height: 21)
 		.padding(.horizontal, 8)
