@@ -862,54 +862,20 @@ struct AccountRowView: View {
 
 struct AccountRunSummaryView: View {
 	let runs: [OperatorRunStatus]
-	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		ViewThatFits(in: .horizontal) {
-			runRow(visibleCount: 2, style: .detailed)
-			runRow(visibleCount: 1, style: .detailed)
-			runRow(visibleCount: 3, style: .compact)
-			runRow(visibleCount: 2, style: .compact)
-			runRow(visibleCount: 1, style: .compact)
+		ScrollView(.horizontal, showsIndicators: false) {
+			HStack(spacing: 5) {
+				ForEach(runs) { run in
+					AccountRunChipView(run: run)
+				}
+			}
+			.padding(.trailing, 1)
 		}
+		.scrollIndicators(.hidden)
+		.frame(height: AccountRunChipLayout.height)
 		.frame(maxWidth: .infinity, alignment: .leading)
-	}
-
-	private func runRow(
-		visibleCount: Int,
-		style: AccountRunChipStyle
-	) -> some View {
-		let visibleRuns = Array(runs.prefix(visibleCount))
-		let hiddenRuns = Array(runs.dropFirst(visibleCount))
-
-		return HStack(spacing: 5) {
-			ForEach(visibleRuns) { run in
-				AccountRunChipView(
-					run: run,
-					style: style,
-					maxWidth: chipMaxWidth(style: style, visibleCount: visibleRuns.count)
-				)
-			}
-
-			if hiddenRuns.isEmpty == false {
-				AccountRunOverflowView(runs: runs, hiddenRunCount: hiddenRuns.count)
-			}
-		}
-		.fixedSize(horizontal: true, vertical: false)
-	}
-
-	private func chipMaxWidth(
-		style: AccountRunChipStyle,
-		visibleCount: Int
-	) -> CGFloat {
-		switch style {
-		case .detailed:
-			return visibleCount <= 1
-				? AccountRunChipLayout.wideDetailedMaxWidth
-				: AccountRunChipLayout.detailedMaxWidth
-		case .compact:
-			return AccountRunChipLayout.compactMaxWidth
-		}
+		.accessibilityLabel("\(runs.count) running lane\(runs.count == 1 ? "" : "s")")
 	}
 }
 
@@ -981,20 +947,12 @@ private struct AccountListScrollIndicatorView: View {
 }
 
 private enum AccountRunChipLayout {
-	static let compactMaxWidth: CGFloat = 108
-	static let detailedMaxWidth: CGFloat = 132
-	static let wideDetailedMaxWidth: CGFloat = 218
-}
-
-enum AccountRunChipStyle {
-	case detailed
-	case compact
+	static let height: CGFloat = 21
+	static let cornerRadius: CGFloat = 10.5
 }
 
 struct AccountRunChipView: View {
 	let run: OperatorRunStatus
-	let style: AccountRunChipStyle
-	let maxWidth: CGFloat
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var isHovered = false
 	@State private var showsPopover = false
@@ -1013,15 +971,14 @@ struct AccountRunChipView: View {
 				.truncationMode(.middle)
 				.fixedSize(horizontal: true, vertical: false)
 		}
-		.frame(height: 21)
+		.frame(height: AccountRunChipLayout.height)
 		.padding(.horizontal, 8)
-		.frame(maxWidth: maxWidth, alignment: .leading)
 		.background {
-			RoundedRectangle(cornerRadius: 10.5, style: .continuous)
+			RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous)
 				.fill(isHovered ? tint.opacity(colorScheme == .dark ? 0.09 : 0.07) : Color.clear)
 		}
-		.modernGlassSurface(cornerRadius: 10.5, depth: .control)
-		.contentShape(RoundedRectangle(cornerRadius: 10.5, style: .continuous))
+		.modernGlassSurface(cornerRadius: AccountRunChipLayout.cornerRadius, depth: .control)
+		.contentShape(RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous))
 		.onHover { hovering in
 			withAnimation(PanelMotion.hover) {
 				isHovered = hovering
@@ -1055,78 +1012,6 @@ struct AccountRunChipView: View {
 		}
 
 		return PanelPalette.routeAccent(colorScheme)
-	}
-}
-
-struct AccountRunOverflowView: View {
-	let runs: [OperatorRunStatus]
-	let hiddenRunCount: Int
-	@Environment(\.colorScheme) private var colorScheme
-	@State private var isHovered = false
-	@State private var showsPopover = false
-
-	var body: some View {
-		Text("+\(hiddenRunCount)")
-			.font(PanelFont.metricLabel)
-			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-			.frame(height: 21)
-			.padding(.horizontal, 7)
-			.background {
-				RoundedRectangle(cornerRadius: 10.5, style: .continuous)
-					.fill(isHovered ? PanelPalette.routeAccent(colorScheme).opacity(0.08) : Color.clear)
-			}
-			.modernGlassSurface(cornerRadius: 10.5, depth: .control)
-			.fixedSize(horizontal: true, vertical: false)
-			.contentShape(RoundedRectangle(cornerRadius: 10.5, style: .continuous))
-			.onHover { hovering in
-				withAnimation(PanelMotion.hover) {
-					isHovered = hovering
-				}
-				showsPopover = hovering
-			}
-			.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
-				OperatorLaneDetailsListView(
-					title: "\(runs.count) running lane\(runs.count == 1 ? "" : "s")",
-					runs: runs
-				)
-				.frame(width: 372)
-				.padding(8)
-			}
-	}
-}
-
-struct OperatorLaneDetailsListView: View {
-	let title: String
-	let runs: [OperatorRunStatus]
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: 8) {
-			HStack(spacing: 7) {
-				Image(systemName: "arrow.triangle.branch")
-					.font(PanelFont.summaryIcon)
-					.foregroundStyle(PanelPalette.routeAccent(colorScheme).opacity(0.86))
-					.frame(width: 12)
-
-				Text(title)
-					.font(PanelFont.lanePopoverTitle)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-					.lineLimit(1)
-			}
-
-			ScrollView {
-				VStack(alignment: .leading, spacing: 8) {
-					ForEach(runs) { run in
-						OperatorLanePopoverView(run: run)
-					}
-				}
-			}
-			.frame(maxHeight: 430)
-			.scrollIndicators(.hidden)
-		}
-		.padding(10)
-		.modernGlassSurface(cornerRadius: 12, depth: .section)
-		.accessibilityLabel(title)
 	}
 }
 
