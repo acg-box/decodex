@@ -664,9 +664,7 @@ struct AccountPanelView: View {
 	private func accountRowHeight(for account: CodexAccount) -> CGFloat {
 		let base: CGFloat
 		if account.hasUsageWindowSummary {
-			base = account.hasSevenDayUsageEstimate ? 120 : 102
-		} else if account.hasSevenDayUsageEstimate {
-			base = 66
+			base = 102
 		} else {
 			base = 48
 		}
@@ -1319,19 +1317,17 @@ struct AccountPoolUsageMetricView: View {
 
 struct AccountUsageSummaryView: View {
 	let account: CodexAccount
-	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
 		VStack(spacing: 5) {
-			if account.hasSevenDayUsageEstimate {
-				AccountSevenDayUsageLineView(account: account)
-			}
-
 			if account.hasPrimaryUsageData {
 				AccountUsageMeterView(
 					label: account.windowLabel(seconds: account.primaryWindowSeconds),
 					remainingPercent: account.primaryRemainingPercent,
 					resetAtUnixEpoch: account.primaryResetsAtUnixEpoch,
+					dailyAveragePercent: account.sevenDayAveragePercent(
+						forWindowSeconds: account.primaryWindowSeconds
+					),
 					tone: account.usageTone(remainingPercent: account.primaryRemainingPercent)
 				)
 			}
@@ -1341,6 +1337,9 @@ struct AccountUsageSummaryView: View {
 					label: account.windowLabel(seconds: account.secondaryWindowSeconds),
 					remainingPercent: account.secondaryRemainingPercent,
 					resetAtUnixEpoch: account.secondaryResetsAtUnixEpoch,
+					dailyAveragePercent: account.sevenDayAveragePercent(
+						forWindowSeconds: account.secondaryWindowSeconds
+					),
 					tone: account.usageTone(remainingPercent: account.secondaryRemainingPercent)
 				)
 			}
@@ -1351,80 +1350,11 @@ struct AccountUsageSummaryView: View {
 	}
 }
 
-struct AccountSevenDayUsageLineView: View {
-	let account: CodexAccount
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		HStack(spacing: 5) {
-			Image(systemName: "calendar")
-				.font(PanelFont.summaryIcon)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
-				.frame(width: 10)
-
-			Text("7d used")
-				.font(PanelFont.usageLabel)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.lineLimit(1)
-
-			Text(usedText)
-				.font(PanelFont.usageValue)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(colorScheme == .dark ? 0.92 : 0.86))
-				.monospacedDigit()
-				.lineLimit(1)
-
-			if let recordDate {
-				Text(recordDate)
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.72))
-					.monospacedDigit()
-					.lineLimit(1)
-			}
-
-			Spacer(minLength: 4)
-
-			HStack(alignment: .firstTextBaseline, spacing: 3) {
-				Text("avg")
-					.font(PanelFont.usageLabel)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
-					.lineLimit(1)
-
-				Text(dailyAverageText)
-					.font(PanelFont.usageValue)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.monospacedDigit()
-					.lineLimit(1)
-			}
-		}
-		.frame(height: 16)
-		.accessibilityLabel("Seven day used \(usedText), daily average \(dailyAverageText)")
-	}
-
-	private var usedText: String {
-		guard let used = account.sevenDayUsedPercent else {
-			return "-"
-		}
-
-		return "\(used)%"
-	}
-
-	private var dailyAverageText: String {
-		guard let average = account.sevenDayDailyAveragePercent else {
-			return "-"
-		}
-
-		return formatDailyUsageRate(average)
-	}
-
-	private var recordDate: String? {
-		account.recentUsageRecords.last.map { compactUsageDate($0.date) }
-	}
-}
-
 struct AccountUsageMeterView: View {
 	let label: String
 	let remainingPercent: Int?
 	let resetAtUnixEpoch: Int?
+	let dailyAveragePercent: Double?
 	let tone: AccountTone
 	@Environment(\.colorScheme) private var colorScheme
 
@@ -1441,6 +1371,23 @@ struct AccountUsageMeterView: View {
 					.frame(width: 62, alignment: .leading)
 					.foregroundStyle(valueColor)
 					.monospacedDigit()
+
+				if let dailyAverageText {
+					HStack(alignment: .firstTextBaseline, spacing: 3) {
+						Text("avg")
+							.font(PanelFont.usageLabel)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
+							.lineLimit(1)
+
+						Text(dailyAverageText)
+							.font(PanelFont.usageValue)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+							.monospacedDigit()
+							.lineLimit(1)
+							.minimumScaleFactor(0.78)
+					}
+					.layoutPriority(1)
+				}
 
 				Spacer(minLength: 2)
 
@@ -1493,7 +1440,7 @@ struct AccountUsageMeterView: View {
 		.lineLimit(1)
 		.frame(height: 22)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.accessibilityLabel("\(label) remaining \(remainingText), \(resetDisplay.accessibility)")
+		.accessibilityLabel(accessibilityText)
 	}
 
 	private var remainingText: String {
@@ -1502,6 +1449,20 @@ struct AccountUsageMeterView: View {
 		}
 
 		return "\(remainingPercent)% left"
+	}
+
+	private var dailyAverageText: String? {
+		guard let dailyAveragePercent else {
+			return nil
+		}
+		let formatted = formatDailyUsageRate(dailyAveragePercent)
+
+		return formatted == "-" ? nil : formatted
+	}
+
+	private var accessibilityText: String {
+		let average = dailyAverageText.map { ", daily average \($0)" } ?? ""
+		return "\(label) remaining \(remainingText)\(average), \(resetDisplay.accessibility)"
 	}
 
 	private var progress: CGFloat {
@@ -2728,27 +2689,6 @@ private func formatPercentagePointDelta(_ value: Double) -> String {
 	return String(format: "%@%.1fpp", sign, absValue)
 }
 
-private func compactUsageDate(_ value: String) -> String {
-	let parts = value.split(separator: "-")
-	guard parts.count == 3, let month = Int(parts[1]), let day = Int(parts[2]) else {
-		return value
-	}
-
-	var components = DateComponents()
-	components.calendar = Calendar(identifier: .gregorian)
-	components.year = 2_000
-	components.month = month
-	components.day = day
-	guard let date = components.date else {
-		return value
-	}
-
-	let formatter = DateFormatter()
-	formatter.locale = Locale(identifier: "en_US_POSIX")
-	formatter.dateFormat = "MMM d"
-	return formatter.string(from: date)
-}
-
 private func panelTrimmed(_ value: String?) -> String? {
 	value?.trimmingCharacters(in: .whitespacesAndNewlines)
 }
@@ -3125,19 +3065,23 @@ private extension CodexAccount {
 	}
 
 	var hasUsageSummary: Bool {
-		hasUsageWindowSummary || hasSevenDayUsageEstimate
+		hasUsageWindowSummary
 	}
 
 	var hasUsageWindowSummary: Bool {
 		hasPrimaryUsageData || hasSecondaryUsageData
 	}
 
-	var hasSevenDayUsageEstimate: Bool {
-		sevenDayUsedPercent != nil || sevenDayDailyAveragePercent != nil
-	}
-
 	var recentUsageRecords: [AccountUsageRecord] {
 		usageRecords ?? []
+	}
+
+	func sevenDayAveragePercent(forWindowSeconds seconds: Int?) -> Double? {
+		guard seconds == 604_800 else {
+			return nil
+		}
+
+		return sevenDayDailyAveragePercent
 	}
 
 	var compactHealthLabel: String? {
