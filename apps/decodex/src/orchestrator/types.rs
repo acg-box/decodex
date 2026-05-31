@@ -30,7 +30,6 @@ pub(crate) struct RunOnceRequest<'a> {
 /// Multi-project local control-plane daemon request.
 pub(crate) struct ServeRequest<'a> {
 	pub(crate) config_path: Option<&'a Path>,
-	pub(crate) poll_interval: Option<Duration>,
 	pub(crate) listen_address: &'a str,
 	pub(crate) dev: bool,
 }
@@ -548,6 +547,7 @@ struct ProjectDaemonRuntime {
 	active_children: Vec<DaemonRunChild>,
 	retry_queue: RetryQueue,
 	tracker_backoff: Option<TrackerConnectorBackoff>,
+	next_linear_scan_at: Option<Instant>,
 	workflow_cache: Option<CachedWorkflowDocument>,
 	recoverable_worktree_skip_cache: RecoverableWorktreeSkipCache,
 }
@@ -564,6 +564,7 @@ struct OperatorStateEndpoint {
 	listen_address: SocketAddr,
 	snapshot: Arc<Mutex<PublishedOperatorSnapshot>>,
 	dashboard_events: DashboardEventHub,
+	control_requests: OperatorControlRequests,
 	shutdown_tx: Sender<()>,
 	activity_shutdown_tx: Sender<()>,
 	server_thread: Option<JoinHandle<()>>,
@@ -588,6 +589,8 @@ impl OperatorStateEndpoint {
 		let dashboard_events = DashboardEventHub::default();
 		let shared_snapshot = Arc::clone(&snapshot);
 		let server_dashboard_events = dashboard_events.clone();
+		let control_requests = OperatorControlRequests::default();
+		let server_control_requests = control_requests.clone();
 		let server_state_store = Arc::clone(&state_store);
 		let (shutdown_tx, shutdown_rx) = mpsc::channel();
 		let server_thread = thread::spawn(move || {
@@ -595,6 +598,7 @@ impl OperatorStateEndpoint {
 				listener,
 				shared_snapshot,
 				server_dashboard_events,
+				server_control_requests,
 				server_state_store,
 				shutdown_rx,
 			);
@@ -613,6 +617,7 @@ impl OperatorStateEndpoint {
 			listen_address,
 			snapshot,
 			dashboard_events,
+			control_requests,
 			shutdown_tx,
 			activity_shutdown_tx,
 			server_thread: Some(server_thread),
@@ -648,9 +653,13 @@ impl OperatorStateEndpoint {
 			}),
 		);
 
-		Ok(())
+			Ok(())
+		}
+
+	fn drain_linear_scan_requests(&self) -> crate::prelude::Result<Vec<OperatorLinearScanRequest>> {
+		self.control_requests.drain_linear_scan_requests()
 	}
-}
+	}
 
 impl Drop for OperatorStateEndpoint {
 	fn drop(&mut self) {
@@ -670,6 +679,37 @@ impl Drop for OperatorStateEndpoint {
 struct PublishedOperatorSnapshot {
 	snapshot_json: Option<Vec<u8>>,
 	last_publish_unix_epoch: Option<i64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct OperatorLinearScanRequest {
+	project_id: Option<String>,
+}
+
+#[derive(Clone, Default)]
+struct OperatorControlRequests {
+	linear_scan_requests: Arc<Mutex<Vec<OperatorLinearScanRequest>>>,
+}
+impl OperatorControlRequests {
+	fn request_linear_scan(&self, project_id: Option<String>) -> crate::prelude::Result<()> {
+		let mut requests = self
+			.linear_scan_requests
+			.lock()
+			.map_err(|error| eyre::eyre!("Operator control request lock poisoned: {error}"))?;
+
+		requests.push(OperatorLinearScanRequest { project_id });
+
+		Ok(())
+	}
+
+	fn drain_linear_scan_requests(&self) -> crate::prelude::Result<Vec<OperatorLinearScanRequest>> {
+		let mut requests = self
+			.linear_scan_requests
+			.lock()
+			.map_err(|error| eyre::eyre!("Operator control request lock poisoned: {error}"))?;
+
+		Ok(requests.drain(..).collect())
+	}
 }
 
 #[derive(Clone)]
