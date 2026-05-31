@@ -159,7 +159,10 @@ claim is available, it refreshes when `last_refresh` is more than eight days old
 the app-server later sends `account/chatgptAuthTokens/refresh`, Decodex refreshes the
 globally fixed account when configured, otherwise the previous account id supplied by the
 request. It updates the JSONL record with returned tokens and `last_refresh`, records
-a redacted local protocol event, and responds with fresh `chatgptAuthTokens`.
+a redacted local protocol event, and responds with fresh `chatgptAuthTokens`. When the
+same account is currently active in the Codex `auth.json` target, Decodex also mirrors
+the refreshed token payload there so the standalone Codex CLI does not keep stale
+credentials for that account.
 
 ## `initialize`
 
