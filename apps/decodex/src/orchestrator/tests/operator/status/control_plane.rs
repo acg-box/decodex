@@ -1,3 +1,5 @@
+use orchestrator::ProjectDaemonRuntime;
+
 #[test]
 fn control_plane_snapshot_lists_disabled_registered_projects() {
 	let (temp_dir, config, _workflow) = temp_project_layout();
@@ -15,7 +17,7 @@ fn control_plane_snapshot_lists_disabled_registered_projects() {
 	state_store.upsert_project(&registration).expect("project should register");
 
 	let mut project_runtimes = HashMap::new();
-	let snapshot = orchestrator::run_control_plane_tick(&state_store, &mut project_runtimes)
+	let snapshot = orchestrator::run_control_plane_tick(&state_store, &mut project_runtimes, &[])
 		.expect("control-plane snapshot should build");
 	let project = snapshot.projects.first().expect("disabled project should be listed");
 
@@ -30,6 +32,40 @@ fn control_plane_snapshot_lists_disabled_registered_projects() {
 	assert_eq!(project.retained_worktree_count, 0);
 	assert!(snapshot.warnings.contains(&String::from("no_enabled_projects")));
 	assert!(project_runtimes.is_empty(), "disabled projects should not be ticked");
+}
+
+#[test]
+fn control_plane_linear_scan_cadence_uses_fixed_window_and_manual_override() {
+	let now = Instant::now();
+	let mut runtime = ProjectDaemonRuntime::default();
+
+	assert!(orchestrator::linear_scan_due("pubfi", &runtime, &[], now));
+
+	orchestrator::remember_next_linear_scan(&mut runtime, now);
+
+	assert!(!orchestrator::linear_scan_due("pubfi", &runtime, &[], now));
+	assert!(orchestrator::linear_scan_due(
+		"pubfi",
+		&runtime,
+		&[orchestrator::OperatorLinearScanRequest { project_id: None }],
+		now
+	));
+	assert!(orchestrator::linear_scan_due(
+		"pubfi",
+		&runtime,
+		&[orchestrator::OperatorLinearScanRequest {
+			project_id: Some(String::from("pubfi")),
+		}],
+		now
+	));
+	assert!(!orchestrator::linear_scan_due(
+		"pubfi",
+		&runtime,
+		&[orchestrator::OperatorLinearScanRequest {
+			project_id: Some(String::from("rsnap")),
+		}],
+		now
+	));
 }
 
 #[test]

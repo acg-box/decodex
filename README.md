@@ -109,8 +109,10 @@ cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8912
 
 Project-scoped commands accept `--config <PROJECT_DIR>` after the subcommand when the
 operator wants to override registry-based project resolution for that command.
-`decodex serve` owns the default scheduler cadence of 15 seconds; pass
-`--interval <INTERVAL>` only when deliberately overriding that poll interval.
+`decodex serve` uses hardcoded scheduler cadences: the local control-plane loop
+publishes snapshots every 15 seconds, and Linear-backed queue/status scans run at
+most every 5 minutes per project unless an operator or agent requests an explicit
+scan with `POST /api/linear-scan`.
 
 ### Install from Source
 
@@ -230,9 +232,9 @@ node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-code
 Use hidden `decodex serve --dev --listen-address 127.0.0.1:8912` only when
 developing local account/app snapshot APIs against real runtime state while explicitly
 avoiding scheduler activity. Dev mode deliberately does not register projects, poll
-Linear, dispatch work, or accept `--config` or `--interval`. Decodex App's normal
+Linear, dispatch work, or accept `--config`. Decodex App's normal
 fallback server is ordinary `decodex serve --listen-address 127.0.0.1:8912`; the CLI
-owns the default scheduler interval, currently 15 seconds. App launch connects to an
+owns the default scheduler cadences. App launch connects to an
 existing live default listener instead of starting a duplicate server. For
 dashboard-only UI work, prefer the mock server above.
 
