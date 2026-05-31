@@ -148,7 +148,8 @@ snapshots plus non-secret capacity weights for local display and no token materi
 To switch the account used by the Codex CLI itself, run
 `decodex account use <selector>` or use the Decodex App row action; this overwrites
 `$CODEX_HOME/auth.json` or `~/.codex/auth.json` from the matching `accounts.jsonl`
-entry.
+entry. Later account-pool token refreshes also update that Codex auth target when it
+currently contains the same account id.
 
 `decodex diagnose --json` writes the local agent evidence index under
 `~/.codex/decodex/agent-evidence/<service-id>/` and prints the same handoff index for
