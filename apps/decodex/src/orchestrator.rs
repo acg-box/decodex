@@ -82,6 +82,7 @@ const OPERATOR_DASHBOARD_WS_ENDPOINT_PATH: &str = "/dashboard/control";
 const OPERATOR_LIVE_ENDPOINT_PATH: &str = "/livez";
 const OPERATOR_ACCOUNTS_ENDPOINT_PATH: &str = "/api/accounts";
 const OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH: &str = "/api/operator-snapshot";
+const OPERATOR_LINEAR_SCAN_ENDPOINT_PATH: &str = "/api/linear-scan";
 const OPERATOR_STATE_MAX_REQUEST_BYTES: usize = 8_192;
 const OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES: usize = 64 * 1_024;
 const OPERATOR_STATE_HEADER_TERMINATOR: &[u8] = b"\r\n\r\n";
@@ -89,6 +90,7 @@ const OPERATOR_DASHBOARD_WS_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(2
 const OPERATOR_RUN_ACTIVITY_STREAM_INTERVAL: Duration = Duration::from_secs(1);
 const OPERATOR_DEV_SNAPSHOT_STREAM_INTERVAL: Duration = Duration::from_secs(1);
 const DEFAULT_CONTROL_PLANE_POLL_INTERVAL: Duration = Duration::from_secs(15);
+const LINEAR_CONTROL_PLANE_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const PULL_REQUEST_REVIEW_STATE_QUERY: &str = r#"
 query($owner: String!, $name: String!, $number: Int!, $reviewThreadsAfter: String) {
   repository(owner: $owner, name: $name) {
