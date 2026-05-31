@@ -123,6 +123,8 @@ Runtime state that belongs to the local operator, not to this repository, lives 
   runtime source of truth and not a public mirror.
 - `accounts.jsonl` stores the optional shared ChatGPT account pool used for
   Codex app-server auth token injection and refresh.
+- `account-usage-history.jsonl` stores bounded local usage percentages and non-secret
+  capacity weights for the account pool display.
 - `logs/` stores Decodex process logs. Logs are diagnostic text; structured execution
   evidence belongs in `runtime.sqlite3`.
 - `projects/<service-id>/project.toml` stores the central service config for one
