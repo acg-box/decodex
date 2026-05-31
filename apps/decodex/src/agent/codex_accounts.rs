@@ -1,8 +1,11 @@
+#[cfg(unix)] use std::os::unix::fs::PermissionsExt as _;
 use std::{
 	cmp::Ordering,
+	env,
 	error::Error,
 	fmt::{self, Display, Formatter},
 	fs::{self, File, OpenOptions},
+	io::ErrorKind,
 	path::{Path, PathBuf},
 	process,
 	sync::{Mutex, OnceLock},
@@ -41,6 +44,7 @@ pub(crate) struct CodexAccountPool {
 	usage_endpoint: String,
 	refresh_endpoint: String,
 	fixed_account: Option<String>,
+	codex_auth_path: PathBuf,
 	client: Client,
 	selected_account_id: Mutex<Option<String>>,
 }
@@ -66,6 +70,22 @@ impl CodexAccountPool {
 		refresh_endpoint: impl Into<String>,
 		fixed_account: Option<&str>,
 	) -> crate::prelude::Result<Self> {
+		Self::new_with_fixed_account_and_codex_auth_path(
+			path,
+			usage_endpoint,
+			refresh_endpoint,
+			fixed_account,
+			default_codex_auth_json_path()?,
+		)
+	}
+
+	fn new_with_fixed_account_and_codex_auth_path(
+		path: impl AsRef<Path>,
+		usage_endpoint: impl Into<String>,
+		refresh_endpoint: impl Into<String>,
+		fixed_account: Option<&str>,
+		codex_auth_path: impl Into<PathBuf>,
+	) -> crate::prelude::Result<Self> {
 		let client = Client::builder().timeout(HTTP_TIMEOUT).build()?;
 
 		Ok(Self {
@@ -76,6 +96,7 @@ impl CodexAccountPool {
 				.map(str::trim)
 				.filter(|selector| !selector.is_empty())
 				.map(str::to_owned),
+			codex_auth_path: codex_auth_path.into(),
 			client,
 			selected_account_id: Mutex::new(None),
 		})
@@ -650,7 +671,16 @@ impl CodexAccountPool {
 
 		record.last_refresh = Some(OffsetDateTime::now_utc().format(&Rfc3339)?);
 
+		self.sync_codex_auth_for_refreshed_record(record)?;
+
 		Ok(())
+	}
+
+	fn sync_codex_auth_for_refreshed_record(
+		&self,
+		record: &AccountPoolRecord,
+	) -> crate::prelude::Result<()> {
+		sync_refreshed_record_to_codex_auth(record, &self.codex_auth_path)
 	}
 
 	fn remember_selected_account(&self, account_id: &str) -> crate::prelude::Result<()> {
@@ -836,6 +866,16 @@ impl AccountPoolRecord {
 			.or_else(|| {
 				self.tokens.as_ref().and_then(|tokens| jwt_email_claim(tokens.id_token.as_deref()))
 			})
+	}
+
+	fn auth_dot_json(&self) -> AuthDotJson {
+		AuthDotJson {
+			email: self.email(),
+			auth_mode: self.auth_mode.clone(),
+			openai_api_key: self.openai_api_key.clone(),
+			tokens: self.tokens.clone(),
+			last_refresh: self.last_refresh.clone(),
+		}
 	}
 
 	fn configured_activity_summary(
@@ -1205,6 +1245,85 @@ fn parse_account_records(
 	}
 
 	Ok(records)
+}
+
+fn default_codex_auth_json_path() -> crate::prelude::Result<PathBuf> {
+	if let Some(codex_home) =
+		env::var_os("CODEX_HOME").map(PathBuf::from).filter(|path| !path.as_os_str().is_empty())
+	{
+		return Ok(codex_home.join("auth.json"));
+	}
+
+	let Some(home) = env::var_os("HOME") else {
+		eyre::bail!("Failed to resolve `$HOME` for the Codex auth JSON path.");
+	};
+
+	Ok(PathBuf::from(home).join(".codex").join("auth.json"))
+}
+
+fn sync_refreshed_record_to_codex_auth(
+	record: &AccountPoolRecord,
+	path: &Path,
+) -> crate::prelude::Result<()> {
+	let input = match fs::read_to_string(path) {
+		Ok(input) => input,
+		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+		Err(_) => return Ok(()),
+	};
+	let auth = match serde_json::from_str::<AuthDotJson>(&input) {
+		Ok(auth) => auth,
+		Err(_) => return Ok(()),
+	};
+	let auth_account_id = auth
+		.tokens
+		.as_ref()
+		.and_then(|tokens| tokens.account_id.as_deref())
+		.filter(|account_id| !account_id.trim().is_empty());
+
+	if auth_account_id != record.account_id() {
+		return Ok(());
+	}
+
+	write_auth_json_atomically(path, &record.auth_dot_json())
+}
+
+fn write_auth_json_atomically(path: &Path, auth: &AuthDotJson) -> crate::prelude::Result<()> {
+	let parent = path.parent().ok_or_else(|| {
+		eyre::eyre!("Codex auth JSON path `{}` must have a parent directory.", path.display())
+	})?;
+	let file_name = path
+		.file_name()
+		.and_then(|name| name.to_str())
+		.ok_or_else(|| eyre::eyre!("Codex auth JSON path must end in a valid file name."))?;
+	let temp_path = parent.join(format!(".{file_name}.tmp-{}", process::id()));
+	let mut output = serde_json::to_string_pretty(auth)?;
+
+	output.push('\n');
+
+	fs::create_dir_all(parent)?;
+	fs::write(&temp_path, output)?;
+
+	secure_account_file(&temp_path)?;
+
+	fs::rename(temp_path, path)?;
+
+	secure_account_file(path)?;
+
+	Ok(())
+}
+
+fn secure_account_file(path: &Path) -> crate::prelude::Result<()> {
+	#[cfg(unix)]
+	{
+		let mode = if path.is_dir() { 0o700 } else { 0o600 };
+		let mut permissions = fs::metadata(path)?.permissions();
+
+		permissions.set_mode(mode);
+
+		fs::set_permissions(path, permissions)?;
+	}
+
+	Ok(())
 }
 
 fn usage_snapshot_from_payload(
@@ -1690,6 +1809,105 @@ mod tests {
 	}
 
 	#[test]
+	fn token_refresh_syncs_matching_codex_auth_json() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let accounts_path = temp_dir.path().join("accounts.jsonl");
+		let codex_auth_path = temp_dir.path().join(".codex/auth.json");
+		let refresh_endpoint = start_codex_refresh_fixture_server(vec![
+			r#"{"id_token":"id-new","access_token":"access-new","refresh_token":"refresh-new"}"#,
+		]);
+		let usage_endpoint = start_codex_usage_fixture_server(vec![
+			r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":0},"secondary_window":{"used_percent":0}}}"#,
+		]);
+
+		fs::write(
+			&accounts_path,
+			r#"{"email":"sync@example.com","auth_mode":"chatgpt","tokens":{"id_token":"id-old","access_token":"access-old-pool","refresh_token":"refresh-old-pool","account_id":"acct_sync"},"last_refresh":"2026-01-01T00:00:00Z"}"#,
+		)
+		.expect("accounts fixture should write");
+		fs::create_dir_all(codex_auth_path.parent().expect("auth path should have parent"))
+			.expect("auth parent should create");
+		fs::write(
+			&codex_auth_path,
+			r#"{"email":"sync@example.com","auth_mode":"chatgpt","tokens":{"id_token":"id-current","access_token":"access-current","refresh_token":"refresh-current","account_id":"acct_sync"},"last_refresh":"2026-01-01T00:00:00Z"}"#,
+		)
+		.expect("Codex auth fixture should write");
+
+		let pool = CodexAccountPool::new_with_fixed_account_and_codex_auth_path(
+			&accounts_path,
+			usage_endpoint,
+			refresh_endpoint,
+			None,
+			codex_auth_path.clone(),
+		)
+		.expect("account pool should initialize");
+		let account = pool.refresh_account(Some("acct_sync")).expect("account should refresh");
+
+		assert_eq!(account.access_token(), "access-new");
+
+		let accounts_input = fs::read_to_string(&accounts_path).expect("accounts should read");
+
+		assert!(accounts_input.contains(r#""access_token":"access-new""#));
+		assert!(accounts_input.contains(r#""refresh_token":"refresh-new""#));
+
+		let codex_auth = fs::read_to_string(&codex_auth_path).expect("Codex auth should read");
+		let codex_auth_json = serde_json::from_str::<serde_json::Value>(&codex_auth)
+			.expect("Codex auth should parse");
+
+		assert_eq!(codex_auth_json["tokens"]["account_id"], "acct_sync");
+		assert_eq!(codex_auth_json["tokens"]["id_token"], "id-new");
+		assert_eq!(codex_auth_json["tokens"]["access_token"], "access-new");
+		assert_eq!(codex_auth_json["tokens"]["refresh_token"], "refresh-new");
+	}
+
+	#[test]
+	fn token_refresh_leaves_nonmatching_codex_auth_json_unchanged() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let accounts_path = temp_dir.path().join("accounts.jsonl");
+		let codex_auth_path = temp_dir.path().join(".codex/auth.json");
+		let refresh_endpoint = start_codex_refresh_fixture_server(vec![
+			r#"{"id_token":"id-new","access_token":"access-new","refresh_token":"refresh-new"}"#,
+		]);
+		let usage_endpoint = start_codex_usage_fixture_server(vec![
+			r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":0},"secondary_window":{"used_percent":0}}}"#,
+		]);
+
+		fs::write(
+			&accounts_path,
+			r#"{"email":"sync@example.com","auth_mode":"chatgpt","tokens":{"id_token":"id-old","access_token":"access-old-pool","refresh_token":"refresh-old-pool","account_id":"acct_sync"},"last_refresh":"2026-01-01T00:00:00Z"}"#,
+		)
+		.expect("accounts fixture should write");
+		fs::create_dir_all(codex_auth_path.parent().expect("auth path should have parent"))
+			.expect("auth parent should create");
+		fs::write(
+			&codex_auth_path,
+			r#"{"email":"other@example.com","auth_mode":"chatgpt","tokens":{"id_token":"id-other","access_token":"access-other","refresh_token":"refresh-other","account_id":"acct_other"},"last_refresh":"2026-01-01T00:00:00Z"}"#,
+		)
+		.expect("Codex auth fixture should write");
+
+		let pool = CodexAccountPool::new_with_fixed_account_and_codex_auth_path(
+			&accounts_path,
+			usage_endpoint,
+			refresh_endpoint,
+			None,
+			codex_auth_path.clone(),
+		)
+		.expect("account pool should initialize");
+		let account = pool.refresh_account(Some("acct_sync")).expect("account should refresh");
+
+		assert_eq!(account.access_token(), "access-new");
+
+		let codex_auth = fs::read_to_string(&codex_auth_path).expect("Codex auth should read");
+		let codex_auth_json = serde_json::from_str::<serde_json::Value>(&codex_auth)
+			.expect("Codex auth should parse");
+
+		assert_eq!(codex_auth_json["tokens"]["account_id"], "acct_other");
+		assert_eq!(codex_auth_json["tokens"]["id_token"], "id-other");
+		assert_eq!(codex_auth_json["tokens"]["access_token"], "access-other");
+		assert_eq!(codex_auth_json["tokens"]["refresh_token"], "refresh-other");
+	}
+
+	#[test]
 	fn account_candidate_sort_prefers_remaining_usage() {
 		let mut candidates = [
 			CodexAccountLogin {
@@ -1894,5 +2112,28 @@ mod tests {
 		});
 
 		format!("http://{address}/usage")
+	}
+
+	fn start_codex_refresh_fixture_server(responses: Vec<&'static str>) -> String {
+		let listener = TcpListener::bind("127.0.0.1:0").expect("refresh fixture should bind");
+		let address = listener.local_addr().expect("refresh fixture address should resolve");
+
+		thread::spawn(move || {
+			for body in responses {
+				let (mut stream, _peer) =
+					listener.accept().expect("refresh fixture should accept request");
+				let mut buffer = [0_u8; 4_096];
+				let _bytes_read = stream.read(&mut buffer).expect("refresh request should read");
+				let response = format!(
+					"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+					body.len(),
+					body
+				);
+
+				stream.write_all(response.as_bytes()).expect("refresh response should write");
+			}
+		});
+
+		format!("http://{address}/oauth/token")
 	}
 }
