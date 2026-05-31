@@ -93,6 +93,7 @@ struct AccountUsageEstimate: Decodable, Equatable {
 struct AccountUsageRecord: Decodable, Identifiable, Equatable {
 	let date: String
 	let usedPercent: Int
+	let capacityMultiplier: Int?
 	let checkedAtUnixEpoch: Int
 
 	var id: String {
@@ -102,6 +103,7 @@ struct AccountUsageRecord: Decodable, Identifiable, Equatable {
 	enum CodingKeys: String, CodingKey {
 		case date
 		case usedPercent = "used_percent"
+		case capacityMultiplier = "capacity_multiplier"
 		case checkedAtUnixEpoch = "checked_at_unix_epoch"
 	}
 }
@@ -123,6 +125,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	let cooldownUntilUnixEpoch: Int?
 	let note: String?
 	let planType: String?
+	let capacityMultiplier: Int?
 	let refreshStatus: String?
 	let checkedAtUnixEpoch: Int?
 	let primaryWindowSeconds: Int?
@@ -211,12 +214,12 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		}
 	}
 
-	var planLabel: String? {
-		guard let planType, !planType.isEmpty else {
-			return nil
-		}
+	var capacityWeight: Int {
+		max(1, capacityMultiplier ?? Self.capacityMultiplier(for: planType))
+	}
 
-		return planType.replacingOccurrences(of: "_", with: " ").capitalized
+	var capacityLabel: String {
+		"\(capacityWeight)x"
 	}
 
 	var hasUsageWindowData: Bool {
@@ -272,6 +275,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 			cooldownUntilUnixEpoch: cooldownUntilUnixEpoch,
 			note: note,
 			planType: planType,
+			capacityMultiplier: capacityMultiplier,
 			refreshStatus: refreshStatus,
 			checkedAtUnixEpoch: checkedAtUnixEpoch,
 			primaryWindowSeconds: primaryWindowSeconds,
@@ -307,6 +311,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case cooldownUntilUnixEpoch = "cooldown_until_unix_epoch"
 		case note
 		case planType = "plan_type"
+		case capacityMultiplier = "capacity_multiplier"
 		case refreshStatus = "refresh_status"
 		case checkedAtUnixEpoch = "checked_at_unix_epoch"
 		case primaryWindowSeconds = "primary_window_seconds"
@@ -322,6 +327,18 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case sevenDayUsedPercent = "seven_day_used_percent"
 		case sevenDayDailyAveragePercent = "seven_day_daily_average_percent"
 		case usageRecords = "usage_records"
+	}
+
+	private static func capacityMultiplier(for planType: String?) -> Int {
+		guard let planType, !planType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			return 1
+		}
+
+		if planType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "pro" {
+			return 20
+		}
+
+		return 1
 	}
 }
 

@@ -144,10 +144,11 @@ privacy-preserving names. Client-only presentation preferences such as theme, so
 and whether identities are hidden remain local to each UI. Usage probes keep bounded
 seven-day account usage estimates in
 `~/.codex/decodex/account-usage-history.jsonl`; the file stores daily percentage
-snapshots for local display and no token material. To switch the account used by the
-Codex CLI itself, run `decodex account use <selector>` or use the Decodex App row
-action; this overwrites `$CODEX_HOME/auth.json` or `~/.codex/auth.json` from the
-matching `accounts.jsonl` entry.
+snapshots plus non-secret capacity weights for local display and no token material.
+To switch the account used by the Codex CLI itself, run
+`decodex account use <selector>` or use the Decodex App row action; this overwrites
+`$CODEX_HOME/auth.json` or `~/.codex/auth.json` from the matching `accounts.jsonl`
+entry.
 
 `decodex diagnose --json` writes the local agent evidence index under
 `~/.codex/decodex/agent-evidence/<service-id>/` and prints the same handoff index for
