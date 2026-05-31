@@ -38,8 +38,28 @@ launch it connects to an existing default local listener when one is reachable; 
 not, it starts the bundled `decodex` binary as
 `decodex serve --listen-address 127.0.0.1:8912`. The app fallback is a normal
 control-plane server: it loads the enabled project registry, uses the CLI-owned default
-15-second poll interval, and serves the dashboard, account APIs, and
-`GET /api/operator-snapshot` from the single local listener.
+cadences, and serves the dashboard, account APIs, `GET /api/operator-snapshot`, and
+`POST /api/linear-scan` from the single local listener.
+
+`decodex serve` has two hardcoded scheduler cadences:
+
+- The local control-plane loop publishes operator snapshots every 15 seconds.
+- Linear-backed queue/status scans run at most every 5 minutes per project, unless
+  an operator or agent queues an explicit scan request with
+  `POST /api/linear-scan`.
+
+Agents that just created or relabeled queue issues can avoid waiting for the next
+5-minute Linear poll by sending a targeted local request:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8912/api/linear-scan \
+  -H 'Content-Type: application/json' \
+  -d '{"projectId":"decodex"}'
+```
+
+An empty `POST /api/linear-scan` queues a scan for all enabled projects. Requests are
+consumed by the next 15-second control-plane tick and still respect any active tracker
+rate-limit backoff.
 
 Use `--dev` only for isolated local development:
 
@@ -47,7 +67,7 @@ Use `--dev` only for isolated local development:
   and dashboard routes against local runtime state without starting automation.
 - Do not use `--dev` for operator automation, queue intake, retained-lane recovery,
   project registration refresh, or service scheduling. It is hidden from CLI help and
-  intentionally rejects `--config` and `--interval`.
+  intentionally rejects `--config`; `serve` has no interval override argument.
 - For browser-only dashboard UI work, use `dev/operator-dashboard-mock.mjs` instead
   of `--dev`.
 

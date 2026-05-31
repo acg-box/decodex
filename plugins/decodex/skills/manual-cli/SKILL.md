@@ -82,9 +82,22 @@ Manual commit and landing are separate narrow workflows:
 - Use `probe stdio://` before relying on the Codex app-server boundary.
 - Treat hidden `serve --dev` as isolated local-development infrastructure only. It
   serves dashboard, account, and app snapshot APIs, but it does not register projects,
-  poll Linear, dispatch work, or accept `--config` or `--interval`. Decodex App's
-  fallback server uses ordinary `serve` when no compatible local listener is already
-  running.
+  poll Linear, dispatch work, or accept `--config`. Decodex App's fallback server uses
+  ordinary `serve` when no compatible local listener is already running.
+- `serve` has no interval override. It publishes local operator snapshots every
+  15 seconds and runs Linear-backed queue/status scans at most every 5 minutes per
+  project.
+- After creating or relabeling queue issues, request the next scan instead of waiting
+  for the 5-minute Linear poll:
+
+  ```sh
+  curl -sS -X POST http://127.0.0.1:8912/api/linear-scan \
+    -H 'Content-Type: application/json' \
+    -d '{"projectId":"<service-id>"}'
+  ```
+
+  Omit the JSON body to scan all enabled projects. The request is consumed on the next
+  15-second control-plane tick and still respects tracker rate-limit backoff.
 - For `skills/list` app-server preflight output, enabled skills plus scan diagnostics
   are local evidence, not a lane blocker. Missing cwd coverage or zero enabled skills
   are blockers; inspect `first_error_path` and `first_error` before changing plugin or
