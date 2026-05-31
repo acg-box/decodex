@@ -1,6 +1,8 @@
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 
+use orchestrator::OperatorControlRequests;
+
 use crate::runtime;
 
 #[test]
@@ -230,6 +232,7 @@ fn operator_dashboard_websocket_pushes_broadcast_events() {
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("websocket handler should complete after client disconnect");
@@ -303,6 +306,7 @@ fn operator_dashboard_websocket_sends_current_snapshot_on_connect() {
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("websocket handler should complete after client disconnect");
@@ -393,6 +397,7 @@ fn operator_dashboard_websocket_sends_current_run_activity_on_connect() {
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("websocket handler should complete after client disconnect");
@@ -457,6 +462,7 @@ fn operator_dashboard_websocket_accepts_subscription_and_project_pause_control()
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("websocket handler should complete after client disconnect");
@@ -623,6 +629,7 @@ fn operator_dashboard_websocket_controls_focus_and_clear_subscription() {
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("websocket handler should complete after client disconnect");
@@ -686,6 +693,7 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("websocket handler should complete after client disconnect");
@@ -787,6 +795,7 @@ fn operator_dashboard_websocket_interrupt_control_stops_active_run_process() {
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("websocket handler should complete after client disconnect");
@@ -867,6 +876,7 @@ fn operator_dashboard_websocket_interrupt_control_reports_validation_errors() {
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("websocket handler should complete after client disconnect");
@@ -1197,6 +1207,7 @@ fn operator_state_endpoint_reads_complete_headers_before_parsing() {
 			stream,
 			&server_snapshot,
 			&dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("handler should accept segmented headers");
@@ -1262,6 +1273,7 @@ fn operator_state_endpoint_overlays_live_account_control_on_published_snapshot()
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("handler should serve websocket snapshot");
@@ -1343,6 +1355,7 @@ fn operator_state_endpoint_serves_large_app_snapshot_without_truncation() {
 			stream,
 			&server_snapshot,
 			&server_dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("handler should serve the complete large app snapshot");
@@ -1416,6 +1429,7 @@ fn operator_state_endpoint_livez_ignores_poisoned_snapshot_lock() {
 			stream,
 			&server_snapshot,
 			&dashboard_events,
+			&OperatorControlRequests::default(),
 			&server_state_store,
 		)
 		.expect("live probe should not require snapshot lock");
@@ -1456,6 +1470,43 @@ fn operator_state_endpoint_serves_only_liveness_probe() {
 
 	assert!(live_response.starts_with("HTTP/1.1 200 OK\r\n"));
 	assert!(live_response.ends_with("ok"));
+}
+
+#[test]
+fn operator_state_endpoint_queues_linear_scan_request() {
+	let control_requests = OperatorControlRequests::default();
+	let body = br#"{"projectId":"pubfi"}"#;
+	let request = format!(
+		"POST {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+		orchestrator::OPERATOR_LINEAR_SCAN_ENDPOINT_PATH,
+		body.len(),
+		String::from_utf8_lossy(body)
+	);
+	let response = String::from_utf8(
+		orchestrator::build_operator_state_http_response_with_control_requests(
+			request.as_bytes(),
+			&control_requests,
+		)
+		.expect("linear scan response should build"),
+	)
+	.expect("linear scan response should be utf-8");
+	let body = response
+		.split_once("\r\n\r\n")
+		.map(|(_, body)| body)
+		.expect("linear scan response should include body");
+	let data: Value = serde_json::from_str(body).expect("linear scan response should be json");
+
+	assert!(response.starts_with("HTTP/1.1 202 Accepted\r\n"));
+	assert_eq!(data["status"], "queued");
+	assert_eq!(data["scope"], "pubfi");
+	assert_eq!(
+		control_requests
+			.drain_linear_scan_requests()
+			.expect("linear scan requests should drain"),
+		vec![orchestrator::OperatorLinearScanRequest {
+			project_id: Some(String::from("pubfi")),
+		}]
+	);
 }
 
 #[test]

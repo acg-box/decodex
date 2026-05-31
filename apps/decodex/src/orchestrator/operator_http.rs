@@ -34,6 +34,7 @@ enum OperatorRequestRoute {
 	DashboardWs,
 	Live,
 	AppSnapshot,
+	LinearScan,
 	AccountList { force_refresh: bool },
 	AccountSelect,
 	AccountClear,
@@ -133,6 +134,12 @@ struct OperatorAccountRequest {
 	random_name_offset: Option<i64>,
 }
 
+#[derive(Deserialize)]
+struct OperatorLinearScanHttpRequest {
+	#[serde(alias = "projectId")]
+	project_id: Option<String>,
+}
+
 struct DashboardControlAck<'a> {
 	request_id: Option<&'a str>,
 	action: &'a str,
@@ -169,6 +176,7 @@ fn run_operator_state_endpoint(
 	listener: TcpListener,
 	snapshot: Arc<Mutex<PublishedOperatorSnapshot>>,
 	dashboard_events: DashboardEventHub,
+	control_requests: OperatorControlRequests,
 	state_store: Arc<StateStore>,
 	shutdown_rx: Receiver<()>,
 ) {
@@ -178,22 +186,24 @@ fn run_operator_state_endpoint(
 		}
 
 		match listener.accept() {
-				Ok((stream, _peer_addr)) => {
-					let connection_snapshot = Arc::clone(&snapshot);
-					let connection_dashboard_events = dashboard_events.clone();
-					let connection_state_store = Arc::clone(&state_store);
+			Ok((stream, _peer_addr)) => {
+				let connection_snapshot = Arc::clone(&snapshot);
+				let connection_dashboard_events = dashboard_events.clone();
+				let connection_control_requests = control_requests.clone();
+				let connection_state_store = Arc::clone(&state_store);
 
-					thread::spawn(move || {
-						if let Err(error) = handle_operator_state_endpoint_connection(
-							stream,
-							&connection_snapshot,
-							&connection_dashboard_events,
-							&connection_state_store,
-						) {
-							tracing::warn!(?error, "Operator state endpoint request failed.");
-						}
-					});
-				},
+				thread::spawn(move || {
+					if let Err(error) = handle_operator_state_endpoint_connection(
+						stream,
+						&connection_snapshot,
+						&connection_dashboard_events,
+						&connection_control_requests,
+						&connection_state_store,
+					) {
+						tracing::warn!(?error, "Operator state endpoint request failed.");
+					}
+				});
+			},
 			Err(error) if error.kind() == ErrorKind::WouldBlock => {
 				thread::sleep(Duration::from_millis(20));
 			},
@@ -210,6 +220,7 @@ fn handle_operator_state_endpoint_connection(
 	mut stream: TcpStream,
 	snapshot: &Arc<Mutex<PublishedOperatorSnapshot>>,
 	dashboard_events: &DashboardEventHub,
+	control_requests: &OperatorControlRequests,
 	state_store: &Arc<StateStore>,
 ) -> Result<()> {
 	stream.set_nonblocking(false)?;
@@ -228,6 +239,13 @@ fn handle_operator_state_endpoint_connection(
 
 	if operator_request_route_is_account_api(&route) {
 		let response = build_operator_account_http_response(route, &request);
+
+		stream.write_all(&response)?;
+
+		return Ok(());
+	}
+	if route == OperatorRequestRoute::LinearScan {
+		let response = build_operator_linear_scan_http_response(control_requests, &request);
 
 		stream.write_all(&response)?;
 
@@ -1430,6 +1448,16 @@ fn operator_http_content_length(headers: &[u8]) -> Result<usize> {
 
 #[cfg(test)]
 fn build_operator_state_http_response(request: &[u8]) -> Result<Vec<u8>> {
+	let control_requests = OperatorControlRequests::default();
+
+	build_operator_state_http_response_with_control_requests(request, &control_requests)
+}
+
+#[cfg(test)]
+fn build_operator_state_http_response_with_control_requests(
+	request: &[u8],
+	control_requests: &OperatorControlRequests,
+) -> Result<Vec<u8>> {
 	let route = match parse_operator_state_request_route(request) {
 		Ok(route) => route,
 		Err(response) => return Ok(response),
@@ -1437,6 +1465,9 @@ fn build_operator_state_http_response(request: &[u8]) -> Result<Vec<u8>> {
 
 	if operator_request_route_is_account_api(&route) {
 		return Ok(build_operator_account_http_response(route, request));
+	}
+	if route == OperatorRequestRoute::LinearScan {
+		return Ok(build_operator_linear_scan_http_response(control_requests, request));
 	}
 
 	Ok(build_operator_state_http_response_for_route(route))
@@ -1577,6 +1608,58 @@ fn operator_http_request_body(request: &[u8]) -> Result<&[u8]> {
 	Ok(&request[body_offset..])
 }
 
+fn build_operator_linear_scan_http_response(
+	control_requests: &OperatorControlRequests,
+	request: &[u8],
+) -> Vec<u8> {
+	match operator_linear_scan_http_response_body(control_requests, request) {
+		Ok(body) => http_response_bytes("202 Accepted", "application/json", &body),
+		Err(error) => {
+			let body = serde_json::to_vec(&json!({ "error": error.to_string() }))
+				.unwrap_or_else(|_| br#"{"error":"linear scan request failed"}"#.to_vec());
+
+			http_response_bytes("400 Bad Request", "application/json", &body)
+		},
+	}
+}
+
+fn operator_linear_scan_http_response_body(
+	control_requests: &OperatorControlRequests,
+	request: &[u8],
+) -> Result<Vec<u8>> {
+	let project_id = operator_linear_scan_request_project_id(request)?;
+	let scope = project_id.as_deref().unwrap_or("all");
+
+	control_requests.request_linear_scan(project_id.clone())?;
+
+	serde_json::to_vec(&json!({
+		"status": "queued",
+		"scope": scope,
+		"project_id": project_id,
+		"next_action": "Decodex will run the requested Linear scan on the next control-plane tick unless the tracker connector is rate-limited.",
+	}))
+	.map_err(Into::into)
+}
+
+fn operator_linear_scan_request_project_id(request: &[u8]) -> Result<Option<String>> {
+	let body = operator_http_request_body(request)?;
+
+	if body.is_empty() {
+		return Ok(None);
+	}
+
+	let request: OperatorLinearScanHttpRequest = serde_json::from_slice(body)
+		.map_err(|error| eyre::eyre!("Linear scan request body was not valid JSON: {error}"))?;
+
+	match request.project_id {
+		Some(project_id) if project_id.trim().is_empty() => {
+			eyre::bail!("Linear scan request project_id must not be blank.")
+		},
+		Some(project_id) => Ok(Some(project_id.trim().to_owned())),
+		None => Ok(None),
+	}
+}
+
 fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> Vec<u8> {
 	match route {
 		OperatorRequestRoute::Dashboard => {
@@ -1592,11 +1675,14 @@ fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> 
 			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG)
 		},
 		OperatorRequestRoute::DashboardWs => websocket_upgrade_required_response(),
-		OperatorRequestRoute::AppSnapshot => {
-			http_response_bytes("200 OK", "application/json", b"{}")
-		},
-		OperatorRequestRoute::Live => {
-			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok")
+			OperatorRequestRoute::AppSnapshot => {
+				http_response_bytes("200 OK", "application/json", b"{}")
+			},
+			OperatorRequestRoute::LinearScan => {
+				http_response_bytes("405 Method Not Allowed", "text/plain; charset=utf-8", b"method not allowed")
+			},
+			OperatorRequestRoute::Live => {
+				http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok")
 		},
 		OperatorRequestRoute::AccountList { .. }
 		| OperatorRequestRoute::AccountSelect
@@ -1651,12 +1737,13 @@ fn parse_operator_state_request_route(
 		("GET", "/assets/logo.ico") => Ok(OperatorRequestRoute::DashboardLogoIco),
 		("GET", "/assets/logo-touch.png") => Ok(OperatorRequestRoute::DashboardLogoTouchPng),
 		("GET", OPERATOR_DASHBOARD_WS_ENDPOINT_PATH) => Ok(OperatorRequestRoute::DashboardWs),
-		("GET", OPERATOR_LIVE_ENDPOINT_PATH) => Ok(OperatorRequestRoute::Live),
-		("GET", OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AppSnapshot),
-		("GET", OPERATOR_ACCOUNTS_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AccountList {
-			force_refresh: operator_query_has_flag(query, "refresh"),
-		}),
-		("POST", "/api/accounts/select") => Ok(OperatorRequestRoute::AccountSelect),
+			("GET", OPERATOR_LIVE_ENDPOINT_PATH) => Ok(OperatorRequestRoute::Live),
+			("GET", OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AppSnapshot),
+			("GET", OPERATOR_ACCOUNTS_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AccountList {
+				force_refresh: operator_query_has_flag(query, "refresh"),
+			}),
+			("POST", OPERATOR_LINEAR_SCAN_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LinearScan),
+			("POST", "/api/accounts/select") => Ok(OperatorRequestRoute::AccountSelect),
 		("POST", "/api/accounts/clear") => Ok(OperatorRequestRoute::AccountClear),
 		("POST", "/api/accounts/logout") => Ok(OperatorRequestRoute::AccountLogout),
 		("POST", "/api/accounts/import") => Ok(OperatorRequestRoute::AccountImport),
@@ -1665,9 +1752,10 @@ fn parse_operator_state_request_route(
 		(_, OPERATOR_DASHBOARD_ENDPOINT_PATH
 			| OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH
 			| OPERATOR_DASHBOARD_WS_ENDPOINT_PATH
-			| OPERATOR_LIVE_ENDPOINT_PATH
-			| OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH
-			| OPERATOR_ACCOUNTS_ENDPOINT_PATH
+				| OPERATOR_LIVE_ENDPOINT_PATH
+				| OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH
+				| OPERATOR_LINEAR_SCAN_ENDPOINT_PATH
+				| OPERATOR_ACCOUNTS_ENDPOINT_PATH
 			| "/api/accounts/select"
 			| "/api/accounts/clear"
 			| "/api/accounts/logout"
