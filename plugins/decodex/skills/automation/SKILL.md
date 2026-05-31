@@ -54,9 +54,23 @@ for a deliberate one-issue automation pass; it still uses the same retained-lane
 eligibility and lifecycle rules.
 Do not use hidden `serve --dev` for automation. That mode is for isolated local
 development: it serves local dashboard/account/app snapshot APIs, but it does not
-register projects, poll Linear, or dispatch lanes, and it rejects `--config` and
-`--interval`. Decodex App's fallback server uses ordinary `serve` when no compatible
-local listener is already running.
+register projects, poll Linear, or dispatch lanes, and it rejects `--config`.
+Decodex App's fallback server uses ordinary `serve` when no compatible local listener
+is already running.
+
+`serve` owns hardcoded scheduler cadences: local operator snapshots publish every
+15 seconds, while Linear-backed queue/status scans run at most every 5 minutes per
+project. After creating or relabeling queued issues, request the next scan instead of
+waiting for the 5-minute window:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8912/api/linear-scan \
+  -H 'Content-Type: application/json' \
+  -d '{"projectId":"<service-id>"}'
+```
+
+Omit the JSON body to queue a scan for all enabled projects. The request is consumed
+on the next 15-second control-plane tick and still respects tracker rate-limit backoff.
 
 ## Intake and Ownership
 

@@ -165,11 +165,6 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 			"serve --dev does not accept --config because it must not register or poll projects."
 		);
 	}
-	if request.dev && request.poll_interval.is_some() {
-		eyre::bail!(
-			"serve --dev does not accept --interval because dev mode does not poll projects."
-		);
-	}
 
 	validate_daemon_runtime()?;
 
@@ -205,14 +200,6 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 		}
 	}
 
-	let poll_interval = request
-		.poll_interval
-		.unwrap_or(DEFAULT_CONTROL_PLANE_POLL_INTERVAL);
-
-	if poll_interval.is_zero() {
-		eyre::bail!("serve interval must be greater than zero.");
-	}
-
 	if let Some(config_path) = request.config_path {
 		let Some(config_path) = resolve_config_path(Some(config_path), &state_store)? else {
 			eyre::bail!(
@@ -232,10 +219,12 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 	let mut next_maintenance_at = Instant::now() + Duration::from_secs(60 * 60);
 
 	tracing::info!(
-		poll_interval_s = poll_interval.as_secs(),
+		local_tick_interval_s = DEFAULT_CONTROL_PLANE_POLL_INTERVAL.as_secs(),
+		linear_poll_interval_s = LINEAR_CONTROL_PLANE_POLL_INTERVAL.as_secs(),
 		listen_address = %operator_state_endpoint.listen_address(),
 		path = OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH,
 		ws_path = OPERATOR_DASHBOARD_WS_ENDPOINT_PATH,
+		linear_scan_path = OPERATOR_LINEAR_SCAN_ENDPOINT_PATH,
 		dev = false,
 		runtime_db_path = %runtime_db_path.display(),
 		global_config_path = %global_config_path.display(),
@@ -252,10 +241,13 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 			next_maintenance_at = tick_started_at + Duration::from_secs(60 * 60);
 		}
 
-		let snapshot = run_control_plane_tick(&state_store, &mut project_runtimes)?;
+		let linear_scan_requests =
+			drain_operator_linear_scan_requests_best_effort(&operator_state_endpoint);
+		let snapshot =
+			run_control_plane_tick(&state_store, &mut project_runtimes, &linear_scan_requests)?;
 
 		publish_operator_snapshot(&operator_state_endpoint, &snapshot);
-		sleep_until_next_tick(poll_interval, tick_started_at);
+		sleep_until_next_tick(DEFAULT_CONTROL_PLANE_POLL_INTERVAL, tick_started_at);
 	}
 }
 
@@ -760,14 +752,36 @@ where
 fn run_control_plane_tick(
 	state_store: &StateStore,
 	project_runtimes: &mut HashMap<String, ProjectDaemonRuntime>,
+	linear_scan_requests: &[OperatorLinearScanRequest],
 ) -> Result<OperatorStatusSnapshot> {
 	let registered_projects = state_store.list_projects()?;
+	let now = Instant::now();
 
 	Ok(collect_control_plane_snapshot(registered_projects, |project, project_warnings| {
 		let runtime = project_runtimes.entry(project.service_id().to_owned()).or_default();
 
-		run_control_plane_project_tick(project, state_store, runtime, project_warnings)
+		run_control_plane_project_tick(
+			project,
+			state_store,
+			runtime,
+			project_warnings,
+			linear_scan_requests,
+			now,
+		)
 	}))
+}
+
+fn drain_operator_linear_scan_requests_best_effort(
+	operator_state_endpoint: &OperatorStateEndpoint,
+) -> Vec<OperatorLinearScanRequest> {
+	match operator_state_endpoint.drain_linear_scan_requests() {
+		Ok(requests) => requests,
+		Err(error) => {
+			tracing::warn!(?error, "Skipped operator-triggered Linear scan requests.");
+
+			Vec::new()
+		},
+	}
 }
 
 fn run_control_plane_dev_tick(state_store: &StateStore) -> Result<OperatorStatusSnapshot> {
@@ -923,8 +937,10 @@ fn run_control_plane_project_tick(
 	state_store: &StateStore,
 	runtime: &mut ProjectDaemonRuntime,
 	snapshot_warnings: &mut Vec<&'static str>,
+	linear_scan_requests: &[OperatorLinearScanRequest],
+	now: Instant,
 ) -> ControlPlaneProjectTick {
-	if tracker_backoff_active(runtime, Instant::now()) {
+	if tracker_backoff_active(runtime, now) {
 		snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
 
 		let connector_backoffs = active_connector_backoff_statuses(project.service_id(), runtime);
@@ -951,6 +967,12 @@ fn run_control_plane_project_tick(
 			slice::from_ref(&connector_backoff),
 		);
 	}
+
+	if !linear_scan_due(project.service_id(), runtime, linear_scan_requests, now) {
+		return control_plane_project_deferred_snapshot(project, state_store, runtime);
+	}
+
+	remember_next_linear_scan(runtime, now);
 
 	match load_daemon_tick_context(project.config_path(), &mut runtime.workflow_cache) {
 		Ok(context) =>
@@ -981,6 +1003,35 @@ fn tracker_backoff_active(runtime: &mut ProjectDaemonRuntime, now: Instant) -> b
 	runtime.tracker_backoff = None;
 
 	false
+}
+
+fn linear_scan_due(
+	project_id: &str,
+	runtime: &ProjectDaemonRuntime,
+	linear_scan_requests: &[OperatorLinearScanRequest],
+	now: Instant,
+) -> bool {
+	if linear_scan_requested(project_id, linear_scan_requests) {
+		return true;
+	}
+
+	runtime.next_linear_scan_at.is_none_or(|next_scan_at| now >= next_scan_at)
+}
+
+fn linear_scan_requested(
+	project_id: &str,
+	linear_scan_requests: &[OperatorLinearScanRequest],
+) -> bool {
+	linear_scan_requests.iter().any(|request| {
+		request
+			.project_id
+			.as_deref()
+			.is_none_or(|requested_project_id| requested_project_id == project_id)
+	})
+}
+
+fn remember_next_linear_scan(runtime: &mut ProjectDaemonRuntime, now: Instant) {
+	runtime.next_linear_scan_at = Some(now + LINEAR_CONTROL_PLANE_POLL_INTERVAL);
 }
 
 fn remember_tracker_backoff(
@@ -1049,6 +1100,85 @@ fn parse_linear_rate_limit_reset_unix_epoch(message: &str) -> Option<i64> {
 	let reset = message.split("rate limited until `").nth(1)?.split('`').next()?;
 
 	reset.parse().ok()
+}
+
+fn control_plane_project_deferred_snapshot(
+	project: &ProjectRegistration,
+	state_store: &StateStore,
+	runtime: &mut ProjectDaemonRuntime,
+) -> ControlPlaneProjectTick {
+	match load_daemon_tick_context(project.config_path(), &mut runtime.workflow_cache) {
+		Ok(context) => match build_operator_state_snapshot_without_live_observers(
+			&context.config,
+			&context.workflow,
+			state_store,
+			DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
+		) {
+			Ok(snapshot) => {
+				write_agent_evidence_best_effort(&snapshot, AgentEvidenceSource::ServeTick);
+
+				ControlPlaneProjectTick {
+					project_status: snapshot
+						.projects
+						.first()
+						.cloned()
+						.map(|status| complete_project_status(project, status)),
+					snapshot: Some(snapshot),
+				}
+			},
+			Err(error) => {
+				let _ = error;
+
+				tracing::warn!(
+					project_id = project.service_id(),
+					"Deferred control-plane snapshot build failed; sensitive runtime details were withheld."
+				);
+
+				ControlPlaneProjectTick {
+					snapshot: None,
+					project_status: Some(operator_project_status_from_registration(project, 1)),
+				}
+			},
+		},
+		Err(error) => {
+			let _ = error;
+
+			tracing::warn!(
+				project_id = project.service_id(),
+				"Deferred control-plane snapshot context failed; sensitive runtime details were withheld."
+			);
+
+			ControlPlaneProjectTick {
+				snapshot: None,
+				project_status: Some(operator_project_status_from_registration(project, 1)),
+			}
+		},
+	}
+}
+
+fn build_operator_state_snapshot_without_live_observers(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	limit: usize,
+) -> Result<OperatorStatusSnapshot> {
+	state_store.configure_dispatch_slot_root(
+		project.service_id(),
+		project.worktree_root(),
+		workflow.frontmatter().execution().max_concurrent_agents(),
+	)?;
+
+	let mut snapshot = build_operator_status_snapshot_with_account_mode(
+		project,
+		state_store,
+		limit,
+		AccountActivityMode::Snapshot,
+	)?;
+
+	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
+	refresh_operator_project_summary(&mut snapshot);
+
+	Ok(snapshot)
 }
 
 fn control_plane_project_local_snapshot(

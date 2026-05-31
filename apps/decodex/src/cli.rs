@@ -2,7 +2,6 @@ use std::{
 	fs,
 	io::{self, Read as _},
 	path::{Path, PathBuf},
-	time::Duration,
 };
 
 use clap::{
@@ -23,7 +22,7 @@ use crate::{
 	orchestrator::{
 		self, DiagnoseRequest, EvidenceRequest, IssueDispatchMode, RunOnceRequest, ServeRequest,
 	},
-	prelude::eyre,
+	prelude::{Result, eyre},
 	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
 	runtime,
 };
@@ -49,7 +48,7 @@ pub(crate) struct Cli {
 	command: Command,
 }
 impl Cli {
-	pub(crate) fn run(&self) -> crate::prelude::Result<()> {
+	pub(crate) fn run(&self) -> Result<()> {
 		match &self.command {
 			Command::Commit(args) => args.run(),
 			Command::Land(args) => args.run(),
@@ -107,7 +106,7 @@ struct AccountCommand {
 	command: AccountSubcommand,
 }
 impl AccountCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		match &self.command {
 			AccountSubcommand::List(args) => accounts::run_account_list(args.json),
 			AccountSubcommand::Select(args) =>
@@ -219,7 +218,7 @@ struct CommitCommand {
 	breaking: bool,
 }
 impl CommitCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		manual::run_commit(
 			self.project_config.as_path(),
 			&ManualCommitRequest {
@@ -259,7 +258,7 @@ struct LandCommand {
 	breaking: bool,
 }
 impl LandCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		manual::run_land(
 			self.project_config.as_path(),
 			&ManualLandRequest {
@@ -289,7 +288,7 @@ struct RunCommand {
 	explain: bool,
 }
 impl RunCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		orchestrator::run_once(RunOnceRequest {
 			config_path: self.project_config.as_path(),
 			dry_run: self.dry_run,
@@ -314,9 +313,6 @@ impl RunCommand {
 struct ServeCommand {
 	#[command(flatten)]
 	project_config: ProjectConfigArgs,
-	/// Override the scheduler poll interval, for example `15s` or `5m`.
-	#[arg(long, value_name = "INTERVAL", value_parser = parse_duration_arg)]
-	interval: Option<Duration>,
 	/// Operator UI listen address.
 	#[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8912")]
 	listen_address: String,
@@ -325,16 +321,9 @@ struct ServeCommand {
 	dev: bool,
 }
 impl ServeCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
-		if self.dev && self.interval.is_some() {
-			eyre::bail!(
-				"serve --dev does not accept --interval because dev mode does not poll projects."
-			);
-		}
-
+	fn run(&self) -> Result<()> {
 		orchestrator::run_control_plane(ServeRequest {
 			config_path: self.project_config.as_path(),
-			poll_interval: if self.dev { None } else { self.interval },
 			listen_address: &self.listen_address,
 			dev: self.dev,
 		})
@@ -347,7 +336,7 @@ struct ProjectCommand {
 	command: ProjectSubcommand,
 }
 impl ProjectCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		let state_store = runtime::open_runtime_store()?;
 
 		match &self.command {
@@ -434,7 +423,7 @@ struct StatusCommand {
 	limit: usize,
 }
 impl StatusCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		orchestrator::print_status(self.project_config.as_path(), self.json, self.limit)
 	}
 }
@@ -451,7 +440,7 @@ struct DiagnoseCommand {
 	limit: usize,
 }
 impl DiagnoseCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		orchestrator::run_diagnose(DiagnoseRequest {
 			config_path: self.project_config.as_path(),
 			json: self.json,
@@ -480,7 +469,7 @@ struct EvidenceCommand {
 	include_payload: bool,
 }
 impl EvidenceCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		orchestrator::print_private_evidence(EvidenceRequest {
 			config_path: self.project_config.as_path(),
 			issue: &self.issue,
@@ -500,7 +489,7 @@ struct RecoverCommand {
 	command: RecoverSubcommand,
 }
 impl RecoverCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		match &self.command {
 			RecoverSubcommand::ReviewHandoff(args) => args.run(self.project_config.as_path()),
 		}
@@ -513,7 +502,7 @@ struct ReviewHandoffRecoveryCommand {
 	command: ReviewHandoffRecoverySubcommand,
 }
 impl ReviewHandoffRecoveryCommand {
-	fn run(&self, config_path: Option<&Path>) -> crate::prelude::Result<()> {
+	fn run(&self, config_path: Option<&Path>) -> Result<()> {
 		match &self.command {
 			ReviewHandoffRecoverySubcommand::Diagnose(args) =>
 				recovery::run_review_handoff_diagnose(
@@ -570,7 +559,7 @@ struct ArchiveLinearCommand {
 	execute: bool,
 }
 impl ArchiveLinearCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		archive_hygiene::run(
 			self.project_config.as_path(),
 			&ArchiveHygieneRequest {
@@ -588,7 +577,7 @@ struct MaintenanceCommand {
 	command: MaintenanceSubcommand,
 }
 impl MaintenanceCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		match &self.command {
 			MaintenanceSubcommand::Prune(args) => args.run(),
 		}
@@ -608,7 +597,7 @@ struct MaintenancePruneCommand {
 	json: bool,
 }
 impl MaintenancePruneCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		let mode = if self.apply { MaintenanceMode::Apply } else { MaintenanceMode::DryRun };
 
 		maintenance::run_prune_command(MaintenancePruneRequest {
@@ -626,7 +615,7 @@ struct ProbeCommand {
 	transport: String,
 }
 impl ProbeCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		let report = agent::probe_app_server(&self.transport)?;
 
 		println!(
@@ -655,7 +644,7 @@ struct AttemptCommand {
 	request: String,
 }
 impl AttemptCommand {
-	fn run(&self) -> crate::prelude::Result<()> {
+	fn run(&self) -> Result<()> {
 		let request = read_attempt_request(&self.request)?;
 
 		orchestrator::run_once(RunOnceRequest {
@@ -793,37 +782,7 @@ enum MaintenanceSubcommand {
 	Prune(MaintenancePruneCommand),
 }
 
-fn parse_duration_arg(raw: &str) -> std::result::Result<Duration, String> {
-	let (number, unit) = raw
-		.strip_suffix('s')
-		.map(|value| (value, "s"))
-		.or_else(|| raw.strip_suffix('m').map(|value| (value, "m")))
-		.or_else(|| raw.strip_suffix('h').map(|value| (value, "h")))
-		.unwrap_or((raw, "s"));
-	let value = number.parse::<u64>().map_err(|_| {
-		format!("invalid duration `{raw}`; expected `<n>`, `<n>s`, `<n>m`, or `<n>h`")
-	})?;
-
-	if value == 0 {
-		return Err(String::from("duration must be greater than zero"));
-	}
-
-	match unit {
-		"s" => Ok(Duration::from_secs(value)),
-		"m" => value
-			.checked_mul(60)
-			.map(Duration::from_secs)
-			.ok_or_else(|| format!("duration `{raw}` is too large")),
-		"h" => value
-			.checked_mul(60)
-			.and_then(|minutes| minutes.checked_mul(60))
-			.map(Duration::from_secs)
-			.ok_or_else(|| format!("duration `{raw}` is too large")),
-		_ => Err(format!("unsupported duration unit in `{raw}`")),
-	}
-}
-
-fn read_attempt_request(request: &str) -> crate::prelude::Result<AttemptRequest> {
+fn read_attempt_request(request: &str) -> Result<AttemptRequest> {
 	let raw = if request == "-" {
 		let mut raw = String::new();
 
@@ -849,7 +808,7 @@ fn styles() -> Styles {
 
 #[cfg(test)]
 mod tests {
-	use std::{path::Path, time::Duration};
+	use std::path::Path;
 
 	use clap::Parser;
 
@@ -994,14 +953,12 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_serve_with_interval_listen_address_and_project_config() {
+	fn parses_serve_with_listen_address_and_project_config() {
 		let cli = Cli::parse_from([
 			"decodex",
 			"serve",
 			"--config",
 			"./project.toml",
-			"--interval",
-			"30s",
 			"--listen-address",
 			"127.0.0.1:9000",
 		]);
@@ -1010,12 +967,10 @@ mod tests {
 			cli.command,
 			Command::Serve(ServeCommand {
 				project_config: ProjectConfigArgs { config: Some(config) },
-				interval,
 				listen_address,
 				dev,
 			})
-				if interval == Some(Duration::from_secs(30))
-					&& listen_address == "127.0.0.1:9000"
+				if listen_address == "127.0.0.1:9000"
 					&& !dev
 					&& config == Path::new("./project.toml")
 		));
@@ -1025,22 +980,15 @@ mod tests {
 	fn parses_serve_dev() {
 		let cli = Cli::parse_from(["decodex", "serve", "--dev"]);
 
-		assert!(matches!(
-			cli.command,
-			Command::Serve(ServeCommand { interval: None, dev: true, .. })
-		));
+		assert!(matches!(cli.command, Command::Serve(ServeCommand { dev: true, .. })));
 	}
 
 	#[test]
-	fn rejects_serve_dev_with_interval() {
-		let cli = Cli::parse_from(["decodex", "serve", "--dev", "--interval", "30s"]);
-		let Command::Serve(command) = cli.command else {
-			panic!("expected serve command");
-		};
-		let error = command.run().expect_err("dev serve must reject interval configuration");
+	fn rejects_serve_interval_argument() {
+		let error = Cli::try_parse_from(["decodex", "serve", "--interval", "30s"])
+			.expect_err("serve interval override should be removed");
 		let message = error.to_string();
 
-		assert!(message.contains("--dev"));
 		assert!(message.contains("--interval"));
 	}
 
