@@ -428,11 +428,21 @@ wants to observe the self-bootstrap loop without reading source code.
 
    Do not use `decodex serve --dev` for this step. Dev mode is only for local
    account/app snapshot API development while avoiding scheduler activity; it does not
-   register projects, poll Linear, dispatch work, or accept `--config` or `--interval`.
+   register projects, poll Linear, dispatch work, or accept `--config`.
 
    Pass `decodex serve --config <PROJECT_DIR>` when you want `serve` to refresh one
    project registration before it starts. Omit it when the registry already contains
    the enabled projects you want the control plane to monitor.
+
+   The scheduler keeps local snapshots on a 15-second loop and limits Linear-backed
+   scans to one 5-minute window per project. After creating or relabeling queue
+   issues, trigger the next scan explicitly instead of waiting for that window:
+
+   ```sh
+   curl -sS -X POST http://127.0.0.1:8912/api/linear-scan \
+     -H 'Content-Type: application/json' \
+     -d '{"projectId":"decodex"}'
+   ```
 
 5. Open the operator dashboard:
 
@@ -621,13 +631,14 @@ Decodex is intentionally Unix-only, and the control plane relies on Unix file-de
 decodex serve --listen-address 127.0.0.1:8912
 ```
 
-Omit `--interval` to use the CLI default 15-second scheduler cadence. Pass
-`--interval <INTERVAL>` only when this runbook step deliberately needs a non-default
-poll interval.
+`serve` has no interval override. It publishes local operator snapshots every
+15 seconds and runs Linear-backed queue/status scans at most every 5 minutes per
+project. Use `POST /api/linear-scan` on the same listener to queue an immediate
+scan request for the next 15-second tick.
 
 Use hidden `decodex serve --dev` only for local account/app snapshot API development
 while deliberately avoiding scheduler activity. Decodex App's fallback server uses
-ordinary `decodex serve` and leaves scheduler cadence to the CLI default. Dev mode is
+ordinary `decodex serve` and leaves scheduler cadence to CLI-owned defaults. Dev mode is
 not a scheduler and must not be used for this runbook's automation, queue intake,
 project registration, or retained-lane recovery steps.
 
