@@ -724,7 +724,7 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(!response.contains("account-pool-track"));
 	assert!(response.contains("<div class=\"account-pool-guide\">"));
 	assert!(response.contains("[\"account\", \"Account\"]"));
-	assert!(response.contains("[\"plan\", \"Plan\"]"));
+	assert!(response.contains("[\"plan\", \"Weight\"]"));
 	assert!(response.contains("[\"primary\", \"5h\"]"));
 	assert!(response.contains("[\"secondary\", \"7d\"]"));
 	assert!(response.contains("[\"credits\", \"Credits\"]"));
@@ -825,15 +825,15 @@ fn operator_dashboard_accounts_keeps_identity_rows_compact() {
 	assert!(response.contains(".account-row-id {\n\t\t\t\tgrid-area: id;"));
 	assert!(response.contains("justify-content: center;"));
 	assert!(response.contains("text-align: center;"));
-	assert!(response.contains("function codexAccountPlanLabel(account)"));
-	assert!(response.contains(
-		"return account?.plan_type ? humanizeToken(account.plan_type) : \"-\";"
-	));
-	assert!(response.contains("const plan = codexAccountPlanLabel(account);"));
+	assert!(response.contains("function codexAccountCapacityLabel(account)"));
+	assert!(response.contains("function codexAccountCapacityMultiplier(account)"));
+	assert!(response.contains("const planType = String(account?.plan_type || \"\").trim().toLowerCase();"));
+	assert!(response.contains("return planType === \"pro\" ? 20 : 1;"));
+	assert!(response.contains("const weight = codexAccountCapacityLabel(account);"));
 	assert!(response.contains("const identityClass = codexAccountShowsEmail(account) ? \" is-machine\" : \"\";"));
 	assert!(response.contains(".account-row-plan {\n\t\t\t\tgrid-area: plan;"));
 	assert!(response.contains("<div class=\"account-row-id${identityClass}\">"));
-	assert!(response.contains("<div class=\"account-row-plan\">${escapeHtml(plan)}</div>"));
+	assert!(response.contains("<div class=\"account-row-plan\">${escapeHtml(weight)}</div>"));
 	assert!(response.contains("<button class=\"account-name-button${fixedClass}${armedClass}\""));
 	assert!(response.contains("<span class=\"account-name\">${escapeHtml(visibleName)}</span>"));
 	assert!(response.contains("<span class=\"run-meta-icon\" aria-hidden=\"true\">"));

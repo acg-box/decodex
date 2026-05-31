@@ -22,6 +22,8 @@ use crate::{
 
 const USAGE_ESTIMATE_WINDOW_DAYS: i64 = 7;
 const USAGE_ESTIMATE_WINDOW_SECONDS: i64 = USAGE_ESTIMATE_WINDOW_DAYS * 24 * 60 * 60;
+const DEFAULT_ACCOUNT_CAPACITY_MULTIPLIER: i64 = 1;
+const PRO_ACCOUNT_CAPACITY_MULTIPLIER: i64 = 20;
 const ACCOUNT_RANDOM_NAMES: &[&str] = &[
 	"Alex", "Avery", "Bailey", "Blake", "Casey", "Charlie", "Clara", "Dana", "Drew", "Eden",
 	"Elliot", "Emery", "Evan", "Finley", "Harper", "Hayden", "Iris", "Jamie", "Jordan", "Kai",
@@ -515,12 +517,15 @@ impl AccountListResponse {
 		let account_count = self.accounts.len();
 		let account_estimate_count =
 			self.accounts.iter().filter(|account| account.seven_day_used_percent.is_some()).count();
+		let total_capacity_percent =
+			self.accounts.iter().map(AccountSummary::capacity_percent).sum::<i64>();
 		let total_used_percent =
-			self.accounts.iter().filter_map(|account| account.seven_day_used_percent).sum::<i64>();
+			self.accounts.iter().map(AccountSummary::used_capacity_percent).sum::<i64>();
 
 		self.usage_estimate = AccountUsageEstimateSummary::new(
 			account_count,
 			account_estimate_count,
+			total_capacity_percent,
 			total_used_percent,
 		);
 	}
@@ -560,14 +565,13 @@ impl AccountUsageEstimateSummary {
 	fn new(
 		account_count: usize,
 		account_estimate_count: usize,
+		total_capacity_percent: i64,
 		total_used_percent: i64,
 	) -> Option<Self> {
 		if account_count == 0 || account_estimate_count == 0 {
 			return None;
 		}
 
-		let total_capacity_percent =
-			i64::try_from(account_count).unwrap_or(i64::MAX / 100).saturating_mul(100);
 		let total_used_of_capacity_percent =
 			percent_ratio(total_used_percent, total_capacity_percent);
 
@@ -590,6 +594,7 @@ impl AccountUsageEstimateSummary {
 pub(crate) struct AccountUsageDailySummary {
 	pub(crate) date: String,
 	pub(crate) used_percent: i64,
+	pub(crate) capacity_multiplier: i64,
 	pub(crate) checked_at_unix_epoch: i64,
 }
 
@@ -611,6 +616,7 @@ pub(crate) struct AccountSummary {
 	pub(crate) cooldown_until_unix_epoch: Option<i64>,
 	pub(crate) note: Option<String>,
 	pub(crate) plan_type: Option<String>,
+	pub(crate) capacity_multiplier: i64,
 	pub(crate) refresh_status: Option<String>,
 	pub(crate) checked_at_unix_epoch: Option<i64>,
 	pub(crate) primary_window_seconds: Option<i64>,
@@ -631,6 +637,7 @@ impl AccountSummary {
 	fn apply_usage_summary(&mut self, summary: &CodexAccountActivitySummary) {
 		self.status = summary.status.clone();
 		self.plan_type = summary.plan_type.clone();
+		self.capacity_multiplier = account_capacity_multiplier(self.plan_type.as_deref());
 		self.refresh_status = Some(summary.refresh_status.clone());
 		self.checked_at_unix_epoch = summary.checked_at_unix_epoch;
 		self.primary_window_seconds = summary.primary_window_seconds;
@@ -675,10 +682,21 @@ impl AccountSummary {
 			account_fingerprint: self.account_fingerprint.clone(),
 			email: self.email.clone(),
 			used_percent: basis.used_percent,
+			capacity_multiplier: self.capacity_multiplier,
 			window_seconds: basis.window_seconds,
 			checked_at_unix_epoch,
 			resets_at_unix_epoch: basis.resets_at_unix_epoch,
 		})
+	}
+
+	fn capacity_percent(&self) -> i64 {
+		normalized_account_capacity_multiplier(self.capacity_multiplier).saturating_mul(100)
+	}
+
+	fn used_capacity_percent(&self) -> i64 {
+		self.seven_day_used_percent
+			.unwrap_or_default()
+			.saturating_mul(normalized_account_capacity_multiplier(self.capacity_multiplier))
 	}
 }
 
@@ -730,6 +748,8 @@ struct AccountUsageHistoryRecord {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	email: Option<String>,
 	used_percent: i64,
+	#[serde(default = "default_account_capacity_multiplier")]
+	capacity_multiplier: i64,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	window_seconds: Option<i64>,
 	checked_at_unix_epoch: i64,
@@ -741,6 +761,7 @@ impl AccountUsageHistoryRecord {
 		AccountUsageDailySummary {
 			date: self.date.clone(),
 			used_percent: self.used_percent,
+			capacity_multiplier: normalized_account_capacity_multiplier(self.capacity_multiplier),
 			checked_at_unix_epoch: self.checked_at_unix_epoch,
 		}
 	}
@@ -845,6 +866,8 @@ impl AccountUsageHistory {
 					matching_records.iter().max_by_key(|record| record.checked_at_unix_epoch)
 			{
 				account.seven_day_used_percent = Some(latest.used_percent);
+				account.capacity_multiplier =
+					normalized_account_capacity_multiplier(latest.capacity_multiplier);
 				account.seven_day_daily_average_percent =
 					Some(latest.used_percent as f64 / USAGE_ESTIMATE_WINDOW_DAYS as f64);
 			}
@@ -1066,6 +1089,7 @@ impl AccountPoolRecord {
 			cooldown_until_unix_epoch: self.cooldown_until_unix_epoch,
 			note: Some(String::from("local account pool")),
 			plan_type: None,
+			capacity_multiplier: DEFAULT_ACCOUNT_CAPACITY_MULTIPLIER,
 			refresh_status: None,
 			checked_at_unix_epoch: None,
 			primary_window_seconds: None,
@@ -1659,6 +1683,21 @@ fn accepts_secondary_usage_window(window_seconds: Option<i64>) -> bool {
 	window_seconds.is_none_or(is_seven_day_usage_window)
 }
 
+const fn default_account_capacity_multiplier() -> i64 {
+	DEFAULT_ACCOUNT_CAPACITY_MULTIPLIER
+}
+
+fn account_capacity_multiplier(plan_type: Option<&str>) -> i64 {
+	match plan_type.map(str::trim).filter(|value| !value.is_empty()) {
+		Some(plan_type) if plan_type.eq_ignore_ascii_case("pro") => PRO_ACCOUNT_CAPACITY_MULTIPLIER,
+		_ => DEFAULT_ACCOUNT_CAPACITY_MULTIPLIER,
+	}
+}
+
+fn normalized_account_capacity_multiplier(value: i64) -> i64 {
+	value.max(DEFAULT_ACCOUNT_CAPACITY_MULTIPLIER)
+}
+
 fn is_seven_day_usage_window(window_seconds: i64) -> bool {
 	window_seconds
 		.checked_sub(USAGE_ESTIMATE_WINDOW_SECONDS)
@@ -2044,6 +2083,7 @@ mod tests {
 		assert_eq!(response.accounts[0].secondary_remaining_percent, Some(91));
 		assert_eq!(response.accounts[0].credits_balance.as_deref(), Some("9.99"));
 		assert_eq!(response.accounts[0].seven_day_used_percent, Some(9));
+		assert_eq!(response.accounts[0].capacity_multiplier, 20);
 
 		assert_close(response.accounts[0].seven_day_daily_average_percent, 9.0 / 7.0);
 	}
@@ -2074,8 +2114,8 @@ mod tests {
 			.expect("records should save");
 
 		let summaries = [
-			usage_summary("copy@example.com", "...123456", 40),
-			usage_summary("other@example.com", "...654321", 70),
+			usage_summary("copy@example.com", "...123456", "pro", 40),
+			usage_summary("other@example.com", "...654321", "plus", 70),
 		];
 		let mut response = store.list().expect("account list should load");
 
@@ -2092,19 +2132,31 @@ mod tests {
 		assert_eq!(estimate.window_days, 7);
 		assert_eq!(estimate.account_count, 2);
 		assert_eq!(estimate.account_estimate_count, 2);
-		assert_eq!(estimate.total_capacity_percent, 200);
-		assert_eq!(estimate.total_used_percent, 90);
+		assert_eq!(estimate.total_capacity_percent, 2_100);
+		assert_eq!(estimate.total_used_percent, 1_230);
 
-		assert_close(Some(estimate.total_used_of_capacity_percent), 45.0);
-		assert_close(Some(estimate.average_daily_used_percent), 90.0 / 7.0);
-		assert_close(Some(estimate.average_daily_pool_percent), 45.0 / 7.0);
+		assert_close(Some(estimate.total_used_of_capacity_percent), 58.571);
+		assert_close(Some(estimate.average_daily_used_percent), 1_230.0 / 7.0);
+		assert_close(Some(estimate.average_daily_pool_percent), 58.571 / 7.0);
 
 		assert_eq!(response.accounts[0].usage_records.len(), 1);
 		assert_eq!(response.accounts[0].usage_records[0].date, record_date);
 		assert_eq!(response.accounts[0].usage_records[0].used_percent, 60);
+		assert_eq!(response.accounts[0].usage_records[0].capacity_multiplier, 20);
+		assert_eq!(response.accounts[1].usage_records[0].capacity_multiplier, 1);
 		assert_eq!(history.lines().count(), 2);
 		assert!(history.contains(r#""used_percent":60"#));
+		assert!(history.contains(r#""capacity_multiplier":20"#));
 		assert!(history.contains(r#""used_percent":30"#));
+		assert!(history.contains(r#""capacity_multiplier":1"#));
+	}
+
+	#[test]
+	fn capacity_multiplier_counts_only_pro_above_plus_weight() {
+		assert_eq!(super::account_capacity_multiplier(Some("pro")), 20);
+		assert_eq!(super::account_capacity_multiplier(Some("plus")), 1);
+		assert_eq!(super::account_capacity_multiplier(Some("team")), 1);
+		assert_eq!(super::account_capacity_multiplier(None), 1);
 	}
 
 	#[test]
@@ -2181,12 +2233,13 @@ mod tests {
 	fn usage_summary(
 		email: &str,
 		account_fingerprint: &str,
+		plan_type: &str,
 		secondary_remaining_percent: i64,
 	) -> CodexAccountActivitySummary {
 		CodexAccountActivitySummary {
 			account_fingerprint: String::from(account_fingerprint),
 			email: Some(String::from(email)),
-			plan_type: Some(String::from("pro")),
+			plan_type: Some(String::from(plan_type)),
 			status: String::from("available"),
 			refresh_status: String::from("not_needed"),
 			checked_at_unix_epoch: Some(1_800_000_000),
