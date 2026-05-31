@@ -743,18 +743,16 @@ struct AccountRowView: View {
 						.truncationMode(.middle)
 						.layoutPriority(1)
 
-					if let planLabel = account.planLabel {
-						Text("·")
-							.font(PanelFont.accountDetail)
-							.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
-							.fixedSize(horizontal: true, vertical: false)
+					Text("·")
+						.font(PanelFont.accountDetail)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
+						.fixedSize(horizontal: true, vertical: false)
 
-						Text(planLabel)
-							.font(PanelFont.accountDetail)
-							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-							.lineLimit(1)
-							.fixedSize(horizontal: true, vertical: false)
-					}
+					Text(account.capacityLabel)
+						.font(PanelFont.accountDetail)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.lineLimit(1)
+						.fixedSize(horizontal: true, vertical: false)
 
 					if let healthLabel = account.compactHealthLabel {
 						Text("·")
@@ -1251,13 +1249,15 @@ struct AccountPoolUsageEstimateView: View {
 		}
 
 		let previousRecords = measuredAccounts.compactMap { account in
-			usageRecord(for: account, on: previousDate)
+			usageRecord(for: account, on: previousDate).map { (account, $0) }
 		}
 		guard previousRecords.count == measuredAccounts.count else {
 			return estimate.averageDailyPoolPercent
 		}
-		let previousUsedPercent = previousRecords.reduce(0) { total, record in
-			total + record.usedPercent
+		let previousUsedPercent = previousRecords.reduce(0) { total, pair in
+			let (account, record) = pair
+
+			return total + record.usedPercent * (record.capacityMultiplier ?? account.capacityWeight)
 		}
 		let previousPoolPercent =
 			(Double(previousUsedPercent) / Double(estimate.totalCapacityPercent)) * 100
