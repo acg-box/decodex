@@ -741,16 +741,18 @@ struct AccountRowView: View {
 						.truncationMode(.middle)
 						.layoutPriority(1)
 
-					Text("·")
-						.font(PanelFont.accountDetail)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
-						.fixedSize(horizontal: true, vertical: false)
+					if let capacityLabel = account.currentCapacityLabel {
+						Text("·")
+							.font(PanelFont.accountDetail)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.62))
+							.fixedSize(horizontal: true, vertical: false)
 
-					Text(account.capacityLabel)
-						.font(PanelFont.accountDetail)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-						.lineLimit(1)
-						.fixedSize(horizontal: true, vertical: false)
+						Text(capacityLabel)
+							.font(PanelFont.accountDetail)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+							.lineLimit(1)
+							.fixedSize(horizontal: true, vertical: false)
+					}
 
 					if let healthLabel = account.compactHealthLabel {
 						Text("·")
@@ -777,7 +779,7 @@ struct AccountRowView: View {
 							isPrimary: true,
 							size: 21,
 							action: login,
-							help: "Login account"
+							help: loginHelp
 						)
 					} else {
 						PanelIconButtonView(
@@ -850,13 +852,21 @@ struct AccountRowView: View {
 			return "Restore balanced run routing"
 		}
 		if account.needsLogin {
-			return "Login before routing runs"
+			return "Sign in again before routing runs"
 		}
 		if account.disabled {
 			return "Disabled account cannot route runs"
 		}
 
 		return "Route Decodex runs here"
+	}
+
+	private var loginHelp: String {
+		if account.recoveryActionKind == .login {
+			return "Refresh token was rejected; sign in again"
+		}
+
+		return "Login account"
 	}
 }
 
@@ -2359,7 +2369,7 @@ private enum AccountPrivacy {
 	static let visibleValue = "visible"
 }
 
-private enum AccountDisplay {
+enum AccountDisplay {
 	static let randomNames = [
 		"Alex",
 		"Avery",
@@ -2447,7 +2457,7 @@ private enum AccountDisplay {
 			return "\(local)\(domain)"
 		}
 
-		return "\(local.prefix(3))...\(local.suffix(3))\(domain)"
+		return "\(local.prefix(3))...\(compactLocalSuffix(local))\(domain)"
 	}
 
 	static func compactIdentity(_ value: String) -> String {
@@ -2467,6 +2477,17 @@ private enum AccountDisplay {
 		}
 
 		return text
+	}
+
+	private static func compactLocalSuffix(_ local: String) -> String {
+		if let separator = local.lastIndex(of: ".") {
+			let segment = String(local[local.index(after: separator)...])
+			if (2...4).contains(segment.count), segment.allSatisfy(\.isLetter) {
+				return segment
+			}
+		}
+
+		return String(local.suffix(3))
 	}
 
 	private static func identityHash(_ value: String) -> UInt32 {
@@ -2974,13 +2995,24 @@ private extension CodexAccount {
 			return "Limited"
 		}
 
+		switch recoveryActionKind {
+		case .login:
+			return "Re-login"
+		case .refresh:
+			return "Refresh needed"
+		case .retryProbe:
+			return "Probe failed"
+		case .none:
+			break
+		}
+
 		switch status {
 		case "available":
 			return nil
 		case "usage_limited":
 			return "Limited"
 		case "probe_failed":
-			return "-"
+			return "Probe failed"
 		case "expired":
 			return "Refresh needed"
 		case "disabled":
@@ -2988,7 +3020,7 @@ private extension CodexAccount {
 		case "cooldown":
 			return "Cooling"
 		case "unusable":
-			return "Needs login"
+			return "Needs attention"
 		default:
 			let label = status.replacingOccurrences(of: "_", with: " ").capitalized
 			return label.isEmpty ? nil : label
