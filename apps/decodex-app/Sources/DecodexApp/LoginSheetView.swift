@@ -305,9 +305,22 @@ private struct LoginCodeBoxesView: View {
 				Text(character(at: index))
 					.font(LoginFont.code)
 					.monospacedDigit()
-					.foregroundStyle(LoginPalette.primaryText(colorScheme))
-					.frame(width: 22, height: 30)
-					.modernGlassSurface(cornerRadius: 7, depth: .control)
+					.foregroundStyle(code.isEmpty ? LoginPalette.secondaryText(colorScheme).opacity(0.42) : LoginPalette.primaryText(colorScheme))
+					.frame(width: 23, height: 31)
+					.background {
+						RoundedRectangle(cornerRadius: 7, style: .continuous)
+							.fill(LoginPalette.codeBoxFill(colorScheme))
+					}
+					.overlay {
+						RoundedRectangle(cornerRadius: 7, style: .continuous)
+							.strokeBorder(LoginPalette.codeBoxStroke(colorScheme), lineWidth: 0.75)
+							.allowsHitTesting(false)
+					}
+					.shadow(
+						color: LoginPalette.codeBoxShadow(colorScheme),
+						radius: colorScheme == .dark ? 2.5 : 1.4,
+						y: 0.7
+					)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .center)
@@ -477,5 +490,23 @@ private enum LoginPalette {
 		colorScheme == .dark
 			? Color(red: 0.86, green: 0.93, blue: 1)
 			: Color(red: 0.13, green: 0.32, blue: 0.52)
+	}
+
+	static func codeBoxFill(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color(red: 0.08, green: 0.1, blue: 0.14).opacity(0.72)
+			: Color(red: 0.96, green: 0.975, blue: 1).opacity(0.92)
+	}
+
+	static func codeBoxStroke(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color.white.opacity(0.16)
+			: Color(red: 0.48, green: 0.55, blue: 0.64).opacity(0.3)
+	}
+
+	static func codeBoxShadow(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color.black.opacity(0.22)
+			: Color(red: 0.24, green: 0.32, blue: 0.42).opacity(0.08)
 	}
 }

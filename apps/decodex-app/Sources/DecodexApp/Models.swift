@@ -126,6 +126,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	let note: String?
 	let planType: String?
 	let capacityMultiplier: Int?
+	let recoveryAction: String?
 	let refreshStatus: String?
 	let checkedAtUnixEpoch: Int?
 	let primaryWindowSeconds: Int?
@@ -159,15 +160,15 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	}
 
 	var needsLogin: Bool {
-		status == "unusable" || status == "expired" || !refreshTokenPresent
+		recoveryActionKind == .login
 	}
 
 	var canUseInCodex: Bool {
-		!disabled && !needsLogin
+		!disabled && recoveryActionKind != .login
 	}
 
 	var canRouteRuns: Bool {
-		!disabled && !needsLogin
+		!disabled && recoveryActionKind != .login
 	}
 
 	var statusLabel: String {
@@ -180,6 +181,14 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		if selected {
 			return "Runs routed"
 		}
+		switch recoveryActionKind {
+		case .login:
+			return "Re-login required"
+		case .retryProbe:
+			return "Probe failed"
+		case .refresh, .none:
+			break
+		}
 
 		switch status {
 		case "available": return "Ready"
@@ -188,7 +197,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case "expired": return "Refresh needed"
 		case "disabled": return "Disabled"
 		case "cooldown": return "Cooling"
-		case "unusable": return "Needs login"
+		case "unusable": return recoveryActionKind == .login ? "Re-login required" : "Needs attention"
 		default: return status.replacingOccurrences(of: "_", with: " ").capitalized
 		}
 	}
@@ -206,10 +215,18 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		if selected {
 			return .selected
 		}
+		switch recoveryActionKind {
+		case .login:
+			return .danger
+		case .refresh, .retryProbe:
+			return .warning
+		case .none:
+			break
+		}
 		switch status {
 		case "available": return .ready
-		case "cooldown": return .warning
-		case "expired", "unusable", "disabled": return .danger
+		case "cooldown", "expired", "probe_failed": return .warning
+		case "unusable", "disabled": return .danger
 		default: return .neutral
 		}
 	}
@@ -220,6 +237,17 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 
 	var capacityLabel: String {
 		"\(capacityWeight)x"
+	}
+
+	var currentCapacityLabel: String? {
+		guard status == "available" || status == "usage_limited" else {
+			return nil
+		}
+		guard checkedAtUnixEpoch != nil || hasUsageWindowData else {
+			return nil
+		}
+
+		return capacityLabel
 	}
 
 	var hasUsageWindowData: Bool {
@@ -276,6 +304,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 			note: note,
 			planType: planType,
 			capacityMultiplier: capacityMultiplier,
+			recoveryAction: recoveryAction,
 			refreshStatus: refreshStatus,
 			checkedAtUnixEpoch: checkedAtUnixEpoch,
 			primaryWindowSeconds: primaryWindowSeconds,
@@ -312,6 +341,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case note
 		case planType = "plan_type"
 		case capacityMultiplier = "capacity_multiplier"
+		case recoveryAction = "recovery_action"
 		case refreshStatus = "refresh_status"
 		case checkedAtUnixEpoch = "checked_at_unix_epoch"
 		case primaryWindowSeconds = "primary_window_seconds"
@@ -340,6 +370,33 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 
 		return 1
 	}
+
+	var recoveryActionKind: AccountRecoveryAction {
+		if let recoveryAction = AccountRecoveryAction(rawValue: normalized(recoveryAction)) {
+			return recoveryAction
+		}
+		if !refreshTokenPresent {
+			return .login
+		}
+		if normalized(refreshStatus) == "failed" {
+			let noteText = normalized(note)
+			return noteText.contains("401") || noteText.contains("unauthorized") ? .login : .retryProbe
+		}
+		switch normalized(status) {
+		case "expired":
+			return .refresh
+		case "unusable":
+			return .login
+		case "probe_failed":
+			return .retryProbe
+		default:
+			return .none
+		}
+	}
+
+	private func normalized(_ value: String?) -> String {
+		value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+	}
 }
 
 enum AccountTone {
@@ -349,6 +406,13 @@ enum AccountTone {
 	case warning
 	case danger
 	case neutral
+}
+
+enum AccountRecoveryAction: String {
+	case none
+	case refresh
+	case login
+	case retryProbe = "retry_probe"
 }
 
 enum UsageWindowLabel {

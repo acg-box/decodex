@@ -617,6 +617,7 @@ pub(crate) struct AccountSummary {
 	pub(crate) note: Option<String>,
 	pub(crate) plan_type: Option<String>,
 	pub(crate) capacity_multiplier: i64,
+	pub(crate) recovery_action: Option<String>,
 	pub(crate) refresh_status: Option<String>,
 	pub(crate) checked_at_unix_epoch: Option<i64>,
 	pub(crate) primary_window_seconds: Option<i64>,
@@ -657,6 +658,14 @@ impl AccountSummary {
 		}
 
 		self.note.clone_from(&summary.note);
+
+		self.recovery_action = account_recovery_action(
+			self.status.as_str(),
+			self.refresh_token_present,
+			self.refresh_status.as_deref(),
+			self.note.as_deref(),
+		);
+
 		self.apply_usage_estimate();
 	}
 
@@ -1070,6 +1079,12 @@ impl AccountPoolRecord {
 		let random_name_seed = random_name_seed_for(account_fingerprint.as_str(), self.email());
 		let random_name_key = random_name_key(&random_name_seed);
 		let random_name_offset = name_offsets.get(&random_name_key).copied().unwrap_or_default();
+		let recovery_action = account_recovery_action(
+			status,
+			refresh_token_present,
+			None,
+			Some("local account pool"),
+		);
 
 		AccountSummary {
 			account_fingerprint,
@@ -1090,6 +1105,7 @@ impl AccountPoolRecord {
 			note: Some(String::from("local account pool")),
 			plan_type: None,
 			capacity_multiplier: DEFAULT_ACCOUNT_CAPACITY_MULTIPLIER,
+			recovery_action,
 			refresh_status: None,
 			checked_at_unix_epoch: None,
 			primary_window_seconds: None,
@@ -1694,6 +1710,39 @@ fn account_capacity_multiplier(plan_type: Option<&str>) -> i64 {
 	}
 }
 
+fn account_recovery_action(
+	status: &str,
+	refresh_token_present: bool,
+	refresh_status: Option<&str>,
+	note: Option<&str>,
+) -> Option<String> {
+	let status = status.trim().to_ascii_lowercase();
+	let refresh_status = refresh_status.unwrap_or_default().trim().to_ascii_lowercase();
+
+	if status == "disabled" || status == "cooldown" {
+		return None;
+	}
+	if !refresh_token_present {
+		return Some(String::from("login"));
+	}
+	if refresh_status == "failed" {
+		let note = note.unwrap_or_default().to_ascii_lowercase();
+
+		if note.contains("401") || note.contains("unauthorized") {
+			return Some(String::from("login"));
+		}
+
+		return Some(String::from("retry_probe"));
+	}
+
+	match status.as_str() {
+		"expired" => Some(String::from("refresh")),
+		"unusable" => Some(String::from("login")),
+		"probe_failed" => Some(String::from("retry_probe")),
+		_ => None,
+	}
+}
+
 fn normalized_account_capacity_multiplier(value: i64) -> i64 {
 	value.max(DEFAULT_ACCOUNT_CAPACITY_MULTIPLIER)
 }
@@ -2084,8 +2133,42 @@ mod tests {
 		assert_eq!(response.accounts[0].credits_balance.as_deref(), Some("9.99"));
 		assert_eq!(response.accounts[0].seven_day_used_percent, Some(9));
 		assert_eq!(response.accounts[0].capacity_multiplier, 20);
+		assert_eq!(response.accounts[0].recovery_action, None);
 
 		assert_close(response.accounts[0].seven_day_daily_average_percent, 9.0 / 7.0);
+	}
+
+	#[test]
+	fn usage_summary_marks_refresh_401_as_login_recovery() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let store = AccountStore::new(
+			temp_dir.path().join("accounts.jsonl"),
+			temp_dir.path().join("config.toml"),
+		);
+
+		store
+			.save_records(&[account_record(
+				"copy@example.com",
+				"acct_123456",
+				"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+				"refresh-secret",
+			)])
+			.expect("records should save");
+
+		let mut response = store.list().expect("account list should load");
+
+		response.apply_usage_summaries(&[CodexAccountActivitySummary {
+			account_fingerprint: String::from("...123456"),
+			email: Some(String::from("copy@example.com")),
+			status: String::from("unusable"),
+			refresh_status: String::from("failed"),
+			note: Some(String::from(
+				"usage probe failed: Codex account `copy@example.com` token refresh failed with HTTP 401 Unauthorized.",
+			)),
+			..CodexAccountActivitySummary::default()
+		}]);
+
+		assert_eq!(response.accounts[0].recovery_action.as_deref(), Some("login"));
 	}
 
 	#[test]
