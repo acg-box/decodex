@@ -664,9 +664,7 @@ struct AccountPanelView: View {
 	private func accountRowHeight(for account: CodexAccount) -> CGFloat {
 		let base: CGFloat
 		if account.hasUsageWindowSummary {
-			base = account.hasSevenDayUsageEstimate ? 120 : 102
-		} else if account.hasSevenDayUsageEstimate {
-			base = 66
+			base = 102
 		} else {
 			base = 48
 		}
@@ -864,54 +862,20 @@ struct AccountRowView: View {
 
 struct AccountRunSummaryView: View {
 	let runs: [OperatorRunStatus]
-	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		ViewThatFits(in: .horizontal) {
-			runRow(visibleCount: 2, style: .detailed)
-			runRow(visibleCount: 1, style: .detailed)
-			runRow(visibleCount: 3, style: .compact)
-			runRow(visibleCount: 2, style: .compact)
-			runRow(visibleCount: 1, style: .compact)
+		ScrollView(.horizontal, showsIndicators: false) {
+			HStack(spacing: 5) {
+				ForEach(runs) { run in
+					AccountRunChipView(run: run)
+				}
+			}
+			.padding(.trailing, 1)
 		}
+		.scrollIndicators(.hidden)
+		.frame(height: AccountRunChipLayout.height)
 		.frame(maxWidth: .infinity, alignment: .leading)
-	}
-
-	private func runRow(
-		visibleCount: Int,
-		style: AccountRunChipStyle
-	) -> some View {
-		let visibleRuns = Array(runs.prefix(visibleCount))
-		let hiddenRuns = Array(runs.dropFirst(visibleCount))
-
-		return HStack(spacing: 5) {
-			ForEach(visibleRuns) { run in
-				AccountRunChipView(
-					run: run,
-					style: style,
-					maxWidth: chipMaxWidth(style: style, visibleCount: visibleRuns.count)
-				)
-			}
-
-			if hiddenRuns.isEmpty == false {
-				AccountRunOverflowView(runs: runs, hiddenRunCount: hiddenRuns.count)
-			}
-		}
-		.fixedSize(horizontal: true, vertical: false)
-	}
-
-	private func chipMaxWidth(
-		style: AccountRunChipStyle,
-		visibleCount: Int
-	) -> CGFloat {
-		switch style {
-		case .detailed:
-			return visibleCount <= 1
-				? AccountRunChipLayout.wideDetailedMaxWidth
-				: AccountRunChipLayout.detailedMaxWidth
-		case .compact:
-			return AccountRunChipLayout.compactMaxWidth
-		}
+		.accessibilityLabel("\(runs.count) running lane\(runs.count == 1 ? "" : "s")")
 	}
 }
 
@@ -983,20 +947,12 @@ private struct AccountListScrollIndicatorView: View {
 }
 
 private enum AccountRunChipLayout {
-	static let compactMaxWidth: CGFloat = 108
-	static let detailedMaxWidth: CGFloat = 132
-	static let wideDetailedMaxWidth: CGFloat = 218
-}
-
-enum AccountRunChipStyle {
-	case detailed
-	case compact
+	static let height: CGFloat = 21
+	static let cornerRadius: CGFloat = 10.5
 }
 
 struct AccountRunChipView: View {
 	let run: OperatorRunStatus
-	let style: AccountRunChipStyle
-	let maxWidth: CGFloat
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var isHovered = false
 	@State private var showsPopover = false
@@ -1015,15 +971,14 @@ struct AccountRunChipView: View {
 				.truncationMode(.middle)
 				.fixedSize(horizontal: true, vertical: false)
 		}
-		.frame(height: 21)
+		.frame(height: AccountRunChipLayout.height)
 		.padding(.horizontal, 8)
-		.frame(maxWidth: maxWidth, alignment: .leading)
 		.background {
-			RoundedRectangle(cornerRadius: 10.5, style: .continuous)
+			RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous)
 				.fill(isHovered ? tint.opacity(colorScheme == .dark ? 0.09 : 0.07) : Color.clear)
 		}
-		.modernGlassSurface(cornerRadius: 10.5, depth: .control)
-		.contentShape(RoundedRectangle(cornerRadius: 10.5, style: .continuous))
+		.modernGlassSurface(cornerRadius: AccountRunChipLayout.cornerRadius, depth: .control)
+		.contentShape(RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous))
 		.onHover { hovering in
 			withAnimation(PanelMotion.hover) {
 				isHovered = hovering
@@ -1057,78 +1012,6 @@ struct AccountRunChipView: View {
 		}
 
 		return PanelPalette.routeAccent(colorScheme)
-	}
-}
-
-struct AccountRunOverflowView: View {
-	let runs: [OperatorRunStatus]
-	let hiddenRunCount: Int
-	@Environment(\.colorScheme) private var colorScheme
-	@State private var isHovered = false
-	@State private var showsPopover = false
-
-	var body: some View {
-		Text("+\(hiddenRunCount)")
-			.font(PanelFont.metricLabel)
-			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-			.frame(height: 21)
-			.padding(.horizontal, 7)
-			.background {
-				RoundedRectangle(cornerRadius: 10.5, style: .continuous)
-					.fill(isHovered ? PanelPalette.routeAccent(colorScheme).opacity(0.08) : Color.clear)
-			}
-			.modernGlassSurface(cornerRadius: 10.5, depth: .control)
-			.fixedSize(horizontal: true, vertical: false)
-			.contentShape(RoundedRectangle(cornerRadius: 10.5, style: .continuous))
-			.onHover { hovering in
-				withAnimation(PanelMotion.hover) {
-					isHovered = hovering
-				}
-				showsPopover = hovering
-			}
-			.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
-				OperatorLaneDetailsListView(
-					title: "\(runs.count) running lane\(runs.count == 1 ? "" : "s")",
-					runs: runs
-				)
-				.frame(width: 372)
-				.padding(8)
-			}
-	}
-}
-
-struct OperatorLaneDetailsListView: View {
-	let title: String
-	let runs: [OperatorRunStatus]
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: 8) {
-			HStack(spacing: 7) {
-				Image(systemName: "arrow.triangle.branch")
-					.font(PanelFont.summaryIcon)
-					.foregroundStyle(PanelPalette.routeAccent(colorScheme).opacity(0.86))
-					.frame(width: 12)
-
-				Text(title)
-					.font(PanelFont.lanePopoverTitle)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-					.lineLimit(1)
-			}
-
-			ScrollView {
-				VStack(alignment: .leading, spacing: 8) {
-					ForEach(runs) { run in
-						OperatorLanePopoverView(run: run)
-					}
-				}
-			}
-			.frame(maxHeight: 430)
-			.scrollIndicators(.hidden)
-		}
-		.padding(10)
-		.modernGlassSurface(cornerRadius: 12, depth: .section)
-		.accessibilityLabel(title)
 	}
 }
 
@@ -1319,19 +1202,17 @@ struct AccountPoolUsageMetricView: View {
 
 struct AccountUsageSummaryView: View {
 	let account: CodexAccount
-	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
 		VStack(spacing: 5) {
-			if account.hasSevenDayUsageEstimate {
-				AccountSevenDayUsageLineView(account: account)
-			}
-
 			if account.hasPrimaryUsageData {
 				AccountUsageMeterView(
 					label: account.windowLabel(seconds: account.primaryWindowSeconds),
 					remainingPercent: account.primaryRemainingPercent,
 					resetAtUnixEpoch: account.primaryResetsAtUnixEpoch,
+					dailyAveragePercent: account.sevenDayAveragePercent(
+						forWindowSeconds: account.primaryWindowSeconds
+					),
 					tone: account.usageTone(remainingPercent: account.primaryRemainingPercent)
 				)
 			}
@@ -1341,6 +1222,9 @@ struct AccountUsageSummaryView: View {
 					label: account.windowLabel(seconds: account.secondaryWindowSeconds),
 					remainingPercent: account.secondaryRemainingPercent,
 					resetAtUnixEpoch: account.secondaryResetsAtUnixEpoch,
+					dailyAveragePercent: account.sevenDayAveragePercent(
+						forWindowSeconds: account.secondaryWindowSeconds
+					),
 					tone: account.usageTone(remainingPercent: account.secondaryRemainingPercent)
 				)
 			}
@@ -1351,80 +1235,11 @@ struct AccountUsageSummaryView: View {
 	}
 }
 
-struct AccountSevenDayUsageLineView: View {
-	let account: CodexAccount
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		HStack(spacing: 5) {
-			Image(systemName: "calendar")
-				.font(PanelFont.summaryIcon)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
-				.frame(width: 10)
-
-			Text("7d used")
-				.font(PanelFont.usageLabel)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.lineLimit(1)
-
-			Text(usedText)
-				.font(PanelFont.usageValue)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(colorScheme == .dark ? 0.92 : 0.86))
-				.monospacedDigit()
-				.lineLimit(1)
-
-			if let recordDate {
-				Text(recordDate)
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.72))
-					.monospacedDigit()
-					.lineLimit(1)
-			}
-
-			Spacer(minLength: 4)
-
-			HStack(alignment: .firstTextBaseline, spacing: 3) {
-				Text("avg")
-					.font(PanelFont.usageLabel)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
-					.lineLimit(1)
-
-				Text(dailyAverageText)
-					.font(PanelFont.usageValue)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.monospacedDigit()
-					.lineLimit(1)
-			}
-		}
-		.frame(height: 16)
-		.accessibilityLabel("Seven day used \(usedText), daily average \(dailyAverageText)")
-	}
-
-	private var usedText: String {
-		guard let used = account.sevenDayUsedPercent else {
-			return "-"
-		}
-
-		return "\(used)%"
-	}
-
-	private var dailyAverageText: String {
-		guard let average = account.sevenDayDailyAveragePercent else {
-			return "-"
-		}
-
-		return formatDailyUsageRate(average)
-	}
-
-	private var recordDate: String? {
-		account.recentUsageRecords.last.map { compactUsageDate($0.date) }
-	}
-}
-
 struct AccountUsageMeterView: View {
 	let label: String
 	let remainingPercent: Int?
 	let resetAtUnixEpoch: Int?
+	let dailyAveragePercent: Double?
 	let tone: AccountTone
 	@Environment(\.colorScheme) private var colorScheme
 
@@ -1441,6 +1256,23 @@ struct AccountUsageMeterView: View {
 					.frame(width: 62, alignment: .leading)
 					.foregroundStyle(valueColor)
 					.monospacedDigit()
+
+				if let dailyAverageText {
+					HStack(alignment: .firstTextBaseline, spacing: 3) {
+						Text("avg")
+							.font(PanelFont.usageLabel)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
+							.lineLimit(1)
+
+						Text(dailyAverageText)
+							.font(PanelFont.usageValue)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+							.monospacedDigit()
+							.lineLimit(1)
+							.minimumScaleFactor(0.78)
+					}
+					.layoutPriority(1)
+				}
 
 				Spacer(minLength: 2)
 
@@ -1493,7 +1325,7 @@ struct AccountUsageMeterView: View {
 		.lineLimit(1)
 		.frame(height: 22)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.accessibilityLabel("\(label) remaining \(remainingText), \(resetDisplay.accessibility)")
+		.accessibilityLabel(accessibilityText)
 	}
 
 	private var remainingText: String {
@@ -1502,6 +1334,20 @@ struct AccountUsageMeterView: View {
 		}
 
 		return "\(remainingPercent)% left"
+	}
+
+	private var dailyAverageText: String? {
+		guard let dailyAveragePercent else {
+			return nil
+		}
+		let formatted = formatDailyUsageRate(dailyAveragePercent)
+
+		return formatted == "-" ? nil : formatted
+	}
+
+	private var accessibilityText: String {
+		let average = dailyAverageText.map { ", daily average \($0)" } ?? ""
+		return "\(label) remaining \(remainingText)\(average), \(resetDisplay.accessibility)"
 	}
 
 	private var progress: CGFloat {
@@ -2728,27 +2574,6 @@ private func formatPercentagePointDelta(_ value: Double) -> String {
 	return String(format: "%@%.1fpp", sign, absValue)
 }
 
-private func compactUsageDate(_ value: String) -> String {
-	let parts = value.split(separator: "-")
-	guard parts.count == 3, let month = Int(parts[1]), let day = Int(parts[2]) else {
-		return value
-	}
-
-	var components = DateComponents()
-	components.calendar = Calendar(identifier: .gregorian)
-	components.year = 2_000
-	components.month = month
-	components.day = day
-	guard let date = components.date else {
-		return value
-	}
-
-	let formatter = DateFormatter()
-	formatter.locale = Locale(identifier: "en_US_POSIX")
-	formatter.dateFormat = "MMM d"
-	return formatter.string(from: date)
-}
-
 private func panelTrimmed(_ value: String?) -> String? {
 	value?.trimmingCharacters(in: .whitespacesAndNewlines)
 }
@@ -3125,19 +2950,23 @@ private extension CodexAccount {
 	}
 
 	var hasUsageSummary: Bool {
-		hasUsageWindowSummary || hasSevenDayUsageEstimate
+		hasUsageWindowSummary
 	}
 
 	var hasUsageWindowSummary: Bool {
 		hasPrimaryUsageData || hasSecondaryUsageData
 	}
 
-	var hasSevenDayUsageEstimate: Bool {
-		sevenDayUsedPercent != nil || sevenDayDailyAveragePercent != nil
-	}
-
 	var recentUsageRecords: [AccountUsageRecord] {
 		usageRecords ?? []
+	}
+
+	func sevenDayAveragePercent(forWindowSeconds seconds: Int?) -> Double? {
+		guard seconds == 604_800 else {
+			return nil
+		}
+
+		return sevenDayDailyAveragePercent
 	}
 
 	var compactHealthLabel: String? {
