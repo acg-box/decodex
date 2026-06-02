@@ -32,7 +32,7 @@ Outputs:
 
 ## Workflow
 
-1. Track upstream Codex commits continuously with `scripts/github/sync_upstream_radar.py`.
+1. Track upstream Codex commits continuously with `decodex radar refresh-upstream-queue`.
    Treat each commit as an evidence unit, resolve it back to a PR when possible, write
    `.decodex/radar.sqlite3`, and refresh `upstream_review_queue/v1`.
 2. Let Codex automation consume queued subjects and run
@@ -98,7 +98,7 @@ cargo make decodex-checks
 Build the homepage release-delta artifact:
 
 ```bash
-python3 scripts/github/build_release_delta.py \
+cargo run -p decodex --bin decodex -- radar refresh-release-delta \
   --repo openai/codex \
   --signals-dir site/src/content/signals \
   --out site/src/content/release-deltas/openai-codex-latest.json
@@ -140,7 +140,7 @@ content contracts for this workflow.
 
 Automated sync entrypoint:
 
-- `scripts/github/sync_upstream_radar.py`
+- `decodex radar refresh-upstream-queue`
 
 Bootstrap or inspect local historical trace:
 

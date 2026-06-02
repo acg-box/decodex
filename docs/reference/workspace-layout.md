@@ -76,11 +76,13 @@ Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
 
 ## GitHub signal tooling
 
-`scripts/github/` owns deterministic content scripts. `sync_upstream_radar.py` is the
-continuous Radar entrypoint: it scans recent upstream commits, resolves them back to
-PRs when possible, records local ledger state, and writes an
-`upstream_review_queue/v1` artifact for Codex automation. It does not run Codex or
-render public signals. `decodex radar render-signal` renders published signals from
+`scripts/github/` owns deterministic content scripts. `decodex radar
+refresh-upstream-queue` is the continuous Radar entrypoint: it scans recent upstream
+commits, resolves them back to PRs when possible, records local ledger state, and
+writes an `upstream_review_queue/v1` artifact for Codex automation. It does not run
+Codex or render public signals. `decodex radar refresh-release-delta` refreshes the
+current homepage release-delta artifact from release compare metadata and published
+signal entries. `decodex radar render-signal` renders published signals from
 Codex-owned analysis drafts, and `decodex radar backfill-release-range` fills gaps for
 release-window summaries when an operator or automation chooses to generate signal
 content. Generated GitHub bundles and analysis drafts live under `artifacts/github/`

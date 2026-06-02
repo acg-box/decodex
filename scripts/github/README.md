@@ -16,10 +16,14 @@ Current scripts:
 - `render_signal_entry.py`
 - `validate_signal_entry.py`
 
-Rust CLI foundation:
+Rust CLI entrypoints:
 
 - `decodex radar validate` validates checked Radar artifact JSON contracts from the
   Rust CLI.
+- `decodex radar refresh-upstream-queue` refreshes
+  `artifacts/github/review-queue/openai-codex-latest.json`.
+- `decodex radar refresh-release-delta` refreshes
+  `site/src/content/release-deltas/openai-codex-latest.json`.
 - `decodex radar bundle build` replaces deterministic `build_change_bundle.py` bundle
   generation for PR-first and commit-only inputs.
 - `decodex radar bundle validate` replaces deterministic `validate_change_bundle.py`
@@ -72,7 +76,7 @@ python3 scripts/github/validate_signal_entry.py \
 Continuous upstream Radar sync:
 
 ```bash
-python3 scripts/github/sync_upstream_radar.py \
+cargo run -p decodex --bin decodex -- radar refresh-upstream-queue \
   --repo openai/codex \
   --search-limit 40
 ```
@@ -80,8 +84,21 @@ python3 scripts/github/sync_upstream_radar.py \
 The sync records every observed recent commit in the local SQLite Radar ledger and
 writes `artifacts/github/review-queue/openai-codex-latest.json`. It does not install
 Codex, make AI judgments, render public signals, or publish social posts.
-If only `generated_at` would change, the script leaves the existing queue file intact
-to avoid empty hourly commits.
+If only `generated_at` would change, the command leaves the existing queue file intact
+to avoid empty commits.
+
+Release-delta refresh:
+
+```bash
+cargo run -p decodex --bin decodex -- radar refresh-release-delta \
+  --repo openai/codex \
+  --signals-dir site/src/content/signals \
+  --out site/src/content/release-deltas/openai-codex-latest.json
+```
+
+The release-delta refresh compares the latest stable and prerelease tags, maps compare
+commits back to published signal entries, and also leaves the existing file intact when
+only `generated_at` would change.
 
 Use `--no-ledger` only for throwaway runs. To bootstrap the ledger from existing
 checked-in artifacts:
