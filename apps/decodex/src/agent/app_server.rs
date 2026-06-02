@@ -78,7 +78,17 @@ const PREFLIGHT_CHECK_MODEL_PROVIDER: &str = "model_provider";
 const PREFLIGHT_CHECK_SKILLS: &str = "skills";
 const PREFLIGHT_CHECK_PLUGINS: &str = "plugins";
 const PREFLIGHT_CHECK_MCP: &str = "mcp";
+const PREFLIGHT_CHECK_COMPATIBILITY: &str = "compatibility";
 const PREFLIGHT_PLUGIN_MARKETPLACE_KIND: &str = "local";
+const APP_SERVER_COMPATIBILITY_SUPPORT_CLAIM: &str = "local_verified_codex_cli_0.136";
+const APP_SERVER_COMPATIBILITY_EVIDENCE: &str =
+	"initialize.userAgent plus successful app-server capability preflight";
+const CODEX_CLI_VERSION_STABLE_0_136_0: &str = "0.136.0";
+const CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2: &str = "0.136.0-alpha.2";
+const SUPPORTED_CODEX_CLI_VERSION_MATCH_ORDER: &[&str] =
+	&[CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2, CODEX_CLI_VERSION_STABLE_0_136_0];
+const SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER: &[&str] =
+	&[CODEX_CLI_VERSION_STABLE_0_136_0, CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2];
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32_601;
 const CHILD_BUCKET_MODEL: &str = "Model";
 const WAITING_REASON_MODEL_EXECUTION: &str = "model_execution";
@@ -119,7 +129,7 @@ pub(crate) struct AppServerCapabilityPreflightReport {
 	checks: Vec<AppServerCapabilityPreflightCheck>,
 }
 impl AppServerCapabilityPreflightReport {
-	fn new() -> Self {
+	pub(crate) fn new() -> Self {
 		Self { checks: Vec::new() }
 	}
 
@@ -169,6 +179,30 @@ impl AppServerCapabilityPreflightReport {
 			.collect::<Vec<_>>();
 
 		if blockers.is_empty() { String::from("no blockers recorded") } else { blockers.join("; ") }
+	}
+
+	pub(crate) fn compatibility_status(&self) -> &'static str {
+		match self.compatibility_check().map(|check| check.status) {
+			Some(AppServerCapabilityPreflightStatus::Ok) => "supported",
+			Some(AppServerCapabilityPreflightStatus::Blocked) => "unsupported",
+			None => "not_checked",
+		}
+	}
+
+	pub(crate) fn compatibility_codex_cli_version(&self) -> Option<&str> {
+		self.compatibility_detail("codex_cli_version")
+	}
+
+	pub(crate) fn compatibility_supported_versions(&self) -> Option<&str> {
+		self.compatibility_detail("supported_versions")
+	}
+
+	fn compatibility_check(&self) -> Option<&AppServerCapabilityPreflightCheck> {
+		self.checks.iter().find(|check| check.name == PREFLIGHT_CHECK_COMPATIBILITY)
+	}
+
+	fn compatibility_detail(&self, detail: &str) -> Option<&str> {
+		self.compatibility_check().and_then(|check| check.details.get(detail)).map(String::as_str)
 	}
 }
 
@@ -437,6 +471,7 @@ impl CommandExecHealthCheck {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AppServerRunResult {
 	pub(crate) user_agent: String,
+	pub(crate) capability_preflight: AppServerCapabilityPreflightReport,
 	pub(crate) thread_id: String,
 	pub(crate) turn_id: String,
 	pub(crate) turn_count: u32,
@@ -1083,6 +1118,16 @@ fn preflight_check_blocker_summary(check: &AppServerCapabilityPreflightCheck) ->
 		summary.push_str(path);
 		summary.push_str("; first_error=");
 		summary.push_str(error);
+	}
+	if check.name == PREFLIGHT_CHECK_COMPATIBILITY {
+		for detail_name in ["codex_cli_version", "user_agent", "supported_versions"] {
+			if let Some(detail) = check.details.get(detail_name) {
+				summary.push(' ');
+				summary.push_str(detail_name);
+				summary.push('=');
+				summary.push_str(detail);
+			}
+		}
 	}
 
 	summary
@@ -2083,7 +2128,14 @@ fn execute_app_server_run_inner(
 	client.mark_initialized()?;
 
 	write_capability_preflight_marker_best_effort(request);
-	run_app_server_capability_preflight(&mut client, &mut recorder, &request.cwd)?;
+
+	let capability_preflight = run_app_server_capability_preflight(
+		&mut client,
+		&mut recorder,
+		&request.cwd,
+		&initialize_response.user_agent,
+	)?;
+
 	write_activity_marker_best_effort_for_request(request);
 
 	if let Some(health_check) = request.command_exec_health_check.as_ref() {
@@ -2128,6 +2180,7 @@ fn execute_app_server_run_inner(
 
 	Ok(AppServerRunResult {
 		user_agent: initialize_response.user_agent,
+		capability_preflight,
 		thread_id,
 		turn_id: turn_result.turn_id,
 		turn_count: turn_result.turn_count,
@@ -2171,6 +2224,7 @@ fn run_app_server_capability_preflight(
 	client: &mut AppServerClient,
 	recorder: &mut RunRecorder<'_>,
 	cwd: &str,
+	user_agent: &str,
 ) -> crate::prelude::Result<AppServerCapabilityPreflightReport> {
 	let mut report = AppServerCapabilityPreflightReport::new();
 	let config = preflight_request(recorder, &report, "config/read", || {
@@ -2226,6 +2280,10 @@ fn run_app_server_capability_preflight(
 				error,
 			);
 		},
+	}
+
+	if !report.has_blockers() {
+		record_app_server_compatibility_guard(&mut report, user_agent);
 	}
 
 	record_app_server_preflight_report(recorder, &report)?;
@@ -2643,6 +2701,91 @@ fn record_mcp_preflight_degraded(report: &mut AppServerCapabilityPreflightReport
 		"mcpServerStatus/list timed out during optional MCP inventory; continuing after core app-server capability checks passed.",
 		details,
 	);
+}
+
+fn record_app_server_compatibility_guard(
+	report: &mut AppServerCapabilityPreflightReport,
+	user_agent: &str,
+) {
+	let codex_cli_version = codex_cli_version_from_user_agent(user_agent);
+	let mut details = BTreeMap::new();
+
+	details.insert(String::from("user_agent"), user_agent.to_owned());
+	details.insert(String::from("supported_versions"), supported_codex_cli_versions_display());
+	details
+		.insert(String::from("support_claim"), APP_SERVER_COMPATIBILITY_SUPPORT_CLAIM.to_owned());
+	details.insert(String::from("evidence"), APP_SERVER_COMPATIBILITY_EVIDENCE.to_owned());
+
+	if let Some(version) = codex_cli_version.as_deref() {
+		details.insert(String::from("codex_cli_version"), format!("codex-cli {version}"));
+	}
+	if let Some(version) = supported_codex_cli_version_from_user_agent(user_agent) {
+		details.insert(String::from("matched_supported_version"), format!("codex-cli {version}"));
+		report.push_ok(
+			PREFLIGHT_CHECK_COMPATIBILITY,
+			"app-server userAgent is within the locally verified Codex CLI capability range.",
+			details,
+		);
+	} else {
+		report.push_blocked(
+			PREFLIGHT_CHECK_COMPATIBILITY,
+			"app-server userAgent is outside the locally verified Codex CLI capability range.",
+			details,
+		);
+	}
+}
+
+fn supported_codex_cli_version_from_user_agent(user_agent: &str) -> Option<&'static str> {
+	let codex_cli_version = codex_cli_version_from_user_agent(user_agent)?;
+
+	SUPPORTED_CODEX_CLI_VERSION_MATCH_ORDER
+		.iter()
+		.copied()
+		.find(|version| codex_cli_version == *version)
+}
+
+fn codex_cli_version_from_user_agent(user_agent: &str) -> Option<String> {
+	let lower_user_agent = user_agent.to_ascii_lowercase();
+
+	if let Some(marker_start) = lower_user_agent.find("codex-cli") {
+		let marker_end = marker_start + "codex-cli".len();
+
+		return user_agent_version_token(&user_agent[marker_end..]);
+	}
+
+	let first_token = user_agent.split_whitespace().next()?;
+	let (product, version) = first_token.rsplit_once('/')?;
+
+	if !product.to_ascii_lowercase().contains("codex") {
+		return None;
+	}
+
+	user_agent_version_token(version)
+}
+
+fn user_agent_version_token(value: &str) -> Option<String> {
+	let version = value
+		.trim_start_matches(|character: char| {
+			character.is_whitespace() || character == '/' || character == ':'
+		})
+		.chars()
+		.take_while(|character| {
+			character.is_ascii_alphanumeric()
+				|| *character == '.'
+				|| *character == '-'
+				|| *character == '_'
+		})
+		.collect::<String>();
+
+	version.chars().next().is_some_and(|character| character.is_ascii_digit()).then_some(version)
+}
+
+fn supported_codex_cli_versions_display() -> String {
+	SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER
+		.iter()
+		.map(|version| format!("codex-cli {version}"))
+		.collect::<Vec<_>>()
+		.join(", ")
 }
 
 fn record_app_server_preflight_report(
