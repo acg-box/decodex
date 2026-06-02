@@ -1,11 +1,11 @@
-name: Refresh GitHub Signals
+name: Refresh Release Delta
 
 permissions:
   contents: write
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -14,9 +14,9 @@ concurrency:
 
 jobs:
   refresh:
-    name: Refresh GitHub-backed Decodex signals
+    name: Refresh Codex release checkpoints
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       GH_API_TOKEN: ${{ secrets.GITHUB_PAT_Y }}
     steps:
@@ -37,40 +37,18 @@ jobs:
         working-directory: site
         run: npm ci
 
-      - name: Install Codex CLI
-        run: npm install -g @openai/codex@0.116.0
-
-      - name: Prepare Codex auth.json
-        env:
-          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+      - name: Refresh release delta
         run: |
-          if [ -z "$CODEX_AUTH_JSON" ]; then
-            echo "CODEX_AUTH_JSON secret is not set." >&2
-            exit 1
-          fi
-
-          codex_home="$RUNNER_TEMP/codex-home"
-          mkdir -p "$codex_home"
-          printf '%s' "$CODEX_AUTH_JSON" > "$codex_home/auth.json"
-          chmod 600 "$codex_home/auth.json"
-          echo "CODEX_HOME=$codex_home" >> "$GITHUB_ENV"
-
-      - name: Verify Codex auth
-        run: codex login status
-
-      - name: Refresh GitHub signal artifacts
-        run: |
-          python3 scripts/github/sync_latest_signals.py \
+          python3 scripts/github/build_release_delta.py \
             --repo openai/codex \
+            --signals-dir site/src/content/signals \
+            --out site/src/content/release-deltas/openai-codex-latest.json \
             --token-env GH_API_TOKEN
 
       - name: Detect content changes
         id: changes
         run: |
           if [ -z "$(git status --porcelain -- \
-            artifacts/github/bundles \
-            artifacts/github/analysis \
-            site/src/content/signals \
             site/src/content/release-deltas/openai-codex-latest.json)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
@@ -81,15 +59,11 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         run: cargo make decodex-checks
 
-      - name: Commit refreshed GitHub artifacts
+      - name: Commit refreshed release delta
         if: steps.changes.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            artifacts/github/bundles \
-            artifacts/github/analysis \
-            site/src/content/signals \
-            site/src/content/release-deltas/openai-codex-latest.json
-          git commit -m "chore(decodex): refresh github signals"
+          git add site/src/content/release-deltas/openai-codex-latest.json
+          git commit -m "chore(decodex): refresh release delta"
           git push origin HEAD:main

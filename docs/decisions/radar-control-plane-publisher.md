@@ -16,7 +16,7 @@ Decision: Treat Decodex as one product with three named capability areas:
   operator status, review handoff, landing, closeout, and cleanup.
 - **Publisher**: public static-site and social publishing surfaces. Publisher consumes
   Radar outputs and produces checked-in signal entries, release-delta content, and
-  reviewable social post drafts for external publication.
+  low-frequency social publication records for external publication.
 
 The temporary A/B repository labels are discussion aids only. Use the capability names
 above in new documentation, issue text, schema names, and operator-facing language.
@@ -27,8 +27,9 @@ Consequences:
   Upstream Codex changes that touch app-server, plugins, browser automation, MCP,
   permission profiles, config, or sandbox behavior should be classified for Control
   Plane impact before they become engineering work.
-- Publisher remains static-first. Public pages and social drafts are generated from
-  checked-in artifacts and reviewed content, not from a live Decodex daemon.
+- Publisher remains static-first. Public pages and social publication records are
+  generated from checked-in artifacts and reviewed content, not from a live Decodex
+  daemon.
 - `@decodexspace` content should not duplicate a release bot. Publisher should turn
   Radar evidence into practical, evidence-backed user and operator angles.
 - Control Plane remains the local execution authority. Publisher content may describe
