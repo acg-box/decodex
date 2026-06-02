@@ -1028,7 +1028,7 @@ struct RadarBackfillReleaseRangeCommand {
 	/// Compare pair limit passed through only by --refresh-release-delta-first.
 	#[arg(long)]
 	refresh_pair_limit: Option<usize>,
-	/// Python executable for non-ported helper boundaries.
+	/// Python executable for the Codex AI analysis helper boundary.
 	#[arg(long, default_value = "python3")]
 	python_bin: String,
 }

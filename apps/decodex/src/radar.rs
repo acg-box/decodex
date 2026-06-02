@@ -82,7 +82,6 @@ const UPSTREAM_SUBJECT_KINDS: &[&str] = &["commit", "pr"];
 const GENERIC_COMMIT_TITLES: &[&str] =
 	&["update", "fix", "fix.", "fix tests", "fix tests.", "merge fixes", "flaky syntax"];
 const CONFIG_FEATURE_CATALOG_PATH: &str = "site/src/generated/codex-config-features.json";
-const BUILD_RELEASE_DELTA_SCRIPT: &str = "scripts/github/build_release_delta.py";
 const RUN_CODEX_ANALYSIS_SCRIPT: &str = "scripts/github/run_codex_analysis.py";
 const HIGH_VALUE_SURFACES: &[&str] = &[
 	"app_server_protocol",
@@ -415,7 +414,7 @@ pub(crate) struct RadarBackfillReleaseRangeRequest {
 	pub(crate) refresh_preview_limit: Option<usize>,
 	/// Compare-pair limit passed through only when refreshing first.
 	pub(crate) refresh_pair_limit: Option<usize>,
-	/// Python executable used for non-ported helper boundaries and the AI boundary.
+	/// Python executable used for the Codex AI analysis helper boundary.
 	pub(crate) python_bin: String,
 }
 
@@ -1252,7 +1251,7 @@ pub(crate) fn backfill_release_range(
 	}
 
 	validate(&RadarValidateRequest { paths: vec![resolve_against(&root, &request.signals_dir)] })?;
-	run_build_release_delta(&root, request, &request.release_delta, false)?;
+	run_refresh_release_delta(request, &request.release_delta, false)?;
 
 	Ok(report)
 }
@@ -2814,7 +2813,7 @@ fn prepare_release_delta_path(
 
 	let release_delta = temp_root.join("release-delta.json");
 
-	run_build_release_delta(root, request, &release_delta, true)?;
+	run_refresh_release_delta(request, &release_delta, true)?;
 
 	Ok(PreparedReleaseDelta { path: release_delta, cleanup_dir: Some(temp_root) })
 }
@@ -2864,40 +2863,34 @@ fn run_codex_analysis(
 	run_helper(command, RUN_CODEX_ANALYSIS_SCRIPT)
 }
 
-fn run_build_release_delta(
-	root: &Path,
+fn run_refresh_release_delta(
 	request: &RadarBackfillReleaseRangeRequest,
 	out: &Path,
 	include_refresh_limits: bool,
 ) -> crate::prelude::Result<()> {
-	let mut command = helper_command(root, request, BUILD_RELEASE_DELTA_SCRIPT);
-
-	command.args([
-		"--repo",
-		request.repo.as_str(),
-		"--signals-dir",
-		&path_arg(root, &request.signals_dir),
-		"--out",
-		&path_arg(root, out),
-	]);
-
-	if let Some(token_env) = &request.token_env {
-		command.args(["--token-env", token_env]);
-	}
+	let mut refresh_request = RadarRefreshReleaseDeltaRequest {
+		repo: request.repo.clone(),
+		signals_dir: request.signals_dir.clone(),
+		out: out.to_path_buf(),
+		token_env: request.token_env.clone(),
+		..RadarRefreshReleaseDeltaRequest::default()
+	};
 
 	if include_refresh_limits {
-		push_optional_limit(&mut command, "--stable-limit", request.refresh_stable_limit);
-		push_optional_limit(&mut command, "--preview-limit", request.refresh_preview_limit);
-		push_optional_limit(&mut command, "--pair-limit", request.refresh_pair_limit);
+		if let Some(limit) = request.refresh_stable_limit {
+			refresh_request.stable_limit = limit;
+		}
+		if let Some(limit) = request.refresh_preview_limit {
+			refresh_request.preview_limit = limit;
+		}
+		if let Some(limit) = request.refresh_pair_limit {
+			refresh_request.pair_limit = limit;
+		}
 	}
 
-	run_helper(command, BUILD_RELEASE_DELTA_SCRIPT)
-}
+	refresh_release_delta(&refresh_request)?;
 
-fn push_optional_limit(command: &mut Command, flag: &str, value: Option<usize>) {
-	if let Some(value) = value {
-		command.args([flag, &value.to_string()]);
-	}
+	Ok(())
 }
 
 fn helper_command(

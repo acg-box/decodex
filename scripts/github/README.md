@@ -1,20 +1,20 @@
-# GitHub Scripts
+# GitHub Script Helpers
 
-This directory owns deterministic GitHub-first Decodex scripts.
+This directory owns the remaining Python helper boundary for GitHub-backed Radar
+analysis. Durable deterministic Radar workflows live in the Rust CLI.
 
-Current scripts:
+Current helper:
 
-- `build_change_bundle.py`
-- `build_release_delta.py`
-- `backfill_release_range.py`
-- `radar_ledger.py`
-- `run_codex_analysis.py`
-- `sync_upstream_radar.py`
-- `validate_change_bundle.py`
-- `validate_upstream_review.py`
-- `validate_social_post.py`
-- `render_signal_entry.py`
-- `validate_signal_entry.py`
+- `run_codex_analysis.py` invokes Codex in a read-only session and writes a validated
+  `analysis_draft` artifact. It is the explicit AI boundary and is not a GitHub
+  Actions entrypoint.
+
+Shared support:
+
+- `contracts.py` supports the AI helper validation path.
+- `analysis_draft.schema.json` is the Codex output schema for that helper.
+- The remaining schema JSON files are checked contract references. They do not define
+  the operator command path.
 
 Rust CLI entrypoints:
 
@@ -24,29 +24,24 @@ Rust CLI entrypoints:
   `artifacts/github/review-queue/openai-codex-latest.json`.
 - `decodex radar refresh-release-delta` refreshes
   `site/src/content/release-deltas/openai-codex-latest.json`.
-- `decodex radar bundle build` replaces deterministic `build_change_bundle.py` bundle
-  generation for PR-first and commit-only inputs.
-- `decodex radar bundle validate` replaces deterministic `validate_change_bundle.py`
-  bundle validation.
-- `decodex radar ledger ...` replaces `radar_ledger.py` bootstrap, ingest,
-  ingest-existing, artifact-link, and summary operations.
+- `decodex radar bundle build` builds deterministic bundles for PR-first and
+  commit-only inputs.
+- `decodex radar bundle validate` validates deterministic bundles.
+- `decodex radar ledger ...` owns bootstrap, ingest, ingest-existing, artifact-link,
+  and summary operations.
 - `decodex radar render-signal` renders `signal_entry/v1` from a validated
   `github_change_bundle/v1` plus Codex-owned `analysis_draft`.
 - `decodex radar backfill-release-range` selects release-window signal gaps and can
   sequence the remaining helper boundaries for local or Codex automation backfills.
 
-The Python scripts remain compatibility and non-ported helper boundaries until cleanup
-issues remove them. In particular, `run_codex_analysis.py` is the explicit Codex AI
-boundary for creating `analysis_draft`; it is not a GitHub Actions entrypoint.
-
 Current checked contracts:
 
-- `analysis_draft.schema.json`
-- `upstream_review_queue/v1` is validated by `contracts.py`
-- `upstream_review.schema.json`
-- `release_delta/v1` is validated by `contracts.py`
-- `upstream_impact.schema.json`
-- `social_post.schema.json`
+- `analysis_draft.schema.json` is the Codex AI helper output schema.
+- `upstream_review_queue/v1` is validated by `decodex radar validate`.
+- `upstream_review.schema.json` is validated by `decodex radar validate`.
+- `release_delta/v1` is validated by `decodex radar validate`.
+- `upstream_impact.schema.json` is validated by `decodex radar validate`.
+- `social_post.schema.json` is validated by `decodex radar validate`.
 
 Contract ownership:
 
@@ -69,7 +64,7 @@ decodex radar render-signal \
   --analysis artifacts/github/analysis/openai-codex-pr-22414.analysis.json \
   --out site/src/content/signals/openai-codex-pr-22414.json
 
-python3 scripts/github/validate_signal_entry.py \
+decodex radar validate \
   site/src/content/signals/openai-codex-pr-22414.json
 ```
 
@@ -117,10 +112,10 @@ decodex radar backfill-release-range \
   --max-prs 3
 ```
 
-These scripts stay deterministic on purpose. GitHub Actions may refresh upstream
-queues, release deltas, and validation. Codex automation owns AI review of queued
-subjects and may then promote source-backed conclusions into `upstream_impact/v1`,
-`analysis_draft`, `decodex radar render-signal` output, or `social_post/v1`.
+GitHub Actions may refresh upstream queues, release deltas, and validation through
+`decodex radar ...`. Codex automation owns AI review of queued subjects and may then
+promote source-backed conclusions into `upstream_impact/v1`, `analysis_draft`,
+`decodex radar render-signal` output, or `social_post/v1`.
 
 Repo-local skills under `dev/skills/` are reasoning instructions for the Codex
 analysis step and for manual Radar/Publisher work. They do not introduce extra
