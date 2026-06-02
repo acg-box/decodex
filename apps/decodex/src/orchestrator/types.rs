@@ -743,6 +743,7 @@ struct OperatorStatusSnapshot {
 	project_id: String,
 	run_limit: usize,
 	warnings: Vec<String>,
+	warning_details: Vec<OperatorSnapshotWarningDetail>,
 	connector_backoffs: Vec<OperatorConnectorBackoffStatus>,
 	projects: Vec<OperatorProjectStatus>,
 	account_control: OperatorCodexAccountControlStatus,
@@ -753,6 +754,15 @@ struct OperatorStatusSnapshot {
 	queued_candidates: Vec<OperatorQueuedIssueStatus>,
 	worktrees: Vec<OperatorWorktreeStatus>,
 	post_review_lanes: Vec<OperatorPostReviewLaneStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorSnapshotWarningDetail {
+	warning: String,
+	project_id: Option<String>,
+	repo_root: Option<String>,
+	reason: String,
+	next_action: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
