@@ -39,7 +39,7 @@ jobs:
 
       - name: Refresh upstream review queue
         run: |
-          python3 scripts/github/sync_upstream_radar.py \
+          cargo run -p decodex --bin decodex -- radar refresh-upstream-queue \
             --repo openai/codex \
             --token-env GH_API_TOKEN \
             --search-limit 40

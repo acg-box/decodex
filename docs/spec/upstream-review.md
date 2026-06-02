@@ -46,6 +46,10 @@ Recommended checked-in location:
 
 - `artifacts/github/review-queue/openai-codex-latest.json`
 
+Rust refresh entrypoint:
+
+- `decodex radar refresh-upstream-queue`
+
 The AI review schema identifier is:
 
 - `upstream_review/v1`

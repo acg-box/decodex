@@ -6,8 +6,10 @@ traceable without putting every raw or low-value artifact into Git.
 Status: normative
 
 Read this when:
-- You are changing `scripts/github/sync_upstream_radar.py`.
+- You are changing `decodex radar refresh-upstream-queue` or
+  `scripts/github/sync_upstream_radar.py`.
 - You are changing `decodex radar ledger ...`.
+- You are changing `scripts/github/radar_ledger.py`.
 - You are importing existing GitHub bundles, analysis drafts, or signal entries into
   historical Radar state.
 - You need to decide what belongs in local history instead of checked-in public
@@ -39,10 +41,11 @@ but it is the preferred place for high-frequency trace and skip history.
 
 ## Schema
 
-The schema is created by `decodex radar ledger bootstrap`. The legacy
-`scripts/github/radar_ledger.py` entrypoint remains available during migration, but
-the Rust `decodex radar ledger ...` surface owns the command path for new ledger
-bootstrap, ingest, ingest-existing, artifact-link, and summary operations.
+The schema is created by `decodex radar refresh-upstream-queue` and
+`decodex radar ledger bootstrap`. The legacy `scripts/github/radar_ledger.py`
+entrypoint remains available during migration, but the Rust
+`decodex radar ledger ...` surface owns the command path for new ledger bootstrap,
+ingest, ingest-existing, artifact-link, and summary operations.
 
 Required tables:
 
@@ -79,13 +82,13 @@ candidate, retry queue, or long low-value analysis.
 
 ## Sync behavior
 
-`scripts/github/sync_upstream_radar.py` writes the local ledger by default. It records
+`decodex radar refresh-upstream-queue` writes the local ledger by default. It records
 every recent commit it inspects, including commits that do not become public signals.
 
 Operators may disable ledger writes with:
 
 ```sh
-python3 scripts/github/sync_upstream_radar.py --no-ledger
+cargo run -p decodex --bin decodex -- radar refresh-upstream-queue --no-ledger
 ```
 
 Existing checked-in artifacts can be imported with:

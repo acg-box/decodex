@@ -27,7 +27,8 @@ use crate::{
 		self, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
 		RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
 		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
-		RadarRenderSignalRequest, RadarValidateRequest,
+		RadarRefreshQueueRequest, RadarRefreshReleaseDeltaRequest, RadarRenderSignalRequest,
+		RadarValidateRequest,
 	},
 	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
 	runtime,
@@ -601,6 +602,8 @@ impl RadarCommand {
 		match &self.command {
 			RadarSubcommand::Bundle(args) => args.run(),
 			RadarSubcommand::Ledger(args) => args.run(),
+			RadarSubcommand::RefreshUpstreamQueue(args) => args.run(),
+			RadarSubcommand::RefreshReleaseDelta(args) => args.run(),
 			RadarSubcommand::Validate(args) => args.run(),
 			RadarSubcommand::RenderSignal(args) => args.run(),
 			RadarSubcommand::BackfillReleaseRange(args) => args.run(),
@@ -769,6 +772,131 @@ impl RadarBundleCommand {
 				Ok(())
 			},
 		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct RadarRefreshUpstreamQueueCommand {
+	/// GitHub repository in owner/name format.
+	#[arg(long, default_value = "openai/codex")]
+	repo: String,
+	/// How many recent upstream commits to inspect.
+	#[arg(long, default_value_t = 40)]
+	search_limit: usize,
+	/// Published signal directory used to suppress already-published subjects.
+	#[arg(long, default_value = "site/src/content/signals")]
+	signals_dir: PathBuf,
+	/// Path to write the deterministic upstream_review_queue/v1 artifact.
+	#[arg(long, default_value = "artifacts/github/review-queue/openai-codex-latest.json")]
+	queue_out: PathBuf,
+	/// Environment variable containing a GitHub token.
+	#[arg(long)]
+	token_env: Option<String>,
+	/// Local SQLite Radar ledger path.
+	#[arg(long, default_value = ".decodex/radar.sqlite3")]
+	ledger: PathBuf,
+	/// Disable local Radar ledger writes.
+	#[arg(long)]
+	no_ledger: bool,
+	/// Print the queue without writing queue-out.
+	#[arg(long)]
+	dry_run: bool,
+}
+impl RadarRefreshUpstreamQueueCommand {
+	fn run(&self) -> Result<()> {
+		let report = radar::refresh_queue(&RadarRefreshQueueRequest {
+			repo: self.repo.clone(),
+			search_limit: self.search_limit,
+			signals_dir: self.signals_dir.clone(),
+			queue_out: self.queue_out.clone(),
+			token_env: self.token_env.clone(),
+			ledger: self.ledger.clone(),
+			no_ledger: self.no_ledger,
+			dry_run: self.dry_run,
+		})?;
+
+		if !self.dry_run {
+			println!(
+				"{}",
+				serde_json::to_string(&serde_json::json!({
+					"repo": self.repo,
+					"recent_commits_scanned": report.recent_commits_scanned,
+					"published_subjects_seen": report.published_subjects_seen,
+					"subjects_queued": report.subjects_queued,
+					"ledger_enabled": if report.ledger_enabled { 1 } else { 0 },
+					"changed": report.changed,
+					"queue_out": report.queue_out.display().to_string(),
+				}))?
+			);
+		}
+
+		Ok(())
+	}
+}
+
+#[derive(Debug, Args)]
+struct RadarRefreshReleaseDeltaCommand {
+	/// GitHub repository in owner/name format.
+	#[arg(long, default_value = "openai/codex")]
+	repo: String,
+	/// Directory containing published signal-entry JSON files.
+	#[arg(long, default_value = "site/src/content/signals")]
+	signals_dir: PathBuf,
+	/// Path to write the release-delta JSON artifact.
+	#[arg(long, default_value = "site/src/content/release-deltas/openai-codex-latest.json")]
+	out: PathBuf,
+	/// Release tag prefix to scope the tracked channel.
+	#[arg(long, default_value = "rust-v")]
+	tag_prefix: String,
+	/// Environment variable containing a GitHub token.
+	#[arg(long)]
+	token_env: Option<String>,
+	/// Maximum recent stable releases to include. Use 0 for all releases at or above the floor.
+	#[arg(long, default_value_t = 0)]
+	stable_limit: usize,
+	/// Maximum recent prereleases to include. Use 0 for all supported prereleases.
+	#[arg(long, default_value_t = 0)]
+	preview_limit: usize,
+	/// Maximum signal-bearing compare entries. Use 0 for all valid pairs.
+	#[arg(long, default_value_t = 24)]
+	pair_limit: usize,
+	/// Minimum stable tag to include in the comparator option set.
+	#[arg(long, default_value = "rust-v0.116.0")]
+	min_stable_tag: String,
+	/// Print the release delta without writing out.
+	#[arg(long)]
+	dry_run: bool,
+}
+impl RadarRefreshReleaseDeltaCommand {
+	fn run(&self) -> Result<()> {
+		let report = radar::refresh_release_delta(&RadarRefreshReleaseDeltaRequest {
+			repo: self.repo.clone(),
+			signals_dir: self.signals_dir.clone(),
+			out: self.out.clone(),
+			tag_prefix: self.tag_prefix.clone(),
+			token_env: self.token_env.clone(),
+			stable_limit: self.stable_limit,
+			preview_limit: self.preview_limit,
+			pair_limit: self.pair_limit,
+			min_stable_tag: self.min_stable_tag.clone(),
+			dry_run: self.dry_run,
+		})?;
+
+		if !self.dry_run {
+			println!(
+				"{}",
+				serde_json::to_string(&serde_json::json!({
+					"repo": self.repo,
+					"stable_tag_name": report.stable_tag_name,
+					"prerelease_tag_name": report.prerelease_tag_name,
+					"comparisons": report.comparisons,
+					"changed": report.changed,
+					"out": report.out.display().to_string(),
+				}))?
+			);
+		}
+
+		Ok(())
 	}
 }
 
@@ -1072,7 +1200,7 @@ enum Command {
 	Maintenance(MaintenanceCommand),
 	/// Manage the global Decodex Codex account pool.
 	Account(AccountCommand),
-	/// Inspect and validate Decodex Radar artifacts.
+	/// Refresh and validate Decodex Radar artifacts.
 	Radar(RadarCommand),
 	/// Validate the local app-server integration boundary.
 	Probe(ProbeCommand),
@@ -1140,6 +1268,10 @@ enum RadarSubcommand {
 	Bundle(RadarBundleCommand),
 	/// Maintain the local Radar SQLite ledger.
 	Ledger(RadarLedgerCommand),
+	/// Refresh the deterministic upstream Radar review queue.
+	RefreshUpstreamQueue(RadarRefreshUpstreamQueueCommand),
+	/// Refresh the stable-versus-prerelease release-delta artifact.
+	RefreshReleaseDelta(RadarRefreshReleaseDeltaCommand),
 	/// Validate checked-in Radar artifact JSON contracts.
 	Validate(RadarValidateCommand),
 	/// Render a signal_entry/v1 artifact from a bundle plus Codex analysis draft.
@@ -1208,6 +1340,7 @@ mod tests {
 		RadarBundleBuildCommand, RadarBundleCommand, RadarBundleSubcommand,
 		RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
 		RadarLedgerIngestExistingCommand, RadarLedgerSubcommand, RadarLedgerSummaryCommand,
+		RadarRefreshReleaseDeltaCommand, RadarRefreshUpstreamQueueCommand,
 		RadarRenderSignalCommand, RadarSubcommand, RadarValidateCommand, RecoverCommand,
 		RecoverSubcommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
 		ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand,
@@ -1567,6 +1700,74 @@ mod tests {
 					)
 				})
 			}) if paths == vec![Path::new("artifacts/github/bundles").to_path_buf()]
+		));
+	}
+
+	#[test]
+	fn parses_radar_refresh_upstream_queue() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"radar",
+			"refresh-upstream-queue",
+			"--repo",
+			"openai/codex",
+			"--token-env",
+			"GH_API_TOKEN",
+			"--search-limit",
+			"40",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::RefreshUpstreamQueue(
+					RadarRefreshUpstreamQueueCommand {
+						repo,
+						token_env: Some(token_env),
+						search_limit: 40,
+						queue_out,
+						..
+					}
+				),
+			}) if repo == "openai/codex"
+				&& token_env == "GH_API_TOKEN"
+				&& queue_out == Path::new("artifacts/github/review-queue/openai-codex-latest.json")
+		));
+	}
+
+	#[test]
+	fn parses_radar_refresh_release_delta() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"radar",
+			"refresh-release-delta",
+			"--repo",
+			"openai/codex",
+			"--signals-dir",
+			"site/src/content/signals",
+			"--out",
+			"site/src/content/release-deltas/openai-codex-latest.json",
+			"--token-env",
+			"GH_API_TOKEN",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::RefreshReleaseDelta(
+					RadarRefreshReleaseDeltaCommand {
+						repo,
+						token_env: Some(token_env),
+						signals_dir,
+						out,
+						pair_limit: 24,
+						..
+					}
+				),
+			}) if repo == "openai/codex"
+				&& token_env == "GH_API_TOKEN"
+				&& signals_dir == Path::new("site/src/content/signals")
+				&& out == Path::new("site/src/content/release-deltas/openai-codex-latest.json")
 		));
 	}
 
