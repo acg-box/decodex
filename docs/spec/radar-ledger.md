@@ -6,7 +6,7 @@ traceable without putting every raw or low-value artifact into Git.
 Status: normative
 
 Read this when:
-- You are changing `scripts/github/sync_latest_signals.py`.
+- You are changing `scripts/github/sync_upstream_radar.py`.
 - You are importing existing GitHub bundles, analysis drafts, or signal entries into
   historical Radar state.
 - You need to decide what belongs in local history instead of checked-in public
@@ -45,7 +45,7 @@ Required tables:
 | Table | Purpose |
 | --- | --- |
 | `upstream_commit` | One row per observed upstream commit, including SHA, title, URL, commit time, PR number when known, and first/last seen timestamps. |
-| `radar_review` | One current review state per commit or PR subject. Status values include `seen`, `skipped`, `watch`, `signal`, `control_plane`, `social`, `deprecated`, and `archived`. |
+| `radar_review` | One current review state per commit or PR subject. Status values include `seen`, `skipped`, `watch`, `signal`, `control_plane`, `social`, `deprecated`, and `archived`. The deterministic queue uses `watch` for subjects awaiting AI review. |
 | `artifact_link` | Links commits or PRs to Git-tracked or archived artifacts, including file path, artifact kind, SHA-256, size, and creation time. |
 | `source_cache` | Optional source cache index for fetched remote payloads when a future cache is added. |
 
@@ -57,7 +57,7 @@ Use the ledger for:
 
 - every recent upstream commit observed by continuous Radar
 - commits skipped because they are low-signal maintenance
-- positive candidates deferred by run budget
+- subjects queued for AI review by `upstream_review_queue/v1`
 - mappings from commits to PRs
 - links from commits or PRs to bundles, analysis drafts, signals, impact notes, social
   drafts, release deltas, archive manifests, or ledger exports
@@ -75,13 +75,13 @@ candidate, retry queue, or long low-value analysis.
 
 ## Sync behavior
 
-`scripts/github/sync_latest_signals.py` writes the local ledger by default. It records
+`scripts/github/sync_upstream_radar.py` writes the local ledger by default. It records
 every recent commit it inspects, including commits that do not become public signals.
 
 Operators may disable ledger writes with:
 
 ```sh
-python3 scripts/github/sync_latest_signals.py --no-ledger
+python3 scripts/github/sync_upstream_radar.py --no-ledger
 ```
 
 Existing checked-in artifacts can be imported with:

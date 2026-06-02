@@ -76,16 +76,14 @@ Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
 
 ## GitHub signal tooling
 
-`scripts/github/` owns deterministic content scripts. Its automated Codex step may
-apply the repo-local code-analysis and GitHub-signal instructions under `dev/skills/`
-to produce the existing `analysis_draft` JSON consumed by `render_signal_entry.py`.
-`sync_latest_signals.py` is the continuous Radar entrypoint: it scans recent upstream
-commits, resolves them back to PRs when possible, and reuses the existing bundle,
-analysis-draft, render, and validation path. `backfill_release_range.py` fills gaps for
-release-window summaries. The broader upstream triage, release-analysis, and X-drafting
-skills remain manual Radar/Publisher reasoning surfaces unless a script explicitly
-wires them into a checked-in contract. Generated GitHub bundles and analysis drafts live under
-`artifacts/github/` and must stay explicit and checked into the repository.
+`scripts/github/` owns deterministic content scripts. `sync_upstream_radar.py` is the
+continuous Radar entrypoint: it scans recent upstream commits, resolves them back to
+PRs when possible, records local ledger state, and writes an
+`upstream_review_queue/v1` artifact for Codex automation. It does not run Codex or
+render public signals. `backfill_release_range.py` fills gaps for release-window
+summaries when an operator or automation chooses to generate signal content. Generated
+GitHub bundles and analysis drafts live under `artifacts/github/` and must stay
+explicit and checked into the repository when promoted into Publisher content.
 
 Raw bundles and analysis drafts are hot artifacts with a 28-day Git retention window.
 Older raw batches move to dedicated GitHub Release assets, with recovery manifests kept
@@ -93,6 +91,7 @@ under `artifacts/archive/index/`.
 
 `artifacts/github/impact/` may hold `upstream_impact/v1` classifications when an
 upstream Codex change has public-signal, Control Plane, or Publisher implications.
+`artifacts/github/review-queue/` may hold the latest deterministic review queue.
 `artifacts/social/` may hold `social_post_draft/v1` drafts before external publication.
 Both remain checked-in review artifacts; neither turns the public site into a live
 service.

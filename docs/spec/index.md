@@ -66,6 +66,8 @@ Then keep the body explicit:
   artifact used by the homepage release-delta module.
 - [`radar-ledger.md`](./radar-ledger.md) defines the local SQLite ledger that keeps
   every observed upstream Codex commit traceable without storing all raw history in Git.
+- [`upstream-review.md`](./upstream-review.md) defines the deterministic upstream review
+  queue and AI review boundary for every observed upstream Codex commit or PR.
 - [`radar-artifact-retention.md`](./radar-artifact-retention.md) defines the 28-day Git
   hot window for raw Radar artifacts, the warm curated artifacts that stay in Git, and
   the GitHub Release archive manifest contract.
