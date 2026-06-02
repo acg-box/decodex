@@ -1,0 +1,65 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-25636",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "25636",
+    "commit_shas": [
+      "c9bdb5255b2b4b5d365a1be3ec3a94e34a4e0af0"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Rename multi-agent v2 assign_task to followup_task",
+        "url": "https://github.com/openai/codex/pull/25636",
+        "meta": "Merged 2026-06-01T17:57:12Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Rename multi-agent v2 assign_task tool",
+        "url": "https://github.com/openai/codex/commit/c9bdb5255b2b4b5d365a1be3ec3a94e34a4e0af0"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-02T08:55:37Z",
+  "observed_change": "MultiAgentV2 renamed the turn-triggering agent tool from assign_task to followup_task while keeping legacy assign_task rollout-trace classification.",
+  "changed_surfaces": [
+    "multi-agent v2 tool spec",
+    "tool handler registry",
+    "default usage hints",
+    "tool planning tests",
+    "rollout trace classification"
+  ],
+  "user_visible_path": "On Codex builds that include PR #25636 with MultiAgentV2 enabled, operators should use followup_task to send a new task to an existing non-root agent and trigger its next turn.",
+  "control_plane_relevance": "Decodex automation, docs, and any app-server or tool-schema integration that mirrors Codex MultiAgentV2 names must stop assuming assign_task is exposed in v2 and should prepare for followup_task.",
+  "compatibility_risk": "Existing Decodex-side prompts, adapters, or docs that invoke assign_task as the v2 trigger tool can drift from upstream once the new schema is active; rollout traces remain backward-compatible for old assign_task events.",
+  "adoption_opportunity": "Prefer followup_task in future Decodex-facing MultiAgentV2 examples while preserving legacy trace and documentation context for historical artifacts.",
+  "community_value": "This is a concise operator-facing rename that explains why older assign_task references may disappear from newer Codex MultiAgentV2 tool lists.",
+  "deprecated_or_breaking_notes": "The v2 visible tool name changes from assign_task to followup_task; upstream tests assert assign_task is absent from the v2 tool plan while rollout-trace dispatch still accepts assign_task as legacy input.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #25636 body states the MultiAgentV2 turn-triggering tool was renamed from assign_task to followup_task.",
+    "codex-rs/core/src/tools/handlers/multi_agents_spec.rs changes the function constructor and exposed tool name to followup_task.",
+    "codex-rs/core/src/tools/spec_plan_tests.rs adds followup_task to the v2 visible tool set and asserts assign_task is absent.",
+    "codex-rs/rollout-trace/src/tool_dispatch.rs continues to classify both followup_task and assign_task as AssignAgentTask for historical traces.",
+    "Normalized bundle artifacts/github/bundles/openai-codex-pr-25636.json records 11 changed files and the merged commit c9bdb5255b2b4b5d365a1be3ec3a94e34a4e0af0."
+  ],
+  "caveats": "The change is source-confirmed upstream; downstream availability still depends on which Codex build or app-server schema a user is running.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The rename can affect Decodex Control Plane compatibility and should be tracked as an upstream impact."
+    },
+    {
+      "type": "social_post",
+      "reason": "The rename is useful to explain publicly for operators following Codex MultiAgentV2 tooling changes."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should audit its own prompts, docs, and adapters for assign_task assumptions before adopting newer MultiAgentV2 schemas."
+    }
+  ]
+}

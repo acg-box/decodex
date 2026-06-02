@@ -6,7 +6,8 @@ Status: normative
 
 Read this when:
 - You are changing the homepage reset-status widget.
-- You are changing how Decodex decides whether "Are we reset today?" is `Yes`, `No`, or `Unknown`.
+- You are changing how Decodex decides whether "Rate limit reset today?" is `Yes`,
+  `No`, or `Unknown`.
 - You are producing or reviewing the reset-status artifact.
 
 Not this document:
@@ -35,7 +36,7 @@ this widget. The site reads the latest checked-in reset-status artifact under:
 The artifact schema is:
 
 - `schema`: must be `reset_status/v1`
-- `question`: must be the rendered question, currently `Are we reset today?`
+- `question`: must be the rendered question, currently `Rate limit reset today?`
 - `answer`: one of `yes`, `no`, or `unknown`
 - `confidence`: one of `confirmed`, `likely`, or `weak`
 - `observed_for_date`: the date being judged, formatted as `YYYY-MM-DD`
@@ -69,6 +70,11 @@ visibility prevents a useful judgment.
 The reviewer must collect today's candidate posts first, then make the semantic decision.
 Good evidence can come from X profile results, X search results, quoted context, or visible
 thread context.
+
+Chrome/X tabs used for search, profile review, or thread context are temporary
+observation resources. Close or release them after writing the artifact. Keep a tab
+open only when the run must hand off a login, CAPTCHA, or other human-only X state to
+the operator.
 
 Do not mark `yes` from generic words such as `reset`, `limit`, `fast`, `quota`, or
 `rate` unless the surrounding context is about rate-limit reset behavior.
