@@ -256,10 +256,16 @@ fn operator_dashboard_patches_active_run_cards_without_replacing_the_list() {
 	let response = dashboard_response();
 
 	assert!(response.contains("function renderStableList(container, html)"));
+	assert!(response.contains("function animateStableListSize(container, startHeight)"));
+	assert!(response.contains("function markStableListEnter(node)"));
 	assert!(response.contains("function patchChildNodes(current, next)"));
 	assert!(response.contains("function activeRunRenderKey(run)"));
 	assert!(response.contains("data-render-key=\"${escapeHtml(renderKey)}\""));
 	assert!(response.contains("renderStableList(\n\t\t\t\t\tnodes.activeRuns,"));
+	assert!(response.contains("markStableListEnter(clone);"));
+	assert!(response.contains("container.style.height = `${startHeight}px`;"));
+	assert!(response.contains(".is-list-entering"));
+	assert!(response.contains("@keyframes stable-list-item-enter"));
 	assert!(!response.contains("nodes.activeRuns.innerHTML = runs"));
 	assert!(response.contains("return node.dataset.renderKey || node.dataset.detailKey || \"\";"));
 	assert!(response.contains("current.closest(\"details.is-animating\")"));
