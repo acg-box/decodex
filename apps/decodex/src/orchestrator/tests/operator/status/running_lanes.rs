@@ -234,9 +234,10 @@ fn operator_status_snapshot_updates_owned_merged_worktree_hygiene_without_global
 
 #[test]
 fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let run_id = "xy-392-attempt-1-1777551056";
+	let channel_path = temp_dir.path().join("control.channel");
 	let mut issue = sample_issue_with_sort_fields(
 		"issue-active",
 		"XY-392",
@@ -261,6 +262,14 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, run_id, "In Progress")
 		.expect("active lease should record");
+	state_store.update_run_thread(run_id, "thread-1").expect("thread should record");
+	state_store.update_run_turn(run_id, "turn-1").expect("turn should record");
+
+	std::fs::write(&channel_path, "ready\n").expect("control channel should write");
+
+	state_store
+		.publish_run_control_channel_for_active_attempt(run_id, 1, &channel_path, "local_file")
+		.expect("control channel should publish");
 
 	let snapshot = orchestrator::build_live_operator_status_snapshot(
 		&tracker,
@@ -300,6 +309,15 @@ fn live_operator_status_snapshot_hydrates_active_run_issue_display_metadata() {
 	assert_eq!(
 		snapshot_json["active_runs"][0]["private_evidence"]["read_command"],
 		format!("decodex evidence XY-392 --run-id {run_id} --attempt 1 --json")
+	);
+	assert_eq!(snapshot_json["active_runs"][0]["control_capability"]["status"], "active");
+	assert_eq!(
+		snapshot_json["active_runs"][0]["control_capability"]["thread_id"],
+		"thread-1"
+	);
+	assert_eq!(
+		snapshot_json["active_runs"][0]["control_capability"]["turn_id"],
+		"turn-1"
 	);
 }
 
