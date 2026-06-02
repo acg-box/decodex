@@ -5,7 +5,7 @@ Purpose: Define the normalized GitHub input bundle that feeds Decodex signal ana
 Status: normative
 
 Read this when:
-- You are writing GitHub collection or normalization scripts.
+- You are changing `decodex radar bundle build` or bundle normalization behavior.
 - You are deciding what data Codex should read before drafting a signal.
 - You are validating whether a bundle contains enough context for GitHub-first analysis.
 
@@ -25,8 +25,8 @@ decodex radar bundle build --repo openai/codex --pr 15222 --out artifacts/github
 decodex radar bundle validate artifacts/github/bundles/openai-codex-pr-15222.json
 ```
 
-The legacy Python scripts remain shared migration contracts until the final cleanup
-issue removes them.
+The Rust `decodex radar bundle ...` surface is the single active deterministic bundle
+command path.
 
 Defines:
 - The canonical `github_change_bundle/v1` shape.
