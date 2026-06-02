@@ -23,6 +23,7 @@ mod prelude {
 }
 mod radar;
 mod recovery;
+mod run_control;
 mod runtime;
 mod tracker;
 mod worktree;

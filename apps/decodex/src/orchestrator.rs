@@ -1,3 +1,10 @@
+mod lane_control;
+
+pub(crate) use lane_control::{
+	DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneInspectRequest, LaneInterruptRequest, interrupt_lane,
+	print_lane_inspect, steer_lane,
+};
+
 #[cfg(unix)] use std::os::fd::AsRawFd;
 use std::{
 	cmp::Ordering,
@@ -34,8 +41,6 @@ include!("orchestrator/types.rs");
 include!("orchestrator/entrypoints.rs");
 
 include!("orchestrator/operator_http.rs");
-
-include!("orchestrator/lane_control.rs");
 
 include!("orchestrator/pull_request_review.rs");
 
@@ -85,7 +90,10 @@ const OPERATOR_LIVE_ENDPOINT_PATH: &str = "/livez";
 const OPERATOR_ACCOUNTS_ENDPOINT_PATH: &str = "/api/accounts";
 const OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH: &str = "/api/operator-snapshot";
 const OPERATOR_LINEAR_SCAN_ENDPOINT_PATH: &str = "/api/linear-scan";
-const OPERATOR_LANE_STEER_ENDPOINT_PATH: &str = "/api/lane-steer";
+const OPERATOR_LANE_INSPECT_ENDPOINT_PATH: &str = "/api/lane/inspect";
+const OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH: &str = "/api/lane/interrupt";
+const OPERATOR_LANE_STEER_ENDPOINT_PATH: &str = "/api/lane/steer";
+const OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH: &str = "/api/lane-steer";
 const OPERATOR_STATE_MAX_REQUEST_BYTES: usize = 256 * 1_024;
 const OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES: usize = 64 * 1_024;
 const OPERATOR_STATE_HEADER_TERMINATOR: &[u8] = b"\r\n\r\n";

@@ -149,9 +149,11 @@ the current normal dispatch preflight. Decodex's intended lane-control use is:
 - no operator-facing `thread/inject_items` feature in this rollout.
 
 If generated schema or live capability probing shows that `turn/interrupt` or
-`turn/steer` is unavailable, the CLI/API control reports that control as unsupported
-for the active lane instead of failing ordinary issue dispatch. The lane-control
-contract and support matrix live in [`lane-control.md`](./lane-control.md).
+`turn/steer` is unavailable, the CLI/API control must report that control as
+unsupported for the active lane instead of failing ordinary issue dispatch. The
+lane-control contract and support matrix live in [`lane-control.md`](./lane-control.md).
+Decodex currently implements `turn/interrupt` and `turn/steer` through the child-owned
+app-server connection for active turns.
 
 ## Required request flow
 
@@ -317,6 +319,25 @@ Decodex's intended use is soft active-turn interruption from a CLI/API operator
 control. It should target the current known thread and turn, request a graceful turn
 stop through app-server, and leave outcome classification to the Decodex runtime.
 
+Request parameters:
+
+```json
+{
+  "threadId": "<thread id>",
+  "turnId": "<turn id>"
+}
+```
+
+Decodex treats the app-server response as protocol evidence rather than a private
+payload to expose. The local control response records a summary such as object keys or
+array length, plus a normalized result:
+
+- `soft_delivered` when app-server accepts the JSON-RPC request
+- `soft_failed` when the method is unsupported, times out, or returns another protocol
+  error
+- `rejected` when the child process finds that the requested project, issue, run,
+  attempt, thread, or turn no longer matches the active turn
+
 `turn/interrupt` must not:
 
 - mutate tracker state directly
@@ -324,9 +345,9 @@ stop through app-server, and leave outcome classification to the Decodex runtime
 - clear leases without runtime classification
 - replace the hard-interrupt process fallback when app-server is unreachable
 
-When implemented, Decodex should prefer `turn/interrupt` before signaling the child
-process. A hard interrupt remains only a fallback after soft interrupt is unavailable,
-times out, or cannot be routed to the live app-server session.
+Decodex prefers `turn/interrupt` before signaling the child process. A hard interrupt
+remains only a fallback after explicit operator intent and after soft interrupt is
+unavailable, times out, or cannot be routed to the live app-server session.
 
 ## `turn/steer`
 
@@ -339,15 +360,6 @@ CLI/API control surface. The bottom-layer app-server/protocol/runtime shape must
 hard-limit task content categories. It should carry the operator's instruction broadly
 and leave policy constraints to Decodex audit, privacy, workflow, recovery, and
 agent-skill layers.
-
-Decodex sends `turn/steer` only from the active attempt process that owns the live
-app-server connection. `decodex lane steer` and `POST /api/lane-steer` first resolve
-the local run-control channel, require `expectedTurnId`, audit accepted or rejected
-state, and queue a local channel request. The active attempt rechecks the current turn
-before sending app-server params `{ threadId, expectedTurnId, input }` and records the
-returned `turnId` or a normalized failure class. App-server
-`activeTurnNotSteerable` is surfaced as `active_turn_not_steerable`, distinct from
-unsupported or generic app-server steer failures.
 
 `turn/steer` must not be treated as:
 
@@ -366,11 +378,10 @@ Method:
 
 - `thread/inject_items`
 
-Raw item injection is deferred as an operator feature. Decodex should not expose
+Raw item injection is deferred as an operator feature. Decodex does not expose
 `thread/inject_items` through lane-control CLI/API in this rollout because raw item
 insertion has broader transcript-shaping semantics than the intended operator steer
-contract. Use `turn/steer` for active-lane steering through the supported CLI/API
-lane-control surface.
+contract. Use `turn/steer` for active-lane steering.
 
 ## `command/exec`
 
