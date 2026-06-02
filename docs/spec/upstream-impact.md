@@ -1,7 +1,7 @@
 # Upstream Impact
 
 Purpose: Define how Decodex classifies upstream Codex changes before they become public
-signals, Control Plane follow-up work, or social publishing drafts.
+signals, Control Plane follow-up work, or social publishing records.
 
 Status: normative
 
@@ -13,8 +13,10 @@ Read this when:
 
 Not this document:
 - The GitHub input bundle schema. Read [`github-change-bundle.md`](./github-change-bundle.md).
+- The upstream review queue and AI review boundary. Read
+  [`upstream-review.md`](./upstream-review.md).
 - The published site signal schema. Read [`signal-entry.md`](./signal-entry.md).
-- The social post draft schema. Read [`social-post-draft.md`](./social-post-draft.md).
+- The social publishing schema. Read [`social-publishing.md`](./social-publishing.md).
 - The operator procedure for publishing. Read
   [`../runbook/social-publishing-workflow.md`](../runbook/social-publishing-workflow.md).
 
@@ -52,7 +54,7 @@ Recommended checked-in location:
 Optional fields:
 
 - `candidate_followups`: bounded engineering or research follow-up suggestions.
-- `social_notes`: notes useful to a later `social_post_draft/v1`.
+- `social_notes`: notes useful to a later `social_post/v1`.
 - `caveats`: uncertainty, version gating, platform limits, or rollout limits.
 
 ## Control Plane impact ladder
@@ -103,8 +105,10 @@ summary.
 `upstream_impact/v1` is an editorial bridge artifact:
 
 - It may consume `github_change_bundle/v1`.
+- It should normally consume a source-backed `upstream_review/v1` conclusion when the
+  change came from continuous Radar.
 - It may support a `signal_entry/v1`.
-- It may support a `social_post_draft/v1`.
+- It may support a `social_post/v1`.
 - It may justify a later Linear issue or implementation brief.
 
 It does not replace any of those artifacts.
