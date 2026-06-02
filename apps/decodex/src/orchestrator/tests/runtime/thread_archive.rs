@@ -1,4 +1,4 @@
-use crate::agent::AppServerRunResult;
+use crate::agent::{AppServerCapabilityPreflightReport, AppServerRunResult};
 
 #[test]
 fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
@@ -54,6 +54,7 @@ fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 		};
 	let run_result = AppServerRunResult {
 		user_agent: String::from("codex-test"),
+		capability_preflight: AppServerCapabilityPreflightReport::new(),
 		thread_id: String::from("thread-current"),
 		turn_id: String::from("turn-current"),
 		turn_count: 1,
