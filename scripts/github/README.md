@@ -19,8 +19,16 @@ Current scripts:
 Rust CLI foundation:
 
 - `decodex radar validate` validates checked Radar artifact JSON contracts from the
-  Rust CLI. It is additive; the Python scripts remain the active Makefile and workflow
-  entrypoints until downstream migration issues replace them.
+  Rust CLI.
+- `decodex radar bundle build` replaces deterministic `build_change_bundle.py` bundle
+  generation for PR-first and commit-only inputs.
+- `decodex radar bundle validate` replaces deterministic `validate_change_bundle.py`
+  bundle validation.
+- `decodex radar ledger ...` replaces `radar_ledger.py` bootstrap, ingest,
+  ingest-existing, artifact-link, and summary operations.
+
+The Python scripts remain checked shared contracts during migration. Do not delete them
+until the final cleanup issue.
 
 Current checked contracts:
 
@@ -42,7 +50,7 @@ Contract ownership:
 Example flow:
 
 ```bash
-python3 scripts/github/build_change_bundle.py \
+decodex radar bundle build \
   --repo openai/codex \
   --pr 15222 \
   --out artifacts/github/bundles/openai-codex-pr-15222.json
@@ -74,7 +82,7 @@ Use `--no-ledger` only for throwaway runs. To bootstrap the ledger from existing
 checked-in artifacts:
 
 ```bash
-python3 scripts/github/radar_ledger.py ingest-existing
+decodex radar ledger ingest-existing
 ```
 
 Release-window gap fill:
