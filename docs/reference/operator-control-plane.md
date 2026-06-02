@@ -150,10 +150,18 @@ The browser dashboard reads the complete published state from the local
 published snapshots, active-lane activity updates, and local dashboard control
 acknowledgements. `GET /api/operator-snapshot` is the Decodex App read API over the
 same runtime database, not a browser-dashboard polling authority and not a sign that
-the dev listener owns scheduling. The current browser UI keeps live updates
-unscoped and exposes explicit stop controls for active lanes with a known live child
-process plus account-pool selection controls; project watch, project pause/resume,
-and manual retry controls are intentionally not shown. `runActivity.activeRunsComplete`
+the dev listener owns scheduling.
+
+For the lane-control rollout, active-lane UI posture is observe-only. The dashboard
+renders active-lane state, protocol activity, liveness, private-evidence references,
+and local acknowledgement/account controls, but it is not the supported place to author
+steer, retry, task replacement, or lifecycle mutations. CLI/API is the first
+operator-control surface for lane control, governed by
+[`../spec/lane-control.md`](../spec/lane-control.md). Existing low-level WebSocket
+control handlers, including the hard stop fallback, are not the broad lane-control
+contract and must not be expanded into dashboard steer/retry/task controls in this
+rollout. Project watch, project pause/resume buttons, manual retry controls, and active
+lane steer controls are intentionally not shown. `runActivity.activeRunsComplete`
 marks whether a payload is the complete active-run list; subscription-filtered
 payloads set it to `false`, so consumers must not treat a missing run in that payload
 as ended.
@@ -162,11 +170,13 @@ operator action, snapshots may also include `warning_details` entries with the
 affected `project_id`, `repo_root`, reason, and next action; for example, a stale
 registered project whose repo path is no longer a Git checkout can explain the bad
 project instead of only surfacing `worktree_hygiene_unavailable`.
-The stop control signals the recorded child process for that run, marks the local
-attempt interrupted, and releases the local queue lease. `ack` is dashboard-local
-acknowledgement only. The socket is not a browser connection to Codex app-server,
-GitHub, or Linear, and it does not make high-frequency protocol activity durable
-outside the local operator surface.
+The existing hard stop fallback, where available, signals the recorded child process
+for that run, marks the local attempt interrupted, and releases the local queue lease.
+It is an emergency fallback, not the preferred lane-control path. Soft interruption
+through CLI/API `turn/interrupt` should become the preferred active-turn control once
+implemented. `ack` is dashboard-local acknowledgement only. The socket is not a browser
+connection to Codex app-server, GitHub, or Linear, and it does not make high-frequency
+protocol activity durable outside the local operator surface.
 
 | Section | Meaning |
 | --- | --- |
@@ -380,6 +390,7 @@ rate-limited, or unavailable.
 
 These directions were discussed but are not part of the current implemented contract:
 
+- Active-lane UI controls for steer, retry, task replacement, or lifecycle mutation.
 - Conflict-domain scheduling for `ui-preview`, `docs`, `tests`, `runtime`, or similar
   lane classes.
 - Demo batch planning that automatically selects two or three small visible issues and
@@ -388,6 +399,7 @@ These directions were discussed but are not part of the current implemented cont
 - Inferring registered projects by scanning `.codex` history or repository-local config
   files.
 - Treating Linear comments as the real-time runtime backend.
+- Exposing raw `thread/inject_items` as an operator lane-control feature.
 
 If any of these become implementation work, promote the chosen behavior into the
 governing spec first, then update the operator runbook and this reference.
@@ -395,6 +407,7 @@ governing spec first, then update the operator runbook and this reference.
 ## Authority Links
 
 - Runtime contract: [`../spec/runtime.md`](../spec/runtime.md)
+- Lane-control capability contract: [`../spec/lane-control.md`](../spec/lane-control.md)
 - Linear execution ledger schema: [`../spec/linear-execution-ledger.md`](../spec/linear-execution-ledger.md)
 - Pilot procedure: [`../runbook/self-dogfood-pilot.md`](../runbook/self-dogfood-pilot.md)
 - Workspace layout: [`./workspace-layout.md`](./workspace-layout.md)

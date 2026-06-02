@@ -141,6 +141,18 @@ thread token-usage updates. This summary is published through the operator statu
 snapshot and dashboard only; high-frequency protocol details remain out of Linear
 unless an existing lifecycle event summarizes them.
 
+Lane-control protocol methods are an additive operator-control extension, not part of
+the current normal dispatch preflight. Decodex's intended lane-control use is:
+
+- `turn/interrupt` for soft active-turn interruption when the active turn id is known.
+- `turn/steer` for broad operator-supplied steering text.
+- no operator-facing `thread/inject_items` feature in this rollout.
+
+If generated schema or live capability probing shows that `turn/interrupt` or
+`turn/steer` is unavailable, the CLI/API control must report that control as
+unsupported for the active lane instead of failing ordinary issue dispatch. The
+lane-control contract and support matrix live in [`lane-control.md`](./lane-control.md).
+
 ## Required request flow
 
 1. Start the child process.
@@ -294,6 +306,62 @@ Decodex must not inject project-owned config, model, personality, service-tier, 
 `TurnStartResponse` returns the accepted turn object.
 
 Within one bounded Decodex run attempt, the runtime may start multiple turns on the same thread. Thread-level settings remain stable from `thread/start`; continuation policy such as `execution.max_turns` and between-turn tracker revalidation stays in Decodex, not in the app-server protocol.
+
+## `turn/interrupt`
+
+Method:
+
+- `turn/interrupt`
+
+Decodex's intended use is soft active-turn interruption from a CLI/API operator
+control. It should target the current known thread and turn, request a graceful turn
+stop through app-server, and leave outcome classification to the Decodex runtime.
+
+`turn/interrupt` must not:
+
+- mutate tracker state directly
+- imply manual attention or review handoff by itself
+- clear leases without runtime classification
+- replace the hard-interrupt process fallback when app-server is unreachable
+
+When implemented, Decodex should prefer `turn/interrupt` before signaling the child
+process. A hard interrupt remains only a fallback after soft interrupt is unavailable,
+times out, or cannot be routed to the live app-server session.
+
+## `turn/steer`
+
+Method:
+
+- `turn/steer`
+
+Decodex's intended use is operator-supplied steer text for an active lane through the
+CLI/API control surface. The bottom-layer app-server/protocol/runtime shape must not
+hard-limit task content categories. It should carry the operator's instruction broadly
+and leave policy constraints to Decodex audit, privacy, workflow, recovery, and
+agent-skill layers.
+
+`turn/steer` must not be treated as:
+
+- a tracker mutation
+- a hidden task replacement
+- a bypass around review, validation, or terminal finalization
+- a way for an agent to self-author new scope without an operator request
+
+If a requested steer materially replaces the issue objective or acceptance contract,
+Decodex must route that as explicit lifecycle/requeue work instead of silently steering
+the active lane into a different task.
+
+## `thread/inject_items`
+
+Method:
+
+- `thread/inject_items`
+
+Raw item injection is deferred as an operator feature. Decodex should not expose
+`thread/inject_items` through lane-control CLI/API in this rollout because raw item
+insertion has broader transcript-shaping semantics than the intended operator steer
+contract. Use `turn/steer` for active-lane steering once the CLI/API implementation is
+available.
 
 ## `command/exec`
 

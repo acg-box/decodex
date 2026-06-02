@@ -19,6 +19,9 @@ Operate Decodex as the retained-lane control plane for automatic development.
 - `docs/spec/tracker-tools.md` owns issue-scoped tracker tool semantics.
 - `docs/spec/post-review-lifecycle.md` owns post-`In Review` repair, landing, closeout,
   and cleanup phases.
+- `docs/spec/lane-control.md` owns CLI/API-first lane-control capabilities, including
+  inspect, pause/resume, scan, interrupt, steer, retained resume/retry, manual
+  attention, and deferred controls.
 - `docs/spec/workflow-file.md` owns `WORKFLOW.md` schema and field semantics.
 - `docs/reference/operator-control-plane.md` owns the current status/dashboard field map.
 
@@ -104,6 +107,39 @@ terminal automation signal.
   scan. Missing cwd coverage or zero enabled skills remain blockers.
 - Before assuming a lane is stuck, compare lane phase, wait reason, last run activity,
   protocol activity, active lease state, and child-agent activity when present.
+
+## Lane Controls
+
+Read `docs/spec/lane-control.md` before using or explaining operator controls.
+
+Rules for agents:
+
+- Inspect first with `decodex status`, `decodex status --json`, `decodex diagnose
+  --json`, `decodex evidence <ISSUE>`, or the dashboard snapshot. Confirm project id,
+  issue id, branch, run id, attempt, thread/turn evidence, process liveness, tracker
+  state, and PR lineage before mutating anything.
+- Use project dispatch pause/resume only for future intake. `decodex project disable
+  <service-id>` pauses new dispatch; `decodex project enable <service-id>` resumes it.
+  Neither command kills active lanes.
+- Request Linear refresh with `POST /api/linear-scan` when a newly queued or relabeled
+  issue should be observed before the next 5-minute poll.
+- Prefer soft interrupt through the CLI/API `turn/interrupt` control when it exists and
+  the active turn can be targeted. Use hard process interruption only as a fallback when
+  soft interrupt is unavailable, timed out, or impossible.
+- Use steer only through the CLI/API lane-control surface and only when the operator
+  supplies the steer text. Bottom-layer steer support is broad; policy, audit, privacy,
+  workflow, recovery, and skills provide the guardrails.
+- Treat task replacement as explicit lifecycle work, not steer. If the operator wants a
+  different objective or acceptance contract, pause or stop if needed, update/requeue
+  the issue or create a new lane, and preserve audit evidence.
+- Use retained resume/retry through runtime lifecycle paths such as `decodex run
+  <ISSUE>` only after inspection proves the retained worktree, issue, branch, runtime
+  evidence, and PR lineage still match.
+- Do not expose or use raw `thread/inject_items` as an operator feature.
+- Do not mutate Linear tracker state directly to simulate lane controls. During an
+  owned agent run, use issue-scoped tools for progress, review handoff, manual
+  attention, and terminal finalization. Outside the owned lane, use documented
+  CLI/API controls and the labels skill.
 
 ## Boundaries
 
