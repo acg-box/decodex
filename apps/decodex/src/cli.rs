@@ -23,7 +23,11 @@ use crate::{
 		self, DiagnoseRequest, EvidenceRequest, IssueDispatchMode, RunOnceRequest, ServeRequest,
 	},
 	prelude::{Result, eyre},
-	radar::{self, RadarValidateRequest},
+	radar::{
+		self, RadarBundleBuildRequest, RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest,
+		RadarLedgerBootstrapRequest, RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest,
+		RadarLedgerSummaryRequest, RadarValidateRequest,
+	},
 	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
 	runtime,
 };
@@ -594,9 +598,207 @@ struct RadarCommand {
 impl RadarCommand {
 	fn run(&self) -> Result<()> {
 		match &self.command {
+			RadarSubcommand::Bundle(args) => args.run(),
+			RadarSubcommand::Ledger(args) => args.run(),
 			RadarSubcommand::Validate(args) => args.run(),
 		}
 	}
+}
+
+#[derive(Debug, Args)]
+struct RadarLedgerCommand {
+	/// SQLite ledger path.
+	#[arg(long, value_name = "DB", default_value_os_t = radar::default_ledger_path())]
+	db: PathBuf,
+	#[command(subcommand)]
+	command: RadarLedgerSubcommand,
+}
+impl RadarLedgerCommand {
+	fn run(&self) -> Result<()> {
+		match &self.command {
+			RadarLedgerSubcommand::Bootstrap => {
+				let path = radar::ledger_bootstrap(&RadarLedgerBootstrapRequest {
+					db_path: self.db.clone(),
+				})?;
+
+				println!("{}", path.display());
+
+				Ok(())
+			},
+			RadarLedgerSubcommand::Ingest(args) => {
+				let summary = radar::ledger_ingest(&RadarLedgerIngestRequest {
+					db_path: self.db.clone(),
+					bundle_path: args.bundle.clone(),
+					analysis_path: args.analysis.clone(),
+					signal_path: args.signal.clone(),
+				})?;
+
+				println!("{}", serde_json::to_string_pretty(&summary)?);
+
+				Ok(())
+			},
+			RadarLedgerSubcommand::IngestExisting(args) => {
+				let summary = radar::ledger_ingest_existing(&RadarLedgerIngestExistingRequest {
+					db_path: self.db.clone(),
+					bundles_dir: args.bundles_dir.clone(),
+					analysis_dir: args.analysis_dir.clone(),
+					signals_dir: args.signals_dir.clone(),
+				})?;
+
+				println!("{}", serde_json::to_string_pretty(&summary)?);
+
+				Ok(())
+			},
+			RadarLedgerSubcommand::ArtifactLink(args) => {
+				let summary = radar::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
+					db_path: self.db.clone(),
+					repo: args.repo.clone(),
+					subject_kind: args.subject_kind.clone(),
+					subject_id: args.subject_id.clone(),
+					artifact_kind: args.artifact_kind.clone(),
+					path: args.path.clone(),
+				})?;
+
+				println!("{}", serde_json::to_string_pretty(&summary)?);
+
+				Ok(())
+			},
+			RadarLedgerSubcommand::Summary(args) => {
+				let summary =
+					radar::ledger_summary(&RadarLedgerSummaryRequest { db_path: self.db.clone() })?;
+
+				if args.json {
+					println!("{}", serde_json::to_string_pretty(&summary)?);
+				} else {
+					for (key, value) in summary {
+						println!("{key}\t{value}");
+					}
+				}
+
+				Ok(())
+			},
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct RadarLedgerIngestCommand {
+	/// Path to a `github_change_bundle/v1` JSON file.
+	#[arg(long)]
+	bundle: PathBuf,
+	/// Optional analysis draft path.
+	#[arg(long)]
+	analysis: Option<PathBuf>,
+	/// Optional rendered `signal_entry/v1` path.
+	#[arg(long)]
+	signal: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct RadarLedgerIngestExistingCommand {
+	/// Directory containing `github_change_bundle/v1` JSON files.
+	#[arg(long, default_value = "artifacts/github/bundles")]
+	bundles_dir: PathBuf,
+	/// Directory containing analysis draft JSON files.
+	#[arg(long, default_value = "artifacts/github/analysis")]
+	analysis_dir: PathBuf,
+	/// Directory containing rendered `signal_entry/v1` JSON files.
+	#[arg(long, default_value = "site/src/content/signals")]
+	signals_dir: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct RadarLedgerArtifactLinkCommand {
+	/// GitHub repository in owner/name format.
+	#[arg(long)]
+	repo: String,
+	/// Subject kind, either `commit` or `pr`.
+	#[arg(long)]
+	subject_kind: String,
+	/// Subject id, either a commit SHA or pull request number.
+	#[arg(long)]
+	subject_id: String,
+	/// Artifact kind to link.
+	#[arg(long)]
+	artifact_kind: String,
+	/// Artifact path to digest and link.
+	#[arg(long)]
+	path: PathBuf,
+}
+
+#[derive(Debug, Args)]
+struct RadarLedgerSummaryCommand {
+	/// Emit machine-readable JSON.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct RadarBundleCommand {
+	#[command(subcommand)]
+	command: RadarBundleSubcommand,
+}
+impl RadarBundleCommand {
+	fn run(&self) -> Result<()> {
+		match &self.command {
+			RadarBundleSubcommand::Build(args) => {
+				let path = radar::build_bundle(&RadarBundleBuildRequest {
+					repo: args.repo.clone(),
+					pr: args.pr,
+					commit: args.commit.clone(),
+					force_commit_only: args.force_commit_only,
+					token_env: args.token_env.clone(),
+					out: args.out.clone(),
+					notes: args.note.clone(),
+				})?;
+
+				println!("{}", path.display());
+
+				Ok(())
+			},
+			RadarBundleSubcommand::Validate(args) => {
+				let report = radar::validate_bundles(&RadarBundleValidateRequest {
+					paths: args.paths.clone(),
+				})?;
+
+				println!("OK ({} GitHub change bundle JSON files validated)", report.checked_files);
+
+				Ok(())
+			},
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct RadarBundleBuildCommand {
+	/// GitHub repository in owner/name format.
+	#[arg(long)]
+	repo: String,
+	/// Pull request number to fetch.
+	#[arg(long, conflicts_with = "commit", required_unless_present = "commit")]
+	pr: Option<u64>,
+	/// Commit SHA to fetch when PR context is unavailable.
+	#[arg(long, required_unless_present = "pr")]
+	commit: Option<String>,
+	/// Skip PR lookup for commit input.
+	#[arg(long, requires = "commit")]
+	force_commit_only: bool,
+	/// Environment variable name holding a GitHub token.
+	#[arg(long)]
+	token_env: Option<String>,
+	/// Path to write the bundle JSON.
+	#[arg(long)]
+	out: PathBuf,
+	/// Additional note strings to store in the bundle.
+	#[arg(long)]
+	note: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+struct RadarBundleValidateCommand {
+	/// Bundle JSON files or directories.
+	#[arg(value_name = "PATH")]
+	paths: Vec<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -817,8 +1019,35 @@ enum MaintenanceSubcommand {
 
 #[derive(Debug, Subcommand)]
 enum RadarSubcommand {
+	/// Build and validate deterministic GitHub change bundles.
+	Bundle(RadarBundleCommand),
+	/// Maintain the local Radar SQLite ledger.
+	Ledger(RadarLedgerCommand),
 	/// Validate checked-in Radar artifact JSON contracts.
 	Validate(RadarValidateCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum RadarLedgerSubcommand {
+	/// Initialize the local Radar ledger schema.
+	#[command(alias = "init")]
+	Bootstrap,
+	/// Ingest one bundle and optional derived artifacts.
+	Ingest(RadarLedgerIngestCommand),
+	/// Ingest existing checked-in bundles, analyses, and signals.
+	IngestExisting(RadarLedgerIngestExistingCommand),
+	/// Link one artifact path to a Radar subject.
+	ArtifactLink(RadarLedgerArtifactLinkCommand),
+	/// Print ledger counts.
+	Summary(RadarLedgerSummaryCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum RadarBundleSubcommand {
+	/// Build a PR-first or commit-only GitHub change bundle.
+	Build(RadarBundleBuildCommand),
+	/// Validate one or more GitHub change bundle JSON files.
+	Validate(RadarBundleValidateCommand),
 }
 
 fn read_attempt_request(request: &str) -> Result<AttemptRequest> {
@@ -854,10 +1083,12 @@ mod tests {
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
 		CommitCommand, DiagnoseCommand, EvidenceCommand, LandCommand, ProbeCommand, ProjectCommand,
-		ProjectConfigArgs, ProjectSubcommand, RadarCommand, RadarSubcommand, RadarValidateCommand,
-		RecoverCommand, RecoverSubcommand, ReviewHandoffDiagnoseCommand,
-		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
-		RunCommand, ServeCommand, StatusCommand,
+		ProjectConfigArgs, ProjectSubcommand, RadarBundleBuildCommand, RadarBundleCommand,
+		RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
+		RadarLedgerIngestExistingCommand, RadarLedgerSubcommand, RadarLedgerSummaryCommand,
+		RadarSubcommand, RadarValidateCommand, RecoverCommand, RecoverSubcommand,
+		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
+		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -1031,6 +1262,121 @@ mod tests {
 			cli.command,
 			Command::Radar(RadarCommand {
 				command: RadarSubcommand::Validate(RadarValidateCommand { paths }),
+			}) if paths == vec![Path::new("artifacts/github/bundles").to_path_buf()]
+		));
+	}
+
+	#[test]
+	fn parses_radar_ledger_ingest_existing_defaults() {
+		let cli = Cli::parse_from(["decodex", "radar", "ledger", "ingest-existing"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::Ledger(RadarLedgerCommand {
+					command: RadarLedgerSubcommand::IngestExisting(
+						RadarLedgerIngestExistingCommand {
+							bundles_dir,
+							analysis_dir,
+							signals_dir,
+						}
+					),
+					..
+				})
+			}) if bundles_dir == Path::new("artifacts/github/bundles")
+				&& analysis_dir == Path::new("artifacts/github/analysis")
+				&& signals_dir == Path::new("site/src/content/signals")
+		));
+	}
+
+	#[test]
+	fn parses_radar_ledger_init_alias() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"radar",
+			"ledger",
+			"--db",
+			".decodex/test-radar.sqlite3",
+			"init",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::Ledger(RadarLedgerCommand {
+					db,
+					command: RadarLedgerSubcommand::Bootstrap,
+				})
+			}) if db == Path::new(".decodex/test-radar.sqlite3")
+		));
+	}
+
+	#[test]
+	fn parses_radar_ledger_summary_json() {
+		let cli = Cli::parse_from(["decodex", "radar", "ledger", "summary", "--json"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::Ledger(RadarLedgerCommand {
+					command: RadarLedgerSubcommand::Summary(RadarLedgerSummaryCommand {
+						json: true
+					}),
+					..
+				})
+			})
+		));
+	}
+
+	#[test]
+	fn parses_radar_bundle_build_pr() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"radar",
+			"bundle",
+			"build",
+			"--repo",
+			"openai/codex",
+			"--pr",
+			"15222",
+			"--out",
+			"artifacts/github/bundles/openai-codex-pr-15222.json",
+			"--note",
+			"extra",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::Bundle(RadarBundleCommand {
+					command: RadarBundleSubcommand::Build(RadarBundleBuildCommand {
+						repo,
+						pr: Some(15_222),
+						commit: None,
+						out,
+						note,
+						..
+					})
+				})
+			}) if repo == "openai/codex"
+				&& out == Path::new("artifacts/github/bundles/openai-codex-pr-15222.json")
+				&& note == vec!["extra".to_owned()]
+		));
+	}
+
+	#[test]
+	fn parses_radar_bundle_validate_paths() {
+		let cli =
+			Cli::parse_from(["decodex", "radar", "bundle", "validate", "artifacts/github/bundles"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::Bundle(RadarBundleCommand {
+					command: RadarBundleSubcommand::Validate(
+						RadarBundleValidateCommand { paths }
+					)
+				})
 			}) if paths == vec![Path::new("artifacts/github/bundles").to_path_buf()]
 		));
 	}

@@ -18,6 +18,16 @@ Bundle generation remains deterministic whether it is run locally or on a
 trusted automation runner. The bundle itself must not depend on Codex output or
 other non-deterministic editorial state.
 
+The Rust CLI owns deterministic bundle building and validation:
+
+```sh
+decodex radar bundle build --repo openai/codex --pr 15222 --out artifacts/github/bundles/openai-codex-pr-15222.json
+decodex radar bundle validate artifacts/github/bundles/openai-codex-pr-15222.json
+```
+
+The legacy Python scripts remain shared migration contracts until the final cleanup
+issue removes them.
+
 Defines:
 - The canonical `github_change_bundle/v1` shape.
 - Required fields for PR-first analysis.
