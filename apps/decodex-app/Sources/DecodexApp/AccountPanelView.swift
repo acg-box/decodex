@@ -497,6 +497,7 @@ struct AccountPanelView: View {
 				accountRows
 			}
 		}
+		.animation(PanelMotion.state, value: accountRunLayoutKey)
 	}
 
 	private var accountRows: some View {
@@ -592,6 +593,14 @@ struct AccountPanelView: View {
 
 	private var accountListNeedsScrolling: Bool {
 		accountListContentHeight > accountListAvailableHeight + 1
+	}
+
+	private var accountRunLayoutKey: String {
+		store.accounts.map { account in
+			let runIDs = operatorRuns(for: account).map(\.id).joined(separator: ",")
+			return "\(account.id):\(runIDs)"
+		}
+		.joined(separator: "|")
 	}
 
 	private var accountListAvailableHeight: CGFloat {
@@ -836,6 +845,7 @@ struct AccountRowView: View {
 
 			if runs.isEmpty == false {
 				AccountRunSummaryView(runs: runs)
+					.transition(runSummaryTransition)
 			}
 
 			if account.hasUsageSummary {
@@ -858,6 +868,28 @@ struct AccountRowView: View {
 		.animation(PanelMotion.state, value: account.selected)
 		.animation(PanelMotion.state, value: account.codexActive)
 		.animation(PanelMotion.state, value: isLogoutArmed)
+		.animation(reduceMotion ? .easeOut(duration: 0.12) : PanelMotion.state, value: runIdentityKey)
+	}
+
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+	private var runIdentityKey: String {
+		runs.map(\.id).joined(separator: "|")
+	}
+
+	private var runSummaryTransition: AnyTransition {
+		if reduceMotion {
+			return .opacity
+		}
+
+		return .asymmetric(
+			insertion: .opacity
+				.combined(with: .move(edge: .top))
+				.combined(with: .scale(scale: 0.98, anchor: .topLeading)),
+			removal: .opacity
+				.combined(with: .move(edge: .top))
+				.combined(with: .scale(scale: 0.98, anchor: .topLeading))
+		)
 	}
 
 	private var routeHelp: String {
@@ -885,12 +917,14 @@ struct AccountRowView: View {
 
 struct AccountRunSummaryView: View {
 	let runs: [OperatorRunStatus]
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 	var body: some View {
 		ScrollView(.horizontal, showsIndicators: false) {
 			HStack(spacing: 5) {
 				ForEach(runs) { run in
 					AccountRunChipView(run: run)
+						.transition(runChipTransition)
 				}
 			}
 			.padding(.trailing, 1)
@@ -899,6 +933,25 @@ struct AccountRunSummaryView: View {
 		.frame(height: AccountRunChipLayout.height)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityLabel("\(runs.count) running lane\(runs.count == 1 ? "" : "s")")
+		.animation(reduceMotion ? .easeOut(duration: 0.12) : PanelMotion.state, value: runIdentityKey)
+	}
+
+	private var runIdentityKey: String {
+		runs.map(\.id).joined(separator: "|")
+	}
+
+	private var runChipTransition: AnyTransition {
+		if reduceMotion {
+			return .opacity
+		}
+
+		return .asymmetric(
+			insertion: .opacity
+				.combined(with: .scale(scale: 0.88, anchor: .leading))
+				.combined(with: .move(edge: .leading)),
+			removal: .opacity
+				.combined(with: .scale(scale: 0.94, anchor: .leading))
+		)
 	}
 }
 
