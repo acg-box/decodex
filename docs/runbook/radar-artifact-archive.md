@@ -1,6 +1,6 @@
 # Radar Artifact Archive
 
-Goal: Move old raw Radar artifacts out of Git after the 28-day hot window while
+Goal: Move old raw Radar artifacts out of Git after the 21-day hot window while
 keeping public signals and archive recovery evidence available.
 
 Read this when:
@@ -13,7 +13,7 @@ Governing spec:
 
 ## Archive candidates
 
-Archive these after the 28-day hot window:
+Archive these after the 21-day hot window:
 
 - `artifacts/github/bundles/*.json`
 - `artifacts/github/analysis/*.analysis.json`
@@ -25,14 +25,14 @@ Do not archive these as part of raw cleanup:
 - `site/src/content/signals/*.json`
 - the current `site/src/content/release-deltas/openai-codex-latest.json`
 - `artifacts/github/impact/*.json` with active Control Plane or Publisher relevance
-- approved or published `artifacts/social/x/*.json`
+- `artifacts/social/x/posts/*.json`
 - `artifacts/archive/index/*.json`
 
 ## Procedure
 
 1. Choose the archive window.
    - Prefer a calendar month or a release-window name.
-   - Ensure the selected raw artifacts are outside the 28-day hot window.
+   - Ensure the selected raw artifacts are outside the 21-day hot window.
    - For artifacts without embedded collection timestamps, use the paired signal
      `published_at` or record the operator-selected evidence date in the manifest.
 
