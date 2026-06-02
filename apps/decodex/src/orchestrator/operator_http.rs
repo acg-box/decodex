@@ -27,6 +27,8 @@ enum OperatorRequestRoute {
 	Live,
 	AppSnapshot,
 	LinearScan,
+	LaneInspect,
+	LaneInterrupt,
 	AccountList { force_refresh: bool },
 	AccountSelect,
 	AccountClear,
@@ -132,6 +134,17 @@ struct OperatorLinearScanHttpRequest {
 	project_id: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct OperatorLaneInterruptHttpRequest {
+	#[serde(alias = "projectId")]
+	project_id: Option<String>,
+	issue: String,
+	#[serde(alias = "runId")]
+	run_id: String,
+	force: Option<bool>,
+	reason: Option<String>,
+}
+
 struct DashboardControlAck<'a> {
 	request_id: Option<&'a str>,
 	action: &'a str,
@@ -223,6 +236,20 @@ fn handle_operator_state_endpoint_connection(
 	}
 	if route == OperatorRequestRoute::LinearScan {
 		let response = build_operator_linear_scan_http_response(control_requests, &request);
+
+		stream.write_all(&response)?;
+
+		return Ok(());
+	}
+	if route == OperatorRequestRoute::LaneInspect {
+		let response = build_operator_lane_inspect_http_response(state_store, &request);
+
+		stream.write_all(&response)?;
+
+		return Ok(());
+	}
+	if route == OperatorRequestRoute::LaneInterrupt {
+		let response = build_operator_lane_interrupt_http_response(state_store, &request);
 
 		stream.write_all(&response)?;
 
@@ -1417,6 +1444,179 @@ fn operator_linear_scan_request_project_id(request: &[u8]) -> Result<Option<Stri
 	}
 }
 
+fn build_operator_lane_inspect_http_response(
+	state_store: &StateStore,
+	request: &[u8],
+) -> Vec<u8> {
+	match operator_lane_inspect_http_response_body(state_store, request) {
+		Ok(body) => http_response_bytes("200 OK", "application/json", &body),
+		Err(error) => operator_lane_error_http_response(error),
+	}
+}
+
+fn operator_lane_inspect_http_response_body(
+	state_store: &StateStore,
+	request: &[u8],
+) -> Result<Vec<u8>> {
+	let project_id = operator_http_query_value_alias(request, "projectId", "project_id")?;
+	let issue = operator_http_query_value(request, "issue")?
+		.filter(|issue| !issue.trim().is_empty())
+		.ok_or_else(|| eyre::eyre!("Lane inspect request requires issue query parameter."))?;
+	let run_id = operator_http_query_value_alias(request, "runId", "run_id")?;
+	let project = operator_lane_http_project(state_store, project_id.as_deref())?;
+	let report = lane_control::build_lane_inspect_report(
+		state_store,
+		&project,
+		issue.trim(),
+		run_id.as_deref(),
+	)?;
+
+	serde_json::to_vec(&report).map_err(Into::into)
+}
+
+fn build_operator_lane_interrupt_http_response(
+	state_store: &StateStore,
+	request: &[u8],
+) -> Vec<u8> {
+	match operator_lane_interrupt_http_response_body(state_store, request) {
+		Ok((status_line, body)) => http_response_bytes(status_line, "application/json", &body),
+		Err(error) => operator_lane_error_http_response(error),
+	}
+}
+
+fn operator_lane_interrupt_http_response_body(
+	state_store: &StateStore,
+	request: &[u8],
+) -> Result<(&'static str, Vec<u8>)> {
+	let body = operator_http_request_body(request)?;
+	let request: OperatorLaneInterruptHttpRequest = serde_json::from_slice(body)
+		.map_err(|error| eyre::eyre!("Lane interrupt request body was not valid JSON: {error}"))?;
+
+	if request.issue.trim().is_empty() {
+		eyre::bail!("Lane interrupt request issue must not be blank.");
+	}
+	if request.run_id.trim().is_empty() {
+		eyre::bail!("Lane interrupt request runId must not be blank.");
+	}
+
+	let project = operator_lane_http_project(state_store, request.project_id.as_deref())?;
+	let report = lane_control::interrupt_lane_with_state(
+		state_store,
+		&project,
+		request.issue.trim(),
+		request.run_id.trim(),
+		request.force.unwrap_or(false),
+		request.reason.as_deref(),
+		"http",
+	)?;
+	let status_line = report.http_status_line();
+
+	Ok((status_line, serde_json::to_vec(&report)?))
+}
+
+fn operator_lane_http_project(
+	state_store: &StateStore,
+	project_id: Option<&str>,
+) -> Result<ServiceConfig> {
+	let registrations = state_store.list_projects()?;
+	let registration = match project_id.map(str::trim).filter(|id| !id.is_empty()) {
+		Some(project_id) => registrations
+			.iter()
+			.find(|registration| registration.service_id() == project_id)
+			.ok_or_else(|| eyre::eyre!("Decodex project `{project_id}` is not registered."))?,
+		None => {
+			let enabled = registrations
+				.iter()
+				.filter(|registration| registration.enabled())
+				.collect::<Vec<_>>();
+
+			if enabled.len() == 1 {
+				enabled[0]
+			} else {
+				eyre::bail!(
+					"Lane API request requires projectId when zero or multiple projects are enabled."
+				);
+			}
+		},
+	};
+
+	ServiceConfig::from_path(registration.config_path())
+}
+
+fn operator_lane_error_http_response(error: Report) -> Vec<u8> {
+	let body = serde_json::to_vec(&json!({ "error": error.to_string() }))
+		.unwrap_or_else(|_| br#"{"error":"lane request failed"}"#.to_vec());
+
+	http_response_bytes("400 Bad Request", "application/json", &body)
+}
+
+fn operator_http_query_value(request: &[u8], key: &str) -> Result<Option<String>> {
+	let request = String::from_utf8_lossy(request);
+	let Some(request_line) = request.lines().next() else {
+		return Ok(None);
+	};
+	let Some(path) = request_line.split_whitespace().nth(1) else {
+		return Ok(None);
+	};
+	let Some(query) = path.split_once('?').map(|(_path, query)| query) else {
+		return Ok(None);
+	};
+
+	for part in query.split('&') {
+		let (name, value) = part.split_once('=').unwrap_or((part, ""));
+
+		if name == key {
+			return Ok(Some(percent_decode_operator_query_value(value)?));
+		}
+	}
+
+	Ok(None)
+}
+
+fn operator_http_query_value_alias(
+	request: &[u8],
+	primary: &str,
+	secondary: &str,
+) -> Result<Option<String>> {
+	match operator_http_query_value(request, primary)? {
+		Some(value) => Ok(Some(value)),
+		None => operator_http_query_value(request, secondary),
+	}
+}
+
+fn percent_decode_operator_query_value(value: &str) -> Result<String> {
+	let raw = value.as_bytes();
+	let mut bytes = Vec::with_capacity(value.len());
+	let mut index = 0;
+
+	while index < raw.len() {
+		match raw[index] {
+			b'+' => {
+				bytes.push(b' ');
+
+				index += 1;
+			},
+			b'%' if index + 2 < raw.len() => {
+				let hex = std::str::from_utf8(&raw[index + 1..index + 3])?;
+				let byte = u8::from_str_radix(hex, 16)
+					.map_err(|error| eyre::eyre!("Invalid percent-encoded query value: {error}"))?;
+
+				bytes.push(byte);
+
+				index += 3;
+			},
+			byte => {
+				bytes.push(byte);
+
+				index += 1;
+			},
+		}
+	}
+
+	String::from_utf8(bytes)
+		.map_err(|error| eyre::eyre!("Query parameter was not valid UTF-8: {error}"))
+}
+
 fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> Vec<u8> {
 	match route {
 		OperatorRequestRoute::Dashboard => {
@@ -1436,6 +1636,9 @@ fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> 
 				http_response_bytes("200 OK", "application/json", b"{}")
 			},
 			OperatorRequestRoute::LinearScan => {
+				http_response_bytes("405 Method Not Allowed", "text/plain; charset=utf-8", b"method not allowed")
+			},
+			OperatorRequestRoute::LaneInspect | OperatorRequestRoute::LaneInterrupt => {
 				http_response_bytes("405 Method Not Allowed", "text/plain; charset=utf-8", b"method not allowed")
 			},
 			OperatorRequestRoute::Live => {
@@ -1500,6 +1703,8 @@ fn parse_operator_state_request_route(
 				force_refresh: operator_query_has_flag(query, "refresh"),
 			}),
 			("POST", OPERATOR_LINEAR_SCAN_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LinearScan),
+			("GET", OPERATOR_LANE_INSPECT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInspect),
+			("POST", OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInterrupt),
 			("POST", "/api/accounts/select") => Ok(OperatorRequestRoute::AccountSelect),
 		("POST", "/api/accounts/clear") => Ok(OperatorRequestRoute::AccountClear),
 		("POST", "/api/accounts/logout") => Ok(OperatorRequestRoute::AccountLogout),
@@ -1512,6 +1717,8 @@ fn parse_operator_state_request_route(
 				| OPERATOR_LIVE_ENDPOINT_PATH
 				| OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH
 				| OPERATOR_LINEAR_SCAN_ENDPOINT_PATH
+				| OPERATOR_LANE_INSPECT_ENDPOINT_PATH
+				| OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH
 				| OPERATOR_ACCOUNTS_ENDPOINT_PATH
 			| "/api/accounts/select"
 			| "/api/accounts/clear"
