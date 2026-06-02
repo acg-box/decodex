@@ -1710,6 +1710,7 @@ fn sample_codex_account_activity_summary() -> CodexAccountActivitySummary {
 		rate_limit_reached_type: None,
 		cooldown_until_unix_epoch: None,
 		note: Some(String::from("usage probe ok")),
+		..CodexAccountActivitySummary::default()
 	}
 }
 

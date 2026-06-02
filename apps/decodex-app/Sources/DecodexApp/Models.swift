@@ -108,6 +108,15 @@ struct AccountUsageRecord: Decodable, Identifiable, Equatable {
 	}
 }
 
+struct AccountProfileDailyUsage: Decodable, Identifiable, Equatable {
+	let date: String
+	let tokens: Int
+
+	var id: String {
+		date
+	}
+}
+
 struct CodexAccount: Decodable, Identifiable, Equatable {
 	let accountFingerprint: String
 	let email: String?
@@ -139,6 +148,15 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 	let creditsUnlimited: Bool?
 	let creditsBalance: String?
 	let rateLimitReachedType: String?
+	let profileDisplayName: String?
+	let profileUsername: String?
+	let profileCheckedAtUnixEpoch: Int?
+	let profileLifetimeTokens: Int?
+	let profilePeakDailyTokens: Int?
+	let profileLongestTaskSeconds: Int?
+	let profileCurrentStreakDays: Int?
+	let profileLongestStreakDays: Int?
+	let profileDailyUsage: [AccountProfileDailyUsage]?
 	let sevenDayUsedPercent: Int?
 	let sevenDayDailyAveragePercent: Double?
 	let usageRecords: [AccountUsageRecord]?
@@ -173,33 +191,20 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 
 	var statusLabel: String {
 		if isUsageLimited {
-			return "Limited"
+			return rawLimitStatusToken
 		}
 		if codexActive {
-			return "Codex active"
+			return "codex_active"
 		}
 		if selected {
-			return "Runs routed"
+			return "selected"
 		}
-		switch recoveryActionKind {
-		case .login:
-			return "Re-login required"
-		case .retryProbe:
-			return "Probe failed"
-		case .refresh, .none:
-			break
+		if let action = rawRecoveryActionToken {
+			return action
 		}
 
-		switch status {
-		case "available": return "Ready"
-		case "usage_limited": return "Limited"
-		case "probe_failed": return "-"
-		case "expired": return "Refresh needed"
-		case "disabled": return "Disabled"
-		case "cooldown": return "Cooling"
-		case "unusable": return recoveryActionKind == .login ? "Re-login required" : "Needs attention"
-		default: return status.replacingOccurrences(of: "_", with: " ").capitalized
-		}
+		let token = status.trimmingCharacters(in: .whitespacesAndNewlines)
+		return token.isEmpty ? "unknown" : token
 	}
 
 	var statusTone: AccountTone {
@@ -254,6 +259,19 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		primaryRemainingPercent != nil || secondaryRemainingPercent != nil
 	}
 
+	var hasProfileSummary: Bool {
+		profileLifetimeTokens != nil
+			|| profilePeakDailyTokens != nil
+			|| profileLongestTaskSeconds != nil
+			|| profileCurrentStreakDays != nil
+			|| profileLongestStreakDays != nil
+			|| recentProfileDailyUsage.isEmpty == false
+	}
+
+	var recentProfileDailyUsage: [AccountProfileDailyUsage] {
+		profileDailyUsage ?? []
+	}
+
 	var isUsageLimited: Bool {
 		if let reached = rateLimitReachedType, !reached.isEmpty {
 			return true
@@ -261,6 +279,21 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		return status.contains("limit")
 			|| primaryRemainingPercent == 0
 			|| secondaryRemainingPercent == 0
+	}
+
+	private var rawLimitStatusToken: String {
+		let reached = rateLimitReachedType?.trimmingCharacters(in: .whitespacesAndNewlines)
+		if let reached, reached.isEmpty == false, reached != "none" {
+			return reached
+		}
+
+		let token = status.trimmingCharacters(in: .whitespacesAndNewlines)
+		return token.isEmpty || token == "available" ? "usage_limited" : token
+	}
+
+	private var rawRecoveryActionToken: String? {
+		let token = recoveryAction?.trimmingCharacters(in: .whitespacesAndNewlines)
+		return token?.isEmpty == false ? token : nil
 	}
 
 	func windowLabel(seconds: Int?) -> String {
@@ -317,6 +350,15 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 			creditsUnlimited: creditsUnlimited,
 			creditsBalance: creditsBalance,
 			rateLimitReachedType: rateLimitReachedType,
+			profileDisplayName: profileDisplayName,
+			profileUsername: profileUsername,
+			profileCheckedAtUnixEpoch: profileCheckedAtUnixEpoch,
+			profileLifetimeTokens: profileLifetimeTokens,
+			profilePeakDailyTokens: profilePeakDailyTokens,
+			profileLongestTaskSeconds: profileLongestTaskSeconds,
+			profileCurrentStreakDays: profileCurrentStreakDays,
+			profileLongestStreakDays: profileLongestStreakDays,
+			profileDailyUsage: profileDailyUsage,
 			sevenDayUsedPercent: sevenDayUsedPercent,
 			sevenDayDailyAveragePercent: sevenDayDailyAveragePercent,
 			usageRecords: usageRecords
@@ -354,6 +396,15 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		case creditsUnlimited = "credits_unlimited"
 		case creditsBalance = "credits_balance"
 		case rateLimitReachedType = "rate_limit_reached_type"
+		case profileDisplayName = "profile_display_name"
+		case profileUsername = "profile_username"
+		case profileCheckedAtUnixEpoch = "profile_checked_at_unix_epoch"
+		case profileLifetimeTokens = "profile_lifetime_tokens"
+		case profilePeakDailyTokens = "profile_peak_daily_tokens"
+		case profileLongestTaskSeconds = "profile_longest_task_seconds"
+		case profileCurrentStreakDays = "profile_current_streak_days"
+		case profileLongestStreakDays = "profile_longest_streak_days"
+		case profileDailyUsage = "profile_daily_usage"
 		case sevenDayUsedPercent = "seven_day_used_percent"
 		case sevenDayDailyAveragePercent = "seven_day_daily_average_percent"
 		case usageRecords = "usage_records"
