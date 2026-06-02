@@ -922,6 +922,7 @@ fn append_control_plane_project_snapshot(
 		add_operator_snapshot_warning(snapshot, &warning);
 	}
 
+	snapshot.warning_details.extend(project_snapshot.warning_details);
 	snapshot.connector_backoffs.extend(project_snapshot.connector_backoffs);
 	snapshot.accounts.extend(project_snapshot.accounts);
 	snapshot.active_runs.extend(project_snapshot.active_runs);
@@ -1375,6 +1376,7 @@ fn empty_control_plane_snapshot(limit: usize) -> OperatorStatusSnapshot {
 		project_id: String::from("all"),
 		run_limit: limit,
 		warnings: Vec::new(),
+		warning_details: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
 		account_control: OperatorCodexAccountControlStatus {
