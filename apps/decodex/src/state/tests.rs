@@ -15,8 +15,9 @@ use crate::{
 		self, ChildAgentActivitySummary, CodexAccountActivitySummary, CodexAccountMarker,
 		ConnectorBackoffInput, DispatchSlotLimit, EffectiveRuntimeMarker, PreacquiredLeaseGuards,
 		ProjectRegistration, ProtocolActivityMarker, ProtocolActivitySummary,
-		RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_REPO_GATE, ReviewHandoffMarker,
-		ReviewOrchestrationMarker, StateStore,
+		RUN_ACTIVITY_MARKER_FILE, RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED,
+		RUN_CONTROL_ACTION_FALLBACK, RUN_CONTROL_ACTION_TIMED_OUT, RUN_OPERATION_REPO_GATE,
+		ReviewHandoffMarker, ReviewOrchestrationMarker, RunControlActionRequest, StateStore,
 	},
 	tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
 };
@@ -2538,4 +2539,221 @@ fn remove_project_deletes_persistent_registry_row() {
 		reopened.list_projects().expect("project registry should load").is_empty(),
 		"removed project must not remain in SQLite registry"
 	);
+}
+
+#[test]
+fn run_control_accepts_active_attempt_and_persists_audit() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let channel_path = temp_dir.path().join("control.channel");
+
+	fs::write(&channel_path, "ready\n").expect("control channel should write");
+
+	let store = StateStore::open(&state_path).expect("state store should open");
+
+	store
+		.upsert_lease("pubfi", "issue-1", "run-1", IN_PROGRESS_STATE)
+		.expect("lease should record");
+	store.record_run_attempt("run-1", "issue-1", 1, "running").expect("attempt should record");
+	store.update_run_thread("run-1", "thread-1").expect("thread should record");
+	store.update_run_turn("run-1", "turn-1").expect("turn should record");
+	store
+		.publish_run_control_channel_for_active_attempt("run-1", 1, &channel_path, "local_file")
+		.expect("control channel should publish")
+		.expect("active control channel should exist");
+
+	let receipt = store
+		.resolve_run_control_action(RunControlActionRequest {
+			project_id: "pubfi",
+			issue_id: "issue-1",
+			run_id: "run-1",
+			attempt_number: 1,
+			thread_id: Some("thread-1"),
+			turn_id: Some("turn-1"),
+			source: "test_hook",
+			action: "noop",
+			timeout_ms: Some(500),
+		})
+		.expect("control request should resolve");
+
+	assert_eq!(receipt.outcome(), "accepted");
+	assert_eq!(receipt.reason(), "active_run_control_channel_resolved");
+	assert!(receipt.channel().is_some());
+
+	for (outcome, reason) in [
+		(RUN_CONTROL_ACTION_COMPLETED, "noop_completed"),
+		(RUN_CONTROL_ACTION_FAILED, "noop_failed"),
+		(RUN_CONTROL_ACTION_TIMED_OUT, "noop_timed_out"),
+		(RUN_CONTROL_ACTION_FALLBACK, "noop_fallback"),
+	] {
+		store
+			.record_run_control_action_outcome(&receipt, outcome, reason)
+			.expect("follow-up control audit should record");
+	}
+
+	drop(store);
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+	let events = reopened
+		.list_private_execution_events("pubfi", "issue-1", "run-1", 1)
+		.expect("private control audit should read");
+	let outcomes = events
+		.iter()
+		.filter(|event| event.event_type() == "control_action")
+		.filter_map(|event| event.payload().get("outcome").and_then(|value| value.as_str()))
+		.collect::<Vec<_>>();
+
+	assert_eq!(outcomes, vec!["accepted", "completed", "failed", "timed_out", "fallback"]);
+}
+
+#[test]
+fn run_control_rejects_stale_turn_and_run_mismatch() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let channel_path = temp_dir.path().join("control.channel");
+
+	fs::write(&channel_path, "ready\n").expect("control channel should write");
+
+	let store = StateStore::open_in_memory().expect("state store should open");
+
+	store
+		.upsert_lease("pubfi", "issue-1", "run-current", IN_PROGRESS_STATE)
+		.expect("lease should record");
+	store
+		.record_run_attempt("run-current", "issue-1", 1, "running")
+		.expect("attempt should record");
+	store.update_run_thread("run-current", "thread-1").expect("thread should record");
+	store.update_run_turn("run-current", "turn-current").expect("turn should record");
+	store
+		.publish_run_control_channel_for_active_attempt(
+			"run-current",
+			1,
+			&channel_path,
+			"local_file",
+		)
+		.expect("control channel should publish");
+
+	let stale_turn = store
+		.resolve_run_control_action(RunControlActionRequest {
+			project_id: "pubfi",
+			issue_id: "issue-1",
+			run_id: "run-current",
+			attempt_number: 1,
+			thread_id: Some("thread-1"),
+			turn_id: Some("turn-old"),
+			source: "test_hook",
+			action: "noop",
+			timeout_ms: None,
+		})
+		.expect("stale turn should be audited");
+	let stale_run = store
+		.resolve_run_control_action(RunControlActionRequest {
+			project_id: "pubfi",
+			issue_id: "issue-1",
+			run_id: "run-old",
+			attempt_number: 1,
+			thread_id: Some("thread-1"),
+			turn_id: Some("turn-current"),
+			source: "test_hook",
+			action: "noop",
+			timeout_ms: None,
+		})
+		.expect("stale run should be audited");
+
+	assert_eq!(stale_turn.outcome(), "rejected");
+	assert_eq!(stale_turn.reason(), "turn_mismatch");
+	assert_eq!(stale_run.outcome(), "rejected");
+	assert_eq!(stale_run.reason(), "run_not_found");
+}
+
+#[test]
+fn run_control_rejects_missing_channel_file() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let channel_path = temp_dir.path().join("control.channel");
+
+	fs::write(&channel_path, "ready\n").expect("control channel should write");
+
+	let store = StateStore::open_in_memory().expect("state store should open");
+
+	store
+		.upsert_lease("pubfi", "issue-1", "run-1", IN_PROGRESS_STATE)
+		.expect("lease should record");
+	store.record_run_attempt("run-1", "issue-1", 1, "running").expect("attempt should record");
+	store
+		.publish_run_control_channel_for_active_attempt("run-1", 1, &channel_path, "local_file")
+		.expect("control channel should publish");
+
+	fs::remove_file(&channel_path).expect("control channel should be removable");
+
+	let receipt = store
+		.resolve_run_control_action(RunControlActionRequest {
+			project_id: "pubfi",
+			issue_id: "issue-1",
+			run_id: "run-1",
+			attempt_number: 1,
+			thread_id: None,
+			turn_id: None,
+			source: "test_hook",
+			action: "noop",
+			timeout_ms: None,
+		})
+		.expect("missing channel should be audited");
+
+	assert_eq!(receipt.outcome(), "rejected");
+	assert_eq!(receipt.reason(), "control_channel_missing");
+}
+
+#[test]
+fn run_control_requires_active_run_ownership() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let channel_path = temp_dir.path().join("control.channel");
+
+	fs::write(&channel_path, "ready\n").expect("control channel should write");
+
+	let store = StateStore::open_in_memory().expect("state store should open");
+
+	store
+		.upsert_lease("pubfi", "issue-1", "run-1", IN_PROGRESS_STATE)
+		.expect("lease should record");
+	store.record_run_attempt("run-1", "issue-1", 1, "running").expect("attempt should record");
+	store
+		.publish_run_control_channel_for_active_attempt("run-1", 1, &channel_path, "local_file")
+		.expect("control channel should publish");
+	store.clear_lease("issue-1").expect("lease should clear");
+
+	let no_lease = store
+		.resolve_run_control_action(RunControlActionRequest {
+			project_id: "pubfi",
+			issue_id: "issue-1",
+			run_id: "run-1",
+			attempt_number: 1,
+			thread_id: None,
+			turn_id: None,
+			source: "test_hook",
+			action: "noop",
+			timeout_ms: None,
+		})
+		.expect("missing lease should be audited");
+
+	store
+		.upsert_lease("pubfi", "issue-1", "run-other", IN_PROGRESS_STATE)
+		.expect("other lease should record");
+
+	let wrong_run = store
+		.resolve_run_control_action(RunControlActionRequest {
+			project_id: "pubfi",
+			issue_id: "issue-1",
+			run_id: "run-1",
+			attempt_number: 1,
+			thread_id: None,
+			turn_id: None,
+			source: "test_hook",
+			action: "noop",
+			timeout_ms: None,
+		})
+		.expect("wrong active run should be audited");
+
+	assert_eq!(no_lease.outcome(), "rejected");
+	assert_eq!(no_lease.reason(), "active_lease_missing");
+	assert_eq!(wrong_run.outcome(), "rejected");
+	assert_eq!(wrong_run.reason(), "active_run_mismatch");
 }
