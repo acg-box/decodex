@@ -44,6 +44,7 @@ const SOCIAL_POST_SCHEMA: &str = "social_post/v1";
 const UPSTREAM_IMPACT_SCHEMA: &str = "upstream_impact/v1";
 const UPSTREAM_REVIEW_QUEUE_SCHEMA: &str = "upstream_review_queue/v1";
 const UPSTREAM_REVIEW_SCHEMA: &str = "upstream_review/v1";
+const CONFIG_FEATURE_CATALOG_SCHEMA: &str = "codex_config_feature_catalog/v1";
 const DEFAULT_VALIDATION_PATHS: &[&str] = &[
 	"artifacts/github/bundles",
 	"artifacts/github/review-queue",
@@ -52,6 +53,7 @@ const DEFAULT_VALIDATION_PATHS: &[&str] = &[
 	"artifacts/social/x",
 	"site/src/content/signals",
 	"site/src/content/release-deltas",
+	"site/src/generated",
 ];
 const ANALYSIS_MODES: &[&str] = &["commit_only", "pr_first"];
 const SIGNAL_CONFIDENCE: &[&str] = &["confirmed", "likely", "weak"];
@@ -4214,6 +4216,7 @@ fn validate_artifact(payload: &Value) -> ArtifactValidation {
 
 	match schema.as_deref() {
 		Some(BUNDLE_SCHEMA) => validate_bundle(entry, &mut errors),
+		Some(CONFIG_FEATURE_CATALOG_SCHEMA) => validate_config_feature_catalog(entry, &mut errors),
 		Some(RELEASE_DELTA_SCHEMA) => validate_release_delta(entry, &mut errors),
 		Some(SIGNAL_SCHEMA) => validate_signal(entry, &mut errors),
 		Some(SOCIAL_POST_SCHEMA) => validate_social_post(entry, &mut errors),
@@ -4326,6 +4329,147 @@ fn validate_signal(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	validate_signal_lists(entry, errors);
 	validate_signal_try_fields(entry, errors);
 	validate_signal_source_refs(entry.get("source_refs"), errors);
+	validate_multi_agent_v2_reference_text(entry, "signal entries", errors);
+}
+
+fn validate_config_feature_catalog(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	if !is_https_string(entry.get("source_url")) {
+		errors.push("source_url must be an https URL".into());
+	}
+	if !is_non_empty_string(entry.get("generated_at")) {
+		errors.push("generated_at must be a non-empty string".into());
+	}
+
+	let Some(features) = non_empty_array(entry.get("features")) else {
+		errors.push("features must be a non-empty list".into());
+
+		return;
+	};
+
+	if entry
+		.get("feature_count")
+		.and_then(Value::as_u64)
+		.is_none_or(|count| count != features.len() as u64)
+	{
+		errors.push("feature_count must match features length".into());
+	}
+
+	let mut found_multi_agent_v2 = false;
+
+	for (index, feature) in features.iter().enumerate() {
+		let Some(feature) = feature.as_object() else {
+			errors.push(format!("features[{index}] must be an object"));
+
+			continue;
+		};
+
+		for field in [
+			"name",
+			"config_path",
+			"toml_assignment",
+			"toml_snippet",
+			"cli_enable_flag",
+			"schema_url",
+			"reference_url",
+			"github_search_url",
+		] {
+			if !is_non_empty_string(feature.get(field)) {
+				errors.push(format!("features[{index}].{field} must be a non-empty string"));
+			}
+		}
+
+		if string_field(feature, "name") == Some("multi_agent_v2") {
+			found_multi_agent_v2 = true;
+
+			validate_multi_agent_v2_catalog_feature(feature, index, errors);
+		}
+	}
+
+	if !found_multi_agent_v2 {
+		errors.push("features must include multi_agent_v2".into());
+	}
+}
+
+fn validate_multi_agent_v2_catalog_feature(
+	feature: &Map<String, Value>,
+	index: usize,
+	errors: &mut Vec<String>,
+) {
+	let Some(description) = feature.get("reference_description").and_then(Value::as_str) else {
+		errors.push(format!(
+			"features[{index}].reference_description must describe current followup_task behavior"
+		));
+
+		return;
+	};
+	let lower = description.to_ascii_lowercase();
+
+	if !lower.contains("followup_task") {
+		errors.push(format!(
+			"features[{index}].reference_description must mention current followup_task behavior"
+		));
+	}
+	if lower.contains("assign_task") && !has_legacy_multi_agent_v2_context(&lower) {
+		errors.push(format!(
+			"features[{index}].reference_description must label assign_task as legacy or renamed context"
+		));
+	}
+}
+
+fn validate_multi_agent_v2_reference_text(
+	entry: &Map<String, Value>,
+	label: &str,
+	errors: &mut Vec<String>,
+) {
+	let mut text = String::new();
+
+	collect_json_strings_from_map(entry, &mut text);
+
+	let lower = text.to_ascii_lowercase();
+	let mentions_v2 = lower.contains("multiagentv2")
+		|| lower.contains("multi_agent_v2")
+		|| lower.contains("multi-agent v2");
+
+	if !mentions_v2 || !lower.contains("assign_task") {
+		return;
+	}
+	if !lower.contains("followup_task") {
+		errors.push(format!(
+			"{label} that mention MultiAgentV2 assign_task must also mention current followup_task"
+		));
+	}
+	if !has_legacy_multi_agent_v2_context(&lower) {
+		errors.push(format!(
+			"{label} must describe assign_task as legacy, historical, older, previous, or renamed context"
+		));
+	}
+}
+
+fn has_legacy_multi_agent_v2_context(text: &str) -> bool {
+	["legacy", "historical", "older", "previous", "renamed", "rename"]
+		.into_iter()
+		.any(|term| text.contains(term))
+}
+
+fn collect_json_strings_from_map(object: &Map<String, Value>, text: &mut String) {
+	for value in object.values() {
+		collect_json_strings(value, text);
+	}
+}
+
+fn collect_json_strings(value: &Value, text: &mut String) {
+	match value {
+		Value::String(value) => {
+			text.push(' ');
+			text.push_str(value);
+		},
+		Value::Array(values) =>
+			for value in values {
+				collect_json_strings(value, text);
+			},
+		Value::Object(object) => collect_json_strings_from_map(object, text),
+		Value::Bool(_) | Value::Null | Value::Number(_) => {},
+	}
 }
 
 fn validate_signal_lists(entry: &Map<String, Value>, errors: &mut Vec<String>) {
@@ -5354,6 +5498,7 @@ fn choices(values: &[&str]) -> String {
 fn known_schemas() -> String {
 	choices(&[
 		BUNDLE_SCHEMA,
+		CONFIG_FEATURE_CATALOG_SCHEMA,
 		RELEASE_DELTA_SCHEMA,
 		SIGNAL_SCHEMA,
 		SOCIAL_POST_SCHEMA,
@@ -5365,7 +5510,10 @@ fn known_schemas() -> String {
 
 #[cfg(test)]
 mod tests {
-	use std::{fs, path::PathBuf};
+	use std::{
+		fs,
+		path::{Path, PathBuf},
+	};
 
 	use serde_json::{self, Value};
 
@@ -5397,6 +5545,83 @@ mod tests {
 		signal["how_to_try"] = serde_json::json!("Run decodex radar validate.");
 
 		assert_errors(&signal, ["expected_effect is required when how_to_try is present"]);
+	}
+
+	#[test]
+	fn rejects_current_multi_agent_v2_signal_assign_task_without_followup_context() {
+		let mut signal = valid_signal();
+
+		signal["title"] = serde_json::json!("MultiAgentV2 assign_task guidance");
+		signal["summary"] =
+			serde_json::json!("MultiAgentV2 operators should use assign_task for more work.");
+
+		assert_errors(
+			&signal,
+			[
+				"MultiAgentV2 assign_task must also mention current followup_task",
+				"must describe assign_task as legacy",
+			],
+		);
+
+		signal["summary"] = serde_json::json!(
+			"MultiAgentV2 renamed the legacy assign_task trigger-turn tool to followup_task."
+		);
+
+		assert_errors(&signal, []);
+	}
+
+	#[test]
+	fn validates_multi_agent_v2_feature_catalog_reference() {
+		let mut catalog = valid_config_feature_catalog();
+
+		assert_errors(&catalog, []);
+
+		catalog["features"][0]["reference_description"] =
+			serde_json::json!("Enable MultiAgentV2 trigger-turn tool assign_task.");
+
+		assert_errors(
+			&catalog,
+			[
+				"reference_description must mention current followup_task behavior",
+				"reference_description must label assign_task as legacy or renamed context",
+			],
+		);
+	}
+
+	#[test]
+	fn current_multi_agent_v2_references_do_not_require_assign_task() {
+		let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+			.parent()
+			.and_then(Path::parent)
+			.expect("apps/decodex should live two levels under the repo root");
+		let mut offenders = Vec::new();
+
+		for relative_root in [
+			"README.md",
+			"apps/decodex/src",
+			"dev/skills",
+			"docs/reference",
+			"docs/spec",
+			"docs/runbook",
+			"plugins/decodex/skills",
+			"scripts",
+			"site/src/content/signals",
+			"site/src/generated",
+			"site/src/lib",
+		] {
+			collect_assign_task_reference_violations(
+				&repo_root.join(relative_root),
+				repo_root,
+				&mut offenders,
+			);
+		}
+
+		assert!(
+			offenders.is_empty(),
+			"current-facing MultiAgentV2 references must use followup_task and reserve \
+			 assign_task for legacy or renamed context: {}",
+			offenders.join(", ")
+		);
 	}
 
 	#[test]
@@ -5921,6 +6146,73 @@ mod tests {
 				]
 			}
 		})
+	}
+
+	fn valid_config_feature_catalog() -> Value {
+		serde_json::json!({
+			"schema": "codex_config_feature_catalog/v1",
+			"source_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
+			"generated_at": "2026-06-02T00:00:00Z",
+			"feature_count": 1,
+			"features": [
+				{
+					"name": "multi_agent_v2",
+					"config_path": "features.multi_agent_v2",
+					"toml_assignment": "multi_agent_v2 = true",
+					"toml_snippet": "[features]\nmulti_agent_v2 = true",
+					"cli_enable_flag": "--enable multi_agent_v2",
+					"schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
+					"reference_url": "https://developers.openai.com/codex/config-reference",
+					"reference_description": "Enable MultiAgentV2 tools including followup_task; legacy assign_task appears only in older rollout traces.",
+					"github_search_url": "https://github.com/openai/codex/search?q=%22multi_agent_v2%22&type=code"
+				}
+			]
+		})
+	}
+
+	fn collect_assign_task_reference_violations(
+		path: &Path,
+		repo_root: &Path,
+		offenders: &mut Vec<String>,
+	) {
+		let Ok(metadata) = fs::metadata(path) else {
+			return;
+		};
+
+		if metadata.is_dir() {
+			let entries = fs::read_dir(path).expect("reference audit directory should be readable");
+
+			for entry in entries {
+				let entry = entry.expect("reference audit directory entry should be readable");
+
+				collect_assign_task_reference_violations(&entry.path(), repo_root, offenders);
+			}
+
+			return;
+		}
+		if !metadata.is_file() || !should_audit_multi_agent_v2_reference_file(path) {
+			return;
+		}
+
+		let text = fs::read_to_string(path).expect("reference audit file should be utf-8 text");
+		let lower = text.to_ascii_lowercase();
+
+		if !lower.contains("assign_task") {
+			return;
+		}
+		if lower.contains("followup_task") && radar::has_legacy_multi_agent_v2_context(&lower) {
+			return;
+		}
+
+		let relative = path.strip_prefix(repo_root).unwrap_or(path);
+
+		offenders.push(relative.display().to_string());
+	}
+
+	fn should_audit_multi_agent_v2_reference_file(path: &Path) -> bool {
+		let extension = path.extension().and_then(|value| value.to_str());
+
+		matches!(extension, Some("json" | "md" | "py" | "rs" | "ts" | "tsx"))
 	}
 
 	fn valid_release_delta() -> Value {
