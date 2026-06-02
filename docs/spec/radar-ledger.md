@@ -7,6 +7,7 @@ Status: normative
 
 Read this when:
 - You are changing `scripts/github/sync_upstream_radar.py`.
+- You are changing `decodex radar ledger ...`.
 - You are importing existing GitHub bundles, analysis drafts, or signal entries into
   historical Radar state.
 - You need to decide what belongs in local history instead of checked-in public
@@ -38,7 +39,10 @@ but it is the preferred place for high-frequency trace and skip history.
 
 ## Schema
 
-The schema is created by `scripts/github/radar_ledger.py`.
+The schema is created by `decodex radar ledger bootstrap`. The legacy
+`scripts/github/radar_ledger.py` entrypoint remains available during migration, but
+the Rust `decodex radar ledger ...` surface owns the command path for new ledger
+bootstrap, ingest, ingest-existing, artifact-link, and summary operations.
 
 Required tables:
 
@@ -87,8 +91,14 @@ python3 scripts/github/sync_upstream_radar.py --no-ledger
 Existing checked-in artifacts can be imported with:
 
 ```sh
-python3 scripts/github/radar_ledger.py ingest-existing
+decodex radar ledger ingest-existing
 ```
 
 This import is useful when bootstrapping a new local workspace or rebuilding trace after
 raw GitHub bundles move to cold archive assets.
+
+Operators can inspect local counts with:
+
+```sh
+decodex radar ledger summary --json
+```
