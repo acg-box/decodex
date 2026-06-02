@@ -3,6 +3,7 @@ use std::{panic, slice};
 use orchestrator::{OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus, OperatorWorktreeStatus};
 use serde_json::Value;
 use orchestrator::AgentPrivateEvidenceRef;
+use orchestrator::OperatorRunControlCapability;
 
 fn successful_linear_execution_history_comments(issue: &TrackerIssue) -> Vec<TrackerComment> {
 	vec![
@@ -202,6 +203,22 @@ fn operator_status_text_backup_codex_account() -> state::CodexAccountActivitySum
 	}
 }
 
+fn operator_status_text_control_capability() -> OperatorRunControlCapability {
+	OperatorRunControlCapability {
+		project_id: String::from("pubfi"),
+		issue_id: String::from("issue-1"),
+		run_id: String::from("run-1"),
+		attempt_number: 1,
+		thread_id: Some(String::from("thread-1")),
+		turn_id: Some(String::from("turn-1")),
+		transport: String::from("local_file"),
+		channel_path: String::from(".worktrees/PUB-101/.decodex-run-control/run-1-1.channel"),
+		status: String::from("active"),
+		published_at: String::from("2026-03-14 10:00:00"),
+		updated_at: String::from("2026-03-14 10:00:01"),
+	}
+}
+
 fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
 	let account = operator_status_text_codex_account();
 	let backup_account = operator_status_text_backup_codex_account();
@@ -247,6 +264,7 @@ fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
 				"decodex evidence PUB-101 --run-id run-1 --attempt 1 --json",
 			),
 		},
+		control_capability: Some(operator_status_text_control_capability()),
 		process_id: Some(1_234),
 		process_alive: Some(true),
 		process_liveness_reason: Some(String::from("process_alive")),
