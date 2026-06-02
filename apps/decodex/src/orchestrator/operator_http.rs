@@ -1,6 +1,7 @@
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use sha1::{Digest as _, Sha1};
+use agent::DEFAULT_STEER_RESULT_WAIT_TIMEOUT;
 
 use crate::accounts;
 use crate::accounts::AccountUseRequest;
@@ -27,6 +28,7 @@ enum OperatorRequestRoute {
 	Live,
 	AppSnapshot,
 	LinearScan,
+	LaneSteer,
 	AccountList { force_refresh: bool },
 	AccountSelect,
 	AccountClear,
@@ -132,6 +134,22 @@ struct OperatorLinearScanHttpRequest {
 	project_id: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct OperatorLaneSteerHttpRequest {
+	#[serde(alias = "projectId")]
+	project_id: Option<String>,
+	issue: Option<String>,
+	#[serde(alias = "issueId")]
+	issue_id: Option<String>,
+	#[serde(alias = "runId")]
+	run_id: String,
+	#[serde(alias = "expectedTurnId")]
+	expected_turn_id: String,
+	message: String,
+	#[serde(alias = "waitTimeoutMs")]
+	wait_timeout_ms: Option<u64>,
+}
+
 struct DashboardControlAck<'a> {
 	request_id: Option<&'a str>,
 	action: &'a str,
@@ -223,6 +241,13 @@ fn handle_operator_state_endpoint_connection(
 	}
 	if route == OperatorRequestRoute::LinearScan {
 		let response = build_operator_linear_scan_http_response(control_requests, &request);
+
+		stream.write_all(&response)?;
+
+		return Ok(());
+	}
+	if route == OperatorRequestRoute::LaneSteer {
+		let response = build_operator_lane_steer_http_response(&request);
 
 		stream.write_all(&response)?;
 
@@ -1226,6 +1251,9 @@ fn build_operator_state_http_response_with_control_requests(
 	if route == OperatorRequestRoute::LinearScan {
 		return Ok(build_operator_linear_scan_http_response(control_requests, request));
 	}
+	if route == OperatorRequestRoute::LaneSteer {
+		return Ok(build_operator_lane_steer_http_response(request));
+	}
 
 	Ok(build_operator_state_http_response_for_route(route))
 }
@@ -1417,6 +1445,67 @@ fn operator_linear_scan_request_project_id(request: &[u8]) -> Result<Option<Stri
 	}
 }
 
+fn build_operator_lane_steer_http_response(request: &[u8]) -> Vec<u8> {
+	match operator_lane_steer_http_response_body(request) {
+		Ok(report) => {
+			let status = if lane_steer_report_is_rejected_or_failed(&report) {
+				"409 Conflict"
+			} else if report.delivery_status == "queued" {
+				"202 Accepted"
+			} else {
+				"200 OK"
+			};
+			let body = serde_json::to_vec(&report)
+				.unwrap_or_else(|_| br#"{"error":"lane steer response failed"}"#.to_vec());
+
+			http_response_bytes(status, "application/json", &body)
+		},
+		Err(error) => {
+			let body = serde_json::to_vec(&json!({ "error": error.to_string() }))
+				.unwrap_or_else(|_| br#"{"error":"lane steer request failed"}"#.to_vec());
+
+			http_response_bytes("400 Bad Request", "application/json", &body)
+		},
+	}
+}
+
+fn operator_lane_steer_http_response_body(request: &[u8]) -> Result<LaneSteerReport> {
+	let body = operator_http_request_body(request)?;
+	let request: OperatorLaneSteerHttpRequest = serde_json::from_slice(body)
+		.map_err(|error| eyre::eyre!("Lane steer request body was not valid JSON: {error}"))?;
+	let issue = request
+		.issue
+		.as_deref()
+		.or(request.issue_id.as_deref())
+		.map(str::trim)
+		.filter(|issue| !issue.is_empty())
+		.ok_or_else(|| eyre::eyre!("Lane steer request requires issue or issueId."))?;
+	let project_id = request.project_id.as_deref().map(str::trim).filter(|value| !value.is_empty());
+	let wait_timeout = request
+		.wait_timeout_ms
+		.map(Duration::from_millis)
+		.unwrap_or(DEFAULT_STEER_RESULT_WAIT_TIMEOUT);
+	let report = steer_lane(LaneSteerRequest {
+		config_path: None,
+		project_id,
+		issue,
+		run_id: &request.run_id,
+		expected_turn_id: &request.expected_turn_id,
+		message: &request.message,
+		source: "api",
+		wait_timeout,
+	})?;
+
+	Ok(report)
+}
+
+fn lane_steer_report_is_rejected_or_failed(report: &LaneSteerReport) -> bool {
+	matches!(
+		report.outcome.as_str(),
+		"rejected" | "failed" | "timed_out" | "fallback"
+	)
+}
+
 fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> Vec<u8> {
 	match route {
 		OperatorRequestRoute::Dashboard => {
@@ -1436,6 +1525,9 @@ fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> 
 				http_response_bytes("200 OK", "application/json", b"{}")
 			},
 			OperatorRequestRoute::LinearScan => {
+				http_response_bytes("405 Method Not Allowed", "text/plain; charset=utf-8", b"method not allowed")
+			},
+			OperatorRequestRoute::LaneSteer => {
 				http_response_bytes("405 Method Not Allowed", "text/plain; charset=utf-8", b"method not allowed")
 			},
 			OperatorRequestRoute::Live => {
@@ -1500,6 +1592,7 @@ fn parse_operator_state_request_route(
 				force_refresh: operator_query_has_flag(query, "refresh"),
 			}),
 			("POST", OPERATOR_LINEAR_SCAN_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LinearScan),
+			("POST", OPERATOR_LANE_STEER_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneSteer),
 			("POST", "/api/accounts/select") => Ok(OperatorRequestRoute::AccountSelect),
 		("POST", "/api/accounts/clear") => Ok(OperatorRequestRoute::AccountClear),
 		("POST", "/api/accounts/logout") => Ok(OperatorRequestRoute::AccountLogout),
@@ -1512,6 +1605,7 @@ fn parse_operator_state_request_route(
 				| OPERATOR_LIVE_ENDPOINT_PATH
 				| OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH
 				| OPERATOR_LINEAR_SCAN_ENDPOINT_PATH
+				| OPERATOR_LANE_STEER_ENDPOINT_PATH
 				| OPERATOR_ACCOUNTS_ENDPOINT_PATH
 			| "/api/accounts/select"
 			| "/api/accounts/clear"

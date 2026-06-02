@@ -372,10 +372,17 @@ impl JsonRpcConnection {
 					return Ok(serde_json::from_value(response.result.clone())?);
 				},
 				JsonRpcMessage::Error(error) if error.id == expected_id => {
+					let data = error
+						.error
+						.data
+						.as_ref()
+						.map_or_else(String::new, |data| format!(" data: {data}"));
+
 					return Err(eyre::eyre!(
-						"`{method}` failed with {}: {}",
+						"`{method}` failed with {}: {}{}",
 						error.error.code,
-						error.error.message
+						error.error.message,
+						data
 					));
 				},
 				JsonRpcMessage::Request(request) => handle_request(self, &wire_message, request)?,
@@ -599,6 +606,8 @@ pub(crate) struct JsonRpcError {
 pub(crate) struct JsonRpcErrorPayload {
 	pub(crate) code: i64,
 	pub(crate) message: String,
+
+	pub(crate) data: Option<Value>,
 }
 
 #[derive(Clone, Debug)]

@@ -149,9 +149,9 @@ the current normal dispatch preflight. Decodex's intended lane-control use is:
 - no operator-facing `thread/inject_items` feature in this rollout.
 
 If generated schema or live capability probing shows that `turn/interrupt` or
-`turn/steer` is unavailable, the CLI/API control must report that control as
-unsupported for the active lane instead of failing ordinary issue dispatch. The
-lane-control contract and support matrix live in [`lane-control.md`](./lane-control.md).
+`turn/steer` is unavailable, the CLI/API control reports that control as unsupported
+for the active lane instead of failing ordinary issue dispatch. The lane-control
+contract and support matrix live in [`lane-control.md`](./lane-control.md).
 
 ## Required request flow
 
@@ -340,6 +340,15 @@ hard-limit task content categories. It should carry the operator's instruction b
 and leave policy constraints to Decodex audit, privacy, workflow, recovery, and
 agent-skill layers.
 
+Decodex sends `turn/steer` only from the active attempt process that owns the live
+app-server connection. `decodex lane steer` and `POST /api/lane-steer` first resolve
+the local run-control channel, require `expectedTurnId`, audit accepted or rejected
+state, and queue a local channel request. The active attempt rechecks the current turn
+before sending app-server params `{ threadId, expectedTurnId, input }` and records the
+returned `turnId` or a normalized failure class. App-server
+`activeTurnNotSteerable` is surfaced as `active_turn_not_steerable`, distinct from
+unsupported or generic app-server steer failures.
+
 `turn/steer` must not be treated as:
 
 - a tracker mutation
@@ -360,8 +369,8 @@ Method:
 Raw item injection is deferred as an operator feature. Decodex should not expose
 `thread/inject_items` through lane-control CLI/API in this rollout because raw item
 insertion has broader transcript-shaping semantics than the intended operator steer
-contract. Use `turn/steer` for active-lane steering once the CLI/API implementation is
-available.
+contract. Use `turn/steer` for active-lane steering through the supported CLI/API
+lane-control surface.
 
 ## `command/exec`
 

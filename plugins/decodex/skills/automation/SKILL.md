@@ -127,7 +127,9 @@ Rules for agents:
   the active turn can be targeted. Use hard process interruption only as a fallback when
   soft interrupt is unavailable, timed out, or impossible.
 - Use steer only through the CLI/API lane-control surface and only when the operator
-  supplies the steer text. Bottom-layer steer support is broad; policy, audit, privacy,
+  supplies the steer text. The CLI form is `decodex lane steer <ISSUE> --run-id
+  <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>`; API callers use
+  `POST /api/lane-steer`. Bottom-layer steer support is broad; policy, audit, privacy,
   workflow, recovery, and skills provide the guardrails.
 - Treat task replacement as explicit lifecycle work, not steer. If the operator wants a
   different objective or acceptance contract, pause or stop if needed, update/requeue
