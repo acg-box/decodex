@@ -31,7 +31,8 @@ use self::protocol::{
 	ProbeDynamicToolHandler, RunOutcome, RuntimeConfigSummary, SkillsListParams,
 	SkillsListResponse, ThreadArchiveRequest, ThreadResumeRequest, ThreadSessionResponse,
 	ThreadStartRequest, ThreadStatusChangedNotification, ToolRequestUserInputResponse,
-	TurnCompletedNotification, TurnError, TurnInterruptRequest, TurnStartRequest, UserInput,
+	TurnCompletedNotification, TurnError, TurnInterruptRequest, TurnStartRequest, TurnSteerRequest,
+	UserInput,
 };
 use crate::{
 	agent::{
@@ -49,13 +50,17 @@ use crate::{
 	},
 	prelude::eyre,
 	run_control::{
-		self, LaneControlInterruptRequest, LaneControlInterruptResponse, PendingLaneControlRequest,
+		self, LaneControlInterruptRequest, LaneControlInterruptResponse, LaneControlSteerRequest,
+		LaneControlSteerResponse, LaneControlSteerResponseStatus, PendingLaneControlRequest,
+		PendingLaneControlSteerRequest,
 	},
 	state::{
 		self, CodexAccountActivitySummary, CodexAccountMarker, EffectiveRuntimeMarker,
-		RUN_CONTROL_CHANNEL_DIR, RUN_CONTROL_CHANNEL_STATUS_COMPLETED,
-		RUN_CONTROL_CHANNEL_STATUS_FAILED, RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE,
-		RUN_OPERATION_AGENT_RUN, RUN_OPERATION_APP_SERVER_PREFLIGHT, RunControlChannel, StateStore,
+		RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED, RUN_CONTROL_CHANNEL_DIR,
+		RUN_CONTROL_CHANNEL_STATUS_COMPLETED, RUN_CONTROL_CHANNEL_STATUS_FAILED,
+		RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE, RUN_OPERATION_AGENT_RUN,
+		RUN_OPERATION_APP_SERVER_PREFLIGHT, RunControlActionOutcomeRequest, RunControlChannel,
+		StateStore,
 	},
 };
 
@@ -1366,6 +1371,9 @@ fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> 
 			string_at_paths(value, &[&["params", "status", "type"], &["status", "type"]])
 		});
 	}
+	if event_type == "turn/steer" {
+		return protocol_steer_detail(payload_value);
+	}
 	if event_type.starts_with("turn/") {
 		return protocol_turn_status_from_value(event_type, payload_value)
 			.or_else(|| Some(String::from("running")));
@@ -1430,6 +1438,18 @@ fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> 
 	}
 
 	None
+}
+
+fn protocol_steer_detail(payload_value: Option<&Value>) -> Option<String> {
+	let value = payload_value?;
+	let outcome =
+		string_at_paths(value, &[&["outcome"]]).unwrap_or_else(|| String::from("unknown"));
+	let expected_turn_id = string_at_paths(value, &[&["expectedTurnId"], &["expected_turn_id"]])
+		.unwrap_or_else(|| String::from("unknown"));
+	let response_turn_id = string_at_paths(value, &[&["responseTurnId"], &["response_turn_id"]])
+		.unwrap_or_else(|| String::from("none"));
+
+	Some(format!("{outcome}: expected={expected_turn_id}, response={response_turn_id}"))
 }
 
 fn warning_or_deprecation_detail(payload_value: Option<&Value>) -> Option<String> {
@@ -3169,13 +3189,19 @@ fn execute_turn_loop(
 
 		flush_pending_messages(client, recorder, Some(thread_id))?;
 
-		let final_output =
-			wait_for_turn_completion(client, recorder, request, thread_id, &turn_id)?.final_output;
+		let outcome = wait_for_turn_completion(client, recorder, request, thread_id, &turn_id)?;
+		let final_turn_id = outcome.turn_id;
+		let final_output = outcome.final_output;
 
 		if let Some(continuation_pending) =
 			resolve_turn_completion(request, turn_count, &final_output)?
 		{
-			return Ok(TurnLoopResult { turn_id, turn_count, final_output, continuation_pending });
+			return Ok(TurnLoopResult {
+				turn_id: final_turn_id,
+				turn_count,
+				final_output,
+				continuation_pending,
+			});
 		}
 
 		next_input =
@@ -3346,6 +3372,18 @@ fn build_turn_start_request(thread_id: &str, user_input: &str) -> TurnStartReque
 	}
 }
 
+fn build_turn_steer_request(
+	thread_id: &str,
+	expected_turn_id: &str,
+	message: &str,
+) -> TurnSteerRequest {
+	TurnSteerRequest {
+		thread_id: thread_id.to_owned(),
+		expected_turn_id: expected_turn_id.to_owned(),
+		input: vec![UserInput::Text { text: message.to_owned() }],
+	}
+}
+
 fn login_account_params(account: &CodexAccountLogin) -> LoginAccountParams {
 	LoginAccountParams::ChatgptAuthTokens {
 		access_token: account.access_token().to_owned(),
@@ -3399,18 +3437,24 @@ fn wait_for_turn_completion(
 ) -> crate::prelude::Result<RunOutcome> {
 	let control_enabled = request.activity_marker_path.is_some();
 	let mut last_activity_at = Instant::now();
+	let mut target_turn_id = target_turn_id.to_owned();
 	let mut final_output = String::new();
 	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
 
 	loop {
-		if control_enabled {
-			handle_pending_turn_control_requests(
+		if control_enabled
+			&& let Some(response_turn_id) = handle_pending_turn_control_requests(
 				client,
 				recorder,
 				request,
 				target_thread_id,
-				target_turn_id,
-			)?;
+				&target_turn_id,
+			)? {
+			recorder.state_store.update_run_turn(recorder.run_id, &response_turn_id)?;
+			recorder.set_turn_id(&response_turn_id)?;
+
+			target_turn_id = response_turn_id;
+			last_activity_at = Instant::now();
 		}
 
 		let idle_timeout = protocol_activity_idle_timeout(
@@ -3422,7 +3466,7 @@ fn wait_for_turn_completion(
 			last_activity_at,
 			idle_timeout,
 			target_thread_id,
-			target_turn_id,
+			&target_turn_id,
 			latest_turn_failure.as_ref(),
 			control_enabled,
 		)?
@@ -3447,7 +3491,7 @@ fn wait_for_turn_completion(
 				if let Some(outcome) = handle_turn_execution_notification(
 					notification,
 					target_thread_id,
-					target_turn_id,
+					&target_turn_id,
 					&mut final_output,
 					&mut latest_turn_failure,
 				)? {
@@ -3459,7 +3503,7 @@ fn wait_for_turn_completion(
 				recorder,
 				server_request,
 				target_thread_id,
-				target_turn_id,
+				&target_turn_id,
 				request.dynamic_tool_handler,
 				request.codex_account_provider,
 			)?,
@@ -3467,7 +3511,7 @@ fn wait_for_turn_completion(
 			JsonRpcMessage::Error(error) => {
 				latest_turn_failure = Some(turn_failure_from_json_rpc_error_response(
 					target_thread_id,
-					target_turn_id,
+					&target_turn_id,
 					error,
 				));
 			},
@@ -3504,12 +3548,20 @@ fn handle_turn_execution_notification(
 			}
 		},
 		"item/agentMessage/delta" => {
+			if !notification_targets_turn(notification, target_turn_id) {
+				return Ok(None);
+			}
+
 			let payload: AgentMessageDeltaNotification =
 				serde_json::from_value(notification.params.clone())?;
 
 			final_output.push_str(&payload.delta);
 		},
 		"item/completed" => {
+			if !notification_targets_turn(notification, target_turn_id) {
+				return Ok(None);
+			}
+
 			let payload: ItemCompletedNotification =
 				serde_json::from_value(notification.params.clone())?;
 
@@ -3527,7 +3579,10 @@ fn handle_turn_execution_notification(
 				return Ok(None);
 			}
 			if payload.turn.status == "completed" {
-				return Ok(Some(RunOutcome { final_output: mem::take(final_output) }));
+				return Ok(Some(RunOutcome {
+					final_output: mem::take(final_output),
+					turn_id: target_turn_id.to_owned(),
+				}));
 			}
 
 			if let Some(error) = payload.turn.error.as_ref() {
@@ -3552,6 +3607,10 @@ fn handle_turn_execution_notification(
 	}
 
 	Ok(None)
+}
+
+fn notification_targets_turn(notification: &JsonRpcNotification, target_turn_id: &str) -> bool {
+	turn_id_from_value(&notification.params).is_none_or(|turn_id| turn_id == target_turn_id)
 }
 
 fn next_turn_wire_message(
@@ -3587,9 +3646,9 @@ fn handle_pending_turn_control_requests(
 	request: &AppServerRunRequest<'_>,
 	target_thread_id: &str,
 	target_turn_id: &str,
-) -> crate::prelude::Result<()> {
+) -> crate::prelude::Result<Option<String>> {
 	let Some(worktree_path) = request.activity_marker_path.as_deref() else {
-		return Ok(());
+		return Ok(None);
 	};
 
 	for pending in run_control::pending_interrupt_requests(worktree_path, &request.run_id)? {
@@ -3603,8 +3662,21 @@ fn handle_pending_turn_control_requests(
 			target_turn_id,
 		)?;
 	}
+	for pending in run_control::pending_steer_requests(worktree_path, &request.run_id)? {
+		if let Some(response_turn_id) = handle_pending_turn_steer_request(
+			client,
+			recorder,
+			request,
+			worktree_path,
+			pending,
+			target_thread_id,
+			target_turn_id,
+		)? {
+			return Ok(Some(response_turn_id));
+		}
+	}
 
-	Ok(())
+	Ok(None)
 }
 
 fn handle_pending_turn_interrupt_request(
@@ -3677,6 +3749,84 @@ fn handle_pending_turn_interrupt_request(
 	Ok(())
 }
 
+fn handle_pending_turn_steer_request(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	run_request: &AppServerRunRequest<'_>,
+	worktree_path: &Path,
+	pending: PendingLaneControlSteerRequest,
+	target_thread_id: &str,
+	target_turn_id: &str,
+) -> crate::prelude::Result<Option<String>> {
+	record_lane_steer_request(recorder, &pending.request)?;
+
+	if let Some((error_class, message)) = lane_steer_request_rejection(
+		run_request,
+		&pending.request,
+		target_thread_id,
+		target_turn_id,
+	) {
+		let response = LaneControlSteerResponse::rejected(
+			&pending.request,
+			target_turn_id,
+			error_class,
+			message,
+		);
+
+		record_lane_steer_response(recorder, &response, Some(pending.request.audit_record_id))?;
+
+		run_control::write_steer_response(worktree_path, &response)?;
+		run_control::remove_steer_request(&pending.path)?;
+
+		return Ok(None);
+	}
+
+	let result = client.steer_turn_with_handler(
+		build_turn_steer_request(
+			&pending.request.thread_id,
+			&pending.request.expected_turn_id,
+			&pending.request.message,
+		),
+		|connection, wire_message, server_request| {
+			handle_server_request_while_waiting(
+				connection,
+				recorder,
+				wire_message,
+				server_request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::TurnExecution,
+					run_request.dynamic_tool_handler,
+					run_request.codex_account_provider,
+					Some(target_thread_id),
+					None,
+				),
+			)
+		},
+	);
+	let response = match result {
+		Ok(value) =>
+			LaneControlSteerResponse::delivered(&pending.request, target_turn_id, &value.turn_id),
+		Err(error) => {
+			let error_class = steer_error_class(&error);
+
+			LaneControlSteerResponse::failed(
+				&pending.request,
+				target_turn_id,
+				error_class,
+				format!("turn/steer failed with {error_class}."),
+			)
+		},
+	};
+	let response_turn_id = response.response_turn_id.clone();
+
+	record_lane_steer_response(recorder, &response, Some(pending.request.audit_record_id))?;
+
+	run_control::write_steer_response(worktree_path, &response)?;
+	run_control::remove_steer_request(&pending.path)?;
+
+	Ok(response_turn_id)
+}
+
 fn record_lane_interrupt_request(
 	recorder: &mut RunRecorder<'_>,
 	request: &LaneControlInterruptRequest,
@@ -3733,6 +3883,111 @@ fn record_lane_interrupt_response(
 			"method": response.method,
 			"errorClass": response.error_class,
 			"protocolSummary": response.protocol_summary,
+			"message": response.message,
+		}),
+	)?;
+
+	Ok(())
+}
+
+fn record_lane_steer_request(
+	recorder: &mut RunRecorder<'_>,
+	request: &LaneControlSteerRequest,
+) -> crate::prelude::Result<()> {
+	recorder.record(
+		"lane_control/steer/request",
+		&serde_json::json!({
+			"requestId": request.request_id,
+			"auditRecordId": request.audit_record_id,
+			"projectId": request.project_id,
+			"issueId": request.issue_id,
+			"runId": request.run_id,
+			"attemptNumber": request.attempt_number,
+			"threadId": request.thread_id,
+			"expectedTurnId": request.expected_turn_id,
+			"source": request.source,
+			"messageByteCount": request.message_byte_count,
+			"messageLineCount": request.message_line_count,
+		})
+		.to_string(),
+	)
+}
+
+fn record_lane_steer_response(
+	recorder: &mut RunRecorder<'_>,
+	response: &LaneControlSteerResponse,
+	parent_record_id: Option<i64>,
+) -> crate::prelude::Result<()> {
+	let outcome = match &response.status {
+		LaneControlSteerResponseStatus::Delivered => RUN_CONTROL_ACTION_COMPLETED,
+		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected =>
+			RUN_CONTROL_ACTION_FAILED,
+	};
+	let metadata = serde_json::json!({
+		"requestId": response.request_id,
+		"outcome": outcome,
+		"reason": response.classification,
+		"failureClass": response.error_class,
+		"expectedTurnId": response.expected_turn_id,
+		"currentTurnId": response.current_turn_id,
+		"responseTurnId": response.response_turn_id,
+	});
+
+	recorder.record("turn/steer", &metadata.to_string())?;
+	recorder.record(
+		"lane_control/steer/response",
+		&serde_json::json!({
+			"requestId": response.request_id,
+			"projectId": response.project_id,
+			"issueId": response.issue_id,
+			"runId": response.run_id,
+			"attemptNumber": response.attempt_number,
+			"threadId": response.thread_id,
+			"expectedTurnId": response.expected_turn_id,
+			"currentTurnId": response.current_turn_id,
+			"responseTurnId": response.response_turn_id,
+			"status": &response.status,
+			"classification": response.classification,
+			"method": response.method,
+			"errorClass": response.error_class,
+		})
+		.to_string(),
+	)?;
+	recorder.state_store.record_run_control_action_delivery_outcome(
+		RunControlActionOutcomeRequest {
+			project_id: &response.project_id,
+			issue_id: &response.issue_id,
+			run_id: &response.run_id,
+			attempt_number: response.attempt_number,
+			thread_id: Some(&response.thread_id),
+			turn_id: Some(&response.expected_turn_id),
+			current_thread_id: Some(&response.thread_id),
+			current_turn_id: response.current_turn_id.as_deref(),
+			source: "app_server_child",
+			action: "steer",
+			outcome,
+			reason: &response.classification,
+			parent_record_id,
+			timeout_ms: None,
+			metadata: Some(&metadata),
+			channel: None,
+		},
+	)?;
+	recorder.state_store.append_private_execution_event(
+		&response.project_id,
+		&response.issue_id,
+		&response.run_id,
+		response.attempt_number,
+		"lane_control/steer",
+		serde_json::json!({
+			"requestId": response.request_id,
+			"status": &response.status,
+			"classification": response.classification,
+			"method": response.method,
+			"errorClass": response.error_class,
+			"expectedTurnId": response.expected_turn_id,
+			"currentTurnId": response.current_turn_id,
+			"responseTurnId": response.response_turn_id,
 			"message": response.message,
 		}),
 	)?;
@@ -3804,6 +4059,70 @@ fn lane_interrupt_request_rejection(
 	None
 }
 
+fn lane_steer_request_rejection(
+	run_request: &AppServerRunRequest<'_>,
+	request: &LaneControlSteerRequest,
+	target_thread_id: &str,
+	target_turn_id: &str,
+) -> Option<(&'static str, String)> {
+	if request.project_id != run_request.project_id {
+		return Some((
+			"project_mismatch",
+			format!(
+				"Control request targeted project `{}`, but this run belongs to `{}`.",
+				request.project_id, run_request.project_id
+			),
+		));
+	}
+	if request.issue_id != run_request.issue_id {
+		return Some((
+			"issue_mismatch",
+			format!(
+				"Control request targeted issue `{}`, but this run belongs to `{}`.",
+				request.issue_id, run_request.issue_id
+			),
+		));
+	}
+	if request.run_id != run_request.run_id {
+		return Some((
+			"run_mismatch",
+			format!(
+				"Control request targeted run `{}`, but this run is `{}`.",
+				request.run_id, run_request.run_id
+			),
+		));
+	}
+	if request.attempt_number != run_request.attempt_number {
+		return Some((
+			"attempt_mismatch",
+			format!(
+				"Control request targeted attempt `{}`, but this run is attempt `{}`.",
+				request.attempt_number, run_request.attempt_number
+			),
+		));
+	}
+	if request.thread_id != target_thread_id {
+		return Some((
+			"thread_mismatch",
+			format!(
+				"Control request targeted thread `{}`, but the active thread is `{target_thread_id}`.",
+				request.thread_id
+			),
+		));
+	}
+	if request.expected_turn_id != target_turn_id {
+		return Some((
+			"stale_expected_turn_id",
+			format!(
+				"Control request expected turn `{}`, but the active turn is `{target_turn_id}`.",
+				request.expected_turn_id
+			),
+		));
+	}
+
+	None
+}
+
 fn soft_interrupt_error_class(error: &Report) -> &'static str {
 	if is_app_server_output_timeout(error) {
 		return "soft_interrupt_timed_out";
@@ -3816,6 +4135,25 @@ fn soft_interrupt_error_class(error: &Report) -> &'static str {
 	} else {
 		"soft_interrupt_failed"
 	}
+}
+
+fn steer_error_class(error: &Report) -> &'static str {
+	if is_app_server_output_timeout(error) {
+		return "app_server_turn_steer_timed_out";
+	}
+
+	let error_text = error.to_string().to_ascii_lowercase();
+
+	if error_text.contains("activeturnnotsteerable")
+		|| error_text.contains("active turn not steerable")
+	{
+		return "active_turn_not_steerable";
+	}
+	if error_text.contains("-32601") || error_text.contains("method not found") {
+		return "app_server_turn_steer_unsupported";
+	}
+
+	"app_server_turn_steer_failed"
 }
 
 fn is_app_server_output_timeout(error: &Report) -> bool {
@@ -4158,9 +4496,6 @@ fn dispatch_dynamic_tool_call(
 	request: &JsonRpcRequest,
 	context: RequestDispatchContext<'_>,
 ) -> crate::prelude::Result<()> {
-	let target_turn_id = context.target_turn_id.ok_or_else(|| {
-		eyre::eyre!("app_server_protocol_failure: turn execution request missing turn context")
-	})?;
 	let target_thread_id = context.target_thread_id.ok_or_else(|| {
 		eyre::eyre!("app_server_protocol_failure: turn execution request missing thread context")
 	})?;
@@ -4168,7 +4503,7 @@ fn dispatch_dynamic_tool_call(
 		context.dynamic_tool_handler,
 		request,
 		target_thread_id,
-		target_turn_id,
+		context.target_turn_id,
 	);
 
 	respond_to_dynamic_tool_call_dispatch(connection, recorder, request, dispatch)
@@ -4391,7 +4726,7 @@ fn handle_dynamic_tool_call(
 	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
 	request: &JsonRpcRequest,
 	target_thread_id: &str,
-	target_turn_id: &str,
+	target_turn_id: Option<&str>,
 ) -> DynamicToolCallDispatch {
 	let payload =
 		match validated_dynamic_tool_call_payload(request, target_thread_id, target_turn_id) {
@@ -4456,7 +4791,7 @@ fn handle_dynamic_tool_call(
 fn validated_dynamic_tool_call_payload(
 	request: &JsonRpcRequest,
 	target_thread_id: &str,
-	target_turn_id: &str,
+	target_turn_id: Option<&str>,
 ) -> std::result::Result<DynamicToolCallParams, Box<DynamicToolCallDispatch>> {
 	let payload = serde_json::from_value::<DynamicToolCallParams>(request.params.clone()).map_err(
 		|error| {
@@ -4507,7 +4842,10 @@ fn validated_dynamic_tool_call_payload(
 			),
 		)));
 	}
-	if payload.turn_id != target_turn_id {
+
+	if let Some(target_turn_id) = target_turn_id
+		&& payload.turn_id != target_turn_id
+	{
 		return Err(Box::new(DynamicToolCallDispatch::protocol_failure(
 			Some(payload.tool),
 			payload.namespace,

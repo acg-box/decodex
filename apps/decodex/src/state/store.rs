@@ -848,11 +848,14 @@ impl StateStore {
 			attempt_number: resolution.audit_target.attempt_number,
 			thread_id: resolution.audit_target.thread_id,
 			turn_id: resolution.audit_target.turn_id,
+			current_thread_id: resolution.audit_target.current_thread_id,
+			current_turn_id: resolution.audit_target.current_turn_id,
 			source: resolution.audit_target.source,
 			action: resolution.audit_target.action,
 			outcome: resolution.outcome,
 			reason: resolution.reason,
 			audit_record_id: event.record_id(),
+			metadata: resolution.audit_target.metadata,
 			channel: resolution.channel,
 		})
 	}
@@ -875,9 +878,12 @@ impl StateStore {
 			attempt_number: receipt.attempt_number,
 			thread_id: receipt.thread_id.clone(),
 			turn_id: receipt.turn_id.clone(),
+			current_thread_id: receipt.current_thread_id.clone(),
+			current_turn_id: receipt.current_turn_id.clone(),
 			source: receipt.source.clone(),
 			action: receipt.action.clone(),
 			timeout_ms: None,
+			metadata: receipt.metadata.clone(),
 			channel: receipt.channel.clone(),
 		};
 
@@ -886,6 +892,39 @@ impl StateStore {
 			outcome,
 			reason,
 			Some(receipt.audit_record_id),
+		)
+	}
+
+	/// Append a follow-up audit outcome for a control action handled from a channel request.
+	#[cfg_attr(not(test), allow(dead_code))]
+	pub(crate) fn record_run_control_action_delivery_outcome(
+		&self,
+		request: RunControlActionOutcomeRequest<'_>,
+	) -> Result<PrivateExecutionEvent> {
+		validate_run_control_action_outcome(request.outcome)?;
+		validate_required_run_control_field("reason", request.reason)?;
+
+		let target = RunControlAuditTarget {
+			project_id: request.project_id.to_owned(),
+			issue_id: request.issue_id.to_owned(),
+			run_id: request.run_id.to_owned(),
+			attempt_number: request.attempt_number,
+			thread_id: request.thread_id.map(str::to_owned),
+			turn_id: request.turn_id.map(str::to_owned),
+			current_thread_id: request.current_thread_id.map(str::to_owned),
+			current_turn_id: request.current_turn_id.map(str::to_owned),
+			source: request.source.to_owned(),
+			action: request.action.to_owned(),
+			timeout_ms: request.timeout_ms,
+			metadata: request.metadata.cloned(),
+			channel: request.channel.cloned(),
+		};
+
+		self.append_run_control_audit_event(
+			&target,
+			request.outcome,
+			request.reason,
+			request.parent_record_id,
 		)
 	}
 
@@ -900,12 +939,14 @@ impl StateStore {
 		validate_run_control_action_outcome(outcome)?;
 
 		let channel = target.channel.as_ref();
+		let failure_class = run_control_action_failure_class(&target.action, outcome, reason);
 		let payload = serde_json::json!({
 			"schema": "decodex.run_control_action/v1",
 			"action": target.action,
 			"source": target.source,
 			"outcome": outcome,
 			"reason": reason,
+			"failure_class": failure_class,
 			"parent_record_id": parent_record_id,
 			"requested": {
 				"project_id": target.project_id,
@@ -916,6 +957,11 @@ impl StateStore {
 				"turn_id": target.turn_id,
 				"timeout_ms": target.timeout_ms,
 			},
+			"observed": {
+				"thread_id": target.current_thread_id,
+				"turn_id": target.current_turn_id,
+			},
+			"metadata": target.metadata,
 			"channel": channel.map(|channel| serde_json::json!({
 				"transport": channel.transport(),
 				"channel_path": channel.channel_path().display().to_string(),
@@ -1950,6 +1996,9 @@ struct RunControlAuditTarget {
 	source: String,
 	action: String,
 	timeout_ms: Option<i64>,
+	current_thread_id: Option<String>,
+	current_turn_id: Option<String>,
+	metadata: Option<Value>,
 	channel: Option<RunControlChannel>,
 }
 
@@ -2050,9 +2099,12 @@ fn resolve_run_control_action_locked(
 		attempt_number: attempt.attempt_number,
 		thread_id: request.thread_id.map(str::to_owned),
 		turn_id: request.turn_id.map(str::to_owned),
+		current_thread_id: attempt.thread_id.clone(),
+		current_turn_id: attempt.turn_id.clone(),
 		source: request.source.to_owned(),
 		action: request.action.to_owned(),
 		timeout_ms: request.timeout_ms,
+		metadata: request.metadata.cloned(),
 		channel: None,
 	};
 
@@ -2138,9 +2190,12 @@ fn rejected_run_control_resolution(
 			attempt_number: request.attempt_number,
 			thread_id: request.thread_id.map(str::to_owned),
 			turn_id: request.turn_id.map(str::to_owned),
+			current_thread_id: None,
+			current_turn_id: None,
 			source: request.source.to_owned(),
 			action: request.action.to_owned(),
 			timeout_ms: request.timeout_ms,
+			metadata: request.metadata.cloned(),
 			channel: None,
 		}),
 		outcome: RUN_CONTROL_ACTION_REJECTED.to_owned(),
@@ -2225,6 +2280,33 @@ fn validate_run_control_action_outcome(outcome: &str) -> Result<()> {
 	}
 
 	Ok(())
+}
+
+fn run_control_action_failure_class(
+	action: &str,
+	outcome: &str,
+	reason: &str,
+) -> Option<&'static str> {
+	if !matches!(
+		outcome,
+		RUN_CONTROL_ACTION_REJECTED
+			| RUN_CONTROL_ACTION_FAILED
+			| RUN_CONTROL_ACTION_TIMED_OUT
+			| RUN_CONTROL_ACTION_FALLBACK
+	) {
+		return None;
+	}
+	if action == "steer" && reason == "turn_mismatch" {
+		return Some("stale_expected_turn_id");
+	}
+	if action == "steer" && reason == "active_turn_not_steerable" {
+		return Some("active_turn_not_steerable");
+	}
+	if action == "steer" && reason == "app_server_turn_steer_unsupported" {
+		return Some("app_server_turn_steer_unsupported");
+	}
+
+	Some("run_control_action_failed")
 }
 
 fn retarget_review_orchestration_issue(

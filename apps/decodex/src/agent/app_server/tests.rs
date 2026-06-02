@@ -33,6 +33,9 @@ use crate::{
 		},
 	},
 	prelude::{Result, eyre},
+	run_control::{
+		self, LaneControlSteerRequest, LaneControlSteerRequestInput, LaneControlSteerResponse,
+	},
 	state::{self, ProtocolActivitySummary, StateStore},
 	test_support::TestEnvVarGuard,
 };
@@ -362,6 +365,18 @@ fn turn_start_request_uses_default_runtime_settings() {
 	assert!(matches!(
 		request.input.as_slice(),
 		[UserInput::Text{ text }] if text == "hello"
+	));
+}
+
+#[test]
+fn turn_steer_request_uses_expected_turn_precondition_and_text() {
+	let request = super::build_turn_steer_request("thread-1", "turn-1", "change direction");
+
+	assert_eq!(request.thread_id, "thread-1");
+	assert_eq!(request.expected_turn_id, "turn-1");
+	assert!(matches!(
+		request.input.as_slice(),
+		[UserInput::Text{ text }] if text == "change direction"
 	));
 }
 
@@ -1328,7 +1343,11 @@ fn structured_error_notification_becomes_turn_failure() {
 fn json_rpc_error_response_becomes_recoverable_turn_failure() {
 	let error = JsonRpcError {
 		id: serde_json::json!(7),
-		error: JsonRpcErrorPayload { code: -32_000, message: String::from("late response") },
+		error: JsonRpcErrorPayload {
+			code: -32_000,
+			message: String::from("late response"),
+			data: None,
+		},
 	};
 	let failure = super::turn_failure_from_json_rpc_error_response("thread-1", "turn-1", &error);
 	let failure_message = failure.to_string();
@@ -1337,6 +1356,75 @@ fn json_rpc_error_response_becomes_recoverable_turn_failure() {
 	assert!(failure_message.contains("turn-1"));
 	assert!(failure_message.contains("code -32000"));
 	assert!(failure_message.contains("late response"));
+}
+
+#[test]
+fn steer_delivery_error_classifies_active_turn_not_steerable_distinctly() {
+	let error = eyre::eyre!(
+		"`turn/steer` failed with -32000: turn is not steerable data: {{\"type\":\"activeTurnNotSteerable\"}}"
+	);
+	let failure_class = super::steer_error_class(&error);
+
+	assert_eq!(failure_class, "active_turn_not_steerable");
+}
+
+#[test]
+fn steer_delivery_error_classifies_missing_method_as_unsupported() {
+	for message in [
+		"`turn/steer` failed with -32601: method not found",
+		"`turn/steer` failed with -32601: Method not found",
+	] {
+		let error = eyre::eyre!("{message}");
+		let failure_class = super::steer_error_class(&error);
+
+		assert_eq!(failure_class, "app_server_turn_steer_unsupported");
+	}
+}
+
+#[test]
+fn steer_response_wait_ignores_temp_file_until_atomic_response_exists() -> Result<()> {
+	let temp_dir = TempDir::new()?;
+	let request = LaneControlSteerRequest::new(LaneControlSteerRequestInput {
+		audit_record_id: 7,
+		project_id: "decodex",
+		issue_id: "XY-704",
+		run_id: "run-1",
+		attempt_number: 1,
+		thread_id: "thread-1",
+		expected_turn_id: "turn-1",
+		source: "test",
+		message: "change direction",
+	});
+	let run_dir = temp_dir.path().join(".decodex-run-control").join("run-1");
+
+	fs::create_dir_all(&run_dir)?;
+	fs::write(run_dir.join(format!("{}.steer-response.json.tmp", request.request_id)), b"{")?;
+
+	assert!(
+		run_control::wait_for_steer_response(
+			temp_dir.path(),
+			"run-1",
+			&request.request_id,
+			Duration::from_millis(1),
+		)?
+		.is_none()
+	);
+
+	let response = LaneControlSteerResponse::delivered(&request, "turn-1", "turn-2");
+
+	run_control::write_steer_response(temp_dir.path(), &response)?;
+
+	assert_eq!(
+		run_control::wait_for_steer_response(
+			temp_dir.path(),
+			"run-1",
+			&request.request_id,
+			Duration::from_millis(100),
+		)?,
+		Some(response)
+	);
+
+	Ok(())
 }
 
 #[test]
@@ -1393,7 +1481,7 @@ fn dynamic_tool_call_enforces_declared_namespace() {
 			params,
 		};
 		let dispatch =
-			super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", "turn-1");
+			super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("turn-1"));
 
 		assert_eq!(dispatch.response.success, expected_success, "{case_name}");
 		assert_eq!(
@@ -1436,7 +1524,8 @@ fn dynamic_tool_call_rejects_invalid_response_shape() {
 			"turnId": "turn-1"
 		}),
 	};
-	let dispatch = super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", "turn-1");
+	let dispatch =
+		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("turn-1"));
 
 	assert!(!dispatch.response.success);
 	assert!(matches!(
@@ -1464,7 +1553,8 @@ fn dynamic_tool_call_records_tool_failures_without_terminal_protocol_failure() {
 			"turnId": "turn-1"
 		}),
 	};
-	let dispatch = super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", "turn-1");
+	let dispatch =
+		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("turn-1"));
 
 	assert!(!dispatch.response.success);
 	assert!(dispatch.terminal_failure.is_none());
@@ -1474,6 +1564,93 @@ fn dynamic_tool_call_records_tool_failures_without_terminal_protocol_failure() {
 	assert_eq!(diagnostic.failure_class, "app_server_dynamic_tool_failed");
 	assert_eq!(diagnostic.tool.as_deref(), Some("failing_tool"));
 	assert_eq!(diagnostic.message, "tool rejected the request");
+}
+
+#[test]
+fn dynamic_tool_call_can_validate_thread_without_fixed_turn_during_steer_rpc() {
+	let handler = NamespacedDynamicToolHandler { seen_namespace: RefCell::new(None) };
+	let request = JsonRpcRequest {
+		id: serde_json::json!(1),
+		method: String::from("item/tool/call"),
+		params: serde_json::json!({
+			"arguments": {},
+			"callId": "call-1",
+			"namespace": "tracker",
+			"threadId": "thread-1",
+			"tool": "tracker_tool",
+			"turnId": "turn-after-steer"
+		}),
+	};
+	let dispatch = super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", None);
+
+	assert!(dispatch.response.success);
+	assert!(dispatch.terminal_failure.is_none());
+	assert_eq!(*handler.seen_namespace.borrow(), Some(String::from("tracker")));
+}
+
+#[test]
+fn turn_notification_ignores_agent_output_for_non_target_turn() {
+	let old_completed = JsonRpcNotification {
+		method: String::from("item/completed"),
+		params: serde_json::json!({
+			"threadId": "thread-1",
+			"turnId": "turn-old",
+			"item": {"type": "agentMessage", "text": "OLD"}
+		}),
+	};
+	let old_delta = JsonRpcNotification {
+		method: String::from("item/agentMessage/delta"),
+		params: serde_json::json!({
+			"threadId": "thread-1",
+			"turnId": "turn-old",
+			"delta": " OLD_DELTA"
+		}),
+	};
+	let target_completed = JsonRpcNotification {
+		method: String::from("item/completed"),
+		params: serde_json::json!({
+			"threadId": "thread-1",
+			"turnId": "turn-new",
+			"item": {"type": "agentMessage", "text": "NEW"}
+		}),
+	};
+	let mut final_output = String::from("CURRENT");
+	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
+
+	assert!(
+		super::handle_turn_execution_notification(
+			&old_completed,
+			"thread-1",
+			"turn-new",
+			&mut final_output,
+			&mut latest_turn_failure
+		)
+		.expect("old completed notification should parse")
+		.is_none()
+	);
+	assert!(
+		super::handle_turn_execution_notification(
+			&old_delta,
+			"thread-1",
+			"turn-new",
+			&mut final_output,
+			&mut latest_turn_failure
+		)
+		.expect("old delta notification should parse")
+		.is_none()
+	);
+	assert_eq!(final_output, "CURRENT");
+
+	super::handle_turn_execution_notification(
+		&target_completed,
+		"thread-1",
+		"turn-new",
+		&mut final_output,
+		&mut latest_turn_failure,
+	)
+	.expect("target completed notification should parse");
+
+	assert_eq!(final_output, "NEW");
 }
 
 #[test]

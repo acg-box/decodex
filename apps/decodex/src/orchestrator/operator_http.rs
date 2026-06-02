@@ -1,9 +1,7 @@
-use base64::engine::general_purpose::STANDARD;
-use base64::Engine as _;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sha1::{Digest as _, Sha1};
 
-use crate::accounts;
-use crate::accounts::AccountUseRequest;
+use crate::accounts::{self, AccountUseRequest};
 
 const OPERATOR_DASHBOARD_HTML: &str =
 	include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/operator_dashboard.html"));
@@ -11,10 +9,8 @@ const OPERATOR_DASHBOARD_ICON_PNG: &[u8] =
 	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/icon.png"));
 const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
 	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo.ico"));
-const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] = include_bytes!(concat!(
-	env!("CARGO_MANIFEST_DIR"),
-	"/src/orchestrator/assets/logo-touch.png"
-));
+const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] =
+	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo-touch.png"));
 const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -29,6 +25,7 @@ enum OperatorRequestRoute {
 	LinearScan,
 	LaneInspect,
 	LaneInterrupt,
+	LaneSteer,
 	AccountList { force_refresh: bool },
 	AccountSelect,
 	AccountClear,
@@ -64,7 +61,9 @@ impl DashboardEventHub {
 
 	fn broadcast(&self, event_type: &'static str, payload: Value) {
 		let Ok(mut clients) = self.clients.lock() else {
-			tracing::warn!("Skipped dashboard event broadcast because the client list lock is poisoned.");
+			tracing::warn!(
+				"Skipped dashboard event broadcast because the client list lock is poisoned."
+			);
 
 			return;
 		};
@@ -143,6 +142,22 @@ struct OperatorLaneInterruptHttpRequest {
 	run_id: String,
 	force: Option<bool>,
 	reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OperatorLaneSteerHttpRequest {
+	#[serde(alias = "projectId")]
+	project_id: Option<String>,
+	issue: Option<String>,
+	#[serde(alias = "issueId")]
+	issue_id: Option<String>,
+	#[serde(alias = "runId")]
+	run_id: String,
+	#[serde(alias = "expectedTurnId")]
+	expected_turn_id: String,
+	message: String,
+	#[serde(alias = "waitTimeoutMs")]
+	wait_timeout_ms: Option<u64>,
 }
 
 struct DashboardControlAck<'a> {
@@ -255,6 +270,13 @@ fn handle_operator_state_endpoint_connection(
 
 		return Ok(());
 	}
+	if route == OperatorRequestRoute::LaneSteer {
+		let response = build_operator_lane_steer_http_response(state_store, &request);
+
+		stream.write_all(&response)?;
+
+		return Ok(());
+	}
 	if route == OperatorRequestRoute::AppSnapshot {
 		let response = build_operator_app_snapshot_http_response(snapshot);
 
@@ -309,7 +331,9 @@ fn snapshot_json_with_live_account_control(snapshot_json: &[u8]) -> Vec<u8> {
 	}
 }
 
-fn build_operator_app_snapshot_http_response(snapshot: &Arc<Mutex<PublishedOperatorSnapshot>>) -> Vec<u8> {
+fn build_operator_app_snapshot_http_response(
+	snapshot: &Arc<Mutex<PublishedOperatorSnapshot>>,
+) -> Vec<u8> {
 	let snapshot = match snapshot.lock() {
 		Ok(snapshot) => snapshot,
 		Err(error) => {
@@ -376,10 +400,12 @@ fn handle_operator_dashboard_websocket_connection(
 	write_current_dashboard_run_activity_event(&mut stream, state_store, &session.subscription);
 
 	loop {
-		for frame in read_dashboard_websocket_client_frames(&mut stream, &mut client_frame_buffer)? {
+		for frame in read_dashboard_websocket_client_frames(&mut stream, &mut client_frame_buffer)?
+		{
 			match frame {
 				DashboardClientFrame::Text(payload) => {
-					let response = handle_dashboard_client_message(&mut session, state_store, &payload);
+					let response =
+						handle_dashboard_client_message(&mut session, state_store, &payload);
 
 					write_dashboard_websocket_event(&mut stream, "controlAck", &response)?;
 
@@ -406,8 +432,7 @@ fn handle_operator_dashboard_websocket_connection(
 
 		match events.recv_timeout(Duration::from_millis(100)) {
 			Ok(event) => {
-				if let Some(event) =
-					dashboard_event_for_subscription(&event, &session.subscription)
+				if let Some(event) = dashboard_event_for_subscription(&event, &session.subscription)
 				{
 					write_dashboard_websocket_event(&mut stream, event.event_type, &event.payload)?;
 				}
@@ -460,7 +485,9 @@ fn run_operator_run_activity_websocket_broadcasts(
 	}
 }
 
-fn build_operator_run_activity_event(state_store: &StateStore) -> Result<DashboardRunActivityEvent> {
+fn build_operator_run_activity_event(
+	state_store: &StateStore,
+) -> Result<DashboardRunActivityEvent> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let account_control = global_codex_account_control_status();
 	let mut accounts = Vec::new();
@@ -596,11 +623,7 @@ fn write_current_dashboard_run_activity_event(
 }
 
 fn dashboard_run_activity_event_has_active_runs(event: &DashboardBroadcastEvent) -> bool {
-	event
-		.payload
-		.get("activeRuns")
-		.and_then(Value::as_array)
-		.is_some_and(|runs| !runs.is_empty())
+	event.payload.get("activeRuns").and_then(Value::as_array).is_some_and(|runs| !runs.is_empty())
 }
 
 fn write_dashboard_websocket_event(
@@ -673,9 +696,7 @@ fn read_dashboard_websocket_client_frames(
 					frames.push(frame);
 				}
 			},
-			Err(error)
-				if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
-			{
+			Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
 				break;
 			},
 			Err(error) if error.kind() == ErrorKind::Interrupted => continue,
@@ -1038,18 +1059,11 @@ fn dashboard_subscription_payload(subscription: &DashboardClientSubscription) ->
 }
 
 fn dashboard_required_account_selector(message: &DashboardClientMessage) -> Option<&str> {
-	message
-		.account_selector
-		.as_deref()
-		.map(str::trim)
-		.filter(|value| !value.is_empty())
+	message.account_selector.as_deref().map(str::trim).filter(|value| !value.is_empty())
 }
 
 fn dashboard_clean_scope_value(value: Option<&str>) -> Option<String> {
-	value
-		.map(str::trim)
-		.filter(|value| !value.is_empty())
-		.map(str::to_owned)
+	value.map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
 }
 
 fn dashboard_event_for_subscription(
@@ -1060,17 +1074,12 @@ fn dashboard_event_for_subscription(
 		return Some(event.clone());
 	}
 
-	let active_runs = event
-		.payload
-		.get("activeRuns")
-		.and_then(Value::as_array)
-		.map(|runs| {
-			runs
-				.iter()
-				.filter(|run| dashboard_run_matches_subscription(run, subscription))
-				.cloned()
-				.collect::<Vec<_>>()
-		})?;
+	let active_runs = event.payload.get("activeRuns").and_then(Value::as_array).map(|runs| {
+		runs.iter()
+			.filter(|run| dashboard_run_matches_subscription(run, subscription))
+			.cloned()
+			.collect::<Vec<_>>()
+	})?;
 	let mut payload = event.payload.clone();
 
 	payload["activeRuns"] = Value::Array(active_runs);
@@ -1081,7 +1090,9 @@ fn dashboard_event_for_subscription(
 }
 
 fn dashboard_subscription_is_empty(subscription: &DashboardClientSubscription) -> bool {
-	subscription.project_id.is_none() && subscription.issue_id.is_none() && subscription.run_id.is_none()
+	subscription.project_id.is_none()
+		&& subscription.issue_id.is_none()
+		&& subscription.run_id.is_none()
 }
 
 fn dashboard_run_matches_subscription(
@@ -1160,23 +1171,15 @@ fn websocket_accept_key(key: &str) -> String {
 }
 
 fn operator_http_header_value<'a>(request: &'a str, header_name: &str) -> Option<&'a str> {
-	request
-		.lines()
-		.skip(1)
-		.take_while(|line| !line.trim().is_empty())
-		.find_map(|line| {
-			let (name, value) = line.split_once(':')?;
+	request.lines().skip(1).take_while(|line| !line.trim().is_empty()).find_map(|line| {
+		let (name, value) = line.split_once(':')?;
 
-			name.trim()
-				.eq_ignore_ascii_case(header_name)
-				.then(|| value.trim())
-		})
+		name.trim().eq_ignore_ascii_case(header_name).then(|| value.trim())
+	})
 }
 
 fn operator_http_header_contains_token(value: &str, token: &str) -> bool {
-	value
-		.split(',')
-		.any(|candidate| candidate.trim().eq_ignore_ascii_case(token))
+	value.split(',').any(|candidate| candidate.trim().eq_ignore_ascii_case(token))
 }
 
 fn read_operator_state_request_headers(stream: &mut TcpStream) -> Result<Vec<u8>> {
@@ -1292,23 +1295,20 @@ fn operator_account_http_response_body(
 				.map_err(Into::into),
 		OperatorRequestRoute::AccountSelect => {
 			let selector = operator_account_request_selector(request)?;
-			let response = accounts::hydrate_account_list_usage(
-				accounts::account_select(&selector)?,
-			);
+			let response =
+				accounts::hydrate_account_list_usage(accounts::account_select(&selector)?);
 
 			serde_json::to_vec(&response).map_err(Into::into)
 		},
 		OperatorRequestRoute::AccountClear => {
-			let response =
-				accounts::hydrate_account_list_usage(accounts::account_clear()?);
+			let response = accounts::hydrate_account_list_usage(accounts::account_clear()?);
 
 			serde_json::to_vec(&response).map_err(Into::into)
 		},
 		OperatorRequestRoute::AccountLogout => {
 			let selector = operator_account_request_selector(request)?;
-			let response = accounts::hydrate_account_list_usage(
-				accounts::account_logout(&selector)?,
-			);
+			let response =
+				accounts::hydrate_account_list_usage(accounts::account_logout(&selector)?);
 
 			serde_json::to_vec(&response).map_err(Into::into)
 		},
@@ -1319,9 +1319,9 @@ fn operator_account_http_response_body(
 				.as_deref()
 				.filter(|path| !path.trim().is_empty())
 				.ok_or_else(|| eyre::eyre!("Account import requires auth_json_path."))?;
-			let response = accounts::hydrate_account_list_usage(
-				accounts::account_import(Path::new(auth_json_path))?,
-			);
+			let response = accounts::hydrate_account_list_usage(accounts::account_import(
+				Path::new(auth_json_path),
+			)?);
 
 			serde_json::to_vec(&response).map_err(Into::into)
 		},
@@ -1444,10 +1444,7 @@ fn operator_linear_scan_request_project_id(request: &[u8]) -> Result<Option<Stri
 	}
 }
 
-fn build_operator_lane_inspect_http_response(
-	state_store: &StateStore,
-	request: &[u8],
-) -> Vec<u8> {
+fn build_operator_lane_inspect_http_response(state_store: &StateStore, request: &[u8]) -> Vec<u8> {
 	match operator_lane_inspect_http_response_body(state_store, request) {
 		Ok(body) => http_response_bytes("200 OK", "application/json", &body),
 		Err(error) => operator_lane_error_http_response(error),
@@ -1512,6 +1509,69 @@ fn operator_lane_interrupt_http_response_body(
 	let status_line = report.http_status_line();
 
 	Ok((status_line, serde_json::to_vec(&report)?))
+}
+
+fn build_operator_lane_steer_http_response(state_store: &StateStore, request: &[u8]) -> Vec<u8> {
+	match operator_lane_steer_http_response_body(state_store, request) {
+		Ok((status_line, body)) => http_response_bytes(status_line, "application/json", &body),
+		Err(error) => operator_lane_error_http_response(error),
+	}
+}
+
+fn operator_lane_steer_http_response_body(
+	state_store: &StateStore,
+	request: &[u8],
+) -> Result<(&'static str, Vec<u8>)> {
+	let body = operator_http_request_body(request)?;
+	let request: OperatorLaneSteerHttpRequest = serde_json::from_slice(body)
+		.map_err(|error| eyre::eyre!("Lane steer request body was not valid JSON: {error}"))?;
+	let issue = request
+		.issue
+		.as_deref()
+		.or(request.issue_id.as_deref())
+		.map(str::trim)
+		.filter(|issue| !issue.is_empty())
+		.ok_or_else(|| eyre::eyre!("Lane steer request requires issue or issueId."))?;
+
+	if request.run_id.trim().is_empty() {
+		eyre::bail!("Lane steer request runId must not be blank.");
+	}
+	if request.expected_turn_id.trim().is_empty() {
+		eyre::bail!("Lane steer request expectedTurnId must not be blank.");
+	}
+	if request.message.trim().is_empty() {
+		eyre::bail!("Lane steer request message must not be blank.");
+	}
+
+	let project = operator_lane_http_project(state_store, request.project_id.as_deref())?;
+	let wait_timeout = request
+		.wait_timeout_ms
+		.map(Duration::from_millis)
+		.unwrap_or(DEFAULT_STEER_RESULT_WAIT_TIMEOUT);
+	let steer_request = LaneSteerRequest {
+		config_path: None,
+		project_id: None,
+		issue,
+		run_id: request.run_id.trim(),
+		expected_turn_id: request.expected_turn_id.trim(),
+		message: &request.message,
+		source: "http",
+		wait_timeout,
+	};
+	let report = lane_control::steer_lane_with_state(state_store, &project, &steer_request)?;
+	let status_line = if lane_steer_report_is_rejected_or_failed(&report) {
+		"409 Conflict"
+	} else if report.delivery_status == "queued" {
+		"202 Accepted"
+	} else {
+		"200 OK"
+	};
+
+	Ok((status_line, serde_json::to_vec(&report)?))
+}
+
+fn lane_steer_report_is_rejected_or_failed(report: &LaneSteerReport) -> bool {
+	matches!(report.outcome.as_str(), "rejected" | "failed" | "timed_out" | "fallback")
 }
 
 fn operator_lane_http_project(
@@ -1619,39 +1679,45 @@ fn percent_decode_operator_query_value(value: &str) -> Result<String> {
 
 fn build_operator_state_http_response_for_route(route: OperatorRequestRoute) -> Vec<u8> {
 	match route {
-		OperatorRequestRoute::Dashboard => {
-			http_response_bytes("200 OK", "text/html; charset=utf-8", OPERATOR_DASHBOARD_HTML.as_bytes())
-		},
-		OperatorRequestRoute::DashboardIconPng => {
-			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG)
-		},
-		OperatorRequestRoute::DashboardLogoIco => {
-			http_response_bytes("200 OK", "image/x-icon", OPERATOR_DASHBOARD_LOGO_ICO)
-		},
-		OperatorRequestRoute::DashboardLogoTouchPng => {
-			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG)
-		},
+		OperatorRequestRoute::Dashboard => http_response_bytes(
+			"200 OK",
+			"text/html; charset=utf-8",
+			OPERATOR_DASHBOARD_HTML.as_bytes(),
+		),
+		OperatorRequestRoute::DashboardIconPng =>
+			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_ICON_PNG),
+		OperatorRequestRoute::DashboardLogoIco =>
+			http_response_bytes("200 OK", "image/x-icon", OPERATOR_DASHBOARD_LOGO_ICO),
+		OperatorRequestRoute::DashboardLogoTouchPng =>
+			http_response_bytes("200 OK", "image/png", OPERATOR_DASHBOARD_LOGO_TOUCH_PNG),
 		OperatorRequestRoute::DashboardWs => websocket_upgrade_required_response(),
-			OperatorRequestRoute::AppSnapshot => {
-				http_response_bytes("200 OK", "application/json", b"{}")
-			},
-			OperatorRequestRoute::LinearScan => {
-				http_response_bytes("405 Method Not Allowed", "text/plain; charset=utf-8", b"method not allowed")
-			},
-			OperatorRequestRoute::LaneInspect | OperatorRequestRoute::LaneInterrupt => {
-				http_response_bytes("405 Method Not Allowed", "text/plain; charset=utf-8", b"method not allowed")
-			},
-			OperatorRequestRoute::Live => {
-				http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok")
-		},
+		OperatorRequestRoute::AppSnapshot =>
+			http_response_bytes("200 OK", "application/json", b"{}"),
+		OperatorRequestRoute::LinearScan => http_response_bytes(
+			"405 Method Not Allowed",
+			"text/plain; charset=utf-8",
+			b"method not allowed",
+		),
+		OperatorRequestRoute::LaneInspect
+		| OperatorRequestRoute::LaneInterrupt
+		| OperatorRequestRoute::LaneSteer => http_response_bytes(
+			"405 Method Not Allowed",
+			"text/plain; charset=utf-8",
+			b"method not allowed",
+		),
+		OperatorRequestRoute::Live =>
+			http_response_bytes("200 OK", "text/plain; charset=utf-8", b"ok"),
 		OperatorRequestRoute::AccountList { .. }
 		| OperatorRequestRoute::AccountSelect
 		| OperatorRequestRoute::AccountClear
 		| OperatorRequestRoute::AccountLogout
 		| OperatorRequestRoute::AccountImport
 		| OperatorRequestRoute::AccountUse
-		| OperatorRequestRoute::AccountRerollName =>
-			http_response_bytes("405 Method Not Allowed", "text/plain; charset=utf-8", b"method not allowed"),
+		| OperatorRequestRoute::AccountRerollName => http_response_bytes(
+			"405 Method Not Allowed",
+			"text/plain; charset=utf-8",
+			b"method not allowed",
+		),
 	}
 }
 
@@ -1682,9 +1748,8 @@ fn parse_operator_state_request_route(
 			b"missing path",
 		));
 	};
-	let path_without_query = path
-		.split_once('?')
-		.map_or(path, |(path_without_query, _)| path_without_query);
+	let path_without_query =
+		path.split_once('?').map_or(path, |(path_without_query, _)| path_without_query);
 	let query = path.split_once('?').map(|(_, query)| query).unwrap_or_default();
 	let normalized_path = path_without_query
 		.split_once('#')
@@ -1697,35 +1762,42 @@ fn parse_operator_state_request_route(
 		("GET", "/assets/logo.ico") => Ok(OperatorRequestRoute::DashboardLogoIco),
 		("GET", "/assets/logo-touch.png") => Ok(OperatorRequestRoute::DashboardLogoTouchPng),
 		("GET", OPERATOR_DASHBOARD_WS_ENDPOINT_PATH) => Ok(OperatorRequestRoute::DashboardWs),
-			("GET", OPERATOR_LIVE_ENDPOINT_PATH) => Ok(OperatorRequestRoute::Live),
-			("GET", OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AppSnapshot),
-			("GET", OPERATOR_ACCOUNTS_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AccountList {
-				force_refresh: operator_query_has_flag(query, "refresh"),
-			}),
-			("POST", OPERATOR_LINEAR_SCAN_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LinearScan),
-			("GET", OPERATOR_LANE_INSPECT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInspect),
-			("POST", OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInterrupt),
-			("POST", "/api/accounts/select") => Ok(OperatorRequestRoute::AccountSelect),
+		("GET", OPERATOR_LIVE_ENDPOINT_PATH) => Ok(OperatorRequestRoute::Live),
+		("GET", OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AppSnapshot),
+		("GET", OPERATOR_ACCOUNTS_ENDPOINT_PATH) => Ok(OperatorRequestRoute::AccountList {
+			force_refresh: operator_query_has_flag(query, "refresh"),
+		}),
+		("POST", OPERATOR_LINEAR_SCAN_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LinearScan),
+		("GET", OPERATOR_LANE_INSPECT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInspect),
+		("POST", OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH) => Ok(OperatorRequestRoute::LaneInterrupt),
+		("POST", OPERATOR_LANE_STEER_ENDPOINT_PATH | OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH) =>
+			Ok(OperatorRequestRoute::LaneSteer),
+		("POST", "/api/accounts/select") => Ok(OperatorRequestRoute::AccountSelect),
 		("POST", "/api/accounts/clear") => Ok(OperatorRequestRoute::AccountClear),
 		("POST", "/api/accounts/logout") => Ok(OperatorRequestRoute::AccountLogout),
 		("POST", "/api/accounts/import") => Ok(OperatorRequestRoute::AccountImport),
 		("POST", "/api/accounts/use") => Ok(OperatorRequestRoute::AccountUse),
 		("POST", "/api/accounts/reroll-name") => Ok(OperatorRequestRoute::AccountRerollName),
-		(_, OPERATOR_DASHBOARD_ENDPOINT_PATH
+		(
+			_,
+			OPERATOR_DASHBOARD_ENDPOINT_PATH
 			| OPERATOR_DASHBOARD_ALIAS_ENDPOINT_PATH
 			| OPERATOR_DASHBOARD_WS_ENDPOINT_PATH
-				| OPERATOR_LIVE_ENDPOINT_PATH
-				| OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH
-				| OPERATOR_LINEAR_SCAN_ENDPOINT_PATH
-				| OPERATOR_LANE_INSPECT_ENDPOINT_PATH
-				| OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH
-				| OPERATOR_ACCOUNTS_ENDPOINT_PATH
+			| OPERATOR_LIVE_ENDPOINT_PATH
+			| OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH
+			| OPERATOR_LINEAR_SCAN_ENDPOINT_PATH
+			| OPERATOR_LANE_INSPECT_ENDPOINT_PATH
+			| OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH
+			| OPERATOR_LANE_STEER_ENDPOINT_PATH
+			| OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH
+			| OPERATOR_ACCOUNTS_ENDPOINT_PATH
 			| "/api/accounts/select"
 			| "/api/accounts/clear"
 			| "/api/accounts/logout"
 			| "/api/accounts/import"
 			| "/api/accounts/use"
-			| "/api/accounts/reroll-name") => Err(http_response_bytes(
+			| "/api/accounts/reroll-name",
+		) => Err(http_response_bytes(
 			"405 Method Not Allowed",
 			"text/plain; charset=utf-8",
 			b"method not allowed",
@@ -1752,10 +1824,8 @@ fn http_response_bytes_with_headers(
 	extra_headers: &[(&str, String)],
 	body: &[u8],
 ) -> Vec<u8> {
-	let mut response = format!(
-		"HTTP/1.1 {status_line}\r\nContent-Type: {content_type}\r\n"
-	)
-	.into_bytes();
+	let mut response =
+		format!("HTTP/1.1 {status_line}\r\nContent-Type: {content_type}\r\n").into_bytes();
 
 	for (header, value) in extra_headers {
 		response.extend_from_slice(format!("{header}: {value}\r\n").as_bytes());

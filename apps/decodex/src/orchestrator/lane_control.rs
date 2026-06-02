@@ -12,19 +12,24 @@ use serde::Serialize;
 use crate::{
 	config::ServiceConfig,
 	orchestrator::{
-		self, ChildRunRef, DEFAULT_STATUS_RUN_LIMIT, OperatorRunStatus, OperatorStatusSnapshot,
+		self, ChildRunRef, DEFAULT_STATUS_RUN_LIMIT, LaneSteerReport, LaneSteerRequest,
+		OperatorRunStatus, OperatorStatusSnapshot,
 	},
 	prelude::{Result, eyre},
 	run_control::{
 		self, LaneControlInterruptRequest, LaneControlInterruptRequestInput,
-		LaneControlInterruptResponse, LaneControlResponseStatus,
+		LaneControlInterruptResponse, LaneControlResponseStatus, LaneControlSteerRequest,
+		LaneControlSteerRequestInput, LaneControlSteerResponse, LaneControlSteerResponseStatus,
 	},
 	runtime,
 	state::{
-		RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED, RUN_CONTROL_ACTION_FALLBACK,
-		RUN_CONTROL_ACTION_TIMED_OUT, RunControlActionReceipt, RunControlActionRequest, StateStore,
+		RUN_CONTROL_ACTION_ACCEPTED, RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED,
+		RUN_CONTROL_ACTION_FALLBACK, RUN_CONTROL_ACTION_TIMED_OUT, RunControlActionReceipt,
+		RunControlActionRequest, StateStore,
 	},
 };
+
+pub(crate) const DEFAULT_STEER_RESULT_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[cfg(not(test))]
 const LANE_INTERRUPT_RESPONSE_WAIT: Duration = Duration::from_secs(3);
@@ -280,6 +285,20 @@ pub(crate) fn interrupt_lane(request: LaneInterruptRequest<'_>) -> Result<LaneIn
 	Ok(report)
 }
 
+pub(crate) fn steer_lane(request: LaneSteerRequest<'_>) -> Result<LaneSteerReport> {
+	validate_lane_steer_request(&request)?;
+
+	let state_store = runtime::open_runtime_store()?;
+	let config = load_lane_control_project_for_optional_id(
+		request.config_path,
+		request.project_id,
+		&state_store,
+	)?;
+	let report = steer_lane_with_state(&state_store, &config, &request)?;
+
+	Ok(report)
+}
+
 pub(super) fn build_lane_inspect_report(
 	state_store: &StateStore,
 	project: &ServiceConfig,
@@ -356,6 +375,23 @@ pub(super) fn interrupt_lane_with_state(
 	})
 }
 
+pub(super) fn steer_lane_with_state(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	request: &LaneSteerRequest<'_>,
+) -> Result<LaneSteerReport> {
+	validate_lane_steer_request(request)?;
+
+	let snapshot = orchestrator::build_operator_status_snapshot(
+		project,
+		state_store,
+		DEFAULT_STATUS_RUN_LIMIT,
+	)?;
+	let run = select_interrupt_lane_run(&snapshot, request.issue, request.run_id)?;
+
+	attempt_lane_steer(state_store, project, &run, request)
+}
+
 fn soft_interrupt_allows_hard_fallback(soft: &LaneSoftInterruptReport) -> bool {
 	matches!(soft.status.as_str(), "pending" | "failed" | "unavailable")
 		&& soft.error_class.as_deref() != Some("lane_not_active")
@@ -374,6 +410,43 @@ fn load_lane_control_project(
 	runtime::register_project_config(state_store, &config_path, true)?;
 
 	ServiceConfig::from_path(&config_path)
+}
+
+fn load_lane_control_project_for_optional_id(
+	config_path: Option<&Path>,
+	project_id: Option<&str>,
+	state_store: &StateStore,
+) -> Result<ServiceConfig> {
+	let Some(project_id) = project_id.map(str::trim).filter(|id| !id.is_empty()) else {
+		return load_lane_control_project(config_path, state_store);
+	};
+	let config_path = if let Some(config_path) = config_path {
+		ServiceConfig::resolve_project_config_path(config_path)?
+	} else {
+		state_store
+			.list_projects()?
+			.into_iter()
+			.find(|registration| registration.service_id() == project_id)
+			.map(|registration| registration.config_path().to_path_buf())
+			.ok_or_else(|| {
+				eyre::eyre!(
+					"Decodex project `{project_id}` is not registered. Pass --config or run `decodex project add`."
+				)
+			})?
+	};
+
+	runtime::register_project_config(state_store, &config_path, true)?;
+
+	let project = ServiceConfig::from_path(&config_path)?;
+
+	if project.service_id() != project_id {
+		eyre::bail!(
+			"Lane steer project `{project_id}` did not match config service id `{}`.",
+			project.service_id()
+		);
+	}
+
+	Ok(project)
 }
 
 fn select_interrupt_lane_run(
@@ -437,6 +510,255 @@ fn soft_interrupt_available_for_run(run: &OperatorRunStatus) -> bool {
 		&& run.control_capability.as_ref().is_some_and(|capability| capability.status == "active")
 }
 
+fn attempt_lane_steer(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	run: &OperatorRunStatus,
+	request: &LaneSteerRequest<'_>,
+) -> Result<LaneSteerReport> {
+	let message_byte_count = request.message.len();
+	let message_line_count = lane_steer_message_line_count(request.message);
+	let metadata = serde_json::json!({
+		"expectedTurnId": request.expected_turn_id,
+		"messageByteCount": message_byte_count,
+		"messageLineCount": message_line_count,
+	});
+	let receipt = state_store.resolve_run_control_action(RunControlActionRequest {
+		project_id: project.service_id(),
+		issue_id: &run.issue_id,
+		run_id: &run.run_id,
+		attempt_number: run.attempt_number,
+		thread_id: run.thread_id.as_deref(),
+		turn_id: Some(request.expected_turn_id),
+		source: request.source,
+		action: "steer",
+		timeout_ms: Some(i64::try_from(request.wait_timeout.as_millis()).unwrap_or(i64::MAX)),
+		metadata: Some(&metadata),
+	})?;
+
+	if receipt.outcome() != RUN_CONTROL_ACTION_ACCEPTED {
+		return Ok(lane_steer_report_from_rejected_receipt(
+			request.issue,
+			run,
+			&receipt,
+			request.expected_turn_id,
+			message_byte_count,
+			message_line_count,
+		));
+	}
+
+	let Some(worktree_path) = absolute_lane_worktree_path(project, state_store, run)? else {
+		eyre::bail!("Lane steer was accepted without an active lane worktree.");
+	};
+	let Some(thread_id) = run.thread_id.as_deref() else {
+		eyre::bail!("Lane steer was accepted before the active app-server thread id was known.");
+	};
+	let control_request = LaneControlSteerRequest::new(LaneControlSteerRequestInput {
+		audit_record_id: receipt.audit_record_id(),
+		project_id: project.service_id(),
+		issue_id: &run.issue_id,
+		run_id: &run.run_id,
+		attempt_number: run.attempt_number,
+		thread_id,
+		expected_turn_id: request.expected_turn_id,
+		source: request.source,
+		message: request.message,
+	});
+	let request_path = run_control::write_steer_request(&worktree_path, &control_request)?;
+
+	state_store.append_private_execution_event(
+		project.service_id(),
+		&run.issue_id,
+		&run.run_id,
+		run.attempt_number,
+		"lane_control/steer/requested",
+		serde_json::json!({
+			"requestId": control_request.request_id,
+			"source": request.source,
+			"method": "turn/steer",
+			"expectedTurnId": request.expected_turn_id,
+			"messageByteCount": control_request.message_byte_count,
+			"messageLineCount": control_request.message_line_count,
+		}),
+	)?;
+
+	match run_control::wait_for_steer_response(
+		&worktree_path,
+		&run.run_id,
+		&control_request.request_id,
+		request.wait_timeout,
+	)? {
+		Some(response) => {
+			let outcome = match &response.status {
+				LaneControlSteerResponseStatus::Delivered => RUN_CONTROL_ACTION_COMPLETED,
+				LaneControlSteerResponseStatus::Failed
+				| LaneControlSteerResponseStatus::Rejected => RUN_CONTROL_ACTION_FAILED,
+			};
+
+			state_store.record_run_control_action_outcome(
+				&receipt,
+				outcome,
+				&response.classification,
+			)?;
+
+			Ok(lane_steer_report_from_response(
+				request.issue,
+				run,
+				&receipt,
+				&control_request,
+				&request_path,
+				response,
+			))
+		},
+		None => {
+			state_store.record_run_control_action_outcome(
+				&receipt,
+				RUN_CONTROL_ACTION_TIMED_OUT,
+				"steer_response_pending",
+			)?;
+
+			Ok(lane_steer_report_pending(
+				request.issue,
+				run,
+				&receipt,
+				&control_request,
+				&request_path,
+			))
+		},
+	}
+}
+
+fn lane_steer_report_from_rejected_receipt(
+	issue: &str,
+	run: &OperatorRunStatus,
+	receipt: &RunControlActionReceipt,
+	expected_turn_id: &str,
+	message_byte_count: usize,
+	message_line_count: usize,
+) -> LaneSteerReport {
+	LaneSteerReport {
+		project_id: receipt.project_id().to_owned(),
+		issue_id: receipt.issue_id().to_owned(),
+		issue_identifier: run.issue_identifier.clone().or_else(|| Some(issue.to_owned())),
+		run_id: receipt.run_id().to_owned(),
+		attempt_number: receipt.attempt_number(),
+		thread_id: receipt.current_thread_id().map(str::to_owned),
+		expected_turn_id: expected_turn_id.to_owned(),
+		current_turn_id: receipt.current_turn_id().map(str::to_owned),
+		response_turn_id: None,
+		audit_record_id: receipt.audit_record_id(),
+		request_id: String::new(),
+		request_path: None,
+		outcome: receipt.outcome().to_owned(),
+		reason: receipt.reason().to_owned(),
+		failure_class: lane_steer_failure_class_for_reason(receipt.reason()).map(str::to_owned),
+		delivery_status: String::from("rejected"),
+		message_byte_count,
+		message_line_count,
+	}
+}
+
+fn lane_steer_report_from_response(
+	issue: &str,
+	run: &OperatorRunStatus,
+	receipt: &RunControlActionReceipt,
+	request: &LaneControlSteerRequest,
+	request_path: &Path,
+	response: LaneControlSteerResponse,
+) -> LaneSteerReport {
+	let outcome = match &response.status {
+		LaneControlSteerResponseStatus::Delivered => RUN_CONTROL_ACTION_COMPLETED,
+		LaneControlSteerResponseStatus::Failed | LaneControlSteerResponseStatus::Rejected =>
+			RUN_CONTROL_ACTION_FAILED,
+	};
+
+	LaneSteerReport {
+		project_id: receipt.project_id().to_owned(),
+		issue_id: receipt.issue_id().to_owned(),
+		issue_identifier: run.issue_identifier.clone().or_else(|| Some(issue.to_owned())),
+		run_id: receipt.run_id().to_owned(),
+		attempt_number: receipt.attempt_number(),
+		thread_id: Some(response.thread_id.clone()),
+		expected_turn_id: response.expected_turn_id.clone(),
+		current_turn_id: response.current_turn_id.clone(),
+		response_turn_id: response.response_turn_id.clone(),
+		audit_record_id: receipt.audit_record_id(),
+		request_id: response.request_id.clone(),
+		request_path: Some(request_path.display().to_string()),
+		outcome: outcome.to_owned(),
+		reason: response.classification.clone(),
+		failure_class: response.error_class.clone(),
+		delivery_status: String::from("resolved"),
+		message_byte_count: request.message_byte_count,
+		message_line_count: request.message_line_count,
+	}
+}
+
+fn lane_steer_report_pending(
+	issue: &str,
+	run: &OperatorRunStatus,
+	receipt: &RunControlActionReceipt,
+	request: &LaneControlSteerRequest,
+	request_path: &Path,
+) -> LaneSteerReport {
+	LaneSteerReport {
+		project_id: receipt.project_id().to_owned(),
+		issue_id: receipt.issue_id().to_owned(),
+		issue_identifier: run.issue_identifier.clone().or_else(|| Some(issue.to_owned())),
+		run_id: receipt.run_id().to_owned(),
+		attempt_number: receipt.attempt_number(),
+		thread_id: Some(request.thread_id.clone()),
+		expected_turn_id: request.expected_turn_id.clone(),
+		current_turn_id: run.turn_id.clone(),
+		response_turn_id: None,
+		audit_record_id: receipt.audit_record_id(),
+		request_id: request.request_id.clone(),
+		request_path: Some(request_path.display().to_string()),
+		outcome: RUN_CONTROL_ACTION_ACCEPTED.to_owned(),
+		reason: String::from("queued_wait_timeout"),
+		failure_class: None,
+		delivery_status: String::from("queued"),
+		message_byte_count: request.message_byte_count,
+		message_line_count: request.message_line_count,
+	}
+}
+
+fn validate_lane_steer_request(request: &LaneSteerRequest<'_>) -> Result<()> {
+	if request.issue.trim().is_empty() {
+		eyre::bail!("Lane steer issue must not be empty.");
+	}
+	if request.run_id.trim().is_empty() {
+		eyre::bail!("Lane steer run id must not be empty.");
+	}
+	if request.expected_turn_id.trim().is_empty() {
+		eyre::bail!("Lane steer expected turn id must not be empty.");
+	}
+	if request.message.trim().is_empty() {
+		eyre::bail!("Lane steer message must not be empty.");
+	}
+	if request.source.trim().is_empty() {
+		eyre::bail!("Lane steer source must not be empty.");
+	}
+
+	Ok(())
+}
+
+fn lane_steer_failure_class_for_reason(reason: &str) -> Option<&'static str> {
+	match reason {
+		"turn_mismatch" | "stale_expected_turn_id" => Some("stale_expected_turn_id"),
+		"active_turn_not_steerable" => Some("active_turn_not_steerable"),
+		"app_server_turn_steer_timed_out" => Some("app_server_turn_steer_timed_out"),
+		"app_server_turn_steer_unsupported" => Some("app_server_turn_steer_unsupported"),
+		"app_server_turn_steer_failed" => Some("app_server_turn_steer_failed"),
+		"active_run_control_channel_resolved" | "queued_wait_timeout" => None,
+		_ => Some("run_control_action_failed"),
+	}
+}
+
+fn lane_steer_message_line_count(message: &str) -> usize {
+	message.lines().count().max(usize::from(!message.is_empty()))
+}
+
 fn attempt_soft_lane_interrupt(
 	state_store: &StateStore,
 	project: &ServiceConfig,
@@ -483,6 +805,7 @@ fn attempt_soft_lane_interrupt(
 		timeout_ms: Some(
 			i64::try_from(LANE_INTERRUPT_RESPONSE_WAIT.as_millis()).unwrap_or(i64::MAX),
 		),
+		metadata: None,
 	})?;
 
 	if receipt.outcome() != "accepted" {
@@ -665,6 +988,7 @@ fn record_hard_interrupt_control_fallback(
 		source: "hard_interrupt_fallback",
 		action: "interrupt",
 		timeout_ms: None,
+		metadata: None,
 	})?;
 
 	state_store.record_run_control_action_outcome(

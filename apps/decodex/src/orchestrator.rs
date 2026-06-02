@@ -1,7 +1,8 @@
 mod lane_control;
 
 pub(crate) use lane_control::{
-	LaneInspectRequest, LaneInterruptRequest, interrupt_lane, print_lane_inspect,
+	DEFAULT_STEER_RESULT_WAIT_TIMEOUT, LaneInspectRequest, LaneInterruptRequest, interrupt_lane,
+	print_lane_inspect, steer_lane,
 };
 
 #[cfg(unix)] use std::os::fd::AsRawFd;
@@ -91,7 +92,9 @@ const OPERATOR_APP_SNAPSHOT_ENDPOINT_PATH: &str = "/api/operator-snapshot";
 const OPERATOR_LINEAR_SCAN_ENDPOINT_PATH: &str = "/api/linear-scan";
 const OPERATOR_LANE_INSPECT_ENDPOINT_PATH: &str = "/api/lane/inspect";
 const OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH: &str = "/api/lane/interrupt";
-const OPERATOR_STATE_MAX_REQUEST_BYTES: usize = 8_192;
+const OPERATOR_LANE_STEER_ENDPOINT_PATH: &str = "/api/lane/steer";
+const OPERATOR_LANE_STEER_ALIAS_ENDPOINT_PATH: &str = "/api/lane-steer";
+const OPERATOR_STATE_MAX_REQUEST_BYTES: usize = 256 * 1_024;
 const OPERATOR_DASHBOARD_WS_CLIENT_MESSAGE_MAX_BYTES: usize = 64 * 1_024;
 const OPERATOR_STATE_HEADER_TERMINATOR: &[u8] = b"\r\n\r\n";
 const OPERATOR_DASHBOARD_WS_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
