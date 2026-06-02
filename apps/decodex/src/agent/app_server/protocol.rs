@@ -181,6 +181,21 @@ impl AppServerClient {
 		self.connection.request_with_handler("turn/start", &params, REQUEST_TIMEOUT, handler)
 	}
 
+	pub(super) fn steer_turn_with_handler<H>(
+		&mut self,
+		params: TurnSteerRequest,
+		handler: H,
+	) -> crate::prelude::Result<TurnSteerResponse>
+	where
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
+	{
+		self.connection.request_with_handler("turn/steer", &params, REQUEST_TIMEOUT, handler)
+	}
+
 	pub(super) fn command_exec(
 		&mut self,
 		params: &CommandExecParams,
@@ -267,6 +282,7 @@ impl AppServerClient {
 #[derive(Default)]
 pub(super) struct RunOutcome {
 	pub(super) final_output: String,
+	pub(super) turn_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -424,6 +440,21 @@ pub(super) struct TurnStartRequest {
 #[derive(Debug, Deserialize)]
 pub(super) struct TurnStartResponse {
 	pub(super) turn: TurnStatusPayload,
+}
+
+#[derive(Debug, Serialize)]
+pub(super) struct TurnSteerRequest {
+	#[serde(rename = "threadId")]
+	pub(super) thread_id: String,
+	#[serde(rename = "expectedTurnId")]
+	pub(super) expected_turn_id: String,
+	pub(super) input: Vec<UserInput>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct TurnSteerResponse {
+	#[serde(rename = "turnId")]
+	pub(super) turn_id: String,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]

@@ -2573,6 +2573,7 @@ fn run_control_accepts_active_attempt_and_persists_audit() {
 			source: "test_hook",
 			action: "noop",
 			timeout_ms: Some(500),
+			metadata: None,
 		})
 		.expect("control request should resolve");
 
@@ -2641,8 +2642,9 @@ fn run_control_rejects_stale_turn_and_run_mismatch() {
 			thread_id: Some("thread-1"),
 			turn_id: Some("turn-old"),
 			source: "test_hook",
-			action: "noop",
+			action: "steer",
 			timeout_ms: None,
+			metadata: None,
 		})
 		.expect("stale turn should be audited");
 	let stale_run = store
@@ -2656,13 +2658,29 @@ fn run_control_rejects_stale_turn_and_run_mismatch() {
 			source: "test_hook",
 			action: "noop",
 			timeout_ms: None,
+			metadata: None,
 		})
 		.expect("stale run should be audited");
 
 	assert_eq!(stale_turn.outcome(), "rejected");
 	assert_eq!(stale_turn.reason(), "turn_mismatch");
+	assert_eq!(stale_turn.current_turn_id(), Some("turn-current"));
 	assert_eq!(stale_run.outcome(), "rejected");
 	assert_eq!(stale_run.reason(), "run_not_found");
+
+	let events = store
+		.list_private_execution_events("pubfi", "issue-1", "run-current", 1)
+		.expect("private control audit should read");
+	let stale_turn_event = events
+		.iter()
+		.find(|event| event.record_id() == stale_turn.audit_record_id())
+		.expect("stale turn audit event should exist");
+
+	assert_eq!(
+		stale_turn_event.payload()["failure_class"].as_str(),
+		Some("stale_expected_turn_id")
+	);
+	assert_eq!(stale_turn_event.payload()["observed"]["turn_id"].as_str(), Some("turn-current"));
 }
 
 #[test]
@@ -2695,6 +2713,7 @@ fn run_control_rejects_missing_channel_file() {
 			source: "test_hook",
 			action: "noop",
 			timeout_ms: None,
+			metadata: None,
 		})
 		.expect("missing channel should be audited");
 
@@ -2731,6 +2750,7 @@ fn run_control_requires_active_run_ownership() {
 			source: "test_hook",
 			action: "noop",
 			timeout_ms: None,
+			metadata: None,
 		})
 		.expect("missing lease should be audited");
 
@@ -2749,6 +2769,7 @@ fn run_control_requires_active_run_ownership() {
 			source: "test_hook",
 			action: "noop",
 			timeout_ms: None,
+			metadata: None,
 		})
 		.expect("wrong active run should be audited");
 

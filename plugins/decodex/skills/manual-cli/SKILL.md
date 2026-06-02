@@ -70,9 +70,12 @@ CLI/API lane controls:
   scheduled Linear poll.
 - Use `decodex run <ISSUE>` only for deliberate one-issue automation or retained
   retry/resume when the lane remains eligible under the registered workflow.
-- When future CLI/API controls expose soft interrupt or steer, prefer soft interrupt
-  over hard process interruption and use steer only with explicit operator-supplied
-  text.
+- Use `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID>
+  --message <TEXT>` only with explicit operator-supplied text after inspection proves
+  the active lane identity. The expected turn id is a fail-closed precondition.
+  Broad steer text is allowed at the bottom layer; lifecycle ambiguity should route to
+  explicit recovery or manual attention instead of silently changing the issue
+  contract.
 - Do not use active-lane UI controls, direct runtime DB edits, raw
   `thread/inject_items`, or tracker-state mutations as substitutes for the lane-control
   contract.
