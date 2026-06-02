@@ -672,12 +672,14 @@ impl AccountSummary {
 		self.rate_limit_reached_type.clone_from(&summary.rate_limit_reached_type);
 		self.profile_display_name.clone_from(&summary.profile_display_name);
 		self.profile_username.clone_from(&summary.profile_username);
+
 		self.profile_checked_at_unix_epoch = summary.profile_checked_at_unix_epoch;
 		self.profile_lifetime_tokens = summary.profile_lifetime_tokens;
 		self.profile_peak_daily_tokens = summary.profile_peak_daily_tokens;
 		self.profile_longest_task_seconds = summary.profile_longest_task_seconds;
 		self.profile_current_streak_days = summary.profile_current_streak_days;
 		self.profile_longest_streak_days = summary.profile_longest_streak_days;
+
 		self.profile_daily_usage.clone_from(&summary.profile_daily_usage);
 
 		if summary.cooldown_until_unix_epoch.is_some() {
