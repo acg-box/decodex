@@ -74,6 +74,24 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertEqual(AccountDisplay.compactEmail("xavier.lau@helixbox.ai"), "xav...lau@helixbox.ai")
 	}
 
+	func testUsageResetDisplayUsesInjectedClock() {
+		let base = Date(timeIntervalSince1970: 1_800_000_000)
+		let thirteenMinutesLater = Int(base.timeIntervalSince1970) + 780
+
+		let pending = UsageResetDisplay.make(
+			resetAtUnixEpoch: thirteenMinutesLater,
+			now: base
+		)
+		let due = UsageResetDisplay.make(
+			resetAtUnixEpoch: thirteenMinutesLater,
+			now: base.addingTimeInterval(781)
+		)
+
+		XCTAssertEqual(pending.short, "13m")
+		XCTAssertEqual(due.short, "0m")
+		XCTAssertTrue(due.accessibility.contains("reset due now"))
+	}
+
 	func testOperatorSnapshotAssignsCodexAccountRunsToAccountRows() throws {
 		let assignedAccount = makeAccount(
 			status: "available",
