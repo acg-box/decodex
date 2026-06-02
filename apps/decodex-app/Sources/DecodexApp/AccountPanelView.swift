@@ -2396,6 +2396,7 @@ struct OperatorStatusStripView: View {
 	let snapshot: OperatorSnapshotResponse
 	let updatedAt: Date?
 	let currentTime: Date
+	private let liveFreshnessWindow: TimeInterval = 5
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
@@ -2430,6 +2431,7 @@ struct OperatorStatusStripView: View {
 						.font(PanelFont.tertiary)
 						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.68))
 						.monospacedDigit()
+						.frame(minWidth: 38, alignment: .trailing)
 				}
 				.frame(height: 16)
 			}
@@ -2479,7 +2481,7 @@ struct OperatorStatusStripView: View {
 		}
 
 		let age = max(0, Int(currentTime.timeIntervalSince(updatedAt).rounded()))
-		if age < 2 {
+		if TimeInterval(age) < liveFreshnessWindow {
 			return "live"
 		}
 
