@@ -1095,8 +1095,14 @@ impl ProbeCommand {
 		let report = agent::probe_app_server(&self.transport)?;
 
 		println!(
-			"probe ok: thread={} turn={} events={} output={}",
-			report.thread_id, report.turn_id, report.event_count, report.final_output
+			"probe ok: compatibility={} codex_version={} supported_versions=\"{}\" thread={} turn={} events={} output={}",
+			report.capability_preflight.compatibility_status(),
+			report.capability_preflight.compatibility_codex_cli_version().unwrap_or("unknown"),
+			report.capability_preflight.compatibility_supported_versions().unwrap_or("unknown"),
+			report.thread_id,
+			report.turn_id,
+			report.event_count,
+			report.final_output
 		);
 
 		tracing::info!(

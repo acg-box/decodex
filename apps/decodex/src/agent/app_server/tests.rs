@@ -19,8 +19,8 @@ use crate::{
 			AppServerTurnFailure, CommandExecHealthCheck, CommandExecResponse,
 			EffectiveThreadConfig, InitializeResponse, ModelProviderCapabilitiesReadResponse,
 			PluginListResponse, ProbeDynamicToolHandler, REQUEST_TIMEOUT, RequestWaitPhase,
-			RunRecorder, RuntimeConfigSummary, SkillsListResponse, TurnContinuationGuard,
-			UserInput,
+			RunRecorder, RuntimeConfigSummary, SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER,
+			SkillsListResponse, TurnContinuationGuard, UserInput,
 		},
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
@@ -268,6 +268,7 @@ fn matches_thread_id_from_supported_notification_shapes() {
 fn probe_result_shape_is_stable() {
 	let result = AppServerRunResult {
 		user_agent: String::from("ua"),
+		capability_preflight: AppServerCapabilityPreflightReport::new(),
 		thread_id: String::from("thread"),
 		turn_id: String::from("turn"),
 		turn_count: 1,
@@ -278,6 +279,79 @@ fn probe_result_shape_is_stable() {
 
 	assert_eq!(result.final_output, "PROBE_OK");
 	assert_eq!(result.turn_count, 1);
+}
+
+#[test]
+fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
+	for (user_agent, expected_codex_cli_version) in [
+		("codex-cli 0.136.0", "codex-cli 0.136.0"),
+		("codex-cli 0.136.0-alpha.2", "codex-cli 0.136.0-alpha.2"),
+		("decodex/0.136.0 (Mac OS 26.5.0; arm64) unknown (decodex; 0.1.0)", "codex-cli 0.136.0"),
+		(
+			"decodex/0.136.0-alpha.2 (Mac OS 26.5.0; arm64) unknown (decodex; 0.1.0)",
+			"codex-cli 0.136.0-alpha.2",
+		),
+	] {
+		let mut report = AppServerCapabilityPreflightReport::new();
+
+		super::record_app_server_compatibility_guard(&mut report, user_agent);
+
+		assert!(!report.has_blockers(), "{user_agent} should be supported");
+		assert_eq!(report.compatibility_status(), "supported");
+		assert_eq!(
+			report.compatibility_codex_cli_version(),
+			Some(expected_codex_cli_version),
+			"{user_agent} should be the matched Codex CLI version"
+		);
+		assert_eq!(
+			report.compatibility_supported_versions(),
+			Some("codex-cli 0.136.0, codex-cli 0.136.0-alpha.2")
+		);
+	}
+}
+
+#[test]
+fn app_server_compatibility_guard_rejects_unverified_codex_surfaces() {
+	for user_agent in [
+		"codex-cli 0.137.0-alpha.0",
+		"codex-cli 0.136.1",
+		"other-app/0.136.0",
+		"openai/codex upstream-main-post-rust-v0.136.0",
+	] {
+		let mut report = AppServerCapabilityPreflightReport::new();
+
+		super::record_app_server_compatibility_guard(&mut report, user_agent);
+
+		assert!(report.has_blockers(), "{user_agent} should be outside support");
+		assert_eq!(report.compatibility_status(), "unsupported");
+		assert_eq!(report.checks()[0].name, "compatibility");
+		assert_eq!(report.checks()[0].status, super::AppServerCapabilityPreflightStatus::Blocked);
+		assert!(report.checks()[0].summary.contains("outside"));
+	}
+}
+
+#[test]
+fn app_server_compatibility_versions_match_spec_table() {
+	let spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+		.join("..")
+		.join("..")
+		.join("docs")
+		.join("spec")
+		.join("app-server.md");
+	let spec = fs::read_to_string(spec_path).expect("app-server spec should be readable");
+	let documented_versions = spec
+		.lines()
+		.filter(|line| line.starts_with("| ") && line.contains("`codex-cli "))
+		.filter_map(|line| line.split('`').find_map(|segment| segment.strip_prefix("codex-cli ")))
+		.map(str::to_owned)
+		.collect::<Vec<_>>();
+	let executable_versions = SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER
+		.iter()
+		.map(|version| (*version).to_owned())
+		.collect::<Vec<_>>();
+
+	assert_eq!(documented_versions, executable_versions);
+	assert!(spec.contains("Upstream `main` commits after `rust-v0.136.0` are outside"));
 }
 
 #[test]
@@ -484,7 +558,7 @@ for line in sys.stdin:
 
     if method == "initialize":
         reply({
-            "userAgent": "fake-codex",
+            "userAgent": "codex-cli 0.136.0",
             "codexHome": os.environ["CODEX_HOME"],
             "platformFamily": "unix",
             "platformOs": "macos"
@@ -592,7 +666,7 @@ for line in sys.stdin:
         print(json.dumps({{
             "id": message["id"],
             "result": {{
-                "userAgent": "fake-codex",
+                "userAgent": "codex-cli 0.136.0",
                 "codexHome": os.environ["CODEX_HOME"],
                 "platformFamily": "unix",
                 "platformOs": "macos"
