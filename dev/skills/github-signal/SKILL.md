@@ -170,7 +170,7 @@ decodex radar render-signal \
 Validate the published output:
 
 ```bash
-python3 scripts/github/validate_signal_entry.py site/src/content/signals
+decodex radar validate site/src/content/signals
 npm run build --prefix site
 npm run check --prefix site
 ```

@@ -89,7 +89,7 @@ decodex radar render-signal \
 Validate the published signal entries and the site collection:
 
 ```bash
-python3 scripts/github/validate_signal_entry.py site/src/content/signals
+decodex radar validate site/src/content/signals
 npm run build --prefix site
 npm run check --prefix site
 cargo make decodex-checks
@@ -118,7 +118,7 @@ decodex radar backfill-release-range \
 Use release-range backfill to fill gaps in the accumulated commit/PR analysis before a
 release or prerelease summary. It should supplement continuous commit tracking, not
 replace it. Execute mode is still a Codex automation or local operator path: Rust
-selects the release-window gaps and sequences deterministic helper boundaries, while
+selects the release-window gaps and sequences deterministic Radar commands, while
 `scripts/github/run_codex_analysis.py` remains the read-only Codex AI helper that
 creates validated `analysis_draft` artifacts.
 
