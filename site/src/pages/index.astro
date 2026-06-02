@@ -31,7 +31,7 @@ import {
 const rawFilter = Astro.url.searchParams.get("filter");
 const activeFilter: FilterId = isFilterId(rawFilter) ? rawFilter : "all";
 const decodexGitHubUrl = "https://github.com/hack-ink/decodex";
-const primaryXUrl = "https://x.com/YvetteCipher";
+const primaryXUrl = "https://x.com/hackink";
 const signalBotXUrl = "https://x.com/decodexspace";
 const collectionEntries = await getCollection("signals");
 const releaseDeltaEntries = await getCollection("releaseDeltas");
@@ -533,7 +533,7 @@ const interactionRuntimeScript = `(function () {
             <a href="#radar">Open Decodex radar</a>
             <a href={decodexGitHubUrl} target="_blank" rel="noreferrer">GitHub</a>
             <a href={primaryXUrl} target="_blank" rel="noreferrer">
-              Follow @YvetteCipher
+              Follow @hackink
             </a>
           </div>
         </div>
@@ -690,7 +690,7 @@ const interactionRuntimeScript = `(function () {
         <div class="publisher-note">
           <span>Output path</span>
           <p>
-            Commit evidence becomes short X posts, release rollups, and B-side follow-up notes. Bot channel: <a href={signalBotXUrl} target="_blank" rel="noreferrer">@decodexspace</a>.
+            Commit evidence becomes low-frequency X posts, release rollups, and follow-up notes. Bot channel: <a href={signalBotXUrl} target="_blank" rel="noreferrer">@decodexspace</a>.
           </p>
         </div>
         <div class="publisher-flow">

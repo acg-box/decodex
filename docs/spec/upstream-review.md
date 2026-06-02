@@ -10,7 +10,7 @@ Read this when:
 - You are building automation that asks AI to analyze Codex commits or PRs.
 - You need to decide what GitHub Actions may refresh without Codex auth.
 - You are deciding whether an upstream change should become a signal, impact artifact,
-  social draft, or Decodex engineering follow-up.
+  social post, or Decodex engineering follow-up.
 
 Not this document:
 - The normalized GitHub source bundle schema. Read [`github-change-bundle.md`](./github-change-bundle.md).
@@ -55,8 +55,8 @@ Recommended checked-in location:
 - `artifacts/github/reviews/<source-slug>.review.json`
 
 Review artifacts are hot Radar artifacts unless they are promoted into
-`upstream_impact/v1`, `signal_entry/v1`, `social_post_draft/v1`, or a Linear follow-up.
-Apply the 28-day hot-window rule from [`radar-artifact-retention.md`](./radar-artifact-retention.md).
+`upstream_impact/v1`, `signal_entry/v1`, `social_post/v1`, or a Linear follow-up.
+Apply the 21-day hot-window rule from [`radar-artifact-retention.md`](./radar-artifact-retention.md).
 
 ## Queue requirements
 
@@ -108,7 +108,7 @@ or public value.
 - confidence: `confirmed`, `likely`, or `weak`
 - source-backed evidence notes
 - next actions, each mapped to `none`, `upstream_impact`, `signal_entry`,
-  `social_post_draft`, or `linear_followup`
+  `social_post`, or `linear_followup`
 
 AI review must read enough source evidence to explain behavior. A PR title, release
 title, or deterministic queue hint is not enough for a confirmed claim.
@@ -121,7 +121,7 @@ Promote an upstream review into:
   or Publisher planning.
 - `signal_entry/v1` when it is community-ready and has user-visible capability,
   behavior, try path, or migration value.
-- `social_post_draft/v1` when there is a clear public angle and source links are
+- `social_post/v1` when there is a clear public angle and source links are
   available.
 - a Linear issue when Decodex should adopt, guard, migrate, or investigate the change.
 
@@ -135,4 +135,4 @@ They may trigger a gap scan, but they must not replace commit and PR evidence.
 
 This matters most for Codex prereleases because prerelease bodies may be sparse or empty.
 Rollups should combine prior reviews, impact artifacts, public signals, and compare
-metadata before producing a public summary or X draft.
+metadata before producing a public summary or X post.

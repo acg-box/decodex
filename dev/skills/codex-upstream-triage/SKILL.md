@@ -1,6 +1,6 @@
 ---
 name: codex-upstream-triage
-description: Use when scanning latest upstream OpenAI Codex commits, PRs, releases, or changelog entries to decide which items deserve a GitHub bundle, code analysis, upstream-impact classification, site signal, or social draft.
+description: Use when scanning latest upstream OpenAI Codex commits, PRs, releases, or changelog entries to decide which items deserve a GitHub bundle, code analysis, upstream-impact classification, site signal, or social post.
 ---
 
 # Decodex Codex Upstream Triage
@@ -56,7 +56,7 @@ Classify each item as exactly one:
 | `watch` | Interesting but too weak, too hidden, or too broad. | Optional `upstream_impact/v1` with `control_plane_impact = "watch"`. |
 | `bundle` | Enough GitHub context exists for code analysis. | Build or reuse a `github_change_bundle/v1`. |
 | `release_review` | Release or changelog framing needs comparison against commits and signals. | Use `codex-release-analysis`. |
-| `style_reference` | Useful only as style or audience evidence. | Save no technical artifact; use only as optional style context when a separate source-backed draft exists. |
+| `style_reference` | Useful only as style or audience evidence. | Save no technical artifact; use only as optional style context when a separate source-backed publication candidate exists. |
 
 ## Grouping Rules
 
@@ -82,8 +82,8 @@ Escalate to `codex-release-analysis` when the source is a release, prerelease, a
 update, or public changelog. For Codex releases and prereleases, summarize from prior
 commit/PR analysis whenever possible, then use compare data to find gaps.
 
-Escalate to `x-post-draft` only after there is technical source evidence and a clear
-Publisher angle. Style references from X must not start a social draft by themselves.
+Escalate to `x-post-publisher` only after there is technical source evidence and a clear
+Publisher angle. Style references from X must not start a social post by themselves.
 
 ## Output
 
@@ -96,7 +96,7 @@ Return a compact triage note with:
 - next skill to use
 - confidence limits
 
-Do not draft `signal_entry/v1` or `social_post_draft/v1` directly from this skill.
+Do not draft `signal_entry/v1` or publish `social_post/v1` directly from this skill.
 Do not treat deterministic queue hints as technical claims. The durable review layer is
 `upstream_review/v1`; public and Control Plane artifacts are promotions from that
 source-backed review.

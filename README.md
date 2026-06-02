@@ -25,9 +25,10 @@ Repo-native agent orchestration, upstream Codex radar, and public publishing.
 - Deterministic GitHub upstream Radar pipeline for review queues, change bundles,
   release deltas, rendered signal entries, and content validation.
 - Repo-local Radar skills for upstream Codex triage, code analysis, release analysis,
-  signal drafting, and X post drafting.
+  signal drafting, and X publishing.
 - Publisher workflow for checked-in upstream reviews, impact classification, curated
-  public signals, and reviewable X drafts for `@decodexspace`.
+  public signals, and automated low-frequency X publication records for
+  `@decodexspace`.
 - Installable Decodex plugin with reusable agent-facing skills for planning,
   manual CLI, automation, commit, land, and labels.
 - Repository documentation split by question type into spec, runbook, reference, and
@@ -66,11 +67,12 @@ runtime.
   impact records, and editorial analysis drafts.
 - `artifacts/archive/` owns checked-in recovery manifests for cold Radar batches stored
   as GitHub Release assets.
-- `artifacts/social/` owns checked-in Publisher social draft artifacts.
+- `artifacts/social/` owns checked-in Publisher publication records and generated-media
+  evidence.
 - `plugins/decodex/` owns the installable Decodex plugin and reusable agent-facing
   skills.
 - `dev/skills/` owns repository-development skills for Radar analysis and Publisher
-  drafting. They are not packaged with the installable Decodex plugin.
+  publishing. They are not packaged with the installable Decodex plugin.
 - `docs/` remains the authoritative documentation surface.
 
 Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
@@ -209,11 +211,13 @@ Codex automation reviews source evidence:
 - `scripts/github/render_signal_entry.py` renders reviewed analysis drafts into site
   content.
 - `scripts/github/validate_signal_entry.py` validates the published signal collection.
-- `docs/spec/social-post-draft.md` and
-  `docs/runbook/social-publishing-workflow.md` govern optional checked-in X drafts
-  before external publication.
+- `docs/spec/social-publishing.md` and
+  `docs/runbook/social-publishing-workflow.md` govern automated low-frequency X
+  publication for `@decodexspace`.
 - `.github/workflows/refresh-upstream-radar.yml` refreshes deterministic upstream
-  queue and release-delta metadata every hour.
+  queue metadata every six hours.
+- `.github/workflows/refresh-release-delta.yml` refreshes release and prerelease
+  checkpoint metadata every hour.
 - `.github/workflows/deploy-pages.yml` publishes the Astro site to GitHub Pages on
   pushes to `main`.
 
@@ -281,7 +285,7 @@ The tracked workspace currently keeps:
   validation script surface
 - `artifacts/github/` as checked-in GitHub bundle and analysis artifacts
 - `plugins/decodex/` as the canonical installable Decodex plugin source
-- `dev/skills/` as repo-development Radar analysis and Publisher drafting skills that
+- `dev/skills/` as repo-development Radar analysis and Publisher publishing skills that
   are not packaged with the installable Decodex plugin
 - `docs/spec/` as the normative runtime, workflow, site, and content contract lane
 - `docs/runbook/` as the operator procedures, validation sequences, deployment steps,
