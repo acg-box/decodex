@@ -23,8 +23,8 @@ should not be treated as repository source.
 | `scripts/config/` | Repository automation scripts for config-derived artifacts. |
 | `artifacts/github/` | Checked-in GitHub change bundles and editorial analysis drafts used by the public signal pipeline. |
 | `artifacts/archive/` | Checked-in manifests for cold Radar archive batches stored as GitHub Release assets. |
-| `artifacts/social/` | Checked-in Publisher social post drafts and publication evidence. |
-| `dev/skills/` | Repository-development skills for Radar upstream triage, code analysis, release analysis, GitHub signal drafting, and X post drafting. These are not part of installable plugin distribution. |
+| `artifacts/social/` | Checked-in Publisher social publication records, blocked-cap records, and generated-media evidence. |
+| `dev/skills/` | Repository-development skills for Radar upstream triage, code analysis, release analysis, GitHub signal drafting, and X publishing. These are not part of installable plugin distribution. |
 | `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including planning, manual CLI, automation, commit, land, and labels. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
@@ -85,16 +85,16 @@ summaries when an operator or automation chooses to generate signal content. Gen
 GitHub bundles and analysis drafts live under `artifacts/github/` and must stay
 explicit and checked into the repository when promoted into Publisher content.
 
-Raw bundles and analysis drafts are hot artifacts with a 28-day Git retention window.
+Raw bundles and analysis drafts are hot artifacts with a 21-day Git retention window.
 Older raw batches move to dedicated GitHub Release assets, with recovery manifests kept
 under `artifacts/archive/index/`.
 
 `artifacts/github/impact/` may hold `upstream_impact/v1` classifications when an
 upstream Codex change has public-signal, Control Plane, or Publisher implications.
 `artifacts/github/review-queue/` may hold the latest deterministic review queue.
-`artifacts/social/` may hold `social_post_draft/v1` drafts before external publication.
-Both remain checked-in review artifacts; neither turns the public site into a live
-service.
+`artifacts/social/` may hold `social_post/v1` published, blocked, failed, or skipped
+records for external publication. Both remain checked-in artifacts; neither turns the
+public site into a live service.
 
 ## Installable Codex surface
 

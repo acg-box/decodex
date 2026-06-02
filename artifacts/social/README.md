@@ -2,8 +2,9 @@
 
 This directory stores checked-in Publisher artifacts for external social channels.
 
-- `x/` holds `social_post_draft/v1` drafts for X/Twitter publication.
+- `x/posts/` holds `social_post/v1` publication, block, skip, and failure records for
+  X.
+- `x/images/` holds generated media evidence when the image is committed.
 
-Drafts are review artifacts. A draft is not approved for external publication until its
-`status` is `approved` under the rules in `docs/spec/social-post-draft.md` and
-`docs/runbook/social-publishing-workflow.md`.
+The governing contract is `docs/spec/social-publishing.md`. The primary publishing
+account is `@decodexspace`; the controller account is `@hackink`.

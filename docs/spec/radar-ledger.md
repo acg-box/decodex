@@ -60,14 +60,14 @@ Use the ledger for:
 - subjects queued for AI review by `upstream_review_queue/v1`
 - mappings from commits to PRs
 - links from commits or PRs to bundles, analysis drafts, signals, impact notes, social
-  drafts, release deltas, archive manifests, or ledger exports
+  posts, release deltas, archive manifests, or ledger exports
 
 Use Git for:
 
 - curated public site signals
 - current release-delta data
 - upstream-impact records that affect Decodex Control Plane or Publisher follow-up
-- approved or published social drafts
+- social publication records
 - cold archive manifests
 
 Do not use Git as the permanent store for every raw bundle, raw source cache, skipped

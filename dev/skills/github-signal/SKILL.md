@@ -20,7 +20,7 @@ publication, and draft the analysis JSON that the repo already renders into a fi
 - `docs/spec/github-change-bundle.md`
 - `docs/spec/upstream-impact.md`
 - `docs/spec/signal-entry.md`
-- `docs/spec/social-post-draft.md`
+- `docs/spec/social-publishing.md`
 - `docs/runbook/local-github-signal-workflow.md`
 - `dev/skills/codex-upstream-triage/SKILL.md`
 - `dev/skills/codex-code-analysis/SKILL.md`
@@ -40,8 +40,8 @@ publication, and draft the analysis JSON that the repo already renders into a fi
 - Use `codex-code-analysis` before this skill when the behavior path or Control Plane
   impact is not already clear.
 - Use `codex-release-analysis` before this skill when the source is release-shaped.
-- Use `x-post-draft` after this skill only when the rendered signal or upstream-impact
-  artifact supports a social draft.
+- Use `x-post-publisher` after this skill only when the rendered signal or
+  upstream-impact artifact supports a social post.
 
 ## Boundaries
 
