@@ -203,19 +203,20 @@ Codex automation reviews source evidence:
   `artifacts/github/review-queue/openai-codex-latest.json`.
 - `dev/skills/README.md` routes the repo-local Radar and editorial instructions. They
   are not part of the installable Decodex plugin distribution.
-- `scripts/github/build_change_bundle.py` builds normalized GitHub bundles under
+- `decodex radar bundle build` builds normalized GitHub bundles under
   `artifacts/github/bundles/` when a queued subject needs full source context.
-- `scripts/github/backfill_release_range.py` fills release-window gaps before a
-  release or prerelease summary, but daily Radar still starts from the commit stream.
+- `decodex radar backfill-release-range` fills release-window gaps before a release
+  or prerelease summary, but daily Radar still starts from the commit stream.
 - `docs/spec/upstream-review.md` records the queue and AI review boundary.
 - `docs/spec/upstream-impact.md` records how upstream Codex changes are classified for
   public signals and Control Plane follow-up work.
-- `scripts/github/render_signal_entry.py` renders reviewed analysis drafts into site
-  content.
+- `decodex radar render-signal` renders reviewed analysis drafts into site content.
 - `scripts/github/validate_signal_entry.py` validates the published signal collection.
-- `decodex radar validate` provides the Rust-owned foundation for validating checked
-  Radar artifact contracts while the Python scripts remain the active workflow
-  entrypoints.
+- `decodex radar bundle validate`, `decodex radar ledger ...`, `decodex radar
+  render-signal`, `decodex radar backfill-release-range`, and `decodex radar
+  validate` provide the Rust-owned command surface for bundle validation, local ledger
+  maintenance, signal rendering, release-window backfill, and checked Radar artifact
+  validation.
 - `docs/spec/social-publishing.md` and
   `docs/runbook/social-publishing-workflow.md` govern automated low-frequency X
   publication for `@decodexspace`.

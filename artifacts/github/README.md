@@ -10,5 +10,6 @@ This directory stores checked-in GitHub signal pipeline artifacts.
 at most 21 days, then move cold batches to dedicated `radar-archive-*` GitHub Release
 assets and keep the recovery manifest under `artifacts/archive/index/`.
 
-Executable automation for these artifacts lives under `scripts/github/`. Repo-local
-editorial instructions live under `dev/skills/github-signal/`.
+Rust-owned bundle build and validation commands live under `decodex radar bundle ...`.
+Remaining deterministic scripts live under `scripts/github/` during migration.
+Repo-local editorial instructions live under `dev/skills/github-signal/`.
