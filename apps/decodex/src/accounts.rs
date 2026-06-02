@@ -17,7 +17,7 @@ use crate::{
 	agent::CodexAccountPool,
 	prelude::{Result, eyre},
 	runtime,
-	state::CodexAccountActivitySummary,
+	state::{CodexAccountActivitySummary, CodexAccountProfileDailyUsageSummary},
 };
 
 const USAGE_ESTIMATE_WINDOW_DAYS: i64 = 7;
@@ -630,6 +630,24 @@ pub(crate) struct AccountSummary {
 	pub(crate) credits_unlimited: Option<bool>,
 	pub(crate) credits_balance: Option<String>,
 	pub(crate) rate_limit_reached_type: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_display_name: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_username: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_checked_at_unix_epoch: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_lifetime_tokens: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_peak_daily_tokens: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_longest_task_seconds: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_current_streak_days: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_longest_streak_days: Option<i64>,
+	#[serde(skip_serializing_if = "Vec::is_empty")]
+	pub(crate) profile_daily_usage: Vec<CodexAccountProfileDailyUsageSummary>,
 	pub(crate) seven_day_used_percent: Option<i64>,
 	pub(crate) seven_day_daily_average_percent: Option<f64>,
 	pub(crate) usage_records: Vec<AccountUsageDailySummary>,
@@ -652,6 +670,17 @@ impl AccountSummary {
 
 		self.credits_balance.clone_from(&summary.credits_balance);
 		self.rate_limit_reached_type.clone_from(&summary.rate_limit_reached_type);
+		self.profile_display_name.clone_from(&summary.profile_display_name);
+		self.profile_username.clone_from(&summary.profile_username);
+
+		self.profile_checked_at_unix_epoch = summary.profile_checked_at_unix_epoch;
+		self.profile_lifetime_tokens = summary.profile_lifetime_tokens;
+		self.profile_peak_daily_tokens = summary.profile_peak_daily_tokens;
+		self.profile_longest_task_seconds = summary.profile_longest_task_seconds;
+		self.profile_current_streak_days = summary.profile_current_streak_days;
+		self.profile_longest_streak_days = summary.profile_longest_streak_days;
+
+		self.profile_daily_usage.clone_from(&summary.profile_daily_usage);
 
 		if summary.cooldown_until_unix_epoch.is_some() {
 			self.cooldown_until_unix_epoch = summary.cooldown_until_unix_epoch;
@@ -1118,6 +1147,15 @@ impl AccountPoolRecord {
 			credits_unlimited: None,
 			credits_balance: None,
 			rate_limit_reached_type: None,
+			profile_display_name: None,
+			profile_username: None,
+			profile_checked_at_unix_epoch: None,
+			profile_lifetime_tokens: None,
+			profile_peak_daily_tokens: None,
+			profile_longest_task_seconds: None,
+			profile_current_streak_days: None,
+			profile_longest_streak_days: None,
+			profile_daily_usage: Vec::new(),
 			seven_day_used_percent: None,
 			seven_day_daily_average_percent: None,
 			usage_records: Vec::new(),
@@ -1881,7 +1919,7 @@ mod tests {
 
 	use crate::{
 		accounts::{AccountPoolRecord, AccountStore, AuthDotJson, CodexTokenData},
-		state::CodexAccountActivitySummary,
+		state::{CodexAccountActivitySummary, CodexAccountProfileDailyUsageSummary},
 	};
 
 	#[test]
@@ -2122,6 +2160,15 @@ mod tests {
 			credits_unlimited: Some(false),
 			credits_balance: Some(String::from("9.99")),
 			rate_limit_reached_type: None,
+			profile_lifetime_tokens: Some(47_200_000_000),
+			profile_peak_daily_tokens: Some(1_500_000_000),
+			profile_longest_task_seconds: Some(10_080),
+			profile_current_streak_days: Some(12),
+			profile_longest_streak_days: Some(68),
+			profile_daily_usage: vec![CodexAccountProfileDailyUsageSummary {
+				date: String::from("2026-05-31"),
+				tokens: 123_456,
+			}],
 			..CodexAccountActivitySummary::default()
 		}]);
 
@@ -2131,6 +2178,12 @@ mod tests {
 		assert_eq!(response.accounts[0].secondary_window_seconds, Some(604_800));
 		assert_eq!(response.accounts[0].secondary_remaining_percent, Some(91));
 		assert_eq!(response.accounts[0].credits_balance.as_deref(), Some("9.99"));
+		assert_eq!(response.accounts[0].profile_lifetime_tokens, Some(47_200_000_000));
+		assert_eq!(response.accounts[0].profile_peak_daily_tokens, Some(1_500_000_000));
+		assert_eq!(response.accounts[0].profile_longest_task_seconds, Some(10_080));
+		assert_eq!(response.accounts[0].profile_current_streak_days, Some(12));
+		assert_eq!(response.accounts[0].profile_longest_streak_days, Some(68));
+		assert_eq!(response.accounts[0].profile_daily_usage[0].date, "2026-05-31");
 		assert_eq!(response.accounts[0].seven_day_used_percent, Some(9));
 		assert_eq!(response.accounts[0].capacity_multiplier, 20);
 		assert_eq!(response.accounts[0].recovery_action, None);
