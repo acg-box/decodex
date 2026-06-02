@@ -427,6 +427,7 @@ fn turn_start_request_omits_execution_policy_overrides() {
 
 fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 	super::AppServerRunRequest {
+		project_id: String::from("test-project"),
 		run_id: String::from("run-1"),
 		issue_id: String::from("issue-1"),
 		attempt_number: 1,
@@ -1866,6 +1867,7 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 	);
 	let first_result = super::execute_app_server_run(
 		&super::AppServerRunRequest {
+			project_id: String::from("test-project"),
 			run_id: String::from("live-resume-run"),
 			issue_id: String::from("live-resume-issue"),
 			attempt_number: 1,
@@ -1912,6 +1914,7 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 		StateStore::open_in_memory().expect("resumed state store should open");
 	let second_result = super::execute_app_server_run(
 		&super::AppServerRunRequest {
+			project_id: String::from("test-project"),
 			run_id: String::from("live-resume-run"),
 			issue_id: String::from("live-resume-issue"),
 			attempt_number: 1,
