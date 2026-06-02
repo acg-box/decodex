@@ -1,6 +1,6 @@
 ---
 name: github-signal
-description: Use when turning a reviewed GitHub bundle and code-analysis result into a Decodex signal draft, especially for writing or updating the local editorial analysis JSON that feeds `scripts/github/render_signal_entry.py`.
+description: Use when turning a reviewed GitHub bundle and code-analysis result into a Decodex signal draft, especially for writing or updating the local editorial analysis JSON that feeds `decodex radar render-signal`.
 ---
 
 # Decodex GitHub Signal
@@ -10,10 +10,10 @@ This is a Decodex repository-development instruction surface, not a complete
 user-facing plugin skill, and it must not be packaged with the installable Decodex
 plugin.
 
-This skill does not replace the deterministic scripts. It tells Codex how to read a
+This skill does not replace the deterministic Radar CLI. It tells Codex how to read a
 reviewed bundle and in-session code-analysis result, decide whether the change deserves
-publication, and draft the analysis JSON that the repo already renders into a final
-`signal_entry/v1`.
+publication, and draft the analysis JSON that `decodex radar render-signal` renders
+into a final `signal_entry/v1`.
 
 ## Read before drafting
 
@@ -147,7 +147,7 @@ Write a JSON analysis draft with these fields:
 4. Draft the `analysis_draft` JSON under `artifacts/github/analysis/`.
 5. Draft or update an `upstream_impact/v1` artifact when the change affects Control Plane or
    Publisher follow-up.
-6. Render the final signal entry with the repo script.
+6. Render the final signal entry with `decodex radar render-signal`.
 7. Validate the published signal collection and site build.
 
 ## Commands
@@ -161,7 +161,7 @@ python3 scripts/github/validate_change_bundle.py artifacts/github/bundles/<bundl
 Render the final signal entry after drafting:
 
 ```bash
-python3 scripts/github/render_signal_entry.py \
+decodex radar render-signal \
   --bundle artifacts/github/bundles/<bundle>.json \
   --analysis artifacts/github/analysis/<bundle>.analysis.json \
   --out site/src/content/signals/<bundle>.json

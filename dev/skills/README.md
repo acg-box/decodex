@@ -18,7 +18,7 @@ follow-up work:
 3. `codex-release-analysis`: evaluate release or changelog material against commits,
    PRs, release-delta artifacts, and already-published Decodex signals.
 4. `github-signal`: turn the reviewed GitHub bundle and analysis result into the
-   `analysis_draft` JSON consumed by `scripts/github/render_signal_entry.py`.
+   `analysis_draft` JSON consumed by `decodex radar render-signal`.
 5. `x-post-publisher`: turn evidence-backed Radar output into a low-frequency
    `social_post/v1` publication, block, skip, or failure record for `@decodexspace`.
 6. `rate-limit-reset-watch`: review today's `@thsottiaux` X posts with AI semantic
