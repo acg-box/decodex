@@ -157,6 +157,11 @@ and manual retry controls are intentionally not shown. `runActivity.activeRunsCo
 marks whether a payload is the complete active-run list; subscription-filtered
 payloads set it to `false`, so consumers must not treat a missing run in that payload
 as ended.
+Snapshot `warnings` remain stable machine-readable tokens. When a warning needs
+operator action, snapshots may also include `warning_details` entries with the
+affected `project_id`, `repo_root`, reason, and next action; for example, a stale
+registered project whose repo path is no longer a Git checkout can explain the bad
+project instead of only surfacing `worktree_hygiene_unavailable`.
 The stop control signals the recorded child process for that run, marks the local
 attempt interrupted, and releases the local queue lease. `ack` is dashboard-local
 acknowledgement only. The socket is not a browser connection to Codex app-server,
