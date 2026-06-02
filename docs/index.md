@@ -32,6 +32,9 @@ The split below is by question type, not by human-versus-agent audience.
   behavior -> `docs/spec/`
 - Need current Decodex/Codex app-server compatibility range or protocol support
   evidence -> `docs/spec/app-server.md`
+- Need Decodex operator lane-control capability support, including inspect,
+  pause/resume, scan, interrupt, steer, retained retry/resume, manual attention, or
+  unsupported/deferred controls -> `docs/spec/lane-control.md`
 - Need public static-site contracts, GitHub bundle schemas, signal-entry schemas, or
   release-delta schemas -> `docs/spec/`
 - Need runbooks, migrations, validation steps, troubleshooting, or operational
