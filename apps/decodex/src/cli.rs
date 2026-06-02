@@ -24,9 +24,10 @@ use crate::{
 	},
 	prelude::{Result, eyre},
 	radar::{
-		self, RadarBundleBuildRequest, RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest,
-		RadarLedgerBootstrapRequest, RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest,
-		RadarLedgerSummaryRequest, RadarValidateRequest,
+		self, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
+		RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
+		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
+		RadarRenderSignalRequest, RadarValidateRequest,
 	},
 	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
 	runtime,
@@ -601,6 +602,8 @@ impl RadarCommand {
 			RadarSubcommand::Bundle(args) => args.run(),
 			RadarSubcommand::Ledger(args) => args.run(),
 			RadarSubcommand::Validate(args) => args.run(),
+			RadarSubcommand::RenderSignal(args) => args.run(),
+			RadarSubcommand::BackfillReleaseRange(args) => args.run(),
 		}
 	}
 }
@@ -818,6 +821,118 @@ impl RadarValidateCommand {
 }
 
 #[derive(Debug, Args)]
+struct RadarRenderSignalCommand {
+	/// Path to a github_change_bundle/v1 JSON artifact.
+	#[arg(long)]
+	bundle: PathBuf,
+	/// Path to a Codex-owned analysis_draft JSON artifact.
+	#[arg(long)]
+	analysis: PathBuf,
+	/// Path to write the rendered signal_entry/v1 artifact.
+	#[arg(long)]
+	out: PathBuf,
+	/// Override the rendered publication timestamp.
+	#[arg(long)]
+	published_at: Option<String>,
+}
+impl RadarRenderSignalCommand {
+	fn run(&self) -> Result<()> {
+		let report = radar::render_signal(&RadarRenderSignalRequest {
+			bundle: self.bundle.clone(),
+			analysis: self.analysis.clone(),
+			out: self.out.clone(),
+			published_at: self.published_at.clone(),
+		})?;
+
+		println!("{}", report.out.display());
+
+		Ok(())
+	}
+}
+
+#[derive(Debug, Args)]
+struct RadarBackfillReleaseRangeCommand {
+	/// GitHub repository in owner/name format.
+	#[arg(long, default_value = "openai/codex")]
+	repo: String,
+	/// Release-delta artifact to read or refresh.
+	#[arg(long, default_value = "site/src/content/release-deltas/openai-codex-latest.json")]
+	release_delta: PathBuf,
+	/// Stable tag name to backfill from. Defaults to the top-level stable release.
+	#[arg(long)]
+	stable_tag: Option<String>,
+	/// Preview tag name to backfill to. Defaults to the top-level prerelease.
+	#[arg(long)]
+	preview_tag: Option<String>,
+	/// Directory containing published signal_entry/v1 artifacts.
+	#[arg(long, default_value = "site/src/content/signals")]
+	signals_dir: PathBuf,
+	/// Directory for generated GitHub bundles.
+	#[arg(long, default_value = "artifacts/github/bundles")]
+	bundles_dir: PathBuf,
+	/// Directory for Codex-owned analysis drafts.
+	#[arg(long, default_value = "artifacts/github/analysis")]
+	analysis_dir: PathBuf,
+	/// Environment variable containing a GitHub token.
+	#[arg(long)]
+	token_env: Option<String>,
+	/// Codex executable to invoke at the AI analysis boundary.
+	#[arg(long, default_value = "codex")]
+	codex_bin: String,
+	/// Optional Codex model override.
+	#[arg(long)]
+	model: Option<String>,
+	/// Optional PR cap for debugging or partial runs.
+	#[arg(long)]
+	max_prs: Option<usize>,
+	/// Print selected PRs without generating new content.
+	#[arg(long)]
+	dry_run: bool,
+	/// Refresh release_delta/v1 into a temporary file before selecting the prerelease range.
+	#[arg(long)]
+	refresh_release_delta_first: bool,
+	/// Stable release limit passed through only by --refresh-release-delta-first.
+	#[arg(long)]
+	refresh_stable_limit: Option<usize>,
+	/// Prerelease limit passed through only by --refresh-release-delta-first.
+	#[arg(long)]
+	refresh_preview_limit: Option<usize>,
+	/// Compare pair limit passed through only by --refresh-release-delta-first.
+	#[arg(long)]
+	refresh_pair_limit: Option<usize>,
+	/// Python executable for non-ported helper boundaries.
+	#[arg(long, default_value = "python3")]
+	python_bin: String,
+}
+impl RadarBackfillReleaseRangeCommand {
+	fn run(&self) -> Result<()> {
+		let report = radar::backfill_release_range(&RadarBackfillReleaseRangeRequest {
+			repo: self.repo.clone(),
+			release_delta: self.release_delta.clone(),
+			stable_tag: self.stable_tag.clone(),
+			preview_tag: self.preview_tag.clone(),
+			signals_dir: self.signals_dir.clone(),
+			bundles_dir: self.bundles_dir.clone(),
+			analysis_dir: self.analysis_dir.clone(),
+			token_env: self.token_env.clone(),
+			codex_bin: self.codex_bin.clone(),
+			model: self.model.clone(),
+			max_prs: self.max_prs,
+			dry_run: self.dry_run,
+			refresh_release_delta_first: self.refresh_release_delta_first,
+			refresh_stable_limit: self.refresh_stable_limit,
+			refresh_preview_limit: self.refresh_preview_limit,
+			refresh_pair_limit: self.refresh_pair_limit,
+			python_bin: self.python_bin.clone(),
+		})?;
+
+		println!("{}", serde_json::to_string_pretty(&report)?);
+
+		Ok(())
+	}
+}
+
+#[derive(Debug, Args)]
 struct MaintenancePruneCommand {
 	/// Report candidates without applying retention changes. This is the default mode.
 	#[arg(long, conflicts_with = "apply")]
@@ -930,6 +1045,7 @@ impl From<IssueDispatchMode> for AttemptDispatchMode {
 	}
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
 	/// Create a signed local commit with a `decodex/commit/1` message.
@@ -1017,6 +1133,7 @@ enum MaintenanceSubcommand {
 	Prune(MaintenancePruneCommand),
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum RadarSubcommand {
 	/// Build and validate deterministic GitHub change bundles.
@@ -1025,6 +1142,10 @@ enum RadarSubcommand {
 	Ledger(RadarLedgerCommand),
 	/// Validate checked-in Radar artifact JSON contracts.
 	Validate(RadarValidateCommand),
+	/// Render a signal_entry/v1 artifact from a bundle plus Codex analysis draft.
+	RenderSignal(RadarRenderSignalCommand),
+	/// Select and optionally execute release-window signal backfills.
+	BackfillReleaseRange(RadarBackfillReleaseRangeCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1083,12 +1204,14 @@ mod tests {
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
 		CommitCommand, DiagnoseCommand, EvidenceCommand, LandCommand, ProbeCommand, ProjectCommand,
-		ProjectConfigArgs, ProjectSubcommand, RadarBundleBuildCommand, RadarBundleCommand,
-		RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
+		ProjectConfigArgs, ProjectSubcommand, RadarBackfillReleaseRangeCommand,
+		RadarBundleBuildCommand, RadarBundleCommand, RadarBundleSubcommand,
+		RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
 		RadarLedgerIngestExistingCommand, RadarLedgerSubcommand, RadarLedgerSummaryCommand,
-		RadarSubcommand, RadarValidateCommand, RecoverCommand, RecoverSubcommand,
-		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
-		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
+		RadarRenderSignalCommand, RadarSubcommand, RadarValidateCommand, RecoverCommand,
+		RecoverSubcommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
+		ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand,
+		StatusCommand,
 	};
 
 	#[test]
@@ -1263,6 +1386,72 @@ mod tests {
 			Command::Radar(RadarCommand {
 				command: RadarSubcommand::Validate(RadarValidateCommand { paths }),
 			}) if paths == vec![Path::new("artifacts/github/bundles").to_path_buf()]
+		));
+	}
+
+	#[test]
+	fn parses_radar_render_signal_paths() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"radar",
+			"render-signal",
+			"--bundle",
+			"artifacts/github/bundles/openai-codex-pr-1.json",
+			"--analysis",
+			"artifacts/github/analysis/openai-codex-pr-1.analysis.json",
+			"--out",
+			"site/src/content/signals/openai-codex-pr-1.json",
+			"--published-at",
+			"2026-06-01T00:00:00Z",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::RenderSignal(RadarRenderSignalCommand {
+					bundle,
+					analysis,
+					out,
+					published_at: Some(published_at),
+				}),
+			}) if bundle == Path::new("artifacts/github/bundles/openai-codex-pr-1.json")
+				&& analysis == Path::new("artifacts/github/analysis/openai-codex-pr-1.analysis.json")
+				&& out == Path::new("site/src/content/signals/openai-codex-pr-1.json")
+				&& published_at == "2026-06-01T00:00:00Z"
+		));
+	}
+
+	#[test]
+	fn parses_radar_backfill_release_range() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"radar",
+			"backfill-release-range",
+			"--repo",
+			"openai/codex",
+			"--stable-tag",
+			"rust-v0.130.0",
+			"--preview-tag",
+			"rust-v0.131.0-alpha.9",
+			"--max-prs",
+			"2",
+			"--dry-run",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::BackfillReleaseRange(RadarBackfillReleaseRangeCommand {
+					repo,
+					stable_tag: Some(stable_tag),
+					preview_tag: Some(preview_tag),
+					max_prs: Some(2),
+					dry_run: true,
+					..
+				}),
+			}) if repo == "openai/codex"
+				&& stable_tag == "rust-v0.130.0"
+				&& preview_tag == "rust-v0.131.0-alpha.9"
 		));
 	}
 
