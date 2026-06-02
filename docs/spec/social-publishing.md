@@ -153,6 +153,11 @@ described here. It must use the logged-in `@decodexspace` account, verify the ac
 before composing, and fail closed when Chrome, login state, X page structure, duplicate
 detection, or media upload is unreliable.
 
+Chrome tabs are temporary execution resources. Publisher automation must close or
+release research, compose, upload, and readback tabs after the `social_post/v1` record
+captures the result. A tab may stay open only as an explicit human handoff, such as
+login, CAPTCHA, account approval, or a page that still requires operator input.
+
 ## Generated Image Contract
 
 Every published X post should include a generated image unless the publication record
