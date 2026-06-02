@@ -22,6 +22,9 @@ Operate Decodex as the retained-lane control plane for automatic development.
 - `docs/spec/lane-control.md` owns CLI/API-first lane-control capabilities, including
   inspect, pause/resume, scan, interrupt, steer, retained resume/retry, manual
   attention, and deferred controls.
+- `docs/runbook/lane-control-recovery.md` owns the post-control decision trees for
+  agents after interrupt, hard fallback, broad steer, task replacement, or ambiguous
+  recovery evidence.
 - `docs/spec/workflow-file.md` owns `WORKFLOW.md` schema and field semantics.
 - `docs/reference/operator-control-plane.md` owns the current status/dashboard field map.
 
@@ -111,6 +114,8 @@ terminal automation signal.
 ## Lane Controls
 
 Read `docs/spec/lane-control.md` before using or explaining operator controls.
+Read `docs/runbook/lane-control-recovery.md` before retrying, resuming, relabeling, or
+escalating after a control action or ambiguous recovery signal.
 
 Rules for agents:
 
@@ -146,6 +151,33 @@ Rules for agents:
   owned agent run, use issue-scoped tools for progress, review handoff, manual
   attention, and terminal finalization. Outside the owned lane, use documented
   CLI/API controls and the labels skill.
+- Do not directly kill hidden `_attempt` children or edit runtime DB rows to force a
+  lane state. Use the supported interrupt, retained retry/resume, recovery, and
+  manual-attention paths. If an operator had to stop a process for immediate host
+  safety outside Decodex controls, treat the lane as evidence-ambiguous until
+  `status`, `diagnose`, `evidence`, and the retained worktree have been inspected.
+
+Post-control decision tree for automation agents:
+
+1. Inspect the current lane and private evidence before deciding whether the control
+   succeeded, failed, timed out, or fell back to `hard_interrupt_fallback`.
+2. If the lane is still active and identity still matches the issue, branch, run id,
+   attempt, and current turn, let the runtime continue or wait for the control result;
+   do not requeue or clear labels.
+3. If the lane is interrupted, failed, or retained with useful local work, resume only
+   when the retained worktree, branch, issue, runtime evidence, and PR lineage still
+   prove the same lane. Use runtime lifecycle entrypoints such as `decodex run
+   <ISSUE>`; do not restart from a guessed branch.
+4. If a queued or relabeled issue should be observed sooner, request a Linear scan with
+   `POST /api/linear-scan`. Keep or remove queue labels only through the labels skill
+   or the supported tracker-tool path for the owned issue.
+5. If a broad steer materially changes the requested objective, acceptance criteria, or
+   issue authority, preserve the local control audit and resolve lifecycle explicitly:
+   update and requeue the issue, create a new lane, or route the owned run to manual
+   attention. Do not silently hand off a PR whose diff no longer matches the issue.
+6. If evidence cannot prove whether to resume, retry, requeue, or discard retained
+   work, stop automatic recovery and use manual attention with structured public
+   blockers.
 
 ## Boundaries
 

@@ -30,6 +30,10 @@ Question this index answers: "which sequence should I execute?"
   `decodex.space` custom-domain setup for the static public site.
 - [`linear-archive-hygiene.md`](./linear-archive-hygiene.md) for dry-run-first
   archive hygiene of old terminal Linear issues by repo label.
+- [`lane-control-recovery.md`](./lane-control-recovery.md) for deciding whether to
+  inspect, resume, scan, keep or remove queue labels, or route manual attention after
+  interrupt, hard fallback, broad steer, task replacement, or ambiguous recovery
+  evidence.
 - [`local-github-signal-workflow.md`](./local-github-signal-workflow.md) for collecting
   GitHub change bundles, running Codex editorial analysis, validating signal entries,
   and publishing static site content.
