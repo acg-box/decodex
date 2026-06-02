@@ -6,17 +6,18 @@ pub(crate) use turn_failure::AppServerTurnFailure;
 use std::{
 	collections::{BTreeMap, HashMap},
 	env,
-	error::Error,
 	fmt::{self, Display, Formatter},
 	fs,
+	io::ErrorKind,
 	path::{Path, PathBuf},
+	process, thread,
 	time::{Duration, Instant},
 };
 
 use color_eyre::Report;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
-use time::OffsetDateTime;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use self::protocol::{
 	AgentMessageDeltaNotification, AppServerClient, ChatgptAuthTokensRefreshParams,
@@ -31,7 +32,7 @@ use self::protocol::{
 	ProbeDynamicToolHandler, RunOutcome, RuntimeConfigSummary, SkillsListParams,
 	SkillsListResponse, ThreadArchiveRequest, ThreadResumeRequest, ThreadSessionResponse,
 	ThreadStartRequest, ThreadStatusChangedNotification, ToolRequestUserInputResponse,
-	TurnCompletedNotification, TurnError, TurnStartRequest, UserInput,
+	TurnCompletedNotification, TurnError, TurnStartRequest, TurnSteerRequest, UserInput,
 };
 use crate::{
 	agent::{
@@ -50,17 +51,22 @@ use crate::{
 	prelude::eyre,
 	state::{
 		self, CodexAccountActivitySummary, CodexAccountMarker, EffectiveRuntimeMarker,
-		RUN_CONTROL_CHANNEL_DIR, RUN_CONTROL_CHANNEL_STATUS_COMPLETED,
-		RUN_CONTROL_CHANNEL_STATUS_FAILED, RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE,
-		RUN_OPERATION_AGENT_RUN, RUN_OPERATION_APP_SERVER_PREFLIGHT, RunControlChannel, StateStore,
+		RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED, RUN_CONTROL_CHANNEL_DIR,
+		RUN_CONTROL_CHANNEL_STATUS_COMPLETED, RUN_CONTROL_CHANNEL_STATUS_FAILED,
+		RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE, RUN_OPERATION_AGENT_RUN,
+		RUN_OPERATION_APP_SERVER_PREFLIGHT, RunControlActionOutcomeRequest, RunControlChannel,
+		StateStore,
 	},
 };
 
 pub(crate) const ACTIVE_RUN_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
 pub(crate) const MODEL_EXECUTION_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+pub(crate) const DEFAULT_STEER_RESULT_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const CONTROL_CHANNEL_POLL_INTERVAL: Duration = Duration::from_millis(500);
+const STEER_RESULT_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const MCP_PREFLIGHT_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const PLUGIN_PREFLIGHT_MAX_ATTEMPTS: u32 = 2;
 const PROBE_RUN_ID: &str = "protocol-probe-run";
@@ -72,6 +78,20 @@ const PROBE_COMMAND_EXEC_OUTPUT_BYTES_CAP: u64 = 1_024;
 const PROBE_DEVELOPER_INSTRUCTIONS: &str = "You are a protocol probe. You must call the dynamic tool `echo_probe` exactly once with the JSON argument `{\"text\":\"PROBE_OK\"}`. Do not use shell. Do not inspect files. After the tool response is returned, reply with the exact text PROBE_OK and nothing else.";
 const PROBE_USER_INPUT: &str = "Call `echo_probe` with `{\\\"text\\\":\\\"PROBE_OK\\\"}`. After the tool succeeds, reply with the exact text PROBE_OK.";
 const PREFLIGHT_EVENT_TYPE: &str = "app-server/preflight";
+const STEER_CHANNEL_REQUEST_SCHEMA: &str = "decodex.run_control_steer_request/v1";
+const STEER_CHANNEL_RESULT_SCHEMA: &str = "decodex.run_control_steer_result/v1";
+const STEER_CONTROL_ACTION: &str = "steer";
+const STEER_REASON_DELIVERED: &str = "turn_steer_delivered";
+const STEER_REASON_TURN_MISMATCH: &str = "turn_mismatch";
+const STEER_REASON_THREAD_MISMATCH: &str = "thread_mismatch";
+const STEER_REASON_CHANNEL_IDENTITY_MISMATCH: &str = "control_channel_identity_mismatch";
+const STEER_REASON_APP_SERVER_UNSUPPORTED: &str = "app_server_turn_steer_unsupported";
+const STEER_REASON_ACTIVE_TURN_NOT_STEERABLE: &str = "active_turn_not_steerable";
+const STEER_REASON_APP_SERVER_FAILED: &str = "app_server_turn_steer_failed";
+const STEER_FAILURE_STALE_EXPECTED_TURN: &str = "stale_expected_turn_id";
+const STEER_FAILURE_ACTIVE_TURN_NOT_STEERABLE: &str = "active_turn_not_steerable";
+const STEER_FAILURE_UNSUPPORTED: &str = "app_server_turn_steer_unsupported";
+const STEER_FAILURE_APP_SERVER_FAILED: &str = "app_server_turn_steer_failed";
 const PREFLIGHT_MODEL_PAGE_LIMIT: u32 = 200;
 const PREFLIGHT_MCP_PAGE_LIMIT: u32 = 50;
 const PREFLIGHT_MCP_DETAIL: &str = "toolsAndAuthOnly";
@@ -358,7 +378,7 @@ impl Display for AppServerCapabilityPreflightFailure {
 	}
 }
 
-impl Error for AppServerCapabilityPreflightFailure {}
+impl std::error::Error for AppServerCapabilityPreflightFailure {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AppServerDynamicToolFailure {
@@ -415,7 +435,7 @@ impl Display for AppServerDynamicToolFailure {
 	}
 }
 
-impl Error for AppServerDynamicToolFailure {}
+impl std::error::Error for AppServerDynamicToolFailure {}
 
 #[derive(Clone)]
 pub(crate) struct AppServerRunRequest<'a> {
@@ -447,6 +467,78 @@ pub(crate) struct AppServerThreadArchiveRequest<'a> {
 	pub(crate) process_env: &'a AppServerProcessEnv,
 	pub(crate) thread_id: &'a str,
 	pub(crate) sequence_number: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct AppServerSteerChannelRequest {
+	pub(crate) schema: String,
+	pub(crate) request_id: String,
+	pub(crate) audit_record_id: i64,
+	pub(crate) project_id: String,
+	pub(crate) issue_id: String,
+	pub(crate) run_id: String,
+	pub(crate) attempt_number: i64,
+	pub(crate) thread_id: String,
+	pub(crate) expected_turn_id: String,
+	pub(crate) source: String,
+	pub(crate) message: String,
+	pub(crate) message_byte_count: usize,
+	pub(crate) message_line_count: usize,
+	pub(crate) created_at: String,
+}
+impl AppServerSteerChannelRequest {
+	pub(crate) fn new(input: AppServerSteerChannelRequestInput) -> Self {
+		Self {
+			schema: String::from(STEER_CHANNEL_REQUEST_SCHEMA),
+			request_id: input.request_id,
+			audit_record_id: input.audit_record_id,
+			project_id: input.project_id,
+			issue_id: input.issue_id,
+			run_id: input.run_id,
+			attempt_number: input.attempt_number,
+			thread_id: input.thread_id,
+			expected_turn_id: input.expected_turn_id,
+			source: input.source,
+			message_byte_count: input.message.len(),
+			message_line_count: steer_message_line_count(&input.message),
+			message: input.message,
+			created_at: current_timestamp(),
+		}
+	}
+}
+
+pub(crate) struct AppServerSteerChannelRequestInput {
+	pub(crate) request_id: String,
+	pub(crate) audit_record_id: i64,
+	pub(crate) project_id: String,
+	pub(crate) issue_id: String,
+	pub(crate) run_id: String,
+	pub(crate) attempt_number: i64,
+	pub(crate) thread_id: String,
+	pub(crate) expected_turn_id: String,
+	pub(crate) source: String,
+	pub(crate) message: String,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct AppServerSteerChannelResult {
+	pub(crate) schema: String,
+	pub(crate) request_id: String,
+	pub(crate) outcome: String,
+	pub(crate) reason: String,
+	pub(crate) failure_class: Option<String>,
+	pub(crate) expected_turn_id: String,
+	pub(crate) current_turn_id: Option<String>,
+	pub(crate) response_turn_id: Option<String>,
+	pub(crate) message_byte_count: usize,
+	pub(crate) message_line_count: usize,
+	pub(crate) audit_record_id: i64,
+	pub(crate) recorded_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AppServerSteerQueueReport {
+	pub(crate) request_path: PathBuf,
+	pub(crate) result: Option<AppServerSteerChannelResult>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -968,6 +1060,62 @@ impl DynamicToolFailureDiagnostic {
 	}
 }
 
+#[derive(Clone, Debug)]
+struct SteerChannelDirs {
+	pending: PathBuf,
+	processed: PathBuf,
+	failed: PathBuf,
+}
+
+#[derive(Clone, Debug)]
+struct SteerDelivery {
+	outcome: String,
+	reason: String,
+	failure_class: Option<String>,
+	current_turn_id: Option<String>,
+	response_turn_id: Option<String>,
+}
+impl SteerDelivery {
+	fn completed(response_turn_id: String, current_turn_id: Option<&str>) -> Self {
+		Self {
+			outcome: RUN_CONTROL_ACTION_COMPLETED.to_owned(),
+			reason: STEER_REASON_DELIVERED.to_owned(),
+			failure_class: None,
+			current_turn_id: current_turn_id.map(str::to_owned),
+			response_turn_id: Some(response_turn_id),
+		}
+	}
+
+	fn failed(reason: &str, failure_class: Option<&str>, current_turn_id: Option<&str>) -> Self {
+		Self {
+			outcome: RUN_CONTROL_ACTION_FAILED.to_owned(),
+			reason: reason.to_owned(),
+			failure_class: failure_class.map(str::to_owned),
+			current_turn_id: current_turn_id.map(str::to_owned),
+			response_turn_id: None,
+		}
+	}
+}
+
+#[derive(Clone, Copy)]
+struct TurnWaitContext<'a> {
+	state_store: &'a StateStore,
+	control_channel: Option<&'a RunControlChannel>,
+	target_thread_id: &'a str,
+	dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
+	codex_account_provider: Option<&'a dyn CodexAccountProvider>,
+}
+
+struct SteerDeliveryRecord<'a> {
+	request: &'a AppServerSteerChannelRequest,
+	outcome: &'a str,
+	reason: &'a str,
+	failure_class: Option<&'a str>,
+	response_turn_id: Option<&'a str>,
+	current_thread_id: Option<&'a str>,
+	current_turn_id: Option<&'a str>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AppServerDynamicToolFailureKind {
 	Protocol,
@@ -1036,7 +1184,7 @@ pub(crate) fn execute_app_server_run(
 	}
 
 	let control_channel = publish_run_control_channel_for_request(request, state_store)?;
-	let result = execute_app_server_run_inner(request, state_store);
+	let result = execute_app_server_run_inner(request, state_store, control_channel.as_ref());
 
 	match &result {
 		Ok(_result) =>
@@ -1122,6 +1270,29 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 	}
 
 	Ok(result)
+}
+
+pub(crate) fn enqueue_app_server_steer_request(
+	channel: &RunControlChannel,
+	request: &AppServerSteerChannelRequest,
+	wait_timeout: Duration,
+) -> crate::prelude::Result<AppServerSteerQueueReport> {
+	let dirs = steer_channel_dirs(channel.channel_path());
+
+	fs::create_dir_all(&dirs.pending)?;
+	fs::create_dir_all(&dirs.processed)?;
+	fs::create_dir_all(&dirs.failed)?;
+
+	let file_name = steer_request_file_name(&request.request_id);
+	let pending_path = dirs.pending.join(&file_name);
+	let temp_path = dirs.pending.join(format!("{file_name}.tmp-{}", process::id()));
+
+	fs::write(&temp_path, serde_json::to_vec_pretty(request)?)?;
+	fs::rename(&temp_path, &pending_path)?;
+
+	let result = wait_for_steer_channel_result(&dirs, &file_name, wait_timeout)?;
+
+	Ok(AppServerSteerQueueReport { request_path: pending_path, result })
 }
 
 fn running_model_execution_protocol_activity(
@@ -1360,6 +1531,9 @@ fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> 
 			string_at_paths(value, &[&["params", "status", "type"], &["status", "type"]])
 		});
 	}
+	if event_type == "turn/steer" {
+		return protocol_steer_detail(payload_value);
+	}
 	if event_type.starts_with("turn/") {
 		return protocol_turn_status_from_value(event_type, payload_value)
 			.or_else(|| Some(String::from("running")));
@@ -1424,6 +1598,20 @@ fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> 
 	}
 
 	None
+}
+
+fn protocol_steer_detail(payload_value: Option<&Value>) -> Option<String> {
+	let value = payload_value?;
+	let outcome =
+		string_at_paths(value, &[&["outcome"]]).unwrap_or_else(|| String::from("unknown"));
+	let failure = string_at_paths(value, &[&["failure_class"]]);
+	let response_turn = string_at_paths(value, &[&["response_turn_id"]]);
+
+	Some(match (failure, response_turn) {
+		(Some(failure), _) => format!("{outcome}/{failure}"),
+		(None, Some(turn_id)) => format!("{outcome}/response_turn={turn_id}"),
+		(None, None) => outcome,
+	})
 }
 
 fn warning_or_deprecation_detail(payload_value: Option<&Value>) -> Option<String> {
@@ -1953,6 +2141,66 @@ fn duration_seconds_i64(duration: Duration) -> i64 {
 	i64::try_from(duration.as_secs()).unwrap_or(i64::MAX)
 }
 
+fn current_timestamp() -> String {
+	OffsetDateTime::now_utc().format(&Rfc3339).unwrap_or_else(|_| String::from("unknown"))
+}
+
+fn steer_message_line_count(message: &str) -> usize {
+	message.lines().count().max(usize::from(!message.is_empty()))
+}
+
+fn wait_for_steer_channel_result(
+	dirs: &SteerChannelDirs,
+	file_name: &str,
+	wait_timeout: Duration,
+) -> crate::prelude::Result<Option<AppServerSteerChannelResult>> {
+	let started_at = Instant::now();
+	let file_name = std::ffi::OsStr::new(file_name);
+
+	while started_at.elapsed() < wait_timeout {
+		if let Some(path) = existing_steer_channel_result_path(dirs, file_name) {
+			return Ok(Some(serde_json::from_slice(&fs::read(path)?)?));
+		}
+
+		thread::sleep(STEER_RESULT_WAIT_POLL_INTERVAL);
+	}
+
+	Ok(None)
+}
+
+fn steer_channel_result_exists(dirs: &SteerChannelDirs, file_name: &std::ffi::OsStr) -> bool {
+	existing_steer_channel_result_path(dirs, file_name).is_some()
+}
+
+fn existing_steer_channel_result_path(
+	dirs: &SteerChannelDirs,
+	file_name: &std::ffi::OsStr,
+) -> Option<PathBuf> {
+	for dir in [&dirs.processed, &dirs.failed] {
+		let path = dir.join(Path::new(file_name));
+
+		if path.exists() {
+			return Some(path);
+		}
+	}
+
+	None
+}
+
+fn steer_channel_dirs(channel_path: &Path) -> SteerChannelDirs {
+	let root = channel_path.with_extension("requests");
+
+	SteerChannelDirs {
+		pending: root.join("pending"),
+		processed: root.join("processed"),
+		failed: root.join("failed"),
+	}
+}
+
+fn steer_request_file_name(request_id: &str) -> String {
+	format!("{}.json", sanitize_run_control_path_segment(request_id))
+}
+
 fn publish_run_control_channel_for_request(
 	request: &AppServerRunRequest<'_>,
 	state_store: &StateStore,
@@ -2217,6 +2465,7 @@ fn write_thread_marker_best_effort(
 fn execute_app_server_run_inner(
 	request: &AppServerRunRequest<'_>,
 	state_store: &StateStore,
+	control_channel: Option<&RunControlChannel>,
 ) -> crate::prelude::Result<AppServerRunResult> {
 	let mut recorder = RunRecorder::new(
 		state_store,
@@ -2275,8 +2524,14 @@ fn execute_app_server_run_inner(
 	)?;
 	recorder.mark_activity()?;
 
-	let turn_result =
-		execute_turn_loop(&mut client, &mut recorder, request, state_store, &thread_id)?;
+	let turn_result = execute_turn_loop(
+		&mut client,
+		&mut recorder,
+		request,
+		state_store,
+		control_channel,
+		&thread_id,
+	)?;
 
 	state_store.record_run_attempt(
 		&request.run_id,
@@ -3141,6 +3396,7 @@ fn execute_turn_loop(
 	recorder: &mut RunRecorder<'_>,
 	request: &AppServerRunRequest<'_>,
 	state_store: &StateStore,
+	control_channel: Option<&RunControlChannel>,
 	thread_id: &str,
 ) -> crate::prelude::Result<TurnLoopResult> {
 	let mut next_input = request.user_input.clone();
@@ -3163,21 +3419,31 @@ fn execute_turn_loop(
 
 		flush_pending_messages(client, recorder, Some(thread_id))?;
 
-		let final_output = wait_for_turn_completion(
+		let outcome = wait_for_turn_completion(
 			client,
 			recorder,
-			thread_id,
+			TurnWaitContext {
+				state_store,
+				control_channel,
+				target_thread_id: thread_id,
+				dynamic_tool_handler: request.dynamic_tool_handler,
+				codex_account_provider: request.codex_account_provider,
+			},
 			&turn_id,
 			request.timeout,
-			request.dynamic_tool_handler,
-			request.codex_account_provider,
-		)?
-		.final_output;
+		)?;
+		let final_turn_id = outcome.turn_id;
+		let final_output = outcome.final_output;
 
 		if let Some(continuation_pending) =
 			resolve_turn_completion(request, turn_count, &final_output)?
 		{
-			return Ok(TurnLoopResult { turn_id, turn_count, final_output, continuation_pending });
+			return Ok(TurnLoopResult {
+				turn_id: final_turn_id,
+				turn_count,
+				final_output,
+				continuation_pending,
+			});
 		}
 
 		next_input =
@@ -3348,6 +3614,18 @@ fn build_turn_start_request(thread_id: &str, user_input: &str) -> TurnStartReque
 	}
 }
 
+fn build_turn_steer_request(
+	thread_id: &str,
+	expected_turn_id: &str,
+	message: &str,
+) -> TurnSteerRequest {
+	TurnSteerRequest {
+		thread_id: thread_id.to_owned(),
+		expected_turn_id: expected_turn_id.to_owned(),
+		input: vec![UserInput::Text { text: message.to_owned() }],
+	}
+}
+
 fn login_account_params(account: &CodexAccountLogin) -> LoginAccountParams {
 	LoginAccountParams::ChatgptAuthTokens {
 		access_token: account.access_token().to_owned(),
@@ -3395,29 +3673,42 @@ fn flush_pending_messages(
 fn wait_for_turn_completion(
 	client: &mut AppServerClient,
 	recorder: &mut RunRecorder<'_>,
-	target_thread_id: &str,
-	target_turn_id: &str,
+	context: TurnWaitContext<'_>,
+	initial_turn_id: &str,
 	timeout: Duration,
-	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
-	codex_account_provider: Option<&dyn CodexAccountProvider>,
 ) -> crate::prelude::Result<RunOutcome> {
 	let mut last_activity_at = Instant::now();
+	let mut target_turn_id = initial_turn_id.to_owned();
 	let mut final_output = String::new();
 	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
 
 	loop {
+		if let Some(response_turn_id) =
+			handle_pending_steer_channel_requests(client, recorder, context, &target_turn_id)?
+			&& response_turn_id != target_turn_id
+		{
+			context.state_store.update_run_turn(recorder.run_id, &response_turn_id)?;
+			recorder.set_turn_id(&response_turn_id)?;
+
+			target_turn_id = response_turn_id;
+			last_activity_at = Instant::now();
+		}
+
 		let idle_timeout =
 			protocol_activity_idle_timeout(Some(&recorder.protocol_activity.summary), timeout);
 		let wire_message = next_turn_wire_message(
 			client,
 			last_activity_at,
 			idle_timeout,
-			target_thread_id,
-			target_turn_id,
+			context.target_thread_id,
+			&target_turn_id,
 			latest_turn_failure.as_ref(),
 		)?;
+		let Some(wire_message) = wire_message else {
+			continue;
+		};
 
-		if !targets_thread(&wire_message, Some(target_thread_id)) {
+		if !targets_thread(&wire_message, Some(context.target_thread_id)) {
 			tracing::debug!(raw = %wire_message.raw, "Ignoring app-server message for another thread.");
 
 			continue;
@@ -3430,95 +3721,130 @@ fn wait_for_turn_completion(
 		apply_protocol_message_side_effects(recorder, &wire_message)?;
 
 		match &wire_message.message {
-			JsonRpcMessage::Notification(notification) => match notification.method.as_str() {
-				"thread/status/changed" => {
-					let payload: ThreadStatusChangedNotification =
-						serde_json::from_value(notification.params.clone())?;
-
-					if payload.status.kind == "systemError" && latest_turn_failure.is_none() {
-						latest_turn_failure =
-							Some(AppServerTurnFailure::from_system_error(&payload.thread_id));
-					}
-				},
-				"error" => {
-					if let Some((failure, will_retry)) = failure_from_error_notification(
-						notification,
-						target_thread_id,
-						target_turn_id,
-					)? {
-						if failure.requires_operator_attention() && will_retry != Some(true) {
-							return Err(Report::new(failure));
-						}
-
-						latest_turn_failure = Some(failure);
-					}
-				},
-				"item/agentMessage/delta" => {
-					let payload: AgentMessageDeltaNotification =
-						serde_json::from_value(notification.params.clone())?;
-
-					final_output.push_str(&payload.delta);
-				},
-				"item/completed" => {
-					let payload: ItemCompletedNotification =
-						serde_json::from_value(notification.params.clone())?;
-
-					if payload.item.kind == "agentMessage"
-						&& let Some(text) = payload.item.text
-					{
-						final_output = text;
-					}
-				},
-				"turn/completed" => {
-					let payload: TurnCompletedNotification =
-						serde_json::from_value(notification.params.clone())?;
-
-					if payload.turn.id != target_turn_id {
-						continue;
-					}
-					if payload.turn.status == "completed" {
-						return Ok(RunOutcome { final_output });
-					}
-
-					if let Some(error) = payload.turn.error.as_ref() {
-						return Err(Report::new(turn_failure_from_turn_error(
-							target_thread_id,
-							Some(&payload.turn.id),
-							&payload.turn.status,
-							error,
-						)));
-					}
-					if let Some(failure) = latest_turn_failure {
-						return Err(Report::new(failure));
-					}
-
-					eyre::bail!(
-						"Turn `{}` ended with status `{}` without an explicit error payload.",
-						payload.turn.id,
-						payload.turn.status
-					);
-				},
-				_ => {},
+			JsonRpcMessage::Notification(notification) => {
+				if let Some(outcome) = handle_turn_notification(
+					notification,
+					context.target_thread_id,
+					&target_turn_id,
+					&mut final_output,
+					&mut latest_turn_failure,
+				)? {
+					return Ok(outcome);
+				}
 			},
 			JsonRpcMessage::Request(request) => handle_turn_execution_request(
 				client,
 				recorder,
 				request,
-				target_thread_id,
-				target_turn_id,
-				dynamic_tool_handler,
-				codex_account_provider,
+				context.target_thread_id,
+				&target_turn_id,
+				context.dynamic_tool_handler,
+				context.codex_account_provider,
 			)?,
 			JsonRpcMessage::Response(_) => ignore_orphan_turn_json_rpc_response(),
 			JsonRpcMessage::Error(error) => {
 				latest_turn_failure = Some(turn_failure_from_json_rpc_error_response(
-					target_thread_id,
-					target_turn_id,
+					context.target_thread_id,
+					&target_turn_id,
 					error,
 				));
 			},
 		}
 	}
+}
+
+fn handle_turn_notification(
+	notification: &JsonRpcNotification,
+	target_thread_id: &str,
+	target_turn_id: &str,
+	final_output: &mut String,
+	latest_turn_failure: &mut Option<AppServerTurnFailure>,
+) -> crate::prelude::Result<Option<RunOutcome>> {
+	match notification.method.as_str() {
+		"thread/status/changed" => {
+			let payload: ThreadStatusChangedNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			if payload.status.kind == "systemError" && latest_turn_failure.is_none() {
+				*latest_turn_failure =
+					Some(AppServerTurnFailure::from_system_error(&payload.thread_id));
+			}
+		},
+		"error" => {
+			if let Some((failure, will_retry)) =
+				failure_from_error_notification(notification, target_thread_id, target_turn_id)?
+			{
+				if failure.requires_operator_attention() && will_retry != Some(true) {
+					return Err(Report::new(failure));
+				}
+
+				*latest_turn_failure = Some(failure);
+			}
+		},
+		"item/agentMessage/delta" => {
+			if !notification_targets_turn(notification, target_turn_id) {
+				return Ok(None);
+			}
+
+			let payload: AgentMessageDeltaNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			final_output.push_str(&payload.delta);
+		},
+		"item/completed" => {
+			if !notification_targets_turn(notification, target_turn_id) {
+				return Ok(None);
+			}
+
+			let payload: ItemCompletedNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			if payload.item.kind == "agentMessage"
+				&& let Some(text) = payload.item.text
+			{
+				*final_output = text;
+			}
+		},
+		"turn/completed" => {
+			let payload: TurnCompletedNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			if payload.turn.id != target_turn_id {
+				return Ok(None);
+			}
+			if payload.turn.status == "completed" {
+				return Ok(Some(RunOutcome {
+					final_output: final_output.clone(),
+					turn_id: target_turn_id.to_owned(),
+				}));
+			}
+
+			if let Some(error) = payload.turn.error.as_ref() {
+				return Err(Report::new(turn_failure_from_turn_error(
+					target_thread_id,
+					Some(&payload.turn.id),
+					&payload.turn.status,
+					error,
+				)));
+			}
+			if let Some(failure) = latest_turn_failure.take() {
+				return Err(Report::new(failure));
+			}
+
+			eyre::bail!(
+				"Turn `{}` ended with status `{}` without an explicit error payload.",
+				payload.turn.id,
+				payload.turn.status
+			);
+		},
+		_ => {},
+	}
+
+	Ok(None)
+}
+
+fn notification_targets_turn(notification: &JsonRpcNotification, target_turn_id: &str) -> bool {
+	turn_id_from_value(&notification.params).is_none_or(|turn_id| turn_id == target_turn_id)
 }
 
 fn next_turn_wire_message(
@@ -3528,13 +3854,383 @@ fn next_turn_wire_message(
 	target_thread_id: &str,
 	target_turn_id: &str,
 	latest_turn_failure: Option<&AppServerTurnFailure>,
-) -> crate::prelude::Result<WireMessage> {
+) -> crate::prelude::Result<Option<WireMessage>> {
 	let now = Instant::now();
 	let wait_timeout = remaining_idle_budget(last_activity_at, now, timeout).ok_or_else(|| {
 		turn_wait_timeout_error(target_thread_id, target_turn_id, latest_turn_failure.cloned())
 	})?;
+	let poll_timeout = wait_timeout.min(CONTROL_CHANNEL_POLL_INTERVAL);
 
-	recv_turn_wire_message(client, wait_timeout, latest_turn_failure)
+	recv_turn_wire_message(client, poll_timeout, wait_timeout, latest_turn_failure)
+}
+
+fn handle_pending_steer_channel_requests(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	context: TurnWaitContext<'_>,
+	target_turn_id: &str,
+) -> crate::prelude::Result<Option<String>> {
+	let Some(channel) = context.control_channel else {
+		return Ok(None);
+	};
+	let dirs = steer_channel_dirs(channel.channel_path());
+	let entries = match fs::read_dir(&dirs.pending) {
+		Ok(entries) => entries,
+		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+		Err(error) => return Err(error.into()),
+	};
+	let mut paths = Vec::new();
+
+	for entry in entries {
+		let path = entry?.path();
+
+		if path.extension().is_some_and(|extension| extension == "json") {
+			paths.push(path);
+		}
+	}
+
+	paths.sort();
+
+	for path in paths {
+		if let Some(delivered_turn_id) = handle_steer_channel_request_file(
+			client,
+			recorder,
+			context,
+			target_turn_id,
+			&dirs,
+			&path,
+		)? {
+			return Ok(Some(delivered_turn_id));
+		}
+	}
+
+	Ok(None)
+}
+
+fn handle_steer_channel_request_file(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	context: TurnWaitContext<'_>,
+	target_turn_id: &str,
+	dirs: &SteerChannelDirs,
+	path: &Path,
+) -> crate::prelude::Result<Option<String>> {
+	let file_name =
+		path.file_name().ok_or_else(|| eyre::eyre!("Steer request path had no filename."))?;
+
+	if steer_channel_result_exists(dirs, file_name) {
+		fs::remove_file(path)?;
+
+		return Ok(None);
+	}
+
+	let request: AppServerSteerChannelRequest = match serde_json::from_slice(&fs::read(path)?) {
+		Ok(request) => request,
+		Err(error) => {
+			move_malformed_steer_request(path, dirs, &error)?;
+
+			return Ok(None);
+		},
+	};
+	let delivery =
+		deliver_steer_channel_request(client, recorder, context, target_turn_id, &request)?;
+	let response_turn_id = delivery.response_turn_id.clone();
+
+	write_steer_channel_result(path, dirs, &request, delivery)?;
+
+	Ok(response_turn_id)
+}
+
+fn deliver_steer_channel_request(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	context: TurnWaitContext<'_>,
+	target_turn_id: &str,
+	request: &AppServerSteerChannelRequest,
+) -> crate::prelude::Result<SteerDelivery> {
+	let Some(channel) = context.control_channel else {
+		return Ok(SteerDelivery::failed(
+			STEER_REASON_CHANNEL_IDENTITY_MISMATCH,
+			Some("run_control_action_failed"),
+			Some(target_turn_id),
+		));
+	};
+	let failure =
+		validate_steer_channel_request(channel, context.target_thread_id, target_turn_id, request);
+
+	if let Some((reason, failure_class)) = failure {
+		record_steer_delivery(
+			recorder,
+			context.state_store,
+			channel,
+			SteerDeliveryRecord {
+				request,
+				outcome: RUN_CONTROL_ACTION_FAILED,
+				reason,
+				failure_class: Some(failure_class),
+				response_turn_id: None,
+				current_thread_id: Some(context.target_thread_id),
+				current_turn_id: Some(target_turn_id),
+			},
+		)?;
+
+		return Ok(SteerDelivery::failed(reason, Some(failure_class), Some(target_turn_id)));
+	}
+
+	match send_turn_steer_request(
+		client,
+		recorder,
+		request,
+		context.dynamic_tool_handler,
+		context.codex_account_provider,
+	) {
+		Ok(response_turn_id) => {
+			record_steer_delivery(
+				recorder,
+				context.state_store,
+				channel,
+				SteerDeliveryRecord {
+					request,
+					outcome: RUN_CONTROL_ACTION_COMPLETED,
+					reason: STEER_REASON_DELIVERED,
+					failure_class: None,
+					response_turn_id: Some(&response_turn_id),
+					current_thread_id: Some(context.target_thread_id),
+					current_turn_id: Some(target_turn_id),
+				},
+			)?;
+
+			Ok(SteerDelivery::completed(response_turn_id, Some(target_turn_id)))
+		},
+		Err(error) => {
+			let (reason, failure_class) = classify_steer_delivery_error(&error);
+
+			record_steer_delivery(
+				recorder,
+				context.state_store,
+				channel,
+				SteerDeliveryRecord {
+					request,
+					outcome: RUN_CONTROL_ACTION_FAILED,
+					reason,
+					failure_class: Some(failure_class),
+					response_turn_id: None,
+					current_thread_id: Some(context.target_thread_id),
+					current_turn_id: Some(target_turn_id),
+				},
+			)?;
+
+			Ok(SteerDelivery::failed(reason, Some(failure_class), Some(target_turn_id)))
+		},
+	}
+}
+
+fn validate_steer_channel_request(
+	channel: &RunControlChannel,
+	target_thread_id: &str,
+	target_turn_id: &str,
+	request: &AppServerSteerChannelRequest,
+) -> Option<(&'static str, &'static str)> {
+	if request.schema != STEER_CHANNEL_REQUEST_SCHEMA
+		|| request.project_id != channel.project_id()
+		|| request.issue_id != channel.issue_id()
+		|| request.run_id != channel.run_id()
+		|| request.attempt_number != channel.attempt_number()
+	{
+		return Some((STEER_REASON_CHANNEL_IDENTITY_MISMATCH, "run_control_action_failed"));
+	}
+	if request.thread_id != target_thread_id {
+		return Some((STEER_REASON_THREAD_MISMATCH, "run_control_action_failed"));
+	}
+	if request.expected_turn_id != target_turn_id {
+		return Some((STEER_REASON_TURN_MISMATCH, STEER_FAILURE_STALE_EXPECTED_TURN));
+	}
+
+	None
+}
+
+fn send_turn_steer_request(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerSteerChannelRequest,
+	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
+	codex_account_provider: Option<&dyn CodexAccountProvider>,
+) -> crate::prelude::Result<String> {
+	let response = client.steer_turn_with_handler(
+		build_turn_steer_request(&request.thread_id, &request.expected_turn_id, &request.message),
+		|connection, wire_message, server_request| {
+			handle_server_request_while_waiting(
+				connection,
+				recorder,
+				wire_message,
+				server_request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::TurnExecution,
+					dynamic_tool_handler,
+					codex_account_provider,
+					Some(&request.thread_id),
+					None,
+				),
+			)
+		},
+	)?;
+
+	Ok(response.turn_id)
+}
+
+fn record_steer_delivery(
+	recorder: &mut RunRecorder<'_>,
+	state_store: &StateStore,
+	channel: &RunControlChannel,
+	delivery: SteerDeliveryRecord<'_>,
+) -> crate::prelude::Result<()> {
+	let metadata = steer_delivery_metadata(
+		delivery.request,
+		delivery.outcome,
+		delivery.reason,
+		delivery.failure_class,
+		delivery.response_turn_id,
+	);
+
+	state_store.record_run_control_action_delivery_outcome(RunControlActionOutcomeRequest {
+		project_id: channel.project_id(),
+		issue_id: channel.issue_id(),
+		run_id: channel.run_id(),
+		attempt_number: channel.attempt_number(),
+		thread_id: Some(&delivery.request.thread_id),
+		turn_id: Some(&delivery.request.expected_turn_id),
+		current_thread_id: delivery.current_thread_id,
+		current_turn_id: delivery.current_turn_id,
+		source: &delivery.request.source,
+		action: STEER_CONTROL_ACTION,
+		outcome: delivery.outcome,
+		reason: delivery.reason,
+		parent_record_id: Some(delivery.request.audit_record_id),
+		timeout_ms: None,
+		metadata: Some(&metadata),
+		channel: Some(channel),
+	})?;
+	recorder.record("turn/steer", &metadata.to_string())?;
+
+	Ok(())
+}
+
+fn steer_delivery_metadata(
+	request: &AppServerSteerChannelRequest,
+	outcome: &str,
+	reason: &str,
+	failure_class: Option<&str>,
+	response_turn_id: Option<&str>,
+) -> Value {
+	serde_json::json!({
+		"request_id": request.request_id,
+		"audit_record_id": request.audit_record_id,
+		"outcome": outcome,
+		"reason": reason,
+		"failure_class": failure_class,
+		"expected_turn_id": request.expected_turn_id,
+		"response_turn_id": response_turn_id,
+		"message_byte_count": request.message_byte_count,
+		"message_line_count": request.message_line_count,
+	})
+}
+
+fn write_steer_channel_result(
+	request_path: &Path,
+	dirs: &SteerChannelDirs,
+	request: &AppServerSteerChannelRequest,
+	delivery: SteerDelivery,
+) -> crate::prelude::Result<()> {
+	let file_name = request_path
+		.file_name()
+		.ok_or_else(|| eyre::eyre!("Steer request path had no filename."))?;
+	let target_dir = if delivery.outcome == RUN_CONTROL_ACTION_COMPLETED {
+		&dirs.processed
+	} else {
+		&dirs.failed
+	};
+	let result_path = target_dir.join(file_name);
+	let result = AppServerSteerChannelResult {
+		schema: String::from(STEER_CHANNEL_RESULT_SCHEMA),
+		request_id: request.request_id.clone(),
+		outcome: delivery.outcome,
+		reason: delivery.reason,
+		failure_class: delivery.failure_class,
+		expected_turn_id: request.expected_turn_id.clone(),
+		current_turn_id: delivery.current_turn_id,
+		response_turn_id: delivery.response_turn_id,
+		message_byte_count: request.message_byte_count,
+		message_line_count: request.message_line_count,
+		audit_record_id: request.audit_record_id,
+		recorded_at: current_timestamp(),
+	};
+
+	write_json_file_atomically(&result_path, &result)?;
+
+	fs::remove_file(request_path)?;
+
+	Ok(())
+}
+
+fn move_malformed_steer_request(
+	request_path: &Path,
+	dirs: &SteerChannelDirs,
+	error: &serde_json::Error,
+) -> crate::prelude::Result<()> {
+	let Some(file_name) = request_path.file_name() else {
+		return Ok(());
+	};
+	let result_path = dirs.failed.join(file_name);
+	let result = serde_json::json!({
+		"schema": STEER_CHANNEL_RESULT_SCHEMA,
+		"request_id": file_name.to_string_lossy(),
+		"outcome": RUN_CONTROL_ACTION_FAILED,
+		"reason": "malformed_steer_request",
+		"failure_class": "run_control_action_failed",
+		"error": error.to_string(),
+		"recorded_at": current_timestamp(),
+	});
+
+	write_json_file_atomically(&result_path, &result)?;
+
+	fs::remove_file(request_path)?;
+
+	Ok(())
+}
+
+fn write_json_file_atomically<T>(path: &Path, value: &T) -> crate::prelude::Result<()>
+where
+	T: Serialize,
+{
+	let parent =
+		path.parent().ok_or_else(|| eyre::eyre!("JSON output path had no parent directory."))?;
+	let file_name =
+		path.file_name().ok_or_else(|| eyre::eyre!("JSON output path had no filename."))?;
+	let temp_path = parent.join(format!(
+		"{}.tmp-{}-{}",
+		file_name.to_string_lossy(),
+		process::id(),
+		OffsetDateTime::now_utc().unix_timestamp_nanos()
+	));
+
+	fs::create_dir_all(parent)?;
+	fs::write(&temp_path, serde_json::to_vec_pretty(value)?)?;
+	fs::rename(&temp_path, path)?;
+
+	Ok(())
+}
+
+fn classify_steer_delivery_error(error: &Report) -> (&'static str, &'static str) {
+	let error = error.to_string().to_lowercase();
+
+	if error.contains("activeturnnotsteerable") {
+		return (STEER_REASON_ACTIVE_TURN_NOT_STEERABLE, STEER_FAILURE_ACTIVE_TURN_NOT_STEERABLE);
+	}
+	if error.contains("method not found") || error.contains("-32601") || error.contains("-32_601") {
+		return (STEER_REASON_APP_SERVER_UNSUPPORTED, STEER_FAILURE_UNSUPPORTED);
+	}
+
+	(STEER_REASON_APP_SERVER_FAILED, STEER_FAILURE_APP_SERVER_FAILED)
 }
 
 fn handle_turn_execution_request(
@@ -3584,17 +4280,22 @@ fn turn_wait_timeout_error(
 
 fn recv_turn_wire_message(
 	client: &mut AppServerClient,
-	wait_timeout: Duration,
+	poll_timeout: Duration,
+	remaining_timeout: Duration,
 	latest_turn_failure: Option<&AppServerTurnFailure>,
-) -> crate::prelude::Result<WireMessage> {
-	match client.recv(Some(wait_timeout)) {
-		Ok(wire_message) => Ok(wire_message),
+) -> crate::prelude::Result<Option<WireMessage>> {
+	match client.recv(Some(poll_timeout)) {
+		Ok(wire_message) => Ok(Some(wire_message)),
 		Err(error) => {
-			if error.downcast_ref::<AppServerOutputTimeout>().is_some()
-				&& let Some(failure) = latest_turn_failure
-			{
-				return Err(Report::new(failure.clone())
-					.wrap_err("Timed out while waiting for additional app-server output."));
+			if error.downcast_ref::<AppServerOutputTimeout>().is_some() {
+				if remaining_timeout > poll_timeout {
+					return Ok(None);
+				}
+
+				if let Some(failure) = latest_turn_failure {
+					return Err(Report::new(failure.clone())
+						.wrap_err("Timed out while waiting for additional app-server output."));
+				}
 			}
 
 			Err(error)
@@ -3873,9 +4574,6 @@ fn dispatch_dynamic_tool_call(
 	request: &JsonRpcRequest,
 	context: RequestDispatchContext<'_>,
 ) -> crate::prelude::Result<()> {
-	let target_turn_id = context.target_turn_id.ok_or_else(|| {
-		eyre::eyre!("app_server_protocol_failure: turn execution request missing turn context")
-	})?;
 	let target_thread_id = context.target_thread_id.ok_or_else(|| {
 		eyre::eyre!("app_server_protocol_failure: turn execution request missing thread context")
 	})?;
@@ -3883,7 +4581,7 @@ fn dispatch_dynamic_tool_call(
 		context.dynamic_tool_handler,
 		request,
 		target_thread_id,
-		target_turn_id,
+		context.target_turn_id,
 	);
 
 	respond_to_dynamic_tool_call_dispatch(connection, recorder, request, dispatch)
@@ -4106,7 +4804,7 @@ fn handle_dynamic_tool_call(
 	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
 	request: &JsonRpcRequest,
 	target_thread_id: &str,
-	target_turn_id: &str,
+	target_turn_id: Option<&str>,
 ) -> DynamicToolCallDispatch {
 	let payload =
 		match validated_dynamic_tool_call_payload(request, target_thread_id, target_turn_id) {
@@ -4171,7 +4869,7 @@ fn handle_dynamic_tool_call(
 fn validated_dynamic_tool_call_payload(
 	request: &JsonRpcRequest,
 	target_thread_id: &str,
-	target_turn_id: &str,
+	target_turn_id: Option<&str>,
 ) -> std::result::Result<DynamicToolCallParams, Box<DynamicToolCallDispatch>> {
 	let payload = serde_json::from_value::<DynamicToolCallParams>(request.params.clone()).map_err(
 		|error| {
@@ -4222,7 +4920,10 @@ fn validated_dynamic_tool_call_payload(
 			),
 		)));
 	}
-	if payload.turn_id != target_turn_id {
+
+	if let Some(target_turn_id) = target_turn_id
+		&& payload.turn_id != target_turn_id
+	{
 		return Err(Box::new(DynamicToolCallDispatch::protocol_failure(
 			Some(payload.tool),
 			payload.namespace,
