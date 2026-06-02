@@ -418,7 +418,7 @@ struct AccountPanelView: View {
 			SummaryTileView(
 				title: "Codex",
 				value: codexAuthLabel,
-				symbol: "person.crop.circle",
+				symbol: "terminal",
 				tint: PanelPalette.codexAccent(colorScheme)
 			)
 
@@ -1600,11 +1600,11 @@ private struct AccountProfileOverviewView: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 5) {
-			HStack(spacing: 5) {
-				Image(systemName: "sum")
-					.font(PanelFont.summaryIcon)
-					.foregroundStyle(PanelPalette.usageCyan(colorScheme).opacity(0.9))
-					.frame(width: 11)
+			HStack(alignment: .firstTextBaseline, spacing: 5) {
+				PanelMetricIconView(
+					symbol: "sum",
+					tint: PanelPalette.usageCyan(colorScheme).opacity(0.9)
+				)
 
 				Text("All accounts")
 					.font(PanelFont.metricLabel)
@@ -1923,11 +1923,11 @@ struct AccountProfileSummaryView: View {
 	var body: some View {
 		VStack(spacing: 4) {
 			if metrics.isEmpty == false {
-				HStack(spacing: 5) {
-					Image(systemName: "chart.bar.xaxis")
-						.font(PanelFont.summaryIcon)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
-						.frame(width: 10)
+				HStack(alignment: .firstTextBaseline, spacing: 5) {
+					PanelMetricIconView(
+						symbol: "chart.bar.xaxis",
+						tint: PanelPalette.secondaryText(colorScheme).opacity(0.82)
+					)
 
 					ForEach(Array(metrics.enumerated()), id: \.offset) { index, metric in
 						HStack(alignment: .firstTextBaseline, spacing: 3) {
@@ -2413,11 +2413,11 @@ struct OperatorStatusStripView: View {
 			.frame(height: 16)
 
 			if let warning = snapshot.warningSummary {
-				HStack(spacing: 5) {
-					Image(systemName: "exclamationmark.circle")
-						.font(PanelFont.summaryIcon)
-						.foregroundStyle(PanelPalette.warning(colorScheme).opacity(0.82))
-						.frame(width: 10)
+				HStack(alignment: .firstTextBaseline, spacing: 5) {
+					PanelMetricIconView(
+						symbol: "exclamationmark.circle",
+						tint: PanelPalette.warning(colorScheme).opacity(0.82)
+					)
 
 					Text(warning)
 						.font(PanelFont.metricLabel)
@@ -2978,6 +2978,22 @@ struct OperatorFlowMetricView: View {
 	}
 }
 
+private struct PanelMetricIconView: View {
+	let symbol: String
+	let tint: Color
+
+	var body: some View {
+		Image(systemName: symbol)
+			.font(PanelFont.summaryIcon)
+			.symbolRenderingMode(.monochrome)
+			.foregroundStyle(tint)
+			.frame(width: 12, height: 12)
+			.alignmentGuide(.firstTextBaseline) { dimensions in
+				dimensions[VerticalAlignment.center] + 3.85
+			}
+	}
+}
+
 struct SummaryTileView: View {
 	let title: String
 	let value: String
@@ -2987,13 +3003,10 @@ struct SummaryTileView: View {
 
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: 4) {
-			Image(systemName: symbol)
-				.font(PanelFont.summaryIcon)
-				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.78 : 0.82))
-				.frame(width: 11)
-				.alignmentGuide(.firstTextBaseline) { dimensions in
-					dimensions[VerticalAlignment.center] + 3
-				}
+			PanelMetricIconView(
+				symbol: symbol,
+				tint: tint.opacity(colorScheme == .dark ? 0.78 : 0.82)
+			)
 
 			Text(title)
 				.font(PanelFont.metricLabel)
