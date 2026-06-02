@@ -4,10 +4,10 @@ use std::{
 	path::{Path, PathBuf},
 	process::{Command, Stdio},
 	thread,
-	time::Duration,
 };
 
 use color_eyre::{Report, eyre::WrapErr};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	commit_message::{self, MANUAL_AUTHORITY},
@@ -20,15 +20,23 @@ use crate::{
 	pull_request::{self, PullRequestLandingState},
 	runtime,
 	state::{RUN_ACTIVITY_MARKER_FILE, ReviewHandoffMarker, StateStore},
-	tracker::{self, IssueTracker, TrackerIssue, linear::LinearClient},
+	tracker::{
+		self, IssueTracker, TrackerIssue,
+		linear::LinearClient,
+		privacy_classifier::{
+			ConfiguredPublicProjectionPrivacyClassifier, PublicProjectionPrivacyClassifier,
+		},
+		records::{self, LinearExecutionEventIdentity, LinearExecutionEventRecord},
+	},
 	workflow::WorkflowDocument,
 	worktree::{self, WorktreeManager},
 };
 
 const MANUAL_LAND_CLOSEOUT_MARKER_GIT_PATH: &str = "decodex/manual-land-closeout";
-const MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT: std::time::Duration =
+	std::time::Duration::from_secs(15 * 60);
 const MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS: usize = 4;
-const MANUAL_LAND_MERGEABILITY_RETRY_DELAY: Duration = Duration::from_secs(2);
+const MANUAL_LAND_MERGEABILITY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(Debug)]
 pub(crate) struct ManualCommitRequest {
@@ -70,8 +78,10 @@ struct ManualLandContext {
 	github_token: String,
 	repository: RepositoryContext,
 	prepared_closeout: Option<PreparedCloseout>,
+	review_handoff: Option<ReviewHandoffMarker>,
 	pr_url: String,
 	review_branch: String,
+	public_projection_privacy_classifier: ConfiguredPublicProjectionPrivacyClassifier,
 }
 impl ManualLandContext {
 	fn default_branch_git_credentials(&self) -> GitCredentialSource<'_> {
@@ -93,6 +103,20 @@ struct ManualLandCloseoutMarkerRecord {
 	merge_commit: Option<String>,
 	branch_name: Option<String>,
 	landed_change: Option<String>,
+}
+
+struct ManualLandLedgerContext<'a> {
+	service_id: &'a str,
+	issue: &'a TrackerIssue,
+	state_store: &'a StateStore,
+	handoff: &'a ReviewHandoffMarker,
+	pr_url: &'a str,
+	merge_commit: &'a str,
+	branch_name: &'a str,
+	worktree_path: &'a str,
+	completed_state: &'a str,
+	default_branch: &'a str,
+	privacy_classifier: &'a dyn PublicProjectionPrivacyClassifier,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -180,6 +204,12 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 			"Review handoff expects branch `{}`, but the current branch is `{}`.",
 			context.review_branch,
 			context.current_branch,
+		);
+	}
+	if context.prepared_closeout.is_some() && context.review_handoff.is_none() {
+		eyre::bail!(
+			"`decodex land` issue closeout requires a retained review handoff marker so it can write deterministic Linear execution ledger events. Run `decodex recovery review-handoff rebind` for `{}` before retrying.",
+			context.current_branch
 		);
 	}
 
@@ -287,6 +317,8 @@ fn prepare_manual_land_context(
 	let github_token = config.github().resolve_token()?;
 	let repository = github::inspect_repository_context(&canonical_repo_root, &github_token)?;
 	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
+	let public_projection_privacy_classifier =
+		ConfiguredPublicProjectionPrivacyClassifier::from_config(config.privacy_classifier())?;
 	let prepared_closeout =
 		prepare_manual_land_closeout(&config, &canonical_repo_root, workflow.clone(), &authority)?;
 	let state_store = runtime::open_runtime_store()?;
@@ -322,8 +354,10 @@ fn prepare_manual_land_context(
 		github_token,
 		repository,
 		prepared_closeout,
+		review_handoff: handoff,
 		pr_url,
 		review_branch,
+		public_projection_privacy_classifier,
 	})
 }
 
@@ -415,13 +449,39 @@ fn finalize_land_closeout(
 	default_branch: &str,
 	landed_change_record: &str,
 ) -> Result<()> {
+	let state_store = if context.prepared_closeout.is_some() {
+		Some(runtime::open_runtime_store()?)
+	} else {
+		None
+	};
+	let worktree_path_for_event = manual_land_relative_worktree_path(context);
+
 	if let Some(prepared_closeout) = context.prepared_closeout.as_ref() {
+		let state_store = state_store
+			.as_ref()
+			.ok_or_else(|| eyre::eyre!("Manual closeout state store was not opened."))?;
+		let handoff = context.review_handoff.as_ref().ok_or_else(|| {
+			eyre::eyre!("`decodex land` issue closeout requires a retained review handoff marker.")
+		})?;
+		let ledger = ManualLandLedgerContext {
+			service_id: &prepared_closeout.service_id,
+			issue: &prepared_closeout.issue,
+			state_store,
+			handoff,
+			pr_url: &context.pr_url,
+			merge_commit,
+			branch_name: &context.current_branch,
+			worktree_path: &worktree_path_for_event,
+			completed_state: &prepared_closeout.completed_state,
+			default_branch,
+			privacy_classifier: &context.public_projection_privacy_classifier,
+		};
+
 		apply_closeout(
 			&context.cwd,
-			prepared_closeout,
-			&context.pr_url,
-			merge_commit,
-			&context.current_branch,
+			&prepared_closeout.tracker,
+			&prepared_closeout.completed_state,
+			&ledger,
 			landed_change_record,
 		)?;
 	}
@@ -452,18 +512,60 @@ fn finalize_land_closeout(
 	cleanup_manual_land_lane_checkout(context)?;
 
 	if let Some(prepared_closeout) = context.prepared_closeout.as_ref() {
-		let state_store = runtime::open_runtime_store()?;
+		let state_store = state_store
+			.as_ref()
+			.ok_or_else(|| eyre::eyre!("Manual closeout state store was not opened."))?;
+		let handoff = context.review_handoff.as_ref().ok_or_else(|| {
+			eyre::eyre!("`decodex land` issue cleanup requires a retained review handoff marker.")
+		})?;
 
-		clear_manual_closeout_runtime_state(&state_store, &prepared_closeout.issue.id)?;
+		clear_manual_closeout_runtime_state(state_store, &prepared_closeout.issue.id)?;
 		clear_manual_closeout_issue_scope(
 			&prepared_closeout.tracker,
 			&prepared_closeout.issue,
 			&prepared_closeout.service_id,
 			&prepared_closeout.needs_attention_label,
 		)?;
+
+		let ledger = ManualLandLedgerContext {
+			service_id: &prepared_closeout.service_id,
+			issue: &prepared_closeout.issue,
+			state_store,
+			handoff,
+			pr_url: &context.pr_url,
+			merge_commit,
+			branch_name: &context.current_branch,
+			worktree_path: &worktree_path_for_event,
+			completed_state: &prepared_closeout.completed_state,
+			default_branch,
+			privacy_classifier: &context.public_projection_privacy_classifier,
+		};
+
+		write_manual_land_cleanup_complete_event(&prepared_closeout.tracker, &ledger)?;
 	}
 
 	Ok(())
+}
+
+fn manual_land_relative_worktree_path(context: &ManualLandContext) -> String {
+	if let Ok(relative_path) = context.worktree_root.strip_prefix(&context.canonical_repo_root) {
+		if relative_path.as_os_str().is_empty() {
+			return String::from(".");
+		}
+
+		return relative_path.display().to_string();
+	}
+	if let Some(root_name) = context.project_worktree_root.file_name()
+		&& let Ok(relative_path) =
+			context.worktree_root.strip_prefix(&context.project_worktree_root)
+	{
+		return Path::new(root_name).join(relative_path).display().to_string();
+	}
+
+	context.worktree_root.file_name().map_or_else(
+		|| context.worktree_root.display().to_string(),
+		|path| path.to_string_lossy().into_owned(),
+	)
 }
 
 fn cleanup_manual_land_lane_checkout(context: &ManualLandContext) -> Result<()> {
@@ -1228,52 +1330,203 @@ where
 	);
 }
 
-fn apply_closeout(
+fn apply_closeout<T>(
 	checkout_root: &Path,
-	prepared: &PreparedCloseout,
-	pr_url: &str,
-	merge_commit: &str,
-	branch_name: &str,
+	tracker: &T,
+	completed_state: &str,
+	ledger: &ManualLandLedgerContext<'_>,
 	landed_change_record: &str,
-) -> Result<()> {
-	if prepared.issue.state.name != prepared.completed_state {
-		let state_id =
-			prepared.issue.state_id_for_name(&prepared.completed_state).ok_or_else(|| {
-				eyre::eyre!(
-					"Issue `{}` does not expose tracker state `{}` on its team.",
-					prepared.issue.identifier,
-					prepared.completed_state
-				)
-			})?;
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	if ledger.issue.state.name != completed_state {
+		let state_id = ledger.issue.state_id_for_name(completed_state).ok_or_else(|| {
+			eyre::eyre!(
+				"Issue `{}` does not expose tracker state `{}` on its team.",
+				ledger.issue.identifier,
+				completed_state
+			)
+		})?;
 
-		prepared.tracker.update_issue_state(prepared.issue.id.as_str(), state_id)?;
+		tracker.update_issue_state(ledger.issue.id.as_str(), state_id)?;
 	}
 	if !manual_land_closeout_matches(
 		checkout_root,
-		pr_url,
-		merge_commit,
-		branch_name,
+		ledger.pr_url,
+		ledger.merge_commit,
+		ledger.branch_name,
 		landed_change_record,
 	)? {
 		tracker::create_public_comment(
-			&prepared.tracker,
-			prepared.issue.id.as_str(),
+			tracker,
+			ledger.issue.id.as_str(),
 			format!(
-				"decodex land completed\n\n- pr_url: `{pr_url}`\n- merge_commit: `{merge_commit}`\n- branch: `{branch_name}`\n- landed_change: `{landed_change_record}`"
+				"decodex land completed\n\n- pr_url: `{}`\n- merge_commit: `{}`\n- branch: `{}`\n- landed_change: `{landed_change_record}`",
+				ledger.pr_url, ledger.merge_commit, ledger.branch_name
 			)
 			.as_str(),
 		)?;
 
 		write_manual_land_closeout_marker(
 			checkout_root,
-			pr_url,
-			merge_commit,
-			branch_name,
+			ledger.pr_url,
+			ledger.merge_commit,
+			ledger.branch_name,
 			landed_change_record,
 		)?;
 	}
 
+	write_manual_land_landed_and_closeout_events(tracker, ledger)?;
+
 	Ok(())
+}
+
+fn write_manual_land_landed_and_closeout_events<T>(
+	tracker: &T,
+	ledger: &ManualLandLedgerContext<'_>,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let landed = manual_land_landed_event(ledger);
+	let closeout = manual_land_closeout_event(ledger);
+
+	write_manual_land_lifecycle_event(tracker, ledger, &landed)?;
+
+	write_manual_land_lifecycle_event(tracker, ledger, &closeout)
+}
+
+fn write_manual_land_cleanup_complete_event<T>(
+	tracker: &T,
+	ledger: &ManualLandLedgerContext<'_>,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let cleanup_complete = manual_land_cleanup_complete_event(ledger);
+
+	write_manual_land_lifecycle_event(tracker, ledger, &cleanup_complete)
+}
+
+fn write_manual_land_lifecycle_event<T>(
+	tracker: &T,
+	ledger: &ManualLandLedgerContext<'_>,
+	record: &LinearExecutionEventRecord,
+) -> Result<()>
+where
+	T: IssueTracker + ?Sized,
+{
+	let body = format!("Decodex execution event: {}", record.event_type);
+	let projection =
+		tracker::prepare_linear_execution_event_comment(&body, record, ledger.privacy_classifier)?;
+
+	if ledger.state_store.record_linear_execution_event(&projection.record)?
+		&& let Err(error) =
+			tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
+				tracker,
+				&ledger.issue.id,
+				&projection,
+			) {
+		ledger.state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
+
+		return Err(error);
+	}
+
+	Ok(())
+}
+
+fn manual_land_landed_event(ledger: &ManualLandLedgerContext<'_>) -> LinearExecutionEventRecord {
+	let anchor = records::stable_event_anchor(&[
+		ledger.pr_url,
+		ledger.handoff.pr_head_oid(),
+		ledger.merge_commit,
+		"manual_land_landed",
+	]);
+	let mut record = LinearExecutionEventRecord::new(
+		manual_land_lifecycle_identity(ledger),
+		"landed",
+		manual_land_ordered_event_timestamp(-2),
+		&anchor,
+	);
+
+	record.branch = Some(ledger.branch_name.to_owned());
+	record.pr_url = Some(ledger.pr_url.to_owned());
+	record.pr_head_sha = Some(ledger.handoff.pr_head_oid().to_owned());
+	record.pr_base_ref =
+		Some(ledger.handoff.target_base_ref_name().unwrap_or(ledger.default_branch).to_owned());
+	record.commit_sha = Some(ledger.merge_commit.to_owned());
+	record.summary =
+		Some(format!("Manual land merged {} for {}.", ledger.pr_url, ledger.issue.identifier));
+
+	record
+}
+
+fn manual_land_closeout_event(ledger: &ManualLandLedgerContext<'_>) -> LinearExecutionEventRecord {
+	let anchor =
+		records::stable_event_anchor(&[ledger.pr_url, ledger.merge_commit, "manual_land_closeout"]);
+	let mut record = LinearExecutionEventRecord::new(
+		manual_land_lifecycle_identity(ledger),
+		"closeout",
+		manual_land_ordered_event_timestamp(-1),
+		&anchor,
+	);
+
+	record.branch = Some(ledger.branch_name.to_owned());
+	record.worktree_path = Some(ledger.worktree_path.to_owned());
+	record.pr_url = Some(ledger.pr_url.to_owned());
+	record.commit_sha = Some(ledger.merge_commit.to_owned());
+	record.validation_result = Some(String::from("passed"));
+	record.target_state = Some(ledger.completed_state.to_owned());
+	record.summary = Some(format!(
+		"Manual land closed out {} after merge {}.",
+		ledger.issue.identifier, ledger.merge_commit
+	));
+
+	record
+}
+
+fn manual_land_cleanup_complete_event(
+	ledger: &ManualLandLedgerContext<'_>,
+) -> LinearExecutionEventRecord {
+	let anchor = records::stable_event_anchor(&[
+		ledger.branch_name,
+		ledger.merge_commit,
+		"manual_land_cleanup_complete",
+	]);
+	let mut record = LinearExecutionEventRecord::new(
+		manual_land_lifecycle_identity(ledger),
+		"cleanup_complete",
+		manual_land_ordered_event_timestamp(0),
+		&anchor,
+	);
+
+	record.branch = Some(ledger.branch_name.to_owned());
+	record.worktree_path = Some(ledger.worktree_path.to_owned());
+	record.cleanup_status = Some(String::from("completed"));
+	record.summary = Some(String::from("Manual land cleaned up the retained lane."));
+	record.pr_url = Some(ledger.pr_url.to_owned());
+	record.commit_sha = Some(ledger.merge_commit.to_owned());
+
+	record
+}
+
+fn manual_land_lifecycle_identity<'a>(
+	ledger: &'a ManualLandLedgerContext<'_>,
+) -> LinearExecutionEventIdentity<'a> {
+	LinearExecutionEventIdentity {
+		service_id: ledger.service_id,
+		issue_id: &ledger.issue.id,
+		issue_identifier: &ledger.issue.identifier,
+		run_id: ledger.handoff.run_id(),
+		attempt_number: ledger.handoff.attempt_number(),
+	}
+}
+
+fn manual_land_ordered_event_timestamp(offset_seconds: i64) -> String {
+	(OffsetDateTime::now_utc() + time::Duration::seconds(offset_seconds))
+		.format(&Rfc3339)
+		.expect("timestamp formatting should succeed")
 }
 
 fn clear_manual_closeout_issue_scope<T>(
@@ -1480,13 +1733,18 @@ mod tests {
 		pull_request::PullRequestLandingState,
 		runtime, state,
 		test_support::TestEnvVarGuard,
-		tracker::{IssueTracker, TrackerIssue, TrackerLabel, TrackerState, TrackerTeam},
+		tracker::{
+			IssueTracker, TrackerIssue, TrackerLabel, TrackerState, TrackerTeam,
+			privacy_classifier::ConfiguredPublicProjectionPrivacyClassifier, records,
+		},
 		workflow::WorkflowDocument,
 		worktree::WorktreeManager,
 	};
 
 	struct TestTracker {
 		issues_by_label: HashMap<String, Vec<TrackerIssue>>,
+		comments: RefCell<Vec<String>>,
+		state_updates: RefCell<Vec<Vec<String>>>,
 		label_removals: RefCell<Vec<Vec<String>>>,
 		label_removal_error: Option<String>,
 	}
@@ -1502,6 +1760,8 @@ mod tests {
 		fn new() -> Self {
 			Self {
 				issues_by_label: HashMap::new(),
+				comments: RefCell::new(Vec::new()),
+				state_updates: RefCell::new(Vec::new()),
 				label_removals: RefCell::new(Vec::new()),
 				label_removal_error: None,
 			}
@@ -1554,14 +1814,20 @@ mod tests {
 			&self,
 			_issue_id: &str,
 		) -> crate::prelude::Result<Vec<crate::tracker::TrackerComment>> {
-			Ok(Vec::new())
+			Ok(self
+				.comments
+				.borrow()
+				.iter()
+				.map(|body| crate::tracker::TrackerComment {
+					body: body.clone(),
+					created_at: String::from("2026-06-02T00:00:00Z"),
+				})
+				.collect())
 		}
 
-		fn update_issue_state(
-			&self,
-			_issue_id: &str,
-			_state_id: &str,
-		) -> crate::prelude::Result<()> {
+		fn update_issue_state(&self, issue_id: &str, state_id: &str) -> crate::prelude::Result<()> {
+			self.state_updates.borrow_mut().push(vec![issue_id.to_owned(), state_id.to_owned()]);
+
 			Ok(())
 		}
 
@@ -1587,7 +1853,9 @@ mod tests {
 			Ok(())
 		}
 
-		fn create_comment(&self, _issue_id: &str, _body: &str) -> crate::prelude::Result<()> {
+		fn create_comment(&self, _issue_id: &str, body: &str) -> crate::prelude::Result<()> {
+			self.comments.borrow_mut().push(body.to_owned());
+
 			Ok(())
 		}
 	}
@@ -1717,8 +1985,11 @@ mod tests {
 				merge_commit_allowed: true,
 			},
 			prepared_closeout: None,
+			review_handoff: None,
 			pr_url: String::from("https://github.com/hack-ink/decodex/pull/64"),
 			review_branch: String::from("main"),
+			public_projection_privacy_classifier:
+				ConfiguredPublicProjectionPrivacyClassifier::Disabled,
 		}
 	}
 
@@ -2160,8 +2431,11 @@ exit 1\n",
 				merge_commit_allowed: true,
 			},
 			prepared_closeout: None,
+			review_handoff: None,
 			pr_url: String::from("https://github.com/hack-ink/decodex/pull/64"),
 			review_branch: String::from("xy-225"),
+			public_projection_privacy_classifier:
+				ConfiguredPublicProjectionPrivacyClassifier::Disabled,
 		};
 		let merge_commit = manual::execute_land_merge(
 			&context,
@@ -2213,8 +2487,11 @@ exit 1\n",
 				merge_commit_allowed: true,
 			},
 			prepared_closeout: None,
+			review_handoff: None,
 			pr_url: String::from("https://github.com/hack-ink/decodex/pull/64"),
 			review_branch: String::from("xy-225"),
+			public_projection_privacy_classifier:
+				ConfiguredPublicProjectionPrivacyClassifier::Disabled,
 		};
 		let merge_commit = manual::execute_land_merge(
 			&context,
@@ -2267,8 +2544,11 @@ exit 1\n",
 				merge_commit_allowed: true,
 			},
 			prepared_closeout: None,
+			review_handoff: None,
 			pr_url: String::from("https://github.com/hack-ink/decodex/pull/64"),
 			review_branch: String::from("xy-225"),
+			public_projection_privacy_classifier:
+				ConfiguredPublicProjectionPrivacyClassifier::Disabled,
 		};
 		let landed_change_record =
 			manual::load_authoritative_landed_change_record(&context, "cafebabe")
@@ -2566,8 +2846,11 @@ exit 1\n",
 				merge_commit_allowed: true,
 			},
 			prepared_closeout: None,
+			review_handoff: None,
 			pr_url: String::from("https://github.com/hack-ink/decodex/pull/64"),
 			review_branch: worktree.branch_name.clone(),
+			public_projection_privacy_classifier:
+				ConfiguredPublicProjectionPrivacyClassifier::Disabled,
 		};
 
 		manual::cleanup_manual_land_lane_checkout(&context)
@@ -2624,8 +2907,11 @@ exit 1\n",
 				merge_commit_allowed: true,
 			},
 			prepared_closeout: None,
+			review_handoff: None,
 			pr_url: String::from("https://github.com/hack-ink/decodex/pull/65"),
 			review_branch: worktree.branch_name.clone(),
+			public_projection_privacy_classifier:
+				ConfiguredPublicProjectionPrivacyClassifier::Disabled,
 		};
 
 		manual::cleanup_manual_land_lane_checkout(&context)
@@ -2795,6 +3081,93 @@ exit 1\n",
 
 		assert!(error.to_string().contains("must run from a managed lane"));
 		assert!(error.to_string().contains("XY-225"));
+	}
+
+	#[test]
+	fn manual_land_issue_closeout_writes_success_ledger_after_existing_marker() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let checkout = init_git_checkout(&temp_dir, "repo");
+		let tracker = TestTracker::new();
+		let state_store = state::StateStore::open_in_memory().expect("state store should open");
+		let mut issue = sample_issue("issue-1", "PUB-1161", true, &[]);
+
+		issue
+			.team
+			.states
+			.push(TrackerState { id: String::from("state-done"), name: String::from("Done") });
+
+		let handoff = state::ReviewHandoffMarker::new(
+			String::from("pub-1161-attempt-1"),
+			1,
+			String::from("xy/pub-1161"),
+			String::from("https://github.com/helixbox/pubfi-mono-v2/pull/95"),
+			String::from("main"),
+			String::from("xy/pub-1161"),
+			String::from("3cf2d24033527a774340c7d70c5ce437c90afe55"),
+		);
+		let merge_commit = "81e90b530148a0be69afa5bd33ce6ab84d485a3a";
+		let landed_change_record =
+			r#"{"schema":"decodex/commit/1","summary":"Land PUB-1161","authority":"PUB-1161"}"#;
+
+		manual::write_manual_land_closeout_marker(
+			&checkout,
+			"https://github.com/helixbox/pubfi-mono-v2/pull/95",
+			merge_commit,
+			"xy/pub-1161",
+			landed_change_record,
+		)
+		.expect("existing closeout marker should write");
+
+		let ledger = manual::ManualLandLedgerContext {
+			service_id: "pubfi",
+			issue: &issue,
+			state_store: &state_store,
+			handoff: &handoff,
+			pr_url: "https://github.com/helixbox/pubfi-mono-v2/pull/95",
+			merge_commit,
+			branch_name: "xy/pub-1161",
+			worktree_path: ".worktrees/PUB-1161",
+			completed_state: "Done",
+			default_branch: "main",
+			privacy_classifier: &ConfiguredPublicProjectionPrivacyClassifier::Disabled,
+		};
+
+		manual::apply_closeout(&checkout, &tracker, "Done", &ledger, landed_change_record)
+			.expect("manual closeout should write landed and closeout events");
+		manual::write_manual_land_cleanup_complete_event(&tracker, &ledger)
+			.expect("manual cleanup should write cleanup_complete event");
+
+		let comments = tracker.comments.borrow();
+		let records = comments
+			.iter()
+			.filter_map(|comment| records::parse_linear_execution_event_record(comment))
+			.collect::<Vec<_>>();
+		let event_types =
+			records.iter().map(|record| record.event_type.as_str()).collect::<Vec<_>>();
+
+		assert_eq!(
+			tracker.state_updates.borrow().as_slice(),
+			&[vec![String::from("issue-1"), String::from("state-done"),]]
+		);
+		assert_eq!(event_types, vec!["landed", "closeout", "cleanup_complete"]);
+		assert!(
+			comments.iter().all(|comment| !comment.starts_with("decodex land completed")),
+			"matching legacy closeout marker should not replay the ordinary closeout comment"
+		);
+		assert!(records.iter().all(|record| record.run_id == "pub-1161-attempt-1"));
+		assert!(records.iter().all(|record| record.attempt_number == 1));
+		assert_eq!(records[0].pr_head_sha.as_deref(), Some(handoff.pr_head_oid()));
+		assert_eq!(records[0].commit_sha.as_deref(), Some(merge_commit));
+		assert_eq!(records[1].target_state.as_deref(), Some("Done"));
+		assert_eq!(records[2].cleanup_status.as_deref(), Some("completed"));
+
+		let cached_records = state_store
+			.list_linear_execution_events("pubfi", "issue-1")
+			.expect("local ledger cache should read");
+		let cached_event_types =
+			cached_records.iter().map(|record| record.event_type.as_str()).collect::<Vec<_>>();
+
+		assert_eq!(cached_event_types, vec!["landed", "closeout", "cleanup_complete"]);
 	}
 
 	#[test]
