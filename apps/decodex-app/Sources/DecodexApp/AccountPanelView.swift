@@ -1305,7 +1305,7 @@ private final class AccountRunStripContainerView<Content: View>: NSView {
 		let contentSize = hostingView.fittingSize
 		let height = max(bounds.height, AccountRunChipLayout.height)
 		measuredContentWidth = max(0, ceil(contentSize.width))
-		let documentWidth = max(measuredContentWidth, bounds.width)
+		let documentWidth = max(measuredContentWidth, 1)
 
 		hostingView.frame = NSRect(
 			x: 0,
@@ -1345,6 +1345,14 @@ private final class AccountRunStripContainerView<Content: View>: NSView {
 
 private final class AccountRunStripClipView: NSClipView {
 	var onBoundsChange: (() -> Void)?
+
+	override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
+		var constrainedBounds = super.constrainBoundsRect(proposedBounds)
+		constrainedBounds.origin.x = max(0, constrainedBounds.origin.x)
+		constrainedBounds.origin.y = max(0, constrainedBounds.origin.y)
+
+		return constrainedBounds
+	}
 
 	override func scroll(to newOrigin: NSPoint) {
 		let oldOrigin = bounds.origin
