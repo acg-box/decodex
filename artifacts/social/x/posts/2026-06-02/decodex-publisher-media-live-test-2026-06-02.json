@@ -1,0 +1,74 @@
+{
+  "schema": "social_post/v1",
+  "slug": "decodex-publisher-media-live-test-2026-06-02",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "watch_note",
+  "status": "published",
+  "audience": "Decodex operators auditing the X Publisher automation",
+  "text": [
+    "Decodex publisher media live test (2026-06-02): verifying generated signal-card upload, @decodexspace publication, final URL readback, and Chrome tab cleanup. This post may be deleted after validation."
+  ],
+  "source_refs": {
+    "urls": [
+      "https://x.com/decodexspace/status/2061826252764520745",
+      "https://x.com/decodexspace/status/2061826252764520745/photo/1",
+      "https://github.com/hack-ink/decodex/blob/main/docs/spec/social-publishing.md",
+      "https://github.com/hack-ink/decodex/blob/main/dev/skills/x-post-publisher/SKILL.md"
+    ]
+  },
+  "evidence_notes": [
+    "Chrome tab-control recovered: a new about:blank tab was created, read back, and finalized before the X media test.",
+    "The X account switcher was used to select Decodex @decodexspace, and the page body confirmed Decodex @decodexspace before composing.",
+    "The generated Decodex signal-card PNG was uploaded through the X file chooser; setFiles returned successfully and X displayed AI generated content detected / Made with AI before publication.",
+    "The post was submitted from the @decodexspace composer, then read back from the timeline with a status permalink and photo link.",
+    "The permalink page independently verified the post text, @decodexspace account, Made with AI label, /photo/1 link, and image nodes.",
+    "Chrome tab cleanup returned successfully, and a fresh read-only tab listing found no residual media permalink tab after cleanup."
+  ],
+  "claims": [
+    {
+      "text": "The @decodexspace Chrome Publisher path can verify account state, upload generated media, submit a post, read back the final X permalink, and confirm the media photo link.",
+      "evidence": "https://x.com/decodexspace/status/2061826252764520745/photo/1",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The generated media used for the live test is persisted in the Decodex repository artifact tree.",
+      "evidence": "artifacts/social/x/images/decodex-publisher-media-live-test-2026-06-02.png",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Chrome scoped tab cleanup completed after the media publication readback.",
+      "evidence": "artifacts/social/x/posts/2026-06-02/decodex-publisher-media-live-test-2026-06-02.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "normal",
+    "idempotency_key": "x:decodexspace:watch_note:decodex-publisher-media-live-test-2026-06-02",
+    "reason": "Operator explicitly authorized a controlled media-attached live X publication test to verify the automated Publisher path end to end.",
+    "daily_limit": 8,
+    "daily_count_before": 1,
+    "daily_count_after": 2,
+    "day": "2026-06-02",
+    "timezone": "Asia/Shanghai"
+  },
+  "publication": {
+    "posted_at": "2026-06-02T15:06:55Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2061826252764520745"
+    ],
+    "publisher": "chrome",
+    "account_verified": true,
+    "made_with_ai": true,
+    "image_template": "decodex_signal_card"
+  },
+  "media_refs": [
+    "artifacts/social/x/images/decodex-publisher-media-live-test-2026-06-02.png"
+  ],
+  "caveats": [
+    "X displayed an Unlock more on X account notice after submit; the post permalink and media readback are valid, but account reach or trust limits may be platform-gated.",
+    "The test post is intentionally public and may be deleted by the operator after validation."
+  ]
+}

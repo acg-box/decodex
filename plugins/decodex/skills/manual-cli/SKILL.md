@@ -62,14 +62,18 @@ Before starting a live run, read the `automation` skill and the registered proje
 
 CLI/API lane controls:
 
-- Inspect first with `decodex status`, `decodex status --json`, `decodex diagnose
-  --json`, or `decodex evidence <ISSUE>`.
+- Inspect first with `decodex lane inspect <ISSUE>`, `decodex status`,
+  `decodex status --json`, `decodex diagnose --json`, or
+  `decodex evidence <ISSUE>`.
 - Use `decodex project disable <service-id>` to pause future dispatch for a registered
   project, and `decodex project enable <service-id>` to resume it.
 - Use `POST /api/linear-scan` to request an intake/status refresh before the next
   scheduled Linear poll.
 - Use `decodex run <ISSUE>` only for deliberate one-issue automation or retained
   retry/resume when the lane remains eligible under the registered workflow.
+- Use `decodex lane interrupt <ISSUE> --run-id <RUN_ID>` for soft active-turn
+  interruption. Add `--force` only when explicit operator intent allows hard
+  process-kill fallback after soft interrupt is unavailable or fails.
 - Use `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID>
   --message <TEXT>` only with explicit operator-supplied text after inspection proves
   the active lane identity. The expected turn id is a fail-closed precondition.
