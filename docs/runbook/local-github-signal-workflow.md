@@ -1,6 +1,8 @@
 # Local GitHub Signal Workflow
 
-Goal: Define the repeatable workflow for collecting GitHub change bundles, running Codex analysis locally or on a trusted CI runner, validating signal entries, and publishing content to the site.
+Goal: Define the repeatable workflow for collecting upstream Codex evidence, running
+Codex analysis in automation or local sessions, validating signal entries, and
+publishing content to the site.
 
 Read this when:
 - You are preparing the first GitHub-backed Decodex signal entries.
@@ -15,6 +17,7 @@ Inputs:
 Depends on:
 - `docs/reference/workspace-layout.md`
 - `docs/spec/github-change-bundle.md`
+- `docs/spec/upstream-review.md`
 - `docs/spec/signal-entry.md`
 - `docs/spec/release-delta.md`
 - `docs/spec/radar-ledger.md`
@@ -23,22 +26,21 @@ Depends on:
 
 Outputs:
 - A validated signal entry committed to the repo
-- Optional upstream-impact and social-draft artifacts when the change affects Control
+- Optional upstream-impact and social publication artifacts when the change affects Control
   Plane or external publishing
 - A push that allows CI to build and deploy the static site
 
 ## Workflow
 
-1. Track upstream Codex commits continuously. Treat each commit as a candidate to
-   understand, then resolve it back to a PR when possible. The sync writes
-   `.decodex/radar.sqlite3` by default so skipped and deferred commits remain
-   traceable without becoming public site entries.
-2. Triage upstream activity with `dev/skills/codex-upstream-triage/` when the
-   candidate is not already chosen by automation or by the operator.
-3. Build a normalized GitHub change bundle under `artifacts/github/bundles/` for
-   selected candidates.
-4. Analyze source behavior with `dev/skills/codex-code-analysis/` as an in-session
-   reasoning pass; do not create a separate checked-in artifact for this pass.
+1. Track upstream Codex commits continuously with `scripts/github/sync_upstream_radar.py`.
+   Treat each commit as an evidence unit, resolve it back to a PR when possible, write
+   `.decodex/radar.sqlite3`, and refresh `upstream_review_queue/v1`.
+2. Let Codex automation consume queued subjects and run
+   `dev/skills/codex-code-analysis/` for each source-backed review.
+3. Build a normalized GitHub change bundle under `artifacts/github/bundles/` when the
+   automation or operator needs full source context for a candidate.
+4. Promote reviewed conclusions into `upstream_impact/v1` when the change may affect
+   Control Plane, Publisher planning, compatibility, or adoption.
 5. Use `dev/skills/codex-release-analysis/` when the source is a release, prerelease,
    app update, or changelog entry.
 6. Run final signal drafting with `dev/skills/github-signal/` and save the
@@ -48,10 +50,10 @@ Outputs:
 9. Classify upstream impact when the change may affect Control Plane or Publisher.
 10. Regenerate the release-delta artifact so the homepage compares release windows
     using the updated signal set.
-11. Draft optional social publishing content only through
+11. Publish optional social content or record a skip/block only through
    [`social-publishing-workflow.md`](./social-publishing-workflow.md).
 12. When upstream publishes a release or prerelease, use `codex-release-analysis` to
-    roll up the accumulated commit/PR analysis into a release summary or X draft.
+    roll up the accumulated commit/PR analysis into a release summary or X post.
 13. Review the rendered content manually in the homepage feed.
 14. Push the content update and let CI build and deploy the static site.
 
@@ -129,12 +131,12 @@ Repo-local editorial instruction entrypoint:
 These entrypoints are for Decodex repository development only. They are incomplete as
 general user-facing skills and must not be packaged with the installable Decodex
 plugin. Today only `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`,
-`upstream_impact/v1`, `release_delta/v1`, and `social_post_draft/v1` are durable
+`upstream_impact/v1`, `release_delta/v1`, and `social_post/v1` are durable
 content contracts for this workflow.
 
 Automated sync entrypoint:
 
-- `scripts/github/sync_latest_signals.py`
+- `scripts/github/sync_upstream_radar.py`
 
 Bootstrap or inspect local historical trace:
 
@@ -170,25 +172,24 @@ For the release-delta artifact:
 - use release and prerelease publication time as a summary checkpoint over accumulated
   commit/PR analysis, not as the primary source of truth
 
-For upstream-impact and social-draft artifacts:
+For upstream-impact and social publishing artifacts:
 
 - classify Control Plane implications before creating engineering follow-up work
-- keep social drafts checked in and unposted until approval
+- keep social publication, block, skip, and failure records checked in
 - do not use X engagement as technical evidence
 
 ## CI boundary
 
 The current Decodex boundary is:
 
-- local Codex run: manual editorial review, batch backfills, and prompt iteration
-- deterministic scripts: commit/PR discovery, bundle fetch, Codex analysis execution,
-  render, and validation
-- trusted CI runner: refresh of recent upstream commits plus normal site validation and commit/push of changed content
+- GitHub Actions: deterministic upstream commit discovery, PR mapping, review-queue
+  refresh, release-delta refresh, validation, and commit/push of changed metadata.
+- Codex automation: AI source review, compatibility judgment, Publisher judgment,
+  social publication, and any promotion into signal or follow-up artifacts.
+- local operator sessions: manual editorial review, batch backfills, prompt iteration,
+  and public-content audit.
 
-The hourly GitHub Actions path assumes:
+The GitHub Actions paths assume:
 
-- Codex CLI is installed on the runner
-- a full `auth.json` payload is injected into `CODEX_HOME`
-- `CODEX_AUTH_JSON` is treated as a sensitive secret and never logged
 - `GITHUB_PAT_Y` is available when you want authenticated GitHub API requests for the routed `y` identity; otherwise the sync falls back to unauthenticated reads for public data
 - `cargo make decodex-checks` remains the final gate before a content refresh commit

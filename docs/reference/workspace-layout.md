@@ -23,8 +23,8 @@ should not be treated as repository source.
 | `scripts/config/` | Repository automation scripts for config-derived artifacts. |
 | `artifacts/github/` | Checked-in GitHub change bundles and editorial analysis drafts used by the public signal pipeline. |
 | `artifacts/archive/` | Checked-in manifests for cold Radar archive batches stored as GitHub Release assets. |
-| `artifacts/social/` | Checked-in Publisher social post drafts and publication evidence. |
-| `dev/skills/` | Repository-development skills for Radar upstream triage, code analysis, release analysis, GitHub signal drafting, and X post drafting. These are not part of installable plugin distribution. |
+| `artifacts/social/` | Checked-in Publisher social publication records, blocked-cap records, and generated-media evidence. |
+| `dev/skills/` | Repository-development skills for Radar upstream triage, code analysis, release analysis, GitHub signal drafting, and X publishing. These are not part of installable plugin distribution. |
 | `plugins/decodex/` | Canonical installable Decodex plugin source and reusable agent-facing skills, including planning, manual CLI, automation, commit, land, and labels. |
 | `docs/spec/` | Normative runtime, workflow, site, and content contracts. |
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
@@ -76,26 +76,25 @@ Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
 
 ## GitHub signal tooling
 
-`scripts/github/` owns deterministic content scripts. Its automated Codex step may
-apply the repo-local code-analysis and GitHub-signal instructions under `dev/skills/`
-to produce the existing `analysis_draft` JSON consumed by `render_signal_entry.py`.
-`sync_latest_signals.py` is the continuous Radar entrypoint: it scans recent upstream
-commits, resolves them back to PRs when possible, and reuses the existing bundle,
-analysis-draft, render, and validation path. `backfill_release_range.py` fills gaps for
-release-window summaries. The broader upstream triage, release-analysis, and X-drafting
-skills remain manual Radar/Publisher reasoning surfaces unless a script explicitly
-wires them into a checked-in contract. Generated GitHub bundles and analysis drafts live under
-`artifacts/github/` and must stay explicit and checked into the repository.
+`scripts/github/` owns deterministic content scripts. `sync_upstream_radar.py` is the
+continuous Radar entrypoint: it scans recent upstream commits, resolves them back to
+PRs when possible, records local ledger state, and writes an
+`upstream_review_queue/v1` artifact for Codex automation. It does not run Codex or
+render public signals. `backfill_release_range.py` fills gaps for release-window
+summaries when an operator or automation chooses to generate signal content. Generated
+GitHub bundles and analysis drafts live under `artifacts/github/` and must stay
+explicit and checked into the repository when promoted into Publisher content.
 
-Raw bundles and analysis drafts are hot artifacts with a 28-day Git retention window.
+Raw bundles and analysis drafts are hot artifacts with a 21-day Git retention window.
 Older raw batches move to dedicated GitHub Release assets, with recovery manifests kept
 under `artifacts/archive/index/`.
 
 `artifacts/github/impact/` may hold `upstream_impact/v1` classifications when an
 upstream Codex change has public-signal, Control Plane, or Publisher implications.
-`artifacts/social/` may hold `social_post_draft/v1` drafts before external publication.
-Both remain checked-in review artifacts; neither turns the public site into a live
-service.
+`artifacts/github/review-queue/` may hold the latest deterministic review queue.
+`artifacts/social/` may hold `social_post/v1` published, blocked, failed, or skipped
+records for external publication. Both remain checked-in artifacts; neither turns the
+public site into a live service.
 
 ## Installable Codex surface
 

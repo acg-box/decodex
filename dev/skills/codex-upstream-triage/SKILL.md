@@ -1,12 +1,13 @@
 ---
 name: codex-upstream-triage
-description: Use when scanning latest upstream OpenAI Codex commits, PRs, releases, or changelog entries to decide which items deserve a GitHub bundle, code analysis, upstream-impact classification, site signal, or social draft.
+description: Use when scanning latest upstream OpenAI Codex commits, PRs, releases, or changelog entries to decide which items deserve a GitHub bundle, code analysis, upstream-impact classification, site signal, or social post.
 ---
 
 # Decodex Codex Upstream Triage
 
-Use this skill before deep analysis. Its job is to keep Radar fast and selective: find
-candidate upstream Codex changes, group them correctly, and choose the next artifact.
+Use this skill before deep analysis. Its job is to route the deterministic upstream
+review queue: group upstream Codex commits correctly, identify likely surfaces, and
+choose the next artifact without deciding final impact.
 
 This is a Decodex repository-development instruction surface, not an installable
 Decodex plugin skill.
@@ -14,6 +15,7 @@ Decodex plugin skill.
 ## Read Before Triage
 
 - `docs/spec/github-change-bundle.md`
+- `docs/spec/upstream-review.md`
 - `docs/spec/upstream-impact.md`
 - `docs/runbook/local-github-signal-workflow.md`
 - `dev/skills/codex-code-analysis/SKILL.md`
@@ -36,9 +38,9 @@ Use the lightest source that can answer the triage question:
 4. Upstream changelog or browser observation when the question is about public product
    framing.
 
-For normal Radar operation, scan recent upstream commits first and resolve each commit
-back to a PR when possible. A commit list is a queue for understanding and
-classification, not final evidence.
+For normal Radar operation, start from `upstream_review_queue/v1`, scan recent
+upstream commits first, and resolve each commit back to a PR when possible. A commit
+list is a queue for understanding and classification, not final evidence.
 
 For release or prerelease work, compare metadata is a rollup index over the commit/PR
 history already being analyzed. Do not let a release tag displace the underlying commit
@@ -50,11 +52,11 @@ Classify each item as exactly one:
 
 | Decision | Meaning | Next step |
 | --- | --- | --- |
-| `skip` | Internal churn, no safe user or Decodex implication. | Record nothing durable. |
+| `skip` | AI review confirms internal churn with no safe user or Decodex implication. | Keep ledger trace only. |
 | `watch` | Interesting but too weak, too hidden, or too broad. | Optional `upstream_impact/v1` with `control_plane_impact = "watch"`. |
 | `bundle` | Enough GitHub context exists for code analysis. | Build or reuse a `github_change_bundle/v1`. |
 | `release_review` | Release or changelog framing needs comparison against commits and signals. | Use `codex-release-analysis`. |
-| `style_reference` | Useful only as style or audience evidence. | Save no technical artifact; use only as optional style context when a separate source-backed draft exists. |
+| `style_reference` | Useful only as style or audience evidence. | Save no technical artifact; use only as optional style context when a separate source-backed publication candidate exists. |
 
 ## Grouping Rules
 
@@ -80,8 +82,8 @@ Escalate to `codex-release-analysis` when the source is a release, prerelease, a
 update, or public changelog. For Codex releases and prereleases, summarize from prior
 commit/PR analysis whenever possible, then use compare data to find gaps.
 
-Escalate to `x-post-draft` only after there is technical source evidence and a clear
-Publisher angle. Style references from X must not start a social draft by themselves.
+Escalate to `x-post-publisher` only after there is technical source evidence and a clear
+Publisher angle. Style references from X must not start a social post by themselves.
 
 ## Output
 
@@ -94,6 +96,7 @@ Return a compact triage note with:
 - next skill to use
 - confidence limits
 
-Do not draft `signal_entry/v1` or `social_post_draft/v1` directly from this skill.
-Do not treat this note as a durable repository artifact unless a later change adds a
-schema, path, and validator for it.
+Do not draft `signal_entry/v1` or publish `social_post/v1` directly from this skill.
+Do not treat deterministic queue hints as technical claims. The durable review layer is
+`upstream_review/v1`; public and Control Plane artifacts are promotions from that
+source-backed review.

@@ -19,7 +19,6 @@ if str(SCRIPT_HOME) not in sys.path:
 
 from build_change_bundle import build_pr_bundle, github_request, routed_token_env  # noqa: E402
 from contracts import dump_json, load_json, validate_release_delta, validate_signal  # noqa: E402
-from sync_latest_signals import run_script  # noqa: E402
 
 PR_URL_RE = re.compile(r"/pull/(\d+)$")
 
@@ -66,6 +65,16 @@ def parse_args() -> argparse.Namespace:
 
 def repo_root() -> Path:
     return SCRIPT_HOME.parents[1]
+
+
+def run_script(script: str, *extra: str) -> None:
+    cmd = [sys.executable, str(SCRIPT_HOME / script), *extra]
+    completed = subprocess.run(cmd, check=False, text=True, capture_output=True, cwd=repo_root())
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        details = stderr or stdout or "unknown error"
+        raise SystemExit(f"{script} failed: {details}")
 
 
 def published_pr_numbers(signals_dir: Path) -> set[int]:

@@ -13,11 +13,42 @@ from typing import Any
 BUNDLE_SCHEMA = "github_change_bundle/v1"
 SIGNAL_SCHEMA = "signal_entry/v1"
 RELEASE_DELTA_SCHEMA = "release_delta/v1"
+UPSTREAM_REVIEW_QUEUE_SCHEMA = "upstream_review_queue/v1"
+UPSTREAM_REVIEW_SCHEMA = "upstream_review/v1"
+SOCIAL_POST_SCHEMA = "social_post/v1"
 ANALYSIS_MODES = {"pr_first", "commit_only"}
 SIGNAL_KINDS = {"capability", "behavior_change", "try_now"}
 SIGNAL_CONFIDENCE = {"confirmed", "likely", "weak"}
 SIGNAL_IMPACT = {"low", "medium", "high"}
 SOURCE_ITEM_KINDS = {"pull_request", "commit"}
+UPSTREAM_SUBJECT_KINDS = {"commit", "pr"}
+UPSTREAM_REVIEW_PRIORITIES = {"critical", "high", "normal", "low"}
+UPSTREAM_REVIEW_NEXT_STEPS = {"ai_review_required"}
+UPSTREAM_SOURCE_STATES = {"open", "closed", "merged", "commit_only"}
+UPSTREAM_REVIEW_ACTION_TYPES = {
+    "none",
+    "upstream_impact",
+    "signal_entry",
+    "social_post",
+    "linear_followup",
+}
+SOCIAL_POST_MODES = {
+    "release_pulse",
+    "release_rollup",
+    "practical_explainer",
+    "operator_impact",
+    "thread",
+    "watch_note",
+}
+SOCIAL_POST_STATUSES = {"published", "blocked", "failed", "skipped"}
+SOCIAL_POST_PRIORITIES = {"critical", "high", "normal", "low"}
+SOCIAL_POST_WORTHINESS = {"publish", "skip", "block"}
+SOCIAL_BLOCK_REASONS = {
+    "daily_cap_exceeded",
+    "duplicate",
+    "policy_block",
+    "insufficient_evidence",
+}
 ISSUE_REF_RE = re.compile(r"(?:^|[^\w])((?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+)")
 FLAG_RE = re.compile(
     r"(?<![\w-])(--[a-zA-Z0-9][\w-]*|[A-Z][A-Z0-9_]{2,}(?:=[^\s,`]+)?)"
@@ -416,5 +447,331 @@ def validate_release_delta(entry: dict[str, Any]) -> ValidationResult:
 
     if comparisons and not has_default_comparison:
         errors.append("comparisons must include the default stable/prerelease pair")
+
+    return ValidationResult(ok=not errors, errors=errors)
+
+
+def validate_upstream_review_queue(entry: dict[str, Any]) -> ValidationResult:
+    errors: list[str] = []
+
+    if entry.get("schema") != UPSTREAM_REVIEW_QUEUE_SCHEMA:
+        errors.append(f"schema must be {UPSTREAM_REVIEW_QUEUE_SCHEMA}")
+
+    repo = entry.get("repo")
+    if not isinstance(repo, str) or "/" not in repo:
+        errors.append("repo must be owner/name")
+
+    if not isinstance(entry.get("generated_at"), str) or not entry["generated_at"]:
+        errors.append("generated_at must be a non-empty string")
+
+    source = entry.get("source")
+    if not isinstance(source, dict):
+        errors.append("source must be an object")
+    else:
+        if not isinstance(source.get("default_branch"), str) or not source["default_branch"]:
+            errors.append("source.default_branch must be a non-empty string")
+        if not isinstance(source.get("search_limit"), int) or source["search_limit"] < 1:
+            errors.append("source.search_limit must be a positive integer")
+
+    subjects = entry.get("subjects")
+    if not isinstance(subjects, list):
+        errors.append("subjects must be a list")
+        subjects = []
+
+    seen: set[tuple[str, str]] = set()
+    for index, subject in enumerate(subjects):
+        if not isinstance(subject, dict):
+            errors.append(f"subjects[{index}] must be an object")
+            continue
+        subject_kind = subject.get("subject_kind")
+        subject_id = subject.get("subject_id")
+        if subject_kind not in UPSTREAM_SUBJECT_KINDS:
+            errors.append(f"subjects[{index}].subject_kind must be one of {sorted(UPSTREAM_SUBJECT_KINDS)}")
+        if not isinstance(subject_id, str) or not subject_id:
+            errors.append(f"subjects[{index}].subject_id must be a non-empty string")
+        if isinstance(subject_kind, str) and isinstance(subject_id, str):
+            key = (subject_kind, subject_id)
+            if key in seen:
+                errors.append(f"subjects[{index}] duplicates {subject_kind}:{subject_id}")
+            seen.add(key)
+
+        for field in ("title", "url", "review_reason"):
+            if not isinstance(subject.get(field), str) or not subject[field]:
+                errors.append(f"subjects[{index}].{field} must be a non-empty string")
+        if isinstance(subject.get("url"), str) and not subject["url"].startswith("https://"):
+            errors.append(f"subjects[{index}].url must be an https URL")
+        if subject.get("source_state") not in UPSTREAM_SOURCE_STATES:
+            errors.append(f"subjects[{index}].source_state must be one of {sorted(UPSTREAM_SOURCE_STATES)}")
+        if subject.get("review_priority") not in UPSTREAM_REVIEW_PRIORITIES:
+            errors.append(f"subjects[{index}].review_priority must be one of {sorted(UPSTREAM_REVIEW_PRIORITIES)}")
+        if subject.get("next_step") not in UPSTREAM_REVIEW_NEXT_STEPS:
+            errors.append(f"subjects[{index}].next_step must be one of {sorted(UPSTREAM_REVIEW_NEXT_STEPS)}")
+
+        commit_shas = subject.get("commit_shas")
+        if (
+            not isinstance(commit_shas, list)
+            or not commit_shas
+            or not all(isinstance(item, str) and item for item in commit_shas)
+        ):
+            errors.append(f"subjects[{index}].commit_shas must be a non-empty list of strings")
+
+        for list_field in ("surface_hints", "attention_flags", "sample_paths"):
+            values = subject.get(list_field)
+            if values is not None and (
+                not isinstance(values, list)
+                or not all(isinstance(item, str) and item for item in values)
+            ):
+                errors.append(f"subjects[{index}].{list_field} must be a list of non-empty strings")
+
+        changed_file_count = subject.get("changed_file_count")
+        if not isinstance(changed_file_count, int) or changed_file_count < 0:
+            errors.append(f"subjects[{index}].changed_file_count must be a non-negative integer")
+
+    counts = entry.get("counts")
+    if not isinstance(counts, dict):
+        errors.append("counts must be an object")
+    else:
+        queued = counts.get("subjects_queued")
+        if not isinstance(queued, int) or queued != len(subjects):
+            errors.append("counts.subjects_queued must equal len(subjects)")
+        for field in ("recent_commits_scanned", "published_subjects_seen", "critical", "high", "normal", "low"):
+            value = counts.get(field)
+            if not isinstance(value, int) or value < 0:
+                errors.append(f"counts.{field} must be a non-negative integer")
+
+    return ValidationResult(ok=not errors, errors=errors)
+
+
+def validate_upstream_review(entry: dict[str, Any]) -> ValidationResult:
+    errors: list[str] = []
+
+    if entry.get("schema") != UPSTREAM_REVIEW_SCHEMA:
+        errors.append(f"schema must be {UPSTREAM_REVIEW_SCHEMA}")
+
+    for field in ("slug", "repo", "reviewed_at", "observed_change"):
+        if not isinstance(entry.get(field), str) or not entry[field]:
+            errors.append(f"{field} must be a non-empty string")
+    repo = entry.get("repo")
+    if isinstance(repo, str) and "/" not in repo:
+        errors.append("repo must be owner/name")
+
+    subject = entry.get("subject")
+    if not isinstance(subject, dict):
+        errors.append("subject must be an object")
+    else:
+        if subject.get("subject_kind") not in UPSTREAM_SUBJECT_KINDS:
+            errors.append(f"subject.subject_kind must be one of {sorted(UPSTREAM_SUBJECT_KINDS)}")
+        if not isinstance(subject.get("subject_id"), str) or not subject["subject_id"]:
+            errors.append("subject.subject_id must be a non-empty string")
+        commit_shas = subject.get("commit_shas")
+        if commit_shas is not None and (
+            not isinstance(commit_shas, list)
+            or not all(isinstance(item, str) and item for item in commit_shas)
+        ):
+            errors.append("subject.commit_shas must be a list of non-empty strings when present")
+
+    refs = entry.get("source_refs")
+    if not isinstance(refs, dict):
+        errors.append("source_refs must be an object")
+    else:
+        items = refs.get("items")
+        if (
+            not isinstance(items, list)
+            or not items
+            or not all(
+                isinstance(item, dict)
+                and isinstance(item.get("kind"), str)
+                and isinstance(item.get("title"), str)
+                and item["title"]
+                and isinstance(item.get("url"), str)
+                and item["url"].startswith("https://")
+                for item in items
+            )
+        ):
+            errors.append("source_refs.items must be a non-empty list of titled https source entries")
+
+    for list_field in ("changed_surfaces", "evidence"):
+        values = entry.get(list_field)
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(isinstance(item, str) and item for item in values)
+        ):
+            errors.append(f"{list_field} must be a non-empty list of strings")
+
+    for optional_field in (
+        "user_visible_path",
+        "control_plane_relevance",
+        "compatibility_risk",
+        "adoption_opportunity",
+        "community_value",
+        "deprecated_or_breaking_notes",
+        "caveats",
+    ):
+        value = entry.get(optional_field)
+        if value is not None and not isinstance(value, str):
+            errors.append(f"{optional_field} must be a string when present")
+
+    if entry.get("confidence") not in SIGNAL_CONFIDENCE:
+        errors.append(f"confidence must be one of {sorted(SIGNAL_CONFIDENCE)}")
+
+    next_actions = entry.get("next_actions")
+    if not isinstance(next_actions, list) or not next_actions:
+        errors.append("next_actions must be a non-empty list")
+    else:
+        for index, action in enumerate(next_actions):
+            if not isinstance(action, dict):
+                errors.append(f"next_actions[{index}] must be an object")
+                continue
+            if action.get("type") not in UPSTREAM_REVIEW_ACTION_TYPES:
+                errors.append(f"next_actions[{index}].type must be one of {sorted(UPSTREAM_REVIEW_ACTION_TYPES)}")
+            if not isinstance(action.get("reason"), str) or not action["reason"]:
+                errors.append(f"next_actions[{index}].reason must be a non-empty string")
+
+    return ValidationResult(ok=not errors, errors=errors)
+
+
+def validate_social_post(entry: dict[str, Any]) -> ValidationResult:
+    errors: list[str] = []
+
+    if entry.get("schema") != SOCIAL_POST_SCHEMA:
+        errors.append(f"schema must be {SOCIAL_POST_SCHEMA}")
+
+    for field in ("slug", "audience"):
+        if not isinstance(entry.get(field), str) or not entry[field]:
+            errors.append(f"{field} must be a non-empty string")
+
+    if entry.get("channel") != "x":
+        errors.append("channel must be x")
+    if entry.get("target_account") != "decodexspace":
+        errors.append("target_account must be decodexspace")
+    if entry.get("controller_account") != "hackink":
+        errors.append("controller_account must be hackink")
+    if entry.get("mode") not in SOCIAL_POST_MODES:
+        errors.append(f"mode must be one of {sorted(SOCIAL_POST_MODES)}")
+    if entry.get("status") not in SOCIAL_POST_STATUSES:
+        errors.append(f"status must be one of {sorted(SOCIAL_POST_STATUSES)}")
+
+    text = entry.get("text")
+    if (
+        not isinstance(text, list)
+        or not text
+        or not all(isinstance(item, str) and 0 < len(item) <= 280 for item in text)
+    ):
+        errors.append("text must be a non-empty list of X-sized strings")
+
+    refs = entry.get("source_refs")
+    if not isinstance(refs, dict):
+        errors.append("source_refs must be an object")
+    else:
+        present = [
+            name
+            for name in ("signals", "upstream_impacts", "upstream_reviews", "urls")
+            if isinstance(refs.get(name), list) and refs[name]
+        ]
+        if not present:
+            errors.append("source_refs must include signals, upstream_impacts, upstream_reviews, or urls")
+        urls = refs.get("urls", [])
+        if urls and (
+            not isinstance(urls, list)
+            or not all(isinstance(url, str) and url.startswith("https://") for url in urls)
+        ):
+            errors.append("source_refs.urls must be a list of https URLs")
+
+    for list_field in ("evidence_notes", "claims"):
+        values = entry.get(list_field)
+        if not isinstance(values, list) or not values:
+            errors.append(f"{list_field} must be a non-empty list")
+
+    claims = entry.get("claims")
+    if isinstance(claims, list):
+        for index, claim in enumerate(claims):
+            if not isinstance(claim, dict):
+                errors.append(f"claims[{index}] must be an object")
+                continue
+            for field in ("text", "evidence"):
+                if not isinstance(claim.get(field), str) or not claim[field]:
+                    errors.append(f"claims[{index}].{field} must be a non-empty string")
+            if claim.get("confidence") not in SIGNAL_CONFIDENCE:
+                errors.append(f"claims[{index}].confidence must be one of {sorted(SIGNAL_CONFIDENCE)}")
+
+    decision = entry.get("decision")
+    if not isinstance(decision, dict):
+        errors.append("decision must be an object")
+    else:
+        if decision.get("worthiness") not in SOCIAL_POST_WORTHINESS:
+            errors.append(f"decision.worthiness must be one of {sorted(SOCIAL_POST_WORTHINESS)}")
+        if decision.get("priority") not in SOCIAL_POST_PRIORITIES:
+            errors.append(f"decision.priority must be one of {sorted(SOCIAL_POST_PRIORITIES)}")
+        for field in ("idempotency_key", "reason", "day", "timezone"):
+            if not isinstance(decision.get(field), str) or not decision[field]:
+                errors.append(f"decision.{field} must be a non-empty string")
+        if decision.get("daily_limit") != 8:
+            errors.append("decision.daily_limit must be 8")
+        for field in ("daily_count_before", "daily_count_after"):
+            value = decision.get(field)
+            if not isinstance(value, int) or value < 0:
+                errors.append(f"decision.{field} must be a non-negative integer")
+        before = decision.get("daily_count_before")
+        after = decision.get("daily_count_after")
+        status = entry.get("status")
+        post_count = len(text) if isinstance(text, list) else 0
+        if isinstance(before, int) and isinstance(after, int):
+            if status == "published" and after != before + post_count:
+                errors.append("decision.daily_count_after must add the published post count")
+            if status != "published" and after != before:
+                errors.append("decision.daily_count_after must remain unchanged unless published")
+
+    status = entry.get("status")
+    if status == "published":
+        publication = entry.get("publication")
+        if not isinstance(publication, dict):
+            errors.append("publication is required when status is published")
+        else:
+            if publication.get("publisher") not in {"chrome", "x_api"}:
+                errors.append("publication.publisher must be chrome or x_api")
+            if publication.get("account_verified") is not True:
+                errors.append("publication.account_verified must be true")
+            if not isinstance(publication.get("made_with_ai"), bool):
+                errors.append("publication.made_with_ai must be boolean")
+            if "image_template" in publication and publication.get("image_template") != "decodex_signal_card":
+                errors.append("publication.image_template must be decodex_signal_card when present")
+            urls = publication.get("published_urls")
+            if (
+                not isinstance(urls, list)
+                or not urls
+                or not all(isinstance(url, str) and url.startswith("https://") for url in urls)
+            ):
+                errors.append("publication.published_urls must be a non-empty list of https URLs")
+            if not isinstance(publication.get("posted_at"), str) or not publication["posted_at"]:
+                errors.append("publication.posted_at must be a non-empty string")
+    elif status == "blocked":
+        block = entry.get("block")
+        if not isinstance(block, dict):
+            errors.append("block is required when status is blocked")
+        else:
+            if block.get("reason") not in SOCIAL_BLOCK_REASONS:
+                errors.append(f"block.reason must be one of {sorted(SOCIAL_BLOCK_REASONS)}")
+            count_before = decision.get("daily_count_before") if isinstance(decision, dict) else None
+            if block.get("reason") == "daily_cap_exceeded" and (
+                not isinstance(count_before, int) or count_before < 8
+            ):
+                errors.append("daily_cap_exceeded requires decision.daily_count_before >= 8")
+            if not isinstance(block.get("operator_notice"), str) or not block["operator_notice"]:
+                errors.append("block.operator_notice must be a non-empty string")
+    elif status == "failed":
+        failure = entry.get("failure")
+        if not isinstance(failure, dict):
+            errors.append("failure is required when status is failed")
+    elif status == "skipped" and not isinstance(entry.get("skip"), dict):
+        errors.append("skip is required when status is skipped")
+
+    for list_field in ("caveats", "media_refs"):
+        values = entry.get(list_field, [])
+        if values is not None and (
+            not isinstance(values, list)
+            or not all(isinstance(item, str) and item for item in values)
+        ):
+            errors.append(f"{list_field} must be a list of non-empty strings when present")
 
     return ValidationResult(ok=not errors, errors=errors)
