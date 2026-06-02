@@ -336,7 +336,7 @@
       "config_path": "features.multi_agent_v2",
       "github_search_url": "https://github.com/openai/codex/search?q=%22multi_agent_v2%22&type=code",
       "name": "multi_agent_v2",
-      "reference_description": null,
+      "reference_description": "Enable MultiAgentV2 collaboration tools (`spawn_agent`, `send_message`, `followup_task`, `wait_agent`, `close_agent`, and `list_agents`). PR #25636 renamed the v2 trigger-turn tool from legacy `assign_task` to `followup_task`; older rollout traces may still mention `assign_task`.",
       "reference_url": "https://developers.openai.com/codex/config-reference",
       "schema_url": "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json",
       "toml_assignment": "multi_agent_v2 = true",
