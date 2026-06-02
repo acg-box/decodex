@@ -152,8 +152,8 @@ If generated schema or live capability probing shows that `turn/interrupt` or
 `turn/steer` is unavailable, the CLI/API control must report that control as
 unsupported for the active lane instead of failing ordinary issue dispatch. The
 lane-control contract and support matrix live in [`lane-control.md`](./lane-control.md).
-Decodex currently implements `turn/interrupt` through the child-owned app-server
-connection for active turns; `turn/steer` remains planned.
+Decodex currently implements `turn/interrupt` and `turn/steer` through the child-owned
+app-server connection for active turns.
 
 ## Required request flow
 
@@ -378,11 +378,10 @@ Method:
 
 - `thread/inject_items`
 
-Raw item injection is deferred as an operator feature. Decodex should not expose
+Raw item injection is deferred as an operator feature. Decodex does not expose
 `thread/inject_items` through lane-control CLI/API in this rollout because raw item
 insertion has broader transcript-shaping semantics than the intended operator steer
-contract. Use `turn/steer` for active-lane steering once the CLI/API implementation is
-available.
+contract. Use `turn/steer` for active-lane steering.
 
 ## `command/exec`
 

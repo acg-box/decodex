@@ -74,8 +74,12 @@ CLI/API lane controls:
 - Use `decodex lane interrupt <ISSUE> --run-id <RUN_ID>` for soft active-turn
   interruption. Add `--force` only when explicit operator intent allows hard
   process-kill fallback after soft interrupt is unavailable or fails.
-- Steer remains future CLI/API work; use it only through the lane-control surface once
-  implemented and only with explicit operator-supplied text.
+- Use `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID>
+  --message <TEXT>` only with explicit operator-supplied text after inspection proves
+  the active lane identity. The expected turn id is a fail-closed precondition.
+  Broad steer text is allowed at the bottom layer; lifecycle ambiguity should route to
+  explicit recovery or manual attention instead of silently changing the issue
+  contract.
 - Do not use active-lane UI controls, direct runtime DB edits, raw
   `thread/inject_items`, or tracker-state mutations as substitutes for the lane-control
   contract.
