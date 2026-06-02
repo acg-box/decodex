@@ -16,7 +16,7 @@ The new pipeline has four layers:
 2. Codex automation consumes that queue and performs AI source review for each queued
    subject.
 3. Source-backed reviews promote only valuable outcomes into `upstream_impact/v1`,
-   `signal_entry/v1`, `social_post_draft/v1`, or Linear follow-up work.
+   `signal_entry/v1`, `social_post/v1`, or Linear follow-up work.
 4. Release and prerelease summaries roll up accumulated commit and PR analysis instead
    of treating sparse release notes as enough evidence.
 
@@ -34,6 +34,6 @@ Consequences:
   become public content.
 - Prerelease rollups can explain changes with prior commit/PR evidence even when the
   upstream prerelease has no release notes.
-- Raw bundles and review artifacts remain subject to the 28-day hot-window archive
-  policy; curated impacts, signals, approved social drafts, and archive manifests stay
-  in Git.
+- Raw bundles and review artifacts remain subject to the 21-day hot-window archive
+  policy; curated impacts, signals, social publication records, and archive manifests
+  stay in Git.

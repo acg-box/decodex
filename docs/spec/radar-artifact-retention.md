@@ -8,7 +8,7 @@ Status: normative
 
 Read this when:
 - You are deciding whether a GitHub bundle, upstream review, analysis draft, signal
-  entry, upstream impact note, or social draft should remain checked in.
+  entry, upstream impact note, or social publication record should remain checked in.
 - You are preparing an archive batch for old Radar artifacts.
 - You are adding automation that prunes or restores `artifacts/github/` material.
 
@@ -29,8 +29,8 @@ Decodex uses three retention classes for Radar and Publisher data.
 
 | Class | Storage | Examples | Retention |
 | --- | --- | --- | --- |
-| Hot raw artifacts | Git working tree | `artifacts/github/bundles/*.json`, `artifacts/github/reviews/*.review.json`, `artifacts/github/analysis/*.analysis.json` | At most 28 days in Git after collection or publication. |
-| Warm curated artifacts | Git working tree | `site/src/content/signals/*.json`, `site/src/content/release-deltas/openai-codex-latest.json`, `artifacts/github/impact/*.json`, approved or published `artifacts/social/x/*.json` | Retained in Git while they are part of the public site, Control Plane review trail, or Publisher record. |
+| Hot raw artifacts | Git working tree | `artifacts/github/bundles/*.json`, `artifacts/github/reviews/*.review.json`, `artifacts/github/analysis/*.analysis.json` | At most 21 days in Git after collection or publication. |
+| Warm curated artifacts | Git working tree | `site/src/content/signals/*.json`, `site/src/content/release-deltas/openai-codex-latest.json`, `artifacts/github/impact/*.json`, `artifacts/social/x/posts/*.json` | Retained in Git while they are part of the public site, Control Plane review trail, Publisher record, or cap analysis. |
 | Cold raw archive | GitHub Release assets plus a Git manifest | Archived bundle and analysis batches, optional source snapshots, optional ledger exports | Retained outside the Git tree. Git keeps only the manifest. |
 
 The hot raw window is intentionally short. Continuous Radar should keep every upstream
@@ -39,7 +39,7 @@ commit traceable, but it must not make the repository a permanent raw-data wareh
 ## Hot raw artifact rule
 
 Raw GitHub bundles, upstream review artifacts, and local editorial analysis drafts must
-not remain in Git for more than 28 days after collection or publication unless a human
+not remain in Git for more than 21 days after collection or publication unless a human
 explicitly marks the batch as still active.
 
 For existing artifacts that do not carry their own collection timestamp, the retention
@@ -47,7 +47,7 @@ clock should use the paired `signal_entry/v1.published_at` when available. If no
 signal exists, the archive batch must record the operator-selected evidence date in its
 manifest.
 
-The 28-day limit applies to the raw supporting material, not to the public signal
+The 21-day limit applies to the raw supporting material, not to the public signal
 entry. A signal entry may outlive its raw bundle when the archive manifest preserves how
 to recover the original bundle and analysis draft.
 
@@ -59,11 +59,11 @@ Keep these artifacts in Git unless a separate content cleanup explicitly removes
 - the current homepage `release_delta/v1` artifact
 - the latest `upstream_review_queue/v1` artifact under `artifacts/github/review-queue/`
 - `upstream_impact/v1` records that affect Decodex Control Plane or Publisher follow-up
-- approved or published `social_post_draft/v1` records
+- `social_post/v1` records, including daily-cap blocks
 - archive manifests under `artifacts/archive/index/`
 
-Draft or rejected social artifacts may be archived after the same 28-day hot window
-unless they document a still-useful editorial boundary.
+Generated social images may be archived after the same 21-day hot window when the
+paired `social_post/v1` record keeps enough metadata to recover or regenerate them.
 
 ## Cold archive destination
 
@@ -98,7 +98,7 @@ The manifest must contain:
 | `schema` | string | Must be `radar_archive_manifest/v1`. |
 | `archive_id` | string | Stable archive identifier. |
 | `created_at` | string | UTC timestamp for archive creation. |
-| `retention_days` | number | Must be `28` unless a later spec changes the policy. |
+| `retention_days` | number | New manifests must use `21` unless a later spec changes the policy. Historical manifests may keep the value that governed their original archive batch. |
 | `source_commit` | string | Repository commit used to select and package files. |
 | `release_tag` | string | GitHub tag holding the archive assets. |
 | `release_url` | string | GitHub Release URL when available. |

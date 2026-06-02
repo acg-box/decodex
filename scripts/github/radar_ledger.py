@@ -18,7 +18,7 @@ if str(SCRIPT_HOME) not in sys.path:
 
 from contracts import load_json, utc_now_iso, validate_bundle, validate_signal  # noqa: E402
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_LEDGER_PATH = ".decodex/radar.sqlite3"
 COMMIT_URL_RE = re.compile(r"/commit/([0-9a-f]{7,40})$")
 PR_URL_RE = re.compile(r"/pull/(\d+)$")
@@ -39,7 +39,7 @@ ARTIFACT_KINDS = {
     "analysis",
     "signal",
     "upstream_impact",
-    "social_draft",
+    "social_post",
     "release_delta",
     "archive_manifest",
     "ledger_export",
@@ -136,7 +136,7 @@ def initialize(connection: sqlite3.Connection) -> None:
               'analysis',
               'signal',
               'upstream_impact',
-              'social_draft',
+              'social_post',
               'release_delta',
               'archive_manifest',
               'ledger_export'
@@ -164,6 +164,7 @@ def initialize(connection: sqlite3.Connection) -> None:
           ON radar_review (status, reviewed_at);
         """
     )
+    migrate_artifact_link_social_kind(connection)
     connection.execute(
         """
         INSERT INTO metadata (key, value)
@@ -173,6 +174,73 @@ def initialize(connection: sqlite3.Connection) -> None:
         (str(SCHEMA_VERSION),),
     )
     connection.commit()
+
+
+def migrate_artifact_link_social_kind(connection: sqlite3.Connection) -> None:
+    row = connection.execute(
+        """
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'artifact_link'
+        """
+    ).fetchone()
+    if not row or "social_draft" not in row["sql"]:
+        return
+
+    connection.executescript(
+        """
+        ALTER TABLE artifact_link RENAME TO artifact_link_old;
+
+        CREATE TABLE artifact_link (
+          repo TEXT NOT NULL,
+          subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
+          subject_id TEXT NOT NULL,
+          artifact_kind TEXT NOT NULL CHECK (
+            artifact_kind IN (
+              'bundle',
+              'analysis',
+              'signal',
+              'upstream_impact',
+              'social_post',
+              'release_delta',
+              'archive_manifest',
+              'ledger_export'
+            )
+          ),
+          path TEXT NOT NULL,
+          sha256 TEXT NOT NULL,
+          size_bytes INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (repo, subject_kind, subject_id, artifact_kind, path)
+        );
+
+        INSERT OR REPLACE INTO artifact_link (
+          repo,
+          subject_kind,
+          subject_id,
+          artifact_kind,
+          path,
+          sha256,
+          size_bytes,
+          created_at
+        )
+        SELECT
+          repo,
+          subject_kind,
+          subject_id,
+          CASE artifact_kind
+            WHEN 'social_draft' THEN 'social_post'
+            ELSE artifact_kind
+          END,
+          path,
+          sha256,
+          size_bytes,
+          created_at
+        FROM artifact_link_old;
+
+        DROP TABLE artifact_link_old;
+        """
+    )
 
 
 def path_for_storage(path: str | Path) -> str:
