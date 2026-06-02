@@ -15,6 +15,8 @@ runtime-owned retained-lane lifecycle.
 - `README.md` for the current CLI shape.
 - `Makefile.toml` before running repo-native checks.
 - `docs/spec/lane-control.md` before using CLI/API lane controls.
+- `docs/runbook/lane-control-recovery.md` before deciding what to do after interrupt,
+  hard fallback, broad steer, task replacement, or ambiguous recovery evidence.
 - `docs/reference/operator-control-plane.md` when interpreting `status` or dashboard
   fields.
 - `docs/runbook/linear-archive-hygiene.md` before archiving old terminal Linear issues.
@@ -83,6 +85,30 @@ CLI/API lane controls:
 - Do not use active-lane UI controls, direct runtime DB edits, raw
   `thread/inject_items`, or tracker-state mutations as substitutes for the lane-control
   contract.
+- Do not kill hidden `_attempt` children to simulate interrupt. Use
+  `decodex lane interrupt ... --force` or the API `"force": true` only when explicit
+  operator intent allows hard fallback. If an emergency host-safety stop happens
+  outside Decodex controls, inspect local evidence and route recovery explicitly before
+  retrying or cleaning labels.
+
+Post-control CLI recovery:
+
+1. Inspect again with `decodex lane inspect <ISSUE>`, `decodex status --json`, and
+   `decodex evidence <ISSUE>` when a control request returns, times out, or reports
+   `hard_interrupt_fallback`.
+2. If identity still matches an active lane, wait for the runtime-owned attempt or use
+   the next supported control. Do not remove `decodex:active:<service-id>` by hand.
+3. If the lane is retained and lineage is exact, use the registered workflow path such
+   as `decodex run <ISSUE>` for retry/resume. If status reports a retained review
+   handoff mismatch, use `docs/runbook/recover-review-handoff.md`.
+4. If the operator changed labels or issue state and wants the scheduler to notice
+   before the next poll, request `POST /api/linear-scan`; this is a refresh request,
+   not a retry command.
+5. If the new operator text replaces the task or changes acceptance materially, do not
+   hide that as steer. Resolve the old lane explicitly, then update/requeue the same
+   issue or create a new issue for the replacement work.
+6. If the evidence is ambiguous or useful retained work would be overwritten, route to
+   manual attention instead of direct Linear label mutation.
 
 Manual commit and landing are separate narrow workflows:
 
