@@ -200,7 +200,7 @@ struct DecodexAppBridge: Sendable {
 		as type: T.Type,
 		onOutput: (@MainActor @Sendable (String) -> Void)?
 	) async throws -> T {
-		if request.requiresHelper == false, onOutput == nil, try request.serverRoute() != nil {
+		if onOutput == nil, try request.serverRoute() != nil {
 			return try await DecodexServerBridge.shared.run(request, as: type)
 		}
 		guard request.requiresHelper else {
@@ -294,13 +294,8 @@ private extension AppBridgeRequest {
 	var requiresHelper: Bool {
 		switch operation {
 		case
-			"account_clear",
 			"account_import",
-			"account_list",
 			"account_login",
-			"account_logout",
-			"account_select",
-			"account_use",
 			"codex_fast_mode_status",
 			"codex_fast_mode_set":
 			return true

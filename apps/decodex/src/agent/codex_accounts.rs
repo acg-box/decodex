@@ -18,10 +18,14 @@ use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
-	config::ProjectCodexAccountsConfig, prelude::eyre, runtime, state::CodexAccountActivitySummary,
+	config::ProjectCodexAccountsConfig,
+	prelude::eyre,
+	runtime,
+	state::{CodexAccountActivitySummary, CodexAccountProfileDailyUsageSummary},
 };
 
 const DEFAULT_USAGE_ENDPOINT: &str = "https://chatgpt.com/backend-api/wham/usage";
+const DEFAULT_PROFILE_ENDPOINT: &str = "https://chatgpt.com/backend-api/wham/profiles/me";
 const DEFAULT_REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const CODEX_USER_AGENT: &str = "codex-cli";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -42,6 +46,7 @@ pub(crate) trait CodexAccountProvider {
 pub(crate) struct CodexAccountPool {
 	path: PathBuf,
 	usage_endpoint: String,
+	profile_endpoint: Option<String>,
 	refresh_endpoint: String,
 	fixed_account: Option<String>,
 	codex_auth_path: PathBuf,
@@ -51,10 +56,12 @@ pub(crate) struct CodexAccountPool {
 impl CodexAccountPool {
 	pub(crate) fn from_config(config: &ProjectCodexAccountsConfig) -> crate::prelude::Result<Self> {
 		let fixed_account = runtime::global_fixed_account_selector()?;
+		let usage_endpoint = config.usage_endpoint().unwrap_or(DEFAULT_USAGE_ENDPOINT);
 
-		Self::new_with_fixed_account(
+		Self::new_with_fixed_account_and_profile_endpoint(
 			runtime::accounts_path()?,
-			config.usage_endpoint().unwrap_or(DEFAULT_USAGE_ENDPOINT),
+			usage_endpoint,
+			config.profile_endpoint(),
 			config.refresh_endpoint().unwrap_or(DEFAULT_REFRESH_ENDPOINT),
 			fixed_account.as_deref(),
 		)
@@ -70,15 +77,33 @@ impl CodexAccountPool {
 		refresh_endpoint: impl Into<String>,
 		fixed_account: Option<&str>,
 	) -> crate::prelude::Result<Self> {
-		Self::new_with_fixed_account_and_codex_auth_path(
+		Self::new_with_fixed_account_and_profile_endpoint(
 			path,
 			usage_endpoint,
+			None,
+			refresh_endpoint,
+			fixed_account,
+		)
+	}
+
+	fn new_with_fixed_account_and_profile_endpoint(
+		path: impl AsRef<Path>,
+		usage_endpoint: impl Into<String>,
+		profile_endpoint: Option<&str>,
+		refresh_endpoint: impl Into<String>,
+		fixed_account: Option<&str>,
+	) -> crate::prelude::Result<Self> {
+		Self::new_with_fixed_account_profile_and_codex_auth_path(
+			path,
+			usage_endpoint,
+			profile_endpoint,
 			refresh_endpoint,
 			fixed_account,
 			default_codex_auth_json_path()?,
 		)
 	}
 
+	#[cfg(test)]
 	fn new_with_fixed_account_and_codex_auth_path(
 		path: impl AsRef<Path>,
 		usage_endpoint: impl Into<String>,
@@ -86,11 +111,34 @@ impl CodexAccountPool {
 		fixed_account: Option<&str>,
 		codex_auth_path: impl Into<PathBuf>,
 	) -> crate::prelude::Result<Self> {
+		Self::new_with_fixed_account_profile_and_codex_auth_path(
+			path,
+			usage_endpoint,
+			None,
+			refresh_endpoint,
+			fixed_account,
+			codex_auth_path,
+		)
+	}
+
+	fn new_with_fixed_account_profile_and_codex_auth_path(
+		path: impl AsRef<Path>,
+		usage_endpoint: impl Into<String>,
+		profile_endpoint: Option<&str>,
+		refresh_endpoint: impl Into<String>,
+		fixed_account: Option<&str>,
+		codex_auth_path: impl Into<PathBuf>,
+	) -> crate::prelude::Result<Self> {
 		let client = Client::builder().timeout(HTTP_TIMEOUT).build()?;
+		let usage_endpoint = usage_endpoint.into();
+		let profile_endpoint = profile_endpoint
+			.and_then(|endpoint| nonblank_string(Some(endpoint)))
+			.or_else(|| default_profile_endpoint_for_usage_endpoint(&usage_endpoint));
 
 		Ok(Self {
 			path: path.as_ref().to_path_buf(),
-			usage_endpoint: usage_endpoint.into(),
+			usage_endpoint,
+			profile_endpoint,
 			refresh_endpoint: refresh_endpoint.into(),
 			fixed_account: fixed_account
 				.map(str::trim)
@@ -183,6 +231,7 @@ impl CodexAccountPool {
 		AccountActivityCacheKey {
 			path: self.path.clone(),
 			usage_endpoint: self.usage_endpoint.clone(),
+			profile_endpoint: self.profile_endpoint.clone(),
 			refresh_endpoint: self.refresh_endpoint.clone(),
 		}
 	}
@@ -443,7 +492,11 @@ impl CodexAccountPool {
 
 			match self.probe_record_usage(record) {
 				Ok(usage) => {
-					summaries.push(record.activity_summary_from_usage(usage, refresh_status)?);
+					summaries.push(self.activity_summary_from_usage_probe(
+						record,
+						usage,
+						refresh_status,
+					)?);
 				},
 				Err(error) if error.unauthorized && record.refresh_token().is_some() => {
 					match self.refresh_record(record) {
@@ -452,9 +505,11 @@ impl CodexAccountPool {
 
 							match self.probe_record_usage(record) {
 								Ok(usage) => {
-									summaries.push(
-										record.activity_summary_from_usage(usage, "succeeded")?,
-									);
+									summaries.push(self.activity_summary_from_usage_probe(
+										record,
+										usage,
+										"succeeded",
+									)?);
 								},
 								Err(retry_error) => {
 									summaries.push(record.probe_failed_activity_summary(
@@ -489,6 +544,17 @@ impl CodexAccountPool {
 		}
 
 		Ok(summaries)
+	}
+
+	fn activity_summary_from_usage_probe(
+		&self,
+		record: &AccountPoolRecord,
+		usage: AccountUsageSnapshot,
+		refresh_status: &str,
+	) -> crate::prelude::Result<CodexAccountActivitySummary> {
+		let profile = self.probe_record_profile(record).ok().flatten();
+
+		record.activity_summary_from_usage_profile(usage, profile, refresh_status)
 	}
 
 	fn proactive_refresh_record(
@@ -615,6 +681,43 @@ impl CodexAccountPool {
 		})?;
 
 		Ok(usage_snapshot_from_payload(&payload, OffsetDateTime::now_utc().unix_timestamp()))
+	}
+
+	fn probe_record_profile(
+		&self,
+		record: &AccountPoolRecord,
+	) -> std::result::Result<Option<AccountProfileSnapshot>, UsageProbeError> {
+		let Some(profile_endpoint) = self.profile_endpoint.as_deref() else {
+			return Ok(None);
+		};
+		let access_token = record
+			.access_token()
+			.ok_or_else(|| UsageProbeError::other("account is missing an access token"))?;
+		let account_id = record
+			.account_id()
+			.ok_or_else(|| UsageProbeError::other("account is missing an account id"))?;
+		let response = self
+			.client
+			.get(profile_endpoint)
+			.bearer_auth(access_token)
+			.header("ChatGPT-Account-Id", account_id)
+			.header("User-Agent", CODEX_USER_AGENT)
+			.send()
+			.map_err(|error| UsageProbeError::other(error.to_string()))?;
+		let status = response.status();
+
+		if status == StatusCode::UNAUTHORIZED {
+			return Err(UsageProbeError::unauthorized());
+		}
+		if !status.is_success() {
+			return Err(UsageProbeError::other(format!("profile endpoint returned {status}")));
+		}
+
+		let payload = response.json::<Value>().map_err(|error| {
+			UsageProbeError::other(format!("profile JSON did not parse: {error}"))
+		})?;
+
+		Ok(profile_snapshot_from_payload(&payload, OffsetDateTime::now_utc().unix_timestamp()))
 	}
 
 	fn refresh_record(&self, record: &mut AccountPoolRecord) -> crate::prelude::Result<()> {
@@ -772,6 +875,7 @@ impl CodexAccountLogin {
 struct AccountActivityCacheKey {
 	path: PathBuf,
 	usage_endpoint: String,
+	profile_endpoint: Option<String>,
 	refresh_endpoint: String,
 }
 
@@ -964,6 +1068,7 @@ impl AccountPoolRecord {
 			rate_limit_reached_type: usage.rate_limit_reached_type,
 			cooldown_until_unix_epoch: self.cooldown_until_unix_epoch,
 			note: Some(String::from("usage probe ok")),
+			..CodexAccountActivitySummary::default()
 		};
 
 		Ok(CodexAccountLogin {
@@ -982,6 +1087,21 @@ impl AccountPoolRecord {
 		refresh_status: &str,
 	) -> crate::prelude::Result<CodexAccountActivitySummary> {
 		Ok(self.login_from_usage(usage, refresh_status)?.summary)
+	}
+
+	fn activity_summary_from_usage_profile(
+		&self,
+		usage: AccountUsageSnapshot,
+		profile: Option<AccountProfileSnapshot>,
+		refresh_status: &str,
+	) -> crate::prelude::Result<CodexAccountActivitySummary> {
+		let mut summary = self.activity_summary_from_usage(usage, refresh_status)?;
+
+		if let Some(profile) = profile {
+			profile.apply_to_summary(&mut summary);
+		}
+
+		Ok(summary)
 	}
 
 	fn probe_failed_activity_summary(
@@ -1082,6 +1202,43 @@ impl AccountUsageSnapshot {
 		self.rate_limit_reached_type.is_some()
 			|| self.primary.as_ref().is_some_and(UsageWindow::is_depleted)
 			|| self.secondary.as_ref().is_some_and(UsageWindow::is_depleted)
+	}
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct AccountProfileSnapshot {
+	display_name: Option<String>,
+	username: Option<String>,
+	lifetime_tokens: Option<i64>,
+	peak_daily_tokens: Option<i64>,
+	longest_task_seconds: Option<i64>,
+	current_streak_days: Option<i64>,
+	longest_streak_days: Option<i64>,
+	daily_usage: Vec<CodexAccountProfileDailyUsageSummary>,
+	checked_at_unix_epoch: i64,
+}
+impl AccountProfileSnapshot {
+	fn is_empty(&self) -> bool {
+		self.display_name.is_none()
+			&& self.username.is_none()
+			&& self.lifetime_tokens.is_none()
+			&& self.peak_daily_tokens.is_none()
+			&& self.longest_task_seconds.is_none()
+			&& self.current_streak_days.is_none()
+			&& self.longest_streak_days.is_none()
+			&& self.daily_usage.is_empty()
+	}
+
+	fn apply_to_summary(self, summary: &mut CodexAccountActivitySummary) {
+		summary.profile_display_name = self.display_name;
+		summary.profile_username = self.username;
+		summary.profile_checked_at_unix_epoch = Some(self.checked_at_unix_epoch);
+		summary.profile_lifetime_tokens = self.lifetime_tokens;
+		summary.profile_peak_daily_tokens = self.peak_daily_tokens;
+		summary.profile_longest_task_seconds = self.longest_task_seconds;
+		summary.profile_current_streak_days = self.current_streak_days;
+		summary.profile_longest_streak_days = self.longest_streak_days;
+		summary.profile_daily_usage = self.daily_usage;
 	}
 }
 
@@ -1261,6 +1418,10 @@ fn default_codex_auth_json_path() -> crate::prelude::Result<PathBuf> {
 	Ok(PathBuf::from(home).join(".codex").join("auth.json"))
 }
 
+fn default_profile_endpoint_for_usage_endpoint(usage_endpoint: &str) -> Option<String> {
+	(usage_endpoint == DEFAULT_USAGE_ENDPOINT).then(|| DEFAULT_PROFILE_ENDPOINT.to_owned())
+}
+
 fn sync_refreshed_record_to_codex_auth(
 	record: &AccountPoolRecord,
 	path: &Path,
@@ -1344,6 +1505,44 @@ fn usage_snapshot_from_payload(
 	}
 }
 
+fn profile_snapshot_from_payload(
+	payload: &Value,
+	checked_at_unix_epoch: i64,
+) -> Option<AccountProfileSnapshot> {
+	let profile = payload.get("profile").filter(|value| !value.is_null());
+	let stats = payload.get("stats").filter(|value| !value.is_null());
+	let daily_usage = stats
+		.and_then(|value| value.get("daily_usage_buckets"))
+		.and_then(Value::as_array)
+		.map(|items| items.iter().filter_map(profile_daily_usage_from_value).collect::<Vec<_>>())
+		.unwrap_or_default();
+	let snapshot = AccountProfileSnapshot {
+		display_name: profile.and_then(|value| nonblank_json_string(value.get("display_name"))),
+		username: profile.and_then(|value| nonblank_json_string(value.get("username"))),
+		lifetime_tokens: stats
+			.and_then(|value| nonnegative_number_as_i64(value.get("lifetime_tokens"))),
+		peak_daily_tokens: stats
+			.and_then(|value| nonnegative_number_as_i64(value.get("peak_daily_tokens"))),
+		longest_task_seconds: stats
+			.and_then(|value| nonnegative_number_as_i64(value.get("longest_running_turn_sec"))),
+		current_streak_days: stats
+			.and_then(|value| nonnegative_number_as_i64(value.get("current_streak_days"))),
+		longest_streak_days: stats
+			.and_then(|value| nonnegative_number_as_i64(value.get("longest_streak_days"))),
+		daily_usage,
+		checked_at_unix_epoch,
+	};
+
+	(!snapshot.is_empty()).then_some(snapshot)
+}
+
+fn profile_daily_usage_from_value(value: &Value) -> Option<CodexAccountProfileDailyUsageSummary> {
+	let date = nonblank_json_string(value.get("start_date"))?;
+	let tokens = nonnegative_number_as_i64(value.get("tokens"))?;
+
+	Some(CodexAccountProfileDailyUsageSummary { date, tokens })
+}
+
 fn usage_window_from_value(value: Option<&Value>) -> Option<UsageWindow> {
 	let value = value.filter(|value| !value.is_null())?;
 	let used_percent = number_as_i64(value.get("used_percent")?)?;
@@ -1385,6 +1584,10 @@ fn number_as_i64(value: &Value) -> Option<i64> {
 		.or_else(|| value.as_f64().map(|number| number.round() as i64))
 }
 
+fn nonnegative_number_as_i64(value: Option<&Value>) -> Option<i64> {
+	value.and_then(number_as_i64).map(|number| number.max(0))
+}
+
 fn json_scalar_to_string(value: &Value) -> Option<String> {
 	match value {
 		Value::String(text) if !text.is_empty() => Some(text.clone()),
@@ -1392,6 +1595,10 @@ fn json_scalar_to_string(value: &Value) -> Option<String> {
 		Value::Bool(value) => Some(value.to_string()),
 		_ => None,
 	}
+}
+
+fn nonblank_json_string(value: Option<&Value>) -> Option<String> {
+	value.and_then(json_scalar_to_string).and_then(|value| nonblank_string(Some(&value)))
 }
 
 fn first_nonblank_string(left: Option<String>, right: Option<String>) -> Option<String> {
@@ -1684,6 +1891,40 @@ mod tests {
 			summary.rate_limit_reached_type.as_deref(),
 			Some("workspace_member_credits_depleted")
 		);
+	}
+
+	#[test]
+	fn profile_summary_parses_codex_profile_payload() {
+		let payload = serde_json::json!({
+			"profile": {
+				"display_name": "  Copy Account  ",
+				"username": "copy"
+			},
+			"stats": {
+				"lifetime_tokens": 47_200_000_000_i64,
+				"peak_daily_tokens": 1_500_000_000_i64,
+				"longest_running_turn_sec": 10_080,
+				"current_streak_days": 12,
+				"longest_streak_days": 68,
+				"daily_usage_buckets": [
+					{ "start_date": "2026-05-30", "tokens": 123_456 },
+					{ "start_date": "2026-05-31", "tokens": 789_000 }
+				]
+			}
+		});
+		let summary = codex_accounts::profile_snapshot_from_payload(&payload, 1_800_000_000)
+			.expect("profile summary should parse");
+
+		assert_eq!(summary.display_name.as_deref(), Some("Copy Account"));
+		assert_eq!(summary.username.as_deref(), Some("copy"));
+		assert_eq!(summary.lifetime_tokens, Some(47_200_000_000));
+		assert_eq!(summary.peak_daily_tokens, Some(1_500_000_000));
+		assert_eq!(summary.longest_task_seconds, Some(10_080));
+		assert_eq!(summary.current_streak_days, Some(12));
+		assert_eq!(summary.longest_streak_days, Some(68));
+		assert_eq!(summary.daily_usage.len(), 2);
+		assert_eq!(summary.daily_usage[1].date, "2026-05-31");
+		assert_eq!(summary.daily_usage[1].tokens, 789_000);
 	}
 
 	#[test]

@@ -88,6 +88,14 @@ function usageDate(daysAgo) {
 	return date.toISOString().slice(0, 10);
 }
 
+function profileDailyUsage(values = []) {
+	const days = values.length;
+	return values.map((tokens, index) => ({
+		date: usageDate(days - index - 1),
+		tokens,
+	}));
+}
+
 function unixToIso(seconds) {
 	return new Date(seconds * 1000).toISOString();
 }
@@ -120,12 +128,29 @@ function account({
 	selected = false,
 	sevenDayUsed = 18,
 	previousSevenDayUsed = Math.max(0, sevenDayUsed - 4),
+	profileDisplayName = null,
+	profileUsername = null,
+	profileLifetimeTokens = 47_200_000_000,
+	profilePeakDailyTokens = 1_500_000_000,
+	profileLongestTaskSeconds = 10_080,
+	profileCurrentStreakDays = 12,
+	profileLongestStreakDays = 68,
+	profileUsage = [
+		0, 420_000, 880_000, 1_120_000, 0, 1_760_000, 2_220_000, 2_000_000,
+		3_140_000, 1_540_000, 0, 920_000, 2_760_000, 3_800_000,
+	],
 }) {
 	return {
 		account_email: email,
+		email,
 		account_fingerprint: fingerprint,
+		selector: email || fingerprint,
 		plan_type: plan,
 		status: selected ? "selected" : status,
+		selected,
+		codex_active: false,
+		disabled: false,
+		refresh_token_present: true,
 		refresh_status: "not_needed",
 		checked_at_unix_epoch: nowUnix() - 30,
 		selected_at_unix_epoch: selected ? nowUnix() - 20 : null,
@@ -143,6 +168,15 @@ function account({
 		note,
 		seven_day_used_percent: sevenDayUsed,
 		seven_day_daily_average_percent: sevenDayUsed / 7,
+		profile_display_name: profileDisplayName,
+		profile_username: profileUsername,
+		profile_checked_at_unix_epoch: nowUnix() - 30,
+		profile_lifetime_tokens: profileLifetimeTokens,
+		profile_peak_daily_tokens: profilePeakDailyTokens,
+		profile_longest_task_seconds: profileLongestTaskSeconds,
+		profile_current_streak_days: profileCurrentStreakDays,
+		profile_longest_streak_days: profileLongestStreakDays,
+		profile_daily_usage: profileDailyUsage(profileUsage),
 		usage_records: [
 			{
 				date: usageDate(1),
@@ -168,6 +202,8 @@ function mockAccounts() {
 			selected: true,
 			sevenDayUsed: 22,
 			previousSevenDayUsed: 17,
+			profileDisplayName: "Primary mock",
+			profileUsername: "mock-primary",
 		}),
 		account({
 			email: "mock-weekly-limited@decodex.test",
@@ -179,6 +215,12 @@ function mockAccounts() {
 			creditsHasCredits: false,
 			sevenDayUsed: 100,
 			previousSevenDayUsed: 92,
+			profileLifetimeTokens: 8_900_000_000,
+			profilePeakDailyTokens: 640_000_000,
+			profileLongestTaskSeconds: 5_820,
+			profileCurrentStreakDays: 0,
+			profileLongestStreakDays: 21,
+			profileUsage: [0, 0, 180_000, 440_000, 0, 0, 900_000, 120_000, 0, 0, 0, 240_000, 0, 0],
 		}),
 		account({
 			email: "mock-nightly@decodex.test",
@@ -188,6 +230,15 @@ function mockAccounts() {
 			creditsBalance: "4.20",
 			sevenDayUsed: 37,
 			previousSevenDayUsed: 35,
+			profileLifetimeTokens: 19_400_000_000,
+			profilePeakDailyTokens: 980_000_000,
+			profileLongestTaskSeconds: 7_140,
+			profileCurrentStreakDays: 5,
+			profileLongestStreakDays: 44,
+			profileUsage: [
+				220_000, 700_000, 1_300_000, 0, 1_600_000, 1_920_000, 2_100_000,
+				2_400_000, 1_800_000, 2_250_000, 1_760_000, 0, 2_900_000, 3_100_000,
+			],
 		}),
 	];
 }
@@ -251,6 +302,8 @@ function childAgentActivity() {
 
 function activeRun({
 	accounts,
+	accountIndex = 0,
+	assignedAccount = null,
 	attempt = 1,
 	issue = "XY-445",
 	operation = "agent_run",
@@ -260,7 +313,12 @@ function activeRun({
 	activeLease = true,
 	childActivity = childAgentActivity(),
 }) {
-	const selectedAccount = accounts.find((item) => item.status === "selected") || accounts[0] || null;
+	const selectedAccount =
+		assignedAccount ||
+		accounts[accountIndex] ||
+		accounts.find((item) => item.status === "selected") ||
+		accounts[0] ||
+		null;
 
 	return {
 		project_id: "decodex-preview",
@@ -574,9 +632,10 @@ function usageEstimate(accounts) {
 function buildSnapshot(accounts, fixedAccountSelector) {
 	const controlledAccounts = accountsWithSelection(accounts, fixedAccountSelector);
 	const activeRuns = [
-		activeRun({ accounts: controlledAccounts }),
+		activeRun({ accounts: controlledAccounts, accountIndex: 0 }),
 		activeRun({
 			accounts: controlledAccounts,
+			accountIndex: Math.min(2, controlledAccounts.length - 1),
 			attempt: 2,
 			issue: "XY-452",
 			title: "Stalled lane requiring attention",

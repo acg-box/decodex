@@ -173,6 +173,7 @@ fn operator_status_text_codex_account() -> state::CodexAccountActivitySummary {
 		rate_limit_reached_type: None,
 		cooldown_until_unix_epoch: None,
 		note: Some(String::from("usage probe ok")),
+		..state::CodexAccountActivitySummary::default()
 	}
 }
 
@@ -197,6 +198,7 @@ fn operator_status_text_backup_codex_account() -> state::CodexAccountActivitySum
 		rate_limit_reached_type: None,
 		cooldown_until_unix_epoch: None,
 		note: Some(String::from("usage probe ok")),
+		..state::CodexAccountActivitySummary::default()
 	}
 }
 
