@@ -55,8 +55,8 @@ When the target is an OpenAI Codex release or prerelease:
    asks for a specific tag pair.
 3. Start from existing `signal_entry/v1`, `upstream_impact/v1`, and recent
    commit/PR analyses that match the compare range.
-4. Use `compare.pr_numbers` and `compare.commit_shas` to find gaps that still need
-   code analysis.
+4. Use `decodex radar backfill-release-range --dry-run` to find `compare.pr_numbers`
+   gaps that still need code analysis.
 5. Group findings by reader value: useful now, important for Decodex Control Plane,
    deprecated/removed behavior, and watch-only changes.
 6. Publish release or prerelease X reporting only after the summary is grounded in
@@ -101,5 +101,5 @@ Return:
   `operator_impact`, `release_rollup`, or `watch_note`
 
 Promote durable conclusions into existing artifacts only: `upstream_impact/v1`,
-`analysis_draft` plus rendered `signal_entry/v1`, refreshed `release_delta/v1`, or
-`social_post/v1`.
+Codex-owned `analysis_draft` plus `decodex radar render-signal` output, refreshed
+`release_delta/v1`, or `social_post/v1`.
