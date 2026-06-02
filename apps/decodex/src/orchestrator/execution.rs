@@ -549,6 +549,7 @@ where
 		DecodexToolBridge::new(&tracker_tool_bridge, build_decodex_run_context(workflow, issue_run));
 	let run_result = agent::execute_app_server_run(
 		&AppServerRunRequest {
+			project_id: project.service_id().to_owned(),
 			run_id: issue_run.run_id.clone(),
 			issue_id: issue_run.issue.id.clone(),
 			attempt_number: issue_run.attempt_number,

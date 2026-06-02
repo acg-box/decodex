@@ -38,8 +38,9 @@ launch it connects to an existing default local listener when one is reachable; 
 not, it starts the bundled `decodex` binary as
 `decodex serve --listen-address 127.0.0.1:8912`. The app fallback is a normal
 control-plane server: it loads the enabled project registry, uses the CLI-owned default
-cadences, and serves the dashboard, account APIs, `GET /api/operator-snapshot`, and
-`POST /api/linear-scan` from the single local listener.
+cadences, and serves the dashboard, account APIs, `GET /api/operator-snapshot`,
+`POST /api/linear-scan`, `GET /api/lane/inspect`, and `POST /api/lane/interrupt` from
+the single local listener.
 
 `decodex serve` has two hardcoded scheduler cadences:
 
@@ -60,6 +61,21 @@ curl -sS -X POST http://127.0.0.1:8912/api/linear-scan \
 An empty `POST /api/linear-scan` queues a scan for all enabled projects. Requests are
 consumed by the next 15-second control-plane tick and still respect any active tracker
 rate-limit backoff.
+
+Lane inspect and interrupt are local control APIs, not dashboard UI actions:
+
+```sh
+curl -sS 'http://127.0.0.1:8912/api/lane/inspect?projectId=decodex&issue=XY-703'
+curl -sS -X POST http://127.0.0.1:8912/api/lane/interrupt \
+  -H 'Content-Type: application/json' \
+  -d '{"projectId":"decodex","issue":"XY-703","runId":"<run-id>"}'
+```
+
+`POST /api/lane/interrupt` first writes a soft interrupt request for the active
+app-server child to deliver with `turn/interrupt`. Add `"force": true` only when the
+operator explicitly wants hard process-kill fallback after soft interrupt is
+unavailable or does not return in the local wait window. Hard fallback is reported as
+`hard_interrupt_fallback`, not as a graceful stop.
 
 Use `--dev` only for isolated local development:
 
@@ -161,7 +177,8 @@ steer, retry, task replacement, or lifecycle mutations. CLI/API is the first
 operator-control surface for lane control, governed by
 [`../spec/lane-control.md`](../spec/lane-control.md). The browser UI does not show or
 accept active-lane stop/interrupt controls, project pause/resume controls, manual retry
-controls, or active-lane steer controls. Account-pool selection remains available
+controls, or active-lane steer controls; use `decodex lane inspect`, `decodex lane
+interrupt`, or the local `/api/lane/*` endpoints instead. Account-pool selection remains available
 because it changes the global Codex account selector, not an active lane.
 `runActivity.activeRunsComplete`
 marks whether a payload is the complete active-run list; subscription-filtered
