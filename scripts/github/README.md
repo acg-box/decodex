@@ -26,9 +26,14 @@ Rust CLI foundation:
   bundle validation.
 - `decodex radar ledger ...` replaces `radar_ledger.py` bootstrap, ingest,
   ingest-existing, artifact-link, and summary operations.
+- `decodex radar render-signal` renders `signal_entry/v1` from a validated
+  `github_change_bundle/v1` plus Codex-owned `analysis_draft`.
+- `decodex radar backfill-release-range` selects release-window signal gaps and can
+  sequence the remaining helper boundaries for local or Codex automation backfills.
 
-The Python scripts remain checked shared contracts during migration. Do not delete them
-until the final cleanup issue.
+The Python scripts remain compatibility and non-ported helper boundaries until cleanup
+issues remove them. In particular, `run_codex_analysis.py` is the explicit Codex AI
+boundary for creating `analysis_draft`; it is not a GitHub Actions entrypoint.
 
 Current checked contracts:
 
@@ -52,16 +57,16 @@ Example flow:
 ```bash
 decodex radar bundle build \
   --repo openai/codex \
-  --pr 15222 \
-  --out artifacts/github/bundles/openai-codex-pr-15222.json
+  --pr 22414 \
+  --out artifacts/github/bundles/openai-codex-pr-22414.json
 
-python3 scripts/github/render_signal_entry.py \
-  --bundle artifacts/github/bundles/openai-codex-pr-15222.json \
-  --analysis artifacts/github/analysis/openai-codex-pr-15222.analysis.json \
-  --out site/src/content/signals/openai-codex-pr-15222.json
+decodex radar render-signal \
+  --bundle artifacts/github/bundles/openai-codex-pr-22414.json \
+  --analysis artifacts/github/analysis/openai-codex-pr-22414.analysis.json \
+  --out site/src/content/signals/openai-codex-pr-22414.json
 
 python3 scripts/github/validate_signal_entry.py \
-  site/src/content/signals/openai-codex-pr-15222.json
+  site/src/content/signals/openai-codex-pr-22414.json
 ```
 
 Continuous upstream Radar sync:
@@ -88,7 +93,7 @@ decodex radar ledger ingest-existing
 Release-window gap fill:
 
 ```bash
-python3 scripts/github/backfill_release_range.py \
+decodex radar backfill-release-range \
   --repo openai/codex \
   --stable-tag rust-v0.130.0 \
   --preview-tag rust-v0.131.0-alpha.9 \
@@ -98,7 +103,7 @@ python3 scripts/github/backfill_release_range.py \
 These scripts stay deterministic on purpose. GitHub Actions may refresh upstream
 queues, release deltas, and validation. Codex automation owns AI review of queued
 subjects and may then promote source-backed conclusions into `upstream_impact/v1`,
-`analysis_draft`, rendered `signal_entry/v1`, or `social_post/v1`.
+`analysis_draft`, `decodex radar render-signal` output, or `social_post/v1`.
 
 Repo-local skills under `dev/skills/` are reasoning instructions for the Codex
 analysis step and for manual Radar/Publisher work. They do not introduce extra
