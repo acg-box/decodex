@@ -61,8 +61,10 @@ runtime.
 - `apps/decodex-app/` owns the native macOS app that manages Decodex
   Codex accounts through the bundled Rust app helper.
 - `site/` owns the Astro static site and checked-in public content.
-- `scripts/github/` owns deterministic upstream review queue, GitHub bundle,
-  release-delta, render, and validation scripts.
+- `apps/decodex/src/radar.rs` owns Rust Radar queue, release-delta, and validation
+  commands.
+- `scripts/github/` owns deterministic GitHub bundle, render, validation, backfill,
+  ledger import, and analysis-support scripts.
 - `artifacts/github/` owns checked-in review queues, upstream reviews, GitHub bundles,
   impact records, and editorial analysis drafts.
 - `artifacts/archive/` owns checked-in recovery manifests for cold Radar batches stored
@@ -80,7 +82,7 @@ Runtime authority stays in `apps/decodex/src/`, the registered project contracts
 Public site authority stays in `site/`, `scripts/github/`, `artifacts/github/`, and
 the site/content specs.
 
-Historical Radar trace is local by default. `scripts/github/sync_upstream_radar.py`
+Historical Radar trace is local by default. `decodex radar refresh-upstream-queue`
 writes `.decodex/radar.sqlite3` and refreshes `upstream_review_queue/v1` so every
 inspected upstream commit can be tracked before AI review decides whether it deserves
 Decodex follow-up, public content, or only ledger trace.
@@ -107,6 +109,8 @@ cargo run -p decodex --bin decodex -- project list
 cargo run -p decodex --bin decodex -- status
 cargo run -p decodex --bin decodex -- diagnose --json
 cargo run -p decodex --bin decodex -- maintenance prune --dry-run
+cargo run -p decodex --bin decodex -- radar refresh-upstream-queue
+cargo run -p decodex --bin decodex -- radar refresh-release-delta
 cargo run -p decodex --bin decodex -- radar validate
 cargo run -p decodex --bin decodex -- run --dry-run
 cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8912
@@ -198,7 +202,7 @@ Pages setup for `https://decodex.space` lives in `docs/runbook/github-pages-depl
 The upstream Codex Radar path starts deterministic and becomes editorial only after
 Codex automation reviews source evidence:
 
-- `scripts/github/sync_upstream_radar.py` records every observed recent upstream
+- `decodex radar refresh-upstream-queue` records every observed recent upstream
   commit, resolves PRs when possible, and refreshes
   `artifacts/github/review-queue/openai-codex-latest.json`.
 - `dev/skills/README.md` routes the repo-local Radar and editorial instructions. They
@@ -212,11 +216,12 @@ Codex automation reviews source evidence:
   public signals and Control Plane follow-up work.
 - `decodex radar render-signal` renders reviewed analysis drafts into site content.
 - `scripts/github/validate_signal_entry.py` validates the published signal collection.
-- `decodex radar bundle validate`, `decodex radar ledger ...`, `decodex radar
+- `decodex radar refresh-upstream-queue`, `decodex radar refresh-release-delta`,
+  `decodex radar bundle validate`, `decodex radar ledger ...`, `decodex radar
   render-signal`, `decodex radar backfill-release-range`, and `decodex radar
-  validate` provide the Rust-owned command surface for bundle validation, local ledger
-  maintenance, signal rendering, release-window backfill, and checked Radar artifact
-  validation.
+  validate` provide the Rust-owned command surface for deterministic queue refresh,
+  release-delta refresh, bundle validation, local ledger maintenance, signal
+  rendering, release-window backfill, and checked Radar artifact validation.
 - `docs/spec/social-publishing.md` and
   `docs/runbook/social-publishing-workflow.md` govern automated low-frequency X
   publication for `@decodexspace`.
