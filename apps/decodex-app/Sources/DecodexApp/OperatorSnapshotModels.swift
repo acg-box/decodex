@@ -80,13 +80,30 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		activeRuns(for: account).count
 	}
 
-	func mergingRunActivity(_ activityRuns: [OperatorRunStatus]) -> OperatorSnapshotResponse {
+	func mergingRunActivity(
+		_ activityRuns: [OperatorRunStatus],
+		activeRunsComplete: Bool = true
+	) -> OperatorSnapshotResponse {
+		let activityRunsByID = activityRuns.reduce(into: [String: OperatorRunStatus]()) { runsByID, run in
+			runsByID[run.runID] = run
+		}
 		let snapshotRunsByID = activeRuns.reduce(into: [String: OperatorRunStatus]()) { runsByID, run in
 			runsByID[run.runID] = run
 		}
-		let mergedRuns = activityRuns.map { activityRun in
-			snapshotRunsByID[activityRun.runID]?.mergingActivity(activityRun) ?? activityRun
+		let mergedSnapshotRuns = activeRuns.compactMap { snapshotRun -> OperatorRunStatus? in
+			if let activityRun = activityRunsByID[snapshotRun.runID] {
+				return snapshotRun.mergingActivity(activityRun)
+			}
+			if activeRunsComplete || activityRuns.isEmpty {
+				return nil
+			}
+
+			return snapshotRun.shouldRetainDuringPartialRunActivity ? snapshotRun : nil
 		}
+		let newActivityRuns = activityRuns.filter { activityRun in
+			snapshotRunsByID[activityRun.runID] == nil
+		}
+		let mergedRuns = mergedSnapshotRuns + newActivityRuns
 		let activeCountsByProject = Dictionary(grouping: mergedRuns.compactMap(\.projectID)) { $0 }
 			.mapValues(\.count)
 		let mergedProjects = projects.map { project in
@@ -346,6 +363,14 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 
 	func isAssigned(to account: CodexAccount) -> Bool {
 		self.account?.matches(account) == true
+			|| accounts.contains { $0.isSelected && $0.matches(account) }
+	}
+
+	var shouldRetainDuringPartialRunActivity: Bool {
+		activeLease == true
+			|| processAlive == true
+			|| status == "running"
+			|| phase == "executing"
 	}
 
 	func mergingActivity(_ activity: OperatorRunStatus) -> OperatorRunStatus {
@@ -540,6 +565,7 @@ struct OperatorDashboardSocketPayload: Decodable, Sendable {
 	let snapshotPublishedAtUnixEpoch: Int64?
 	let snapshot: OperatorSnapshotResponse?
 	let activeRuns: [OperatorRunStatus]?
+	let activeRunsComplete: Bool?
 
 	var emittedAt: Date? {
 		date(fromUnixEpoch: emittedAtUnixEpoch)
@@ -554,11 +580,13 @@ struct OperatorDashboardSocketPayload: Decodable, Sendable {
 		case snapshotPublishedAtUnixEpoch
 		case snapshot
 		case activeRuns
+		case activeRunsComplete
 	}
 }
 
 struct OperatorRunActivitySnapshot: Sendable {
 	let activeRuns: [OperatorRunStatus]
+	let activeRunsComplete: Bool
 	let emittedAt: Date
 
 	func shouldOverlay(snapshotPublishedAt: Date?) -> Bool {
@@ -570,7 +598,7 @@ struct OperatorRunActivitySnapshot: Sendable {
 	}
 
 	func merging(into snapshot: OperatorSnapshotResponse) -> OperatorSnapshotResponse {
-		snapshot.mergingRunActivity(activeRuns)
+		snapshot.mergingRunActivity(activeRuns, activeRunsComplete: activeRunsComplete)
 	}
 }
 
@@ -663,6 +691,11 @@ struct OperatorChildAgentBucket: Decodable, Identifiable, Sendable {
 struct OperatorRunAccountSummary: Decodable, Sendable {
 	let accountFingerprint: String
 	let email: String?
+	let status: String?
+
+	var isSelected: Bool {
+		status?.caseInsensitiveCompare("selected") == .orderedSame
+	}
 
 	func matches(_ account: CodexAccount) -> Bool {
 		if accountFingerprint.isEmpty == false, accountFingerprint == account.accountFingerprint {
@@ -679,6 +712,7 @@ struct OperatorRunAccountSummary: Decodable, Sendable {
 		case accountFingerprint = "account_fingerprint"
 		case email
 		case accountEmail = "account_email"
+		case status
 	}
 
 	init(from decoder: Decoder) throws {
@@ -687,6 +721,7 @@ struct OperatorRunAccountSummary: Decodable, Sendable {
 		accountFingerprint = try container.decodeIfPresent(String.self, forKey: .accountFingerprint) ?? ""
 		email = try container.decodeIfPresent(String.self, forKey: .email)
 			?? container.decodeIfPresent(String.self, forKey: .accountEmail)
+		status = try container.decodeIfPresent(String.self, forKey: .status)
 	}
 }
 
