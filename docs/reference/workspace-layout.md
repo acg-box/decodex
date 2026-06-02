@@ -80,10 +80,12 @@ Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
 continuous Radar entrypoint: it scans recent upstream commits, resolves them back to
 PRs when possible, records local ledger state, and writes an
 `upstream_review_queue/v1` artifact for Codex automation. It does not run Codex or
-render public signals. `backfill_release_range.py` fills gaps for release-window
-summaries when an operator or automation chooses to generate signal content. Generated
-GitHub bundles and analysis drafts live under `artifacts/github/` and must stay
-explicit and checked into the repository when promoted into Publisher content.
+render public signals. `decodex radar render-signal` renders published signals from
+Codex-owned analysis drafts, and `decodex radar backfill-release-range` fills gaps for
+release-window summaries when an operator or automation chooses to generate signal
+content. Generated GitHub bundles and analysis drafts live under `artifacts/github/`
+and must stay explicit and checked into the repository when promoted into Publisher
+content.
 
 Raw bundles and analysis drafts are hot artifacts with a 21-day Git retention window.
 Older raw batches move to dedicated GitHub Release assets, with recovery manifests kept
