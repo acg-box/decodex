@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 
@@ -221,10 +222,12 @@ struct AccountPanelView: View {
 	@ObservedObject var loginWindowState: LoginWindowState
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var accountScrollOffset: CGFloat = 0
+	@State private var currentTime = Date()
 	@State private var pendingLogout: CodexAccount?
 	@State private var armedLogoutAccountID: String?
 	@State private var logoutArmToken = UUID()
 	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hiddenValue
+	private let localClock = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
 	var body: some View {
 		Group {
@@ -266,6 +269,9 @@ struct AccountPanelView: View {
 			LoginPanelPresenter(store: store, state: loginWindowState)
 				.frame(width: 0, height: 0)
 		}
+		.onReceive(localClock) { tick in
+			currentTime = tick
+		}
 	}
 
 	private var panelContent: some View {
@@ -284,7 +290,8 @@ struct AccountPanelView: View {
 			if let snapshot = store.operatorSnapshot, snapshot.shouldDisplayInPanel {
 				OperatorStatusStripView(
 					snapshot: snapshot,
-					updatedAt: store.operatorSnapshotUpdatedAt
+					updatedAt: store.operatorSnapshotUpdatedAt,
+					currentTime: currentTime
 				)
 			}
 
@@ -510,6 +517,7 @@ struct AccountPanelView: View {
 					displayName: displayName(for: account),
 					showsDivider: index < store.accounts.count - 1,
 					isLogoutArmed: armedLogoutAccountID == account.id,
+					currentTime: currentTime,
 					useInCodex: {
 						Task {
 							await store.useInCodex(account)
@@ -737,6 +745,7 @@ struct AccountRowView: View {
 	let displayName: String
 	let showsDivider: Bool
 	let isLogoutArmed: Bool
+	let currentTime: Date
 	let useInCodex: () -> Void
 	let routeRunsHere: () -> Void
 	let login: () -> Void
@@ -839,7 +848,7 @@ struct AccountRowView: View {
 			}
 
 			if account.hasUsageSummary {
-				AccountUsageSummaryView(account: account)
+				AccountUsageSummaryView(account: account, currentTime: currentTime)
 			}
 		}
 		.padding(.vertical, 7)
@@ -1867,6 +1876,7 @@ struct AccountPoolUsageMetricView: View {
 
 struct AccountUsageSummaryView: View {
 	let account: CodexAccount
+	let currentTime: Date
 
 	var body: some View {
 		VStack(spacing: 5) {
@@ -1882,7 +1892,8 @@ struct AccountUsageSummaryView: View {
 					dailyAveragePercent: account.sevenDayAveragePercent(
 						forWindowSeconds: account.primaryWindowSeconds
 					),
-					tone: account.usageTone(remainingPercent: account.primaryRemainingPercent)
+					tone: account.usageTone(remainingPercent: account.primaryRemainingPercent),
+					currentTime: currentTime
 				)
 			}
 
@@ -1894,7 +1905,8 @@ struct AccountUsageSummaryView: View {
 					dailyAveragePercent: account.sevenDayAveragePercent(
 						forWindowSeconds: account.secondaryWindowSeconds
 					),
-					tone: account.usageTone(remainingPercent: account.secondaryRemainingPercent)
+					tone: account.usageTone(remainingPercent: account.secondaryRemainingPercent),
+					currentTime: currentTime
 				)
 			}
 		}
@@ -2023,6 +2035,7 @@ struct AccountUsageMeterView: View {
 	let resetAtUnixEpoch: Int?
 	let dailyAveragePercent: Double?
 	let tone: AccountTone
+	let currentTime: Date
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
@@ -2169,7 +2182,7 @@ struct AccountUsageMeterView: View {
 	}
 
 	private var resetDisplay: UsageResetDisplay {
-		UsageResetDisplay.make(resetAtUnixEpoch: resetAtUnixEpoch)
+		UsageResetDisplay.make(resetAtUnixEpoch: resetAtUnixEpoch, now: currentTime)
 	}
 
 	private var trackColor: Color {
@@ -2284,12 +2297,12 @@ private struct UsageGlassTrackView: View {
 	}
 }
 
-private struct UsageResetDisplay {
+struct UsageResetDisplay {
 	let short: String
 	let date: String
 	let accessibility: String
 
-	static func make(resetAtUnixEpoch: Int?) -> UsageResetDisplay {
+	static func make(resetAtUnixEpoch: Int?, now: Date = Date()) -> UsageResetDisplay {
 		guard let seconds = resetAtUnixEpoch, seconds > 0 else {
 			return UsageResetDisplay(
 				short: "-",
@@ -2307,9 +2320,9 @@ private struct UsageResetDisplay {
 			)
 		}
 
-		let distanceSeconds = Int(floor(resetAt.timeIntervalSinceNow))
+		let distanceSeconds = Int(floor(resetAt.timeIntervalSince(now)))
 		if distanceSeconds <= 0 {
-			let date = formatResetDate(resetAt)
+			let date = formatResetDate(resetAt, now: now)
 			return UsageResetDisplay(
 				short: "0m",
 				date: date,
@@ -2318,7 +2331,7 @@ private struct UsageResetDisplay {
 		}
 
 		let short = formatResetDuration(distanceSeconds)
-		let date = formatResetDate(resetAt)
+		let date = formatResetDate(resetAt, now: now)
 		return UsageResetDisplay(
 			short: short,
 			date: date,
@@ -2347,11 +2360,11 @@ private struct UsageResetDisplay {
 		return "\(minutes)m"
 	}
 
-	private static func formatResetDate(_ date: Date) -> String {
+	private static func formatResetDate(_ date: Date, now: Date) -> String {
 		let formatter = DateFormatter()
 		formatter.locale = Locale(identifier: "en_US_POSIX")
 		let calendar = Calendar(identifier: .gregorian)
-		formatter.dateFormat = calendar.component(.year, from: date) == calendar.component(.year, from: Date())
+		formatter.dateFormat = calendar.component(.year, from: date) == calendar.component(.year, from: now)
 			? "MMM d HH:mm"
 			: "MMM d yyyy HH:mm"
 		return formatter.string(from: date)
@@ -2382,6 +2395,7 @@ struct NoticeView: View {
 struct OperatorStatusStripView: View {
 	let snapshot: OperatorSnapshotResponse
 	let updatedAt: Date?
+	let currentTime: Date
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
@@ -2464,7 +2478,7 @@ struct OperatorStatusStripView: View {
 			return "WS live"
 		}
 
-		let age = max(0, Int(Date().timeIntervalSince(updatedAt).rounded()))
+		let age = max(0, Int(currentTime.timeIntervalSince(updatedAt).rounded()))
 		if age < 2 {
 			return "live"
 		}

@@ -3805,6 +3805,7 @@
 				"Val",
 			];
 			const DASHBOARD_WEBSOCKET_ENDPOINT = "/dashboard/control";
+			const DASHBOARD_LOCAL_CLOCK_INTERVAL_MS = 5_000;
 			const RUN_ATTENTION_IDLE_SECONDS = 60;
 			const RUN_STALE_NO_PROCESS_SECONDS = 300;
 
@@ -3859,6 +3860,7 @@
 			let lastDashboardRender = null;
 			let dashboardSocket = null;
 			let dashboardSocketReconnectTimer = null;
+			let dashboardLocalClockTimer = null;
 			let dashboardLiveActiveRuns = [];
 			let dashboardLiveRunActivitySeen = false;
 			let dashboardLiveActiveRunsComplete = true;
@@ -10092,6 +10094,25 @@
 				}, 2000);
 			}
 
+			function renderDashboardLocalClockTick() {
+				if (document.hidden || !lastDashboardRender) {
+					return;
+				}
+
+				renderDashboardState(lastDashboardRender, { refreshAccounts: false });
+			}
+
+			function startDashboardLocalClock() {
+				if (dashboardLocalClockTimer) {
+					return;
+				}
+
+				dashboardLocalClockTimer = window.setInterval(
+					renderDashboardLocalClockTick,
+					DASHBOARD_LOCAL_CLOCK_INTERVAL_MS,
+				);
+			}
+
 			function dashboardRunFieldHasValue(value) {
 				if (Array.isArray(value)) {
 					return value.length > 0;
@@ -10527,13 +10548,16 @@
 				snapshot,
 				snapshotError,
 				snapshotPublishedAt,
-			}) {
+			}, options = {}) {
 				const readiness = summarizeReadiness(snapshotError, snapshot);
 				const notices = dashboardNotices(readiness, snapshotError, snapshot);
 				const derived = buildDerivedState(snapshot);
 				const reviewItems = reviewLaneItems(derived);
+				const shouldRefreshAccounts = options.refreshAccounts !== false;
 
-				refreshAccountApiSnapshot();
+				if (shouldRefreshAccounts) {
+					refreshAccountApiSnapshot();
+				}
 				renderHeader(snapshot, readiness, notices, snapshotPublishedAt, snapshotError);
 				renderFlow(snapshot, derived);
 				renderProjects(snapshot, derived);
@@ -10587,6 +10611,7 @@
 				};
 				renderDashboardState(lastDashboardRender);
 				connectDashboardSocket();
+				startDashboardLocalClock();
 			}
 
 			for (const button of nodes.themeButtons) {
@@ -10825,7 +10850,14 @@
 			});
 
 			document.addEventListener("visibilitychange", () => {
-				if (!document.hidden && !dashboardSocketIsOpen()) {
+				if (document.hidden) {
+					return;
+				}
+
+				if (lastDashboardRender) {
+					renderDashboardState(lastDashboardRender);
+				}
+				if (!dashboardSocketIsOpen()) {
 					connectDashboardSocket();
 				}
 			});
