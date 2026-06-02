@@ -7,8 +7,8 @@ recoverable.
 Status: normative
 
 Read this when:
-- You are deciding whether a GitHub bundle, analysis draft, signal entry, upstream
-  impact note, or social draft should remain checked in.
+- You are deciding whether a GitHub bundle, upstream review, analysis draft, signal
+  entry, upstream impact note, or social draft should remain checked in.
 - You are preparing an archive batch for old Radar artifacts.
 - You are adding automation that prunes or restores `artifacts/github/` material.
 
@@ -29,7 +29,7 @@ Decodex uses three retention classes for Radar and Publisher data.
 
 | Class | Storage | Examples | Retention |
 | --- | --- | --- | --- |
-| Hot raw artifacts | Git working tree | `artifacts/github/bundles/*.json`, `artifacts/github/analysis/*.analysis.json` | At most 28 days in Git after collection or publication. |
+| Hot raw artifacts | Git working tree | `artifacts/github/bundles/*.json`, `artifacts/github/reviews/*.review.json`, `artifacts/github/analysis/*.analysis.json` | At most 28 days in Git after collection or publication. |
 | Warm curated artifacts | Git working tree | `site/src/content/signals/*.json`, `site/src/content/release-deltas/openai-codex-latest.json`, `artifacts/github/impact/*.json`, approved or published `artifacts/social/x/*.json` | Retained in Git while they are part of the public site, Control Plane review trail, or Publisher record. |
 | Cold raw archive | GitHub Release assets plus a Git manifest | Archived bundle and analysis batches, optional source snapshots, optional ledger exports | Retained outside the Git tree. Git keeps only the manifest. |
 
@@ -38,9 +38,9 @@ commit traceable, but it must not make the repository a permanent raw-data wareh
 
 ## Hot raw artifact rule
 
-Raw GitHub bundles and local editorial analysis drafts must not remain in Git for more
-than 28 days after collection or publication unless a human explicitly marks the batch
-as still active.
+Raw GitHub bundles, upstream review artifacts, and local editorial analysis drafts must
+not remain in Git for more than 28 days after collection or publication unless a human
+explicitly marks the batch as still active.
 
 For existing artifacts that do not carry their own collection timestamp, the retention
 clock should use the paired `signal_entry/v1.published_at` when available. If no paired
@@ -57,6 +57,7 @@ Keep these artifacts in Git unless a separate content cleanup explicitly removes
 
 - published `signal_entry/v1` files under `site/src/content/signals/`
 - the current homepage `release_delta/v1` artifact
+- the latest `upstream_review_queue/v1` artifact under `artifacts/github/review-queue/`
 - `upstream_impact/v1` records that affect Decodex Control Plane or Publisher follow-up
 - approved or published `social_post_draft/v1` records
 - archive manifests under `artifacts/archive/index/`
