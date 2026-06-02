@@ -152,6 +152,8 @@ If generated schema or live capability probing shows that `turn/interrupt` or
 `turn/steer` is unavailable, the CLI/API control must report that control as
 unsupported for the active lane instead of failing ordinary issue dispatch. The
 lane-control contract and support matrix live in [`lane-control.md`](./lane-control.md).
+Decodex currently implements `turn/interrupt` through the child-owned app-server
+connection for active turns; `turn/steer` remains planned.
 
 ## Required request flow
 
@@ -317,6 +319,25 @@ Decodex's intended use is soft active-turn interruption from a CLI/API operator
 control. It should target the current known thread and turn, request a graceful turn
 stop through app-server, and leave outcome classification to the Decodex runtime.
 
+Request parameters:
+
+```json
+{
+  "threadId": "<thread id>",
+  "turnId": "<turn id>"
+}
+```
+
+Decodex treats the app-server response as protocol evidence rather than a private
+payload to expose. The local control response records a summary such as object keys or
+array length, plus a normalized result:
+
+- `soft_delivered` when app-server accepts the JSON-RPC request
+- `soft_failed` when the method is unsupported, times out, or returns another protocol
+  error
+- `rejected` when the child process finds that the requested project, issue, run,
+  attempt, thread, or turn no longer matches the active turn
+
 `turn/interrupt` must not:
 
 - mutate tracker state directly
@@ -324,9 +345,9 @@ stop through app-server, and leave outcome classification to the Decodex runtime
 - clear leases without runtime classification
 - replace the hard-interrupt process fallback when app-server is unreachable
 
-When implemented, Decodex should prefer `turn/interrupt` before signaling the child
-process. A hard interrupt remains only a fallback after soft interrupt is unavailable,
-times out, or cannot be routed to the live app-server session.
+Decodex prefers `turn/interrupt` before signaling the child process. A hard interrupt
+remains only a fallback after explicit operator intent and after soft interrupt is
+unavailable, times out, or cannot be routed to the live app-server session.
 
 ## `turn/steer`
 
