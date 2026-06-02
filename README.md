@@ -143,8 +143,9 @@ global selector; project configs do not pin specific accounts. Account display-n
 rerolls are also global Decodex state under `[codex.account_names.offsets]` in
 `~/.codex/decodex/config.toml` so the operator dashboard and Decodex App show the same
 privacy-preserving names. Client-only presentation preferences such as theme, sorting,
-and whether identities are hidden remain local to each UI. Usage probes keep bounded
-seven-day account usage estimates in
+and whether identities are hidden remain local to each UI. Usage probes also read
+Codex profile token stats for local Accounts displays. Bounded seven-day account
+usage estimates are kept in
 `~/.codex/decodex/account-usage-history.jsonl`; the file stores daily percentage
 snapshots plus non-secret capacity weights for local display and no token material.
 To switch the account used by the Codex CLI itself, run

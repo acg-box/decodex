@@ -263,12 +263,18 @@ impl Default for ProjectPrivacyClassifierConfig {
 #[serde(deny_unknown_fields)]
 pub struct ProjectCodexAccountsConfig {
 	usage_endpoint: Option<String>,
+	profile_endpoint: Option<String>,
 	refresh_endpoint: Option<String>,
 }
 impl ProjectCodexAccountsConfig {
 	/// Override for ChatGPT usage probes. Defaults to the Codex `/wham/usage` endpoint.
 	pub fn usage_endpoint(&self) -> Option<&str> {
 		self.usage_endpoint.as_deref()
+	}
+
+	/// Override for ChatGPT profile-stat probes. Defaults to Codex `/wham/profiles/me`.
+	pub fn profile_endpoint(&self) -> Option<&str> {
+		self.profile_endpoint.as_deref()
 	}
 
 	/// Override for ChatGPT OAuth refresh. Defaults to the Codex auth token endpoint.
@@ -280,6 +286,10 @@ impl ProjectCodexAccountsConfig {
 		validate_optional_nonempty_string(
 			"codex.accounts.usage_endpoint",
 			self.usage_endpoint.as_deref(),
+		)?;
+		validate_optional_nonempty_string(
+			"codex.accounts.profile_endpoint",
+			self.profile_endpoint.as_deref(),
 		)?;
 		validate_optional_nonempty_string(
 			"codex.accounts.refresh_endpoint",
@@ -1239,15 +1249,17 @@ mod tests {
 					[github]
 					token_env_var = "HOME"
 
-					[codex.accounts]
-					usage_endpoint = "http://127.0.0.1:1234/wham/usage"
-					refresh_endpoint = "http://127.0.0.1:1234/oauth/token"
-				"#,
+						[codex.accounts]
+						usage_endpoint = "http://127.0.0.1:1234/wham/usage"
+						profile_endpoint = "http://127.0.0.1:1234/wham/profiles/me"
+						refresh_endpoint = "http://127.0.0.1:1234/oauth/token"
+					"#,
 		);
 		let config = ServiceConfig::from_path(&config_path).expect("accounts should parse");
 		let accounts = config.codex().accounts().expect("accounts should be configured");
 
 		assert_eq!(accounts.usage_endpoint(), Some("http://127.0.0.1:1234/wham/usage"));
+		assert_eq!(accounts.profile_endpoint(), Some("http://127.0.0.1:1234/wham/profiles/me"));
 		assert_eq!(accounts.refresh_endpoint(), Some("http://127.0.0.1:1234/oauth/token"));
 	}
 

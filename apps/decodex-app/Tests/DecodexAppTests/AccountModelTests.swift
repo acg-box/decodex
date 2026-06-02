@@ -13,7 +13,7 @@ final class AccountModelTests: XCTestCase {
 
 		XCTAssertTrue(account.needsLogin)
 		XCTAssertFalse(account.canRouteRuns)
-		XCTAssertEqual(account.statusLabel, "Re-login required")
+		XCTAssertEqual(account.statusLabel, "login")
 		XCTAssertNil(account.currentCapacityLabel)
 	}
 
@@ -27,7 +27,7 @@ final class AccountModelTests: XCTestCase {
 
 		XCTAssertFalse(account.needsLogin)
 		XCTAssertTrue(account.canRouteRuns)
-		XCTAssertEqual(account.statusLabel, "Refresh needed")
+		XCTAssertEqual(account.statusLabel, "refresh")
 		XCTAssertNil(account.currentCapacityLabel)
 	}
 
@@ -50,8 +50,171 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertEqual(AccountDisplay.compactEmail("xavier.lau@helixbox.ai"), "xav...lau@helixbox.ai")
 	}
 
+	func testOperatorSnapshotAssignsCodexAccountRunsToAccountRows() throws {
+		let assignedAccount = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
+		)
+		let poolOnlyAccount = makeAccount(
+			status: "available",
+			email: "pool@example.com",
+			accountFingerprint: "...654321"
+		)
+		let otherAssignedAccount = makeAccount(
+			status: "available",
+			email: "other@example.com",
+			accountFingerprint: "...abcdef"
+		)
+		let payload = """
+		{
+		  "active_runs": [
+		    {
+		      "run_id": "run-1",
+		      "issue_identifier": "XY-445",
+		      "codex_account": {
+		        "account_email": "copy@example.com",
+		        "account_fingerprint": "...123456"
+		      },
+		      "codex_accounts": [
+		        {
+		          "account_email": "copy@example.com",
+		          "account_fingerprint": "...123456"
+		        },
+		        {
+		          "account_email": "pool@example.com",
+		          "account_fingerprint": "...654321"
+		        }
+		      ]
+		    },
+		    {
+		      "run_id": "run-2",
+		      "issue_identifier": "PUB-1147",
+		      "codex_account": {
+		        "account_email": "other@example.com",
+		        "account_fingerprint": "...abcdef"
+		      },
+		      "codex_accounts": [
+		        {
+		          "account_email": "copy@example.com",
+		          "account_fingerprint": "...123456"
+		        },
+		        {
+		          "account_email": "other@example.com",
+		          "account_fingerprint": "...abcdef"
+		        },
+		        {
+		          "account_email": "pool@example.com",
+		          "account_fingerprint": "...654321"
+		        }
+		      ]
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
+
+		XCTAssertEqual(snapshot.activeRuns(for: assignedAccount).map(\.runID), ["run-1"])
+		XCTAssertEqual(snapshot.activeRuns(for: otherAssignedAccount).map(\.runID), ["run-2"])
+		XCTAssertTrue(snapshot.activeRuns(for: poolOnlyAccount).isEmpty)
+	}
+
+	func testOperatorRunActivityOverlayDoesNotReplaceNewerSnapshot() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
+		)
+		let snapshotPayload = """
+		{
+		  "active_runs": [
+		    {
+		      "run_id": "run-new",
+		      "issue_identifier": "XY-672",
+		      "account": {
+		        "email": "copy@example.com",
+		        "account_fingerprint": "...123456"
+		      }
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+		let activityPayload = """
+		{
+		  "activeRuns": [
+		    {
+		      "run_id": "run-old",
+		      "issue_identifier": "PUB-1147",
+		      "account": {
+		        "email": "copy@example.com",
+		        "account_fingerprint": "...123456"
+		      }
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
+		let activity = try JSONDecoder()
+			.decode(OperatorDashboardSocketPayload.self, from: activityPayload)
+			.activeRuns ?? []
+		let overlay = OperatorRunActivitySnapshot(
+			activeRuns: activity,
+			emittedAt: Date(timeIntervalSince1970: 10)
+		)
+
+		XCTAssertFalse(overlay.shouldOverlay(snapshotPublishedAt: Date(timeIntervalSince1970: 20)))
+		XCTAssertEqual(snapshot.activeRuns(for: account).map(\.runID), ["run-new"])
+	}
+
+	func testNewerEmptyRunActivityClearsSnapshotRuns() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
+		)
+		let snapshotPayload = """
+		{
+		  "active_runs": [
+		    {
+		      "run_id": "run-old",
+		      "issue_identifier": "XY-672",
+		      "account": {
+		        "email": "copy@example.com",
+		        "account_fingerprint": "...123456"
+		      }
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
+		let overlay = OperatorRunActivitySnapshot(
+			activeRuns: [],
+			emittedAt: Date(timeIntervalSince1970: 30)
+		)
+		let merged = overlay.merging(into: snapshot)
+
+		XCTAssertTrue(overlay.shouldOverlay(snapshotPublishedAt: Date(timeIntervalSince1970: 20)))
+		XCTAssertTrue(merged.activeRuns(for: account).isEmpty)
+	}
+
+	func testOperatorSnapshotWarningSummaryUsesRawWarningToken() throws {
+		let payload = """
+		{
+		  "warnings": ["external_observer_status_skipped"]
+		}
+		""".data(using: .utf8)!
+
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
+
+		XCTAssertEqual(snapshot.warningSummary, "external_observer_status_skipped")
+	}
+
 	private func makeAccount(
 		status: String,
+		email: String = "copy@example.com",
+		accountFingerprint: String = "...123456",
 		recoveryAction: String? = nil,
 		refreshStatus: String? = nil,
 		planType: String? = nil,
@@ -59,9 +222,9 @@ final class AccountModelTests: XCTestCase {
 		primaryRemainingPercent: Int? = nil
 	) -> CodexAccount {
 		CodexAccount(
-			accountFingerprint: "...123456",
-			email: "copy@example.com",
-			selector: "copy@example.com",
+			accountFingerprint: accountFingerprint,
+			email: email,
+			selector: email,
 			randomName: nil,
 			randomNameKey: nil,
 			randomNameOffset: nil,
@@ -89,6 +252,15 @@ final class AccountModelTests: XCTestCase {
 			creditsUnlimited: nil,
 			creditsBalance: nil,
 			rateLimitReachedType: nil,
+			profileDisplayName: nil,
+			profileUsername: nil,
+			profileCheckedAtUnixEpoch: nil,
+			profileLifetimeTokens: nil,
+			profilePeakDailyTokens: nil,
+			profileLongestTaskSeconds: nil,
+			profileCurrentStreakDays: nil,
+			profileLongestStreakDays: nil,
+			profileDailyUsage: nil,
 			sevenDayUsedPercent: nil,
 			sevenDayDailyAveragePercent: nil,
 			usageRecords: nil

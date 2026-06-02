@@ -299,7 +299,7 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("data-duration=\"diagnostic\""));
 	assert!(response.contains("function childDiagnosticBucketRank(bucket)"));
 	assert!(response.contains("summary.current_detail"));
-	assert!(response.contains("detailLabel(humanizeToken(summary.current_detail || summary.current_bucket))"));
+	assert!(response.contains("detailLabel(displayToken(summary.current_detail || summary.current_bucket))"));
 	assert!(response.contains("return `${label} · ${formatDuration(summary.current_elapsed_seconds)}`;"));
 	assert!(response.contains("<span>Activity</span>"));
 	assert!(response.contains(".child-activity-head {\n\t\t\t\tdisplay: grid;\n\t\t\t\tgrid-template-columns: 96px minmax(0, 1fr);\n\t\t\t\talign-items: baseline;\n\t\t\t\tgap: 10px;"));
@@ -341,18 +341,18 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("runStaleWithoutKnownProcessNeedsAttention"));
 	assert!(response.contains("runExecutionLivenessSummary"));
 	assert!(response.contains("runQueueLeaseSummary"));
-	assert!(response.contains("return \"process alive\";"));
+	assert!(response.contains("return displayToken(run.execution_liveness || \"liveness_unknown\");"));
 	assert!(!response.contains("return \"Process alive\";"));
 	assert!(!response.contains("lease <strong>not held</strong>"));
 	assert!(response.contains("field(\"Attempt status\", run.attempt_status || run.status)"));
 	assert!(response.contains("field(\"Queue lease\", runQueueLeaseSummary(run))"));
 	assert!(response.contains("field(\"Execution liveness\", runExecutionLivenessSummary(run))"));
-	assert!(response.contains("Live, No Queue Lease"));
-	assert!(response.contains("no lease; live process"));
+	assert!(response.contains("live_no_queue_lease"));
+	assert!(response.contains("return `${leaseState}; ${displayToken(run.execution_liveness || \"liveness_unknown\")}`;"));
 	assert!(!response.contains("Queue ownership"));
 	assert!(response.contains("attention.worktree_path"));
 	assert!(response.contains("candidate.attention?.attention_error_class"));
-	assert!(response.contains("facts.push([\"Cause\", sentenceToken(attention.attention_error_class)]);"));
+	assert!(response.contains("facts.push([\"Cause\", displayToken(attention.attention_error_class)]);"));
 	assert!(response.contains("queued attention"));
 	assert!(response.contains("worktree.ownership_reason"));
 	assert!(response.contains("const hygiene = worktree.hygiene;"));
@@ -362,7 +362,7 @@ fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics()
 	assert!(response.contains("post-review cleanup blocked"));
 	assert!(response.contains("hygiene.reason ||"));
 	assert!(response.contains("function renderWorktreeHygieneFields(worktree)"));
-	assert!(response.contains("field(\"Cleanup state\", humanizeToken(hygiene.classification || \"cleanup_pending\"))"));
+	assert!(response.contains("field(\"Cleanup state\", displayToken(hygiene.classification || \"cleanup_pending\"))"));
 	assert!(response.contains("field(\"Default branch\", hygiene.default_branch || \"unknown\")"));
 	assert!(response.contains("field(\"Uncommitted changes\", hygiene.dirty ? \"yes\" : \"no\")"));
 	assert!(response.contains("local cleanup"));
@@ -401,25 +401,25 @@ fn operator_dashboard_active_run_status_copy_stays_concise() {
 	assert!(response.contains("runOperationRequiresLiveAgent"));
 	assert!(response.contains("runProcessStoppedWithoutAttention"));
 	assert!(response.contains("runStageLabel"));
-	assert!(response.contains("return \"Stopped\";"));
-	assert!(response.contains("Finalizing"));
+	assert!(response.contains("return run.process_liveness_reason || \"process_stopped\";"));
+	assert!(response.contains("return run.current_operation || run.phase || \"process_stopped\";"));
 	assert!(response.contains("Operator input needed."));
 	assert!(response.contains("Protocol idle."));
 	assert!(response.contains("Stopped agent process"));
 	assert!(response.contains("attention stopped"));
 	assert!(response.contains("inlineStatusFact(\"Agent\", \"Done\")"));
-	assert!(response.contains("const waitReason = sentenceToken(run.wait_reason);"));
+	assert!(response.contains("const waitReason = displayToken(run.wait_reason);"));
 	assert!(response.contains("if (!displayTextRepeats(summary, waitReason))"));
 	assert!(response.contains("displayTextRepeats(summary, \"operator input\")"));
 	assert!(response.contains("status: \"waiting\","));
 	assert!(!response.contains(
-		"status: run.wait_reason ? `wait ${humanizeToken(run.wait_reason)}`"
+		"status: run.wait_reason ? `wait ${displayToken(run.wait_reason)}`"
 	));
 	assert!(!response.contains("Running through ${focus}"));
 	assert!(!response.contains("Running through model execution."));
 	assert!(!response.contains("Time is going to ${focus}."));
 	assert!(!response.contains("Running now."));
-	assert!(!response.contains("Thread is ${humanizeToken(run.thread_status).toLowerCase()}."));
+	assert!(!response.contains("Thread is ${displayToken(run.thread_status).toLowerCase()}."));
 	assert!(!response.contains("Agent turn complete; Decodex is finishing"));
 	assert!(!response.contains("No agent progress for"));
 	assert!(!response.contains("Waiting for approval or input."));
@@ -455,7 +455,7 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("run account capture pending"));
 	assert!(response.contains("function renderAccountPool(snapshot)"));
 	assert!(response.contains("function renderAccountModeControl(snapshot)"));
-	assert!(response.contains("nodes.accountModeMeta.textContent = title;"));
+	assert!(response.contains("nodes.accountModeMeta.innerHTML = `<span class=\"account-mode-head\">${escapeHtml(title)}</span>`;"));
 	assert!(response.contains("nodes.accountModeMeta.title = title;"));
 	assert!(response.contains("function codexAccountPoolAccounts(snapshot)"));
 	assert!(response.contains("function codexAccountPoolMergeRank(account)"));
@@ -719,6 +719,47 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains("account-pool-list"));
 	assert!(response.contains("account-pool-guide"));
 	assert!(response.contains("<div class=\"account-pool-summary\""));
+	assert!(response.contains("function codexAccountProfileAggregate(accounts)"));
+	assert!(response.contains("function renderCodexAccountPoolActivityStrip(account"));
+	assert!(response.contains("function renderCodexAccountProfileActivityStrip(account"));
+	assert!(response.contains("function renderCodexAccountProfileToggle(account, expanded)"));
+	assert!(response.contains("function renderCodexAccountProfilePanel(account, snapshot, profileKey, expanded)"));
+	assert!(response.contains("function toggleCodexAccountProfileKey(key)"));
+	assert!(response.contains("function accountProfileRowClickIsSuppressed(target)"));
+	assert!(response.contains("data-account-profile-toggle"));
+	assert!(response.contains("data-account-profile-row-toggle"));
+	assert!(response.contains("data-render-key=\"account-row:${escapeHtml(profileKey)}\""));
+	assert!(response.contains("data-render-key=\"account-profile-panel:${escapeHtml(profileKey)}\""));
+	assert!(response.contains(".account-row.is-profile-toggleable"));
+	assert!(response.contains("const profileRow = event.target.closest(\"[data-account-profile-row-toggle]\");"));
+	assert!(response.contains("aria-hidden=\"${expanded ? \"false\" : \"true\"}\""));
+	assert!(response.contains("const openClass = expanded ? \" is-open\" : \"\";"));
+	assert!(response.contains("expandedAccountProfileKeys"));
+	assert!(response.contains("account-pool-activity-strip"));
+	assert!(response.contains("account-pool-activity-tile"));
+	assert!(response.contains("label: \"Activity\""));
+	assert!(response.contains("valueHtml: activityStrip"));
+	assert!(response.contains(".account-pool-metric-label {\n\t\t\t\toverflow: hidden;\n\t\t\t\tcolor: var(--muted);\n\t\t\t\tfont-family: var(--sans);"));
+	assert!(response.contains(".account-pool-metric-value {\n\t\t\t\toverflow: hidden;\n\t\t\t\tcolor: var(--muted-strong);\n\t\t\t\tfont-family: var(--mono);"));
+	assert!(response.contains(".account-pool-metric-value[data-tone=\"muted\"] {\n\t\t\t\tcolor: var(--muted-strong);"));
+	assert!(!response.contains(".account-pool-activity-strip {\n\t\t\t\tgrid-column: 1 / -1;"));
+	assert!(response.contains("account-profile-activity-strip"));
+	assert!(response.contains("account-profile-toggle"));
+	assert!(response.contains("account-profile-panel"));
+	assert!(response.contains(".account-profile-panel.is-open"));
+	assert!(response.contains("grid-template-columns: repeat(5, minmax(0, 1fr));"));
+	assert!(response.contains("account-profile-fact"));
+	assert!(response.contains("account-profile-activity"));
+	assert!(response.contains("[\"Lifetime\", facts.get(\"tok\") || \"-\"]"));
+	assert!(response.contains("Lifetime tok"));
+	assert!(response.contains("Peak day"));
+	assert!(response.contains("Longest task"));
+	assert!(!response.contains("account-profile-table"));
+	assert!(!response.contains("account-profile-guide"));
+	assert!(!response.contains(".account-profile-row"));
+	assert!(!response.contains("account-profile-lane"));
+	assert!(!response.contains("account-profile-head"));
+	assert!(!response.contains("account-pool-summary is-profile"));
 	assert!(!response.contains("account-pool-window-heads"));
 	assert!(!response.contains("account-pool-summary-head"));
 	assert!(!response.contains("account-pool-track"));
@@ -868,7 +909,7 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	assert!(!response.contains("max-width: 190px;"));
 	assert!(!response.contains("max-width: 142px;"));
 	assert!(response.contains("min-height: 42px;"));
-	assert!(response.contains("padding: var(--space-account-row-y) 0 var(--space-account-row-y) var(--space-row-indent);"));
+	assert!(response.contains("padding: var(--space-account-row-y) 28px var(--space-account-row-y) var(--space-row-indent);"));
 	assert!(response.contains("border-bottom: 1px solid var(--line);"));
 	assert!(response.contains(".account-pool-list > .account-row:last-child"));
 	assert!(response.contains("account-row-credit"));
@@ -970,16 +1011,25 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(response.contains("return \"0.00\";"));
 	assert!(!response.contains("return \"No Credits\";"));
 	assert!(response.contains("return \"Unlimited\";"));
-	assert!(response.contains("return \"Ready\";"));
-	assert!(response.contains("return \"Refresh failed\";"));
+
+	let account_status_label = response
+		.split("function codexAccountStatusLabel(account)")
+		.nth(1)
+		.expect("account status label function should exist")
+		.split("function codexAccountCreditsSummary(account)")
+		.next()
+		.expect("account status label function should have an end");
+
+	assert!(account_status_label.contains("return refresh;"));
+	assert!(account_status_label.contains("return displayToken(status);"));
+	assert!(!account_status_label.contains("Refresh failed"));
+	assert!(!account_status_label.contains("Ready"));
 	assert!(response.contains("return codexAccountTokenValue(account.refresh_status);"));
 	assert!(response.contains("return \"-\";"));
 	assert!(!response.contains("depleted"));
 	assert!(response.contains("rate_limit_reached_type"));
-	assert!(response.contains("if (normalizedStatus === \"available\")"));
 	assert!(response.contains("if (codexAccountUsageLimited(account))"));
-	assert!(response.contains("if (normalizedStatus.includes(\"limit\"))"));
-	assert!(response.contains("return \"Limited\";"));
+	assert!(account_status_label.contains("return reached || (String(status).trim() && status !== \"available\" ? status : \"usage_limited\");"));
 	assert!(response.contains("cooldown_until_unix_epoch"));
 	assert!(response.contains("`${prefix}_remaining_percent`"));
 	assert!(response.contains("`${prefix}_resets_at_unix_epoch`"));
@@ -1092,15 +1142,18 @@ fn operator_dashboard_projects_keep_status_summary_compact() {
 	assert!(response.contains("return priority == null ? \"NONE\" : `P${priority}`;"));
 	assert!(response.contains("function queuedCandidateSummaryIsNoise(summary)"));
 	assert!(response.contains("normalized.includes(\"systemerror\")"));
-	assert!(response.contains("function sentenceToken(value)"));
+	assert!(response.contains("function displayToken(value)"));
+	assert!(response.contains("return token || \"none\";"));
+	assert!(!response.contains(".replace(/_/g, \" \")"));
+	assert!(!response.contains("External sync skipped"));
 	assert!(response.contains("function displayTextRepeats(left, right)"));
 	assert!(response.contains("function inlineStatusFact(label, value)"));
 	assert!(response.contains("titleCaseLabel(label)"));
 	assert!(response.contains("const summary = summarizeQueuedCandidate(candidate);"));
 	assert!(response.contains("const reason = queuedCandidateInlineReason(candidate);"));
-	assert!(response.contains("bits.push(inlineStatusFact(\"History\", humanizeToken(outcome.ledger_status)))"));
-	assert!(!response.contains("facts.push([\"History\", humanizeToken(outcome.ledger_status)])"));
-	assert!(!response.contains("facts.push([\"Closeout\", humanizeToken(outcome.closeout_status)])"));
+	assert!(response.contains("bits.push(inlineStatusFact(\"History\", displayToken(outcome.ledger_status)))"));
+	assert!(!response.contains("facts.push([\"History\", displayToken(outcome.ledger_status)])"));
+	assert!(!response.contains("facts.push([\"Closeout\", displayToken(outcome.closeout_status)])"));
 	assert!(response.contains("<div class=\"grid two card-facts\">"));
 	assert!(!response.contains("queue-facts"));
 	assert!(response.contains("cardField(\"State\", formatDetailToken(candidate.state))"));
@@ -1197,8 +1250,10 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("label: \"sync degraded\""));
 	assert!(response.contains("label: \"sync degraded\", tone: \"tone-muted\""));
 	assert!(response.contains("project.connector_state === \"config_error\""));
-	assert!(response.contains("title: projectSummary"));
-	assert!(response.contains("remove it or re-register the project"));
+	assert!(response.contains("function warningNotice(warning)"));
+	assert!(response.contains("copy: displayToken(warning)"));
+	assert!(!response.contains("title: projectSummary"));
+	assert!(!response.contains("remove it or re-register the project"));
 	assert!(response.contains("return { label: \"ok\", tone: \"tone-ready\""));
 	assert!(!response.contains("function projectSyncMeta(project, health)"));
 	assert!(!response.contains("const connectorCopy = projectSyncMeta(project, health);"));
@@ -1271,8 +1326,8 @@ fn operator_dashboard_normalizes_review_state_tokens() {
 	assert!(response.contains("[\"Threads\", reviewThreadToken(lane.unresolved_review_threads)]"));
 	assert!(response.contains("[\"Review decision\", compactStateToken(lane.review_decision)]"));
 	assert!(response.contains("[\"PR\", optionalCardToken(lane.pr_url)]"));
-	assert!(!response.contains("`merge ${humanizeToken(lane.mergeable)}`"));
-	assert!(!response.contains("`checks ${humanizeToken(lane.check_state)}`"));
+	assert!(!response.contains("`merge ${displayToken(lane.mergeable)}`"));
+	assert!(!response.contains("`checks ${displayToken(lane.check_state)}`"));
 	assert!(!response.contains("[\"Checks\", lane.check_state || \"none\"]"));
 	assert!(!response.contains("lane.unresolved_review_threads == null ? \"none\""));
 	assert!(!response.contains("lane.pr_url || \"none\""));
@@ -1282,7 +1337,7 @@ fn operator_dashboard_normalizes_review_state_tokens() {
 fn operator_dashboard_review_cards_omit_static_summary_copy() {
 	let response = dashboard_response();
 
-	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: `run ${humanizeToken(activeRun.phase)}`"));
+	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: `run ${displayToken(activeRun.phase)}`"));
 	assert!(response.contains("function postReviewBlockerStatus(lane, blockerScope)"));
 	assert!(response.contains("status: postReviewBlockerStatus(lane, blockerScope)"));
 	assert!(response.contains("summary: \"\",\n\t\t\t\t\t\t\tstatus: lane.check_state"));
@@ -1401,9 +1456,9 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 		.next()
 		.expect("queued candidate reason function should have an end");
 
-	assert!(reason_text.contains("return \"needs attention\";"));
+	assert!(reason_text.contains("return displayToken(candidate.reason);"));
 	assert!(
-		response.contains("facts.push([\"Attempt status\", humanizeToken(attention.attempt_status)]);")
+		response.contains("facts.push([\"Attempt status\", displayToken(attention.attempt_status)]);")
 	);
 	assert!(response.contains(
 		"facts.push([\"Failed attempts\", `${attention.retry_budget_attempt_count}${retryMax}`]);"
@@ -1411,12 +1466,11 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 	assert!(response.contains(
 		"facts.push([\"Auto retry\", autoRetryBlockedReasonText(attention.auto_retry_blocked_reason)]);"
 	));
-	assert!(response.contains("return \"needs-attention label set\";"));
-	assert!(response.contains("return \"active label present\";"));
-	assert!(reason_text.contains("return \"auto retry paused\";"));
+	assert!(response.contains("return displayToken(reason);"));
+	assert!(reason_text.contains("return \"retry_budget_attempt_count\";"));
 	assert!(response.contains("function queuedCandidateInlineReason(candidate)"));
-	assert!(response.contains("displayTextRepeats(reason, sentenceToken(candidate.attention.attention_error_class))"));
-	assert!(response.contains("displayTextRepeats(reason, \"patch retained\")"));
+	assert!(response.contains("displayTextRepeats(reason, displayToken(candidate.attention.attention_error_class))"));
+	assert!(response.contains("displayTextRepeats(reason, \"worktree_has_tracked_changes\")"));
 	assert!(!response.contains("return \"blocked by needs-attention\";"));
 	assert!(!reason_text.contains("return \"Retry budget held\";"));
 	assert!(!response.contains(
@@ -1424,10 +1478,10 @@ fn operator_dashboard_prioritizes_needs_attention_reason_over_retry_count() {
 	));
 	assert!(
 		reason_text
-			.find("return \"needs attention\";")
-			.expect("needs-attention reason should exist")
+			.find("if (candidate.attention?.attention_error_class)")
+			.expect("attention error-class reason should exist")
 			< reason_text
-				.find("return \"auto retry paused\";")
+				.find("return \"retry_budget_attempt_count\";")
 				.expect("retry-budget reason should exist")
 	);
 }
@@ -1555,7 +1609,7 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("function mergeDashboardRunRecord(snapshotRun, activityRun)"));
 	assert!(response.contains("function mergeDashboardActiveRuns(snapshot, activeRunRows)"));
 	assert!(response.contains("function dashboardRunTitleIsOperationFallback(run)"));
-	assert!(response.contains("const operationFallback = humanizeToken(run.current_operation || run.phase);"));
+	assert!(response.contains("const operationFallback = displayToken(run.current_operation || run.phase);"));
 	assert!(response.contains("!(fallback !== \"unknown\" && title === operationFallback)"));
 	assert!(response.contains("return fallback !== \"unknown\" ? fallback : operationFallback;"));
 	assert!(response.contains("let dashboardLiveActiveRuns = [];"));

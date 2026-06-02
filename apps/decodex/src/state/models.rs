@@ -500,7 +500,31 @@ pub(crate) struct CodexAccountActivitySummary {
 	pub(crate) credits_balance: Option<String>,
 	pub(crate) rate_limit_reached_type: Option<String>,
 	pub(crate) cooldown_until_unix_epoch: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_display_name: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_username: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_checked_at_unix_epoch: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_lifetime_tokens: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_peak_daily_tokens: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_longest_task_seconds: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_current_streak_days: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(crate) profile_longest_streak_days: Option<i64>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub(crate) profile_daily_usage: Vec<CodexAccountProfileDailyUsageSummary>,
 	pub(crate) note: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct CodexAccountProfileDailyUsageSummary {
+	pub(crate) date: String,
+	pub(crate) tokens: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
