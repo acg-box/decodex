@@ -16,12 +16,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	accounts::{self, AccountImportRequest, AccountLoginRequest, AccountUseRequest},
-	agent::{self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT},
+	agent,
 	archive_hygiene::{self, ArchiveHygieneRequest},
 	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
 	orchestrator::{
-		self, DiagnoseRequest, EvidenceRequest, IssueDispatchMode, LaneSteerReport,
+		self, DEFAULT_STEER_RESULT_WAIT_TIMEOUT, DiagnoseRequest, EvidenceRequest,
+		IssueDispatchMode, LaneInspectRequest, LaneInterruptRequest, LaneSteerReport,
 		LaneSteerRequest, RunOnceRequest, ServeRequest,
 	},
 	prelude::{Result, eyre},
@@ -62,9 +63,9 @@ impl Cli {
 			Command::Commit(args) => args.run(),
 			Command::Land(args) => args.run(),
 			Command::Run(args) => args.run(),
-			Command::Lane(args) => args.run(),
 			Command::Serve(args) => args.run(),
 			Command::Project(args) => args.run(),
+			Command::Lane(args) => args.run(),
 			Command::Status(args) => args.run(),
 			Command::Diagnose(args) => args.run(),
 			Command::Evidence(args) => args.run(),
@@ -321,72 +322,6 @@ impl RunCommand {
 }
 
 #[derive(Debug, Args)]
-struct LaneCommand {
-	#[command(subcommand)]
-	command: LaneSubcommand,
-}
-impl LaneCommand {
-	fn run(&self) -> Result<()> {
-		match &self.command {
-			LaneSubcommand::Steer(args) => args.run(),
-		}
-	}
-}
-
-#[derive(Debug, Args)]
-struct LaneSteerCommand {
-	#[command(flatten)]
-	project_config: ProjectConfigArgs,
-	/// Issue identifier or local issue id for the active lane.
-	#[arg(value_name = "ISSUE")]
-	issue: String,
-	/// Run id that must own the active turn.
-	#[arg(long, value_name = "RUN_ID")]
-	run_id: String,
-	/// Current active app-server turn id precondition.
-	#[arg(long, value_name = "TURN_ID")]
-	expected_turn_id: String,
-	/// Operator-supplied steer text to send to the active turn.
-	#[arg(long, value_name = "TEXT")]
-	message: String,
-	/// Emit structured JSON instead of human-readable text.
-	#[arg(long)]
-	json: bool,
-	/// How long to wait for the active attempt to report delivery.
-	#[arg(long, value_name = "MILLISECONDS", default_value_t = default_lane_steer_wait_timeout_ms())]
-	wait_timeout_ms: u64,
-}
-impl LaneSteerCommand {
-	fn run(&self) -> Result<()> {
-		let report = orchestrator::steer_lane(LaneSteerRequest {
-			config_path: self.project_config.as_path(),
-			project_id: None,
-			issue: &self.issue,
-			run_id: &self.run_id,
-			expected_turn_id: &self.expected_turn_id,
-			message: &self.message,
-			source: "cli",
-			wait_timeout: Duration::from_millis(self.wait_timeout_ms),
-		})?;
-
-		if self.json {
-			println!("{}", serde_json::to_string_pretty(&report)?);
-		} else {
-			print!("{}", render_lane_steer_report(&report));
-		}
-		if lane_steer_report_is_failure(&report) {
-			eyre::bail!(
-				"lane steer {}: {}",
-				report.outcome,
-				report.failure_class.as_deref().unwrap_or(&report.reason)
-			);
-		}
-
-		Ok(())
-	}
-}
-
-#[derive(Debug, Args)]
 struct ServeCommand {
 	#[command(flatten)]
 	project_config: ProjectConfigArgs,
@@ -486,6 +421,120 @@ struct ProjectToggleCommand {
 	/// Project service id from the registered Decodex config.
 	#[arg(value_name = "SERVICE_ID")]
 	service_id: String,
+}
+
+#[derive(Debug, Args)]
+struct LaneCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
+	#[command(subcommand)]
+	command: LaneSubcommand,
+}
+impl LaneCommand {
+	fn run(&self) -> Result<()> {
+		match &self.command {
+			LaneSubcommand::Inspect(args) => orchestrator::print_lane_inspect(LaneInspectRequest {
+				config_path: self.project_config.as_path(),
+				issue: &args.issue,
+				run_id: args.run_id.as_deref(),
+				json: args.json,
+			}),
+			LaneSubcommand::Interrupt(args) => orchestrator::interrupt_lane(LaneInterruptRequest {
+				config_path: self.project_config.as_path(),
+				issue: &args.issue,
+				run_id: &args.run_id,
+				force: args.force,
+				reason: args.reason.as_deref(),
+				json: args.json,
+				source: "cli",
+			})
+			.map(|_report| ()),
+			LaneSubcommand::Steer(args) => args.run(self.project_config.as_path()),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct LaneInspectCommand {
+	/// Issue identifier or local issue id to inspect.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Restrict inspection to one run id.
+	#[arg(long, value_name = "RUN_ID")]
+	run_id: Option<String>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct LaneInterruptCommand {
+	/// Issue identifier or local issue id to interrupt.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Run id for the active app-server turn to interrupt.
+	#[arg(long, value_name = "RUN_ID")]
+	run_id: String,
+	/// Use hard process-kill fallback when soft interrupt is unavailable or fails.
+	#[arg(long)]
+	force: bool,
+	/// Operator-visible reason retained in local private evidence.
+	#[arg(long, value_name = "TEXT")]
+	reason: Option<String>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct LaneSteerCommand {
+	/// Issue identifier or local issue id for the active lane.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Run id that must own the active turn.
+	#[arg(long, value_name = "RUN_ID")]
+	run_id: String,
+	/// Current active app-server turn id precondition.
+	#[arg(long, value_name = "TURN_ID")]
+	expected_turn_id: String,
+	/// Operator-supplied steer text to send to the active turn.
+	#[arg(long, value_name = "TEXT")]
+	message: String,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+	/// How long to wait for the active attempt to report delivery.
+	#[arg(long, value_name = "MILLISECONDS", default_value_t = default_lane_steer_wait_timeout_ms())]
+	wait_timeout_ms: u64,
+}
+impl LaneSteerCommand {
+	fn run(&self, config_path: Option<&Path>) -> Result<()> {
+		let report = orchestrator::steer_lane(LaneSteerRequest {
+			config_path,
+			project_id: None,
+			issue: &self.issue,
+			run_id: &self.run_id,
+			expected_turn_id: &self.expected_turn_id,
+			message: &self.message,
+			source: "cli",
+			wait_timeout: Duration::from_millis(self.wait_timeout_ms),
+		})?;
+
+		if self.json {
+			println!("{}", serde_json::to_string_pretty(&report)?);
+		} else {
+			print!("{}", render_lane_steer_report(&report));
+		}
+		if lane_steer_report_is_failure(&report) {
+			eyre::bail!(
+				"lane steer {}: {}",
+				report.outcome,
+				report.failure_class.as_deref().unwrap_or(&report.reason)
+			);
+		}
+
+		Ok(())
+	}
 }
 
 #[derive(Debug, Args)]
@@ -1257,12 +1306,12 @@ enum Command {
 	Land(LandCommand),
 	/// Run one orchestration pass.
 	Run(RunCommand),
-	/// Inspect or influence active Decodex lanes through audited controls.
-	Lane(LaneCommand),
 	/// Run the local multi-project Decodex control plane.
 	Serve(ServeCommand),
 	/// Manage the local Decodex project registry.
 	Project(ProjectCommand),
+	/// Inspect or influence a local lane.
+	Lane(LaneCommand),
 	/// Inspect the current local runtime state for one configured project.
 	Status(StatusCommand),
 	/// Write and print the agent-readable local evidence index.
@@ -1320,6 +1369,10 @@ enum ProjectSubcommand {
 
 #[derive(Debug, Subcommand)]
 enum LaneSubcommand {
+	/// Inspect one local lane by issue identifier or tracker issue id.
+	Inspect(LaneInspectCommand),
+	/// Soft-interrupt an active app-server turn, with optional hard fallback.
+	Interrupt(LaneInterruptCommand),
 	/// Send operator-supplied text to an active steerable turn.
 	Steer(LaneSteerCommand),
 }
@@ -1443,15 +1496,16 @@ mod tests {
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
 		CommitCommand, DiagnoseCommand, EvidenceCommand, LandCommand, LaneCommand,
-		LaneSteerCommand, LaneSubcommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
-		ProjectSubcommand, RadarBackfillReleaseRangeCommand, RadarBundleBuildCommand,
-		RadarBundleCommand, RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand,
-		RadarLedgerCommand, RadarLedgerIngestExistingCommand, RadarLedgerSubcommand,
-		RadarLedgerSummaryCommand, RadarRefreshReleaseDeltaCommand,
-		RadarRefreshUpstreamQueueCommand, RadarRenderSignalCommand, RadarSubcommand,
-		RadarValidateCommand, RecoverCommand, RecoverSubcommand, ReviewHandoffDiagnoseCommand,
-		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
-		RunCommand, ServeCommand, StatusCommand,
+		LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand, LaneSubcommand, ProbeCommand,
+		ProjectCommand, ProjectConfigArgs, ProjectSubcommand, RadarBackfillReleaseRangeCommand,
+		RadarBundleBuildCommand, RadarBundleCommand, RadarBundleSubcommand,
+		RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
+		RadarLedgerIngestExistingCommand, RadarLedgerSubcommand, RadarLedgerSummaryCommand,
+		RadarRefreshReleaseDeltaCommand, RadarRefreshUpstreamQueueCommand,
+		RadarRenderSignalCommand, RadarSubcommand, RadarValidateCommand, RecoverCommand,
+		RecoverSubcommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
+		ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand,
+		StatusCommand,
 	};
 
 	#[test]
@@ -1584,44 +1638,6 @@ mod tests {
 
 		assert!(error.to_string().contains("--explain"));
 		assert!(error.to_string().contains("[ISSUE]"));
-	}
-
-	#[test]
-	fn parses_lane_steer_with_expected_turn_precondition() {
-		let cli = Cli::parse_from([
-			"decodex",
-			"lane",
-			"steer",
-			"--config",
-			"./project.toml",
-			"XY-704",
-			"--run-id",
-			"run-1",
-			"--expected-turn-id",
-			"turn-1",
-			"--message",
-			"adjust the current implementation",
-			"--json",
-		]);
-
-		assert!(matches!(
-			cli.command,
-			Command::Lane(LaneCommand {
-				command: LaneSubcommand::Steer(LaneSteerCommand {
-					project_config: ProjectConfigArgs { config: Some(config) },
-					issue,
-					run_id,
-					expected_turn_id,
-					message,
-					json: true,
-					..
-				})
-			}) if config == Path::new("./project.toml")
-				&& issue == "XY-704"
-				&& run_id == "run-1"
-				&& expected_turn_id == "turn-1"
-				&& message == "adjust the current implementation"
-		));
 	}
 
 	#[test]
@@ -2038,6 +2054,108 @@ mod tests {
 				json: true,
 				limit: 5,
 			}) if config == Path::new("./project.toml")
+		));
+	}
+
+	#[test]
+	fn parses_lane_inspect_with_run_id_and_project_config() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"lane",
+			"--config",
+			"./project.toml",
+			"inspect",
+			"XY-703",
+			"--run-id",
+			"xy-703-attempt-1",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Lane(LaneCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command: LaneSubcommand::Inspect(LaneInspectCommand {
+					issue,
+					run_id: Some(run_id),
+					json: true,
+				})
+			}) if config == Path::new("./project.toml")
+				&& issue == "XY-703"
+				&& run_id == "xy-703-attempt-1"
+		));
+	}
+
+	#[test]
+	fn parses_lane_interrupt_with_force_reason_and_project_config() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"lane",
+			"--config",
+			"./project.toml",
+			"interrupt",
+			"XY-703",
+			"--run-id",
+			"xy-703-attempt-1",
+			"--force",
+			"--reason",
+			"operator requested",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Lane(LaneCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command: LaneSubcommand::Interrupt(LaneInterruptCommand {
+					issue,
+					run_id,
+					force: true,
+					reason: Some(reason),
+					json: true,
+				})
+			}) if config == Path::new("./project.toml")
+				&& issue == "XY-703"
+				&& run_id == "xy-703-attempt-1"
+				&& reason == "operator requested"
+		));
+	}
+
+	#[test]
+	fn parses_lane_steer_with_expected_turn_precondition() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"lane",
+			"--config",
+			"./project.toml",
+			"steer",
+			"XY-704",
+			"--run-id",
+			"run-1",
+			"--expected-turn-id",
+			"turn-1",
+			"--message",
+			"adjust the current implementation",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Lane(LaneCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command: LaneSubcommand::Steer(LaneSteerCommand {
+					issue,
+					run_id,
+					expected_turn_id,
+					message,
+					json: true,
+					..
+				})
+			}) if config == Path::new("./project.toml")
+				&& issue == "XY-704"
+				&& run_id == "run-1"
+				&& expected_turn_id == "turn-1"
+				&& message == "adjust the current implementation"
 		));
 	}
 
