@@ -14,6 +14,7 @@ runtime-owned retained-lane lifecycle.
 
 - `README.md` for the current CLI shape.
 - `Makefile.toml` before running repo-native checks.
+- `docs/spec/lane-control.md` before using CLI/API lane controls.
 - `docs/reference/operator-control-plane.md` when interpreting `status` or dashboard
   fields.
 - `docs/runbook/linear-archive-hygiene.md` before archiving old terminal Linear issues.
@@ -58,6 +59,23 @@ cargo run -p decodex --bin decodex -- run <ISSUE>
 
 Before starting a live run, read the `automation` skill and the registered project's
 `WORKFLOW.md`. Treat live `run` as orchestration, not as a status check.
+
+CLI/API lane controls:
+
+- Inspect first with `decodex status`, `decodex status --json`, `decodex diagnose
+  --json`, or `decodex evidence <ISSUE>`.
+- Use `decodex project disable <service-id>` to pause future dispatch for a registered
+  project, and `decodex project enable <service-id>` to resume it.
+- Use `POST /api/linear-scan` to request an intake/status refresh before the next
+  scheduled Linear poll.
+- Use `decodex run <ISSUE>` only for deliberate one-issue automation or retained
+  retry/resume when the lane remains eligible under the registered workflow.
+- When future CLI/API controls expose soft interrupt or steer, prefer soft interrupt
+  over hard process interruption and use steer only with explicit operator-supplied
+  text.
+- Do not use active-lane UI controls, direct runtime DB edits, raw
+  `thread/inject_items`, or tracker-state mutations as substitutes for the lane-control
+  contract.
 
 Manual commit and landing are separate narrow workflows:
 
