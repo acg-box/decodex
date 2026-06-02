@@ -1712,7 +1712,7 @@ mod tests {
 			"--repo",
 			"openai/codex",
 			"--token-env",
-			"GH_API_TOKEN",
+			"GITHUB_TOKEN",
 			"--search-limit",
 			"40",
 		]);
@@ -1730,7 +1730,7 @@ mod tests {
 					}
 				),
 			}) if repo == "openai/codex"
-				&& token_env == "GH_API_TOKEN"
+				&& token_env == "GITHUB_TOKEN"
 				&& queue_out == Path::new("artifacts/github/review-queue/openai-codex-latest.json")
 		));
 	}
@@ -1748,7 +1748,7 @@ mod tests {
 			"--out",
 			"site/src/content/release-deltas/openai-codex-latest.json",
 			"--token-env",
-			"GH_API_TOKEN",
+			"GITHUB_TOKEN",
 		]);
 
 		assert!(matches!(
@@ -1765,7 +1765,7 @@ mod tests {
 					}
 				),
 			}) if repo == "openai/codex"
-				&& token_env == "GH_API_TOKEN"
+				&& token_env == "GITHUB_TOKEN"
 				&& signals_dir == Path::new("site/src/content/signals")
 				&& out == Path::new("site/src/content/release-deltas/openai-codex-latest.json")
 		));

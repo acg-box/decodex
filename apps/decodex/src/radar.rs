@@ -1115,12 +1115,7 @@ pub(crate) fn ledger_summary(
 
 /// Build a deterministic GitHub change bundle and write it to disk.
 pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> crate::prelude::Result<PathBuf> {
-	let token_env = request
-		.token_env
-		.clone()
-		.or_else(routed_token_env)
-		.unwrap_or_else(|| "GITHUB_TOKEN".into());
-	let token = env::var(&token_env).ok().filter(|value| !value.is_empty());
+	let token = github_token(request.token_env.as_deref());
 	let client = GithubClient::new(token.as_deref())?;
 	let bundle = match (request.pr, request.commit.as_deref()) {
 		(Some(pr_number), _) => client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
@@ -2227,11 +2222,16 @@ fn repo_default_branch(api: &GitHubApi, repo: &str) -> crate::prelude::Result<St
 }
 
 fn github_token(token_env: Option<&str>) -> Option<String> {
-	let token_env = token_env
-		.map(str::to_owned)
-		.or_else(routed_token_env)
-		.unwrap_or_else(|| "GITHUB_TOKEN".to_owned());
+	if let Some(token_env) = token_env {
+		return env_token(token_env);
+	}
 
+	routed_token_env()
+		.and_then(|token_env| env_token(&token_env))
+		.or_else(|| env_token("GITHUB_TOKEN"))
+}
+
+fn env_token(token_env: &str) -> Option<String> {
 	env::var(token_env).ok().filter(|token| !token.is_empty())
 }
 
@@ -5511,6 +5511,8 @@ fn known_schemas() -> String {
 #[cfg(test)]
 mod tests {
 	use std::{
+		env,
+		ffi::OsString,
 		fs,
 		path::{Path, PathBuf},
 	};
@@ -5523,6 +5525,41 @@ mod tests {
 		RadarLedgerIngestExistingRequest, RadarRenderSignalRequest, RadarValidateRequest,
 		RefreshKind,
 	};
+
+	struct TestEnvVars {
+		_lock: crate::test_support::TestEnvLockGuard,
+		previous: Vec<(String, Option<OsString>)>,
+	}
+
+	impl TestEnvVars {
+		fn set(vars: &[(&str, Option<&str>)]) -> Self {
+			let lock = crate::test_support::TestEnvVarGuard::lock();
+			let previous = vars
+				.iter()
+				.map(|(key, _)| ((*key).to_owned(), env::var_os(key)))
+				.collect::<Vec<_>>();
+
+			for (key, value) in vars {
+				match value {
+					Some(value) => unsafe { env::set_var(key, value) },
+					None => unsafe { env::remove_var(key) },
+				}
+			}
+
+			Self { _lock: lock, previous }
+		}
+	}
+
+	impl Drop for TestEnvVars {
+		fn drop(&mut self) {
+			for (key, previous) in self.previous.drain(..).rev() {
+				match previous {
+					Some(previous) => unsafe { env::set_var(key, previous) },
+					None => unsafe { env::remove_var(key) },
+				}
+			}
+		}
+	}
 
 	#[test]
 	fn accepts_valid_bundle_and_rejects_missing_commits() {
@@ -5726,6 +5763,27 @@ mod tests {
 		social_post["decision"]["daily_limit"] = serde_json::json!(9);
 
 		assert_errors(&social_post, ["decision.daily_limit must be 8"]);
+	}
+
+	#[test]
+	fn default_github_token_falls_back_to_workflow_token() {
+		let _env = TestEnvVars::set(&[
+			("GITHUB_PAT_X", Some("")),
+			("GITHUB_PAT_Y", Some("")),
+			("GITHUB_TOKEN", Some("workflow-token")),
+		]);
+
+		assert_eq!(super::github_token(None).as_deref(), Some("workflow-token"));
+	}
+
+	#[test]
+	fn explicit_github_token_env_does_not_fall_back_to_workflow_token() {
+		let _env = TestEnvVars::set(&[
+			("DECODEX_TEST_MISSING_RADAR_TOKEN", None),
+			("GITHUB_TOKEN", Some("workflow-token")),
+		]);
+
+		assert_eq!(super::github_token(Some("DECODEX_TEST_MISSING_RADAR_TOKEN")), None);
 	}
 
 	#[test]

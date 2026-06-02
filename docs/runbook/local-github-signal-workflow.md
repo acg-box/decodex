@@ -118,9 +118,9 @@ decodex radar backfill-release-range \
 Use release-range backfill to fill gaps in the accumulated commit/PR analysis before a
 release or prerelease summary. It should supplement continuous commit tracking, not
 replace it. Execute mode is still a Codex automation or local operator path: Rust
-selects the release-window gaps and sequences deterministic Radar commands, while
-`scripts/github/run_codex_analysis.py` remains the read-only Codex AI helper that
-creates validated `analysis_draft` artifacts.
+selects the release-window gaps and sequences deterministic Radar commands, while the
+AI review step follows the repo-local skills and schemas instead of running inside
+GitHub Actions.
 
 The repository already includes a real sample for this flow:
 
@@ -198,5 +198,8 @@ The current Decodex boundary is:
 
 The GitHub Actions paths assume:
 
-- `GITHUB_PAT_Y` is available when you want authenticated GitHub API requests for the routed `y` identity; otherwise the sync falls back to unauthenticated reads for public data
+- `GITHUB_TOKEN: ${{ github.token }}` is exported by the workflow for authenticated
+  GitHub API requests and current-repository pushes.
+- Local operator runs may use the routed `GITHUB_PAT_Y` identity or pass an explicit
+  `--token-env` override when they need a different credential.
 - `cargo make decodex-checks` remains the final gate before a content refresh commit
