@@ -45,7 +45,8 @@ Outputs:
    app update, or changelog entry.
 6. Run final signal drafting with `dev/skills/github-signal/` and save the
    `analysis_draft` JSON under `artifacts/github/analysis/`.
-7. Render the resulting signal entry into `site/src/content/signals/`.
+7. Render the resulting signal entry into `site/src/content/signals/` with
+   `decodex radar render-signal`.
 8. Validate the signal entry shape and collection consistency.
 9. Classify upstream impact when the change may affect Control Plane or Publisher.
 10. Regenerate the release-delta artifact so the homepage compares release windows
@@ -64,25 +65,25 @@ Build a PR-first bundle:
 ```bash
 decodex radar bundle build \
   --repo openai/codex \
-  --pr 15222 \
-  --out artifacts/github/bundles/openai-codex-pr-15222.json
+  --pr 22414 \
+  --out artifacts/github/bundles/openai-codex-pr-22414.json
 ```
 
 Validate the bundle:
 
 ```bash
 decodex radar bundle validate \
-  artifacts/github/bundles/openai-codex-pr-15222.json
+  artifacts/github/bundles/openai-codex-pr-22414.json
 ```
 
-Render a final signal entry from the reviewed bundle plus the local editorial
-draft:
+Render a final signal entry from the reviewed bundle plus the Codex-owned
+`analysis_draft`:
 
 ```bash
-python3 scripts/github/render_signal_entry.py \
-  --bundle artifacts/github/bundles/openai-codex-pr-15222.json \
-  --analysis artifacts/github/analysis/openai-codex-pr-15222.analysis.json \
-  --out site/src/content/signals/openai-codex-pr-15222.json
+decodex radar render-signal \
+  --bundle artifacts/github/bundles/openai-codex-pr-22414.json \
+  --analysis artifacts/github/analysis/openai-codex-pr-22414.analysis.json \
+  --out site/src/content/signals/openai-codex-pr-22414.json
 ```
 
 Validate the published signal entries and the site collection:
@@ -107,7 +108,7 @@ Preview unpublished PRs from a selected release compare range without generating
 content:
 
 ```bash
-python3 scripts/github/backfill_release_range.py \
+decodex radar backfill-release-range \
   --repo openai/codex \
   --stable-tag rust-v0.130.0 \
   --preview-tag rust-v0.131.0-alpha.9 \
@@ -116,13 +117,16 @@ python3 scripts/github/backfill_release_range.py \
 
 Use release-range backfill to fill gaps in the accumulated commit/PR analysis before a
 release or prerelease summary. It should supplement continuous commit tracking, not
-replace it.
+replace it. Execute mode is still a Codex automation or local operator path: Rust
+selects the release-window gaps and sequences deterministic helper boundaries, while
+`scripts/github/run_codex_analysis.py` remains the read-only Codex AI helper that
+creates validated `analysis_draft` artifacts.
 
 The repository already includes a real sample for this flow:
 
-- bundle: `artifacts/github/bundles/openai-codex-pr-15222.json`
-- editorial draft: `artifacts/github/analysis/openai-codex-pr-15222.analysis.json`
-- rendered signal: `site/src/content/signals/openai-codex-pr-15222.json`
+- bundle: `artifacts/github/bundles/openai-codex-pr-22414.json`
+- editorial draft: `artifacts/github/analysis/openai-codex-pr-22414.analysis.json`
+- rendered signal: `site/src/content/signals/openai-codex-pr-22414.json`
 
 Repo-local editorial instruction entrypoint:
 
@@ -184,10 +188,13 @@ The current Decodex boundary is:
 
 - GitHub Actions: deterministic upstream commit discovery, PR mapping, review-queue
   refresh, release-delta refresh, validation, and commit/push of changed metadata.
+  Actions must not run Codex AI analysis, create `analysis_draft`, or execute release
+  backfills that cross that AI boundary.
 - Codex automation: AI source review, compatibility judgment, Publisher judgment,
-  social publication, and any promotion into signal or follow-up artifacts.
+  social publication, `analysis_draft` creation, `decodex radar render-signal`, and
+  any promotion into signal or follow-up artifacts.
 - local operator sessions: manual editorial review, batch backfills, prompt iteration,
-  and public-content audit.
+  `decodex radar backfill-release-range`, and public-content audit.
 
 The GitHub Actions paths assume:
 
