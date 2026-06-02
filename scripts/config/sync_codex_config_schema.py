@@ -16,6 +16,14 @@ SCHEMA_URL = "https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/
 CONFIG_REFERENCE_URL = "https://developers.openai.com/codex/config-reference"
 REPO_HOME = Path(__file__).resolve().parents[2]
 DEFAULT_OUT = REPO_HOME / "site/src/generated/codex-config-features.json"
+REFERENCE_DESCRIPTION_OVERRIDES = {
+    "features.multi_agent_v2": (
+        "Enable MultiAgentV2 collaboration tools (`spawn_agent`, `send_message`, "
+        "`followup_task`, `wait_agent`, `close_agent`, and `list_agents`). PR #25636 "
+        "renamed the v2 trigger-turn tool from legacy `assign_task` to `followup_task`; "
+        "older rollout traces may still mention `assign_task`."
+    )
+}
 REFERENCE_ENTRY_RE = re.compile(
     r"&quot;key&quot;:\[0,&quot;(features\.[^&]+?)&quot;\],"
     r"&quot;type&quot;:\[0,&quot;([^&]+?)&quot;\],"
@@ -69,7 +77,10 @@ def main() -> None:
             "cli_enable_flag": f"--enable {name}",
             "schema_url": args.url,
             "reference_url": CONFIG_REFERENCE_URL,
-            "reference_description": reference_descriptions.get(f"features.{name}"),
+            "reference_description": REFERENCE_DESCRIPTION_OVERRIDES.get(
+                f"features.{name}",
+                reference_descriptions.get(f"features.{name}"),
+            ),
             "github_search_url": f"https://github.com/openai/codex/search?q={quote(f'\"{name}\"')}&type=code",
         }
         for name in sorted(features)
