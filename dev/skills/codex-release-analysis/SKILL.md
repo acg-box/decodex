@@ -16,6 +16,7 @@ Decodex plugin skill.
 - `docs/spec/release-delta.md`
 - `docs/spec/signal-entry.md`
 - `docs/spec/upstream-impact.md`
+- `docs/spec/social-publishing.md`
 - `docs/runbook/local-github-signal-workflow.md`
 - `dev/skills/codex-upstream-triage/SKILL.md`
 - `dev/skills/codex-code-analysis/SKILL.md`
@@ -58,8 +59,8 @@ When the target is an OpenAI Codex release or prerelease:
    code analysis.
 5. Group findings by reader value: useful now, important for Decodex Control Plane,
    deprecated/removed behavior, and watch-only changes.
-6. Draft release or prerelease X reporting only after the summary is grounded in those
-   historical analyses.
+6. Publish release or prerelease X reporting only after the summary is grounded in
+   those historical analyses and passes the daily cap.
 7. Refresh `release_delta/v1` after new signals are rendered so the homepage can map
    the release window to tracked signals.
 
@@ -69,7 +70,7 @@ Use exactly one primary mode:
 
 | Mode | Use when | Output |
 | --- | --- | --- |
-| `release_pulse` | The release headline is the story and evidence is thin. | Short awareness note or social draft. |
+| `release_pulse` | The release headline is the story and evidence is thin. | Short awareness note or social post. |
 | `delta_explainer` | Compare commits map to existing signals or clear PRs. | Refresh existing `release_delta/v1` and summarize the evidence. |
 | `operator_impact` | Release changes app-server, plugins, browser, MCP, permissions, sandbox, hooks, config, auth, or providers. | `upstream_impact/v1` plus possible follow-up issue. |
 | `watch_note` | The release is interesting but evidence is incomplete. | Watch note with caveats. |
@@ -101,4 +102,4 @@ Return:
 
 Promote durable conclusions into existing artifacts only: `upstream_impact/v1`,
 `analysis_draft` plus rendered `signal_entry/v1`, refreshed `release_delta/v1`, or
-`social_post_draft/v1`.
+`social_post/v1`.

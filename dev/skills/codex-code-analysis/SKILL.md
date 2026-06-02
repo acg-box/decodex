@@ -30,7 +30,7 @@ Decodex plugin skill.
 This skill may produce an `upstream_review/v1` when Codex automation is processing the
 continuous review queue. Keep ad hoc manual notes in-session unless they are promoted
 into `upstream_review/v1`, `analysis_draft`, `upstream_impact/v1`, or
-`social_post_draft/v1`.
+`social_post/v1`.
 
 ## Analysis Loop
 
@@ -92,7 +92,7 @@ Return an analysis note that can feed `github-signal`, `codex-release-analysis`,
 - Publisher angle, if any
 - confidence and caveats
 - recommended next artifact: `none`, `analysis_draft` through `github-signal`,
-  `upstream_impact/v1`, or `social_post_draft/v1`
+  `upstream_impact/v1`, or `social_post/v1`
 
 Keep the note shorter than the source patch. Explain the behavior path, not every
 changed file.

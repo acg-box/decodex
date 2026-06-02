@@ -26,7 +26,7 @@ Depends on:
 
 Outputs:
 - A validated signal entry committed to the repo
-- Optional upstream-impact and social-draft artifacts when the change affects Control
+- Optional upstream-impact and social publication artifacts when the change affects Control
   Plane or external publishing
 - A push that allows CI to build and deploy the static site
 
@@ -50,10 +50,10 @@ Outputs:
 9. Classify upstream impact when the change may affect Control Plane or Publisher.
 10. Regenerate the release-delta artifact so the homepage compares release windows
     using the updated signal set.
-11. Draft optional social publishing content only through
+11. Publish optional social content or record a skip/block only through
    [`social-publishing-workflow.md`](./social-publishing-workflow.md).
 12. When upstream publishes a release or prerelease, use `codex-release-analysis` to
-    roll up the accumulated commit/PR analysis into a release summary or X draft.
+    roll up the accumulated commit/PR analysis into a release summary or X post.
 13. Review the rendered content manually in the homepage feed.
 14. Push the content update and let CI build and deploy the static site.
 
@@ -131,7 +131,7 @@ Repo-local editorial instruction entrypoint:
 These entrypoints are for Decodex repository development only. They are incomplete as
 general user-facing skills and must not be packaged with the installable Decodex
 plugin. Today only `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`,
-`upstream_impact/v1`, `release_delta/v1`, and `social_post_draft/v1` are durable
+`upstream_impact/v1`, `release_delta/v1`, and `social_post/v1` are durable
 content contracts for this workflow.
 
 Automated sync entrypoint:
@@ -172,10 +172,10 @@ For the release-delta artifact:
 - use release and prerelease publication time as a summary checkpoint over accumulated
   commit/PR analysis, not as the primary source of truth
 
-For upstream-impact and social-draft artifacts:
+For upstream-impact and social publishing artifacts:
 
 - classify Control Plane implications before creating engineering follow-up work
-- keep social drafts checked in and unposted until approval
+- keep social publication, block, skip, and failure records checked in
 - do not use X engagement as technical evidence
 
 ## CI boundary
@@ -185,11 +185,11 @@ The current Decodex boundary is:
 - GitHub Actions: deterministic upstream commit discovery, PR mapping, review-queue
   refresh, release-delta refresh, validation, and commit/push of changed metadata.
 - Codex automation: AI source review, compatibility judgment, Publisher judgment,
-  social draft generation, and any promotion into signal or follow-up artifacts.
+  social publication, and any promotion into signal or follow-up artifacts.
 - local operator sessions: manual editorial review, batch backfills, prompt iteration,
-  and final approval of public content.
+  and public-content audit.
 
-The hourly GitHub Actions path assumes:
+The GitHub Actions paths assume:
 
 - `GITHUB_PAT_Y` is available when you want authenticated GitHub API requests for the routed `y` identity; otherwise the sync falls back to unauthenticated reads for public data
 - `cargo make decodex-checks` remains the final gate before a content refresh commit
