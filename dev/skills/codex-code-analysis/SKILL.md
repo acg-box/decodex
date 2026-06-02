@@ -14,20 +14,23 @@ Decodex plugin skill.
 ## Read Before Analysis
 
 - `docs/spec/github-change-bundle.md`
+- `docs/spec/upstream-review.md`
 - `docs/spec/upstream-impact.md`
 - `docs/spec/signal-entry.md`
 - `dev/skills/README.md`
 
 ## Inputs
 
-- A `github_change_bundle/v1` under `artifacts/github/bundles/`, or enough GitHub PR or
-  commit evidence to request or create one
+- An `upstream_review_queue/v1` subject, a `github_change_bundle/v1` under
+  `artifacts/github/bundles/`, or enough GitHub PR or commit evidence to request or
+  create one
 - Optional release or changelog context
 - Optional existing Decodex signal, upstream-impact, or release-delta artifacts
 
-This skill does not define a new checked-in artifact. Keep the result in-session
-unless it is promoted into an existing `analysis_draft`, `upstream_impact/v1`, or
-`social_post_draft/v1` contract.
+This skill may produce an `upstream_review/v1` when Codex automation is processing the
+continuous review queue. Keep ad hoc manual notes in-session unless they are promoted
+into `upstream_review/v1`, `analysis_draft`, `upstream_impact/v1`, or
+`social_post_draft/v1`.
 
 ## Analysis Loop
 

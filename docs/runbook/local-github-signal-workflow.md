@@ -1,6 +1,8 @@
 # Local GitHub Signal Workflow
 
-Goal: Define the repeatable workflow for collecting GitHub change bundles, running Codex analysis locally or on a trusted CI runner, validating signal entries, and publishing content to the site.
+Goal: Define the repeatable workflow for collecting upstream Codex evidence, running
+Codex analysis in automation or local sessions, validating signal entries, and
+publishing content to the site.
 
 Read this when:
 - You are preparing the first GitHub-backed Decodex signal entries.
@@ -15,6 +17,7 @@ Inputs:
 Depends on:
 - `docs/reference/workspace-layout.md`
 - `docs/spec/github-change-bundle.md`
+- `docs/spec/upstream-review.md`
 - `docs/spec/signal-entry.md`
 - `docs/spec/release-delta.md`
 - `docs/spec/radar-ledger.md`
@@ -29,16 +32,15 @@ Outputs:
 
 ## Workflow
 
-1. Track upstream Codex commits continuously. Treat each commit as a candidate to
-   understand, then resolve it back to a PR when possible. The sync writes
-   `.decodex/radar.sqlite3` by default so skipped and deferred commits remain
-   traceable without becoming public site entries.
-2. Triage upstream activity with `dev/skills/codex-upstream-triage/` when the
-   candidate is not already chosen by automation or by the operator.
-3. Build a normalized GitHub change bundle under `artifacts/github/bundles/` for
-   selected candidates.
-4. Analyze source behavior with `dev/skills/codex-code-analysis/` as an in-session
-   reasoning pass; do not create a separate checked-in artifact for this pass.
+1. Track upstream Codex commits continuously with `scripts/github/sync_upstream_radar.py`.
+   Treat each commit as an evidence unit, resolve it back to a PR when possible, write
+   `.decodex/radar.sqlite3`, and refresh `upstream_review_queue/v1`.
+2. Let Codex automation consume queued subjects and run
+   `dev/skills/codex-code-analysis/` for each source-backed review.
+3. Build a normalized GitHub change bundle under `artifacts/github/bundles/` when the
+   automation or operator needs full source context for a candidate.
+4. Promote reviewed conclusions into `upstream_impact/v1` when the change may affect
+   Control Plane, Publisher planning, compatibility, or adoption.
 5. Use `dev/skills/codex-release-analysis/` when the source is a release, prerelease,
    app update, or changelog entry.
 6. Run final signal drafting with `dev/skills/github-signal/` and save the
@@ -134,7 +136,7 @@ content contracts for this workflow.
 
 Automated sync entrypoint:
 
-- `scripts/github/sync_latest_signals.py`
+- `scripts/github/sync_upstream_radar.py`
 
 Bootstrap or inspect local historical trace:
 
@@ -180,15 +182,14 @@ For upstream-impact and social-draft artifacts:
 
 The current Decodex boundary is:
 
-- local Codex run: manual editorial review, batch backfills, and prompt iteration
-- deterministic scripts: commit/PR discovery, bundle fetch, Codex analysis execution,
-  render, and validation
-- trusted CI runner: refresh of recent upstream commits plus normal site validation and commit/push of changed content
+- GitHub Actions: deterministic upstream commit discovery, PR mapping, review-queue
+  refresh, release-delta refresh, validation, and commit/push of changed metadata.
+- Codex automation: AI source review, compatibility judgment, Publisher judgment,
+  social draft generation, and any promotion into signal or follow-up artifacts.
+- local operator sessions: manual editorial review, batch backfills, prompt iteration,
+  and final approval of public content.
 
 The hourly GitHub Actions path assumes:
 
-- Codex CLI is installed on the runner
-- a full `auth.json` payload is injected into `CODEX_HOME`
-- `CODEX_AUTH_JSON` is treated as a sensitive secret and never logged
 - `GITHUB_PAT_Y` is available when you want authenticated GitHub API requests for the routed `y` identity; otherwise the sync falls back to unauthenticated reads for public data
 - `cargo make decodex-checks` remains the final gate before a content refresh commit

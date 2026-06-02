@@ -13,6 +13,8 @@ Read this when:
 
 Not this document:
 - The GitHub input bundle schema. Read [`github-change-bundle.md`](./github-change-bundle.md).
+- The upstream review queue and AI review boundary. Read
+  [`upstream-review.md`](./upstream-review.md).
 - The published site signal schema. Read [`signal-entry.md`](./signal-entry.md).
 - The social post draft schema. Read [`social-post-draft.md`](./social-post-draft.md).
 - The operator procedure for publishing. Read
@@ -103,6 +105,8 @@ summary.
 `upstream_impact/v1` is an editorial bridge artifact:
 
 - It may consume `github_change_bundle/v1`.
+- It should normally consume a source-backed `upstream_review/v1` conclusion when the
+  change came from continuous Radar.
 - It may support a `signal_entry/v1`.
 - It may support a `social_post_draft/v1`.
 - It may justify a later Linear issue or implementation brief.

@@ -9,14 +9,17 @@ Current scripts:
 - `backfill_release_range.py`
 - `radar_ledger.py`
 - `run_codex_analysis.py`
-- `sync_latest_signals.py`
+- `sync_upstream_radar.py`
 - `validate_change_bundle.py`
+- `validate_upstream_review.py`
 - `render_signal_entry.py`
 - `validate_signal_entry.py`
 
 Current checked contracts:
 
 - `analysis_draft.schema.json`
+- `upstream_review_queue/v1` is validated by `contracts.py`
+- `upstream_review.schema.json`
 - `release_delta/v1` is validated by `contracts.py`
 - `upstream_impact.schema.json`
 - `social_post_draft.schema.json`
@@ -24,6 +27,7 @@ Current checked contracts:
 Contract ownership:
 
 - input bundle shape: `docs/spec/github-change-bundle.md`
+- upstream review queue and AI review boundary: `docs/spec/upstream-review.md`
 - output signal shape: `docs/spec/signal-entry.md`
 - upstream impact shape: `docs/spec/upstream-impact.md`
 - social post draft shape: `docs/spec/social-post-draft.md`
@@ -45,16 +49,20 @@ python3 scripts/github/validate_signal_entry.py \
   site/src/content/signals/openai-codex-pr-15222.json
 ```
 
-Continuous commit sync:
+Continuous upstream Radar sync:
 
 ```bash
-python3 scripts/github/sync_latest_signals.py \
+python3 scripts/github/sync_upstream_radar.py \
   --repo openai/codex \
-  --search-limit 20 \
-  --max-new-prs 3
+  --search-limit 40
 ```
 
-The sync writes a local SQLite Radar ledger at `.decodex/radar.sqlite3` by default.
+The sync records every observed recent commit in the local SQLite Radar ledger and
+writes `artifacts/github/review-queue/openai-codex-latest.json`. It does not install
+Codex, make AI judgments, render public signals, or refresh social drafts.
+If only `generated_at` would change, the script leaves the existing queue file intact
+to avoid empty hourly commits.
+
 Use `--no-ledger` only for throwaway runs. To bootstrap the ledger from existing
 checked-in artifacts:
 
@@ -72,10 +80,10 @@ python3 scripts/github/backfill_release_range.py \
   --max-prs 3
 ```
 
-These scripts stay deterministic on purpose. Local Codex analysis produces the
-editorial draft JSON consumed by `render_signal_entry.py`. Trusted automation may
-invoke the Codex analysis step as long as `auth.json` is injected into
-`CODEX_HOME` and no credentials are logged or persisted into the repo.
+These scripts stay deterministic on purpose. GitHub Actions may refresh upstream
+queues, release deltas, and validation. Codex automation owns AI review of queued
+subjects and may then promote source-backed conclusions into `upstream_impact/v1`,
+`analysis_draft`, rendered `signal_entry/v1`, or `social_post_draft/v1`.
 
 Repo-local skills under `dev/skills/` are reasoning instructions for the Codex
 analysis step and for manual Radar/Publisher work. They do not introduce extra
