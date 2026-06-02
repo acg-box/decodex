@@ -131,5 +131,5 @@ Write `artifacts/social/x/posts/<yyyy-mm-dd>/<slug>.json` with:
 Run:
 
 ```bash
-python3 scripts/github/validate_social_post.py artifacts/social/x
+decodex radar validate artifacts/social/x
 ```

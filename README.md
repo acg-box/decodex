@@ -61,10 +61,10 @@ runtime.
 - `apps/decodex-app/` owns the native macOS app that manages Decodex
   Codex accounts through the bundled Rust app helper.
 - `site/` owns the Astro static site and checked-in public content.
-- `apps/decodex/src/radar.rs` owns Rust Radar queue, release-delta, and validation
-  commands.
-- `scripts/github/` owns deterministic GitHub bundle, render, validation, backfill,
-  ledger import, and analysis-support scripts.
+- `apps/decodex/src/radar.rs` owns Rust Radar queue, release-delta, bundle, render,
+  validation, backfill, and ledger commands.
+- `scripts/github/` owns the automation-only Codex AI analysis helper and shared
+  schema support for that helper.
 - `artifacts/github/` owns checked-in review queues, upstream reviews, GitHub bundles,
   impact records, and editorial analysis drafts.
 - `artifacts/archive/` owns checked-in recovery manifests for cold Radar batches stored
@@ -79,8 +79,8 @@ runtime.
 
 Runtime authority stays in `apps/decodex/src/`, the registered project contracts under
 `~/.codex/decodex/projects/<service-id>/`, and the governing specs under `docs/spec/`.
-Public site authority stays in `site/`, `scripts/github/`, `artifacts/github/`, and
-the site/content specs.
+Public site authority stays in `site/`, `apps/decodex/src/radar.rs`,
+`artifacts/github/`, and the site/content specs.
 
 Historical Radar trace is local by default. `decodex radar refresh-upstream-queue`
 writes `.decodex/radar.sqlite3` and refreshes `upstream_review_queue/v1` so every
@@ -215,7 +215,8 @@ Codex automation reviews source evidence:
 - `docs/spec/upstream-impact.md` records how upstream Codex changes are classified for
   public signals and Control Plane follow-up work.
 - `decodex radar render-signal` renders reviewed analysis drafts into site content.
-- `scripts/github/validate_signal_entry.py` validates the published signal collection.
+- `decodex radar validate` validates the published signal collection and checked Radar
+  artifact contracts.
 - `decodex radar refresh-upstream-queue`, `decodex radar refresh-release-delta`,
   `decodex radar bundle validate`, `decodex radar ledger ...`, `decodex radar
   render-signal`, `decodex radar backfill-release-range`, and `decodex radar

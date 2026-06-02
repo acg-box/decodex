@@ -94,7 +94,7 @@ for technical claims.
    - Run:
 
 ```bash
-python3 scripts/github/validate_social_post.py artifacts/social/x
+decodex radar validate artifacts/social/x
 ```
 
 ## Mode Guidance
