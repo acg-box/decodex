@@ -33,6 +33,10 @@ The canonical schema identifier is:
 
 - `release_delta/v1`
 
+Rust refresh entrypoint:
+
+- `decodex radar refresh-release-delta`
+
 ## Required fields
 
 | Field | Type | Notes |

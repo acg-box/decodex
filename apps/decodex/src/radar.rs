@@ -1,10 +1,10 @@
 //! Rust-owned Radar artifact contracts and file validation.
 
 use std::{
-	collections::{BTreeMap, BTreeSet},
+	collections::{BTreeMap, BTreeSet, HashSet},
 	env,
 	fmt::{self, Display, Formatter},
-	fs,
+	fs, iter,
 	path::{Path, PathBuf},
 	process::{self, Command},
 	sync::OnceLock,
@@ -12,11 +12,11 @@ use std::{
 	time::Duration,
 };
 
-use regex::{Error, Regex};
+use regex::Regex;
 use reqwest::{
 	StatusCode,
 	blocking::Client,
-	header::{ACCEPT, HeaderMap, LINK, USER_AGENT},
+	header::{ACCEPT, AUTHORIZATION, HeaderMap, LINK, USER_AGENT},
 };
 use rusqlite::{self, Connection, OptionalExtension as _};
 use serde::Serialize;
@@ -24,10 +24,19 @@ use serde_json::{self, Map, Value};
 use sha2::{Digest as _, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::prelude::eyre;
+use crate::prelude::eyre::{self, Report};
 
 const BUNDLE_SCHEMA: &str = "github_change_bundle/v1";
 const DEFAULT_LEDGER_PATH: &str = ".decodex/radar.sqlite3";
+const DEFAULT_MIN_STABLE_TAG: &str = "rust-v0.116.0";
+const DEFAULT_PAIR_LIMIT: usize = 24;
+const DEFAULT_PREVIEW_LIMIT: usize = 0;
+const DEFAULT_QUEUE_OUT: &str = "artifacts/github/review-queue/openai-codex-latest.json";
+const DEFAULT_RELEASE_DELTA_OUT: &str = "site/src/content/release-deltas/openai-codex-latest.json";
+const DEFAULT_SEARCH_LIMIT: usize = 40;
+const DEFAULT_SIGNALS_DIR: &str = "site/src/content/signals";
+const DEFAULT_STABLE_LIMIT: usize = 0;
+const DEFAULT_TAG_PREFIX: &str = "rust-v";
 const RELEASE_DELTA_SCHEMA: &str = "release_delta/v1";
 const SCHEMA_VERSION: i64 = 2;
 const SIGNAL_SCHEMA: &str = "signal_entry/v1";
@@ -75,6 +84,59 @@ const GENERIC_COMMIT_TITLES: &[&str] =
 const CONFIG_FEATURE_CATALOG_PATH: &str = "site/src/generated/codex-config-features.json";
 const BUILD_RELEASE_DELTA_SCRIPT: &str = "scripts/github/build_release_delta.py";
 const RUN_CODEX_ANALYSIS_SCRIPT: &str = "scripts/github/run_codex_analysis.py";
+const HIGH_VALUE_SURFACES: &[&str] = &[
+	"app_server_protocol",
+	"mcp_plugins",
+	"browser_chrome",
+	"sandbox_permissions",
+	"config_hooks",
+	"auth_accounts",
+	"model_provider",
+];
+const ATTENTION_RULES: &[(&str, &[&str])] = &[
+	(
+		"new_feature",
+		&["feat", "feature", "add ", "adds ", "support", "enable", "implement", "introduce"],
+	),
+	("deprecated_removed", &["deprecat", "remove", "removed", "delete", "disable", "no longer"]),
+	(
+		"protocol_change",
+		&[
+			"protocol",
+			"schema",
+			"api",
+			"json-rpc",
+			"jsonrpc",
+			"notification",
+			"request",
+			"response",
+		],
+	),
+	("breaking_change", &["breaking", "break ", "rename", "migration", "incompat", "no longer"]),
+	(
+		"security_policy",
+		&["sandbox", "permission", "approval", "full access", "network", "denylist", "allowlist"],
+	),
+	("rate_limit", &["rate limit", "ratelimit", "quota", "usage limit", "message cap"]),
+	("auth_account", &["auth", "account", "login", "token"]),
+	("release_packaging", &["release", "appcast", "sparkle", "beta", "version"]),
+];
+const SURFACE_RULES: &[(&str, &[&str])] = &[
+	("app_server_protocol", &["app-server", "app_server", "protocol", "jsonrpc", "json-rpc"]),
+	("mcp_plugins", &["mcp", "plugin", "tool-search", "tool_search"]),
+	("browser_chrome", &["browser", "chrome", "webview"]),
+	(
+		"sandbox_permissions",
+		&["sandbox", "permission", "approval", "policy", "denylist", "allowlist"],
+	),
+	("config_hooks", &["config", "hook", "settings", "toml"]),
+	("auth_accounts", &["auth", "account", "login", "token"]),
+	("model_provider", &["model", "provider", "rate-limit", "ratelimit", "quota"]),
+	("cli_tui", &["cli", "tui", "terminal", "chatwidget"]),
+	("release_packaging", &["release", "appcast", "sparkle", "version", "install", "package"]),
+	("docs_examples", &["docs/", "readme", "example"]),
+	("tests_ci", &["test", "tests", ".github", "ci", "fixture"]),
+];
 const REVIEW_STATUSES: &[&str] =
 	&["archived", "control_plane", "deprecated", "seen", "signal", "skipped", "social", "watch"];
 const ARTIFACT_KINDS: &[&str] = &[
@@ -90,6 +152,8 @@ const ARTIFACT_KINDS: &[&str] = &[
 const GITHUB_REQUEST_ATTEMPTS: usize = 4;
 const GITHUB_REQUEST_BACKOFF_SECONDS: u64 = 1;
 const GITHUB_REQUEST_TIMEOUT_SECONDS: u64 = 30;
+const GITHUB_REQUEST_BACKOFF: Duration = Duration::from_secs(1);
+const GITHUB_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const RETRYABLE_GITHUB_STATUS_CODES: &[StatusCode] = &[
 	StatusCode::TOO_MANY_REQUESTS,
 	StatusCode::INTERNAL_SERVER_ERROR,
@@ -103,6 +167,114 @@ const RETRYABLE_GITHUB_STATUS_CODES: &[StatusCode] = &[
 pub(crate) struct RadarValidateRequest {
 	/// Explicit files or directories to validate. Defaults to current checked Radar collections.
 	pub(crate) paths: Vec<PathBuf>,
+}
+
+/// Request to refresh the deterministic upstream Radar review queue.
+#[derive(Debug)]
+pub(crate) struct RadarRefreshQueueRequest {
+	/// GitHub repository in owner/name form.
+	pub(crate) repo: String,
+	/// How many recent upstream commits to inspect.
+	pub(crate) search_limit: usize,
+	/// Published signal directory used to suppress already-published subjects.
+	pub(crate) signals_dir: PathBuf,
+	/// Queue artifact output path.
+	pub(crate) queue_out: PathBuf,
+	/// Environment variable containing a GitHub token.
+	pub(crate) token_env: Option<String>,
+	/// Local Radar ledger path.
+	pub(crate) ledger: PathBuf,
+	/// Disable local Radar ledger writes.
+	pub(crate) no_ledger: bool,
+	/// Print the generated queue without writing the artifact.
+	pub(crate) dry_run: bool,
+}
+impl Default for RadarRefreshQueueRequest {
+	fn default() -> Self {
+		Self {
+			repo: "openai/codex".to_owned(),
+			search_limit: DEFAULT_SEARCH_LIMIT,
+			signals_dir: PathBuf::from(DEFAULT_SIGNALS_DIR),
+			queue_out: PathBuf::from(DEFAULT_QUEUE_OUT),
+			token_env: None,
+			ledger: PathBuf::from(DEFAULT_LEDGER_PATH),
+			no_ledger: false,
+			dry_run: false,
+		}
+	}
+}
+
+/// Summary of an upstream Radar review queue refresh.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct RadarRefreshQueueReport {
+	/// Whether the checked-in queue artifact was rewritten.
+	pub(crate) changed: bool,
+	/// Number of recent commits scanned.
+	pub(crate) recent_commits_scanned: usize,
+	/// Number of scanned subjects already covered by published signals.
+	pub(crate) published_subjects_seen: usize,
+	/// Number of subjects queued for AI review.
+	pub(crate) subjects_queued: usize,
+	/// Whether local ledger writes were enabled.
+	pub(crate) ledger_enabled: bool,
+	/// Queue artifact path that was written or compared.
+	pub(crate) queue_out: PathBuf,
+}
+
+/// Request to refresh the stable-versus-prerelease release-delta artifact.
+#[derive(Debug)]
+pub(crate) struct RadarRefreshReleaseDeltaRequest {
+	/// GitHub repository in owner/name form.
+	pub(crate) repo: String,
+	/// Published signal directory used to map compare commits to signal slugs.
+	pub(crate) signals_dir: PathBuf,
+	/// Release-delta artifact output path.
+	pub(crate) out: PathBuf,
+	/// Release tag prefix to scope the tracked channel.
+	pub(crate) tag_prefix: String,
+	/// Environment variable containing a GitHub token.
+	pub(crate) token_env: Option<String>,
+	/// Maximum recent stable releases to include. Zero means all releases at or above the floor.
+	pub(crate) stable_limit: usize,
+	/// Maximum recent prereleases to include. Zero means all supported prereleases.
+	pub(crate) preview_limit: usize,
+	/// Maximum signal-bearing compare entries. Zero means all valid pairs.
+	pub(crate) pair_limit: usize,
+	/// Minimum stable tag included in comparator options.
+	pub(crate) min_stable_tag: String,
+	/// Print the generated release delta without writing the artifact.
+	pub(crate) dry_run: bool,
+}
+impl Default for RadarRefreshReleaseDeltaRequest {
+	fn default() -> Self {
+		Self {
+			repo: "openai/codex".to_owned(),
+			signals_dir: PathBuf::from(DEFAULT_SIGNALS_DIR),
+			out: PathBuf::from(DEFAULT_RELEASE_DELTA_OUT),
+			tag_prefix: DEFAULT_TAG_PREFIX.to_owned(),
+			token_env: None,
+			stable_limit: DEFAULT_STABLE_LIMIT,
+			preview_limit: DEFAULT_PREVIEW_LIMIT,
+			pair_limit: DEFAULT_PAIR_LIMIT,
+			min_stable_tag: DEFAULT_MIN_STABLE_TAG.to_owned(),
+			dry_run: false,
+		}
+	}
+}
+
+/// Summary of a release-delta refresh.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct RadarRefreshReleaseDeltaReport {
+	/// Whether the checked-in release-delta artifact was rewritten.
+	pub(crate) changed: bool,
+	/// Stable release selected for the default comparison.
+	pub(crate) stable_tag_name: String,
+	/// Prerelease selected for the default comparison.
+	pub(crate) prerelease_tag_name: String,
+	/// Number of precomputed comparison entries.
+	pub(crate) comparisons: usize,
+	/// Release-delta artifact path that was written or compared.
+	pub(crate) out: PathBuf,
 }
 
 /// Request to initialize the local Radar SQLite ledger.
@@ -323,6 +495,245 @@ struct BackfillPaths {
 	signal: PathBuf,
 }
 
+struct RecentCommit {
+	sha: String,
+	title: String,
+	url: String,
+	committed_at: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct BundleFile {
+	path: String,
+	patch_excerpt: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct BundleCommit {
+	sha: String,
+	message: String,
+}
+
+#[derive(Clone, Debug)]
+struct BundlePr {
+	number: u64,
+	title: String,
+	body: String,
+	state: String,
+	url: String,
+}
+
+#[derive(Clone, Debug)]
+struct SourceBundle {
+	primary_pr: Option<BundlePr>,
+	commits: Vec<BundleCommit>,
+	files: Vec<BundleFile>,
+}
+
+#[derive(Debug)]
+struct QueueBuild {
+	queue: Value,
+	ledger_enabled: bool,
+}
+
+#[derive(Clone, Debug)]
+struct ReleasePair {
+	stable: Value,
+	preview: Value,
+}
+
+#[derive(Debug)]
+struct GitHubApi {
+	client: Client,
+	token: Option<String>,
+}
+impl GitHubApi {
+	fn new(token: Option<String>) -> crate::prelude::Result<Self> {
+		Ok(Self { client: Client::builder().timeout(GITHUB_REQUEST_TIMEOUT).build()?, token })
+	}
+
+	fn get(&self, url: &str) -> crate::prelude::Result<GitHubResponse> {
+		for attempt in 1..=GITHUB_REQUEST_ATTEMPTS {
+			match self.try_get(url) {
+				Ok(response) => return Ok(response),
+				Err(error) if attempt < GITHUB_REQUEST_ATTEMPTS && error.is_retryable() => {
+					thread::sleep(GITHUB_REQUEST_BACKOFF * attempt as u32);
+				},
+				Err(error) => return Err(error.into_report(url)),
+			}
+		}
+
+		eyre::bail!("GitHub API request failed for {url}: exhausted retry loop")
+	}
+
+	fn get_paginated(&self, url: &str) -> crate::prelude::Result<Vec<Value>> {
+		let mut items = Vec::new();
+		let mut next_url = Some(url.to_owned());
+
+		while let Some(url) = next_url {
+			let response = self.get(&url)?;
+			let Some(page_items) = response.payload.as_array() else {
+				eyre::bail!("Expected list payload from {url}");
+			};
+
+			items.extend(page_items.iter().cloned());
+
+			next_url = response.next_url;
+		}
+
+		Ok(items)
+	}
+
+	fn try_get(&self, url: &str) -> std::result::Result<GitHubResponse, GitHubError> {
+		let mut request = self
+			.client
+			.get(url)
+			.header(ACCEPT, "application/vnd.github+json")
+			.header(USER_AGENT, "decodex-radar");
+
+		if let Some(token) = &self.token {
+			request = request.header(AUTHORIZATION, format!("Bearer {token}"));
+		}
+
+		let response = request.send().map_err(GitHubError::Transport)?;
+		let status = response.status();
+		let next_url = parse_next_link_headers(response.headers());
+
+		if !status.is_success() {
+			let body = response
+				.text()
+				.unwrap_or_else(|error| format!("failed to read response body: {error}"));
+
+			return Err(GitHubError::Status { status, body });
+		}
+
+		let payload = response.json::<Value>().map_err(GitHubError::Transport)?;
+
+		Ok(GitHubResponse { payload, next_url })
+	}
+}
+
+#[derive(Debug)]
+struct GitHubResponse {
+	payload: Value,
+	next_url: Option<String>,
+}
+
+#[derive(Debug)]
+struct RadarLedger {
+	connection: Connection,
+}
+impl RadarLedger {
+	fn open(path: &Path) -> crate::prelude::Result<Self> {
+		if let Some(parent) = path.parent() {
+			fs::create_dir_all(parent)?;
+		}
+
+		let connection = Connection::open(path)?;
+
+		initialize_ledger(&connection)?;
+
+		connection.execute_batch("BEGIN IMMEDIATE")?;
+
+		Ok(Self { connection })
+	}
+
+	fn record_commit(
+		&mut self,
+		repo: &str,
+		commit: &RecentCommit,
+		pr_number: Option<u64>,
+	) -> crate::prelude::Result<()> {
+		let timestamp = utc_now_iso()?;
+
+		self.connection.execute(
+			"
+			INSERT INTO upstream_commit (
+			  repo,
+			  sha,
+			  title,
+			  url,
+			  committed_at,
+			  pr_number,
+			  first_seen_at,
+			  last_seen_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(repo, sha) DO UPDATE SET
+			  title = excluded.title,
+			  url = excluded.url,
+			  committed_at = COALESCE(excluded.committed_at, upstream_commit.committed_at),
+			  pr_number = COALESCE(excluded.pr_number, upstream_commit.pr_number),
+			  last_seen_at = excluded.last_seen_at
+			",
+			rusqlite::params![
+				repo,
+				&commit.sha,
+				&commit.title,
+				&commit.url,
+				&commit.committed_at,
+				pr_number.and_then(|number| i64::try_from(number).ok()),
+				timestamp,
+				timestamp,
+			],
+		)?;
+
+		Ok(())
+	}
+
+	fn record_review(
+		&mut self,
+		repo: &str,
+		subject_kind: &str,
+		subject_id: &str,
+		status: &str,
+		reason: &str,
+		confidence: Option<&str>,
+	) -> crate::prelude::Result<()> {
+		let timestamp = utc_now_iso()?;
+
+		self.connection.execute(
+			"
+			INSERT INTO radar_review (
+			  repo,
+			  subject_kind,
+			  subject_id,
+			  status,
+			  reason,
+			  confidence,
+			  reviewed_at,
+			  updated_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(repo, subject_kind, subject_id) DO UPDATE SET
+			  status = excluded.status,
+			  reason = excluded.reason,
+			  confidence = excluded.confidence,
+			  reviewed_at = excluded.reviewed_at,
+			  updated_at = excluded.updated_at
+			",
+			rusqlite::params![
+				repo,
+				subject_kind,
+				subject_id,
+				status,
+				reason,
+				confidence,
+				&timestamp,
+				&timestamp,
+			],
+		)?;
+
+		Ok(())
+	}
+
+	fn commit(&mut self) -> crate::prelude::Result<()> {
+		self.connection.execute_batch("COMMIT")?;
+
+		Ok(())
+	}
+}
+
 struct CommitInput<'a> {
 	repo: &'a str,
 	sha: &'a str,
@@ -489,6 +900,87 @@ impl GithubClient {
 
 		eyre::bail!("GitHub API request failed for {url}: exhausted retry loop")
 	}
+}
+
+#[derive(Debug)]
+enum RefreshKind {
+	Queue,
+	ReleaseDelta,
+}
+
+#[derive(Debug)]
+enum GitHubError {
+	Status { status: StatusCode, body: String },
+	Transport(reqwest::Error),
+}
+impl GitHubError {
+	fn is_retryable(&self) -> bool {
+		match self {
+			Self::Status { status, .. } => matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504),
+			Self::Transport(error) => error.is_timeout() || error.is_connect(),
+		}
+	}
+
+	fn into_report(self, url: &str) -> Report {
+		match self {
+			Self::Status { status, body } =>
+				eyre::eyre!("GitHub API request failed for {url}: {} {body}", status.as_u16()),
+			Self::Transport(error) => eyre::eyre!("GitHub API request failed for {url}: {error}"),
+		}
+	}
+}
+
+pub(crate) fn refresh_queue(
+	request: &RadarRefreshQueueRequest,
+) -> crate::prelude::Result<RadarRefreshQueueReport> {
+	let root = repo_root()?;
+	let api = GitHubApi::new(github_token(request.token_env.as_deref()))?;
+	let build = build_review_queue(request, &root, &api)?;
+	let errors = validate_artifact_errors(&build.queue);
+
+	if !errors.is_empty() {
+		eyre::bail!("Upstream review queue validation failed:\n- {}", errors.join("\n- "));
+	}
+	if request.dry_run {
+		println!("{}", pretty_json(&build.queue)?);
+
+		return Ok(queue_report(
+			&build.queue,
+			false,
+			build.ledger_enabled,
+			&root,
+			&request.queue_out,
+		));
+	}
+
+	let out = absolute_repo_path(&root, &request.queue_out);
+	let changed = write_json_if_material_changed(&out, &build.queue, RefreshKind::Queue)?;
+
+	Ok(queue_report(&build.queue, changed, build.ledger_enabled, &root, &request.queue_out))
+}
+
+/// Refresh the stable-versus-prerelease release-delta artifact.
+pub(crate) fn refresh_release_delta(
+	request: &RadarRefreshReleaseDeltaRequest,
+) -> crate::prelude::Result<RadarRefreshReleaseDeltaReport> {
+	let root = repo_root()?;
+	let api = GitHubApi::new(github_token(request.token_env.as_deref()))?;
+	let payload = build_release_delta(request, &root, &api)?;
+	let errors = validate_artifact_errors(&payload);
+
+	if !errors.is_empty() {
+		eyre::bail!("Release-delta validation failed:\n- {}", errors.join("\n- "));
+	}
+	if request.dry_run {
+		println!("{}", pretty_json(&payload)?);
+
+		return Ok(release_delta_report(&payload, false, &root, &request.out));
+	}
+
+	let out = absolute_repo_path(&root, &request.out);
+	let changed = write_json_if_material_changed(&out, &payload, RefreshKind::ReleaseDelta)?;
+
+	Ok(release_delta_report(&payload, changed, &root, &request.out))
 }
 
 /// Validate the requested Radar artifact paths.
@@ -785,6 +1277,1002 @@ fn validate_expected_schema(
 	Ok(())
 }
 
+fn build_review_queue(
+	request: &RadarRefreshQueueRequest,
+	root: &Path,
+	api: &GitHubApi,
+) -> crate::prelude::Result<QueueBuild> {
+	let (default_branch, commits) = recent_commits(api, &request.repo, request.search_limit)?;
+	let recent_commits_scanned = commits.len();
+	let (published_prs, published_shas) =
+		published_subjects(&absolute_repo_path(root, &request.signals_dir))?;
+	let ledger_path = ledger_path(root, request);
+	let mut ledger = ledger_path.as_deref().map(RadarLedger::open).transpose()?;
+	let mut subjects = BTreeMap::<(String, String), Value>::new();
+	let mut published_seen = 0_usize;
+
+	for commit in commits {
+		let pr_number = maybe_promote_commit_to_pr(api, &request.repo, &commit.sha)?;
+		let subject_kind = if pr_number.is_some() { "pr" } else { "commit" };
+		let subject_id = pr_number.map_or_else(|| commit.sha.clone(), |number| number.to_string());
+
+		if let Some(ledger) = &mut ledger {
+			ledger.record_commit(&request.repo, &commit, pr_number)?;
+		}
+
+		if published_shas.contains(&commit.sha)
+			|| pr_number.is_some_and(|number| published_prs.contains(&number))
+		{
+			published_seen += 1;
+
+			if let Some(ledger) = &mut ledger {
+				ledger.record_review(
+					&request.repo,
+					subject_kind,
+					&subject_id,
+					"signal",
+					"Already present in published signal collection.",
+					Some("confirmed"),
+				)?;
+			}
+
+			continue;
+		}
+
+		let key = (subject_kind.to_owned(), subject_id.clone());
+
+		if let Some(current) = subjects.get_mut(&key) {
+			append_commit_sha(current, &commit.sha);
+
+			continue;
+		}
+
+		let bundle = match pr_number {
+			Some(number) => build_pr_bundle(api, &request.repo, number)?,
+			None => build_commit_bundle(api, &request.repo, &commit.sha)?,
+		};
+
+		subjects.insert(key, subject_from_bundle(&bundle, subject_kind, &subject_id, &commit));
+
+		if let Some(ledger) = &mut ledger {
+			ledger.record_review(
+				&request.repo,
+				subject_kind,
+				&subject_id,
+				"watch",
+				"Queued for AI upstream review by deterministic Radar sync.",
+				Some("likely"),
+			)?;
+		}
+	}
+
+	if let Some(ledger) = &mut ledger {
+		ledger.commit()?;
+	}
+
+	let ordered_subjects = sort_queue_subjects(subjects.into_values().collect());
+	let queue = review_queue_payload(
+		request,
+		&default_branch,
+		recent_commits_scanned,
+		published_seen,
+		ordered_subjects,
+	)?;
+
+	Ok(QueueBuild { queue, ledger_enabled: !request.no_ledger })
+}
+
+fn build_release_delta(
+	request: &RadarRefreshReleaseDeltaRequest,
+	root: &Path,
+	api: &GitHubApi,
+) -> crate::prelude::Result<Value> {
+	let releases = github_releases(api, &request.repo)?;
+	let stable_release = select_release(&releases, &request.tag_prefix, false)?;
+	let prerelease = select_release(&releases, &request.tag_prefix, true)?;
+	let (stable_releases, preview_releases) = select_release_options(request, &releases)?;
+	let release_pairs = select_release_pairs(
+		request,
+		root,
+		&stable_release,
+		&prerelease,
+		&stable_releases,
+		&preview_releases,
+	)?;
+	let signal_entries =
+		load_signal_entries(&absolute_repo_path(root, &request.signals_dir), &request.repo)?;
+	let mut comparison_entries = Vec::new();
+	let mut default_tracked_signal_slugs = Vec::<String>::new();
+	let mut default_compare_payload = None::<Value>;
+
+	for pair in release_pairs {
+		let is_default_pair = release_tag(&pair.stable) == release_tag(&stable_release)
+			&& release_tag(&pair.preview) == release_tag(&prerelease);
+		let comparison = build_release_comparison(api, request, &pair, &signal_entries)?;
+
+		if is_default_pair {
+			default_compare_payload = comparison.get("compare").cloned();
+			default_tracked_signal_slugs = string_array_from_value(
+				comparison.get("tracked_signal_slugs").unwrap_or(&Value::Null),
+			);
+		}
+
+		comparison_entries.push(comparison);
+
+		if request.pair_limit > 0
+			&& comparison_entries.len() >= request.pair_limit
+			&& default_compare_payload.is_some()
+		{
+			break;
+		}
+	}
+
+	let Some(default_compare_payload) = default_compare_payload else {
+		eyre::bail!("Default stable/prerelease pair was not included in comparison entries");
+	};
+	let (stable_options, preview_options) =
+		filter_release_options(&stable_releases, &preview_releases, &comparison_entries);
+
+	Ok(serde_json::json!({
+		"schema": RELEASE_DELTA_SCHEMA,
+		"repo": request.repo,
+		"tag_prefix": request.tag_prefix,
+		"generated_at": utc_now_iso()?,
+		"stable_release": compact_release(&stable_release)?,
+		"prerelease": compact_release(&prerelease)?,
+		"compare": default_compare_payload,
+		"release_options": {
+			"stable": compact_releases(&stable_options)?,
+			"preview": compact_releases(&preview_options)?,
+		},
+		"comparisons": comparison_entries,
+		"tracked_signal_slugs": default_tracked_signal_slugs,
+	}))
+}
+
+fn review_queue_payload(
+	request: &RadarRefreshQueueRequest,
+	default_branch: &str,
+	recent_commits_scanned: usize,
+	published_seen: usize,
+	subjects: Vec<Value>,
+) -> crate::prelude::Result<Value> {
+	let critical = count_priority(&subjects, "critical");
+	let high = count_priority(&subjects, "high");
+	let normal = count_priority(&subjects, "normal");
+	let low = count_priority(&subjects, "low");
+
+	Ok(serde_json::json!({
+		"schema": UPSTREAM_REVIEW_QUEUE_SCHEMA,
+		"repo": request.repo,
+		"generated_at": utc_now_iso()?,
+		"source": {
+			"default_branch": default_branch,
+			"search_limit": request.search_limit,
+			"signals_dir": request.signals_dir.to_string_lossy(),
+		},
+		"subjects": subjects,
+		"counts": {
+			"recent_commits_scanned": recent_commits_scanned,
+			"published_subjects_seen": published_seen,
+			"subjects_queued": critical + high + normal + low,
+			"critical": critical,
+			"high": high,
+			"normal": normal,
+			"low": low,
+		},
+	}))
+}
+
+fn count_priority(subjects: &[Value], priority: &str) -> usize {
+	subjects
+		.iter()
+		.filter(|subject| {
+			subject
+				.get("review_priority")
+				.and_then(Value::as_str)
+				.is_some_and(|value| value == priority)
+		})
+		.count()
+}
+
+fn recent_commits(
+	api: &GitHubApi,
+	repo: &str,
+	search_limit: usize,
+) -> crate::prelude::Result<(String, Vec<RecentCommit>)> {
+	let default_branch = repo_default_branch(api, repo)?;
+	let url = format!(
+		"https://api.github.com/repos/{repo}/commits?sha={}&per_page={search_limit}",
+		percent_encode(&default_branch)
+	);
+	let payload = api.get(&url)?.payload;
+	let Some(items) = payload.as_array() else {
+		eyre::bail!("Expected commits list payload from GitHub API");
+	};
+	let commits = items.iter().filter_map(recent_commit_from_value).collect::<Vec<_>>();
+
+	Ok((default_branch, commits))
+}
+
+fn recent_commit_from_value(item: &Value) -> Option<RecentCommit> {
+	let commit = item.get("commit")?.as_object()?;
+	let sha = item.get("sha")?.as_str()?.to_owned();
+	let url = item.get("html_url")?.as_str()?.to_owned();
+	let message = commit.get("message")?.as_str()?;
+
+	if message.is_empty() {
+		return None;
+	}
+
+	Some(RecentCommit {
+		sha,
+		title: first_line(message),
+		url,
+		committed_at: commit
+			.get("committer")
+			.and_then(Value::as_object)
+			.and_then(|committer| committer.get("date"))
+			.and_then(Value::as_str)
+			.map(str::to_owned),
+	})
+}
+
+fn published_subjects(
+	signals_dir: &Path,
+) -> crate::prelude::Result<(HashSet<u64>, HashSet<String>)> {
+	let mut published_prs = HashSet::new();
+	let mut published_shas = HashSet::new();
+
+	for path in sorted_json_files(signals_dir)? {
+		let payload = load_json(&path)?;
+
+		validate_signal_file(&path, &payload)?;
+
+		if let Some(pr_number) = payload
+			.get("source_refs")
+			.and_then(|refs| refs.get("pr_url"))
+			.and_then(Value::as_str)
+			.and_then(extract_pr_number_from_url)
+		{
+			published_prs.insert(pr_number);
+		}
+
+		for url in string_array(payload.pointer("/source_refs/commit_urls")) {
+			if let Some(sha) = extract_commit_sha_from_url(&url) {
+				published_shas.insert(sha);
+			}
+		}
+	}
+
+	Ok((published_prs, published_shas))
+}
+
+fn maybe_promote_commit_to_pr(
+	api: &GitHubApi,
+	repo: &str,
+	commit_sha: &str,
+) -> crate::prelude::Result<Option<u64>> {
+	let url = format!("https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls");
+	let pulls = match api.get_paginated(&url) {
+		Ok(pulls) => pulls,
+		Err(_) => return Ok(None),
+	};
+
+	Ok(pulls.first().and_then(|first| first.get("number")).and_then(Value::as_u64))
+}
+
+fn build_pr_bundle(
+	api: &GitHubApi,
+	repo: &str,
+	pr_number: u64,
+) -> crate::prelude::Result<SourceBundle> {
+	let pr = api.get(&format!("https://api.github.com/repos/{repo}/pulls/{pr_number}"))?.payload;
+	let commits = api.get_paginated(&format!(
+		"https://api.github.com/repos/{repo}/pulls/{pr_number}/commits?per_page=100"
+	))?;
+	let files = api.get_paginated(&format!(
+		"https://api.github.com/repos/{repo}/pulls/{pr_number}/files?per_page=100"
+	))?;
+
+	Ok(SourceBundle {
+		primary_pr: Some(BundlePr {
+			number: required_value_u64(&pr, "number")?,
+			title: required_value_string(&pr, "title")?,
+			body: optional_value_string(&pr, "body").unwrap_or_default(),
+			state: if optional_value_string(&pr, "merged_at").is_some() {
+				"merged".to_owned()
+			} else {
+				required_value_string(&pr, "state")?
+			},
+			url: required_value_string(&pr, "html_url")?,
+		}),
+		commits: commits.iter().filter_map(bundle_commit_from_pr_commit).collect(),
+		files: files.iter().filter_map(bundle_file_from_value).collect(),
+	})
+}
+
+fn build_commit_bundle(
+	api: &GitHubApi,
+	repo: &str,
+	commit_sha: &str,
+) -> crate::prelude::Result<SourceBundle> {
+	let commit =
+		api.get(&format!("https://api.github.com/repos/{repo}/commits/{commit_sha}"))?.payload;
+	let files = commit.get("files").and_then(Value::as_array).cloned().unwrap_or_default();
+	let message = commit.pointer("/commit/message").and_then(Value::as_str).unwrap_or_default();
+
+	Ok(SourceBundle {
+		primary_pr: None,
+		commits: vec![BundleCommit {
+			sha: required_value_string(&commit, "sha")?,
+			message: first_line(message),
+		}],
+		files: files.iter().filter_map(bundle_file_from_value).collect(),
+	})
+}
+
+fn bundle_commit_from_pr_commit(item: &Value) -> Option<BundleCommit> {
+	Some(BundleCommit {
+		sha: item.get("sha")?.as_str()?.to_owned(),
+		message: first_line(item.pointer("/commit/message")?.as_str()?),
+	})
+}
+
+fn bundle_file_from_value(item: &Value) -> Option<BundleFile> {
+	Some(BundleFile {
+		path: item.get("filename")?.as_str()?.to_owned(),
+		patch_excerpt: item.get("patch").and_then(Value::as_str).map(truncate_patch_excerpt),
+	})
+}
+
+fn subject_from_bundle(
+	bundle: &SourceBundle,
+	subject_kind: &str,
+	subject_id: &str,
+	seed_commit: &RecentCommit,
+) -> Value {
+	let surface_hints = detect_surface_hints(bundle);
+	let attention_flags = detect_attention_flags(bundle);
+	let mut subject = serde_json::json!({
+		"subject_kind": subject_kind,
+		"subject_id": subject_id,
+		"title": seed_commit.title.clone(),
+		"url": seed_commit.url.clone(),
+		"source_state": "commit_only",
+		"commit_shas": commit_shas(bundle, seed_commit),
+		"committed_at": seed_commit.committed_at.clone(),
+		"changed_file_count": bundle.files.len(),
+		"sample_paths": bundle.files.iter().take(12).map(|file| file.path.clone()).collect::<Vec<_>>(),
+		"surface_hints": surface_hints,
+		"attention_flags": attention_flags,
+		"review_priority": priority_for(&surface_hints, &attention_flags),
+		"review_reason": review_reason(&surface_hints, &attention_flags),
+		"next_step": "ai_review_required",
+	});
+
+	if let Some(primary_pr) = &bundle.primary_pr
+		&& let Some(subject) = subject.as_object_mut()
+	{
+		subject.insert("title".to_owned(), Value::String(primary_pr.title.clone()));
+		subject.insert("url".to_owned(), Value::String(primary_pr.url.clone()));
+		subject.insert("source_state".to_owned(), Value::String(primary_pr.state.clone()));
+		subject.insert("pr_number".to_owned(), Value::from(primary_pr.number));
+		subject.insert("pr_url".to_owned(), Value::String(primary_pr.url.clone()));
+	}
+
+	subject
+}
+
+fn commit_shas(bundle: &SourceBundle, seed_commit: &RecentCommit) -> Vec<String> {
+	let shas = bundle.commits.iter().map(|commit| commit.sha.clone()).collect::<Vec<_>>();
+
+	if shas.is_empty() { vec![seed_commit.sha.clone()] } else { shas }
+}
+
+fn append_commit_sha(subject: &mut Value, sha: &str) {
+	let Some(shas) = subject.get_mut("commit_shas").and_then(Value::as_array_mut) else {
+		return;
+	};
+
+	if !shas.iter().any(|value| value.as_str() == Some(sha)) {
+		shas.push(Value::String(sha.to_owned()));
+	}
+}
+
+fn sort_queue_subjects(mut subjects: Vec<Value>) -> Vec<Value> {
+	subjects.sort_by_key(queue_sort_key);
+
+	subjects
+}
+
+fn queue_sort_key(subject: &Value) -> (u8, String, String, String) {
+	(
+		match subject.get("review_priority").and_then(Value::as_str) {
+			Some("critical") => 0,
+			Some("high") => 1,
+			Some("normal") => 2,
+			Some("low") => 3,
+			_ => 9,
+		},
+		subject.get("committed_at").and_then(Value::as_str).unwrap_or_default().to_owned(),
+		subject.get("subject_kind").and_then(Value::as_str).unwrap_or_default().to_owned(),
+		subject.get("subject_id").and_then(Value::as_str).unwrap_or_default().to_owned(),
+	)
+}
+
+fn detect_surface_hints(bundle: &SourceBundle) -> Vec<String> {
+	let haystack =
+		bundle.files.iter().map(|file| file.path.to_lowercase()).collect::<Vec<_>>().join("\n");
+	let mut hints = SURFACE_RULES
+		.iter()
+		.filter(|(_, terms)| terms.iter().any(|term| haystack.contains(term)))
+		.map(|(surface, _)| (*surface).to_owned())
+		.collect::<Vec<_>>();
+
+	if hints.is_empty() {
+		hints.push("internal_churn".to_owned());
+	}
+
+	hints.sort();
+
+	hints
+}
+
+fn detect_attention_flags(bundle: &SourceBundle) -> Vec<String> {
+	let haystack = text_blob(bundle);
+	let mut flags = ATTENTION_RULES
+		.iter()
+		.filter(|(_, terms)| terms.iter().any(|term| haystack.contains(term)))
+		.map(|(flag, _)| (*flag).to_owned())
+		.collect::<Vec<_>>();
+
+	flags.sort();
+
+	flags
+}
+
+fn text_blob(bundle: &SourceBundle) -> String {
+	let mut parts = Vec::new();
+
+	if let Some(primary_pr) = &bundle.primary_pr {
+		parts.push(primary_pr.title.clone());
+		parts.push(primary_pr.body.clone());
+	}
+
+	parts.extend(bundle.commits.iter().map(|commit| commit.message.clone()));
+	parts.extend(
+		bundle
+			.files
+			.iter()
+			.flat_map(|file| [file.path.clone(), file.patch_excerpt.clone().unwrap_or_default()]),
+	);
+
+	parts.join("\n").to_lowercase()
+}
+
+fn priority_for(surface_hints: &[String], attention_flags: &[String]) -> &'static str {
+	let has_high_surface =
+		surface_hints.iter().any(|surface| HIGH_VALUE_SURFACES.contains(&surface.as_str()));
+	let breaking_or_removed = attention_flags
+		.iter()
+		.any(|flag| matches!(flag.as_str(), "breaking_change" | "deprecated_removed"));
+
+	if breaking_or_removed && has_high_surface {
+		"critical"
+	} else if has_high_surface {
+		"high"
+	} else if attention_flags.iter().any(|flag| {
+		matches!(flag.as_str(), "new_feature" | "protocol_change" | "release_packaging")
+	}) {
+		"normal"
+	} else {
+		"low"
+	}
+}
+
+fn review_reason(surface_hints: &[String], attention_flags: &[String]) -> String {
+	if surface_hints.iter().any(|hint| hint == "internal_churn") && attention_flags.is_empty() {
+		return "Needs AI review because every recent upstream commit is tracked, but deterministic hints found only internal churn.".to_owned();
+	}
+	if !attention_flags.is_empty() {
+		return format!("Needs AI review for {}.", attention_flags.join(", "));
+	}
+
+	format!("Needs AI review for surface hints: {}.", surface_hints.join(", "))
+}
+
+fn github_releases(api: &GitHubApi, repo: &str) -> crate::prelude::Result<Vec<Value>> {
+	let mut releases = Vec::new();
+
+	for page in 1..=5 {
+		let payload = api
+			.get(&format!("https://api.github.com/repos/{repo}/releases?per_page=100&page={page}"))?
+			.payload;
+		let Some(items) = payload.as_array() else {
+			eyre::bail!("Expected releases list payload from GitHub API");
+		};
+		let count = items.len();
+
+		releases.extend(items.iter().cloned());
+
+		if count < 100 {
+			break;
+		}
+	}
+
+	Ok(releases)
+}
+
+fn select_release(
+	releases: &[Value],
+	tag_prefix: &str,
+	prerelease: bool,
+) -> crate::prelude::Result<Value> {
+	releases
+		.iter()
+		.find(|release| {
+			!release.get("draft").and_then(Value::as_bool).unwrap_or(false)
+				&& release_tag(release).is_some_and(|tag| tag.starts_with(tag_prefix))
+				&& release.get("prerelease").and_then(Value::as_bool).unwrap_or(false) == prerelease
+		})
+		.cloned()
+		.ok_or_else(|| {
+			let kind = if prerelease { "prerelease" } else { "stable release" };
+
+			eyre::eyre!("No {kind} found for tag prefix {tag_prefix:?}")
+		})
+}
+
+fn select_release_options(
+	request: &RadarRefreshReleaseDeltaRequest,
+	releases: &[Value],
+) -> crate::prelude::Result<(Vec<Value>, Vec<Value>)> {
+	let min_stable_key = stable_version_key(&request.min_stable_tag, &request.tag_prefix);
+	let mut stable = relevant_releases(releases, &request.tag_prefix)
+		.into_iter()
+		.filter(|release| {
+			!release.get("prerelease").and_then(Value::as_bool).unwrap_or(false)
+				&& release_tag(release).is_some_and(|tag| {
+					stable_version_key(tag, &request.tag_prefix) >= min_stable_key
+				})
+		})
+		.collect::<Vec<_>>();
+	let mut preview = relevant_releases(releases, &request.tag_prefix)
+		.into_iter()
+		.filter(|release| release.get("prerelease").and_then(Value::as_bool).unwrap_or(false))
+		.collect::<Vec<_>>();
+
+	if request.stable_limit > 0 {
+		stable.truncate(request.stable_limit);
+	}
+	if request.preview_limit > 0 {
+		preview.truncate(request.preview_limit);
+	}
+	if stable.is_empty() {
+		eyre::bail!(
+			"No stable releases found for tag prefix {:?} at or above {:?}",
+			request.tag_prefix,
+			request.min_stable_tag
+		);
+	}
+	if preview.is_empty() {
+		eyre::bail!("No prereleases found for tag prefix {:?}", request.tag_prefix);
+	}
+
+	Ok((stable, preview))
+}
+
+fn relevant_releases(releases: &[Value], tag_prefix: &str) -> Vec<Value> {
+	releases
+		.iter()
+		.filter(|release| {
+			!release.get("draft").and_then(Value::as_bool).unwrap_or(false)
+				&& release_tag(release).is_some_and(|tag| tag.starts_with(tag_prefix))
+		})
+		.cloned()
+		.collect()
+}
+
+fn select_release_pairs(
+	request: &RadarRefreshReleaseDeltaRequest,
+	root: &Path,
+	stable_release: &Value,
+	prerelease: &Value,
+	stable_releases: &[Value],
+	preview_releases: &[Value],
+) -> crate::prelude::Result<Vec<ReleasePair>> {
+	let default_pair = ReleasePair { stable: stable_release.clone(), preview: prerelease.clone() };
+	let releases_by_tag = stable_releases
+		.iter()
+		.chain(preview_releases)
+		.filter_map(|release| release_tag(release).map(|tag| (tag.to_owned(), release.clone())))
+		.collect::<BTreeMap<_, _>>();
+	let previous_pairs = previous_signal_pairs(&absolute_repo_path(root, &request.out))?
+		.into_iter()
+		.filter_map(|(stable_tag, preview_tag)| {
+			Some(ReleasePair {
+				stable: releases_by_tag.get(&stable_tag)?.clone(),
+				preview: releases_by_tag.get(&preview_tag)?.clone(),
+			})
+		})
+		.collect::<Vec<_>>();
+
+	if previous_pairs.is_empty() {
+		let mut pairs = vec![default_pair];
+
+		pairs.extend(compare_candidates(stable_releases, preview_releases));
+
+		let mut pairs = unique_release_pairs(pairs);
+
+		if request.pair_limit > 0 {
+			pairs.truncate(request.pair_limit);
+		}
+
+		Ok(pairs)
+	} else {
+		Ok(unique_release_pairs(iter::once(default_pair).chain(previous_pairs).collect()))
+	}
+}
+
+fn compare_candidates(stable_releases: &[Value], preview_releases: &[Value]) -> Vec<ReleasePair> {
+	let mut candidates = stable_releases
+		.iter()
+		.flat_map(|stable| {
+			preview_releases
+				.iter()
+				.filter(move |preview| release_sort_key(preview) > release_sort_key(stable))
+				.map(move |preview| ReleasePair {
+					stable: stable.clone(),
+					preview: preview.clone(),
+				})
+		})
+		.collect::<Vec<_>>();
+
+	candidates.sort_by(|left, right| {
+		(release_sort_key(&right.preview), release_sort_key(&right.stable))
+			.cmp(&(release_sort_key(&left.preview), release_sort_key(&left.stable)))
+	});
+
+	candidates
+}
+
+fn unique_release_pairs(pairs: Vec<ReleasePair>) -> Vec<ReleasePair> {
+	let mut seen = BTreeSet::new();
+	let mut unique = Vec::new();
+
+	for pair in pairs {
+		let Some(stable_tag) = release_tag(&pair.stable) else {
+			continue;
+		};
+		let Some(preview_tag) = release_tag(&pair.preview) else {
+			continue;
+		};
+		let key = (stable_tag.to_owned(), preview_tag.to_owned());
+
+		if seen.insert(key) {
+			unique.push(pair);
+		}
+	}
+
+	unique
+}
+
+fn previous_signal_pairs(path: &Path) -> crate::prelude::Result<Vec<(String, String)>> {
+	if !path.exists() {
+		return Ok(Vec::new());
+	}
+
+	let Ok(previous) = load_json(path) else {
+		return Ok(Vec::new());
+	};
+	let mut keys = Vec::new();
+	let mut seen = BTreeSet::new();
+
+	for comparison in previous.get("comparisons").and_then(Value::as_array).into_iter().flatten() {
+		if string_array(comparison.get("tracked_signal_slugs")).is_empty() {
+			continue;
+		}
+
+		let stable_tag = comparison.get("stable_tag_name").and_then(Value::as_str);
+		let preview_tag = comparison.get("prerelease_tag_name").and_then(Value::as_str);
+		let (Some(stable_tag), Some(preview_tag)) = (stable_tag, preview_tag) else {
+			continue;
+		};
+		let key = (stable_tag.to_owned(), preview_tag.to_owned());
+
+		if seen.insert(key.clone()) {
+			keys.push(key);
+		}
+	}
+
+	Ok(keys)
+}
+
+fn build_release_comparison(
+	api: &GitHubApi,
+	request: &RadarRefreshReleaseDeltaRequest,
+	pair: &ReleasePair,
+	signals: &[Value],
+) -> crate::prelude::Result<Value> {
+	let stable_tag = required_release_tag(&pair.stable)?;
+	let preview_tag = required_release_tag(&pair.preview)?;
+	let compare = api
+		.get(&format!(
+			"https://api.github.com/repos/{}/compare/{stable_tag}...{preview_tag}",
+			request.repo
+		))?
+		.payload;
+	let commits = compare
+		.get("commits")
+		.and_then(Value::as_array)
+		.ok_or_else(|| eyre::eyre!("Expected compare.commits from GitHub API"))?;
+	let commit_shas = commits
+		.iter()
+		.filter_map(|commit| commit.get("sha").and_then(Value::as_str).map(str::to_owned))
+		.collect::<Vec<_>>();
+	let pr_numbers = compare_pr_numbers(commits);
+	let tracked_signal_slugs = tracked_signal_slugs(signals, &commit_shas, &pr_numbers);
+
+	Ok(serde_json::json!({
+		"stable_tag_name": stable_tag,
+		"prerelease_tag_name": preview_tag,
+		"compare": {
+			"status": required_value_string(&compare, "status")?,
+			"ahead_by": required_value_i64(&compare, "ahead_by")?,
+			"total_commits": required_value_i64(&compare, "total_commits")?,
+			"url": required_value_string(&compare, "html_url")?,
+			"commit_shas": commit_shas,
+			"pr_numbers": pr_numbers,
+		},
+		"tracked_signal_slugs": tracked_signal_slugs,
+	}))
+}
+
+fn load_signal_entries(signals_dir: &Path, repo: &str) -> crate::prelude::Result<Vec<Value>> {
+	let mut entries = Vec::new();
+
+	for path in sorted_json_files(signals_dir)? {
+		let payload = load_json(&path)?;
+
+		validate_signal_file(&path, &payload)?;
+
+		if payload.pointer("/source_refs/repo").and_then(Value::as_str) == Some(repo) {
+			entries.push(payload);
+		}
+	}
+
+	Ok(entries)
+}
+
+fn tracked_signal_slugs(
+	signals: &[Value],
+	commit_shas: &[String],
+	pr_numbers: &[u64],
+) -> Vec<String> {
+	let commit_set = commit_shas.iter().map(String::as_str).collect::<HashSet<_>>();
+	let pr_set = pr_numbers.iter().copied().collect::<HashSet<_>>();
+	let mut sorted_signals = signals.iter().collect::<Vec<_>>();
+
+	sorted_signals.sort_by(|left, right| {
+		right
+			.get("published_at")
+			.and_then(Value::as_str)
+			.unwrap_or_default()
+			.cmp(left.get("published_at").and_then(Value::as_str).unwrap_or_default())
+	});
+
+	sorted_signals
+		.into_iter()
+		.filter(|signal| {
+			let signal_shas = signal_commit_shas(signal);
+			let signal_pr = signal_pr_number(signal);
+
+			signal_shas.iter().any(|sha| commit_set.contains(sha.as_str()))
+				|| signal_pr.is_some_and(|number| pr_set.contains(&number))
+		})
+		.filter_map(|signal| signal.get("slug").and_then(Value::as_str).map(str::to_owned))
+		.collect()
+}
+
+fn signal_commit_shas(signal: &Value) -> Vec<String> {
+	string_array(signal.pointer("/source_refs/commit_urls"))
+		.into_iter()
+		.filter_map(|url| extract_commit_sha_from_url(&url))
+		.collect()
+}
+
+fn signal_pr_number(signal: &Value) -> Option<u64> {
+	signal
+		.pointer("/source_refs/pr_url")
+		.and_then(Value::as_str)
+		.and_then(extract_pr_number_from_url)
+}
+
+fn compare_pr_numbers(commits: &[Value]) -> Vec<u64> {
+	let mut numbers = commits
+		.iter()
+		.flat_map(|commit| {
+			commit
+				.pointer("/commit/message")
+				.and_then(Value::as_str)
+				.map(pr_numbers_from_message)
+				.unwrap_or_default()
+		})
+		.collect::<BTreeSet<_>>()
+		.into_iter()
+		.collect::<Vec<_>>();
+
+	numbers.sort();
+
+	numbers
+}
+
+fn pr_numbers_from_message(message: &str) -> Vec<u64> {
+	let mut numbers = Vec::new();
+	let mut rest = message;
+
+	while let Some(start) = rest.find("(#") {
+		let candidate = &rest[start + 2..];
+		let Some(end) = candidate.find(')') else {
+			break;
+		};
+		let digits = &candidate[..end];
+
+		if !digits.is_empty()
+			&& digits.chars().all(|ch| ch.is_ascii_digit())
+			&& let Ok(number) = digits.parse::<u64>()
+		{
+			numbers.push(number);
+		}
+
+		rest = &candidate[end + 1..];
+	}
+
+	numbers
+}
+
+fn filter_release_options(
+	stable_releases: &[Value],
+	preview_releases: &[Value],
+	comparison_entries: &[Value],
+) -> (Vec<Value>, Vec<Value>) {
+	let allowed_stable_tags = comparison_entries
+		.iter()
+		.filter_map(|entry| entry.get("stable_tag_name").and_then(Value::as_str))
+		.collect::<BTreeSet<_>>();
+	let allowed_preview_tags = comparison_entries
+		.iter()
+		.filter_map(|entry| entry.get("prerelease_tag_name").and_then(Value::as_str))
+		.collect::<BTreeSet<_>>();
+	let stable = stable_releases
+		.iter()
+		.filter(|release| release_tag(release).is_some_and(|tag| allowed_stable_tags.contains(tag)))
+		.cloned()
+		.collect();
+	let preview = preview_releases
+		.iter()
+		.filter(|release| {
+			release_tag(release).is_some_and(|tag| allowed_preview_tags.contains(tag))
+		})
+		.cloned()
+		.collect();
+
+	(stable, preview)
+}
+
+fn compact_releases(releases: &[Value]) -> crate::prelude::Result<Vec<Value>> {
+	releases.iter().map(compact_release).collect()
+}
+
+fn compact_release(release: &Value) -> crate::prelude::Result<Value> {
+	let tag_name = required_release_tag(release)?;
+
+	Ok(serde_json::json!({
+		"tag_name": tag_name,
+		"name": optional_value_string(release, "name").unwrap_or_else(|| tag_name.to_owned()),
+		"prerelease": release.get("prerelease").and_then(Value::as_bool).unwrap_or(false),
+		"published_at": required_value_string(release, "published_at")?,
+		"url": required_value_string(release, "html_url")?,
+	}))
+}
+
+fn stable_version_key(tag_name: &str, tag_prefix: &str) -> Vec<u64> {
+	tag_name
+		.strip_prefix(tag_prefix)
+		.unwrap_or(tag_name)
+		.split('.')
+		.map(|part| {
+			let digits = part.chars().filter(|ch| ch.is_ascii_digit()).collect::<String>();
+
+			digits.parse::<u64>().unwrap_or(0)
+		})
+		.collect()
+}
+
+fn release_sort_key(release: &Value) -> &str {
+	release.get("published_at").and_then(Value::as_str).unwrap_or_default()
+}
+
+fn required_release_tag(release: &Value) -> crate::prelude::Result<&str> {
+	release_tag(release).ok_or_else(|| eyre::eyre!("Release payload is missing tag_name"))
+}
+
+fn release_tag(release: &Value) -> Option<&str> {
+	release.get("tag_name").and_then(Value::as_str)
+}
+
+fn parse_next_link_headers(headers: &HeaderMap) -> Option<String> {
+	let header = headers.get(LINK)?.to_str().ok()?;
+
+	header.split(',').find_map(|part| {
+		let mut sections = part.trim().split(';');
+		let url = sections.next()?.trim();
+		let has_next = sections.any(|section| section.trim() == r#"rel="next""#);
+
+		if has_next && url.starts_with('<') && url.ends_with('>') {
+			Some(url[1..url.len() - 1].to_owned())
+		} else {
+			None
+		}
+	})
+}
+
+fn repo_default_branch(api: &GitHubApi, repo: &str) -> crate::prelude::Result<String> {
+	let payload = api.get(&format!("https://api.github.com/repos/{repo}"))?.payload;
+
+	required_value_string(&payload, "default_branch")
+		.map_err(|error| eyre::eyre!("Unable to resolve default branch for {repo}: {error}"))
+}
+
+fn github_token(token_env: Option<&str>) -> Option<String> {
+	let token_env = token_env
+		.map(str::to_owned)
+		.or_else(routed_token_env)
+		.unwrap_or_else(|| "GITHUB_TOKEN".to_owned());
+
+	env::var(token_env).ok().filter(|token| !token.is_empty())
+}
+
+fn absolute_repo_path(root: &Path, path: &Path) -> PathBuf {
+	if path.is_absolute() { path.to_path_buf() } else { root.join(path) }
+}
+
+fn ledger_path(root: &Path, request: &RadarRefreshQueueRequest) -> Option<PathBuf> {
+	(!request.no_ledger).then(|| absolute_repo_path(root, &request.ledger))
+}
+
+fn sorted_json_files(path: &Path) -> crate::prelude::Result<Vec<PathBuf>> {
+	if !path.exists() {
+		return Ok(Vec::new());
+	}
+
+	let mut files = fs::read_dir(path)?
+		.map(|entry| entry.map(|entry| entry.path()))
+		.collect::<std::result::Result<Vec<_>, _>>()?;
+
+	files.retain(|path| {
+		path.is_file() && path.extension().is_some_and(|extension| extension == "json")
+	});
+	files.sort();
+
+	Ok(files)
+}
+
+fn validate_signal_file(path: &Path, payload: &Value) -> crate::prelude::Result<()> {
+	let validation = validate_artifact(payload);
+
+	if validation.schema.as_deref() != Some(SIGNAL_SCHEMA) || !validation.errors.is_empty() {
+		eyre::bail!(
+			"Signal validation failed for {}:\n- {}",
+			path.display(),
+			validation.errors.join("\n- ")
+		);
+	}
+
+	Ok(())
+}
+
 fn validate_analysis_draft(value: &Value) -> crate::prelude::Result<()> {
 	let Some(draft) = value.as_object() else {
 		return Err(eyre::eyre!("Analysis draft must be an object"));
@@ -928,6 +2416,43 @@ fn normalized_config_flags(
 
 		seen.insert(value.clone());
 		normalized.push(value);
+	}
+
+	normalized
+}
+
+fn validate_artifact_errors(payload: &Value) -> Vec<String> {
+	validate_artifact(payload).errors
+}
+
+fn write_json_if_material_changed(
+	path: &Path,
+	payload: &Value,
+	kind: RefreshKind,
+) -> crate::prelude::Result<bool> {
+	if let Ok(existing) = load_json(path)
+		&& material_json(&existing, &kind) == material_json(payload, &kind)
+	{
+		return Ok(false);
+	}
+	if let Some(parent) = path.parent() {
+		fs::create_dir_all(parent)?;
+	}
+
+	fs::write(path, format!("{}\n", pretty_json(payload)?))?;
+
+	Ok(true)
+}
+
+fn material_json(payload: &Value, kind: &RefreshKind) -> Value {
+	let mut normalized = payload.clone();
+
+	match kind {
+		RefreshKind::Queue | RefreshKind::ReleaseDelta => {
+			if let Some(object) = normalized.as_object_mut() {
+				object.insert("generated_at".to_owned(), Value::String(String::new()));
+			}
+		},
 	}
 
 	normalized
@@ -1176,11 +2701,11 @@ fn selected_release_comparison(
 		payload.as_object().ok_or_else(|| eyre::eyre!("Release-delta must be an object"))?;
 	let target_stable = stable_tag
 		.map(str::to_owned)
-		.or_else(|| release_tag(entry.get("stable_release")))
+		.or_else(|| release_delta_release_tag(entry.get("stable_release")))
 		.ok_or_else(|| eyre::eyre!("stable release tag could not be selected"))?;
 	let target_preview = preview_tag
 		.map(str::to_owned)
-		.or_else(|| release_tag(entry.get("prerelease")))
+		.or_else(|| release_delta_release_tag(entry.get("prerelease")))
 		.ok_or_else(|| eyre::eyre!("preview release tag could not be selected"))?;
 	let comparisons = entry
 		.get("comparisons")
@@ -1206,7 +2731,7 @@ fn selected_release_comparison(
 	Err(eyre::eyre!("No comparison found for {target_stable} -> {target_preview}"))
 }
 
-fn release_tag(value: Option<&Value>) -> Option<String> {
+fn release_delta_release_tag(value: Option<&Value>) -> Option<String> {
 	value
 		.and_then(Value::as_object)
 		.and_then(|release| string_field(release, "tag_name"))
@@ -1439,6 +2964,139 @@ fn resolve_against(root: &Path, path: &Path) -> PathBuf {
 
 fn path_arg(root: &Path, path: &Path) -> String {
 	path.strip_prefix(root).unwrap_or(path).display().to_string()
+}
+
+fn pretty_json(payload: &Value) -> crate::prelude::Result<String> {
+	serde_json::to_string_pretty(payload).map_err(Into::into)
+}
+
+fn required_value_string(payload: &Value, field: &str) -> crate::prelude::Result<String> {
+	payload
+		.get(field)
+		.and_then(Value::as_str)
+		.filter(|value| !value.is_empty())
+		.map(str::to_owned)
+		.ok_or_else(|| eyre::eyre!("{field} must be a non-empty string"))
+}
+
+fn optional_value_string(payload: &Value, field: &str) -> Option<String> {
+	payload.get(field).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_owned)
+}
+
+fn required_value_u64(payload: &Value, field: &str) -> crate::prelude::Result<u64> {
+	payload
+		.get(field)
+		.and_then(Value::as_u64)
+		.ok_or_else(|| eyre::eyre!("{field} must be a positive integer"))
+}
+
+fn required_value_i64(payload: &Value, field: &str) -> crate::prelude::Result<i64> {
+	payload
+		.get(field)
+		.and_then(Value::as_i64)
+		.ok_or_else(|| eyre::eyre!("{field} must be an integer"))
+}
+
+fn truncate_patch_excerpt(value: &str) -> String {
+	let compact = value.trim();
+
+	if compact.chars().count() > 900 {
+		format!("{}...", compact.chars().take(900).collect::<String>())
+	} else {
+		compact.to_owned()
+	}
+}
+
+fn string_array(value: Option<&Value>) -> Vec<String> {
+	value
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(|item| item.as_str().map(str::to_owned))
+		.collect()
+}
+
+fn string_array_from_value(value: &Value) -> Vec<String> {
+	string_array(Some(value))
+}
+
+fn extract_commit_sha_from_url(url: &str) -> Option<String> {
+	let sha = url.rsplit_once("/commit/")?.1;
+
+	(sha.len() >= 7 && sha.len() <= 40 && sha.chars().all(|ch| ch.is_ascii_hexdigit()))
+		.then(|| sha.to_owned())
+}
+
+fn extract_pr_number_from_url(url: &str) -> Option<u64> {
+	let number = url.rsplit_once("/pull/")?.1;
+
+	(!number.is_empty() && number.chars().all(|ch| ch.is_ascii_digit()))
+		.then(|| number.parse::<u64>().ok())
+		.flatten()
+}
+
+fn percent_encode(value: &str) -> String {
+	let mut encoded = String::new();
+
+	for byte in value.bytes() {
+		if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+			encoded.push(char::from(byte));
+		} else {
+			encoded.push_str(&format!("%{byte:02X}"));
+		}
+	}
+
+	encoded
+}
+
+fn queue_report(
+	queue: &Value,
+	changed: bool,
+	ledger_enabled: bool,
+	root: &Path,
+	queue_out: &Path,
+) -> RadarRefreshQueueReport {
+	let counts = queue.get("counts").and_then(Value::as_object);
+
+	RadarRefreshQueueReport {
+		changed,
+		recent_commits_scanned: count_field(counts, "recent_commits_scanned"),
+		published_subjects_seen: count_field(counts, "published_subjects_seen"),
+		subjects_queued: count_field(counts, "subjects_queued"),
+		ledger_enabled,
+		queue_out: absolute_repo_path(root, queue_out),
+	}
+}
+
+fn release_delta_report(
+	payload: &Value,
+	changed: bool,
+	root: &Path,
+	out: &Path,
+) -> RadarRefreshReleaseDeltaReport {
+	RadarRefreshReleaseDeltaReport {
+		changed,
+		stable_tag_name: payload
+			.pointer("/stable_release/tag_name")
+			.and_then(Value::as_str)
+			.unwrap_or_default()
+			.to_owned(),
+		prerelease_tag_name: payload
+			.pointer("/prerelease/tag_name")
+			.and_then(Value::as_str)
+			.unwrap_or_default()
+			.to_owned(),
+		comparisons: payload.get("comparisons").and_then(Value::as_array).map_or(0, Vec::len),
+		out: absolute_repo_path(root, out),
+	}
+}
+
+fn count_field(counts: Option<&Map<String, Value>>, field: &str) -> usize {
+	counts
+		.and_then(|counts| counts.get(field))
+		.and_then(Value::as_u64)
+		.and_then(|value| usize::try_from(value).ok())
+		.unwrap_or_default()
 }
 
 fn validation_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
@@ -2477,7 +4135,7 @@ fn collect_regex_matches(regex: &Regex, texts: &[&str]) -> crate::prelude::Resul
 }
 
 fn issue_ref_regex() -> crate::prelude::Result<&'static Regex> {
-	static ISSUE_REF_RE: OnceLock<std::result::Result<Regex, Error>> = OnceLock::new();
+	static ISSUE_REF_RE: OnceLock<std::result::Result<Regex, regex::Error>> = OnceLock::new();
 
 	ISSUE_REF_RE
 		.get_or_init(|| Regex::new(r"(?:^|[^\w])((?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+)"))
@@ -2486,7 +4144,7 @@ fn issue_ref_regex() -> crate::prelude::Result<&'static Regex> {
 }
 
 fn flag_regex() -> crate::prelude::Result<&'static Regex> {
-	static FLAG_RE: OnceLock<std::result::Result<Regex, Error>> = OnceLock::new();
+	static FLAG_RE: OnceLock<std::result::Result<Regex, regex::Error>> = OnceLock::new();
 
 	FLAG_RE
 		.get_or_init(|| {
@@ -3722,6 +5380,7 @@ mod tests {
 		self, RadarBackfillReleaseRangeRequest, RadarBundleValidateRequest,
 		RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
 		RadarLedgerIngestExistingRequest, RadarRenderSignalRequest, RadarValidateRequest,
+		RefreshKind,
 	};
 
 	#[test]
@@ -3745,6 +5404,27 @@ mod tests {
 		signal["how_to_try"] = serde_json::json!("Run decodex radar validate.");
 
 		assert_errors(&signal, ["expected_effect is required when how_to_try is present"]);
+	}
+
+	#[test]
+	fn material_refresh_comparison_ignores_only_generated_at() {
+		let mut first = valid_release_delta();
+		let mut second = first.clone();
+
+		first["generated_at"] = serde_json::json!("2026-06-01T00:00:00Z");
+		second["generated_at"] = serde_json::json!("2026-06-02T00:00:00Z");
+
+		assert_eq!(
+			radar::material_json(&first, &RefreshKind::ReleaseDelta),
+			radar::material_json(&second, &RefreshKind::ReleaseDelta)
+		);
+
+		second["stable_release"]["tag_name"] = serde_json::json!("rust-v0.1.1");
+
+		assert_ne!(
+			radar::material_json(&first, &RefreshKind::ReleaseDelta),
+			radar::material_json(&second, &RefreshKind::ReleaseDelta)
+		);
 	}
 
 	#[test]
