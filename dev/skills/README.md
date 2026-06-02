@@ -11,8 +11,8 @@ with the installable Decodex plugin under `plugins/decodex/`.
 Use these skills in order when turning upstream Codex activity into Decodex content or
 follow-up work:
 
-1. `codex-upstream-triage`: choose which upstream commits, PRs, releases, or changelog
-   entries deserve deeper analysis.
+1. `codex-upstream-triage`: read the deterministic upstream review queue or a selected
+   source window and group commits by PR when possible.
 2. `codex-code-analysis`: read the selected upstream code or patch evidence and map it
    to user-visible, Control Plane, and Publisher implications.
 3. `codex-release-analysis`: evaluate release or changelog material against commits,
@@ -37,8 +37,9 @@ For upstream releases and prereleases, use `codex-release-analysis` as a rollup 
 the accumulated commit/PR analysis. Codex prerelease notes are often too sparse to
 explain what changed by themselves.
 
-Only the existing checked-in contracts are durable artifacts today:
-`github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`, `upstream_impact/v1`,
-`release_delta/v1`, `social_post_draft/v1`, and `reset_status/v1`. The triage,
-code-analysis, release-analysis, and reset-watch skills are reasoning passes unless
-their conclusions are promoted into one of those contracts.
+Checked-in contracts for this workflow are `upstream_review_queue/v1`,
+`upstream_review/v1`, `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`,
+`upstream_impact/v1`, `release_delta/v1`, `social_post_draft/v1`, and
+`reset_status/v1`. The triage, code-analysis, release-analysis, and reset-watch skills
+are reasoning passes unless their conclusions are promoted into one of those
+contracts.

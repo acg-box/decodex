@@ -61,6 +61,8 @@ dependencies = [
 workspace = false
 script = [
 	"python3 scripts/github/validate_change_bundle.py artifacts/github/bundles",
+	"python3 scripts/github/validate_upstream_review.py artifacts/github/review-queue",
+	"python3 scripts/github/validate_upstream_review.py artifacts/github/reviews",
 	"python3 scripts/github/validate_signal_entry.py site/src/content/signals",
 ]
 
