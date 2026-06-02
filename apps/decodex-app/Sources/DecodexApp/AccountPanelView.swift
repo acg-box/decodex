@@ -1526,8 +1526,11 @@ private struct AccountListScrollIndicatorView: View {
 }
 
 private enum AccountRunChipLayout {
-	static let height: CGFloat = 21
-	static let cornerRadius: CGFloat = 10.5
+	static let height: CGFloat = 18.5
+	static let cornerRadius: CGFloat = 9.25
+	static let horizontalPadding: CGFloat = 6.5
+	static let iconWidth: CGFloat = 9.5
+	static let spacing: CGFloat = 4
 }
 
 struct AccountRunChipView: View {
@@ -1537,21 +1540,21 @@ struct AccountRunChipView: View {
 	@State private var showsPopover = false
 
 	var body: some View {
-		HStack(spacing: 5) {
+		HStack(spacing: AccountRunChipLayout.spacing) {
 			Image(systemName: symbol)
-				.font(PanelFont.summaryIcon)
+				.font(PanelFont.runChipIcon)
 				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.88 : 0.76))
-				.frame(width: 11)
+				.frame(width: AccountRunChipLayout.iconWidth)
 
 			Text(run.compactTitle)
-				.font(PanelFont.metricValue)
+				.font(PanelFont.runChipTitle)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.92))
 				.lineLimit(1)
 				.truncationMode(.middle)
 				.fixedSize(horizontal: true, vertical: false)
 		}
 		.frame(height: AccountRunChipLayout.height)
-		.padding(.horizontal, 8)
+		.padding(.horizontal, AccountRunChipLayout.horizontalPadding)
 		.background {
 			RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous)
 				.fill(isHovered ? tint.opacity(colorScheme == .dark ? 0.09 : 0.07) : Color.clear)
@@ -1761,31 +1764,21 @@ struct AccountPoolUsageEstimateView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 4) {
-			HStack(spacing: 0) {
-				AccountPoolUsageMetricView(
-					title: "Pool used",
-					value: formatUsagePercent(estimate.totalUsedOfCapacityPercent),
-					tint: poolUsageTint
-				)
+		VStack(alignment: .leading, spacing: 3) {
+			HStack(spacing: 5) {
+				ForEach(Array(metrics.enumerated()), id: \.offset) { index, metric in
+					AccountPoolUsageMetricView(
+						title: metric.title,
+						value: metric.value,
+						tint: metric.tint
+					)
 
-				usageDivider
-
-				AccountPoolUsageMetricView(
-					title: "Day Δ",
-					value: dayDeltaText,
-					tint: dayDeltaTint
-				)
-
-				usageDivider
-
-				AccountPoolUsageMetricView(
-					title: "Daily avg",
-					value: formatDailyUsageRate(estimate.averageDailyPoolPercent),
-					tint: PanelPalette.secondaryText(colorScheme)
-				)
+					if index < metrics.count - 1 {
+						Spacer(minLength: 3)
+					}
+				}
 			}
-			.frame(height: 30)
+			.frame(height: 16)
 
 			if estimate.accountEstimateCount < estimate.accountCount {
 				Text("\(estimate.accountEstimateCount)/\(estimate.accountCount) accounts measured")
@@ -1801,10 +1794,20 @@ struct AccountPoolUsageEstimateView: View {
 		.accessibilityLabel(accessibilityLabel)
 	}
 
-	private var usageDivider: some View {
-		Rectangle()
-			.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.72 : 0.9))
-			.frame(width: 0.5, height: 20)
+	private var metrics: [(title: String, value: String, tint: Color)] {
+		[
+			(
+				"Pool used",
+				formatUsagePercent(estimate.totalUsedOfCapacityPercent),
+				poolUsageTint
+			),
+			("Day Δ", dayDeltaText, dayDeltaTint),
+			(
+				"Daily avg",
+				formatDailyUsageRate(estimate.averageDailyPoolPercent),
+				PanelPalette.secondaryText(colorScheme)
+			),
+		]
 	}
 
 	private var accessibilityLabel: String {
@@ -1922,21 +1925,20 @@ struct AccountPoolUsageMetricView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 1) {
+		HStack(alignment: .firstTextBaseline, spacing: 3) {
 			Text(title)
-				.font(PanelFont.metricLabel)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.font(PanelFont.usageLabel)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
 				.lineLimit(1)
 
 			Text(value)
-				.font(PanelFont.metricValue)
+				.font(PanelFont.usageValue)
 				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.94 : 0.78))
 				.monospacedDigit()
 				.lineLimit(1)
 				.minimumScaleFactor(0.72)
 		}
-		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(.horizontal, 5)
+		.lineLimit(1)
 	}
 }
 
@@ -2460,17 +2462,17 @@ struct OperatorStatusStripView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 5) {
-			HStack(spacing: 0) {
+		VStack(alignment: .leading, spacing: 4) {
+			HStack(spacing: 5) {
 				ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
-					if index > 0 {
-						flowDivider
-					}
-
 					OperatorFlowMetricView(metric: metric)
+
+					if index < metrics.count - 1 {
+						Spacer(minLength: 3)
+					}
 				}
 			}
-			.frame(height: 32)
+			.frame(height: 16)
 
 			if let warning = snapshot.warningSummary {
 				HStack(spacing: 5) {
@@ -2499,12 +2501,6 @@ struct OperatorStatusStripView: View {
 		.padding(.vertical, 5)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.modernGlassSurface(cornerRadius: 10, depth: .section)
-	}
-
-	private var flowDivider: some View {
-		Rectangle()
-			.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.72 : 0.9))
-			.frame(width: 0.5, height: 21)
 	}
 
 	private var metrics: [OperatorFlowMetric] {
@@ -3007,6 +3003,10 @@ struct OperatorFlowMetric: Identifiable {
 	var unit: String {
 		value == 1 ? unitSingular : unitPlural
 	}
+
+	var fullText: String {
+		"\(title) \(value) \(unit)"
+	}
 }
 
 struct OperatorFlowMetricView: View {
@@ -3014,21 +3014,22 @@ struct OperatorFlowMetricView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 1) {
+		HStack(alignment: .firstTextBaseline, spacing: 3) {
 			Text(metric.title)
-				.font(PanelFont.metricLabel)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.font(PanelFont.usageLabel)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
 				.lineLimit(1)
 
-			Text("\(metric.value) \(metric.unit)")
-				.font(PanelFont.metricValue)
+			Text("\(metric.value)")
+				.font(PanelFont.usageValue)
 				.foregroundStyle(valueTint)
 				.monospacedDigit()
 				.lineLimit(1)
+				.minimumScaleFactor(0.72)
 		}
-		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(.horizontal, 5)
-		.help(metric.title)
+		.lineLimit(1)
+		.help(metric.fullText)
+		.accessibilityLabel(metric.fullText)
 	}
 
 	private var valueTint: Color {
