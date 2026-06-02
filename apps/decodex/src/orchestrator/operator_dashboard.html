@@ -3860,6 +3860,8 @@
 			let dashboardSocket = null;
 			let dashboardSocketReconnectTimer = null;
 			let dashboardLiveActiveRuns = [];
+			let dashboardLiveRunActivitySeen = false;
+			let dashboardLiveActiveRunsComplete = true;
 			let dashboardLiveAccounts = null;
 			let dashboardLiveAccountControl = null;
 			let dashboardStreamState = {
@@ -10173,7 +10175,11 @@
 				return lookup;
 			}
 
-			function mergeDashboardActiveRuns(snapshot, activeRunRows) {
+			function dashboardRunShouldRetainDuringPartialActivity(run) {
+				return run?.active_lease === true || run?.process_alive === true || runCountsAsRunning(run);
+			}
+
+			function mergeDashboardActiveRuns(snapshot, activeRunRows, activeRunsComplete = true) {
 				const snapshotActiveRuns = snapshot.active_runs || [];
 				const snapshotRunLookup = dashboardRunLookup(snapshotActiveRuns);
 				const seenSnapshotRuns = new Set();
@@ -10192,7 +10198,11 @@
 				}
 
 				for (const snapshotRun of snapshotActiveRuns) {
-					if (!seenSnapshotRuns.has(snapshotRun)) {
+					if (
+						!activeRunsComplete &&
+						!seenSnapshotRuns.has(snapshotRun) &&
+						dashboardRunShouldRetainDuringPartialActivity(snapshotRun)
+					) {
 						mergedRuns.push(snapshotRun);
 					}
 				}
@@ -10204,7 +10214,14 @@
 				const activeRunRows = activeRuns
 					.filter((run) => run && typeof run === "object")
 					.map((run) => ({ ...run }));
-				const mergedActiveRuns = mergeDashboardActiveRuns(snapshot, activeRunRows);
+				const activeRunsComplete =
+					activityPayload.activeRunsComplete !== false &&
+					activityPayload.activeRunScope !== "filtered";
+				const mergedActiveRuns = mergeDashboardActiveRuns(
+					snapshot,
+					activeRunRows,
+					activeRunsComplete,
+				);
 				const activeById = new Map(
 					mergedActiveRuns
 						.filter((run) => run.run_id)
@@ -10276,6 +10293,7 @@
 				}
 
 				if (
+					!dashboardLiveRunActivitySeen &&
 					!dashboardLiveActiveRuns.length &&
 					!dashboardLiveAccounts &&
 					!dashboardLiveAccountControl
@@ -10286,6 +10304,7 @@
 				return mergeDashboardRunActivity(snapshot, dashboardLiveActiveRuns, {
 					accountControl: dashboardLiveAccountControl,
 					accounts: dashboardLiveAccounts,
+					activeRunsComplete: dashboardLiveActiveRunsComplete,
 				});
 			}
 
@@ -10303,6 +10322,9 @@
 				dashboardLiveActiveRuns = payload.activeRuns
 					.filter((run) => run && typeof run === "object")
 					.map((run) => ({ ...run }));
+				dashboardLiveRunActivitySeen = true;
+				dashboardLiveActiveRunsComplete =
+					payload.activeRunsComplete !== false && payload.activeRunScope !== "filtered";
 				dashboardLiveAccounts = Array.isArray(payload.accounts) && payload.accounts.length
 					? payload.accounts.filter(Boolean).map((account) => ({ ...account }))
 					: null;
@@ -10466,6 +10488,8 @@
 				};
 				dashboardSocket.onclose = () => {
 					dashboardLiveActiveRuns = [];
+					dashboardLiveRunActivitySeen = false;
+					dashboardLiveActiveRunsComplete = true;
 					dashboardLiveAccounts = null;
 					dashboardLiveAccountControl = null;
 					updateDashboardStreamState({
@@ -10476,6 +10500,8 @@
 				};
 				dashboardSocket.onerror = () => {
 					dashboardLiveActiveRuns = [];
+					dashboardLiveRunActivitySeen = false;
+					dashboardLiveActiveRunsComplete = true;
 					dashboardLiveAccounts = null;
 					dashboardLiveAccountControl = null;
 					updateDashboardStreamState({

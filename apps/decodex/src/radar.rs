@@ -7,16 +7,29 @@ use std::{
 	fs,
 	path::{Path, PathBuf},
 	process::{self, Command},
+	sync::OnceLock,
+	thread,
+	time::Duration,
 };
 
+use regex::{Error, Regex};
+use reqwest::{
+	StatusCode,
+	blocking::Client,
+	header::{ACCEPT, HeaderMap, LINK, USER_AGENT},
+};
+use rusqlite::{self, Connection, OptionalExtension as _};
 use serde::Serialize;
 use serde_json::{self, Map, Value};
+use sha2::{Digest as _, Sha256};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::prelude::eyre;
 
 const BUNDLE_SCHEMA: &str = "github_change_bundle/v1";
+const DEFAULT_LEDGER_PATH: &str = ".decodex/radar.sqlite3";
 const RELEASE_DELTA_SCHEMA: &str = "release_delta/v1";
+const SCHEMA_VERSION: i64 = 2;
 const SIGNAL_SCHEMA: &str = "signal_entry/v1";
 const SOCIAL_POST_SCHEMA: &str = "social_post/v1";
 const UPSTREAM_IMPACT_SCHEMA: &str = "upstream_impact/v1";
@@ -60,14 +73,118 @@ const UPSTREAM_SUBJECT_KINDS: &[&str] = &["commit", "pr"];
 const GENERIC_COMMIT_TITLES: &[&str] =
 	&["update", "fix", "fix.", "fix tests", "fix tests.", "merge fixes", "flaky syntax"];
 const CONFIG_FEATURE_CATALOG_PATH: &str = "site/src/generated/codex-config-features.json";
-const BUILD_CHANGE_BUNDLE_SCRIPT: &str = "scripts/github/build_change_bundle.py";
 const BUILD_RELEASE_DELTA_SCRIPT: &str = "scripts/github/build_release_delta.py";
 const RUN_CODEX_ANALYSIS_SCRIPT: &str = "scripts/github/run_codex_analysis.py";
+const REVIEW_STATUSES: &[&str] =
+	&["archived", "control_plane", "deprecated", "seen", "signal", "skipped", "social", "watch"];
+const ARTIFACT_KINDS: &[&str] = &[
+	"analysis",
+	"archive_manifest",
+	"bundle",
+	"ledger_export",
+	"release_delta",
+	"signal",
+	"social_post",
+	"upstream_impact",
+];
+const GITHUB_REQUEST_ATTEMPTS: usize = 4;
+const GITHUB_REQUEST_BACKOFF_SECONDS: u64 = 1;
+const GITHUB_REQUEST_TIMEOUT_SECONDS: u64 = 30;
+const RETRYABLE_GITHUB_STATUS_CODES: &[StatusCode] = &[
+	StatusCode::TOO_MANY_REQUESTS,
+	StatusCode::INTERNAL_SERVER_ERROR,
+	StatusCode::BAD_GATEWAY,
+	StatusCode::SERVICE_UNAVAILABLE,
+	StatusCode::GATEWAY_TIMEOUT,
+];
 
 /// Request to validate Radar JSON artifacts.
 #[derive(Debug)]
 pub(crate) struct RadarValidateRequest {
 	/// Explicit files or directories to validate. Defaults to current checked Radar collections.
+	pub(crate) paths: Vec<PathBuf>,
+}
+
+/// Request to initialize the local Radar SQLite ledger.
+#[derive(Debug)]
+pub(crate) struct RadarLedgerBootstrapRequest {
+	/// SQLite ledger path.
+	pub(crate) db_path: PathBuf,
+}
+
+/// Request to ingest one bundle and optional derived artifacts into the Radar ledger.
+#[derive(Debug)]
+pub(crate) struct RadarLedgerIngestRequest {
+	/// SQLite ledger path.
+	pub(crate) db_path: PathBuf,
+	/// Path to a `github_change_bundle/v1` JSON artifact.
+	pub(crate) bundle_path: PathBuf,
+	/// Optional analysis draft artifact path.
+	pub(crate) analysis_path: Option<PathBuf>,
+	/// Optional rendered `signal_entry/v1` artifact path.
+	pub(crate) signal_path: Option<PathBuf>,
+}
+
+/// Request to ingest existing checked-in Radar artifacts into the Radar ledger.
+#[derive(Debug)]
+pub(crate) struct RadarLedgerIngestExistingRequest {
+	/// SQLite ledger path.
+	pub(crate) db_path: PathBuf,
+	/// Directory containing `github_change_bundle/v1` JSON artifacts.
+	pub(crate) bundles_dir: PathBuf,
+	/// Directory containing analysis draft artifacts.
+	pub(crate) analysis_dir: PathBuf,
+	/// Directory containing rendered `signal_entry/v1` artifacts.
+	pub(crate) signals_dir: PathBuf,
+}
+
+/// Request to attach one artifact path to an existing Radar subject.
+#[derive(Debug)]
+pub(crate) struct RadarLedgerArtifactLinkRequest {
+	/// SQLite ledger path.
+	pub(crate) db_path: PathBuf,
+	/// GitHub repository in `owner/name` form.
+	pub(crate) repo: String,
+	/// Subject kind, either `commit` or `pr`.
+	pub(crate) subject_kind: String,
+	/// Subject id, either a commit SHA or pull request number.
+	pub(crate) subject_id: String,
+	/// Artifact kind stored in the ledger.
+	pub(crate) artifact_kind: String,
+	/// Artifact path to digest and link.
+	pub(crate) path: PathBuf,
+}
+
+/// Request to summarize the local Radar SQLite ledger.
+#[derive(Debug)]
+pub(crate) struct RadarLedgerSummaryRequest {
+	/// SQLite ledger path.
+	pub(crate) db_path: PathBuf,
+}
+
+/// Request to build a deterministic GitHub change bundle.
+#[derive(Debug)]
+pub(crate) struct RadarBundleBuildRequest {
+	/// GitHub repository in `owner/name` form.
+	pub(crate) repo: String,
+	/// Pull request number to fetch.
+	pub(crate) pr: Option<u64>,
+	/// Commit SHA to fetch when PR context is unavailable.
+	pub(crate) commit: Option<String>,
+	/// Skip commit-to-PR promotion when building from a commit.
+	pub(crate) force_commit_only: bool,
+	/// Optional environment variable name holding a GitHub token.
+	pub(crate) token_env: Option<String>,
+	/// Output path for the bundle JSON artifact.
+	pub(crate) out: PathBuf,
+	/// Additional note strings to store in the bundle.
+	pub(crate) notes: Vec<String>,
+}
+
+/// Request to validate GitHub change bundle JSON artifacts.
+#[derive(Debug)]
+pub(crate) struct RadarBundleValidateRequest {
+	/// Bundle JSON files or directories to validate.
 	pub(crate) paths: Vec<PathBuf>,
 }
 
@@ -126,7 +243,7 @@ pub(crate) struct RadarBackfillReleaseRangeRequest {
 	pub(crate) refresh_preview_limit: Option<usize>,
 	/// Compare-pair limit passed through only when refreshing first.
 	pub(crate) refresh_pair_limit: Option<usize>,
-	/// Python executable used for non-ported deterministic helpers and the AI boundary.
+	/// Python executable used for non-ported helper boundaries and the AI boundary.
 	pub(crate) python_bin: String,
 }
 
@@ -206,6 +323,174 @@ struct BackfillPaths {
 	signal: PathBuf,
 }
 
+struct CommitInput<'a> {
+	repo: &'a str,
+	sha: &'a str,
+	title: &'a str,
+	url: &'a str,
+	committed_at: Option<&'a str>,
+	pr_number: Option<i64>,
+}
+
+struct ReviewInput<'a> {
+	repo: &'a str,
+	subject_kind: &'a str,
+	subject_id: &'a str,
+	status: &'a str,
+	reason: &'a str,
+	confidence: Option<&'a str>,
+}
+
+struct ArtifactLinkInput<'a> {
+	repo: &'a str,
+	subject_kind: &'a str,
+	subject_id: &'a str,
+	artifact_kind: &'a str,
+	path: &'a Path,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct RadarSubject {
+	repo: String,
+	subject_kind: String,
+	subject_id: String,
+}
+
+struct GithubClient {
+	http: Client,
+	token: Option<String>,
+}
+impl GithubClient {
+	fn new(token: Option<&str>) -> crate::prelude::Result<Self> {
+		Ok(Self {
+			http: Client::builder()
+				.timeout(Duration::from_secs(GITHUB_REQUEST_TIMEOUT_SECONDS))
+				.build()?,
+			token: token.map(str::to_owned),
+		})
+	}
+
+	fn build_pr_bundle(
+		&self,
+		repo: &str,
+		pr_number: u64,
+		notes: &[String],
+	) -> crate::prelude::Result<Value> {
+		let (pr, _) =
+			self.github_request(&format!("https://api.github.com/repos/{repo}/pulls/{pr_number}"))?;
+		let commits = self.github_paginated(&format!(
+			"https://api.github.com/repos/{repo}/pulls/{pr_number}/commits?per_page=100"
+		))?;
+		let files = self.github_paginated(&format!(
+			"https://api.github.com/repos/{repo}/pulls/{pr_number}/files?per_page=100"
+		))?;
+		let default_branch = self.repo_default_branch(repo)?;
+
+		build_pr_bundle_from_sources(repo, &pr, &commits, &files, &default_branch, notes)
+	}
+
+	fn build_commit_bundle(
+		&self,
+		repo: &str,
+		commit_sha: &str,
+		notes: &[String],
+	) -> crate::prelude::Result<Value> {
+		let (commit, _) = self
+			.github_request(&format!("https://api.github.com/repos/{repo}/commits/{commit_sha}"))?;
+		let default_branch = self.repo_default_branch(repo)?;
+
+		build_commit_bundle_from_sources(repo, &commit, &default_branch, notes)
+	}
+
+	fn maybe_promote_commit_to_pr(&self, repo: &str, commit_sha: &str) -> Option<u64> {
+		let pulls = self
+			.github_paginated(&format!(
+				"https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls"
+			))
+			.ok()?;
+		let first = pulls.first()?.as_object()?;
+
+		first.get("number").and_then(Value::as_u64)
+	}
+
+	fn repo_default_branch(&self, repo: &str) -> crate::prelude::Result<String> {
+		let (payload, _) = self.github_request(&format!("https://api.github.com/repos/{repo}"))?;
+		let default_branch = payload.get("default_branch").and_then(Value::as_str);
+
+		default_branch
+			.filter(|value| !value.is_empty())
+			.map(str::to_owned)
+			.ok_or_else(|| eyre::eyre!("Unable to resolve default branch for {repo}"))
+	}
+
+	fn github_paginated(&self, url: &str) -> crate::prelude::Result<Vec<Value>> {
+		let mut items = Vec::new();
+		let mut next_url = Some(url.to_owned());
+
+		while let Some(url) = next_url {
+			let (payload, headers) = self.github_request(&url)?;
+			let Some(values) = payload.as_array() else {
+				eyre::bail!("Expected list payload from {url}");
+			};
+
+			items.extend(values.iter().cloned());
+
+			next_url =
+				headers.get(LINK).and_then(|value| value.to_str().ok()).and_then(parse_next_link);
+		}
+
+		Ok(items)
+	}
+
+	fn github_request(&self, url: &str) -> crate::prelude::Result<(Value, HeaderMap)> {
+		for attempt in 1..=GITHUB_REQUEST_ATTEMPTS {
+			let mut request = self
+				.http
+				.get(url)
+				.header(ACCEPT, "application/vnd.github+json")
+				.header(USER_AGENT, "decodex-github-bundle-builder");
+
+			if let Some(token) = &self.token {
+				request = request.bearer_auth(token);
+			}
+
+			match request.send() {
+				Ok(response) => {
+					let status = response.status();
+					let headers = response.headers().clone();
+
+					if status.is_success() {
+						return Ok((response.json()?, headers));
+					}
+
+					let details = response.text().unwrap_or_default();
+
+					if RETRYABLE_GITHUB_STATUS_CODES.contains(&status)
+						&& attempt < GITHUB_REQUEST_ATTEMPTS
+					{
+						sleep_before_retry(attempt);
+
+						continue;
+					}
+
+					eyre::bail!("GitHub API request failed for {url}: {status} {details}");
+				},
+				Err(error) => {
+					if !error.is_timeout() && !error.is_connect()
+						|| attempt == GITHUB_REQUEST_ATTEMPTS
+					{
+						eyre::bail!("GitHub API request failed for {url}: {error}");
+					}
+
+					sleep_before_retry(attempt);
+				},
+			}
+		}
+
+		eyre::bail!("GitHub API request failed for {url}: exhausted retry loop")
+	}
+}
+
 /// Validate the requested Radar artifact paths.
 pub(crate) fn validate(
 	request: &RadarValidateRequest,
@@ -232,6 +517,165 @@ pub(crate) fn validate(
 		Ok(RadarValidationReport { checked_files: files.len() })
 	} else {
 		Err(eyre::eyre!("Radar validation failed:\n- {}", errors.join("\n- ")))
+	}
+}
+
+/// Return the default local Radar ledger path.
+pub(crate) fn default_ledger_path() -> PathBuf {
+	PathBuf::from(DEFAULT_LEDGER_PATH)
+}
+
+/// Initialize the local Radar ledger schema.
+pub(crate) fn ledger_bootstrap(
+	request: &RadarLedgerBootstrapRequest,
+) -> crate::prelude::Result<PathBuf> {
+	let connection = open_ledger(&request.db_path)?;
+
+	connection.close().map_err(|(_, error)| error)?;
+
+	Ok(request.db_path.clone())
+}
+
+/// Ingest one bundle and optional derived artifacts into the local Radar ledger.
+pub(crate) fn ledger_ingest(
+	request: &RadarLedgerIngestRequest,
+) -> crate::prelude::Result<BTreeMap<String, i64>> {
+	let connection = open_ledger(&request.db_path)?;
+
+	ingest_artifact_set(
+		&connection,
+		&request.bundle_path,
+		request.analysis_path.as_deref(),
+		request.signal_path.as_deref(),
+	)?;
+
+	summary_counts(&connection)
+}
+
+/// Ingest existing checked-in Radar artifacts into the local Radar ledger.
+pub(crate) fn ledger_ingest_existing(
+	request: &RadarLedgerIngestExistingRequest,
+) -> crate::prelude::Result<BTreeMap<String, i64>> {
+	let connection = open_ledger(&request.db_path)?;
+	let mut ingested = 0_i64;
+
+	for bundle_path in json_files_in_directory(&request.bundles_dir)? {
+		let stem = file_stem(&bundle_path)?;
+		let candidate_analysis = request.analysis_dir.join(format!("{stem}.analysis.json"));
+		let candidate_signal = request.signals_dir.join(format!("{stem}.json"));
+
+		ingest_artifact_set(
+			&connection,
+			&bundle_path,
+			existing_path(&candidate_analysis),
+			existing_path(&candidate_signal),
+		)?;
+
+		ingested += 1;
+	}
+
+	let linked_signal_paths = linked_signal_paths(&request.bundles_dir, &request.signals_dir)?;
+
+	for signal_path in json_files_in_directory(&request.signals_dir)? {
+		if linked_signal_paths.contains(&signal_path) {
+			continue;
+		}
+
+		record_signal_artifact(&connection, &signal_path)?;
+	}
+
+	let mut summary = summary_counts(&connection)?;
+
+	summary.insert("bundles_ingested".into(), ingested);
+
+	Ok(summary)
+}
+
+/// Link one artifact path to a Radar subject in the local ledger.
+pub(crate) fn ledger_artifact_link(
+	request: &RadarLedgerArtifactLinkRequest,
+) -> crate::prelude::Result<BTreeMap<String, i64>> {
+	let connection = open_ledger(&request.db_path)?;
+
+	record_artifact(
+		&connection,
+		ArtifactLinkInput {
+			repo: &request.repo,
+			subject_kind: &request.subject_kind,
+			subject_id: &request.subject_id,
+			artifact_kind: &request.artifact_kind,
+			path: &request.path,
+		},
+	)?;
+
+	summary_counts(&connection)
+}
+
+/// Read local Radar ledger summary counts.
+pub(crate) fn ledger_summary(
+	request: &RadarLedgerSummaryRequest,
+) -> crate::prelude::Result<BTreeMap<String, i64>> {
+	let connection = open_ledger(&request.db_path)?;
+
+	summary_counts(&connection)
+}
+
+/// Build a deterministic GitHub change bundle and write it to disk.
+pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> crate::prelude::Result<PathBuf> {
+	let token_env = request
+		.token_env
+		.clone()
+		.or_else(routed_token_env)
+		.unwrap_or_else(|| "GITHUB_TOKEN".into());
+	let token = env::var(&token_env).ok().filter(|value| !value.is_empty());
+	let client = GithubClient::new(token.as_deref())?;
+	let bundle = match (request.pr, request.commit.as_deref()) {
+		(Some(pr_number), _) => client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
+		(None, Some(commit_sha)) => {
+			let promoted_pr = if request.force_commit_only {
+				None
+			} else {
+				client.maybe_promote_commit_to_pr(&request.repo, commit_sha)
+			};
+
+			match promoted_pr {
+				Some(pr_number) =>
+					client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
+				None => client.build_commit_bundle(&request.repo, commit_sha, &request.notes)?,
+			}
+		},
+		(None, None) => eyre::bail!("one of --pr or --commit is required"),
+	};
+
+	write_json(&request.out, &bundle)?;
+
+	Ok(request.out.clone())
+}
+
+/// Validate GitHub change bundle artifacts only.
+pub(crate) fn validate_bundles(
+	request: &RadarBundleValidateRequest,
+) -> crate::prelude::Result<RadarValidationReport> {
+	let files = collect_bundle_json_files(&request.paths)?;
+	let mut errors = Vec::new();
+
+	for path in &files {
+		let payload = load_json(path)?;
+		let validation = validate_artifact(&payload);
+
+		if validation.schema.as_deref() != Some(BUNDLE_SCHEMA) {
+			errors.push(format!("{}: schema must be {BUNDLE_SCHEMA}", path.display()));
+		}
+
+		for error in validation.errors {
+			errors.push(format!("{}: {error}", path.display()));
+		}
+	}
+
+	if errors.is_empty() {
+		Ok(RadarValidationReport { checked_files: files.len() })
+	} else {
+		Err(eyre::eyre!("Bundle validation failed:\n- {}", errors.join("\n- ")))
 	}
 }
 
@@ -299,13 +743,16 @@ pub(crate) fn backfill_release_range(
 			"Backfilled from release compare range {}...{}",
 			report.stable_tag, report.preview_tag
 		);
+		let bundle_path = resolve_against(&root, &paths.bundle);
+		let analysis_path = resolve_against(&root, &paths.analysis);
+		let signal_path = resolve_against(&root, &paths.signal);
 
-		run_build_change_bundle(&root, request, *pr_number, &paths.bundle, &note)?;
-		run_codex_analysis(&root, request, &paths.bundle, &paths.analysis)?;
+		run_build_bundle(request, *pr_number, &bundle_path, &note)?;
+		run_codex_analysis(&root, request, &bundle_path, &analysis_path)?;
 		render_signal(&RadarRenderSignalRequest {
-			bundle: resolve_against(&root, &paths.bundle),
-			analysis: resolve_against(&root, &paths.analysis),
-			out: resolve_against(&root, &paths.signal),
+			bundle: bundle_path,
+			analysis: analysis_path,
+			out: signal_path,
 			published_at: None,
 		})?;
 
@@ -385,8 +832,8 @@ fn rendered_signal(
 	published_at_override: Option<&str>,
 	config_flags: Vec<String>,
 ) -> crate::prelude::Result<Value> {
-	let bundle = bundle_object(bundle)?;
-	let analysis = analysis_object(analysis)?;
+	let bundle = object_value(bundle, "Bundle")?;
+	let analysis = object_value(analysis, "Analysis draft")?;
 	let title = required_string(analysis, "title", "analysis draft")?;
 	let slug = string_field(analysis, "slug")
 		.filter(|value| !value.is_empty())
@@ -432,24 +879,6 @@ fn rendered_signal(
 	}
 
 	Ok(Value::Object(signal))
-}
-
-fn bundle_object(value: &Value) -> crate::prelude::Result<&Map<String, Value>> {
-	value.as_object().ok_or_else(|| eyre::eyre!("Bundle must be an object"))
-}
-
-fn analysis_object(value: &Value) -> crate::prelude::Result<&Map<String, Value>> {
-	value.as_object().ok_or_else(|| eyre::eyre!("Analysis draft must be an object"))
-}
-
-fn required_string<'a>(
-	object: &'a Map<String, Value>,
-	field: &str,
-	label: &str,
-) -> crate::prelude::Result<&'a str> {
-	string_field(object, field)
-		.filter(|value| !value.is_empty())
-		.ok_or_else(|| eyre::eyre!("{label} {field} must be a non-empty string"))
 }
 
 fn rendered_config_flags(
@@ -683,18 +1112,17 @@ fn pick_published_at(
 		.next()
 		.ok_or_else(|| eyre::eyre!("Bundle commits must be a non-empty list"))?;
 
-	Ok(string_field(first_commit, "committed_at")
-		.filter(|value| !value.is_empty())
-		.map(str::to_owned)
-		.unwrap_or_else(utc_now_iso))
+	if let Some(value) =
+		string_field(first_commit, "committed_at").filter(|value| !value.is_empty())
+	{
+		Ok(value.to_owned())
+	} else {
+		utc_now_iso()
+	}
 }
 
 fn short_sha(value: &str) -> String {
 	value.chars().take(7).collect()
-}
-
-fn first_line(value: &str) -> String {
-	value.trim().lines().next().unwrap_or_default().to_owned()
 }
 
 fn slugify(value: &str) -> String {
@@ -718,24 +1146,6 @@ fn slugify(value: &str) -> String {
 	}
 
 	if slug.is_empty() { "signal".into() } else { slug }
-}
-
-fn utc_now_iso() -> String {
-	match OffsetDateTime::now_utc().replace_microsecond(0) {
-		Ok(timestamp) =>
-			timestamp.format(&Rfc3339).unwrap_or_else(|_| "1970-01-01T00:00:00Z".into()),
-		Err(_) => "1970-01-01T00:00:00Z".into(),
-	}
-}
-
-fn write_json(path: &Path, value: &Value) -> crate::prelude::Result<()> {
-	if let Some(parent) = path.parent() {
-		fs::create_dir_all(parent)?;
-	}
-
-	fs::write(path, format!("{}\n", serde_json::to_string_pretty(value)?))?;
-
-	Ok(())
 }
 
 fn repo_root() -> crate::prelude::Result<PathBuf> {
@@ -884,31 +1294,23 @@ fn prepare_release_delta_path(
 	Ok(PreparedReleaseDelta { path: release_delta, cleanup_dir: Some(temp_root) })
 }
 
-fn run_build_change_bundle(
-	root: &Path,
+fn run_build_bundle(
 	request: &RadarBackfillReleaseRangeRequest,
 	pr_number: u64,
 	out: &Path,
 	note: &str,
 ) -> crate::prelude::Result<()> {
-	let mut command = helper_command(root, request, BUILD_CHANGE_BUNDLE_SCRIPT);
+	build_bundle(&RadarBundleBuildRequest {
+		repo: request.repo.clone(),
+		pr: Some(pr_number),
+		commit: None,
+		force_commit_only: false,
+		token_env: request.token_env.clone(),
+		out: out.to_path_buf(),
+		notes: vec![note.to_owned()],
+	})?;
 
-	command.args([
-		"--repo",
-		request.repo.as_str(),
-		"--pr",
-		&pr_number.to_string(),
-		"--out",
-		&path_arg(root, out),
-		"--note",
-		note,
-	]);
-
-	if let Some(token_env) = &request.token_env {
-		command.args(["--token-env", token_env]);
-	}
-
-	run_helper(command, BUILD_CHANGE_BUNDLE_SCRIPT)
+	Ok(())
 }
 
 fn run_codex_analysis(
@@ -1086,6 +1488,1067 @@ fn load_json(path: &Path) -> crate::prelude::Result<Value> {
 
 	serde_json::from_str(&raw)
 		.map_err(|error| eyre::eyre!("Failed to parse JSON from {}: {error}", path.display()))
+}
+
+fn write_json(path: &Path, payload: &Value) -> crate::prelude::Result<()> {
+	if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+		fs::create_dir_all(parent)?;
+	}
+
+	let mut output = serde_json::to_string_pretty(payload)?;
+
+	output.push('\n');
+
+	fs::write(path, output)?;
+
+	Ok(())
+}
+
+fn open_ledger(path: &Path) -> crate::prelude::Result<Connection> {
+	if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+		fs::create_dir_all(parent)?;
+	}
+
+	let connection = Connection::open(path)?;
+
+	initialize_ledger(&connection)?;
+
+	Ok(connection)
+}
+
+fn initialize_ledger(connection: &Connection) -> crate::prelude::Result<()> {
+	connection.execute_batch(
+		"
+		PRAGMA foreign_keys = ON;
+
+		CREATE TABLE IF NOT EXISTS metadata (
+		  key TEXT PRIMARY KEY,
+		  value TEXT NOT NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS upstream_commit (
+		  repo TEXT NOT NULL,
+		  sha TEXT NOT NULL,
+		  title TEXT NOT NULL,
+		  url TEXT NOT NULL,
+		  committed_at TEXT,
+		  pr_number INTEGER,
+		  first_seen_at TEXT NOT NULL,
+		  last_seen_at TEXT NOT NULL,
+		  PRIMARY KEY (repo, sha)
+		);
+
+		CREATE TABLE IF NOT EXISTS radar_review (
+		  repo TEXT NOT NULL,
+		  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
+		  subject_id TEXT NOT NULL,
+		  status TEXT NOT NULL CHECK (
+		    status IN (
+		      'seen',
+		      'skipped',
+		      'watch',
+		      'signal',
+		      'control_plane',
+		      'social',
+		      'deprecated',
+		      'archived'
+		    )
+		  ),
+		  reason TEXT NOT NULL DEFAULT '',
+		  confidence TEXT CHECK (confidence IN ('confirmed', 'likely', 'weak')),
+		  reviewed_at TEXT NOT NULL,
+		  updated_at TEXT NOT NULL,
+		  PRIMARY KEY (repo, subject_kind, subject_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS artifact_link (
+		  repo TEXT NOT NULL,
+		  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
+		  subject_id TEXT NOT NULL,
+		  artifact_kind TEXT NOT NULL CHECK (
+		    artifact_kind IN (
+		      'bundle',
+		      'analysis',
+		      'signal',
+		      'upstream_impact',
+		      'social_post',
+		      'release_delta',
+		      'archive_manifest',
+		      'ledger_export'
+		    )
+		  ),
+		  path TEXT NOT NULL,
+		  sha256 TEXT NOT NULL,
+		  size_bytes INTEGER NOT NULL,
+		  created_at TEXT NOT NULL,
+		  PRIMARY KEY (repo, subject_kind, subject_id, artifact_kind, path)
+		);
+
+		CREATE TABLE IF NOT EXISTS source_cache (
+		  url TEXT PRIMARY KEY,
+		  etag TEXT,
+		  body_sha256 TEXT NOT NULL,
+		  fetched_at TEXT NOT NULL,
+		  cache_path TEXT
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_upstream_commit_pr
+		  ON upstream_commit (repo, pr_number);
+
+		CREATE INDEX IF NOT EXISTS idx_radar_review_status
+		  ON radar_review (status, reviewed_at);
+		",
+	)?;
+
+	migrate_artifact_link_social_kind(connection)?;
+
+	connection.execute(
+		"
+		INSERT INTO metadata (key, value)
+		VALUES ('schema_version', ?1)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value
+		",
+		rusqlite::params![SCHEMA_VERSION.to_string()],
+	)?;
+
+	Ok(())
+}
+
+fn migrate_artifact_link_social_kind(connection: &Connection) -> crate::prelude::Result<()> {
+	let table_sql = connection
+		.query_row(
+			"
+			SELECT sql
+			FROM sqlite_master
+			WHERE type = 'table' AND name = 'artifact_link'
+			",
+			[],
+			|row| row.get::<_, String>(0),
+		)
+		.optional()?;
+	let Some(table_sql) = table_sql else {
+		return Ok(());
+	};
+
+	if !table_sql.contains("social_draft") {
+		return Ok(());
+	}
+
+	connection.execute_batch(
+		"
+		ALTER TABLE artifact_link RENAME TO artifact_link_old;
+
+		CREATE TABLE artifact_link (
+		  repo TEXT NOT NULL,
+		  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
+		  subject_id TEXT NOT NULL,
+		  artifact_kind TEXT NOT NULL CHECK (
+		    artifact_kind IN (
+		      'bundle',
+		      'analysis',
+		      'signal',
+		      'upstream_impact',
+		      'social_post',
+		      'release_delta',
+		      'archive_manifest',
+		      'ledger_export'
+		    )
+		  ),
+		  path TEXT NOT NULL,
+		  sha256 TEXT NOT NULL,
+		  size_bytes INTEGER NOT NULL,
+		  created_at TEXT NOT NULL,
+		  PRIMARY KEY (repo, subject_kind, subject_id, artifact_kind, path)
+		);
+
+		INSERT OR REPLACE INTO artifact_link (
+		  repo,
+		  subject_kind,
+		  subject_id,
+		  artifact_kind,
+		  path,
+		  sha256,
+		  size_bytes,
+		  created_at
+		)
+		SELECT
+		  repo,
+		  subject_kind,
+		  subject_id,
+		  CASE artifact_kind
+		    WHEN 'social_draft' THEN 'social_post'
+		    ELSE artifact_kind
+		  END,
+		  path,
+		  sha256,
+		  size_bytes,
+		  created_at
+		FROM artifact_link_old;
+
+		DROP TABLE artifact_link_old;
+		",
+	)?;
+
+	Ok(())
+}
+
+fn ingest_artifact_set(
+	connection: &Connection,
+	bundle_path: &Path,
+	analysis_path: Option<&Path>,
+	signal_path: Option<&Path>,
+) -> crate::prelude::Result<()> {
+	let bundle = load_json(bundle_path)?;
+	let signal_exists = signal_path.is_some_and(Path::exists);
+	let (repo, subject_kind, subject_id) = record_bundle(
+		connection,
+		&bundle,
+		bundle_path,
+		if signal_exists { "signal" } else { "watch" },
+		"Imported from generated Radar artifacts.",
+	)?;
+
+	if let Some(path) = analysis_path.filter(|path| path.exists()) {
+		record_artifact(
+			connection,
+			ArtifactLinkInput {
+				repo: &repo,
+				subject_kind: &subject_kind,
+				subject_id: &subject_id,
+				artifact_kind: "analysis",
+				path,
+			},
+		)?;
+	}
+	if let Some(path) = signal_path.filter(|path| path.exists()) {
+		let signal_subjects = record_signal_artifact(connection, path)?;
+
+		if !signal_subjects.iter().any(|subject| {
+			subject.repo == repo
+				&& subject.subject_kind == subject_kind
+				&& subject.subject_id == subject_id
+		}) {
+			record_artifact(
+				connection,
+				ArtifactLinkInput {
+					repo: &repo,
+					subject_kind: &subject_kind,
+					subject_id: &subject_id,
+					artifact_kind: "signal",
+					path,
+				},
+			)?;
+		}
+	}
+
+	Ok(())
+}
+
+fn record_bundle(
+	connection: &Connection,
+	bundle: &Value,
+	bundle_path: &Path,
+	status: &str,
+	reason: &str,
+) -> crate::prelude::Result<(String, String, String)> {
+	let validation = validate_artifact(bundle);
+
+	if validation.schema.as_deref() != Some(BUNDLE_SCHEMA) || !validation.errors.is_empty() {
+		let mut errors = validation.errors;
+
+		if validation.schema.as_deref() != Some(BUNDLE_SCHEMA) {
+			errors.insert(0, format!("schema must be {BUNDLE_SCHEMA}"));
+		}
+
+		eyre::bail!("Bundle validation failed:\n- {}", errors.join("\n- "));
+	}
+
+	let (repo, subject_kind, subject_id) = subject_for_bundle(bundle)?;
+	let bundle = object_value(bundle, "bundle")?;
+	let pr_number = bundle
+		.get("primary_pr")
+		.and_then(Value::as_object)
+		.and_then(|primary_pr| primary_pr.get("number"))
+		.and_then(Value::as_i64);
+	let commits = non_empty_array(bundle.get("commits"))
+		.ok_or_else(|| eyre::eyre!("commits must be a non-empty list"))?;
+
+	for commit in commits {
+		let commit = object_value(commit, "commit")?;
+
+		record_commit(
+			connection,
+			CommitInput {
+				repo: &repo,
+				sha: required_string(commit, "sha", "commit.sha")?,
+				title: required_string(commit, "message", "commit.message")?,
+				url: required_string(commit, "url", "commit.url")?,
+				committed_at: optional_string(commit, "committed_at"),
+				pr_number,
+			},
+		)?;
+	}
+
+	record_review(
+		connection,
+		ReviewInput {
+			repo: &repo,
+			subject_kind: &subject_kind,
+			subject_id: &subject_id,
+			status,
+			reason,
+			confidence: if status == "signal" { Some("confirmed") } else { None },
+		},
+	)?;
+	record_artifact(
+		connection,
+		ArtifactLinkInput {
+			repo: &repo,
+			subject_kind: &subject_kind,
+			subject_id: &subject_id,
+			artifact_kind: "bundle",
+			path: bundle_path,
+		},
+	)?;
+
+	Ok((repo, subject_kind, subject_id))
+}
+
+fn subject_for_bundle(bundle: &Value) -> crate::prelude::Result<(String, String, String)> {
+	let bundle = object_value(bundle, "bundle")?;
+	let repo = required_string(bundle, "repo", "repo")?.to_owned();
+
+	if let Some(number) = bundle
+		.get("primary_pr")
+		.and_then(Value::as_object)
+		.and_then(|primary_pr| primary_pr.get("number"))
+		.and_then(Value::as_u64)
+	{
+		return Ok((repo, "pr".into(), number.to_string()));
+	}
+
+	let commits = non_empty_array(bundle.get("commits"))
+		.ok_or_else(|| eyre::eyre!("commits must be a non-empty list"))?;
+	let first_commit = object_value(&commits[0], "commits[0]")?;
+	let sha = required_string(first_commit, "sha", "commits[0].sha")?;
+
+	Ok((repo, "commit".into(), sha.to_owned()))
+}
+
+fn record_signal_artifact(
+	connection: &Connection,
+	signal_path: &Path,
+) -> crate::prelude::Result<Vec<RadarSubject>> {
+	let signal = load_json(signal_path)?;
+	let validation = validate_artifact(&signal);
+
+	if validation.schema.as_deref() != Some(SIGNAL_SCHEMA) || !validation.errors.is_empty() {
+		let mut errors = validation.errors;
+
+		if validation.schema.as_deref() != Some(SIGNAL_SCHEMA) {
+			errors.insert(0, format!("schema must be {SIGNAL_SCHEMA}"));
+		}
+
+		eyre::bail!(
+			"Signal validation failed for {}:\n- {}",
+			signal_path.display(),
+			errors.join("\n- ")
+		);
+	}
+
+	let signal = object_value(&signal, "signal")?;
+	let slug = required_string(signal, "slug", "slug")?;
+	let confidence = required_string(signal, "confidence", "confidence")?;
+	let subjects = subject_refs_for_signal(signal);
+
+	for subject in &subjects {
+		record_review(
+			connection,
+			ReviewInput {
+				repo: &subject.repo,
+				subject_kind: &subject.subject_kind,
+				subject_id: &subject.subject_id,
+				status: "signal",
+				reason: &format!("Published signal_entry/v1: {slug}"),
+				confidence: Some(confidence),
+			},
+		)?;
+		record_artifact(
+			connection,
+			ArtifactLinkInput {
+				repo: &subject.repo,
+				subject_kind: &subject.subject_kind,
+				subject_id: &subject.subject_id,
+				artifact_kind: "signal",
+				path: signal_path,
+			},
+		)?;
+	}
+
+	Ok(subjects)
+}
+
+fn subject_refs_for_signal(signal: &Map<String, Value>) -> Vec<RadarSubject> {
+	let Some(refs) = signal.get("source_refs").and_then(Value::as_object) else {
+		return Vec::new();
+	};
+	let Some(repo) = refs.get("repo").and_then(Value::as_str) else {
+		return Vec::new();
+	};
+	let mut subjects = Vec::new();
+
+	if let Some(pr_url) = refs.get("pr_url").and_then(Value::as_str)
+		&& let Some(subject_id) = parse_pr_url_subject(pr_url)
+	{
+		subjects.push(RadarSubject { repo: repo.into(), subject_kind: "pr".into(), subject_id });
+	}
+	if let Some(commit_urls) = refs.get("commit_urls").and_then(Value::as_array) {
+		for url in commit_urls.iter().filter_map(Value::as_str) {
+			if let Some(subject_id) = parse_commit_url_subject(url) {
+				subjects.push(RadarSubject {
+					repo: repo.into(),
+					subject_kind: "commit".into(),
+					subject_id,
+				});
+			}
+		}
+	}
+
+	subjects
+}
+
+fn parse_pr_url_subject(url: &str) -> Option<String> {
+	let (_, number) = url.trim_end_matches('/').rsplit_once("/pull/")?;
+
+	if number.chars().all(|character| character.is_ascii_digit()) {
+		Some(number.into())
+	} else {
+		None
+	}
+}
+
+fn parse_commit_url_subject(url: &str) -> Option<String> {
+	let (_, sha) = url.trim_end_matches('/').rsplit_once("/commit/")?;
+
+	if (7..=40).contains(&sha.len()) && sha.chars().all(|character| character.is_ascii_hexdigit()) {
+		Some(sha.into())
+	} else {
+		None
+	}
+}
+
+fn record_commit(connection: &Connection, input: CommitInput<'_>) -> crate::prelude::Result<()> {
+	let timestamp = utc_now_iso()?;
+
+	connection.execute(
+		"
+		INSERT INTO upstream_commit (
+		  repo,
+		  sha,
+		  title,
+		  url,
+		  committed_at,
+		  pr_number,
+		  first_seen_at,
+		  last_seen_at
+		)
+		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+		ON CONFLICT(repo, sha) DO UPDATE SET
+		  title = excluded.title,
+		  url = excluded.url,
+		  committed_at = COALESCE(excluded.committed_at, upstream_commit.committed_at),
+		  pr_number = COALESCE(excluded.pr_number, upstream_commit.pr_number),
+		  last_seen_at = excluded.last_seen_at
+		",
+		rusqlite::params![
+			input.repo,
+			input.sha,
+			input.title,
+			input.url,
+			input.committed_at,
+			input.pr_number,
+			timestamp
+		],
+	)?;
+
+	Ok(())
+}
+
+fn record_review(connection: &Connection, input: ReviewInput<'_>) -> crate::prelude::Result<()> {
+	require_member(input.subject_kind, UPSTREAM_SUBJECT_KINDS, "subject_kind")?;
+	require_member(input.status, REVIEW_STATUSES, "status")?;
+
+	if let Some(confidence) = input.confidence {
+		require_member(confidence, SIGNAL_CONFIDENCE, "confidence")?;
+	}
+
+	let timestamp = utc_now_iso()?;
+
+	connection.execute(
+		"
+		INSERT INTO radar_review (
+		  repo,
+		  subject_kind,
+		  subject_id,
+		  status,
+		  reason,
+		  confidence,
+		  reviewed_at,
+		  updated_at
+		)
+		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+		ON CONFLICT(repo, subject_kind, subject_id) DO UPDATE SET
+		  status = excluded.status,
+		  reason = excluded.reason,
+		  confidence = excluded.confidence,
+		  reviewed_at = excluded.reviewed_at,
+		  updated_at = excluded.updated_at
+		",
+		rusqlite::params![
+			input.repo,
+			input.subject_kind,
+			input.subject_id,
+			input.status,
+			input.reason,
+			input.confidence,
+			timestamp
+		],
+	)?;
+
+	Ok(())
+}
+
+fn record_artifact(
+	connection: &Connection,
+	input: ArtifactLinkInput<'_>,
+) -> crate::prelude::Result<()> {
+	require_member(input.subject_kind, UPSTREAM_SUBJECT_KINDS, "subject_kind")?;
+	require_member(input.artifact_kind, ARTIFACT_KINDS, "artifact_kind")?;
+
+	let (sha256, size_bytes) = file_digest(input.path)?;
+	let created_at = utc_now_iso()?;
+	let storage_path = path_for_storage(input.path)?;
+
+	connection.execute(
+		"
+		INSERT INTO artifact_link (
+		  repo,
+		  subject_kind,
+		  subject_id,
+		  artifact_kind,
+		  path,
+		  sha256,
+		  size_bytes,
+		  created_at
+		)
+		VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+		ON CONFLICT(repo, subject_kind, subject_id, artifact_kind, path) DO UPDATE SET
+		  sha256 = excluded.sha256,
+		  size_bytes = excluded.size_bytes,
+		  created_at = excluded.created_at
+		",
+		rusqlite::params![
+			input.repo,
+			input.subject_kind,
+			input.subject_id,
+			input.artifact_kind,
+			storage_path,
+			sha256,
+			size_bytes,
+			created_at
+		],
+	)?;
+
+	Ok(())
+}
+
+fn summary_counts(connection: &Connection) -> crate::prelude::Result<BTreeMap<String, i64>> {
+	let mut result = BTreeMap::new();
+
+	for (key, table) in [
+		("upstream_commits", "upstream_commit"),
+		("radar_reviews", "radar_review"),
+		("artifact_links", "artifact_link"),
+		("source_cache_entries", "source_cache"),
+	] {
+		let count =
+			connection.query_row(&format!("SELECT COUNT(*) AS count FROM {table}"), [], |row| {
+				row.get::<_, i64>(0)
+			})?;
+
+		result.insert(key.into(), count);
+	}
+
+	Ok(result)
+}
+
+fn file_digest(path: &Path) -> crate::prelude::Result<(String, i64)> {
+	let payload = fs::read(path)?;
+	let size_bytes = i64::try_from(payload.len())
+		.map_err(|error| eyre::eyre!("File is too large to record in ledger: {error}"))?;
+	let digest = Sha256::digest(&payload);
+	let digest_bytes: &[u8] = digest.as_ref();
+	let mut sha256 = String::with_capacity(64);
+
+	for &byte in digest_bytes {
+		sha256.push(char::from(b"0123456789abcdef"[(byte >> 4) as usize]));
+		sha256.push(char::from(b"0123456789abcdef"[(byte & 0x0f) as usize]));
+	}
+
+	Ok((sha256, size_bytes))
+}
+
+fn path_for_storage(path: &Path) -> crate::prelude::Result<String> {
+	let resolved = path.canonicalize()?;
+	let cwd = env::current_dir()?.canonicalize()?;
+
+	Ok(resolved
+		.strip_prefix(&cwd)
+		.map_or_else(|_| resolved.display().to_string(), |path| path.display().to_string()))
+}
+
+fn json_files_in_directory(directory: &Path) -> crate::prelude::Result<Vec<PathBuf>> {
+	if !directory.exists() {
+		return Ok(Vec::new());
+	}
+	if !directory.is_dir() {
+		eyre::bail!("Radar artifact directory is not a directory: {}", directory.display());
+	}
+
+	let mut files = fs::read_dir(directory)?
+		.map(|entry| entry.map(|entry| entry.path()))
+		.collect::<std::result::Result<Vec<_>, _>>()?
+		.into_iter()
+		.filter(|path| path.extension().is_some_and(|extension| extension == "json"))
+		.collect::<Vec<_>>();
+
+	files.sort();
+
+	Ok(files)
+}
+
+fn linked_signal_paths(
+	bundles_dir: &Path,
+	signals_dir: &Path,
+) -> crate::prelude::Result<BTreeSet<PathBuf>> {
+	let mut paths = BTreeSet::new();
+
+	for bundle_path in json_files_in_directory(bundles_dir)? {
+		let stem = file_stem(&bundle_path)?;
+
+		paths.insert(signals_dir.join(format!("{stem}.json")));
+	}
+
+	Ok(paths)
+}
+
+fn collect_bundle_json_files(paths: &[PathBuf]) -> crate::prelude::Result<Vec<PathBuf>> {
+	if paths.is_empty() {
+		eyre::bail!("at least one bundle JSON file or directory is required");
+	}
+
+	let mut files = Vec::new();
+
+	for path in paths {
+		if path.is_dir() {
+			files.extend(json_files_in_directory(path)?);
+		} else if path.is_file() {
+			files.push(path.clone());
+		} else {
+			eyre::bail!("Bundle validation path does not exist: {}", path.display());
+		}
+	}
+
+	files.sort();
+
+	Ok(files)
+}
+
+fn file_stem(path: &Path) -> crate::prelude::Result<String> {
+	path.file_stem()
+		.map(|stem| stem.to_string_lossy().into_owned())
+		.ok_or_else(|| eyre::eyre!("Path has no file stem: {}", path.display()))
+}
+
+fn existing_path(path: &Path) -> Option<&Path> {
+	path.exists().then_some(path)
+}
+
+fn require_member(value: &str, allowed: &[&str], label: &str) -> crate::prelude::Result<()> {
+	if allowed.contains(&value) {
+		Ok(())
+	} else {
+		eyre::bail!("{label} must be one of {}", choices(allowed))
+	}
+}
+
+fn utc_now_iso() -> crate::prelude::Result<String> {
+	Ok(OffsetDateTime::now_utc().format(&Rfc3339)?)
+}
+
+fn object_value<'a>(
+	value: &'a Value,
+	label: &str,
+) -> crate::prelude::Result<&'a Map<String, Value>> {
+	value.as_object().ok_or_else(|| eyre::eyre!("{label} must be an object"))
+}
+
+fn required_string<'a>(
+	object: &'a Map<String, Value>,
+	field: &str,
+	label: &str,
+) -> crate::prelude::Result<&'a str> {
+	string_field(object, field)
+		.filter(|value| !value.is_empty())
+		.ok_or_else(|| eyre::eyre!("{label} must be a non-empty string"))
+}
+
+fn optional_string<'a>(object: &'a Map<String, Value>, field: &str) -> Option<&'a str> {
+	object.get(field).and_then(Value::as_str)
+}
+
+fn build_pr_bundle_from_sources(
+	repo: &str,
+	pr: &Value,
+	commits: &[Value],
+	files: &[Value],
+	default_branch: &str,
+	notes: &[String],
+) -> crate::prelude::Result<Value> {
+	let pr = object_value(pr, "pull request")?;
+	let commit_items =
+		commits.iter().map(commit_bundle_item).collect::<crate::prelude::Result<Vec<_>>>()?;
+	let file_items =
+		files.iter().map(file_bundle_item).collect::<crate::prelude::Result<Vec<_>>>()?;
+	let docs_refs = collect_docs_refs(files);
+	let examples_refs = collect_examples_refs(files);
+	let all_patch_text = files
+		.iter()
+		.filter_map(|file| file.get("patch").and_then(Value::as_str))
+		.collect::<Vec<_>>()
+		.join("\n");
+	let all_commit_text = commits
+		.iter()
+		.filter_map(|commit| {
+			commit
+				.get("commit")
+				.and_then(Value::as_object)
+				.and_then(|commit| commit.get("message"))
+				.and_then(Value::as_str)
+		})
+		.collect::<Vec<_>>()
+		.join("\n");
+	let mut bundle_notes =
+		vec!["Built from GitHub pull-request, commits, files, and repo endpoints.".to_owned()];
+
+	bundle_notes.extend(notes.iter().cloned());
+
+	let primary_pr = serde_json::json!({
+		"number": required_u64(pr, "number", "primary_pr.number")?,
+		"title": required_string(pr, "title", "primary_pr.title")?,
+		"body": pr.get("body").and_then(Value::as_str).unwrap_or(""),
+		"state": pr
+			.get("merged_at")
+			.and_then(Value::as_str)
+			.filter(|value| !value.is_empty())
+			.map_or_else(
+				|| required_string(pr, "state", "primary_pr.state").map(str::to_owned),
+				|_| Ok("merged".to_owned()),
+			)?,
+		"merged_at": pr.get("merged_at").cloned().unwrap_or(Value::Null),
+		"labels": pr_labels(pr),
+		"url": required_string(pr, "html_url", "primary_pr.url")?,
+	});
+	let bundle = serde_json::json!({
+		"schema": BUNDLE_SCHEMA,
+		"repo": repo,
+		"analysis_mode": "pr_first",
+		"default_branch": default_branch,
+		"primary_pr": primary_pr,
+		"commits": commit_items,
+		"files": file_items,
+		"linked_issues": collect_issue_refs(
+			&[pr.get("body").and_then(Value::as_str).unwrap_or(""), &all_commit_text]
+		)?,
+		"extracted_flags": collect_flags(&[
+			pr.get("body").and_then(Value::as_str).unwrap_or(""),
+			&all_commit_text,
+			&all_patch_text,
+		])?,
+		"docs_refs": docs_refs,
+		"examples_refs": examples_refs,
+		"notes": bundle_notes,
+	});
+
+	validate_bundle_value(&bundle)?;
+
+	Ok(bundle)
+}
+
+fn build_commit_bundle_from_sources(
+	repo: &str,
+	commit: &Value,
+	default_branch: &str,
+	notes: &[String],
+) -> crate::prelude::Result<Value> {
+	let commit = object_value(commit, "commit")?;
+	let files = commit.get("files").and_then(Value::as_array).cloned().unwrap_or_default();
+	let commit_payload = object_field(commit, "commit", "commit.commit")?;
+	let commit_message = required_string(commit_payload, "message", "commit.commit.message")?;
+	let all_patch_text = files
+		.iter()
+		.filter_map(|file| file.get("patch").and_then(Value::as_str))
+		.collect::<Vec<_>>()
+		.join("\n");
+	let mut bundle_notes = vec!["Built from GitHub commit endpoint without PR context.".to_owned()];
+
+	bundle_notes.extend(notes.iter().cloned());
+
+	let bundle = serde_json::json!({
+		"schema": BUNDLE_SCHEMA,
+		"repo": repo,
+		"analysis_mode": "commit_only",
+		"default_branch": default_branch,
+		"commits": [commit_bundle_item(&Value::Object(commit.clone()))?],
+		"files": files
+			.iter()
+			.map(file_bundle_item)
+			.collect::<crate::prelude::Result<Vec<_>>>()?,
+		"linked_issues": collect_issue_refs(&[commit_message])?,
+		"extracted_flags": collect_flags(&[commit_message, &all_patch_text])?,
+		"docs_refs": collect_docs_refs(&files),
+		"examples_refs": collect_examples_refs(&files),
+		"notes": bundle_notes,
+	});
+
+	validate_bundle_value(&bundle)?;
+
+	Ok(bundle)
+}
+
+fn commit_bundle_item(commit: &Value) -> crate::prelude::Result<Value> {
+	let commit = object_value(commit, "commit")?;
+	let payload = object_field(commit, "commit", "commit.commit")?;
+	let author = object_field(payload, "author", "commit.commit.author").ok();
+	let author_name = commit
+		.get("author")
+		.and_then(Value::as_object)
+		.and_then(|author| author.get("login"))
+		.and_then(Value::as_str)
+		.or_else(|| author.and_then(|author| author.get("name")).and_then(Value::as_str));
+	let committed_at = author.and_then(|author| author.get("date")).cloned().unwrap_or(Value::Null);
+
+	Ok(serde_json::json!({
+		"sha": required_string(commit, "sha", "commit.sha")?,
+		"message": first_line(required_string(payload, "message", "commit.commit.message")?),
+		"url": required_string(commit, "html_url", "commit.html_url")?,
+		"author": author_name,
+		"committed_at": committed_at,
+	}))
+}
+
+fn file_bundle_item(file: &Value) -> crate::prelude::Result<Value> {
+	let file = object_value(file, "file")?;
+
+	Ok(serde_json::json!({
+		"path": required_string(file, "filename", "file.filename")?,
+		"status": required_string(file, "status", "file.status")?,
+		"additions": required_i64(file, "additions", "file.additions")?,
+		"deletions": required_i64(file, "deletions", "file.deletions")?,
+		"patch_excerpt": file
+			.get("patch")
+			.and_then(Value::as_str)
+			.and_then(truncate_patch),
+	}))
+}
+
+fn validate_bundle_value(bundle: &Value) -> crate::prelude::Result<()> {
+	let validation = validate_artifact(bundle);
+
+	if validation.errors.is_empty() && validation.schema.as_deref() == Some(BUNDLE_SCHEMA) {
+		Ok(())
+	} else {
+		let mut errors = validation.errors;
+
+		if validation.schema.as_deref() != Some(BUNDLE_SCHEMA) {
+			errors.insert(0, format!("schema must be {BUNDLE_SCHEMA}"));
+		}
+
+		eyre::bail!("Bundle validation failed:\n- {}", errors.join("\n- "))
+	}
+}
+
+fn object_field<'a>(
+	object: &'a Map<String, Value>,
+	field: &str,
+	label: &str,
+) -> crate::prelude::Result<&'a Map<String, Value>> {
+	object
+		.get(field)
+		.and_then(Value::as_object)
+		.ok_or_else(|| eyre::eyre!("{label} must be an object"))
+}
+
+fn required_u64(
+	object: &Map<String, Value>,
+	field: &str,
+	label: &str,
+) -> crate::prelude::Result<u64> {
+	object
+		.get(field)
+		.and_then(Value::as_u64)
+		.ok_or_else(|| eyre::eyre!("{label} must be an unsigned integer"))
+}
+
+fn required_i64(
+	object: &Map<String, Value>,
+	field: &str,
+	label: &str,
+) -> crate::prelude::Result<i64> {
+	object
+		.get(field)
+		.and_then(Value::as_i64)
+		.ok_or_else(|| eyre::eyre!("{label} must be an integer"))
+}
+
+fn pr_labels(pr: &Map<String, Value>) -> Vec<String> {
+	pr.get("labels")
+		.and_then(Value::as_array)
+		.into_iter()
+		.flatten()
+		.filter_map(|label| {
+			label
+				.as_object()
+				.and_then(|label| label.get("name"))
+				.and_then(Value::as_str)
+				.map(str::to_owned)
+		})
+		.collect()
+}
+
+fn collect_docs_refs(files: &[Value]) -> Vec<String> {
+	files
+		.iter()
+		.filter_map(file_name)
+		.filter(|filename| filename.starts_with("docs/") || filename.ends_with("README.md"))
+		.map(str::to_owned)
+		.collect()
+}
+
+fn collect_examples_refs(files: &[Value]) -> Vec<String> {
+	files
+		.iter()
+		.filter_map(file_name)
+		.filter(|filename| {
+			filename.to_lowercase().contains("example") || filename.contains("examples/")
+		})
+		.map(str::to_owned)
+		.collect()
+}
+
+fn file_name(file: &Value) -> Option<&str> {
+	file.as_object()?.get("filename")?.as_str()
+}
+
+fn collect_issue_refs(texts: &[&str]) -> crate::prelude::Result<Vec<String>> {
+	collect_regex_matches(issue_ref_regex()?, texts)
+}
+
+fn collect_flags(texts: &[&str]) -> crate::prelude::Result<Vec<String>> {
+	collect_regex_matches(flag_regex()?, texts)
+}
+
+fn collect_regex_matches(regex: &Regex, texts: &[&str]) -> crate::prelude::Result<Vec<String>> {
+	let mut found = Vec::new();
+
+	for text in texts {
+		for captures in regex.captures_iter(text) {
+			let Some(value) = captures.get(1).map(|matched| matched.as_str()) else {
+				continue;
+			};
+
+			if !found.iter().any(|found_value| found_value == value) {
+				found.push(value.to_owned());
+			}
+		}
+	}
+
+	Ok(found)
+}
+
+fn issue_ref_regex() -> crate::prelude::Result<&'static Regex> {
+	static ISSUE_REF_RE: OnceLock<std::result::Result<Regex, Error>> = OnceLock::new();
+
+	ISSUE_REF_RE
+		.get_or_init(|| Regex::new(r"(?:^|[^\w])((?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+)"))
+		.as_ref()
+		.map_err(|error| eyre::eyre!("Failed to compile issue reference regex: {error}"))
+}
+
+fn flag_regex() -> crate::prelude::Result<&'static Regex> {
+	static FLAG_RE: OnceLock<std::result::Result<Regex, Error>> = OnceLock::new();
+
+	FLAG_RE
+		.get_or_init(|| {
+			Regex::new(r"(?:^|[^\w-])(--[a-zA-Z0-9][\w-]*|[A-Z][A-Z0-9_]{2,}(?:=[^\s,`]+)?)")
+		})
+		.as_ref()
+		.map_err(|error| eyre::eyre!("Failed to compile flag regex: {error}"))
+}
+
+fn truncate_patch(value: &str) -> Option<String> {
+	let compact = value.trim();
+
+	if compact.is_empty() {
+		return None;
+	}
+	if compact.chars().count() > 900 {
+		let mut truncated = compact.chars().take(900).collect::<String>();
+
+		truncated.push_str("...");
+
+		Some(truncated)
+	} else {
+		Some(compact.into())
+	}
+}
+
+fn first_line(value: &str) -> String {
+	value.trim().lines().next().unwrap_or("").into()
+}
+
+fn parse_next_link(header: &str) -> Option<String> {
+	for part in header.split(',') {
+		let mut sections = part.trim().split(';');
+		let Some(url_part) = sections.next() else {
+			continue;
+		};
+
+		if sections.any(|section| section.trim() == r#"rel="next""#) {
+			return Some(url_part.trim().trim_start_matches('<').trim_end_matches('>').into());
+		}
+	}
+
+	None
+}
+
+fn sleep_before_retry(attempt: usize) {
+	thread::sleep(Duration::from_secs(GITHUB_REQUEST_BACKOFF_SECONDS * attempt as u64));
+}
+
+fn routed_token_env() -> Option<String> {
+	let output =
+		Command::new("git").args(["config", "--get", "codex.github-identity"]).output().ok()?;
+
+	if !output.status.success() {
+		return None;
+	}
+
+	match String::from_utf8_lossy(&output.stdout).trim() {
+		"x" => Some("GITHUB_PAT_X".into()),
+		"y" => Some("GITHUB_PAT_Y".into()),
+		_ => Some("GITHUB_TOKEN".into()),
+	}
 }
 
 fn validate_artifact(payload: &Value) -> ArtifactValidation {
@@ -2256,7 +3719,9 @@ mod tests {
 	use serde_json::{self, Value};
 
 	use crate::radar::{
-		self, RadarBackfillReleaseRangeRequest, RadarRenderSignalRequest, RadarValidateRequest,
+		self, RadarBackfillReleaseRangeRequest, RadarBundleValidateRequest,
+		RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
+		RadarLedgerIngestExistingRequest, RadarRenderSignalRequest, RadarValidateRequest,
 	};
 
 	#[test]
@@ -2468,6 +3933,245 @@ mod tests {
 		assert_eq!(report.target_prs, vec![22_415]);
 		assert_eq!(report.created, 0);
 		assert!(report.dry_run);
+	}
+
+	#[test]
+	fn ledger_bootstrap_migrates_social_draft_artifact_kind() {
+		let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+		let db_path = temp_dir.path().join("radar.sqlite3");
+		let connection =
+			rusqlite::Connection::open(&db_path).expect("temporary ledger should open");
+
+		connection
+			.execute_batch(
+				"
+				CREATE TABLE artifact_link (
+				  repo TEXT NOT NULL,
+				  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
+				  subject_id TEXT NOT NULL,
+				  artifact_kind TEXT NOT NULL CHECK (
+				    artifact_kind IN (
+				      'bundle',
+				      'analysis',
+				      'signal',
+				      'upstream_impact',
+				      'social_draft',
+				      'release_delta',
+				      'archive_manifest',
+				      'ledger_export'
+				    )
+				  ),
+				  path TEXT NOT NULL,
+				  sha256 TEXT NOT NULL,
+				  size_bytes INTEGER NOT NULL,
+				  created_at TEXT NOT NULL,
+				  PRIMARY KEY (repo, subject_kind, subject_id, artifact_kind, path)
+				);
+				INSERT INTO artifact_link (
+				  repo,
+				  subject_kind,
+				  subject_id,
+				  artifact_kind,
+				  path,
+				  sha256,
+				  size_bytes,
+				  created_at
+				)
+				VALUES (
+				  'openai/codex',
+				  'pr',
+				  '22414',
+				  'social_draft',
+				  'artifacts/social/x/posts/2026-06-01/example.json',
+				  'abc123',
+				  10,
+				  '2026-06-01T00:00:00Z'
+				);
+				",
+			)
+			.expect("legacy artifact link schema should be created");
+
+		drop(connection);
+
+		radar::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
+			.expect("ledger bootstrap should migrate social_draft rows");
+
+		let connection = rusqlite::Connection::open(&db_path).expect("migrated ledger should open");
+		let artifact_kind: String = connection
+			.query_row("SELECT artifact_kind FROM artifact_link", [], |row| row.get(0))
+			.expect("artifact kind should be readable");
+		let schema_version: String = connection
+			.query_row("SELECT value FROM metadata WHERE key = 'schema_version'", [], |row| {
+				row.get(0)
+			})
+			.expect("schema version should be readable");
+
+		assert_eq!(artifact_kind, "social_post");
+		assert_eq!(schema_version, "2");
+	}
+
+	#[test]
+	fn ledger_ingests_existing_bundle_analysis_and_signal_artifacts() {
+		let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+		let bundles_dir = temp_dir.path().join("bundles");
+		let analysis_dir = temp_dir.path().join("analysis");
+		let signals_dir = temp_dir.path().join("signals");
+		let db_path = temp_dir.path().join("radar.sqlite3");
+
+		fs::create_dir_all(&bundles_dir).expect("bundles directory should be created");
+		fs::create_dir_all(&analysis_dir).expect("analysis directory should be created");
+		fs::create_dir_all(&signals_dir).expect("signals directory should be created");
+		fs::write(bundles_dir.join("openai-codex-pr-22414.json"), valid_bundle().to_string())
+			.expect("bundle fixture should be written");
+		fs::write(
+			analysis_dir.join("openai-codex-pr-22414.analysis.json"),
+			r#"{"kind":"capability"}"#,
+		)
+		.expect("analysis fixture should be written");
+		fs::write(signals_dir.join("openai-codex-pr-22414.json"), valid_signal().to_string())
+			.expect("signal fixture should be written");
+
+		let summary = radar::ledger_ingest_existing(&RadarLedgerIngestExistingRequest {
+			db_path: db_path.clone(),
+			bundles_dir,
+			analysis_dir,
+			signals_dir,
+		})
+		.expect("existing artifacts should ingest");
+
+		assert_eq!(summary.get("bundles_ingested"), Some(&1));
+		assert_eq!(summary.get("upstream_commits"), Some(&1));
+		assert_eq!(summary.get("radar_reviews"), Some(&1));
+		assert_eq!(summary.get("artifact_links"), Some(&3));
+
+		let connection = rusqlite::Connection::open(&db_path).expect("ingested ledger should open");
+		let review: (String, String) = connection
+			.query_row(
+				"SELECT status, confidence FROM radar_review WHERE subject_kind = 'pr'",
+				[],
+				|row| Ok((row.get(0)?, row.get(1)?)),
+			)
+			.expect("review row should be readable");
+
+		assert_eq!(review, ("signal".into(), "confirmed".into()));
+	}
+
+	#[test]
+	fn ledger_artifact_link_records_social_post_artifacts() {
+		let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+		let db_path = temp_dir.path().join("radar.sqlite3");
+		let social_post_path = temp_dir.path().join("post.json");
+
+		fs::write(&social_post_path, r#"{"schema":"social_post/v1"}"#)
+			.expect("social post fixture should be written");
+
+		let summary = radar::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
+			db_path: db_path.clone(),
+			repo: "openai/codex".into(),
+			subject_kind: "pr".into(),
+			subject_id: "22414".into(),
+			artifact_kind: "social_post".into(),
+			path: social_post_path,
+		})
+		.expect("artifact link should be recorded");
+
+		assert_eq!(summary.get("artifact_links"), Some(&1));
+
+		let connection =
+			rusqlite::Connection::open(&db_path).expect("ledger should open after artifact link");
+		let artifact_kind: String = connection
+			.query_row("SELECT artifact_kind FROM artifact_link", [], |row| row.get(0))
+			.expect("artifact link row should be readable");
+
+		assert_eq!(artifact_kind, "social_post");
+	}
+
+	#[test]
+	fn builds_pr_bundle_from_fixture_payloads() {
+		let patch = format!("{} --config FEATURE_FLAG=1", "a".repeat(910));
+		let pr = serde_json::json!({
+			"number": 22_414,
+			"title": "Add Unix socket endpoint support",
+			"body": "Fixes #123 and enables --sandbox.",
+			"state": "closed",
+			"merged_at": "2026-06-01T00:00:00Z",
+			"labels": [{"name": "enhancement"}],
+			"html_url": "https://github.com/openai/codex/pull/22414"
+		});
+		let commits = vec![serde_json::json!({
+			"sha": "abc123",
+			"html_url": "https://github.com/openai/codex/commit/abc123",
+			"author": {"login": "alice"},
+			"commit": {
+				"message": "Add Unix socket endpoint support\n\nRefs openai/codex#456",
+				"author": {
+					"name": "Alice",
+					"date": "2026-06-01T00:00:00Z"
+				}
+			}
+		})];
+		let files = vec![serde_json::json!({
+			"filename": "docs/examples/socket.md",
+			"status": "modified",
+			"additions": 12,
+			"deletions": 1,
+			"patch": patch
+		})];
+		let bundle = super::build_pr_bundle_from_sources(
+			"openai/codex",
+			&pr,
+			&commits,
+			&files,
+			"main",
+			&["fixture note".into()],
+		)
+		.expect("PR bundle should build from fixture payloads");
+
+		assert_errors(&bundle, []);
+
+		assert_eq!(bundle["analysis_mode"], "pr_first");
+		assert_eq!(bundle["primary_pr"]["state"], "merged");
+		assert_eq!(bundle["primary_pr"]["labels"], serde_json::json!(["enhancement"]));
+		assert_eq!(bundle["linked_issues"], serde_json::json!(["#123", "openai/codex#456"]));
+		assert_eq!(
+			bundle["extracted_flags"],
+			serde_json::json!(["--sandbox", "--config", "FEATURE_FLAG=1"])
+		);
+		assert_eq!(bundle["docs_refs"], serde_json::json!(["docs/examples/socket.md"]));
+		assert_eq!(bundle["examples_refs"], serde_json::json!(["docs/examples/socket.md"]));
+		assert_eq!(bundle["notes"][1], "fixture note");
+
+		let patch_excerpt =
+			bundle["files"][0]["patch_excerpt"].as_str().expect("patch excerpt should be present");
+
+		assert!(patch_excerpt.ends_with("..."));
+		assert_eq!(patch_excerpt.chars().count(), 903);
+	}
+
+	#[test]
+	fn validates_bundle_directories_and_rejects_other_schemas() {
+		let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+		let bundle_path = temp_dir.path().join("bundle.json");
+		let signal_path = temp_dir.path().join("signal.json");
+
+		fs::write(&bundle_path, valid_bundle().to_string()).expect("bundle should be written");
+
+		let report = radar::validate_bundles(&RadarBundleValidateRequest {
+			paths: vec![temp_dir.path().to_path_buf()],
+		})
+		.expect("bundle directory should validate");
+
+		assert_eq!(report.checked_files, 1);
+
+		fs::write(&signal_path, valid_signal().to_string()).expect("signal should be written");
+
+		let error = radar::validate_bundles(&RadarBundleValidateRequest {
+			paths: vec![temp_dir.path().to_path_buf()],
+		})
+		.expect_err("non-bundle schema should be rejected by bundle validation");
+		let message = error.to_string();
+
+		assert!(message.contains("schema must be github_change_bundle/v1"));
 	}
 
 	fn assert_errors<const N: usize>(payload: &Value, expected: [&str; N]) {

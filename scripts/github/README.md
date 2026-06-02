@@ -20,6 +20,12 @@ Rust CLI foundation:
 
 - `decodex radar validate` validates checked Radar artifact JSON contracts from the
   Rust CLI.
+- `decodex radar bundle build` replaces deterministic `build_change_bundle.py` bundle
+  generation for PR-first and commit-only inputs.
+- `decodex radar bundle validate` replaces deterministic `validate_change_bundle.py`
+  bundle validation.
+- `decodex radar ledger ...` replaces `radar_ledger.py` bootstrap, ingest,
+  ingest-existing, artifact-link, and summary operations.
 - `decodex radar render-signal` renders `signal_entry/v1` from a validated
   `github_change_bundle/v1` plus Codex-owned `analysis_draft`.
 - `decodex radar backfill-release-range` selects release-window signal gaps and can
@@ -49,7 +55,7 @@ Contract ownership:
 Example flow:
 
 ```bash
-python3 scripts/github/build_change_bundle.py \
+decodex radar bundle build \
   --repo openai/codex \
   --pr 22414 \
   --out artifacts/github/bundles/openai-codex-pr-22414.json
@@ -81,7 +87,7 @@ Use `--no-ledger` only for throwaway runs. To bootstrap the ledger from existing
 checked-in artifacts:
 
 ```bash
-python3 scripts/github/radar_ledger.py ingest-existing
+decodex radar ledger ingest-existing
 ```
 
 Release-window gap fill:
