@@ -5,7 +5,7 @@ description: Use when checking whether today's @thsottiaux X posts semantically 
 
 # Rate Limit Reset Watch
 
-Use this repo-local skill to refresh the homepage `Are we reset today?` signal.
+Use this repo-local skill to refresh the homepage `Rate limit reset today?` signal.
 The job is semantic judgment, not keyword matching.
 
 ## Inputs
@@ -26,7 +26,9 @@ The job is semantic judgment, not keyword matching.
 4. Decide semantically whether any candidate says rate limits reset, quota windows reset,
    message caps recovered, or users should wait for a reset window.
 5. Write `site/src/content/reset-status/latest.json` with `schema = "reset_status/v1"`.
-6. Run the site content/type validation after updating the artifact.
+6. Close or release Chrome/X tabs opened for search, profile review, or thread context.
+   Keep a tab only when login, CAPTCHA, or another human-only X state must be handed off.
+7. Run the site content/type validation after updating the artifact.
 
 ## Decision Rules
 

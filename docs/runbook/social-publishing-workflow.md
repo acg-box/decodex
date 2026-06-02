@@ -82,6 +82,8 @@ for technical claims.
    - Attach generated media when present.
    - Fail closed if account verification, duplicate detection, media upload, or final
      URL readback is unreliable.
+   - Close or release Chrome tabs before the automation ends. Keep a tab only when it
+     is an explicit human handoff such as login, CAPTCHA, or account approval.
 
 7. Write the publication record.
    - Use `schema = "social_post/v1"`.
@@ -138,6 +140,8 @@ Use `watch_note` when:
 - Do not publish without a source-backed worthiness decision.
 - Do not exceed 8 posts per cap day for `@decodexspace`.
 - Do not let Chrome automation keep retrying after a failed or uncertain publish.
+- Do not leave research, compose, upload, search, or readback tabs open after the
+  publication record has captured the outcome.
 - Do not let social publishing bypass the static site, signal-entry, upstream-review,
   or upstream-impact evidence chain.
 - Do not quote third-party posts at length. Record style observations, not copied
