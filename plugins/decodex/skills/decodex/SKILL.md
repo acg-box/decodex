@@ -38,6 +38,8 @@ specs. Decodex has two supported use modes:
 ## Authority Split
 
 - Runtime behavior belongs to `apps/decodex/src/` and `docs/spec/`.
+- Operator lane-control capabilities belong to `docs/spec/lane-control.md`, with the
+  low-level app-server method boundary in `docs/spec/app-server.md`.
 - Operator procedures belong to `docs/runbook/`.
 - Current repository layout belongs to `docs/reference/`.
 - Registered project execution policy belongs to project-local `WORKFLOW.md`.
