@@ -1614,12 +1614,16 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	let response = dashboard_response();
 
 	assert!(response.contains("function mergeDashboardRunRecord(snapshotRun, activityRun)"));
-	assert!(response.contains("function mergeDashboardActiveRuns(snapshot, activeRunRows)"));
+	assert!(
+		response.contains("function mergeDashboardActiveRuns(snapshot, activeRunRows, activeRunsComplete = true)")
+	);
 	assert!(response.contains("function dashboardRunTitleIsOperationFallback(run)"));
 	assert!(response.contains("const operationFallback = displayToken(run.current_operation || run.phase);"));
 	assert!(response.contains("!(fallback !== \"unknown\" && title === operationFallback)"));
 	assert!(response.contains("return fallback !== \"unknown\" ? fallback : operationFallback;"));
 	assert!(response.contains("let dashboardLiveActiveRuns = [];"));
+	assert!(response.contains("let dashboardLiveRunActivitySeen = false;"));
+	assert!(response.contains("let dashboardLiveActiveRunsComplete = true;"));
 	assert!(response.contains("let dashboardLiveAccounts = null;"));
 	assert!(response.contains("let dashboardLiveAccountControl = null;"));
 	assert!(response.contains("function snapshotWithLiveRunActivity(snapshot)"));
@@ -1637,9 +1641,14 @@ fn operator_dashboard_run_activity_preserves_snapshot_detail_fields() {
 	assert!(response.contains("dashboardRunTitleIsOperationFallback(activityRun)"));
 	assert!(response.contains("merged.title = snapshotRun.title;"));
 	assert!(
-		response.contains("const mergedActiveRuns = mergeDashboardActiveRuns(snapshot, activeRunRows);")
+		response.contains("const activeRunsComplete =\n\t\t\t\t\tactivityPayload.activeRunsComplete !== false")
+	);
+	assert!(
+		response.contains("const mergedActiveRuns = mergeDashboardActiveRuns(\n\t\t\t\t\tsnapshot,\n\t\t\t\t\tactiveRunRows,\n\t\t\t\t\tactiveRunsComplete,\n\t\t\t\t);")
 	);
 	assert!(response.contains("dashboardLiveActiveRuns = payload.activeRuns"));
+	assert!(response.contains("dashboardLiveRunActivitySeen = true;"));
+	assert!(response.contains("dashboardLiveActiveRunsComplete ="));
 	assert!(response.contains("snapshot: snapshotWithLiveRunActivity(payload.snapshot),"));
 	assert!(response.contains("account_control: accountControl,"));
 	assert!(response.contains("accounts,"));

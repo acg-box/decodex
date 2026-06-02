@@ -234,6 +234,7 @@ final class AccountStore: ObservableObject {
 
 			let activity = OperatorRunActivitySnapshot(
 				activeRuns: activeRuns,
+				activeRunsComplete: payload.activeRunsComplete ?? true,
 				emittedAt: payload.emittedAt ?? Date()
 			)
 			if let operatorSnapshotUpdatedAt,
