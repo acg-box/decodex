@@ -37,6 +37,7 @@ agent-facing skills must guide responsible use.
 | Project dispatch pause | Supported for future dispatch | `decodex project disable <service-id>` and the runtime project enabled flag | Pause prevents new dispatch for the project. It must not kill or rewrite already active lanes. |
 | Project dispatch resume | Supported for future dispatch | `decodex project enable <service-id>` and the runtime project enabled flag | Resume re-enables future dispatch after the operator has inspected blockers, capacity, and queue state. |
 | Linear scan request | Supported | `POST /api/linear-scan` with optional `projectId` | Queue a scan for the next control-plane tick while respecting tracker backoff. This is an intake/status refresh request, not an execution command. |
+| Run-control channel foundation | Supported foundation | Active attempts publish a local `.decodex-run-control/*` channel record, runtime SQLite `run_control_channels`, operator status `control_capability`, and private `control_action` audit events | Route lane-control mutations through the active attempt's project, issue, run id, attempt, thread id, current turn id, active lease, and local channel metadata. Invalid or stale requests fail closed and remain local audit evidence. |
 | Soft interrupt | Supported CLI/API control | `decodex lane interrupt <ISSUE> --run-id <RUN_ID>` and `POST /api/lane/interrupt` write a run-control request that the active app-server child delivers with `turn/interrupt` | Prefer soft interrupt before hard interruption when the active turn id is known and the app-server capability is present. Soft interrupt requests a graceful turn stop and records the protocol outcome when app-server returns one. |
 | Hard interrupt fallback | Explicit fallback only | `decodex lane interrupt <ISSUE> --run-id <RUN_ID> --force` and `POST /api/lane/interrupt` with `"force": true` classify process signaling as `hard_interrupt_fallback` | Use only when soft interrupt is unavailable, timed out, or impossible because the process or app-server boundary cannot be reached. Preserve retained worktree evidence and runtime classification. |
 | Steer active lane | Planned CLI/API control; bottom-layer method must stay broad | Decodex does not currently send `turn/steer` from its app-server client | Pass operator-supplied steer text through the CLI/API when available. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
@@ -61,6 +62,34 @@ Before any lane-control mutation, the operator or agent must inspect:
 If inspection cannot prove the requested lane identity, do not steer, interrupt, retry,
 or resume. Use the manual-attention path or a read-only recovery diagnosis instead of
 guessing.
+
+## Run-Control Channel Foundation
+
+Every live app-server attempt publishes a per-attempt local control capability when
+Decodex still owns the active lease for the run. The current mechanism is a local file
+channel under the run worktree's `.decodex-run-control/` directory plus a
+`run_control_channels` runtime SQLite row. This is foundation plumbing only: it proves
+where an active attempt can receive future control traffic without exposing steer,
+interrupt, or task-replacement semantics by itself.
+
+The channel row is scoped by project id, issue id, run id, attempt number, transport,
+channel path, channel status, and publish/update timestamps. The current thread id and
+turn id remain on the run attempt row and are projected together with the channel as
+operator `control_capability` metadata. `decodex status`, JSON operator snapshots, and
+private evidence readback may show this local capability, but Linear must not receive
+host-local channel paths or raw control payloads.
+
+A control request is valid only when all of the following hold:
+
+- the requested run exists
+- requested project id, issue id, run id, and attempt number match the active attempt
+- requested thread id and turn id, when supplied, match the current attempt values
+- the active lease for the issue is held by the same project and run id
+- the attempt status is active
+- the persisted channel row is active and the local channel path still exists
+
+Any mismatch fails closed. Rejections are not converted into process signals, tracker
+state changes, or worktree mutations.
 
 ## Soft And Hard Interrupts
 
@@ -161,6 +190,12 @@ the configured lifecycle.
 Every supported control mutation should create local runtime evidence. At minimum, a
 control audit record should identify the project, issue, run id, attempt, branch,
 operator command source, requested capability, normalized result, and next action.
+
+The run-control foundation records local `control_action` private execution events for
+accepted, rejected, completed, failed, timed out, and fallback outcomes. These records
+are scoped by the same project, issue, run id, and attempt tuple as other private
+execution evidence. They are available through `decodex evidence <ISSUE> --run-id
+<RUN_ID> --attempt <N>` and survive independently of any public Linear projection.
 
 Linear public text remains sparse. Do not write steer text, raw command output, process
 diagnostics, private evidence payloads, account details, or host-local paths into

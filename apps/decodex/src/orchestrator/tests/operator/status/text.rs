@@ -59,6 +59,9 @@ fn operator_status_text_renders_human_readable_sections() {
 	assert!(rendered.contains(
 		"context_pressure: input=current_window 105.0k, peak_window 105.0k (same as current), cumulative_input 4.27M; output_tokens=12.0k; largest_output=175.8KiB by view_image; warnings=view_image repeated 3 large outputs; largest 180000 bytes"
 	));
+	assert!(rendered.contains(
+		"control_capability: status=active; transport=local_file; channel=.worktrees/PUB-101/.decodex-run-control/run-1-1.channel; thread_id=thread-1; turn_id=turn-1"
+	));
 	assert!(rendered.contains("turn_id: turn-1"));
 	assert!(rendered.contains("thread_status: active"));
 	assert!(rendered.contains("thread_active_flags: waitingOnApproval"));
