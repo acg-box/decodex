@@ -23,6 +23,7 @@ use crate::{
 		self, DiagnoseRequest, EvidenceRequest, IssueDispatchMode, RunOnceRequest, ServeRequest,
 	},
 	prelude::{Result, eyre},
+	radar::{self, RadarValidateRequest},
 	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
 	runtime,
 };
@@ -62,6 +63,7 @@ impl Cli {
 			Command::ArchiveLinear(args) => args.run(),
 			Command::Maintenance(args) => args.run(),
 			Command::Account(args) => args.run(),
+			Command::Radar(args) => args.run(),
 			Command::Probe(args) => args.run(),
 			Command::Attempt(args) => args.run(),
 		}
@@ -585,6 +587,35 @@ impl MaintenanceCommand {
 }
 
 #[derive(Debug, Args)]
+struct RadarCommand {
+	#[command(subcommand)]
+	command: RadarSubcommand,
+}
+impl RadarCommand {
+	fn run(&self) -> Result<()> {
+		match &self.command {
+			RadarSubcommand::Validate(args) => args.run(),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct RadarValidateCommand {
+	/// Radar JSON files or directories. Defaults to the checked-in Radar collections.
+	#[arg(value_name = "PATH")]
+	paths: Vec<PathBuf>,
+}
+impl RadarValidateCommand {
+	fn run(&self) -> Result<()> {
+		let report = radar::validate(&RadarValidateRequest { paths: self.paths.clone() })?;
+
+		println!("OK ({} Radar artifact JSON files validated)", report.checked_files);
+
+		Ok(())
+	}
+}
+
+#[derive(Debug, Args)]
 struct MaintenancePruneCommand {
 	/// Report candidates without applying retention changes. This is the default mode.
 	#[arg(long, conflicts_with = "apply")]
@@ -723,6 +754,8 @@ enum Command {
 	Maintenance(MaintenanceCommand),
 	/// Manage the global Decodex Codex account pool.
 	Account(AccountCommand),
+	/// Inspect and validate Decodex Radar artifacts.
+	Radar(RadarCommand),
 	/// Validate the local app-server integration boundary.
 	Probe(ProbeCommand),
 	/// Run one daemon-planned attempt from a structured request.
@@ -782,6 +815,12 @@ enum MaintenanceSubcommand {
 	Prune(MaintenancePruneCommand),
 }
 
+#[derive(Debug, Subcommand)]
+enum RadarSubcommand {
+	/// Validate checked-in Radar artifact JSON contracts.
+	Validate(RadarValidateCommand),
+}
+
 fn read_attempt_request(request: &str) -> Result<AttemptRequest> {
 	let raw = if request == "-" {
 		let mut raw = String::new();
@@ -815,9 +854,10 @@ mod tests {
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
 		CommitCommand, DiagnoseCommand, EvidenceCommand, LandCommand, ProbeCommand, ProjectCommand,
-		ProjectConfigArgs, ProjectSubcommand, RecoverCommand, RecoverSubcommand,
-		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
-		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
+		ProjectConfigArgs, ProjectSubcommand, RadarCommand, RadarSubcommand, RadarValidateCommand,
+		RecoverCommand, RecoverSubcommand, ReviewHandoffDiagnoseCommand,
+		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
+		RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -981,6 +1021,18 @@ mod tests {
 		let cli = Cli::parse_from(["decodex", "serve", "--dev"]);
 
 		assert!(matches!(cli.command, Command::Serve(ServeCommand { dev: true, .. })));
+	}
+
+	#[test]
+	fn parses_radar_validate_paths() {
+		let cli = Cli::parse_from(["decodex", "radar", "validate", "artifacts/github/bundles"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Radar(RadarCommand {
+				command: RadarSubcommand::Validate(RadarValidateCommand { paths }),
+			}) if paths == vec![Path::new("artifacts/github/bundles").to_path_buf()]
+		));
 	}
 
 	#[test]
