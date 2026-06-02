@@ -42,6 +42,30 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertEqual(account.currentCapacityLabel, "20x")
 	}
 
+	func testProfilePeakFallsBackToDailyUsageBuckets() {
+		let account = makeAccount(
+			status: "available",
+			profileDailyUsage: [
+				AccountProfileDailyUsage(date: "2026-05-30", tokens: 123_456),
+				AccountProfileDailyUsage(date: "2026-05-31", tokens: 789_000),
+			]
+		)
+
+		XCTAssertEqual(account.profilePeakDailyTokensForDisplay, 789_000)
+	}
+
+	func testProfilePeakUsesExplicitStatsValueFirst() {
+		let account = makeAccount(
+			status: "available",
+			profilePeakDailyTokens: 1_500_000,
+			profileDailyUsage: [
+				AccountProfileDailyUsage(date: "2026-05-30", tokens: 2_000_000),
+			]
+		)
+
+		XCTAssertEqual(account.profilePeakDailyTokensForDisplay, 1_500_000)
+	}
+
 	func testCompactEmailKeepsDottedLocalSuffixesConsistent() {
 		XCTAssertEqual(AccountDisplay.compactEmail("aurevoirxavier@gmail.com"), "aur...ier@gmail.com")
 		XCTAssertEqual(AccountDisplay.compactEmail("aurevoirxavier.us@gmail.com"), "aur...us@gmail.com")
@@ -219,7 +243,9 @@ final class AccountModelTests: XCTestCase {
 		refreshStatus: String? = nil,
 		planType: String? = nil,
 		checkedAtUnixEpoch: Int? = nil,
-		primaryRemainingPercent: Int? = nil
+		primaryRemainingPercent: Int? = nil,
+		profilePeakDailyTokens: Int? = nil,
+		profileDailyUsage: [AccountProfileDailyUsage]? = nil
 	) -> CodexAccount {
 		CodexAccount(
 			accountFingerprint: accountFingerprint,
@@ -256,11 +282,11 @@ final class AccountModelTests: XCTestCase {
 			profileUsername: nil,
 			profileCheckedAtUnixEpoch: nil,
 			profileLifetimeTokens: nil,
-			profilePeakDailyTokens: nil,
+			profilePeakDailyTokens: profilePeakDailyTokens,
 			profileLongestTaskSeconds: nil,
 			profileCurrentStreakDays: nil,
 			profileLongestStreakDays: nil,
-			profileDailyUsage: nil,
+			profileDailyUsage: profileDailyUsage,
 			sevenDayUsedPercent: nil,
 			sevenDayDailyAveragePercent: nil,
 			usageRecords: nil
