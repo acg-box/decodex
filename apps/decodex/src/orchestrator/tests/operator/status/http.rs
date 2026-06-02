@@ -121,9 +121,6 @@ fn assert_dashboard_html_control_surface(response: &str) {
 		"WebSocket",
 		"applyDashboardRunActivity",
 		"sendDashboardControl",
-		"data-dashboard-control=\"interruptRun\"",
-		"aria-label=\"Stop this active Decodex work\"",
-		"if (!interruptEnabled) {",
 		"controlAck",
 	] {
 		assert!(response.contains(required), "missing required dashboard control marker `{required}`");
@@ -131,6 +128,12 @@ fn assert_dashboard_html_control_surface(response: &str) {
 	for forbidden in [
 		"/state",
 		"/readyz",
+		"data-dashboard-control=\"interruptRun\"",
+		"aria-label=\"Stop this active Decodex work\"",
+		"runInterruptControlEnabled",
+		"renderRunStopControl",
+		"action === \"interruptRun\"",
+		"case \"interruptRun\"",
 		"data-dashboard-control=\"focusProject\"",
 		"data-dashboard-control=\"focusRun\"",
 		"data-dashboard-control=\"pauseProject\"",
@@ -430,7 +433,7 @@ fn operator_dashboard_websocket_sends_current_run_activity_on_connect() {
 }
 
 #[test]
-fn operator_dashboard_websocket_accepts_subscription_and_project_pause_control() {
+fn operator_dashboard_websocket_accepts_subscription_and_account_selection_controls() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
@@ -471,6 +474,27 @@ fn operator_dashboard_websocket_accepts_subscription_and_project_pause_control()
 
 	assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
 
+	let control_ready = read_websocket_json_until(&mut client, &mut frame, |payload| {
+		payload["type"] == "controlReady"
+	});
+	let supported_actions = control_ready["payload"]["supportedActions"]
+		.as_array()
+		.expect("supported actions should list");
+
+	assert!(supported_actions.iter().any(|action| action.as_str() == Some("subscribe")));
+	assert!(supported_actions.iter().any(|action| action.as_str() == Some("focus")));
+	assert!(supported_actions.iter().any(|action| action.as_str() == Some("clearFocus")));
+	assert!(supported_actions.iter().any(|action| action.as_str() == Some("selectAccount")));
+	assert!(
+		supported_actions
+			.iter()
+			.any(|action| action.as_str() == Some("clearAccountSelection"))
+	);
+	assert!(supported_actions.iter().any(|action| action.as_str() == Some("ack")));
+	assert!(!supported_actions.iter().any(|action| action.as_str() == Some("pauseProject")));
+	assert!(!supported_actions.iter().any(|action| action.as_str() == Some("resumeProject")));
+	assert!(!supported_actions.iter().any(|action| action.as_str() == Some("interruptRun")));
+
 	client
 		.write_all(&websocket_client_text_frame(
 			r#"{"type":"subscribe","requestId":"sub-1","projectId":"pubfi"}"#,
@@ -483,50 +507,6 @@ fn operator_dashboard_websocket_accepts_subscription_and_project_pause_control()
 
 	assert_eq!(subscribe_ack["payload"]["accepted"], true);
 	assert_eq!(subscribe_ack["payload"]["subscription"]["projectId"], "pubfi");
-
-	client
-		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"pause-1","action":"pauseProject","projectId":"pubfi"}"#,
-		))
-		.expect("client should send pause");
-
-	let pause_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
-		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "pause-1"
-	});
-
-	assert_eq!(pause_ack["payload"]["accepted"], true);
-	assert_eq!(pause_ack["payload"]["status"], "paused");
-	assert!(
-		!state_store
-			.list_projects()
-			.expect("projects should list")
-			.into_iter()
-			.find(|project| project.service_id() == "pubfi")
-			.expect("project should remain registered")
-			.enabled()
-	);
-
-	client
-		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"resume-1","action":"resumeProject","projectId":"pubfi"}"#,
-		))
-		.expect("client should send resume");
-
-	let resume_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
-		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "resume-1"
-	});
-
-	assert_eq!(resume_ack["payload"]["accepted"], true);
-	assert_eq!(resume_ack["payload"]["status"], "resumed");
-	assert!(
-		state_store
-			.list_projects()
-			.expect("projects should list")
-			.into_iter()
-			.find(|project| project.service_id() == "pubfi")
-			.expect("project should remain registered")
-			.enabled()
-	);
 
 	assert_dashboard_account_selection_controls(&mut client, &mut frame, config.repo_root());
 	drop(client);
@@ -745,51 +725,33 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 }
 
 #[test]
-fn operator_dashboard_websocket_interrupt_control_stops_active_run_process() {
+fn operator_dashboard_websocket_rejects_lane_mutation_controls() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
 	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot::default()));
 	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
 	let issue = sample_issue("Todo", &[]);
-	let worktree_path = config.worktree_root().join("PUB-101");
 	let dashboard_events = DashboardEventHub::default();
 	let server_snapshot = Arc::clone(&snapshot);
 	let server_state_store = Arc::clone(&state_store);
 	let server_dashboard_events = dashboard_events.clone();
-	let interrupter_calls = dashboard_run_interrupter_calls_for_test();
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
 
+	state_store.upsert_project(&registration).expect("project should register");
 	state_store
 		.record_run_attempt("run-1", &issue.id, 1, "running")
 		.expect("run attempt should record");
 	state_store
 		.upsert_lease(config.service_id(), &issue.id, "run-1", "In Progress")
 		.expect("lease should record");
-	state_store
-		.upsert_worktree(
-			config.service_id(),
-			&issue.id,
-			"x/pubfi-pub-101",
-			&worktree_path.display().to_string(),
-		)
-		.expect("worktree should record");
 
-	state::write_run_operation_marker_for_process(
-		&worktree_path,
-		"run-1",
-		1,
-		4_242,
-		RUN_OPERATION_AGENT_RUN,
-	)
-	.expect("run operation marker should write");
-
-	interrupter_calls
-		.lock()
-		.expect("dashboard run interrupter calls should not be poisoned")
-		.clear();
-
-	let _interrupter_guard =
-		orchestrator::install_dashboard_run_interrupter_for_test(fake_dashboard_run_interrupter);
 	let server = thread::spawn(move || {
 		let (stream, _) = listener.accept().expect("listener should accept a connection");
 
@@ -806,130 +768,57 @@ fn operator_dashboard_websocket_interrupt_control_stops_active_run_process() {
 
 	assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
 
-	let interrupt_message = format!(
-		r#"{{"type":"control","requestId":"interrupt-1","action":"interruptRun","projectId":"{}","issueId":"{}","runId":"run-1"}}"#,
-		config.service_id(),
-		issue.id,
-	);
+	for (request_id, action) in [
+		("pause-1", "pauseProject"),
+		("resume-1", "resumeProject"),
+		("interrupt-1", "interruptRun"),
+	] {
+		let control_message = format!(
+			r#"{{"type":"control","requestId":"{request_id}","action":"{action}","projectId":"{}","issueId":"{}","runId":"run-1"}}"#,
+			config.service_id(),
+			issue.id,
+		);
 
-	client
-		.write_all(&websocket_client_text_frame(&interrupt_message))
-		.expect("client should send interrupt");
+		client
+			.write_all(&websocket_client_text_frame(&control_message))
+			.expect("client should send unsupported dashboard control");
 
-	let interrupt_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
-		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "interrupt-1"
-	});
+		let ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
+			payload["type"] == "controlAck" && payload["payload"]["requestId"] == request_id
+		});
 
-	assert_eq!(interrupt_ack["payload"]["accepted"], true);
-	assert_eq!(interrupt_ack["payload"]["status"], "interrupted");
-	assert_eq!(interrupt_ack["payload"]["projectId"], config.service_id());
-	assert_eq!(interrupt_ack["payload"]["issueId"], issue.id);
-	assert_eq!(interrupt_ack["payload"]["runId"], "run-1");
+		assert_eq!(ack["payload"]["accepted"], false);
+		assert_eq!(ack["payload"]["status"], "unsupported_action");
+		assert_eq!(ack["payload"]["action"], action);
+		assert_eq!(ack["payload"]["projectId"], config.service_id());
+		assert_eq!(ack["payload"]["issueId"], issue.id);
+		assert_eq!(ack["payload"]["runId"], "run-1");
+	}
+
 	assert!(
-		interrupt_ack["payload"]["message"]
-			.as_str()
-			.expect("interrupt ack message should be text")
-			.contains("process 4242")
+		state_store
+			.list_projects()
+			.expect("projects should list")
+			.into_iter()
+			.find(|project| project.service_id() == config.service_id())
+			.expect("project should remain registered")
+			.enabled(),
+		"unsupported project controls should not pause dispatch"
 	);
-
-	let calls = interrupter_calls
-		.lock()
-		.expect("dashboard run interrupter calls should not be poisoned");
-
-	assert_eq!(calls.len(), 1);
-	assert_eq!(calls[0], 4_242);
 	assert_eq!(
 		state_store
 			.run_attempt("run-1")
 			.expect("run lookup should succeed")
 			.expect("run should remain recorded")
 			.status(),
-		"interrupted",
+		"running",
 	);
 	assert!(
 		state_store
 			.lease_for_issue(&issue.id)
 			.expect("lease lookup should succeed")
-			.is_none(),
-		"interrupt should release the queue lease"
-	);
-
-	drop(calls);
-	drop(client);
-
-	dashboard_events.close_clients_for_test();
-	server.join().expect("server thread should complete");
-}
-
-#[test]
-fn operator_dashboard_websocket_interrupt_control_reports_validation_errors() {
-	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
-	let address = listener.local_addr().expect("listener address should resolve");
-	let snapshot = Arc::new(Mutex::new(PublishedOperatorSnapshot::default()));
-	let state_store = Arc::new(StateStore::open_in_memory().expect("state store should open"));
-	let dashboard_events = DashboardEventHub::default();
-	let server_snapshot = Arc::clone(&snapshot);
-	let server_state_store = Arc::clone(&state_store);
-	let server_dashboard_events = dashboard_events.clone();
-	let server = thread::spawn(move || {
-		let (stream, _) = listener.accept().expect("listener should accept a connection");
-
-		orchestrator::handle_operator_state_endpoint_connection(
-			stream,
-			&server_snapshot,
-			&server_dashboard_events,
-			&OperatorControlRequests::default(),
-			&server_state_store,
-		)
-		.expect("websocket handler should complete after client disconnect");
-	});
-	let (mut client, response, mut frame) = open_dashboard_websocket_client(address);
-
-	assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
-
-	client
-		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"missing-project","action":"pauseProject"}"#,
-		))
-		.expect("client should send missing-project control");
-
-	let missing_project_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
-		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "missing-project"
-	});
-
-	assert_eq!(missing_project_ack["payload"]["accepted"], false);
-	assert_eq!(missing_project_ack["payload"]["status"], "missing_project");
-
-	client
-		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"missing-run","action":"interruptRun","projectId":"pubfi","issueId":"PUB-101"}"#,
-		))
-		.expect("client should send missing-run control");
-
-	let missing_run_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
-		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "missing-run"
-	});
-
-	assert_eq!(missing_run_ack["payload"]["accepted"], false);
-	assert_eq!(missing_run_ack["payload"]["status"], "missing_run");
-
-	client
-		.write_all(&websocket_client_text_frame(
-			r#"{"type":"control","requestId":"unknown-run","action":"interruptRun","projectId":"pubfi","issueId":"PUB-101","runId":"missing"}"#,
-		))
-		.expect("client should send unknown-run control");
-
-	let unknown_run_ack = read_websocket_json_until(&mut client, &mut frame, |payload| {
-		payload["type"] == "controlAck" && payload["payload"]["requestId"] == "unknown-run"
-	});
-
-	assert_eq!(unknown_run_ack["payload"]["accepted"], false);
-	assert_eq!(unknown_run_ack["payload"]["status"], "failed");
-	assert!(
-		unknown_run_ack["payload"]["message"]
-			.as_str()
-			.expect("interrupt ack message should be text")
-			.contains("not recorded")
+			.is_some(),
+		"unsupported interrupt should not release the queue lease"
 	);
 
 	drop(client);
@@ -1031,21 +920,6 @@ fn websocket_client_text_frame(payload: &str) -> Vec<u8> {
 	frame.extend(payload.iter().enumerate().map(|(index, byte)| byte ^ mask[index % mask.len()]));
 
 	frame
-}
-
-fn dashboard_run_interrupter_calls_for_test() -> &'static Mutex<Vec<u32>> {
-	static CALLS: std::sync::OnceLock<Mutex<Vec<u32>>> = std::sync::OnceLock::new();
-
-	CALLS.get_or_init(|| Mutex::new(Vec::new()))
-}
-
-fn fake_dashboard_run_interrupter(process_id: u32) -> Result<()> {
-	dashboard_run_interrupter_calls_for_test()
-		.lock()
-		.expect("dashboard run interrupter calls should not be poisoned")
-		.push(process_id);
-
-	Ok(())
 }
 
 fn read_websocket_json_until(
