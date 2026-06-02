@@ -5,6 +5,7 @@ fn operator_status_text_renders_human_readable_sections() {
 		project_id: String::from("pubfi"),
 		run_limit: 10,
 		warnings: Vec::new(),
+		warning_details: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
 		account_control: OperatorCodexAccountControlStatus {
@@ -139,6 +140,7 @@ fn operator_status_text_explains_empty_backlog_checks() {
 		project_id: String::from("pubfi"),
 		run_limit: 10,
 		warnings: Vec::new(),
+		warning_details: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
 		account_control: OperatorCodexAccountControlStatus {
@@ -173,6 +175,7 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 		project_id: String::from("pubfi"),
 		run_limit: 10,
 		warnings: Vec::new(),
+		warning_details: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
 		account_control: OperatorCodexAccountControlStatus {
@@ -237,6 +240,7 @@ fn operator_status_text_terminal_run_freshness_uses_terminal_update() {
 		project_id: String::from("pubfi"),
 		run_limit: 10,
 		warnings: Vec::new(),
+		warning_details: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
 		account_control: OperatorCodexAccountControlStatus {
@@ -274,6 +278,7 @@ fn operator_status_text_active_run_without_live_activity_does_not_promote_update
 		project_id: String::from("pubfi"),
 		run_limit: 10,
 		warnings: Vec::new(),
+		warning_details: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
 		account_control: OperatorCodexAccountControlStatus {
@@ -306,6 +311,7 @@ fn operator_status_text_explains_unleased_live_running_lane() {
 		project_id: String::from("pubfi"),
 		run_limit: 10,
 		warnings: Vec::new(),
+		warning_details: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
 		account_control: OperatorCodexAccountControlStatus {
