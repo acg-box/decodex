@@ -21,6 +21,7 @@ mod pull_request;
 mod prelude {
 	pub use color_eyre::{Result, eyre};
 }
+mod radar;
 mod recovery;
 mod runtime;
 mod tracker;
