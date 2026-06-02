@@ -91,6 +91,8 @@ Decodex follow-up, public content, or only ledger trace.
 
 - The Decodex runtime contract is Unix-only: macOS and Linux.
 - Windows is outside the runtime contract.
+- Current Codex/app-server compatibility is capability-gated and recorded in
+  [`docs/spec/app-server.md`](docs/spec/app-server.md).
 - The public site is static and deploys through GitHub Pages.
 - Starting `decodex serve` without its `--config` option loads enabled projects from
   the explicit registry only. It does not scan Codex history, repo-local config files,

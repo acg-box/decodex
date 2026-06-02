@@ -30,6 +30,8 @@ The split below is by question type, not by human-versus-agent audience.
 
 - Need runtime contracts, invariants, schemas, enums, state machines, or required
   behavior -> `docs/spec/`
+- Need current Decodex/Codex app-server compatibility range or protocol support
+  evidence -> `docs/spec/app-server.md`
 - Need public static-site contracts, GitHub bundle schemas, signal-entry schemas, or
   release-delta schemas -> `docs/spec/`
 - Need runbooks, migrations, validation steps, troubleshooting, or operational

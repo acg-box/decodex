@@ -34,9 +34,54 @@ codex app-server generate-json-schema --experimental --out target/decodex-app-se
 
 - `decodex` must treat the generated schema as more authoritative than stale handwritten assumptions.
 - `--experimental` is required when inspecting `dynamicTools` and related experimental fields in the generated bundle.
-- As of the 2026-05 refresh, the local compatibility baseline is
-  `codex-cli 0.132.0-alpha.1` from `PATH` and the Codex Beta app bundle's
-  `codex-cli 0.131.0-alpha.9`; both expose `PluginListParams.marketplaceKinds`.
+
+## Compatibility range
+
+The current Decodex app-server support range is capability-gated rather than a broad
+"latest Codex" promise. A Codex CLI or bundled Codex binary is inside the supported
+range only when all of these are true:
+
+- `codex app-server generate-json-schema --experimental` succeeds.
+- The generated schema contains the Decodex-owned request and notification contract in
+  this spec, including `initialize`, `thread/start`, `thread/resume`, `turn/start`,
+  `thread/archive`, `command/exec`, the bounded preflight methods, `item/tool/call`,
+  dynamic tool `namespace`, dynamic tool `deferLoading`, `inputText` tool responses,
+  and `PluginListParams.marketplaceKinds`.
+- `decodex probe stdio://` completes the app-server capability preflight,
+  standalone `command/exec` health check, and dynamic-tool round trip with
+  `PROBE_OK`.
+
+As of the 2026-06-02 self-compatibility pass, the verified local range is:
+
+| Codex surface | Version | Evidence |
+| --- | --- | --- |
+| `PATH` `codex` | `codex-cli 0.136.0` | Generated `--experimental` schema contains the required methods and fields; `decodex probe stdio://` returned `PROBE_OK`. |
+| Codex Beta app bundled `codex` | `codex-cli 0.136.0-alpha.2` | Running `decodex probe stdio://` with the bundle resource directory first on `PATH` returned `PROBE_OK`. |
+
+The same pass compared that range against upstream Codex:
+
+- GitHub release `rust-v0.136.0` is covered by the verified `PATH` `codex-cli 0.136.0`
+  probe above.
+- Upstream `main` commits after `rust-v0.136.0` are outside the local support claim
+  until Radar review, schema regeneration, and `decodex probe stdio://` cover that
+  newer head or release.
+- The checked-in upstream review queue generated on 2026-06-02 contained 40 queued
+  `openai/codex` subjects, including critical and high-priority app-server protocol,
+  plugin/tool metadata, sandbox/config, and release-packaging candidates.
+  Those queue entries are compatibility watch items, not adoption authorization.
+
+The previous 2026-05 local refresh covered `codex-cli 0.132.0-alpha.1` from `PATH`
+and the Codex Beta app bundle's `codex-cli 0.131.0-alpha.9`. Treat those as historical
+compatibility evidence, not the current upgrade target.
+
+Current upstream Codex signals are beyond the local support claim whenever they are
+newer than the latest locally probed version, or when checked-in Radar queue entries
+flag app-server protocol, plugin metadata, dynamic tool, sandbox/config, GitHub/Linear
+routing, or retained-lane lifecycle risk that has not yet been source-reviewed and
+probed locally. In that case Decodex must not force an upgrade. It should keep running
+the latest locally verified Codex surface, route the upstream change through Radar
+review, regenerate the app-server schema, run `decodex probe stdio://`, and only then
+promote the new Codex version or protocol shape into this compatibility range.
 
 ## Implementation guidance
 
