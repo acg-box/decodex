@@ -735,6 +735,8 @@ fn operator_dashboard_websocket_filters_run_activity_by_subscription() {
 	assert_eq!(active_runs[0]["project_id"], "pubfi");
 	assert_eq!(active_runs[0]["issue_id"], "PUB-102");
 	assert_eq!(active_runs[0]["run_id"], "run-2");
+	assert_eq!(activity["payload"]["activeRunsComplete"], false);
+	assert_eq!(activity["payload"]["activeRunScope"], "filtered");
 
 	drop(client);
 
@@ -1174,9 +1176,13 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 
 	assert_eq!(payload["type"], "runActivity");
 	assert_eq!(data["accountControl"]["mode"], "balanced");
+	assert_eq!(data["activeRunsComplete"], true);
+	assert_eq!(data["activeRunScope"], "complete");
 	assert!(data["accounts"].is_array());
 	assert!(fingerprint.get("emittedAtUnixEpoch").is_none());
 	assert_eq!(fingerprint["accountControl"]["mode"], "balanced");
+	assert_eq!(fingerprint["activeRunsComplete"], true);
+	assert_eq!(fingerprint["activeRunScope"], "complete");
 	assert!(fingerprint["accounts"].is_array());
 	assert_eq!(fingerprint["activeRuns"][0]["run_id"], "run-1");
 	assert_eq!(
