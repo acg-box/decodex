@@ -85,7 +85,8 @@ This boundary does not create a project-local runtime database contract. The run
 
 - Runtime policy decisions that depend on Codex behavior, such as idle timeout, stall thresholds, retry cutoffs, or liveness heuristics, must not be tuned from local Decodex observation alone.
 - For those decisions, use three inputs together:
-  - the generated `codex app-server` schema for protocol shape
+  - the generated `codex app-server` schema for protocol shape and the current
+    compatibility range in [`app-server.md`](./app-server.md)
   - live pilot telemetry for observed event cadence and failure modes
   - the relevant Codex or `app-server` implementation path for terminal semantics, waiting states, and progress signals
 - If those inputs disagree, treat the local implementation and generated schema as more authoritative than stale design assumptions.
