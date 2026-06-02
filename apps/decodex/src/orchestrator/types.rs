@@ -51,6 +51,41 @@ pub(crate) struct EvidenceRequest<'a> {
 	pub(crate) include_payload: bool,
 }
 
+/// Active lane steer request.
+pub(crate) struct LaneSteerRequest<'a> {
+	pub(crate) config_path: Option<&'a Path>,
+	pub(crate) project_id: Option<&'a str>,
+	pub(crate) issue: &'a str,
+	pub(crate) run_id: &'a str,
+	pub(crate) expected_turn_id: &'a str,
+	pub(crate) message: &'a str,
+	pub(crate) source: &'a str,
+	pub(crate) wait_timeout: Duration,
+}
+
+/// Active lane steer result without raw operator message content.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct LaneSteerReport {
+	pub(crate) project_id: String,
+	pub(crate) issue_id: String,
+	pub(crate) issue_identifier: Option<String>,
+	pub(crate) run_id: String,
+	pub(crate) attempt_number: i64,
+	pub(crate) thread_id: Option<String>,
+	pub(crate) expected_turn_id: String,
+	pub(crate) current_turn_id: Option<String>,
+	pub(crate) response_turn_id: Option<String>,
+	pub(crate) audit_record_id: i64,
+	pub(crate) request_id: String,
+	pub(crate) request_path: Option<String>,
+	pub(crate) outcome: String,
+	pub(crate) reason: String,
+	pub(crate) failure_class: Option<String>,
+	pub(crate) delivery_status: String,
+	pub(crate) message_byte_count: usize,
+	pub(crate) message_line_count: usize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RunSummary {
 	project_id: String,
