@@ -11,5 +11,6 @@ at most 21 days, then move cold batches to dedicated `radar-archive-*` GitHub Re
 assets and keep the recovery manifest under `artifacts/archive/index/`.
 
 Rust-owned bundle build and validation commands live under `decodex radar bundle ...`.
-Remaining deterministic scripts live under `scripts/github/` during migration.
+The remaining `scripts/github/` files are AI-helper and schema-support surfaces, not
+GitHub Actions deterministic refresh entrypoints.
 Repo-local editorial instructions live under `dev/skills/github-signal/`.

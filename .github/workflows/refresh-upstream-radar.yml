@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GH_API_TOKEN: ${{ secrets.GITHUB_PAT_Y }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Fetch latest code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -41,7 +41,6 @@ jobs:
         run: |
           cargo run -p decodex --bin decodex -- radar refresh-upstream-queue \
             --repo openai/codex \
-            --token-env GH_API_TOKEN \
             --search-limit 40
 
       - name: Detect content changes

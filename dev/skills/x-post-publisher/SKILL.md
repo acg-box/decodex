@@ -37,6 +37,11 @@ verification, Chrome availability, X page structure, media upload, duplicate det
 or final URL readback is unreliable, do not post. Write `status = "failed"` or
 `status = "blocked"` with evidence instead.
 
+Treat Chrome tabs as scoped resources. After account verification, compose, upload,
+and final URL readback are done, close or release all tabs opened for the workflow.
+Keep a tab only as an explicit human handoff, such as login, CAPTCHA, account approval,
+or an unfinished operator-controlled page, and record that handoff in the result.
+
 Style observations from X are not technical evidence. They can shape format and tone,
 but every technical claim must point back to GitHub, changelog, signal, upstream-review,
 or upstream-impact evidence.

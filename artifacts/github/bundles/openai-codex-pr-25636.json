@@ -1,0 +1,116 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-01T15:55:10Z",
+      "message": "Rename multi-agent v2 assign_task tool",
+      "sha": "c9bdb5255b2b4b5d365a1be3ec3a94e34a4e0af0",
+      "url": "https://github.com/openai/codex/commit/c9bdb5255b2b4b5d365a1be3ec3a94e34a4e0af0"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/rollout-trace/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "DEFAULT_MULTI_AGENT_V2_SUBAGENT_USAGE_HINT_TEXT",
+    "MAX_WAIT_TIMEOUT_MS",
+    "MIN_WAIT_TIMEOUT_MS"
+  ],
+  "files": [
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -195,7 +195,7 @@ At the start of your turn, you are the active agent.\n You can spawn sub-agents to handle subtasks, and those sub-agents can spawn their own sub-agents.\n All agents in the team, including the agents that you can assign tasks to, are equally intelligent and capable, and have access to the same set of tools.\n \n-You can use `spawn_agent` to create a new agent, `assign_task` to give an existing agent a new task and trigger a turn, and `send_message` to pass a message to a running agent without triggering a turn.\n+You can use `spawn_agent` to create a new agent, `followup_task` to give an existing agent a new task and trigger a turn, and `send_message` to pass a message to a running agent without triggering a turn.\n Child agents can also spawn their own sub-agents.\n You can decide how much context you want to propagate to your sub-agents with the `fork_turns` parameter.\n \n@...",
+      "path": "codex-rs/core/src/config/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 4,
+      "patch_excerpt": "@@ -179,12 +179,13 @@ pub fn create_send_message_tool() -> ToolSpec {\n     })\n }\n \n-pub fn create_assign_task_tool() -> ToolSpec {\n+pub fn create_followup_task_tool() -> ToolSpec {\n     let properties = BTreeMap::from([\n         (\n             \"target\".to_string(),\n             JsonSchema::string(Some(\n-                \"Agent id or canonical task name to message (from spawn_agent).\".to_string(),\n+                \"Agent id or canonical task name to send a follow-up task to (from spawn_agent).\"\n+                    .to_string(),\n             )),\n         ),\n         (\n@@ -196,8 +197,8 @@ pub fn create_assign_task_tool() -> ToolSpec {\n     ]);\n \n     ToolSpec::Function(ResponsesApiTool {\n-        name: \"assign_task\".to_string(),\n-        description: \"Send a message to an existing non-root target agent and trigger a turn in that target. If the target is currently mid-turn, the message is qu...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_spec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 5,
+      "patch_excerpt": "@@ -247,25 +247,25 @@ fn send_message_tool_requires_message_and_has_no_output_schema() {\n }\n \n #[test]\n-fn assign_task_tool_requires_message_and_has_no_output_schema() {\n+fn followup_task_tool_requires_message_and_has_no_output_schema() {\n     let ToolSpec::Function(ResponsesApiTool {\n         name,\n         parameters,\n         output_schema,\n         ..\n-    }) = create_assign_task_tool()\n+    }) = create_followup_task_tool()\n     else {\n-        panic!(\"assign_task should be a function tool\");\n+        panic!(\"followup_task should be a function tool\");\n     };\n-    assert_eq!(name, \"assign_task\");\n+    assert_eq!(name, \"followup_task\");\n     assert_eq!(\n         parameters.schema_type,\n         Some(JsonSchemaType::Single(JsonSchemaPrimitiveType::Object))\n     );\n     let properties = parameters\n         .properties\n         .as_ref()\n-        .expect(\"assign_task should use object pa...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_spec_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 13,
+      "patch_excerpt": "@@ -8,8 +8,8 @@ use crate::session::tests::make_session_and_context;\n use crate::session_prefix::format_subagent_notification_message;\n use crate::thread_manager::thread_store_from_config;\n use crate::tools::context::ToolOutput;\n-use crate::tools::handlers::multi_agents_v2::AssignTaskHandler as AssignTaskHandlerV2;\n use crate::tools::handlers::multi_agents_v2::CloseAgentHandler as CloseAgentHandlerV2;\n+use crate::tools::handlers::multi_agents_v2::FollowupTaskHandler as FollowupTaskHandlerV2;\n use crate::tools::handlers::multi_agents_v2::ListAgentsHandler as ListAgentsHandlerV2;\n use crate::tools::handlers::multi_agents_v2::SendMessageHandler as SendMessageHandlerV2;\n use crate::tools::handlers::multi_agents_v2::SpawnAgentHandler as SpawnAgentHandlerV2;\n@@ -1413,7 +1413,7 @@ async fn multi_agent_v2_send_message_accepts_root_target_from_child() {\n }\n \n #[tokio::test]\n-async fn multi_agent_...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -28,15 +28,15 @@ use serde::Deserialize;\n use serde::Serialize;\n use serde_json::Value as JsonValue;\n \n-pub(crate) use assign_task::Handler as AssignTaskHandler;\n pub(crate) use close_agent::Handler as CloseAgentHandler;\n+pub(crate) use followup_task::Handler as FollowupTaskHandler;\n pub(crate) use list_agents::Handler as ListAgentsHandler;\n pub(crate) use send_message::Handler as SendMessageHandler;\n pub(crate) use spawn::Handler as SpawnAgentHandler;\n pub(crate) use wait::Handler as WaitAgentHandler;\n \n-mod assign_task;\n mod close_agent;\n+mod followup_task;\n mod list_agents;\n mod message_tool;\n mod send_message;",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 5,
+      "patch_excerpt": "@@ -1,28 +1,28 @@\n-use super::message_tool::AssignTaskArgs;\n+use super::message_tool::FollowupTaskArgs;\n use super::message_tool::MessageDeliveryMode;\n use super::message_tool::handle_message_string_tool;\n use super::*;\n-use crate::tools::handlers::multi_agents_spec::create_assign_task_tool;\n+use crate::tools::handlers::multi_agents_spec::create_followup_task_tool;\n use codex_tools::ToolSpec;\n \n pub(crate) struct Handler;\n \n #[async_trait::async_trait]\n impl ToolExecutor<ToolInvocation> for Handler {\n     fn tool_name(&self) -> ToolName {\n-        ToolName::plain(\"assign_task\")\n+        ToolName::plain(\"followup_task\")\n     }\n \n     fn spec(&self) -> ToolSpec {\n-        create_assign_task_tool()\n+        create_followup_task_tool()\n     }\n \n     async fn handle(\n         &self,\n         invocation: ToolInvocation,\n     ) -> Result<Box<dyn crate::tools::context::ToolOutput>, FunctionCallE...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2/followup_task.rs",
+      "status": "renamed"
+    },
+    {
+      "additions": 5,
+      "deletions": 5,
+      "patch_excerpt": "@@ -1,6 +1,6 @@\n //! Shared argument parsing and dispatch for the v2 text-only agent messaging tools.\n //!\n-//! `send_message` and `assign_task` share the same submission path and differ only in whether the\n+//! `send_message` and `followup_task` share the same submission path and differ only in whether the\n //! resulting `InterAgentCommunication` should wake the target immediately.\n \n use super::*;\n@@ -40,8 +40,8 @@ pub(crate) struct SendMessageArgs {\n \n #[derive(Debug, Deserialize)]\n #[serde(deny_unknown_fields)]\n-/// Input for the MultiAgentV2 `assign_task` tool.\n-pub(crate) struct AssignTaskArgs {\n+/// Input for the MultiAgentV2 `followup_task` tool.\n+pub(crate) struct FollowupTaskArgs {\n     pub(crate) target: String,\n     pub(crate) message: String,\n }\n@@ -55,7 +55,7 @@ fn message_content(message: String) -> Result<String, FunctionCallError> {\n     Ok(message)\n }\n \n-/// Handles the...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -38,8 +38,8 @@ use crate::tools::handlers::multi_agents_common::MAX_WAIT_TIMEOUT_MS;\n use crate::tools::handlers::multi_agents_common::MIN_WAIT_TIMEOUT_MS;\n use crate::tools::handlers::multi_agents_spec::SpawnAgentToolOptions;\n use crate::tools::handlers::multi_agents_spec::WaitAgentTimeoutOptions;\n-use crate::tools::handlers::multi_agents_v2::AssignTaskHandler as AssignTaskHandlerV2;\n use crate::tools::handlers::multi_agents_v2::CloseAgentHandler as CloseAgentHandlerV2;\n+use crate::tools::handlers::multi_agents_v2::FollowupTaskHandler as FollowupTaskHandlerV2;\n use crate::tools::handlers::multi_agents_v2::ListAgentsHandler as ListAgentsHandlerV2;\n use crate::tools::handlers::multi_agents_v2::SendMessageHandler as SendMessageHandlerV2;\n use crate::tools::handlers::multi_agents_v2::SpawnAgentHandler as SpawnAgentHandlerV2;\n@@ -686,7 +686,7 @@ fn add_collaboration_tools(context: &CoreTo...",
+      "path": "codex-rs/core/src/tools/spec_plan.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 26,
+      "deletions": 4,
+      "patch_excerpt": "@@ -766,6 +766,7 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {\n         \"wait_agent\",\n         \"close_agent\",\n         \"send_message\",\n+        \"followup_task\",\n         \"assign_task\",\n         \"list_agents\",\n     ]);\n@@ -790,12 +791,12 @@ async fn multi_agent_feature_selects_one_agent_tool_family() {\n     v2.assert_visible_contains(&[\n         \"spawn_agent\",\n         \"send_message\",\n-        \"assign_task\",\n+        \"followup_task\",\n         \"wait_agent\",\n         \"close_agent\",\n         \"list_agents\",\n     ]);\n-    v2.assert_visible_lacks(&[\"send_input\", \"resume_agent\"]);\n+    v2.assert_visible_lacks(&[\"send_input\", \"resume_agent\", \"assign_task\"]);\n     let spawn_agent_description = match v2.visible_spec(\"spawn_agent\") {\n         ToolSpec::Function(tool) => tool.description.as_str(),\n         other => panic!(\"expected spawn_agent function spec, got {other:?}\"),\n@@ -8...",
+      "path": "codex-rs/core/src/tools/spec_plan_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -177,7 +177,7 @@ the edges between them.\n \n ```mermaid\n flowchart LR\n-    RootTool[\"root ToolCall\\nspawn_agent / assign_task / send_message\"]\n+    RootTool[\"root ToolCall\\nspawn_agent / followup_task / send_message\"]\n     ChildInput[\"child ConversationItem\\ninjected task/message\"]\n     ChildThread[\"child AgentThread\"]\n     ChildResult[\"child assistant ConversationItem\\nresult message\"]",
+      "path": "codex-rs/rollout-trace/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -267,7 +267,7 @@ fn dispatched_tool_kind(tool_name: &str, _payload: &ToolDispatchPayload) -> Tool\n         \"image_generation\" | \"image_query\" => ToolCallKind::ImageGeneration,\n         \"spawn_agent\" => ToolCallKind::SpawnAgent,\n         \"send_message\" => ToolCallKind::SendMessage,\n-        \"assign_task\" | \"followup_task\" => ToolCallKind::AssignAgentTask,\n+        \"followup_task\" | \"assign_task\" => ToolCallKind::AssignAgentTask,\n         \"wait_agent\" => ToolCallKind::WaitAgent,\n         \"close_agent\" => ToolCallKind::CloseAgent,\n         other => ToolCallKind::Other {",
+      "path": "codex-rs/rollout-trace/src/tool_dispatch.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n\nRenames the MultiAgentV2 turn-triggering tool from `assign_task` to `followup_task` so the exposed tool name better describes sending an additional task to an existing agent.\n\nThis updates the tool spec, handler/module names, registry wiring, default multi-agent v2 usage hints, and tests. Rollout trace classification keeps accepting legacy `assign_task` events so older traces still reduce correctly, while docs show the new tool name.\n\n## Test plan\n\n- `just test -p codex-core followup_task`\n- `just test -p codex-core -E 'test(multi_agent_feature_selects_one_agent_tool_family) | test(multi_agent_v2_can_use_configured_tool_namespace) | test(code_mode_only_can_expose_namespaced_multi_agent_v2_as_normal_tools)'`\n- `just test -p codex-rollout-trace`\n- `just fix -p codex-core`\n- `just fix -p codex-rollout-trace`\n\nNotes: `just fmt` ran `cargo fmt` but failed in the Python ruff phase because the local environment could not resolve `hatchling>=1.27.0` from the configured internal registry. A full `just test -p codex-core` also hit unrelated environment-sensitive integration failures involving missing spawned test binaries/sandbox behavior; the changed multi-agent spec/handler tests passed in the filtered runs above.",
+    "labels": [],
+    "merged_at": "2026-06-01T17:57:12Z",
+    "number": 25636,
+    "state": "merged",
+    "title": "[codex] Rename multi-agent v2 assign_task to followup_task",
+    "url": "https://github.com/openai/codex/pull/25636"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
