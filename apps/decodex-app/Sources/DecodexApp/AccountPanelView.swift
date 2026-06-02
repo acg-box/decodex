@@ -1522,7 +1522,7 @@ struct AccountProfileSummaryView: View {
 	private var metrics: [(label: String, value: String)] {
 		[
 			account.profileLifetimeTokens.map { ("tok", formatCompactCount($0)) },
-			account.profilePeakDailyTokens.map { ("peak", formatCompactCount($0)) },
+			account.profilePeakDailyTokensForDisplay.map { ("peak", formatCompactCount($0)) },
 			streakText.map { ("streak", $0) },
 			account.profileLongestTaskSeconds
 				.flatMap(formatActivityDuration)
