@@ -57,7 +57,8 @@ Then keep the body explicit:
 - [`runtime.md`](./runtime.md) defines the runtime state model, reconciliation rules, and
   tracker writeback boundaries.
 - [`app-server.md`](./app-server.md) defines the direct Codex `app-server` interaction
-  contract used by the runtime.
+  contract, current compatibility range, and protocol support evidence used by the
+  runtime.
 - [`github-change-bundle.md`](./github-change-bundle.md) defines the normalized GitHub
   input model for PR-first public signal analysis.
 - [`signal-entry.md`](./signal-entry.md) defines the published signal-entry schema used
