@@ -181,6 +181,21 @@ impl AppServerClient {
 		self.connection.request_with_handler("turn/start", &params, REQUEST_TIMEOUT, handler)
 	}
 
+	pub(super) fn interrupt_turn_with_handler<H>(
+		&mut self,
+		params: TurnInterruptRequest,
+		handler: H,
+	) -> crate::prelude::Result<Value>
+	where
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
+	{
+		self.connection.request_with_handler("turn/interrupt", &params, REQUEST_TIMEOUT, handler)
+	}
+
 	pub(super) fn command_exec(
 		&mut self,
 		params: &CommandExecParams,
@@ -424,6 +439,13 @@ pub(super) struct TurnStartRequest {
 #[derive(Debug, Deserialize)]
 pub(super) struct TurnStartResponse {
 	pub(super) turn: TurnStatusPayload,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TurnInterruptRequest {
+	pub(super) thread_id: String,
+	pub(super) turn_id: String,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
