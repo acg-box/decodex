@@ -1,6 +1,9 @@
 //! Persistent single-machine runtime state for active Decodex execution.
 
-#[cfg(unix)] use std::os::fd::{AsRawFd, FromRawFd};
+#[cfg(unix)] use std::os::{
+	fd::{AsRawFd, FromRawFd},
+	unix::ffi::OsStrExt,
+};
 use std::{
 	cmp,
 	collections::{HashMap, HashSet},
