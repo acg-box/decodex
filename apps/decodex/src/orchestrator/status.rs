@@ -235,12 +235,14 @@ fn build_operator_status_snapshot_with_account_mode(
 	}
 
 	let history_lanes = operator_history_lanes(&active_runs, &recent_runs);
-	let (worktrees, mut warnings) = operator_status_worktrees(project, state_store)?;
+	let (worktrees, mut warnings, warning_details) =
+		operator_status_worktrees(project, state_store)?;
 	let accounts = codex_account_activity_summaries(project, &mut warnings, account_activity_mode);
 	let mut snapshot = OperatorStatusSnapshot {
 		project_id: project.service_id().to_owned(),
 		run_limit: limit,
 		warnings,
+		warning_details,
 		connector_backoffs: Vec::new(),
 		projects: vec![OperatorProjectStatus {
 			project_id: project.service_id().to_owned(),
@@ -970,7 +972,11 @@ fn project_last_activity_at(snapshot: &OperatorStatusSnapshot) -> Option<String>
 fn operator_status_worktrees(
 	project: &ServiceConfig,
 	state_store: &StateStore,
-) -> crate::prelude::Result<(Vec<OperatorWorktreeStatus>, Vec<String>)> {
+) -> crate::prelude::Result<(
+	Vec<OperatorWorktreeStatus>,
+	Vec<String>,
+	Vec<OperatorSnapshotWarningDetail>,
+)> {
 	let mut worktrees = state_store
 		.list_worktrees(project.service_id())?
 		.into_iter()
@@ -991,6 +997,7 @@ fn operator_status_worktrees(
 	let mut seen_paths =
 		worktrees.iter().map(|worktree| worktree.worktree_path.clone()).collect::<HashSet<_>>();
 	let mut warnings = Vec::new();
+	let mut warning_details = Vec::new();
 
 	for issue_identifier in recoverable_worktree_identifiers(project.worktree_root())? {
 		let worktree_path = project.worktree_root().join(&issue_identifier);
@@ -1019,7 +1026,13 @@ fn operator_status_worktrees(
 		});
 	}
 
-	append_merged_worktree_cleanup_debts(project, &mut worktrees, &mut seen_paths, &mut warnings);
+	append_merged_worktree_cleanup_debts(
+		project,
+		&mut worktrees,
+		&mut seen_paths,
+		&mut warnings,
+		&mut warning_details,
+	);
 
 	worktrees.sort_by(|left, right| {
 		left.issue_id
@@ -1028,7 +1041,7 @@ fn operator_status_worktrees(
 			.then_with(|| left.worktree_path.cmp(&right.worktree_path))
 	});
 
-	Ok((worktrees, warnings))
+	Ok((worktrees, warnings, warning_details))
 }
 
 fn append_merged_worktree_cleanup_debts(
@@ -1036,6 +1049,7 @@ fn append_merged_worktree_cleanup_debts(
 	worktrees: &mut Vec<OperatorWorktreeStatus>,
 	seen_paths: &mut HashSet<String>,
 	warnings: &mut Vec<String>,
+	warning_details: &mut Vec<OperatorSnapshotWarningDetail>,
 ) {
 	let debts = match project_merged_worktree_cleanup_debts(project) {
 		Ok(debts) => debts,
@@ -1047,6 +1061,7 @@ fn append_merged_worktree_cleanup_debts(
 			);
 
 			warnings.push(String::from("worktree_hygiene_unavailable"));
+			warning_details.push(worktree_hygiene_unavailable_warning_detail(project, &error));
 
 			return;
 		},
@@ -1085,6 +1100,21 @@ fn append_merged_worktree_cleanup_debts(
 	}
 	if surfaced_dirty_cleanup_debt {
 		warnings.push(String::from("merged_dirty_worktree"));
+	}
+}
+
+fn worktree_hygiene_unavailable_warning_detail(
+	project: &ServiceConfig,
+	error: &Report,
+) -> OperatorSnapshotWarningDetail {
+	OperatorSnapshotWarningDetail {
+		warning: String::from("worktree_hygiene_unavailable"),
+		project_id: Some(project.service_id().to_owned()),
+		repo_root: Some(project.repo_root().display().to_string()),
+		reason: format!("Worktree hygiene scan failed: {error}"),
+		next_action: Some(String::from(
+			"Remove the stale project registration or restore the Git checkout before running automation.",
+		)),
 	}
 }
 
@@ -4762,7 +4792,7 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	output.push_str(&format!("Warnings: {}\n", snapshot.warnings.len()));
 
 	if !snapshot.warnings.is_empty() {
-		output.push_str(&format!("Warning details: {}\n", snapshot.warnings.join(", ")));
+		output.push_str(&format!("Warning details: {}\n", render_warning_details(snapshot)));
 	}
 
 	output.push_str(&format!("Running lanes: {}\n", snapshot.active_runs.len()));
@@ -4857,6 +4887,46 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	}
 
 	output
+}
+
+fn render_warning_details(snapshot: &OperatorStatusSnapshot) -> String {
+	snapshot
+		.warnings
+		.iter()
+		.flat_map(|warning| {
+			let details = snapshot
+				.warning_details
+				.iter()
+				.filter(|detail| &detail.warning == warning)
+				.collect::<Vec<_>>();
+
+			if details.is_empty() {
+				return vec![warning.clone()];
+			}
+
+			details.into_iter().map(format_warning_detail).collect()
+		})
+		.collect::<Vec<_>>()
+		.join("; ")
+}
+
+fn format_warning_detail(detail: &OperatorSnapshotWarningDetail) -> String {
+	let mut parts = vec![detail.warning.clone()];
+
+	if let Some(project_id) = detail.project_id.as_deref() {
+		parts.push(format!("project={project_id}"));
+	}
+	if let Some(repo_root) = detail.repo_root.as_deref() {
+		parts.push(format!("repo_root={repo_root}"));
+	}
+
+	parts.push(format!("reason={}", detail.reason));
+
+	if let Some(next_action) = detail.next_action.as_deref() {
+		parts.push(format!("next_action={next_action}"));
+	}
+
+	parts.join(" ")
 }
 
 fn render_queue_explain(
