@@ -27,6 +27,7 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 		project_id: String::from(TEST_SERVICE_ID),
 		run_limit: 10,
 		warnings: Vec::new(),
+		warning_details: Vec::new(),
 		connector_backoffs: Vec::new(),
 		projects: Vec::new(),
 		account_control: OperatorCodexAccountControlStatus {
