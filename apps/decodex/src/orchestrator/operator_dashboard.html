@@ -1784,7 +1784,8 @@
 			.account-meta {
 				display: flex;
 				flex-wrap: wrap;
-				gap: 5px 10px;
+				align-items: center;
+				gap: 4px 8px;
 				min-width: 0;
 				font-family: var(--mono);
 				font-size: var(--type-caption);
@@ -1792,8 +1793,70 @@
 			}
 
 			.account-meta span {
+				display: inline-flex;
+				align-items: baseline;
+				gap: 3px;
 				min-width: 0;
 				overflow-wrap: anywhere;
+			}
+
+			.account-meta span strong {
+				color: var(--muted-strong);
+				font-weight: var(--weight-label);
+			}
+
+			.account-pool-activity-strip {
+				display: flex;
+				align-items: center;
+				justify-content: flex-start;
+				gap: 2px;
+				width: min(100%, 128px);
+				min-width: 0;
+				height: 8px;
+				margin-top: 2px;
+				overflow: hidden;
+			}
+
+			.account-profile-activity-strip {
+				justify-self: center;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: 2px;
+				width: min(100%, 128px);
+				min-width: 0;
+				height: 8px;
+				overflow: hidden;
+			}
+
+			.account-pool-activity-tile,
+			.account-profile-activity-tile {
+				display: block;
+				flex: 0 0 6px;
+				width: 6px;
+				height: 8px;
+				border-radius: 2px;
+				background: var(--info);
+				opacity: var(--account-activity-opacity, 0.28);
+			}
+
+			#account-mode-meta {
+				display: flex;
+				align-items: center;
+				justify-content: flex-end;
+				gap: 8px;
+				max-width: min(760px, 72vw);
+				letter-spacing: 0;
+			}
+
+			.account-mode-head {
+				display: inline-flex;
+				align-items: baseline;
+				gap: 6px;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
 			}
 
 			.account-pool {
@@ -1806,7 +1869,7 @@
 
 			.account-pool-summary {
 				display: grid;
-				grid-template-columns: repeat(3, minmax(0, 1fr));
+				grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
 				gap: 0;
 				min-width: 0;
 				padding: 8px 0 8px var(--space-row-indent);
@@ -1820,8 +1883,8 @@
 				min-width: 0;
 				padding: 0 14px;
 				border-left: 1px solid var(--line);
-				font-family: var(--mono);
 				font-variant-numeric: tabular-nums;
+				line-height: 1.15;
 			}
 
 			.account-pool-metric:first-child {
@@ -1832,10 +1895,10 @@
 			.account-pool-metric-label {
 				overflow: hidden;
 				color: var(--muted);
+				font-family: var(--sans);
 				font-size: var(--type-caption);
 				font-weight: var(--weight-label);
 				letter-spacing: var(--tracking-caps);
-				line-height: 1.15;
 				text-overflow: ellipsis;
 				white-space: nowrap;
 			}
@@ -1843,10 +1906,10 @@
 			.account-pool-metric-value {
 				overflow: hidden;
 				color: var(--muted-strong);
+				font-family: var(--mono);
 				font-size: var(--type-row-title);
 				font-weight: var(--weight-label);
 				letter-spacing: 0;
-				line-height: 1.15;
 				text-overflow: ellipsis;
 				white-space: nowrap;
 			}
@@ -1864,7 +1927,7 @@
 			}
 
 			.account-pool-metric-value[data-tone="muted"] {
-				color: var(--muted);
+				color: var(--muted-strong);
 			}
 
 			.account-pool-summary-note {
@@ -1875,6 +1938,121 @@
 				font-size: var(--type-caption);
 				font-weight: var(--weight-label);
 				line-height: 1.2;
+			}
+
+			.account-profile-panel {
+				--account-accent: var(--tone-muted);
+				position: relative;
+				isolation: isolate;
+				overflow: hidden;
+				min-width: 0;
+				max-height: 0;
+				padding: 0 28px 0 var(--space-row-indent);
+				border-bottom: 0 solid transparent;
+				background: linear-gradient(
+					90deg,
+					color-mix(in srgb, var(--account-accent) 7%, transparent),
+					transparent 72%
+				);
+				color: var(--muted);
+				opacity: 0;
+				pointer-events: none;
+				transform: translateY(-4px);
+				transition:
+					max-height var(--medium) var(--ease),
+					padding-bottom var(--medium) var(--ease),
+					border-width var(--medium) var(--ease),
+					border-color var(--medium) var(--ease),
+					opacity var(--medium) var(--ease),
+					transform var(--medium) var(--ease);
+			}
+
+			.account-row.is-profile-open {
+				border-bottom-color: color-mix(in srgb, var(--line) 34%, transparent);
+			}
+
+			.account-profile-panel.is-selected,
+			.account-profile-panel.is-ready {
+				--account-accent: var(--success);
+			}
+
+			.account-profile-panel.is-fixed {
+				--account-accent: var(--info);
+			}
+
+			.account-profile-panel.is-warn {
+				--account-accent: var(--warning);
+			}
+
+			.account-profile-panel.is-danger {
+				--account-accent: var(--danger);
+			}
+
+			.account-profile-panel.is-open {
+				max-height: 88px;
+				padding-bottom: 10px;
+				border-bottom-width: 1px;
+				border-bottom-color: var(--line);
+				opacity: 1;
+				pointer-events: auto;
+				transform: translateY(0);
+			}
+
+			.account-profile-panel-inner {
+				display: grid;
+				grid-template-columns: repeat(5, minmax(0, 1fr));
+				align-items: center;
+				gap: 8px var(--space-row-y);
+				min-width: 0;
+				padding: 8px 0 0;
+			}
+
+			.account-profile-fact,
+			.account-profile-activity {
+				display: grid;
+				gap: 3px;
+				min-width: 0;
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				font-variant-numeric: tabular-nums;
+				line-height: 1.15;
+			}
+
+			.account-profile-fact {
+				justify-items: center;
+				text-align: center;
+			}
+
+			.account-profile-fact span,
+			.account-profile-activity-label {
+				max-width: 100%;
+				overflow: hidden;
+				color: var(--muted);
+				font-family: var(--sans);
+				font-size: var(--type-caption);
+				font-weight: var(--weight-label);
+				letter-spacing: var(--tracking-caps);
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-profile-fact strong,
+			.account-profile-empty {
+				max-width: 100%;
+				overflow: hidden;
+				color: var(--muted-strong);
+				font-weight: var(--weight-label);
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.account-profile-activity {
+				justify-items: center;
+				text-align: center;
+			}
+
+			.account-profile-panel:last-child {
+				border-bottom: 0;
 			}
 
 			.account-pool-list {
@@ -1980,12 +2158,16 @@
 				gap: 4px var(--account-gap);
 				min-width: 0;
 				min-height: 42px;
-				padding: var(--space-account-row-y) 0 var(--space-account-row-y) var(--space-row-indent);
+				padding: var(--space-account-row-y) 28px var(--space-account-row-y) var(--space-row-indent);
 				border-bottom: 1px solid var(--line);
 				background: transparent;
 				transition:
 					background-color var(--fast) var(--ease),
 					color var(--fast) var(--ease);
+			}
+
+			.account-row.is-profile-toggleable {
+				cursor: pointer;
 			}
 
 			.account-pool-list > .account-row:last-child {
@@ -2144,7 +2326,7 @@
 
 			.account-row-id {
 				grid-area: id;
-				display: flex;
+				display: inline-flex;
 				align-items: center;
 				justify-content: center;
 				justify-self: stretch;
@@ -2277,23 +2459,62 @@
 					color var(--fast) var(--ease);
 			}
 
+			.account-profile-toggle {
+				position: absolute;
+				z-index: 3;
+				top: 50%;
+				right: 5px;
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 18px;
+				height: 24px;
+				padding: 0;
+				border: 0;
+				border-radius: var(--radius-sm);
+				background: transparent;
+				color: var(--muted);
+				cursor: pointer;
+				opacity: 0.58;
+				transform: translateY(-50%);
+				transition:
+					background-color var(--fast) var(--ease),
+					color var(--fast) var(--ease),
+					opacity var(--fast) var(--ease);
+			}
+
 			.account-name-button + .account-name-reroll {
 				margin-left: 8px;
 			}
 
-			.account-name-reroll svg {
+			.account-name-reroll svg,
+			.account-profile-toggle svg {
 				display: block;
 				width: 12px;
 				height: 12px;
 				stroke-width: 2.1;
 			}
 
-			.account-name-reroll:hover {
-				background: var(--surface-muted);
-				color: var(--text);
+			.account-profile-toggle svg {
+				transition: transform var(--medium) var(--ease);
 			}
 
-			.account-name-reroll:focus-visible {
+			.account-profile-toggle[aria-expanded="true"] svg {
+				transform: rotate(180deg);
+			}
+
+			.account-row:hover .account-profile-toggle,
+			.account-row:focus-within .account-profile-toggle,
+			.account-name-reroll:hover,
+			.account-profile-toggle:hover,
+			.account-profile-toggle[aria-expanded="true"] {
+				background: var(--surface-muted);
+				color: var(--text);
+				opacity: 1;
+			}
+
+			.account-name-reroll:focus-visible,
+			.account-profile-toggle:focus-visible {
 				color: var(--text);
 				outline: 2px solid var(--info);
 				outline-offset: 2px;
@@ -3127,6 +3348,11 @@
 					font-size: var(--type-micro);
 				}
 
+				.account-profile-panel-inner {
+					grid-template-columns: repeat(5, minmax(0, 1fr));
+					gap: 8px;
+				}
+
 				.account-row {
 					grid-template-areas:
 						"id plan primary secondary credit state"
@@ -3635,6 +3861,7 @@
 			let accountApiRefreshedAt = 0;
 			let accountPoolSort = loadAccountPoolSort();
 			let accountSelectionConfirmation = null;
+			let expandedAccountProfileKeys = new Set();
 			let projectFilterMode = loadProjectFilterMode();
 			let projectLocationsHidden = loadProjectLocationPrivacy();
 			let projectSort = loadProjectSort();
@@ -3774,18 +4001,9 @@
 				node.innerHTML = renderMetricText(text);
 			}
 
-			function humanizeToken(value) {
-				if (!value) {
-					return "none";
-				}
-
-				return String(value)
-					.replace(/_/g, " ")
-					.replace(/\b\w/g, (character) => character.toUpperCase());
-			}
-
-			function sentenceToken(value) {
-				return humanizeToken(value).toLowerCase();
+			function displayToken(value) {
+				const token = String(value ?? "").trim();
+				return token || "none";
 			}
 
 			function normalizedDisplayText(value) {
@@ -4012,22 +4230,25 @@
 				return parts.join(" ");
 			}
 
-			function formatCompactCount(value) {
-				if (value == null) {
-					return "none";
-				}
+				function formatCompactCount(value) {
+					if (value == null) {
+						return "none";
+					}
 
-				const number = Math.max(0, Number(value));
+					const number = Math.max(0, Number(value));
 
-				if (number >= 1_000_000) {
-					return `${(number / 1_000_000).toFixed(2)}M`;
-				}
-				if (number >= 1_000) {
-					return `${(number / 1_000).toFixed(1)}k`;
-				}
+					if (number >= 1_000_000_000) {
+						return `${(number / 1_000_000_000).toFixed(1)}B`;
+					}
+					if (number >= 1_000_000) {
+						return `${(number / 1_000_000).toFixed(2)}M`;
+					}
+					if (number >= 1_000) {
+						return `${(number / 1_000).toFixed(1)}k`;
+					}
 
-				return String(Math.floor(number));
-			}
+					return String(Math.floor(number));
+				}
 
 			function formatCompactBytes(value) {
 				if (value == null) {
@@ -4110,29 +4331,16 @@
 
 				function runStageLabel(run) {
 					if (runStoppedProcessNeedsAttention(run)) {
-						return "Stopped";
+						return run.process_liveness_reason || "process_stopped";
 					}
 					if (runProcessStoppedWhileActive(run)) {
-						return "Finalizing";
+						return run.current_operation || run.phase || "process_stopped";
 					}
 					if (run.phase === "executing") {
-						switch (run.current_operation) {
-							case "git_credentials":
-								return "Preparing";
-							case "repo_gate":
-								return "Verifying";
-							case "review_writeback":
-								return "Finalizing";
-							case "reconciliation":
-								return "Reconciling";
-							case "waiting_external":
-								return "Waiting";
-							default:
-								return humanizeToken(run.phase);
-						}
+						return displayToken(run.current_operation || run.phase);
 					}
 
-					return humanizeToken(run.phase || run.status);
+					return displayToken(run.phase || run.status);
 				}
 
 			function runStaleWithoutKnownProcessAgeSeconds(run) {
@@ -4245,13 +4453,7 @@
 			}
 
 			function postReviewBlockerTitle(lane) {
-				if (lane.classification === "cleanup_blocked") {
-					return "Cleanup blocked";
-				}
-				if (lane.classification === "closeout_blocked") {
-					return "Closeout blocked";
-				}
-				return humanizeToken(lane.classification);
+				return displayToken(lane.classification);
 			}
 
 			function postReviewBlockerStatus(lane, blockerScope) {
@@ -4259,7 +4461,7 @@
 					return `review ${compactStateToken(lane.review_decision)}`;
 				}
 
-				return "needs attention";
+				return "needs_attention";
 			}
 
 			function toneForQueuedCandidate(candidate) {
@@ -4331,28 +4533,12 @@
 					case "normal_dispatch":
 					case "eligible_for_dispatch":
 						return "";
-					case "shared_claim_present":
-						return "Claimed; no live local lane visible.";
-					case "open_tracker_blockers":
-						return candidate.blocker_identifiers.length
-							? `Blocked by ${candidate.blocker_identifiers.join(", ")}.`
-							: "Blocked by tracker dependencies.";
-					case "missing_dispatch_briefing":
-						return "Missing dispatch brief.";
 					case "global_concurrency_exhausted":
 						return "";
-					case "issue_opted_out":
-						return "Automation is disabled for this issue.";
 					case "issue_needs_attention":
 						return "";
-					case "linear_active_label_present":
-						return "Active ownership is still present; reconcile before dispatch.";
-					case "non_startable_state":
-						return `${candidate.state} cannot start.`;
-					case "terminal_state":
-						return "Closed in tracker; automation label remains.";
 					default:
-						return humanizeToken(candidate.reason);
+						return displayToken(candidate.reason);
 				}
 			}
 
@@ -4366,10 +4552,10 @@
 					return COPY.runningInline;
 				}
 				if (candidate.reason === "global_concurrency_exhausted") {
-					return "At Capacity";
+					return displayToken(candidate.reason);
 				}
 
-				return humanizeToken(candidate.classification);
+				return displayToken(candidate.classification);
 			}
 
 			function queuedCandidateReasonText(candidate) {
@@ -4380,25 +4566,19 @@
 					candidate.attention?.worktree_has_tracked_changes &&
 					candidate.attention?.retry_budget_attempt_count != null
 				) {
-					return "partial patch retained";
+					return "worktree_has_tracked_changes";
 				}
 				if (candidate.attention?.thread_status === "systemError") {
-					return "app-server error";
+					return displayToken(candidate.attention.thread_status);
 				}
 				if (candidate.attention?.last_event_type === "item/tool/call") {
-					return "tool call stalled";
+					return displayToken(candidate.attention.last_event_type);
 				}
 				if (candidate.attention?.attention_error_class) {
-					return sentenceToken(candidate.attention.attention_error_class);
-				}
-				if (candidate.reason === "issue_needs_attention") {
-					return "needs attention";
-				}
-				if (candidate.reason === "linear_active_label_present") {
-					return "active label present";
+					return displayToken(candidate.attention.attention_error_class);
 				}
 				if (candidate.attention?.retry_budget_attempt_count != null) {
-					return "auto retry paused";
+					return "retry_budget_attempt_count";
 				}
 				if (candidate.reason === "global_concurrency_exhausted") {
 					return "";
@@ -4407,7 +4587,7 @@
 					return "";
 				}
 
-				return sentenceToken(candidate.reason);
+				return displayToken(candidate.reason);
 			}
 
 			function queuedCandidateInlineReason(candidate) {
@@ -4418,13 +4598,13 @@
 
 				if (
 					candidate.attention?.attention_error_class &&
-					displayTextRepeats(reason, sentenceToken(candidate.attention.attention_error_class))
+					displayTextRepeats(reason, displayToken(candidate.attention.attention_error_class))
 				) {
 					return "";
 				}
 				if (
 					candidate.attention?.worktree_has_tracked_changes &&
-					displayTextRepeats(reason, "patch retained")
+					displayTextRepeats(reason, "worktree_has_tracked_changes")
 				) {
 					return "";
 				}
@@ -4900,13 +5080,13 @@
 					facts.push(["Run", `${attention.run_id}${attempt}`]);
 				}
 				if (attention.current_operation && attention.current_operation !== "agent_run") {
-					facts.push(["Op", humanizeToken(attention.current_operation)]);
+					facts.push(["Op", displayToken(attention.current_operation)]);
 				}
 				if (attention.thread_status && attention.thread_status !== "systemError") {
-					facts.push(["Thread", humanizeToken(attention.thread_status)]);
+					facts.push(["Thread", displayToken(attention.thread_status)]);
 				}
 				if (attention.attempt_status) {
-					facts.push(["Attempt status", humanizeToken(attention.attempt_status)]);
+					facts.push(["Attempt status", displayToken(attention.attempt_status)]);
 				}
 				if (attention.retry_budget_attempt_count != null) {
 					const retryMax =
@@ -4919,7 +5099,7 @@
 					facts.push(["Auto retry", autoRetryBlockedReasonText(attention.auto_retry_blocked_reason)]);
 				}
 				if (attention.attention_error_class) {
-					facts.push(["Cause", sentenceToken(attention.attention_error_class)]);
+					facts.push(["Cause", displayToken(attention.attention_error_class)]);
 				}
 				if (attention.worktree_has_tracked_changes) {
 					facts.push(["Patch", "retained"]);
@@ -4956,18 +5136,11 @@
 			}
 
 			function autoRetryBlockedReasonText(reason) {
-				if (reason === "needs_attention_label") {
-					return "needs-attention label set";
-				}
-				if (reason === "linear_active_label_present") {
-					return "active label present";
-				}
-
-				return `blocked by ${sentenceToken(reason)}`;
+				return displayToken(reason);
 			}
 
 			function statusLabel(label, tone) {
-				return `<span class="status-label ${tone}">${escapeHtml(titleCaseLabel(label))}</span>`;
+				return `<span class="status-label ${tone}">${escapeHtml(label)}</span>`;
 			}
 
 			function inlineStatusFact(label, value) {
@@ -5389,7 +5562,7 @@
 					if (outcome.final_outcome === "execution_ledger_missing") {
 						return "Execution ledger missing";
 					}
-					return humanizeToken(outcome.final_outcome || outcome.ledger_status);
+					return displayToken(outcome.final_outcome || outcome.ledger_status);
 				}
 
 				return recentRunTitle(lane.latest_run);
@@ -5399,7 +5572,7 @@
 				const outcome = historyLedgerOutcome(lane);
 
 				if (historyLedgerWasLoaded(outcome)) {
-					return outcome.summary || `Latest recorded run event is ${humanizeToken(outcome.final_outcome)}.`;
+					return outcome.summary || `Latest recorded run event is ${displayToken(outcome.final_outcome)}.`;
 				}
 
 				return recentRunSummary(lane.latest_run, lane);
@@ -5410,10 +5583,10 @@
 				const run = lane.latest_run;
 
 				if (!historyLedgerWasLoaded(outcome)) {
-					const bits = [statusLabel(humanizeToken(run.status), tone)];
+					const bits = [statusLabel(displayToken(run.status), tone)];
 
 					if (run.wait_reason) {
-						const waitReason = sentenceToken(run.wait_reason);
+						const waitReason = displayToken(run.wait_reason);
 						if (!displayTextRepeats(recentRunSummary(run, lane), waitReason)) {
 							bits.push(inlineStatusFact("Wait", waitReason));
 						}
@@ -5422,17 +5595,17 @@
 						bits.push(inlineStatusFact("Continuation", "Pending"));
 					}
 					if (run.retry_kind) {
-						bits.push(inlineStatusFact("Retry", humanizeToken(run.retry_kind)));
+						bits.push(inlineStatusFact("Retry", displayToken(run.retry_kind)));
 					}
 
 					return bits;
 				}
 
-				const bits = [statusLabel(humanizeToken(outcome.final_outcome), tone)];
+				const bits = [statusLabel(displayToken(outcome.final_outcome), tone)];
 
-				bits.push(inlineStatusFact("History", humanizeToken(outcome.ledger_status)));
+				bits.push(inlineStatusFact("History", displayToken(outcome.ledger_status)));
 				if (outcome.closeout_status) {
-					bits.push(inlineStatusFact("Closeout", humanizeToken(outcome.closeout_status)));
+					bits.push(inlineStatusFact("Closeout", displayToken(outcome.closeout_status)));
 				}
 				if (outcome.needs_attention_reason) {
 					bits.push(inlineStatusFact("Attention", "Recorded"));
@@ -5508,70 +5681,21 @@
 			}
 
 			function processLivenessReasonLabel(reason) {
-				switch (reason) {
-					case "process_alive":
-						return "alive";
-					case "process_stopped":
-						return "stopped";
-					case "host_boot_id_missing":
-						return "boot identity missing";
-					case "host_boot_id_unavailable":
-						return "boot identity unavailable";
-					case "host_boot_id_mismatch":
-						return "previous boot";
-					case "process_start_identity_missing":
-						return "start identity missing";
-					case "process_start_identity_unavailable":
-						return "start identity unavailable";
-					case "process_start_identity_mismatch":
-						return "process identity changed";
-					case "process_identity_mismatch":
-						return "process identity changed";
-					default:
-						return reason ? reason.replaceAll("_", " ") : "unknown";
-				}
+				return displayToken(reason || "unknown");
 			}
 
 			function runExecutionLivenessSummary(run) {
-				switch (run.execution_liveness) {
-					case "process_alive":
-						return "process alive";
-					case "thread_active":
-						return "thread active";
-					case "protocol_observed":
-						return "protocol active";
-					case "process_stopped":
-						return "process stopped";
-					case "process_identity_mismatch":
-						return "process identity mismatch";
-					case "not_running":
-						return "not running";
-					default:
-						return "liveness unknown";
-				}
+				return displayToken(run.execution_liveness || "liveness_unknown");
 			}
 
 			function runQueueLeaseSummary(run) {
 				const leaseState = run.queue_lease_state || (run.active_lease ? "held" : "not_held");
 
 				if (leaseState === "held") {
-					return "lease held";
+					return "held";
 				}
 
-				switch (run.execution_liveness) {
-					case "process_alive":
-						return "no lease; live process";
-					case "thread_active":
-						return "no lease; active thread";
-					case "protocol_observed":
-						return "no lease; protocol active";
-					case "process_stopped":
-						return "no lease; stopped process";
-					case "process_identity_mismatch":
-						return "no lease; process identity mismatch";
-					default:
-						return "no lease";
-				}
+				return `${leaseState}; ${displayToken(run.execution_liveness || "liveness_unknown")}`;
 			}
 
 			function runApprovalSummary(run) {
@@ -5748,7 +5872,7 @@
 				return [
 					["Updated", formatTimestampCompact(run.updated_at)],
 					["Attempt", String(run.attempt_number ?? "none")],
-					["Status", humanizeToken(run.status)],
+					["Status", displayToken(run.status)],
 					["Events", String(run.event_count ?? 0)],
 				];
 			}
@@ -6253,21 +6377,11 @@
 
 				function codexAccountTokenLabel(refreshStatus) {
 					const status = String(refreshStatus || "").toLowerCase();
-					if (status === "not_needed" || status === "none") {
-						return "token ok";
-					}
-					if (status === "succeeded" || status === "refreshed") {
-						return "token refreshed";
-					}
-					if (status === "failed") {
-						return "refresh failed";
-					}
-
-					return status ? humanizeToken(status) : "token unknown";
+					return status || "token_unknown";
 				}
 
 				function codexAccountTokenValue(refreshStatus) {
-					return codexAccountTokenLabel(refreshStatus).replace(/^token /, "");
+					return codexAccountTokenLabel(refreshStatus);
 				}
 
 				function codexAccountRefreshStatusNeedsAttention(refreshStatus) {
@@ -6384,6 +6498,17 @@
 				function codexAccountUsageRecords(account) {
 					return Array.isArray(account?.usage_records)
 						? account.usage_records.filter((record) => record?.date)
+						: [];
+				}
+
+				function codexAccountProfileDailyUsage(account) {
+					return Array.isArray(account?.profile_daily_usage)
+						? account.profile_daily_usage
+								.filter((record) => record?.date && codexAccountNumber(record?.tokens) != null)
+								.map((record) => ({
+									date: String(record.date),
+									tokens: Math.max(0, codexAccountNumber(record.tokens) || 0),
+								}))
 						: [];
 				}
 
@@ -6527,6 +6652,199 @@
 					return parts.join(" ") || "<1m";
 				}
 
+				function formatCodexAccountProfileDuration(seconds) {
+					const value = codexAccountNumber(seconds);
+					if (value == null) {
+						return "";
+					}
+
+					return formatCodexAccountResetDuration(value);
+				}
+
+				function codexAccountProfileMetaFacts(account) {
+					if (!account) {
+						return [];
+					}
+					const currentStreak = codexAccountNumber(account.profile_current_streak_days);
+					const longestStreak = codexAccountNumber(account.profile_longest_streak_days);
+					const streak =
+						currentStreak != null && longestStreak != null
+							? `${currentStreak}/${longestStreak}d`
+							: currentStreak != null
+								? `${currentStreak}d`
+								: longestStreak != null
+									? `${longestStreak}d`
+									: "";
+					const task = formatCodexAccountProfileDuration(account.profile_longest_task_seconds);
+					const facts = [
+						codexAccountNumber(account.profile_lifetime_tokens) != null
+							? ["tok", formatCompactCount(account.profile_lifetime_tokens)]
+							: null,
+						codexAccountNumber(account.profile_peak_daily_tokens) != null
+							? ["peak", formatCompactCount(account.profile_peak_daily_tokens)]
+							: null,
+						streak ? ["streak", streak] : null,
+						task ? ["task", task] : null,
+					];
+
+					return facts.filter(Boolean);
+				}
+
+				function codexAccountProfileAggregate(accounts) {
+					const dailyUsageByDate = new Map();
+					let lifetimeTokens = null;
+					let peakTokensFallback = null;
+					let longestTaskSeconds = null;
+					let currentStreakDays = null;
+					let longestStreakDays = null;
+
+					for (const account of accounts) {
+						const lifetime = codexAccountNumber(account?.profile_lifetime_tokens);
+						if (lifetime != null) {
+							lifetimeTokens = (lifetimeTokens || 0) + lifetime;
+						}
+						const peak = codexAccountNumber(account?.profile_peak_daily_tokens);
+						if (peak != null) {
+							peakTokensFallback = (peakTokensFallback || 0) + peak;
+						}
+						const task = codexAccountNumber(account?.profile_longest_task_seconds);
+						if (task != null) {
+							longestTaskSeconds = Math.max(longestTaskSeconds || 0, task);
+						}
+						const currentStreak = codexAccountNumber(account?.profile_current_streak_days);
+						if (currentStreak != null) {
+							currentStreakDays = Math.max(currentStreakDays || 0, currentStreak);
+						}
+						const longestStreak = codexAccountNumber(account?.profile_longest_streak_days);
+						if (longestStreak != null) {
+							longestStreakDays = Math.max(longestStreakDays || 0, longestStreak);
+						}
+						for (const record of codexAccountProfileDailyUsage(account)) {
+							dailyUsageByDate.set(record.date, (dailyUsageByDate.get(record.date) || 0) + record.tokens);
+						}
+					}
+
+					const dailyUsage = Array.from(dailyUsageByDate, ([date, tokens]) => ({ date, tokens }))
+						.sort((left, right) => String(left.date).localeCompare(String(right.date)));
+					const peakFromDailyUsage = dailyUsage.reduce(
+						(peak, record) => Math.max(peak, record.tokens),
+						0,
+					);
+					const peakDailyTokens = peakFromDailyUsage > 0 ? peakFromDailyUsage : peakTokensFallback;
+					const aggregate = {
+						profile_lifetime_tokens: lifetimeTokens,
+						profile_peak_daily_tokens: peakDailyTokens,
+						profile_longest_task_seconds: longestTaskSeconds,
+						profile_current_streak_days: currentStreakDays,
+						profile_longest_streak_days: longestStreakDays,
+						profile_daily_usage: dailyUsage,
+					};
+					const hasMetric = codexAccountProfileMetaFacts(aggregate).length > 0;
+
+					return hasMetric || dailyUsage.length ? aggregate : null;
+				}
+
+				function renderCodexAccountActivityStrip(
+					account,
+					labelPrefix,
+					stripClass,
+					tileClass,
+				) {
+					const records = codexAccountProfileDailyUsage(account).slice(-35);
+					if (!records.length) {
+						return "";
+					}
+					const peak = records.reduce((max, record) => Math.max(max, record.tokens), 0);
+					const title = `${labelPrefix}: ${records.length} days, peak ${formatCompactCount(peak)} tokens`;
+
+					return `
+						<div class="${escapeHtml(stripClass)}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">
+							${records
+								.map((record) => {
+									const ratio = peak > 0 ? record.tokens / peak : 0;
+									const opacity = record.tokens > 0 ? 0.24 + ratio * 0.76 : 0.12;
+									const tileTitle = `${record.date}: ${formatCompactCount(record.tokens)} tokens`;
+									return `<span class="${escapeHtml(tileClass)}" style="--account-activity-opacity: ${opacity.toFixed(2)}" title="${escapeHtml(tileTitle)}" aria-hidden="true"></span>`;
+								})
+								.join("")}
+						</div>
+					`;
+				}
+
+				function renderCodexAccountPoolActivityStrip(account) {
+					return renderCodexAccountActivityStrip(
+						account,
+						"Pool token activity",
+						"account-pool-activity-strip",
+						"account-pool-activity-tile",
+					);
+				}
+
+				function renderCodexAccountProfileActivityStrip(account) {
+					return renderCodexAccountActivityStrip(
+						account,
+						"Account token activity",
+						"account-profile-activity-strip",
+						"account-profile-activity-tile",
+					);
+				}
+
+				function codexAccountProfileExpansionKey(account) {
+					return codexAccountRandomNameKey(account);
+				}
+
+				function codexAccountHasProfileDetails(account) {
+					return (
+						codexAccountProfileMetaFacts(account).length > 0 ||
+						codexAccountProfileDailyUsage(account).length > 0
+					);
+				}
+
+				function codexAccountProfileExpanded(account) {
+					const key = codexAccountProfileExpansionKey(account);
+					return Boolean(key && expandedAccountProfileKeys.has(key));
+				}
+
+				function toggleCodexAccountProfileKey(key) {
+					if (!key) {
+						return false;
+					}
+
+					expandedAccountProfileKeys = new Set(expandedAccountProfileKeys);
+					if (expandedAccountProfileKeys.has(key)) {
+						expandedAccountProfileKeys.delete(key);
+					} else {
+						expandedAccountProfileKeys.add(key);
+					}
+					if (lastDashboardRender) {
+						renderDashboardState(lastDashboardRender);
+					}
+
+					return true;
+				}
+
+				function accountProfileRowClickIsSuppressed(target) {
+					return Boolean(
+						target.closest(
+							[
+								"button",
+								"a",
+								"input",
+								"select",
+								"textarea",
+								"summary",
+								"details",
+								"[contenteditable='true']",
+								"[data-account-sort-key]",
+								"[data-account-privacy-toggle]",
+								"[data-account-confirm-action]",
+								"[data-account-name-reroll]",
+								"[data-account-profile-toggle]",
+							].join(","),
+						),
+					);
+				}
+
 				function codexAccountResetDistance(value) {
 					const seconds = codexAccountNumber(value);
 					if (seconds == null || seconds <= 0) {
@@ -6662,27 +6980,17 @@
 					const reached = codexAccountReachedType(account);
 					const status = reached || account.status || "selected";
 					const refresh = String(account.refresh_status || "").toLowerCase();
-					const normalizedStatus = String(status).toLowerCase();
 					if (codexAccountUsageLimited(account)) {
-						return "Limited";
+						return reached || (String(status).trim() && status !== "available" ? status : "usage_limited");
 					}
 					if (refresh.includes("failed")) {
-						return "Refresh failed";
+						return refresh;
 					}
 					if (refresh && !["not_needed", "refreshed", "succeeded", "none"].includes(refresh)) {
 						return codexAccountTokenValue(account.refresh_status);
 					}
-					if (normalizedStatus === "selected") {
-						return "Active";
-					}
-					if (normalizedStatus === "available") {
-						return "Ready";
-					}
-					if (normalizedStatus.includes("limit")) {
-						return "Limited";
-					}
 
-					return humanizeToken(status);
+					return displayToken(status);
 				}
 
 				function codexAccountCreditsSummary(account) {
@@ -6796,6 +7104,22 @@
 					`;
 				}
 
+				function renderCodexAccountProfileToggle(account, expanded) {
+					const key = codexAccountProfileExpansionKey(account);
+					const label = expanded ? "Hide account profile" : "Show account profile";
+					if (!key) {
+						return "";
+					}
+
+					return `
+						<button class="account-profile-toggle" type="button" data-account-profile-toggle="${escapeHtml(key)}" aria-expanded="${expanded ? "true" : "false"}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+							<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+								<path d="m6 9 6 6 6-6"></path>
+							</svg>
+						</button>
+					`;
+				}
+
 				function renderCodexAccountPoolRow(account, snapshot) {
 					const weight = codexAccountCapacityLabel(account);
 					const statusTone = codexAccountStatusTone(account);
@@ -6808,42 +7132,106 @@
 						selector && accountSelectionConfirmationMatches(action, selector) ? " is-armed" : "";
 					const selectedClass =
 						String(account.status || "").toLowerCase() === "selected" ? " is-selected" : "";
-				const metaFacts = codexAccountMetaFacts(account);
-				const credits = codexAccountCreditsSummary(account);
-				const creditTone = codexAccountCreditsTone(account);
-				const creditClass = creditTone ? ` is-${creditTone}` : "";
-				const identityClass = codexAccountShowsEmail(account) ? " is-machine" : "";
+					const metaFacts = codexAccountMetaFacts(account);
+					const credits = codexAccountCreditsSummary(account);
+					const creditTone = codexAccountCreditsTone(account);
+					const creditClass = creditTone ? ` is-${creditTone}` : "";
+					const identityClass = codexAccountShowsEmail(account) ? " is-machine" : "";
+					const profileKey = codexAccountProfileExpansionKey(account);
+					const hasProfileDetails = codexAccountHasProfileDetails(account);
+					const profileExpanded = hasProfileDetails && codexAccountProfileExpanded(account);
+					const profileOpenClass = profileExpanded ? " is-profile-open" : "";
+					const profileToggleableClass = hasProfileDetails ? " is-profile-toggleable" : "";
+					const profileRowToggleAttribute = hasProfileDetails
+						? ` data-account-profile-row-toggle="${escapeHtml(profileKey)}"`
+						: "";
 
-				return `
-						<div class="account-row${selectedClass}${fixedClass}${armedClass}${toneClass}">
-							<div class="account-row-id${identityClass}">
-								${renderCodexAccountNameControl(account, snapshot)}
-								${renderCodexAccountRandomNameButton(account)}
+					return `
+							<div class="account-row${selectedClass}${fixedClass}${armedClass}${toneClass}${profileOpenClass}${profileToggleableClass}" data-render-key="account-row:${escapeHtml(profileKey)}"${profileRowToggleAttribute}>
+								<div class="account-row-id${identityClass}">
+									${renderCodexAccountNameControl(account, snapshot)}
+									${renderCodexAccountRandomNameButton(account)}
+								</div>
+								<div class="account-row-plan">${escapeHtml(weight)}</div>
+								${renderCodexAccountPoolWindow(account, "primary")}
+								${renderCodexAccountPoolWindow(account, "secondary")}
+								<div class="account-row-credit${creditClass}">
+									<span>credits</span>
+									<strong>${escapeHtml(credits || "-")}</strong>
+								</div>
+								<div class="account-row-state">
+									<strong class="account-status">${escapeHtml(codexAccountStatusLabel(account))}</strong>
+								</div>
+								${
+									metaFacts.length
+										? `<div class="account-meta account-row-meta">
+												${metaFacts
+													.map(
+														([label, value]) =>
+															`<span>${escapeHtml(label)} <strong>${escapeHtml(value)}</strong></span>`,
+													)
+													.join("")}
+											</div>`
+										: ""
+								}
+								${hasProfileDetails ? renderCodexAccountProfileToggle(account, profileExpanded) : ""}
 							</div>
-							<div class="account-row-plan">${escapeHtml(weight)}</div>
-							${renderCodexAccountPoolWindow(account, "primary")}
-							${renderCodexAccountPoolWindow(account, "secondary")}
-							<div class="account-row-credit${creditClass}">
-								<span>credits</span>
-								<strong>${escapeHtml(credits || "-")}</strong>
+							${hasProfileDetails ? renderCodexAccountProfilePanel(account, snapshot, profileKey, profileExpanded) : ""}
+							`;
+				}
+
+				function codexAccountProfileFactMap(account) {
+					return new Map(codexAccountProfileMetaFacts(account));
+				}
+
+				function renderCodexAccountProfilePanel(account, snapshot, profileKey, expanded) {
+					const facts = codexAccountProfileFactMap(account);
+					const activity = renderCodexAccountProfileActivityStrip(account);
+					if (!facts.size && !activity) {
+						return "";
+					}
+
+					const statusTone = codexAccountStatusTone(account);
+					const toneClass = statusTone ? ` is-${statusTone}` : "";
+					const fixedClass = codexAccountMatchesConfiguredSelector(account, snapshot)
+						? " is-fixed"
+						: "";
+					const openClass = expanded ? " is-open" : "";
+					const selectedClass =
+						String(account.status || "").toLowerCase() === "selected" ? " is-selected" : "";
+					const title = [
+						codexAccountDisplayTitle(account),
+						...Array.from(facts, ([label, value]) => `${label} ${value}`),
+					]
+						.filter(Boolean)
+						.join(" · ");
+					const metricFacts = [
+						["Lifetime", facts.get("tok") || "-"],
+						["Peak day", facts.get("peak") || "-"],
+						["Streak", facts.get("streak") || "-"],
+						["Longest task", facts.get("task") || "-"],
+					];
+
+					return `
+						<div class="account-profile-panel${selectedClass}${fixedClass}${toneClass}${openClass}" data-render-key="account-profile-panel:${escapeHtml(profileKey)}" aria-hidden="${expanded ? "false" : "true"}" title="${escapeHtml(title)}">
+							<div class="account-profile-panel-inner">
+								${metricFacts
+									.map(
+										([label, value]) => `
+											<div class="account-profile-fact">
+												<span>${escapeHtml(label)}</span>
+												<strong>${escapeHtml(value)}</strong>
+											</div>
+										`,
+									)
+									.join("")}
+								<div class="account-profile-activity">
+									<span class="account-profile-activity-label">Activity</span>
+									${activity || '<strong class="account-profile-empty">-</strong>'}
+								</div>
 							</div>
-							<div class="account-row-state">
-								<strong class="account-status">${escapeHtml(codexAccountStatusLabel(account))}</strong>
-							</div>
-							${
-								metaFacts.length
-									? `<div class="account-meta account-row-meta">
-											${metaFacts
-												.map(
-													([label, value]) =>
-														`<span>${escapeHtml(label)} <strong>${escapeHtml(value)}</strong></span>`,
-												)
-												.join("")}
-										</div>`
-									: ""
-							}
 						</div>
-						`;
+					`;
 				}
 
 				function renderCodexAccountPoolSortButton([key, label]) {
@@ -6898,7 +7286,7 @@
 
 				function renderAccountModeControl(snapshot) {
 					const title = codexAccountControlStatusLabel(snapshot);
-					nodes.accountModeMeta.textContent = title;
+					nodes.accountModeMeta.innerHTML = `<span class="account-mode-head">${escapeHtml(title)}</span>`;
 					nodes.accountModeMeta.title = title;
 				}
 
@@ -6927,12 +7315,38 @@
 							tone: "muted",
 						},
 					];
+					const profileAggregate = codexAccountProfileAggregate(accounts);
+					const profileLabel = new Map([
+						["tok", "Lifetime tok"],
+						["peak", "Peak day"],
+						["streak", "Streak"],
+						["task", "Longest task"],
+					]);
+					const profileMetrics = profileAggregate
+						? codexAccountProfileMetaFacts(profileAggregate).map(([key, value]) => ({
+								label: profileLabel.get(key) || key,
+								value,
+								tone: key === "tok" ? "run" : "muted",
+							}))
+						: [];
+					metrics.push(...profileMetrics);
 					const measured = Number(estimate.account_estimate_count || 0);
 					const accountCount = Number(estimate.account_count || 0);
 					const note =
 						accountCount > 0 && measured > 0 && measured < accountCount
 							? `<span class="account-pool-summary-note">${escapeHtml(`${measured}/${accountCount} accounts measured`)}</span>`
 							: "";
+					const activityStrip = profileAggregate
+						? renderCodexAccountPoolActivityStrip(profileAggregate)
+						: "";
+					if (activityStrip) {
+						metrics.push({
+							label: "Activity",
+							value: "token history",
+							tone: "muted",
+							valueHtml: activityStrip,
+						});
+					}
 					const label = `Pool usage: ${metrics.map((metric) => `${metric.label} ${metric.value}`).join(", ")}`;
 
 					return `
@@ -6942,7 +7356,11 @@
 									(metric) => `
 										<div class="account-pool-metric">
 											<span class="account-pool-metric-label">${escapeHtml(metric.label)}</span>
-											<strong class="account-pool-metric-value" data-tone="${escapeHtml(metric.tone)}">${escapeHtml(metric.value)}</strong>
+											${
+												metric.valueHtml
+													? metric.valueHtml
+													: `<strong class="account-pool-metric-value" data-tone="${escapeHtml(metric.tone)}">${escapeHtml(metric.value)}</strong>`
+											}
 										</div>
 									`,
 								)
@@ -7167,6 +7585,10 @@
 
 				function renderAccountPool(snapshot) {
 					const accounts = codexAccountPoolAccounts(snapshot);
+					const visibleProfileKeys = new Set(accounts.map(codexAccountProfileExpansionKey));
+					expandedAccountProfileKeys = new Set(
+						[...expandedAccountProfileKeys].filter((key) => visibleProfileKeys.has(key)),
+					);
 					renderAccountModeControl(snapshot);
 					renderStableList(nodes.accountPool, renderCodexAccountPool(accounts, snapshot));
 					syncAccountSelectionConfirmationDom();
@@ -7234,7 +7656,7 @@
 					return null;
 				}
 
-				const label = detailLabel(humanizeToken(summary.current_detail || summary.current_bucket));
+				const label = detailLabel(displayToken(summary.current_detail || summary.current_bucket));
 
 				return `${label} · ${formatDuration(summary.current_elapsed_seconds)}`;
 			}
@@ -7506,7 +7928,7 @@
 
 													return `
 														<div class="child-bucket is-share" data-render-key="${escapeHtml(childBucketRenderKey(bucket))}" data-duration="wall-share">
-															<span class="child-bucket-name">${escapeHtml(humanizeToken(bucket.name))}</span>
+															<span class="child-bucket-name">${escapeHtml(displayToken(bucket.name))}</span>
 															<span class="child-bucket-bar" aria-hidden="true" style="--bucket-width: ${width}%"><span></span></span>
 															<span class="child-bucket-value">${escapeHtml(childBucketShareLabel(bucket, totalWall))}</span>
 														</div>
@@ -7533,7 +7955,7 @@
 
 													return `
 														<div class="${bucketClass}" data-render-key="${escapeHtml(childBucketRenderKey(bucket))}"${bucketState}>
-															<span class="child-bucket-name">${escapeHtml(humanizeToken(bucket.name))}</span>
+															<span class="child-bucket-name">${escapeHtml(displayToken(bucket.name))}</span>
 															<span class="child-bucket-signals" aria-label="${escapeHtml(signalSummary)}">
 																${renderChildBucketDiagnosticSignals(bucket)}
 															</span>
@@ -7572,7 +7994,7 @@
 
 				const buckets = childAgentBuckets(summary)
 					.slice(0, 5)
-					.map((bucket) => `${humanizeToken(bucket.name)} ${childBucketDuration(bucket)}`)
+					.map((bucket) => `${displayToken(bucket.name)} ${childBucketDuration(bucket)}`)
 					.join(", ");
 
 				return `current ${childAgentCurrentSummary(summary) || "none"}; buckets ${buckets || "none"}`;
@@ -7601,26 +8023,14 @@
 
 			function recentRunTitle(run) {
 				if (run.current_operation && run.current_operation !== "idle") {
-					return humanizeToken(run.current_operation);
+					return displayToken(run.current_operation);
 				}
-				if (isSuccessfulTerminalRun(run)) {
-					return "Completed";
-				}
-				if (run.status === "failed") {
-					return "Failed";
-				}
-				if (run.status === "interrupted") {
-					return "Stopped";
-				}
-				if (run.status === "terminated") {
-					return "Terminated";
-				}
-				return humanizeToken(run.phase || run.status);
+				return displayToken(run.phase || run.status);
 			}
 
 			function recentRunSummary(run, lane = null) {
 				if ((lane?.attempt_count ?? 1) > 1) {
-					return `Latest attempt ${humanizeToken(run.status || run.phase).toLowerCase()}; earlier attempts are in the timeline.`;
+					return `Latest attempt ${displayToken(run.status || run.phase)}; earlier attempts are in the timeline.`;
 				}
 				if (isSuccessfulTerminalRun(run)) {
 					return "Finished; no active lane.";
@@ -7734,7 +8144,7 @@
 					return "";
 				}
 				if (runProcessStoppedWhileActive(run)) {
-					return `Agent done; finalizing ${humanizeToken(run.current_operation || run.phase).toLowerCase()}.`;
+					return `Agent done; finalizing ${displayToken(run.current_operation || run.phase)}.`;
 				}
 				if (run.suspected_stall) {
 					return `No progress ${formatDuration(run.protocol_idle_for_seconds ?? run.idle_for_seconds)}.`;
@@ -7749,7 +8159,7 @@
 					return "";
 				}
 				if (run.wait_reason) {
-					return `Waiting on ${humanizeToken(run.wait_reason).toLowerCase()}.`;
+					return `Waiting on ${displayToken(run.wait_reason)}.`;
 				}
 				if (!run.active_lease) {
 					return "No queue lease.";
@@ -7772,7 +8182,7 @@
 
 			function runIssueTitle(run, derived) {
 				const issueRecord = runIssueRecord(run, derived);
-				const operationFallback = humanizeToken(run.current_operation || run.phase);
+				const operationFallback = displayToken(run.current_operation || run.phase);
 				const fallback = issueDisplayKey(run);
 
 				for (const value of [run.title, run.issue_title, issueRecord?.title]) {
@@ -7788,44 +8198,44 @@
 			function runHealthText(run) {
 				if (runTelemetryMissingNeedsAttention(run)) {
 					if (runHasChildAgentActivity(run)) {
-						return "Metadata Pending";
+						return "metadata_pending";
 					}
-					return "Telemetry Missing";
+					return "telemetry_missing";
 				}
 				if (runTelemetryMissing(run)) {
 					if (runHasChildAgentActivity(run)) {
-						return "Metadata Pending";
+						return "metadata_pending";
 					}
-					return "Starting Telemetry";
+					return "starting_telemetry";
 				}
 				if (runStoppedProcessNeedsAttention(run)) {
-					return "Needs Attention";
+					return "needs_attention";
 				}
 				if (runProcessStoppedWhileActive(run)) {
 					return runStageLabel(run);
 				}
 				if (run.suspected_stall) {
-					return "Needs Attention";
+					return "needs_attention";
 				}
 				if (run.interactive_requested) {
-					return "Input Requested";
+					return "input_requested";
 				}
 				if (run.continuation_pending) {
-					return "Continuation Pending";
+					return "continuation_pending";
 				}
 				if (runWaitReasonShowsExecutionProgress(run)) {
-					return humanizeToken(run.wait_reason);
+					return displayToken(run.wait_reason);
 				}
 				if (run.wait_reason) {
-					return `Waiting On ${humanizeToken(run.wait_reason)}`;
+					return displayToken(run.wait_reason);
 				}
 				if (!run.active_lease && runCountsAsRunning(run)) {
-					return "Live, No Queue Lease";
+					return "live_no_queue_lease";
 				}
 				if (run.thread_status) {
-					return humanizeToken(run.thread_status);
+					return displayToken(run.thread_status);
 				}
-				return humanizeToken(run.status || run.phase);
+				return displayToken(run.status || run.phase);
 			}
 
 			function snapshotIsIdle(snapshot) {
@@ -7851,9 +8261,9 @@
 
 			function connectorBackoffNotice(backoff) {
 				const project = backoff.project_id || "project";
-				const connector = humanizeToken(backoff.connector || "tracker");
-				const phase = humanizeToken(backoff.sync_phase || "external sync");
-				const quota = humanizeToken(backoff.quota_class || "api quota");
+				const connector = displayToken(backoff.connector || "tracker");
+				const phase = displayToken(backoff.sync_phase || "external sync");
+				const quota = displayToken(backoff.quota_class || "api quota");
 				const retryAfter = backoff.retry_after_seconds == null ? "unknown" : formatDuration(backoff.retry_after_seconds);
 				const resetAt = formatTimestamp(backoff.reset_at);
 				const nextAction = backoff.next_action || "Monitor local lanes.";
@@ -7900,7 +8310,7 @@
 						copy: snapshotError
 							? "WebSocket did not deliver a usable snapshot."
 							: warnings.length
-								? "Local state is published; external observer sections were skipped."
+								? `warnings: ${warnings.map(displayToken).join(", ")}`
 								: "Fresh operator snapshot published.",
 					};
 				}
@@ -8053,72 +8463,11 @@
 					return notices;
 				}
 
-				function snapshotBuildFailureProjects(snapshot) {
-					const warnings = new Set(snapshot?.warnings ?? []);
-					const apiOnlyBaseline = warnings.has("automation_disabled");
-
-					return (snapshot?.projects ?? []).filter((project) => {
-						if (!project?.enabled) {
-							return false;
-						}
-						if (project.connector_state === "config_error") {
-							return true;
-						}
-						if (apiOnlyBaseline && (project.warning_count ?? 0) > 1) {
-							return true;
-						}
-
-						return project.connector_state === "degraded" && (project.warning_count ?? 0) > 0;
-					});
-				}
-
-				function snapshotBuildFailureProjectSummary(snapshot) {
-					const projectIDs = snapshotBuildFailureProjects(snapshot)
-						.map((project) => project.project_id)
-						.filter(Boolean);
-					if (!projectIDs.length) {
-						return "";
-					}
-					if (projectIDs.length === 1) {
-						return projectIDs[0];
-					}
-
-					return `${projectIDs[0]} +${projectIDs.length - 1}`;
-				}
-
-				function warningNotice(warning, snapshot) {
-					if (warning === "tracker_rate_limited") {
-						return {
-							tone: "warning",
-							title: "Tracker sync paused",
-							copy: "Linear rate limit; serving local state while sync pauses.",
-						};
-					}
-					if (warning === "external_observer_status_skipped") {
-						return {
-							tone: "warning",
-							title: "External sync skipped",
-							copy: "Snapshot used local state without live tracker refresh.",
-						};
-					}
-					if (warning === "operator_snapshot_build_failed") {
-						const projectSummary = snapshotBuildFailureProjectSummary(snapshot);
-
-						return {
-							tone: "warning",
-							title: projectSummary
-								? `Snapshot build failed: ${projectSummary}`
-								: "Snapshot build failed",
-							copy: projectSummary
-								? "A registered project could not be loaded from its config path; remove it or re-register the project."
-								: "A registered project could not be loaded from its config path.",
-						};
-					}
-
+				function warningNotice(warning) {
 					return {
 						tone: "warning",
 						title: "Snapshot warning",
-						copy: humanizeToken(warning),
+						copy: displayToken(warning),
 					};
 				}
 
@@ -8226,7 +8575,7 @@
 							issue: issueKey,
 							title: runStoppedProcessNeedsAttention(run)
 								? "Stopped agent process"
-								: humanizeToken(run.current_operation || run.phase),
+								: displayToken(run.current_operation || run.phase),
 							summary: runStoppedProcessNeedsAttention(run)
 								? `Agent process stopped while lane remains active. ${COPY.protocolEvent} ${run.last_event_type || "none"}.`
 								: runStaleWithoutKnownProcessNeedsAttention(run)
@@ -8234,7 +8583,7 @@
 									: `No confirmed progress for ${formatDuration(run.idle_for_seconds)}. ${COPY.protocolEvent} ${run.last_event_type || "none"}.`,
 							status: runStoppedProcessNeedsAttention(run)
 								? "attention stopped"
-								: `phase ${humanizeToken(run.phase)}`,
+								: `phase ${displayToken(run.phase)}`,
 							facts: [
 								["Codex thread", runThreadSummary(run)],
 								["Thread flags", runThreadFlagSummary(run)],
@@ -8260,10 +8609,10 @@
 							tone,
 							scope: "Running",
 							issue: issueKey,
-							title: humanizeToken(run.current_operation || run.phase),
+							title: displayToken(run.current_operation || run.phase),
 							summary: run.next_retry_at
 								? `Retry scheduled for ${formatTimestamp(run.next_retry_at)}.`
-								: `Waiting on ${humanizeToken(run.wait_reason || run.phase).toLowerCase()}.`,
+								: `Waiting on ${displayToken(run.wait_reason || run.phase)}.`,
 							status: "waiting",
 							facts: [
 								["Codex thread", runThreadSummary(run)],
@@ -8291,10 +8640,10 @@
 							issue: issueKey,
 							title: "Repair running",
 							summary: "",
-							status: `run ${humanizeToken(activeRun.phase)}`,
+							status: `run ${displayToken(activeRun.phase)}`,
 							facts: [
 								["Run", activeRun.run_id],
-								["Operation", humanizeToken(activeRun.current_operation || activeRun.phase)],
+								["Operation", displayToken(activeRun.current_operation || activeRun.phase)],
 								["Checks", compactStateToken(lane.check_state)],
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
@@ -9160,7 +9509,7 @@
 							const summary = activeRunSummary(run);
 
 							if (run.wait_reason && !runWaitReasonShowsExecutionProgress(run)) {
-								const waitReason = sentenceToken(run.wait_reason);
+								const waitReason = displayToken(run.wait_reason);
 								if (!displayTextRepeats(summary, waitReason)) {
 									statusBits.push(inlineStatusFact("Wait", waitReason));
 								}
@@ -9208,7 +9557,7 @@
 									</div>
 									<div class="row-aside">
 										${attemptNumber ? `<span>Attempt ${escapeHtml(attemptNumber)}</span>` : ""}
-										${runNeedsAttention(run) ? `<span>${escapeHtml(titleCaseLabel(runHealthText(run)))}</span>` : ""}
+										${runNeedsAttention(run) ? `<span>${escapeHtml(runHealthText(run))}</span>` : ""}
 									</div>
 								</div>
 									<div class="status-line">${statusLineParts.join("")}</div>
@@ -9265,8 +9614,8 @@
 									(attempt) => `
 										<div class="attempt-row">
 											<span class="mono">#${escapeHtml(attempt.attempt_number ?? "none")}</span>
-											<span>${escapeHtml(humanizeToken(attempt.status || attempt.phase || "unknown"))}</span>
-											<span>${escapeHtml(humanizeToken(attempt.current_operation || attempt.phase || "idle"))}</span>
+											<span>${escapeHtml(displayToken(attempt.status || attempt.phase || "unknown"))}</span>
+											<span>${escapeHtml(displayToken(attempt.current_operation || attempt.phase || "idle"))}</span>
 											<span>${escapeHtml(formatTimestampCompact(attempt.updated_at))}</span>
 											<span class="mono">${escapeHtml(attempt.run_id || "none")}</span>
 										</div>
@@ -9414,7 +9763,7 @@
 					return {
 						sortRank: 1,
 						tone: toneForLane(reviewMatch),
-						label: `post-review ${humanizeToken(reviewMatch.classification)}`,
+						label: `post-review ${displayToken(reviewMatch.classification)}`,
 						summary:
 							worktree.ownership_reason ||
 							"Retained for review, landing, or closeout.",
@@ -9524,7 +9873,7 @@
 				}
 
 				return `
-					${field("Cleanup state", humanizeToken(hygiene.classification || "cleanup_pending"))}
+					${field("Cleanup state", displayToken(hygiene.classification || "cleanup_pending"))}
 					${field("Default branch", hygiene.default_branch || "unknown")}
 					${field("Uncommitted changes", hygiene.dirty ? "yes" : "no")}
 				`;
@@ -9591,7 +9940,7 @@
 								<p class="row-summary">${escapeHtml(role.summary)}</p>
 								<div class="grid two">
 									${field("Issue state", worktree.issue_state || "unknown")}
-									${field("Ownership", humanizeToken(worktree.ownership || role.label))}
+									${field("Ownership", displayToken(worktree.ownership || role.label))}
 									${field("Branch", worktree.branch_name)}
 									${field("Worktree path", worktree.worktree_path)}
 									${renderWorktreeHygieneFields(worktree)}
@@ -9702,7 +10051,7 @@
 					return false;
 				}
 
-				return title === humanizeToken(run?.current_operation || run?.phase);
+				return title === displayToken(run?.current_operation || run?.phase);
 			}
 
 			function dashboardRunIdentityKeys(run) {
@@ -9964,7 +10313,7 @@
 				if (action === "interruptRun" || action === "interrupt") {
 					return "Stop";
 				}
-				return humanizeToken(action);
+				return displayToken(action);
 			}
 
 			function recordDashboardControlEvent(event) {
@@ -10174,6 +10523,13 @@
 					return;
 				}
 
+				const profileToggle = event.target.closest("[data-account-profile-toggle]");
+				if (profileToggle) {
+					event.preventDefault();
+					toggleCodexAccountProfileKey(profileToggle.dataset.accountProfileToggle);
+					return;
+				}
+
 				const confirmButton = event.target.closest("[data-account-confirm-action]");
 				if (confirmButton) {
 					event.preventDefault();
@@ -10184,43 +10540,48 @@
 				}
 
 				const button = event.target.closest("[data-account-name-reroll]");
-				if (!button) {
-					return;
-				}
+				if (button) {
+					event.preventDefault();
+					const key = button.dataset.accountNameReroll;
+					if (!key) {
+						return;
+					}
 
-				event.preventDefault();
-				const key = button.dataset.accountNameReroll;
-				if (!key) {
-					return;
-				}
-
-				const account = lastDashboardRender
-					? codexAccountPoolAccounts(lastDashboardRender.snapshot).find(
-							(candidate) => codexAccountRandomNameKey(candidate) === key,
-						)
-					: null;
-				const current = account
-					? codexAccountRandomNameOffset(account)
-					: normalizeAccountNameOffset(pendingAccountNameOffsets[key]);
-				const next = normalizeAccountNameOffset(current + 1);
-				pendingAccountNameOffsets = {
-					...pendingAccountNameOffsets,
-					[key]: next,
-				};
-				if (lastDashboardRender) {
-					renderDashboardState(lastDashboardRender);
-				}
-				if (account) {
-					postAccountNameOffset(account, next)
-						.then((updated) => {
-							if (updated) {
-								delete pendingAccountNameOffsets[key];
-								if (lastDashboardRender) {
-									renderDashboardState(lastDashboardRender);
+					const account = lastDashboardRender
+						? codexAccountPoolAccounts(lastDashboardRender.snapshot).find(
+								(candidate) => codexAccountRandomNameKey(candidate) === key,
+							)
+						: null;
+					const current = account
+						? codexAccountRandomNameOffset(account)
+						: normalizeAccountNameOffset(pendingAccountNameOffsets[key]);
+					const next = normalizeAccountNameOffset(current + 1);
+					pendingAccountNameOffsets = {
+						...pendingAccountNameOffsets,
+						[key]: next,
+					};
+					if (lastDashboardRender) {
+						renderDashboardState(lastDashboardRender);
+					}
+					if (account) {
+						postAccountNameOffset(account, next)
+							.then((updated) => {
+								if (updated) {
+									delete pendingAccountNameOffsets[key];
+									if (lastDashboardRender) {
+										renderDashboardState(lastDashboardRender);
+									}
 								}
-							}
-						})
-						.catch(() => {});
+							})
+							.catch(() => {});
+					}
+					return;
+				}
+
+				const profileRow = event.target.closest("[data-account-profile-row-toggle]");
+				if (profileRow && !accountProfileRowClickIsSuppressed(event.target)) {
+					event.preventDefault();
+					toggleCodexAccountProfileKey(profileRow.dataset.accountProfileRowToggle);
 				}
 			});
 

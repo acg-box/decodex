@@ -16,7 +16,7 @@ final class AccountStore: ObservableObject {
 	private let bridge = DecodexAppBridge()
 	private var automaticRefreshTask: Task<Void, Never>?
 	private var operatorSnapshotStreamTask: Task<Void, Never>?
-	private var pendingRunActivity: [OperatorRunStatus]?
+	private var pendingRunActivity: OperatorRunActivitySnapshot?
 
 	deinit {
 		automaticRefreshTask?.cancel()
@@ -157,6 +157,7 @@ final class AccountStore: ObservableObject {
 			} catch {
 				operatorSnapshot = nil
 				operatorSnapshotUpdatedAt = nil
+				pendingRunActivity = nil
 			}
 
 			do {
@@ -216,22 +217,38 @@ final class AccountStore: ObservableObject {
 				return
 			}
 
-			if let pendingRunActivity {
-				operatorSnapshot = snapshot.mergingRunActivity(pendingRunActivity)
+			let snapshotPublishedAt = payload.snapshotPublishedAt ?? Date()
+			if let pendingRunActivity,
+				pendingRunActivity.shouldOverlay(snapshotPublishedAt: snapshotPublishedAt)
+			{
+				operatorSnapshot = pendingRunActivity.merging(into: snapshot)
 			} else {
 				operatorSnapshot = snapshot
+				pendingRunActivity = nil
 			}
-			operatorSnapshotUpdatedAt = payload.snapshotPublishedAt ?? Date()
+			operatorSnapshotUpdatedAt = snapshotPublishedAt
 		case "runActivity":
 			guard let activeRuns = payload.activeRuns else {
 				return
 			}
 
-			pendingRunActivity = activeRuns
-			if let operatorSnapshot {
-				self.operatorSnapshot = operatorSnapshot.mergingRunActivity(activeRuns)
+			let activity = OperatorRunActivitySnapshot(
+				activeRuns: activeRuns,
+				emittedAt: payload.emittedAt ?? Date()
+			)
+			if let operatorSnapshotUpdatedAt,
+				activity.shouldOverlay(snapshotPublishedAt: operatorSnapshotUpdatedAt) == false
+			{
+				pendingRunActivity = nil
+
+				return
 			}
-			operatorSnapshotUpdatedAt = payload.emittedAt ?? Date()
+
+			pendingRunActivity = activity
+			if let operatorSnapshot {
+				self.operatorSnapshot = activity.merging(into: operatorSnapshot)
+			}
+			operatorSnapshotUpdatedAt = activity.emittedAt
 		default:
 			break
 		}
