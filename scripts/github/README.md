@@ -16,6 +16,12 @@ Current scripts:
 - `render_signal_entry.py`
 - `validate_signal_entry.py`
 
+Rust CLI foundation:
+
+- `decodex radar validate` validates checked Radar artifact JSON contracts from the
+  Rust CLI. It is additive; the Python scripts remain the active Makefile and workflow
+  entrypoints until downstream migration issues replace them.
+
 Current checked contracts:
 
 - `analysis_draft.schema.json`
