@@ -1663,7 +1663,12 @@ fn operator_dashboard_uses_websocket_without_http_state_fallback() {
 	assert!(response.contains("connectDashboardSocket();"));
 	assert!(response.contains("function startDashboardStream()"));
 	assert!(response.contains("startDashboardStream();"));
-	assert!(response.contains("if (!document.hidden && !dashboardSocketIsOpen()) {\n\t\t\t\t\tconnectDashboardSocket();"));
+	assert!(response.contains("document.addEventListener(\"visibilitychange\", () => {"));
+	assert!(response.contains("if (document.hidden) {\n\t\t\t\t\treturn;\n\t\t\t\t}"));
+	assert!(response.contains("if (!dashboardSocketIsOpen()) {\n\t\t\t\t\tconnectDashboardSocket();"));
+	assert!(response.contains("function renderDashboardLocalClockTick()"));
+	assert!(response.contains("renderDashboardState(lastDashboardRender, { refreshAccounts: false });"));
+	assert!(response.contains("const shouldRefreshAccounts = options.refreshAccounts !== false;"));
 	assert!(!response.contains("function scheduleDashboardHttpFallback"));
 	assert!(!response.contains("clearDashboardHttpFallback();"));
 	assert!(!response.contains("requestJson("));
