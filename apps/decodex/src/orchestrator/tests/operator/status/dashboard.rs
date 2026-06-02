@@ -1011,6 +1011,7 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 	assert!(response.contains("return \"0.00\";"));
 	assert!(!response.contains("return \"No Credits\";"));
 	assert!(response.contains("return \"Unlimited\";"));
+
 	let account_status_label = response
 		.split("function codexAccountStatusLabel(account)")
 		.nth(1)
