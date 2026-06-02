@@ -11,51 +11,6 @@ pub(crate) struct ConnectorBackoffInput<'a> {
 	pub(crate) warning: &'a str,
 }
 
-/// Shared dispatch-slot capacity for one project.
-#[derive(Clone, Copy)]
-pub(crate) enum DispatchSlotLimit {
-	/// Fixed number of cross-process dispatch slots.
-	Limited(u32),
-	/// Allocate dispatch slots on demand without a fixed project cap.
-	Unlimited,
-}
-impl DispatchSlotLimit {
-	fn validate(self) -> Result<()> {
-		if matches!(self, Self::Limited(0)) {
-			eyre::bail!("dispatch slot limit must be greater than zero or unlimited");
-		}
-
-		Ok(())
-	}
-
-	fn includes(self, slot_index: usize) -> Result<bool> {
-		match self {
-			Self::Unlimited => Ok(true),
-			Self::Limited(limit) => Ok(slot_index
-				< usize::try_from(limit)
-					.map_err(|_error| eyre::eyre!("dispatch slot limit overflowed usize"))?),
-		}
-	}
-}
-impl From<u32> for DispatchSlotLimit {
-	fn from(value: u32) -> Self {
-		Self::Limited(value)
-	}
-}
-impl From<Option<u32>> for DispatchSlotLimit {
-	fn from(value: Option<u32>) -> Self {
-		match value {
-			Some(limit) => Self::Limited(limit),
-			None => Self::Unlimited,
-		}
-	}
-}
-impl From<WorkflowConcurrencyLimit> for DispatchSlotLimit {
-	fn from(value: WorkflowConcurrencyLimit) -> Self {
-		Self::from(value.dispatch_slot_limit())
-	}
-}
-
 /// Local runtime store for leases, attempts, worktrees, protocol events, and private evidence.
 #[derive(Default)]
 pub struct StateStore {
@@ -268,6 +223,13 @@ impl StateStore {
 			.filter(|attempt| attempt.issue_id == previous_issue_id)
 		{
 			attempt.issue_id = canonical_issue_id.to_owned();
+		}
+		for channel in state
+			.control_channels
+			.values_mut()
+			.filter(|channel| channel.issue_id == previous_issue_id)
+		{
+			channel.issue_id = canonical_issue_id.to_owned();
 		}
 		for record in state
 			.private_execution_events
@@ -774,6 +736,204 @@ impl StateStore {
 			.clone();
 
 		self.upsert_run_attempt_locked(&attempt)
+	}
+
+	/// Publish the local control channel for an active attempt when the runtime owns it.
+	pub(crate) fn publish_run_control_channel_for_active_attempt(
+		&self,
+		run_id: &str,
+		attempt_number: i64,
+		channel_path: &Path,
+		transport: &str,
+	) -> Result<Option<RunControlChannel>> {
+		validate_run_control_channel_inputs(run_id, attempt_number, channel_path, transport)?;
+
+		let now = timestamp_parts();
+		let mut state = self.lock_without_refresh()?;
+		let Some(attempt) = state.run_attempts.get(run_id).cloned() else {
+			return Ok(None);
+		};
+
+		if attempt.attempt_number != attempt_number {
+			return Ok(None);
+		}
+
+		let Some(lease) = state.leases.get(&attempt.issue_id) else {
+			return Ok(None);
+		};
+
+		if lease.run_id != run_id {
+			return Ok(None);
+		}
+
+		let (published_at, published_at_unix) = state
+			.control_channels
+			.get(run_id)
+			.filter(|channel| channel.attempt_number == attempt_number)
+			.map_or_else(|| (now.text.clone(), now.unix), |channel| {
+				(channel.published_at.clone(), channel.published_at_unix)
+			});
+		let channel = RunControlChannelRecord {
+			project_id: lease.project_id.clone(),
+			issue_id: attempt.issue_id.clone(),
+			run_id: run_id.to_owned(),
+			attempt_number,
+			transport: transport.to_owned(),
+			channel_path: channel_path.to_path_buf(),
+			status: RUN_CONTROL_CHANNEL_STATUS_ACTIVE.to_owned(),
+			published_at,
+			published_at_unix,
+			updated_at: now.text,
+			updated_at_unix: now.unix,
+		};
+
+		state.control_channels.insert(run_id.to_owned(), channel.clone());
+		self.upsert_run_control_channel_locked(&channel)?;
+
+		Ok(Some(channel.as_public()))
+	}
+
+	/// Mark a run-control channel as no longer active for an attempt.
+	pub(crate) fn retire_run_control_channel_for_attempt(
+		&self,
+		run_id: &str,
+		attempt_number: i64,
+		status: &str,
+	) -> Result<()> {
+		validate_run_control_channel_status(status)?;
+
+		let now = timestamp_parts();
+		let mut state = self.lock_without_refresh()?;
+		let Some(channel) = state.control_channels.get_mut(run_id) else {
+			return Ok(());
+		};
+
+		if channel.attempt_number != attempt_number {
+			return Ok(());
+		}
+
+		channel.status = status.to_owned();
+		channel.updated_at = now.text;
+		channel.updated_at_unix = now.unix;
+
+		let channel = channel.clone();
+
+		self.upsert_run_control_channel_locked(&channel)
+	}
+
+	/// Resolve a local run-control request against active runtime ownership and audit it.
+	#[cfg_attr(not(test), allow(dead_code))]
+	pub(crate) fn resolve_run_control_action(
+		&self,
+		request: RunControlActionRequest<'_>,
+	) -> Result<RunControlActionReceipt> {
+		validate_run_control_action_request(&request)?;
+
+		let resolution = {
+			let state = self.lock()?;
+
+			resolve_run_control_action_locked(&state, &request)
+		};
+		let event = self.append_run_control_audit_event(
+			&resolution.audit_target,
+			&resolution.outcome,
+			&resolution.reason,
+			None,
+		)?;
+
+		Ok(RunControlActionReceipt {
+			project_id: resolution.audit_target.project_id,
+			issue_id: resolution.audit_target.issue_id,
+			run_id: resolution.audit_target.run_id,
+			attempt_number: resolution.audit_target.attempt_number,
+			thread_id: resolution.audit_target.thread_id,
+			turn_id: resolution.audit_target.turn_id,
+			source: resolution.audit_target.source,
+			action: resolution.audit_target.action,
+			outcome: resolution.outcome,
+			reason: resolution.reason,
+			audit_record_id: event.record_id(),
+			channel: resolution.channel,
+		})
+	}
+
+	/// Append a follow-up audit outcome for an already resolved control request.
+	#[cfg_attr(not(test), allow(dead_code))]
+	pub(crate) fn record_run_control_action_outcome(
+		&self,
+		receipt: &RunControlActionReceipt,
+		outcome: &str,
+		reason: &str,
+	) -> Result<PrivateExecutionEvent> {
+		validate_run_control_action_outcome(outcome)?;
+		validate_required_run_control_field("reason", reason)?;
+
+		let target = RunControlAuditTarget {
+			project_id: receipt.project_id.clone(),
+			issue_id: receipt.issue_id.clone(),
+			run_id: receipt.run_id.clone(),
+			attempt_number: receipt.attempt_number,
+			thread_id: receipt.thread_id.clone(),
+			turn_id: receipt.turn_id.clone(),
+			source: receipt.source.clone(),
+			action: receipt.action.clone(),
+			timeout_ms: None,
+			channel: receipt.channel.clone(),
+		};
+
+		self.append_run_control_audit_event(
+			&target,
+			outcome,
+			reason,
+			Some(receipt.audit_record_id),
+		)
+	}
+
+	#[cfg_attr(not(test), allow(dead_code))]
+	fn append_run_control_audit_event(
+		&self,
+		target: &RunControlAuditTarget,
+		outcome: &str,
+		reason: &str,
+		parent_record_id: Option<i64>,
+	) -> Result<PrivateExecutionEvent> {
+		validate_run_control_action_outcome(outcome)?;
+
+		let channel = target.channel.as_ref();
+		let payload = serde_json::json!({
+			"schema": "decodex.run_control_action/v1",
+			"action": target.action,
+			"source": target.source,
+			"outcome": outcome,
+			"reason": reason,
+			"parent_record_id": parent_record_id,
+			"requested": {
+				"project_id": target.project_id,
+				"issue_id": target.issue_id,
+				"run_id": target.run_id,
+				"attempt_number": target.attempt_number,
+				"thread_id": target.thread_id,
+				"turn_id": target.turn_id,
+				"timeout_ms": target.timeout_ms,
+			},
+			"channel": channel.map(|channel| serde_json::json!({
+				"transport": channel.transport(),
+				"channel_path": channel.channel_path().display().to_string(),
+				"status": channel.status(),
+				"published_at": channel.published_at(),
+				"updated_at": channel.updated_at(),
+				"path_exists": channel.channel_path().exists(),
+			})),
+		});
+
+		self.append_private_execution_event(
+			&target.project_id,
+			&target.issue_id,
+			&target.run_id,
+			target.attempt_number,
+			"control_action",
+			payload,
+		)
 	}
 
 	/// Compute the next attempt number for one issue.
@@ -1592,6 +1752,17 @@ impl StateStore {
 		sqlite.upsert_run_attempt(attempt)
 	}
 
+	fn upsert_run_control_channel_locked(&self, channel: &RunControlChannelRecord) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_run_control_channel(channel)
+	}
+
 	fn upsert_lease_and_remember_run_project_locked(&self, lease: &IssueLease) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
@@ -1759,6 +1930,77 @@ impl StateStore {
 	}
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
+struct RunControlActionResolution {
+	audit_target: RunControlAuditTarget,
+	outcome: String,
+	reason: String,
+	channel: Option<RunControlChannel>,
+}
+
+#[derive(Clone)]
+#[cfg_attr(not(test), allow(dead_code))]
+struct RunControlAuditTarget {
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	attempt_number: i64,
+	thread_id: Option<String>,
+	turn_id: Option<String>,
+	source: String,
+	action: String,
+	timeout_ms: Option<i64>,
+	channel: Option<RunControlChannel>,
+}
+
+/// Shared dispatch-slot capacity for one project.
+#[derive(Clone, Copy)]
+pub(crate) enum DispatchSlotLimit {
+	/// Fixed number of cross-process dispatch slots.
+	Limited(u32),
+	/// Allocate dispatch slots on demand without a fixed project cap.
+	Unlimited,
+}
+impl DispatchSlotLimit {
+	fn validate(self) -> Result<()> {
+		if matches!(self, Self::Limited(0)) {
+			eyre::bail!("dispatch slot limit must be greater than zero or unlimited");
+		}
+
+		Ok(())
+	}
+
+	fn includes(self, slot_index: usize) -> Result<bool> {
+		match self {
+			Self::Unlimited => Ok(true),
+			Self::Limited(limit) => Ok(slot_index
+				< usize::try_from(limit)
+					.map_err(|_error| eyre::eyre!("dispatch slot limit overflowed usize"))?),
+		}
+	}
+}
+
+impl From<u32> for DispatchSlotLimit {
+	fn from(value: u32) -> Self {
+		Self::Limited(value)
+	}
+}
+
+impl From<Option<u32>> for DispatchSlotLimit {
+	fn from(value: Option<u32>) -> Self {
+		match value {
+			Some(limit) => Self::Limited(limit),
+			None => Self::Unlimited,
+		}
+	}
+}
+
+impl From<WorkflowConcurrencyLimit> for DispatchSlotLimit {
+	fn from(value: WorkflowConcurrencyLimit) -> Self {
+		Self::from(value.dispatch_slot_limit())
+	}
+}
+
 fn retarget_review_handoff_issue(
 	records: &mut HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
 	previous_issue_id: &str,
@@ -1785,6 +2027,204 @@ fn retarget_review_handoff_issue(
 
 fn active_run_attempt_status(status: &str) -> bool {
 	matches!(status, "starting" | "running")
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn resolve_run_control_action_locked(
+	state: &StateData,
+	request: &RunControlActionRequest<'_>,
+) -> RunControlActionResolution {
+	let Some(attempt) = state.run_attempts.get(request.run_id) else {
+		return rejected_run_control_resolution(request, None, "run_not_found");
+	};
+	let audit_project_id = state
+		.control_channels
+		.get(request.run_id)
+		.map(|channel| channel.project_id.clone())
+		.or_else(|| state.project_id_for_run(&attempt.issue_id, &attempt.run_id))
+		.unwrap_or_else(|| request.project_id.to_owned());
+	let audit_target = RunControlAuditTarget {
+		project_id: audit_project_id,
+		issue_id: attempt.issue_id.clone(),
+		run_id: attempt.run_id.clone(),
+		attempt_number: attempt.attempt_number,
+		thread_id: request.thread_id.map(str::to_owned),
+		turn_id: request.turn_id.map(str::to_owned),
+		source: request.source.to_owned(),
+		action: request.action.to_owned(),
+		timeout_ms: request.timeout_ms,
+		channel: None,
+	};
+
+	if attempt.issue_id != request.issue_id {
+		return rejected_run_control_resolution(request, Some(audit_target), "issue_mismatch");
+	}
+	if attempt.attempt_number != request.attempt_number {
+		return rejected_run_control_resolution(request, Some(audit_target), "attempt_mismatch");
+	}
+	if request.thread_id.is_some()
+		&& attempt.thread_id.as_deref() != request.thread_id
+	{
+		return rejected_run_control_resolution(request, Some(audit_target), "thread_mismatch");
+	}
+	if request.turn_id.is_some() && attempt.turn_id.as_deref() != request.turn_id {
+		return rejected_run_control_resolution(request, Some(audit_target), "turn_mismatch");
+	}
+
+	let Some(lease) = state.leases.get(request.issue_id) else {
+		return rejected_run_control_resolution(request, Some(audit_target), "active_lease_missing");
+	};
+
+	if lease.project_id != request.project_id {
+		return rejected_run_control_resolution(request, Some(audit_target), "project_mismatch");
+	}
+	if lease.run_id != request.run_id {
+		return rejected_run_control_resolution(request, Some(audit_target), "active_run_mismatch");
+	}
+	if !active_run_attempt_status(&attempt.status) {
+		return rejected_run_control_resolution(request, Some(audit_target), "run_not_active");
+	}
+
+	let Some(channel) = state.control_channels.get(request.run_id).cloned() else {
+		return rejected_run_control_resolution(request, Some(audit_target), "control_channel_missing");
+	};
+	let channel = channel.as_public();
+	let audit_target = RunControlAuditTarget { channel: Some(channel.clone()), ..audit_target };
+
+	if channel.project_id() != request.project_id
+		|| channel.issue_id() != request.issue_id
+		|| channel.attempt_number() != request.attempt_number
+	{
+		return rejected_run_control_resolution(
+			request,
+			Some(audit_target),
+			"control_channel_identity_mismatch",
+		);
+	}
+	if channel.status() != RUN_CONTROL_CHANNEL_STATUS_ACTIVE {
+		return rejected_run_control_resolution(
+			request,
+			Some(audit_target),
+			"control_channel_inactive",
+		);
+	}
+	if !channel.channel_path().exists() {
+		return rejected_run_control_resolution(
+			request,
+			Some(audit_target),
+			"control_channel_missing",
+		);
+	}
+
+	RunControlActionResolution {
+		audit_target,
+		outcome: RUN_CONTROL_ACTION_ACCEPTED.to_owned(),
+		reason: String::from("active_run_control_channel_resolved"),
+		channel: Some(channel),
+	}
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn rejected_run_control_resolution(
+	request: &RunControlActionRequest<'_>,
+	audit_target: Option<RunControlAuditTarget>,
+	reason: &str,
+) -> RunControlActionResolution {
+	RunControlActionResolution {
+		audit_target: audit_target.unwrap_or_else(|| RunControlAuditTarget {
+			project_id: request.project_id.to_owned(),
+			issue_id: request.issue_id.to_owned(),
+			run_id: request.run_id.to_owned(),
+			attempt_number: request.attempt_number,
+			thread_id: request.thread_id.map(str::to_owned),
+			turn_id: request.turn_id.map(str::to_owned),
+			source: request.source.to_owned(),
+			action: request.action.to_owned(),
+			timeout_ms: request.timeout_ms,
+			channel: None,
+		}),
+		outcome: RUN_CONTROL_ACTION_REJECTED.to_owned(),
+		reason: reason.to_owned(),
+		channel: None,
+	}
+}
+
+fn validate_run_control_channel_inputs(
+	run_id: &str,
+	attempt_number: i64,
+	channel_path: &Path,
+	transport: &str,
+) -> Result<()> {
+	validate_required_run_control_field("run_id", run_id)?;
+	validate_required_run_control_field("transport", transport)?;
+
+	if attempt_number < 1 {
+		eyre::bail!("run-control attempt_number must be positive");
+	}
+	if channel_path.as_os_str().is_empty() {
+		eyre::bail!("run-control channel_path must not be empty");
+	}
+
+	Ok(())
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn validate_run_control_action_request(request: &RunControlActionRequest<'_>) -> Result<()> {
+	validate_required_run_control_field("project_id", request.project_id)?;
+	validate_required_run_control_field("issue_id", request.issue_id)?;
+	validate_required_run_control_field("run_id", request.run_id)?;
+	validate_required_run_control_field("source", request.source)?;
+	validate_required_run_control_field("action", request.action)?;
+
+	if request.attempt_number < 1 {
+		eyre::bail!("run-control attempt_number must be positive");
+	}
+
+	if let Some(timeout_ms) = request.timeout_ms
+		&& timeout_ms < 0
+	{
+		eyre::bail!("run-control timeout_ms must not be negative");
+	}
+
+	Ok(())
+}
+
+fn validate_required_run_control_field(name: &str, value: &str) -> Result<()> {
+	if value.trim().is_empty() {
+		eyre::bail!("run-control {name} must not be empty");
+	}
+
+	Ok(())
+}
+
+fn validate_run_control_channel_status(status: &str) -> Result<()> {
+	if !matches!(
+		status,
+		RUN_CONTROL_CHANNEL_STATUS_ACTIVE
+			| RUN_CONTROL_CHANNEL_STATUS_COMPLETED
+			| RUN_CONTROL_CHANNEL_STATUS_FAILED
+	) {
+		eyre::bail!("unsupported run-control channel status `{status}`");
+	}
+
+	Ok(())
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn validate_run_control_action_outcome(outcome: &str) -> Result<()> {
+	if !matches!(
+		outcome,
+		RUN_CONTROL_ACTION_ACCEPTED
+			| RUN_CONTROL_ACTION_REJECTED
+			| RUN_CONTROL_ACTION_COMPLETED
+			| RUN_CONTROL_ACTION_FAILED
+			| RUN_CONTROL_ACTION_TIMED_OUT
+			| RUN_CONTROL_ACTION_FALLBACK
+	) {
+		eyre::bail!("unsupported run-control action outcome `{outcome}`");
+	}
+
+	Ok(())
 }
 
 fn retarget_review_orchestration_issue(

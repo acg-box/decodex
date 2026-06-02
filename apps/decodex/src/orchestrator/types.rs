@@ -871,6 +871,7 @@ struct OperatorRunStatus {
 	last_event_at: Option<String>,
 	event_count: i64,
 	private_evidence: AgentPrivateEvidenceRef,
+	control_capability: Option<OperatorRunControlCapability>,
 	process_id: Option<u32>,
 	process_alive: Option<bool>,
 	process_liveness_reason: Option<String>,
@@ -888,6 +889,21 @@ struct OperatorRunStatus {
 	accounts: Vec<CodexAccountActivitySummary>,
 	branch_name: Option<String>,
 	worktree_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorRunControlCapability {
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	attempt_number: i64,
+	thread_id: Option<String>,
+	turn_id: Option<String>,
+	transport: String,
+	channel_path: String,
+	status: String,
+	published_at: String,
+	updated_at: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

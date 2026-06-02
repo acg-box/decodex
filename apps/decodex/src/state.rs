@@ -41,6 +41,23 @@ pub(crate) const RUN_OPERATION_REPO_GATE: &str = "repo_gate";
 pub(crate) const RUN_OPERATION_REVIEW_WRITEBACK: &str = "review_writeback";
 pub(crate) const RUN_OPERATION_WAITING_EXTERNAL: &str = "waiting_external";
 pub(crate) const RUN_OPERATION_RECONCILIATION: &str = "reconciliation";
+pub(crate) const RUN_CONTROL_CHANNEL_DIR: &str = ".decodex-run-control";
+pub(crate) const RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE: &str = "local_file";
+pub(crate) const RUN_CONTROL_CHANNEL_STATUS_ACTIVE: &str = "active";
+pub(crate) const RUN_CONTROL_CHANNEL_STATUS_COMPLETED: &str = "completed";
+pub(crate) const RUN_CONTROL_CHANNEL_STATUS_FAILED: &str = "failed";
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const RUN_CONTROL_ACTION_ACCEPTED: &str = "accepted";
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const RUN_CONTROL_ACTION_REJECTED: &str = "rejected";
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const RUN_CONTROL_ACTION_COMPLETED: &str = "completed";
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const RUN_CONTROL_ACTION_FAILED: &str = "failed";
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const RUN_CONTROL_ACTION_TIMED_OUT: &str = "timed_out";
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const RUN_CONTROL_ACTION_FALLBACK: &str = "fallback";
 
 const DISPATCH_SLOT_LOCK_FILE_PREFIX: &str = ".decodex-dispatch-slot";
 const ISSUE_CLAIM_LOCK_FILE_PREFIX: &str = ".decodex-issue-claim";

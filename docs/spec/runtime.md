@@ -31,14 +31,15 @@ Defines: The runtime scope, source-of-truth boundaries, eligibility rules, lane 
 
 ## Source of truth boundaries
 
-- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, protocol events, private execution events, worktree mappings, retained PR state, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
+- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, run-control channels, protocol events, private execution events, worktree mappings, retained PR state, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
 - Linear remains the team-visible tracker surface for issue lifecycle, queue/active/manual-attention labels, and coarse lifecycle summaries such as start, PR-ready, blocked, failed, landed, and done.
 - Versioned Linear execution event comments use the schema in
   [`linear-execution-ledger.md`](./linear-execution-ledger.md), but fine-grained runtime truth must not be rebuilt from comments every tick.
 - Private execution events are structured runtime evidence rows scoped by
   `project_id`, `issue_id`, `run_id`, and `attempt_number`. They hold full local
-  evidence that should be queryable through `StateStore` without being mirrored to
-  Linear execution ledger payloads. The operator CLI readback path is
+  evidence, including run-control audit records, that should be queryable through
+  `StateStore` without being mirrored to Linear execution ledger payloads. The
+  operator CLI readback path is
   `decodex evidence <ISSUE> --run-id <RUN_ID> --attempt <N>`, which reads the local
   runtime store and summarizes payloads by default.
 - Centralized project directories under `~/.codex/decodex/projects/<service-id>/`
@@ -53,6 +54,7 @@ mirror:
 | Surface | Boundary |
 | --- | --- |
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, and recovery detail belong. |
+| Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing active lease ownership. |
 | Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
 | Logs under `~/.codex/decodex/logs/` and `.decodex-run-activity` | Diagnostic process and liveness signals. They may explain what a local process did, but they are not the structured execution ledger and must not be replayed as tracker state. |
 | Linear execution ledger comments | Low-frequency public projection for team-visible lifecycle state. They carry coarse start, progress phase, PR, handoff, failure, landing, closeout, and cleanup summaries only. |
@@ -64,6 +66,7 @@ Operator snapshots are local runtime views. They must remain useful when Linear 
 The following facts are local runtime truth and must not be rebuilt from Linear comments on every tick:
 
 - lane attempts: `run_id`, `attempt_number`, attempt status, and terminal classification
+- active run-control channel metadata and local control audit events
 - protocol events, event counts, event timestamps, and thread/liveness hydration fields
 - private execution events carrying structured local evidence for an issue/run/attempt
 - retry and backoff state: queued retry kind, due time, retry budget, and connector backoff
