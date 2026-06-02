@@ -40,11 +40,11 @@ agent-facing skills must guide responsible use.
 | Run-control channel foundation | Supported foundation | Active attempts publish a local `.decodex-run-control/*` channel record, runtime SQLite `run_control_channels`, operator status `control_capability`, and private `control_action` audit events | Route lane-control mutations through the active attempt's project, issue, run id, attempt, thread id, current turn id, active lease, and local channel metadata. Invalid or stale requests fail closed and remain local audit evidence. |
 | Soft interrupt | Supported CLI/API control | `decodex lane interrupt <ISSUE> --run-id <RUN_ID>` and `POST /api/lane/interrupt` write a run-control request that the active app-server child delivers with `turn/interrupt` | Prefer soft interrupt before hard interruption when the active turn id is known and the app-server capability is present. Soft interrupt requests a graceful turn stop and records the protocol outcome when app-server returns one. |
 | Hard interrupt fallback | Explicit fallback only | `decodex lane interrupt <ISSUE> --run-id <RUN_ID> --force` and `POST /api/lane/interrupt` with `"force": true` classify process signaling as `hard_interrupt_fallback` | Use only when soft interrupt is unavailable, timed out, or impossible because the process or app-server boundary cannot be reached. Preserve retained worktree evidence and runtime classification. |
-| Steer active lane | Planned CLI/API control; bottom-layer method must stay broad | Decodex does not currently send `turn/steer` from its app-server client | Pass operator-supplied steer text through the CLI/API when available. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
+| Steer active lane | Supported CLI/API control; bottom-layer method stays broad | `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>`, canonical `POST /api/lane/steer`, legacy alias `POST /api/lane-steer`, local run-control steer request/response files, app-server `turn/steer`, private `control_action` audit events, and protocol activity `turn/steer` summaries | Pass operator-supplied steer text through CLI/API to the current active turn. Require `expectedTurnId`; stale turn ids fail closed. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
 | Retained resume/retry | Supported through runtime lifecycle | `decodex run <ISSUE>`, retry scheduling, retained worktree recovery, and `thread/resume` for same-thread app-server continuation | Resume only when retained worktree, issue, branch, PR, and runtime evidence still prove the same lane. Treat ambiguous lineage as manual attention. |
 | Manual attention | Supported terminal control path | `decodex:needs-attention`, `issue_comment(kind = "manual_attention")`, and `issue_terminal_finalize(path = "manual_attention")` | Stop automation when policy requires a human decision. Explain the blocker through structured public fields and keep private evidence local. |
 | Task replacement | Deferred lifecycle work | No supported active-lane replacement command | Do not use steer or raw injection to replace the task silently. Treat replacement as explicit lifecycle work: pause/stop if needed, update or requeue the issue, or create a new issue/lane. |
-| Raw thread item injection | Unsupported as an operator feature | No Decodex operator path for `thread/inject_items` | Do not expose raw `thread/inject_items` to operators in this rollout. Use `turn/steer` for operator steer once implemented. |
+| Raw thread item injection | Unsupported as an operator feature | No Decodex operator path for `thread/inject_items` | Do not expose raw `thread/inject_items` to operators in this rollout. Use `turn/steer` for operator steer. |
 | Active-lane UI authoring controls | Deferred | Existing dashboard views and low-level handlers are not the CLI/API-first lane-control contract | Do not add dashboard steer, retry, or task-replacement controls in this rollout. Ship CLI/API first, then promote UI controls only after audit and policy behavior is settled. |
 
 ## Inspect-First Rule
@@ -134,6 +134,21 @@ bottom-layer protocol shape must not decide which task topics are acceptable. It
 carry the operator's steer text broadly, subject only to generic transport and schema
 requirements.
 
+The supported operator commands are:
+
+- `decodex lane inspect <ISSUE> [--run-id <RUN_ID>] [--json]`
+- `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT> [--json]`
+
+The local HTTP API mirrors those semantics:
+
+- `POST /api/lane/steer` with JSON fields `projectId`, `issue` or `issueId`,
+  `runId`, `expectedTurnId`, `message`, and optional `waitTimeoutMs`
+- `POST /api/lane-steer` remains a compatibility alias for the same request
+
+The `expectedTurnId` precondition is mandatory. If the current active turn no longer
+matches the supplied turn id, the request fails closed with `stale_expected_turn_id`
+and remains local audit evidence instead of being delivered to app-server.
+
 Higher layers own guardrails:
 
 - CLI/API must require explicit operator-supplied steer text and a target lane identity.
@@ -203,13 +218,8 @@ Linear unless a schema-controlled public projection explicitly allows it.
 
 ## Implementation Status For This Rollout
 
-This document specifies capabilities that the CLI/API should expose first. Current code
-supports lane inspect, CLI project enable/disable, Linear scan requests, soft
-interrupt, explicit hard-interrupt fallback, retained resume/retry lifecycle paths, and
-manual-attention finalization. Current code does not expose dashboard lane-mutation
-controls, does not yet implement Decodex CLI/API controls that send `turn/steer`, and
-does not expose raw `thread/inject_items` as an operator feature.
-
-When implementation work adds the missing CLI/API controls, update this spec,
-[`app-server.md`](./app-server.md), the operator reference, and the Decodex plugin
-skills in the same lane.
+Current code supports lane inspect, CLI project enable/disable, Linear scan requests,
+soft interrupt, explicit hard-interrupt fallback, active-lane steer, retained
+resume/retry lifecycle paths, and manual-attention finalization. Current code does not
+expose dashboard lane-mutation controls and does not expose raw `thread/inject_items`
+as an operator feature.

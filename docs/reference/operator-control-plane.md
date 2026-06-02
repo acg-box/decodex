@@ -180,14 +180,22 @@ accept active-lane stop/interrupt controls, project pause/resume controls, manua
 controls, or active-lane steer controls; use `decodex lane inspect`, `decodex lane
 interrupt`, or the local `/api/lane/*` endpoints instead. Account-pool selection remains available
 because it changes the global Codex account selector, not an active lane.
+Active-lane steer is available through `decodex lane steer <ISSUE> --run-id <RUN_ID>
+--expected-turn-id <TURN_ID> --message <TEXT>`, canonical `POST /api/lane/steer`,
+and legacy alias `POST /api/lane-steer`. These surfaces require the expected active
+turn id, audit accepted or rejected state locally, and keep raw steer text out of
+public tracker projections.
 `runActivity.activeRunsComplete`
 marks whether a payload is the complete active-run list; subscription-filtered
 payloads set it to `false`, so consumers must not treat a missing run in that payload
 as ended.
 Active run rows may include `control_capability` with the active attempt's project,
 issue, run id, attempt, current thread/turn ids, local transport, channel path, status,
-and timestamps. It is local routing metadata for future CLI/API controls, not a
-dashboard command surface.
+and timestamps. It is local routing metadata for CLI/API controls, not a dashboard
+command surface.
+After a steer request is handled, active run protocol activity may show a compact
+`turn/steer` entry with outcome, failure class, and response turn id. It does not
+include the operator message.
 Snapshot `warnings` remain stable machine-readable tokens. When a warning needs
 operator action, snapshots may also include `warning_details` entries with the
 affected `project_id`, `repo_root`, reason, and next action; for example, a stale
