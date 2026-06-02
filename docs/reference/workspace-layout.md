@@ -19,7 +19,7 @@ should not be treated as repository source.
 | `apps/decodex/` | Rust package that builds the `decodex` CLI and runtime. Runtime, orchestration, tracker integration, app-server integration, operator HTTP, and local control-plane behavior live under `apps/decodex/src/`. |
 | `apps/decodex-app/` | SwiftPM macOS app for local Decodex Codex account-pool management. It talks to the bundled `decodex-app-helper`, which links the Rust account service directly, and does not own runtime scheduling or operator dashboard state. |
 | `site/` | Astro static site for the public Decodex signal surface. It renders checked-in content and generated JSON from `site/src/content/`; it is not backed by a live Decodex daemon. |
-| `scripts/github/` | Deterministic GitHub collection, normalization, render, validation, and sync scripts for public signal content. |
+| `scripts/github/` | Automation-only Codex AI analysis helper and shared schema support for that helper. Deterministic Radar commands live in the Rust CLI. |
 | `scripts/config/` | Repository automation scripts for config-derived artifacts. |
 | `artifacts/github/` | Checked-in GitHub change bundles and editorial analysis drafts used by the public signal pipeline. |
 | `artifacts/archive/` | Checked-in manifests for cold Radar archive batches stored as GitHub Release assets. |
@@ -76,7 +76,7 @@ Those runtime and operator surfaces stay in `apps/decodex/` and `docs/spec/`.
 
 ## GitHub signal tooling
 
-`scripts/github/` owns deterministic content scripts. `decodex radar
+`apps/decodex/src/radar.rs` owns deterministic Radar commands. `decodex radar
 refresh-upstream-queue` is the continuous Radar entrypoint: it scans recent upstream
 commits, resolves them back to PRs when possible, records local ledger state, and
 writes an `upstream_review_queue/v1` artifact for Codex automation. It does not run
@@ -154,8 +154,8 @@ tracker routing, and policy.
 - Runtime authority stays in `apps/decodex/src/`, the registered project contract under
   `~/.codex/decodex/projects/<service-id>/`, and the governing specs under
   `docs/spec/`.
-- Public site authority stays in `site/`, `scripts/github/`, `artifacts/github/`, and
-  the site/content specs.
+- Public site authority stays in `site/`, `apps/decodex/src/radar.rs`,
+  `artifacts/github/`, and the site/content specs.
 - Reusable agent-facing Decodex usage instructions live under `plugins/decodex/`.
 - `docs/runbook/`, `docs/reference/`, and `docs/decisions/` must not override runtime or
   workflow authority.
