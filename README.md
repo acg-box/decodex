@@ -107,6 +107,7 @@ cargo run -p decodex --bin decodex -- project list
 cargo run -p decodex --bin decodex -- status
 cargo run -p decodex --bin decodex -- diagnose --json
 cargo run -p decodex --bin decodex -- maintenance prune --dry-run
+cargo run -p decodex --bin decodex -- radar validate
 cargo run -p decodex --bin decodex -- run --dry-run
 cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8912
 ```
@@ -212,6 +213,9 @@ Codex automation reviews source evidence:
 - `scripts/github/render_signal_entry.py` renders reviewed analysis drafts into site
   content.
 - `scripts/github/validate_signal_entry.py` validates the published signal collection.
+- `decodex radar validate` provides the Rust-owned foundation for validating checked
+  Radar artifact contracts while the Python scripts remain the active workflow
+  entrypoints.
 - `docs/spec/social-publishing.md` and
   `docs/runbook/social-publishing-workflow.md` govern automated low-frequency X
   publication for `@decodexspace`.
