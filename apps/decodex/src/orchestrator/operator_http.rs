@@ -511,6 +511,8 @@ fn build_operator_run_activity_event(state_store: &StateStore) -> Result<Dashboa
 		"accountControl": &account_control,
 		"accounts": &accounts,
 		"activeRuns": &active_runs,
+		"activeRunsComplete": true,
+		"activeRunScope": "complete",
 	});
 	let fingerprint = serde_json::to_vec(&fingerprint_payload)?;
 	let payload = json!({
@@ -518,6 +520,8 @@ fn build_operator_run_activity_event(state_store: &StateStore) -> Result<Dashboa
 		"accountControl": account_control,
 		"accounts": accounts,
 		"activeRuns": active_runs,
+		"activeRunsComplete": true,
+		"activeRunScope": "complete",
 	});
 
 	Ok(DashboardRunActivityEvent {
@@ -1292,6 +1296,8 @@ fn dashboard_event_for_subscription(
 	let mut payload = event.payload.clone();
 
 	payload["activeRuns"] = Value::Array(active_runs);
+	payload["activeRunsComplete"] = Value::Bool(false);
+	payload["activeRunScope"] = Value::String(String::from("filtered"));
 
 	Some(DashboardBroadcastEvent { event_type: event.event_type, payload })
 }
