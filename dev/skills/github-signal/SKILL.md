@@ -155,7 +155,7 @@ Write a JSON analysis draft with these fields:
 Validate a bundle:
 
 ```bash
-python3 scripts/github/validate_change_bundle.py artifacts/github/bundles/<bundle>.json
+decodex radar bundle validate artifacts/github/bundles/<bundle>.json
 ```
 
 Render the final signal entry after drafting:

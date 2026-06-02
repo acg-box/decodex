@@ -63,7 +63,7 @@ Outputs:
 Build a PR-first bundle:
 
 ```bash
-python3 scripts/github/build_change_bundle.py \
+decodex radar bundle build \
   --repo openai/codex \
   --pr 22414 \
   --out artifacts/github/bundles/openai-codex-pr-22414.json
@@ -72,7 +72,7 @@ python3 scripts/github/build_change_bundle.py \
 Validate the bundle:
 
 ```bash
-python3 scripts/github/validate_change_bundle.py \
+decodex radar bundle validate \
   artifacts/github/bundles/openai-codex-pr-22414.json
 ```
 
@@ -145,8 +145,8 @@ Automated sync entrypoint:
 Bootstrap or inspect local historical trace:
 
 ```bash
-python3 scripts/github/radar_ledger.py ingest-existing
-python3 scripts/github/radar_ledger.py summary --json
+decodex radar ledger ingest-existing
+decodex radar ledger summary --json
 ```
 
 ## Editorial gate
