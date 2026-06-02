@@ -90,7 +90,7 @@ enum PanelPalette {
 	static func glassStroke(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color.white.opacity(0.1)
-			: Color.white.opacity(0.5)
+			: Color(red: 0.34, green: 0.42, blue: 0.52).opacity(0.18)
 	}
 
 	static func glassInnerShadow(_ colorScheme: ColorScheme) -> Color {
@@ -3631,6 +3631,9 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 
 		if #available(macOS 26.0, *) {
 			content
+				.background {
+					shape.fill(surfaceFill)
+				}
 				.glassEffect(
 					configuredGlass,
 					in: shape
@@ -3650,6 +3653,7 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 			content
 				.background {
 					shape.fill(materialStyle)
+					shape.fill(surfaceFill)
 				}
 				.overlay {
 					shape
@@ -3706,6 +3710,27 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 			return colorScheme == .dark ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial)
 		case .control:
 			return colorScheme == .dark ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial)
+		}
+	}
+
+	private var surfaceFill: Color {
+		switch depth {
+		case .panel:
+			return colorScheme == .dark
+				? Color(red: 0.18, green: 0.22, blue: 0.28).opacity(0.08)
+				: Color(red: 0.95, green: 0.97, blue: 0.99).opacity(0.38)
+		case .section:
+			return colorScheme == .dark
+				? Color(red: 0.22, green: 0.26, blue: 0.32).opacity(0.15)
+				: Color(red: 0.86, green: 0.9, blue: 0.95).opacity(0.66)
+		case .row:
+			return colorScheme == .dark
+				? Color(red: 0.2, green: 0.24, blue: 0.3).opacity(0.12)
+				: Color(red: 0.87, green: 0.91, blue: 0.96).opacity(0.56)
+		case .control:
+			return colorScheme == .dark
+				? Color(red: 0.24, green: 0.29, blue: 0.36).opacity(0.18)
+				: Color(red: 0.8, green: 0.85, blue: 0.91).opacity(0.72)
 		}
 	}
 
