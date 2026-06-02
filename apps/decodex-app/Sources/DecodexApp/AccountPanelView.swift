@@ -497,7 +497,6 @@ struct AccountPanelView: View {
 				accountRows
 			}
 		}
-		.animation(PanelMotion.state, value: accountRunLayoutKey)
 	}
 
 	private var accountRows: some View {
@@ -593,14 +592,6 @@ struct AccountPanelView: View {
 
 	private var accountListNeedsScrolling: Bool {
 		accountListContentHeight > accountListAvailableHeight + 1
-	}
-
-	private var accountRunLayoutKey: String {
-		store.accounts.map { account in
-			let runIDs = operatorRuns(for: account).map(\.id).joined(separator: ",")
-			return "\(account.id):\(runIDs)"
-		}
-		.joined(separator: "|")
 	}
 
 	private var accountListAvailableHeight: CGFloat {
@@ -845,7 +836,6 @@ struct AccountRowView: View {
 
 			if runs.isEmpty == false {
 				AccountRunSummaryView(runs: runs)
-					.transition(runSummaryTransition)
 			}
 
 			if account.hasUsageSummary {
@@ -868,28 +858,6 @@ struct AccountRowView: View {
 		.animation(PanelMotion.state, value: account.selected)
 		.animation(PanelMotion.state, value: account.codexActive)
 		.animation(PanelMotion.state, value: isLogoutArmed)
-		.animation(reduceMotion ? .easeOut(duration: 0.12) : PanelMotion.state, value: runIdentityKey)
-	}
-
-	@Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-	private var runIdentityKey: String {
-		runs.map(\.id).joined(separator: "|")
-	}
-
-	private var runSummaryTransition: AnyTransition {
-		if reduceMotion {
-			return .opacity
-		}
-
-		return .asymmetric(
-			insertion: .opacity
-				.combined(with: .move(edge: .top))
-				.combined(with: .scale(scale: 0.98, anchor: .topLeading)),
-			removal: .opacity
-				.combined(with: .move(edge: .top))
-				.combined(with: .scale(scale: 0.98, anchor: .topLeading))
-		)
 	}
 
 	private var routeHelp: String {
@@ -917,22 +885,20 @@ struct AccountRowView: View {
 
 struct AccountRunSummaryView: View {
 	let runs: [OperatorRunStatus]
-	@Environment(\.accessibilityReduceMotion) private var reduceMotion
-	@State private var scrollCommand: AccountRunStripScrollCommand?
+	@State private var scrollProxy = AccountRunStripScrollProxy()
 	@State private var scrollMetrics = AccountRunStripMetrics()
 
 	var body: some View {
 		ZStack {
 			AccountRunStripScrollView(
-				scrollCommand: scrollCommand,
+				scrollProxy: scrollProxy,
 				onMetricsChange: { metrics in
-					scrollMetrics = metrics
+					updateScrollMetrics(metrics)
 				}
 			) {
 				HStack(spacing: 5) {
 					ForEach(runs) { run in
 						AccountRunChipView(run: run)
-							.transition(runChipTransition)
 					}
 				}
 				.padding(.trailing, 1)
@@ -945,18 +911,16 @@ struct AccountRunSummaryView: View {
 			HStack(spacing: 0) {
 				if scrollMetrics.canScrollBackward {
 					AccountRunStripEdgeButton(direction: .backward) {
-						scroll(.backward)
+						scrollProxy.scroll(.backward)
 					}
-					.transition(edgeControlTransition(edge: .leading))
 				}
 
 				Spacer(minLength: 0)
 
 				if scrollMetrics.canScrollForward {
 					AccountRunStripEdgeButton(direction: .forward) {
-						scroll(.forward)
+						scrollProxy.scroll(.forward)
 					}
-					.transition(edgeControlTransition(edge: .trailing))
 				}
 			}
 			.allowsHitTesting(scrollMetrics.isOverflowing)
@@ -964,62 +928,25 @@ struct AccountRunSummaryView: View {
 		.frame(height: AccountRunChipLayout.height)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.contentShape(Rectangle())
-		.focusable(scrollMetrics.isOverflowing)
-		.onMoveCommand { direction in
-			switch direction {
-			case .left:
-				scroll(.backward)
-			case .right:
-				scroll(.forward)
-			default:
-				break
-			}
-		}
 		.accessibilityLabel("\(runs.count) running lane\(runs.count == 1 ? "" : "s")")
-		.animation(reduceMotion ? .easeOut(duration: 0.12) : PanelMotion.state, value: runIdentityKey)
-		.animation(reduceMotion ? .easeOut(duration: 0.12) : PanelMotion.state, value: scrollMetrics)
 	}
 
-	private var runIdentityKey: String {
-		runs.map(\.id).joined(separator: "|")
-	}
-
-	private func scroll(_ direction: AccountRunStripScrollDirection) {
-		switch direction {
-		case .backward where scrollMetrics.canScrollBackward,
-			.forward where scrollMetrics.canScrollForward:
-			scrollCommand = AccountRunStripScrollCommand(direction: direction)
-		default:
-			break
-		}
-	}
-
-	private var runChipTransition: AnyTransition {
-		if reduceMotion {
-			return .opacity
+	private func updateScrollMetrics(_ metrics: AccountRunStripMetrics) {
+		guard metrics != scrollMetrics else {
+			return
 		}
 
-		return .asymmetric(
-			insertion: .opacity
-				.combined(with: .scale(scale: 0.88, anchor: .leading))
-				.combined(with: .move(edge: .leading)),
-			removal: .opacity
-				.combined(with: .scale(scale: 0.94, anchor: .leading))
-		)
-	}
-
-	private func edgeControlTransition(edge: Edge) -> AnyTransition {
-		if reduceMotion {
-			return .opacity
+		var transaction = Transaction()
+		transaction.disablesAnimations = true
+		withTransaction(transaction) {
+			scrollMetrics = metrics
 		}
-
-		return .opacity.combined(with: .move(edge: edge))
 	}
 }
 
 private enum AccountRunStripLayout {
-	static let dragActivationDistance: CGFloat = 4
-	static let edgeControlWidth: CGFloat = 18
+	static let dragActivationDistance: CGFloat = 1
+	static let edgeControlWidth: CGFloat = 26
 	static let fadeWidth: CGFloat = 24
 	static let minimumScrollDistance: CGFloat = 86
 	static let scrollPageFraction: CGFloat = 0.72
@@ -1041,9 +968,9 @@ private enum AccountRunStripScrollDirection {
 	var symbol: String {
 		switch self {
 		case .backward:
-			return "chevron.left"
+			return "chevron.compact.left"
 		case .forward:
-			return "chevron.right"
+			return "chevron.compact.right"
 		}
 	}
 
@@ -1057,30 +984,36 @@ private enum AccountRunStripScrollDirection {
 	}
 }
 
-private struct AccountRunStripScrollCommand: Equatable {
-	let direction: AccountRunStripScrollDirection
-	let id = UUID()
+private struct AccountRunStripMetrics: Equatable {
+	var isOverflowing = false
+	var canScrollBackward = false
+	var canScrollForward = false
+
+	init() {}
+
+	init(contentWidth: CGFloat, viewportWidth: CGFloat, offsetX: CGFloat) {
+		let maxOffsetX = max(0, contentWidth - viewportWidth)
+		isOverflowing = contentWidth > viewportWidth + 1
+		canScrollBackward = isOverflowing && offsetX > 1
+		canScrollForward = isOverflowing && offsetX < maxOffsetX - 1
+	}
 }
 
-private struct AccountRunStripMetrics: Equatable {
-	var contentWidth: CGFloat = 0
-	var viewportWidth: CGFloat = 0
-	var offsetX: CGFloat = 0
+@MainActor
+private protocol AccountRunStripScrollable: AnyObject {
+	func scroll(_ direction: AccountRunStripScrollDirection)
+}
 
-	var isOverflowing: Bool {
-		contentWidth > viewportWidth + 1
+@MainActor
+private final class AccountRunStripScrollProxy {
+	private weak var target: AccountRunStripScrollable?
+
+	func attach(_ target: AccountRunStripScrollable) {
+		self.target = target
 	}
 
-	var maxOffsetX: CGFloat {
-		max(0, contentWidth - viewportWidth)
-	}
-
-	var canScrollBackward: Bool {
-		isOverflowing && offsetX > 1
-	}
-
-	var canScrollForward: Bool {
-		isOverflowing && offsetX < maxOffsetX - 1
+	func scroll(_ direction: AccountRunStripScrollDirection) {
+		target?.scroll(direction)
 	}
 }
 
@@ -1116,43 +1049,47 @@ private struct AccountRunStripEdgeButton: View {
 	let direction: AccountRunStripScrollDirection
 	let action: () -> Void
 	@Environment(\.colorScheme) private var colorScheme
+	@State private var isHovered = false
 
 	var body: some View {
 		Button(action: action) {
-			Image(systemName: direction.symbol)
-				.font(.system(size: 8.8, weight: .bold))
-				.symbolRenderingMode(.monochrome)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.86 : 0.78))
-				.frame(
-					width: AccountRunStripLayout.edgeControlWidth,
-					height: AccountRunChipLayout.height
-				)
-				.contentShape(
-					RoundedRectangle(
-						cornerRadius: AccountRunChipLayout.cornerRadius,
-						style: .continuous
-					)
-				)
-				.modernGlassSurface(
-					cornerRadius: AccountRunChipLayout.cornerRadius,
-					depth: .control
-				)
-		}
-		.buttonStyle(
-			PanelInteractiveButtonStyle(
-				hoverLift: 0,
-				hoverScale: 1.012,
-				pressedScale: 0.94,
-				hoverShadowRadius: 2
+			ZStack {
+				RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous)
+					.fill(edgeHoverFill)
+					.opacity(isHovered ? 1 : 0)
+
+					Image(systemName: direction.symbol)
+						.font(.system(size: 13, weight: .semibold))
+						.symbolRenderingMode(.monochrome)
+						.foregroundStyle(edgeTint)
+						.opacity(isHovered ? 1 : 0)
+			}
+			.frame(
+				width: AccountRunStripLayout.edgeControlWidth,
+				height: AccountRunChipLayout.height
 			)
-		)
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.focusable(false)
+		.onHover { hovering in
+			isHovered = hovering
+		}
 		.help(direction.accessibilityLabel)
 		.accessibilityLabel(direction.accessibilityLabel)
+	}
+
+	private var edgeTint: Color {
+		PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.68 : 0.58)
+	}
+
+	private var edgeHoverFill: Color {
+		PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.09 : 0.065)
 	}
 }
 
 private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
-	let scrollCommand: AccountRunStripScrollCommand?
+	let scrollProxy: AccountRunStripScrollProxy
 	let onMetricsChange: (AccountRunStripMetrics) -> Void
 	@ViewBuilder let content: () -> Content
 
@@ -1162,6 +1099,7 @@ private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 
 	func makeNSView(context: Context) -> AccountRunStripContainerView<Content> {
 		let view = AccountRunStripContainerView(rootView: content())
+		scrollProxy.attach(view)
 		view.onMetricsChange = { metrics in
 			context.coordinator.publish(metrics)
 		}
@@ -1171,36 +1109,19 @@ private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 
 	func updateNSView(_ nsView: AccountRunStripContainerView<Content>, context: Context) {
 		context.coordinator.onMetricsChange = onMetricsChange
+		scrollProxy.attach(nsView)
 		nsView.onMetricsChange = { metrics in
 			context.coordinator.publish(metrics)
 		}
 		nsView.update(rootView: content())
-
-		if let scrollCommand {
-			context.coordinator.perform(scrollCommand, in: nsView)
-		}
 	}
 
 	final class Coordinator {
 		var onMetricsChange: (AccountRunStripMetrics) -> Void
-		private var lastCommandID: UUID?
 		private var lastMetrics: AccountRunStripMetrics?
 
 		init(onMetricsChange: @escaping (AccountRunStripMetrics) -> Void) {
 			self.onMetricsChange = onMetricsChange
-		}
-
-		@MainActor
-		func perform(
-			_ command: AccountRunStripScrollCommand,
-			in view: AccountRunStripContainerView<Content>
-		) {
-			guard command.id != lastCommandID else {
-				return
-			}
-
-			lastCommandID = command.id
-			view.scroll(by: command.direction.scrollMultiplier * view.pageScrollDistance)
 		}
 
 		@MainActor
@@ -1217,7 +1138,7 @@ private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 	}
 }
 
-private final class AccountRunStripContainerView<Content: View>: NSView {
+private final class AccountRunStripContainerView<Content: View>: NSView, AccountRunStripScrollable {
 	private let scrollView = NSScrollView()
 	private let notifyingClipView = AccountRunStripClipView()
 	private let hostingView: AccountRunDragHostingView<Content>
@@ -1236,7 +1157,7 @@ private final class AccountRunStripContainerView<Content: View>: NSView {
 		scrollView.hasVerticalScroller = false
 		scrollView.autohidesScrollers = true
 		scrollView.scrollerStyle = .overlay
-		scrollView.horizontalScrollElasticity = .allowed
+		scrollView.horizontalScrollElasticity = .none
 		scrollView.verticalScrollElasticity = .none
 		notifyingClipView.onBoundsChange = { [weak self] in
 			self?.publishMetrics()
@@ -1299,6 +1220,10 @@ private final class AccountRunStripContainerView<Content: View>: NSView {
 
 	func scroll(by distance: CGFloat) {
 		scroll(to: clipView.bounds.origin.x + distance)
+	}
+
+	func scroll(_ direction: AccountRunStripScrollDirection) {
+		scroll(by: direction.scrollMultiplier * pageScrollDistance)
 	}
 
 	private func updateDocumentFrame() {
@@ -1556,12 +1481,10 @@ struct AccountRunChipView: View {
 			RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous)
 				.fill(isHovered ? tint.opacity(colorScheme == .dark ? 0.09 : 0.07) : Color.clear)
 		}
-		.modernGlassSurface(cornerRadius: AccountRunChipLayout.cornerRadius, depth: .control)
+		.modernGlassSurface(cornerRadius: AccountRunChipLayout.cornerRadius, depth: .row)
 		.contentShape(RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous))
 		.onHover { hovering in
-			withAnimation(PanelMotion.hover) {
-				isHovered = hovering
-			}
+			isHovered = hovering
 			showsPopover = hovering
 		}
 		.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
