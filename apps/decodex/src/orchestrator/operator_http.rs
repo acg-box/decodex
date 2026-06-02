@@ -1,13 +1,9 @@
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use sha1::{Digest as _, Sha1};
-use libc::SIGTERM;
 
 use crate::accounts;
 use crate::accounts::AccountUseRequest;
-
-#[cfg(test)]
-type DashboardRunInterrupterForTest = fn(u32) -> Result<()>;
 
 const OPERATOR_DASHBOARD_HTML: &str =
 	include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/operator_dashboard.html"));
@@ -20,10 +16,6 @@ const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] = include_bytes!(concat!(
 	"/src/orchestrator/assets/logo-touch.png"
 ));
 const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
-
-#[cfg(test)]
-static DASHBOARD_RUN_INTERRUPTER_FOR_TEST: Mutex<Option<DashboardRunInterrupterForTest>> =
-	Mutex::new(None);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OperatorRequestRoute {
@@ -155,21 +147,6 @@ struct DashboardControlAck<'a> {
 struct DashboardRunActivityEvent {
 	fingerprint: Vec<u8>,
 	event: DashboardBroadcastEvent,
-}
-
-#[cfg(test)]
-struct DashboardRunInterrupterGuardForTest {
-	previous: Option<DashboardRunInterrupterForTest>,
-}
-#[cfg(test)]
-impl Drop for DashboardRunInterrupterGuardForTest {
-	fn drop(&mut self) {
-		let mut slot = DASHBOARD_RUN_INTERRUPTER_FOR_TEST
-			.lock()
-			.expect("dashboard run interrupter test hook should not be poisoned");
-
-		*slot = self.previous.take();
-	}
 }
 
 fn run_operator_state_endpoint(
@@ -781,9 +758,6 @@ fn dashboard_control_ready_payload(subscription: &DashboardClientSubscription) -
 			"subscribe",
 			"focus",
 			"clearFocus",
-			"pauseProject",
-			"resumeProject",
-			"interruptRun",
 			"selectAccount",
 			"clearAccountSelection",
 			"ack"
@@ -856,12 +830,6 @@ fn handle_dashboard_control_action(
 		"focus" => dashboard_focus_control_ack(session, message, action),
 		"clearFocus" | "clearSubscription" =>
 			dashboard_clear_focus_control_ack(session, message, action),
-		"pause" | "pauseProject" =>
-			dashboard_project_enabled_control_ack(session, state_store, message, action, false),
-		"resume" | "resumeProject" =>
-			dashboard_project_enabled_control_ack(session, state_store, message, action, true),
-		"interrupt" | "interruptRun" =>
-			dashboard_interrupt_control_ack(session, state_store, message, action),
 		"selectAccount" =>
 			dashboard_account_selection_control_ack(session, state_store, message, action, true),
 		"clearAccountSelection" =>
@@ -911,40 +879,6 @@ fn dashboard_clear_focus_control_ack(
 		project_id: None,
 		issue_id: None,
 		run_id: None,
-		subscription: Some(&session.subscription),
-	})
-}
-
-fn dashboard_project_enabled_control_ack(
-	session: &DashboardWebSocketSession,
-	state_store: &StateStore,
-	message: &DashboardClientMessage,
-	action: &str,
-	enabled: bool,
-) -> Value {
-	let Some(project_id) = dashboard_required_project_id(message) else {
-		return dashboard_missing_project_control_ack(session, message, action);
-	};
-	let result = state_store.set_project_enabled(project_id, enabled);
-	let (accepted, status, copy) = match (enabled, result) {
-		(true, Ok(())) => (true, "resumed", String::from("Project dispatch resumed.")),
-		(false, Ok(())) => (
-			true,
-			"paused",
-			String::from("Project dispatch paused; active lanes are not killed."),
-		),
-		(_, Err(error)) => (false, "failed", error.to_string()),
-	};
-
-	dashboard_control_ack_value(DashboardControlAck {
-		request_id: message.request_id.as_deref(),
-		action,
-		accepted,
-		status,
-		message: &copy,
-		project_id: Some(project_id),
-		issue_id: message.issue_id.as_deref(),
-		run_id: message.run_id.as_deref(),
 		subscription: Some(&session.subscription),
 	})
 }
@@ -1006,83 +940,6 @@ fn dashboard_account_selection_control_ack(
 		run_id: message.run_id.as_deref(),
 		subscription: Some(&session.subscription),
 	})
-}
-
-fn dashboard_interrupt_control_ack(
-	session: &DashboardWebSocketSession,
-	state_store: &StateStore,
-	message: &DashboardClientMessage,
-	action: &str,
-) -> Value {
-	let Some(project_id) = dashboard_required_project_id(message) else {
-		return dashboard_missing_project_control_ack(session, message, action);
-	};
-	let Some(issue_id) = dashboard_required_issue_id(message) else {
-		return dashboard_control_ack_value(DashboardControlAck {
-			request_id: message.request_id.as_deref(),
-			action,
-			accepted: false,
-			status: "missing_issue",
-			message: "Stop requires an issue id.",
-			project_id: Some(project_id),
-			issue_id: message.issue_id.as_deref(),
-			run_id: message.run_id.as_deref(),
-			subscription: Some(&session.subscription),
-		});
-	};
-	let Some(run_id) = dashboard_required_run_id(message) else {
-		return dashboard_control_ack_value(DashboardControlAck {
-			request_id: message.request_id.as_deref(),
-			action,
-			accepted: false,
-			status: "missing_run",
-			message: "Stop requires a run id.",
-			project_id: Some(project_id),
-			issue_id: Some(issue_id),
-			run_id: message.run_id.as_deref(),
-			subscription: Some(&session.subscription),
-		});
-	};
-
-	match interrupt_dashboard_run(state_store, project_id, issue_id, run_id) {
-		Ok(process_id) => dashboard_control_ack_value(DashboardControlAck {
-			request_id: message.request_id.as_deref(),
-			action,
-			accepted: true,
-			status: "interrupted",
-			message: &format!("Stopped run `{run_id}` by signaling process {process_id}."),
-			project_id: Some(project_id),
-			issue_id: Some(issue_id),
-			run_id: Some(run_id),
-			subscription: Some(&session.subscription),
-		}),
-		Err(error) => dashboard_control_ack_value(DashboardControlAck {
-			request_id: message.request_id.as_deref(),
-			action,
-			accepted: false,
-			status: "failed",
-			message: &error.to_string(),
-			project_id: Some(project_id),
-			issue_id: Some(issue_id),
-			run_id: Some(run_id),
-			subscription: Some(&session.subscription),
-		}),
-	}
-}
-
-fn dashboard_missing_project_control_ack(
-	session: &DashboardWebSocketSession,
-	message: &DashboardClientMessage,
-	action: &str,
-) -> Value {
-	dashboard_control_ack_for_message(
-		session,
-		message,
-		action,
-		false,
-		"missing_project",
-		"Control action requires a project id.",
-	)
 }
 
 fn dashboard_unsupported_control_ack(
@@ -1153,18 +1010,6 @@ fn dashboard_subscription_payload(subscription: &DashboardClientSubscription) ->
 	})
 }
 
-fn dashboard_required_project_id(message: &DashboardClientMessage) -> Option<&str> {
-	message.project_id.as_deref().map(str::trim).filter(|value| !value.is_empty())
-}
-
-fn dashboard_required_issue_id(message: &DashboardClientMessage) -> Option<&str> {
-	message.issue_id.as_deref().map(str::trim).filter(|value| !value.is_empty())
-}
-
-fn dashboard_required_run_id(message: &DashboardClientMessage) -> Option<&str> {
-	message.run_id.as_deref().map(str::trim).filter(|value| !value.is_empty())
-}
-
 fn dashboard_required_account_selector(message: &DashboardClientMessage) -> Option<&str> {
 	message
 		.account_selector
@@ -1178,100 +1023,6 @@ fn dashboard_clean_scope_value(value: Option<&str>) -> Option<String> {
 		.map(str::trim)
 		.filter(|value| !value.is_empty())
 		.map(str::to_owned)
-}
-
-fn interrupt_dashboard_run(
-	state_store: &StateStore,
-	project_id: &str,
-	issue_id: &str,
-	run_id: &str,
-) -> Result<u32> {
-	let run_attempt = state_store
-		.run_attempt(run_id)?
-		.ok_or_else(|| eyre::eyre!("Decodex run `{run_id}` is not recorded."))?;
-
-	if run_attempt.issue_id() != issue_id {
-		eyre::bail!(
-			"Decodex run `{run_id}` belongs to issue `{}`, not `{issue_id}`.",
-			run_attempt.issue_id()
-		);
-	}
-	if !matches!(run_attempt.status(), "starting" | "running") {
-		eyre::bail!(
-			"Decodex run `{run_id}` is `{}` and cannot be stopped.",
-			run_attempt.status()
-		);
-	}
-
-	let worktree = state_store
-		.worktree_for_issue(issue_id)?
-		.ok_or_else(|| eyre::eyre!("Issue `{issue_id}` has no recorded worktree."))?;
-
-	if worktree.project_id() != project_id {
-		eyre::bail!(
-			"Issue `{issue_id}` belongs to project `{}`, not `{project_id}`.",
-			worktree.project_id()
-		);
-	}
-
-	let marker = state::read_run_activity_marker_snapshot(worktree.worktree_path())?
-		.ok_or_else(|| eyre::eyre!("Run `{run_id}` has no activity marker."))?;
-
-	if marker.run_id() != run_id || marker.attempt_number() != run_attempt.attempt_number() {
-		eyre::bail!("Run `{run_id}` activity marker does not match the active attempt.");
-	}
-
-	let process_id = marker
-		.process_id()
-		.ok_or_else(|| eyre::eyre!("Run `{run_id}` has no recorded process id."))?;
-
-	interrupt_dashboard_process(process_id)?;
-
-	state_store.update_run_status(run_id, "interrupted")?;
-	state_store.clear_lease(issue_id)?;
-
-	Ok(process_id)
-}
-
-fn interrupt_dashboard_process(process_id: u32) -> Result<()> {
-	#[cfg(test)]
-	if let Some(interrupter) = *DASHBOARD_RUN_INTERRUPTER_FOR_TEST
-		.lock()
-		.expect("dashboard run interrupter test hook should not be poisoned")
-	{
-		return interrupter(process_id);
-	}
-
-	if process_id == process::id() {
-		eyre::bail!("Refusing to stop the Decodex control-plane process.");
-	}
-
-	let process_id = pid_t::try_from(process_id)
-		.map_err(|error| eyre::eyre!("Run process id is out of range: {error}"))?;
-
-	if process_id <= 0 {
-		eyre::bail!("Run process id must be positive.");
-	}
-
-	let result = unsafe { libc::kill(process_id, SIGTERM) };
-
-	if result == 0 {
-		return Ok(());
-	}
-
-	eyre::bail!("Failed to stop run process `{process_id}`.");
-}
-
-#[cfg(test)]
-fn install_dashboard_run_interrupter_for_test(
-	interrupter: DashboardRunInterrupterForTest,
-) -> DashboardRunInterrupterGuardForTest {
-	let mut slot = DASHBOARD_RUN_INTERRUPTER_FOR_TEST
-		.lock()
-		.expect("dashboard run interrupter test hook should not be poisoned");
-	let previous = slot.replace(interrupter);
-
-	DashboardRunInterrupterGuardForTest { previous }
 }
 
 fn dashboard_event_for_subscription(

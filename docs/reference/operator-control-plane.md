@@ -157,11 +157,11 @@ renders active-lane state, protocol activity, liveness, private-evidence referen
 and local acknowledgement/account controls, but it is not the supported place to author
 steer, retry, task replacement, or lifecycle mutations. CLI/API is the first
 operator-control surface for lane control, governed by
-[`../spec/lane-control.md`](../spec/lane-control.md). Existing low-level WebSocket
-control handlers, including the hard stop fallback, are not the broad lane-control
-contract and must not be expanded into dashboard steer/retry/task controls in this
-rollout. Project watch, project pause/resume buttons, manual retry controls, and active
-lane steer controls are intentionally not shown. `runActivity.activeRunsComplete`
+[`../spec/lane-control.md`](../spec/lane-control.md). The browser UI does not show or
+accept active-lane stop/interrupt controls, project pause/resume controls, manual retry
+controls, or active-lane steer controls. Account-pool selection remains available
+because it changes the global Codex account selector, not an active lane.
+`runActivity.activeRunsComplete`
 marks whether a payload is the complete active-run list; subscription-filtered
 payloads set it to `false`, so consumers must not treat a missing run in that payload
 as ended.
@@ -170,11 +170,7 @@ operator action, snapshots may also include `warning_details` entries with the
 affected `project_id`, `repo_root`, reason, and next action; for example, a stale
 registered project whose repo path is no longer a Git checkout can explain the bad
 project instead of only surfacing `worktree_hygiene_unavailable`.
-The existing hard stop fallback, where available, signals the recorded child process
-for that run, marks the local attempt interrupted, and releases the local queue lease.
-It is an emergency fallback, not the preferred lane-control path. Soft interruption
-through CLI/API `turn/interrupt` should become the preferred active-turn control once
-implemented. `ack` is dashboard-local acknowledgement only. The socket is not a browser
+Dashboard `ack` is dashboard-local acknowledgement only. The socket is not a browser
 connection to Codex app-server, GitHub, or Linear, and it does not make high-frequency
 protocol activity durable outside the local operator surface.
 
