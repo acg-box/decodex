@@ -58,7 +58,10 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 	}
 
 	var warningSummary: String? {
-		let labels = warnings.compactMap(warningLabel).filter { $0.isEmpty == false }
+		let labels = warnings
+			.filter { $0 != "automation_disabled" }
+			.map(rawDisplayToken)
+			.filter { $0.isEmpty == false }
 		guard let first = labels.first else {
 			return nil
 		}
@@ -120,60 +123,6 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 	private var isDevSnapshot: Bool {
 		warnings.contains("automation_disabled")
 			&& projects.allSatisfy { $0.connectorState == "api_only" || $0.connectorState == "dev" }
-	}
-
-	private var snapshotBuildFailureProjectIDs: [String] {
-		let apiOnlyBaseline = warnings.contains("automation_disabled")
-
-		return projects.compactMap { project in
-			guard project.enabled, let projectID = project.projectID, projectID.isEmpty == false else {
-				return nil
-			}
-			if project.connectorState == "config_error" {
-				return projectID
-			}
-			if apiOnlyBaseline && project.warningCount > 1 {
-				return projectID
-			}
-			if project.connectorState == "degraded" && project.warningCount > 0 {
-				return projectID
-			}
-
-			return nil
-		}
-	}
-
-	private func snapshotBuildFailureLabel() -> String {
-		let projectIDs = snapshotBuildFailureProjectIDs
-		guard let first = projectIDs.first else {
-			return "Snapshot build failed"
-		}
-		if projectIDs.count == 1 {
-			return "Snapshot build failed: \(first)"
-		}
-
-		return "Snapshot build failed: \(first) +\(projectIDs.count - 1)"
-	}
-
-	private func warningLabel(_ value: String) -> String? {
-		switch value {
-		case "automation_disabled":
-			return nil
-		case "control_plane_tick_context_failed":
-			return "Control-plane context unavailable"
-		case "operator_snapshot_build_failed":
-			return snapshotBuildFailureLabel()
-		case "control_plane_tick_failed":
-			return "Control-plane tick failed"
-		case "tracker_rate_limited":
-			return "Tracker sync paused"
-		case "codex_accounts_unavailable":
-			return "Accounts unavailable"
-		case "worktree_hygiene_unavailable":
-			return "Worktree hygiene unavailable"
-		default:
-			return readable(value)
-		}
 	}
 
 	enum CodingKeys: String, CodingKey {
@@ -361,22 +310,22 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			return currentDetail
 		}
 		if let currentBucket = trimmed(childAgentActivity?.currentBucket), currentBucket.isEmpty == false {
-			return readable(currentBucket)
+			return rawDisplayToken(currentBucket)
 		}
 		if let waitReason = trimmed(waitReason), waitReason.isEmpty == false {
-			return readable(waitReason)
+			return rawDisplayToken(waitReason)
 		}
 		if let operation = trimmed(currentOperation), operation.isEmpty == false, operation != "idle" {
-			return readable(operation)
+			return rawDisplayToken(operation)
 		}
 		if let phase = trimmed(phase), phase.isEmpty == false {
-			return readable(phase)
+			return rawDisplayToken(phase)
 		}
 		if let threadStatus = trimmed(threadStatus), threadStatus.isEmpty == false {
-			return readable(threadStatus)
+			return rawDisplayToken(threadStatus)
 		}
 		if let status = trimmed(status), status.isEmpty == false {
-			return readable(status)
+			return rawDisplayToken(status)
 		}
 
 		return "Active"
@@ -445,7 +394,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			return false
 		}
 
-		return title == readable(currentOperation ?? phase ?? "")
+		return title == rawDisplayToken(currentOperation ?? phase ?? "")
 	}
 
 	enum CodingKeys: String, CodingKey {
@@ -477,6 +426,8 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		case childAgentActivity = "child_agent_activity"
 		case account
 		case accounts
+		case codexAccount = "codex_account"
+		case codexAccounts = "codex_accounts"
 	}
 
 	init(from decoder: Decoder) throws {
@@ -512,7 +463,10 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			forKey: .childAgentActivity
 		)
 		account = try container.decodeIfPresent(OperatorRunAccountSummary.self, forKey: .account)
-		accounts = try container.decodeIfPresent([OperatorRunAccountSummary].self, forKey: .accounts) ?? []
+			?? container.decodeIfPresent(OperatorRunAccountSummary.self, forKey: .codexAccount)
+		accounts = try container.decodeIfPresent([OperatorRunAccountSummary].self, forKey: .accounts)
+			?? container.decodeIfPresent([OperatorRunAccountSummary].self, forKey: .codexAccounts)
+			?? []
 	}
 
 	private init(
@@ -600,6 +554,23 @@ struct OperatorDashboardSocketPayload: Decodable, Sendable {
 		case snapshotPublishedAtUnixEpoch
 		case snapshot
 		case activeRuns
+	}
+}
+
+struct OperatorRunActivitySnapshot: Sendable {
+	let activeRuns: [OperatorRunStatus]
+	let emittedAt: Date
+
+	func shouldOverlay(snapshotPublishedAt: Date?) -> Bool {
+		guard let snapshotPublishedAt else {
+			return true
+		}
+
+		return emittedAt > snapshotPublishedAt
+	}
+
+	func merging(into snapshot: OperatorSnapshotResponse) -> OperatorSnapshotResponse {
+		snapshot.mergingRunActivity(activeRuns)
 	}
 }
 
@@ -707,6 +678,7 @@ struct OperatorRunAccountSummary: Decodable, Sendable {
 	enum CodingKeys: String, CodingKey {
 		case accountFingerprint = "account_fingerprint"
 		case email
+		case accountEmail = "account_email"
 	}
 
 	init(from decoder: Decoder) throws {
@@ -714,6 +686,7 @@ struct OperatorRunAccountSummary: Decodable, Sendable {
 
 		accountFingerprint = try container.decodeIfPresent(String.self, forKey: .accountFingerprint) ?? ""
 		email = try container.decodeIfPresent(String.self, forKey: .email)
+			?? container.decodeIfPresent(String.self, forKey: .accountEmail)
 	}
 }
 
@@ -721,21 +694,8 @@ private func trimmed(_ value: String?) -> String? {
 	value?.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
-private func readable(_ value: String) -> String {
-	let words = value
-		.replacingOccurrences(of: "-", with: " ")
-		.replacingOccurrences(of: "_", with: " ")
-		.split(separator: " ")
-		.map { word in
-			let text = String(word)
-			guard let first = text.first else {
-				return text
-			}
-
-			return first.uppercased() + String(text.dropFirst())
-		}
-
-	return words.joined(separator: " ")
+private func rawDisplayToken(_ value: String) -> String {
+	value.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 private func date(fromUnixEpoch value: Int64?) -> Date? {

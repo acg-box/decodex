@@ -1230,7 +1230,7 @@ fn push_run_blockers(
 				reason: run
 					.wait_reason
 					.clone()
-					.unwrap_or_else(|| reason_code.replace('_', " ")),
+					.unwrap_or_else(|| reason_code.to_owned()),
 				next_action: agent_run_next_action(run).unwrap_or("Inspect the run capsule.").to_owned(),
 				blocker_snapshot_path: blocker_snapshot_path(blockers_dir, &issue_key)
 					.display()

@@ -273,6 +273,10 @@ struct AccountPanelView: View {
 			header
 			accountSummary
 
+			if let profileAggregate = accountProfileAggregate {
+				AccountProfileOverviewView(aggregate: profileAggregate)
+			}
+
 			if let usageEstimate = store.accountList?.usageEstimate {
 				AccountPoolUsageEstimateView(estimate: usageEstimate, accounts: store.accounts)
 			}
@@ -403,7 +407,7 @@ struct AccountPanelView: View {
 	}
 
 	private var accountSummary: some View {
-		HStack(spacing: 7) {
+		HStack(alignment: .firstTextBaseline, spacing: 7) {
 			SummaryTileView(
 				title: "Codex",
 				value: codexAuthLabel,
@@ -414,6 +418,9 @@ struct AccountPanelView: View {
 			Rectangle()
 				.fill(PanelPalette.separator(colorScheme))
 				.frame(width: 0.5, height: 16)
+				.alignmentGuide(.firstTextBaseline) { dimensions in
+					dimensions[VerticalAlignment.center] + 4
+				}
 
 			SummaryTileView(
 				title: "Runs",
@@ -562,11 +569,7 @@ struct AccountPanelView: View {
 			return "To \(AccountDisplay.compactIdentity(selector))"
 		}
 
-		if control.mode == "balanced" {
-			return "Balanced"
-		}
-
-		return control.mode.replacingOccurrences(of: "_", with: " ").capitalized
+		return control.mode
 	}
 
 	private var hasFixedSelection: Bool {
@@ -612,6 +615,9 @@ struct AccountPanelView: View {
 		if store.accountList?.usageEstimate != nil {
 			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.poolUsageHeight
 		}
+		if accountProfileAggregate != nil {
+			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.profileOverviewHeight
+		}
 		if let snapshot = store.operatorSnapshot, snapshot.shouldDisplayInPanel {
 			height += AccountPanelLayout.sectionSpacing
 				+ (snapshot.warningSummary == nil
@@ -648,6 +654,10 @@ struct AccountPanelView: View {
 		accountPrivacy != AccountPrivacy.visibleValue
 	}
 
+	private var accountProfileAggregate: AccountProfileAggregate? {
+		AccountProfileAggregate.make(accounts: store.accounts)
+	}
+
 	private func displayName(for account: CodexAccount) -> String {
 		if emailsHidden {
 			return AccountDisplay.aliases(for: store.accounts)[account.id]
@@ -669,8 +679,11 @@ struct AccountPanelView: View {
 			base = 48
 		}
 		let runSignal: CGFloat = operatorRuns(for: account).isEmpty ? 0 : 22
+		let profileSignal: CGFloat = account.hasProfileSummary
+			? (account.recentProfileDailyUsage.isEmpty ? 19 : 35)
+			: 0
 
-		return base + runSignal
+		return base + runSignal + profileSignal
 	}
 
 	private func account(matching selector: String) -> CodexAccount? {
@@ -896,6 +909,7 @@ private enum AccountPanelLayout {
 	static let sectionSpacing: CGFloat = 6
 	static let headerHeight: CGFloat = 28
 	static let accountSummaryHeight: CGFloat = 31
+	static let profileOverviewHeight: CGFloat = 62
 	static let poolUsageHeight: CGFloat = 58
 	static let operatorStatusHeight: CGFloat = 42
 	static let operatorStatusHeightWithWarning: CGFloat = 63
@@ -1022,6 +1036,167 @@ struct AccountRunChipView: View {
 		}
 
 		return PanelPalette.routeAccent(colorScheme)
+	}
+}
+
+private struct AccountProfileAggregate: Equatable {
+	let accountCount: Int
+	let lifetimeTokens: Int?
+	let peakDailyTokens: Int?
+	let longestTaskSeconds: Int?
+	let currentStreakDays: Int?
+	let longestStreakDays: Int?
+	let dailyUsage: [AccountProfileDailyUsage]
+
+	static func make(accounts: [CodexAccount]) -> AccountProfileAggregate? {
+		var lifetimeTokens: Int?
+		var peakFallbackTokens: Int?
+		var longestTaskSeconds: Int?
+		var currentStreakDays: Int?
+		var longestStreakDays: Int?
+		var usageByDate: [String: Int] = [:]
+
+		for account in accounts {
+			if let value = account.profileLifetimeTokens {
+				lifetimeTokens = (lifetimeTokens ?? 0) + value
+			}
+			if let value = account.profilePeakDailyTokens {
+				peakFallbackTokens = (peakFallbackTokens ?? 0) + value
+			}
+			if let value = account.profileLongestTaskSeconds {
+				longestTaskSeconds = max(longestTaskSeconds ?? 0, value)
+			}
+			if let value = account.profileCurrentStreakDays {
+				currentStreakDays = max(currentStreakDays ?? 0, value)
+			}
+			if let value = account.profileLongestStreakDays {
+				longestStreakDays = max(longestStreakDays ?? 0, value)
+			}
+			for record in account.recentProfileDailyUsage {
+				usageByDate[record.date, default: 0] += record.tokens
+			}
+		}
+
+		let dailyUsage = usageByDate
+			.map { AccountProfileDailyUsage(date: $0.key, tokens: $0.value) }
+			.sorted { $0.date < $1.date }
+		let peakDailyTokens = dailyUsage.map(\.tokens).max() ?? peakFallbackTokens
+		let aggregate = AccountProfileAggregate(
+			accountCount: accounts.count,
+			lifetimeTokens: lifetimeTokens,
+			peakDailyTokens: peakDailyTokens,
+			longestTaskSeconds: longestTaskSeconds,
+			currentStreakDays: currentStreakDays,
+			longestStreakDays: longestStreakDays,
+			dailyUsage: dailyUsage
+		)
+
+		return aggregate.hasProfileSummary ? aggregate : nil
+	}
+
+	var hasProfileSummary: Bool {
+		lifetimeTokens != nil
+			|| peakDailyTokens != nil
+			|| longestTaskSeconds != nil
+			|| currentStreakDays != nil
+			|| longestStreakDays != nil
+			|| dailyUsage.isEmpty == false
+	}
+}
+
+private struct AccountProfileOverviewView: View {
+	let aggregate: AccountProfileAggregate
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 5) {
+			HStack(spacing: 5) {
+				Image(systemName: "sum")
+					.font(PanelFont.summaryIcon)
+					.foregroundStyle(PanelPalette.usageCyan(colorScheme).opacity(0.9))
+					.frame(width: 11)
+
+				Text("All accounts")
+					.font(PanelFont.metricLabel)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.lineLimit(1)
+
+				Spacer(minLength: 6)
+
+				Text("\(aggregate.accountCount) accounts")
+					.font(PanelFont.tertiary)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.72))
+					.lineLimit(1)
+			}
+
+			HStack(spacing: 5) {
+				ForEach(Array(metrics.enumerated()), id: \.offset) { index, metric in
+					HStack(alignment: .firstTextBaseline, spacing: 3) {
+						Text(metric.label)
+							.font(PanelFont.usageLabel)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
+							.lineLimit(1)
+
+						Text(metric.value)
+							.font(PanelFont.usageValue)
+							.foregroundStyle(index == 0 ? primaryMetricColor : PanelPalette.secondaryText(colorScheme))
+							.monospacedDigit()
+							.lineLimit(1)
+							.minimumScaleFactor(0.72)
+					}
+
+					if index < metrics.count - 1 {
+						Spacer(minLength: 3)
+					}
+				}
+			}
+			.frame(height: 16)
+
+			if aggregate.dailyUsage.isEmpty == false {
+				AccountProfileDailyUsageStripView(records: aggregate.dailyUsage)
+			}
+		}
+		.padding(.horizontal, 6)
+		.padding(.vertical, 5)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.modernGlassSurface(cornerRadius: 10, depth: .section)
+		.accessibilityLabel(accessibilityLabel)
+	}
+
+	private var metrics: [(label: String, value: String)] {
+		[
+			aggregate.lifetimeTokens.map { ("tok", formatCompactCount($0)) },
+			aggregate.peakDailyTokens.map { ("peak", formatCompactCount($0)) },
+			streakText.map { ("streak", $0) },
+			aggregate.longestTaskSeconds
+				.flatMap(formatActivityDuration)
+				.map { ("task", $0) },
+		]
+		.compactMap { $0 }
+	}
+
+	private var streakText: String? {
+		if let current = aggregate.currentStreakDays,
+			let longest = aggregate.longestStreakDays
+		{
+			return "\(current)/\(longest)d"
+		}
+		if let current = aggregate.currentStreakDays {
+			return "\(current)d"
+		}
+		if let longest = aggregate.longestStreakDays {
+			return "\(longest)d"
+		}
+
+		return nil
+	}
+
+	private var primaryMetricColor: Color {
+		PanelPalette.primaryText(colorScheme).opacity(colorScheme == .dark ? 0.92 : 0.86)
+	}
+
+	private var accessibilityLabel: String {
+		"All account profile totals, " + metrics.map { "\($0.label) \($0.value)" }.joined(separator: ", ")
 	}
 }
 
@@ -1215,6 +1390,10 @@ struct AccountUsageSummaryView: View {
 
 	var body: some View {
 		VStack(spacing: 5) {
+			if account.hasProfileSummary {
+				AccountProfileSummaryView(account: account)
+			}
+
 			if account.hasPrimaryUsageData {
 				AccountUsageMeterView(
 					label: account.windowLabel(seconds: account.primaryWindowSeconds),
@@ -1242,6 +1421,119 @@ struct AccountUsageSummaryView: View {
 		.frame(maxWidth: .infinity)
 		.padding(.horizontal, 1)
 		.padding(.vertical, 1)
+	}
+}
+
+struct AccountProfileSummaryView: View {
+	let account: CodexAccount
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		VStack(spacing: 4) {
+			if metrics.isEmpty == false {
+				HStack(spacing: 5) {
+					Image(systemName: "chart.bar.xaxis")
+						.font(PanelFont.summaryIcon)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
+						.frame(width: 10)
+
+					ForEach(Array(metrics.enumerated()), id: \.offset) { index, metric in
+						HStack(alignment: .firstTextBaseline, spacing: 3) {
+							Text(metric.label)
+								.font(PanelFont.usageLabel)
+								.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
+								.lineLimit(1)
+
+							Text(metric.value)
+								.font(PanelFont.usageValue)
+								.foregroundStyle(valueColor(index: index))
+								.monospacedDigit()
+								.lineLimit(1)
+						}
+
+						if index < metrics.count - 1 {
+							Spacer(minLength: 3)
+						}
+					}
+				}
+				.frame(height: 16)
+			}
+
+			if account.recentProfileDailyUsage.isEmpty == false {
+				AccountProfileDailyUsageStripView(records: account.recentProfileDailyUsage)
+			}
+		}
+		.accessibilityLabel(accessibilityLabel)
+	}
+
+	private var metrics: [(label: String, value: String)] {
+		[
+			account.profileLifetimeTokens.map { ("tok", formatCompactCount($0)) },
+			account.profilePeakDailyTokens.map { ("peak", formatCompactCount($0)) },
+			streakText.map { ("streak", $0) },
+			account.profileLongestTaskSeconds
+				.flatMap(formatActivityDuration)
+				.map { ("task", $0) },
+		]
+		.compactMap { $0 }
+	}
+
+	private var streakText: String? {
+		if let current = account.profileCurrentStreakDays,
+			let longest = account.profileLongestStreakDays
+		{
+			return "\(current)/\(longest)d"
+		}
+		if let current = account.profileCurrentStreakDays {
+			return "\(current)d"
+		}
+		if let longest = account.profileLongestStreakDays {
+			return "\(longest)d"
+		}
+
+		return nil
+	}
+
+	private var accessibilityLabel: String {
+		metrics.map { "\($0.label) \($0.value)" }.joined(separator: ", ")
+	}
+
+	private func valueColor(index: Int) -> Color {
+		index == 0
+			? PanelPalette.primaryText(colorScheme).opacity(colorScheme == .dark ? 0.92 : 0.86)
+			: PanelPalette.secondaryText(colorScheme)
+	}
+}
+
+struct AccountProfileDailyUsageStripView: View {
+	let records: [AccountProfileDailyUsage]
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(spacing: 2) {
+			ForEach(Array(displayRecords.enumerated()), id: \.offset) { _, record in
+				RoundedRectangle(cornerRadius: 2, style: .continuous)
+					.fill(tileColor(tokens: record.tokens))
+					.frame(width: 6, height: 9)
+					.help("\(compactUsageDate(record.date)): \(formatCompactCount(record.tokens)) tokens")
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.frame(height: 11)
+		.accessibilityHidden(true)
+	}
+
+	private var displayRecords: [AccountProfileDailyUsage] {
+		Array(records.sorted { $0.date < $1.date }.suffix(36))
+	}
+
+	private var peakTokens: Int {
+		max(1, displayRecords.map(\.tokens).max() ?? 1)
+	}
+
+	private func tileColor(tokens: Int) -> Color {
+		let intensity = max(0.16, min(1, Double(tokens) / Double(peakTokens)))
+		return PanelPalette.usageCyan(colorScheme).opacity(0.24 + 0.62 * intensity)
 	}
 }
 
@@ -1731,7 +2023,7 @@ struct OperatorLanePopoverView: View {
 			}
 
 			ForEach(detailBuckets) { bucket in
-				OperatorLaneReadoutRow(title: humanizedPanelToken(bucket.name), items: bucketReadoutItems(bucket))
+				OperatorLaneReadoutRow(title: rawPanelToken(bucket.name), items: bucketReadoutItems(bucket))
 			}
 
 			if contextReadoutItems.isEmpty == false {
@@ -1765,13 +2057,13 @@ struct OperatorLanePopoverView: View {
 			}
 
 		let label = panelTrimmed(activity.currentDetail)
-			?? panelTrimmed(activity.currentBucket).map(humanizedPanelToken)
+			?? panelTrimmed(activity.currentBucket).map(rawPanelToken)
 			?? "Active"
 		if let elapsed = formatActivityDuration(activity.currentElapsedSeconds) {
-			return "\(humanizedPanelToken(label)) · \(elapsed)"
+			return "\(rawPanelToken(label)) · \(elapsed)"
 		}
 
-		return humanizedPanelToken(label)
+		return rawPanelToken(label)
 	}
 
 	private var header: some View {
@@ -2199,11 +2491,14 @@ struct SummaryTileView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		HStack(spacing: 4) {
+		HStack(alignment: .firstTextBaseline, spacing: 4) {
 			Image(systemName: symbol)
 				.font(PanelFont.summaryIcon)
 				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.78 : 0.82))
 				.frame(width: 11)
+				.alignmentGuide(.firstTextBaseline) { dimensions in
+					dimensions[VerticalAlignment.center] + 3
+				}
 
 			Text(title)
 				.font(PanelFont.metricLabel)
@@ -2580,6 +2875,18 @@ private func formatDailyUsageRate(_ value: Double) -> String {
 	return "\(percent)/d"
 }
 
+private func compactUsageDate(_ value: String) -> String {
+	let formatter = DateFormatter()
+	formatter.locale = Locale(identifier: "en_US_POSIX")
+	formatter.dateFormat = "yyyy-MM-dd"
+	guard let date = formatter.date(from: value) else {
+		return value
+	}
+
+	formatter.dateFormat = "MMM d"
+	return formatter.string(from: date)
+}
+
 private func formatPercentagePointDelta(_ value: Double) -> String {
 	guard value.isFinite else {
 		return "-"
@@ -2599,21 +2906,8 @@ private func panelTrimmed(_ value: String?) -> String? {
 	value?.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
-private func humanizedPanelToken(_ value: String) -> String {
-	let words = value
-		.replacingOccurrences(of: "-", with: " ")
-		.replacingOccurrences(of: "_", with: " ")
-		.split(separator: " ")
-		.map { word in
-			let text = String(word)
-			guard let first = text.first else {
-				return text
-			}
-
-			return first.uppercased() + String(text.dropFirst())
-		}
-
-	return words.joined(separator: " ")
+private func rawPanelToken(_ value: String) -> String {
+	value.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 private func formatLaneDuration(_ seconds: Int?) -> String? {
@@ -2971,7 +3265,7 @@ private extension CodexAccount {
 	}
 
 	var hasUsageSummary: Bool {
-		hasUsageWindowSummary
+		hasUsageWindowSummary || hasProfileSummary
 	}
 
 	var hasUsageWindowSummary: Bool {
@@ -2992,38 +3286,26 @@ private extension CodexAccount {
 
 	var compactHealthLabel: String? {
 		if isUsageLimited {
-			return "Limited"
+			return compactLimitStatusToken
 		}
 
-		switch recoveryActionKind {
-		case .login:
-			return "Re-login"
-		case .refresh:
-			return "Refresh needed"
-		case .retryProbe:
-			return "Probe failed"
-		case .none:
-			break
+		if let token = recoveryAction?.trimmingCharacters(in: .whitespacesAndNewlines),
+			token.isEmpty == false
+		{
+			return token
 		}
 
-		switch status {
-		case "available":
-			return nil
-		case "usage_limited":
-			return "Limited"
-		case "probe_failed":
-			return "Probe failed"
-		case "expired":
-			return "Refresh needed"
-		case "disabled":
-			return "Disabled"
-		case "cooldown":
-			return "Cooling"
-		case "unusable":
-			return "Needs attention"
-		default:
-			let label = status.replacingOccurrences(of: "_", with: " ").capitalized
-			return label.isEmpty ? nil : label
+		let label = status.trimmingCharacters(in: .whitespacesAndNewlines)
+		return label.isEmpty || label == "available" ? nil : label
+	}
+
+	private var compactLimitStatusToken: String {
+		let reached = rateLimitReachedType?.trimmingCharacters(in: .whitespacesAndNewlines)
+		if let reached, reached.isEmpty == false, reached != "none" {
+			return reached
 		}
+
+		let token = status.trimmingCharacters(in: .whitespacesAndNewlines)
+		return token.isEmpty || token == "available" ? "usage_limited" : token
 	}
 }
