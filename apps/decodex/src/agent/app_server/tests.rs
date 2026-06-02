@@ -15,14 +15,12 @@ use crate::{
 	agent::{
 		app_server::{
 			AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
-			AppServerDynamicToolFailure, AppServerRunResult, AppServerSteerChannelResult,
-			AppServerThreadArchiveRequest, AppServerTurnFailure, CommandExecHealthCheck,
-			CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
-			ModelProviderCapabilitiesReadResponse, PluginListResponse, ProbeDynamicToolHandler,
-			REQUEST_TIMEOUT, RequestWaitPhase, RunRecorder, RuntimeConfigSummary,
-			STEER_CHANNEL_RESULT_SCHEMA, STEER_REASON_DELIVERED,
-			SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER, SkillsListResponse, SteerChannelDirs,
-			TurnContinuationGuard, UserInput,
+			AppServerDynamicToolFailure, AppServerRunResult, AppServerThreadArchiveRequest,
+			AppServerTurnFailure, CommandExecHealthCheck, CommandExecResponse,
+			EffectiveThreadConfig, InitializeResponse, ModelProviderCapabilitiesReadResponse,
+			PluginListResponse, ProbeDynamicToolHandler, REQUEST_TIMEOUT, RequestWaitPhase,
+			RunRecorder, RuntimeConfigSummary, SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER,
+			SkillsListResponse, TurnContinuationGuard, UserInput,
 		},
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
@@ -35,7 +33,10 @@ use crate::{
 		},
 	},
 	prelude::{Result, eyre},
-	state::{self, ProtocolActivitySummary, RUN_CONTROL_ACTION_COMPLETED, StateStore},
+	run_control::{
+		self, LaneControlSteerRequest, LaneControlSteerRequestInput, LaneControlSteerResponse,
+	},
+	state::{self, ProtocolActivitySummary, StateStore},
 	test_support::TestEnvVarGuard,
 };
 
@@ -441,6 +442,7 @@ fn turn_start_request_omits_execution_policy_overrides() {
 
 fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 	super::AppServerRunRequest {
+		project_id: String::from("test-project"),
 		run_id: String::from("run-1"),
 		issue_id: String::from("issue-1"),
 		attempt_number: 1,
@@ -1361,10 +1363,9 @@ fn steer_delivery_error_classifies_active_turn_not_steerable_distinctly() {
 	let error = eyre::eyre!(
 		"`turn/steer` failed with -32000: turn is not steerable data: {{\"type\":\"activeTurnNotSteerable\"}}"
 	);
-	let (reason, failure_class) = super::classify_steer_delivery_error(&error);
+	let failure_class = super::steer_error_class(&error);
 
-	assert_eq!(reason, super::STEER_REASON_ACTIVE_TURN_NOT_STEERABLE);
-	assert_eq!(failure_class, super::STEER_FAILURE_ACTIVE_TURN_NOT_STEERABLE);
+	assert_eq!(failure_class, "active_turn_not_steerable");
 }
 
 #[test]
@@ -1374,50 +1375,53 @@ fn steer_delivery_error_classifies_missing_method_as_unsupported() {
 		"`turn/steer` failed with -32601: Method not found",
 	] {
 		let error = eyre::eyre!("{message}");
-		let (reason, failure_class) = super::classify_steer_delivery_error(&error);
+		let failure_class = super::steer_error_class(&error);
 
-		assert_eq!(reason, super::STEER_REASON_APP_SERVER_UNSUPPORTED);
-		assert_eq!(failure_class, super::STEER_FAILURE_UNSUPPORTED);
+		assert_eq!(failure_class, "app_server_turn_steer_unsupported");
 	}
 }
 
 #[test]
-fn steer_channel_result_wait_ignores_temp_file_until_atomic_result_exists() -> Result<()> {
+fn steer_response_wait_ignores_temp_file_until_atomic_response_exists() -> Result<()> {
 	let temp_dir = TempDir::new()?;
-	let dirs = SteerChannelDirs {
-		pending: temp_dir.path().join("pending"),
-		processed: temp_dir.path().join("processed"),
-		failed: temp_dir.path().join("failed"),
-	};
-	let file_name = "steer-request.json";
+	let request = LaneControlSteerRequest::new(LaneControlSteerRequestInput {
+		audit_record_id: 7,
+		project_id: "decodex",
+		issue_id: "XY-704",
+		run_id: "run-1",
+		attempt_number: 1,
+		thread_id: "thread-1",
+		expected_turn_id: "turn-1",
+		source: "test",
+		message: "change direction",
+	});
+	let run_dir = temp_dir.path().join(".decodex-run-control").join("run-1");
 
-	fs::create_dir_all(&dirs.processed)?;
-	fs::write(dirs.processed.join(format!("{file_name}.tmp")), b"{")?;
+	fs::create_dir_all(&run_dir)?;
+	fs::write(run_dir.join(format!("{}.steer-response.json.tmp", request.request_id)), b"{")?;
 
 	assert!(
-		super::wait_for_steer_channel_result(&dirs, file_name, Duration::from_millis(1))?.is_none()
+		run_control::wait_for_steer_response(
+			temp_dir.path(),
+			"run-1",
+			&request.request_id,
+			Duration::from_millis(1),
+		)?
+		.is_none()
 	);
 
-	let result = AppServerSteerChannelResult {
-		schema: String::from(STEER_CHANNEL_RESULT_SCHEMA),
-		request_id: String::from("request-1"),
-		outcome: String::from(RUN_CONTROL_ACTION_COMPLETED),
-		reason: String::from(STEER_REASON_DELIVERED),
-		failure_class: None,
-		expected_turn_id: String::from("turn-1"),
-		current_turn_id: Some(String::from("turn-1")),
-		response_turn_id: Some(String::from("turn-2")),
-		message_byte_count: 12,
-		message_line_count: 1,
-		audit_record_id: 7,
-		recorded_at: String::from("2026-06-02T00:00:00Z"),
-	};
+	let response = LaneControlSteerResponse::delivered(&request, "turn-1", "turn-2");
 
-	super::write_json_file_atomically(&dirs.processed.join(file_name), &result)?;
+	run_control::write_steer_response(temp_dir.path(), &response)?;
 
 	assert_eq!(
-		super::wait_for_steer_channel_result(&dirs, file_name, Duration::from_millis(100))?,
-		Some(result)
+		run_control::wait_for_steer_response(
+			temp_dir.path(),
+			"run-1",
+			&request.request_id,
+			Duration::from_millis(100),
+		)?,
+		Some(response)
 	);
 
 	Ok(())
@@ -1614,7 +1618,7 @@ fn turn_notification_ignores_agent_output_for_non_target_turn() {
 	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
 
 	assert!(
-		super::handle_turn_notification(
+		super::handle_turn_execution_notification(
 			&old_completed,
 			"thread-1",
 			"turn-new",
@@ -1625,7 +1629,7 @@ fn turn_notification_ignores_agent_output_for_non_target_turn() {
 		.is_none()
 	);
 	assert!(
-		super::handle_turn_notification(
+		super::handle_turn_execution_notification(
 			&old_delta,
 			"thread-1",
 			"turn-new",
@@ -1637,7 +1641,7 @@ fn turn_notification_ignores_agent_output_for_non_target_turn() {
 	);
 	assert_eq!(final_output, "CURRENT");
 
-	super::handle_turn_notification(
+	super::handle_turn_execution_notification(
 		&target_completed,
 		"thread-1",
 		"turn-new",
@@ -2040,6 +2044,7 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 	);
 	let first_result = super::execute_app_server_run(
 		&super::AppServerRunRequest {
+			project_id: String::from("test-project"),
 			run_id: String::from("live-resume-run"),
 			issue_id: String::from("live-resume-issue"),
 			attempt_number: 1,
@@ -2086,6 +2091,7 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 		StateStore::open_in_memory().expect("resumed state store should open");
 	let second_result = super::execute_app_server_run(
 		&super::AppServerRunRequest {
+			project_id: String::from("test-project"),
 			run_id: String::from("live-resume-run"),
 			issue_id: String::from("live-resume-issue"),
 			attempt_number: 1,

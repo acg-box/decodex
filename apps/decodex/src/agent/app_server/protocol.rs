@@ -181,6 +181,21 @@ impl AppServerClient {
 		self.connection.request_with_handler("turn/start", &params, REQUEST_TIMEOUT, handler)
 	}
 
+	pub(super) fn interrupt_turn_with_handler<H>(
+		&mut self,
+		params: TurnInterruptRequest,
+		handler: H,
+	) -> crate::prelude::Result<Value>
+	where
+		H: FnMut(
+			&mut JsonRpcConnection,
+			&WireMessage,
+			&JsonRpcRequest,
+		) -> crate::prelude::Result<()>,
+	{
+		self.connection.request_with_handler("turn/interrupt", &params, REQUEST_TIMEOUT, handler)
+	}
+
 	pub(super) fn steer_turn_with_handler<H>(
 		&mut self,
 		params: TurnSteerRequest,
@@ -443,10 +458,16 @@ pub(super) struct TurnStartResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct TurnSteerRequest {
-	#[serde(rename = "threadId")]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TurnInterruptRequest {
 	pub(super) thread_id: String,
-	#[serde(rename = "expectedTurnId")]
+	pub(super) turn_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct TurnSteerRequest {
+	pub(super) thread_id: String,
 	pub(super) expected_turn_id: String,
 	pub(super) input: Vec<UserInput>,
 }

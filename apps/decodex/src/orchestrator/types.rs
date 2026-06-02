@@ -65,6 +65,7 @@ pub(crate) struct LaneSteerRequest<'a> {
 
 /// Active lane steer result without raw operator message content.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct LaneSteerReport {
 	pub(crate) project_id: String,
 	pub(crate) issue_id: String,

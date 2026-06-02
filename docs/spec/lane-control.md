@@ -21,7 +21,7 @@ The first supported operator-control surface for this rollout is CLI/API. Active
 UI controls are intentionally deferred. The dashboard may show local runtime state for
 observation, but it must not become the primary place where agents or operators author
 steer, retry, task replacement, or lifecycle mutations before the CLI/API contract is
-settled and audited.
+implemented and audited.
 
 Bottom-layer steer support must not hard-limit task content. The app-server,
 protocol, and runtime layer should expose steer broadly enough to pass operator-supplied
@@ -33,18 +33,18 @@ agent-facing skills must guide responsible use.
 
 | Capability | Contract status | Current implementation evidence | Required behavior |
 | --- | --- | --- | --- |
-| Inspect lane state | Supported | `decodex status`, `decodex status --json`, `decodex diagnose --json`, `decodex evidence <ISSUE>`, operator snapshots, and dashboard views | Always inspect before mutating or steering. Inspection must not mutate tracker state, runtime DB rows, worktrees, or app-server turns. |
+| Inspect lane state | Supported | `decodex lane inspect <ISSUE>`, `decodex status`, `decodex status --json`, `decodex diagnose --json`, `decodex evidence <ISSUE>`, `GET /api/lane/inspect`, operator snapshots, and dashboard views | Always inspect before mutating or steering. Inspection must not mutate tracker state, runtime DB rows, worktrees, or app-server turns. |
 | Project dispatch pause | Supported for future dispatch | `decodex project disable <service-id>` and the runtime project enabled flag | Pause prevents new dispatch for the project. It must not kill or rewrite already active lanes. |
 | Project dispatch resume | Supported for future dispatch | `decodex project enable <service-id>` and the runtime project enabled flag | Resume re-enables future dispatch after the operator has inspected blockers, capacity, and queue state. |
 | Linear scan request | Supported | `POST /api/linear-scan` with optional `projectId` | Queue a scan for the next control-plane tick while respecting tracker backoff. This is an intake/status refresh request, not an execution command. |
-| Run-control channel foundation | Supported foundation | Active attempts publish a local `.decodex-run-control/*` channel record, runtime SQLite `run_control_channels`, operator status `control_capability`, and private `control_action` audit events | Route active-lane mutations through the active attempt's project, issue, run id, attempt, thread id, current turn id, active lease, and local channel metadata. Invalid or stale requests fail closed and remain local audit evidence. |
-| Soft interrupt | Planned CLI/API control; bottom-layer method allowed | Decodex does not currently send `turn/interrupt` from its app-server client | Prefer soft interrupt before hard interruption when the active turn id is known and the app-server capability is present. Soft interrupt requests a graceful turn stop and must leave classification to the runtime. |
-| Hard interrupt fallback | Emergency fallback only | No dashboard or CLI/API lane-control path exposes hard interrupt in this rollout; runtime recovery can still classify attempts as `interrupted` | Use only when soft interrupt is unavailable, timed out, or impossible because the process or app-server boundary cannot be reached. Preserve retained worktree evidence and runtime classification. |
-| Steer active lane | Supported CLI/API control; bottom-layer method stays broad | `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>`, `POST /api/lane-steer`, local run-control channel requests, app-server `turn/steer`, private `control_action` audit events, and protocol activity `turn/steer` summaries | Pass operator-supplied steer text through CLI/API to the current active turn. Require `expectedTurnId`; stale turn ids fail closed. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
+| Run-control channel foundation | Supported foundation | Active attempts publish a local `.decodex-run-control/*` channel record, runtime SQLite `run_control_channels`, operator status `control_capability`, and private `control_action` audit events | Route lane-control mutations through the active attempt's project, issue, run id, attempt, thread id, current turn id, active lease, and local channel metadata. Invalid or stale requests fail closed and remain local audit evidence. |
+| Soft interrupt | Supported CLI/API control | `decodex lane interrupt <ISSUE> --run-id <RUN_ID>` and `POST /api/lane/interrupt` write a run-control request that the active app-server child delivers with `turn/interrupt` | Prefer soft interrupt before hard interruption when the active turn id is known and the app-server capability is present. Soft interrupt requests a graceful turn stop and records the protocol outcome when app-server returns one. |
+| Hard interrupt fallback | Explicit fallback only | `decodex lane interrupt <ISSUE> --run-id <RUN_ID> --force` and `POST /api/lane/interrupt` with `"force": true` classify process signaling as `hard_interrupt_fallback` | Use only when soft interrupt is unavailable, timed out, or impossible because the process or app-server boundary cannot be reached. Preserve retained worktree evidence and runtime classification. |
+| Steer active lane | Supported CLI/API control; bottom-layer method stays broad | `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>`, canonical `POST /api/lane/steer`, legacy alias `POST /api/lane-steer`, local run-control steer request/response files, app-server `turn/steer`, private `control_action` audit events, and protocol activity `turn/steer` summaries | Pass operator-supplied steer text through CLI/API to the current active turn. Require `expectedTurnId`; stale turn ids fail closed. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
 | Retained resume/retry | Supported through runtime lifecycle | `decodex run <ISSUE>`, retry scheduling, retained worktree recovery, and `thread/resume` for same-thread app-server continuation | Resume only when retained worktree, issue, branch, PR, and runtime evidence still prove the same lane. Treat ambiguous lineage as manual attention. |
 | Manual attention | Supported terminal control path | `decodex:needs-attention`, `issue_comment(kind = "manual_attention")`, and `issue_terminal_finalize(path = "manual_attention")` | Stop automation when policy requires a human decision. Explain the blocker through structured public fields and keep private evidence local. |
 | Task replacement | Deferred lifecycle work | No supported active-lane replacement command | Do not use steer or raw injection to replace the task silently. Treat replacement as explicit lifecycle work: pause/stop if needed, update or requeue the issue, or create a new issue/lane. |
-| Raw thread item injection | Unsupported as an operator feature | No Decodex operator path for `thread/inject_items` | Do not expose raw `thread/inject_items` to operators in this rollout. Use `turn/steer` through the supported CLI/API steer path. |
+| Raw thread item injection | Unsupported as an operator feature | No Decodex operator path for `thread/inject_items` | Do not expose raw `thread/inject_items` to operators in this rollout. Use `turn/steer` for operator steer. |
 | Active-lane UI authoring controls | Deferred | Existing dashboard views and low-level handlers are not the CLI/API-first lane-control contract | Do not add dashboard steer, retry, or task-replacement controls in this rollout. Ship CLI/API first, then promote UI controls only after audit and policy behavior is settled. |
 
 ## Inspect-First Rule
@@ -69,7 +69,7 @@ Every live app-server attempt publishes a per-attempt local control capability w
 Decodex still owns the active lease for the run. The current mechanism is a local file
 channel under the run worktree's `.decodex-run-control/` directory plus a
 `run_control_channels` runtime SQLite row. This is foundation plumbing only: it proves
-where an active attempt can receive control traffic without exposing steer,
+where an active attempt can receive future control traffic without exposing steer,
 interrupt, or task-replacement semantics by itself.
 
 The channel row is scoped by project id, issue id, run id, attempt number, transport,
@@ -102,11 +102,30 @@ Soft interrupt is the preferred active-turn stop path. A compliant soft interrup
 - leaves tracker state, retry policy, and retained-worktree classification to the
   Decodex runtime
 
+The supported operator commands are:
+
+- `decodex lane inspect <ISSUE> [--run-id <RUN_ID>] [--json]`
+- `decodex lane interrupt <ISSUE> --run-id <RUN_ID> [--json] [--reason <TEXT>]`
+- `decodex lane interrupt <ISSUE> --run-id <RUN_ID> --force [--json] [--reason <TEXT>]`
+
+The local HTTP API mirrors those semantics:
+
+- `GET /api/lane/inspect?projectId=<service-id>&issue=<ISSUE>[&runId=<RUN_ID>]`
+- `POST /api/lane/interrupt` with JSON fields `projectId`, `issue`, `runId`,
+  optional `reason`, and optional `force`
+
+When only one project is enabled on the local listener, the HTTP API can infer
+`projectId`; otherwise the request must include it. CLI/API responses include the
+lane identity, app-server thread and turn ids when known, process liveness summary,
+soft-interrupt classification, hard-fallback classification when used, and next action.
+They do not include private payload bodies.
+
 Hard interrupt is a fallback, not the normal operator control. A hard interrupt may
-signal the recorded child process only after Decodex proves the process identity still
-matches the current run attempt. The runtime must preserve evidence, mark the attempt
-with an interruption status, clear or retain ownership according to the runtime
-contract, and avoid pretending the agent completed a terminal path.
+signal the recorded child process only after explicit `--force` or `"force": true`
+operator intent. The fallback emits `hard_interrupt_fallback`, preserves local
+evidence, marks an active attempt as `interrupted` when a recorded child is signaled,
+clears or retains ownership according to the runtime contract, and avoids pretending
+the agent completed a terminal path.
 
 ## Steer
 
@@ -115,11 +134,24 @@ bottom-layer protocol shape must not decide which task topics are acceptable. It
 carry the operator's steer text broadly, subject only to generic transport and schema
 requirements.
 
+The supported operator commands are:
+
+- `decodex lane inspect <ISSUE> [--run-id <RUN_ID>] [--json]`
+- `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT> [--json]`
+
+The local HTTP API mirrors those semantics:
+
+- `POST /api/lane/steer` with JSON fields `projectId`, `issue` or `issueId`,
+  `runId`, `expectedTurnId`, `message`, and optional `waitTimeoutMs`
+- `POST /api/lane-steer` remains a compatibility alias for the same request
+
+The `expectedTurnId` precondition is mandatory. If the current active turn no longer
+matches the supplied turn id, the request fails closed with `stale_expected_turn_id`
+and remains local audit evidence instead of being delivered to app-server.
+
 Higher layers own guardrails:
 
 - CLI/API must require explicit operator-supplied steer text and a target lane identity.
-- CLI/API must require the current active turn precondition as `expectedTurnId`;
-  stale expected turn ids fail closed and remain local audit evidence.
 - Decodex must audit steer requests in local runtime evidence before or alongside
   delivery to app-server.
 - Privacy and public-text guards decide what, if anything, may be mirrored to Linear.
@@ -131,20 +163,6 @@ Higher layers own guardrails:
 Steer is not task replacement. If the operator wants a different issue, a materially
 different goal, or a new acceptance contract, the correct path is lifecycle/requeue
 work, not a hidden active-lane content swap.
-
-The supported CLI form is:
-
-```sh
-decodex lane steer <ISSUE> --run-id <RUN_ID> \
-  --expected-turn-id <TURN_ID> --message <TEXT>
-```
-
-The supported API form is `POST /api/lane-steer` with JSON fields `issue` or
-`issueId`, `runId`, `expectedTurnId`, `message`, and optional `projectId` and
-`waitTimeoutMs`. Both surfaces resolve the active run-control channel before queueing
-the request. The active run rechecks the expected turn id immediately before sending
-`turn/steer`, so a turn that completed between operator inspection and delivery is not
-steered accidentally.
 
 ## Retained Resume And Retry
 
@@ -193,11 +211,6 @@ accepted, rejected, completed, failed, timed out, and fallback outcomes. These r
 are scoped by the same project, issue, run id, and attempt tuple as other private
 execution evidence. They are available through `decodex evidence <ISSUE> --run-id
 <RUN_ID> --attempt <N>` and survive independently of any public Linear projection.
-Steer audit records include the request id, accepted or rejected state,
-requested/observed turn ids, response turn id when app-server accepts the steer,
-failure class, and compact message metadata such as byte and line counts. Default
-evidence summaries redact message-like fields, and operator status surfaces
-`turn/steer` protocol activity without including the raw operator text.
 
 Linear public text remains sparse. Do not write steer text, raw command output, process
 diagnostics, private evidence payloads, account details, or host-local paths into
@@ -205,8 +218,8 @@ Linear unless a schema-controlled public projection explicitly allows it.
 
 ## Implementation Status For This Rollout
 
-Current code supports inspect, CLI project enable/disable, Linear scan requests,
-active-lane steer through CLI/API, retained resume/retry lifecycle paths, and
-manual-attention finalization. Current code does not expose dashboard lane-mutation
-controls, does not yet implement Decodex CLI/API controls that send `turn/interrupt`,
-and does not expose raw `thread/inject_items` as an operator feature.
+Current code supports lane inspect, CLI project enable/disable, Linear scan requests,
+soft interrupt, explicit hard-interrupt fallback, active-lane steer, retained
+resume/retry lifecycle paths, and manual-attention finalization. Current code does not
+expose dashboard lane-mutation controls and does not expose raw `thread/inject_items`
+as an operator feature.
