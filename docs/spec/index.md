@@ -59,6 +59,9 @@ Then keep the body explicit:
 - [`app-server.md`](./app-server.md) defines the direct Codex `app-server` interaction
   contract, current compatibility range, and protocol support evidence used by the
   runtime.
+- [`lane-control.md`](./lane-control.md) defines the CLI/API-first operator
+  lane-control capability matrix and the boundary between bottom-layer steer support
+  and higher-level policy guardrails.
 - [`github-change-bundle.md`](./github-change-bundle.md) defines the normalized GitHub
   input model for PR-first public signal analysis.
 - [`signal-entry.md`](./signal-entry.md) defines the published signal-entry schema used
