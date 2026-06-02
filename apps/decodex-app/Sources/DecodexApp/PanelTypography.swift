@@ -18,7 +18,7 @@ enum PanelFont {
 	static let emptyBody = text(10.9, weight: .regular)
 	static let notice = text(10.6, weight: .regular)
 
-	static let accountName = text(13.1, weight: .semibold)
+	static let accountName = text(12.6, weight: .semibold)
 	static let accountDetail = text(10.9, weight: .medium)
 
 	static let summaryIcon = text(10.4, weight: .medium)
@@ -36,6 +36,8 @@ enum PanelFont {
 	static let lanePopoverValue = text(11.0, weight: .semibold)
 	static let lanePopoverMeta = text(10.6, weight: .medium)
 	static let lanePopoverChip = text(10.5, weight: .semibold)
+	static let runChipIcon = text(9.5, weight: .semibold)
+	static let runChipTitle = text(10.6, weight: .semibold)
 
 	static let iconButton = text(11.2, weight: .semibold)
 }
