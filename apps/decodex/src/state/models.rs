@@ -70,6 +70,146 @@ impl RunAttempt {
 	}
 }
 
+/// Local control capability published by one active run attempt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RunControlChannel {
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	attempt_number: i64,
+	transport: String,
+	channel_path: PathBuf,
+	status: String,
+	published_at: String,
+	published_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl RunControlChannel {
+	/// Local project identifier owning this control channel.
+	pub fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	/// Issue identifier owning this control channel.
+	pub fn issue_id(&self) -> &str {
+		&self.issue_id
+	}
+
+	/// Stable run identifier owning this control channel.
+	pub fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	/// Attempt number owning this control channel.
+	pub fn attempt_number(&self) -> i64 {
+		self.attempt_number
+	}
+
+	/// Local transport mechanism for this control channel.
+	pub fn transport(&self) -> &str {
+		&self.transport
+	}
+
+	/// Local path used by this control channel.
+	pub fn channel_path(&self) -> &Path {
+		&self.channel_path
+	}
+
+	/// Runtime status for this control channel.
+	pub fn status(&self) -> &str {
+		&self.status
+	}
+
+	/// UTC timestamp when this control channel was first published.
+	pub fn published_at(&self) -> &str {
+		&self.published_at
+	}
+
+	/// UTC timestamp when this control channel was last updated.
+	pub fn updated_at(&self) -> &str {
+		&self.updated_at
+	}
+}
+
+/// Local run-control request resolution and first audit row.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RunControlActionReceipt {
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	attempt_number: i64,
+	thread_id: Option<String>,
+	turn_id: Option<String>,
+	source: String,
+	action: String,
+	outcome: String,
+	reason: String,
+	audit_record_id: i64,
+	channel: Option<RunControlChannel>,
+}
+impl RunControlActionReceipt {
+	/// Project identifier used for the local audit scope.
+	pub fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	/// Issue identifier used for the local audit scope.
+	pub fn issue_id(&self) -> &str {
+		&self.issue_id
+	}
+
+	/// Run identifier used for the local audit scope.
+	pub fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	/// Attempt number used for the local audit scope.
+	pub fn attempt_number(&self) -> i64 {
+		self.attempt_number
+	}
+
+	/// Requested thread identifier, when supplied.
+	pub fn thread_id(&self) -> Option<&str> {
+		self.thread_id.as_deref()
+	}
+
+	/// Requested turn identifier, when supplied.
+	pub fn turn_id(&self) -> Option<&str> {
+		self.turn_id.as_deref()
+	}
+
+	/// Local source that requested the action.
+	pub fn source(&self) -> &str {
+		&self.source
+	}
+
+	/// Requested control action.
+	pub fn action(&self) -> &str {
+		&self.action
+	}
+
+	/// Normalized audit outcome for the request resolution.
+	pub fn outcome(&self) -> &str {
+		&self.outcome
+	}
+
+	/// Normalized reason for the request resolution.
+	pub fn reason(&self) -> &str {
+		&self.reason
+	}
+
+	/// Private execution event row id for the request-resolution audit.
+	pub fn audit_record_id(&self) -> i64 {
+		self.audit_record_id
+	}
+
+	/// Control channel selected for an accepted request.
+	pub fn channel(&self) -> Option<&RunControlChannel> {
+		self.channel.as_ref()
+	}
+}
+
 /// One private, local-only execution event retained in the runtime SQLite ledger.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PrivateExecutionEvent {
@@ -148,6 +288,7 @@ pub struct ProjectRunStatus {
 	last_event_type: Option<String>,
 	last_event_at: Option<String>,
 	last_event_at_unix: Option<i64>,
+	control_channel: Option<RunControlChannel>,
 }
 impl ProjectRunStatus {
 	/// Stable run identifier.
@@ -213,6 +354,11 @@ impl ProjectRunStatus {
 	/// Timestamp of the latest recorded protocol event, when one exists.
 	pub fn last_event_at(&self) -> Option<&str> {
 		self.last_event_at.as_deref()
+	}
+
+	/// Local control capability published by this run attempt, when one exists.
+	pub fn control_channel(&self) -> Option<&RunControlChannel> {
+		self.control_channel.as_ref()
 	}
 
 	/// Unix timestamp of the latest recorded protocol event, when one exists.
@@ -326,6 +472,30 @@ pub struct PreacquiredLeaseGuards {
 	pub dispatch_slot_fd: i32,
 	/// The inherited shared dispatch-slot index used for local guard bookkeeping.
 	pub dispatch_slot_index: usize,
+}
+
+/// Foundation request for resolving a local run-control action.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) struct RunControlActionRequest<'a> {
+	/// Requested project identifier.
+	pub(crate) project_id: &'a str,
+	/// Requested issue identifier.
+	pub(crate) issue_id: &'a str,
+	/// Requested run identifier.
+	pub(crate) run_id: &'a str,
+	/// Requested attempt number.
+	pub(crate) attempt_number: i64,
+	/// Requested app-server thread identifier, when known.
+	pub(crate) thread_id: Option<&'a str>,
+	/// Requested current app-server turn identifier, when known.
+	pub(crate) turn_id: Option<&'a str>,
+	/// Local source that requested the action.
+	pub(crate) source: &'a str,
+	/// Requested control action.
+	pub(crate) action: &'a str,
+	/// Optional caller timeout budget in milliseconds.
+	pub(crate) timeout_ms: Option<i64>,
 }
 
 /// Registered repo target managed by the local Decodex control plane.

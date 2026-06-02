@@ -4215,14 +4215,7 @@ fn operator_run_status(
 			.filter(|reason| reason != "turn_completed");
 	}
 
-	let account = marker.as_ref().and_then(RunActivityMarker::account).cloned();
-	let mut accounts = marker
-		.as_ref()
-		.map(|marker| marker.accounts().to_vec())
-		.unwrap_or_default();
-
-	append_primary_account_if_missing(&mut accounts, account.as_ref());
-
+	let (account, accounts) = operator_run_accounts(marker.as_ref());
 	let branch_name = run.branch_name().map(str::to_owned);
 	let worktree_path = operator_run_relative_worktree_path(project, &run);
 	let issue_identifier = operator_run_issue_identifier_from_fields(
@@ -4231,6 +4224,7 @@ fn operator_run_status(
 		worktree_path.as_deref(),
 	);
 	let private_evidence = operator_run_private_evidence(project, &run, issue_identifier.as_deref());
+	let control_capability = operator_run_control_capability(&run, &app_server_state);
 	let execution_liveness =
 		operator_run_execution_liveness(&status, &timing, &app_server_state, &protocol_summary);
 
@@ -4270,6 +4264,7 @@ fn operator_run_status(
 		last_event_at: protocol_summary.last_event_at,
 		event_count: protocol_summary.event_count,
 		private_evidence,
+		control_capability,
 		process_id: timing.process_id,
 		process_alive: timing.process_alive,
 		process_liveness_reason: timing.process_liveness_reason,
@@ -4288,6 +4283,17 @@ fn operator_run_status(
 		branch_name,
 		worktree_path,
 	})
+}
+
+fn operator_run_accounts(
+	marker: Option<&RunActivityMarker>,
+) -> (Option<CodexAccountActivitySummary>, Vec<CodexAccountActivitySummary>) {
+	let account = marker.and_then(RunActivityMarker::account).cloned();
+	let mut accounts = marker.map(|marker| marker.accounts().to_vec()).unwrap_or_default();
+
+	append_primary_account_if_missing(&mut accounts, account.as_ref());
+
+	(account, accounts)
 }
 
 fn operator_run_relative_worktree_path(
@@ -4310,6 +4316,27 @@ fn operator_run_private_evidence(
 		run.run_id(),
 		run.attempt_number(),
 	)
+}
+
+fn operator_run_control_capability(
+	run: &ProjectRunStatus,
+	app_server_state: &OperatorRunAppServerState,
+) -> Option<OperatorRunControlCapability> {
+	let channel = run.control_channel()?;
+
+	Some(OperatorRunControlCapability {
+		project_id: channel.project_id().to_owned(),
+		issue_id: channel.issue_id().to_owned(),
+		run_id: channel.run_id().to_owned(),
+		attempt_number: channel.attempt_number(),
+		thread_id: app_server_state.thread_id.clone(),
+		turn_id: app_server_state.turn_id.clone(),
+		transport: channel.transport().to_owned(),
+		channel_path: channel.channel_path().display().to_string(),
+		status: channel.status().to_owned(),
+		published_at: channel.published_at().to_owned(),
+		updated_at: channel.updated_at().to_owned(),
+	})
 }
 
 fn operator_project_display_name(project: &ServiceConfig) -> String {
@@ -5423,6 +5450,21 @@ fn render_protocol_activity_summary(summary: Option<&ProtocolActivitySummary>) -
 	format!("turn={turn}; waiting={wait}; rate_limit={rate_limit}; recent={recent}")
 }
 
+fn render_control_capability_summary(
+	capability: Option<&OperatorRunControlCapability>,
+) -> String {
+	let Some(capability) = capability else {
+		return String::from("none");
+	};
+	let thread_id = capability.thread_id.as_deref().unwrap_or("none");
+	let turn_id = capability.turn_id.as_deref().unwrap_or("none");
+
+	format!(
+		"status={}; transport={}; channel={}; thread_id={thread_id}; turn_id={turn_id}",
+		capability.status, capability.transport, capability.channel_path
+	)
+}
+
 fn render_account_summary(summary: Option<&CodexAccountActivitySummary>) -> String {
 	let Some(summary) = summary else {
 		return String::from("none");
@@ -5712,9 +5754,10 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let account = render_account_summary(run.account.as_ref());
 	let accounts = render_accounts_summary(&run.accounts);
 	let private_evidence = render_private_evidence_reference(run);
+	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -5743,6 +5786,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		protocol_activity,
 		context_pressure,
 		private_evidence,
+		control_capability,
 		thread_id,
 		turn_id,
 		thread_status,
