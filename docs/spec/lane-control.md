@@ -34,11 +34,11 @@ agent-facing skills must guide responsible use.
 | Capability | Contract status | Current implementation evidence | Required behavior |
 | --- | --- | --- | --- |
 | Inspect lane state | Supported | `decodex status`, `decodex status --json`, `decodex diagnose --json`, `decodex evidence <ISSUE>`, operator snapshots, and dashboard views | Always inspect before mutating or steering. Inspection must not mutate tracker state, runtime DB rows, worktrees, or app-server turns. |
-| Project dispatch pause | Supported for future dispatch | `decodex project disable <service-id>` and the runtime project enabled flag; dashboard control handlers can also toggle the same flag | Pause prevents new dispatch for the project. It must not kill or rewrite already active lanes. |
-| Project dispatch resume | Supported for future dispatch | `decodex project enable <service-id>` and the runtime project enabled flag; dashboard control handlers can also toggle the same flag | Resume re-enables future dispatch after the operator has inspected blockers, capacity, and queue state. |
+| Project dispatch pause | Supported for future dispatch | `decodex project disable <service-id>` and the runtime project enabled flag | Pause prevents new dispatch for the project. It must not kill or rewrite already active lanes. |
+| Project dispatch resume | Supported for future dispatch | `decodex project enable <service-id>` and the runtime project enabled flag | Resume re-enables future dispatch after the operator has inspected blockers, capacity, and queue state. |
 | Linear scan request | Supported | `POST /api/linear-scan` with optional `projectId` | Queue a scan for the next control-plane tick while respecting tracker backoff. This is an intake/status refresh request, not an execution command. |
 | Soft interrupt | Planned CLI/API control; bottom-layer method allowed | Decodex does not currently send `turn/interrupt` from its app-server client | Prefer soft interrupt before hard interruption when the active turn id is known and the app-server capability is present. Soft interrupt requests a graceful turn stop and must leave classification to the runtime. |
-| Hard interrupt fallback | Emergency fallback only | Current dashboard `interruptRun` signals the recorded process and marks the attempt `interrupted` | Use only when soft interrupt is unavailable, timed out, or impossible because the process or app-server boundary cannot be reached. Preserve retained worktree evidence and runtime classification. |
+| Hard interrupt fallback | Emergency fallback only | No dashboard or CLI/API lane-control path exposes hard interrupt in this rollout; runtime recovery can still classify attempts as `interrupted` | Use only when soft interrupt is unavailable, timed out, or impossible because the process or app-server boundary cannot be reached. Preserve retained worktree evidence and runtime classification. |
 | Steer active lane | Planned CLI/API control; bottom-layer method must stay broad | Decodex does not currently send `turn/steer` from its app-server client | Pass operator-supplied steer text through the CLI/API when available. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
 | Retained resume/retry | Supported through runtime lifecycle | `decodex run <ISSUE>`, retry scheduling, retained worktree recovery, and `thread/resume` for same-thread app-server continuation | Resume only when retained worktree, issue, branch, PR, and runtime evidence still prove the same lane. Treat ambiguous lineage as manual attention. |
 | Manual attention | Supported terminal control path | `decodex:needs-attention`, `issue_comment(kind = "manual_attention")`, and `issue_terminal_finalize(path = "manual_attention")` | Stop automation when policy requires a human decision. Explain the blocker through structured public fields and keep private evidence local. |
@@ -150,10 +150,11 @@ Linear unless a schema-controlled public projection explicitly allows it.
 ## Implementation Status For This Rollout
 
 This document specifies capabilities that the CLI/API should expose first. Current code
-already supports inspect, project enable/disable, Linear scan requests, retained
+already supports inspect, CLI project enable/disable, Linear scan requests, retained
 resume/retry lifecycle paths, and manual-attention finalization. Current code does not
-yet implement Decodex CLI/API controls that send `turn/interrupt` or `turn/steer`, and
-it does not expose raw `thread/inject_items` as an operator feature.
+expose dashboard lane-mutation controls, does not yet implement Decodex CLI/API
+controls that send `turn/interrupt` or `turn/steer`, and does not expose raw
+`thread/inject_items` as an operator feature.
 
 When implementation work adds the missing CLI/API controls, update this spec,
 [`app-server.md`](./app-server.md), the operator reference, and the Decodex plugin

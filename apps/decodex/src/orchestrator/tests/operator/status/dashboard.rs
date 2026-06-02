@@ -1088,7 +1088,7 @@ fn operator_dashboard_accounts_keeps_debug_credit_and_reset_copy_compact() {
 }
 
 #[test]
-fn operator_dashboard_omits_watch_and_project_pause_controls() {
+fn operator_dashboard_omits_lane_mutation_controls() {
 	let response = dashboard_response();
 
 	assert!(!response.contains("function dashboardSubscriptionMatches(subscription)"));
@@ -1106,17 +1106,16 @@ fn operator_dashboard_omits_watch_and_project_pause_controls() {
 	assert!(!response.contains(">Resume</button>"));
 	assert!(!response.contains("data-dashboard-control=\"retryRun\""));
 	assert!(!response.contains(">Retry now</button>"));
-	assert!(response.contains("data-dashboard-control=\"interruptRun\""));
-	assert!(response.contains("aria-label=\"Stop this active Decodex work\""));
-	assert!(response.contains("const statusLineParts = [...statusBits];"));
-	assert!(response.contains("statusLineParts.splice(1, 0, stopControl);"));
-	assert!(response.contains(".status-line .run-stop-button {"));
-	assert!(response.contains("width: 18px;"));
-	assert!(response.contains("border: 0;"));
-	assert!(response.contains("background: transparent;"));
-	assert!(response.contains("color: color-mix(in srgb, var(--danger) 86%, var(--text));"));
-	assert!(response.contains("<path fill=\"currentColor\" fill-rule=\"evenodd\" clip-rule=\"evenodd\""));
-	assert!(response.contains("d=\"M4.35 2.25h7.3"));
+	assert!(!response.contains("data-dashboard-control=\"interruptRun\""));
+	assert!(!response.contains("aria-label=\"Stop this active Decodex work\""));
+	assert!(!response.contains("runInterruptControlEnabled"));
+	assert!(!response.contains("renderRunStopControl"));
+	assert!(!response.contains("const statusLineParts = [...statusBits];"));
+	assert!(!response.contains("statusLineParts.splice(1, 0, stopControl);"));
+	assert!(!response.contains(".status-line .run-stop-button {"));
+	assert!(!response.contains("action === \"interruptRun\""));
+	assert!(!response.contains("case \"interruptRun\""));
+	assert!(response.contains("<div class=\"status-line\">${statusBits.join(\"\")}</div>"));
 	assert!(!response.contains("<rect x=\"4.2\" y=\"3.2\" width=\"2.9\" height=\"9.6\""));
 	assert!(!response.contains("class=\"row-head run-row-head\""));
 	assert!(!response.contains("class=\"run-head-aside\""));
