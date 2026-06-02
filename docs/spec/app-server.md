@@ -50,6 +50,8 @@ range only when all of these are true:
 - `decodex probe stdio://` completes the app-server capability preflight,
   standalone `command/exec` health check, and dynamic-tool round trip with
   `PROBE_OK`.
+- The executable Decodex compatibility guard reports `compatibility=supported` for
+  the initialized app-server `userAgent` after the capability preflight succeeds.
 
 As of the 2026-06-02 self-compatibility pass, the verified local range is:
 
@@ -73,6 +75,13 @@ The same pass compared that range against upstream Codex:
 The previous 2026-05 local refresh covered `codex-cli 0.132.0-alpha.1` from `PATH`
 and the Codex Beta app bundle's `codex-cli 0.131.0-alpha.9`. Treat those as historical
 compatibility evidence, not the current upgrade target.
+
+`decodex probe stdio://` exposes the executable guard in its success line, including
+`compatibility=supported`, the observed `codex_version`, and the executable
+`supported_versions` list. During retained-lane dispatch, the same compatibility check
+runs after the bounded capability preflight and before `thread/start` or
+`thread/resume`; an app-server identity outside the locally verified list is a
+pre-dispatch app-server preflight blocker rather than a promptable agent turn.
 
 Current upstream Codex signals are beyond the local support claim whenever they are
 newer than the latest locally probed version, or when checked-in Radar queue entries

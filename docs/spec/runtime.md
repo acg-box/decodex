@@ -499,9 +499,10 @@ After a process restart, recent-run history, active lease ownership, retained po
 - When a queued retry becomes due, `decodex` must refresh that exact issue, redispatch it only if it is still active under retry policy, and otherwise release the queued claim.
 - Before a prepared lane starts `app-server`, `decodex` must refresh the selected issue once more and skip execution if the issue became terminal or otherwise ineligible.
 - After `app-server` initializes and before `thread/start` or `thread/resume`, `decodex`
-  must run the bounded app-server capability preflight defined in
+  must run the bounded app-server capability and compatibility preflight defined in
   [`app-server.md`](./app-server.md). Missing config/model/provider/skills/plugin/MCP
-  state is a pre-dispatch terminal blocker with an operator-readable error class,
-  not a promptable agent turn.
+  state, or an app-server identity outside the locally verified compatibility range, is
+  a pre-dispatch terminal blocker with an operator-readable error class, not a
+  promptable agent turn.
 - If the local process crashed during a run, `decodex` must recover from the runtime database, current tracker cache or state, and retained worktree inspection.
 - If Linear shows a non-terminal state but no local lease exists, the issue may become eligible again after reconciliation or may be redispatched through the retained recovered worktree.
