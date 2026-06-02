@@ -121,6 +121,7 @@ struct StateData {
 	projects: HashMap<String, ProjectRegistration>,
 	leases: HashMap<String, IssueLease>,
 	run_attempts: HashMap<String, RunAttemptRecord>,
+	control_channels: HashMap<String, RunControlChannelRecord>,
 	events: HashMap<String, Vec<ProtocolEventRecord>>,
 	event_summaries: HashMap<String, ProtocolEventSummaryRecord>,
 	worktrees: HashMap<String, WorktreeMappingRecord>,
@@ -138,6 +139,7 @@ impl StateData {
 		self.projects = loaded.projects;
 		self.leases = loaded.leases;
 		self.run_attempts = loaded.run_attempts;
+		self.control_channels = loaded.control_channels;
 		self.events = loaded.events;
 		self.event_summaries = loaded.event_summaries;
 		self.worktrees = loaded.worktrees;
@@ -151,6 +153,7 @@ impl StateData {
 	fn replace_project_run_state(&mut self, loaded: Self) {
 		self.leases = loaded.leases;
 		self.run_attempts = loaded.run_attempts;
+		self.control_channels = loaded.control_channels;
 		self.event_summaries = loaded.event_summaries;
 		self.worktrees = loaded.worktrees;
 	}
@@ -180,6 +183,15 @@ impl StateData {
 		}
 
 		let event_summary = self.protocol_event_summary(&attempt.run_id);
+		let control_channel = self
+			.control_channels
+			.get(&attempt.run_id)
+			.filter(|channel| {
+				channel.project_id == project_id
+					&& channel.issue_id == attempt.issue_id
+					&& channel.attempt_number == attempt.attempt_number
+			})
+			.map(RunControlChannelRecord::as_public);
 
 		Some(ProjectRunStatus {
 			run_id: attempt.run_id.clone(),
@@ -197,6 +209,7 @@ impl StateData {
 			last_event_type: event_summary.last_event_type,
 			last_event_at: event_summary.last_event_at,
 			last_event_at_unix: event_summary.last_event_at_unix,
+			control_channel,
 		})
 	}
 
@@ -365,9 +378,34 @@ CREATE TABLE IF NOT EXISTS review_orchestrations (
 );
 "#,
 		)?;
+		self.bootstrap_run_control_channels_schema()?;
 		self.bootstrap_connector_backoffs_schema()?;
 		self.bootstrap_private_execution_events_schema()?;
 		self.record_schema_version()?;
+
+		Ok(())
+	}
+
+	fn bootstrap_run_control_channels_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS run_control_channels (
+	run_id TEXT PRIMARY KEY NOT NULL,
+	project_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	attempt_number INTEGER NOT NULL,
+	transport TEXT NOT NULL,
+	channel_path TEXT NOT NULL,
+	status TEXT NOT NULL,
+	published_at TEXT NOT NULL,
+	published_at_unix INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS run_control_channels_project_issue_idx
+ON run_control_channels (project_id, issue_id, attempt_number);
+"#,
+		)?;
 
 		Ok(())
 	}
@@ -425,7 +463,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	value TEXT NOT NULL
 );
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '6')
+VALUES ('schema_version', '7')
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 "#,
 		)?;
@@ -439,6 +477,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_projects(&mut state)?;
 		self.load_leases(&mut state)?;
 		self.load_run_attempts(&mut state)?;
+		self.load_run_control_channels(&mut state)?;
 		self.load_protocol_event_summaries(&mut state)?;
 		self.load_worktrees(&mut state)?;
 		self.load_linear_execution_events(&mut state)?;
@@ -456,6 +495,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_leases(&mut state)?;
 		self.load_run_attempts(&mut state)?;
 		self.load_worktrees(&mut state)?;
+		self.load_run_control_channels_for_project(&mut state, project_id)?;
 		self.load_protocol_event_summaries_for_project_runs(&mut state, project_id)?;
 
 		Ok(state)
@@ -475,6 +515,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_projects(&transaction, state)?;
 		persist_leases(&transaction, state)?;
 		persist_run_attempts(&transaction, state)?;
+		persist_run_control_channels(&transaction, state)?;
 		persist_protocol_events(&transaction, state)?;
 		persist_worktrees(&transaction, state)?;
 		persist_linear_execution_events(&transaction, state)?;
@@ -494,6 +535,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		transaction.execute("DELETE FROM projects WHERE service_id = ?1", params![service_id])?;
 		transaction.execute(
 			"DELETE FROM connector_backoffs WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM run_control_channels WHERE project_id = ?1",
 			params![service_id],
 		)?;
 		transaction.commit()?;
@@ -526,6 +571,30 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				attempt.turn_id.as_deref(),
 				&attempt.updated_at,
 				attempt.updated_at_unix,
+			],
+		)?;
+
+		Ok(())
+	}
+
+	fn upsert_run_control_channel(&self, channel: &RunControlChannelRecord) -> Result<()> {
+		self.connection.execute(
+			"INSERT OR REPLACE INTO run_control_channels (
+					run_id, project_id, issue_id, attempt_number, transport, channel_path, status,
+					published_at, published_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+			params![
+				&channel.run_id,
+				&channel.project_id,
+				&channel.issue_id,
+				channel.attempt_number,
+				&channel.transport,
+				channel.channel_path.to_string_lossy().as_ref(),
+				&channel.status,
+				&channel.published_at,
+				channel.published_at_unix,
+				&channel.updated_at,
+				channel.updated_at_unix,
 			],
 		)?;
 
@@ -678,6 +747,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		transaction.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![previous_issue_id])?;
 		transaction.execute(
 			"UPDATE run_attempts SET issue_id = ?2 WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
+		transaction.execute(
+			"UPDATE run_control_channels SET issue_id = ?2 WHERE issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
@@ -865,6 +938,72 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			let (run_id, attempt) = row?;
 
 			state.run_attempts.insert(run_id, attempt);
+		}
+
+		Ok(())
+	}
+
+	fn load_run_control_channels(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, project_id, issue_id, attempt_number, transport, channel_path, status, \
+			 published_at, published_at_unix, updated_at, updated_at_unix \
+			 FROM run_control_channels",
+		)?;
+		let rows = statement.query_map([], |row| {
+			Ok(RunControlChannelRecord {
+				run_id: row.get(0)?,
+				project_id: row.get(1)?,
+				issue_id: row.get(2)?,
+				attempt_number: row.get(3)?,
+				transport: row.get(4)?,
+				channel_path: PathBuf::from(row.get::<_, String>(5)?),
+				status: row.get(6)?,
+				published_at: row.get(7)?,
+				published_at_unix: row.get(8)?,
+				updated_at: row.get(9)?,
+				updated_at_unix: row.get(10)?,
+			})
+		})?;
+
+		for row in rows {
+			let channel = row?;
+
+			state.control_channels.insert(channel.run_id.clone(), channel);
+		}
+
+		Ok(())
+	}
+
+	fn load_run_control_channels_for_project(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, project_id, issue_id, attempt_number, transport, channel_path, status, \
+			 published_at, published_at_unix, updated_at, updated_at_unix \
+			 FROM run_control_channels WHERE project_id = ?1",
+		)?;
+		let rows = statement.query_map(params![project_id], |row| {
+			Ok(RunControlChannelRecord {
+				run_id: row.get(0)?,
+				project_id: row.get(1)?,
+				issue_id: row.get(2)?,
+				attempt_number: row.get(3)?,
+				transport: row.get(4)?,
+				channel_path: PathBuf::from(row.get::<_, String>(5)?),
+				status: row.get(6)?,
+				published_at: row.get(7)?,
+				published_at_unix: row.get(8)?,
+				updated_at: row.get(9)?,
+				updated_at_unix: row.get(10)?,
+			})
+		})?;
+
+		for row in rows {
+			let channel = row?;
+
+			state.control_channels.insert(channel.run_id.clone(), channel);
 		}
 
 		Ok(())
@@ -1359,6 +1498,38 @@ impl RunAttemptRecord {
 			status: self.status.clone(),
 			thread_id: self.thread_id.clone(),
 			turn_id: self.turn_id.clone(),
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+struct RunControlChannelRecord {
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	attempt_number: i64,
+	transport: String,
+	channel_path: PathBuf,
+	status: String,
+	published_at: String,
+	published_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl RunControlChannelRecord {
+	fn as_public(&self) -> RunControlChannel {
+		RunControlChannel {
+			project_id: self.project_id.clone(),
+			issue_id: self.issue_id.clone(),
+			run_id: self.run_id.clone(),
+			attempt_number: self.attempt_number,
+			transport: self.transport.clone(),
+			channel_path: self.channel_path.clone(),
+			status: self.status.clone(),
+			published_at: self.published_at.clone(),
+			published_at_unix: self.published_at_unix,
+			updated_at: self.updated_at.clone(),
+			updated_at_unix: self.updated_at_unix,
 		}
 	}
 }
@@ -2220,6 +2391,32 @@ fn persist_run_attempts(transaction: &Transaction<'_>, state: &StateData) -> Res
 				attempt.turn_id.as_deref(),
 				&attempt.updated_at,
 				attempt.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
+fn persist_run_control_channels(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
+	for channel in state.control_channels.values() {
+		transaction.execute(
+			"INSERT OR REPLACE INTO run_control_channels (
+					run_id, project_id, issue_id, attempt_number, transport, channel_path, status,
+					published_at, published_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+			params![
+				&channel.run_id,
+				&channel.project_id,
+				&channel.issue_id,
+				channel.attempt_number,
+				&channel.transport,
+				channel.channel_path.to_string_lossy().as_ref(),
+				&channel.status,
+				&channel.published_at,
+				channel.published_at_unix,
+				&channel.updated_at,
+				channel.updated_at_unix,
 			],
 		)?;
 	}

@@ -121,12 +121,13 @@ work that needs full private payload values.
 
 | Surface | Owns | Does Not Own |
 | --- | --- | --- |
-| Runtime SQLite DB | active leases, attempts, protocol events, private execution events, worktree mappings, retry state, retained PR state, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
+| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, worktree mappings, retry state, retained PR state, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
 | Central project config | `service_id`, repo root, worktree root, tracker/GitHub credential env-var names, enabled project registration | per-run state or issue ownership |
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
 | Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, private execution evidence, connector retry budgets |
 | GitHub | PR, checks, review comments, merge evidence, signed commit verification | queue selection or local lane ownership |
 | `.decodex-run-activity` | short-lived child activity heartbeat for the active attempt, including same-boot and same-process-start liveness | durable ownership, review handoff identity, cleanup authority |
+| `.decodex-run-control/` | local per-attempt control-channel marker files for active runtime-owned attempts | standalone ownership proof, public tracker history, or dashboard-authored lane mutation |
 
 ## Operator Dashboard Sections
 
@@ -170,7 +171,8 @@ the dev listener owns scheduling.
 
 For the lane-control rollout, active-lane UI posture is observe-only. The dashboard
 renders active-lane state, protocol activity, liveness, private-evidence references,
-and local acknowledgement/account controls, but it is not the supported place to author
+local run-control capability metadata, and local acknowledgement/account controls, but
+it is not the supported place to author
 steer, retry, task replacement, or lifecycle mutations. CLI/API is the first
 operator-control surface for lane control, governed by
 [`../spec/lane-control.md`](../spec/lane-control.md). The browser UI does not show or
@@ -182,6 +184,10 @@ because it changes the global Codex account selector, not an active lane.
 marks whether a payload is the complete active-run list; subscription-filtered
 payloads set it to `false`, so consumers must not treat a missing run in that payload
 as ended.
+Active run rows may include `control_capability` with the active attempt's project,
+issue, run id, attempt, current thread/turn ids, local transport, channel path, status,
+and timestamps. It is local routing metadata for future CLI/API controls, not a
+dashboard command surface.
 Snapshot `warnings` remain stable machine-readable tokens. When a warning needs
 operator action, snapshots may also include `warning_details` entries with the
 affected `project_id`, `repo_root`, reason, and next action; for example, a stale
