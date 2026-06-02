@@ -1462,51 +1462,6 @@
 				color: var(--success);
 			}
 
-			.control-button.icon-button {
-				width: 26px;
-				min-width: 26px;
-				height: 26px;
-				padding: 0;
-				border-radius: 999px;
-			}
-
-			.status-line .run-stop-button {
-				width: 18px;
-				min-width: 18px;
-				height: 18px;
-				min-height: 18px;
-				margin-left: -7px;
-				padding: 0;
-				border: 0;
-				border-radius: 2px;
-				background: transparent;
-				color: color-mix(in srgb, var(--danger) 86%, var(--text));
-				opacity: 0.92;
-			}
-
-			.status-line .run-stop-button:hover {
-				border: 0;
-				background: transparent;
-				color: color-mix(in srgb, var(--danger) 88%, var(--text));
-				opacity: 1;
-			}
-
-			.status-line .run-stop-button:focus-visible {
-				outline: 1px solid color-mix(in srgb, var(--danger) 58%, transparent);
-				outline-offset: 2px;
-			}
-
-			.control-button.icon-button svg {
-				display: block;
-				width: 13px;
-				height: 13px;
-			}
-
-			.status-line .run-stop-button svg {
-				width: 14px;
-				height: 14px;
-			}
-
 			.control-button[disabled] {
 				cursor: not-allowed;
 				opacity: 0.5;
@@ -9579,31 +9534,6 @@
 				);
 			}
 
-			function runInterruptControlEnabled(run) {
-				return Boolean(
-					run.project_id &&
-						run.issue_id &&
-						run.run_id &&
-						run.process_id &&
-						run.process_alive === true,
-				);
-			}
-
-			function renderRunStopControl(run) {
-				const interruptEnabled = runInterruptControlEnabled(run);
-				if (!interruptEnabled) {
-					return "";
-				}
-
-				return `
-					<button class="control-button icon-button run-stop-button" type="button" data-dashboard-control="interruptRun" data-project-id="${escapeHtml(run.project_id || "")}" data-issue-id="${escapeHtml(run.issue_id || "")}" data-run-id="${escapeHtml(run.run_id || "")}" title="Stop this active Decodex work." aria-label="Stop this active Decodex work">
-						<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-							<path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M4.35 2.25h7.3c1.16 0 2.1.94 2.1 2.1v7.3c0 1.16-.94 2.1-2.1 2.1h-7.3c-1.16 0-2.1-.94-2.1-2.1v-7.3c0-1.16.94-2.1 2.1-2.1Zm1.25 2.55h1.05c.42 0 .75.33.75.75v4.9c0 .42-.33.75-.75.75H5.6c-.42 0-.75-.33-.75-.75v-4.9c0-.42.33-.75.75-.75Zm3.75 0h1.05c.42 0 .75.33.75.75v4.9c0 .42-.33.75-.75.75H9.35c-.42 0-.75-.33-.75-.75v-4.9c0-.42.33-.75.75-.75Z"></path>
-						</svg>
-					</button>
-				`;
-			}
-
 			function renderActiveRuns(snapshot, derived) {
 				const runs = snapshot?.active_runs ?? [];
 				setPanelMeta(
@@ -9660,12 +9590,6 @@
 								}
 							}
 							const attemptNumber = attemptNumberFromRun(run);
-							const stopControl = renderRunStopControl(run);
-							const statusLineParts = [...statusBits];
-							if (stopControl) {
-								statusLineParts.splice(1, 0, stopControl);
-							}
-
 							return `
 							<article class="run-card ${tone}" data-render-key="${escapeHtml(renderKey)}">
 								<div class="row-head">
@@ -9681,7 +9605,7 @@
 										${runNeedsAttention(run) ? `<span>${escapeHtml(runHealthText(run))}</span>` : ""}
 									</div>
 								</div>
-									<div class="status-line">${statusLineParts.join("")}</div>
+									<div class="status-line">${statusBits.join("")}</div>
 									${summary ? `<p class="row-summary">${escapeHtml(summary)}</p>` : ""}
 									${renderRunMetaLine(run, snapshot)}
 									${renderChildAgentBreakdown(run)}
@@ -10470,9 +10394,6 @@
 			}
 
 			function dashboardControlActionLabel(action) {
-				if (action === "interruptRun" || action === "interrupt") {
-					return "Stop";
-				}
 				return displayToken(action);
 			}
 
@@ -10602,21 +10523,6 @@
 						: "0 PRs · 0 need attention · 0 ready · 0 waiting · 0 cleanup",
 				);
 				renderWorktrees(snapshot);
-			}
-
-			function handleDashboardControlClick(button) {
-				const control = button.dataset.dashboardControl;
-				const projectId = button.dataset.projectId || null;
-				const issueId = button.dataset.issueId || null;
-				const runId = button.dataset.runId || null;
-
-				switch (control) {
-					case "interruptRun":
-						sendDashboardControl(control, { projectId, issueId, runId });
-						break;
-					default:
-						break;
-				}
 			}
 
 			function startDashboardStream() {
@@ -10847,13 +10753,6 @@
 					if (lastDashboardRender) {
 						renderDashboardState(lastDashboardRender);
 					}
-					return;
-				}
-
-				const controlButton = event.target.closest("[data-dashboard-control]");
-				if (controlButton) {
-					event.preventDefault();
-					handleDashboardControlClick(controlButton);
 					return;
 				}
 
