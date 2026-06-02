@@ -1516,13 +1516,15 @@ fn profile_snapshot_from_payload(
 		.and_then(Value::as_array)
 		.map(|items| items.iter().filter_map(profile_daily_usage_from_value).collect::<Vec<_>>())
 		.unwrap_or_default();
+	let peak_daily_tokens = stats
+		.and_then(|value| nonnegative_number_as_i64(value.get("peak_daily_tokens")))
+		.or_else(|| daily_usage.iter().map(|record| record.tokens).max());
 	let snapshot = AccountProfileSnapshot {
 		display_name: profile.and_then(|value| nonblank_json_string(value.get("display_name"))),
 		username: profile.and_then(|value| nonblank_json_string(value.get("username"))),
 		lifetime_tokens: stats
 			.and_then(|value| nonnegative_number_as_i64(value.get("lifetime_tokens"))),
-		peak_daily_tokens: stats
-			.and_then(|value| nonnegative_number_as_i64(value.get("peak_daily_tokens"))),
+		peak_daily_tokens,
 		longest_task_seconds: stats
 			.and_then(|value| nonnegative_number_as_i64(value.get("longest_running_turn_sec"))),
 		current_streak_days: stats
@@ -1925,6 +1927,22 @@ mod tests {
 		assert_eq!(summary.daily_usage.len(), 2);
 		assert_eq!(summary.daily_usage[1].date, "2026-05-31");
 		assert_eq!(summary.daily_usage[1].tokens, 789_000);
+	}
+
+	#[test]
+	fn profile_summary_falls_back_to_daily_usage_peak() {
+		let payload = serde_json::json!({
+			"stats": {
+				"daily_usage_buckets": [
+					{ "start_date": "2026-05-30", "tokens": 123_456 },
+					{ "start_date": "2026-05-31", "tokens": 789_000 }
+				]
+			}
+		});
+		let summary = codex_accounts::profile_snapshot_from_payload(&payload, 1_800_000_000)
+			.expect("profile summary should parse from daily usage buckets");
+
+		assert_eq!(summary.peak_daily_tokens, Some(789_000));
 	}
 
 	#[test]
