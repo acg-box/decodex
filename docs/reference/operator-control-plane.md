@@ -153,7 +153,10 @@ same runtime database, not a browser-dashboard polling authority and not a sign 
 the dev listener owns scheduling. The current browser UI keeps live updates
 unscoped and exposes explicit stop controls for active lanes with a known live child
 process plus account-pool selection controls; project watch, project pause/resume,
-and manual retry controls are intentionally not shown.
+and manual retry controls are intentionally not shown. `runActivity.activeRunsComplete`
+marks whether a payload is the complete active-run list; subscription-filtered
+payloads set it to `false`, so consumers must not treat a missing run in that payload
+as ended.
 The stop control signals the recorded child process for that run, marks the local
 attempt interrupted, and releases the local queue lease. `ack` is dashboard-local
 acknowledgement only. The socket is not a browser connection to Codex app-server,
