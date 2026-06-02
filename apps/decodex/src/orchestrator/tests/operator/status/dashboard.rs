@@ -1257,10 +1257,13 @@ fn operator_dashboard_projects_show_compact_activity_work_and_location() {
 	assert!(response.contains("label: \"sync degraded\""));
 	assert!(response.contains("label: \"sync degraded\", tone: \"tone-muted\""));
 	assert!(response.contains("project.connector_state === \"config_error\""));
-	assert!(response.contains("function warningNotice(warning)"));
+	assert!(response.contains("function warningDetailsFor(warning, snapshot)"));
+	assert!(response.contains("function warningNotice(warning, snapshot)"));
+	assert!(response.contains("title: \"Worktree hygiene unavailable\""));
+	assert!(response.contains("worktree_hygiene_unavailable"));
 	assert!(response.contains("copy: displayToken(warning)"));
 	assert!(!response.contains("title: projectSummary"));
-	assert!(!response.contains("remove it or re-register the project"));
+	assert!(response.contains("const nextAction = detail.next_action ?"));
 	assert!(response.contains("return { label: \"ok\", tone: \"tone-ready\""));
 	assert!(!response.contains("function projectSyncMeta(project, health)"));
 	assert!(!response.contains("const connectorCopy = projectSyncMeta(project, health);"));

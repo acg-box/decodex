@@ -137,6 +137,44 @@ fn operator_status_snapshot_surfaces_merged_dirty_ad_hoc_worktree() {
 }
 
 #[test]
+fn operator_status_snapshot_explains_unavailable_worktree_hygiene() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+
+	fs::remove_dir_all(config.repo_root().join(".git"))
+		.expect("repo metadata should be removable for the fixture");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should degrade instead of failing");
+	let detail = snapshot
+		.warning_details
+		.iter()
+		.find(|detail| detail.warning == "worktree_hygiene_unavailable")
+		.expect("hygiene warning should include operator-facing detail");
+
+	assert!(snapshot.warnings.contains(&String::from("worktree_hygiene_unavailable")));
+	assert_eq!(detail.project_id.as_deref(), Some("pubfi"));
+
+	let repo_root = config.repo_root().display().to_string();
+
+	assert_eq!(detail.repo_root.as_deref(), Some(repo_root.as_str()));
+	assert!(detail.reason.contains("not a git repository"));
+	assert!(
+		detail
+			.next_action
+			.as_deref()
+			.is_some_and(|action| action.contains("Remove the stale project registration")),
+		"detail should tell the operator how to clear a stale project registration"
+	);
+
+	let rendered = orchestrator::render_operator_status(&snapshot);
+
+	assert!(rendered.contains("project=pubfi"));
+	assert!(rendered.contains("repo_root="));
+	assert!(rendered.contains("Remove the stale project registration"));
+}
+
+#[test]
 fn operator_status_snapshot_updates_owned_merged_worktree_hygiene_without_global_warning() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -309,6 +347,7 @@ fn idle_operator_status_snapshot_has_no_runtime_or_recovery_noise() {
 
 	for field in [
 		"warnings",
+		"warning_details",
 		"active_runs",
 		"recent_runs",
 		"history_lanes",
