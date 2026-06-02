@@ -111,6 +111,7 @@ cargo run -p decodex --bin decodex -- project list
 cargo run -p decodex --bin decodex -- status
 cargo run -p decodex --bin decodex -- diagnose --json
 cargo run -p decodex --bin decodex -- maintenance prune --dry-run
+cargo run -p decodex --bin decodex -- lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>
 cargo run -p decodex --bin decodex -- radar refresh-upstream-queue
 cargo run -p decodex --bin decodex -- radar refresh-release-delta
 cargo run -p decodex --bin decodex -- radar validate

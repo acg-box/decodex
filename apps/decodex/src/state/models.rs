@@ -141,11 +141,14 @@ pub struct RunControlActionReceipt {
 	attempt_number: i64,
 	thread_id: Option<String>,
 	turn_id: Option<String>,
+	current_thread_id: Option<String>,
+	current_turn_id: Option<String>,
 	source: String,
 	action: String,
 	outcome: String,
 	reason: String,
 	audit_record_id: i64,
+	metadata: Option<Value>,
 	channel: Option<RunControlChannel>,
 }
 impl RunControlActionReceipt {
@@ -179,6 +182,16 @@ impl RunControlActionReceipt {
 		self.turn_id.as_deref()
 	}
 
+	/// Current thread identifier observed while resolving the request.
+	pub fn current_thread_id(&self) -> Option<&str> {
+		self.current_thread_id.as_deref()
+	}
+
+	/// Current turn identifier observed while resolving the request.
+	pub fn current_turn_id(&self) -> Option<&str> {
+		self.current_turn_id.as_deref()
+	}
+
 	/// Local source that requested the action.
 	pub fn source(&self) -> &str {
 		&self.source
@@ -202,6 +215,11 @@ impl RunControlActionReceipt {
 	/// Private execution event row id for the request-resolution audit.
 	pub fn audit_record_id(&self) -> i64 {
 		self.audit_record_id
+	}
+
+	/// Optional compact action metadata captured with the audit event.
+	pub fn metadata(&self) -> Option<&Value> {
+		self.metadata.as_ref()
 	}
 
 	/// Control channel selected for an accepted request.
@@ -496,6 +514,46 @@ pub(crate) struct RunControlActionRequest<'a> {
 	pub(crate) action: &'a str,
 	/// Optional caller timeout budget in milliseconds.
 	pub(crate) timeout_ms: Option<i64>,
+	/// Optional compact, non-secret action metadata to include in audit evidence.
+	pub(crate) metadata: Option<&'a Value>,
+}
+
+/// Follow-up outcome for a run-control action handled after initial resolution.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) struct RunControlActionOutcomeRequest<'a> {
+	/// Project identifier used for local audit scoping.
+	pub(crate) project_id: &'a str,
+	/// Issue identifier used for local audit scoping.
+	pub(crate) issue_id: &'a str,
+	/// Run identifier used for local audit scoping.
+	pub(crate) run_id: &'a str,
+	/// Attempt number used for local audit scoping.
+	pub(crate) attempt_number: i64,
+	/// Requested app-server thread identifier, when known.
+	pub(crate) thread_id: Option<&'a str>,
+	/// Requested expected app-server turn identifier, when known.
+	pub(crate) turn_id: Option<&'a str>,
+	/// Current app-server thread identifier observed while handling the request.
+	pub(crate) current_thread_id: Option<&'a str>,
+	/// Current app-server turn identifier observed while handling the request.
+	pub(crate) current_turn_id: Option<&'a str>,
+	/// Local source that requested the action.
+	pub(crate) source: &'a str,
+	/// Requested control action.
+	pub(crate) action: &'a str,
+	/// Follow-up outcome.
+	pub(crate) outcome: &'a str,
+	/// Normalized outcome reason.
+	pub(crate) reason: &'a str,
+	/// Parent request-resolution audit record id, when known.
+	pub(crate) parent_record_id: Option<i64>,
+	/// Optional caller timeout budget in milliseconds.
+	pub(crate) timeout_ms: Option<i64>,
+	/// Optional compact, non-secret action metadata to include in audit evidence.
+	pub(crate) metadata: Option<&'a Value>,
+	/// Control channel that carried the request, when known.
+	pub(crate) channel: Option<&'a RunControlChannel>,
 }
 
 /// Registered repo target managed by the local Decodex control plane.
