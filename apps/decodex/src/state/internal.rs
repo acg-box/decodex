@@ -1,6 +1,7 @@
 #[cfg(target_os = "macos")]
 use std::mem::{self, MaybeUninit};
 use std::sync::atomic::AtomicU64;
+use std::env;
 
 use libc::FD_CLOEXEC;
 use libc::F_GETFD;
@@ -52,12 +53,22 @@ struct DispatchSlotConfig {
 }
 
 struct IssueClaimGuard {
+	lock_path: PathBuf,
 	lock_file: File,
 	retention: GuardRetention,
 }
 impl IssueClaimGuard {
+	fn lock_root(&self) -> Result<&Path> {
+		lock_root_from_lock_path(&self.lock_path)
+	}
+
 	fn unlock(self) -> Result<()> {
-		self.lock_file.unlock()?;
+		let Self { lock_path, lock_file, retention: _ } = self;
+
+		lock_file.unlock()?;
+
+		drop(lock_file);
+		remove_lock_file_if_exists(&lock_path)?;
 
 		Ok(())
 	}
@@ -73,15 +84,31 @@ impl IssueClaimGuard {
 struct DispatchSlotGuard {
 	project_id: String,
 	slot_index: usize,
+	lock_path: PathBuf,
 	lock_file: File,
 	retention: GuardRetention,
 }
 impl DispatchSlotGuard {
+	fn lock_root(&self) -> Result<&Path> {
+		lock_root_from_lock_path(&self.lock_path)
+	}
+
 	fn release_for_clear(self) -> Result<()> {
 		match self.retention {
 			GuardRetention::ParentAfterHandoff => Ok(()),
 			GuardRetention::Local | GuardRetention::AdoptingChild => {
-				self.lock_file.unlock()?;
+				let Self {
+					project_id: _,
+					slot_index: _,
+					lock_path,
+					lock_file,
+					retention: _,
+				} = self;
+
+				lock_file.unlock()?;
+
+				drop(lock_file);
+				remove_lock_file_if_exists(&lock_path)?;
 
 				Ok(())
 			},
@@ -2400,6 +2427,105 @@ fn issue_claim_id_from_path(path: &Path) -> Option<String> {
 		.strip_prefix(&format!("{ISSUE_CLAIM_LOCK_FILE_PREFIX}."))
 		.and_then(|suffix| suffix.strip_suffix(".lock"))
 		.map(str::to_owned)
+}
+
+fn shared_lock_coordinator_path(root: &Path) -> PathBuf {
+	let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+
+	for byte in root.as_os_str().as_bytes() {
+		hash ^= u64::from(*byte);
+		hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+	}
+
+	env::temp_dir()
+		.join("decodex-shared-lock-coordinators")
+		.join(format!("{hash:016x}.lock"))
+}
+
+fn acquire_shared_lock_coordinator(root: &Path) -> Result<File> {
+	fs::create_dir_all(root)?;
+
+	let coordinator_path = shared_lock_coordinator_path(root);
+
+	if let Some(parent) = coordinator_path.parent() {
+		fs::create_dir_all(parent)?;
+	}
+
+	let coordinator = OpenOptions::new()
+		.read(true)
+		.write(true)
+		.create(true)
+		.truncate(false)
+		.open(coordinator_path)?;
+
+	coordinator.lock()?;
+
+	Ok(coordinator)
+}
+
+fn lock_root_from_lock_path(lock_path: &Path) -> Result<&Path> {
+	lock_path
+		.parent()
+		.ok_or_else(|| eyre::eyre!("shared lock path `{}` has no parent root", lock_path.display()))
+}
+
+fn remove_lock_file_if_exists(path: &Path) -> Result<()> {
+	match fs::remove_file(path) {
+		Ok(()) => Ok(()),
+		Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+		Err(error) => Err(error.into()),
+	}
+}
+
+fn shared_lock_file_is_cleanup_candidate(path: &Path) -> bool {
+	let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+		return false;
+	};
+
+	file_name.starts_with(&format!("{ISSUE_CLAIM_LOCK_FILE_PREFIX}."))
+		|| file_name.starts_with(&format!("{DISPATCH_SLOT_LOCK_FILE_PREFIX}."))
+}
+
+fn prune_unlocked_shared_lock_files(root: &Path) -> Result<()> {
+	let _coordinator = acquire_shared_lock_coordinator(root)?;
+	let read_dir = match fs::read_dir(root) {
+		Ok(read_dir) => read_dir,
+		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+		Err(error) => return Err(error.into()),
+	};
+
+	for entry in read_dir {
+		let path = entry?.path();
+
+		if !shared_lock_file_is_cleanup_candidate(&path) {
+			continue;
+		}
+
+		let lock_file = match OpenOptions::new()
+			.read(true)
+			.write(true)
+			.create(false)
+			.truncate(false)
+			.open(&path)
+		{
+			Ok(file) => file,
+			Err(error) if error.kind() == ErrorKind::NotFound => continue,
+			Err(error) => return Err(error.into()),
+		};
+
+		match lock_file.try_lock() {
+			Ok(()) => {
+				lock_file.unlock()?;
+
+				drop(lock_file);
+				remove_lock_file_if_exists(&path)?;
+			},
+			Err(TryLockError::WouldBlock) => {},
+			Err(TryLockError::Error(error)) => return Err(error.into()),
+		}
+	}
+
+	Ok(())
 }
 
 fn write_issue_claim_record(
