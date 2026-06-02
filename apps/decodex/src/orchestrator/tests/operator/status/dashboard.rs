@@ -728,6 +728,7 @@ fn operator_dashboard_accounts_keeps_compact_table_layout() {
 	assert!(response.contains("function codexAccountProfileAggregate(accounts)"));
 	assert!(response.contains("function renderCodexAccountPoolActivityStrip(account"));
 	assert!(response.contains("function renderCodexAccountProfileActivityStrip(account"));
+	assert!(response.contains("function codexAccountProfilePeakDailyTokens(account)"));
 	assert!(response.contains("function renderCodexAccountProfileToggle(account, expanded)"));
 	assert!(response.contains("function renderCodexAccountProfilePanel(account, snapshot, profileKey, expanded)"));
 	assert!(response.contains("function toggleCodexAccountProfileKey(key)"));

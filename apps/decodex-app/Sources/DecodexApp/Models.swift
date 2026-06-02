@@ -272,6 +272,10 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		profileDailyUsage ?? []
 	}
 
+	var profilePeakDailyTokensForDisplay: Int? {
+		profilePeakDailyTokens ?? recentProfileDailyUsage.map(\.tokens).max()
+	}
+
 	var isUsageLimited: Bool {
 		if let reached = rateLimitReachedType, !reached.isEmpty {
 			return true
