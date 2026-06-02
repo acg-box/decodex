@@ -8,6 +8,7 @@ use std::{
 	env,
 	error::Error,
 	fmt::{self, Display, Formatter},
+	mem,
 	path::{Path, PathBuf},
 	time::{Duration, Instant},
 };
@@ -30,7 +31,7 @@ use self::protocol::{
 	ProbeDynamicToolHandler, RunOutcome, RuntimeConfigSummary, SkillsListParams,
 	SkillsListResponse, ThreadArchiveRequest, ThreadResumeRequest, ThreadSessionResponse,
 	ThreadStartRequest, ThreadStatusChangedNotification, ToolRequestUserInputResponse,
-	TurnCompletedNotification, TurnError, TurnStartRequest, UserInput,
+	TurnCompletedNotification, TurnError, TurnInterruptRequest, TurnStartRequest, UserInput,
 };
 use crate::{
 	agent::{
@@ -47,6 +48,9 @@ use crate::{
 		},
 	},
 	prelude::eyre,
+	run_control::{
+		self, LaneControlInterruptRequest, LaneControlInterruptResponse, PendingLaneControlRequest,
+	},
 	state::{
 		self, CodexAccountActivitySummary, CodexAccountMarker, EffectiveRuntimeMarker,
 		RUN_OPERATION_AGENT_RUN, RUN_OPERATION_APP_SERVER_PREFLIGHT, StateStore,
@@ -58,6 +62,7 @@ pub(crate) const MODEL_EXECUTION_IDLE_TIMEOUT: Duration = Duration::from_secs(30
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const RUN_CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const MCP_PREFLIGHT_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const PLUGIN_PREFLIGHT_MAX_ATTEMPTS: u32 = 2;
 const PROBE_RUN_ID: &str = "protocol-probe-run";
@@ -416,6 +421,7 @@ impl Error for AppServerDynamicToolFailure {}
 
 #[derive(Clone)]
 pub(crate) struct AppServerRunRequest<'a> {
+	pub(crate) project_id: String,
 	pub(crate) run_id: String,
 	pub(crate) issue_id: String,
 	pub(crate) attempt_number: i64,
@@ -1066,6 +1072,7 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 	let probe_tool_handler = ProbeDynamicToolHandler;
 	let result = execute_app_server_run(
 		&AppServerRunRequest {
+			project_id: String::from("probe"),
 			run_id: PROBE_RUN_ID.to_owned(),
 			issue_id: PROBE_ISSUE_ID.to_owned(),
 			attempt_number: 1,
@@ -3055,16 +3062,8 @@ fn execute_turn_loop(
 
 		flush_pending_messages(client, recorder, Some(thread_id))?;
 
-		let final_output = wait_for_turn_completion(
-			client,
-			recorder,
-			thread_id,
-			&turn_id,
-			request.timeout,
-			request.dynamic_tool_handler,
-			request.codex_account_provider,
-		)?
-		.final_output;
+		let final_output =
+			wait_for_turn_completion(client, recorder, request, thread_id, &turn_id)?.final_output;
 
 		if let Some(continuation_pending) =
 			resolve_turn_completion(request, turn_count, &final_output)?
@@ -3287,27 +3286,42 @@ fn flush_pending_messages(
 fn wait_for_turn_completion(
 	client: &mut AppServerClient,
 	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
 	target_thread_id: &str,
 	target_turn_id: &str,
-	timeout: Duration,
-	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
-	codex_account_provider: Option<&dyn CodexAccountProvider>,
 ) -> crate::prelude::Result<RunOutcome> {
+	let control_enabled = request.activity_marker_path.is_some();
 	let mut last_activity_at = Instant::now();
 	let mut final_output = String::new();
 	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
 
 	loop {
-		let idle_timeout =
-			protocol_activity_idle_timeout(Some(&recorder.protocol_activity.summary), timeout);
-		let wire_message = next_turn_wire_message(
+		if control_enabled {
+			handle_pending_turn_control_requests(
+				client,
+				recorder,
+				request,
+				target_thread_id,
+				target_turn_id,
+			)?;
+		}
+
+		let idle_timeout = protocol_activity_idle_timeout(
+			Some(&recorder.protocol_activity.summary),
+			request.timeout,
+		);
+		let Some(wire_message) = next_turn_wire_message(
 			client,
 			last_activity_at,
 			idle_timeout,
 			target_thread_id,
 			target_turn_id,
 			latest_turn_failure.as_ref(),
-		)?;
+			control_enabled,
+		)?
+		else {
+			continue;
+		};
 
 		if !targets_thread(&wire_message, Some(target_thread_id)) {
 			tracing::debug!(raw = %wire_message.raw, "Ignoring app-server message for another thread.");
@@ -3322,84 +3336,25 @@ fn wait_for_turn_completion(
 		apply_protocol_message_side_effects(recorder, &wire_message)?;
 
 		match &wire_message.message {
-			JsonRpcMessage::Notification(notification) => match notification.method.as_str() {
-				"thread/status/changed" => {
-					let payload: ThreadStatusChangedNotification =
-						serde_json::from_value(notification.params.clone())?;
-
-					if payload.status.kind == "systemError" && latest_turn_failure.is_none() {
-						latest_turn_failure =
-							Some(AppServerTurnFailure::from_system_error(&payload.thread_id));
-					}
-				},
-				"error" => {
-					if let Some((failure, will_retry)) = failure_from_error_notification(
-						notification,
-						target_thread_id,
-						target_turn_id,
-					)? {
-						if failure.requires_operator_attention() && will_retry != Some(true) {
-							return Err(Report::new(failure));
-						}
-
-						latest_turn_failure = Some(failure);
-					}
-				},
-				"item/agentMessage/delta" => {
-					let payload: AgentMessageDeltaNotification =
-						serde_json::from_value(notification.params.clone())?;
-
-					final_output.push_str(&payload.delta);
-				},
-				"item/completed" => {
-					let payload: ItemCompletedNotification =
-						serde_json::from_value(notification.params.clone())?;
-
-					if payload.item.kind == "agentMessage"
-						&& let Some(text) = payload.item.text
-					{
-						final_output = text;
-					}
-				},
-				"turn/completed" => {
-					let payload: TurnCompletedNotification =
-						serde_json::from_value(notification.params.clone())?;
-
-					if payload.turn.id != target_turn_id {
-						continue;
-					}
-					if payload.turn.status == "completed" {
-						return Ok(RunOutcome { final_output });
-					}
-
-					if let Some(error) = payload.turn.error.as_ref() {
-						return Err(Report::new(turn_failure_from_turn_error(
-							target_thread_id,
-							Some(&payload.turn.id),
-							&payload.turn.status,
-							error,
-						)));
-					}
-					if let Some(failure) = latest_turn_failure {
-						return Err(Report::new(failure));
-					}
-
-					eyre::bail!(
-						"Turn `{}` ended with status `{}` without an explicit error payload.",
-						payload.turn.id,
-						payload.turn.status
-					);
-				},
-				_ => {},
+			JsonRpcMessage::Notification(notification) => {
+				if let Some(outcome) = handle_turn_execution_notification(
+					notification,
+					target_thread_id,
+					target_turn_id,
+					&mut final_output,
+					&mut latest_turn_failure,
+				)? {
+					return Ok(outcome);
+				}
 			},
-			JsonRpcMessage::Request(request) => handle_turn_execution_request(
+			JsonRpcMessage::Request(server_request) => handle_turn_execution_request(
 				client,
 				recorder,
-				request,
+				server_request,
 				target_thread_id,
 				target_turn_id,
-				dynamic_tool_handler,
-				codex_account_provider,
+				request.dynamic_tool_handler,
+				request.codex_account_provider,
 			)?,
 			JsonRpcMessage::Response(_) => ignore_orphan_turn_json_rpc_response(),
 			JsonRpcMessage::Error(error) => {
@@ -3413,6 +3368,85 @@ fn wait_for_turn_completion(
 	}
 }
 
+fn handle_turn_execution_notification(
+	notification: &JsonRpcNotification,
+	target_thread_id: &str,
+	target_turn_id: &str,
+	final_output: &mut String,
+	latest_turn_failure: &mut Option<AppServerTurnFailure>,
+) -> crate::prelude::Result<Option<RunOutcome>> {
+	match notification.method.as_str() {
+		"thread/status/changed" => {
+			let payload: ThreadStatusChangedNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			if payload.status.kind == "systemError" && latest_turn_failure.is_none() {
+				*latest_turn_failure =
+					Some(AppServerTurnFailure::from_system_error(&payload.thread_id));
+			}
+		},
+		"error" => {
+			if let Some((failure, will_retry)) =
+				failure_from_error_notification(notification, target_thread_id, target_turn_id)?
+			{
+				if failure.requires_operator_attention() && will_retry != Some(true) {
+					return Err(Report::new(failure));
+				}
+
+				*latest_turn_failure = Some(failure);
+			}
+		},
+		"item/agentMessage/delta" => {
+			let payload: AgentMessageDeltaNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			final_output.push_str(&payload.delta);
+		},
+		"item/completed" => {
+			let payload: ItemCompletedNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			if payload.item.kind == "agentMessage"
+				&& let Some(text) = payload.item.text
+			{
+				*final_output = text;
+			}
+		},
+		"turn/completed" => {
+			let payload: TurnCompletedNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			if payload.turn.id != target_turn_id {
+				return Ok(None);
+			}
+			if payload.turn.status == "completed" {
+				return Ok(Some(RunOutcome { final_output: mem::take(final_output) }));
+			}
+
+			if let Some(error) = payload.turn.error.as_ref() {
+				return Err(Report::new(turn_failure_from_turn_error(
+					target_thread_id,
+					Some(&payload.turn.id),
+					&payload.turn.status,
+					error,
+				)));
+			}
+			if let Some(failure) = latest_turn_failure.take() {
+				return Err(Report::new(failure));
+			}
+
+			eyre::bail!(
+				"Turn `{}` ended with status `{}` without an explicit error payload.",
+				payload.turn.id,
+				payload.turn.status
+			);
+		},
+		_ => {},
+	}
+
+	Ok(None)
+}
+
 fn next_turn_wire_message(
 	client: &mut AppServerClient,
 	last_activity_at: Instant,
@@ -3420,13 +3454,265 @@ fn next_turn_wire_message(
 	target_thread_id: &str,
 	target_turn_id: &str,
 	latest_turn_failure: Option<&AppServerTurnFailure>,
-) -> crate::prelude::Result<WireMessage> {
+	control_enabled: bool,
+) -> crate::prelude::Result<Option<WireMessage>> {
 	let now = Instant::now();
 	let wait_timeout = remaining_idle_budget(last_activity_at, now, timeout).ok_or_else(|| {
 		turn_wait_timeout_error(target_thread_id, target_turn_id, latest_turn_failure.cloned())
 	})?;
+	let recv_timeout =
+		if control_enabled { wait_timeout.min(RUN_CONTROL_POLL_INTERVAL) } else { wait_timeout };
 
-	recv_turn_wire_message(client, wait_timeout, latest_turn_failure)
+	match recv_turn_wire_message(client, recv_timeout, latest_turn_failure) {
+		Ok(wire_message) => Ok(Some(wire_message)),
+		Err(error)
+			if control_enabled
+				&& recv_timeout < wait_timeout
+				&& is_app_server_output_timeout(&error) =>
+			Ok(None),
+		Err(error) => Err(error),
+	}
+}
+
+fn handle_pending_turn_control_requests(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &AppServerRunRequest<'_>,
+	target_thread_id: &str,
+	target_turn_id: &str,
+) -> crate::prelude::Result<()> {
+	let Some(worktree_path) = request.activity_marker_path.as_deref() else {
+		return Ok(());
+	};
+
+	for pending in run_control::pending_interrupt_requests(worktree_path, &request.run_id)? {
+		handle_pending_turn_interrupt_request(
+			client,
+			recorder,
+			request,
+			worktree_path,
+			pending,
+			target_thread_id,
+			target_turn_id,
+		)?;
+	}
+
+	Ok(())
+}
+
+fn handle_pending_turn_interrupt_request(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	run_request: &AppServerRunRequest<'_>,
+	worktree_path: &Path,
+	pending: PendingLaneControlRequest,
+	target_thread_id: &str,
+	target_turn_id: &str,
+) -> crate::prelude::Result<()> {
+	record_lane_interrupt_request(recorder, &pending.request)?;
+
+	if let Some((error_class, message)) = lane_interrupt_request_rejection(
+		run_request,
+		&pending.request,
+		target_thread_id,
+		target_turn_id,
+	) {
+		let response =
+			LaneControlInterruptResponse::rejected(&pending.request, error_class, message);
+
+		record_lane_interrupt_response(recorder, &response)?;
+
+		run_control::write_interrupt_response(worktree_path, &response)?;
+		run_control::remove_interrupt_request(&pending.path)?;
+
+		return Ok(());
+	}
+
+	let interrupt = TurnInterruptRequest {
+		thread_id: pending.request.thread_id.clone(),
+		turn_id: pending.request.turn_id.clone(),
+	};
+	let result = client.interrupt_turn_with_handler(
+		interrupt,
+		|connection, wire_message, server_request| {
+			handle_server_request_while_waiting(
+				connection,
+				recorder,
+				wire_message,
+				server_request,
+				RequestDispatchContext::new(
+					RequestWaitPhase::TurnExecution,
+					run_request.dynamic_tool_handler,
+					run_request.codex_account_provider,
+					Some(target_thread_id),
+					Some(target_turn_id),
+				),
+			)
+		},
+	);
+	let response = match result {
+		Ok(value) => LaneControlInterruptResponse::delivered(
+			&pending.request,
+			run_control::protocol_response_summary(&value),
+		),
+		Err(error) => LaneControlInterruptResponse::failed(
+			&pending.request,
+			soft_interrupt_error_class(&error),
+			format!("turn/interrupt failed with {}.", soft_interrupt_error_class(&error)),
+		),
+	};
+
+	record_lane_interrupt_response(recorder, &response)?;
+
+	run_control::write_interrupt_response(worktree_path, &response)?;
+	run_control::remove_interrupt_request(&pending.path)?;
+
+	Ok(())
+}
+
+fn record_lane_interrupt_request(
+	recorder: &mut RunRecorder<'_>,
+	request: &LaneControlInterruptRequest,
+) -> crate::prelude::Result<()> {
+	recorder.record(
+		"lane_control/interrupt/request",
+		&serde_json::json!({
+			"requestId": request.request_id,
+			"projectId": request.project_id,
+			"issueId": request.issue_id,
+			"runId": request.run_id,
+			"attemptNumber": request.attempt_number,
+			"threadId": request.thread_id,
+			"turnId": request.turn_id,
+			"source": request.source,
+			"reason": request.reason,
+		})
+		.to_string(),
+	)
+}
+
+fn record_lane_interrupt_response(
+	recorder: &mut RunRecorder<'_>,
+	response: &LaneControlInterruptResponse,
+) -> crate::prelude::Result<()> {
+	recorder.record(
+		"lane_control/interrupt/response",
+		&serde_json::json!({
+			"requestId": response.request_id,
+			"projectId": response.project_id,
+			"issueId": response.issue_id,
+			"runId": response.run_id,
+			"attemptNumber": response.attempt_number,
+			"threadId": response.thread_id,
+			"turnId": response.turn_id,
+			"status": response.status,
+			"classification": response.classification,
+			"method": response.method,
+			"errorClass": response.error_class,
+			"protocolSummary": response.protocol_summary,
+		})
+		.to_string(),
+	)?;
+	recorder.state_store.append_private_execution_event(
+		&response.project_id,
+		&response.issue_id,
+		&response.run_id,
+		response.attempt_number,
+		"lane_control/interrupt",
+		serde_json::json!({
+			"requestId": response.request_id,
+			"status": response.status,
+			"classification": response.classification,
+			"method": response.method,
+			"errorClass": response.error_class,
+			"protocolSummary": response.protocol_summary,
+			"message": response.message,
+		}),
+	)?;
+
+	Ok(())
+}
+
+fn lane_interrupt_request_rejection(
+	run_request: &AppServerRunRequest<'_>,
+	request: &LaneControlInterruptRequest,
+	target_thread_id: &str,
+	target_turn_id: &str,
+) -> Option<(&'static str, String)> {
+	if request.project_id != run_request.project_id {
+		return Some((
+			"project_mismatch",
+			format!(
+				"Control request targeted project `{}`, but this run belongs to `{}`.",
+				request.project_id, run_request.project_id
+			),
+		));
+	}
+	if request.issue_id != run_request.issue_id {
+		return Some((
+			"issue_mismatch",
+			format!(
+				"Control request targeted issue `{}`, but this run belongs to `{}`.",
+				request.issue_id, run_request.issue_id
+			),
+		));
+	}
+	if request.run_id != run_request.run_id {
+		return Some((
+			"run_mismatch",
+			format!(
+				"Control request targeted run `{}`, but this run is `{}`.",
+				request.run_id, run_request.run_id
+			),
+		));
+	}
+	if request.attempt_number != run_request.attempt_number {
+		return Some((
+			"attempt_mismatch",
+			format!(
+				"Control request targeted attempt `{}`, but this run is attempt `{}`.",
+				request.attempt_number, run_request.attempt_number
+			),
+		));
+	}
+	if request.thread_id != target_thread_id {
+		return Some((
+			"thread_mismatch",
+			format!(
+				"Control request targeted thread `{}`, but the active thread is `{target_thread_id}`.",
+				request.thread_id
+			),
+		));
+	}
+	if request.turn_id != target_turn_id {
+		return Some((
+			"turn_mismatch",
+			format!(
+				"Control request targeted turn `{}`, but the active turn is `{target_turn_id}`.",
+				request.turn_id
+			),
+		));
+	}
+
+	None
+}
+
+fn soft_interrupt_error_class(error: &Report) -> &'static str {
+	if is_app_server_output_timeout(error) {
+		return "soft_interrupt_timed_out";
+	}
+
+	let error_text = error.to_string().to_ascii_lowercase();
+
+	if error_text.contains("-32601") || error_text.contains("method not found") {
+		"soft_interrupt_unsupported"
+	} else {
+		"soft_interrupt_failed"
+	}
+}
+
+fn is_app_server_output_timeout(error: &Report) -> bool {
+	error.downcast_ref::<AppServerOutputTimeout>().is_some()
 }
 
 fn handle_turn_execution_request(

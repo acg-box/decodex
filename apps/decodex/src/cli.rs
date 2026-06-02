@@ -20,7 +20,8 @@ use crate::{
 	maintenance::{self, MaintenanceMode, MaintenancePruneRequest, MaintenanceScope},
 	manual::{self, ManualCommitRequest, ManualLandRequest},
 	orchestrator::{
-		self, DiagnoseRequest, EvidenceRequest, IssueDispatchMode, RunOnceRequest, ServeRequest,
+		self, DiagnoseRequest, EvidenceRequest, IssueDispatchMode, LaneInspectRequest,
+		LaneInterruptRequest, RunOnceRequest, ServeRequest,
 	},
 	prelude::{Result, eyre},
 	radar::{
@@ -62,6 +63,7 @@ impl Cli {
 			Command::Run(args) => args.run(),
 			Command::Serve(args) => args.run(),
 			Command::Project(args) => args.run(),
+			Command::Lane(args) => args.run(),
 			Command::Status(args) => args.run(),
 			Command::Diagnose(args) => args.run(),
 			Command::Evidence(args) => args.run(),
@@ -417,6 +419,68 @@ struct ProjectToggleCommand {
 	/// Project service id from the registered Decodex config.
 	#[arg(value_name = "SERVICE_ID")]
 	service_id: String,
+}
+
+#[derive(Debug, Args)]
+struct LaneCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
+	#[command(subcommand)]
+	command: LaneSubcommand,
+}
+impl LaneCommand {
+	fn run(&self) -> Result<()> {
+		match &self.command {
+			LaneSubcommand::Inspect(args) => orchestrator::print_lane_inspect(LaneInspectRequest {
+				config_path: self.project_config.as_path(),
+				issue: &args.issue,
+				run_id: args.run_id.as_deref(),
+				json: args.json,
+			}),
+			LaneSubcommand::Interrupt(args) => orchestrator::interrupt_lane(LaneInterruptRequest {
+				config_path: self.project_config.as_path(),
+				issue: &args.issue,
+				run_id: &args.run_id,
+				force: args.force,
+				reason: args.reason.as_deref(),
+				json: args.json,
+				source: "cli",
+			})
+			.map(|_report| ()),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct LaneInspectCommand {
+	/// Issue identifier or local issue id to inspect.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Restrict inspection to one run id.
+	#[arg(long, value_name = "RUN_ID")]
+	run_id: Option<String>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Debug, Args)]
+struct LaneInterruptCommand {
+	/// Issue identifier or local issue id to interrupt.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Run id for the active app-server turn to interrupt.
+	#[arg(long, value_name = "RUN_ID")]
+	run_id: String,
+	/// Use hard process-kill fallback when soft interrupt is unavailable or fails.
+	#[arg(long)]
+	force: bool,
+	/// Operator-visible reason retained in local private evidence.
+	#[arg(long, value_name = "TEXT")]
+	reason: Option<String>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1192,6 +1256,8 @@ enum Command {
 	Serve(ServeCommand),
 	/// Manage the local Decodex project registry.
 	Project(ProjectCommand),
+	/// Inspect or interrupt a local lane.
+	Lane(LaneCommand),
 	/// Inspect the current local runtime state for one configured project.
 	Status(StatusCommand),
 	/// Write and print the agent-readable local evidence index.
@@ -1245,6 +1311,14 @@ enum ProjectSubcommand {
 	Disable(ProjectToggleCommand),
 	/// Remove one registered project from the local registry.
 	Remove(ProjectToggleCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum LaneSubcommand {
+	/// Inspect one local lane by issue identifier or tracker issue id.
+	Inspect(LaneInspectCommand),
+	/// Soft-interrupt an active app-server turn, with optional hard fallback.
+	Interrupt(LaneInterruptCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1341,7 +1415,8 @@ mod tests {
 
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
-		CommitCommand, DiagnoseCommand, EvidenceCommand, LandCommand, ProbeCommand, ProjectCommand,
+		CommitCommand, DiagnoseCommand, EvidenceCommand, LandCommand, LaneCommand,
+		LaneInspectCommand, LaneInterruptCommand, LaneSubcommand, ProbeCommand, ProjectCommand,
 		ProjectConfigArgs, ProjectSubcommand, RadarBackfillReleaseRangeCommand,
 		RadarBundleBuildCommand, RadarBundleCommand, RadarBundleSubcommand,
 		RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
@@ -1899,6 +1974,70 @@ mod tests {
 				json: true,
 				limit: 5,
 			}) if config == Path::new("./project.toml")
+		));
+	}
+
+	#[test]
+	fn parses_lane_inspect_with_run_id_and_project_config() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"lane",
+			"--config",
+			"./project.toml",
+			"inspect",
+			"XY-703",
+			"--run-id",
+			"xy-703-attempt-1",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Lane(LaneCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command: LaneSubcommand::Inspect(LaneInspectCommand {
+					issue,
+					run_id: Some(run_id),
+					json: true,
+				})
+			}) if config == Path::new("./project.toml")
+				&& issue == "XY-703"
+				&& run_id == "xy-703-attempt-1"
+		));
+	}
+
+	#[test]
+	fn parses_lane_interrupt_with_force_reason_and_project_config() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"lane",
+			"--config",
+			"./project.toml",
+			"interrupt",
+			"XY-703",
+			"--run-id",
+			"xy-703-attempt-1",
+			"--force",
+			"--reason",
+			"operator requested",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Lane(LaneCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command: LaneSubcommand::Interrupt(LaneInterruptCommand {
+					issue,
+					run_id,
+					force: true,
+					reason: Some(reason),
+					json: true,
+				})
+			}) if config == Path::new("./project.toml")
+				&& issue == "XY-703"
+				&& run_id == "xy-703-attempt-1"
+				&& reason == "operator requested"
 		));
 	}
 
