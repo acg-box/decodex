@@ -204,15 +204,18 @@ impl StateStore {
 		slot_limit: impl Into<DispatchSlotLimit>,
 	) -> Result<()> {
 		let slot_limit = slot_limit.into();
+		let worktree_root = worktree_root.as_ref().to_path_buf();
 		let mut state = self.lock()?;
 
 		slot_limit.validate()?;
+
+		if state.issue_claim_guards.is_empty() && state.dispatch_slot_guards.is_empty() {
+			prune_unlocked_shared_lock_files(&worktree_root)?;
+		}
+
 		state.dispatch_slot_configs.insert(
 			project_id.to_owned(),
-			DispatchSlotConfig {
-				root: worktree_root.as_ref().to_path_buf(),
-				slot_limit,
-			},
+			DispatchSlotConfig { root: worktree_root, slot_limit },
 		);
 
 		Ok(())
@@ -316,12 +319,15 @@ impl StateStore {
 		if let Some(dispatch_slot_config) = state.dispatch_slot_configs.get(project_id).cloned() {
 			fs::create_dir_all(&dispatch_slot_config.root)?;
 
+			let _coordinator = acquire_shared_lock_coordinator(&dispatch_slot_config.root)?;
+			let issue_claim_lock_path =
+				issue_claim_lock_path(&dispatch_slot_config.root, issue_id);
 			let issue_claim_lock_file = OpenOptions::new()
 				.read(true)
 				.write(true)
 				.create(true)
 				.truncate(false)
-				.open(issue_claim_lock_path(&dispatch_slot_config.root, issue_id))?;
+				.open(&issue_claim_lock_path)?;
 
 			match issue_claim_lock_file.try_lock() {
 				Ok(()) => {},
@@ -329,8 +335,11 @@ impl StateStore {
 				Err(TryLockError::Error(error)) => return Err(error.into()),
 			}
 
-			let mut issue_claim_guard =
-				IssueClaimGuard { lock_file: issue_claim_lock_file, retention: GuardRetention::Local };
+			let mut issue_claim_guard = IssueClaimGuard {
+				lock_path: issue_claim_lock_path,
+				lock_file: issue_claim_lock_file,
+				retention: GuardRetention::Local,
+			};
 
 			write_issue_claim_record(
 				&mut issue_claim_guard.lock_file,
@@ -358,18 +367,21 @@ impl StateStore {
 					continue;
 				}
 
+				let dispatch_slot_lock_path =
+					dispatch_slot_lock_path(&dispatch_slot_config.root, slot_index);
 				let lock_file = OpenOptions::new()
 					.read(true)
 					.write(true)
 					.create(true)
 					.truncate(false)
-					.open(dispatch_slot_lock_path(&dispatch_slot_config.root, slot_index))?;
+					.open(&dispatch_slot_lock_path)?;
 
 				match lock_file.try_lock() {
 					Ok(()) => {
 						acquired_guard = Some(DispatchSlotGuard {
 							project_id: project_id.to_owned(),
 							slot_index,
+							lock_path: dispatch_slot_lock_path,
 							lock_file,
 							retention: GuardRetention::Local,
 						});
@@ -459,6 +471,7 @@ impl StateStore {
 
 			return Ok(leases);
 		};
+		let _coordinator = acquire_shared_lock_coordinator(&dispatch_slot_config.root)?;
 		let read_dir = match fs::read_dir(&dispatch_slot_config.root) {
 			Ok(read_dir) => read_dir,
 			Err(error) if error.kind() == ErrorKind::NotFound => {
@@ -495,7 +508,12 @@ impl StateStore {
 			};
 
 			match claim_lock_file.try_lock() {
-				Ok(()) => claim_lock_file.unlock()?,
+				Ok(()) => {
+					claim_lock_file.unlock()?;
+
+					drop(claim_lock_file);
+					remove_lock_file_if_exists(&path)?;
+				},
 				Err(TryLockError::WouldBlock) => {
 					if let Some(lease) = read_issue_claim_record(&path)?
 						&& lease.project_id == project_id
@@ -530,12 +548,13 @@ impl StateStore {
 		drop(state);
 
 		let path = issue_claim_lock_path(&dispatch_slot_config.root, issue_id);
+		let _coordinator = acquire_shared_lock_coordinator(&dispatch_slot_config.root)?;
 		let claim_lock_file = match OpenOptions::new()
 			.read(true)
 			.write(true)
 			.create(false)
 			.truncate(false)
-			.open(path)
+			.open(&path)
 		{
 			Ok(file) => file,
 			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
@@ -545,6 +564,9 @@ impl StateStore {
 		match claim_lock_file.try_lock() {
 			Ok(()) => {
 				claim_lock_file.unlock()?;
+
+				drop(claim_lock_file);
+				remove_lock_file_if_exists(&path)?;
 
 				Ok(false)
 			},
@@ -556,12 +578,22 @@ impl StateStore {
 	/// Remove the active lease for one issue.
 	pub fn clear_lease(&self, issue_id: &str) -> Result<()> {
 		let mut state = self.lock()?;
+		let _coordinator = match (
+			state.issue_claim_guards.get(issue_id),
+			state.dispatch_slot_guards.get(issue_id),
+		) {
+			(Some(guard), _) => Some(acquire_shared_lock_coordinator(guard.lock_root()?)?),
+			(None, Some(guard)) => Some(acquire_shared_lock_coordinator(guard.lock_root()?)?),
+			(None, None) => None,
+		};
 		let removed_lease = state.leases.remove(issue_id).is_some();
+		let issue_claim_guard = state.issue_claim_guards.remove(issue_id);
+		let dispatch_slot_guard = state.dispatch_slot_guards.remove(issue_id);
 
-		if let Some(guard) = state.issue_claim_guards.remove(issue_id) {
+		if let Some(guard) = issue_claim_guard {
 			guard.release_for_clear()?;
 		}
-		if let Some(guard) = state.dispatch_slot_guards.remove(issue_id) {
+		if let Some(guard) = dispatch_slot_guard {
 			guard.release_for_clear()?;
 		}
 
@@ -576,7 +608,15 @@ impl StateStore {
 	pub fn release_dispatch_slot(&self, issue_id: &str) -> Result<()> {
 		let mut state = self.lock()?;
 
-		state.dispatch_slot_guards.remove(issue_id);
+		if let Some(guard) = state.dispatch_slot_guards.get(issue_id) {
+			let _coordinator = acquire_shared_lock_coordinator(guard.lock_root()?)?;
+			let guard = state
+				.dispatch_slot_guards
+				.remove(issue_id)
+				.ok_or_else(|| eyre::eyre!("issue `{issue_id}` lost its dispatch-slot guard"))?;
+
+			guard.release_for_clear()?;
+		}
 
 		Ok(())
 	}
@@ -644,10 +684,16 @@ impl StateStore {
 		set_close_on_exec(&lock_file)?;
 
 		let mut state = self.lock()?;
+		let dispatch_slot_config = state
+			.dispatch_slot_configs
+			.get(project_id)
+			.cloned()
+			.ok_or_else(|| eyre::eyre!("project `{project_id}` has no shared dispatch-slot root"))?;
 
 		state.issue_claim_guards.insert(
 			issue_id.to_owned(),
 			IssueClaimGuard {
+				lock_path: issue_claim_lock_path(&dispatch_slot_config.root, issue_id),
 				lock_file: issue_claim_lock_file,
 				retention: GuardRetention::AdoptingChild,
 			},
@@ -657,6 +703,10 @@ impl StateStore {
 			DispatchSlotGuard {
 				project_id: project_id.to_owned(),
 				slot_index: guards.dispatch_slot_index,
+				lock_path: dispatch_slot_lock_path(
+					&dispatch_slot_config.root,
+					guards.dispatch_slot_index,
+				),
 				lock_file,
 				retention: GuardRetention::AdoptingChild,
 			},
