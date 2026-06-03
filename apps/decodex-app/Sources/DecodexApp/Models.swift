@@ -430,7 +430,7 @@ struct CodexAccount: Decodable, Identifiable, Equatable {
 		if let recoveryAction = AccountRecoveryAction(rawValue: normalized(recoveryAction)) {
 			return recoveryAction
 		}
-		if !refreshTokenPresent {
+		if refreshTokenPresent == false {
 			return .login
 		}
 		if normalized(refreshStatus) == "failed" {
