@@ -89,6 +89,8 @@ pub(crate) struct AttemptRequest {
 	pub(crate) initial_issue_state: Option<String>,
 	#[serde(default)]
 	pub(crate) lease_preacquired: bool,
+	#[serde(default)]
+	pub(crate) allow_unverified_codex: bool,
 	pub(crate) issue_claim_fd: Option<i32>,
 	pub(crate) dispatch_slot_fd: Option<i32>,
 	pub(crate) dispatch_slot_index: Option<usize>,
@@ -298,6 +300,9 @@ struct RunCommand {
 	/// Explain current queued candidates without preparing or dispatching a lane.
 	#[arg(long, requires = "dry_run", conflicts_with = "issue")]
 	explain: bool,
+	/// Continue after warning when Codex app-server is outside the locally verified range.
+	#[arg(long)]
+	allow_unverified_codex: bool,
 }
 impl RunCommand {
 	fn run(&self) -> Result<()> {
@@ -317,6 +322,7 @@ impl RunCommand {
 			preferred_attempt_number: None,
 			preferred_retry_budget_base: None,
 			preferred_workflow_snapshot: None,
+			allow_unverified_codex: self.allow_unverified_codex,
 		})
 	}
 }
@@ -331,6 +337,9 @@ struct ServeCommand {
 	/// Start the local dev endpoint without polling or dispatching projects.
 	#[arg(long, hide = true)]
 	dev: bool,
+	/// Continue after warning when Codex app-server is outside the locally verified range.
+	#[arg(long)]
+	allow_unverified_codex: bool,
 }
 impl ServeCommand {
 	fn run(&self) -> Result<()> {
@@ -338,6 +347,7 @@ impl ServeCommand {
 			config_path: self.project_config.as_path(),
 			listen_address: &self.listen_address,
 			dev: self.dev,
+			allow_unverified_codex: self.allow_unverified_codex,
 		})
 	}
 }
@@ -1207,10 +1217,13 @@ struct ProbeCommand {
 	/// Override the expected app-server transport during probing.
 	#[arg(value_name = "TRANSPORT", default_value = "stdio://")]
 	transport: String,
+	/// Continue after warning when Codex app-server is outside the locally verified range.
+	#[arg(long)]
+	allow_unverified_codex: bool,
 }
 impl ProbeCommand {
 	fn run(&self) -> Result<()> {
-		let report = agent::probe_app_server(&self.transport)?;
+		let report = agent::probe_app_server(&self.transport, self.allow_unverified_codex)?;
 
 		println!(
 			"probe ok: compatibility={} codex_version={} supported_versions=\"{}\" thread={} turn={} events={} output={}",
@@ -1263,6 +1276,7 @@ impl AttemptCommand {
 			preferred_attempt_number: Some(request.attempt_number),
 			preferred_retry_budget_base: Some(request.retry_budget_base),
 			preferred_workflow_snapshot: Some(request.workflow_snapshot.as_str()),
+			allow_unverified_codex: request.allow_unverified_codex,
 		})
 	}
 }
@@ -1652,15 +1666,41 @@ mod tests {
 		]);
 
 		assert!(matches!(
-			cli.command,
+		cli.command,
 			Command::Serve(ServeCommand {
 				project_config: ProjectConfigArgs { config: Some(config) },
 				listen_address,
 				dev,
+				allow_unverified_codex,
 			})
 				if listen_address == "127.0.0.1:9000"
 					&& !dev
+					&& !allow_unverified_codex
 					&& config == Path::new("./project.toml")
+		));
+	}
+
+	#[test]
+	fn parses_runtime_unverified_codex_override() {
+		let cli = Cli::parse_from(["decodex", "run", "--allow-unverified-codex"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Run(RunCommand { allow_unverified_codex: true, .. })
+		));
+
+		let cli = Cli::parse_from(["decodex", "serve", "--allow-unverified-codex"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Serve(ServeCommand { allow_unverified_codex: true, .. })
+		));
+
+		let cli = Cli::parse_from(["decodex", "probe", "--allow-unverified-codex"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Probe(ProbeCommand { allow_unverified_codex: true, .. })
 		));
 	}
 
@@ -2031,7 +2071,7 @@ mod tests {
 
 		assert!(matches!(
 			cli.command,
-			Command::Probe(ProbeCommand { transport }) if transport == "ws://127.0.0.1:9000"
+			Command::Probe(ProbeCommand { transport, .. }) if transport == "ws://127.0.0.1:9000"
 		));
 	}
 

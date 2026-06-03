@@ -6,7 +6,7 @@
 # | check               | composite |      |
 # | check-rust          | command   |      |
 # | check-site          | composite |      |
-# | check-site-content  | script    |      |
+# | check-site-content  | command   |      |
 # | check-site-types    | command   | site |
 # | check-vstyle        | composite |      |
 # | check-vstyle-rust   | command   |      |
@@ -59,8 +59,16 @@ dependencies = [
 
 [tasks.check-site-content]
 workspace = false
-script = [
-	"cargo run -p decodex --bin decodex -- radar validate",
+command = "cargo"
+args = [
+	"run",
+	"-p",
+	"decodex",
+	"--bin",
+	"decodex",
+	"--",
+	"radar",
+	"validate",
 ]
 
 [tasks.check-site-types]
@@ -116,11 +124,26 @@ dependencies = [
 
 [tasks.fmt-rust]
 workspace = false
-script = "cargo +nightly fmt --all"
+command = "rustup"
+args = [
+	"run",
+	"nightly",
+	"cargo",
+	"fmt",
+	"--all",
+]
 
 [tasks.fmt-rust-check]
 extend = "fmt-rust"
-script = "cargo +nightly fmt --all -- --check"
+args = [
+	"run",
+	"nightly",
+	"cargo",
+	"fmt",
+	"--all",
+	"--",
+	"--check",
+]
 
 [tasks.fmt-toml]
 workspace = false
@@ -208,7 +231,7 @@ args = [
 # | ----------------------- | --------- | --- |
 # | test                    | composite |     |
 # | test-rust               | command   |     |
-# | test-decodex-app-stage  | script    |     |
+# | test-decodex-app-stage  | command   |     |
 
 [tasks.test]
 clear = true
@@ -230,34 +253,7 @@ args = [
 
 [tasks.test-decodex-app-stage]
 workspace = false
-script = '''
-if [ "$(uname -s)" != "Darwin" ]; then
-  echo "Decodex App staging is macOS-only; skipping."
-  exit 0
-fi
-
-./apps/decodex-app/script/build_and_run.sh stage
-COMMON_ROOT="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
-STAGE_DIR="${DECODEX_APP_STAGE_DIR:-$COMMON_ROOT/target/decodex-app}"
-APP_PATH="$STAGE_DIR/Decodex App.app"
-test -d "$APP_PATH"
-test -x "$APP_PATH/Contents/MacOS/DecodexApp"
-test -x "$APP_PATH/Contents/Helpers/decodex-app-helper"
-test -x "$APP_PATH/Contents/Helpers/decodex"
-test -f "$APP_PATH/Contents/Info.plist"
-test -f "$APP_PATH/Contents/Resources/AppIcon.icns"
-test -f "$APP_PATH/Contents/Resources/StatusBarIcon.png"
-codesign --verify --deep --strict "$APP_PATH"
-codesign --verify --strict "$APP_PATH/Contents/Helpers/decodex-app-helper"
-codesign --verify --strict "$APP_PATH/Contents/Helpers/decodex"
-codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -q '^TeamIdentifier='
-codesign -dv --verbose=4 "$APP_PATH" 2>&1 | grep -q 'flags=.*runtime'
-plutil -extract CFBundleName raw "$APP_PATH/Contents/Info.plist" | grep -qx 'Decodex App'
-plutil -extract CFBundleDisplayName raw "$APP_PATH/Contents/Info.plist" | grep -qx 'Decodex App'
-plutil -extract CFBundleIconFile raw "$APP_PATH/Contents/Info.plist" | grep -qx 'AppIcon'
-plutil -extract CFBundleIdentifier raw "$APP_PATH/Contents/Info.plist" | grep -qx 'space.decodex.app'
-plutil -extract LSUIElement raw "$APP_PATH/Contents/Info.plist" | grep -qx 'true'
-'''
+command = "scripts/macos/test_decodex_app_stage.sh"
 
 # Build
 # | task       | type    | cwd  |

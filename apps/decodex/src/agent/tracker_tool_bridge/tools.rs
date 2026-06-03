@@ -565,11 +565,12 @@ impl<'a> TrackerToolBridge<'a> {
 			&projection,
 		) {
 			Ok(comment_created) => comment_created,
-			Err(error) =>
+			Err(error) => {
 				return Err(format!(
 					"Failed to record an execution-state checkpoint for issue `{}`: {error}",
 					self.issue.identifier
-				)),
+				));
+			},
 		};
 
 		state_store.record_linear_execution_event(&projection.record).map_err(|error| {
