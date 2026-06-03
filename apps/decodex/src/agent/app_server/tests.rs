@@ -289,10 +289,22 @@ fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
 	for (user_agent, expected_codex_cli_version) in [
 		("codex-cli 0.136.0", "codex-cli 0.136.0"),
 		("codex-cli 0.136.0-alpha.2", "codex-cli 0.136.0-alpha.2"),
+		(
+			"Codex Desktop/0.136.0 (Mac OS 26.5.1; arm64) ghostty/1.3.2-main-_6246c288a (decodex; 0.1.0)",
+			"codex-cli 0.136.0",
+		),
+		(
+			"Codex Desktop/0.137.0-alpha.4 (Mac OS 26.5.1; arm64) ghostty/1.3.2-main-_6246c288a (decodex; 0.1.0)",
+			"codex-cli 0.137.0-alpha.4",
+		),
 		("decodex/0.136.0 (Mac OS 26.5.0; arm64) unknown (decodex; 0.1.0)", "codex-cli 0.136.0"),
 		(
 			"decodex/0.136.0-alpha.2 (Mac OS 26.5.0; arm64) unknown (decodex; 0.1.0)",
 			"codex-cli 0.136.0-alpha.2",
+		),
+		(
+			"decodex/0.137.0-alpha.4 (Mac OS 26.5.1; arm64) unknown (decodex; 0.1.0)",
+			"codex-cli 0.137.0-alpha.4",
 		),
 	] {
 		let mut report = AppServerCapabilityPreflightReport::new();
@@ -308,7 +320,7 @@ fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
 		);
 		assert_eq!(
 			report.compatibility_supported_versions(),
-			Some("codex-cli 0.136.0, codex-cli 0.136.0-alpha.2")
+			Some("codex-cli 0.136.0, codex-cli 0.136.0-alpha.2, codex-cli 0.137.0-alpha.4")
 		);
 	}
 }
@@ -317,6 +329,7 @@ fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
 fn app_server_compatibility_guard_rejects_unverified_codex_surfaces() {
 	for user_agent in [
 		"codex-cli 0.137.0-alpha.0",
+		"codex-cli 0.137.0-alpha.5",
 		"codex-cli 0.136.1",
 		"other-app/0.136.0",
 		"openai/codex upstream-main-post-rust-v0.136.0",
