@@ -182,6 +182,22 @@ fn retained_partial_progress_uses_actionable_terminal_failure_comment() {
 	assert!(next_action.contains("inspect retained worktree `.worktrees/PUB-101`"));
 	assert!(next_action.contains("finish validation and PR handoff or reset the patch manually"));
 	assert!(next_action.contains("clear label `decodex:needs-attention`"));
+
+	let comment = orchestrator::format_terminal_failure_comment(
+		"pub-101-attempt-3-123",
+		3,
+		String::from(".worktrees/PUB-101"),
+		"x/pubfi-pub-101",
+		None,
+		error_class,
+		&next_action,
+	);
+
+	assert!(comment.contains("decodex retained partial progress and needs attention"));
+	assert!(comment.contains("- recorded_at: `"));
+	assert!(!comment.contains("decodex run failed and needs attention"));
+	assert!(!comment.contains("- failed_at: `"));
+	assert!(comment.contains("full recovery context"));
 }
 
 #[test]
