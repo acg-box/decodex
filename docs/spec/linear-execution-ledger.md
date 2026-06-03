@@ -158,7 +158,7 @@ These fields are optional globally and become required for specific event types 
 | `evidence` | array of strings | Short factual evidence items. |
 | `verification` | array of strings | Verification commands or checks already run. |
 | `error_class` | string | Normalized failure class for needs-attention or terminal-failure records. |
-| `terminal_path` | string | Explicit terminal path such as `review_handoff`, `review_repair`, or `manual_attention`. |
+| `terminal_path` | string | Explicit terminal path such as `review_handoff`, `review_repair`, `manual_attention`, or `retained_partial_progress`. |
 | `cleanup_status` | string | Cleanup result when cleanup is the event subject. |
 | `transport` | string | Agent transport name when agent startup is the event subject. |
 | `target_state` | string | Tracker workflow state written by closeout or failure handling. |
@@ -218,7 +218,13 @@ Every event requires the record envelope. Additional required fields are listed 
 `terminal_path` values must match the runtime-owned terminal path for the tool or phase
 that writes the event. For normal review handoff this is `review_handoff`; for retained
 repair completion this is `review_repair`; for explicit human-required exits this is
-`manual_attention`.
+`manual_attention`; for stalled dirty-worktree recovery this is
+`retained_partial_progress`.
+
+Retained partial progress is a `needs_attention` event with
+`error_class = "partial_progress_retained"` and
+`terminal_path = "retained_partial_progress"`. It must describe retained tracked
+worktree changes and must not be emitted as `terminal_failure`.
 
 `failed_command` and `raw_error` are public-summary fields, not private evidence
 escape hatches. Producers must validate those values before writing a Linear comment.
