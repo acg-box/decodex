@@ -557,10 +557,13 @@ struct StatusCommand {
 	/// Maximum number of recent runs to display.
 	#[arg(long, value_name = "COUNT", default_value_t = orchestrator::DEFAULT_STATUS_RUN_LIMIT)]
 	limit: usize,
+	/// Refresh live tracker and pull-request observers before printing status.
+	#[arg(long)]
+	live: bool,
 }
 impl StatusCommand {
 	fn run(&self) -> Result<()> {
-		orchestrator::print_status(self.project_config.as_path(), self.json, self.limit)
+		orchestrator::print_status(self.project_config.as_path(), self.json, self.limit, self.live)
 	}
 }
 
@@ -2098,6 +2101,7 @@ mod tests {
 				project_config: ProjectConfigArgs { config: Some(config) },
 				json: true,
 				limit: 5,
+				live: false,
 			}) if config == Path::new("./project.toml")
 		));
 	}
