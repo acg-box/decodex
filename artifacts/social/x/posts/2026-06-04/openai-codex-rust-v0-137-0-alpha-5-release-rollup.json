@@ -1,0 +1,73 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-rust-v0-137-0-alpha-5-release-rollup",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "release_rollup",
+  "status": "skipped",
+  "audience": "Codex users and Decodex operators tracking upstream prerelease checkpoints",
+  "text": [
+    "Skipped Decodex release rollup for Codex rust-v0.137.0-alpha.5: the new checkpoint has one mapped signal but a 118-commit window still needs review coverage, so @decodexspace should not publish from sparse prerelease evidence."
+  ],
+  "source_refs": {
+    "signals": [
+      "site/src/content/signals/openai-codex-pr-25636.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-25636.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-25636.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.137.0-alpha.5",
+      "https://github.com/openai/codex/compare/rust-v0.136.0...rust-v0.137.0-alpha.5",
+      "https://github.com/openai/codex/pull/25636"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub releases show rust-v0.137.0-alpha.5 was published on 2026-06-03T17:23:47Z, after the checked-in release_delta/v1 artifact generated on 2026-06-02T02:34:53Z.",
+    "A temporary release_delta/v1 refresh selected rust-v0.136.0 -> rust-v0.137.0-alpha.5, with 118 compare commits, 117 PR numbers, and one tracked signal slug: multiagentv2-followup-task-replaces-assign-task.",
+    "The one mapped signal is backed by PR #25636, upstream_review/v1, and upstream_impact/v1 evidence, but it is not enough to summarize the full prerelease checkpoint honestly.",
+    "decodex radar backfill-release-range --release-delta /tmp/decodex-release-delta.XXXXXX.json --stable-tag rust-v0.136.0 --preview-tag rust-v0.137.0-alpha.5 --dry-run reported the remaining target PR gap list and created no artifacts.",
+    "Chrome account verification, compose, media upload, and readback were not attempted because the evidence gate failed before publication."
+  ],
+  "claims": [
+    {
+      "text": "openai/codex published rust-v0.137.0-alpha.5 as a prerelease checkpoint after the checked-in Decodex release_delta/v1 artifact.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.137.0-alpha.5",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The refreshed checkpoint window maps to one existing Decodex signal, multiagentv2-followup-task-replaces-assign-task.",
+      "evidence": "site/src/content/signals/openai-codex-pr-25636.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "A source-backed @decodexspace release_rollup should wait for broader upstream_review, upstream_impact, or signal coverage across the 118-commit checkpoint window.",
+      "evidence": "artifacts/social/x/posts/2026-06-04/openai-codex-rust-v0-137-0-alpha-5-release-rollup.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "skip",
+    "priority": "high",
+    "idempotency_key": "x:decodexspace:release_rollup:openai-codex:rust-v0.136.0:rust-v0.137.0-alpha.5",
+    "reason": "New prerelease checkpoint exists, but accumulated Decodex evidence covers only one mapped signal across a 118-commit window.",
+    "daily_limit": 8,
+    "daily_count_before": 0,
+    "daily_count_after": 0,
+    "day": "2026-06-04",
+    "timezone": "Asia/Shanghai"
+  },
+  "skip": {
+    "reason": "insufficient_accumulated_evidence",
+    "operator_notice": "Backfill or review the rust-v0.136.0 -> rust-v0.137.0-alpha.5 target PRs before considering a public release_rollup."
+  },
+  "caveats": [
+    "The checked-in release_delta/v1 artifact was not updated in this run; only a temporary refresh was used for the publication decision.",
+    "Daily cap did not block the candidate; no published @decodexspace records exist for the 2026-06-04 Asia/Shanghai cap day in this checkout.",
+    "No Chrome tabs were opened for publication because the evidence gate failed before browser work."
+  ]
+}
