@@ -60,6 +60,55 @@ const GH_BINARY: &str = "gh";
 const GH_FALLBACK_PATHS: &[&str] =
 	&["/run/current-system/sw/bin/gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"];
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum GhCommandDiscoveryTier {
+	Configured,
+	Path,
+	UserBin,
+	KnownFallback,
+	Missing,
+}
+impl GhCommandDiscoveryTier {
+	pub(crate) const fn as_str(self) -> &'static str {
+		match self {
+			Self::Configured => "configured",
+			Self::Path => "path",
+			Self::UserBin => "user-bin",
+			Self::KnownFallback => "known-fallback",
+			Self::Missing => "missing",
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct GhCommandResolution {
+	command_path: PathBuf,
+	resolved_path: Option<PathBuf>,
+	configured_path: Option<PathBuf>,
+	discovery_tier: GhCommandDiscoveryTier,
+}
+impl GhCommandResolution {
+	pub(crate) fn command_path(&self) -> &Path {
+		&self.command_path
+	}
+
+	pub(crate) fn resolved_path(&self) -> Option<&Path> {
+		self.resolved_path.as_deref()
+	}
+
+	pub(crate) fn configured_path(&self) -> Option<&Path> {
+		self.configured_path.as_deref()
+	}
+
+	pub(crate) const fn discovery_tier(&self) -> GhCommandDiscoveryTier {
+		self.discovery_tier
+	}
+
+	pub(crate) const fn available(&self) -> bool {
+		self.resolved_path.is_some()
+	}
+}
+
 #[derive(Debug)]
 pub(crate) struct PullRequestLocator {
 	pub(crate) owner: String,
@@ -121,6 +170,17 @@ struct PullRequestLandingStateNode {
 	#[serde(rename = "reviewThreads")]
 	review_threads: PullRequestReviewThreadConnection,
 	commits: PullRequestCommitConnection,
+}
+
+struct PullRequestLandingStatePageQuery<'a> {
+	cwd: &'a Path,
+	owner: &'a str,
+	repo: &'a str,
+	number: u64,
+	review_threads_after: Option<&'a str>,
+	pr_url: &'a str,
+	github_token: &'a str,
+	gh_command_path: Option<&'a Path>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,12 +288,12 @@ pub(crate) fn configure_gh_command(command: &mut Command, github_token: &str) {
 		.env("GCM_INTERACTIVE", "never");
 }
 
-pub(crate) fn gh_command() -> Command {
-	Command::new(gh_command_program())
+pub(crate) fn gh_command_with_config(configured_path: Option<&Path>) -> Command {
+	Command::new(gh_command_resolution(configured_path).command_path())
 }
 
-pub(crate) fn gh_command_program() -> PathBuf {
-	gh_command_program_from_env(env::var_os("PATH"), env::var_os("HOME"))
+pub(crate) fn gh_command_resolution(configured_path: Option<&Path>) -> GhCommandResolution {
+	gh_command_resolution_from_env(configured_path, env::var_os("PATH"), env::var_os("HOME"))
 }
 
 pub(crate) fn parse_pull_request_url(pr_url: &str) -> Result<PullRequestLocator> {
@@ -278,11 +338,12 @@ pub(crate) fn post_pull_request_issue_comment(
 	pr_url: &str,
 	body: &str,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<(i64, i64)> {
 	let locator = parse_pull_request_url(pr_url)?;
 	let endpoint =
 		format!("repos/{}/{}/issues/{}/comments", locator.owner, locator.repo, locator.number);
-	let mut command = gh_command();
+	let mut command = gh_command_with_config(gh_command_path);
 
 	command.args(["api", endpoint.as_str(), "-f", &format!("body={body}")]);
 	command.current_dir(cwd);
@@ -314,21 +375,24 @@ pub(crate) fn inspect_pull_request_landing_state(
 	cwd: &Path,
 	pr_url: &str,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<PullRequestLandingState> {
 	let locator = parse_pull_request_url(pr_url)?;
 	let mut review_threads_after: Option<String> = None;
 	let mut landing_state: Option<PullRequestLandingState> = None;
 
 	loop {
-		let pull_request = query_pull_request_landing_state_page(
-			cwd,
-			&locator.owner,
-			&locator.repo,
-			locator.number,
-			review_threads_after.as_deref(),
-			pr_url,
-			github_token,
-		)?;
+		let pull_request =
+			query_pull_request_landing_state_page(PullRequestLandingStatePageQuery {
+				cwd,
+				owner: &locator.owner,
+				repo: &locator.repo,
+				number: locator.number,
+				review_threads_after: review_threads_after.as_deref(),
+				pr_url,
+				github_token,
+				gh_command_path,
+			})?;
 		let next_cursor = match &mut landing_state {
 			Some(landing_state) =>
 				merge_pull_request_landing_state_page(landing_state, &pull_request)?,
@@ -355,8 +419,9 @@ pub(crate) fn inspect_pull_request_landing_state(
 pub(crate) fn inspect_repository_context(
 	cwd: &Path,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<RepositoryContext> {
-	let mut command = gh_command();
+	let mut command = gh_command_with_config(gh_command_path);
 
 	command.args(["repo", "view", "--json", "name,owner,defaultBranchRef,mergeCommitAllowed"]);
 	command.current_dir(cwd);
@@ -396,6 +461,7 @@ pub(crate) fn delete_pull_request_head_branch_if_present(
 	pr_url: &str,
 	branch_name: &str,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<()> {
 	let locator = parse_pull_request_url(pr_url)?;
 
@@ -405,6 +471,7 @@ pub(crate) fn delete_pull_request_head_branch_if_present(
 		&locator.repo,
 		branch_name,
 		github_token,
+		gh_command_path,
 	)
 }
 
@@ -414,8 +481,9 @@ pub(crate) fn admin_merge_pull_request(
 	reviewed_head_sha: &str,
 	merge_subject: Option<&str>,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<()> {
-	let mut command = gh_command();
+	let mut command = gh_command_with_config(gh_command_path);
 
 	configure_admin_merge_command(&mut command, pr_url, reviewed_head_sha, merge_subject);
 
@@ -444,8 +512,9 @@ pub(crate) fn inspect_pull_request_merge_commit(
 	cwd: &Path,
 	pr_url: &str,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<String> {
-	let response = inspect_pull_request_merge_response(cwd, pr_url, github_token)?;
+	let response = inspect_pull_request_merge_response(cwd, pr_url, github_token, gh_command_path)?;
 
 	if response.state != "MERGED" {
 		eyre::bail!("Pull request `{pr_url}` did not reach `MERGED` state after landing.");
@@ -463,11 +532,12 @@ pub(crate) fn wait_for_pull_request_merge_commit(
 	pr_url: &str,
 	github_token: &str,
 	timeout: Duration,
+	gh_command_path: Option<&Path>,
 ) -> Result<String> {
 	let deadline = Instant::now() + timeout;
 
 	loop {
-		match inspect_pull_request_merge_commit(cwd, pr_url, github_token) {
+		match inspect_pull_request_merge_commit(cwd, pr_url, github_token, gh_command_path) {
 			Ok(merge_commit) => return Ok(merge_commit),
 			Err(error) if Instant::now() >= deadline => return Err(error),
 			Err(error) if merge_commit_wait_error_is_retryable(&error) => {},
@@ -483,9 +553,10 @@ pub(crate) fn inspect_commit_subject(
 	pr_url: &str,
 	commit_oid: &str,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<String> {
 	let locator = parse_pull_request_url(pr_url)?;
-	let mut command = gh_command();
+	let mut command = gh_command_with_config(gh_command_path);
 
 	command
 		.args(["api", &format!("repos/{}/{}/commits/{}", locator.owner, locator.repo, commit_oid)]);
@@ -526,11 +597,12 @@ pub(crate) fn wait_for_commit_subject(
 	commit_oid: &str,
 	github_token: &str,
 	timeout: Duration,
+	gh_command_path: Option<&Path>,
 ) -> Result<String> {
 	let deadline = Instant::now() + timeout;
 
 	loop {
-		match inspect_commit_subject(cwd, pr_url, commit_oid, github_token) {
+		match inspect_commit_subject(cwd, pr_url, commit_oid, github_token, gh_command_path) {
 			Ok(subject) => return Ok(subject),
 			Err(error) if Instant::now() >= deadline => return Err(error),
 			Err(error) if commit_subject_wait_error_is_retryable(&error) => {},
@@ -546,19 +618,40 @@ pub(crate) fn pull_request_is_merged_at_head(
 	pr_url: &str,
 	expected_head_sha: &str,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<bool> {
-	let response = inspect_pull_request_merge_response(cwd, pr_url, github_token)?;
+	let response = inspect_pull_request_merge_response(cwd, pr_url, github_token, gh_command_path)?;
 
 	Ok(response.state == "MERGED" && response.head_ref_oid.as_deref() == Some(expected_head_sha))
 }
 
-fn gh_command_program_from_env(path_env: Option<OsString>, home: Option<OsString>) -> PathBuf {
+fn gh_command_resolution_from_env(
+	configured_path: Option<&Path>,
+	path_env: Option<OsString>,
+	home: Option<OsString>,
+) -> GhCommandResolution {
+	if let Some(configured_path) = configured_path {
+		let command_path = configured_path.to_path_buf();
+		let resolved_path = command_path.is_file().then_some(command_path.clone());
+
+		return GhCommandResolution {
+			command_path,
+			resolved_path,
+			configured_path: Some(configured_path.to_path_buf()),
+			discovery_tier: GhCommandDiscoveryTier::Configured,
+		};
+	}
 	if let Some(path_env) = path_env {
 		for path_entry in env::split_paths(&path_env) {
 			let candidate = path_entry.join(GH_BINARY);
 
 			if candidate.is_file() {
-				return candidate;
+				return GhCommandResolution {
+					command_path: candidate.clone(),
+					resolved_path: Some(candidate),
+					configured_path: None,
+					discovery_tier: GhCommandDiscoveryTier::Path,
+				};
 			}
 		}
 	}
@@ -571,7 +664,12 @@ fn gh_command_program_from_env(path_env: Option<OsString>, home: Option<OsString
 				.fold(home.clone(), |path, component| path.join(*component));
 
 			if candidate.is_file() {
-				return candidate;
+				return GhCommandResolution {
+					command_path: candidate.clone(),
+					resolved_path: Some(candidate),
+					configured_path: None,
+					discovery_tier: GhCommandDiscoveryTier::UserBin,
+				};
 			}
 		}
 	}
@@ -580,11 +678,21 @@ fn gh_command_program_from_env(path_env: Option<OsString>, home: Option<OsString
 		let candidate = PathBuf::from(candidate);
 
 		if candidate.is_file() {
-			return candidate;
+			return GhCommandResolution {
+				command_path: candidate.clone(),
+				resolved_path: Some(candidate),
+				configured_path: None,
+				discovery_tier: GhCommandDiscoveryTier::KnownFallback,
+			};
 		}
 	}
 
-	PathBuf::from(GH_BINARY)
+	GhCommandResolution {
+		command_path: PathBuf::from(GH_BINARY),
+		resolved_path: None,
+		configured_path: None,
+		discovery_tier: GhCommandDiscoveryTier::Missing,
+	}
 }
 
 fn delete_repository_branch_if_present(
@@ -593,6 +701,7 @@ fn delete_repository_branch_if_present(
 	repo: &str,
 	branch_name: &str,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<()> {
 	if branch_name.trim().is_empty() {
 		eyre::bail!("Refusing to delete an empty GitHub branch name.");
@@ -600,7 +709,7 @@ fn delete_repository_branch_if_present(
 
 	let endpoint =
 		format!("repos/{owner}/{repo}/git/refs/heads/{}", github_api_ref_path(branch_name));
-	let mut command = gh_command();
+	let mut command = gh_command_with_config(gh_command_path);
 
 	command.args(["api", "--method", "DELETE", "--silent", endpoint.as_str()]);
 	command.current_dir(cwd);
@@ -626,8 +735,9 @@ fn inspect_pull_request_merge_response(
 	cwd: &Path,
 	pr_url: &str,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<PullRequestMergeViewResponse> {
-	let mut command = gh_command();
+	let mut command = gh_command_with_config(gh_command_path);
 
 	command.args(["pr", "view", pr_url, "--json", "state,headRefOid,mergeCommit"]);
 	command.current_dir(cwd);
@@ -690,43 +800,44 @@ fn github_api_path_component(component: &str) -> String {
 }
 
 fn query_pull_request_landing_state_page(
-	cwd: &Path,
-	owner: &str,
-	repo: &str,
-	number: u64,
-	review_threads_after: Option<&str>,
-	pr_url: &str,
-	github_token: &str,
+	query: PullRequestLandingStatePageQuery<'_>,
 ) -> Result<PullRequestLandingStateNode> {
-	let mut command = gh_command();
+	let mut command = gh_command_with_config(query.gh_command_path);
 
 	command.args(["api", "graphql", "-f", &format!("query={PULL_REQUEST_LANDING_STATE_QUERY}")]);
-	command.args(["-F", &format!("owner={owner}")]);
-	command.args(["-F", &format!("name={repo}")]);
-	command.args(["-F", &format!("number={number}")]);
+	command.args(["-F", &format!("owner={}", query.owner)]);
+	command.args(["-F", &format!("name={}", query.repo)]);
+	command.args(["-F", &format!("number={}", query.number)]);
 
-	if let Some(review_threads_after) = review_threads_after {
+	if let Some(review_threads_after) = query.review_threads_after {
 		command.args(["-F", &format!("reviewThreadsAfter={review_threads_after}")]);
 	}
 
-	command.current_dir(cwd);
+	command.current_dir(query.cwd);
 
-	configure_gh_command(&mut command, github_token);
+	configure_gh_command(&mut command, query.github_token);
 
 	let output = command.output()?;
 
 	if !output.status.success() {
 		let stderr = String::from_utf8_lossy(&output.stderr);
 
-		eyre::bail!("Failed to inspect pull request landing state `{pr_url}`: {}", stderr.trim());
+		eyre::bail!(
+			"Failed to inspect pull request landing state `{}`: {}",
+			query.pr_url,
+			stderr.trim()
+		);
 	}
 
 	let response = serde_json::from_slice::<PullRequestLandingStateResponse>(&output.stdout)?;
 	let Some(repository) = response.data.repository else {
-		eyre::bail!("GitHub GraphQL response for `{pr_url}` did not include a repository.");
+		eyre::bail!("GitHub GraphQL response for `{}` did not include a repository.", query.pr_url);
 	};
 	let Some(pull_request) = repository.pull_request else {
-		eyre::bail!("GitHub GraphQL response for `{pr_url}` did not include a pull request.");
+		eyre::bail!(
+			"GitHub GraphQL response for `{}` did not include a pull request.",
+			query.pr_url
+		);
 	};
 
 	Ok(pull_request)
@@ -907,22 +1018,25 @@ mod tests {
 	}
 
 	#[test]
-	fn gh_command_program_prefers_path_candidate() {
+	fn gh_command_resolution_prefers_path_candidate() {
 		let temp_dir = tempfile::TempDir::new().expect("temp dir should exist");
 		let gh_path = temp_dir.path().join("gh");
 
 		fs::write(&gh_path, "").expect("fake gh should write");
 
-		let resolved = super::gh_command_program_from_env(
+		let resolution = super::gh_command_resolution_from_env(
+			None,
 			Some(OsString::from(temp_dir.path().as_os_str())),
 			None,
 		);
 
-		assert_eq!(resolved, gh_path);
+		assert_eq!(resolution.command_path(), gh_path.as_path());
+		assert_eq!(resolution.resolved_path(), Some(gh_path.as_path()));
+		assert_eq!(resolution.discovery_tier(), super::GhCommandDiscoveryTier::Path);
 	}
 
 	#[test]
-	fn gh_command_program_falls_back_to_home_local_bin() {
+	fn gh_command_resolution_falls_back_to_home_local_bin() {
 		let temp_dir = tempfile::TempDir::new().expect("temp dir should exist");
 		let bin_dir = temp_dir.path().join(".local/bin");
 		let gh_path = bin_dir.join("gh");
@@ -930,16 +1044,35 @@ mod tests {
 		fs::create_dir_all(&bin_dir).expect("fake home bin should exist");
 		fs::write(&gh_path, "").expect("fake gh should write");
 
-		let resolved = super::gh_command_program_from_env(
+		let resolution = super::gh_command_resolution_from_env(
+			None,
 			Some(OsString::new()),
 			Some(OsString::from(temp_dir.path().as_os_str())),
 		);
 
-		assert_eq!(resolved, gh_path);
+		assert_eq!(resolution.command_path(), gh_path.as_path());
+		assert_eq!(resolution.resolved_path(), Some(gh_path.as_path()));
+		assert_eq!(resolution.discovery_tier(), super::GhCommandDiscoveryTier::UserBin);
 	}
 
 	#[test]
-	fn gh_command_program_knows_nix_profile_fallback() {
+	fn gh_command_resolution_uses_configured_path_as_authority() {
+		let temp_dir = tempfile::TempDir::new().expect("temp dir should exist");
+		let gh_path = temp_dir.path().join("configured-gh");
+
+		fs::write(&gh_path, "").expect("fake configured gh should write");
+
+		let resolution =
+			super::gh_command_resolution_from_env(Some(&gh_path), Some(OsString::new()), None);
+
+		assert_eq!(resolution.command_path(), gh_path.as_path());
+		assert_eq!(resolution.configured_path(), Some(gh_path.as_path()));
+		assert_eq!(resolution.resolved_path(), Some(gh_path.as_path()));
+		assert_eq!(resolution.discovery_tier(), super::GhCommandDiscoveryTier::Configured);
+	}
+
+	#[test]
+	fn gh_command_resolution_knows_nix_profile_fallback() {
 		assert!(super::GH_FALLBACK_PATHS.contains(&"/run/current-system/sw/bin/gh"));
 	}
 

@@ -82,6 +82,7 @@ pub(crate) trait PullRequestInspector {
 		cwd: &Path,
 		pr_url: &str,
 		github_token: &str,
+		gh_command_path: Option<&Path>,
 	) -> std::result::Result<PullRequestDetails, String>;
 }
 
@@ -482,6 +483,7 @@ pub(crate) struct ReviewHandoffContext {
 	pub(crate) worktree_path: String,
 	pub(crate) cwd: PathBuf,
 	pub(crate) github_token_env_var: Option<String>,
+	pub(crate) github_command_path: Option<PathBuf>,
 	pub(crate) internal_review_mode: InternalReviewMode,
 	pub(crate) mode: ReviewExecutionMode,
 	pub(crate) recorded_pr_url: Option<String>,
@@ -603,8 +605,9 @@ impl PullRequestInspector for GhPullRequestInspector {
 		cwd: &Path,
 		pr_url: &str,
 		github_token: &str,
+		gh_command_path: Option<&Path>,
 	) -> std::result::Result<PullRequestDetails, String> {
-		let mut command = github::gh_command();
+		let mut command = github::gh_command_with_config(gh_command_path);
 
 		command.args([
 			"pr",

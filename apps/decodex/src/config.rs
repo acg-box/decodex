@@ -107,7 +107,7 @@ impl ServiceConfig {
 			worktree_root: document.paths.resolve_worktree_root(&repo_root)?,
 			workflow_path: config_dir.join(WORKFLOW_FILE_NAME),
 			tracker: document.tracker,
-			github: document.github,
+			github: document.github.resolve_paths(config_dir)?,
 			codex: document.codex.resolve_paths(config_dir)?,
 			privacy_classifier: document.privacy_classifier,
 		})
@@ -143,6 +143,7 @@ impl ProjectTrackerConfig {
 #[serde(deny_unknown_fields)]
 pub struct ProjectGitHubConfig {
 	token_env_var: String,
+	command_path: Option<PathBuf>,
 }
 impl ProjectGitHubConfig {
 	/// Name of the environment variable that stores the GitHub token.
@@ -150,13 +151,32 @@ impl ProjectGitHubConfig {
 		&self.token_env_var
 	}
 
+	/// Optional configured GitHub CLI command path.
+	pub fn command_path(&self) -> Option<&Path> {
+		self.command_path.as_deref()
+	}
+
 	/// Resolve the configured GitHub token env-var name into a concrete token string.
 	pub fn resolve_token(&self) -> Result<String> {
 		resolve_secret_env_var("github.token_env_var", self.token_env_var())
 	}
 
+	fn resolve_paths(mut self, config_dir: &Path) -> Result<Self> {
+		if let Some(command_path) = self.command_path.take() {
+			validate_nonempty_path("github.command_path", &command_path)?;
+
+			self.command_path = Some(resolve_relative_path(config_dir, &command_path));
+		}
+
+		Ok(self)
+	}
+
 	fn validate(&self) -> Result<()> {
 		validate_env_var_name("github.token_env_var", self.token_env_var())?;
+
+		if let Some(command_path) = self.command_path.as_deref() {
+			validate_nonempty_path("github.command_path", command_path)?;
+		}
 
 		Ok(())
 	}
@@ -951,6 +971,7 @@ mod tests {
 
 				[github]
 				token_env_var = "HOME"
+				command_path = "bin/gh"
 			"#,
 		);
 		let config =
@@ -963,6 +984,7 @@ mod tests {
 		assert_eq!(config.worktree_root(), canonical_root.join(".worktrees"));
 		assert_eq!(config.workflow_path(), canonical_root.join("WORKFLOW.md"));
 		assert_eq!(config.github().token_env_var(), "HOME");
+		assert_eq!(config.github().command_path(), Some(canonical_root.join("bin/gh").as_path()));
 		assert_eq!(config.codex().internal_review_mode(), InternalReviewMode::Loop);
 		assert!(config.codex().external_review_enabled());
 	}
