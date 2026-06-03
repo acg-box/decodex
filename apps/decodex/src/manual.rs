@@ -19,7 +19,7 @@ use crate::{
 	prelude::{Result, eyre},
 	pull_request::{self, PullRequestLandingState},
 	runtime,
-	state::{RUN_ACTIVITY_MARKER_FILE, ReviewHandoffMarker, StateStore},
+	state::{self, ReviewHandoffMarker, StateStore},
 	tracker::{
 		self, IssueTracker, TrackerIssue,
 		linear::LinearClient,
@@ -848,15 +848,7 @@ fn ensure_clean_worktree(cwd: &Path) -> Result<()> {
 fn is_landing_blocking_status_line(line: &str) -> bool {
 	let line = line.trim_end();
 
-	!line.is_empty() && !is_untracked_decodex_runtime_marker_status_line(line)
-}
-
-fn is_untracked_decodex_runtime_marker_status_line(line: &str) -> bool {
-	let Some(path) = line.strip_prefix("?? ") else {
-		return false;
-	};
-
-	path == RUN_ACTIVITY_MARKER_FILE
+	!line.is_empty() && !state::is_untracked_decodex_runtime_artifact_status_line(line)
 }
 
 fn validate_landing_state(
@@ -2304,8 +2296,14 @@ exit 1\n",
 
 		fs::write(checkout.join(state::RUN_ACTIVITY_MARKER_FILE), "agent_run\n")
 			.expect("activity marker should write");
+
+		let control_dir = checkout.join(state::RUN_CONTROL_CHANNEL_DIR);
+
+		fs::create_dir_all(&control_dir).expect("run-control directory should create");
+		fs::write(control_dir.join("run-1-1.channel"), "schema=decodex.run_control_channel/v1\n")
+			.expect("run-control channel should write");
 		manual::ensure_clean_worktree(&checkout)
-			.expect("untracked activity marker should not block landing");
+			.expect("untracked Decodex runtime artifacts should not block landing");
 	}
 
 	#[test]
@@ -2336,6 +2334,18 @@ exit 1\n",
 				.expect("nested activity marker should write");
 
 			assert_blocks(&checkout, "nested runtime marker should still block landing");
+		}
+		{
+			let temp_dir = TempDir::new().expect("temp dir should create");
+			let checkout = init_git_checkout(&temp_dir, "repo");
+			let nested_control_dir = checkout.join("nested").join(state::RUN_CONTROL_CHANNEL_DIR);
+
+			fs::create_dir_all(&nested_control_dir)
+				.expect("nested control directory should create");
+			fs::write(nested_control_dir.join("run-1-1.channel"), "channel\n")
+				.expect("nested control channel should write");
+
+			assert_blocks(&checkout, "nested run-control directory should still block landing");
 		}
 		{
 			let temp_dir = TempDir::new().expect("temp dir should create");
