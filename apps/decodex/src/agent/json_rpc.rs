@@ -631,6 +631,10 @@ enum AppServerCodexHomePolicy {
 	Explicit(ResolvedAppServerCodexHomeEnv),
 }
 
+pub(crate) fn app_server_command_program() -> PathBuf {
+	app_server_command_program_from_env(env::var_os("PATH"), env::var_os("HOME"))
+}
+
 fn resolve_shared_codex_home_env() -> crate::prelude::Result<ResolvedAppServerCodexHomeEnv> {
 	resolve_shared_codex_home_env_from_home(env::var_os("HOME"))
 }
@@ -699,10 +703,6 @@ fn configure_app_server_command(
 		.stderr(Stdio::piped());
 
 	process_env.apply_to(command)
-}
-
-fn app_server_command_program() -> PathBuf {
-	app_server_command_program_from_env(env::var_os("PATH"), env::var_os("HOME"))
 }
 
 fn app_server_command_program_from_env(
