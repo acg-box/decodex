@@ -58,7 +58,8 @@ The command rejects the rebind unless all of these are true:
 - the issue does not have opt-out or needs-attention labels
 - the issue still has `decodex:active:<service-id>` ownership
 - the retained worktree branch matches the runtime DB worktree mapping
-- the retained worktree has no local changes except `.decodex-run-activity`
+- the retained worktree has no local source changes except top-level Decodex runtime
+  artifacts such as `.decodex-run-activity` and `.decodex-run-control/`
 - the PR belongs to the configured GitHub repository
 - the PR targets the configured default branch
 - the PR is open and non-draft
