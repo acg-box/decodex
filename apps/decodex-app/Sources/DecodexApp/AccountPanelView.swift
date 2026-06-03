@@ -894,50 +894,44 @@ struct AccountRowView: View {
 
 struct AccountRunSummaryView: View {
 	let runs: [OperatorRunStatus]
-	@State private var scrollProxy = AccountRunStripScrollProxy()
+	@State private var placementStore = AccountRunStripPlacementStore()
 	@State private var scrollMetrics = AccountRunStripMetrics()
 
 	var body: some View {
-		ZStack {
-			AccountRunStripScrollView(
-				scrollProxy: scrollProxy,
-				onMetricsChange: { metrics in
-					updateScrollMetrics(metrics)
-				}
-			) {
-				HStack(spacing: 5) {
-					ForEach(runs) { run in
-						AccountRunChipView(run: run)
-					}
-				}
-				.padding(.trailing, 1)
-				.fixedSize(horizontal: true, vertical: false)
+		AccountRunStripScrollView(
+			placementStore: placementStore,
+			onMetricsChange: { metrics in
+				updateScrollMetrics(metrics)
 			}
-			.mask {
-				AccountRunStripFadeMask(metrics: scrollMetrics)
-			}
-
-			HStack(spacing: 0) {
-				if scrollMetrics.canScrollBackward {
-					AccountRunStripEdgeButton(direction: .backward) {
-						scrollProxy.scroll(.backward)
-					}
-				}
-
-				Spacer(minLength: 0)
-
-				if scrollMetrics.canScrollForward {
-					AccountRunStripEdgeButton(direction: .forward) {
-						scrollProxy.scroll(.forward)
-					}
+		) {
+			HStack(spacing: 5) {
+				ForEach(runs) { run in
+					AccountRunChipView(run: run)
+						.modifier(
+							AccountRunChipPlacementReporter(
+								runID: run.id,
+								placementStore: placementStore
+							)
+						)
 				}
 			}
-			.allowsHitTesting(scrollMetrics.isOverflowing)
+			.padding(.trailing, 1)
+			.fixedSize(horizontal: true, vertical: false)
+			.coordinateSpace(name: AccountRunStripLayout.contentCoordinateSpace)
+		}
+		.mask {
+			AccountRunStripFadeMask(metrics: scrollMetrics)
 		}
 		.frame(height: AccountRunChipLayout.height)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.contentShape(Rectangle())
 		.accessibilityLabel("\(runs.count) running lane\(runs.count == 1 ? "" : "s")")
+		.onAppear {
+			placementStore.retainOnly(Set(runs.map(\.id)))
+		}
+		.onChange(of: runs.map(\.id)) { _, runIDs in
+			placementStore.retainOnly(Set(runIDs))
+		}
 	}
 
 	private func updateScrollMetrics(_ metrics: AccountRunStripMetrics) {
@@ -954,43 +948,12 @@ struct AccountRunSummaryView: View {
 }
 
 private enum AccountRunStripLayout {
+	static let contentCoordinateSpace = "account-run-strip-content"
 	static let dragActivationDistance: CGFloat = 1
-	static let edgeControlWidth: CGFloat = 26
 	static let fadeWidth: CGFloat = 24
-	static let minimumScrollDistance: CGFloat = 86
-	static let scrollPageFraction: CGFloat = 0.72
-}
-
-private enum AccountRunStripScrollDirection {
-	case backward
-	case forward
-
-	var scrollMultiplier: CGFloat {
-		switch self {
-		case .backward:
-			return -1
-		case .forward:
-			return 1
-		}
-	}
-
-	var symbol: String {
-		switch self {
-		case .backward:
-			return "chevron.compact.left"
-		case .forward:
-			return "chevron.compact.right"
-		}
-	}
-
-	var accessibilityLabel: String {
-		switch self {
-		case .backward:
-			return "Scroll running lanes left"
-		case .forward:
-			return "Scroll running lanes right"
-		}
-	}
+	static let wheelLineDeltaScale: CGFloat = 11
+	static let wheelMinimumDelta: CGFloat = 0.1
+	static let clickScrollDuration: TimeInterval = 0.24
 }
 
 private struct AccountRunStripMetrics: Equatable {
@@ -1008,21 +971,50 @@ private struct AccountRunStripMetrics: Equatable {
 	}
 }
 
-@MainActor
-private protocol AccountRunStripScrollable: AnyObject {
-	func scroll(_ direction: AccountRunStripScrollDirection)
-}
+private final class AccountRunStripPlacementStore {
+	private var framesByRunID = [String: CGRect]()
 
-@MainActor
-private final class AccountRunStripScrollProxy {
-	private weak var target: AccountRunStripScrollable?
-
-	func attach(_ target: AccountRunStripScrollable) {
-		self.target = target
+	func update(runID: String, frame: CGRect) {
+		framesByRunID[runID] = frame
 	}
 
-	func scroll(_ direction: AccountRunStripScrollDirection) {
-		target?.scroll(direction)
+	func retainOnly(_ runIDs: Set<String>) {
+		framesByRunID = framesByRunID.filter { runIDs.contains($0.key) }
+	}
+
+	func frame(for runID: String) -> CGRect? {
+		framesByRunID[runID]
+	}
+
+	func runID(containing point: NSPoint) -> String? {
+		framesByRunID.first { _, frame in
+			frame.contains(point)
+		}?.key
+	}
+}
+
+private struct AccountRunChipPlacementReporter: ViewModifier {
+	let runID: String
+	let placementStore: AccountRunStripPlacementStore
+
+	func body(content: Content) -> some View {
+		content.background {
+			GeometryReader { proxy in
+				Color.clear
+					.onAppear {
+						publish(proxy.frame(in: .named(AccountRunStripLayout.contentCoordinateSpace)))
+					}
+					.onChange(of: proxy.frame(in: .named(AccountRunStripLayout.contentCoordinateSpace))) { _, frame in
+						publish(frame)
+					}
+			}
+		}
+	}
+
+	private func publish(_ frame: CGRect) {
+		DispatchQueue.main.async {
+			placementStore.update(runID: runID, frame: frame)
+		}
 	}
 }
 
@@ -1054,51 +1046,8 @@ private struct AccountRunStripFadeMask: View {
 	}
 }
 
-private struct AccountRunStripEdgeButton: View {
-	let direction: AccountRunStripScrollDirection
-	let action: () -> Void
-	@Environment(\.colorScheme) private var colorScheme
-	@State private var isHovered = false
-
-	var body: some View {
-		Button(action: action) {
-			ZStack {
-				RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous)
-					.fill(edgeHoverFill)
-					.opacity(isHovered ? 1 : 0)
-
-					Image(systemName: direction.symbol)
-						.font(.system(size: 13, weight: .semibold))
-						.symbolRenderingMode(.monochrome)
-						.foregroundStyle(edgeTint)
-						.opacity(isHovered ? 1 : 0)
-			}
-			.frame(
-				width: AccountRunStripLayout.edgeControlWidth,
-				height: AccountRunChipLayout.height
-			)
-			.contentShape(Rectangle())
-		}
-		.buttonStyle(.plain)
-		.focusable(false)
-		.onHover { hovering in
-			isHovered = hovering
-		}
-		.help(direction.accessibilityLabel)
-		.accessibilityLabel(direction.accessibilityLabel)
-	}
-
-	private var edgeTint: Color {
-		PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.68 : 0.58)
-	}
-
-	private var edgeHoverFill: Color {
-		PanelPalette.secondaryText(colorScheme).opacity(colorScheme == .dark ? 0.09 : 0.065)
-	}
-}
-
 private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
-	let scrollProxy: AccountRunStripScrollProxy
+	let placementStore: AccountRunStripPlacementStore
 	let onMetricsChange: (AccountRunStripMetrics) -> Void
 	@ViewBuilder let content: () -> Content
 
@@ -1107,8 +1056,10 @@ private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 	}
 
 	func makeNSView(context: Context) -> AccountRunStripContainerView<Content> {
-		let view = AccountRunStripContainerView(rootView: content())
-		scrollProxy.attach(view)
+		let view = AccountRunStripContainerView(
+			rootView: content(),
+			placementStore: placementStore
+		)
 		view.onMetricsChange = { metrics in
 			context.coordinator.publish(metrics)
 		}
@@ -1118,7 +1069,6 @@ private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 
 	func updateNSView(_ nsView: AccountRunStripContainerView<Content>, context: Context) {
 		context.coordinator.onMetricsChange = onMetricsChange
-		scrollProxy.attach(nsView)
 		nsView.onMetricsChange = { metrics in
 			context.coordinator.publish(metrics)
 		}
@@ -1147,14 +1097,28 @@ private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 	}
 }
 
-private final class AccountRunStripContainerView<Content: View>: NSView, AccountRunStripScrollable {
-	private let scrollView = NSScrollView()
+private final class AccountRunStripNSScrollView: NSScrollView {
+	var onScrollWheelEvent: ((NSEvent) -> Bool)?
+
+	override func scrollWheel(with event: NSEvent) {
+		if onScrollWheelEvent?(event) == true {
+			return
+		}
+
+		super.scrollWheel(with: event)
+	}
+}
+
+private final class AccountRunStripContainerView<Content: View>: NSView {
+	private let scrollView = AccountRunStripNSScrollView()
 	private let notifyingClipView = AccountRunStripClipView()
 	private let hostingView: AccountRunDragHostingView<Content>
+	private let placementStore: AccountRunStripPlacementStore
 	private var measuredContentWidth: CGFloat = 0
 	var onMetricsChange: ((AccountRunStripMetrics) -> Void)?
 
-	init(rootView: Content) {
+	init(rootView: Content, placementStore: AccountRunStripPlacementStore) {
+		self.placementStore = placementStore
 		hostingView = AccountRunDragHostingView(rootView: rootView)
 
 		super.init(frame: .zero)
@@ -1168,6 +1132,9 @@ private final class AccountRunStripContainerView<Content: View>: NSView, Account
 		scrollView.scrollerStyle = .overlay
 		scrollView.horizontalScrollElasticity = .none
 		scrollView.verticalScrollElasticity = .none
+		scrollView.onScrollWheelEvent = { [weak self] event in
+			self?.handleScrollWheel(event) ?? false
+		}
 		notifyingClipView.onBoundsChange = { [weak self] in
 			self?.publishMetrics()
 		}
@@ -1175,6 +1142,9 @@ private final class AccountRunStripContainerView<Content: View>: NSView, Account
 		hostingView.dragScrollView = scrollView
 		hostingView.onDragScroll = { [weak self] in
 			self?.publishMetrics()
+		}
+		hostingView.onClick = { [weak self] point in
+			self?.scrollClickedRunToLeadingEdge(at: point)
 		}
 
 		scrollView.documentView = hostingView
@@ -1192,13 +1162,6 @@ private final class AccountRunStripContainerView<Content: View>: NSView, Account
 
 	var clipView: NSClipView {
 		scrollView.contentView
-	}
-
-	var pageScrollDistance: CGFloat {
-		max(
-			AccountRunStripLayout.minimumScrollDistance,
-			clipView.bounds.width * AccountRunStripLayout.scrollPageFraction
-		)
 	}
 
 	var currentMetrics: AccountRunStripMetrics {
@@ -1231,8 +1194,50 @@ private final class AccountRunStripContainerView<Content: View>: NSView, Account
 		scroll(to: clipView.bounds.origin.x + distance)
 	}
 
-	func scroll(_ direction: AccountRunStripScrollDirection) {
-		scroll(by: direction.scrollMultiplier * pageScrollDistance)
+	private func handleScrollWheel(_ event: NSEvent) -> Bool {
+		layoutSubtreeIfNeeded()
+
+		guard measuredContentWidth > clipView.bounds.width + 1 else {
+			return false
+		}
+
+		let distance = wheelScrollDistance(from: event)
+		guard abs(distance) > AccountRunStripLayout.wheelMinimumDelta else {
+			return false
+		}
+
+		let previousOffset = clipView.bounds.origin.x
+		scroll(by: distance)
+
+		return previousOffset != clipView.bounds.origin.x
+	}
+
+	private func scrollClickedRunToLeadingEdge(at point: NSPoint) {
+		layoutSubtreeIfNeeded()
+
+		guard
+			measuredContentWidth > clipView.bounds.width + 1,
+			let runID = placementStore.runID(containing: point),
+			let frame = placementStore.frame(for: runID)
+		else {
+			return
+		}
+
+		scroll(to: frame.minX, animated: true)
+	}
+
+	private func wheelScrollDistance(from event: NSEvent) -> CGFloat {
+		let rawDeltaX = event.scrollingDeltaX == 0 ? event.deltaX : event.scrollingDeltaX
+		let rawDeltaY = event.scrollingDeltaY == 0 ? event.deltaY : event.scrollingDeltaY
+		let deltaX = scaledWheelDelta(rawDeltaX, isPrecise: event.hasPreciseScrollingDeltas)
+		let deltaY = scaledWheelDelta(rawDeltaY, isPrecise: event.hasPreciseScrollingDeltas)
+		let dominantDelta = abs(deltaX) >= abs(deltaY) ? deltaX : deltaY
+
+		return -dominantDelta
+	}
+
+	private func scaledWheelDelta(_ delta: CGFloat, isPrecise: Bool) -> CGFloat {
+		isPrecise ? delta : delta * AccountRunStripLayout.wheelLineDeltaScale
 	}
 
 	private func updateDocumentFrame() {
@@ -1261,13 +1266,31 @@ private final class AccountRunStripContainerView<Content: View>: NSView, Account
 		scroll(to: clampedOffset)
 	}
 
-	private func scroll(to offset: CGFloat) {
+	private func scroll(to offset: CGFloat, animated: Bool = false) {
 		layoutSubtreeIfNeeded()
 
 		let maxOffset = max(0, measuredContentWidth - clipView.bounds.width)
 		let clampedOffset = min(max(0, offset), maxOffset)
+		guard clampedOffset != clipView.bounds.origin.x else {
+			return
+		}
+
+		if animated {
+			animateScroll(to: clampedOffset)
+			return
+		}
 
 		clipView.scroll(to: NSPoint(x: clampedOffset, y: clipView.bounds.origin.y))
+		scrollView.reflectScrolledClipView(clipView)
+		publishMetrics()
+	}
+
+	private func animateScroll(to offset: CGFloat) {
+		NSAnimationContext.runAnimationGroup { context in
+			context.duration = AccountRunStripLayout.clickScrollDuration
+			context.allowsImplicitAnimation = true
+			clipView.animator().setBoundsOrigin(NSPoint(x: offset, y: clipView.bounds.origin.y))
+		}
 		scrollView.reflectScrolledClipView(clipView)
 		publishMetrics()
 	}
@@ -1314,6 +1337,7 @@ private final class AccountRunStripClipView: NSClipView {
 private final class AccountRunDragHostingView<Content: View>: NSHostingView<Content> {
 	weak var dragScrollView: NSScrollView?
 	var onDragScroll: (() -> Void)?
+	var onClick: ((NSPoint) -> Void)?
 	private var dragStartPoint: NSPoint?
 	private var dragStartOffset: CGFloat = 0
 	private var isDraggingContent = false
@@ -1363,6 +1387,10 @@ private final class AccountRunDragHostingView<Content: View>: NSHostingView<Cont
 		guard canDrag else {
 			super.mouseUp(with: event)
 			return
+		}
+
+		if isDraggingContent == false {
+			onClick?(convert(event.locationInWindow, from: nil))
 		}
 
 		dragStartPoint = nil
