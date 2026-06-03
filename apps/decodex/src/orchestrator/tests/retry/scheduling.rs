@@ -98,6 +98,7 @@ fn retry_run_dry_run_enforces_active_ownership() {
 			dispatch_mode: IssueDispatchMode::Retry,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
+		allow_unverified_codex: false,
 		})
 		.expect("retry run should succeed");
 
@@ -130,6 +131,7 @@ fn targeted_run_dry_run_accepts_startable_issue_with_normal_dispatch() {
 		dispatch_mode: IssueDispatchMode::Normal,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
+	allow_unverified_codex: false,
 	})
 	.expect("targeted run should succeed");
 
@@ -166,6 +168,7 @@ fn retry_run_dry_run_rejects_terminal_guarded_issue_without_attention_label() {
 		dispatch_mode: IssueDispatchMode::Retry,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
+	allow_unverified_codex: false,
 	})
 	.expect("retry run should succeed");
 
@@ -1371,6 +1374,7 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 				review_state,
 			)]),
 			recoverable_worktree_skip_cache: None,
+		allow_unverified_codex: false,
 		},
 	);
 
@@ -1489,6 +1493,7 @@ fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 				),
 			)]),
 			recoverable_worktree_skip_cache: None,
+		allow_unverified_codex: false,
 		},
 	)
 	.expect("daemon tick should not fail on stale terminal worktree state");
