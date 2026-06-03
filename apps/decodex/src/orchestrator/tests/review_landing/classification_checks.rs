@@ -1,4 +1,6 @@
 use orchestrator::PullRequestReadbackFailure;
+use orchestrator::PostReviewReadbackDegradation;
+use orchestrator::PullRequestReadbackRootCause;
 
 #[test]
 fn classify_post_review_lane_blocks_completed_issue_until_pull_request_is_merged() {
@@ -452,6 +454,63 @@ fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_handof
 		classification.readback_root_cause.as_deref(),
 		Some("github_api_read_failed")
 	);
+}
+
+#[test]
+fn post_review_readback_degradation_helper_preserves_warning_and_typed_cause() {
+	let marker_head_oid = "1111111111111111111111111111111111111111";
+	let review_head_oid = "2222222222222222222222222222222222222222";
+	let pr_url = "https://github.com/hack-ink/decodex/pull/174";
+	let review_handoff = sample_review_handoff_marker("x/pubfi-pub-101", pr_url, marker_head_oid);
+	let pull_request_readback = PostReviewReadbackDegradation::pull_request_state_from_handoff(
+		&review_handoff,
+		PullRequestReadbackRootCause::GithubApiReadFailed,
+	)
+	.wait_for_review_classification(None);
+
+	assert_eq!(pull_request_readback.decision, PostReviewLaneDecision::WaitForReview);
+	assert_eq!(pull_request_readback.reason, "pull_request_state_read_failed");
+	assert_eq!(
+		pull_request_readback.readback_warning.as_deref(),
+		Some("pull_request_state_read_failed")
+	);
+	assert_eq!(
+		pull_request_readback.readback_root_cause.as_deref(),
+		Some("github_api_read_failed")
+	);
+	assert_eq!(pull_request_readback.pr_url.as_deref(), Some(pr_url));
+	assert_eq!(pull_request_readback.pr_head_sha.as_deref(), Some(marker_head_oid));
+	assert_eq!(pull_request_readback.pr_state, None);
+
+	let tracker_readback = PostReviewReadbackDegradation::tracker_issue_from_handoff(
+		&review_handoff,
+	)
+	.wait_for_review_classification(Some(sample_pull_request_review_state(
+		pr_url,
+		"x/pubfi-pub-101",
+		review_head_oid,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		2,
+	)));
+
+	assert_eq!(tracker_readback.decision, PostReviewLaneDecision::WaitForReview);
+	assert_eq!(tracker_readback.reason, "tracker_issue_readback_degraded");
+	assert_eq!(
+		tracker_readback.readback_warning.as_deref(),
+		Some("tracker_issue_readback_degraded")
+	);
+	assert_eq!(
+		tracker_readback.readback_root_cause.as_deref(),
+		Some("tracker_issue_readback_failed")
+	);
+	assert_eq!(tracker_readback.pr_head_sha.as_deref(), Some(review_head_oid));
+	assert_eq!(tracker_readback.pr_state.as_deref(), Some("OPEN"));
+	assert_eq!(tracker_readback.review_decision.as_deref(), Some("APPROVED"));
+	assert_eq!(tracker_readback.check_state.as_deref(), Some("SUCCESS"));
+	assert_eq!(tracker_readback.unresolved_review_threads, Some(2));
 }
 
 #[test]

@@ -61,6 +61,74 @@ enum TrackerObserverOutcome {
 	RateLimited(TrackerConnectorBackoff),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PostReviewReadbackDegradation<'a> {
+	reason: &'a str,
+	root_cause: PullRequestReadbackRootCause,
+	pr_url: &'a str,
+	pr_head_sha: &'a str,
+}
+impl<'a> PostReviewReadbackDegradation<'a> {
+	fn tracker_issue_from_handoff(review_handoff: &'a ReviewHandoffMarker) -> Self {
+		Self {
+			reason: "tracker_issue_readback_degraded",
+			root_cause: PullRequestReadbackRootCause::TrackerIssueReadbackFailed,
+			pr_url: review_handoff.pr_url(),
+			pr_head_sha: review_handoff.pr_head_oid(),
+		}
+	}
+
+	fn pull_request_state_from_handoff(
+		review_handoff: &'a ReviewHandoffMarker,
+		root_cause: PullRequestReadbackRootCause,
+	) -> Self {
+		Self {
+			reason: "pull_request_state_read_failed",
+			root_cause,
+			pr_url: review_handoff.pr_url(),
+			pr_head_sha: review_handoff.pr_head_oid(),
+		}
+	}
+
+	fn wait_for_review_classification(
+		self,
+		review_state: Option<PullRequestReviewState>,
+	) -> PostReviewLaneClassification {
+		let (
+			pr_head_sha,
+			pr_state,
+			review_decision,
+			mergeable,
+			check_state,
+			unresolved_review_threads,
+		) = match review_state {
+			Some(review_state) => (
+				Some(review_state.head_ref_oid),
+				Some(review_state.state),
+				review_state.review_decision,
+				Some(review_state.mergeable),
+				review_state.status_check_rollup_state,
+				Some(review_state.unresolved_review_threads),
+			),
+			None => (Some(self.pr_head_sha.to_owned()), None, None, None, None, None),
+		};
+
+		PostReviewLaneClassification {
+			decision: PostReviewLaneDecision::WaitForReview,
+			reason: self.reason.to_owned(),
+			pr_url: Some(self.pr_url.to_owned()),
+			pr_head_sha,
+			pr_state,
+			review_decision,
+			mergeable,
+			check_state,
+			unresolved_review_threads,
+			readback_warning: Some(self.reason.to_owned()),
+			readback_root_cause: Some(self.root_cause.as_str().to_owned()),
+		}
+	}
+}
+
 struct PostReviewOrchestrationStatus {
 	phase: ReviewOrchestrationPhase,
 	request_acknowledged: bool,
@@ -2370,60 +2438,48 @@ where
 		let review_state = review_state_inspector
 			.inspect_review_state(worktree.worktree_path(), review_handoff.pr_url())
 			.ok();
-		let readback_root_cause = Some(
-			PullRequestReadbackRootCause::TrackerIssueReadbackFailed
-				.as_str()
-				.to_owned(),
-		);
-		let (
-			pr_head_sha,
-			pr_state,
-			review_decision,
-			mergeable,
-			check_state,
-			unresolved_review_threads,
-		) = match review_state {
-			Some(review_state) => (
-				Some(review_state.head_ref_oid),
-				Some(review_state.state),
-				review_state.review_decision,
-				Some(review_state.mergeable),
-				review_state.status_check_rollup_state,
-				Some(review_state.unresolved_review_threads),
-			),
-			None => (
-				Some(review_handoff.pr_head_oid().to_owned()),
-				None,
-				None,
-				None,
-				None,
-				None,
-			),
-		};
+		let classification = PostReviewReadbackDegradation::tracker_issue_from_handoff(
+			&review_handoff,
+		)
+		.wait_for_review_classification(review_state);
 
-		lanes.push(OperatorPostReviewLaneStatus {
-			issue_id: worktree.issue_id().to_owned(),
+		lanes.push(degraded_post_review_lane_status_from_classification(
+			project,
+			&worktree,
 			issue_identifier,
-			issue_state: String::from("tracker_readback_degraded"),
-			branch_name: worktree.branch_name().to_owned(),
-			worktree_path: relative_worktree_path_for_path(project, worktree.worktree_path()),
-			classification: String::from("wait_for_review"),
-			reason: String::from("tracker_issue_readback_degraded"),
-			pr_url: Some(review_handoff.pr_url().to_owned()),
-			pr_head_sha,
-			pr_state,
-			review_decision,
-			mergeable,
-			check_state,
-			unresolved_review_threads,
-			readback_warning: Some(String::from("tracker_issue_readback_degraded")),
-			readback_root_cause,
-		});
+			classification,
+		));
 	}
 
 	lanes.sort_by(|left, right| left.issue_identifier.cmp(&right.issue_identifier));
 
 	Ok(lanes)
+}
+
+fn degraded_post_review_lane_status_from_classification(
+	project: &ServiceConfig,
+	worktree: &WorktreeMapping,
+	issue_identifier: String,
+	classification: PostReviewLaneClassification,
+) -> OperatorPostReviewLaneStatus {
+	OperatorPostReviewLaneStatus {
+		issue_id: worktree.issue_id().to_owned(),
+		issue_identifier,
+		issue_state: String::from("tracker_readback_degraded"),
+		branch_name: worktree.branch_name().to_owned(),
+		worktree_path: relative_worktree_path_for_path(project, worktree.worktree_path()),
+		classification: classification.decision.as_str().to_owned(),
+		reason: classification.reason,
+		pr_url: classification.pr_url,
+		pr_head_sha: classification.pr_head_sha,
+		pr_state: classification.pr_state,
+		review_decision: classification.review_decision,
+		mergeable: classification.mergeable,
+		check_state: classification.check_state,
+		unresolved_review_threads: classification.unresolved_review_threads,
+		readback_warning: classification.readback_warning,
+		readback_root_cause: classification.readback_root_cause,
+	}
 }
 
 fn retained_issue_identifier_from_worktree(worktree: &WorktreeMapping) -> String {
@@ -3163,7 +3219,6 @@ where
 				return Ok(PostReviewLaneStateLoad::Classification(
 					readback_degraded_post_review_lane_from_handoff(
 						review_handoff,
-						"pull_request_state_read_failed",
 						error.root_cause(),
 					),
 				));
@@ -3563,22 +3618,13 @@ fn blocked_post_review_lane_from_handoff(
 
 fn readback_degraded_post_review_lane_from_handoff(
 	review_handoff: &ReviewHandoffMarker,
-	reason: &str,
 	root_cause: PullRequestReadbackRootCause,
 ) -> PostReviewLaneClassification {
-	PostReviewLaneClassification {
-		decision: PostReviewLaneDecision::WaitForReview,
-		reason: reason.to_owned(),
-		pr_url: Some(review_handoff.pr_url().to_owned()),
-		pr_head_sha: Some(review_handoff.pr_head_oid().to_owned()),
-		pr_state: None,
-		review_decision: None,
-		mergeable: None,
-		check_state: None,
-		unresolved_review_threads: None,
-		readback_warning: Some(reason.to_owned()),
-		readback_root_cause: Some(root_cause.as_str().to_owned()),
-	}
+	PostReviewReadbackDegradation::pull_request_state_from_handoff(
+		review_handoff,
+		root_cause,
+	)
+	.wait_for_review_classification(None)
 }
 
 fn blocked_post_review_lane_status(
