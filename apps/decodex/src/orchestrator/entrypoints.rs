@@ -232,6 +232,7 @@ pub(crate) fn print_status(
 	config_path: Option<&Path>,
 	json: bool,
 	limit: usize,
+	live: bool,
 ) -> Result<()> {
 	if limit == 0 {
 		eyre::bail!("`status --limit` must be greater than zero.");
@@ -248,101 +249,16 @@ pub(crate) fn print_status(
 
 	runtime::register_project_config(&state_store, &config_path, true)?;
 
-	if let Some(status) =
-		active_stored_tracker_backoff_status(&state_store, config.service_id())?
-	{
-		let snapshot =
-			build_operator_status_snapshot_for_tracker_backoff(&config, &state_store, limit, &status)?;
-
-		print_operator_status_snapshot(&snapshot, json)?;
-
-		return Ok(());
-	}
-
-	let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
-	let recovered_state = recover_runtime_state_from_tracker_and_worktrees(
-		&tracker,
-		&config,
-		&workflow,
-		&state_store,
-	);
-	let mut snapshot_warnings = Vec::new();
-
-	match recovered_state {
-		Ok(recovered_state) =>
-			hydrate_status_snapshot_state(&config, &state_store, recovered_state)?,
-		Err(error) => {
-			if let Some(backoff) =
-				tracker_rate_limit_backoff(&error, Instant::now(), "runtime_recovery")
-			{
-				let status = backoff.to_operator_status(
-					config.service_id(),
-					OffsetDateTime::now_utc().unix_timestamp(),
-				);
-
-				persist_tracker_backoff_state(&state_store, config.service_id(), &backoff);
-
-				let snapshot = build_operator_status_snapshot_for_tracker_backoff(
-					&config,
-					&state_store,
-					limit,
-					&status,
-				)?;
-
-				print_operator_status_snapshot(&snapshot, json)?;
-
-				return Ok(());
-			}
-
-			let warning = runtime_recovery_warning("runtime_recovery_unavailable", &error);
-
-			tracing::warn!(
-				recovery_error_class = runtime_recovery_error_class(&error),
-				"Skipped runtime recovery for operator status; sensitive runtime details were withheld."
-			);
-
-			snapshot_warnings.push(warning);
-		},
-	}
-
-	let mut snapshot = match build_live_operator_status_snapshot(
-		&tracker,
-		&config,
-		&workflow,
-		&state_store,
-		limit,
-	) {
-		Ok(snapshot) => snapshot,
-		Err(error) => {
-			let Some(backoff) =
-				tracker_rate_limit_backoff(&error, Instant::now(), "operator_status_refresh")
-			else {
-				return Err(error);
-			};
-			let status = backoff.to_operator_status(
-				config.service_id(),
-				OffsetDateTime::now_utc().unix_timestamp(),
-			);
-
-			persist_tracker_backoff_state(&state_store, config.service_id(), &backoff);
-
-			build_operator_status_snapshot_for_tracker_backoff(&config, &state_store, limit, &status)?
-		},
+	let snapshot = if live {
+		build_live_status_command_snapshot(&config, &workflow, &state_store, limit)?
+	} else {
+		build_operator_state_snapshot_without_live_observers(
+			&config,
+			&workflow,
+			&state_store,
+			limit,
+		)?
 	};
-
-	for warning in snapshot_warnings {
-		add_operator_snapshot_warning(&mut snapshot, &warning);
-	}
-
-	refresh_operator_project_summary(&mut snapshot);
-
-	if !snapshot
-		.connector_backoffs
-		.iter()
-		.any(|backoff| backoff.connector == "linear")
-	{
-		clear_tracker_backoff_state_best_effort(&state_store, config.service_id());
-	}
 
 	print_operator_status_snapshot(&snapshot, json)?;
 
@@ -438,6 +354,101 @@ pub(crate) fn print_private_evidence(request: EvidenceRequest<'_>) -> Result<()>
 	}
 
 	Ok(())
+}
+
+fn build_live_status_command_snapshot(
+	config: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	limit: usize,
+) -> Result<OperatorStatusSnapshot> {
+	if let Some(status) = active_stored_tracker_backoff_status(state_store, config.service_id())? {
+		return build_operator_status_snapshot_for_tracker_backoff(
+			config,
+			state_store,
+			limit,
+			&status,
+		);
+	}
+
+	let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
+	let recovered_state =
+		recover_runtime_state_from_tracker_and_worktrees(&tracker, config, workflow, state_store);
+	let mut snapshot_warnings = Vec::new();
+
+	match recovered_state {
+		Ok(recovered_state) =>
+			hydrate_status_snapshot_state(config, state_store, recovered_state)?,
+		Err(error) => {
+			if let Some(backoff) =
+				tracker_rate_limit_backoff(&error, Instant::now(), "runtime_recovery")
+			{
+				let status = backoff.to_operator_status(
+					config.service_id(),
+					OffsetDateTime::now_utc().unix_timestamp(),
+				);
+
+				persist_tracker_backoff_state(state_store, config.service_id(), &backoff);
+
+				return build_operator_status_snapshot_for_tracker_backoff(
+					config,
+					state_store,
+					limit,
+					&status,
+				);
+			}
+
+			let warning = runtime_recovery_warning("runtime_recovery_unavailable", &error);
+
+			tracing::warn!(
+				recovery_error_class = runtime_recovery_error_class(&error),
+				"Skipped runtime recovery for operator status; sensitive runtime details were withheld."
+			);
+
+			snapshot_warnings.push(warning);
+		},
+	}
+
+	let mut snapshot = match build_status_command_operator_status_snapshot(
+		&tracker,
+		config,
+		workflow,
+		state_store,
+		limit,
+	) {
+		Ok(snapshot) => snapshot,
+		Err(error) => {
+			let Some(backoff) =
+				tracker_rate_limit_backoff(&error, Instant::now(), "operator_status_refresh")
+			else {
+				return Err(error);
+			};
+			let status = backoff.to_operator_status(
+				config.service_id(),
+				OffsetDateTime::now_utc().unix_timestamp(),
+			);
+
+			persist_tracker_backoff_state(state_store, config.service_id(), &backoff);
+
+			build_operator_status_snapshot_for_tracker_backoff(config, state_store, limit, &status)?
+		},
+	};
+
+	for warning in snapshot_warnings {
+		add_operator_snapshot_warning(&mut snapshot, &warning);
+	}
+
+	refresh_operator_project_summary(&mut snapshot);
+
+	if !snapshot
+		.connector_backoffs
+		.iter()
+		.any(|backoff| backoff.connector == "linear")
+	{
+		clear_tracker_backoff_state_best_effort(state_store, config.service_id());
+	}
+
+	Ok(snapshot)
 }
 
 fn run_queue_explain(

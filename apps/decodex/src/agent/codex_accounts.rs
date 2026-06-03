@@ -9,6 +9,7 @@ use std::{
 	path::{Path, PathBuf},
 	process,
 	sync::{Mutex, OnceLock},
+	thread,
 	time::Duration,
 };
 
@@ -32,6 +33,7 @@ const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const TOKEN_REFRESH_INTERVAL_SECONDS: i64 = 8 * 24 * 60 * 60;
 const ACCOUNT_ACTIVITY_CACHE_TTL_SECONDS: i64 = 60;
+const ACCOUNT_ACTIVITY_PROBE_MAX_CONCURRENCY: usize = 8;
 
 static ACCOUNT_ACTIVITY_CACHE: OnceLock<Mutex<Option<AccountActivityCacheEntry>>> = OnceLock::new();
 
@@ -462,86 +464,33 @@ impl CodexAccountPool {
 		records: &mut [AccountPoolRecord],
 	) -> crate::prelude::Result<Vec<CodexAccountActivitySummary>> {
 		let now = OffsetDateTime::now_utc().unix_timestamp();
-		let mut summaries = Vec::new();
+		let mut summaries_by_index = vec![None; records.len()];
+		let mut probe_inputs = Vec::new();
 		let mut records_changed = false;
 
-		for record in records.iter_mut() {
+		for (index, record) in records.iter().enumerate() {
 			let Some(configured_summary) = record.configured_activity_summary(now) else {
 				continue;
 			};
 
 			if configured_summary.status != "available" {
-				summaries.push(configured_summary);
+				summaries_by_index[index] = Some(configured_summary);
 
 				continue;
 			}
 
-			let refresh_status = match self.proactive_refresh_record(record, now) {
-				Ok(status) => {
-					if status == RefreshStatus::Succeeded {
-						records_changed = true;
-					}
+			probe_inputs.push(AccountActivityProbeInput { index, record: record.clone() });
+		}
+		for chunk in probe_inputs.chunks(ACCOUNT_ACTIVITY_PROBE_MAX_CONCURRENCY) {
+			let results = self.probe_account_activity_summaries_parallel_chunk(chunk, now)?;
 
-					status.as_str()
-				},
-				Err(error) if error.requires_skip => {
-					summaries.push(record.probe_failed_activity_summary(
-						now,
-						"failed",
-						&error.source,
-					));
+			for result in results {
+				if result.records_changed {
+					records[result.index] = result.record;
+					records_changed = true;
+				}
 
-					continue;
-				},
-				Err(_error) => "failed",
-			};
-
-			match self.probe_record_usage(record) {
-				Ok(usage) => {
-					summaries.push(self.activity_summary_from_usage_probe(
-						record,
-						usage,
-						refresh_status,
-					)?);
-				},
-				Err(error) if error.unauthorized && record.refresh_token().is_some() => {
-					match self.refresh_record(record) {
-						Ok(()) => {
-							records_changed = true;
-
-							match self.probe_record_usage(record) {
-								Ok(usage) => {
-									summaries.push(self.activity_summary_from_usage_probe(
-										record,
-										usage,
-										"succeeded",
-									)?);
-								},
-								Err(retry_error) => {
-									summaries.push(record.probe_failed_activity_summary(
-										now,
-										"failed",
-										&retry_error,
-									));
-								},
-							}
-						},
-						Err(refresh_error) => {
-							summaries.push(record.probe_failed_activity_summary(
-								now,
-								"failed",
-								refresh_error.as_ref(),
-							));
-						},
-					}
-				},
-				Err(error) => {
-					summaries.push(record.probe_failed_activity_summary(
-						now,
-						"probe_failed",
-						&error,
-					));
-				},
+				summaries_by_index[result.index] = Some(result.summary);
 			}
 		}
 
@@ -549,7 +498,83 @@ impl CodexAccountPool {
 			self.save_records(records)?;
 		}
 
-		Ok(summaries)
+		Ok(summaries_by_index.into_iter().flatten().collect())
+	}
+
+	fn probe_account_activity_summaries_parallel_chunk(
+		&self,
+		inputs: &[AccountActivityProbeInput],
+		now: i64,
+	) -> crate::prelude::Result<Vec<AccountActivityProbeResult>> {
+		thread::scope(|scope| {
+			let handles = inputs
+				.iter()
+				.cloned()
+				.map(|input| scope.spawn(move || self.probe_account_activity_record(input, now)))
+				.collect::<Vec<_>>();
+			let mut results = Vec::with_capacity(handles.len());
+
+			for handle in handles {
+				let result = handle
+					.join()
+					.map_err(|_| eyre::eyre!("Codex account usage probe worker panicked."))??;
+
+				results.push(result);
+			}
+
+			Ok(results)
+		})
+	}
+
+	fn probe_account_activity_record(
+		&self,
+		input: AccountActivityProbeInput,
+		now: i64,
+	) -> crate::prelude::Result<AccountActivityProbeResult> {
+		let mut record = input.record;
+		let mut records_changed = false;
+		let refresh_status = match self.proactive_refresh_record(&mut record, now) {
+			Ok(status) => {
+				if status == RefreshStatus::Succeeded {
+					records_changed = true;
+				}
+
+				status.as_str()
+			},
+			Err(error) if error.requires_skip => {
+				let summary = record.probe_failed_activity_summary(now, "failed", &error.source);
+
+				return Ok(AccountActivityProbeResult {
+					index: input.index,
+					record,
+					summary,
+					records_changed,
+				});
+			},
+			Err(_error) => "failed",
+		};
+		let summary = match self.probe_record_usage(&record) {
+			Ok(usage) => self.activity_summary_from_usage_probe(&record, usage, refresh_status)?,
+			Err(error) if error.unauthorized && record.refresh_token().is_some() => {
+				match self.refresh_record(&mut record) {
+					Ok(()) => {
+						records_changed = true;
+
+						match self.probe_record_usage(&record) {
+							Ok(usage) =>
+								self.activity_summary_from_usage_probe(&record, usage, "succeeded")?,
+							Err(retry_error) =>
+								record.probe_failed_activity_summary(now, "failed", &retry_error),
+						}
+					},
+					Err(refresh_error) =>
+						record.probe_failed_activity_summary(now, "failed", refresh_error.as_ref()),
+				}
+			},
+			Err(error) => record.probe_failed_activity_summary(now, "probe_failed", &error),
+		};
+
+		Ok(AccountActivityProbeResult { index: input.index, record, summary, records_changed })
 	}
 
 	fn activity_summary_from_usage_probe(
@@ -890,6 +915,19 @@ struct AccountActivityCacheEntry {
 	key: AccountActivityCacheKey,
 	checked_at_unix_epoch: i64,
 	summaries: Vec<CodexAccountActivitySummary>,
+}
+
+#[derive(Clone)]
+struct AccountActivityProbeInput {
+	index: usize,
+	record: AccountPoolRecord,
+}
+
+struct AccountActivityProbeResult {
+	index: usize,
+	record: AccountPoolRecord,
+	summary: CodexAccountActivitySummary,
+	records_changed: bool,
 }
 
 struct AccountPoolFileLock {
