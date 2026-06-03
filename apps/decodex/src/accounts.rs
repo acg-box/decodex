@@ -724,6 +724,12 @@ impl AccountSummary {
 			window_seconds: basis.window_seconds,
 			checked_at_unix_epoch,
 			resets_at_unix_epoch: basis.resets_at_unix_epoch,
+			primary_window_seconds: self.primary_window_seconds,
+			primary_remaining_percent: self.primary_remaining_percent,
+			primary_resets_at_unix_epoch: self.primary_resets_at_unix_epoch,
+			secondary_window_seconds: self.secondary_window_seconds,
+			secondary_remaining_percent: self.secondary_remaining_percent,
+			secondary_resets_at_unix_epoch: self.secondary_resets_at_unix_epoch,
 		})
 	}
 
@@ -793,6 +799,18 @@ struct AccountUsageHistoryRecord {
 	checked_at_unix_epoch: i64,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	resets_at_unix_epoch: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	primary_window_seconds: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	primary_remaining_percent: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	primary_resets_at_unix_epoch: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	secondary_window_seconds: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	secondary_remaining_percent: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	secondary_resets_at_unix_epoch: Option<i64>,
 }
 impl AccountUsageHistoryRecord {
 	fn daily_summary(&self) -> AccountUsageDailySummary {
@@ -825,6 +843,58 @@ impl AccountUsageHistoryRecord {
 					.as_deref()
 					.zip(other.email.as_deref())
 					.is_some_and(|(left, right)| left == right))
+	}
+
+	fn apply_missing_usage_windows(&self, account: &mut AccountSummary, now_unix_epoch: i64) {
+		self.apply_missing_primary_usage_window(account, now_unix_epoch);
+		self.apply_missing_secondary_usage_window(account, now_unix_epoch);
+	}
+
+	fn apply_missing_primary_usage_window(
+		&self,
+		account: &mut AccountSummary,
+		now_unix_epoch: i64,
+	) {
+		if has_usage_window(account.primary_window_seconds, account.primary_remaining_percent)
+			|| !has_current_usage_window(
+				self.primary_window_seconds,
+				self.primary_remaining_percent,
+				self.primary_resets_at_unix_epoch,
+				now_unix_epoch,
+			) {
+			return;
+		}
+
+		account.primary_window_seconds = self.primary_window_seconds;
+		account.primary_remaining_percent = self.primary_remaining_percent;
+		account.primary_resets_at_unix_epoch = self.primary_resets_at_unix_epoch;
+	}
+
+	fn apply_missing_secondary_usage_window(
+		&self,
+		account: &mut AccountSummary,
+		now_unix_epoch: i64,
+	) {
+		let window_seconds = self.secondary_window_seconds.or(self.window_seconds);
+		let remaining_percent = self
+			.secondary_remaining_percent
+			.or_else(|| Some(remaining_percent_from_used(self.used_percent)));
+		let resets_at_unix_epoch =
+			self.secondary_resets_at_unix_epoch.or(self.resets_at_unix_epoch);
+
+		if has_usage_window(account.secondary_window_seconds, account.secondary_remaining_percent)
+			|| !has_current_usage_window(
+				window_seconds,
+				remaining_percent,
+				resets_at_unix_epoch,
+				now_unix_epoch,
+			) {
+			return;
+		}
+
+		account.secondary_window_seconds = window_seconds;
+		account.secondary_remaining_percent = remaining_percent;
+		account.secondary_resets_at_unix_epoch = resets_at_unix_epoch;
 	}
 }
 
@@ -892,6 +962,8 @@ impl AccountUsageHistory {
 	}
 
 	fn apply_to_accounts(&self, accounts: &mut [AccountSummary]) {
+		let now = OffsetDateTime::now_utc().unix_timestamp();
+
 		for account in accounts {
 			let matching_records = self
 				.records
@@ -899,15 +971,18 @@ impl AccountUsageHistory {
 				.filter(|record| record.matches_account(account))
 				.collect::<Vec<_>>();
 
-			if account.seven_day_used_percent.is_none()
-				&& let Some(latest) =
-					matching_records.iter().max_by_key(|record| record.checked_at_unix_epoch)
+			if let Some(latest) =
+				matching_records.iter().max_by_key(|record| record.checked_at_unix_epoch)
 			{
-				account.seven_day_used_percent = Some(latest.used_percent);
-				account.capacity_multiplier =
-					normalized_account_capacity_multiplier(latest.capacity_multiplier);
-				account.seven_day_daily_average_percent =
-					Some(latest.used_percent as f64 / USAGE_ESTIMATE_WINDOW_DAYS as f64);
+				if account.seven_day_used_percent.is_none() {
+					account.seven_day_used_percent = Some(latest.used_percent);
+					account.capacity_multiplier =
+						normalized_account_capacity_multiplier(latest.capacity_multiplier);
+					account.seven_day_daily_average_percent =
+						Some(latest.used_percent as f64 / USAGE_ESTIMATE_WINDOW_DAYS as f64);
+				}
+
+				latest.apply_missing_usage_windows(account, now);
 			}
 
 			account.usage_records =
@@ -1791,8 +1866,26 @@ fn is_seven_day_usage_window(window_seconds: i64) -> bool {
 		.is_some_and(|delta| delta.abs() <= 3_600)
 }
 
+fn has_usage_window(window_seconds: Option<i64>, remaining_percent: Option<i64>) -> bool {
+	matches!(window_seconds, Some(seconds) if seconds > 0) && remaining_percent.is_some()
+}
+
+fn has_current_usage_window(
+	window_seconds: Option<i64>,
+	remaining_percent: Option<i64>,
+	resets_at_unix_epoch: Option<i64>,
+	now_unix_epoch: i64,
+) -> bool {
+	has_usage_window(window_seconds, remaining_percent)
+		&& resets_at_unix_epoch.is_some_and(|reset| reset > now_unix_epoch)
+}
+
 fn used_percent_from_remaining(remaining_percent: i64) -> i64 {
 	100_i64.saturating_sub(remaining_percent).clamp(0, 100)
+}
+
+fn remaining_percent_from_used(used_percent: i64) -> i64 {
+	100_i64.saturating_sub(used_percent).clamp(0, 100)
 }
 
 fn percent_ratio(numerator: i64, denominator: i64) -> f64 {
@@ -2339,6 +2432,73 @@ mod tests {
 		assert_eq!(response.accounts[0].usage_records.len(), 2);
 		assert_eq!(estimate.account_estimate_count, 1);
 		assert_eq!(estimate.total_used_percent, 63);
+	}
+
+	#[test]
+	fn usage_history_preserves_last_good_windows_across_placeholder_refresh() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let store = AccountStore::new(
+			temp_dir.path().join("accounts.jsonl"),
+			temp_dir.path().join("config.toml"),
+		);
+		let now = time::OffsetDateTime::now_utc().unix_timestamp();
+
+		store
+			.save_records(&[account_record(
+				"copy@example.com",
+				"acct_123456",
+				"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+				"refresh-secret",
+			)])
+			.expect("records should save");
+
+		let good_summary = CodexAccountActivitySummary {
+			account_fingerprint: String::from("...123456"),
+			email: Some(String::from("copy@example.com")),
+			plan_type: Some(String::from("pro")),
+			status: String::from("available"),
+			refresh_status: String::from("not_needed"),
+			checked_at_unix_epoch: Some(now),
+			primary_window_seconds: Some(18_000),
+			primary_remaining_percent: Some(72),
+			primary_resets_at_unix_epoch: Some(now + 18_000),
+			secondary_window_seconds: Some(604_800),
+			secondary_remaining_percent: Some(91),
+			secondary_resets_at_unix_epoch: Some(now + 604_800),
+			..CodexAccountActivitySummary::default()
+		};
+		let mut response = store.list().expect("account list should load");
+
+		response.apply_usage_summaries(&[good_summary]);
+		response.refresh_usage_records(&store.accounts_path).expect("usage history should refresh");
+
+		let degraded_summary = CodexAccountActivitySummary {
+			account_fingerprint: String::from("...123456"),
+			email: Some(String::from("copy@example.com")),
+			plan_type: Some(String::from("pro")),
+			status: String::from("available"),
+			refresh_status: String::from("not_needed"),
+			checked_at_unix_epoch: Some(now + 60),
+			profile_lifetime_tokens: Some(47_200_000_000),
+			..CodexAccountActivitySummary::default()
+		};
+		let mut degraded_response = store.list().expect("account list should reload");
+
+		degraded_response.apply_usage_summaries(&[degraded_summary]);
+		degraded_response
+			.refresh_usage_records(&store.accounts_path)
+			.expect("usage history should restore usable windows");
+
+		let account = &degraded_response.accounts[0];
+
+		assert_eq!(account.primary_window_seconds, Some(18_000));
+		assert_eq!(account.primary_remaining_percent, Some(72));
+		assert_eq!(account.primary_resets_at_unix_epoch, Some(now + 18_000));
+		assert_eq!(account.secondary_window_seconds, Some(604_800));
+		assert_eq!(account.secondary_remaining_percent, Some(91));
+		assert_eq!(account.secondary_resets_at_unix_epoch, Some(now + 604_800));
+		assert_eq!(account.seven_day_used_percent, Some(9));
+		assert_eq!(account.profile_lifetime_tokens, Some(47_200_000_000));
 	}
 
 	fn account_record(
