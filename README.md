@@ -121,6 +121,9 @@ cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8912
 
 Project-scoped commands accept `--config <PROJECT_DIR>` after the subcommand when the
 operator wants to override registry-based project resolution for that command.
+Use `--allow-unverified-codex` on `run`, `serve`, or `probe` only when deliberately
+dogfooding a Codex build outside the locally verified app-server range; the default
+guard remains fail-closed.
 `decodex serve` uses hardcoded scheduler cadences: the local control-plane loop
 publishes snapshots every 15 seconds, and Linear-backed queue/status scans run at
 most every 5 minutes per project unless an operator or agent requests an explicit

@@ -83,6 +83,11 @@ compatibility evidence, not the current upgrade target.
 runs after the bounded capability preflight and before `thread/start` or
 `thread/resume`; an app-server identity outside the locally verified list is a
 pre-dispatch app-server preflight blocker rather than a promptable agent turn.
+Operators may pass `--allow-unverified-codex` to `decodex run`, `decodex serve`, or
+`decodex probe` when deliberately dogfooding a development Codex build. This changes
+only the unsupported compatibility identity from a blocker to a warning with
+`compatibility=unverified_allowed`; all other capability preflight blockers remain
+fail-closed.
 
 Current upstream Codex signals are beyond the local support claim whenever they are
 newer than the latest locally probed version, or when checked-in Radar queue entries

@@ -185,6 +185,20 @@ impl AppServerCapabilityPreflightReport {
 		});
 	}
 
+	fn push_warning(
+		&mut self,
+		name: &'static str,
+		summary: impl Into<String>,
+		details: BTreeMap<String, String>,
+	) {
+		self.checks.push(AppServerCapabilityPreflightCheck {
+			name,
+			status: AppServerCapabilityPreflightStatus::Warning,
+			summary: summary.into(),
+			details,
+		});
+	}
+
 	fn has_blockers(&self) -> bool {
 		self.checks.iter().any(|check| check.status == AppServerCapabilityPreflightStatus::Blocked)
 	}
@@ -203,6 +217,7 @@ impl AppServerCapabilityPreflightReport {
 	pub(crate) fn compatibility_status(&self) -> &'static str {
 		match self.compatibility_check().map(|check| check.status) {
 			Some(AppServerCapabilityPreflightStatus::Ok) => "supported",
+			Some(AppServerCapabilityPreflightStatus::Warning) => "unverified_allowed",
 			Some(AppServerCapabilityPreflightStatus::Blocked) => "unsupported",
 			None => "not_checked",
 		}
@@ -446,6 +461,7 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) max_turns: u32,
 	pub(crate) timeout: Duration,
 	pub(crate) process_env: AppServerProcessEnv,
+	pub(crate) allow_unverified_codex: bool,
 	pub(crate) continuation_user_input: Option<String>,
 	pub(crate) activity_marker_path: Option<PathBuf>,
 	pub(crate) resume_thread_id: Option<String>,
@@ -995,6 +1011,7 @@ enum AppServerDynamicToolFailureKind {
 #[serde(rename_all = "snake_case")]
 enum AppServerCapabilityPreflightStatus {
 	Ok,
+	Warning,
 	Blocked,
 }
 
@@ -1104,7 +1121,10 @@ pub(crate) fn archive_app_server_thread_after_success(
 	result
 }
 
-pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServerRunResult> {
+pub(crate) fn probe_app_server(
+	listen: &str,
+	allow_unverified_codex: bool,
+) -> crate::prelude::Result<AppServerRunResult> {
 	let state_store = StateStore::open_in_memory()?;
 	let probe_tool_handler = ProbeDynamicToolHandler;
 	let result = execute_app_server_run(
@@ -1120,6 +1140,7 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 			max_turns: 1,
 			timeout: PROBE_TIMEOUT,
 			process_env: AppServerProcessEnv::default(),
+			allow_unverified_codex,
 			continuation_user_input: None,
 			activity_marker_path: None,
 			resume_thread_id: None,
@@ -2275,6 +2296,7 @@ fn execute_app_server_run_inner(
 		&mut recorder,
 		&request.cwd,
 		&initialize_response.user_agent,
+		request.allow_unverified_codex,
 	)?;
 
 	write_activity_marker_best_effort_for_request(request);
@@ -2366,6 +2388,7 @@ fn run_app_server_capability_preflight(
 	recorder: &mut RunRecorder<'_>,
 	cwd: &str,
 	user_agent: &str,
+	allow_unverified_codex: bool,
 ) -> crate::prelude::Result<AppServerCapabilityPreflightReport> {
 	let mut report = AppServerCapabilityPreflightReport::new();
 	let config = preflight_request(recorder, &report, "config/read", || {
@@ -2424,7 +2447,7 @@ fn run_app_server_capability_preflight(
 	}
 
 	if !report.has_blockers() {
-		record_app_server_compatibility_guard(&mut report, user_agent);
+		record_app_server_compatibility_guard(&mut report, user_agent, allow_unverified_codex);
 	}
 
 	record_app_server_preflight_report(recorder, &report)?;
@@ -2847,12 +2870,14 @@ fn record_mcp_preflight_degraded(report: &mut AppServerCapabilityPreflightReport
 fn record_app_server_compatibility_guard(
 	report: &mut AppServerCapabilityPreflightReport,
 	user_agent: &str,
+	allow_unverified_codex: bool,
 ) {
 	let codex_cli_version = codex_cli_version_from_user_agent(user_agent);
 	let mut details = BTreeMap::new();
 
 	details.insert(String::from("user_agent"), user_agent.to_owned());
 	details.insert(String::from("supported_versions"), supported_codex_cli_versions_display());
+	details.insert(String::from("allow_unverified_codex"), allow_unverified_codex.to_string());
 	details
 		.insert(String::from("support_claim"), APP_SERVER_COMPATIBILITY_SUPPORT_CLAIM.to_owned());
 	details.insert(String::from("evidence"), APP_SERVER_COMPATIBILITY_EVIDENCE.to_owned());
@@ -2867,6 +2892,13 @@ fn record_app_server_compatibility_guard(
 			"app-server userAgent is within the locally verified Codex CLI capability range.",
 			details,
 		);
+	} else if allow_unverified_codex {
+		details.insert(String::from("override"), String::from("allow_unverified_codex"));
+		report.push_warning(
+				PREFLIGHT_CHECK_COMPATIBILITY,
+				"app-server userAgent is outside the locally verified Codex CLI capability range; continuing because unverified Codex versions are explicitly allowed.",
+				details,
+			);
 	} else {
 		report.push_blocked(
 			PREFLIGHT_CHECK_COMPATIBILITY,
