@@ -74,41 +74,13 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 	};
 
 	if request.explain_queue {
-		if !request.dry_run {
-			eyre::bail!("queue explanation is only supported for dry-run execution.");
-		}
-		if request.preferred_issue_id.is_some() {
-			eyre::bail!("queue explanation does not accept a preferred issue.");
-		}
-
-		let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
-		let queued_candidates = match build_queued_candidate_statuses(
-			&tracker,
+		return run_queue_explain(
 			&config,
 			&workflow,
 			&state_store,
-		) {
-			Ok(queued_candidates) => queued_candidates,
-			Err(error) => {
-				let Some(backoff) =
-					tracker_rate_limit_backoff(&error, Instant::now(), "queue_explain")
-				else {
-					return Err(error);
-				};
-				let status = backoff
-					.to_operator_status(config.service_id(), OffsetDateTime::now_utc().unix_timestamp());
-
-				persist_tracker_backoff_state(&state_store, config.service_id(), &backoff);
-
-				print!("{}", render_tracker_backoff_cli_message("run", &status));
-
-				return Ok(());
-			},
-		};
-
-		print!("{}", render_queue_explain(&config, &queued_candidates));
-
-		return Ok(());
+			request.dry_run,
+			request.preferred_issue_id,
+		);
 	}
 
 	let run_summary = match run_configured_cycle(RunCycleRequest {
@@ -464,6 +436,46 @@ pub(crate) fn print_private_evidence(request: EvidenceRequest<'_>) -> Result<()>
 	} else {
 		print!("{}", render_private_evidence_readback(&readback));
 	}
+
+	Ok(())
+}
+
+fn run_queue_explain(
+	config: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	dry_run: bool,
+	preferred_issue_id: Option<&str>,
+) -> Result<()> {
+	if !dry_run {
+		eyre::bail!("queue explanation is only supported for dry-run execution.");
+	}
+	if preferred_issue_id.is_some() {
+		eyre::bail!("queue explanation does not accept a preferred issue.");
+	}
+
+	let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
+	let queued_candidates =
+		match build_queued_candidate_statuses(&tracker, config, workflow, state_store) {
+			Ok(queued_candidates) => queued_candidates,
+			Err(error) => {
+				let Some(backoff) =
+					tracker_rate_limit_backoff(&error, Instant::now(), "queue_explain")
+				else {
+					return Err(error);
+				};
+				let status =
+					backoff.to_operator_status(config.service_id(), OffsetDateTime::now_utc().unix_timestamp());
+
+				persist_tracker_backoff_state(state_store, config.service_id(), &backoff);
+
+				print!("{}", render_tracker_backoff_cli_message("run", &status));
+
+				return Ok(());
+			},
+		};
+
+	print!("{}", render_queue_explain(config, &queued_candidates));
 
 	Ok(())
 }
