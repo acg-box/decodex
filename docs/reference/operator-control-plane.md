@@ -305,7 +305,13 @@ Worktree visibility follows the owning dashboard section:
   warning when the retained review handoff marker still exists. `decodex status`
   must keep the issue identifier, branch, marker PR URL, and marker PR head SHA visible
   so operators can retry status, inspect the PR directly, or run the explicit recovery
-  path without losing the bound PR identity.
+  path without losing the bound PR identity. Local status JSON, text output, and
+  dashboard readback also carry `readback_root_cause` when Decodex can classify the
+  local diagnostic safely, for example `missing_github_cli`, `missing_github_token`,
+  `github_auth_failed`, `github_api_read_failed`, `github_response_parse_failed`,
+  `pull_request_shape_read_failed`, or `lineage_validation_failed`. These diagnostic
+  tokens are operator-local and must not include tokens, raw API payloads, or private
+  command output.
 - `Intake Queue` means queued attention still owns the path, including partial retained
   progress after retries.
 - `linear_active_label_present` in `Intake Queue` means the issue still carries
