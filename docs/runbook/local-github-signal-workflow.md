@@ -122,6 +122,13 @@ selects the release-window gaps and sequences deterministic Radar commands, whil
 AI review step follows the repo-local skills and schemas instead of running inside
 GitHub Actions.
 
+`scripts/github/run_codex_analysis.py` remains only the bounded deterministic process
+wrapper for that AI review step. Prefer `decodex radar backfill-release-range` or a
+normal Codex automation session. Direct helper recovery runs must pass
+`--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS=1`, and the helper
+still validates both the input bundle and the returned `analysis_draft` before writing
+output.
+
 The repository already includes a real sample for this flow:
 
 - bundle: `artifacts/github/bundles/openai-codex-pr-22414.json`
@@ -189,7 +196,8 @@ The current Decodex boundary is:
 - GitHub Actions: deterministic upstream commit discovery, PR mapping, review-queue
   refresh, release-delta refresh, validation, and commit/push of changed metadata.
   Actions must not run Codex AI analysis, create `analysis_draft`, or execute release
-  backfills that cross that AI boundary.
+  backfills that cross that AI boundary. Actions also must not pass
+  `--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS`.
 - Codex automation: AI source review, compatibility judgment, Publisher judgment,
   social publication, `analysis_draft` creation, `decodex radar render-signal`, and
   any promotion into signal or follow-up artifacts.

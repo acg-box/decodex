@@ -7,7 +7,12 @@ Current helper:
 
 - `run_codex_analysis.py` invokes Codex in a read-only session and writes a validated
   `analysis_draft` artifact. It is the explicit AI boundary and is not a GitHub
-  Actions entrypoint.
+  Actions entrypoint. The wrapper behavior is deterministic: validate the bundle, run
+  Codex with the checked prompt and output schema, validate the returned draft, then
+  write the artifact. Direct invocation is a recovery or automation-only path and must
+  pass `--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS=1`.
+  Normal operator workflows should reach it through Rust-owned `decodex radar`
+  commands such as `backfill-release-range`.
 
 Shared support:
 
@@ -116,6 +121,12 @@ GitHub Actions may refresh upstream queues, release deltas, and validation throu
 `decodex radar ...`. Codex automation owns AI review of queued subjects and may then
 promote source-backed conclusions into `upstream_impact/v1`, `analysis_draft`,
 `decodex radar render-signal` output, or `social_post/v1`.
+
+Do not wire `run_codex_analysis.py` into GitHub Actions. Actions must not pass
+`--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS`; that
+acknowledgement is reserved for Rust-owned local automation and explicit operator
+recovery runs that still keep bundle validation and `analysis_draft` schema validation
+inside the helper.
 
 Repo-local skills under `dev/skills/` are reasoning instructions for the Codex
 analysis step and for manual Radar/Publisher work. They do not introduce extra

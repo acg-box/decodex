@@ -2848,6 +2848,7 @@ fn run_codex_analysis(
 ) -> crate::prelude::Result<()> {
 	let mut command = helper_command(root, request, RUN_CODEX_ANALYSIS_SCRIPT);
 
+	command.arg("--allow-ai-analysis-boundary");
 	command.args([
 		"--bundle",
 		&path_arg(root, bundle),
@@ -5516,6 +5517,7 @@ mod tests {
 		ffi::OsString,
 		fs,
 		path::{Path, PathBuf},
+		process::Command,
 	};
 
 	use serde_json::{self, Value};
@@ -5845,6 +5847,37 @@ mod tests {
 		assert_eq!(rendered["source_refs"]["items"][0]["meta"], serde_json::json!("#22414"));
 		assert_eq!(rendered["source_refs"]["items"][1]["meta"], "abc123");
 		assert!(rendered.get("how_to_try").is_none());
+	}
+
+	#[test]
+	fn analysis_helper_fails_closed_without_explicit_boundary_opt_in() {
+		let _env = TestEnvVars::set(&[("DECODEX_ALLOW_CODEX_ANALYSIS", None)]);
+		let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+			.parent()
+			.and_then(Path::parent)
+			.expect("apps/decodex should live two levels under the repo root");
+		let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+		let bundle_path = temp_dir.path().join("missing-bundle.json");
+		let output_path = temp_dir.path().join("analysis.json");
+		let output = Command::new("python3")
+			.current_dir(repo_root)
+			.arg(repo_root.join(super::RUN_CODEX_ANALYSIS_SCRIPT))
+			.arg("--bundle")
+			.arg(&bundle_path)
+			.arg("--out")
+			.arg(&output_path)
+			.arg("--repo-root")
+			.arg(repo_root)
+			.output()
+			.expect("Python analysis helper smoke command should execute");
+		let stderr = String::from_utf8_lossy(&output.stderr);
+
+		assert!(!output.status.success());
+		assert!(
+			stderr.contains("requires --allow-ai-analysis-boundary"),
+			"unexpected stderr: {stderr}"
+		);
+		assert!(!output_path.exists());
 	}
 
 	#[test]

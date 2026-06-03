@@ -117,6 +117,14 @@ or public value.
 AI review must read enough source evidence to explain behavior. A PR title, release
 title, or deterministic queue hint is not enough for a confirmed claim.
 
+The remaining Python analysis helper, `scripts/github/run_codex_analysis.py`, is only
+the bounded deterministic process wrapper for this AI review boundary. It must validate
+the input `github_change_bundle/v1`, run Codex with the checked `analysis_draft` output
+schema, validate the returned draft again before writing it, and require an explicit
+`--allow-ai-analysis-boundary` flag or `DECODEX_ALLOW_CODEX_ANALYSIS=1` environment
+acknowledgement. The normal operator command surface remains Rust-owned
+`decodex radar ...`; GitHub Actions must not set that acknowledgement.
+
 ## Promotion boundary
 
 Promote an upstream review into:
