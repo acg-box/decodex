@@ -582,11 +582,11 @@ where
 				issue_run,
 				&review_context,
 			),
-				max_turns: workflow.frontmatter().execution().max_turns(),
-				timeout: ACTIVE_RUN_IDLE_TIMEOUT,
-				process_env: agent_git_credentials.process_env().clone(),
-				allow_unverified_codex,
-				continuation_user_input: Some(build_continuation_user_input(
+			max_turns: workflow.frontmatter().execution().max_turns(),
+			timeout: ACTIVE_RUN_IDLE_TIMEOUT,
+			process_env: agent_git_credentials.process_env().clone(),
+			allow_unverified_codex,
+			continuation_user_input: Some(build_continuation_user_input(
 				&issue_run.issue,
 				workflow,
 				issue_run.dispatch_mode,
@@ -603,6 +603,7 @@ where
 			codex_account_provider: codex_account_pool
 				.as_ref()
 				.map(|pool| pool as &dyn CodexAccountProvider),
+			compatibility_schema_evidence: None,
 		},
 		state_store,
 	)
