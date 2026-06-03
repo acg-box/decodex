@@ -618,13 +618,14 @@ fn run_target_issue_once_skips_reconciliation_for_preacquired_child_runs() {
 		preferred_issue_claim_fd: Some(child_issue_claim.into_raw_fd()),
 		preferred_dispatch_slot_fd: Some(child_guard.into_raw_fd()),
 		preferred_dispatch_slot_index: Some(child_slot_index),
-		dispatch_mode: IssueDispatchMode::Normal,
-		preferred_run_identity: Some(PreferredRunIdentity {
-			run_id: "planned-run",
-			attempt_number: 1,
-		}),
-		preferred_retry_budget_base: None,
-	})
+			dispatch_mode: IssueDispatchMode::Normal,
+			preferred_run_identity: Some(PreferredRunIdentity {
+				run_id: "planned-run",
+				attempt_number: 1,
+			}),
+			preferred_retry_budget_base: None,
+			allow_unverified_codex: false,
+		})
 	.expect("targeted child run should not error before refresh lookup");
 
 	assert!(summary.is_none(), "missing refreshed issue should stop before execution");

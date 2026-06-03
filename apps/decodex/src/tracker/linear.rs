@@ -890,8 +890,9 @@ fn rate_limited_error_message(errors: &[GraphqlError]) -> Option<String> {
 		let reset = extensions.get("reset").and_then(Value::as_i64);
 
 		Some(match reset {
-			Some(reset) =>
-				format!("Linear connector is rate limited until `{reset}`: {user_message}"),
+			Some(reset) => {
+				format!("Linear connector is rate limited until `{reset}`: {user_message}")
+			},
 			None => format!("Linear connector is rate limited: {user_message}"),
 		})
 	})

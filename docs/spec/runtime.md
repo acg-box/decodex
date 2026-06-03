@@ -506,6 +506,8 @@ After a process restart, recent-run history, active lease ownership, retained po
   [`app-server.md`](./app-server.md). Missing config/model/provider/skills/plugin/MCP
   state, or an app-server identity outside the locally verified compatibility range, is
   a pre-dispatch terminal blocker with an operator-readable error class, not a
-  promptable agent turn.
+  promptable agent turn, unless the operator explicitly started `run`, `serve`, or
+  `probe` with `--allow-unverified-codex`. That override downgrades only the unverified
+  compatibility identity to a warning; capability failures still block dispatch.
 - If the local process crashed during a run, `decodex` must recover from the runtime database, current tracker cache or state, and retained worktree inspection.
 - If Linear shows a non-terminal state but no local lease exists, the issue may become eligible again after reconciliation or may be redispatched through the retained recovered worktree.
