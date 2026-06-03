@@ -117,6 +117,7 @@ pub(crate) enum ActiveRunDisposition {
 	Terminal,
 	NonActive,
 	Stalled { idle_for: Duration },
+	StalledRetainedPartialProgress { idle_for: Duration },
 	StalledAlreadyNeedsAttention { idle_for: Duration },
 }
 
@@ -639,7 +640,7 @@ impl Display for RetainedPartialProgress {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(
 			f,
-			"Run `{}` for issue `{}` retained tracked worktree changes at `{}` after failing before terminal handoff; stop automatic retries and finish recovery manually.",
+			"Run `{}` for issue `{}` retained tracked worktree changes at `{}`; stop automatic retries and finish recovery manually.",
 			self.run_id, self.issue_identifier, self.worktree_path
 		)
 	}
