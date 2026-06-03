@@ -409,8 +409,14 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
 	let accounts_path = temp_dir.path().join(".codex/decodex/accounts.jsonl");
 	let usage_endpoint = start_codex_usage_fixture_server(vec![
-		r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":7,"limit_window_seconds":18000,"reset_at":1800018000},"secondary_window":{"used_percent":11,"limit_window_seconds":604800,"reset_at":1800604800}},"credits":{"has_credits":true,"unlimited":false,"balance":"12.34"}}"#,
-		r#"{"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":22,"limit_window_seconds":18000,"reset_at":1800019000},"secondary_window":{"used_percent":33,"limit_window_seconds":604800,"reset_at":1800605800}},"credits":{"has_credits":false,"unlimited":false,"balance":"0"}}"#,
+		(
+			"acct_default",
+			r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":7,"limit_window_seconds":18000,"reset_at":1800018000},"secondary_window":{"used_percent":11,"limit_window_seconds":604800,"reset_at":1800604800}},"credits":{"has_credits":true,"unlimited":false,"balance":"12.34"}}"#,
+		),
+		(
+			"acct_copy",
+			r#"{"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":22,"limit_window_seconds":18000,"reset_at":1800019000},"secondary_window":{"used_percent":33,"limit_window_seconds":604800,"reset_at":1800605800}},"credits":{"has_credits":false,"unlimited":false,"balance":"0"}}"#,
+		),
 	]);
 
 	std::fs::create_dir_all(accounts_path.parent().expect("accounts path should have parent"))
@@ -466,18 +472,82 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 	assert_eq!(accounts[1]["credits_balance"], "0");
 }
 
-fn start_codex_usage_fixture_server(responses: Vec<&'static str>) -> String {
+#[test]
+fn status_command_snapshot_does_not_probe_configured_codex_accounts() {
+	let (temp_dir, base_config, workflow) = temp_project_layout();
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+	let accounts_path = temp_dir.path().join(".codex/decodex/accounts.jsonl");
+
+	std::fs::create_dir_all(accounts_path.parent().expect("accounts path should have parent"))
+		.expect("accounts dir should exist");
+	std::fs::write(
+		&accounts_path,
+		r#"{"email":"default@example.com","auth_mode":"chatgpt","tokens":{"access_token":"access-default","refresh_token":"refresh-default","account_id":"acct_default"}}
+"#,
+	)
+	.expect("accounts fixture should write");
+
+	let mut config_toml = service_config_toml_for_config(
+		&base_config,
+		base_config.github().token_env_var(),
+		base_config.codex().internal_review_mode(),
+		base_config.codex().external_review_enabled(),
+	);
+
+	config_toml.push_str(
+		"\n[codex.accounts]\nusage_endpoint = \"http://127.0.0.1:9/wham/usage\"\n",
+	);
+
+	write_service_config(base_config.repo_root(), &config_toml);
+
+	let config = load_service_config(base_config.repo_root());
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let tracker = FakeTracker::new(Vec::new());
+	let snapshot = orchestrator::build_status_command_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("status command snapshot should build without probing account usage");
+	let snapshot_json = serde_json::to_value(&snapshot).expect("snapshot should serialize");
+	let accounts =
+		snapshot_json["accounts"].as_array().expect("snapshot should expose configured accounts");
+
+	assert_eq!(accounts.len(), 1);
+	assert_eq!(accounts[0]["email"], "default@example.com");
+	assert_eq!(accounts[0]["status"], "available");
+	assert_eq!(accounts[0]["refresh_status"], "not_checked");
+	assert_eq!(accounts[0]["primary_remaining_percent"], serde_json::Value::Null);
+	assert!(!snapshot.warnings.contains(&String::from("codex_accounts_unavailable")));
+}
+
+fn start_codex_usage_fixture_server(responses: Vec<(&'static str, &'static str)>) -> String {
 	let listener = TcpListener::bind("127.0.0.1:0").expect("usage fixture server should bind");
 	let address = listener.local_addr().expect("usage fixture address should resolve");
 
 	thread::spawn(move || {
-		for body in responses {
+		let responses_by_account =
+			responses.into_iter().collect::<HashMap<_, _>>();
+		let request_count = responses_by_account.len();
+
+		for _ in 0..request_count {
 			let (mut stream, _peer) =
 				listener.accept().expect("usage fixture request should arrive");
 			let mut request = [0_u8; 4_096];
-			let _ = stream.read(&mut request);
+			let bytes_read = stream.read(&mut request).expect("usage request should read");
+			let request = String::from_utf8_lossy(&request[..bytes_read]);
+			let account_id = usage_fixture_account_id(&request);
+			let (status, body) = match account_id.and_then(|account_id| {
+				responses_by_account.get(account_id).copied()
+			}) {
+				Some(body) => ("200 OK", body),
+				None => ("404 Not Found", r#"{"error":"unknown account"}"#),
+			};
 			let response = format!(
-				"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+				"HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
 				body.len(),
 				body
 			);
@@ -491,6 +561,14 @@ fn start_codex_usage_fixture_server(responses: Vec<&'static str>) -> String {
 	});
 
 	format!("http://{address}/wham/usage")
+}
+
+fn usage_fixture_account_id(request: &str) -> Option<&str> {
+	request.lines().find_map(|line| {
+		let (name, value) = line.split_once(':')?;
+
+		name.eq_ignore_ascii_case("ChatGPT-Account-Id").then_some(value.trim())
+	})
 }
 
 #[test]
