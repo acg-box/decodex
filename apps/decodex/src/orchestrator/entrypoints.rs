@@ -123,10 +123,11 @@ pub(crate) fn run_once(request: RunOnceRequest<'_>) -> Result<()> {
 		preferred_dispatch_slot_fd: request.preferred_dispatch_slot_fd,
 		preferred_dispatch_slot_index: request.preferred_dispatch_slot_index,
 		preferred_dispatch_mode: request.preferred_dispatch_mode,
-		preferred_run_identity,
-		preferred_retry_budget_base: request.preferred_retry_budget_base,
-		preferred_workflow_snapshot: request.preferred_workflow_snapshot,
-	}) {
+			preferred_run_identity,
+			preferred_retry_budget_base: request.preferred_retry_budget_base,
+			preferred_workflow_snapshot: request.preferred_workflow_snapshot,
+			allow_unverified_codex: request.allow_unverified_codex,
+		}) {
 		Ok(summary) => summary,
 		Err(error) => {
 			let Some(backoff) = tracker_rate_limit_backoff(&error, Instant::now(), "run_cycle")
@@ -243,8 +244,12 @@ pub(crate) fn run_control_plane(request: ServeRequest<'_>) -> Result<()> {
 
 		let linear_scan_requests =
 			drain_operator_linear_scan_requests_best_effort(&operator_state_endpoint);
-		let snapshot =
-			run_control_plane_tick(&state_store, &mut project_runtimes, &linear_scan_requests)?;
+			let snapshot = run_control_plane_tick_with_options(
+				&state_store,
+				&mut project_runtimes,
+				&linear_scan_requests,
+				request.allow_unverified_codex,
+			)?;
 
 		publish_operator_snapshot(&operator_state_endpoint, &snapshot);
 		sleep_until_next_tick(DEFAULT_CONTROL_PLANE_POLL_INTERVAL, tick_started_at);
@@ -749,10 +754,20 @@ where
 	Ok(snapshot)
 }
 
+#[cfg(test)]
 fn run_control_plane_tick(
 	state_store: &StateStore,
 	project_runtimes: &mut HashMap<String, ProjectDaemonRuntime>,
 	linear_scan_requests: &[OperatorLinearScanRequest],
+) -> Result<OperatorStatusSnapshot> {
+	run_control_plane_tick_with_options(state_store, project_runtimes, linear_scan_requests, false)
+}
+
+fn run_control_plane_tick_with_options(
+	state_store: &StateStore,
+	project_runtimes: &mut HashMap<String, ProjectDaemonRuntime>,
+	linear_scan_requests: &[OperatorLinearScanRequest],
+	allow_unverified_codex: bool,
 ) -> Result<OperatorStatusSnapshot> {
 	let registered_projects = state_store.list_projects()?;
 	let now = Instant::now();
@@ -763,12 +778,13 @@ fn run_control_plane_tick(
 		run_control_plane_project_tick(
 			project,
 			state_store,
-			runtime,
-			project_warnings,
-			linear_scan_requests,
-			now,
-		)
-	}))
+				runtime,
+				project_warnings,
+				linear_scan_requests,
+				now,
+				allow_unverified_codex,
+			)
+		}))
 }
 
 fn drain_operator_linear_scan_requests_best_effort(
@@ -940,6 +956,7 @@ fn run_control_plane_project_tick(
 	snapshot_warnings: &mut Vec<&'static str>,
 	linear_scan_requests: &[OperatorLinearScanRequest],
 	now: Instant,
+	allow_unverified_codex: bool,
 ) -> ControlPlaneProjectTick {
 	if tracker_backoff_active(runtime, now) {
 		snapshot_warnings.push(TRACKER_RATE_LIMIT_WARNING);
@@ -977,7 +994,14 @@ fn run_control_plane_project_tick(
 
 	match load_daemon_tick_context(project.config_path(), &mut runtime.workflow_cache) {
 		Ok(context) =>
-			control_plane_project_snapshot(project, state_store, runtime, &context, snapshot_warnings),
+			control_plane_project_snapshot(
+				project,
+				state_store,
+				runtime,
+				&context,
+				snapshot_warnings,
+				allow_unverified_codex,
+			),
 		Err(error) => {
 			let _ = error;
 
@@ -1255,6 +1279,7 @@ fn control_plane_project_snapshot(
 	runtime: &mut ProjectDaemonRuntime,
 	context: &DaemonTickContext,
 	snapshot_warnings: &mut Vec<&'static str>,
+	allow_unverified_codex: bool,
 ) -> ControlPlaneProjectTick {
 	if let Err(error) = run_daemon_tick(
 		project.config_path(),
@@ -1263,6 +1288,7 @@ fn control_plane_project_snapshot(
 		&mut runtime.retry_queue,
 		&mut runtime.recoverable_worktree_skip_cache,
 		context,
+		allow_unverified_codex,
 	) {
 		if let Some(connector_backoff) = remember_tracker_backoff(
 			runtime,
