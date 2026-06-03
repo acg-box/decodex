@@ -189,10 +189,16 @@ impl CodexAccountPool {
 			}
 		}
 
-		let summaries = self.account_activity_summaries()?;
+		let mut summaries = self.account_activity_summaries()?;
 		let mut cached = cache
 			.lock()
 			.map_err(|error| eyre::eyre!("Codex account usage cache is poisoned: {error}"))?;
+
+		if let Some(entry) = cached.as_ref()
+			&& entry.key == cache_key
+		{
+			preserve_cached_usage_windows(&mut summaries, &entry.summaries, now);
+		}
 
 		*cached = Some(AccountActivityCacheEntry {
 			key: cache_key,
@@ -1548,13 +1554,106 @@ fn profile_daily_usage_from_value(value: &Value) -> Option<CodexAccountProfileDa
 fn usage_window_from_value(value: Option<&Value>) -> Option<UsageWindow> {
 	let value = value.filter(|value| !value.is_null())?;
 	let used_percent = number_as_i64(value.get("used_percent")?)?;
+	let window_seconds = value.get("limit_window_seconds").and_then(number_as_i64);
+
+	if window_seconds.is_some_and(|seconds| seconds <= 0) {
+		return None;
+	}
+
 	let remaining_percent = 100_i64.saturating_sub(used_percent).clamp(0, 100);
 
 	Some(UsageWindow {
-		window_seconds: value.get("limit_window_seconds").and_then(number_as_i64),
+		window_seconds,
 		remaining_percent,
 		resets_at_unix_epoch: value.get("reset_at").and_then(number_as_i64),
 	})
+}
+
+fn preserve_cached_usage_windows(
+	summaries: &mut [CodexAccountActivitySummary],
+	cached_summaries: &[CodexAccountActivitySummary],
+	now_unix_epoch: i64,
+) {
+	for summary in summaries {
+		if account_summary_is_limited(summary) {
+			continue;
+		}
+
+		let Some(cached) =
+			cached_summaries.iter().find(|cached| account_summaries_match(summary, cached))
+		else {
+			continue;
+		};
+
+		preserve_primary_usage_window(summary, cached, now_unix_epoch);
+		preserve_secondary_usage_window(summary, cached, now_unix_epoch);
+	}
+}
+
+fn preserve_primary_usage_window(
+	summary: &mut CodexAccountActivitySummary,
+	cached: &CodexAccountActivitySummary,
+	now_unix_epoch: i64,
+) {
+	if has_usage_window(summary.primary_window_seconds, summary.primary_remaining_percent)
+		|| !has_current_usage_window(
+			cached.primary_window_seconds,
+			cached.primary_remaining_percent,
+			cached.primary_resets_at_unix_epoch,
+			now_unix_epoch,
+		) {
+		return;
+	}
+
+	summary.primary_window_seconds = cached.primary_window_seconds;
+	summary.primary_remaining_percent = cached.primary_remaining_percent;
+	summary.primary_resets_at_unix_epoch = cached.primary_resets_at_unix_epoch;
+}
+
+fn preserve_secondary_usage_window(
+	summary: &mut CodexAccountActivitySummary,
+	cached: &CodexAccountActivitySummary,
+	now_unix_epoch: i64,
+) {
+	if has_usage_window(summary.secondary_window_seconds, summary.secondary_remaining_percent)
+		|| !has_current_usage_window(
+			cached.secondary_window_seconds,
+			cached.secondary_remaining_percent,
+			cached.secondary_resets_at_unix_epoch,
+			now_unix_epoch,
+		) {
+		return;
+	}
+
+	summary.secondary_window_seconds = cached.secondary_window_seconds;
+	summary.secondary_remaining_percent = cached.secondary_remaining_percent;
+	summary.secondary_resets_at_unix_epoch = cached.secondary_resets_at_unix_epoch;
+}
+
+const fn has_usage_window(window_seconds: Option<i64>, remaining_percent: Option<i64>) -> bool {
+	matches!(window_seconds, Some(seconds) if seconds > 0) && remaining_percent.is_some()
+}
+
+fn has_current_usage_window(
+	window_seconds: Option<i64>,
+	remaining_percent: Option<i64>,
+	resets_at_unix_epoch: Option<i64>,
+	now_unix_epoch: i64,
+) -> bool {
+	has_usage_window(window_seconds, remaining_percent)
+		&& resets_at_unix_epoch.is_some_and(|reset| reset > now_unix_epoch)
+}
+
+fn account_summaries_match(
+	left: &CodexAccountActivitySummary,
+	right: &CodexAccountActivitySummary,
+) -> bool {
+	left.account_fingerprint == right.account_fingerprint
+		|| left
+			.email
+			.as_deref()
+			.zip(right.email.as_deref())
+			.is_some_and(|(left, right)| left == right)
 }
 
 fn credits_from_value(value: &Value) -> Option<CreditsSnapshot> {
@@ -2031,6 +2130,88 @@ mod tests {
 			Some(28)
 		);
 		assert!(!available_summary.is_limited());
+	}
+
+	#[test]
+	fn usage_summary_ignores_zero_second_placeholder_windows() {
+		let payload = serde_json::json!({
+			"plan_type": "pro",
+			"rate_limit": {
+				"primary_window": {
+					"used_percent": 0,
+					"limit_window_seconds": 0,
+					"reset_at": 1_800_000_000
+				},
+				"secondary_window": null
+			},
+			"rate_limit_reached_type": null
+		});
+		let summary = codex_accounts::usage_snapshot_from_payload(&payload, 1_800_000_000);
+
+		assert_eq!(summary.primary, None);
+		assert_eq!(summary.secondary, None);
+		assert!(!summary.is_limited());
+
+		let record = AccountPoolRecord {
+			email: Some(String::from("placeholder@example.com")),
+			disabled: false,
+			cooldown_until_unix_epoch: None,
+			cooldown_until: None,
+			last_selected_at_unix_epoch: None,
+			auth_mode: Some(String::from("chatgpt")),
+			openai_api_key: None,
+			tokens: Some(CodexTokenData {
+				email: None,
+				id_token: None,
+				access_token: String::from("access"),
+				refresh_token: String::from("refresh"),
+				account_id: Some(String::from("acct_placeholder")),
+			}),
+			last_refresh: None,
+		};
+		let login = record
+			.login_from_usage(summary, "not_needed")
+			.expect("placeholder usage should still produce an account summary");
+
+		assert_eq!(login.summary().status, "available");
+		assert_eq!(login.summary().primary_window_seconds, None);
+		assert_eq!(login.summary().primary_remaining_percent, None);
+		assert_eq!(login.summary().primary_resets_at_unix_epoch, None);
+	}
+
+	#[test]
+	fn usage_cache_preserves_current_windows_across_placeholder_refresh() {
+		let now = time::OffsetDateTime::now_utc().unix_timestamp();
+		let cached = [CodexAccountActivitySummary {
+			account_fingerprint: String::from("...123456"),
+			email: Some(String::from("copy@example.com")),
+			status: String::from("available"),
+			primary_window_seconds: Some(18_000),
+			primary_remaining_percent: Some(72),
+			primary_resets_at_unix_epoch: Some(now + 18_000),
+			secondary_window_seconds: Some(604_800),
+			secondary_remaining_percent: Some(91),
+			secondary_resets_at_unix_epoch: Some(now + 604_800),
+			..CodexAccountActivitySummary::default()
+		}];
+		let mut refreshed = [CodexAccountActivitySummary {
+			account_fingerprint: String::from("...123456"),
+			email: Some(String::from("copy@example.com")),
+			status: String::from("available"),
+			checked_at_unix_epoch: Some(now + 60),
+			profile_lifetime_tokens: Some(47_200_000_000),
+			..CodexAccountActivitySummary::default()
+		}];
+
+		codex_accounts::preserve_cached_usage_windows(&mut refreshed, &cached, now + 60);
+
+		assert_eq!(refreshed[0].primary_window_seconds, Some(18_000));
+		assert_eq!(refreshed[0].primary_remaining_percent, Some(72));
+		assert_eq!(refreshed[0].primary_resets_at_unix_epoch, Some(now + 18_000));
+		assert_eq!(refreshed[0].secondary_window_seconds, Some(604_800));
+		assert_eq!(refreshed[0].secondary_remaining_percent, Some(91));
+		assert_eq!(refreshed[0].secondary_resets_at_unix_epoch, Some(now + 604_800));
+		assert_eq!(refreshed[0].profile_lifetime_tokens, Some(47_200_000_000));
 	}
 
 	#[test]
