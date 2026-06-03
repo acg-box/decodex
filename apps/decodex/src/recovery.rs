@@ -1000,7 +1000,11 @@ fn inspect_project_pull_request(
 	pr_url: &str,
 ) -> Result<(PullRequestLandingState, String)> {
 	let github_token = context.config.github().resolve_token()?;
-	let repository = github::inspect_repository_context(context.config.repo_root(), &github_token)?;
+	let repository = github::inspect_repository_context(
+		context.config.repo_root(),
+		&github_token,
+		context.config.github().command_path(),
+	)?;
 
 	if !github::pull_request_matches_repository(pr_url, &repository)? {
 		eyre::bail!(
@@ -1015,6 +1019,7 @@ fn inspect_project_pull_request(
 		context.config.repo_root(),
 		pr_url,
 		&github_token,
+		context.config.github().command_path(),
 	)?;
 
 	Ok((landing_state, repository.default_branch))

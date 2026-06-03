@@ -12,6 +12,7 @@ use libc::SZOMB;
 use libc::c_void;
 #[cfg(target_os = "macos")]
 use libc::proc_bsdinfo;
+use github::GhCommandResolution;
 
 use crate::pull_request::{self, PullRequestLandingGateView};
 use crate::worktree;
@@ -249,6 +250,7 @@ fn build_operator_status_snapshot_with_account_mode(
 			config_path: String::new(),
 			repo_root: project.repo_root().display().to_string(),
 			enabled: true,
+			github_cli_authority: operator_github_cli_authority(project),
 			active_run_count: active_runs.len(),
 			queued_candidate_count: 0,
 			post_review_lane_count: 0,
@@ -287,6 +289,63 @@ fn global_codex_account_control_status() -> OperatorCodexAccountControlStatus {
 		mode: String::from(mode),
 		account_selector,
 	}
+}
+
+fn operator_github_cli_authority(project: &ServiceConfig) -> OperatorGitHubCliAuthority {
+	operator_github_cli_authority_from_resolution(&github::gh_command_resolution(
+		project.github().command_path(),
+	))
+}
+
+fn operator_github_cli_authority_from_registration(
+	project: &ProjectRegistration,
+) -> OperatorGitHubCliAuthority {
+	let configured_path = ServiceConfig::from_path(project.config_path())
+		.ok()
+		.and_then(|config| config.github().command_path().map(Path::to_path_buf));
+
+	operator_github_cli_authority_from_resolution(&github::gh_command_resolution(
+		configured_path.as_deref(),
+	))
+}
+
+fn operator_github_cli_authority_from_resolution(
+	resolution: &GhCommandResolution,
+) -> OperatorGitHubCliAuthority {
+	let discovery_tier = resolution.discovery_tier().as_str().to_owned();
+	let configured_path = resolution.configured_path().map(display_path);
+	let available = resolution.available();
+
+	OperatorGitHubCliAuthority {
+		command_path: display_path(resolution.command_path()),
+		resolved_path: resolution.resolved_path().map(display_path),
+		configured_path,
+		discovery_tier: discovery_tier.clone(),
+		available,
+		next_action: github_cli_authority_next_action(discovery_tier.as_str(), available),
+	}
+}
+
+fn github_cli_authority_next_action(discovery_tier: &str, available: bool) -> String {
+	match (discovery_tier, available) {
+		("configured", true) =>
+			String::from("No action needed; Decodex will use the configured GitHub CLI path."),
+		("configured", false) => String::from(
+			"Fix `github.command_path` in project.toml so it points to an installed `gh` binary.",
+		),
+		("path", true) =>
+			String::from("No action needed; Decodex resolved `gh` from the process PATH."),
+		("user-bin" | "known-fallback", true) => String::from(
+			"Set `github.command_path` in project.toml if this fallback path is unexpected.",
+		),
+		_ => String::from(
+			"Install GitHub CLI or set `github.command_path` in project.toml to the expected `gh` binary.",
+		),
+	}
+}
+
+fn display_path(path: &Path) -> String {
+	path.display().to_string()
 }
 
 fn build_live_operator_status_snapshot<T>(
@@ -356,6 +415,7 @@ where
 
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
+		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
 	let mut snapshot = build_operator_status_snapshot_with_account_mode(
 		project,
@@ -4862,6 +4922,8 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 		output.push_str(&format!("Warning details: {}\n", render_warning_details(snapshot)));
 	}
 
+	append_rendered_github_cli_authority(&mut output, snapshot);
+
 	output.push_str(&format!("Running lanes: {}\n", snapshot.active_runs.len()));
 	output.push_str(&format!(
 		"Run ledger shown: {} issue lanes from {} history attempts{}\n",
@@ -4926,35 +4988,66 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 
 	output.push_str("\nPost-Review Lanes\n");
 
-	if snapshot.post_review_lanes.is_empty() {
-		output.push_str("- none\n");
-	} else {
-		for lane in &snapshot.post_review_lanes {
-			output.push_str(&format!(
-				"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n  readback_root_cause: {}\n",
-				lane.issue_id,
-				lane.issue_identifier,
-				lane.issue_state,
-				lane.classification,
-				lane.reason,
-				lane.branch_name,
-				lane.worktree_path,
-				lane.pr_url.as_deref().unwrap_or("none"),
-				lane.pr_head_sha.as_deref().unwrap_or("none"),
-				lane.pr_state.as_deref().unwrap_or("none"),
-				lane.review_decision.as_deref().unwrap_or("none"),
-				lane.mergeable.as_deref().unwrap_or("none"),
-				lane.check_state.as_deref().unwrap_or("none"),
-				lane
-					.unresolved_review_threads
-					.map_or_else(|| String::from("none"), |value| value.to_string()),
-				lane.readback_warning.as_deref().unwrap_or("none"),
-				lane.readback_root_cause.as_deref().unwrap_or("none")
-			));
-		}
-	}
+	append_rendered_post_review_lanes(&mut output, snapshot);
 
 	output
+}
+
+fn append_rendered_github_cli_authority(output: &mut String, snapshot: &OperatorStatusSnapshot) {
+	if let Some(authority) = rendered_project_github_cli_authority(snapshot) {
+		output.push_str(&format!(
+			"GitHub CLI: tier={} available={} command_path={} resolved_path={} configured_path={} next_action={}\n",
+			authority.discovery_tier,
+			authority.available,
+			authority.command_path,
+			authority.resolved_path.as_deref().unwrap_or("none"),
+			authority.configured_path.as_deref().unwrap_or("none"),
+			authority.next_action
+		));
+	}
+}
+
+fn append_rendered_post_review_lanes(output: &mut String, snapshot: &OperatorStatusSnapshot) {
+	if snapshot.post_review_lanes.is_empty() {
+		output.push_str("- none\n");
+
+		return;
+	}
+
+	for lane in &snapshot.post_review_lanes {
+		output.push_str(&format!(
+			"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n  readback_root_cause: {}\n",
+			lane.issue_id,
+			lane.issue_identifier,
+			lane.issue_state,
+			lane.classification,
+			lane.reason,
+			lane.branch_name,
+			lane.worktree_path,
+			lane.pr_url.as_deref().unwrap_or("none"),
+			lane.pr_head_sha.as_deref().unwrap_or("none"),
+			lane.pr_state.as_deref().unwrap_or("none"),
+			lane.review_decision.as_deref().unwrap_or("none"),
+			lane.mergeable.as_deref().unwrap_or("none"),
+			lane.check_state.as_deref().unwrap_or("none"),
+			lane
+				.unresolved_review_threads
+				.map_or_else(|| String::from("none"), |value| value.to_string()),
+			lane.readback_warning.as_deref().unwrap_or("none"),
+			lane.readback_root_cause.as_deref().unwrap_or("none")
+		));
+	}
+}
+
+fn rendered_project_github_cli_authority(
+	snapshot: &OperatorStatusSnapshot,
+) -> Option<&OperatorGitHubCliAuthority> {
+	snapshot
+		.projects
+		.iter()
+		.find(|project| project.project_id == snapshot.project_id)
+		.or_else(|| snapshot.projects.first())
+		.map(|project| &project.github_cli_authority)
 }
 
 fn render_warning_details(snapshot: &OperatorStatusSnapshot) -> String {

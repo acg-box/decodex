@@ -235,6 +235,7 @@ impl PullRequestInspector for FakePullRequestInspector {
 		_cwd: &Path,
 		_pr_url: &str,
 		_github_token: &str,
+		_gh_command_path: Option<&Path>,
 	) -> std::result::Result<PullRequestDetails, String> {
 		self.responses.borrow_mut().remove(0)
 	}
@@ -250,6 +251,7 @@ impl PullRequestInspector for GitHubTokenAssertingPullRequestInspector {
 		_cwd: &Path,
 		_pr_url: &str,
 		github_token: &str,
+		_gh_command_path: Option<&Path>,
 	) -> std::result::Result<PullRequestDetails, String> {
 		assert_eq!(github_token, self.expected_token.as_str());
 
@@ -442,6 +444,7 @@ fn sample_review_context() -> ReviewHandoffContext {
 		worktree_path: String::from(".worktrees/PUB-618"),
 		cwd: PathBuf::from("/tmp/PUB-618"),
 		github_token_env_var: Some(String::from("HOME")),
+		github_command_path: None,
 		internal_review_mode: InternalReviewMode::Loop,
 		mode: ReviewExecutionMode::Handoff,
 		recorded_pr_url: None,
@@ -469,6 +472,7 @@ fn sample_review_context_in(cwd: &Path) -> ReviewHandoffContext {
 		worktree_path: String::from(".worktrees/PUB-618"),
 		cwd: cwd.to_path_buf(),
 		github_token_env_var: Some(String::from("HOME")),
+		github_command_path: None,
 		internal_review_mode: InternalReviewMode::Loop,
 		mode: ReviewExecutionMode::Handoff,
 		recorded_pr_url: None,
@@ -484,6 +488,7 @@ fn sample_review_repair_context_in(cwd: &Path, pr_url: &str) -> ReviewHandoffCon
 		worktree_path: String::from(".worktrees/PUB-618"),
 		cwd: cwd.to_path_buf(),
 		github_token_env_var: Some(String::from("HOME")),
+		github_command_path: None,
 		internal_review_mode: InternalReviewMode::Loop,
 		mode: ReviewExecutionMode::Repair,
 		recorded_pr_url: Some(pr_url.to_owned()),
@@ -499,6 +504,7 @@ fn sample_closeout_context_in(cwd: &Path, pr_url: &str) -> ReviewHandoffContext 
 		worktree_path: String::from(".worktrees/PUB-618"),
 		cwd: cwd.to_path_buf(),
 		github_token_env_var: Some(String::from("HOME")),
+		github_command_path: None,
 		internal_review_mode: InternalReviewMode::Loop,
 		mode: ReviewExecutionMode::Closeout,
 		recorded_pr_url: Some(pr_url.to_owned()),

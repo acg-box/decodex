@@ -164,6 +164,7 @@ impl<'a> TrackerToolBridge<'a> {
 			&review_context.cwd,
 			pr_url,
 			github_token.as_str(),
+			review_context.github_command_path.as_deref(),
 		)?;
 		let local_repo = self.local_repo_inspector.inspect_local_repo(&review_context.cwd)?;
 
@@ -233,6 +234,7 @@ impl<'a> TrackerToolBridge<'a> {
 			&review_context.cwd,
 			pr_url,
 			github_token.as_str(),
+			review_context.github_command_path.as_deref(),
 		)?;
 		let local_repo = self.local_repo_inspector.inspect_local_repo(&review_context.cwd)?;
 
