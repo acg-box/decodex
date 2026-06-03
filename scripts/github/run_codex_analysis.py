@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -17,15 +18,29 @@ if str(SCRIPT_HOME) not in sys.path:
 
 from contracts import dump_json, load_json, validate_analysis_draft, validate_bundle  # noqa: E402
 
+ALLOW_ANALYSIS_ENV = "DECODEX_ALLOW_CODEX_ANALYSIS"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--allow-ai-analysis-boundary",
+        action="store_true",
+        help=(
+            "Required acknowledgement that this helper is crossing the Codex AI analysis "
+            "boundary. GitHub Actions must not set this."
+        ),
+    )
     parser.add_argument("--bundle", required=True, help="Path to github_change_bundle/v1 JSON.")
     parser.add_argument("--out", required=True, help="Path to write the validated analysis JSON.")
     parser.add_argument("--repo-root", help="Repository root for codex exec. Defaults to the current repo root.")
     parser.add_argument("--codex-bin", default="codex", help="Codex executable to invoke.")
     parser.add_argument("--model", help="Optional Codex model override.")
     return parser.parse_args()
+
+
+def analysis_boundary_allowed(args: argparse.Namespace) -> bool:
+    return args.allow_ai_analysis_boundary or os.environ.get(ALLOW_ANALYSIS_ENV) == "1"
 
 
 def repo_root_from(bundle_path: Path) -> Path:
@@ -83,6 +98,13 @@ def extract_json_payload(raw: str) -> dict[str, Any]:
 
 def main() -> None:
     args = parse_args()
+    if not analysis_boundary_allowed(args):
+        raise SystemExit(
+            "Codex analysis helper requires --allow-ai-analysis-boundary or "
+            f"{ALLOW_ANALYSIS_ENV}=1. Use Rust-owned decodex radar commands for "
+            "deterministic Radar workflows; GitHub Actions must not run this helper."
+        )
+
     bundle_path = Path(args.bundle)
     bundle = load_json(bundle_path)
     bundle_validation = validate_bundle(bundle)
