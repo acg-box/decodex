@@ -18,8 +18,8 @@ use crate::{
 	pull_request::PullRequestLandingState,
 	runtime,
 	state::{
-		ConnectorBackoffInput, RUN_ACTIVITY_MARKER_FILE, ReviewHandoffMarker,
-		ReviewOrchestrationMarker, StateStore, WorktreeMapping,
+		self, ConnectorBackoffInput, ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore,
+		WorktreeMapping,
 	},
 	tracker::{
 		self, IssueTracker, TrackerIssue,
@@ -1316,13 +1316,9 @@ fn worktree_blocking_status_lines(worktree_path: &Path) -> Result<Vec<String>> {
 	Ok(status
 		.lines()
 		.filter(|line| !line.trim_end().is_empty())
-		.filter(|line| !is_untracked_runtime_marker(line))
+		.filter(|line| !state::is_untracked_decodex_runtime_artifact_status_line(line))
 		.map(ToOwned::to_owned)
 		.collect())
-}
-
-fn is_untracked_runtime_marker(line: &str) -> bool {
-	line.trim_end().strip_prefix("?? ") == Some(RUN_ACTIVITY_MARKER_FILE)
 }
 
 fn trimmed_stdout(stdout: &[u8]) -> Result<String> {
@@ -1447,6 +1443,26 @@ mod tests {
 		run_git(repo, &["branch", "-m", branch_name]);
 
 		(temp_dir, first_head, rebased_head)
+	}
+
+	#[test]
+	fn worktree_blocking_status_lines_ignores_untracked_decodex_runtime_artifacts() {
+		let (temp_dir, _, _) = temp_git_worktree("x/pubfi-pub-718");
+		let repo = temp_dir.path();
+
+		fs::write(repo.join(crate::state::RUN_ACTIVITY_MARKER_FILE), "agent_run\n")
+			.expect("activity marker should write");
+
+		let control_dir = repo.join(crate::state::RUN_CONTROL_CHANNEL_DIR);
+
+		fs::create_dir_all(&control_dir).expect("run-control directory should create");
+		fs::write(control_dir.join("run-1-1.channel"), "channel\n")
+			.expect("run-control channel should write");
+
+		let blocking = super::worktree_blocking_status_lines(repo)
+			.expect("worktree status should be readable");
+
+		assert!(blocking.is_empty(), "runtime artifacts should not block rebind: {blocking:?}");
 	}
 
 	#[test]
