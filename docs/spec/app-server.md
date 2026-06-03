@@ -53,6 +53,22 @@ range only when all of these are true:
 - The executable Decodex compatibility guard reports `compatibility=supported` for
   the initialized app-server `userAgent` after the capability preflight succeeds.
 
+Support has three distinct evidence layers:
+
+- Exact-version support: the initialized app-server `userAgent` must parse to one of
+  the locally verified Codex CLI versions in the executable allowlist. This is the
+  only layer that can make the dispatch guard pass without the explicit dogfood
+  override described below.
+- Capability evidence: the bounded runtime preflight records the app-server methods
+  and inventories Decodex actually checked before the guard decision. This evidence
+  explains why the local runtime looked usable, but it does not authorize an
+  unlisted version.
+- Schema evidence: `decodex probe stdio://` regenerates the local schema cache and
+  records which required schema markers were checked. Retained dispatch records when
+  schema evidence was not checked in that dispatch path. Schema evidence is required
+  before expanding the allowlist, but it does not make an unsupported version pass by
+  itself.
+
 As of the 2026-06-03 self-compatibility pass, the verified local range is:
 
 | Codex surface | Version | Evidence |
@@ -78,15 +94,20 @@ and the Codex Beta app bundle's `codex-cli 0.131.0-alpha.9`. Treat those as hist
 compatibility evidence, not the current upgrade target.
 
 `decodex probe stdio://` exposes the executable guard in its success line, including
-`compatibility=supported`, the observed `codex_version`, and the executable
-`supported_versions` list. During retained-lane dispatch, the same compatibility check
-runs after the bounded capability preflight and before `thread/start` or
-`thread/resume`; an app-server identity outside the locally verified list is a
-pre-dispatch app-server preflight blocker rather than a promptable agent turn.
+`compatibility=supported`, `support_decision=supported_exact_version`, the observed
+`codex_version`, the executable `supported_versions` list, `capability_evidence`,
+`schema_evidence`, `schema_cache`, and `schema_marker_count`; the private preflight
+report also records the full `schema_markers` list. During retained-lane dispatch,
+the same compatibility check runs after the bounded capability preflight and before
+`thread/start` or `thread/resume`; an app-server identity outside the locally
+verified list is a pre-dispatch app-server preflight blocker rather than a promptable
+agent turn. Unsupported newer versions must report a structured unsupported decision
+such as `unsupported_unverified_version` or `unsupported_unparsed_user_agent`.
 Operators may pass `--allow-unverified-codex` to `decodex run`, `decodex serve`, or
 `decodex probe` when deliberately dogfooding a development Codex build. This changes
 only the unsupported compatibility identity from a blocker to a warning with
-`compatibility=unverified_allowed`; all other capability preflight blockers remain
+`compatibility=unverified_allowed` and a support decision such as
+`unverified_allowed_by_override`; all other capability preflight blockers remain
 fail-closed.
 
 Current upstream Codex signals are beyond the local support claim whenever they are
@@ -97,6 +118,30 @@ probed locally. In that case Decodex must not force an upgrade. It should keep r
 the latest locally verified Codex surface, route the upstream change through Radar
 review, regenerate the app-server schema, run `decodex probe stdio://`, and only then
 promote the new Codex version or protocol shape into this compatibility range.
+Latest upstream Codex remains unsupported until that promotion happens, even when a
+local capability or schema check looks promising.
+
+To expand support for a new upstream app-server version:
+
+1. Install or select the target Codex binary locally without replacing the last known
+   verified runtime used by active lanes.
+2. Run `codex app-server generate-json-schema --experimental --out
+   target/decodex-app-server-schema-check`. `decodex probe stdio://` uses the same
+   schema cache path, but an unlisted version must still fail the compatibility guard
+   until the allowlist is deliberately updated.
+3. Confirm the generated schema contains every required marker in this spec:
+   `initialize`, `thread/start`, `thread/resume`, `turn/start`, `thread/archive`,
+   `command/exec`, bounded preflight methods, `item/tool/call`, dynamic tool
+   `namespace`, dynamic tool `deferLoading`, `inputText`, and
+   `PluginListParams.marketplaceKinds`.
+4. Update the executable allowlist locally and add or update compatibility tests for
+   the target exact version and nearby unsupported versions.
+5. Run `decodex probe stdio://` and require `PROBE_OK`, `compatibility=supported`,
+   `support_decision=supported_exact_version`, `capability_evidence`, and
+   `schema_evidence=checked` for the target version.
+6. Update this table in the same change as the executable allowlist and compatibility
+   tests. Do not document a new version as supported before the local guard and probe
+   output agree.
 
 ## Implementation guidance
 
