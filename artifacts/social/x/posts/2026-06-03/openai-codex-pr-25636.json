@@ -1,0 +1,74 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-pr-25636",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "operator_impact",
+  "status": "failed",
+  "audience": "Codex operators and Decodex Control Plane maintainers",
+  "text": [
+    "Codex MultiAgentV2 renamed its trigger-turn tool: assign_task is now followup_task. PR #25636 keeps legacy rollout-trace classification for assign_task, so old traces still reduce correctly. Operator takeaway: audit v2 tool lists. https://github.com/openai/codex/pull/25636"
+  ],
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-25636.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-25636.review.json"
+    ],
+    "prior_social_posts": [
+      "artifacts/social/x/posts/2026-06-02/openai-codex-pr-25636.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/25636",
+      "https://github.com/openai/codex/commit/c9bdb5255b2b4b5d365a1be3ec3a94e34a4e0af0"
+    ]
+  },
+  "evidence_notes": [
+    "Chrome account menu was switched to and read back as @decodexspace before any compose action.",
+    "A focused X search for from:decodexspace followup_task assign_task returned No results, so no duplicate publication was observed.",
+    "The upstream review and upstream impact artifacts classify PR #25636 as confirmed operator-impact evidence for the MultiAgentV2 tool rename.",
+    "The browser safety policy requires action-time human confirmation before creating a public X post, so automation failed closed before composing or submitting."
+  ],
+  "claims": [
+    {
+      "text": "Codex MultiAgentV2 renamed the trigger-turn tool from assign_task to followup_task.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-25636.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR #25636 keeps legacy rollout-trace classification for assign_task.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-25636.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Decodex operators should audit v2 tool-list assumptions before adopting newer schemas.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-25636.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "critical",
+    "idempotency_key": "x:decodexspace:operator_impact:openai-codex-pr-25636",
+    "reason": "Source-backed MultiAgentV2 rename affects operator expectations and Decodex compatibility planning, but live X submission requires action-time human confirmation.",
+    "daily_limit": 8,
+    "daily_count_before": 0,
+    "daily_count_after": 0,
+    "day": "2026-06-03",
+    "timezone": "Asia/Shanghai"
+  },
+  "failure": {
+    "reason": "browser_action_confirmation_required",
+    "details": "Chrome verified @decodexspace and duplicate search found no existing matching post, but automation stopped before compose or submit because creating a public X post requires action-time human confirmation under the browser safety policy."
+  },
+  "caveats": [
+    "No X post was published.",
+    "The candidate media artifact was prepared from an existing checked-in generated decodex_signal_card image because the image generation result was not exposed as a local file path in this run.",
+    "Retry publication only after action-time human confirmation is available in the publishing workflow."
+  ],
+  "media_refs": [
+    "artifacts/social/x/images/openai-codex-pr-25636.png"
+  ]
+}
