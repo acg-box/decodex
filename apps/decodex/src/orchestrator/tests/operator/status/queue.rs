@@ -813,20 +813,23 @@ fn live_operator_status_snapshot_surfaces_stalled_retained_partial_progress() {
 
 	tracker.issue_comments.borrow_mut().insert(
 		issue.id.clone(),
-		vec![linear_execution_history_comment(
-			&issue,
-			"terminal_failure",
-			"2026-03-13T09:20:00Z",
-			"stalled-retained-partial-progress",
-			|record| {
-				record.error_class = Some(String::from("partial_progress_retained"));
-				record.next_action = Some(String::from(
-					"inspect retained worktree `.worktrees/PUB-110`, finish validation and PR handoff or reset the patch manually",
-				));
-				record.summary = Some(String::from("Decodex run retained partial progress."));
-				record.blockers = Some(vec![String::from(
-					"tracked worktree changes were retained after stalled reconciliation",
-				)]);
+			vec![linear_execution_history_comment(
+				&issue,
+				"needs_attention",
+				"2026-03-13T09:20:00Z",
+				"stalled-retained-partial-progress",
+				|record| {
+					record.error_class = Some(String::from("partial_progress_retained"));
+					record.next_action = Some(String::from(
+						"inspect retained worktree `.worktrees/PUB-110`, finish validation and PR handoff or reset the patch manually",
+					));
+					record.terminal_path = Some(String::from("retained_partial_progress"));
+					record.summary = Some(String::from(
+						"Decodex retained partial progress and needs attention.",
+					));
+					record.blockers = Some(vec![String::from(
+						"tracked worktree changes were retained after stalled reconciliation",
+					)]);
 				record.evidence = Some(vec![String::from(
 					"worktree `.worktrees/PUB-110` has tracked changes",
 				)]);

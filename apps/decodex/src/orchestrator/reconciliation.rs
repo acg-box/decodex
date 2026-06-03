@@ -64,6 +64,8 @@ where
 				worktree_mapping.as_ref(),
 			)? {
 				Some(ActiveRunDisposition::RetainedReviewComplete)
+			} else if stalled_run_has_retained_partial_progress(worktree_mapping.as_ref()) {
+				Some(ActiveRunDisposition::StalledRetainedPartialProgress { idle_for })
 			} else {
 				Some(ActiveRunDisposition::Stalled { idle_for })
 			}
@@ -150,12 +152,17 @@ where
 	else {
 		return Ok(Vec::new());
 	};
+	let disposition = if stalled_run_has_retained_partial_progress(worktree_mapping.as_ref()) {
+		ActiveRunDisposition::StalledRetainedPartialProgress { idle_for }
+	} else {
+		ActiveRunDisposition::Stalled { idle_for }
+	};
 
 	Ok(vec![ActiveRunReconciliation {
 		issue,
 		run_attempt,
 		worktree_mapping,
-		disposition: ActiveRunDisposition::Stalled { idle_for },
+		disposition,
 		workflow: workflow.clone(),
 	}])
 }
@@ -233,6 +240,16 @@ where
 			},
 			ActiveRunDisposition::Stalled { idle_for } => {
 				reconcile_stalled_active_run(
+					tracker,
+					project,
+					state_store,
+					worktree_manager,
+					&action,
+					*idle_for,
+				)?;
+			},
+			ActiveRunDisposition::StalledRetainedPartialProgress { idle_for } => {
+				reconcile_stalled_retained_partial_progress_run(
 					tracker,
 					project,
 					state_store,
@@ -361,34 +378,7 @@ where
 	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
 	state_store.clear_lease(&action.issue.id)?;
 
-	let worktree = action.worktree_mapping.as_ref().map_or_else(
-		|| worktree_manager.plan_for_issue(&action.issue.identifier),
-		|mapping| WorktreeSpec {
-			branch_name: mapping.branch_name().to_owned(),
-			issue_identifier: action.issue.identifier.clone(),
-			path: mapping.worktree_path().to_path_buf(),
-			reused_existing: true,
-		},
-	);
-	let retry_budget_base =
-		retry_budget_base_for_issue_worktree(state_store, &action.issue.id, &worktree.path)?;
-	let issue_run = IssueRunPlan {
-		issue: action.issue.clone(),
-		issue_state: planned_issue_state_for_dispatch(
-			&action.workflow,
-			&action.issue,
-			IssueDispatchMode::Retry,
-			None,
-		),
-		initial_issue_state: action.issue.state.name.clone(),
-		worktree,
-		#[cfg(test)]
-		retry_project_slug: String::new(),
-		dispatch_mode: IssueDispatchMode::Retry,
-		attempt_number: action.run_attempt.attempt_number(),
-		run_id: action.run_attempt.run_id().to_owned(),
-		retry_budget_base,
-	};
+	let issue_run = stalled_reconciliation_issue_run(state_store, worktree_manager, action)?;
 
 	write_reconciliation_operation_marker_best_effort(
 		&issue_run.worktree.path,
@@ -410,6 +400,91 @@ where
 	)?;
 
 	Ok(())
+}
+
+fn reconcile_stalled_retained_partial_progress_run<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	worktree_manager: &WorktreeManager,
+	action: &ActiveRunReconciliation,
+	idle_for: Duration,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	tracing::warn!(
+		project_id = project.service_id(),
+		issue_id = action.issue.id,
+		issue = action.issue.identifier,
+		run_id = action.run_attempt.run_id(),
+		disposition = "stalled_retained_partial_progress",
+		idle_for_s = idle_for.as_secs(),
+		"Reconciling stalled run with retained partial progress."
+	);
+
+	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
+	state_store.clear_lease(&action.issue.id)?;
+
+	let issue_run = stalled_reconciliation_issue_run(state_store, worktree_manager, action)?;
+	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
+
+	write_reconciliation_operation_marker_best_effort(
+		&issue_run.worktree.path,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		RUN_OPERATION_RECONCILIATION,
+	);
+	handle_failure(
+		tracker,
+		project,
+		&action.workflow,
+		state_store,
+		&issue_run,
+		&Report::new(RetainedPartialProgress {
+			issue_identifier: action.issue.identifier.clone(),
+			run_id: action.run_attempt.run_id().to_owned(),
+			worktree_path,
+		}),
+	)?;
+
+	Ok(())
+}
+
+fn stalled_reconciliation_issue_run(
+	state_store: &StateStore,
+	worktree_manager: &WorktreeManager,
+	action: &ActiveRunReconciliation,
+) -> Result<IssueRunPlan> {
+	let worktree = action.worktree_mapping.as_ref().map_or_else(
+		|| worktree_manager.plan_for_issue(&action.issue.identifier),
+		|mapping| WorktreeSpec {
+			branch_name: mapping.branch_name().to_owned(),
+			issue_identifier: action.issue.identifier.clone(),
+			path: mapping.worktree_path().to_path_buf(),
+			reused_existing: true,
+		},
+	);
+	let retry_budget_base =
+		retry_budget_base_for_issue_worktree(state_store, &action.issue.id, &worktree.path)?;
+
+	Ok(IssueRunPlan {
+		issue: action.issue.clone(),
+		issue_state: planned_issue_state_for_dispatch(
+			&action.workflow,
+			&action.issue,
+			IssueDispatchMode::Retry,
+			None,
+		),
+		initial_issue_state: action.issue.state.name.clone(),
+		worktree,
+		#[cfg(test)]
+		retry_project_slug: String::new(),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: action.run_attempt.attempt_number(),
+		run_id: action.run_attempt.run_id().to_owned(),
+		retry_budget_base,
+	})
 }
 
 fn reconcile_stalled_attention_run(
@@ -453,6 +528,15 @@ fn write_reconciliation_operation_marker_best_effort(
 			worktree_path = %worktree_path.display(),
 			"Run operation marker write failed; continuing stalled-run reconciliation."
 		);
+	}
+}
+
+fn stalled_run_has_retained_partial_progress(
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> bool {
+	match worktree_mapping {
+		Some(mapping) => worktree_has_tracked_changes(mapping.worktree_path()),
+		None => false,
 	}
 }
 
