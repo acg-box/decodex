@@ -109,6 +109,7 @@ cargo run -p decodex --bin decodex -- --help
 cargo run -p decodex --bin decodex -- probe stdio://
 cargo run -p decodex --bin decodex -- project list
 cargo run -p decodex --bin decodex -- status
+cargo run -p decodex --bin decodex -- status --live
 cargo run -p decodex --bin decodex -- diagnose --json
 cargo run -p decodex --bin decodex -- maintenance prune --dry-run
 cargo run -p decodex --bin decodex -- lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>
@@ -124,6 +125,11 @@ operator wants to override registry-based project resolution for that command.
 Use `--allow-unverified-codex` on `run`, `serve`, or `probe` only when deliberately
 dogfooding a Codex build outside the locally verified app-server range; the default
 guard remains fail-closed.
+`decodex status` prints the local runtime snapshot without refreshing live
+tracker, pull-request, or Codex account usage observers. Use `decodex status --live`
+when the operator needs fresh Linear/GitHub readback before acting; use the Accounts
+API refresh path, such as `GET /api/accounts?refresh=1`, when the operator needs
+fresh ChatGPT account usage probes.
 `decodex serve` uses hardcoded scheduler cadences: the local control-plane loop
 publishes snapshots every 15 seconds, and Linear-backed queue/status scans run at
 most every 5 minutes per project unless an operator or agent requests an explicit

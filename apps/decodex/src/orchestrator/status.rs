@@ -440,6 +440,30 @@ where
 	)
 }
 
+fn build_status_command_operator_status_snapshot<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	limit: usize,
+) -> crate::prelude::Result<OperatorStatusSnapshot>
+where
+	T: IssueTracker,
+{
+	build_live_operator_status_snapshot_with_history_ledger(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		limit,
+		LiveOperatorStatusSnapshotOptions {
+			hydrate_history_ledger: true,
+			run_issue_metadata_hydration: RunIssueMetadataHydration::AllRows,
+			account_activity_mode: AccountActivityMode::Snapshot,
+		},
+	)
+}
+
 fn build_control_plane_operator_status_snapshot<T>(
 	tracker: &T,
 	project: &ServiceConfig,

@@ -35,6 +35,7 @@ decodex probe stdio://
 decodex project add "$HOME/.codex/decodex/projects/<service-id>"
 decodex project list
 decodex status
+decodex status --live
 decodex run --dry-run
 decodex archive-linear --repo-label repo:<name> --older-than-days 30
 ```
@@ -45,6 +46,7 @@ Development equivalents from the Decodex repo root:
 cargo run -p decodex --bin decodex -- probe stdio://
 cargo run -p decodex --bin decodex -- project add "$HOME/.codex/decodex/projects/<service-id>"
 cargo run -p decodex --bin decodex -- status
+cargo run -p decodex --bin decodex -- status --live
 cargo run -p decodex --bin decodex -- run --dry-run
 cargo run -p decodex --bin decodex -- archive-linear --repo-label repo:<name> --older-than-days 30
 ```
@@ -126,8 +128,11 @@ Manual commit and landing are separate narrow workflows:
 
 ## Status and Dry Run
 
-- Use `status` to inspect active lanes, queue state, review and landing state, recovery
-  worktrees, and the run ledger.
+- Use `status` to inspect the local runtime snapshot for active lanes, retained local
+  state, recovery worktrees, account-pool configuration, and the run ledger without
+  refreshing live tracker, pull-request, or ChatGPT account usage observers.
+- Use `status --live` when the operator needs fresh Linear/GitHub observer readback
+  before acting. Use `/api/accounts?refresh=1` for fresh ChatGPT account usage probes.
 - Use `run --dry-run` before live automation to validate project loading, issue
   discovery, eligibility, and worktree planning without tracker mutation.
 - Use `probe stdio://` before relying on the Codex app-server boundary.
