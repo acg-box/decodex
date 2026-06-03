@@ -289,15 +289,27 @@ fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
 	for (user_agent, expected_codex_cli_version) in [
 		("codex-cli 0.136.0", "codex-cli 0.136.0"),
 		("codex-cli 0.136.0-alpha.2", "codex-cli 0.136.0-alpha.2"),
+		(
+			"Codex Desktop/0.136.0 (Mac OS 26.5.1; arm64) ghostty/1.3.2-main-_6246c288a (decodex; 0.1.0)",
+			"codex-cli 0.136.0",
+		),
+		(
+			"Codex Desktop/0.137.0-alpha.4 (Mac OS 26.5.1; arm64) ghostty/1.3.2-main-_6246c288a (decodex; 0.1.0)",
+			"codex-cli 0.137.0-alpha.4",
+		),
 		("decodex/0.136.0 (Mac OS 26.5.0; arm64) unknown (decodex; 0.1.0)", "codex-cli 0.136.0"),
 		(
 			"decodex/0.136.0-alpha.2 (Mac OS 26.5.0; arm64) unknown (decodex; 0.1.0)",
 			"codex-cli 0.136.0-alpha.2",
 		),
+		(
+			"decodex/0.137.0-alpha.4 (Mac OS 26.5.1; arm64) unknown (decodex; 0.1.0)",
+			"codex-cli 0.137.0-alpha.4",
+		),
 	] {
 		let mut report = AppServerCapabilityPreflightReport::new();
 
-		super::record_app_server_compatibility_guard(&mut report, user_agent);
+		super::record_app_server_compatibility_guard(&mut report, user_agent, false);
 
 		assert!(!report.has_blockers(), "{user_agent} should be supported");
 		assert_eq!(report.compatibility_status(), "supported");
@@ -308,7 +320,7 @@ fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
 		);
 		assert_eq!(
 			report.compatibility_supported_versions(),
-			Some("codex-cli 0.136.0, codex-cli 0.136.0-alpha.2")
+			Some("codex-cli 0.136.0, codex-cli 0.136.0-alpha.2, codex-cli 0.137.0-alpha.4")
 		);
 	}
 }
@@ -317,13 +329,14 @@ fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
 fn app_server_compatibility_guard_rejects_unverified_codex_surfaces() {
 	for user_agent in [
 		"codex-cli 0.137.0-alpha.0",
+		"codex-cli 0.137.0-alpha.5",
 		"codex-cli 0.136.1",
 		"other-app/0.136.0",
 		"openai/codex upstream-main-post-rust-v0.136.0",
 	] {
 		let mut report = AppServerCapabilityPreflightReport::new();
 
-		super::record_app_server_compatibility_guard(&mut report, user_agent);
+		super::record_app_server_compatibility_guard(&mut report, user_agent, false);
 
 		assert!(report.has_blockers(), "{user_agent} should be outside support");
 		assert_eq!(report.compatibility_status(), "unsupported");
@@ -331,6 +344,22 @@ fn app_server_compatibility_guard_rejects_unverified_codex_surfaces() {
 		assert_eq!(report.checks()[0].status, super::AppServerCapabilityPreflightStatus::Blocked);
 		assert!(report.checks()[0].summary.contains("outside"));
 	}
+}
+
+#[test]
+fn app_server_compatibility_guard_allows_unverified_codex_when_requested() {
+	let mut report = AppServerCapabilityPreflightReport::new();
+
+	super::record_app_server_compatibility_guard(&mut report, "codex-cli 0.138.0-alpha.1", true);
+
+	assert!(!report.has_blockers());
+	assert_eq!(report.compatibility_status(), "unverified_allowed");
+	assert_eq!(report.checks()[0].name, "compatibility");
+	assert_eq!(report.checks()[0].status, super::AppServerCapabilityPreflightStatus::Warning);
+	assert_eq!(
+		report.checks()[0].details.get("override").map(String::as_str),
+		Some("allow_unverified_codex")
+	);
 }
 
 #[test]
@@ -453,6 +482,7 @@ fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 		max_turns: 1,
 		timeout: Duration::from_secs(30),
 		process_env: AppServerProcessEnv::default(),
+		allow_unverified_codex: false,
 		continuation_user_input: None,
 		activity_marker_path: None,
 		resume_thread_id: None,
@@ -2057,6 +2087,7 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			max_turns: 3,
 			timeout: Duration::from_secs(30),
 			process_env: AppServerProcessEnv::default(),
+			allow_unverified_codex: false,
 			continuation_user_input: Some(String::from(
 				"Call `echo_resume` with `{\\\"text\\\":\\\"SECOND_OK\\\"}`. After the tool succeeds, reply with the exact text DONE.",
 			)),
@@ -2104,7 +2135,8 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			max_turns: 1,
 			timeout: Duration::from_secs(30),
 			process_env: AppServerProcessEnv::default(),
-			continuation_user_input: None,
+				allow_unverified_codex: false,
+				continuation_user_input: None,
 			activity_marker_path: Some(marker_path.clone()),
 			resume_thread_id: Some(first_result.thread_id.clone()),
 			ephemeral_thread: false,

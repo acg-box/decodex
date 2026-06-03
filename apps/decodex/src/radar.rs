@@ -924,8 +924,9 @@ impl GitHubError {
 
 	fn into_report(self, url: &str) -> Report {
 		match self {
-			Self::Status { status, body } =>
-				eyre::eyre!("GitHub API request failed for {url}: {} {body}", status.as_u16()),
+			Self::Status { status, body } => {
+				eyre::eyre!("GitHub API request failed for {url}: {} {body}", status.as_u16())
+			},
 			Self::Transport(error) => eyre::eyre!("GitHub API request failed for {url}: {error}"),
 		}
 	}

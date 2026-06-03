@@ -5,6 +5,8 @@ This directory contains executable repository automation helpers.
 - `scripts/github/` owns the automation-only Codex AI analysis helper and shared
   schema support used by that helper.
 - `scripts/config/` owns config-derived artifact synchronization scripts.
+- `scripts/macos/` owns macOS-only app packaging and local bundle verification
+  helpers.
 
 Checked-in data produced or consumed by scripts belongs outside this directory. GitHub
 review queues, upstream reviews, bundles, impact records, and analysis drafts live
