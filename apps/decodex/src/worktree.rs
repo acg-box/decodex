@@ -14,7 +14,7 @@ use libc::{ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL};
 
 use crate::{
 	prelude::{Result, eyre},
-	state::RUN_ACTIVITY_MARKER_FILE,
+	state::{self, RUN_ACTIVITY_MARKER_FILE},
 	workflow::WorkflowWorkspaceHooks,
 };
 
@@ -670,11 +670,18 @@ fn worktree_cleanliness(worktree_path: &Path) -> Result<MergedWorktreeCleanlines
 			stderr.trim()
 		);
 	}
-	if String::from_utf8_lossy(&output.stdout).trim().is_empty() {
-		return Ok(MergedWorktreeCleanliness::Clean);
+
+	let status = String::from_utf8_lossy(&output.stdout);
+
+	if status
+		.lines()
+		.filter(|line| !line.trim_end().is_empty())
+		.any(|line| !state::is_untracked_decodex_runtime_artifact_status_line(line))
+	{
+		return Ok(MergedWorktreeCleanliness::Dirty);
 	}
 
-	Ok(MergedWorktreeCleanliness::Dirty)
+	Ok(MergedWorktreeCleanliness::Clean)
 }
 
 fn symbolic_ref(repo_root: &Path, ref_name: &str) -> Result<Option<String>> {
@@ -1390,6 +1397,53 @@ read_first = []
 			fs::canonicalize(&worktree_path).expect("worktree path should canonicalize")
 		);
 		assert_eq!(debts[0].cleanliness, super::MergedWorktreeCleanliness::Dirty);
+	}
+
+	#[test]
+	fn merged_worktree_cleanup_debts_treats_decodex_runtime_artifacts_as_clean() {
+		let (_temp_dir, repo_root) = init_repo();
+		let worktree_root = repo_root.join(".worktrees");
+		let worktree_path = worktree_root.join("accounts-column-format");
+
+		fs::create_dir_all(&worktree_root).expect("worktree root should exist");
+
+		run_git(
+			&repo_root,
+			&[
+				"worktree",
+				"add",
+				"-b",
+				"xy/accounts-column-format",
+				worktree_path.to_str().expect("worktree path should be UTF-8"),
+				"main",
+			],
+		);
+
+		fs::write(worktree_path.join("README.md"), "feature work\n")
+			.expect("worktree file should write");
+
+		run_git(&worktree_path, &["add", "README.md"]);
+		run_git(&worktree_path, &["commit", "-m", "feature work"]);
+		run_git(
+			&repo_root,
+			&["merge", "--no-ff", "xy/accounts-column-format", "-m", "land feature"],
+		);
+
+		fs::write(worktree_path.join(crate::state::RUN_ACTIVITY_MARKER_FILE), "agent_run\n")
+			.expect("activity marker should write");
+
+		let control_dir = worktree_path.join(crate::state::RUN_CONTROL_CHANNEL_DIR);
+
+		fs::create_dir_all(&control_dir).expect("run-control directory should create");
+		fs::write(control_dir.join("run-1-1.channel"), "channel\n")
+			.expect("run-control channel should write");
+
+		let debts = super::merged_worktree_cleanup_debts(&repo_root, &worktree_root, "main")
+			.expect("cleanup debt scan should succeed");
+
+		assert_eq!(debts.len(), 1);
+		assert_eq!(debts[0].branch_name, "xy/accounts-column-format");
+		assert_eq!(debts[0].cleanliness, super::MergedWorktreeCleanliness::Clean);
 	}
 
 	#[test]
