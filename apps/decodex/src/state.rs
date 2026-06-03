@@ -62,4 +62,14 @@ pub(crate) const RUN_CONTROL_ACTION_FALLBACK: &str = "fallback";
 const DISPATCH_SLOT_LOCK_FILE_PREFIX: &str = ".decodex-dispatch-slot";
 const ISSUE_CLAIM_LOCK_FILE_PREFIX: &str = ".decodex-issue-claim";
 
+pub(crate) fn is_untracked_decodex_runtime_artifact_status_line(line: &str) -> bool {
+	let Some(path) = line.trim_end().strip_prefix("?? ") else {
+		return false;
+	};
+
+	path == RUN_ACTIVITY_MARKER_FILE
+		|| path == RUN_CONTROL_CHANNEL_DIR
+		|| path.strip_prefix(RUN_CONTROL_CHANNEL_DIR).is_some_and(|suffix| suffix.starts_with('/'))
+}
+
 #[cfg(test)] mod tests;
