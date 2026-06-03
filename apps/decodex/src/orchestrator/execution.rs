@@ -504,6 +504,15 @@ where
 	)
 }
 
+fn build_closeout_review_state_inspector(
+	project: &ServiceConfig,
+) -> GhPullRequestReviewStateInspector {
+	GhPullRequestReviewStateInspector {
+		github_token_env_var: Some(project.github().token_env_var().to_owned()),
+		github_command_path: project.github().command_path().map(Path::to_path_buf),
+	}
+}
+
 fn execute_issue_run_inner<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -545,9 +554,7 @@ where
 		prepare_agent_git_credentials(project, &issue_run.run_id, &issue_run.worktree.path)?;
 	let codex_account_pool =
 		project.codex().accounts().map(CodexAccountPool::from_config).transpose()?;
-	let closeout_review_state_inspector = GhPullRequestReviewStateInspector {
-		github_token_env_var: Some(project.github().token_env_var().to_owned()),
-	};
+	let closeout_review_state_inspector = build_closeout_review_state_inspector(project);
 	let continuation_guard = build_issue_turn_continuation_guard(
 		tracker,
 		&tracker_tool_bridge,

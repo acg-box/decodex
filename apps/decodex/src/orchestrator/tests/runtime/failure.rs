@@ -708,7 +708,7 @@ fn validate_review_handoff_runtime_requires_gh_and_github_token_authority() {
 		assert!(orchestrator::validate_review_handoff_runtime(&config, true).is_ok());
 		assert!(orchestrator::validate_review_handoff_runtime(&config, false).is_ok());
 		assert!(orchestrator::validate_daemon_runtime().is_ok());
-		assert!(orchestrator::validate_command_available("git", "test preflight").is_ok());
+		assert!(orchestrator::validate_command_available("git", None, "test preflight").is_ok());
 
 		let error = orchestrator::validate_review_handoff_runtime(&config_missing_github, false)
 			.expect_err("missing github token env-var should fail live preflight");
@@ -726,6 +726,7 @@ fn validate_review_handoff_runtime_requires_gh_and_github_token_authority() {
 
 	let error = orchestrator::validate_command_available(
 		"__decodex_missing_command__",
+		None,
 		"PR-backed review handoff",
 	)
 	.expect_err("missing command should fail preflight");
