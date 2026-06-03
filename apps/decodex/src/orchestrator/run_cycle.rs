@@ -95,10 +95,11 @@ fn run_configured_cycle(
 			preferred_issue_claim_fd: request.preferred_issue_claim_fd,
 			preferred_dispatch_slot_fd: request.preferred_dispatch_slot_fd,
 			preferred_dispatch_slot_index: request.preferred_dispatch_slot_index,
-			dispatch_mode: request.preferred_dispatch_mode.unwrap_or(IssueDispatchMode::Normal),
-			preferred_run_identity: request.preferred_run_identity,
-			preferred_retry_budget_base: request.preferred_retry_budget_base,
-		};
+				dispatch_mode: request.preferred_dispatch_mode.unwrap_or(IssueDispatchMode::Normal),
+				preferred_run_identity: request.preferred_run_identity,
+				preferred_retry_budget_base: request.preferred_retry_budget_base,
+				allow_unverified_codex: request.allow_unverified_codex,
+			};
 
 		return match request.preferred_dispatch_mode {
 			Some(_) => run_target_issue_once(target_context),
@@ -106,7 +107,14 @@ fn run_configured_cycle(
 		};
 	}
 
-	run_project_once(&tracker, &config, &workflow, request.state_store, request.dry_run)
+	run_project_once(
+		&tracker,
+		&config,
+		&workflow,
+		request.state_store,
+		request.dry_run,
+		request.allow_unverified_codex,
+	)
 }
 
 fn load_configured_cycle_workflow(
@@ -127,11 +135,20 @@ fn run_project_once<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	dry_run: bool,
+	allow_unverified_codex: bool,
 ) -> Result<Option<RunSummary>>
 where
 	T: IssueTracker,
 {
-	run_project_once_with_exclusions(tracker, project, workflow, state_store, dry_run, &[])
+	run_project_once_with_exclusions(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		dry_run,
+		&[],
+		allow_unverified_codex,
+	)
 }
 
 fn run_project_once_with_exclusions<T>(
@@ -141,6 +158,7 @@ fn run_project_once_with_exclusions<T>(
 	state_store: &StateStore,
 	dry_run: bool,
 	excluded_issue_ids: &[&str],
+	allow_unverified_codex: bool,
 ) -> Result<Option<RunSummary>>
 where
 	T: IssueTracker,
@@ -157,7 +175,15 @@ where
 		return Ok(None);
 	};
 
-	complete_issue_run(tracker, project, workflow, state_store, issue_run, dry_run)
+	complete_issue_run(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		issue_run,
+		dry_run,
+		allow_unverified_codex,
+	)
 }
 
 fn reconcile_post_review_orchestration<T>(
@@ -1215,15 +1241,15 @@ where
 			return Ok(None);
 		}
 
-		return replan_project_issue_run_after_excluding(
-			tracker,
-			project,
-			workflow,
-			state_store,
-			dry_run,
-			excluded_issue_ids,
-			issue.id.as_str(),
-		);
+			return replan_project_issue_run_after_excluding(
+				tracker,
+				project,
+				workflow,
+				state_store,
+				dry_run,
+				excluded_issue_ids,
+				issue.id.as_str(),
+			);
 	}
 
 	let Some(issue_run) = prepare_issue_run(
@@ -1243,9 +1269,9 @@ where
 					run_id: identity.run_id.as_str(),
 					attempt_number: identity.attempt_number,
 				}
-			}),
-			preferred_retry_budget_base: None,
-		},
+				}),
+				preferred_retry_budget_base: None,
+			},
 		issue,
 	)?
 	else {
@@ -1779,9 +1805,9 @@ where
 			dispatch_mode: context.dispatch_mode,
 			preferred_issue_state: context.preferred_issue_state,
 			preferred_initial_issue_state: context.preferred_initial_issue_state,
-			preferred_run_identity,
-			preferred_retry_budget_base: context.preferred_retry_budget_base,
-		},
+				preferred_run_identity,
+				preferred_retry_budget_base: context.preferred_retry_budget_base,
+			},
 		issue,
 	)?
 	else {
@@ -1793,9 +1819,10 @@ where
 		context.project,
 		context.workflow,
 		context.state_store,
-		issue_run,
-		context.dry_run,
-	)
+			issue_run,
+			context.dry_run,
+			context.allow_unverified_codex,
+		)
 }
 
 fn ensure_target_closeout_dispatch_is_unblocked<T>(
@@ -1925,6 +1952,7 @@ where
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity,
 		preferred_retry_budget_base: context.preferred_retry_budget_base,
+		allow_unverified_codex: context.allow_unverified_codex,
 	})
 }
 
@@ -2015,6 +2043,7 @@ fn target_issue_run_context_with_dispatch_mode<'a, T>(
 		dispatch_mode,
 		preferred_run_identity: context.preferred_run_identity,
 		preferred_retry_budget_base: context.preferred_retry_budget_base,
+		allow_unverified_codex: context.allow_unverified_codex,
 	}
 }
 
@@ -2300,6 +2329,7 @@ fn complete_issue_run<T>(
 	state_store: &StateStore,
 	issue_run: IssueRunPlan,
 	dry_run: bool,
+	allow_unverified_codex: bool,
 ) -> Result<Option<RunSummary>>
 where
 	T: IssueTracker,
@@ -2308,7 +2338,14 @@ where
 		return Ok(Some(run_summary_from_issue_run(project.service_id(), &issue_run)));
 	}
 
-	let summary = execute_issue_run(tracker, project, workflow, state_store, issue_run)?;
+	let summary = execute_issue_run(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		issue_run,
+		allow_unverified_codex,
+	)?;
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
 	};
@@ -2324,9 +2361,10 @@ where
 			tracker,
 			project,
 			workflow,
-			state_store,
-			source_summary,
-		),
+				state_store,
+				source_summary,
+				allow_unverified_codex,
+			),
 	)? {
 		return Ok(Some(retained_summary));
 	}
@@ -2340,6 +2378,7 @@ fn run_retained_closeout_for_handoff_summary<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	source_summary: &RunSummary,
+	allow_unverified_codex: bool,
 ) -> Result<Option<RunSummary>>
 where
 	T: IssueTracker,
@@ -2360,6 +2399,7 @@ where
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
+		allow_unverified_codex,
 	})
 }
 

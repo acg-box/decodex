@@ -210,6 +210,7 @@ fn blocked_future_retry_excludes_all_queued_retries_before_normal_fallback() {
 		&config,
 		&workflow,
 		&state_store,
+
 	)
 	.expect("daemon planning should succeed")
 	.expect("normal work should still fill open capacity");
@@ -447,6 +448,7 @@ fn due_continuation_retry_dispatches_when_issue_still_reflects_startable_state()
 		&config,
 		&workflow,
 		&state_store,
+
 	)
 	.expect("daemon planning should succeed")
 	.expect("the continuation retry should still dispatch");

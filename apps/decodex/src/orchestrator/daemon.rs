@@ -14,6 +14,7 @@ struct DaemonTickRuntimeContext<'a, T, I> {
 	worktree_manager: &'a WorktreeManager,
 	review_state_inspector: &'a I,
 	recoverable_worktree_skip_cache: Option<&'a mut RecoverableWorktreeSkipCache>,
+	allow_unverified_codex: bool,
 }
 
 fn load_daemon_tick_context(
@@ -76,6 +77,7 @@ fn run_daemon_tick(
 	retry_queue: &mut RetryQueue,
 	recoverable_worktree_skip_cache: &mut RecoverableWorktreeSkipCache,
 	context: &DaemonTickContext,
+	allow_unverified_codex: bool,
 ) -> Result<()> {
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(context.config.github().token_env_var().to_owned()),
@@ -90,10 +92,11 @@ fn run_daemon_tick(
 			tracker: &context.tracker,
 			project: &context.config,
 			workflow: &context.workflow,
-			worktree_manager: &context.worktree_manager,
-			review_state_inspector: &review_state_inspector,
-			recoverable_worktree_skip_cache: Some(recoverable_worktree_skip_cache),
-		},
+				worktree_manager: &context.worktree_manager,
+				review_state_inspector: &review_state_inspector,
+				recoverable_worktree_skip_cache: Some(recoverable_worktree_skip_cache),
+				allow_unverified_codex,
+			},
 	)
 }
 
@@ -146,15 +149,8 @@ where
 		.max_concurrent_agents()
 		.has_capacity(active_children.len())
 	{
-		if !spawn_next_daemon_child(
-			config_path,
-			state_store,
-			active_children,
-			retry_queue,
-			context.tracker,
-			context.project,
-			context.workflow,
-		)? {
+		if !spawn_next_daemon_child(config_path, state_store, active_children, retry_queue, &context)?
+		{
 			break;
 		}
 	}
@@ -516,29 +512,33 @@ fn spawn_next_daemon_child<T>(
 	state_store: &StateStore,
 	active_children: &mut Vec<DaemonRunChild>,
 	retry_queue: &mut RetryQueue,
-	tracker: &T,
-	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
+	context: &DaemonTickRuntimeContext<'_, T, impl PullRequestReviewStateInspector>,
 ) -> Result<bool>
 where
 	T: IssueTracker,
 {
-	let next_run = plan_next_daemon_run(retry_queue, tracker, project, workflow, state_store)?;
+	let next_run = plan_next_daemon_run(
+		retry_queue,
+		context.tracker,
+		context.project,
+		context.workflow,
+		state_store,
+	)?;
 
 	match next_run {
 		Some((summary, from_retry_queue)) => {
 			if summary.dispatch_mode != IssueDispatchMode::Closeout {
-				ensure_project_has_no_merged_worktree_cleanup_debt(project)?;
+				ensure_project_has_no_merged_worktree_cleanup_debt(context.project)?;
 			}
 
 			state_store.configure_dispatch_slot_root(
-				project.service_id(),
-				project.worktree_root(),
-				workflow.frontmatter().execution().max_concurrent_agents(),
+				context.project.service_id(),
+				context.project.worktree_root(),
+				context.workflow.frontmatter().execution().max_concurrent_agents(),
 			)?;
 
 			if !state_store.try_acquire_lease(
-				project.service_id(),
+				context.project.service_id(),
 				&summary.issue_id,
 				&summary.run_id,
 				&summary.issue_state,
@@ -547,10 +547,10 @@ where
 			}
 
 			let daemon_spawn_state =
-				materialize_daemon_spawn_state(project, workflow, state_store, &summary)
-				.inspect_err(|_error| {
-					let _ = state_store.clear_lease(&summary.issue_id);
-				})?;
+				materialize_daemon_spawn_state(context.project, context.workflow, state_store, &summary)
+					.inspect_err(|_error| {
+						let _ = state_store.clear_lease(&summary.issue_id);
+					})?;
 
 			state_store.record_run_attempt(
 				&summary.run_id,
@@ -559,7 +559,7 @@ where
 				"starting",
 			)?;
 			state_store.upsert_worktree(
-				project.service_id(),
+				context.project.service_id(),
 				&summary.issue_id,
 				&daemon_spawn_state.worktree.branch_name,
 				&daemon_spawn_state.worktree.path.display().to_string(),
@@ -568,9 +568,10 @@ where
 			let mut child = spawn_planned_daemon_child(
 				config_path,
 				state_store,
-				workflow,
+				context.workflow,
 				&summary,
 				daemon_spawn_state.retry_budget_base,
+				context.allow_unverified_codex,
 			)?;
 
 			if let Err(error) = state::write_run_operation_marker_for_process(
@@ -607,7 +608,7 @@ where
 				retry_project_slug: String::new(),
 				dispatch_mode: summary.dispatch_mode,
 				from_retry_queue,
-				workflow: workflow.clone(),
+				workflow: context.workflow.clone(),
 			});
 
 			Ok(true)
@@ -630,6 +631,7 @@ fn spawn_planned_daemon_child(
 	workflow: &WorkflowDocument,
 	summary: &RunSummary,
 	retry_budget_base: i64,
+	allow_unverified_codex: bool,
 ) -> Result<Child> {
 	let issue_claim_handoff =
 		Some(state_store.clone_issue_claim_for_child(&summary.issue_id).inspect_err(|_error| {
@@ -647,10 +649,11 @@ fn spawn_planned_daemon_child(
 		preferred_initial_issue_state: Some(summary.initial_issue_state.as_str()),
 		dispatch_mode: summary.dispatch_mode,
 		preferred_run_id: summary.run_id.as_str(),
-		preferred_attempt_number: summary.attempt_number,
-		preferred_retry_budget_base: retry_budget_base,
-		workflow,
-		issue_claim_handoff: issue_claim_handoff.as_ref(),
+			preferred_attempt_number: summary.attempt_number,
+			preferred_retry_budget_base: retry_budget_base,
+			workflow,
+			allow_unverified_codex,
+			issue_claim_handoff: issue_claim_handoff.as_ref(),
 		dispatch_slot_handoff: dispatch_slot_handoff.as_ref(),
 		dispatch_slot_index_handoff,
 	})
@@ -778,11 +781,12 @@ fn spawn_run_once_child(request: SpawnRunOnceChildRequest<'_>) -> Result<Child> 
 		dispatch_slot_fd: None,
 		dispatch_slot_index: request.dispatch_slot_index_handoff,
 		dispatch_mode: request.dispatch_mode.into(),
-		run_id: String::from(request.preferred_run_id),
-		attempt_number: request.preferred_attempt_number,
-		retry_budget_base: request.preferred_retry_budget_base,
-		workflow_snapshot: request.workflow.to_markdown()?,
-	};
+			run_id: String::from(request.preferred_run_id),
+			attempt_number: request.preferred_attempt_number,
+			retry_budget_base: request.preferred_retry_budget_base,
+			allow_unverified_codex: request.allow_unverified_codex,
+			workflow_snapshot: request.workflow.to_markdown()?,
+		};
 	let payload = serde_json::to_vec(&attempt_request)?;
 	let mut command = Command::new(executable);
 
@@ -866,10 +870,11 @@ where
 			preferred_issue_claim_fd: None,
 			preferred_dispatch_slot_fd: None,
 			preferred_dispatch_slot_index: None,
-			dispatch_mode: entry.dispatch_mode,
-			preferred_run_identity: None,
-			preferred_retry_budget_base: None,
-		})?
+				dispatch_mode: entry.dispatch_mode,
+				preferred_run_identity: None,
+				preferred_retry_budget_base: None,
+				allow_unverified_codex: false,
+			})?
 		else {
 			if retry_entry_is_temporarily_blocked(tracker, project, workflow, state_store, &entry)?
 			{

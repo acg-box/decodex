@@ -11,6 +11,7 @@ fn run_project_once_closeout_reuses_completed_handoff_run_identity_for_record_an
 		&fixture.workflow,
 		&fixture.state_store,
 		true,
+		false,
 	)
 	.expect("retained closeout dry-run planning should succeed");
 	let planned =
@@ -25,6 +26,7 @@ fn run_project_once_closeout_reuses_completed_handoff_run_identity_for_record_an
 		&fixture.config,
 		&fixture.workflow,
 		&fixture.state_store,
+		false,
 		false,
 	)
 	.expect("retained closeout should run")
@@ -125,6 +127,7 @@ fn daemon_planned_closeout_reuses_handoff_identity_after_parent_failed_status() 
 		&fixture.config,
 		&fixture.workflow,
 		&fixture.state_store,
+
 	)
 	.expect("daemon planning should succeed")
 	.expect("retained closeout should be selected");
@@ -213,6 +216,7 @@ fn daemon_planned_closeout_allocates_retry_after_recorded_closeout_failure() {
 		&fixture.config,
 		&fixture.workflow,
 		&fixture.state_store,
+
 	)
 	.expect("daemon planning should succeed")
 	.expect("retained closeout should be selected");
@@ -236,6 +240,7 @@ fn run_project_once_closeout_preserves_handoff_identity_after_fresh_activity_rec
 		&fixture.config,
 		&fixture.workflow,
 		&fixture.state_store,
+		false,
 		false,
 	)
 	.expect("retained closeout should run after recovery")

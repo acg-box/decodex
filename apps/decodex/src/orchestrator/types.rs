@@ -25,6 +25,7 @@ pub(crate) struct RunOnceRequest<'a> {
 	pub(crate) preferred_attempt_number: Option<i64>,
 	pub(crate) preferred_retry_budget_base: Option<i64>,
 	pub(crate) preferred_workflow_snapshot: Option<&'a str>,
+	pub(crate) allow_unverified_codex: bool,
 }
 
 /// Multi-project local control-plane daemon request.
@@ -32,6 +33,7 @@ pub(crate) struct ServeRequest<'a> {
 	pub(crate) config_path: Option<&'a Path>,
 	pub(crate) listen_address: &'a str,
 	pub(crate) dev: bool,
+	pub(crate) allow_unverified_codex: bool,
 }
 
 /// Agent-readable runtime diagnosis request.
@@ -145,6 +147,7 @@ struct RunCycleRequest<'a> {
 	preferred_run_identity: Option<PreferredRunIdentity<'a>>,
 	preferred_retry_budget_base: Option<i64>,
 	preferred_workflow_snapshot: Option<&'a str>,
+	allow_unverified_codex: bool,
 }
 
 struct SpawnRunOnceChildRequest<'a> {
@@ -157,6 +160,7 @@ struct SpawnRunOnceChildRequest<'a> {
 	preferred_attempt_number: i64,
 	preferred_retry_budget_base: i64,
 	workflow: &'a WorkflowDocument,
+	allow_unverified_codex: bool,
 	issue_claim_handoff: Option<&'a File>,
 	dispatch_slot_handoff: Option<&'a File>,
 	dispatch_slot_index_handoff: Option<usize>,
@@ -1191,6 +1195,7 @@ struct TargetIssueRunContext<'a, T> {
 	dispatch_mode: IssueDispatchMode,
 	preferred_run_identity: Option<PreferredRunIdentity<'a>>,
 	preferred_retry_budget_base: Option<i64>,
+	allow_unverified_codex: bool,
 }
 
 struct ConcurrencySnapshot {

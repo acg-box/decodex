@@ -143,6 +143,7 @@ fn execute_issue_run<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_run: IssueRunPlan,
+	allow_unverified_codex: bool,
 ) -> Result<RunSummary>
 where
 	T: IssueTracker,
@@ -166,7 +167,16 @@ where
 	)?;
 
 	let result = ensure_automation_activity_label(tracker, &issue_run.issue, project.service_id(), true)
-		.and_then(|_| execute_issue_run_inner(tracker, project, workflow, state_store, &issue_run));
+		.and_then(|_| {
+			execute_issue_run_inner(
+				tracker,
+				project,
+				workflow,
+				state_store,
+				&issue_run,
+				allow_unverified_codex,
+			)
+		});
 
 	state_store.clear_lease(&issue_run.issue.id)?;
 
@@ -500,6 +510,7 @@ fn execute_issue_run_inner<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
+	allow_unverified_codex: bool,
 ) -> Result<RunSummary>
 where
 	T: IssueTracker,
@@ -571,10 +582,11 @@ where
 				issue_run,
 				&review_context,
 			),
-			max_turns: workflow.frontmatter().execution().max_turns(),
-			timeout: ACTIVE_RUN_IDLE_TIMEOUT,
-			process_env: agent_git_credentials.process_env().clone(),
-			continuation_user_input: Some(build_continuation_user_input(
+				max_turns: workflow.frontmatter().execution().max_turns(),
+				timeout: ACTIVE_RUN_IDLE_TIMEOUT,
+				process_env: agent_git_credentials.process_env().clone(),
+				allow_unverified_codex,
+				continuation_user_input: Some(build_continuation_user_input(
 				&issue_run.issue,
 				workflow,
 				issue_run.dispatch_mode,
