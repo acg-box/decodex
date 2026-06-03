@@ -1,3 +1,5 @@
+use orchestrator::PullRequestReadbackFailure;
+
 #[test]
 fn classify_post_review_lane_blocks_completed_issue_until_pull_request_is_merged() {
 	let temp_dir = TempDir::new().expect("temp dir should exist");
@@ -446,6 +448,10 @@ fn classify_post_review_lane_degrades_pull_request_state_read_failures_to_handof
 		classification.readback_warning.as_deref(),
 		Some("pull_request_state_read_failed")
 	);
+	assert_eq!(
+		classification.readback_root_cause.as_deref(),
+		Some("github_api_read_failed")
+	);
 }
 
 #[test]
@@ -459,6 +465,10 @@ fn classify_post_review_lane_degrades_missing_or_blank_github_token_env_var() {
 		missing.readback_warning.as_deref(),
 		Some("pull_request_state_read_failed")
 	);
+	assert_eq!(
+		missing.readback_root_cause.as_deref(),
+		Some("missing_github_token")
+	);
 
 	let env_var = format!("DECODEX_TEST_BLANK_STATUS_GITHUB_TOKEN_ENV_{}", process::id());
 	let _env_guard = TestEnvVarGuard::set(&env_var, "");
@@ -470,6 +480,30 @@ fn classify_post_review_lane_degrades_missing_or_blank_github_token_env_var() {
 	assert_eq!(
 		blank.readback_warning.as_deref(),
 		Some("pull_request_state_read_failed")
+	);
+	assert_eq!(
+		blank.readback_root_cause.as_deref(),
+		Some("missing_github_token")
+	);
+}
+
+#[test]
+fn pull_request_readback_root_cause_classifier_maps_cli_and_shape_failures() {
+	let missing_cli_error = Command::new("decodex-test-missing-gh-command")
+		.output()
+		.expect_err("missing command should fail with an io error");
+	let missing_cli = PullRequestReadbackFailure::from_report(Report::from(missing_cli_error));
+	let shape_failure = PullRequestReadbackFailure::from_report(eyre::eyre!(
+		"GitHub GraphQL response for `https://github.com/hack-ink/decodex/pull/174` did not include a pull request."
+	));
+
+	assert_eq!(
+		missing_cli.root_cause(),
+		orchestrator::PullRequestReadbackRootCause::MissingGithubCli
+	);
+	assert_eq!(
+		shape_failure.root_cause(),
+		orchestrator::PullRequestReadbackRootCause::PullRequestShapeReadFailed
 	);
 }
 
