@@ -2370,6 +2370,11 @@ where
 		let review_state = review_state_inspector
 			.inspect_review_state(worktree.worktree_path(), review_handoff.pr_url())
 			.ok();
+		let readback_root_cause = Some(
+			PullRequestReadbackRootCause::TrackerIssueReadbackFailed
+				.as_str()
+				.to_owned(),
+		);
 		let (
 			pr_head_sha,
 			pr_state,
@@ -2412,6 +2417,7 @@ where
 			check_state,
 			unresolved_review_threads,
 			readback_warning: Some(String::from("tracker_issue_readback_degraded")),
+			readback_root_cause,
 		});
 	}
 
@@ -2622,6 +2628,7 @@ fn post_review_lane_status_from_classification(
 		check_state: classification.check_state,
 		unresolved_review_threads: classification.unresolved_review_threads,
 		readback_warning: classification.readback_warning,
+		readback_root_cause: classification.readback_root_cause,
 	}
 }
 
@@ -3149,14 +3156,15 @@ where
 			},
 		};
 		let review_state = match review_state_inspector
-			.inspect_review_state(snapshot.worktree.worktree_path(), review_handoff.pr_url())
+			.inspect_review_state_readback(snapshot.worktree.worktree_path(), review_handoff.pr_url())
 		{
 			Ok(review_state) => review_state,
-			Err(_error) => {
+			Err(error) => {
 				return Ok(PostReviewLaneStateLoad::Classification(
 					readback_degraded_post_review_lane_from_handoff(
 						review_handoff,
 						"pull_request_state_read_failed",
+						error.root_cause(),
 					),
 				));
 			},
@@ -3506,6 +3514,7 @@ fn initial_post_review_lane_classification(
 		check_state: review_state.status_check_rollup_state.clone(),
 		unresolved_review_threads: Some(review_state.unresolved_review_threads),
 		readback_warning: None,
+		readback_root_cause: None,
 	}
 }
 
@@ -3517,6 +3526,8 @@ fn blocked_post_review_lane_from_state(
 
 	classification.decision = PostReviewLaneDecision::Block;
 	classification.reason = reason.to_owned();
+	classification.readback_root_cause = post_review_readback_root_cause_for_reason(reason)
+		.map(|root_cause| root_cause.as_str().to_owned());
 
 	classification
 }
@@ -3533,6 +3544,8 @@ fn blocked_post_review_lane(reason: &str) -> PostReviewLaneClassification {
 		check_state: None,
 		unresolved_review_threads: None,
 		readback_warning: None,
+		readback_root_cause: post_review_readback_root_cause_for_reason(reason)
+			.map(|root_cause| root_cause.as_str().to_owned()),
 	}
 }
 
@@ -3551,6 +3564,7 @@ fn blocked_post_review_lane_from_handoff(
 fn readback_degraded_post_review_lane_from_handoff(
 	review_handoff: &ReviewHandoffMarker,
 	reason: &str,
+	root_cause: PullRequestReadbackRootCause,
 ) -> PostReviewLaneClassification {
 	PostReviewLaneClassification {
 		decision: PostReviewLaneDecision::WaitForReview,
@@ -3563,6 +3577,7 @@ fn readback_degraded_post_review_lane_from_handoff(
 		check_state: None,
 		unresolved_review_threads: None,
 		readback_warning: Some(reason.to_owned()),
+		readback_root_cause: Some(root_cause.as_str().to_owned()),
 	}
 }
 
@@ -3588,6 +3603,31 @@ fn blocked_post_review_lane_status(
 		check_state: None,
 		unresolved_review_threads: None,
 		readback_warning: None,
+		readback_root_cause: post_review_readback_root_cause_for_reason(reason)
+			.map(|root_cause| root_cause.as_str().to_owned()),
+	}
+}
+
+fn post_review_readback_root_cause_for_reason(
+	reason: &str,
+) -> Option<PullRequestReadbackRootCause> {
+	match reason {
+		"pull_request_repository_parse_failed" => {
+			Some(PullRequestReadbackRootCause::PullRequestShapeReadFailed)
+		},
+		"pull_request_branch_mismatch"
+		| "pull_request_head_mismatch"
+		| "pull_request_head_repository_name_mismatch"
+		| "pull_request_head_repository_owner_mismatch"
+		| "pull_request_merge_commit_lineage_check_failed"
+		| "review_handoff_lineage_check_failed"
+		| "review_handoff_lineage_mismatch"
+		| "review_orchestration_branch_mismatch"
+		| "review_orchestration_head_mismatch"
+		| "review_orchestration_pr_mismatch" => {
+			Some(PullRequestReadbackRootCause::LineageValidationFailed)
+		},
+		_ => None,
 	}
 }
 
@@ -4891,7 +4931,7 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	} else {
 		for lane in &snapshot.post_review_lanes {
 			output.push_str(&format!(
-				"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n",
+				"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n  readback_root_cause: {}\n",
 				lane.issue_id,
 				lane.issue_identifier,
 				lane.issue_state,
@@ -4908,7 +4948,8 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 				lane
 					.unresolved_review_threads
 					.map_or_else(|| String::from("none"), |value| value.to_string()),
-				lane.readback_warning.as_deref().unwrap_or("none")
+				lane.readback_warning.as_deref().unwrap_or("none"),
+				lane.readback_root_cause.as_deref().unwrap_or("none")
 			));
 		}
 	}
