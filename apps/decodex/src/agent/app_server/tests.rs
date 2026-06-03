@@ -14,10 +14,11 @@ use tempfile::TempDir;
 use crate::{
 	agent::{
 		app_server::{
-			AppServerCapabilityPreflightFailure, AppServerCapabilityPreflightReport,
-			AppServerDynamicToolFailure, AppServerRunResult, AppServerThreadArchiveRequest,
-			AppServerTurnFailure, CommandExecHealthCheck, CommandExecResponse,
-			EffectiveThreadConfig, InitializeResponse, ModelProviderCapabilitiesReadResponse,
+			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerCapabilityPreflightFailure,
+			AppServerCapabilityPreflightReport, AppServerDynamicToolFailure, AppServerRunResult,
+			AppServerSchemaProbeEvidence, AppServerThreadArchiveRequest, AppServerTurnFailure,
+			CommandExecHealthCheck, CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
+			ModelProviderCapabilitiesReadResponse, PREFLIGHT_CHECK_CONFIG, PREFLIGHT_CHECK_MODEL,
 			PluginListResponse, ProbeDynamicToolHandler, REQUEST_TIMEOUT, RequestWaitPhase,
 			RunRecorder, RuntimeConfigSummary, SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER,
 			SkillsListResponse, TurnContinuationGuard, UserInput,
@@ -286,6 +287,11 @@ fn probe_result_shape_is_stable() {
 
 #[test]
 fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
+	let schema_evidence = AppServerSchemaProbeEvidence::checked(
+		String::from("target/decodex-app-server-schema-check"),
+		APP_SERVER_SCHEMA_REQUIRED_MARKERS,
+	);
+
 	for (user_agent, expected_codex_cli_version) in [
 		("codex-cli 0.136.0", "codex-cli 0.136.0"),
 		("codex-cli 0.136.0-alpha.2", "codex-cli 0.136.0-alpha.2"),
@@ -309,10 +315,22 @@ fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
 	] {
 		let mut report = AppServerCapabilityPreflightReport::new();
 
-		super::record_app_server_compatibility_guard(&mut report, user_agent, false);
+		report.push_ok(
+			PREFLIGHT_CHECK_CONFIG,
+			"config/read returned effective runtime configuration.",
+			BTreeMap::new(),
+		);
+
+		super::record_app_server_compatibility_guard(
+			&mut report,
+			user_agent,
+			false,
+			Some(&schema_evidence),
+		);
 
 		assert!(!report.has_blockers(), "{user_agent} should be supported");
 		assert_eq!(report.compatibility_status(), "supported");
+		assert_eq!(report.compatibility_support_decision(), Some("supported_exact_version"));
 		assert_eq!(
 			report.compatibility_codex_cli_version(),
 			Some(expected_codex_cli_version),
@@ -321,6 +339,12 @@ fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
 		assert_eq!(
 			report.compatibility_supported_versions(),
 			Some("codex-cli 0.136.0, codex-cli 0.136.0-alpha.2, codex-cli 0.137.0-alpha.4")
+		);
+		assert_eq!(report.compatibility_capability_evidence(), Some("config=ok"));
+		assert_eq!(report.compatibility_schema_evidence(), Some("checked"));
+		assert_eq!(
+			report.compatibility_schema_cache(),
+			Some("target/decodex-app-server-schema-check")
 		);
 	}
 }
@@ -336,30 +360,222 @@ fn app_server_compatibility_guard_rejects_unverified_codex_surfaces() {
 	] {
 		let mut report = AppServerCapabilityPreflightReport::new();
 
-		super::record_app_server_compatibility_guard(&mut report, user_agent, false);
+		report.push_ok(
+			PREFLIGHT_CHECK_CONFIG,
+			"config/read returned effective runtime configuration.",
+			BTreeMap::new(),
+		);
+
+		super::record_app_server_compatibility_guard(&mut report, user_agent, false, None);
 
 		assert!(report.has_blockers(), "{user_agent} should be outside support");
 		assert_eq!(report.compatibility_status(), "unsupported");
-		assert_eq!(report.checks()[0].name, "compatibility");
-		assert_eq!(report.checks()[0].status, super::AppServerCapabilityPreflightStatus::Blocked);
-		assert!(report.checks()[0].summary.contains("outside"));
+		assert!(
+			report
+				.compatibility_support_decision()
+				.is_some_and(|decision| decision.starts_with("unsupported_")),
+			"{user_agent} should record an unsupported decision"
+		);
+		assert_eq!(report.compatibility_schema_evidence(), Some("not_checked"));
+		assert_eq!(report.checks()[1].name, "compatibility");
+		assert_eq!(report.checks()[1].status, super::AppServerCapabilityPreflightStatus::Blocked);
+		assert!(report.checks()[1].summary.contains("outside"));
+		assert!(report.blocker_summary().contains("support_decision=unsupported_"));
 	}
 }
 
 #[test]
 fn app_server_compatibility_guard_allows_unverified_codex_when_requested() {
+	let schema_evidence = AppServerSchemaProbeEvidence::checked(
+		String::from("target/decodex-app-server-schema-check"),
+		APP_SERVER_SCHEMA_REQUIRED_MARKERS,
+	);
 	let mut report = AppServerCapabilityPreflightReport::new();
 
-	super::record_app_server_compatibility_guard(&mut report, "codex-cli 0.138.0-alpha.1", true);
+	report.push_ok(
+		PREFLIGHT_CHECK_CONFIG,
+		"config/read returned effective runtime configuration.",
+		BTreeMap::new(),
+	);
+
+	super::record_app_server_compatibility_guard(
+		&mut report,
+		"codex-cli 0.138.0-alpha.1",
+		true,
+		Some(&schema_evidence),
+	);
 
 	assert!(!report.has_blockers());
 	assert_eq!(report.compatibility_status(), "unverified_allowed");
-	assert_eq!(report.checks()[0].name, "compatibility");
-	assert_eq!(report.checks()[0].status, super::AppServerCapabilityPreflightStatus::Warning);
+	assert_eq!(report.compatibility_support_decision(), Some("unverified_allowed_by_override"));
+	assert_eq!(report.compatibility_schema_evidence(), Some("checked"));
+	assert_eq!(report.compatibility_capability_evidence(), Some("config=ok"));
+	assert_eq!(report.checks()[1].name, "compatibility");
+	assert_eq!(report.checks()[1].status, super::AppServerCapabilityPreflightStatus::Warning);
 	assert_eq!(
-		report.checks()[0].details.get("override").map(String::as_str),
+		report.checks()[1].details.get("override").map(String::as_str),
 		Some("allow_unverified_codex")
 	);
+}
+
+#[test]
+fn app_server_compatibility_guard_keeps_unverified_version_blocked_with_schema_evidence() {
+	let schema_evidence = AppServerSchemaProbeEvidence::checked(
+		String::from("target/decodex-app-server-schema-check"),
+		APP_SERVER_SCHEMA_REQUIRED_MARKERS,
+	);
+	let mut report = AppServerCapabilityPreflightReport::new();
+
+	report.push_ok(
+		PREFLIGHT_CHECK_CONFIG,
+		"config/read returned effective runtime configuration.",
+		BTreeMap::new(),
+	);
+
+	super::record_app_server_compatibility_guard(
+		&mut report,
+		"codex-cli 0.137.0",
+		false,
+		Some(&schema_evidence),
+	);
+
+	assert!(report.has_blockers());
+	assert_eq!(report.compatibility_status(), "unsupported");
+	assert_eq!(report.compatibility_support_decision(), Some("unsupported_unverified_version"));
+	assert_eq!(report.compatibility_schema_evidence(), Some("checked"));
+	assert_eq!(report.compatibility_capability_evidence(), Some("config=ok"));
+}
+
+#[test]
+fn app_server_compatibility_guard_records_capability_and_schema_evidence_diagnostics() {
+	let schema_evidence = AppServerSchemaProbeEvidence::checked(
+		String::from("target/decodex-app-server-schema-check"),
+		APP_SERVER_SCHEMA_REQUIRED_MARKERS,
+	);
+	let mut report = AppServerCapabilityPreflightReport::new();
+
+	report.push_ok(
+		PREFLIGHT_CHECK_CONFIG,
+		"config/read returned effective runtime configuration.",
+		BTreeMap::new(),
+	);
+	report.push_ok(
+		PREFLIGHT_CHECK_MODEL,
+		"model/list returned an executable model selection.",
+		BTreeMap::new(),
+	);
+
+	super::record_app_server_compatibility_guard(
+		&mut report,
+		"codex-cli 0.136.0",
+		false,
+		Some(&schema_evidence),
+	);
+
+	let serialized = serde_json::to_value(&report).expect("report should serialize");
+	let compatibility = &serialized["checks"][2];
+
+	assert_eq!(compatibility["name"], "compatibility");
+	assert_eq!(compatibility["status"], "ok");
+	assert_eq!(compatibility["details"]["user_agent"], "codex-cli 0.136.0");
+	assert_eq!(compatibility["details"]["parsed_version"], "codex-cli 0.136.0");
+	assert_eq!(compatibility["details"]["support_decision"], "supported_exact_version");
+	assert_eq!(compatibility["details"]["capability_evidence"], "config=ok, model=ok");
+	assert_eq!(
+		compatibility["details"]["capability_evidence_source"],
+		"bounded_app_server_preflight"
+	);
+	assert_eq!(compatibility["details"]["schema_evidence"], "checked");
+	assert_eq!(compatibility["details"]["schema_cache"], "target/decodex-app-server-schema-check");
+	assert_eq!(
+		compatibility["details"]["schema_marker_count"],
+		super::APP_SERVER_SCHEMA_REQUIRED_MARKERS.len().to_string()
+	);
+	assert!(
+		compatibility["details"]["schema_markers"]
+			.as_str()
+			.expect("schema markers should serialize")
+			.contains("dynamicTools")
+	);
+}
+
+#[test]
+fn generated_schema_marker_validation_accepts_required_markers() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let schema_path = temp_dir.path().join("app-server.schema.json");
+
+	fs::write(
+		&schema_path,
+		serde_json::json!({
+			"description": "Decodex app-server compatibility fixture.",
+			"requiredMarkers": super::APP_SERVER_SCHEMA_REQUIRED_MARKERS,
+			"properties": {
+				"dynamicTools": {
+					"properties": {
+						"namespace": { "type": "string" },
+						"deferLoading": { "type": "boolean" }
+					}
+				},
+				"marketplaceKinds": { "type": "array" },
+				"type": { "const": "inputText" }
+			}
+		})
+		.to_string(),
+	)
+	.expect("schema fixture should write");
+	super::validate_generated_app_server_schema(temp_dir.path())
+		.expect("required markers should pass schema validation");
+}
+
+#[test]
+fn generated_schema_marker_validation_rejects_missing_markers() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let schema_path = temp_dir.path().join("app-server.schema.json");
+
+	fs::write(
+		&schema_path,
+		serde_json::json!({
+			"methods": ["initialize"]
+		})
+		.to_string(),
+	)
+	.expect("schema fixture should write");
+
+	let error = super::validate_generated_app_server_schema(temp_dir.path())
+		.expect_err("missing markers should fail schema validation");
+
+	assert!(error.to_string().contains("missing required Decodex markers"));
+	assert!(error.to_string().contains("turn/start"));
+	assert!(error.to_string().contains("marketplaceKinds"));
+}
+
+#[test]
+fn generated_schema_marker_validation_rejects_prose_only_markers() {
+	let temp_dir = TempDir::new().expect("temp dir should create");
+	let schema_path = temp_dir.path().join("app-server.schema.json");
+	let prose_markers = APP_SERVER_SCHEMA_REQUIRED_MARKERS.join(", ");
+
+	fs::write(
+		&schema_path,
+		serde_json::json!({
+			"description": prose_markers.clone(),
+			"$comment": "Compatibility prose, not protocol structure.",
+			"properties": {
+				"documentationOnly": {
+					"description": prose_markers
+				}
+			}
+		})
+		.to_string(),
+	)
+	.expect("schema fixture should write");
+
+	let error = super::validate_generated_app_server_schema(temp_dir.path())
+		.expect_err("prose-only markers should fail schema validation");
+
+	assert!(error.to_string().contains("missing required Decodex markers"));
+	assert!(error.to_string().contains("initialize"));
+	assert!(error.to_string().contains("marketplaceKinds"));
 }
 
 #[test]
@@ -491,6 +707,7 @@ fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 		dynamic_tool_handler: None,
 		continuation_guard: None,
 		codex_account_provider: None,
+		compatibility_schema_evidence: None,
 	}
 }
 
@@ -2098,6 +2315,7 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			dynamic_tool_handler: Some(&handler),
 			continuation_guard: Some(&guard),
 			codex_account_provider: None,
+			compatibility_schema_evidence: None,
 		},
 		&first_state_store,
 	)
@@ -2144,6 +2362,7 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			dynamic_tool_handler: Some(&handler),
 			continuation_guard: None,
 			codex_account_provider: None,
+			compatibility_schema_evidence: None,
 		},
 		&resumed_state_store,
 	)
