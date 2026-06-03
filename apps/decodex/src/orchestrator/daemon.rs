@@ -434,6 +434,8 @@ where
 			worktree_mapping.as_ref(),
 		)? {
 			Some(ActiveRunDisposition::RetainedReviewComplete)
+		} else if stalled_run_has_retained_partial_progress(worktree_mapping.as_ref()) {
+			Some(ActiveRunDisposition::StalledRetainedPartialProgress { idle_for })
 		} else {
 			Some(ActiveRunDisposition::Stalled { idle_for })
 		}
