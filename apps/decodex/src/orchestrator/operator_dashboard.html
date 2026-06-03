@@ -5047,6 +5047,17 @@
 				return Number.isFinite(numericCount) && numericCount > 0 ? String(numericCount) : "NONE";
 			}
 
+			function postReviewReadbackFacts(lane) {
+				const facts = [];
+				if (lane.readback_warning) {
+					facts.push(["Readback", lane.readback_warning]);
+				}
+				if (lane.readback_root_cause) {
+					facts.push(["Root cause", lane.readback_root_cause]);
+				}
+				return facts;
+			}
+
 			function renderAttentionFacts(candidate) {
 				const attention = candidate.attention;
 				if (!attention) {
@@ -8724,6 +8735,7 @@
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
 								["Branch", optionalCardToken(lane.branch_name)],
+								...postReviewReadbackFacts(lane),
 							],
 						});
 						continue;
@@ -8746,6 +8758,7 @@
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
 								["Branch", optionalCardToken(lane.branch_name)],
+								...postReviewReadbackFacts(lane),
 							],
 						});
 						continue;
@@ -8764,6 +8777,7 @@
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
 								["Branch", optionalCardToken(lane.branch_name)],
+								...postReviewReadbackFacts(lane),
 							],
 						});
 						continue;
@@ -8783,6 +8797,7 @@
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
 								["Branch", optionalCardToken(lane.branch_name)],
+								...postReviewReadbackFacts(lane),
 							],
 						});
 					}
