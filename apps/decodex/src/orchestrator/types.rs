@@ -1,11 +1,196 @@
 use crate::tracker;
 
+type PullRequestReadbackResult =
+	std::result::Result<PullRequestReviewState, PullRequestReadbackFailure>;
+
 trait PullRequestReviewStateInspector {
 	fn inspect_review_state(
 		&self,
 		cwd: &Path,
 		pr_url: &str,
 	) -> crate::prelude::Result<PullRequestReviewState>;
+
+	fn inspect_review_state_readback(
+		&self,
+		cwd: &Path,
+		pr_url: &str,
+	) -> PullRequestReadbackResult {
+		self.inspect_review_state(cwd, pr_url)
+			.map_err(PullRequestReadbackFailure::from)
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum IssueDispatchMode {
+	Normal,
+	Retry,
+	ReviewRepair,
+	Closeout,
+}
+impl IssueDispatchMode {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::Normal => "normal",
+			Self::Retry => "retry",
+			Self::ReviewRepair => "review_repair",
+			Self::Closeout => "closeout",
+		}
+	}
+
+	fn allows_issue(
+		self,
+		tracker: &dyn IssueTracker,
+		issue: &TrackerIssue,
+		project: &ServiceConfig,
+		workflow: &WorkflowDocument,
+		state_store: &StateStore,
+		hint: RetryIssueStateHint<'_>,
+	) -> crate::prelude::Result<bool> {
+		match self {
+			Self::Normal => {
+				let queue_label = tracker::automation_queue_label(project.service_id());
+
+				issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, false)
+			},
+			Self::Retry => issue_passes_retry_dispatch_policy(
+				tracker,
+				issue,
+				project,
+				workflow,
+				state_store,
+				hint,
+			),
+			Self::ReviewRepair => {
+				Ok(issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?
+					&& !issue_retry_budget_exhausted(workflow, state_store, &issue.id)?)
+			},
+			Self::Closeout => {
+				issue_passes_closeout_dispatch_policy(tracker, issue, project, workflow, state_store)
+			},
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PostReviewLaneDecision {
+	Continue,
+	WaitForReview,
+	NeedsReviewRepair,
+	ReadyToLand,
+	CloseoutBlocked,
+	CleanupBlocked,
+	Block,
+}
+impl PostReviewLaneDecision {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::Continue => "continue",
+			Self::WaitForReview => "wait_for_review",
+			Self::NeedsReviewRepair => "needs_review_repair",
+			Self::ReadyToLand => "ready_to_land",
+			Self::CloseoutBlocked => "closeout_blocked",
+			Self::CleanupBlocked => "cleanup_blocked",
+			Self::Block => "blocked",
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RetryKind {
+	Continuation,
+	Failure,
+}
+
+pub(crate) enum RetryDispatchDecision {
+	Blocked { excluded_issue_ids: Vec<String> },
+	Dispatch(Box<RunSummary>),
+	Continue,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ActiveRunDisposition {
+	RetainedReviewComplete,
+	Superseded {
+		newer_run_id: String,
+		newer_attempt_number: i64,
+	},
+	Terminal,
+	NonActive,
+	Stalled { idle_for: Duration },
+	StalledAlreadyNeedsAttention { idle_for: Duration },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PullRequestReadbackRootCause {
+	MissingGithubCli,
+	MissingGithubToken,
+	GithubAuthFailed,
+	GithubApiReadFailed,
+	GithubResponseParseFailed,
+	PullRequestShapeReadFailed,
+	LineageValidationFailed,
+	TrackerIssueReadbackFailed,
+}
+impl PullRequestReadbackRootCause {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::MissingGithubCli => "missing_github_cli",
+			Self::MissingGithubToken => "missing_github_token",
+			Self::GithubAuthFailed => "github_auth_failed",
+			Self::GithubApiReadFailed => "github_api_read_failed",
+			Self::GithubResponseParseFailed => "github_response_parse_failed",
+			Self::PullRequestShapeReadFailed => "pull_request_shape_read_failed",
+			Self::LineageValidationFailed => "lineage_validation_failed",
+			Self::TrackerIssueReadbackFailed => "tracker_issue_readback_failed",
+		}
+	}
+}
+
+enum RetainedReviewLaneLoad {
+	Skip,
+	Ready(Box<RetainedReviewLane>),
+	Blocked(Box<RetainedReviewLaneBlocked>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReviewOrchestrationPhase {
+	RequestPending,
+	WaitingForAck,
+	WaitingForResult,
+	RepairRequired,
+	PassWaitingForGates,
+	WaitingForMerge,
+}
+impl ReviewOrchestrationPhase {
+	fn as_str(self) -> &'static str {
+		match self {
+			Self::RequestPending => "request_pending",
+			Self::WaitingForAck => "waiting_for_ack",
+			Self::WaitingForResult => "waiting_for_result",
+			Self::RepairRequired => "repair_required",
+			Self::PassWaitingForGates => "pass_waiting_for_gates",
+			Self::WaitingForMerge => "waiting_for_merge",
+		}
+	}
+
+	fn parse(value: &str) -> std::result::Result<Self, String> {
+		match value {
+			"request_pending" => Ok(Self::RequestPending),
+			"waiting_for_ack" => Ok(Self::WaitingForAck),
+			"waiting_for_result" => Ok(Self::WaitingForResult),
+			"repair_required" => Ok(Self::RepairRequired),
+			"pass_waiting_for_gates" => Ok(Self::PassWaitingForGates),
+			"waiting_for_merge" => Ok(Self::WaitingForMerge),
+			other => Err(format!(
+				"Unknown review orchestration phase `{other}` in retained review marker."
+			)),
+		}
+	}
+}
+
+enum PostReviewLaneStateLoad {
+	Classification(PostReviewLaneClassification),
+	ReviewState(PullRequestReviewState),
 }
 
 /// One bounded run invocation and its optional daemon-planned overrides.
@@ -102,6 +287,33 @@ pub(crate) struct RunSummary {
 	attempt_number: i64,
 	run_id: String,
 	continuation_pending: bool,
+}
+
+#[derive(Debug)]
+struct PullRequestReadbackFailure {
+	root_cause: PullRequestReadbackRootCause,
+	error: Report,
+}
+impl PullRequestReadbackFailure {
+	fn from_report(error: Report) -> Self {
+		let root_cause = classify_pull_request_readback_report(&error);
+
+		Self { root_cause, error }
+	}
+
+	fn into_report(self) -> Report {
+		self.error
+	}
+
+	fn root_cause(&self) -> PullRequestReadbackRootCause {
+		self.root_cause
+	}
+}
+
+impl From<Report> for PullRequestReadbackFailure {
+	fn from(error: Report) -> Self {
+		Self::from_report(error)
+	}
 }
 
 struct MaterializedDaemonSpawnState {
@@ -1017,6 +1229,7 @@ struct OperatorPostReviewLaneStatus {
 	check_state: Option<String>,
 	unresolved_review_threads: Option<usize>,
 	readback_warning: Option<String>,
+	readback_root_cause: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1062,6 +1275,7 @@ struct PostReviewLaneClassification {
 	check_state: Option<String>,
 	unresolved_review_threads: Option<usize>,
 	readback_warning: Option<String>,
+	readback_root_cause: Option<String>,
 }
 
 struct RetainedReviewLaneBlocked {
@@ -1096,6 +1310,15 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 		cwd: &Path,
 		pr_url: &str,
 	) -> crate::prelude::Result<PullRequestReviewState> {
+		self.inspect_review_state_readback(cwd, pr_url)
+			.map_err(PullRequestReadbackFailure::into_report)
+	}
+
+	fn inspect_review_state_readback(
+		&self,
+		cwd: &Path,
+		pr_url: &str,
+	) -> PullRequestReadbackResult {
 		let github_token = resolve_configured_env_var(
 			"github.token_env_var",
 			self.github_token_env_var.as_deref(),
@@ -1411,153 +1634,68 @@ struct PullRequestStatusCheckRollup {
 	state: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum IssueDispatchMode {
-	Normal,
-	Retry,
-	ReviewRepair,
-	Closeout,
-}
-impl IssueDispatchMode {
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::Normal => "normal",
-			Self::Retry => "retry",
-			Self::ReviewRepair => "review_repair",
-			Self::Closeout => "closeout",
-		}
+fn classify_pull_request_readback_report(error: &Report) -> PullRequestReadbackRootCause {
+	if report_has_io_error_kind(error, ErrorKind::NotFound) {
+		return PullRequestReadbackRootCause::MissingGithubCli;
+	}
+	if report_contains_any(
+		error,
+		&[
+			"must be configured for this github-backed operation",
+			"failed to read environment variable",
+			"must not be blank",
+		],
+	) {
+		return PullRequestReadbackRootCause::MissingGithubToken;
+	}
+	if report_chain_has_serde_json_error(error) {
+		return PullRequestReadbackRootCause::GithubResponseParseFailed;
+	}
+	if report_contains_any(
+		error,
+		&[
+			"pull request url",
+			"did not include a repository",
+			"did not include a pull request",
+			"without an end cursor",
+		],
+	) {
+		return PullRequestReadbackRootCause::PullRequestShapeReadFailed;
+	}
+	if report_contains_any(
+		error,
+		&[
+			"bad credentials",
+			"requires authentication",
+			"authentication required",
+			"not logged in",
+			"gh auth login",
+			"http 401",
+			"http 403",
+		],
+	) {
+		return PullRequestReadbackRootCause::GithubAuthFailed;
 	}
 
-	fn allows_issue(
-		self,
-		tracker: &dyn IssueTracker,
-		issue: &TrackerIssue,
-		project: &ServiceConfig,
-		workflow: &WorkflowDocument,
-		state_store: &StateStore,
-		hint: RetryIssueStateHint<'_>,
-	) -> crate::prelude::Result<bool> {
-		match self {
-			Self::Normal => {
-				let queue_label = tracker::automation_queue_label(project.service_id());
-
-				issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, false)
-			},
-			Self::Retry => issue_passes_retry_dispatch_policy(
-				tracker,
-				issue,
-				project,
-				workflow,
-				state_store,
-				hint,
-			),
-			Self::ReviewRepair => {
-				Ok(issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?
-					&& !issue_retry_budget_exhausted(workflow, state_store, &issue.id)?)
-			},
-				Self::Closeout => issue_passes_closeout_dispatch_policy(
-					tracker,
-					issue,
-					project,
-					workflow,
-					state_store,
-				),
-		}
-	}
+	PullRequestReadbackRootCause::GithubApiReadFailed
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PostReviewLaneDecision {
-	Continue,
-	WaitForReview,
-	NeedsReviewRepair,
-	ReadyToLand,
-	CloseoutBlocked,
-	CleanupBlocked,
-	Block,
-}
-impl PostReviewLaneDecision {
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::Continue => "continue",
-			Self::WaitForReview => "wait_for_review",
-			Self::NeedsReviewRepair => "needs_review_repair",
-			Self::ReadyToLand => "ready_to_land",
-			Self::CloseoutBlocked => "closeout_blocked",
-			Self::CleanupBlocked => "cleanup_blocked",
-			Self::Block => "blocked",
-		}
-	}
+fn report_has_io_error_kind(error: &Report, kind: ErrorKind) -> bool {
+	error.chain().any(|cause| {
+		cause
+			.downcast_ref::<std::io::Error>()
+			.is_some_and(|error| error.kind() == kind)
+	})
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RetryKind {
-	Continuation,
-	Failure,
+fn report_chain_has_serde_json_error(error: &Report) -> bool {
+	error.chain().any(|cause| cause.downcast_ref::<serde_json::Error>().is_some())
 }
 
-pub(crate) enum RetryDispatchDecision {
-	Blocked { excluded_issue_ids: Vec<String> },
-	Dispatch(Box<RunSummary>),
-	Continue,
-}
+fn report_contains_any(error: &Report, needles: &[&str]) -> bool {
+	error.chain().any(|cause| {
+		let message = cause.to_string().to_ascii_lowercase();
 
-#[derive(Clone, Debug)]
-pub(crate) enum ActiveRunDisposition {
-	RetainedReviewComplete,
-	Superseded {
-		newer_run_id: String,
-		newer_attempt_number: i64,
-	},
-	Terminal,
-	NonActive,
-	Stalled { idle_for: Duration },
-	StalledAlreadyNeedsAttention { idle_for: Duration },
-}
-
-enum RetainedReviewLaneLoad {
-	Skip,
-	Ready(Box<RetainedReviewLane>),
-	Blocked(Box<RetainedReviewLaneBlocked>),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ReviewOrchestrationPhase {
-	RequestPending,
-	WaitingForAck,
-	WaitingForResult,
-	RepairRequired,
-	PassWaitingForGates,
-	WaitingForMerge,
-}
-impl ReviewOrchestrationPhase {
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::RequestPending => "request_pending",
-			Self::WaitingForAck => "waiting_for_ack",
-			Self::WaitingForResult => "waiting_for_result",
-			Self::RepairRequired => "repair_required",
-			Self::PassWaitingForGates => "pass_waiting_for_gates",
-			Self::WaitingForMerge => "waiting_for_merge",
-		}
-	}
-
-	fn parse(value: &str) -> std::result::Result<Self, String> {
-		match value {
-			"request_pending" => Ok(Self::RequestPending),
-			"waiting_for_ack" => Ok(Self::WaitingForAck),
-			"waiting_for_result" => Ok(Self::WaitingForResult),
-			"repair_required" => Ok(Self::RepairRequired),
-			"pass_waiting_for_gates" => Ok(Self::PassWaitingForGates),
-			"waiting_for_merge" => Ok(Self::WaitingForMerge),
-			other => Err(format!(
-				"Unknown review orchestration phase `{other}` in retained review marker."
-			)),
-		}
-	}
-}
-
-enum PostReviewLaneStateLoad {
-	Classification(PostReviewLaneClassification),
-	ReviewState(PullRequestReviewState),
+		needles.iter().any(|needle| message.contains(needle))
+	})
 }

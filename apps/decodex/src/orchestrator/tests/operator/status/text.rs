@@ -218,12 +218,14 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 			check_state: Some(String::from("SUCCESS")),
 			unresolved_review_threads: Some(0),
 			readback_warning: None,
+			readback_root_cause: Some(String::from("lineage_validation_failed")),
 		}],
 	};
 	let rendered = orchestrator::render_operator_status(&snapshot);
 
 	assert!(rendered.contains("classification: cleanup_blocked"));
 	assert!(rendered.contains("reason: retry_budget_exhausted"));
+	assert!(rendered.contains("readback_root_cause: lineage_validation_failed"));
 	assert!(rendered.contains(&format!("pr_url: {pr_url}")));
 	assert!(!rendered.contains("pr_url: none"));
 }

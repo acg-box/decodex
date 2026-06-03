@@ -89,6 +89,10 @@ fn live_operator_status_snapshot_preserves_retained_handoff_during_linear_backof
 		snapshot.post_review_lanes[0].readback_warning.as_deref(),
 		Some("tracker_issue_readback_degraded")
 	);
+	assert_eq!(
+		snapshot.post_review_lanes[0].readback_root_cause.as_deref(),
+		Some("tracker_issue_readback_failed")
+	);
 	assert!(
 		state_store
 			.connector_backoff(TEST_SERVICE_ID, "linear")
@@ -216,6 +220,14 @@ fn operator_state_snapshot_reports_tracker_rate_limit_as_backoff() {
 	assert_eq!(snapshot.post_review_lanes[0].reason, "tracker_issue_readback_degraded");
 	assert_eq!(snapshot.post_review_lanes[0].pr_url.as_deref(), Some(pr_url));
 	assert_eq!(snapshot.post_review_lanes[0].pr_head_sha.as_deref(), Some(head_sha));
+	assert_eq!(
+		snapshot.post_review_lanes[0].readback_root_cause.as_deref(),
+		Some("tracker_issue_readback_failed")
+	);
+	assert_eq!(
+		snapshot_json["post_review_lanes"][0]["readback_root_cause"],
+		"tracker_issue_readback_failed"
+	);
 	assert_eq!(snapshot.projects[0].connector_state, "backoff");
 	assert!(
 		tracker.label_queries.borrow().is_empty(),

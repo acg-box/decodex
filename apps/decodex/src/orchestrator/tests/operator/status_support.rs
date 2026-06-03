@@ -438,6 +438,7 @@ fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus>
 		check_state: Some(String::from("SUCCESS")),
 		unresolved_review_threads: Some(0),
 		readback_warning: None,
+		readback_root_cause: None,
 	}]
 }
 
