@@ -1,3 +1,5 @@
+use state::ReviewPolicyCheckpointInput;
+
 fn sample_review_repair_apply_inspectors(
 	pr_url: &str,
 ) -> (FakePullRequestInspector, FakeLocalRepoInspector) {
@@ -144,6 +146,8 @@ fn records_review_handoff_and_applies_it_after_validation() {
 	);
 
 	assert!(response.success);
+
+	assert_review_policy_checkpoint_cleared(&bridge, &issue, &review_context);
 
 	bridge.apply_review_handoff().expect("review handoff should apply");
 
@@ -428,7 +432,7 @@ fn review_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -445,11 +449,9 @@ fn review_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 	assert!(response.success);
 	assert!(tracker.comments.borrow().is_empty());
 
-	let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
-		.expect("marker snapshot should load")
-		.expect("marker snapshot should exist");
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
 
-	assert_eq!(marker.review_policy_head_sha(), Some(sample_local_repo().head_oid.as_str()));
+	assert_eq!(checkpoint.head_sha(), sample_local_repo().head_oid.as_str());
 }
 
 #[test]
@@ -492,13 +494,11 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 			TurnCompletionStatus::Continue
 		);
 
-		let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
-			.expect("marker snapshot should load")
-			.expect("marker snapshot should exist");
+		let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
 
-		assert_eq!(marker.review_policy_phase(), Some("handoff"));
-		assert_eq!(marker.review_policy_status(), Some("findings"));
-		assert_eq!(marker.review_policy_nonclean_rounds(), Some(expected_round));
+		assert_eq!(checkpoint.phase(), "handoff");
+		assert_eq!(checkpoint.status(), "findings");
+		assert_eq!(checkpoint.nonclean_rounds(), expected_round);
 	}
 
 	let response = DynamicToolHandler::handle_call(
@@ -542,7 +542,7 @@ fn review_checkpoint_clean_resets_nonclean_rounds_before_next_findings() {
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -561,12 +561,10 @@ fn review_checkpoint_clean_resets_nonclean_rounds_before_next_findings() {
 		assert!(response.success);
 	}
 
-	let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
-		.expect("marker snapshot should load")
-		.expect("marker snapshot should exist");
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
 
-	assert_eq!(marker.review_policy_status(), Some("findings"));
-	assert_eq!(marker.review_policy_nonclean_rounds(), Some(1));
+	assert_eq!(checkpoint.status(), "findings");
+	assert_eq!(checkpoint.nonclean_rounds(), 1);
 	assert_eq!(
 		DynamicToolHandler::classify_turn_completion(&bridge, "continue")
 			.expect("findings after a clean checkpoint should continue"),
@@ -588,7 +586,7 @@ fn review_checkpoint_does_not_depend_on_tracker_comment_write() {
 		&tracker,
 		&issue,
 		&workflow,
-		review_context,
+		review_context.clone(),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -605,11 +603,9 @@ fn review_checkpoint_does_not_depend_on_tracker_comment_write() {
 	assert!(response.success);
 	assert!(tracker.comments.borrow().is_empty());
 
-	let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
-		.expect("marker snapshot should load")
-		.expect("marker snapshot should exist");
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
 
-	assert_eq!(marker.review_policy_nonclean_rounds(), Some(1));
+	assert_eq!(checkpoint.nonclean_rounds(), 1);
 }
 
 #[test]
@@ -679,7 +675,7 @@ fn review_checkpoint_phase_switch_resets_nonclean_rounds() {
 		&tracker,
 		&issue,
 		&workflow,
-		repair_context,
+		repair_context.clone(),
 		&pull_request_inspector,
 		&local_repo_inspector,
 	);
@@ -695,12 +691,10 @@ fn review_checkpoint_phase_switch_resets_nonclean_rounds() {
 
 	assert!(response.success);
 
-	let marker = state::read_run_activity_marker_snapshot(temp_dir.path())
-		.expect("marker snapshot should load")
-		.expect("marker snapshot should exist");
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &repair_context);
 
-	assert_eq!(marker.review_policy_phase(), Some("repair"));
-	assert_eq!(marker.review_policy_nonclean_rounds(), Some(1));
+	assert_eq!(checkpoint.phase(), "repair");
+	assert_eq!(checkpoint.nonclean_rounds(), 1);
 }
 
 #[test]
@@ -738,6 +732,57 @@ fn stale_review_checkpoint_for_old_head_does_not_stop_new_head() {
 			.expect("a stale checkpoint from an older head should be ignored"),
 		TurnCompletionStatus::Continue
 	);
+}
+
+#[test]
+fn runtime_review_checkpoint_wins_over_stale_marker_policy_state() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![Ok(sample_pull_request())]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&inspector,
+		&local_repo_inspector,
+	);
+
+	bridge_state_store(&bridge)
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: &review_context.service_id,
+			issue_id: &issue.id,
+			run_id: &review_context.run_id,
+			attempt_number: review_context.attempt_number,
+			phase: "handoff",
+			status: "clean",
+			head_sha: &sample_local_repo().head_oid,
+			nonclean_rounds: 0,
+		})
+		.expect("runtime review checkpoint should persist");
+	write_review_policy_checkpoint(
+		&review_context,
+		"handoff",
+		"blocked",
+		&sample_local_repo().head_oid,
+		0,
+	);
+
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/48",
+			"summary": "Ready for review."
+		}),
+	);
+
+	assert!(response.success, "runtime store checkpoint should override stale marker state");
 }
 
 #[test]
@@ -1110,6 +1155,8 @@ fn review_repair_apply_persists_updated_handoff_marker_without_tracker_transitio
 
 	assert!(response.success);
 	assert!(finalize_response.success);
+
+	assert_review_policy_checkpoint_cleared(&bridge, &issue, &review_context);
 
 	DynamicToolHandler::validate_turn_completion(&bridge, "done")
 		.expect("review repair completion should allow the turn to complete");
