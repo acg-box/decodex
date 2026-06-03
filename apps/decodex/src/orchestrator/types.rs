@@ -1037,6 +1037,7 @@ struct OperatorProjectStatus {
 	config_path: String,
 	repo_root: String,
 	enabled: bool,
+	github_cli_authority: OperatorGitHubCliAuthority,
 	active_run_count: usize,
 	queued_candidate_count: usize,
 	post_review_lane_count: usize,
@@ -1048,6 +1049,16 @@ struct OperatorProjectStatus {
 	connector_state: String,
 	last_activity_at: Option<String>,
 	warning_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorGitHubCliAuthority {
+	command_path: String,
+	resolved_path: Option<String>,
+	configured_path: Option<String>,
+	discovery_tier: String,
+	available: bool,
+	next_action: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1307,6 +1318,7 @@ impl SelectedIssueRunCandidate {
 
 struct GhPullRequestReviewStateInspector {
 	github_token_env_var: Option<String>,
+	github_command_path: Option<PathBuf>,
 }
 impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 	fn inspect_review_state(
@@ -1333,15 +1345,16 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 		let mut comments_after: Option<String> = None;
 
 		loop {
-			let repository = query_pull_request_review_state_page(
+			let repository = query_pull_request_review_state_page(PullRequestReviewStatePageQuery {
 				cwd,
-				&locator.owner,
-				&locator.repo,
-				locator.number,
-				review_threads_after.as_deref(),
+				owner: &locator.owner,
+				repo: &locator.repo,
+				number: locator.number,
+				review_threads_after: review_threads_after.as_deref(),
 				pr_url,
-				github_token.as_str(),
-			)?;
+				github_token: github_token.as_str(),
+				gh_command_path: self.github_command_path.as_deref(),
+			})?;
 			let pull_request = repository.pull_request.as_ref().ok_or_else(|| {
 				eyre::eyre!("GitHub GraphQL response for `{pr_url}` did not include a pull request.")
 			})?;
@@ -1370,15 +1383,16 @@ impl PullRequestReviewStateInspector for GhPullRequestReviewStateInspector {
 		})?;
 
 		while let Some(cursor) = comments_after.take() {
-			let pull_request = query_pull_request_issue_comments_page(
+			let pull_request = query_pull_request_issue_comments_page(PullRequestIssueCommentsPageQuery {
 				cwd,
-				&locator.owner,
-				&locator.repo,
-				locator.number,
-				&cursor,
+				owner: &locator.owner,
+				repo: &locator.repo,
+				number: locator.number,
+				comments_after: &cursor,
 				pr_url,
-				github_token.as_str(),
-			)?;
+				github_token: github_token.as_str(),
+				gh_command_path: self.github_command_path.as_deref(),
+			})?;
 
 			comments_after = merge_pull_request_issue_comment_page(&mut review_state, &pull_request)?;
 		}

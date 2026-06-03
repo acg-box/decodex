@@ -46,6 +46,7 @@ struct AgentHandoffIndex {
 	runs_dir: String,
 	events_path: String,
 	summary: AgentEvidenceSummary,
+	github_cli_authority: Option<OperatorGitHubCliAuthority>,
 	warnings: Vec<String>,
 	connector_backoffs: Vec<AgentConnectorBackoff>,
 	blockers: Vec<AgentBlocker>,
@@ -438,6 +439,10 @@ fn write_agent_evidence_snapshot(
 			connector_backoff_count: connector_backoffs.len(),
 			warning_count: project_view.warnings.len(),
 		};
+		let github_cli_authority = project_view
+			.projects
+			.first()
+			.map(|project| project.github_cli_authority.clone());
 		let index = AgentHandoffIndex {
 			schema: AGENT_HANDOFF_INDEX_SCHEMA,
 			project_id: project_id.clone(),
@@ -449,6 +454,7 @@ fn write_agent_evidence_snapshot(
 			runs_dir: runs_dir.display().to_string(),
 			events_path: events_path.display().to_string(),
 			summary,
+			github_cli_authority,
 			warnings: project_view.warnings.clone(),
 			connector_backoffs,
 			blockers,
