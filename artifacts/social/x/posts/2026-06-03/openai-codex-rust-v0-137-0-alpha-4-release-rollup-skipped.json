@@ -1,0 +1,74 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-rust-v0-137-0-alpha-4-release-rollup-skipped",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "release_rollup",
+  "status": "skipped",
+  "audience": "Codex users and Decodex Control Plane operators",
+  "text": [
+    "No Decodex release rollup for Codex 0.137.0-alpha.4 yet: the checkpoint spans 109 commits, but only one checked-in Decodex signal is mapped today. Radar will backfill the rest before @decodexspace summarizes it."
+  ],
+  "source_refs": {
+    "signals": [
+      "site/src/content/release-deltas/openai-codex-latest.json",
+      "site/src/content/signals/openai-codex-pr-25636.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-25636.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-25636.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.137.0-alpha.4",
+      "https://github.com/openai/codex/compare/rust-v0.136.0...rust-v0.137.0-alpha.4",
+      "https://github.com/openai/codex/pull/25636"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release evidence shows rust-v0.137.0-alpha.4 was published at 2026-06-03T01:26:05Z with a sparse body that only says Release 0.137.0-alpha.4.",
+    "The refreshed release_delta/v1 artifact compares rust-v0.136.0 to rust-v0.137.0-alpha.4 and records 109 compare commits.",
+    "The refreshed release_delta/v1 artifact maps only one checked-in signal, multiagentv2-followup-task-replaces-assign-task, to the checkpoint.",
+    "The release-window backfill dry run selected 106 target PRs, so a source-backed release_rollup would overclaim if published before more upstream_review/v1, upstream_impact/v1, or signal_entry/v1 evidence exists.",
+    "No Chrome tabs were opened because the worthiness gate failed before account verification, compose, upload, or readback."
+  ],
+  "claims": [
+    {
+      "text": "Codex rust-v0.137.0-alpha.4 is a new prerelease checkpoint after rust-v0.136.0.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.137.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The refreshed Decodex release delta maps one checked-in signal to the 109-commit checkpoint.",
+      "evidence": "site/src/content/release-deltas/openai-codex-latest.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The mapped signal is the MultiAgentV2 followup_task rename for PR #25636.",
+      "evidence": "site/src/content/signals/openai-codex-pr-25636.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "skip",
+    "priority": "normal",
+    "idempotency_key": "x:decodexspace:release_rollup:openai-codex:rust-v0.137.0-alpha.4",
+    "reason": "New prerelease checkpoint exists, but accumulated Decodex evidence covers only one mapped signal across a 109-commit compare range.",
+    "daily_limit": 8,
+    "daily_count_before": 0,
+    "daily_count_after": 0,
+    "day": "2026-06-03",
+    "timezone": "Asia/Shanghai"
+  },
+  "skip": {
+    "reason": "insufficient_accumulated_evidence",
+    "details": "Do not publish a release_rollup until the rust-v0.136.0...rust-v0.137.0-alpha.4 window has more checked-in upstream_review/v1, upstream_impact/v1, or signal_entry/v1 coverage beyond PR #25636."
+  },
+  "caveats": [
+    "Daily cap did not block this run.",
+    "No X post was published.",
+    "A later run can publish after Radar backfills enough source-backed evidence for this checkpoint."
+  ]
+}
