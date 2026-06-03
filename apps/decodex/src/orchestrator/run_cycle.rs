@@ -2786,6 +2786,10 @@ where
 	};
 	let disposition = if needs_attention {
 		ActiveRunDisposition::StalledAlreadyNeedsAttention { idle_for }
+	} else if is_issue_active_for_run(issue, context.workflow)
+		&& worktree_has_tracked_changes(worktree_mapping.worktree_path())
+	{
+		ActiveRunDisposition::StalledRetainedPartialProgress { idle_for }
 	} else if is_issue_active_for_run(issue, context.workflow) {
 		ActiveRunDisposition::Stalled { idle_for }
 	} else {

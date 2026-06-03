@@ -1068,16 +1068,38 @@ fn stalled_run_reconciliation_routes_to_needs_attention_without_cleanup() {
 			&& comment.contains("needs attention")
 			&& comment.contains("clear label `decodex:needs-attention`")
 	}));
+	assert!(
+		tracker
+			.comments
+			.borrow()
+			.iter()
+			.all(|comment| !comment.contains("retained partial progress"))
+	);
+
+	let ledger_event = tracker
+		.comments
+		.borrow()
+		.iter()
+		.find_map(|comment| records::parse_linear_execution_event_record(comment))
+		.expect("stalled no-progress run should write a Linear execution event");
+
+	assert_eq!(ledger_event.event_type, "terminal_failure");
+	assert_eq!(ledger_event.error_class.as_deref(), Some("stalled_run_detected"));
+	assert_eq!(ledger_event.terminal_path.as_deref(), None);
+	assert_eq!(
+		ledger_event.summary.as_deref(),
+		Some("Decodex run failed and needs attention.")
+	);
 }
 
 #[test]
 fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktree() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
-	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let worktree_manager =
 		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
 	let issue = sample_issue("In Progress", &[]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let run_id = "run-stalled-dirty";
 	let worktree_path = config.worktree_root().join("PUB-102");
 
@@ -1103,28 +1125,35 @@ fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktr
 			&worktree_path.display().to_string(),
 		)
 		.expect("worktree mapping should record");
+	state_store
+		.append_event(run_id, 1, "turn/diff/updated", "{\"changes\":1}")
+		.expect("stalled dirty issue protocol event should record");
 
-	let action = ActiveRunReconciliation {
-		issue: issue.clone(),
-		run_attempt: state_store
-			.run_attempt(run_id)
-			.expect("run attempt query should succeed")
-			.expect("run attempt should exist"),
-		worktree_mapping: state_store
-			.worktree_for_issue(&issue.id)
-			.expect("worktree query should succeed"),
-		disposition: ActiveRunDisposition::Stalled {
-			idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
-		},
-		workflow: workflow.clone(),
-	};
+	let now =
+		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1;
+	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		None,
+		now,
+	)
+	.expect("dirty stalled-run inspection should succeed");
+
+	assert_eq!(actions.len(), 1);
+	assert!(matches!(
+		actions[0].disposition,
+		ActiveRunDisposition::StalledRetainedPartialProgress { idle_for }
+			if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT
+	));
 
 	orchestrator::apply_active_run_reconciliation(
 		&tracker,
 		&config,
 		&state_store,
 		&worktree_manager,
-		vec![action],
+		actions,
 	)
 	.expect("reconciliation should succeed");
 
@@ -1147,11 +1176,42 @@ fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktr
 	let comments = tracker.comments.borrow();
 
 	assert!(comments.iter().any(|comment| {
-		comment.contains("partial_progress_retained")
+		comment.contains("decodex retained partial progress and needs attention")
+			&& comment.contains("partial_progress_retained")
 			&& comment.contains("finish validation and PR handoff or reset the patch manually")
 			&& comment.contains(".worktrees/PUB-102")
 	}));
 	assert!(comments.iter().all(|comment| !comment.contains("stalled_run_detected")));
+	assert!(comments.iter().all(|comment| !comment.contains("decodex run failed and needs attention")));
+
+	let ledger_event = comments
+		.iter()
+		.find_map(|comment| records::parse_linear_execution_event_record(comment))
+		.expect("retained partial progress should write a Linear execution event");
+
+	assert_eq!(ledger_event.event_type, "needs_attention");
+	assert_eq!(ledger_event.error_class.as_deref(), Some("partial_progress_retained"));
+	assert_eq!(ledger_event.terminal_path.as_deref(), Some("retained_partial_progress"));
+	assert_eq!(
+		ledger_event.summary.as_deref(),
+		Some("Decodex retained partial progress and needs attention.")
+	);
+	assert_eq!(
+		ledger_event.blockers.as_deref(),
+		Some([String::from(
+			"Retained tracked worktree changes require operator recovery."
+		)]
+		.as_slice())
+	);
+	assert!(
+		ledger_event
+			.evidence
+			.as_deref()
+			.is_some_and(|evidence| evidence
+				.iter()
+				.any(|item| item.contains("tracked worktree changes retained"))),
+		"retained partial progress evidence should mention retained tracked changes"
+	);
 }
 
 #[test]
