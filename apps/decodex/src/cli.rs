@@ -1226,10 +1226,15 @@ impl ProbeCommand {
 		let report = agent::probe_app_server(&self.transport, self.allow_unverified_codex)?;
 
 		println!(
-			"probe ok: compatibility={} codex_version={} supported_versions=\"{}\" thread={} turn={} events={} output={}",
+			"probe ok: compatibility={} support_decision={} codex_version={} supported_versions=\"{}\" capability_evidence=\"{}\" schema_evidence={} schema_cache={} schema_marker_count={} thread={} turn={} events={} output={}",
 			report.capability_preflight.compatibility_status(),
+			report.capability_preflight.compatibility_support_decision().unwrap_or("unknown"),
 			report.capability_preflight.compatibility_codex_cli_version().unwrap_or("unknown"),
 			report.capability_preflight.compatibility_supported_versions().unwrap_or("unknown"),
+			report.capability_preflight.compatibility_capability_evidence().unwrap_or("unknown"),
+			report.capability_preflight.compatibility_schema_evidence().unwrap_or("unknown"),
+			report.capability_preflight.compatibility_schema_cache().unwrap_or("none"),
+			report.capability_preflight.compatibility_schema_marker_count().unwrap_or("0"),
 			report.thread_id,
 			report.turn_id,
 			report.event_count,
