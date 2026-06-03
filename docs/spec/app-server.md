@@ -53,12 +53,13 @@ range only when all of these are true:
 - The executable Decodex compatibility guard reports `compatibility=supported` for
   the initialized app-server `userAgent` after the capability preflight succeeds.
 
-As of the 2026-06-02 self-compatibility pass, the verified local range is:
+As of the 2026-06-03 self-compatibility pass, the verified local range is:
 
 | Codex surface | Version | Evidence |
 | --- | --- | --- |
 | `PATH` `codex` | `codex-cli 0.136.0` | Generated `--experimental` schema contains the required methods and fields; `decodex probe stdio://` returned `PROBE_OK`. |
 | Codex Beta app bundled `codex` | `codex-cli 0.136.0-alpha.2` | Running `decodex probe stdio://` with the bundle resource directory first on `PATH` returned `PROBE_OK`. |
+| Codex Desktop app-server | `codex-cli 0.137.0-alpha.4` | Generated `--experimental` schema contains the required schema bundle; `decodex probe stdio://` returned `PROBE_OK` with initialized `userAgent = "Codex Desktop/0.137.0-alpha.4 ..."`. |
 
 The same pass compared that range against upstream Codex:
 
