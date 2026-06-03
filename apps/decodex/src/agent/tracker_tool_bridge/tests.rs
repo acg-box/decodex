@@ -25,7 +25,9 @@ use crate::{
 	},
 	config::InternalReviewMode,
 	prelude::eyre,
-	state::{self, ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore},
+	state::{
+		self, ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpoint, StateStore,
+	},
 	tracker::{
 		IssueTracker, TrackerComment, TrackerIssue, TrackerLabel, TrackerState, TrackerTeam,
 		privacy_classifier::{
@@ -573,6 +575,59 @@ fn write_clean_review_checkpoint(review_context: &ReviewHandoffContext) {
 
 fn bridge_state_store<'a>(bridge: &TrackerToolBridge<'a>) -> &'a StateStore {
 	bridge.state_store.expect("test bridge should have a runtime state store")
+}
+
+fn persisted_review_policy_checkpoint(
+	bridge: &TrackerToolBridge<'_>,
+	issue: &TrackerIssue,
+	review_context: &ReviewHandoffContext,
+) -> ReviewPolicyCheckpoint {
+	let phase = match review_context.mode {
+		ReviewExecutionMode::Handoff => "handoff",
+		ReviewExecutionMode::Repair => "repair",
+		ReviewExecutionMode::Closeout => {
+			panic!("closeout does not support review checkpoints")
+		},
+	};
+
+	bridge_state_store(bridge)
+		.review_policy_checkpoint(
+			&review_context.service_id,
+			&issue.id,
+			&review_context.run_id,
+			review_context.attempt_number,
+			phase,
+		)
+		.expect("review policy checkpoint should read")
+		.expect("review policy checkpoint should exist")
+}
+
+fn assert_review_policy_checkpoint_cleared(
+	bridge: &TrackerToolBridge<'_>,
+	issue: &TrackerIssue,
+	review_context: &ReviewHandoffContext,
+) {
+	let phase = match review_context.mode {
+		ReviewExecutionMode::Handoff => "handoff",
+		ReviewExecutionMode::Repair => "repair",
+		ReviewExecutionMode::Closeout => {
+			panic!("closeout does not support review checkpoints")
+		},
+	};
+
+	assert!(
+		bridge_state_store(bridge)
+			.review_policy_checkpoint(
+				&review_context.service_id,
+				&issue.id,
+				&review_context.run_id,
+				review_context.attempt_number,
+				phase,
+			)
+			.expect("review policy checkpoint should read")
+			.is_none(),
+		"review policy checkpoint should be cleared after completion"
+	);
 }
 
 fn persisted_review_handoff_marker(

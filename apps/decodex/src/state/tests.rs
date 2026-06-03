@@ -17,7 +17,8 @@ use crate::{
 		ProjectRegistration, ProtocolActivityMarker, ProtocolActivitySummary,
 		RUN_ACTIVITY_MARKER_FILE, RUN_CONTROL_ACTION_COMPLETED, RUN_CONTROL_ACTION_FAILED,
 		RUN_CONTROL_ACTION_FALLBACK, RUN_CONTROL_ACTION_TIMED_OUT, RUN_OPERATION_REPO_GATE,
-		ReviewHandoffMarker, ReviewOrchestrationMarker, RunControlActionRequest, StateStore,
+		ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpointInput,
+		RunControlActionRequest, StateStore,
 	},
 	tracker::records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
 };
@@ -60,6 +61,28 @@ fn sample_pub_101_review_orchestration() -> ReviewOrchestrationMarker {
 		0,
 		None,
 	)
+}
+
+fn upsert_handoff_review_policy_checkpoint(
+	store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+	status: &str,
+	head_sha: &str,
+	nonclean_rounds: i64,
+) {
+	store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: "pubfi",
+			issue_id,
+			run_id,
+			attempt_number: 1,
+			phase: "handoff",
+			status,
+			head_sha,
+			nonclean_rounds,
+		})
+		.expect("review policy checkpoint should persist");
 }
 
 #[test]
@@ -162,29 +185,8 @@ fn clear_review_markers_for_handoff_preserves_other_branches() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let state_path = temp_dir.path().join("runtime.sqlite3");
 	let store = StateStore::open(&state_path).expect("state store should open");
-	let removed_handoff = ReviewHandoffMarker::new(
-		"run-1",
-		1,
-		"x/decodex-pub-101",
-		"https://github.com/hack-ink/decodex/pull/101",
-		"main",
-		"x/decodex-pub-101",
-		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
-	);
-	let removed_orchestration = ReviewOrchestrationMarker::new(
-		"run-1",
-		1,
-		"x/decodex-pub-101",
-		"https://github.com/hack-ink/decodex/pull/101",
-		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
-		"request_pending",
-		None,
-		None,
-		None,
-		0,
-		0,
-		None,
-	);
+	let removed_handoff = sample_pub_101_review_handoff();
+	let removed_orchestration = sample_pub_101_review_orchestration();
 	let kept_handoff = ReviewHandoffMarker::new(
 		"run-2",
 		1,
@@ -215,12 +217,32 @@ fn clear_review_markers_for_handoff_preserves_other_branches() {
 	store
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &removed_orchestration)
 		.expect("removed orchestration marker should persist");
+
+	upsert_handoff_review_policy_checkpoint(
+		&store,
+		"PUB-101",
+		"run-1",
+		"findings",
+		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+		2,
+	);
+
 	store
 		.upsert_review_handoff_marker("pubfi", "PUB-101", &kept_handoff)
 		.expect("kept handoff marker should persist");
 	store
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &kept_orchestration)
 		.expect("kept orchestration marker should persist");
+
+	upsert_handoff_review_policy_checkpoint(
+		&store,
+		"PUB-101",
+		"run-2",
+		"clean",
+		"18a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+		0,
+	);
+
 	store
 		.clear_review_markers_for_handoff(
 			"pubfi",
@@ -250,6 +272,20 @@ fn clear_review_markers_for_handoff_preserves_other_branches() {
 			.expect("kept orchestration marker should read"),
 		Some(kept_orchestration)
 	);
+	assert!(
+		reopened
+			.review_policy_checkpoint("pubfi", "PUB-101", "run-1", 1, "handoff")
+			.expect("removed review policy checkpoint should read")
+			.is_none()
+	);
+
+	let kept_checkpoint = reopened
+		.review_policy_checkpoint("pubfi", "PUB-101", "run-2", 1, "handoff")
+		.expect("kept review policy checkpoint should read")
+		.expect("kept review policy checkpoint should exist");
+
+	assert_eq!(kept_checkpoint.status(), "clean");
+	assert_eq!(kept_checkpoint.head_sha(), "18a20f7dfb9526e7421a5f095b1c6adec84e52d6");
 }
 
 #[test]
@@ -275,6 +311,56 @@ fn missing_review_markers_return_absent() {
 		store
 			.review_orchestration_marker("pubfi", "PUB-101", &handoff)
 			.expect("review orchestration marker should read")
+			.is_none()
+	);
+}
+
+#[test]
+fn review_policy_checkpoints_persist_reload_and_clear_for_run_attempt() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let checkpoint = store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: "pubfi",
+			issue_id: "PUB-101",
+			run_id: "run-1",
+			attempt_number: 2,
+			phase: "handoff",
+			status: "findings",
+			head_sha: "abc123",
+			nonclean_rounds: 2,
+		})
+		.expect("review policy checkpoint should persist");
+
+	assert_eq!(checkpoint.project_id(), "pubfi");
+	assert_eq!(checkpoint.issue_id(), "PUB-101");
+	assert_eq!(checkpoint.run_id(), "run-1");
+	assert_eq!(checkpoint.attempt_number(), 2);
+	assert_eq!(checkpoint.phase(), "handoff");
+	assert_eq!(checkpoint.status(), "findings");
+	assert_eq!(checkpoint.head_sha(), "abc123");
+	assert_eq!(checkpoint.nonclean_rounds(), 2);
+	assert!(!checkpoint.updated_at().is_empty());
+	assert!(checkpoint.updated_at_unix() > 0);
+
+	let reopened = StateStore::open(&state_path).expect("reopened state store should open");
+	let reloaded = reopened
+		.review_policy_checkpoint("pubfi", "PUB-101", "run-1", 2, "handoff")
+		.expect("review policy checkpoint should read")
+		.expect("review policy checkpoint should exist");
+
+	assert_eq!(reloaded.status(), "findings");
+	assert_eq!(reloaded.nonclean_rounds(), 2);
+
+	reopened
+		.clear_review_policy_checkpoints_for_run_attempt("pubfi", "PUB-101", "run-1", 2)
+		.expect("review policy checkpoint should clear");
+
+	assert!(
+		reopened
+			.review_policy_checkpoint("pubfi", "PUB-101", "run-1", 2, "handoff")
+			.expect("cleared review policy checkpoint should read")
 			.is_none()
 	);
 }
@@ -2061,6 +2147,16 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 	writer
 		.upsert_review_orchestration_marker("pubfi", "PUB-101", &orchestration)
 		.expect("orchestration marker should persist");
+
+	upsert_handoff_review_policy_checkpoint(
+		&writer,
+		"PUB-101",
+		"run-1",
+		"findings",
+		"08a20f7dfb9526e7421a5f095b1c6adec84e52d6",
+		2,
+	);
+
 	stale_store
 		.canonicalize_issue_identity("PUB-101", "linear-id-101")
 		.expect("identity should canonicalize from SQLite rows");
@@ -2111,6 +2207,20 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 			.expect("canonical orchestration should read"),
 		Some(orchestration)
 	);
+	assert!(
+		reopened
+			.review_policy_checkpoint("pubfi", "PUB-101", "run-1", 1, "handoff")
+			.expect("old review policy checkpoint should read")
+			.is_none()
+	);
+
+	let canonical_checkpoint = reopened
+		.review_policy_checkpoint("pubfi", "linear-id-101", "run-1", 1, "handoff")
+		.expect("canonical review policy checkpoint should read")
+		.expect("canonical review policy checkpoint should exist");
+
+	assert_eq!(canonical_checkpoint.status(), "findings");
+	assert_eq!(canonical_checkpoint.nonclean_rounds(), 2);
 }
 
 #[test]

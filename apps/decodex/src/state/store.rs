@@ -11,6 +11,18 @@ pub(crate) struct ConnectorBackoffInput<'a> {
 	pub(crate) warning: &'a str,
 }
 
+/// Input fields for recording the latest review-policy checkpoint.
+pub(crate) struct ReviewPolicyCheckpointInput<'a> {
+	pub(crate) project_id: &'a str,
+	pub(crate) issue_id: &'a str,
+	pub(crate) run_id: &'a str,
+	pub(crate) attempt_number: i64,
+	pub(crate) phase: &'a str,
+	pub(crate) status: &'a str,
+	pub(crate) head_sha: &'a str,
+	pub(crate) nonclean_rounds: i64,
+}
+
 /// Local runtime store for leases, attempts, worktrees, protocol events, and private evidence.
 #[derive(Default)]
 pub struct StateStore {
@@ -206,6 +218,11 @@ impl StateStore {
 		);
 		retarget_review_orchestration_issue(
 			&mut state.review_orchestrations,
+			previous_issue_id,
+			canonical_issue_id,
+		);
+		retarget_review_policy_issue(
+			&mut state.review_policy_checkpoints,
 			previous_issue_id,
 			canonical_issue_id,
 		);
@@ -1613,6 +1630,79 @@ impl StateStore {
 		Ok(state.review_orchestrations.get(&key).map(|record| record.marker.clone()))
 	}
 
+	/// Create or replace the latest review-policy checkpoint for one run phase.
+	pub(crate) fn upsert_review_policy_checkpoint(
+		&self,
+		input: ReviewPolicyCheckpointInput<'_>,
+	) -> Result<ReviewPolicyCheckpoint> {
+		let now = timestamp_parts();
+		let key = ReviewPolicyKey::new(
+			input.project_id,
+			input.issue_id,
+			input.run_id,
+			input.attempt_number,
+			input.phase,
+		);
+		let record = ReviewPolicyRuntimeRecord {
+			project_id: input.project_id.to_owned(),
+			issue_id: input.issue_id.to_owned(),
+			run_id: input.run_id.to_owned(),
+			attempt_number: input.attempt_number,
+			phase: input.phase.to_owned(),
+			status: input.status.to_owned(),
+			head_sha: input.head_sha.to_owned(),
+			nonclean_rounds: input.nonclean_rounds,
+			updated_at: now.text,
+			updated_at_unix: now.unix,
+		};
+		let mut state = self.lock()?;
+
+		state.review_policy_checkpoints.insert(key, record.clone());
+		self.persist_runtime_state_locked(&state)?;
+
+		Ok(record.as_public())
+	}
+
+	/// Read the latest runtime-owned review-policy checkpoint for one run phase.
+	pub(crate) fn review_policy_checkpoint(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		run_id: &str,
+		attempt_number: i64,
+		phase: &str,
+	) -> Result<Option<ReviewPolicyCheckpoint>> {
+		let state = self.lock()?;
+		let key = ReviewPolicyKey::new(project_id, issue_id, run_id, attempt_number, phase);
+
+		Ok(state.review_policy_checkpoints.get(&key).map(ReviewPolicyRuntimeRecord::as_public))
+	}
+
+	/// Clear review-policy checkpoints for one completed run attempt.
+	pub(crate) fn clear_review_policy_checkpoints_for_run_attempt(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		run_id: &str,
+		attempt_number: i64,
+	) -> Result<()> {
+		let mut state = self.lock()?;
+
+		state.review_policy_checkpoints.retain(|key, _record| {
+			key.project_id != project_id
+				|| key.issue_id != issue_id
+				|| key.run_id != run_id
+				|| key.attempt_number != attempt_number
+		});
+
+		self.delete_review_policy_checkpoints_for_run_attempt_locked(
+			project_id,
+			issue_id,
+			run_id,
+			attempt_number,
+		)
+	}
+
 	/// Remove retained review markers for one issue without clearing its worktree mapping.
 	pub(crate) fn clear_review_markers(&self, issue_id: &str) -> Result<()> {
 		let mut state = self.lock()?;
@@ -1620,6 +1710,9 @@ impl StateStore {
 		state.review_handoffs.retain(|key, _record| key.issue_id != issue_id);
 		state
 			.review_orchestrations
+			.retain(|key, _record| key.issue_id != issue_id);
+		state
+			.review_policy_checkpoints
 			.retain(|key, _record| key.issue_id != issue_id);
 		self.persist_runtime_state_locked(&state)?;
 
@@ -1646,6 +1739,12 @@ impl StateStore {
 
 		state.review_handoffs.remove(&handoff_key);
 		state.review_orchestrations.remove(&orchestration_key);
+		state.review_policy_checkpoints.retain(|key, _record| {
+			key.project_id != project_id
+				|| key.issue_id != issue_id
+				|| key.run_id != orchestration_marker.run_id()
+				|| key.attempt_number != orchestration_marker.attempt_number()
+		});
 		self.persist_runtime_state_locked(&state)?;
 
 		self.delete_review_marker_identity_locked(
@@ -1690,6 +1789,9 @@ impl StateStore {
 		state.review_handoffs.retain(|key, _record| key.issue_id != issue_id);
 		state
 			.review_orchestrations
+			.retain(|key, _record| key.issue_id != issue_id);
+		state
+			.review_policy_checkpoints
 			.retain(|key, _record| key.issue_id != issue_id);
 		self.persist_runtime_state_locked(&state)?;
 
@@ -1974,6 +2076,28 @@ impl StateStore {
 			attempt_number,
 		)
 	}
+
+	fn delete_review_policy_checkpoints_for_run_attempt_locked(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		run_id: &str,
+		attempt_number: i64,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let mut sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.delete_review_policy_checkpoints_for_run_attempt(
+			project_id,
+			issue_id,
+			run_id,
+			attempt_number,
+		)
+	}
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -2070,6 +2194,36 @@ fn retarget_review_handoff_issue(
 
 		records
 			.entry(ReviewMarkerKey::new(&key.project_id, canonical_issue_id, &key.branch_name))
+			.or_insert(record);
+	}
+}
+
+fn retarget_review_policy_issue(
+	records: &mut HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
+	previous_issue_id: &str,
+	canonical_issue_id: &str,
+) {
+	let previous_keys = records
+		.keys()
+		.filter(|key| key.issue_id == previous_issue_id)
+		.cloned()
+		.collect::<Vec<_>>();
+
+	for key in previous_keys {
+		let Some(mut record) = records.remove(&key) else {
+			continue;
+		};
+
+		record.issue_id = canonical_issue_id.to_owned();
+
+		records
+			.entry(ReviewPolicyKey::new(
+				&key.project_id,
+				canonical_issue_id,
+				&key.run_id,
+				key.attempt_number,
+				&key.phase,
+			))
 			.or_insert(record);
 	}
 }

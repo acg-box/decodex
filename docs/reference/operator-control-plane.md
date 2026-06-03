@@ -121,12 +121,12 @@ work that needs full private payload values.
 
 | Surface | Owns | Does Not Own |
 | --- | --- | --- |
-| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, worktree mappings, retry state, retained PR state, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
+| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, worktree mappings, retry state, retained PR state, review-policy checkpoints, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
 | Central project config | `service_id`, repo root, worktree root, tracker/GitHub credential env-var names, enabled project registration | per-run state or issue ownership |
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
 | Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, private execution evidence, connector retry budgets |
 | GitHub | PR, checks, review comments, merge evidence, signed commit verification | queue selection or local lane ownership |
-| `.decodex-run-activity` | short-lived child activity heartbeat for the active attempt, including same-boot and same-process-start liveness | durable ownership, review handoff identity, cleanup authority |
+| `.decodex-run-activity` | short-lived child activity heartbeat for the active attempt, including same-boot and same-process-start liveness plus diagnostic protocol/child/account breadcrumbs | durable ownership, review handoff identity, review-policy checkpoint authority, cleanup authority |
 | `.decodex-run-control/` | local per-attempt control-channel marker files for active runtime-owned attempts | standalone ownership proof, public tracker history, or dashboard-authored lane mutation |
 
 ## Operator Dashboard Sections
@@ -392,6 +392,9 @@ map to an operator decision.
   it is not a scheduler contract.
 - Missing child-agent activity means no breakdown was captured for that run, not that
   the lane is invalid.
+- Review-policy checkpoint state comes from runtime SQLite, not marker files. Legacy
+  marker fields such as `review_policy_status` may explain an old worktree, but they
+  must not override the store-backed checkpoint row for handoff or repair gating.
 
 The dashboard should avoid pretending that every bucket has a fixed total budget.
 When a row is event-only or sub-second, the UI should present it as diagnostic event
@@ -412,8 +415,8 @@ rate-limited, or unavailable.
 - Linear writes should stay coarse: one run-start ledger, material progress
   checkpoints, PR-ready/handoff, blocked/failed, landed, done, and cleanup summaries.
   Full structured execution evidence belongs in private runtime SQLite events.
-- Fine-grained retry budgets, raw attempts, heartbeat, child buckets, token pressure,
-  recovery details, and process logs stay local. Logs are diagnostic text; private
+- Fine-grained retry budgets, review-policy checkpoints, raw attempts, heartbeat,
+  child buckets, token pressure, recovery details, and process logs stay local. Logs are diagnostic text; private
   execution events are structured runtime evidence.
 - Completed lanes without Decodex Linear execution ledger records are reported as
   `missing` / `execution_ledger_missing`. Tracker terminal state, local attempt
