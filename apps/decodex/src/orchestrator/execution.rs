@@ -420,7 +420,8 @@ fn terminal_failure_lifecycle_event(
 	issue_run: &IssueRunPlan,
 	failure: TerminalFailureLifecycle<'_>,
 ) -> records::LinearExecutionEventRecord {
-	let event_type = if failure.manual_attention_requested {
+	let retained_partial_progress = failure.error_class == "partial_progress_retained";
+	let event_type = if failure.manual_attention_requested || retained_partial_progress {
 		"needs_attention"
 	} else {
 		"terminal_failure"
@@ -447,12 +448,26 @@ fn terminal_failure_lifecycle_event(
 	record.worktree_path = Some(failure.worktree_path.to_owned());
 	record.error_class = Some(failure.error_class.to_owned());
 	record.next_action = Some(failure.next_action.to_owned());
-	record.blockers = Some(vec![format!("Run failed with `{}`.", failure.error_class)]);
-	record.evidence = Some(vec![format!(
-		"Attempt {} reached terminal failure handling.",
-		issue_run.attempt_number
-	)]);
-	record.summary = Some(String::from("Decodex run failed and needs attention."));
+
+	if retained_partial_progress {
+		record.blockers = Some(vec![String::from(
+			"Retained tracked worktree changes require operator recovery.",
+		)]);
+		record.evidence = Some(vec![format!(
+			"Attempt {} stopped with tracked worktree changes retained.",
+			issue_run.attempt_number
+		)]);
+		record.summary = Some(String::from("Decodex retained partial progress and needs attention."));
+		record.terminal_path = Some(String::from("retained_partial_progress"));
+	} else {
+		record.blockers = Some(vec![format!("Run failed with `{}`.", failure.error_class)]);
+		record.evidence = Some(vec![format!(
+			"Attempt {} reached terminal failure handling.",
+			issue_run.attempt_number
+		)]);
+		record.summary = Some(String::from("Decodex run failed and needs attention."));
+	}
+
 	record.pr_url = failure.pr_url.map(ToOwned::to_owned);
 	record.target_state = Some(failure.target_state.to_owned());
 
@@ -1448,6 +1463,7 @@ fn run_failure_requires_terminal_attention(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
+		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
 		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
 		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
 		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
@@ -1626,6 +1642,7 @@ fn retained_partial_progress_error(
 fn terminal_failure_has_specific_error_class(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
+		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
 		|| error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some()
 		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
 		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()

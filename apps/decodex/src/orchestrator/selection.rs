@@ -154,10 +154,22 @@ fn format_terminal_failure_comment(
 	next_action: &str,
 ) -> String {
 	let pr_url_line = pr_url.map_or_else(String::new, |pr_url| format!("\n- pr_url: `{pr_url}`"));
+	let retained_partial_progress = error_class == "partial_progress_retained";
+	let heading = if retained_partial_progress {
+		"decodex retained partial progress and needs attention"
+	} else {
+		"decodex run failed and needs attention"
+	};
+	let timestamp_label = if retained_partial_progress { "recorded_at" } else { "failed_at" };
+	let error_summary = if retained_partial_progress {
+		"Sensitive runtime details were withheld from the tracker comment; inspect the retained lane for the full recovery context."
+	} else {
+		"Sensitive runtime details were withheld from the tracker comment; inspect the local lane for the full failure context."
+	};
 
 	format!(
-		"decodex run failed and needs attention\n\n- run_id: `{run_id}`\n- attempt: `{attempt_number}`\n- failed_at: `{failed_at}`\n- branch: `{branch}`{pr_url_line}\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `Sensitive runtime details were withheld from the tracker comment; inspect the local lane for the full failure context.`",
-		failed_at = current_timestamp(),
+		"{heading}\n\n- run_id: `{run_id}`\n- attempt: `{attempt_number}`\n- {timestamp_label}: `{timestamp}`\n- branch: `{branch}`{pr_url_line}\n- worktree_path: `{worktree}`\n- error_class: `{error_class}`\n- next_action: `{next_action}`\n- error_summary: `{error_summary}`",
+		timestamp = current_timestamp(),
 		branch = branch_name,
 		worktree = worktree_path
 	)
