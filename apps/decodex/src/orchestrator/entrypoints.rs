@@ -625,6 +625,7 @@ fn build_operator_status_snapshot_for_tracker_backoff(
 ) -> Result<OperatorStatusSnapshot> {
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
+		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
 	let mut snapshot = build_operator_status_snapshot_with_account_mode(
 		project,
@@ -1440,6 +1441,7 @@ fn operator_project_status_from_registration(
 		config_path: project.config_path().display().to_string(),
 		repo_root: project.repo_root().display().to_string(),
 		enabled: project.enabled(),
+		github_cli_authority: operator_github_cli_authority_from_registration(project),
 		active_run_count: 0,
 		queued_candidate_count: 0,
 		post_review_lane_count: 0,
@@ -1470,6 +1472,7 @@ fn operator_project_status_from_dev_registration(
 		config_path: project.config_path().display().to_string(),
 		repo_root: project.repo_root().display().to_string(),
 		enabled: project.enabled(),
+		github_cli_authority: operator_github_cli_authority_from_registration(project),
 		active_run_count: 0,
 		queued_candidate_count: 0,
 		post_review_lane_count: 0,

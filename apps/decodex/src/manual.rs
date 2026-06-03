@@ -76,6 +76,7 @@ struct ManualLandContext {
 	workflow: WorkflowDocument,
 	github_token_env_var: String,
 	github_token: String,
+	github_command_path: Option<PathBuf>,
 	repository: RepositoryContext,
 	prepared_closeout: Option<PreparedCloseout>,
 	review_handoff: Option<ReviewHandoffMarker>,
@@ -218,6 +219,7 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 		&context.canonical_repo_root,
 		&context.pr_url,
 		&context.github_token,
+		context.github_command_path.as_deref(),
 	)?;
 	let current_head = current_head_oid(&context.cwd)?;
 	let execution_mode = validate_landing_state(
@@ -263,11 +265,13 @@ fn inspect_pull_request_landing_state_for_manual_land(
 	cwd: &Path,
 	pr_url: &str,
 	github_token: &str,
+	gh_command_path: Option<&Path>,
 ) -> Result<PullRequestLandingState> {
 	let mut last_landing_state = None;
 
 	for attempt in 1..=MANUAL_LAND_MERGEABILITY_RETRY_ATTEMPTS {
-		let landing_state = github::inspect_pull_request_landing_state(cwd, pr_url, github_token)?;
+		let landing_state =
+			github::inspect_pull_request_landing_state(cwd, pr_url, github_token, gh_command_path)?;
 
 		if landing_state.state == "MERGED"
 			|| !pull_request::mergeability_unknown(landing_state.gate_view())
@@ -315,7 +319,12 @@ fn prepare_manual_land_context(
 		&worktree_root,
 	)?;
 	let github_token = config.github().resolve_token()?;
-	let repository = github::inspect_repository_context(&canonical_repo_root, &github_token)?;
+	let github_command_path = config.github().command_path().map(Path::to_path_buf);
+	let repository = github::inspect_repository_context(
+		&canonical_repo_root,
+		&github_token,
+		github_command_path.as_deref(),
+	)?;
 	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
 	let public_projection_privacy_classifier =
 		ConfiguredPublicProjectionPrivacyClassifier::from_config(config.privacy_classifier())?;
@@ -352,6 +361,7 @@ fn prepare_manual_land_context(
 		workflow,
 		github_token_env_var: config.github().token_env_var().to_owned(),
 		github_token,
+		github_command_path,
 		repository,
 		prepared_closeout,
 		review_handoff: handoff,
@@ -398,6 +408,7 @@ fn execute_land_merge(
 				current_head,
 				Some(landed_change_record),
 				&context.github_token,
+				context.github_command_path.as_deref(),
 			) {
 				if matches!(
 					github::pull_request_is_merged_at_head(
@@ -405,6 +416,7 @@ fn execute_land_merge(
 						&context.pr_url,
 						current_head,
 						&context.github_token,
+						context.github_command_path.as_deref(),
 					),
 					Ok(true)
 				) {
@@ -413,6 +425,7 @@ fn execute_land_merge(
 						&context.pr_url,
 						&context.github_token,
 						MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT,
+						context.github_command_path.as_deref(),
 					);
 				}
 
@@ -427,6 +440,7 @@ fn execute_land_merge(
 		&context.pr_url,
 		&context.github_token,
 		MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT,
+		context.github_command_path.as_deref(),
 	)
 }
 
@@ -440,6 +454,7 @@ fn load_authoritative_landed_change_record(
 		merge_commit,
 		&context.github_token,
 		MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT,
+		context.github_command_path.as_deref(),
 	)
 }
 
@@ -580,6 +595,7 @@ fn cleanup_manual_land_lane_checkout(context: &ManualLandContext) -> Result<()> 
 		&context.pr_url,
 		&context.current_branch,
 		&context.github_token,
+		context.github_command_path.as_deref(),
 	)?;
 	orchestrator::detach_worktree_head_from_branch_if_checked_out(
 		&context.worktree_root,
@@ -962,6 +978,7 @@ fn finalize_already_merged_manual_land_recovery(
 		&context.canonical_repo_root,
 		&context.pr_url,
 		&context.github_token,
+		context.github_command_path.as_deref(),
 	)?;
 
 	if landing_state.state != "MERGED" {
@@ -977,6 +994,7 @@ fn finalize_already_merged_manual_land_recovery(
 		&context.pr_url,
 		&context.github_token,
 		MANUAL_LAND_MERGE_VISIBILITY_TIMEOUT,
+		context.github_command_path.as_deref(),
 	)?;
 
 	ensure_already_merged_manual_land_recovery_ready(context, &landing_state, &merge_commit)?;
@@ -1978,6 +1996,7 @@ mod tests {
 			workflow: sample_workflow(),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
+			github_command_path: None,
 			repository: crate::github::RepositoryContext {
 				owner: String::from("hack-ink"),
 				name: String::from("decodex"),
@@ -2424,6 +2443,7 @@ exit 1\n",
 			workflow: sample_workflow(),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
+			github_command_path: None,
 			repository: crate::github::RepositoryContext {
 				owner: String::from("hack-ink"),
 				name: String::from("decodex"),
@@ -2480,6 +2500,7 @@ exit 1\n",
 			workflow: sample_workflow(),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
+			github_command_path: None,
 			repository: crate::github::RepositoryContext {
 				owner: String::from("hack-ink"),
 				name: String::from("decodex"),
@@ -2537,6 +2558,7 @@ exit 1\n",
 			workflow: sample_workflow(),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
+			github_command_path: None,
 			repository: crate::github::RepositoryContext {
 				owner: String::from("hack-ink"),
 				name: String::from("decodex"),
@@ -2839,6 +2861,7 @@ exit 1\n",
 			workflow: sample_workflow(),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
+			github_command_path: None,
 			repository: crate::github::RepositoryContext {
 				owner: String::from("hack-ink"),
 				name: String::from("decodex"),
@@ -2900,6 +2923,7 @@ exit 1\n",
 			workflow: sample_workflow(),
 			github_token_env_var: String::from("GITHUB_TOKEN"),
 			github_token: String::from("test-token"),
+			github_command_path: None,
 			repository: crate::github::RepositoryContext {
 				owner: String::from("hack-ink"),
 				name: String::from("decodex"),
