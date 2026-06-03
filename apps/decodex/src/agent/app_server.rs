@@ -97,10 +97,17 @@ const APP_SERVER_COMPATIBILITY_EVIDENCE: &str =
 	"initialize.userAgent plus successful app-server capability preflight";
 const CODEX_CLI_VERSION_STABLE_0_136_0: &str = "0.136.0";
 const CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2: &str = "0.136.0-alpha.2";
-const SUPPORTED_CODEX_CLI_VERSION_MATCH_ORDER: &[&str] =
-	&[CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2, CODEX_CLI_VERSION_STABLE_0_136_0];
-const SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER: &[&str] =
-	&[CODEX_CLI_VERSION_STABLE_0_136_0, CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2];
+const CODEX_CLI_VERSION_DESKTOP_0_137_0_ALPHA_4: &str = "0.137.0-alpha.4";
+const SUPPORTED_CODEX_CLI_VERSION_MATCH_ORDER: &[&str] = &[
+	CODEX_CLI_VERSION_DESKTOP_0_137_0_ALPHA_4,
+	CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2,
+	CODEX_CLI_VERSION_STABLE_0_136_0,
+];
+const SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER: &[&str] = &[
+	CODEX_CLI_VERSION_STABLE_0_136_0,
+	CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2,
+	CODEX_CLI_VERSION_DESKTOP_0_137_0_ALPHA_4,
+];
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32_601;
 const CHILD_BUCKET_MODEL: &str = "Model";
 const WAITING_REASON_MODEL_EXECUTION: &str = "model_execution";
@@ -2883,6 +2890,11 @@ fn codex_cli_version_from_user_agent(user_agent: &str) -> Option<String> {
 
 	if let Some(marker_start) = lower_user_agent.find("codex-cli") {
 		let marker_end = marker_start + "codex-cli".len();
+
+		return user_agent_version_token(&user_agent[marker_end..]);
+	}
+	if let Some(marker_start) = lower_user_agent.find("codex desktop/") {
+		let marker_end = marker_start + "codex desktop/".len();
 
 		return user_agent_version_token(&user_agent[marker_end..]);
 	}
