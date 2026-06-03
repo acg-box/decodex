@@ -81,6 +81,7 @@ fn run_daemon_tick(
 ) -> Result<()> {
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(context.config.github().token_env_var().to_owned()),
+		github_command_path: context.config.github().command_path().map(Path::to_path_buf),
 	};
 
 	run_daemon_tick_with_review_state_inspector(
@@ -209,6 +210,7 @@ where
 	if warnings.contains(&TRACKER_RATE_LIMIT_WARNING) {
 		let review_state_inspector = GhPullRequestReviewStateInspector {
 			github_token_env_var: Some(project.github().token_env_var().to_owned()),
+			github_command_path: project.github().command_path().map(Path::to_path_buf),
 		};
 
 		snapshot.post_review_lanes =
@@ -927,7 +929,8 @@ where
 				state_store,
 				&GhPullRequestReviewStateInspector {
 					github_token_env_var: Some(project.github().token_env_var().to_owned()),
-			},
+					github_command_path: project.github().command_path().map(Path::to_path_buf),
+				},
 		)? {
 			CloseoutDispatchEligibility::Eligible => RetryEntryRetentionDecision::Retain,
 			CloseoutDispatchEligibility::Ineligible => RetryEntryRetentionDecision::Drop,

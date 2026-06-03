@@ -197,6 +197,7 @@ where
 {
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
+		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
 
 	reconcile_post_review_orchestration_with_inspector(
@@ -668,6 +669,7 @@ where
 		lane.review_state.url.as_str(),
 		EXTERNAL_REVIEW_REQUEST_BODY,
 		github_token,
+		project.github().command_path(),
 	)?;
 
 	write_retained_review_orchestration_marker(
@@ -722,12 +724,13 @@ where
 			lane.review_state.url.as_str(),
 			EXTERNAL_REVIEW_REQUEST_BODY,
 			github_token,
+			project.github().command_path(),
 		)?;
 
-			return write_retained_review_orchestration_marker(
-				state_store,
-				lane,
-				ReviewOrchestrationPhase::WaitingForAck,
+		return write_retained_review_orchestration_marker(
+			state_store,
+			lane,
+			ReviewOrchestrationPhase::WaitingForAck,
 			RetainedReviewOrchestrationMarkerFields {
 				request_comment_database_id: Some(comment_id),
 				request_created_at_unix_epoch: Some(created_at_unix_epoch),
@@ -967,6 +970,7 @@ where
 		lane.orchestration_marker.head_sha(),
 		Some(merge_subject.as_str()),
 		github_token,
+		runtime.project.github().command_path(),
 	) {
 		Ok(()) => true,
 		Err(_error) =>
@@ -976,6 +980,7 @@ where
 					lane.review_state.url.as_str(),
 					lane.orchestration_marker.head_sha(),
 					github_token,
+					runtime.project.github().command_path(),
 				),
 				Ok(true)
 			),
@@ -1433,6 +1438,7 @@ where
 {
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
+		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
 
 	select_post_review_issue_candidate_with_inspector(
@@ -1915,6 +1921,7 @@ where
 	let target_issue_id = resolve_target_issue_id(context.tracker, context.issue_id)?;
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(context.project.github().token_env_var().to_owned()),
+		github_command_path: context.project.github().command_path().map(Path::to_path_buf),
 	};
 	let Some(candidate) = select_target_post_review_closeout_issue_candidate_with_inspector(
 		context.tracker,
@@ -2348,6 +2355,7 @@ where
 	)?;
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
+		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
 
 	if let Some(retained_summary) = drain_internal_review_only_retained_tail_with_inspector(

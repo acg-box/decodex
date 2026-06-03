@@ -7,29 +7,13 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	active_run.suspected_stall = true;
 	active_run.phase = String::from("stalled");
 
-	let mut blocked_candidate = operator_status_text_queued_candidates()
-		.into_iter()
-		.find(|candidate| candidate.issue_identifier == "PUB-102")
-		.expect("fixture should include queued issue");
-
-	blocked_candidate.classification = String::from("blocked");
-	blocked_candidate.reason = String::from("missing_dispatch_briefing");
-
-	let mut missing_handoff_lane = operator_status_text_post_review_lanes()
-		.into_iter()
-		.next()
-		.expect("fixture should include retained review lane");
-
-	missing_handoff_lane.classification = String::from("blocked");
-	missing_handoff_lane.reason = String::from("missing_review_handoff_record");
-
 	let snapshot = OperatorStatusSnapshot {
 		project_id: String::from(TEST_SERVICE_ID),
 		run_limit: 10,
 		warnings: Vec::new(),
 		warning_details: Vec::new(),
 		connector_backoffs: Vec::new(),
-		projects: Vec::new(),
+		projects: vec![agent_evidence_project_status_with_configured_gh()],
 		account_control: OperatorCodexAccountControlStatus {
 			mode: String::from("balanced"),
 			account_selector: None,
@@ -38,9 +22,9 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 		active_runs: vec![active_run.clone()],
 		recent_runs: vec![active_run],
 		history_lanes: Vec::new(),
-		queued_candidates: vec![blocked_candidate],
+		queued_candidates: vec![agent_evidence_blocked_candidate()],
 		worktrees: operator_status_text_worktrees(),
-		post_review_lanes: vec![missing_handoff_lane],
+		post_review_lanes: vec![agent_evidence_missing_handoff_lane()],
 	};
 	let results = orchestrator::write_agent_evidence_snapshot(
 		&snapshot,
@@ -58,6 +42,9 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	assert_eq!(index_json["schema"], "decodex.agent_handoff_index/1");
 	assert_eq!(index_json["project_id"], TEST_SERVICE_ID);
 	assert_eq!(index_json["source"], "diagnose_command");
+
+	assert_agent_evidence_github_cli_authority(&index_json);
+
 	assert_eq!(index_json["summary"]["blocker_count"], 3);
 	assert_eq!(index_json["summary"]["run_capsule_count"], 1);
 	assert_eq!(
@@ -117,6 +104,69 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 
 	assert_eq!(event_json["schema"], "decodex.agent_evidence_event/1");
 	assert_eq!(event_json["blocker_count"], 3);
+}
+
+fn assert_agent_evidence_github_cli_authority(index_json: &Value) {
+	assert_eq!(index_json["github_cli_authority"]["discovery_tier"], "configured");
+	assert_eq!(index_json["github_cli_authority"]["command_path"], "/opt/homebrew/bin/gh");
+	assert_eq!(
+		index_json["github_cli_authority"]["next_action"],
+		"No action needed; Decodex will use the configured GitHub CLI path."
+	);
+}
+
+fn agent_evidence_blocked_candidate() -> OperatorQueuedIssueStatus {
+	let mut blocked_candidate = operator_status_text_queued_candidates()
+		.into_iter()
+		.find(|candidate| candidate.issue_identifier == "PUB-102")
+		.expect("fixture should include queued issue");
+
+	blocked_candidate.classification = String::from("blocked");
+	blocked_candidate.reason = String::from("missing_dispatch_briefing");
+
+	blocked_candidate
+}
+
+fn agent_evidence_missing_handoff_lane() -> OperatorPostReviewLaneStatus {
+	let mut missing_handoff_lane = operator_status_text_post_review_lanes()
+		.into_iter()
+		.next()
+		.expect("fixture should include retained review lane");
+
+	missing_handoff_lane.classification = String::from("blocked");
+	missing_handoff_lane.reason = String::from("missing_review_handoff_record");
+
+	missing_handoff_lane
+}
+
+fn agent_evidence_project_status_with_configured_gh() -> OperatorProjectStatus {
+	OperatorProjectStatus {
+		project_id: String::from(TEST_SERVICE_ID),
+		config_path: String::from("project.toml"),
+		repo_root: String::from("/repo/pubfi"),
+		enabled: true,
+		github_cli_authority: OperatorGitHubCliAuthority {
+			command_path: String::from("/opt/homebrew/bin/gh"),
+			resolved_path: Some(String::from("/opt/homebrew/bin/gh")),
+			configured_path: Some(String::from("/opt/homebrew/bin/gh")),
+			discovery_tier: String::from("configured"),
+			available: true,
+			next_action: String::from(
+				"No action needed; Decodex will use the configured GitHub CLI path.",
+			),
+		},
+		active_run_count: 0,
+		queued_candidate_count: 0,
+		post_review_lane_count: 0,
+		retained_worktree_count: 0,
+		waiting_lane_count: 0,
+		attention_count: 0,
+		cleanup_blocked_count: 0,
+		cleanup_pending_count: 0,
+		connector_state: String::from("ok"),
+		last_activity_at: None,
+		warning_count: 0,
+	}
 }
 
 #[test]
