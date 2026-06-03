@@ -221,10 +221,7 @@ actor DecodexServerBridge {
 		let nullDevice = FileHandle(forWritingAtPath: "/dev/null")
 
 		process.executableURL = try decodexExecutableURL()
-		process.arguments = [
-			"serve",
-			"--listen-address", defaultListenAddress,
-		]
+		process.arguments = Self.bundledServerArguments(listenAddress: defaultListenAddress)
 		process.standardOutput = nullDevice
 		process.standardError = nullDevice
 
@@ -235,6 +232,14 @@ actor DecodexServerBridge {
 		}
 
 		startedProcess = process
+	}
+
+	static func bundledServerArguments(listenAddress: String) -> [String] {
+		[
+			"serve",
+			"--allow-unverified-codex",
+			"--listen-address", listenAddress,
+		]
 	}
 
 	private func decodexExecutableURL() throws -> URL {
