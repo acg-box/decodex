@@ -184,6 +184,7 @@ where
 {
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
+		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
 
 	issue_passes_closeout_dispatch_policy_with_inspector(
@@ -233,6 +234,7 @@ where
 {
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
+		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
 
 	closeout_dispatch_block_reason_with_inspector(
@@ -688,6 +690,7 @@ fn cleanup_completed_post_review_lane(
 		&issue_run.worktree.path,
 		review_handoff.pr_url(),
 		&github_token,
+		project.github().command_path(),
 	)?;
 
 	if landing_state.state != "MERGED" {
@@ -724,6 +727,7 @@ fn cleanup_completed_post_review_lane(
 		review_handoff.pr_url(),
 		&issue_run.worktree.branch_name,
 		&github_token,
+		project.github().command_path(),
 	)?;
 
 	detach_worktree_head_from_branch_if_checked_out(

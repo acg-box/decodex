@@ -5,6 +5,9 @@ api_key_env_var = "LINEAR_API_KEY"
 
 [github]
 token_env_var = "GITHUB_TOKEN"
+# Optional explicit GitHub CLI authority. Use an absolute path when GUI-launched
+# Decodex processes do not inherit the shell PATH that contains `gh`.
+# command_path = "/opt/homebrew/bin/gh"
 
 # Optional Codex-specific runtime policy.
 # Omit this block to use `internal_review_mode = "loop"` and `external_review_enabled = true`.

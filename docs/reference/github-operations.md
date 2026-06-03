@@ -28,11 +28,30 @@ criteria for future simplification.
 | Default branch sync and local branch/worktree cleanup | Git commands in `apps/decodex/src/default_branch_sync.rs` and `apps/decodex/src/orchestrator/git_ops.rs` | Keep local Git | These steps mutate or inspect the local repository/worktree state. `gh` does not replace the required local checkout synchronization and linked-worktree cleanup. |
 
 Decodex resolves the `gh` executable through the runtime helper before these
-operations. The helper checks `PATH`, then common local install locations such as
-`$HOME/.local/bin`, `$HOME/.cargo/bin`, `/run/current-system/sw/bin`,
-`/opt/homebrew/bin`, and `/usr/local/bin` so a long-running GUI-started control plane
-uses the same GitHub CLI binary an operator can run from a shell when validating PR
-handoff state.
+operations. A project may set `[github].command_path` in `project.toml` to make one
+GitHub CLI binary authoritative for GUI-launched control-plane runs. When that field is
+absent, the helper checks `PATH`, then common user install locations such as
+`$HOME/.local/bin` and `$HOME/.cargo/bin`, then known host fallbacks including
+`/run/current-system/sw/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and `/usr/bin`.
+The known fallback paths remain compatibility behavior; a project-level
+`github.command_path` is the diagnosable authority when an operator expects a specific
+binary.
+
+`decodex status` and `decodex diagnose --json` expose the GitHub CLI authority without
+secrets. The diagnostic tier is one of:
+
+- `configured`: Decodex will invoke `github.command_path`.
+- `path`: Decodex found `gh` on the process `PATH`.
+- `user-bin`: Decodex found `gh` in a common user bin directory.
+- `known-fallback`: Decodex found `gh` in a built-in compatibility fallback path.
+- `missing`: Decodex did not find an installed `gh` path and will fail closed at the
+  GitHub-dependent review, repair, landing, or cleanup boundary.
+
+If status shows `missing`, install GitHub CLI or set `github.command_path` to the
+expected binary. If status shows `user-bin` or `known-fallback` but that path is not
+the operator-intended authority, set `github.command_path` in the registered project
+config and rerun `decodex status` or `decodex diagnose --json` to confirm the tier is
+`configured`.
 
 ## Replacement Criteria
 
