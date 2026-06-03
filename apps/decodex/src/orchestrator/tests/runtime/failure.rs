@@ -910,7 +910,7 @@ fn live_run_without_candidate_does_not_require_github_token_authority() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let tracker = FakeTracker::with_refresh_snapshots_and_project(vec![], vec![vec![]], true);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
 		.expect("empty backlog should not require github token authority");
 
 	assert!(summary.is_none());
@@ -1025,6 +1025,7 @@ fn execute_issue_run_clears_lease_when_active_label_setup_fails() {
 		&workflow,
 		&state_store,
 		issue_run.clone(),
+		false,
 	)
 	.expect_err("active-label setup failure should abort execution");
 
@@ -1070,7 +1071,7 @@ fn reconciliation_clears_stale_leases_and_terminal_worktrees() {
 		)
 		.expect("worktree mapping should record");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
 		.expect("reconciliation should succeed");
 
 	assert!(summary.is_none());
@@ -1116,7 +1117,7 @@ fn reconciliation_runs_without_project_validation() {
 		.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
 		.expect("lease should record");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
 		.expect("reconciliation should still succeed without any project validation");
 
 	assert!(summary.is_none(), "reconciliation-only startup should not dispatch a new lane here");
