@@ -129,6 +129,7 @@ struct StateData {
 	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
 	review_handoffs: HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
 	review_orchestrations: HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
+	review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
 	connector_backoffs: HashMap<(String, String), ConnectorBackoff>,
 	dispatch_slot_configs: HashMap<String, DispatchSlotConfig>,
 	issue_claim_guards: HashMap<String, IssueClaimGuard>,
@@ -147,6 +148,7 @@ impl StateData {
 		self.private_execution_events = loaded.private_execution_events;
 		self.review_handoffs = loaded.review_handoffs;
 		self.review_orchestrations = loaded.review_orchestrations;
+		self.review_policy_checkpoints = loaded.review_policy_checkpoints;
 		self.connector_backoffs = loaded.connector_backoffs;
 	}
 
@@ -343,6 +345,20 @@ CREATE TABLE IF NOT EXISTS linear_execution_events (
 );
 CREATE INDEX IF NOT EXISTS linear_execution_events_issue_idx
 ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
+"#,
+		)?;
+		self.bootstrap_review_schema()?;
+		self.bootstrap_run_control_channels_schema()?;
+		self.bootstrap_connector_backoffs_schema()?;
+		self.bootstrap_private_execution_events_schema()?;
+		self.record_schema_version()?;
+
+		Ok(())
+	}
+
+	fn bootstrap_review_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
 CREATE TABLE IF NOT EXISTS review_handoffs (
 	project_id TEXT NOT NULL,
 	issue_id TEXT NOT NULL,
@@ -376,12 +392,21 @@ CREATE TABLE IF NOT EXISTS review_orchestrations (
 	updated_at_unix INTEGER NOT NULL,
 	PRIMARY KEY (project_id, issue_id, branch_name, run_id, attempt_number)
 );
+CREATE TABLE IF NOT EXISTS review_policy_checkpoints (
+	project_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	attempt_number INTEGER NOT NULL,
+	phase TEXT NOT NULL,
+	status TEXT NOT NULL,
+	head_sha TEXT NOT NULL,
+	nonclean_rounds INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, issue_id, run_id, attempt_number, phase)
+);
 "#,
 		)?;
-		self.bootstrap_run_control_channels_schema()?;
-		self.bootstrap_connector_backoffs_schema()?;
-		self.bootstrap_private_execution_events_schema()?;
-		self.record_schema_version()?;
 
 		Ok(())
 	}
@@ -463,7 +488,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	value TEXT NOT NULL
 );
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '7')
+VALUES ('schema_version', '8')
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 "#,
 		)?;
@@ -484,6 +509,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_private_execution_events(&mut state)?;
 		self.load_review_handoffs(&mut state)?;
 		self.load_review_orchestrations(&mut state)?;
+		self.load_review_policy_checkpoints(&mut state)?;
 		self.load_connector_backoffs(&mut state)?;
 
 		Ok(state)
@@ -522,6 +548,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_private_execution_events(&transaction, state)?;
 		persist_review_handoffs(&transaction, state)?;
 		persist_review_orchestrations(&transaction, state)?;
+		persist_review_policy_checkpoints(&transaction, state)?;
 		persist_connector_backoffs(&transaction, state)?;
 
 		transaction.commit()?;
@@ -758,6 +785,20 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
+			"INSERT OR IGNORE INTO review_policy_checkpoints (
+					project_id, issue_id, run_id, attempt_number, phase, status, head_sha,
+					nonclean_rounds, updated_at, updated_at_unix
+				)
+			 SELECT project_id, ?2, run_id, attempt_number, phase, status, head_sha,
+					nonclean_rounds, updated_at, updated_at_unix
+			 FROM review_policy_checkpoints WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM review_policy_checkpoints WHERE issue_id = ?1",
+			params![previous_issue_id],
+		)?;
+		transaction.execute(
 			"INSERT OR IGNORE INTO review_handoffs (
 					project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
 					target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at, updated_at_unix
@@ -803,6 +844,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			"DELETE FROM review_orchestrations WHERE issue_id = ?1",
 			params![issue_id],
 		)?;
+		transaction.execute(
+			"DELETE FROM review_policy_checkpoints WHERE issue_id = ?1",
+			params![issue_id],
+		)?;
 		transaction.commit()?;
 
 		Ok(())
@@ -814,6 +859,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		transaction.execute("DELETE FROM review_handoffs WHERE issue_id = ?1", params![issue_id])?;
 		transaction.execute(
 			"DELETE FROM review_orchestrations WHERE issue_id = ?1",
+			params![issue_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM review_policy_checkpoints WHERE issue_id = ?1",
 			params![issue_id],
 		)?;
 		transaction.commit()?;
@@ -842,7 +891,28 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			   AND run_id = ?4 AND attempt_number = ?5",
 			params![project_id, issue_id, branch_name, run_id, attempt_number],
 		)?;
+		transaction.execute(
+			"DELETE FROM review_policy_checkpoints
+			 WHERE project_id = ?1 AND issue_id = ?2 AND run_id = ?3 AND attempt_number = ?4",
+			params![project_id, issue_id, run_id, attempt_number],
+		)?;
 		transaction.commit()?;
+
+		Ok(())
+	}
+
+	fn delete_review_policy_checkpoints_for_run_attempt(
+		&mut self,
+		project_id: &str,
+		issue_id: &str,
+		run_id: &str,
+		attempt_number: i64,
+	) -> Result<()> {
+		self.connection.execute(
+			"DELETE FROM review_policy_checkpoints
+			 WHERE project_id = ?1 AND issue_id = ?2 AND run_id = ?3 AND attempt_number = ?4",
+			params![project_id, issue_id, run_id, attempt_number],
+		)?;
 
 		Ok(())
 	}
@@ -1437,6 +1507,44 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn load_review_policy_checkpoints(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, issue_id, run_id, attempt_number, phase, status, head_sha, \
+			 nonclean_rounds, updated_at, updated_at_unix FROM review_policy_checkpoints",
+		)?;
+		let rows = statement.query_map([], |row| {
+			let project_id: String = row.get(0)?;
+			let issue_id: String = row.get(1)?;
+			let run_id: String = row.get(2)?;
+			let attempt_number: i64 = row.get(3)?;
+			let phase: String = row.get(4)?;
+
+			Ok((
+				ReviewPolicyKey::new(&project_id, &issue_id, &run_id, attempt_number, &phase),
+				ReviewPolicyRuntimeRecord {
+					project_id,
+					issue_id,
+					run_id,
+					attempt_number,
+					phase,
+					status: row.get(5)?,
+					head_sha: row.get(6)?,
+					nonclean_rounds: row.get(7)?,
+					updated_at: row.get(8)?,
+					updated_at_unix: row.get(9)?,
+				},
+			))
+		})?;
+
+		for row in rows {
+			let (key, record) = row?;
+
+			state.review_policy_checkpoints.insert(key, record);
+		}
+
+		Ok(())
+	}
+
 	fn load_connector_backoffs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, connector, sync_phase, quota_class, reset_unix_epoch, \
@@ -1662,6 +1770,32 @@ impl ReviewOrchestrationKey {
 	}
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ReviewPolicyKey {
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	attempt_number: i64,
+	phase: String,
+}
+impl ReviewPolicyKey {
+	fn new(
+		project_id: &str,
+		issue_id: &str,
+		run_id: &str,
+		attempt_number: i64,
+		phase: &str,
+	) -> Self {
+		Self {
+			project_id: project_id.to_owned(),
+			issue_id: issue_id.to_owned(),
+			run_id: run_id.to_owned(),
+			attempt_number,
+			phase: phase.to_owned(),
+		}
+	}
+}
+
 #[derive(Clone, Debug)]
 struct ReviewHandoffRuntimeRecord {
 	project_id: String,
@@ -1682,6 +1816,36 @@ struct ReviewOrchestrationRuntimeRecord {
 	marker: ReviewOrchestrationMarker,
 	updated_at: String,
 	updated_at_unix: i64,
+}
+
+#[derive(Clone, Debug)]
+struct ReviewPolicyRuntimeRecord {
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	attempt_number: i64,
+	phase: String,
+	status: String,
+	head_sha: String,
+	nonclean_rounds: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl ReviewPolicyRuntimeRecord {
+	fn as_public(&self) -> ReviewPolicyCheckpoint {
+		ReviewPolicyCheckpoint {
+			project_id: self.project_id.clone(),
+			issue_id: self.issue_id.clone(),
+			run_id: self.run_id.clone(),
+			attempt_number: self.attempt_number,
+			phase: self.phase.clone(),
+			status: self.status.clone(),
+			head_sha: self.head_sha.clone(),
+			nonclean_rounds: self.nonclean_rounds,
+			updated_at: self.updated_at.clone(),
+			updated_at_unix: self.updated_at_unix,
+		}
+	}
 }
 
 #[derive(Clone, Default)]
@@ -2047,6 +2211,7 @@ pub(crate) fn clear_run_retry_schedule(worktree_path: &Path) -> Result<()> {
 	Ok(())
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn write_run_review_policy_state(
 	worktree_path: &Path,
 	run_id: &str,
@@ -2576,6 +2741,34 @@ fn persist_review_orchestrations(transaction: &Transaction<'_>, state: &StateDat
 				record.marker.request_retry_count,
 				record.marker.external_round_count,
 				record.marker.auto_merge_enabled_at_unix_epoch,
+				record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
+fn persist_review_policy_checkpoints(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for record in state.review_policy_checkpoints.values() {
+		transaction.execute(
+			"INSERT OR REPLACE INTO review_policy_checkpoints (
+					project_id, issue_id, run_id, attempt_number, phase, status, head_sha,
+					nonclean_rounds, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+			params![
+				record.project_id,
+				record.issue_id,
+				record.run_id,
+				record.attempt_number,
+				record.phase,
+				record.status,
+				record.head_sha,
+				record.nonclean_rounds,
 				record.updated_at,
 				record.updated_at_unix,
 			],

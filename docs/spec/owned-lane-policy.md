@@ -111,7 +111,7 @@ This action requires:
 - an explicit retained review-handoff lineage marker is still present when the lane already crossed into post-review ownership
 - retained post-review re-entry can still prove the same PR lineage, even when the current
   repair attempt advances to a newer head on that same PR
-- retained review-policy state from `.decodex-run-activity` still matches the current phase when convergence counting must continue across re-entry
+- retained review-policy checkpoint state in runtime SQLite still matches the current phase when convergence counting must continue across re-entry
 
 ### `manual_intervention_required`
 
@@ -174,8 +174,8 @@ For review-policy churn, the runtime counts only structured review checkpoints:
 
 - phase is `handoff` before the first PR-backed review handoff succeeds
 - phase is `repair` during retained review-repair runs
-- every `findings` checkpoint increments `review_policy_nonclean_rounds`
-- `clean` does not stop the lane and resets `review_policy_nonclean_rounds` to zero for the current phase
+- every `findings` checkpoint increments the runtime checkpoint's non-clean round count
+- `clean` does not stop the lane and resets that non-clean round count to zero for the current phase
 - recording `issue_review_handoff` or `issue_review_repair_complete` clears the retained review-policy state
 
 Review-policy stops are also the only review failures eligible for a future
