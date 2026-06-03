@@ -894,13 +894,15 @@ impl<'a> TrackerToolBridge<'a> {
 			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
 
-		self.cache_review_policy_state_best_effort(
+		if let Err(error) = self.persist_review_policy_state(
 			review_context,
 			review_policy_phase,
 			review_policy_status,
 			&head_sha,
 			nonclean_rounds,
-		);
+		) {
+			return DynamicToolCallResponse::failure(error);
+		}
 
 		let message = self.review_checkpoint_success_message(
 			review_policy_phase,
@@ -980,25 +982,38 @@ impl<'a> TrackerToolBridge<'a> {
 		review_context: &ReviewHandoffContext,
 		tool_name: &str,
 	) -> Result<(), String> {
-		match state::clear_run_review_policy_state(&review_context.cwd) {
-			Ok(()) => Ok(()),
-			Err(error) if review_context.internal_review_checkpoint_enabled() => Err(format!(
-				"Failed to clear review policy state for issue `{}` after recording `{tool_name}`: {error}",
+		if let Some(state_store) = self.state_store {
+			state_store
+				.clear_review_policy_checkpoints_for_run_attempt(
+					&review_context.service_id,
+					&self.issue.id,
+					&review_context.run_id,
+					review_context.attempt_number,
+				)
+				.map_err(|error| {
+					format!(
+						"Failed to clear review policy state for issue `{}` after recording `{tool_name}`: {error}",
+						self.issue.identifier
+					)
+				})?;
+		} else if review_context.internal_review_checkpoint_enabled() {
+			return Err(format!(
+				"Runtime state store is required to clear review policy state for issue `{}` after recording `{tool_name}`.",
 				self.issue.identifier
-			)),
-			Err(error) => {
-				tracing::warn!(
-					?error,
-					issue = self.issue.identifier,
-					run_id = review_context.run_id,
-					tool_name,
-					worktree_path = %review_context.cwd.display(),
-					"Review policy state clear failed while internal review is disabled; continuing."
-				);
-
-				Ok(())
-			},
+			));
 		}
+		if let Err(error) = state::clear_run_review_policy_state(&review_context.cwd) {
+			tracing::warn!(
+				?error,
+				issue = self.issue.identifier,
+				run_id = review_context.run_id,
+				tool_name,
+				worktree_path = %review_context.cwd.display(),
+				"Legacy review policy marker clear failed; continuing after runtime state clear."
+			);
+		}
+
+		Ok(())
 	}
 
 	pub(super) fn handle_review_handoff(&self, arguments: Value) -> DynamicToolCallResponse {
