@@ -16,7 +16,7 @@ actor DecodexServerBridge {
 	static let shared = DecodexServerBridge()
 
 	private let defaultBaseURL = DecodexServerBridge.makeDefaultBaseURL()
-	private let defaultListenAddress = "127.0.0.1:8912"
+	private let defaultListenAddress = "127.0.0.1:8192"
 	private let liveCheckFreshness: TimeInterval = 5
 	private var serverBaseURL: URL?
 	private var liveCheckBaseURL: URL?
@@ -282,7 +282,7 @@ actor DecodexServerBridge {
 	}
 
 	private static func makeDefaultBaseURL() -> URL {
-		guard let url = URL(string: "http://127.0.0.1:8912") else {
+		guard let url = URL(string: "http://127.0.0.1:8192") else {
 			preconditionFailure("default Decodex server URL must be valid")
 		}
 

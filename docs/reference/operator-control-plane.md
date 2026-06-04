@@ -36,9 +36,10 @@ Decodex currently runs as a local, single-machine control plane:
 Decodex App is a native shell over the same local runtime and account-pool state. On
 launch it connects to an existing default local listener when one is reachable; if
 not, it starts the bundled `decodex` binary as
-`decodex serve --listen-address 127.0.0.1:8912`. The app fallback is a normal
-control-plane server: it loads the registered project registry, schedules only enabled
-projects, keeps active runtime DB-backed runs visible even when a project is disabled
+`decodex serve --allow-unverified-codex --listen-address 127.0.0.1:8192`. The app
+fallback is a normal control-plane server: it loads the registered project registry,
+schedules only enabled projects, keeps active runtime DB-backed runs visible even when
+a project is disabled
 for future dispatch, uses the CLI-owned default cadences, and serves the dashboard,
 account APIs, `GET /api/operator-snapshot`,
 `POST /api/linear-scan`, `GET /api/lane/inspect`, and `POST /api/lane/interrupt` from
@@ -55,7 +56,7 @@ Agents that just created or relabeled queue issues can avoid waiting for the nex
 5-minute Linear poll by sending a targeted local request:
 
 ```sh
-curl -sS -X POST http://127.0.0.1:8912/api/linear-scan \
+curl -sS -X POST http://127.0.0.1:8192/api/linear-scan \
   -H 'Content-Type: application/json' \
   -d '{"projectId":"decodex"}'
 ```
@@ -67,8 +68,8 @@ rate-limit backoff.
 Lane inspect and interrupt are local control APIs, not dashboard UI actions:
 
 ```sh
-curl -sS 'http://127.0.0.1:8912/api/lane/inspect?projectId=decodex&issue=XY-703'
-curl -sS -X POST http://127.0.0.1:8912/api/lane/interrupt \
+curl -sS 'http://127.0.0.1:8192/api/lane/inspect?projectId=decodex&issue=XY-703'
+curl -sS -X POST http://127.0.0.1:8192/api/lane/interrupt \
   -H 'Content-Type: application/json' \
   -d '{"projectId":"decodex","issue":"XY-703","runId":"<run-id>"}'
 ```
