@@ -494,10 +494,6 @@ fn build_operator_run_activity_event(
 	let mut active_runs = Vec::new();
 
 	for registration in state_store.list_projects()? {
-		if !registration.enabled() {
-			continue;
-		}
-
 		let project = match ServiceConfig::from_path(registration.config_path()) {
 			Ok(project) => project,
 			Err(error) => {
