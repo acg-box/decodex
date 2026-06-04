@@ -5,6 +5,7 @@ This directory stores checked-in GitHub signal pipeline artifacts.
 - `bundles/` holds normalized `github_change_bundle/v1` inputs.
 - `analysis/` holds reviewed Codex editorial analysis drafts.
 - `impact/` holds optional `upstream_impact/v1` classifications.
+- `social-candidates/` holds optional `social_candidate/v1` Publisher handoffs.
 
 `bundles/` and `analysis/` are hot raw artifact directories. Keep raw entries in Git for
 at most 21 days, then move cold batches to dedicated `radar-archive-*` GitHub Release

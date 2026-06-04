@@ -40,6 +40,7 @@ const DEFAULT_TAG_PREFIX: &str = "rust-v";
 const RELEASE_DELTA_SCHEMA: &str = "release_delta/v1";
 const SCHEMA_VERSION: i64 = 2;
 const SIGNAL_SCHEMA: &str = "signal_entry/v1";
+const SOCIAL_CANDIDATE_SCHEMA: &str = "social_candidate/v1";
 const SOCIAL_POST_SCHEMA: &str = "social_post/v1";
 const UPSTREAM_IMPACT_SCHEMA: &str = "upstream_impact/v1";
 const UPSTREAM_REVIEW_QUEUE_SCHEMA: &str = "upstream_review_queue/v1";
@@ -50,6 +51,7 @@ const DEFAULT_VALIDATION_PATHS: &[&str] = &[
 	"artifacts/github/review-queue",
 	"artifacts/github/reviews",
 	"artifacts/github/impact",
+	"artifacts/github/social-candidates",
 	"artifacts/social/x",
 	"site/src/content/signals",
 	"site/src/content/release-deltas",
@@ -75,8 +77,14 @@ const SOCIAL_POST_WORTHINESS: &[&str] = &["block", "publish", "skip"];
 const SOURCE_ITEM_KINDS: &[&str] = &["commit", "pull_request"];
 const UPSTREAM_IMPACT_KINDS: &[&str] =
 	&["browser_observation", "changelog", "commit", "pull_request", "release", "signal"];
-const UPSTREAM_REVIEW_ACTION_TYPES: &[&str] =
-	&["linear_followup", "none", "signal_entry", "social_post", "upstream_impact"];
+const UPSTREAM_REVIEW_ACTION_TYPES: &[&str] = &[
+	"linear_followup",
+	"none",
+	"signal_entry",
+	"social_candidate",
+	"social_post",
+	"upstream_impact",
+];
 const UPSTREAM_REVIEW_NEXT_STEPS: &[&str] = &["ai_review_required"];
 const UPSTREAM_REVIEW_PRIORITIES: &[&str] = &["critical", "high", "low", "normal"];
 const UPSTREAM_SOURCE_STATES: &[&str] = &["closed", "commit_only", "merged", "open"];
@@ -4221,6 +4229,7 @@ fn validate_artifact(payload: &Value) -> ArtifactValidation {
 		Some(CONFIG_FEATURE_CATALOG_SCHEMA) => validate_config_feature_catalog(entry, &mut errors),
 		Some(RELEASE_DELTA_SCHEMA) => validate_release_delta(entry, &mut errors),
 		Some(SIGNAL_SCHEMA) => validate_signal(entry, &mut errors),
+		Some(SOCIAL_CANDIDATE_SCHEMA) => validate_social_candidate(entry, &mut errors),
 		Some(SOCIAL_POST_SCHEMA) => validate_social_post(entry, &mut errors),
 		Some(UPSTREAM_IMPACT_SCHEMA) => validate_upstream_impact(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_QUEUE_SCHEMA) => validate_upstream_review_queue(entry, &mut errors),
@@ -5137,6 +5146,76 @@ fn validate_upstream_impact_source_refs(refs: Option<&Value>, errors: &mut Vec<S
 	}
 }
 
+fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	for field in ["slug", "repo", "audience"] {
+		if !is_non_empty_string(entry.get(field)) {
+			errors.push(format!("{field} must be a non-empty string"));
+		}
+	}
+
+	if string_field(entry, "repo").is_some_and(|repo| !repo.contains('/')) {
+		errors.push("repo must be owner/name".into());
+	}
+	if string_field(entry, "channel") != Some("x") {
+		errors.push("channel must be x".into());
+	}
+	if string_field(entry, "target_account") != Some("decodexspace") {
+		errors.push("target_account must be decodexspace".into());
+	}
+	if !matches_one_of(entry.get("mode"), SOCIAL_POST_MODES) {
+		errors.push(format!("mode must be one of {}", choices(SOCIAL_POST_MODES)));
+	}
+	if !matches_one_of(entry.get("priority"), SOCIAL_POST_PRIORITIES) {
+		errors.push(format!("priority must be one of {}", choices(SOCIAL_POST_PRIORITIES)));
+	}
+
+	validate_social_post_text(entry.get("candidate_text"), errors);
+	validate_social_candidate_source_refs(entry.get("source_refs"), errors);
+	validate_non_empty_string_list(entry.get("evidence_notes"), "evidence_notes", errors);
+	validate_social_post_claims(entry.get("claims"), errors);
+	validate_social_candidate_decision(entry.get("decision"), errors);
+
+	for field in ["caveats", "next_steps"] {
+		validate_optional_string_list(entry.get(field), field, errors);
+	}
+}
+
+fn validate_social_candidate_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(refs) = refs.and_then(Value::as_object) else {
+		errors.push("source_refs must be an object".into());
+
+		return;
+	};
+	let has_refs = ["upstream_reviews", "upstream_impacts", "signals", "release_deltas", "urls"]
+		.iter()
+		.any(|field| refs.get(*field).is_some_and(|value| !is_empty_or_missing_array(Some(value))));
+
+	if !has_refs {
+		errors.push(
+			"source_refs must include upstream_reviews, upstream_impacts, signals, release_deltas, or urls"
+				.into(),
+		);
+	}
+}
+
+fn validate_social_candidate_decision(decision: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(decision) = decision.and_then(Value::as_object) else {
+		errors.push("decision must be an object".into());
+
+		return;
+	};
+
+	if !matches_one_of(decision.get("worthiness"), &["defer", "publish", "skip"]) {
+		errors.push("decision.worthiness must be one of ['defer', 'publish', 'skip']".into());
+	}
+
+	for field in ["reason", "idempotency_key"] {
+		if !is_non_empty_string(decision.get(field)) {
+			errors.push(format!("decision.{field} must be a non-empty string"));
+		}
+	}
+}
+
 fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	for field in ["slug", "audience"] {
 		if !is_non_empty_string(entry.get(field)) {
@@ -5503,6 +5582,7 @@ fn known_schemas() -> String {
 		CONFIG_FEATURE_CATALOG_SCHEMA,
 		RELEASE_DELTA_SCHEMA,
 		SIGNAL_SCHEMA,
+		SOCIAL_CANDIDATE_SCHEMA,
 		SOCIAL_POST_SCHEMA,
 		UPSTREAM_IMPACT_SCHEMA,
 		UPSTREAM_REVIEW_QUEUE_SCHEMA,
@@ -5744,6 +5824,17 @@ mod tests {
 		review["next_actions"][0]["type"] = serde_json::json!("publish_now");
 
 		assert_errors(&review, ["next_actions[0].type must be one of"]);
+	}
+
+	#[test]
+	fn accepts_valid_social_candidate_and_rejects_missing_refs() {
+		let mut candidate = valid_social_candidate();
+
+		assert_errors(&candidate, []);
+
+		candidate["source_refs"] = serde_json::json!({});
+
+		assert_errors(&candidate, ["source_refs must include upstream_reviews"]);
 	}
 
 	#[test]
@@ -6446,6 +6537,40 @@ mod tests {
 			"publisher_angle": "operator_impact",
 			"confidence": "confirmed",
 			"evidence": ["PR #22414 updates app-server endpoint handling."]
+		})
+	}
+
+	fn valid_social_candidate() -> Value {
+		serde_json::json!({
+			"schema": "social_candidate/v1",
+			"slug": "openai-codex-pr-22414",
+			"repo": "openai/codex",
+			"channel": "x",
+			"target_account": "decodexspace",
+			"mode": "operator_impact",
+			"priority": "normal",
+			"audience": "Codex operators",
+			"candidate_text": [
+				"Remote Codex can now use Unix socket endpoints. Source: https://github.com/openai/codex/pull/22414"
+			],
+			"source_refs": {
+				"upstream_reviews": ["artifacts/github/reviews/openai-codex-pr-22414.review.json"],
+				"upstream_impacts": ["artifacts/github/impact/openai-codex-pr-22414.json"],
+				"urls": ["https://github.com/openai/codex/pull/22414"]
+			},
+			"evidence_notes": ["PR #22414 changes remote endpoint handling."],
+			"claims": [
+				{
+					"text": "Remote Codex can use Unix socket endpoints.",
+					"evidence": "https://github.com/openai/codex/pull/22414",
+					"confidence": "confirmed"
+				}
+			],
+			"decision": {
+				"worthiness": "publish",
+				"reason": "The source-backed review has a clear operator impact angle.",
+				"idempotency_key": "x:decodexspace:openai-codex-pr-22414:operator_impact"
+			}
 		})
 	}
 
