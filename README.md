@@ -94,9 +94,11 @@ Decodex follow-up, public content, or only ledger trace.
 - Current Codex/app-server compatibility is capability-gated and recorded in
   [`docs/spec/app-server.md`](docs/spec/app-server.md).
 - The public site is static and deploys through GitHub Pages.
-- Starting `decodex serve` without its `--config` option loads enabled projects from
-  the explicit registry only. It does not scan Codex history, repo-local config files,
-  or currently open worktrees to infer projects.
+- Starting `decodex serve` without its `--config` option schedules enabled projects
+  from the explicit registry only. Operator and App snapshots still expose active
+  runtime DB-backed attempts for disabled projects, because disabling a project pauses
+  future dispatch rather than deleting visibility or ownership. It does not scan Codex
+  history, repo-local config files, or currently open worktrees to infer projects.
 
 ## Usage
 
