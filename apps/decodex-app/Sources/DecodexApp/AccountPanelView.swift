@@ -2879,14 +2879,18 @@ struct OperatorLaneHeaderReadoutView: View {
 				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.94))
 				.lineLimit(1)
 				.truncationMode(.tail)
-				.layoutPriority(1)
+				.frame(maxWidth: .infinity, alignment: .leading)
+
+			Spacer(minLength: 8)
 
 			if let project = panelTrimmed(project) {
 				Text(project)
 					.font(PanelFont.laneDetail)
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
 					.lineLimit(1)
+					.truncationMode(.middle)
 					.fixedSize(horizontal: true, vertical: false)
+					.frame(alignment: .trailing)
 					.help(project)
 			}
 		}
