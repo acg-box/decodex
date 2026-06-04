@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-25469",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[profile-switcher][rust] -- [1/2] Add app-server account session protocol",
+        "url": "https://github.com/openai/codex/pull/25469",
+        "meta": "Merged 2026-06-03T19:55:12Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/25469",
+        "meta": "artifacts/github/reviews/openai-codex-pr-25469.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex added app-server v2 accountSession protocol types for Desktop profile switching plus backend account metadata fetching for workspace choices.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "candidate",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR body scopes the change to accountSession protocol and backend account metadata client support.",
+    "The v2 account protocol adds account-session add, list, logout, switch, and metadata response structures.",
+    "The backend client adds get_accounts_check and account metadata parsing for Codex API and ChatGPT API path styles.",
+    "The PR explicitly defers app-server lifecycle behavior and consolidated saved-session storage to follow-up PR #25383."
+  ],
+  "candidate_followups": [
+    "Track PR #25383 before creating Decodex implementation work for account-session lifecycle support.",
+    "Audit Decodex app-server account handling for future accountSession method names and metadata shapes.",
+    "Keep public content cautious until lifecycle behavior is source-confirmed."
+  ],
+  "social_notes": [
+    "Frame as protocol groundwork for Desktop profile switching, not complete account switching behavior.",
+    "Mention that lifecycle/storage is intentionally in a follow-up PR."
+  ],
+  "caveats": [
+    "The PR says tests were not run per requested scope.",
+    "Lifecycle behavior is deferred, so this is not a complete user workflow by itself."
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26106",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "skills: resolve per-turn catalogs from turn input context",
+        "url": "https://github.com/openai/codex/pull/26106",
+        "meta": "Merged 2026-06-03T11:32:56Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26106",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26106.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex moved skills catalog resolution from a turn-lifecycle placeholder into the turn-input contributor path so SkillListQuery can include per-turn executor authorities.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "watch",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR body says per-turn catalog resolution now uses turn environments and working directories, while prompt/context injection remains follow-up work.",
+    "The skills extension now implements TurnInputContributor and builds executor_authorities from TurnInputContext.environments.",
+    "The placeholder SkillListQuery helper was removed.",
+    "The extension API now returns contextual fragments for turn input contribution."
+  ],
+  "candidate_followups": [
+    "Watch for the follow-up PR that injects resolved skills into model context.",
+    "Avoid publishing a try-now signal until a complete user-facing skills path is source-confirmed.",
+    "If Decodex mirrors upstream extension APIs, audit ResponseItem contributor assumptions."
+  ],
+  "social_notes": [
+    "Only use as a watch note unless later PRs complete the skills user path.",
+    "The strongest public framing is that upstream skills work is moving toward per-turn, executor-aware catalogs."
+  ],
+  "caveats": [
+    "The PR says tests were not run locally.",
+    "Prompt injection and user-facing behavior are explicitly deferred."
+  ]
+}

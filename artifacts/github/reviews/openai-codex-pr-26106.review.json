@@ -1,0 +1,62 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26106",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26106",
+    "commit_shas": [
+      "7eff30bf8e3ecdc87e8fe95f089a666f3f95ba1f",
+      "554d22fecdec860db21fbd703a2f9d68cedf7869",
+      "4484addb9ae097cb097ac3e4dcffa665a22845e2"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "skills: resolve per-turn catalogs from turn input context",
+        "url": "https://github.com/openai/codex/pull/26106",
+        "meta": "Merged 2026-06-03T11:32:56Z"
+      },
+      {
+        "kind": "commit",
+        "title": "feat: skills 2",
+        "url": "https://github.com/openai/codex/commit/7eff30bf8e3ecdc87e8fe95f089a666f3f95ba1f"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-04T13:12:17Z",
+  "observed_change": "Codex moved skills catalog resolution from a turn-lifecycle placeholder into the turn-input contributor path so SkillListQuery can include per-turn executor authorities.",
+  "changed_surfaces": [
+    "skills extension",
+    "extension turn-input contributor API",
+    "context fragment rendering",
+    "prompt/context injection plumbing"
+  ],
+  "user_visible_path": "No complete end-user skills prompt injection path ships in this PR; it prepares per-turn catalog resolution using turn environments and working directories.",
+  "control_plane_relevance": "Decodex should watch this because app/plugin/skill routing may soon depend on executor-scoped skill authorities supplied per turn rather than static session placeholders.",
+  "compatibility_risk": "Extension integrations that assumed TurnInputContributor returns raw ResponseItem values need to adapt to boxed ContextualUserFragment output if they track upstream extension APIs.",
+  "adoption_opportunity": "Track the follow-up prompt/context injection changes before adopting skills-extension behavior in Decodex docs or plugin routing.",
+  "community_value": "This is useful background for operators following Codex skills work, but the PR itself is mostly plumbing and explicitly leaves prompt injection for follow-up changes.",
+  "deprecated_or_breaking_notes": "The extension API return type changes from ResponseItem values to boxed contextual fragments; the PR body says prompt injection still needs later work.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26106 states the previous TurnLifecycleContributor hook only had a turn id and could only seed a placeholder SkillListQuery.",
+    "codex-rs/ext/skills/src/extension.rs switches from TurnLifecycleContributor to TurnInputContributor and builds executor_authorities from TurnInputContext.environments.",
+    "codex-rs/ext/skills/src/provider.rs removes SkillListQuery::placeholder_for_turn.",
+    "codex-rs/ext/extension-api/src/contributors.rs changes TurnInputContributor::contribute to return boxed ContextualUserFragment values instead of ResponseItem values.",
+    "codex-rs/core/src/session/turn.rs maps contributed fragments into response items during turn input construction."
+  ],
+  "caveats": "The PR says local tests were not run and prompt/context injection still needs follow-up changes, so publication should be cautious.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The skills extension plumbing may affect future Decodex plugin and skill-routing assumptions."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "This can be a cautious watch-note candidate if Publisher wants to track the skills arc without claiming a shipped user workflow."
+    }
+  ]
+}

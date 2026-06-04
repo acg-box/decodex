@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26254",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "feat: catalog multi-agent v2 config",
+        "url": "https://github.com/openai/codex/pull/26254",
+        "meta": "Merged 2026-06-03T22:24:40Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26254",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26254.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex now validates only explicit features.multi_agent_v2 plus agents.max_threads as incompatible while allowing catalog-selected MultiAgentV2 models to ignore the legacy v1 thread cap.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "practical_explainer",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR body defines the incompatible config as explicitly enabling features.multi_agent_v2 while also setting agents.max_threads.",
+    "Config validation now performs that explicit-feature check separately from runtime thread-cap calculation.",
+    "Session startup calls validate_multi_agent_v2_config, and catalog-selected v2 keeps starting with agents.max_threads present.",
+    "Model-runtime selector coverage adds agent_max_threads while a remote model selects MultiAgentV2."
+  ],
+  "candidate_followups": [
+    "Audit Decodex MultiAgentV2 generated guidance for statements that all v2 sessions reject agents.max_threads.",
+    "If Decodex reads upstream model metadata, preserve the distinction between catalog-selected v2 and user-enabled features.multi_agent_v2.",
+    "Use this as release-rollup evidence for MultiAgentV2 migration behavior."
+  ],
+  "social_notes": [
+    "Frame as a practical config compatibility update for MultiAgentV2 users.",
+    "Mention that explicit features.multi_agent_v2 plus agents.max_threads is still invalid, while catalog-selected v2 is allowed."
+  ],
+  "caveats": [
+    "The behavior depends on upstream model metadata selecting v2.",
+    "This does not prove Decodex has adopted upstream model-runtime selectors."
+  ]
+}
