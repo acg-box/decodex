@@ -94,7 +94,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 			if let activityRun = activityRunsByID[snapshotRun.runID] {
 				return snapshotRun.mergingActivity(activityRun)
 			}
-			if activeRunsComplete || activityRuns.isEmpty {
+			if activeRunsComplete {
 				return nil
 			}
 
@@ -599,6 +599,17 @@ struct OperatorRunActivitySnapshot: Sendable {
 
 	func merging(into snapshot: OperatorSnapshotResponse) -> OperatorSnapshotResponse {
 		snapshot.mergingRunActivity(activeRuns, activeRunsComplete: activeRunsComplete)
+	}
+
+	func shouldApply(to snapshot: OperatorSnapshotResponse?) -> Bool {
+		guard let snapshot else {
+			return true
+		}
+		if activeRunsComplete, activeRuns.isEmpty, snapshot.activeRuns.isEmpty == false {
+			return false
+		}
+
+		return true
 	}
 }
 
