@@ -283,10 +283,7 @@ struct AccountPanelView: View {
 				AccountTelemetryMatrixView(
 					aggregate: accountProfileAggregate,
 					usageEstimate: store.accountList?.usageEstimate,
-					accounts: store.accounts,
-					snapshot: displayableOperatorSnapshot,
-					updatedAt: store.operatorSnapshotUpdatedAt,
-					currentTime: currentTime
+					accounts: store.accounts
 				)
 			}
 
@@ -651,18 +648,9 @@ struct AccountPanelView: View {
 		AccountProfileAggregate.make(accounts: store.accounts)
 	}
 
-	private var displayableOperatorSnapshot: OperatorSnapshotResponse? {
-		guard let snapshot = store.operatorSnapshot, snapshot.shouldDisplayInPanel else {
-			return nil
-		}
-
-		return snapshot
-	}
-
 	private var telemetryMatrixIsVisible: Bool {
 		accountProfileAggregate != nil
 			|| store.accountList?.usageEstimate != nil
-			|| displayableOperatorSnapshot != nil
 	}
 
 	private var telemetryMatrixHeight: CGFloat {
@@ -677,10 +665,6 @@ struct AccountPanelView: View {
 					: AccountPanelLayout.telemetryPoolHeight
 			)
 		}
-		if let snapshot = displayableOperatorSnapshot {
-			rows.append(operatorTelemetryHeight(for: snapshot))
-		}
-
 		guard rows.isEmpty == false else {
 			return 0
 		}
@@ -688,19 +672,6 @@ struct AccountPanelView: View {
 		return AccountPanelLayout.telemetryVerticalPadding
 			+ rows.reduce(0, +)
 			+ CGFloat(rows.count - 1) * AccountPanelLayout.telemetryRowSpacing
-	}
-
-	private func operatorTelemetryHeight(for snapshot: OperatorSnapshotResponse) -> CGFloat {
-		var rows: [CGFloat] = [AccountPanelLayout.telemetryOperatorMetricHeight]
-		if snapshot.activeRuns.isEmpty == false {
-			rows.append(AccountRunChipLayout.height)
-		}
-		if snapshot.warningSummary != nil {
-			rows.append(AccountPanelLayout.telemetryOperatorWarningHeight)
-		}
-
-		return rows.reduce(0, +)
-			+ CGFloat(rows.count - 1) * AccountPanelLayout.telemetryOperatorRowSpacing
 	}
 
 	private func displayName(for account: CodexAccount) -> String {
@@ -1471,9 +1442,6 @@ private enum AccountPanelLayout {
 	static let telemetryProfileHeight: CGFloat = 50
 	static let telemetryPoolHeight: CGFloat = 16
 	static let telemetryPoolMeasuredHeight: CGFloat = 29
-	static let telemetryOperatorMetricHeight: CGFloat = 16
-	static let telemetryOperatorWarningHeight: CGFloat = 16
-	static let telemetryOperatorRowSpacing: CGFloat = 4
 	static let noticeHeight: CGFloat = 44
 	static let minimumScrollableListHeight: CGFloat = 312
 
@@ -1669,9 +1637,6 @@ private struct AccountTelemetryMatrixView: View {
 	let aggregate: AccountProfileAggregate?
 	let usageEstimate: AccountUsageEstimate?
 	let accounts: [CodexAccount]
-	let snapshot: OperatorSnapshotResponse?
-	let updatedAt: Date?
-	let currentTime: Date
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
@@ -1682,14 +1647,6 @@ private struct AccountTelemetryMatrixView: View {
 
 			if let usageEstimate {
 				AccountPoolUsageEstimateView(estimate: usageEstimate, accounts: accounts)
-			}
-
-			if let snapshot {
-				OperatorStatusStripView(
-					snapshot: snapshot,
-					updatedAt: updatedAt,
-					currentTime: currentTime
-				)
 			}
 		}
 		.padding(.horizontal, AccountPanelLayout.telemetryHorizontalPadding)
@@ -2503,104 +2460,6 @@ struct NoticeView: View {
 	}
 }
 
-struct OperatorStatusStripView: View {
-	let snapshot: OperatorSnapshotResponse
-	let updatedAt: Date?
-	let currentTime: Date
-	private let liveFreshnessWindow: TimeInterval = 5
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: AccountPanelLayout.telemetryOperatorRowSpacing) {
-			HStack(spacing: 5) {
-				ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
-					OperatorFlowMetricView(metric: metric)
-
-					if index < metrics.count - 1 {
-						Spacer(minLength: 3)
-					}
-				}
-			}
-			.frame(height: 16)
-
-			if snapshot.activeRuns.isEmpty == false {
-				AccountRunSummaryView(runs: snapshot.activeRuns)
-			}
-
-			if let warning = snapshot.warningSummary {
-				HStack(alignment: .firstTextBaseline, spacing: 5) {
-					PanelMetricIconView(
-						symbol: "exclamationmark.circle",
-						tint: PanelPalette.warning(colorScheme).opacity(0.82)
-					)
-
-					Text(warning)
-						.font(PanelFont.metricLabel)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-						.lineLimit(1)
-						.truncationMode(.tail)
-
-					Spacer(minLength: 4)
-
-					Text(refreshMeta)
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.68))
-						.monospacedDigit()
-						.frame(minWidth: 38, alignment: .trailing)
-				}
-				.frame(height: 16)
-			}
-		}
-		.frame(maxWidth: .infinity, alignment: .leading)
-	}
-
-	private var metrics: [OperatorFlowMetric] {
-		[
-			OperatorFlowMetric(
-				title: "Intake",
-				value: snapshot.queuedCount,
-				unitSingular: "issue",
-				unitPlural: "issues",
-				tint: PanelPalette.secondaryText(colorScheme)
-			),
-			OperatorFlowMetric(
-				title: "Running",
-				value: snapshot.activeRunCount,
-				unitSingular: "lane",
-				unitPlural: "lanes",
-				tint: PanelPalette.routeAccent(colorScheme)
-			),
-			OperatorFlowMetric(
-				title: "Review",
-				value: snapshot.reviewCount,
-				unitSingular: "PR",
-				unitPlural: "PRs",
-				tint: PanelPalette.codexAccent(colorScheme)
-			),
-			OperatorFlowMetric(
-				title: "Landing",
-				value: snapshot.landingCount,
-				unitSingular: "PR",
-				unitPlural: "PRs",
-				tint: PanelPalette.landingAccent(colorScheme)
-			),
-		]
-	}
-
-	private var refreshMeta: String {
-		guard let updatedAt else {
-			return "WS live"
-		}
-
-		let age = max(0, Int(currentTime.timeIntervalSince(updatedAt).rounded()))
-		if TimeInterval(age) < liveFreshnessWindow {
-			return "live"
-		}
-
-		return "\(age)s ago"
-	}
-}
-
 struct OperatorLanePopoverView: View {
 	let run: OperatorRunStatus
 
@@ -3311,70 +3170,6 @@ struct OperatorLaneReadoutDivider: View {
 			.fill(OperatorLanePopoverStyle.separator(colorScheme))
 			.frame(height: 0.5)
 			.padding(.vertical, 0.5)
-	}
-}
-
-struct OperatorFlowMetric: Identifiable {
-	let title: String
-	let value: Int
-	let unitSingular: String
-	let unitPlural: String
-	let tint: Color
-
-	init(
-		title: String,
-		value: Int,
-		unitSingular: String,
-		unitPlural: String,
-		tint: Color
-	) {
-		self.title = title
-		self.value = value
-		self.unitSingular = unitSingular
-		self.unitPlural = unitPlural
-		self.tint = tint
-	}
-
-	var id: String {
-		title
-	}
-
-	var unit: String {
-		value == 1 ? unitSingular : unitPlural
-	}
-
-	var fullText: String {
-		"\(title) \(value) \(unit)"
-	}
-}
-
-struct OperatorFlowMetricView: View {
-	let metric: OperatorFlowMetric
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 3) {
-			Text(metric.title)
-				.font(PanelFont.usageLabel)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
-				.lineLimit(1)
-
-			Text("\(metric.value)")
-				.font(PanelFont.usageValue)
-				.foregroundStyle(valueTint)
-				.monospacedDigit()
-				.lineLimit(1)
-				.minimumScaleFactor(0.72)
-		}
-		.lineLimit(1)
-		.help(metric.fullText)
-		.accessibilityLabel(metric.fullText)
-	}
-
-	private var valueTint: Color {
-		metric.value > 0
-			? metric.tint
-			: PanelPalette.primaryText(colorScheme).opacity(colorScheme == .dark ? 0.76 : 0.66)
 	}
 }
 
