@@ -11,14 +11,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class AppAppearanceStore: ObservableObject {
 	@Published private(set) var colorScheme = AppAppearanceStore.currentColorScheme()
 	private var observation: NSKeyValueObservation?
+	private var distributedNotificationTokens = [NSObjectProtocol]()
 
 	init() {
-		colorScheme = Self.currentColorScheme()
+		refreshColorScheme()
 		observation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
 			Task { @MainActor in
-				self?.colorScheme = Self.currentColorScheme()
+				self?.refreshColorScheme()
 			}
 		}
+		distributedNotificationTokens.append(
+			DistributedNotificationCenter.default().addObserver(
+				forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+				object: nil,
+				queue: .main
+			) { [weak self] _ in
+				Task { @MainActor in
+					self?.refreshColorScheme()
+				}
+			}
+		)
+	}
+
+	private func refreshColorScheme() {
+		colorScheme = Self.currentColorScheme()
 	}
 
 	private static func currentColorScheme() -> ColorScheme {
