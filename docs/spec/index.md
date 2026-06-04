@@ -77,6 +77,8 @@ Then keep the body explicit:
   the GitHub Release archive manifest contract.
 - [`upstream-impact.md`](./upstream-impact.md) defines how Radar classifies upstream
   Codex changes for public signals, Control Plane follow-up, and Publisher angles.
+- [`social-candidate.md`](./social-candidate.md) defines source-backed public Publisher
+  handoff artifacts that are not publication records.
 - [`social-publishing.md`](./social-publishing.md) defines the checked-in social
   publication, block, skip, and failure records for `@decodexspace`.
 - [`site-contract.md`](./site-contract.md) defines the static-site page budget,
