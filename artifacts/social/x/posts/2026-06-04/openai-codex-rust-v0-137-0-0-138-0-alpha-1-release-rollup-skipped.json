@@ -1,0 +1,75 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-rust-v0-137-0-0-138-0-alpha-1-release-rollup-skipped",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "release_rollup",
+  "status": "skipped",
+  "audience": "Codex users and Decodex Control Plane operators",
+  "text": [
+    "Codex CLI 0.137.0 and 0.138.0-alpha.1 are out. Decodex is holding the release rollup until Radar backfills the new app-server, MultiAgentV2, plugin, hosted-tool, and permission evidence. Source: https://github.com/openai/codex/releases/tag/rust-v0.137.0"
+  ],
+  "source_refs": {
+    "signals": [
+      "site/src/content/signals/openai-codex-pr-25636.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-25636.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-25636.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.137.0",
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.1",
+      "https://github.com/openai/codex/compare/rust-v0.136.0...rust-v0.137.0",
+      "https://github.com/openai/codex/compare/rust-v0.137.0...rust-v0.138.0-alpha.1"
+    ]
+  },
+  "evidence_notes": [
+    "Live GitHub release readback found new rust-v0.137.0 and rust-v0.138.0-alpha.1 checkpoints after the previous automation run.",
+    "The checked-in release_delta/v1 artifact still described rust-v0.136.0 to rust-v0.136.0-alpha.2, so live compare evidence was required for the current decision.",
+    "GitHub compare rust-v0.136.0...rust-v0.137.0 reported 118 commits and the rust-v0.137.0 release body grouped reader-visible changes across TUI, enterprise config, app-server remote control, plugins, hosted tools, MultiAgentV2, permissions, and reliability.",
+    "GitHub compare rust-v0.137.0...rust-v0.138.0-alpha.1 reported 23 commits, while the prerelease body was only a sparse release marker.",
+    "The repository currently has one matching reviewed signal-backed item in this checkpoint family: openai-codex-pr-25636 for MultiAgentV2 followup_task naming.",
+    "decodex radar backfill-release-range --dry-run --refresh-release-delta-first selected 22 PRs for the latest stable-to-prerelease window and created 0 artifacts, proving the latest rollup still has review gaps.",
+    "Daily cap did not block publication; the cap-day count for @decodexspace before this skipped decision was 0 of 8."
+  ],
+  "claims": [
+    {
+      "text": "openai/codex published rust-v0.137.0 on 2026-06-04 and rust-v0.138.0-alpha.1 later the same UTC day.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.137.0",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The rust-v0.138.0-alpha.1 checkpoint has a sparse release body and a 23-commit compare window from rust-v0.137.0.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.137.0...rust-v0.138.0-alpha.1",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Decodex has a checked-in source-backed signal for PR #25636, but the current checkpoint family has broader unbackfilled Radar gaps.",
+      "evidence": "site/src/content/signals/openai-codex-pr-25636.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "skip",
+    "priority": "high",
+    "idempotency_key": "x:decodexspace:release_rollup:openai-codex:rust-v0.137.0:rust-v0.138.0-alpha.1",
+    "reason": "New release checkpoints exist, but accumulated Decodex review, impact, and signal evidence is too thin for the requested source-backed release_rollup.",
+    "daily_limit": 8,
+    "daily_count_before": 0,
+    "daily_count_after": 0,
+    "day": "2026-06-04",
+    "timezone": "Asia/Shanghai"
+  },
+  "skip": {
+    "reason": "insufficient_accumulated_radar_evidence"
+  },
+  "caveats": [
+    "No Chrome publication was attempted because the worthiness gate failed before account verification or compose.",
+    "No decodex_signal_card media was generated because skipped release rollups do not need media.",
+    "A later run should reconsider publication after Radar backfills the latest app-server, MultiAgentV2, plugin, hosted-tool, permission, and profile-switcher PRs."
+  ]
+}
