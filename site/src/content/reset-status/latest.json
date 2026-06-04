@@ -1,22 +1,28 @@
 {
   "schema": "reset_status/v1",
   "question": "Rate limit reset today?",
-  "answer": "yes",
-  "confidence": "confirmed",
-  "observed_for_date": "2026-06-04",
+  "answer": "no",
+  "confidence": "likely",
+  "observed_for_date": "2026-06-05",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-04T00:46:30Z",
+  "generated_at": "2026-06-04T18:48:47Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
-  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-04%20until%3A2026-06-05&src=typed_query&f=live",
+  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-05%20until%3A2026-06-06&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "A visible @thsottiaux post today says Codex usage limits were reset across all paid plans, which directly indicates a reset-window recovery signal.",
+  "rationale": "X search returned no @thsottiaux posts for 2026-06-05, and the visible profile timeline's latest reset-related post was from the prior local day.",
   "evidence_posts": [
     {
-      "published_at_label": "8:25 AM · Jun 4, 2026",
+      "published_at_label": "12h before 2026-06-05T02:48:47+08:00",
+      "url": "https://x.com/thsottiaux/status/2062423528927015414",
+      "relevance": "not_related",
+      "summary": "@thsottiaux said several OpenAI vectors were pointing in the same direction and did not mention Codex quota, rate-limit, message-cap, or reset-window recovery."
+    },
+    {
+      "published_at_label": "18h before 2026-06-05T02:48:47+08:00",
       "url": "https://x.com/thsottiaux/status/2062329981548802523",
-      "relevance": "related",
-      "summary": "@thsottiaux said recent Codex reliability incidents occurred and that usage limits for Codex were reset across all paid plans."
+      "relevance": "not_related",
+      "summary": "@thsottiaux said Codex usage limits were reset across all paid plans, but the visible timing places this post on 2026-06-04 in Asia/Shanghai, not today's 2026-06-05 window."
     }
   ]
 }
