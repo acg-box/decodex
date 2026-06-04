@@ -16,7 +16,7 @@ final class AccountStore: ObservableObject {
 	private let bridge = DecodexAppBridge()
 	private var automaticRefreshTask: Task<Void, Never>?
 	private var operatorSnapshotStreamTask: Task<Void, Never>?
-	private var pendingRunActivity: OperatorRunActivitySnapshot?
+	private var liveRunActivity: OperatorRunActivitySnapshot?
 
 	deinit {
 		automaticRefreshTask?.cancel()
@@ -155,7 +155,7 @@ final class AccountStore: ObservableObject {
 			do {
 				try await connectOperatorSnapshotStream()
 			} catch {
-				pendingRunActivity = nil
+				liveRunActivity = nil
 			}
 
 			do {
@@ -204,7 +204,7 @@ final class AccountStore: ObservableObject {
 		return try JSONDecoder().decode(OperatorDashboardSocketEvent.self, from: data)
 	}
 
-	private func applyOperatorDashboardEvent(_ event: OperatorDashboardSocketEvent) {
+	func applyOperatorDashboardEvent(_ event: OperatorDashboardSocketEvent) {
 		guard let payload = event.payload else {
 			return
 		}
@@ -215,16 +215,8 @@ final class AccountStore: ObservableObject {
 				return
 			}
 
-			let snapshotPublishedAt = payload.snapshotPublishedAt ?? Date()
-			if let pendingRunActivity,
-				pendingRunActivity.shouldOverlay(snapshotPublishedAt: snapshotPublishedAt)
-			{
-				operatorSnapshot = pendingRunActivity.merging(into: snapshot)
-			} else {
-				operatorSnapshot = snapshot
-				pendingRunActivity = nil
-			}
-			operatorSnapshotUpdatedAt = snapshotPublishedAt
+			operatorSnapshot = liveRunActivity?.merging(into: snapshot) ?? snapshot
+			operatorSnapshotUpdatedAt = payload.snapshotPublishedAt ?? Date()
 		case "runActivity":
 			guard let activeRuns = payload.activeRuns else {
 				return
@@ -235,20 +227,7 @@ final class AccountStore: ObservableObject {
 				activeRunsComplete: payload.activeRunsComplete ?? true,
 				emittedAt: payload.emittedAt ?? Date()
 			)
-			if let operatorSnapshotUpdatedAt,
-				activity.shouldOverlay(snapshotPublishedAt: operatorSnapshotUpdatedAt) == false
-			{
-				pendingRunActivity = nil
-
-				return
-			}
-			guard activity.shouldApply(to: operatorSnapshot) else {
-				pendingRunActivity = nil
-
-				return
-			}
-
-			pendingRunActivity = activity
+			liveRunActivity = activity
 			if let operatorSnapshot {
 				self.operatorSnapshot = activity.merging(into: operatorSnapshot)
 			}
