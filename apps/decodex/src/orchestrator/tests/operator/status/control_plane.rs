@@ -80,6 +80,71 @@ fn control_plane_snapshot_includes_disabled_project_active_runs_without_ticking(
 }
 
 #[test]
+fn control_plane_context_failure_includes_project_warning_detail() {
+	let (_temp_dir, base_config, _workflow) = temp_project_layout();
+	let missing_env_var = "DECODEX_TEST_MISSING_CONTROL_PLANE_LINEAR_API_KEY";
+	let _env_lock = TestEnvVarGuard::lock();
+
+	unsafe {
+		env::remove_var(missing_env_var);
+	}
+
+	write_service_config(
+		base_config.repo_root(),
+		&sample_service_config_toml(
+			base_config.service_id(),
+			missing_env_var,
+			base_config.github().token_env_var(),
+			None,
+			base_config.codex().internal_review_mode(),
+			base_config.codex().external_review_enabled(),
+		),
+	);
+
+	let config = load_service_config(base_config.repo_root());
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+
+	state_store.upsert_project(&registration).expect("project should register");
+
+	let mut project_runtimes = HashMap::new();
+	let snapshot = orchestrator::run_control_plane_tick(&state_store, &mut project_runtimes, &[])
+		.expect("control-plane snapshot should build");
+	let project = snapshot.projects.first().expect("enabled project should be listed");
+	let detail = snapshot
+		.warning_details
+		.iter()
+		.find(|detail| detail.warning == "control_plane_tick_context_failed")
+		.expect("context warning detail should be surfaced");
+
+	assert!(snapshot.warnings.contains(&String::from("control_plane_tick_context_failed")));
+	assert_eq!(project.project_id, "pubfi");
+	assert_eq!(project.connector_state, "degraded");
+	assert_eq!(project.warning_count, 1);
+	assert_eq!(detail.project_id.as_deref(), Some("pubfi"));
+	assert_eq!(detail.repo_root.as_deref(), Some(config.repo_root().to_str().expect("utf-8 path")));
+	assert!(detail.reason.contains(missing_env_var), "detail reason: {}", detail.reason);
+	assert!(
+		detail.reason.contains(&registration.config_path().display().to_string()),
+		"detail reason should include config path: {}",
+		detail.reason,
+	);
+	assert!(
+		detail.next_action.as_deref().is_some_and(|action| {
+			action.contains("launchctl setenv") && action.contains(missing_env_var)
+		}),
+		"detail next action should explain macOS GUI env setup: {:?}",
+		detail.next_action,
+	);
+}
+
+#[test]
 fn control_plane_linear_scan_cadence_uses_fixed_window_and_manual_override() {
 	let now = Instant::now();
 	let mut runtime = ProjectDaemonRuntime::default();
