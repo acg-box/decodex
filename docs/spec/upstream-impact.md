@@ -17,6 +17,8 @@ Not this document:
   [`upstream-review.md`](./upstream-review.md).
 - The published site signal schema. Read [`signal-entry.md`](./signal-entry.md).
 - The social publishing schema. Read [`social-publishing.md`](./social-publishing.md).
+- The social candidate handoff schema. Read
+  [`social-candidate.md`](./social-candidate.md).
 - The operator procedure for publishing. Read
   [`../runbook/social-publishing-workflow.md`](../runbook/social-publishing-workflow.md).
 
@@ -109,6 +111,8 @@ summary.
   change came from continuous Radar.
 - It may support a `signal_entry/v1`.
 - It may support a `social_post/v1`.
+- It may support a `social_candidate/v1` when upstream source analysis identifies a
+  public Publisher opportunity but does not publish.
 - It may justify a later Linear issue or implementation brief.
 
 It does not replace any of those artifacts.
