@@ -1074,6 +1074,67 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 }
 
 #[test]
+fn operator_dashboard_run_activity_event_includes_disabled_project_active_runs() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let observer_store = StateStore::open(&state_path).expect("observer store should open");
+	let writer_store = StateStore::open(&state_path).expect("writer store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		false,
+		"test-fingerprint",
+	);
+	let issue = sample_issue("In Progress", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	git_status_success(
+		config.repo_root(),
+		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
+	);
+
+	observer_store.upsert_project(&registration).expect("project should register");
+	writer_store
+		.record_run_attempt("run-disabled-active", &issue.id, 1, "running")
+		.expect("active run should record");
+	writer_store
+		.upsert_lease(config.service_id(), &issue.id, "run-disabled-active", "In Progress")
+		.expect("active lease should record");
+	writer_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let event = orchestrator::build_operator_run_activity_event(&observer_store)
+		.expect("event should build");
+	let message = orchestrator::dashboard_websocket_message(
+		event.event.event_type,
+		&event.event.payload,
+	)
+	.expect("event should serialize");
+	let (payload, _consumed) = websocket_text_payload(&message).expect("event should be a text frame");
+	let payload: Value = serde_json::from_slice(payload).expect("event data should be json");
+	let data = &payload["payload"];
+	let active_runs = data["activeRuns"].as_array().expect("active runs should list");
+
+	assert_eq!(payload["type"], "runActivity");
+	assert_eq!(active_runs.len(), 1);
+	assert_eq!(active_runs[0]["run_id"], "run-disabled-active");
+	assert_eq!(active_runs[0]["project_id"], "pubfi");
+	assert_eq!(active_runs[0]["project_display_name"], "hack-ink/pubfi-mono-v2");
+	assert_eq!(data["activeRunsComplete"], true);
+	assert_eq!(data["activeRunScope"], "complete");
+}
+
+#[test]
 fn operator_state_endpoint_reads_complete_headers_before_parsing() {
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
