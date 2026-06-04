@@ -90,8 +90,8 @@ enum PanelPalette {
 
 	static func glassStroke(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
-			? Color.white.opacity(0.1)
-			: Color(red: 0.34, green: 0.42, blue: 0.52).opacity(0.18)
+			? Color.white.opacity(0.14)
+			: Color(red: 0.34, green: 0.42, blue: 0.52).opacity(0.24)
 	}
 
 	static func glassInnerShadow(_ colorScheme: ColorScheme) -> Color {
@@ -279,17 +279,12 @@ struct AccountPanelView: View {
 			header
 			accountSummary
 
-			if let profileAggregate = accountProfileAggregate {
-				AccountProfileOverviewView(aggregate: profileAggregate)
-			}
-
-			if let usageEstimate = store.accountList?.usageEstimate {
-				AccountPoolUsageEstimateView(estimate: usageEstimate, accounts: store.accounts)
-			}
-
-			if let snapshot = store.operatorSnapshot, snapshot.shouldDisplayInPanel {
-				OperatorStatusStripView(
-					snapshot: snapshot,
+			if telemetryMatrixIsVisible {
+				AccountTelemetryMatrixView(
+					aggregate: accountProfileAggregate,
+					usageEstimate: store.accountList?.usageEstimate,
+					accounts: store.accounts,
+					snapshot: displayableOperatorSnapshot,
 					updatedAt: store.operatorSnapshotUpdatedAt,
 					currentTime: currentTime
 				)
@@ -537,7 +532,6 @@ struct AccountPanelView: View {
 				)
 			}
 		}
-		.padding(.top, 1)
 	}
 
 	private var codexAuthLabel: String {
@@ -620,17 +614,8 @@ struct AccountPanelView: View {
 			+ AccountPanelLayout.accountSummaryHeight
 			+ AccountPanelLayout.sectionSpacing
 
-		if store.accountList?.usageEstimate != nil {
-			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.poolUsageHeight
-		}
-		if accountProfileAggregate != nil {
-			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.profileOverviewHeight
-		}
-		if let snapshot = store.operatorSnapshot, snapshot.shouldDisplayInPanel {
-			height += AccountPanelLayout.sectionSpacing
-				+ (snapshot.warningSummary == nil
-					? AccountPanelLayout.operatorStatusHeight
-					: AccountPanelLayout.operatorStatusHeightWithWarning)
+		if telemetryMatrixIsVisible {
+			height += AccountPanelLayout.sectionSpacing + telemetryMatrixHeight
 		}
 		if store.notice != nil {
 			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.noticeHeight
@@ -664,6 +649,49 @@ struct AccountPanelView: View {
 
 	private var accountProfileAggregate: AccountProfileAggregate? {
 		AccountProfileAggregate.make(accounts: store.accounts)
+	}
+
+	private var displayableOperatorSnapshot: OperatorSnapshotResponse? {
+		guard let snapshot = store.operatorSnapshot, snapshot.shouldDisplayInPanel else {
+			return nil
+		}
+
+		return snapshot
+	}
+
+	private var telemetryMatrixIsVisible: Bool {
+		accountProfileAggregate != nil
+			|| store.accountList?.usageEstimate != nil
+			|| displayableOperatorSnapshot != nil
+	}
+
+	private var telemetryMatrixHeight: CGFloat {
+		var rows = [CGFloat]()
+		if accountProfileAggregate != nil {
+			rows.append(AccountPanelLayout.telemetryProfileHeight)
+		}
+		if let estimate = store.accountList?.usageEstimate {
+			rows.append(
+				estimate.accountEstimateCount < estimate.accountCount
+					? AccountPanelLayout.telemetryPoolMeasuredHeight
+					: AccountPanelLayout.telemetryPoolHeight
+			)
+		}
+		if let snapshot = displayableOperatorSnapshot {
+			rows.append(
+				snapshot.warningSummary == nil
+					? AccountPanelLayout.telemetryOperatorHeight
+					: AccountPanelLayout.telemetryOperatorHeightWithWarning
+			)
+		}
+
+		guard rows.isEmpty == false else {
+			return 0
+		}
+
+		return AccountPanelLayout.telemetryVerticalPadding
+			+ rows.reduce(0, +)
+			+ CGFloat(rows.count - 1) * AccountPanelLayout.telemetryRowSpacing
 	}
 
 	private func displayName(for account: CodexAccount) -> String {
@@ -1426,10 +1454,16 @@ private enum AccountPanelLayout {
 	static let sectionSpacing: CGFloat = 6
 	static let headerHeight: CGFloat = 28
 	static let accountSummaryHeight: CGFloat = 31
-	static let profileOverviewHeight: CGFloat = 62
-	static let poolUsageHeight: CGFloat = 58
-	static let operatorStatusHeight: CGFloat = 42
-	static let operatorStatusHeightWithWarning: CGFloat = 63
+	static let telemetryHorizontalPadding: CGFloat = 7
+	static let telemetryTopPadding: CGFloat = 7
+	static let telemetryBottomPadding: CGFloat = 2
+	static let telemetryVerticalPadding: CGFloat = telemetryTopPadding + telemetryBottomPadding
+	static let telemetryRowSpacing: CGFloat = 5
+	static let telemetryProfileHeight: CGFloat = 50
+	static let telemetryPoolHeight: CGFloat = 16
+	static let telemetryPoolMeasuredHeight: CGFloat = 29
+	static let telemetryOperatorHeight: CGFloat = 16
+	static let telemetryOperatorHeightWithWarning: CGFloat = 36
 	static let noticeHeight: CGFloat = 44
 	static let minimumScrollableListHeight: CGFloat = 312
 
@@ -1622,6 +1656,52 @@ private struct AccountProfileAggregate: Equatable {
 	}
 }
 
+private struct AccountTelemetryMatrixView: View {
+	let aggregate: AccountProfileAggregate?
+	let usageEstimate: AccountUsageEstimate?
+	let accounts: [CodexAccount]
+	let snapshot: OperatorSnapshotResponse?
+	let updatedAt: Date?
+	let currentTime: Date
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: AccountPanelLayout.telemetryRowSpacing) {
+			if let aggregate {
+				AccountProfileOverviewView(aggregate: aggregate)
+			}
+
+			if let usageEstimate {
+				AccountPoolUsageEstimateView(estimate: usageEstimate, accounts: accounts)
+			}
+
+			if let snapshot {
+				OperatorStatusStripView(
+					snapshot: snapshot,
+					updatedAt: updatedAt,
+					currentTime: currentTime
+				)
+			}
+		}
+		.padding(.horizontal, AccountPanelLayout.telemetryHorizontalPadding)
+		.padding(.top, AccountPanelLayout.telemetryTopPadding)
+		.padding(.bottom, AccountPanelLayout.telemetryBottomPadding)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.background {
+			RoundedRectangle(cornerRadius: 9, style: .continuous)
+				.fill(surfaceFill)
+		}
+		.clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+		.id(colorScheme == .dark ? "telemetry-matrix-dark" : "telemetry-matrix-light")
+	}
+
+	private var surfaceFill: Color {
+		colorScheme == .dark
+			? Color(red: 0.08, green: 0.095, blue: 0.13).opacity(0.34)
+			: Color(red: 0.9, green: 0.94, blue: 0.98).opacity(0.48)
+	}
+}
+
 private struct AccountProfileOverviewView: View {
 	let aggregate: AccountProfileAggregate
 	@Environment(\.colorScheme) private var colorScheme
@@ -1674,10 +1754,7 @@ private struct AccountProfileOverviewView: View {
 				AccountProfileDailyUsageStripView(records: aggregate.dailyUsage)
 			}
 		}
-		.padding(.horizontal, 6)
-		.padding(.vertical, 5)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.modernGlassSurface(cornerRadius: 10, depth: .section)
 		.accessibilityLabel(accessibilityLabel)
 	}
 
@@ -1747,10 +1824,7 @@ struct AccountPoolUsageEstimateView: View {
 					.lineLimit(1)
 			}
 		}
-		.padding(.horizontal, 6)
-		.padding(.vertical, 5)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.modernGlassSurface(cornerRadius: 10, depth: .section)
 		.accessibilityLabel(accessibilityLabel)
 	}
 
@@ -2464,10 +2538,7 @@ struct OperatorStatusStripView: View {
 				.frame(height: 16)
 			}
 		}
-		.padding(.horizontal, 6)
-		.padding(.vertical, 5)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.modernGlassSurface(cornerRadius: 10, depth: .section)
 	}
 
 	private var metrics: [OperatorFlowMetric] {
@@ -3608,6 +3679,7 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 	@ViewBuilder
 	func body(content: Content) -> some View {
 		let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+		let appearanceID = colorScheme == .dark ? "dark" : "light"
 
 		if #available(macOS 26.0, *) {
 			content
@@ -3629,6 +3701,9 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 					x: 0,
 					y: shadowY
 				)
+				// Menu-bar glass layers can keep a stale material across system appearance flips.
+				// Re-key only the surface wrapper so light/dark changes redraw immediately.
+				.id(appearanceID)
 		} else {
 			content
 				.background {
@@ -3646,6 +3721,7 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 					x: 0,
 					y: shadowY
 				)
+				.id(appearanceID)
 		}
 	}
 
@@ -3663,20 +3739,20 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 		switch depth {
 		case .panel:
 			return colorScheme == .dark
-				? Color(red: 0.66, green: 0.74, blue: 0.86).opacity(0.06)
+				? Color(red: 0.08, green: 0.1, blue: 0.14).opacity(0.18)
 				: Color.white.opacity(0.05)
 		case .section:
 			return colorScheme == .dark
-				? Color(red: 0.72, green: 0.8, blue: 0.92).opacity(0.1)
-				: Color.white.opacity(0.08)
+				? Color(red: 0.13, green: 0.16, blue: 0.22).opacity(0.18)
+				: Color.white.opacity(0.1)
 		case .row:
 			return colorScheme == .dark
-				? Color(red: 0.7, green: 0.78, blue: 0.9).opacity(0.08)
-				: Color.white.opacity(0.06)
+				? Color(red: 0.11, green: 0.14, blue: 0.19).opacity(0.18)
+				: Color.white.opacity(0.08)
 		case .control:
 			return colorScheme == .dark
-				? Color(red: 0.78, green: 0.86, blue: 0.98).opacity(0.14)
-				: Color.white.opacity(0.11)
+				? Color(red: 0.16, green: 0.19, blue: 0.25).opacity(0.22)
+				: Color.white.opacity(0.13)
 		}
 	}
 
@@ -3697,20 +3773,20 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 		switch depth {
 		case .panel:
 			return colorScheme == .dark
-				? Color(red: 0.18, green: 0.22, blue: 0.28).opacity(0.08)
+				? Color(red: 0.04, green: 0.055, blue: 0.08).opacity(0.34)
 				: Color(red: 0.95, green: 0.97, blue: 0.99).opacity(0.38)
 		case .section:
 			return colorScheme == .dark
-				? Color(red: 0.22, green: 0.26, blue: 0.32).opacity(0.15)
-				: Color(red: 0.86, green: 0.9, blue: 0.95).opacity(0.66)
+				? Color(red: 0.12, green: 0.14, blue: 0.19).opacity(0.44)
+				: Color(red: 0.8, green: 0.86, blue: 0.93).opacity(0.78)
 		case .row:
 			return colorScheme == .dark
-				? Color(red: 0.2, green: 0.24, blue: 0.3).opacity(0.12)
-				: Color(red: 0.87, green: 0.91, blue: 0.96).opacity(0.56)
+				? Color(red: 0.095, green: 0.115, blue: 0.16).opacity(0.38)
+				: Color(red: 0.82, green: 0.87, blue: 0.94).opacity(0.66)
 		case .control:
 			return colorScheme == .dark
-				? Color(red: 0.24, green: 0.29, blue: 0.36).opacity(0.18)
-				: Color(red: 0.8, green: 0.85, blue: 0.91).opacity(0.72)
+				? Color(red: 0.12, green: 0.145, blue: 0.2).opacity(0.48)
+				: Color(red: 0.74, green: 0.81, blue: 0.9).opacity(0.78)
 		}
 	}
 
@@ -3719,16 +3795,23 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 		case .panel:
 			return PanelPalette.glassStroke(colorScheme)
 		case .section:
-			return PanelPalette.glassStroke(colorScheme).opacity(colorScheme == .dark ? 0.82 : 0.72)
+			return PanelPalette.glassStroke(colorScheme).opacity(colorScheme == .dark ? 0.94 : 0.86)
 		case .row:
-			return PanelPalette.glassStroke(colorScheme).opacity(colorScheme == .dark ? 0.62 : 0.58)
+			return PanelPalette.glassStroke(colorScheme).opacity(colorScheme == .dark ? 0.72 : 0.66)
 		case .control:
-			return PanelPalette.glassStroke(colorScheme).opacity(colorScheme == .dark ? 0.55 : 0.5)
+			return PanelPalette.glassStroke(colorScheme).opacity(colorScheme == .dark ? 0.68 : 0.64)
 		}
 	}
 
 	private var strokeWidth: CGFloat {
-		depth == .panel ? 0.8 : 0.55
+		switch depth {
+		case .panel:
+			return 0.8
+		case .section:
+			return 0.7
+		case .row, .control:
+			return 0.6
+		}
 	}
 
 	private var surfaceShadow: Color {
