@@ -678,11 +678,7 @@ struct AccountPanelView: View {
 			)
 		}
 		if let snapshot = displayableOperatorSnapshot {
-			rows.append(
-				snapshot.warningSummary == nil
-					? AccountPanelLayout.telemetryOperatorHeight
-					: AccountPanelLayout.telemetryOperatorHeightWithWarning
-			)
+			rows.append(operatorTelemetryHeight(for: snapshot))
 		}
 
 		guard rows.isEmpty == false else {
@@ -692,6 +688,19 @@ struct AccountPanelView: View {
 		return AccountPanelLayout.telemetryVerticalPadding
 			+ rows.reduce(0, +)
 			+ CGFloat(rows.count - 1) * AccountPanelLayout.telemetryRowSpacing
+	}
+
+	private func operatorTelemetryHeight(for snapshot: OperatorSnapshotResponse) -> CGFloat {
+		var rows: [CGFloat] = [AccountPanelLayout.telemetryOperatorMetricHeight]
+		if snapshot.activeRuns.isEmpty == false {
+			rows.append(AccountRunChipLayout.height)
+		}
+		if snapshot.warningSummary != nil {
+			rows.append(AccountPanelLayout.telemetryOperatorWarningHeight)
+		}
+
+		return rows.reduce(0, +)
+			+ CGFloat(rows.count - 1) * AccountPanelLayout.telemetryOperatorRowSpacing
 	}
 
 	private func displayName(for account: CodexAccount) -> String {
@@ -1462,8 +1471,9 @@ private enum AccountPanelLayout {
 	static let telemetryProfileHeight: CGFloat = 50
 	static let telemetryPoolHeight: CGFloat = 16
 	static let telemetryPoolMeasuredHeight: CGFloat = 29
-	static let telemetryOperatorHeight: CGFloat = 16
-	static let telemetryOperatorHeightWithWarning: CGFloat = 36
+	static let telemetryOperatorMetricHeight: CGFloat = 16
+	static let telemetryOperatorWarningHeight: CGFloat = 16
+	static let telemetryOperatorRowSpacing: CGFloat = 4
 	static let noticeHeight: CGFloat = 44
 	static let minimumScrollableListHeight: CGFloat = 312
 
@@ -2501,7 +2511,7 @@ struct OperatorStatusStripView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 4) {
+		VStack(alignment: .leading, spacing: AccountPanelLayout.telemetryOperatorRowSpacing) {
 			HStack(spacing: 5) {
 				ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
 					OperatorFlowMetricView(metric: metric)
@@ -2512,6 +2522,10 @@ struct OperatorStatusStripView: View {
 				}
 			}
 			.frame(height: 16)
+
+			if snapshot.activeRuns.isEmpty == false {
+				AccountRunSummaryView(runs: snapshot.activeRuns)
+			}
 
 			if let warning = snapshot.warningSummary {
 				HStack(alignment: .firstTextBaseline, spacing: 5) {
