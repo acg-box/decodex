@@ -9,6 +9,18 @@ Use this repo-local skill to refresh and publish the homepage
 `Rate limit reset today?` signal. The job is semantic judgment, not keyword matching,
 and the output is public site content, not a monitor-only report.
 
+## Authority Boundary
+
+- `docs/spec/reset-status.md` owns the artifact schema, semantic judgment rule, and
+  homepage publication boundary.
+- This skill owns the repo-local agent procedure for collecting evidence, writing the
+  artifact, validating it, cleaning up Chrome/X tabs, and publishing a changed artifact
+  when credentials allow.
+- The outer automation configuration owns schedule, automation memory location,
+  notification/inbox behavior, and any run-specific prohibitions or handoff wording.
+- Automation memory is run history only. Do not treat it as policy when it conflicts
+  with the spec, this skill, or the current automation prompt.
+
 ## Inputs
 
 - Source account: `https://x.com/thsottiaux`
@@ -48,6 +60,10 @@ review remains an agent/browser observation step.
 
 When publishing is blocked, report the artifact state, validation state, and exact
 publish blocker so a later run or human can finish the content update.
+
+Keep schedule-specific instructions in the outer automation configuration. This skill
+should not encode cron cadence, notification routing, automation IDs, or memory-file
+paths.
 
 ## Decision Rules
 
