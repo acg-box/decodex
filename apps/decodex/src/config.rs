@@ -884,11 +884,25 @@ fn validate_env_var_name(field_name: &str, value: &str) -> Result<()> {
 fn resolve_secret_env_var(field_name: &str, env_var: &str) -> Result<String> {
 	validate_env_var_name(field_name, env_var)?;
 
-	let value = env::var(env_var).map_err(|error| {
-		eyre::eyre!(
-			"Failed to read environment variable `{env_var}` referenced by `{field_name}`: {error}"
-		)
-	})?;
+	let value = match env::var(env_var) {
+		Ok(value) if !value.trim().is_empty() => value,
+		Ok(_) =>
+			if let Some(value) = resolve_secret_launchd_env_var(env_var) {
+				value
+			} else {
+				eyre::bail!(
+					"Environment variable `{env_var}` referenced by `{field_name}` must not be blank."
+				);
+			},
+		Err(error) =>
+			if let Some(value) = resolve_secret_launchd_env_var(env_var) {
+				value
+			} else {
+				return Err(eyre::eyre!(
+					"Failed to read environment variable `{env_var}` referenced by `{field_name}`: {error}"
+				));
+			},
+	};
 
 	if value.trim().is_empty() {
 		eyre::bail!(
@@ -897,6 +911,24 @@ fn resolve_secret_env_var(field_name: &str, env_var: &str) -> Result<String> {
 	}
 
 	Ok(value)
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_secret_launchd_env_var(env_var: &str) -> Option<String> {
+	let output = Command::new("/bin/launchctl").args(["getenv", env_var]).output().ok()?;
+
+	if !output.status.success() {
+		return None;
+	}
+
+	let value = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+
+	if value.is_empty() { None } else { Some(value) }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn resolve_secret_launchd_env_var(_env_var: &str) -> Option<String> {
+	None
 }
 
 #[cfg(test)]
