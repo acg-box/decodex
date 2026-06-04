@@ -1,0 +1,80 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-pr-25636",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "operator_impact",
+  "status": "published",
+  "audience": "Codex operators and Decodex Control Plane builders",
+  "text": [
+    "Codex MultiAgentV2 renamed its trigger-turn tool: `assign_task` is now `followup_task`. PR #25636 keeps legacy rollout-trace classification for `assign_task`, so old traces still reduce correctly. Source: https://github.com/openai/codex/pull/25636"
+  ],
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-25636.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-25636.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/25636",
+      "https://x.com/decodexspace/status/2062336614588944649",
+      "https://x.com/decodexspace/status/2062336614588944649/photo/1"
+    ]
+  },
+  "evidence_notes": [
+    "PR #25636 source evidence confirms the v2 exposed tool name changed from assign_task to followup_task.",
+    "The upstream impact artifact classifies the change as a Decodex compatibility risk with an operator_impact Publisher angle.",
+    "Chrome account readback confirmed the active X account as Decodex @decodexspace before duplicate/profile readback.",
+    "X profile readback found the matching @decodexspace post at status 2062336614588944649 rather than requiring a new compose action.",
+    "Permalink readback confirmed the @decodexspace account, post text, timestamp 2026-06-04T00:52:19.000Z, and /photo/1 media link.",
+    "The attached media was recovered from X public media readback and persisted locally as a 1254x1254 Decodex signal-card image."
+  ],
+  "claims": [
+    {
+      "text": "Codex MultiAgentV2 renamed the trigger-turn tool from assign_task to followup_task.",
+      "evidence": "https://github.com/openai/codex/pull/25636",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Legacy rollout traces still classify assign_task as an agent-task dispatch.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-25636.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The @decodexspace publication for this candidate is live and has an attached image.",
+      "evidence": "https://x.com/decodexspace/status/2062336614588944649/photo/1",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "critical",
+    "idempotency_key": "x:decodexspace:operator_impact:openai-codex-pr-25636",
+    "reason": "Source-backed MultiAgentV2 rename affects operator expectations and Decodex compatibility planning.",
+    "daily_limit": 8,
+    "daily_count_before": 0,
+    "daily_count_after": 1,
+    "day": "2026-06-04",
+    "timezone": "Asia/Shanghai"
+  },
+  "publication": {
+    "posted_at": "2026-06-04T00:52:19Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2062336614588944649"
+    ],
+    "publisher": "chrome",
+    "account_verified": true,
+    "made_with_ai": true,
+    "image_template": "decodex_signal_card"
+  },
+  "media_refs": [
+    "artifacts/social/x/images/openai-codex-pr-25636-published-2026-06-04.jpg"
+  ],
+  "caveats": [
+    "This run repaired the durable publication record after detecting an already-live post; it did not compose a duplicate post.",
+    "The 2026-06-02 failed record is preserved as historical evidence of the earlier blocked Chrome verification attempt.",
+    "Media readback is proven by the X permalink /photo/1 link and the recovered public media copy, not by a fresh upload in this run."
+  ]
+}
