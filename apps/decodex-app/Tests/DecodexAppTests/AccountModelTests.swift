@@ -162,6 +162,32 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertTrue(snapshot.activeRuns(for: poolOnlyAccount).isEmpty)
 	}
 
+	func testOperatorSnapshotKeepsUnassignedActiveRunsVisibleGlobally() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "pool@example.com",
+			accountFingerprint: "...654321"
+		)
+		let payload = """
+		{
+		  "active_runs": [
+		    {
+		      "run_id": "run-unassigned",
+		      "project_id": "pubfi-platform",
+		      "issue_identifier": "PUB-1296",
+		      "status": "running"
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
+
+		XCTAssertEqual(snapshot.activeRuns.map(\.runID), ["run-unassigned"])
+		XCTAssertEqual(snapshot.activeRunCount, 1)
+		XCTAssertTrue(snapshot.activeRuns(for: account).isEmpty)
+	}
+
 	func testOperatorSnapshotAssignsSelectedAccountWhenPrimaryAccountIsMissing() throws {
 		let assignedAccount = makeAccount(
 			status: "available",

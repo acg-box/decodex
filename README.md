@@ -268,7 +268,7 @@ Use hidden `decodex serve --dev --listen-address 127.0.0.1:8912` only when
 developing local account/app snapshot APIs against real runtime state while explicitly
 avoiding scheduler activity. Dev mode deliberately does not register projects, poll
 Linear, dispatch work, or accept `--config`. Decodex App's normal
-fallback server is ordinary `decodex serve --listen-address 127.0.0.1:8912`; the CLI
+fallback server is ordinary `decodex serve --listen-address 127.0.0.1:8192`; the CLI
 owns the default scheduler cadences. App launch connects to an
 existing live default listener instead of starting a duplicate server. For
 dashboard-only UI work, prefer the mock server above.
