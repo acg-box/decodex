@@ -18,6 +18,7 @@ Defines:
 - The X account used as the reset-status source.
 - The `reset_status/v1` artifact consumed by the static site.
 - The AI semantic judgment rule for reset status.
+- The publication boundary that turns a changed artifact into homepage content.
 
 ## Source
 
@@ -90,3 +91,18 @@ The homepage renders the checked-in artifact directly:
 - `unknown` renders `Unknown` in the muted tone
 
 The widget links to the artifact's `search_url` when present, otherwise to `source_url`.
+
+## Publication Rule
+
+The reset-status run is a content refresh, not only a watcher report. When semantic
+review changes the artifact and validation passes, the run should publish the checked-in
+artifact through the repository's Git path so the static homepage deployment can render
+the new answer.
+
+Do not move the AI semantic judgment into GitHub Actions. The static site may deploy from
+GitHub Actions after content is pushed, but Actions must not become the source of the
+X-reading semantic decision.
+
+If validation, Git authentication, X visibility, or another required step blocks
+publication, the run must report the latest artifact state, validation state, and the
+specific blocker instead of presenting the homepage content as updated.
