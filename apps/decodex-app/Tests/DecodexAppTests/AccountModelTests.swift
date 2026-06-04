@@ -312,6 +312,39 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertEqual(merged.activeRuns(for: account).map(\.runID), ["run-689", "run-690"])
 	}
 
+	func testEmptyPartialRunActivityPreservesSnapshotActiveRuns() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
+		)
+		let snapshotPayload = """
+		{
+		  "active_runs": [
+		    {
+		      "run_id": "run-689",
+		      "issue_identifier": "XY-689",
+		      "active_lease": true,
+		      "account": {
+		        "email": "copy@example.com",
+		        "account_fingerprint": "...123456"
+		      }
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
+		let overlay = OperatorRunActivitySnapshot(
+			activeRuns: [],
+			activeRunsComplete: false,
+			emittedAt: Date(timeIntervalSince1970: 30)
+		)
+		let merged = overlay.merging(into: snapshot)
+
+		XCTAssertEqual(merged.activeRuns.map(\.runID), ["run-689"])
+		XCTAssertEqual(merged.activeRuns(for: account).map(\.runID), ["run-689"])
+	}
+
 	func testCompleteRunActivityReplacesSnapshotActiveRuns() throws {
 		let account = makeAccount(
 			status: "available",
@@ -403,6 +436,28 @@ final class AccountModelTests: XCTestCase {
 
 		XCTAssertTrue(overlay.shouldOverlay(snapshotPublishedAt: Date(timeIntervalSince1970: 20)))
 		XCTAssertTrue(merged.activeRuns(for: account).isEmpty)
+	}
+
+	func testCompleteEmptyRunActivityWaitsForSnapshotBeforeClearingVisibleRuns() throws {
+		let snapshotPayload = """
+		{
+		  "active_runs": [
+		    {
+		      "run_id": "run-old",
+		      "issue_identifier": "XY-672"
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
+		let overlay = OperatorRunActivitySnapshot(
+			activeRuns: [],
+			activeRunsComplete: true,
+			emittedAt: Date(timeIntervalSince1970: 30)
+		)
+
+		XCTAssertFalse(overlay.shouldApply(to: snapshot))
+		XCTAssertTrue(overlay.shouldApply(to: nil))
 	}
 
 	func testOperatorSnapshotWarningSummaryUsesRawWarningToken() throws {
