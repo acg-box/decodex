@@ -1,21 +1,22 @@
 {
   "schema": "reset_status/v1",
   "question": "Rate limit reset today?",
-  "answer": "unknown",
-  "confidence": "weak",
-  "observed_for_date": "2026-06-02",
+  "answer": "yes",
+  "confidence": "confirmed",
+  "observed_for_date": "2026-06-04",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-02T09:05:00Z",
+  "generated_at": "2026-06-04T00:46:30Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
-  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-02%20until%3A2026-06-03&src=typed_query&f=live",
+  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-04%20until%3A2026-06-05&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "Chrome reached the X search URL, but page text readback was blocked by an extension UI, so today's @thsottiaux posts could not be reviewed reliably.",
+  "rationale": "A visible @thsottiaux post today says Codex usage limits were reset across all paid plans, which directly indicates a reset-window recovery signal.",
   "evidence_posts": [
     {
-      "published_at_label": "2026-06-02 search attempt",
-      "relevance": "uncertain",
-      "summary": "Opened X search for today's @thsottiaux posts, but Chrome automation could not read the page content because another extension UI was open."
+      "published_at_label": "8:25 AM · Jun 4, 2026",
+      "url": "https://x.com/thsottiaux/status/2062329981548802523",
+      "relevance": "related",
+      "summary": "@thsottiaux said recent Codex reliability incidents occurred and that usage limits for Codex were reset across all paid plans."
     }
   ]
 }
