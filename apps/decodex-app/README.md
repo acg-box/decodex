@@ -14,7 +14,7 @@ bundled Rust app helper so account UI stays on the same CLI-owned files even whe
 long-running local `decodex serve` is older than the app bundle. On launch the app also
 connects to an existing `decodex serve` on the default local endpoint when one is
 available; otherwise it starts the bundled Decodex binary as a normal scheduler with
-`decodex serve --allow-unverified-codex --listen-address 127.0.0.1:8912`. The override
+`decodex serve --allow-unverified-codex --listen-address 127.0.0.1:8192`. The override
 only downgrades unverified Codex app-server identity to a warning; other preflight
 blockers remain fail-closed. The CLI owns the default scheduler interval, currently
 15 seconds. App-started servers load the enabled project registry and own the same
@@ -78,12 +78,12 @@ swift run --package-path apps/decodex-app DecodexApp
 Use hidden `decodex serve --dev` only when manually testing local account APIs, the app
 snapshot API, or dashboard routes while deliberately avoiding scheduler activity. The
 normal app fallback is `decodex serve --allow-unverified-codex --listen-address
-127.0.0.1:8912` so development Codex app-server builds can still run through the local
+127.0.0.1:8192` so development Codex app-server builds can still run through the local
 operator surface. Do not use `--dev` to validate project registration, Linear polling,
 queue intake, or retained-lane execution; use ordinary `decodex serve` for those paths.
 
 The staging script follows the local Rsnap-style signing path: it writes
-`target/decodex-app/Decodex App.app`, signs the bundle with an Apple Development
+`target/decodex-app/Decodex.app`, signs the bundle with an Apple Development
 identity, enables hardened runtime, and verifies the signature before launch. Override
 the signing identity with `DECODEX_APP_SIGN_IDENTITY`; override the staging directory
 with `DECODEX_APP_STAGE_DIR`. Override the Rust profile with

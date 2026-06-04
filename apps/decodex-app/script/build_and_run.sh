@@ -2,7 +2,7 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-PRODUCT_NAME="Decodex App"
+PRODUCT_NAME="Decodex"
 EXECUTABLE_NAME="DecodexApp"
 HELPER_NAME="decodex-app-helper"
 SERVER_NAME="decodex"
@@ -148,7 +148,7 @@ sign_staged_app_bundle() {
 	if ! resolve_signing_identity; then
 		echo "error: no valid macOS codesigning identity matching the configured signing selector was found." >&2
 		echo "error: import the real signing certificate or set DECODEX_APP_SIGN_IDENTITY to a valid identity." >&2
-		echo "error: Decodex App staging requires a stable codesigning identity." >&2
+		echo "error: Decodex.app staging requires a stable codesigning identity." >&2
 		exit 1
 	fi
 
