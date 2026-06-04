@@ -18,6 +18,7 @@ Decodex plugin skill.
 - `docs/spec/social-publishing.md`
 - `docs/spec/upstream-impact.md`
 - `docs/runbook/social-publishing-workflow.md`
+- `dev/skills/x-post-quality-system/SKILL.md`
 - `dev/skills/codex-release-analysis/SKILL.md`
 - `dev/skills/codex-code-analysis/SKILL.md`
 
@@ -25,7 +26,8 @@ Decodex plugin skill.
 
 - `signal_entry/v1`, `upstream_impact/v1`, `upstream_review/v1`, release-analysis
   note, or checked source URLs
-- Optional style observations from `@Codex_Changelog`, `@LLMJunky`, or `@decodexspace`
+- Optional style observations from `@CodexReleases`, `@Codex_Changelog`, `@LLMJunky`,
+  or `@decodexspace`
 - Target account: `decodexspace`
 - Controller account for attribution and site links: `hackink`
 
@@ -52,7 +54,8 @@ Use these as format patterns only:
 
 | Pattern | Good for | Decodex adaptation |
 | --- | --- | --- |
-| Release-bot bullet | Fast `release_pulse` posts. | Version or source headline, two or three evidence-backed bullets, source link. |
+| Release/update card | `release_pulse` or high-value `release_rollup` posts. | Product/version/theme headline, two or three reader-visible changes, source link, optional thread details. |
+| High-density changelog | One-post summaries from a source changelog or release. | Headline, three high-signal bullets, source card; no extra commentary. |
 | Release rollup | `release_rollup` posts after a release or prerelease. | Summarize what prior commit/PR analysis found: useful now, Control Plane impact, deprecations, and watch-only gaps. |
 | Human workflow read | `practical_explainer` and `operator_impact`. | Start with the concrete workflow change, then explain why it matters and what caveat remains. |
 | Watch note | Interesting but incomplete evidence. | Say what changed, why Radar is watching, and what evidence is still missing. |
@@ -79,6 +82,10 @@ Publish only when all are true:
 
 - The post is in English.
 - The source evidence is enough for every technical claim.
+- `dev/skills/x-post-quality-system/SKILL.md` passes the candidate as externally
+  valuable.
+- The candidate answers in one screen: what changed, who can use or observe it, and what
+  source proves it.
 - The item is `critical` or `high`, or it is a release/prerelease rollup with clear
   reader value.
 - The post is useful to Codex users, Decodex operators, or builders tracking the Codex
@@ -86,7 +93,10 @@ Publish only when all are true:
 - The idempotency key has not already been published or blocked for the same source.
 - The daily cap has not been reached.
 
-Skip low-value internal churn. Do not post just because a signal exists.
+Skip low-value internal churn. Do not post just because a signal exists. In particular,
+do not publish single-PR renames, trace-only compatibility notes, low-context operator
+cautions, or Decodex-internal audit reminders unless they roll up into a broader
+release/update story or concrete external operator decision.
 
 ## Daily Cap
 
@@ -104,11 +114,20 @@ If publishing the candidate would exceed the cap:
 
 ## Image Generation
 
-Generate an image for each published post unless media is explicitly skipped. Use
-`image_template = "decodex_signal_card"` and the exact base prompt in
-`docs/spec/social-publishing.md`. Do not rely on the generated image for readable text.
-Render any title, PR number, release tag, or mode with deterministic overlay tooling or
-keep it in the post body.
+Generate an image for each published post only when useful media can pass
+`dev/skills/x-post-quality-system/SKILL.md`. Use
+`image_template = "decodex_signal_card"` as a visual system, not as a fixed reusable
+asset. Start with the exact base prompt in `docs/spec/social-publishing.md`, then add
+candidate-specific subject, source, visual metaphor, palette, and forbidden-elements
+slots from the quality-system skill.
+
+Do not rely on the generated image for readable text. Render any title, source, date,
+PR number, release tag, or mode with deterministic overlay tooling or keep it in the
+post body. Never reuse prior live-test images, old generic signal-card assets, unrelated
+abstract cards, or weak decorative filler.
+
+If no fresh candidate-specific image passes visual review, publish text-only only when
+the post remains valuable with the source link card. Otherwise skip or fail closed.
 
 ## Claim Review
 
