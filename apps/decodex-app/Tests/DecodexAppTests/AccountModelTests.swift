@@ -202,53 +202,56 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertTrue(snapshot.activeRuns(for: poolOnlyAccount).isEmpty)
 	}
 
-	func testOperatorRunActivityOverlayDoesNotReplaceNewerSnapshot() throws {
+	@MainActor
+	func testOperatorRunActivityUsesStreamOrderOverSnapshotTimestamp() throws {
 		let account = makeAccount(
 			status: "available",
 			email: "copy@example.com",
 			accountFingerprint: "...123456"
 		)
-		let snapshotPayload = """
-		{
-		  "active_runs": [
-		    {
-		      "run_id": "run-new",
-		      "issue_identifier": "XY-672",
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
-		      }
-		    }
-		  ]
-		}
-		""".data(using: .utf8)!
-		let activityPayload = """
-		{
-		  "activeRuns": [
-		    {
-		      "run_id": "run-old",
-		      "issue_identifier": "PUB-1147",
-		      "account": {
-		        "email": "copy@example.com",
-		        "account_fingerprint": "...123456"
-		      }
-		    }
-		  ]
-		}
-		""".data(using: .utf8)!
+		let store = AccountStore()
 
-		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
-		let activity = try JSONDecoder()
-			.decode(OperatorDashboardSocketPayload.self, from: activityPayload)
-			.activeRuns ?? []
-		let overlay = OperatorRunActivitySnapshot(
-			activeRuns: activity,
-			activeRunsComplete: true,
-			emittedAt: Date(timeIntervalSince1970: 10)
-		)
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "snapshot",
+			payload: """
+			{
+			  "snapshotPublishedAtUnixEpoch": 20,
+			  "snapshot": {
+			    "active_runs": [
+			      {
+			        "run_id": "run-new",
+			        "issue_identifier": "XY-672",
+			        "account": {
+			          "email": "copy@example.com",
+			          "account_fingerprint": "...123456"
+			        }
+			      }
+			    ]
+			  }
+			}
+			"""
+		))
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "runActivity",
+			payload: """
+			{
+			  "emittedAtUnixEpoch": 10,
+			  "activeRunsComplete": true,
+			  "activeRuns": [
+			    {
+			      "run_id": "run-old",
+			      "issue_identifier": "PUB-1147",
+			      "account": {
+			        "email": "copy@example.com",
+			        "account_fingerprint": "...123456"
+			      }
+			    }
+			  ]
+			}
+			"""
+		))
 
-		XCTAssertFalse(overlay.shouldOverlay(snapshotPublishedAt: Date(timeIntervalSince1970: 20)))
-		XCTAssertEqual(snapshot.activeRuns(for: account).map(\.runID), ["run-new"])
+		XCTAssertEqual(store.operatorSnapshot?.activeRuns(for: account).map(\.runID), ["run-old"])
 	}
 
 	func testPartialRunActivityPreservesSnapshotActiveRuns() throws {
@@ -307,7 +310,6 @@ final class AccountModelTests: XCTestCase {
 		)
 		let merged = overlay.merging(into: snapshot)
 
-		XCTAssertTrue(overlay.shouldOverlay(snapshotPublishedAt: Date(timeIntervalSince1970: 20)))
 		XCTAssertEqual(merged.activeRuns.map(\.runID), ["run-689", "run-690"])
 		XCTAssertEqual(merged.activeRuns(for: account).map(\.runID), ["run-689", "run-690"])
 	}
@@ -401,7 +403,6 @@ final class AccountModelTests: XCTestCase {
 		)
 		let merged = overlay.merging(into: snapshot)
 
-		XCTAssertTrue(overlay.shouldOverlay(snapshotPublishedAt: Date(timeIntervalSince1970: 20)))
 		XCTAssertEqual(merged.activeRuns.map(\.runID), ["run-690"])
 		XCTAssertEqual(merged.activeRuns(for: account).map(\.runID), ["run-690"])
 	}
@@ -434,30 +435,104 @@ final class AccountModelTests: XCTestCase {
 		)
 		let merged = overlay.merging(into: snapshot)
 
-		XCTAssertTrue(overlay.shouldOverlay(snapshotPublishedAt: Date(timeIntervalSince1970: 20)))
 		XCTAssertTrue(merged.activeRuns(for: account).isEmpty)
 	}
 
-	func testCompleteEmptyRunActivityWaitsForSnapshotBeforeClearingVisibleRuns() throws {
-		let snapshotPayload = """
-		{
-		  "active_runs": [
-		    {
-		      "run_id": "run-old",
-		      "issue_identifier": "XY-672"
-		    }
-		  ]
-		}
-		""".data(using: .utf8)!
-		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
-		let overlay = OperatorRunActivitySnapshot(
-			activeRuns: [],
-			activeRunsComplete: true,
-			emittedAt: Date(timeIntervalSince1970: 30)
+	@MainActor
+	func testLiveRunActivitySurvivesNewerEmptySnapshot() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
 		)
+		let store = AccountStore()
 
-		XCTAssertFalse(overlay.shouldApply(to: snapshot))
-		XCTAssertTrue(overlay.shouldApply(to: nil))
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "snapshot",
+			payload: """
+			{
+			  "snapshotPublishedAtUnixEpoch": 20,
+			  "snapshot": {
+			    "active_runs": []
+			  }
+			}
+			"""
+		))
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "runActivity",
+			payload: """
+			{
+			  "emittedAtUnixEpoch": 30,
+			  "activeRunsComplete": true,
+			  "activeRuns": [
+			    {
+			      "run_id": "run-live",
+			      "issue_identifier": "XY-672",
+			      "account": {
+			        "email": "copy@example.com",
+			        "account_fingerprint": "...123456"
+			      }
+			    }
+			  ]
+			}
+			"""
+		))
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "snapshot",
+			payload: """
+			{
+			  "snapshotPublishedAtUnixEpoch": 40,
+			  "snapshot": {
+			    "active_runs": []
+			  }
+			}
+			"""
+		))
+
+		XCTAssertEqual(store.operatorSnapshot?.activeRuns(for: account).map(\.runID), ["run-live"])
+	}
+
+	@MainActor
+	func testCompleteEmptyRunActivityClearsLiveRuns() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
+		)
+		let store = AccountStore()
+
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "snapshot",
+			payload: """
+			{
+			  "snapshotPublishedAtUnixEpoch": 20,
+			  "snapshot": {
+			    "active_runs": [
+			      {
+			        "run_id": "run-live",
+			        "issue_identifier": "XY-672",
+			        "account": {
+			          "email": "copy@example.com",
+			          "account_fingerprint": "...123456"
+			        }
+			      }
+			    ]
+			  }
+			}
+			"""
+		))
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "runActivity",
+			payload: """
+			{
+			  "emittedAtUnixEpoch": 30,
+			  "activeRunsComplete": true,
+			  "activeRuns": []
+			}
+			"""
+		))
+
+		XCTAssertTrue(store.operatorSnapshot?.activeRuns(for: account).isEmpty ?? false)
 	}
 
 	func testOperatorSnapshotWarningSummaryUsesRawWarningToken() throws {
@@ -470,6 +545,20 @@ final class AccountModelTests: XCTestCase {
 		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
 
 		XCTAssertEqual(snapshot.warningSummary, "external_observer_status_skipped")
+	}
+
+	private func dashboardEvent(
+		type: String,
+		payload: String
+	) throws -> OperatorDashboardSocketEvent {
+		let data = """
+		{
+		  "type": "\(type)",
+		  "payload": \(payload)
+		}
+		""".data(using: .utf8)!
+
+		return try JSONDecoder().decode(OperatorDashboardSocketEvent.self, from: data)
 	}
 
 	private func makeAccount(
