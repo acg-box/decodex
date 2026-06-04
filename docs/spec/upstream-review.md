@@ -112,7 +112,7 @@ or public value.
 - confidence: `confirmed`, `likely`, or `weak`
 - source-backed evidence notes
 - next actions, each mapped to `none`, `upstream_impact`, `signal_entry`,
-  `social_post`, or `linear_followup`
+  `social_candidate`, `social_post`, or `linear_followup`
 
 AI review must read enough source evidence to explain behavior. A PR title, release
 title, or deterministic queue hint is not enough for a confirmed claim.
@@ -133,8 +133,11 @@ Promote an upstream review into:
   or Publisher planning.
 - `signal_entry/v1` when it is community-ready and has user-visible capability,
   behavior, try path, or migration value.
+- `social_candidate/v1` when there is a clear public angle and source links are
+  available, but the upstream review automation must not write a publication record.
 - `social_post/v1` when there is a clear public angle and source links are
-  available.
+  available and the Publisher workflow is actually publishing, blocking, skipping, or
+  recording failure.
 - a Linear issue when Decodex should adopt, guard, migrate, or investigate the change.
 
 Do not promote low-value internal churn into public artifacts. Keep it traceable in the
