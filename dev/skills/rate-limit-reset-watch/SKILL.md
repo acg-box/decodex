@@ -5,8 +5,9 @@ description: Use when checking whether today's @thsottiaux X posts semantically 
 
 # Rate Limit Reset Watch
 
-Use this repo-local skill to refresh the homepage `Rate limit reset today?` signal.
-The job is semantic judgment, not keyword matching.
+Use this repo-local skill to refresh and publish the homepage
+`Rate limit reset today?` signal. The job is semantic judgment, not keyword matching,
+and the output is public site content, not a monitor-only report.
 
 ## Inputs
 
@@ -29,6 +30,24 @@ The job is semantic judgment, not keyword matching.
 6. Close or release Chrome/X tabs opened for search, profile review, or thread context.
    Keep a tab only when login, CAPTCHA, or another human-only X state must be handed off.
 7. Run the site content/type validation after updating the artifact.
+8. If the artifact changed and validation passes, publish the content update through the
+   repository's Git path so the static homepage can deploy the new answer. Do not stop at
+   an uncommitted local artifact unless Git authentication, validation, or another
+   publish blocker prevents a safe push.
+
+## Publication Rules
+
+The reset-status artifact is homepage content. A successful automation run that changes
+the artifact should leave the repository in a publishable state and, when credentials
+allow, push the checked-in content update to the branch that feeds the static site
+deployment.
+
+Do not move the AI semantic judgment into GitHub Actions or another keyword-only
+scheduled job. GitHub Actions may build and deploy checked-in content, but the semantic
+review remains an agent/browser observation step.
+
+When publishing is blocked, report the artifact state, validation state, and exact
+publish blocker so a later run or human can finish the content update.
 
 ## Decision Rules
 
