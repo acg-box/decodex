@@ -797,18 +797,22 @@ fn run_control_plane_tick_with_options(
 	let now = Instant::now();
 
 	Ok(collect_control_plane_snapshot(registered_projects, |project, project_warnings| {
-		let runtime = project_runtimes.entry(project.service_id().to_owned()).or_default();
+		if project.enabled() {
+			let runtime = project_runtimes.entry(project.service_id().to_owned()).or_default();
 
-		run_control_plane_project_tick(
-			project,
-			state_store,
+			run_control_plane_project_tick(
+				project,
+				state_store,
 				runtime,
 				project_warnings,
 				linear_scan_requests,
 				now,
 				allow_unverified_codex,
 			)
-		}))
+		} else {
+			control_plane_disabled_project_observer_tick(project, state_store, project_warnings)
+		}
+	}))
 }
 
 fn drain_operator_linear_scan_requests_best_effort(
@@ -847,19 +851,10 @@ fn run_control_plane_dev_tick(state_store: &StateStore) -> Result<OperatorStatus
 				)
 			}) {
 				Ok(project_snapshot) => {
-					if let Some(local_status) = project_snapshot.projects.first() {
-						project_status.active_run_count = local_status.active_run_count;
-						project_status.retained_worktree_count = local_status.retained_worktree_count;
-						project_status.waiting_lane_count = local_status.waiting_lane_count;
-						project_status.attention_count = local_status.attention_count;
-						project_status.cleanup_blocked_count = local_status.cleanup_blocked_count;
-						project_status.cleanup_pending_count = local_status.cleanup_pending_count;
-						project_status.last_activity_at = local_status.last_activity_at.clone();
-						project_status.warning_count =
-							project_status.warning_count.saturating_add(local_status.warning_count);
-					} else {
-						project_status.active_run_count = project_snapshot.active_runs.len();
-					}
+					hydrate_project_status_from_local_snapshot(
+						&mut project_status,
+						&project_snapshot,
+					);
 
 					append_control_plane_project_snapshot(&mut snapshot, project_snapshot);
 				},
@@ -877,6 +872,27 @@ fn run_control_plane_dev_tick(state_store: &StateStore) -> Result<OperatorStatus
 					);
 				},
 			}
+		} else {
+			let mut project_warnings = Vec::new();
+			let project_tick = control_plane_disabled_project_observer_tick(
+				registration,
+				state_store,
+				&mut project_warnings,
+			);
+
+			for warning in project_warnings {
+				add_operator_snapshot_warning(&mut snapshot, warning);
+			}
+			if let Some(local_status) = project_tick.project_status {
+				project_status = operator_project_status_from_dev_registration(registration);
+				hydrate_project_status_from_registered_status(
+					&mut project_status,
+					&local_status,
+				);
+			}
+			if let Some(project_snapshot) = project_tick.snapshot {
+				append_control_plane_project_snapshot(&mut snapshot, project_snapshot);
+			}
 		}
 
 		project_statuses.push(project_status);
@@ -890,7 +906,7 @@ fn run_control_plane_dev_tick(state_store: &StateStore) -> Result<OperatorStatus
 
 fn collect_control_plane_snapshot<F>(
 	registered_projects: Vec<ProjectRegistration>,
-	mut run_enabled_project_tick: F,
+	mut run_project_tick: F,
 ) -> OperatorStatusSnapshot
 where
 	F: FnMut(&ProjectRegistration, &mut Vec<&'static str>) -> ControlPlaneProjectTick,
@@ -905,14 +921,8 @@ where
 	}
 
 	for project in registered_projects {
-		if !project.enabled() {
-			project_statuses.push(operator_project_status_from_registration(&project, 0));
-
-			continue;
-		}
-
 		let mut project_warnings = Vec::new();
-		let project_tick = run_enabled_project_tick(&project, &mut project_warnings);
+		let project_tick = run_project_tick(&project, &mut project_warnings);
 
 		snapshot_warnings.extend(project_warnings);
 
@@ -935,6 +945,106 @@ where
 	}
 
 	snapshot
+}
+
+fn control_plane_disabled_project_observer_tick(
+	project: &ProjectRegistration,
+	state_store: &StateStore,
+	snapshot_warnings: &mut Vec<&'static str>,
+) -> ControlPlaneProjectTick {
+	let project_status = operator_project_status_from_registration(project, 0);
+	let active_runs = match state_store.list_active_runs(project.service_id()) {
+		Ok(active_runs) => active_runs,
+		Err(error) => {
+			let _ = error;
+
+			tracing::warn!(
+				project_id = project.service_id(),
+				"Disabled project active-run lookup failed; sensitive runtime details were withheld."
+			);
+			snapshot_warnings.push("operator_snapshot_build_failed");
+
+			return ControlPlaneProjectTick {
+				snapshot: None,
+				project_status: Some(project_status),
+			};
+		},
+	};
+
+	if active_runs.is_empty() {
+		return ControlPlaneProjectTick {
+			snapshot: None,
+			project_status: Some(project_status),
+		};
+	}
+
+	match build_registered_project_local_snapshot(project, state_store) {
+		Ok(project_snapshot) => {
+			let mut project_status = project_status;
+
+			hydrate_project_status_from_local_snapshot(&mut project_status, &project_snapshot);
+
+			ControlPlaneProjectTick {
+				snapshot: Some(project_snapshot),
+				project_status: Some(project_status),
+			}
+		},
+		Err(error) => {
+			let _ = error;
+
+			tracing::warn!(
+				project_id = project.service_id(),
+				"Disabled project active-run snapshot build failed; sensitive runtime details were withheld."
+			);
+			snapshot_warnings.push("operator_snapshot_build_failed");
+
+			ControlPlaneProjectTick {
+				snapshot: None,
+				project_status: Some(project_status),
+			}
+		},
+	}
+}
+
+fn build_registered_project_local_snapshot(
+	project: &ProjectRegistration,
+	state_store: &StateStore,
+) -> Result<OperatorStatusSnapshot> {
+	let config = ServiceConfig::from_path(project.config_path())?;
+	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
+
+	build_operator_state_snapshot_without_live_observers(
+		&config,
+		&workflow,
+		state_store,
+		DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT,
+	)
+}
+
+fn hydrate_project_status_from_local_snapshot(
+	project_status: &mut OperatorProjectStatus,
+	project_snapshot: &OperatorStatusSnapshot,
+) {
+	if let Some(local_status) = project_snapshot.projects.first() {
+		hydrate_project_status_from_registered_status(project_status, local_status);
+	} else {
+		project_status.active_run_count = project_snapshot.active_runs.len();
+	}
+}
+
+fn hydrate_project_status_from_registered_status(
+	project_status: &mut OperatorProjectStatus,
+	local_status: &OperatorProjectStatus,
+) {
+	project_status.active_run_count = local_status.active_run_count;
+	project_status.retained_worktree_count = local_status.retained_worktree_count;
+	project_status.waiting_lane_count = local_status.waiting_lane_count;
+	project_status.attention_count = local_status.attention_count;
+	project_status.cleanup_blocked_count = local_status.cleanup_blocked_count;
+	project_status.cleanup_pending_count = local_status.cleanup_pending_count;
+	project_status.last_activity_at = local_status.last_activity_at.clone();
+	project_status.warning_count =
+		project_status.warning_count.saturating_add(local_status.warning_count);
 }
 
 fn aggregate_control_plane_snapshot(

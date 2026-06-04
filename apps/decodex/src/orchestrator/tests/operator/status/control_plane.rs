@@ -35,6 +35,51 @@ fn control_plane_snapshot_lists_disabled_registered_projects() {
 }
 
 #[test]
+fn control_plane_snapshot_includes_disabled_project_active_runs_without_ticking() {
+	let (temp_dir, config, _workflow) = temp_project_layout();
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let observer_store = StateStore::open(&state_path).expect("observer store should open");
+	let writer_store = StateStore::open(&state_path).expect("writer store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		false,
+		"test-fingerprint",
+	);
+	let issue = sample_issue("In Progress", &[]);
+
+	observer_store.upsert_project(&registration).expect("project should register");
+	writer_store
+		.record_run_attempt("run-disabled-active", &issue.id, 1, "running")
+		.expect("active run should record");
+	writer_store
+		.upsert_lease(config.service_id(), &issue.id, "run-disabled-active", "In Progress")
+		.expect("active lease should record");
+
+	let mut project_runtimes = HashMap::new();
+	let snapshot =
+		orchestrator::run_control_plane_tick(&observer_store, &mut project_runtimes, &[])
+			.expect("control-plane snapshot should build");
+	let project = snapshot.projects.first().expect("disabled project should be listed");
+
+	assert_eq!(snapshot.project_id, "pubfi");
+	assert_eq!(snapshot.projects.len(), 1);
+	assert_eq!(project.project_id, "pubfi");
+	assert!(!project.enabled);
+	assert_eq!(project.connector_state, "disabled");
+	assert_eq!(project.active_run_count, 1);
+	assert_eq!(snapshot.active_runs.len(), 1);
+	assert_eq!(snapshot.active_runs[0].run_id, "run-disabled-active");
+	assert_eq!(snapshot.active_runs[0].project_id, "pubfi");
+	assert_eq!(snapshot.active_runs[0].phase, "executing");
+	assert!(snapshot.warnings.contains(&String::from("no_enabled_projects")));
+	assert!(project_runtimes.is_empty(), "disabled projects should not be ticked");
+}
+
+#[test]
 fn control_plane_linear_scan_cadence_uses_fixed_window_and_manual_override() {
 	let now = Instant::now();
 	let mut runtime = ProjectDaemonRuntime::default();
