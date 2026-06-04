@@ -155,8 +155,6 @@ final class AccountStore: ObservableObject {
 			do {
 				try await connectOperatorSnapshotStream()
 			} catch {
-				operatorSnapshot = nil
-				operatorSnapshotUpdatedAt = nil
 				pendingRunActivity = nil
 			}
 
@@ -240,6 +238,11 @@ final class AccountStore: ObservableObject {
 			if let operatorSnapshotUpdatedAt,
 				activity.shouldOverlay(snapshotPublishedAt: operatorSnapshotUpdatedAt) == false
 			{
+				pendingRunActivity = nil
+
+				return
+			}
+			guard activity.shouldApply(to: operatorSnapshot) else {
 				pendingRunActivity = nil
 
 				return
