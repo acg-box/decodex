@@ -1,0 +1,86 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-03T21:35:52Z",
+      "message": "feat: catalog multi-agent v2 config",
+      "sha": "c677bf1f9c6b263c185fd65a4fe8da2a1eb8fed1",
+      "url": "https://github.com/openai/codex/commit/c677bf1f9c6b263c185fd65a4fe8da2a1eb8fed1"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-03T21:56:25Z",
+      "message": "cleaning",
+      "sha": "a44923c056afdde77ad82f620825d95df392e0f1",
+      "url": "https://github.com/openai/codex/commit/a44923c056afdde77ad82f620825d95df392e0f1"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "--lib",
+    "CONFIG_TOML_FILE",
+    "DEFAULT_AGENT_MAX_THREADS"
+  ],
+  "files": [
+    {
+      "additions": 2,
+      "deletions": 6,
+      "patch_excerpt": "@@ -231,9 +231,7 @@ impl AgentControl {\n                 &config,\n             )\n             .await;\n-        let agent_max_threads = config\n-            .effective_agent_max_threads(multi_agent_version)\n-            .map_err(|err| CodexErr::InvalidRequest(err.to_string()))?;\n+        let agent_max_threads = config.effective_agent_max_threads(multi_agent_version);\n         let mut reservation = self.state.reserve_spawn_slot(agent_max_threads)?;\n         let inheritance = SpawnAgentThreadInheritance {\n             shell_snapshot: self\n@@ -632,9 +630,7 @@ impl AgentControl {\n                 &config,\n             )\n             .await;\n-        let agent_max_threads = config\n-            .effective_agent_max_threads(multi_agent_version)\n-            .map_err(|err| CodexErr::InvalidRequest(err.to_string()))?;\n+        let agent_max_threads = config.effective_agent_max_threads(multi_agent_v...",
+      "path": "codex-rs/core/src/agent/control.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 38,
+      "deletions": 6,
+      "patch_excerpt": "@@ -9836,7 +9836,7 @@ non_code_mode_only = true\n     assert_eq!(\n         (\n             config.agent_max_threads,\n-            config.effective_agent_max_threads(MultiAgentVersion::V2)?\n+            config.effective_agent_max_threads(MultiAgentVersion::V2)\n         ),\n         (None, Some(4))\n     );\n@@ -9886,7 +9886,7 @@ enabled = true\n     assert_eq!(\n         (\n             config.agent_max_threads,\n-            config.effective_agent_max_threads(MultiAgentVersion::V2)?\n+            config.effective_agent_max_threads(MultiAgentVersion::V2)\n         ),\n         (None, Some(3))\n     );\n@@ -9945,7 +9945,7 @@ subagent_usage_hint_text = \"\"\n }\n \n #[tokio::test]\n-async fn multi_agent_v2_rejects_agents_max_threads() -> std::io::Result<()> {\n+async fn multi_agent_v2_feature_rejects_agents_max_threads() -> std::io::Result<()> {\n     let codex_home = TempDir::new()?;\n     std::fs::write(\n      ...",
+      "path": "codex-rs/core/src/config/config_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 18,
+      "deletions": 15,
+      "patch_excerpt": "@@ -1292,26 +1292,29 @@ impl Config {\n         }\n     }\n \n+    pub(crate) fn validate_multi_agent_v2_config(&self) -> std::io::Result<()> {\n+        if self.features.enabled(Feature::MultiAgentV2) && self.agent_max_threads.is_some() {\n+            Err(std::io::Error::new(\n+                std::io::ErrorKind::InvalidInput,\n+                \"agents.max_threads cannot be set when features.multi_agent_v2 is enabled\",\n+            ))\n+        } else {\n+            Ok(())\n+        }\n+    }\n+\n     pub(crate) fn effective_agent_max_threads(\n         &self,\n         multi_agent_version: MultiAgentVersion,\n-    ) -> std::io::Result<Option<usize>> {\n+    ) -> Option<usize> {\n         match multi_agent_version {\n-            MultiAgentVersion::V2 => {\n-                if self.agent_max_threads.is_some() {\n-                    return Err(std::io::Error::new(\n-                        std::io::ErrorKin...",
+      "path": "codex-rs/core/src/config/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 5,
+      "patch_excerpt": "@@ -557,11 +557,8 @@ impl Codex {\n             .await;\n         let multi_agent_version =\n             resolve_multi_agent_version(&conversation_history, inherited_multi_agent_version);\n-        let startup_multi_agent_version = multi_agent_version\n-            .or(model_info.multi_agent_version)\n-            .unwrap_or_else(|| config.multi_agent_version_from_features());\n-        let _ = config\n-            .effective_agent_max_threads(startup_multi_agent_version)\n+        config\n+            .validate_multi_agent_v2_config()\n             .map_err(|err| CodexErr::InvalidRequest(err.to_string()))?;\n         let base_instructions = config\n             .base_instructions",
+      "path": "codex-rs/core/src/session/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 4,
+      "patch_excerpt": "@@ -116,10 +116,7 @@ async fn build_runner_options(\n             \"multi-agent runtime is disabled; this session cannot spawn workers\".to_string(),\n         ));\n     }\n-    let agent_max_threads = turn\n-        .config\n-        .effective_agent_max_threads(multi_agent_version)\n-        .map_err(|err| FunctionCallError::Fatal(err.to_string()))?;\n+    let agent_max_threads = turn.config.effective_agent_max_threads(multi_agent_version);\n     if agent_max_threads == Some(0) {\n         return Err(FunctionCallError::RespondToModel(\n             \"agent thread limit reached; this session cannot spawn more subagents\".to_string(),",
+      "path": "codex-rs/core/src/tools/handlers/agent_jobs.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -190,6 +190,7 @@ async fn remote_multi_agent_selector_overrides_feature_flags() -> Result<()> {\n     let mut v2_model = remote_model(\"test-multi-agent-v2\");\n     v2_model.multi_agent_version = Some(MultiAgentVersion::V2);\n     let v2_body = response_body_for_remote_model(v2_model, |config| {\n+        config.agent_max_threads = Some(3);\n         config\n             .features\n             .enable(Feature::Collab)",
+      "path": "codex-rs/core/tests/suite/model_runtime_selectors.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nModel metadata can now select multi-agent v2 even when a user has not enabled `features.multi_agent_v2` in their config. Some existing configs still set the legacy `agents.max_threads` knob for v1 multi-agent behavior, so treating every v2 runtime as incompatible with `agents.max_threads` would break users whose only v2 signal came from the model catalog.\n\nThe incompatible configuration is specifically enabling `features.multi_agent_v2` while also setting `agents.max_threads`. Catalog-forced v2 should use the v2 concurrency setting and ignore the legacy v1 cap instead of rejecting the config.\n\n## What changed\n\n- Split config validation from runtime concurrency calculation: `effective_agent_max_threads` now just returns the effective cap for the resolved multi-agent runtime.\n- Added explicit validation for `features.multi_agent_v2` + `agents.max_threads` at session startup.\n- Preserved catalog-selected v2 behavior when `features.multi_agent_v2` is disabled, so existing configs with `agents.max_threads` keep starting.\n- Updated model-runtime selector coverage so a catalog v2 model still exposes v2 tools even when `agents.max_threads` is set and the config flag is disabled.\n\n## Validation\n\n- `cargo check -p codex-core --lib`\n- `just test -p codex-core --lib -E \"test(multi_agent_v2_feature_rejects_agents_max_threads) | test(catalog_v2_allows_agents_max_threads_when_feature_disabled)\"`\n",
+    "labels": [],
+    "merged_at": "2026-06-03T22:24:40Z",
+    "number": 26254,
+    "state": "merged",
+    "title": "feat: catalog multi-agent v2 config",
+    "url": "https://github.com/openai/codex/pull/26254"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

@@ -1,0 +1,66 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-25469",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "25469",
+    "commit_shas": [
+      "cc0c295e8d848ddfe2f3205dbce32bfc4f4c04b6",
+      "5327fc53dc007e3b35f092145d616f0339b18f94",
+      "3ad459228152dd5a64a6b68d7fbc485ede24d6a0"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[profile-switcher][rust] -- [1/2] Add app-server account session protocol",
+        "url": "https://github.com/openai/codex/pull/25469",
+        "meta": "Merged 2026-06-03T19:55:12Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Add app server account session protocol",
+        "url": "https://github.com/openai/codex/commit/cc0c295e8d848ddfe2f3205dbce32bfc4f4c04b6"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-04T13:13:28Z",
+  "observed_change": "Codex added app-server v2 accountSession protocol types for Desktop profile switching plus backend account metadata fetching for workspace choices.",
+  "changed_surfaces": [
+    "app-server v2 account protocol",
+    "Desktop profile-switcher protocol layer",
+    "backend account metadata client",
+    "generated TypeScript and JSON schema surface"
+  ],
+  "user_visible_path": "Desktop profile-switcher clients get protocol types for adding, listing, switching, and logging out account sessions, but the PR says app-server lifecycle behavior lands in a follow-up PR.",
+  "control_plane_relevance": "Decodex account-pool and app-server compatibility work should track accountSession methods separately from older account login/rate-limit surfaces.",
+  "compatibility_risk": "Clients that generate or mirror app-server v2 account schemas need to recognize the new accountSession protocol names and avoid assuming this PR alone implements saved-session lifecycle.",
+  "adoption_opportunity": "Use this as planning evidence for future Decodex account-session switching, but wait for lifecycle/storage follow-up before claiming operational support.",
+  "community_value": "The change previews a concrete Desktop profile-switcher account-session API, useful as a cautious public watch item for account-management work.",
+  "deprecated_or_breaking_notes": "No removed behavior was found; this is protocol-layer addition with lifecycle behavior explicitly split into PR #25383.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #25469 states it adds app-server v2 accountSession/* protocol used by Desktop profile switcher and backend account metadata needed for workspace choices.",
+    "PR #25469 states this is protocol layer only and lifecycle plus consolidated saved-session storage are split into follow-up PR #25383.",
+    "codex-rs/app-server-protocol/src/protocol/v2/account.rs adds AccountSessionsAddParams, AccountSessionsListParams, AccountSessionsLogoutParams, account-session response types, and account-entry metadata shapes.",
+    "codex-rs/backend-client/src/client.rs adds get_accounts_check for /api/codex/accounts/check or /wham/accounts/check depending on path style.",
+    "codex-rs/backend-client/src/types.rs adds AccountsCheckResponse and AccountEntry parsing, including list or map account payload shapes."
+  ],
+  "caveats": "The PR says tests were not run per requested scope and lifecycle behavior is deferred to PR #25383.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The accountSession protocol affects Decodex account-pool and app-server compatibility planning."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "This can be a cautious public watch-note candidate without writing a social_post/v1 record."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should track the follow-up lifecycle/storage PR before implementing profile switching support."
+    }
+  ]
+}

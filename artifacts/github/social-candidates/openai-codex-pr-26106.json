@@ -1,0 +1,53 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26106",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex plugin and skills operators",
+  "candidate_text": [
+    "Watch note: Codex skills catalog resolution moved onto the per-turn input path, carrying executor authorities. This is plumbing for skills routing, not a complete try-now feature yet."
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26106.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26106.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26106"
+    ]
+  },
+  "evidence_notes": [
+    "PR #26106 moves skills from a turn-lifecycle placeholder to TurnInputContributor.",
+    "SkillListQuery now receives executor authorities from per-turn environments.",
+    "The PR body says prompt/context injection remains follow-up work."
+  ],
+  "claims": [
+    {
+      "text": "Upstream Codex skills catalog resolution now uses per-turn input context.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26106.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The public angle should stay cautious because user-facing prompt injection is not complete in this PR.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26106.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "The change is source-backed and directionally important, but the PR explicitly leaves prompt injection for later work.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26106:watch_note"
+  },
+  "caveats": [
+    "No complete end-user skills workflow is proven by this PR.",
+    "Prefer combining this with a later skills PR before publishing."
+  ],
+  "next_steps": [
+    "Let release or Publisher automation roll this into a later skills summary if stronger evidence lands."
+  ]
+}
