@@ -33,8 +33,8 @@
     "Asia/Shanghai cap accounting found zero checked-in @decodexspace published records for 2026-06-04 before posting.",
     "X duplicate detection for from:decodexspace with followup_task, assign_task, and 25636 returned no results before composing.",
     "Chrome account readback showed Decodex @decodexspace after switching from the hackink controller account before composing.",
-    "The generated Decodex signal-card PNG was uploaded through the X file chooser; composer readback showed image edit controls before submit.",
-    "The final permalink readback confirmed @decodexspace, the expected post text, the GitHub source link, and a /photo/1 media link."
+    "Generated Decodex signal-card media was uploaded through the X file chooser; composer readback showed image edit controls before submit.",
+    "The final permalink readback confirmed @decodexspace, the expected post text, the GitHub source link, and a /photo/1 media link. The repository record keeps the X media URL rather than the generated image binary."
   ],
   "claims": [
     {
@@ -75,7 +75,7 @@
     "image_template": "decodex_signal_card"
   },
   "media_refs": [
-    "artifacts/social/x/images/openai-codex-pr-25636-2026-06-04.png"
+    "https://x.com/decodexspace/status/2062336614588944649/photo/1"
   ],
   "caveats": [
     "X permalink readback confirmed the /photo/1 media link, but the page text did not expose a Made with AI label during final readback.",
