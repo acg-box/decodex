@@ -60,7 +60,8 @@ The split below is by question type, not by human-versus-agent audience.
   analysis, GitHub signal drafting, or X publishing -> `dev/skills/` plus
   `docs/runbook/local-github-signal-workflow.md`
 - Need upstream Codex impact classification or social publishing contracts ->
-  `docs/spec/upstream-impact.md` and `docs/spec/social-publishing.md`
+  `docs/spec/upstream-impact.md`, `docs/spec/social-candidate.md`, and
+  `docs/spec/social-publishing.md`
 - Need the `@decodexspace` social publishing procedure ->
   `docs/runbook/social-publishing-workflow.md`
 - Need repository execution defaults or tracker-state policy -> registered project
