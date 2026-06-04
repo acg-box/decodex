@@ -855,7 +855,6 @@ fn run_control_plane_dev_tick(state_store: &StateStore) -> Result<OperatorStatus
 						&mut project_status,
 						&project_snapshot,
 					);
-
 					append_control_plane_project_snapshot(&mut snapshot, project_snapshot);
 				},
 				Err(error) => {
@@ -883,8 +882,10 @@ fn run_control_plane_dev_tick(state_store: &StateStore) -> Result<OperatorStatus
 			for warning in project_warnings {
 				add_operator_snapshot_warning(&mut snapshot, warning);
 			}
+
 			if let Some(local_status) = project_tick.project_status {
 				project_status = operator_project_status_from_dev_registration(registration);
+
 				hydrate_project_status_from_registered_status(
 					&mut project_status,
 					&local_status,
@@ -959,12 +960,13 @@ fn control_plane_disabled_project_observer_tick(
 			let _ = error;
 
 			tracing::warn!(
-				project_id = project.service_id(),
-				"Disabled project active-run lookup failed; sensitive runtime details were withheld."
-			);
-			snapshot_warnings.push("operator_snapshot_build_failed");
+					project_id = project.service_id(),
+					"Disabled project active-run lookup failed; sensitive runtime details were withheld."
+				);
 
-			return ControlPlaneProjectTick {
+				snapshot_warnings.push("operator_snapshot_build_failed");
+
+				return ControlPlaneProjectTick {
 				snapshot: None,
 				project_status: Some(project_status),
 			};
@@ -993,12 +995,13 @@ fn control_plane_disabled_project_observer_tick(
 			let _ = error;
 
 			tracing::warn!(
-				project_id = project.service_id(),
-				"Disabled project active-run snapshot build failed; sensitive runtime details were withheld."
-			);
-			snapshot_warnings.push("operator_snapshot_build_failed");
+					project_id = project.service_id(),
+					"Disabled project active-run snapshot build failed; sensitive runtime details were withheld."
+				);
 
-			ControlPlaneProjectTick {
+				snapshot_warnings.push("operator_snapshot_build_failed");
+
+				ControlPlaneProjectTick {
 				snapshot: None,
 				project_status: Some(project_status),
 			}
