@@ -1563,8 +1563,7 @@ struct AccountRunChipView: View {
 		}
 		.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
 			OperatorLanePopoverView(run: run)
-				.frame(width: 452)
-				.padding(6)
+				.fixedSize(horizontal: true, vertical: false)
 		}
 	}
 
@@ -2592,7 +2591,7 @@ struct OperatorLanePopoverView: View {
 	let run: OperatorRunStatus
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 5) {
+		VStack(alignment: .leading, spacing: 6) {
 			header
 
 			if hasReadoutContent {
@@ -2612,7 +2611,7 @@ struct OperatorLanePopoverView: View {
 				}
 			}
 
-			VStack(alignment: .leading, spacing: 4) {
+			VStack(alignment: .leading, spacing: 3) {
 				ForEach(detailBuckets) { bucket in
 					OperatorLaneReadoutRow(title: rawPanelToken(bucket.name), items: bucketReadoutItems(bucket))
 				}
@@ -2629,9 +2628,9 @@ struct OperatorLanePopoverView: View {
 				}
 			}
 		}
-		.padding(.horizontal, 8)
+		.padding(.horizontal, 10)
 		.padding(.vertical, 7)
-		.modernGlassSurface(cornerRadius: 12, depth: .panel)
+		.fixedSize(horizontal: true, vertical: false)
 		.accessibilityLabel("Lane activity for \(run.compactTitle)")
 	}
 
@@ -2875,26 +2874,22 @@ struct OperatorLaneHeaderReadoutView: View {
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: 8) {
 			Text(status)
-				.font(PanelFont.laneTitle)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.94))
+				.font(OperatorLanePopoverStyle.titleFont)
+				.foregroundStyle(OperatorLanePopoverStyle.primaryText(colorScheme))
 				.lineLimit(1)
 				.truncationMode(.tail)
-				.frame(maxWidth: .infinity, alignment: .leading)
-
-			Spacer(minLength: 8)
+				.fixedSize(horizontal: true, vertical: false)
 
 			if let project = panelTrimmed(project) {
 				Text(project)
-					.font(PanelFont.laneDetail)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
+					.font(OperatorLanePopoverStyle.projectFont)
+					.foregroundStyle(OperatorLanePopoverStyle.secondaryText(colorScheme))
 					.lineLimit(1)
-					.truncationMode(.middle)
 					.fixedSize(horizontal: true, vertical: false)
-					.frame(alignment: .trailing)
 					.help(project)
 			}
 		}
-		.frame(maxWidth: .infinity, alignment: .leading)
+		.fixedSize(horizontal: true, vertical: false)
 	}
 }
 
@@ -2908,57 +2903,116 @@ struct OperatorLaneReadoutLine: Identifiable {
 }
 
 private enum OperatorLaneReadoutLayout {
-	static let titleWidth: CGFloat = 72
+	static let titleWidth: CGFloat = 62
 	static let columnSpacing: CGFloat = 7
-	static let itemSpacing: CGFloat = 8
 	static let itemRowSpacing: CGFloat = 2
-	static let wideLabelWidth: CGFloat = 92
+	static let progressTrackWidth: CGFloat = 84
+}
+
+private enum OperatorLanePopoverStyle {
+	static let titleFont = PanelFont.laneTitle
+	static let projectFont = PanelFont.laneDetail
+	static let labelFont = PanelFont.usageLabel
+	static let valueFont = PanelFont.lanePopoverMeta
+	static let metaFont = PanelFont.tertiary
+	static let separatorFont = PanelFont.tertiary
+
+	static func primaryText(_ colorScheme: ColorScheme) -> Color {
+		Color.primary.opacity(colorScheme == .dark ? 0.82 : 0.76)
+	}
+
+	static func secondaryText(_ colorScheme: ColorScheme) -> Color {
+		Color.secondary.opacity(colorScheme == .dark ? 0.76 : 0.7)
+	}
+
+	static func mutedText(_ colorScheme: ColorScheme) -> Color {
+		Color.secondary.opacity(colorScheme == .dark ? 0.55 : 0.48)
+	}
+
+	static func separator(_ colorScheme: ColorScheme) -> Color {
+		Color.secondary.opacity(colorScheme == .dark ? 0.13 : 0.18)
+	}
+
+	static func progressTrack(_ colorScheme: ColorScheme) -> Color {
+		Color.secondary.opacity(colorScheme == .dark ? 0.14 : 0.16)
+	}
+
+	static func progressFill(_ colorScheme: ColorScheme) -> Color {
+		PanelPalette.routeAccent(colorScheme).opacity(colorScheme == .dark ? 0.76 : 0.68)
+	}
 }
 
 struct OperatorLaneReadoutItem: Identifiable {
-	enum Tone {
-		case primary
-		case secondary
-	}
-
 	let label: String?
 	let value: String
-	let tone: Tone
 
-	init(label: String?, value: String, tone: Tone = .secondary) {
+	init(label: String?, value: String) {
 		self.label = label
 		self.value = value
-		self.tone = tone
 	}
 
 	var id: String {
 		"\(label ?? "value")-\(value)"
 	}
 
-	var usesWideRow: Bool {
-		let normalizedLabel = label?.lowercased() ?? ""
-		return value.count > 30 || normalizedLabel == "largest tool"
+	var displayValue: String {
+		if value.hasSuffix(" tok") {
+			return String(value.dropLast(4))
+		}
+
+		return value
 	}
 
-	var preferredWidth: CGFloat {
+	fileprivate var summaryRuns: [OperatorLaneReadoutTextRun] {
 		switch label?.lowercased() {
-		case "events":
-			return 62
 		case "wall":
-			return 70
+			return [.meta("wall "), .value(displayValue)]
+		case "events":
+			return [.value(displayValue), .meta(" events")]
+		case "input":
+			return [.value(displayValue), .meta(" input")]
+		case "output":
+			return [.value(displayValue), .meta(" output")]
+		case "current":
+			return [.value(displayValue), .meta(" current")]
+		case "peak":
+			return [.value(displayValue), .meta(" peak")]
 		case "tool calls":
-			return 84
-		case "input", "output", "current", "peak":
-			return 108
+			return [.value(displayValue), .meta(" calls")]
 		case "output bytes":
-			return 122
+			return [.value(displayValue), .meta(" output")]
 		case "largest output":
-			return 138
+			return [.value(displayValue), .meta(" max")]
 		case "largest tool":
-			return 148
+			return [.value(displayValue)]
 		default:
-			return 96
+			if let label {
+				return [.meta("\(label) "), .value(displayValue)]
+			}
+			return [.value(displayValue)]
 		}
+	}
+
+	func matchesLabel(_ expected: String) -> Bool {
+		label?.caseInsensitiveCompare(expected) == .orderedSame
+	}
+}
+
+fileprivate enum OperatorLaneReadoutTextRole {
+	case meta
+	case value
+}
+
+fileprivate struct OperatorLaneReadoutTextRun {
+	let text: String
+	let role: OperatorLaneReadoutTextRole
+
+	static func meta(_ text: String) -> OperatorLaneReadoutTextRun {
+		OperatorLaneReadoutTextRun(text: text, role: .meta)
+	}
+
+	static func value(_ text: String) -> OperatorLaneReadoutTextRun {
+		OperatorLaneReadoutTextRun(text: text, role: .value)
 	}
 }
 
@@ -2977,47 +3031,183 @@ struct OperatorLaneReadoutRow: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: OperatorLaneReadoutLayout.itemRowSpacing) {
 			HStack(alignment: .firstTextBaseline, spacing: OperatorLaneReadoutLayout.columnSpacing) {
-				Text(title)
-					.font(PanelFont.lanePopoverLabel)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.88))
-					.lineLimit(1)
-					.frame(width: OperatorLaneReadoutLayout.titleWidth, alignment: .leading)
+				OperatorLaneReadoutLabelView(title: title)
 
-				if inlineItems.isEmpty == false {
-					HStack(alignment: .firstTextBaseline, spacing: OperatorLaneReadoutLayout.itemSpacing) {
-						ForEach(inlineItems) { item in
-							OperatorLaneReadoutItemView(item: item)
-						}
-					}
-					.frame(maxWidth: .infinity, alignment: .leading)
+				if summaryFragments.isEmpty == false {
+					OperatorLaneReadoutSummaryView(fragments: summaryFragments)
+						.lineLimit(1)
+						.allowsTightening(true)
+						.fixedSize(horizontal: true, vertical: false)
+						.help(accessibilityText)
 				} else {
 					Spacer(minLength: 0)
 				}
 
 				if let trailing = panelTrimmed(trailing) {
 					Text(trailing)
-						.font(PanelFont.lanePopoverMeta)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.7))
+						.font(OperatorLanePopoverStyle.metaFont)
+						.foregroundStyle(OperatorLanePopoverStyle.mutedText(colorScheme))
 						.lineLimit(1)
-						.truncationMode(.middle)
-						.frame(maxWidth: 72, alignment: .trailing)
+						.fixedSize(horizontal: true, vertical: false)
 				}
 			}
+		}
+		.fixedSize(horizontal: true, vertical: false)
+	}
 
-			ForEach(wideItems) { item in
-				OperatorLaneWideReadoutItemView(item: item)
-					.padding(.leading, OperatorLaneReadoutLayout.titleWidth + OperatorLaneReadoutLayout.columnSpacing)
+	private var summaryFragments: [[OperatorLaneReadoutTextRun]] {
+		let fragments = normalizedTitle == "tools"
+			? toolSummaryFragments
+			: items.map(\.summaryRuns)
+		return fragments.filter { $0.isEmpty == false }
+	}
+
+	private var normalizedTitle: String {
+		title.lowercased()
+	}
+
+	private var toolSummaryFragments: [[OperatorLaneReadoutTextRun]] {
+		var fragments = [[OperatorLaneReadoutTextRun]]()
+		if let calls = value(for: "tool calls") {
+			fragments.append([.value(calls), .meta(" calls")])
+		}
+		if let maxOutput = value(for: "largest output") {
+			if let largestTool = value(for: "largest tool") {
+				fragments.append([.meta("max "), .value(maxOutput), .meta(" from "), .value(largestTool)])
+			} else {
+				fragments.append([.meta("max "), .value(maxOutput)])
+			}
+		} else if let largestTool = value(for: "largest tool") {
+			fragments.append([.meta("largest "), .value(largestTool)])
+		}
+
+		return fragments
+	}
+
+	private func value(for label: String) -> String? {
+		items.first { $0.matchesLabel(label) }?.displayValue
+	}
+
+	private var accessibilityText: String {
+		items.map { item in
+			if let label = item.label {
+				return "\(label) \(item.value)"
+			}
+			return item.value
+		}
+		.joined(separator: ", ")
+	}
+}
+
+fileprivate struct OperatorLaneReadoutSummaryView: View {
+	let fragments: [[OperatorLaneReadoutTextRun]]
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: 0) {
+			ForEach(fragments.indices, id: \.self) { index in
+				OperatorLaneReadoutRunsView(runs: fragments[index])
+
+				if index != fragments.indices.last {
+					Text(" · ")
+						.font(OperatorLanePopoverStyle.separatorFont)
+						.foregroundStyle(OperatorLanePopoverStyle.mutedText(colorScheme))
+				}
 			}
 		}
-		.frame(maxWidth: .infinity, alignment: .leading)
+		.fixedSize(horizontal: true, vertical: false)
+	}
+}
+
+fileprivate struct OperatorLaneReadoutRunsView: View {
+	let runs: [OperatorLaneReadoutTextRun]
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: 0) {
+			ForEach(runs.indices, id: \.self) { index in
+				let run = runs[index]
+				Text(run.text)
+					.font(font(for: run.role))
+					.foregroundStyle(foreground(for: run.role))
+					.monospacedDigit()
+					.lineLimit(1)
+			}
+		}
+		.fixedSize(horizontal: true, vertical: false)
 	}
 
-	private var inlineItems: [OperatorLaneReadoutItem] {
-		items.filter { $0.usesWideRow == false }
+	private func font(for role: OperatorLaneReadoutTextRole) -> Font {
+		switch role {
+		case .meta:
+			return OperatorLanePopoverStyle.metaFont
+		case .value:
+			return OperatorLanePopoverStyle.valueFont
+		}
 	}
 
-	private var wideItems: [OperatorLaneReadoutItem] {
-		items.filter(\.usesWideRow)
+	private func foreground(for role: OperatorLaneReadoutTextRole) -> Color {
+		switch role {
+		case .meta:
+			return OperatorLanePopoverStyle.mutedText(colorScheme)
+		case .value:
+			return OperatorLanePopoverStyle.primaryText(colorScheme)
+		}
+	}
+}
+
+struct OperatorLaneReadoutLabelView: View {
+	let title: String
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: 3) {
+			Image(systemName: symbol)
+				.font(.system(size: 7.8, weight: .semibold))
+				.foregroundStyle(tint)
+				.frame(width: 9)
+
+			Text(title)
+				.font(OperatorLanePopoverStyle.labelFont)
+				.foregroundStyle(OperatorLanePopoverStyle.secondaryText(colorScheme))
+				.lineLimit(1)
+				.fixedSize(horizontal: true, vertical: false)
+		}
+		.frame(width: OperatorLaneReadoutLayout.titleWidth, alignment: .leading)
+	}
+
+	private var symbol: String {
+		switch title.lowercased() {
+		case "model":
+			return "waveform"
+		case "protocol":
+			return "network"
+		case "tracker":
+			return "clock"
+		case "tool", "tools":
+			return "hammer"
+		case "context":
+			return "text.alignleft"
+		default:
+			return "circle.fill"
+		}
+	}
+
+	private var tint: Color {
+		switch title.lowercased() {
+		case "model":
+			return PanelPalette.routeAccent(colorScheme).opacity(0.78)
+		case "protocol":
+			return PanelPalette.usageCyan(colorScheme).opacity(0.78)
+		case "tracker":
+			return PanelPalette.secondaryText(colorScheme).opacity(0.58)
+		case "tool", "tools":
+			return PanelPalette.codexAccent(colorScheme).opacity(0.72)
+		case "context":
+			return PanelPalette.capacityAccent(colorScheme).opacity(0.72)
+		default:
+			return PanelPalette.secondaryText(colorScheme).opacity(0.48)
+		}
 	}
 }
 
@@ -3031,112 +3221,71 @@ struct OperatorLaneProgressReadoutRow: View {
 
 	var body: some View {
 		HStack(alignment: .center, spacing: OperatorLaneReadoutLayout.columnSpacing) {
-			Text(title)
-				.font(PanelFont.lanePopoverLabel)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.88))
-				.lineLimit(1)
-				.frame(width: OperatorLaneReadoutLayout.titleWidth, alignment: .leading)
+			OperatorLaneReadoutLabelView(title: title)
 
-			UsageGlassTrackView(
-				progress: barShare,
-				tint: PanelPalette.routeAccent(colorScheme).opacity(colorScheme == .dark ? 0.84 : 0.8),
-				markers: [0.25, 0.5, 0.75],
-				alertMarker: nil
-			)
-			.frame(height: 5.5)
-			.frame(maxWidth: .infinity)
+			OperatorLanePopoverProgressBar(progress: barShare)
+				.frame(width: OperatorLaneReadoutLayout.progressTrackWidth)
 
-			Text("\(percent)% · \(elapsed) / \(total)")
-				.font(PanelFont.lanePopoverMeta)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.86))
-				.monospacedDigit()
+			OperatorLaneProgressTextView(percent: percent, elapsed: elapsed, total: total)
 				.lineLimit(1)
 				.fixedSize(horizontal: true, vertical: false)
 		}
-		.frame(height: 19)
+		.frame(height: 16)
+		.fixedSize(horizontal: true, vertical: false)
 	}
 }
 
-struct OperatorLaneReadoutItemView: View {
-	let item: OperatorLaneReadoutItem
+struct OperatorLaneProgressTextView: View {
+	let percent: Int
+	let elapsed: String
+	let total: String
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 3) {
-			if let label = item.label {
-				Text(label)
-					.font(PanelFont.lanePopoverMeta)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.84))
-					.lineLimit(1)
-			}
-
-			Text(item.value)
-				.font(PanelFont.lanePopoverValue)
-				.foregroundStyle(valueColor)
+		HStack(alignment: .firstTextBaseline, spacing: 0) {
+			Text("\(percent)%")
+				.font(OperatorLanePopoverStyle.valueFont)
+				.foregroundStyle(OperatorLanePopoverStyle.primaryText(colorScheme))
 				.monospacedDigit()
-				.lineLimit(1)
-		}
-		.frame(width: item.preferredWidth, alignment: .leading)
-		.fixedSize(horizontal: false, vertical: false)
-		.help(accessibilityText)
-	}
 
-	private var accessibilityText: String {
-		if let label = item.label {
-			return "\(label) \(item.value)"
-		}
+			Text(" · ")
+				.font(OperatorLanePopoverStyle.separatorFont)
+				.foregroundStyle(OperatorLanePopoverStyle.mutedText(colorScheme))
 
-		return item.value
-	}
+			Text(elapsed)
+				.font(OperatorLanePopoverStyle.metaFont)
+				.foregroundStyle(OperatorLanePopoverStyle.secondaryText(colorScheme))
+				.monospacedDigit()
 
-	private var valueColor: Color {
-		switch item.tone {
-		case .primary:
-			return PanelPalette.primaryText(colorScheme)
-		case .secondary:
-			return PanelPalette.primaryText(colorScheme).opacity(colorScheme == .dark ? 0.9 : 0.84)
+			Text(" / ")
+				.font(OperatorLanePopoverStyle.separatorFont)
+				.foregroundStyle(OperatorLanePopoverStyle.mutedText(colorScheme))
+
+			Text(total)
+				.font(OperatorLanePopoverStyle.metaFont)
+				.foregroundStyle(OperatorLanePopoverStyle.secondaryText(colorScheme))
+				.monospacedDigit()
 		}
+		.fixedSize(horizontal: true, vertical: false)
 	}
 }
 
-struct OperatorLaneWideReadoutItemView: View {
-	let item: OperatorLaneReadoutItem
+struct OperatorLanePopoverProgressBar: View {
+	let progress: CGFloat
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 6) {
-			if let label = item.label {
-				Text(label)
-					.font(PanelFont.lanePopoverMeta)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.84))
-					.lineLimit(1)
-					.frame(width: OperatorLaneReadoutLayout.wideLabelWidth, alignment: .leading)
+		GeometryReader { proxy in
+			let width = max(0, min(1, progress)) * proxy.size.width
+			ZStack(alignment: .leading) {
+				Capsule()
+					.fill(OperatorLanePopoverStyle.progressTrack(colorScheme))
+				Capsule()
+					.fill(OperatorLanePopoverStyle.progressFill(colorScheme))
+					.frame(width: width)
 			}
-
-			Text(item.value)
-				.font(PanelFont.lanePopoverValue)
-				.foregroundStyle(valueColor)
-				.fixedSize(horizontal: false, vertical: true)
-				.frame(maxWidth: .infinity, alignment: .leading)
 		}
-		.help(accessibilityText)
-	}
-
-	private var accessibilityText: String {
-		if let label = item.label {
-			return "\(label) \(item.value)"
-		}
-
-		return item.value
-	}
-
-	private var valueColor: Color {
-		switch item.tone {
-		case .primary:
-			return PanelPalette.primaryText(colorScheme)
-		case .secondary:
-			return PanelPalette.primaryText(colorScheme).opacity(colorScheme == .dark ? 0.9 : 0.84)
-		}
+		.frame(height: 3.5)
 	}
 }
 
@@ -3145,80 +3294,9 @@ struct OperatorLaneReadoutDivider: View {
 
 	var body: some View {
 		Rectangle()
-			.fill(PanelPalette.separator(colorScheme).opacity(colorScheme == .dark ? 0.82 : 0.92))
+			.fill(OperatorLanePopoverStyle.separator(colorScheme))
 			.frame(height: 0.5)
 			.padding(.vertical, 0.5)
-	}
-}
-
-struct OperatorLaneReadoutFlowLayout: Layout {
-	let spacing: CGFloat
-	let rowSpacing: CGFloat
-
-	init(spacing: CGFloat = 8, rowSpacing: CGFloat = 4) {
-		self.spacing = spacing
-		self.rowSpacing = rowSpacing
-	}
-
-	func sizeThatFits(
-		proposal: ProposedViewSize,
-		subviews: Subviews,
-		cache: inout Void
-	) -> CGSize {
-		let maxWidth = max(0, proposal.width ?? subviews.map { $0.sizeThatFits(.unspecified).width }.reduce(0, +))
-		var currentX: CGFloat = 0
-		var currentY: CGFloat = 0
-		var rowHeight: CGFloat = 0
-		var measuredWidth: CGFloat = 0
-
-		for subview in subviews {
-			let size = subview.sizeThatFits(.unspecified)
-			if currentX > 0, currentX + spacing + size.width > maxWidth {
-				currentY += rowHeight + rowSpacing
-				currentX = 0
-				rowHeight = 0
-			}
-
-			if currentX > 0 {
-				currentX += spacing
-			}
-			currentX += size.width
-			rowHeight = max(rowHeight, size.height)
-			measuredWidth = max(measuredWidth, currentX)
-		}
-
-		return CGSize(width: proposal.width ?? measuredWidth, height: currentY + rowHeight)
-	}
-
-	func placeSubviews(
-		in bounds: CGRect,
-		proposal: ProposedViewSize,
-		subviews: Subviews,
-		cache: inout Void
-	) {
-		let maxWidth = bounds.width
-		var currentX: CGFloat = bounds.minX
-		var currentY: CGFloat = bounds.minY
-		var rowHeight: CGFloat = 0
-
-		for subview in subviews {
-			let size = subview.sizeThatFits(.unspecified)
-			if currentX > bounds.minX, currentX + spacing + size.width > bounds.minX + maxWidth {
-				currentY += rowHeight + rowSpacing
-				currentX = bounds.minX
-				rowHeight = 0
-			}
-
-			if currentX > bounds.minX {
-				currentX += spacing
-			}
-			subview.place(
-				at: CGPoint(x: currentX, y: currentY),
-				proposal: ProposedViewSize(size)
-			)
-			currentX += size.width
-			rowHeight = max(rowHeight, size.height)
-		}
 	}
 }
 
