@@ -96,9 +96,11 @@ under `artifacts/archive/index/`.
 `artifacts/github/impact/` may hold `upstream_impact/v1` classifications when an
 upstream Codex change has public-signal, Control Plane, or Publisher implications.
 `artifacts/github/review-queue/` may hold the latest deterministic review queue.
-`artifacts/social/` may hold `social_post/v1` published, blocked, failed, or skipped
-records for external publication. Both remain checked-in artifacts; neither turns the
-public site into a live service.
+`artifacts/github/social-candidates/` may hold `social_candidate/v1` pre-publication
+handoffs. `artifacts/social/` holds `social_post/v1` published, blocked, failed, or
+skipped records for external publication. Generated media files are not checked-in by
+default; records should point to X status/media URLs or optional content hashes instead.
+These remain checked-in artifacts; none turns the public site into a live service.
 
 ## Installable Codex surface
 

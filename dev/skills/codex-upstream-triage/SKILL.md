@@ -96,7 +96,7 @@ Return a compact triage note with:
 - next skill to use
 - confidence limits
 
-Do not draft `signal_entry/v1` or publish `social_post/v1` directly from this skill.
-Do not treat deterministic queue hints as technical claims. The durable review layer is
-`upstream_review/v1`; public and Control Plane artifacts are promotions from that
-source-backed review.
+Do not draft `signal_entry/v1`, `social_candidate/v1`, or `social_post/v1` directly
+from this skill. Do not treat deterministic queue hints as technical claims. The durable
+review layer is `upstream_review/v1`; public and Control Plane artifacts are promotions
+from that source-backed review.
