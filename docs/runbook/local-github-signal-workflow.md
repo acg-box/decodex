@@ -142,7 +142,7 @@ Repo-local editorial instruction entrypoint:
 These entrypoints are for Decodex repository development only. They are incomplete as
 general user-facing skills and must not be packaged with the installable Decodex
 plugin. Today only `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`,
-`upstream_impact/v1`, `release_delta/v1`, and `social_post/v1` are durable
+`upstream_impact/v1`, `release_delta/v1`, `social_candidate/v1`, and `social_post/v1` are durable
 content contracts for this workflow.
 
 Automated sync entrypoint:
