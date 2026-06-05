@@ -59,7 +59,7 @@ fn closeout_dispatch_completes_merged_lane_without_agent_turn() {
 		.expect("run attempt should record");
 
 	let summary =
-		orchestrator::execute_issue_run(&tracker, &config, &workflow, &state_store, issue_run, false)
+		orchestrator::execute_issue_run(&tracker, &config, &workflow, &state_store, issue_run)
 			.expect("deterministic closeout should complete");
 
 	assert_eq!(summary.dispatch_mode, IssueDispatchMode::Closeout);
@@ -121,7 +121,6 @@ fn direct_closeout_dispatch_reuses_completed_handoff_run_identity_for_record_and
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
-	allow_unverified_codex: false,
 	})
 	.expect("direct retained closeout should run")
 	.expect("closeout summary should be printed");
@@ -202,7 +201,6 @@ fn same_run_closeout_reuses_matching_active_handoff_lease() {
 		&fixture.workflow,
 		&fixture.state_store,
 		&source_summary,
-		false,
 	)
 	.expect("same-run retained closeout should run")
 	.expect("same-run retained closeout should produce a summary");
@@ -281,7 +279,7 @@ fn closeout_dispatch_validates_pr_before_marking_issue_done() {
 		.expect("run attempt should record");
 
 	let error =
-		orchestrator::execute_issue_run(&tracker, &config, &workflow, &state_store, issue_run, false)
+		orchestrator::execute_issue_run(&tracker, &config, &workflow, &state_store, issue_run)
 			.expect_err("unmerged PR should stop deterministic closeout");
 
 	assert!(

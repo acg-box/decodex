@@ -624,7 +624,6 @@ fn run_target_issue_once_skips_reconciliation_for_preacquired_child_runs() {
 				attempt_number: 1,
 			}),
 			preferred_retry_budget_base: None,
-			allow_unverified_codex: false,
 		})
 	.expect("targeted child run should not error before refresh lookup");
 
