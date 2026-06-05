@@ -905,18 +905,21 @@ struct AccountRunSummaryView: View {
 	@State private var placementStore = AccountRunStripPlacementStore()
 	@State private var scrollProxy = AccountRunStripScrollProxy()
 	@State private var scrollMetrics = AccountRunStripMetrics()
+	@State private var showsEdgeControls = false
 
 	var body: some View {
 		HStack(spacing: AccountRunStripLayout.edgeControlSpacing) {
-			AccountRunStripEdgeButton(
-				direction: .backward,
-				isEnabled: scrollMetrics.canScrollBackward
-			) {
-				scrollProxy.scrollToAdjacentRun(.backward)
-			} startContinuousAction: {
-				scrollProxy.startContinuousScroll(.backward)
-			} stopContinuousAction: {
-				scrollProxy.stopContinuousScroll()
+			if showsEdgeControls {
+				AccountRunStripEdgeButton(
+					direction: .backward,
+					isEnabled: scrollMetrics.canScrollBackward
+				) {
+					scrollProxy.scrollToAdjacentRun(.backward)
+				} startContinuousAction: {
+					scrollProxy.startContinuousScroll(.backward)
+				} stopContinuousAction: {
+					scrollProxy.stopContinuousScroll()
+				}
 			}
 
 			AccountRunStripScrollView(
@@ -942,19 +945,21 @@ struct AccountRunSummaryView: View {
 				.coordinateSpace(name: AccountRunStripLayout.contentCoordinateSpace)
 			}
 			.mask {
-				AccountRunStripFadeMask(metrics: scrollMetrics)
+				AccountRunStripFadeMask(metrics: showsEdgeControls ? scrollMetrics : AccountRunStripMetrics())
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
 
-			AccountRunStripEdgeButton(
-				direction: .forward,
-				isEnabled: scrollMetrics.canScrollForward
-			) {
-				scrollProxy.scrollToAdjacentRun(.forward)
-			} startContinuousAction: {
-				scrollProxy.startContinuousScroll(.forward)
-			} stopContinuousAction: {
-				scrollProxy.stopContinuousScroll()
+			if showsEdgeControls {
+				AccountRunStripEdgeButton(
+					direction: .forward,
+					isEnabled: scrollMetrics.canScrollForward
+				) {
+					scrollProxy.scrollToAdjacentRun(.forward)
+				} startContinuousAction: {
+					scrollProxy.startContinuousScroll(.forward)
+				} stopContinuousAction: {
+					scrollProxy.stopContinuousScroll()
+				}
 			}
 		}
 		.frame(height: AccountRunChipLayout.height)
@@ -970,15 +975,28 @@ struct AccountRunSummaryView: View {
 	}
 
 	private func updateScrollMetrics(_ metrics: AccountRunStripMetrics) {
-		guard metrics != scrollMetrics else {
+		let nextShowsEdgeControls = shouldShowEdgeControls(for: metrics)
+		guard metrics != scrollMetrics || nextShowsEdgeControls != showsEdgeControls else {
 			return
+		}
+
+		if showsEdgeControls && nextShowsEdgeControls == false {
+			scrollProxy.stopContinuousScroll()
 		}
 
 		var transaction = Transaction()
 		transaction.disablesAnimations = true
 		withTransaction(transaction) {
 			scrollMetrics = metrics
+			showsEdgeControls = nextShowsEdgeControls
 		}
+	}
+
+	private func shouldShowEdgeControls(for metrics: AccountRunStripMetrics) -> Bool {
+		let reservedWidth = showsEdgeControls ? AccountRunStripLayout.edgeControlReservedWidth : 0
+		let viewportWidthWithoutEdgeControls = metrics.viewportWidth + reservedWidth
+
+		return metrics.contentWidth > viewportWidthWithoutEdgeControls + AccountRunStripLayout.overflowTolerance
 	}
 }
 
@@ -987,7 +1005,9 @@ private enum AccountRunStripLayout {
 	static let dragActivationDistance: CGFloat = 1
 	static let edgeControlSpacing: CGFloat = 4
 	static let edgeControlWidth: CGFloat = 12
+	static let edgeControlReservedWidth = edgeControlWidth * 2 + edgeControlSpacing * 2
 	static let fadeWidth: CGFloat = 24
+	static let overflowTolerance: CGFloat = 1
 	static let wheelLineDeltaScale: CGFloat = 11
 	static let wheelMinimumDelta: CGFloat = 0.1
 	static let clickScrollDuration: TimeInterval = 0.14
@@ -1027,9 +1047,20 @@ private enum AccountRunStripScrollDirection {
 			return "Next running lane"
 		}
 	}
+
+	var disabledHelp: String {
+		switch self {
+		case .backward:
+			return "Already at the first running lane"
+		case .forward:
+			return "Already at the last running lane"
+		}
+	}
 }
 
 private struct AccountRunStripMetrics: Equatable {
+	var contentWidth: CGFloat = 0
+	var viewportWidth: CGFloat = 0
 	var isOverflowing = false
 	var canScrollBackward = false
 	var canScrollForward = false
@@ -1037,8 +1068,10 @@ private struct AccountRunStripMetrics: Equatable {
 	init() {}
 
 	init(contentWidth: CGFloat, viewportWidth: CGFloat, offsetX: CGFloat) {
+		self.contentWidth = contentWidth
+		self.viewportWidth = viewportWidth
 		let maxOffsetX = max(0, contentWidth - viewportWidth)
-		isOverflowing = contentWidth > viewportWidth + 1
+		isOverflowing = contentWidth > viewportWidth + AccountRunStripLayout.overflowTolerance
 		canScrollBackward = isOverflowing && offsetX > 1
 		canScrollForward = isOverflowing && offsetX < maxOffsetX - 1
 	}
@@ -1144,13 +1177,12 @@ private struct AccountRunStripEdgeButton: View {
 			.font(.system(size: 10.5, weight: .semibold))
 			.symbolRenderingMode(.monochrome)
 			.foregroundStyle(tint)
-			.scaleEffect(isPressed ? 0.92 : 1)
+			.scaleEffect(isEnabled && isPressed ? 0.92 : 1)
 		.frame(
 			width: AccountRunStripLayout.edgeControlWidth,
 			height: AccountRunChipLayout.height
 		)
 		.contentShape(Rectangle())
-		.opacity(isEnabled ? 1 : 0)
 		.allowsHitTesting(isEnabled)
 		.highPriorityGesture(
 			DragGesture(minimumDistance: 0)
@@ -1164,18 +1196,31 @@ private struct AccountRunStripEdgeButton: View {
 		.onDisappear {
 			cancelPress()
 		}
-		.help(direction.accessibilityLabel)
+		.onChange(of: isEnabled) { _, isEnabled in
+			if isEnabled == false {
+				cancelPress()
+			}
+		}
+		.help(isEnabled ? direction.accessibilityLabel : direction.disabledHelp)
 		.accessibilityLabel(direction.accessibilityLabel)
-		.accessibilityHidden(isEnabled == false)
+		.accessibilityValue(isEnabled ? "Available" : "Unavailable")
 	}
 
 	private var tint: Color {
-		PanelPalette.primaryText(colorScheme)
-			.opacity(isPressed ? 0.92 : colorScheme == .dark ? 0.62 : 0.5)
+		let opacity: Double
+		if isEnabled == false {
+			opacity = colorScheme == .dark ? 0.28 : 0.22
+		} else if isPressed {
+			opacity = 0.92
+		} else {
+			opacity = colorScheme == .dark ? 0.62 : 0.5
+		}
+
+		return PanelPalette.primaryText(colorScheme).opacity(opacity)
 	}
 
 	private func startPress() {
-		guard pressTask == nil else {
+		guard isEnabled, pressTask == nil else {
 			return
 		}
 
