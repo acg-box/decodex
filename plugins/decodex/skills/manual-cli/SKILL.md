@@ -136,9 +136,6 @@ Manual commit and landing are separate narrow workflows:
 - Use `run --dry-run` before live automation to validate project loading, issue
   discovery, eligibility, and worktree planning without tracker mutation.
 - Use `probe stdio://` before relying on the Codex app-server boundary.
-- Use `--allow-unverified-codex` on `run`, `serve`, or `probe` only for deliberate
-  Codex development-version dogfooding. It turns an unsupported app-server identity
-  into a warning while keeping other preflight failures blocking.
 - Treat hidden `serve --dev` as isolated local-development infrastructure only. It
   serves dashboard, account, and app snapshot APIs, but it does not register projects,
   poll Linear, dispatch work, or accept `--config`. Decodex App's fallback server uses

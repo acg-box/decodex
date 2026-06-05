@@ -91,7 +91,7 @@ This boundary does not create a project-local runtime database contract. The run
 - Runtime policy decisions that depend on Codex behavior, such as idle timeout, stall thresholds, retry cutoffs, or liveness heuristics, must not be tuned from local Decodex observation alone.
 - For those decisions, use three inputs together:
   - the generated `codex app-server` schema for protocol shape and the current
-    compatibility range in [`app-server.md`](./app-server.md)
+    protocol support evidence in [`app-server.md`](./app-server.md)
   - live pilot telemetry for observed event cadence and failure modes
   - the relevant Codex or `app-server` implementation path for terminal semantics, waiting states, and progress signals
 - If those inputs disagree, treat the local implementation and generated schema as more authoritative than stale design assumptions.
@@ -508,12 +508,9 @@ After a process restart, recent-run history, active lease ownership, retained po
 - When a queued retry becomes due, `decodex` must refresh that exact issue, redispatch it only if it is still active under retry policy, and otherwise release the queued claim.
 - Before a prepared lane starts `app-server`, `decodex` must refresh the selected issue once more and skip execution if the issue became terminal or otherwise ineligible.
 - After `app-server` initializes and before `thread/start` or `thread/resume`, `decodex`
-  must run the bounded app-server capability and compatibility preflight defined in
+  must run the bounded app-server capability preflight defined in
   [`app-server.md`](./app-server.md). Missing config/model/provider/skills/plugin/MCP
-  state, or an app-server identity outside the locally verified compatibility range, is
-  a pre-dispatch terminal blocker with an operator-readable error class, not a
-  promptable agent turn, unless the operator explicitly started `run`, `serve`, or
-  `probe` with `--allow-unverified-codex`. That override downgrades only the unverified
-  compatibility identity to a warning; capability failures still block dispatch.
+  state is a pre-dispatch terminal blocker with an operator-readable error class, not a
+  promptable agent turn.
 - If the local process crashed during a run, `decodex` must recover from the runtime database, current tracker cache or state, and retained worktree inspection.
 - If Linear shows a non-terminal state but no local lease exists, the issue may become eligible again after reconciliation or may be redispatched through the retained recovered worktree.

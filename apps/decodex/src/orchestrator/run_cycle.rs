@@ -95,11 +95,10 @@ fn run_configured_cycle(
 			preferred_issue_claim_fd: request.preferred_issue_claim_fd,
 			preferred_dispatch_slot_fd: request.preferred_dispatch_slot_fd,
 			preferred_dispatch_slot_index: request.preferred_dispatch_slot_index,
-				dispatch_mode: request.preferred_dispatch_mode.unwrap_or(IssueDispatchMode::Normal),
-				preferred_run_identity: request.preferred_run_identity,
-				preferred_retry_budget_base: request.preferred_retry_budget_base,
-				allow_unverified_codex: request.allow_unverified_codex,
-			};
+			dispatch_mode: request.preferred_dispatch_mode.unwrap_or(IssueDispatchMode::Normal),
+			preferred_run_identity: request.preferred_run_identity,
+			preferred_retry_budget_base: request.preferred_retry_budget_base,
+		};
 
 		return match request.preferred_dispatch_mode {
 			Some(_) => run_target_issue_once(target_context),
@@ -107,14 +106,7 @@ fn run_configured_cycle(
 		};
 	}
 
-	run_project_once(
-		&tracker,
-		&config,
-		&workflow,
-		request.state_store,
-		request.dry_run,
-		request.allow_unverified_codex,
-	)
+	run_project_once(&tracker, &config, &workflow, request.state_store, request.dry_run)
 }
 
 fn load_configured_cycle_workflow(
@@ -135,20 +127,11 @@ fn run_project_once<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	dry_run: bool,
-	allow_unverified_codex: bool,
 ) -> Result<Option<RunSummary>>
 where
 	T: IssueTracker,
 {
-	run_project_once_with_exclusions(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		dry_run,
-		&[],
-		allow_unverified_codex,
-	)
+	run_project_once_with_exclusions(tracker, project, workflow, state_store, dry_run, &[])
 }
 
 fn run_project_once_with_exclusions<T>(
@@ -158,7 +141,6 @@ fn run_project_once_with_exclusions<T>(
 	state_store: &StateStore,
 	dry_run: bool,
 	excluded_issue_ids: &[&str],
-	allow_unverified_codex: bool,
 ) -> Result<Option<RunSummary>>
 where
 	T: IssueTracker,
@@ -175,15 +157,7 @@ where
 		return Ok(None);
 	};
 
-	complete_issue_run(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		issue_run,
-		dry_run,
-		allow_unverified_codex,
-	)
+	complete_issue_run(tracker, project, workflow, state_store, issue_run, dry_run)
 }
 
 fn reconcile_post_review_orchestration<T>(
@@ -1825,10 +1799,9 @@ where
 		context.project,
 		context.workflow,
 		context.state_store,
-			issue_run,
-			context.dry_run,
-			context.allow_unverified_codex,
-		)
+		issue_run,
+		context.dry_run,
+	)
 }
 
 fn ensure_target_closeout_dispatch_is_unblocked<T>(
@@ -1959,7 +1932,6 @@ where
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity,
 		preferred_retry_budget_base: context.preferred_retry_budget_base,
-		allow_unverified_codex: context.allow_unverified_codex,
 	})
 }
 
@@ -2050,7 +2022,6 @@ fn target_issue_run_context_with_dispatch_mode<'a, T>(
 		dispatch_mode,
 		preferred_run_identity: context.preferred_run_identity,
 		preferred_retry_budget_base: context.preferred_retry_budget_base,
-		allow_unverified_codex: context.allow_unverified_codex,
 	}
 }
 
@@ -2336,7 +2307,6 @@ fn complete_issue_run<T>(
 	state_store: &StateStore,
 	issue_run: IssueRunPlan,
 	dry_run: bool,
-	allow_unverified_codex: bool,
 ) -> Result<Option<RunSummary>>
 where
 	T: IssueTracker,
@@ -2345,14 +2315,7 @@ where
 		return Ok(Some(run_summary_from_issue_run(project.service_id(), &issue_run)));
 	}
 
-	let summary = execute_issue_run(
-		tracker,
-		project,
-		workflow,
-		state_store,
-		issue_run,
-		allow_unverified_codex,
-	)?;
+	let summary = execute_issue_run(tracker, project, workflow, state_store, issue_run)?;
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
 		github_command_path: project.github().command_path().map(Path::to_path_buf),
@@ -2365,13 +2328,12 @@ where
 		state_store,
 		&summary,
 		&review_state_inspector,
-		|source_summary| run_retained_closeout_for_handoff_summary(
-			tracker,
-			project,
-			workflow,
+			|source_summary| run_retained_closeout_for_handoff_summary(
+				tracker,
+				project,
+				workflow,
 				state_store,
 				source_summary,
-				allow_unverified_codex,
 			),
 	)? {
 		return Ok(Some(retained_summary));
@@ -2386,7 +2348,6 @@ fn run_retained_closeout_for_handoff_summary<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	source_summary: &RunSummary,
-	allow_unverified_codex: bool,
 ) -> Result<Option<RunSummary>>
 where
 	T: IssueTracker,
@@ -2407,7 +2368,6 @@ where
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
-		allow_unverified_codex,
 	})
 }
 
