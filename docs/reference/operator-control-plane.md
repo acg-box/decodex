@@ -36,7 +36,7 @@ Decodex currently runs as a local, single-machine control plane:
 Decodex App is a native shell over the same local runtime and account-pool state. On
 launch it connects to an existing default local listener when one is reachable; if
 not, it starts the bundled `decodex` binary as
-`decodex serve --allow-unverified-codex --listen-address 127.0.0.1:8192`. The app
+`decodex serve --listen-address 127.0.0.1:8192`. The app
 fallback is a normal control-plane server: it loads the registered project registry,
 schedules only enabled projects, keeps active runtime DB-backed runs visible even when
 a project is disabled

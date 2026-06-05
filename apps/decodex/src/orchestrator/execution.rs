@@ -143,7 +143,6 @@ fn execute_issue_run<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_run: IssueRunPlan,
-	allow_unverified_codex: bool,
 ) -> Result<RunSummary>
 where
 	T: IssueTracker,
@@ -167,16 +166,7 @@ where
 	)?;
 
 	let result = ensure_automation_activity_label(tracker, &issue_run.issue, project.service_id(), true)
-		.and_then(|_| {
-			execute_issue_run_inner(
-				tracker,
-				project,
-				workflow,
-				state_store,
-				&issue_run,
-				allow_unverified_codex,
-			)
-		});
+		.and_then(|_| execute_issue_run_inner(tracker, project, workflow, state_store, &issue_run));
 
 	state_store.clear_lease(&issue_run.issue.id)?;
 
@@ -534,7 +524,6 @@ fn execute_issue_run_inner<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
-	allow_unverified_codex: bool,
 ) -> Result<RunSummary>
 where
 	T: IssueTracker,
@@ -604,11 +593,10 @@ where
 				issue_run,
 				&review_context,
 			),
-			max_turns: workflow.frontmatter().execution().max_turns(),
-			timeout: ACTIVE_RUN_IDLE_TIMEOUT,
-			process_env: agent_git_credentials.process_env().clone(),
-			allow_unverified_codex,
-			continuation_user_input: Some(build_continuation_user_input(
+				max_turns: workflow.frontmatter().execution().max_turns(),
+				timeout: ACTIVE_RUN_IDLE_TIMEOUT,
+				process_env: agent_git_credentials.process_env().clone(),
+				continuation_user_input: Some(build_continuation_user_input(
 				&issue_run.issue,
 				workflow,
 				issue_run.dispatch_mode,
@@ -622,11 +610,10 @@ where
 			command_exec_health_check: None,
 			dynamic_tool_handler: Some(&decodex_tool_bridge),
 			continuation_guard: Some(&continuation_guard),
-			codex_account_provider: codex_account_pool
-				.as_ref()
-				.map(|pool| pool as &dyn CodexAccountProvider),
-			compatibility_schema_evidence: None,
-		},
+				codex_account_provider: codex_account_pool
+					.as_ref()
+					.map(|pool| pool as &dyn CodexAccountProvider),
+			},
 		state_store,
 	)
 	.map_err(|error| {

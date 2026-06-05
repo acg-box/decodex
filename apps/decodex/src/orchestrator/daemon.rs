@@ -14,7 +14,6 @@ struct DaemonTickRuntimeContext<'a, T, I> {
 	worktree_manager: &'a WorktreeManager,
 	review_state_inspector: &'a I,
 	recoverable_worktree_skip_cache: Option<&'a mut RecoverableWorktreeSkipCache>,
-	allow_unverified_codex: bool,
 }
 
 fn load_daemon_tick_context(
@@ -77,7 +76,6 @@ fn run_daemon_tick(
 	retry_queue: &mut RetryQueue,
 	recoverable_worktree_skip_cache: &mut RecoverableWorktreeSkipCache,
 	context: &DaemonTickContext,
-	allow_unverified_codex: bool,
 ) -> Result<()> {
 	let review_state_inspector = GhPullRequestReviewStateInspector {
 		github_token_env_var: Some(context.config.github().token_env_var().to_owned()),
@@ -96,7 +94,6 @@ fn run_daemon_tick(
 				worktree_manager: &context.worktree_manager,
 				review_state_inspector: &review_state_inspector,
 				recoverable_worktree_skip_cache: Some(recoverable_worktree_skip_cache),
-				allow_unverified_codex,
 			},
 	)
 }
@@ -575,7 +572,6 @@ where
 				context.workflow,
 				&summary,
 				daemon_spawn_state.retry_budget_base,
-				context.allow_unverified_codex,
 			)?;
 
 			if let Err(error) = state::write_run_operation_marker_for_process(
@@ -635,7 +631,6 @@ fn spawn_planned_daemon_child(
 	workflow: &WorkflowDocument,
 	summary: &RunSummary,
 	retry_budget_base: i64,
-	allow_unverified_codex: bool,
 ) -> Result<Child> {
 	let issue_claim_handoff =
 		Some(state_store.clone_issue_claim_for_child(&summary.issue_id).inspect_err(|_error| {
@@ -652,11 +647,10 @@ fn spawn_planned_daemon_child(
 		preferred_issue_state: summary.issue_state.as_str(),
 		preferred_initial_issue_state: Some(summary.initial_issue_state.as_str()),
 		dispatch_mode: summary.dispatch_mode,
-		preferred_run_id: summary.run_id.as_str(),
+			preferred_run_id: summary.run_id.as_str(),
 			preferred_attempt_number: summary.attempt_number,
 			preferred_retry_budget_base: retry_budget_base,
 			workflow,
-			allow_unverified_codex,
 			issue_claim_handoff: issue_claim_handoff.as_ref(),
 		dispatch_slot_handoff: dispatch_slot_handoff.as_ref(),
 		dispatch_slot_index_handoff,
@@ -785,12 +779,11 @@ fn spawn_run_once_child(request: SpawnRunOnceChildRequest<'_>) -> Result<Child> 
 		dispatch_slot_fd: None,
 		dispatch_slot_index: request.dispatch_slot_index_handoff,
 		dispatch_mode: request.dispatch_mode.into(),
-			run_id: String::from(request.preferred_run_id),
-			attempt_number: request.preferred_attempt_number,
-			retry_budget_base: request.preferred_retry_budget_base,
-			allow_unverified_codex: request.allow_unverified_codex,
-			workflow_snapshot: request.workflow.to_markdown()?,
-		};
+		run_id: String::from(request.preferred_run_id),
+		attempt_number: request.preferred_attempt_number,
+		retry_budget_base: request.preferred_retry_budget_base,
+		workflow_snapshot: request.workflow.to_markdown()?,
+	};
 	let payload = serde_json::to_vec(&attempt_request)?;
 	let mut command = Command::new(executable);
 
@@ -874,11 +867,10 @@ where
 			preferred_issue_claim_fd: None,
 			preferred_dispatch_slot_fd: None,
 			preferred_dispatch_slot_index: None,
-				dispatch_mode: entry.dispatch_mode,
-				preferred_run_identity: None,
-				preferred_retry_budget_base: None,
-				allow_unverified_codex: false,
-			})?
+			dispatch_mode: entry.dispatch_mode,
+			preferred_run_identity: None,
+			preferred_retry_budget_base: None,
+		})?
 		else {
 			if retry_entry_is_temporarily_blocked(tracker, project, workflow, state_store, &entry)?
 			{

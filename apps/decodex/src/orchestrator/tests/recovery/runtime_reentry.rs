@@ -254,7 +254,7 @@ fn run_project_once_prefers_recovered_in_progress_worktree_after_empty_state_sta
 		.ensure_worktree(&issue.identifier, false)
 		.expect("recovered worktree should be created")
 		.path;
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("recovered dry run should succeed")
 		.expect("active recovered issue should be selected");
 
@@ -329,7 +329,7 @@ fn run_project_once_recovers_retained_worktree_from_issue_identifier() {
 		.ensure_worktree(&issue.identifier, false)
 		.expect("recovered worktree should be created")
 		.path;
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("recovered dry run should succeed")
 		.expect("active recovered issue should be selected");
 
@@ -373,7 +373,7 @@ fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
 	);
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
 		.expect("recovered retained post-review lane should reconcile");
 
 	assert!(
@@ -420,7 +420,7 @@ fn materialize_run_summary_worktree_creates_worktree_before_child_activity_marke
 		vec![vec![issue.clone()], vec![issue.clone()]],
 	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("dry-run planning should succeed")
 		.expect("brand-new lane should be selected");
 
@@ -538,7 +538,7 @@ fn materialize_daemon_spawn_state_uses_retained_retry_budget_marker() {
 	state::write_run_retry_budget_attempt_count(&retained_worktree.path, "older-run", 4, 2)
 		.expect("retry budget marker should write");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("dry-run planning should succeed")
 		.expect("retained lane should still be selected");
 	let daemon_spawn_state =
@@ -568,7 +568,7 @@ fn run_project_once_skips_recovered_worktree_with_fresh_activity_marker() {
 	state::write_run_activity_marker(&worktree.path, "run-1", 1)
 		.expect("activity marker should write");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("recovery should succeed");
 
 	assert!(
@@ -630,7 +630,7 @@ fn run_project_once_retries_recovered_worktree_after_marker_process_is_killed() 
 		"kill-smoke child process should no longer be live after kill"
 	);
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("kill-smoke recovery should succeed")
 		.expect("killed-process recovered lane should be selected for retry");
 
@@ -663,7 +663,7 @@ fn run_project_once_retries_recovered_worktree_from_previous_boot() {
 
 	rewrite_run_activity_marker_host_boot_id(&worktree.path, "previous-boot");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("previous-boot recovery should succeed")
 		.expect("previous-boot recovered lane should be selected for retry");
 
@@ -696,7 +696,7 @@ fn run_project_once_retries_recovered_worktree_from_reused_pid() {
 
 	rewrite_run_activity_marker_process_start_identity(&worktree.path, "previous-process-start");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("same-boot PID-reuse recovery should succeed")
 		.expect("same-boot PID-reuse recovered lane should be selected for retry");
 
@@ -740,7 +740,7 @@ fn run_project_once_clears_recovered_lease_when_marker_turns_stale() {
 		.expect("fresh activity marker should write");
 
 	let initial_summary =
-		orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+		orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 			.expect("initial recovery should succeed");
 
 	assert!(
@@ -759,7 +759,7 @@ fn run_project_once_clears_recovered_lease_when_marker_turns_stale() {
 	state::write_run_activity_marker_for_process(&worktree.path, "run-1", 1, u32::MAX)
 		.expect("stale activity marker should write");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("stale recovery should succeed")
 		.expect("stale recovered lease should no longer block retry planning");
 
@@ -790,7 +790,7 @@ fn run_project_once_skips_recovered_terminal_guarded_worktree_after_empty_state_
 	)
 	.expect("terminal guard marker should write");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("recovery should succeed");
 
 	assert!(
@@ -813,7 +813,7 @@ fn run_project_once_clears_terminal_queued_lane_labels_without_dispatch() {
 	let issue = sample_issue("Done", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
 		.expect("terminal queued cleanup should succeed");
 
 	assert!(summary.is_none(), "terminal queued issues should not dispatch");
@@ -833,7 +833,7 @@ fn run_project_once_dry_run_keeps_terminal_queued_lane_labels() {
 	let issue = sample_issue("Done", &[active_label.as_str()]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("terminal queued dry run should succeed");
 
 	assert!(summary.is_none(), "terminal queued dry run should not dispatch");
@@ -856,7 +856,7 @@ fn run_project_once_preserves_terminal_recovered_worktree_without_prior_state_wh
 	let worktree = worktree_manager
 		.ensure_worktree(&issue.identifier, false)
 		.expect("terminal retained worktree should be created");
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
 		.expect("reconciliation should finish cleanly");
 
 	assert!(
@@ -918,7 +918,7 @@ fn run_project_once_clears_stale_completed_closeout_lease_but_keeps_worktree() {
 		)
 		.expect("worktree mapping should record");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
 		.expect("startup reconciliation should succeed");
 
 	assert!(
@@ -995,7 +995,7 @@ fn run_project_once_preserves_fresh_completed_closeout_lease() {
 		)
 		.expect("worktree mapping should record");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
 		.expect("startup reconciliation should succeed");
 
 	assert!(
@@ -1067,7 +1067,7 @@ fn run_project_once_preserves_completed_unmerged_closeout_worktree() {
 		)
 		.expect("worktree mapping should record");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
 		.expect("startup reconciliation should succeed");
 
 	assert!(
@@ -1113,7 +1113,7 @@ fn run_project_once_skips_recovered_worktree_without_service_active_label() {
 		.ensure_worktree(&issue.identifier, false)
 		.expect("foreign retained worktree should exist");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("recovery should succeed");
 
 	assert!(
@@ -1156,7 +1156,7 @@ fn run_project_once_recovers_worktree_when_identifier_lookup_labels_are_truncate
 		.ensure_worktree(&listed_issue.identifier, false)
 		.expect("recovered worktree should be created")
 		.path;
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("recovery should succeed")
 		.expect("ambiguous label pagination should still recover the owned retained lane");
 
@@ -1217,7 +1217,7 @@ fn live_run_skips_issue_that_becomes_ineligible_after_worktree_prepare() {
 		vec![vec![], vec![listed_issue.clone()], vec![sample_issue("In Progress", &[])]],
 	);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
 		.expect("run once should succeed");
 
 	assert!(summary.is_none());
@@ -1240,7 +1240,7 @@ fn live_run_clears_claimed_lease_when_refresh_fails_after_worktree_prepare() {
 	let tracker =
 		FakeTracker::with_refresh_error(vec![listed_issue.clone()], "transient refresh failure");
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let error = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false, false)
+	let error = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, false)
 		.expect_err("run once should propagate refresh failure");
 
 	assert!(
@@ -1269,7 +1269,7 @@ fn run_project_once_ignores_fresh_marker_for_exited_process() {
 	state::write_run_activity_marker_for_process(&worktree.path, "run-1", 1, exited_process_id)
 		.expect("activity marker should write");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("recovery should succeed")
 		.expect("dead process marker should not block retry planning");
 
