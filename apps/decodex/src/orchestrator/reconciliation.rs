@@ -445,6 +445,7 @@ where
 			issue_identifier: action.issue.identifier.clone(),
 			run_id: action.run_attempt.run_id().to_owned(),
 			worktree_path,
+			source_error_class: Some(String::from("stalled_run_detected")),
 		}),
 	)?;
 
