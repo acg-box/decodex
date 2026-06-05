@@ -12,6 +12,12 @@ const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
 const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] =
 	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo-touch.png"));
 const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
+const DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS: &[&str] = &[
+	"idle_for_seconds",
+	"protocol_idle_for_seconds",
+	"current_elapsed_seconds",
+	"wall_seconds",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OperatorRequestRoute {
@@ -176,13 +182,6 @@ struct DashboardRunActivityEvent {
 	fingerprint: Vec<u8>,
 	event: DashboardBroadcastEvent,
 }
-
-const DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS: &[&str] = &[
-	"idle_for_seconds",
-	"protocol_idle_for_seconds",
-	"current_elapsed_seconds",
-	"wall_seconds",
-];
 
 fn run_operator_state_endpoint(
 	listener: TcpListener,
