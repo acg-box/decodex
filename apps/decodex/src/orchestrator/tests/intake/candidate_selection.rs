@@ -289,7 +289,6 @@ fn plan_project_issue_run_prefers_post_review_repair_lane_over_normal_candidate(
 		dispatch_mode: IssueDispatchMode::ReviewRepair,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
-	allow_unverified_codex: false,
 	})
 	.expect("targeted review-repair planning should succeed")
 	.expect("review-repair issue run should plan");
@@ -410,7 +409,6 @@ fn targeted_post_review_repair_skips_persisted_exhausted_retry_budget() {
 		dispatch_mode: IssueDispatchMode::ReviewRepair,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
-	allow_unverified_codex: false,
 	})
 	.expect("targeted review-repair planning should succeed");
 
@@ -565,7 +563,6 @@ fn plan_project_issue_run_prefers_post_review_closeout_lane_over_normal_candidat
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
-	allow_unverified_codex: false,
 	})
 	.expect("targeted closeout planning should succeed")
 	.expect("closeout issue run should plan");
@@ -688,7 +685,6 @@ fn plan_project_issue_run_allows_merged_closeout_after_retry_budget() {
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
-	allow_unverified_codex: false,
 	})
 	.expect("targeted closeout planning should succeed")
 	.expect("closeout issue run should plan");
@@ -1411,7 +1407,6 @@ fn non_dry_run_closeout_dispatch_errors_when_pr_state_read_fails() {
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
-	allow_unverified_codex: false,
 	})
 	.expect_err("non-dry-run closeout dispatch should surface GH state read failures");
 
