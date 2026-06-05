@@ -12,6 +12,12 @@ const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
 const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] =
 	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo-touch.png"));
 const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
+const DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS: &[&str] = &[
+	"idle_for_seconds",
+	"protocol_idle_for_seconds",
+	"current_elapsed_seconds",
+	"wall_seconds",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OperatorRequestRoute {
@@ -534,19 +540,17 @@ fn build_operator_run_activity_event(
 		active_runs.extend(project_active_runs);
 	}
 
-	let fingerprint_payload = json!({
-		"accountControl": &account_control,
-		"accounts": &accounts,
-		"activeRuns": &active_runs,
-		"activeRunsComplete": true,
-		"activeRunScope": "complete",
-	});
+	let fingerprint_payload = dashboard_run_activity_fingerprint_payload(
+		&account_control,
+		&accounts,
+		&active_runs,
+	);
 	let fingerprint = serde_json::to_vec(&fingerprint_payload)?;
 	let payload = json!({
 		"emittedAtUnixEpoch": now_unix_epoch,
-		"accountControl": account_control,
-		"accounts": accounts,
-		"activeRuns": active_runs,
+		"accountControl": &account_control,
+		"accounts": &accounts,
+		"activeRuns": &active_runs,
 		"activeRunsComplete": true,
 		"activeRunScope": "complete",
 	});
@@ -555,6 +559,43 @@ fn build_operator_run_activity_event(
 		fingerprint,
 		event: DashboardBroadcastEvent { event_type: "runActivity", payload },
 	})
+}
+
+fn dashboard_run_activity_fingerprint_payload(
+	account_control: &OperatorCodexAccountControlStatus,
+	accounts: &[CodexAccountActivitySummary],
+	active_runs: &[OperatorRunStatus],
+) -> Value {
+	let mut fingerprint_payload = json!({
+		"accountControl": account_control,
+		"accounts": accounts,
+		"activeRuns": active_runs,
+		"activeRunsComplete": true,
+		"activeRunScope": "complete",
+	});
+
+	strip_dashboard_run_activity_volatile_fields(&mut fingerprint_payload);
+
+	fingerprint_payload
+}
+
+fn strip_dashboard_run_activity_volatile_fields(value: &mut Value) {
+	match value {
+		Value::Object(object) => {
+			for field in DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS {
+				object.remove(*field);
+			}
+			for child in object.values_mut() {
+				strip_dashboard_run_activity_volatile_fields(child);
+			}
+		},
+		Value::Array(values) => {
+			for child in values {
+				strip_dashboard_run_activity_volatile_fields(child);
+			}
+		},
+		_ => {},
+	}
 }
 
 fn dashboard_current_snapshot_event_payload(
