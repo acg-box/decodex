@@ -1,0 +1,104 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-rust-v0-138-0-alpha-4-structured-read-text-only",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "thread",
+  "status": "published",
+  "audience": "Codex CLI alpha testers and Decodex Radar readers",
+  "text": [
+    "Codex CLI 0.138.0-alpha.4 prerelease read\n\nWorth watching:\n- #25469 adds app-server accountSession/* protocol\n- #25638 adds /app handoff from CLI to Codex Desktop\n\nAlpha caveat: metadata read, not stable release notes.",
+    "Protocol/API changes in the alpha window:\n- #26444 supports model-defined reasoning efforts\n- #26446 preserves model-advertised effort order\n- #26447 removes response.processed websocket request\n- #26312 trims stale experimentalFeature keys",
+    "Developer/operator surface:\n- #26272 loads plugin hooks without every plugin capability\n- #26417 adds marketplaceSource to plugin list JSON\n- #25944 exposes local image paths to models\n- #25947 adds saved-image path hints for standalone imagegen",
+    "Why track prereleases?\n\nStable notes say what shipped. Alpha metadata shows where Codex is moving: Desktop handoff, app-server protocol, model metadata, plugins, and image flows.\n\nCompare:\nhttps://github.com/openai/codex/compare/rust-v0.137.0...rust-v0.138.0-alpha.4"
+  ],
+  "source_refs": {
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4",
+      "https://github.com/openai/codex/compare/rust-v0.137.0...rust-v0.138.0-alpha.4",
+      "https://github.com/openai/codex/pull/25469",
+      "https://github.com/openai/codex/pull/25638",
+      "https://github.com/openai/codex/pull/26444",
+      "https://github.com/openai/codex/pull/26446",
+      "https://github.com/openai/codex/pull/26447",
+      "https://github.com/openai/codex/pull/26312",
+      "https://github.com/openai/codex/pull/26272",
+      "https://github.com/openai/codex/pull/26417",
+      "https://github.com/openai/codex/pull/25944",
+      "https://github.com/openai/codex/pull/25947",
+      "https://x.com/decodexspace/status/2062727471146152223",
+      "https://x.com/decodexspace/status/2062727473121616190",
+      "https://x.com/decodexspace/status/2062727474933547147",
+      "https://x.com/decodexspace/status/2062727476753895425"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata was rechecked immediately before posting and rust-v0.138.0-alpha.4 remained the latest observed openai/codex prerelease.",
+    "The thread was revised after operator feedback to focus on important PR/commit clusters, anticipated workflow changes, protocol/API changes, and scan-friendly line breaks.",
+    "Chrome account readback showed @decodexspace before composing.",
+    "The X composer accepted all four thread posts and exposed Post all before submission.",
+    "X returned Your posts were sent after Post all.",
+    "Timeline readback showed the four newly published Decodex posts with matching text and four status URLs.",
+    "No media was attached because the previous X file upload path stalled the Chrome extension control channel; this run intentionally avoided file upload to validate text and layout only.",
+    "The operator later deleted this text-only thread after pointing out missing media, channel-lineage, and raw PR-number issues.",
+    "Follow-up review found this thread mixed stable-to-prerelease comparison into a prerelease-channel post; it is retained as audit evidence only and must not be used as a previous prerelease quote target."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.138.0-alpha.4 is the latest observed openai/codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The rust-v0.137.0 to rust-v0.138.0-alpha.4 compare window has 45 ahead commits.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.137.0...rust-v0.138.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The compare window includes app-server accountSession/* protocol work and /app Desktop handoff work.",
+      "evidence": "https://github.com/openai/codex/pull/25469 and https://github.com/openai/codex/pull/25638",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The compare window includes protocol/API changes around reasoning efforts, websocket request shape, and experimentalFeature keys.",
+      "evidence": "https://github.com/openai/codex/pull/26444, https://github.com/openai/codex/pull/26446, https://github.com/openai/codex/pull/26447, and https://github.com/openai/codex/pull/26312",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "high",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-138-0-alpha-4:structured-thread:text-only",
+    "reason": "Operator deleted the rough prerelease thread and requested a fresh run to inspect the improved structure; media upload remained unreliable, so this publication intentionally validated text structure only.",
+    "daily_limit": 8,
+    "daily_count_before": 3,
+    "daily_count_after": 7,
+    "day": "2026-06-05",
+    "timezone": "Asia/Shanghai"
+  },
+  "publication": {
+    "posted_at": "2026-06-05T02:46:39Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2062727471146152223",
+      "https://x.com/decodexspace/status/2062727473121616190",
+      "https://x.com/decodexspace/status/2062727474933547147",
+      "https://x.com/decodexspace/status/2062727476753895425"
+    ],
+    "publisher": "chrome",
+    "account_verified": true,
+    "made_with_ai": false
+  },
+  "post_lifecycle": {
+    "current_state": "deleted_by_operator",
+    "quote_eligible": false,
+    "superseded_by_candidate": "artifacts/github/social-candidates/openai-codex-rust-v0-138-0-alpha-4-prerelease-delta.json",
+    "reason": "The text-only thread was deleted by the operator and superseded by the adjacent alpha.3 to alpha.4 prerelease candidate with media expectation and clickable PR URLs."
+  },
+  "caveats": [
+    "No media was attached to this published thread.",
+    "A candidate-specific image exists locally at /Users/x/.codex/decodex/social-media/codex-cli-0-138-alpha-4-structured.svg.png, but X upload was intentionally avoided because it previously stalled the Chrome control channel.",
+    "This thread is a prerelease metadata read, not stable-release guidance.",
+    "This record is not a live quote target for future prerelease-chain posts."
+  ]
+}
