@@ -59,7 +59,7 @@ Recommended checked-in location:
 - `artifacts/github/reviews/<source-slug>.review.json`
 
 Review artifacts are hot Radar artifacts unless they are promoted into
-`upstream_impact/v1`, `signal_entry/v1`, `social_post/v1`, or a Linear follow-up.
+`upstream_impact/v1`, `signal_entry/v1`, `social_candidate/v1`, or a Linear follow-up.
 Apply the 21-day hot-window rule from [`radar-artifact-retention.md`](./radar-artifact-retention.md).
 
 ## Queue requirements
@@ -112,7 +112,7 @@ or public value.
 - confidence: `confirmed`, `likely`, or `weak`
 - source-backed evidence notes
 - next actions, each mapped to `none`, `upstream_impact`, `signal_entry`,
-  `social_candidate`, `social_post`, or `linear_followup`
+  `social_candidate`, or `linear_followup`
 
 AI review must read enough source evidence to explain behavior. A PR title, release
 title, or deterministic queue hint is not enough for a confirmed claim.
@@ -134,10 +134,7 @@ Promote an upstream review into:
 - `signal_entry/v1` when it is community-ready and has user-visible capability,
   behavior, try path, or migration value.
 - `social_candidate/v1` when there is a clear public angle and source links are
-  available, but the upstream review automation must not write a publication record.
-- `social_post/v1` when there is a clear public angle and source links are
-  available and the Publisher workflow is actually publishing, blocking, skipping, or
-  recording failure.
+  available. Publisher later decides whether to write terminal `social_post/v1`.
 - a Linear issue when Decodex should adopt, guard, migrate, or investigate the change.
 
 Do not promote low-value internal churn into public artifacts. Keep it traceable in the
@@ -150,4 +147,4 @@ They may trigger a gap scan, but they must not replace commit and PR evidence.
 
 This matters most for Codex prereleases because prerelease bodies may be sparse or empty.
 Rollups should combine prior reviews, impact artifacts, public signals, and compare
-metadata before producing a public summary or X post.
+metadata before producing a social candidate or X post.
