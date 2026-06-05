@@ -1282,6 +1282,7 @@ where
 			issue_identifier: issue.identifier.clone(),
 			run_id: child.run_id.to_owned(),
 			worktree_path: worktree_path.clone(),
+			source_error_class: None,
 		})
 	} else {
 		Report::msg(format!(
