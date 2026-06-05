@@ -188,6 +188,50 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertTrue(snapshot.activeRuns(for: account).isEmpty)
 	}
 
+	func testOperatorProjectStatusSeparatesActiveAndRunningLaneCounts() throws {
+		let payload = """
+		{
+		  "projects": [
+		    {
+		      "project_id": "pubfi-platform",
+		      "active_run_count": 2,
+		      "running_lane_count": 1,
+		      "attention_count": 1
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
+		let project = try XCTUnwrap(snapshot.projects.first)
+
+		XCTAssertEqual(project.activeRunCount, 2)
+		XCTAssertEqual(project.runningLaneCount, 1)
+		XCTAssertEqual(snapshot.activeRunCount, 2)
+		XCTAssertEqual(snapshot.runningLaneCount, 1)
+		XCTAssertEqual(snapshot.attentionCount, 1)
+	}
+
+	func testOperatorProjectStatusDefaultsRunningLaneCountToActiveRunCount() throws {
+		let payload = """
+		{
+		  "projects": [
+		    {
+		      "project_id": "pubfi-platform",
+		      "active_run_count": 2
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: payload)
+		let project = try XCTUnwrap(snapshot.projects.first)
+
+		XCTAssertEqual(project.activeRunCount, 2)
+		XCTAssertEqual(project.runningLaneCount, 2)
+		XCTAssertEqual(snapshot.runningLaneCount, 2)
+	}
+
 	func testOperatorSnapshotAssignsSelectedAccountWhenPrimaryAccountIsMissing() throws {
 		let assignedAccount = makeAccount(
 			status: "available",
@@ -338,6 +382,43 @@ final class AccountModelTests: XCTestCase {
 
 		XCTAssertEqual(merged.activeRuns.map(\.runID), ["run-689", "run-690"])
 		XCTAssertEqual(merged.activeRuns(for: account).map(\.runID), ["run-689", "run-690"])
+	}
+
+	func testPartialRunActivityRecomputesProjectRunningLaneCounts() throws {
+		let snapshotPayload = """
+		{
+		  "projects": [
+		    {
+		      "project_id": "pubfi-platform",
+		      "active_run_count": 1,
+		      "running_lane_count": 1
+		    }
+		  ],
+		  "active_runs": [
+		    {
+		      "run_id": "run-stopped",
+		      "project_id": "pubfi-platform",
+		      "status": "running",
+		      "phase": "executing",
+		      "process_alive": false
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+		let snapshot = try JSONDecoder().decode(OperatorSnapshotResponse.self, from: snapshotPayload)
+		let overlay = OperatorRunActivitySnapshot(
+			activeRuns: [],
+			activeRunsComplete: false,
+			emittedAt: Date(timeIntervalSince1970: 30)
+		)
+		let merged = overlay.merging(into: snapshot)
+		let project = try XCTUnwrap(merged.projects.first)
+
+		XCTAssertEqual(merged.activeRuns.map(\.runID), ["run-stopped"])
+		XCTAssertEqual(project.activeRunCount, 1)
+		XCTAssertEqual(project.runningLaneCount, 0)
+		XCTAssertEqual(merged.activeRunCount, 1)
+		XCTAssertEqual(merged.runningLaneCount, 0)
 	}
 
 	func testEmptyPartialRunActivityPreservesSnapshotActiveRuns() throws {

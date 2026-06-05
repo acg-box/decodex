@@ -320,6 +320,7 @@ fn build_operator_status_snapshot_with_account_mode(
 			enabled: true,
 			github_cli_authority: operator_github_cli_authority(project),
 			active_run_count: active_runs.len(),
+			running_lane_count: active_runs.len(),
 			queued_candidate_count: 0,
 			post_review_lane_count: 0,
 			retained_worktree_count: 0,
@@ -902,7 +903,8 @@ fn worktree_cleanup_only_reason(
 }
 
 fn refresh_operator_project_summary(snapshot: &mut OperatorStatusSnapshot) {
-	let active_run_count =
+	let active_run_count = snapshot.active_runs.len();
+	let running_lane_count =
 		snapshot.active_runs.iter().filter(|run| operator_run_counts_as_running(run)).count();
 	let queued_candidate_count = snapshot
 		.queued_candidates
@@ -921,6 +923,7 @@ fn refresh_operator_project_summary(snapshot: &mut OperatorStatusSnapshot) {
 
 	if let Some(project_status) = snapshot.projects.first_mut() {
 		project_status.active_run_count = active_run_count;
+		project_status.running_lane_count = running_lane_count;
 		project_status.queued_candidate_count = queued_candidate_count;
 		project_status.post_review_lane_count = post_review_lane_count;
 		project_status.retained_worktree_count = retained_worktree_count;

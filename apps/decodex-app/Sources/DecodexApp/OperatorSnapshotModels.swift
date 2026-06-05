@@ -14,6 +14,13 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		)
 	}
 
+	var runningLaneCount: Int {
+		max(
+			activeRuns.filter(\.countsAsRunning).count,
+			projects.reduce(0) { $0 + $1.runningLaneCount }
+		)
+	}
+
 	var queuedCount: Int {
 		max(
 			queuedCandidates.filter { $0.isClosed == false }.count,
@@ -77,7 +84,7 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 	}
 
 	func runningCount(for account: CodexAccount) -> Int {
-		activeRuns(for: account).count
+		activeRuns(for: account).filter(\.countsAsRunning).count
 	}
 
 	func mergingRunActivity(
@@ -106,12 +113,19 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		let mergedRuns = mergedSnapshotRuns + newActivityRuns
 		let activeCountsByProject = Dictionary(grouping: mergedRuns.compactMap(\.projectID)) { $0 }
 			.mapValues(\.count)
+		let runningCountsByProject = Dictionary(
+			grouping: mergedRuns.filter(\.countsAsRunning).compactMap(\.projectID)
+		) { $0 }
+			.mapValues(\.count)
 		let mergedProjects = projects.map { project in
 			guard let projectID = project.projectID else {
 				return project
 			}
 
-			return project.withActiveRunCount(activeCountsByProject[projectID] ?? 0)
+			return project.withRunCounts(
+				active: activeCountsByProject[projectID] ?? 0,
+				running: runningCountsByProject[projectID] ?? 0
+			)
 		}
 
 		return OperatorSnapshotResponse(
@@ -173,6 +187,7 @@ struct OperatorProjectStatus: Decodable, Sendable {
 	let connectorState: String?
 	let warningCount: Int
 	let activeRunCount: Int
+	let runningLaneCount: Int
 	let queuedCandidateCount: Int
 	let postReviewLaneCount: Int
 	let waitingLaneCount: Int
@@ -180,13 +195,14 @@ struct OperatorProjectStatus: Decodable, Sendable {
 	let cleanupBlockedCount: Int
 	let cleanupPendingCount: Int
 
-	func withActiveRunCount(_ count: Int) -> OperatorProjectStatus {
+	func withRunCounts(active: Int, running: Int) -> OperatorProjectStatus {
 		OperatorProjectStatus(
 			projectID: projectID,
 			enabled: enabled,
 			connectorState: connectorState,
 			warningCount: warningCount,
-			activeRunCount: count,
+			activeRunCount: active,
+			runningLaneCount: running,
 			queuedCandidateCount: queuedCandidateCount,
 			postReviewLaneCount: postReviewLaneCount,
 			waitingLaneCount: waitingLaneCount,
@@ -202,6 +218,7 @@ struct OperatorProjectStatus: Decodable, Sendable {
 		case connectorState = "connector_state"
 		case warningCount = "warning_count"
 		case activeRunCount = "active_run_count"
+		case runningLaneCount = "running_lane_count"
 		case queuedCandidateCount = "queued_candidate_count"
 		case postReviewLaneCount = "post_review_lane_count"
 		case waitingLaneCount = "waiting_lane_count"
@@ -218,6 +235,8 @@ struct OperatorProjectStatus: Decodable, Sendable {
 		connectorState = try container.decodeIfPresent(String.self, forKey: .connectorState)
 		warningCount = try container.decodeIfPresent(Int.self, forKey: .warningCount) ?? 0
 		activeRunCount = try container.decodeIfPresent(Int.self, forKey: .activeRunCount) ?? 0
+		runningLaneCount =
+			try container.decodeIfPresent(Int.self, forKey: .runningLaneCount) ?? activeRunCount
 		queuedCandidateCount = try container.decodeIfPresent(Int.self, forKey: .queuedCandidateCount) ?? 0
 		postReviewLaneCount = try container.decodeIfPresent(Int.self, forKey: .postReviewLaneCount) ?? 0
 		waitingLaneCount = try container.decodeIfPresent(Int.self, forKey: .waitingLaneCount) ?? 0
@@ -232,6 +251,7 @@ struct OperatorProjectStatus: Decodable, Sendable {
 		connectorState: String?,
 		warningCount: Int,
 		activeRunCount: Int,
+		runningLaneCount: Int,
 		queuedCandidateCount: Int,
 		postReviewLaneCount: Int,
 		waitingLaneCount: Int,
@@ -244,6 +264,7 @@ struct OperatorProjectStatus: Decodable, Sendable {
 		self.connectorState = connectorState
 		self.warningCount = warningCount
 		self.activeRunCount = activeRunCount
+		self.runningLaneCount = runningLaneCount
 		self.queuedCandidateCount = queuedCandidateCount
 		self.postReviewLaneCount = postReviewLaneCount
 		self.waitingLaneCount = waitingLaneCount
@@ -371,6 +392,36 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			|| processAlive == true
 			|| status == "running"
 			|| phase == "executing"
+	}
+
+	var countsAsRunning: Bool {
+		hasRunningStatus
+			&& phase == "executing"
+			&& processAlive != false
+			&& hasAttentionTone == false
+			&& hasStaleExecutionWithoutKnownProcess == false
+	}
+
+	private var hasRunningStatus: Bool {
+		guard let status else {
+			return false
+		}
+
+		return ["starting", "running"].contains(status)
+	}
+
+	private var hasStaleExecutionWithoutKnownProcess: Bool {
+		hasRunningStatus
+			&& phase == "executing"
+			&& waitReason == nil
+			&& processAlive != true
+			&& [idleForSeconds, protocolIdleForSeconds].contains { idleForSeconds in
+				guard let idleForSeconds else {
+					return false
+				}
+
+				return idleForSeconds >= 300
+			}
 	}
 
 	func mergingActivity(_ activity: OperatorRunStatus) -> OperatorRunStatus {
