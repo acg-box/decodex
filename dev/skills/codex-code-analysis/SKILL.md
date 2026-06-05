@@ -11,6 +11,11 @@ evidence into a defensible interpretation, not to rewrite release notes.
 This is a Decodex repository-development instruction surface, not an installable
 Decodex plugin skill.
 
+This is the only repo-local skill that should read upstream Codex source for behavior,
+compatibility, or Publisher claims during recurring Radar automation. Downstream
+release, signal, and publishing skills consume this skill's reviewed artifacts instead
+of redoing the source pass.
+
 ## Read Before Analysis
 
 - `docs/spec/github-change-bundle.md`
@@ -30,7 +35,7 @@ Decodex plugin skill.
 This skill may produce an `upstream_review/v1` when Codex automation is processing the
 continuous review queue. Keep ad hoc manual notes in-session unless they are promoted
 into `upstream_review/v1`, `analysis_draft`, `upstream_impact/v1`, or
-`social_post/v1`.
+`social_candidate/v1`.
 
 ## Analysis Loop
 
@@ -92,7 +97,9 @@ Return an analysis note that can feed `github-signal`, `codex-release-analysis`,
 - Publisher angle, if any
 - confidence and caveats
 - recommended next artifact: `none`, `analysis_draft` through `github-signal`,
-  `upstream_impact/v1`, or `social_post/v1`
+  `upstream_impact/v1`, or `social_candidate/v1`
+- downstream consumer gates: which artifacts are safe to consume and which claims still
+  require source review
 
 Keep the note shorter than the source patch. Explain the behavior path, not every
 changed file.
