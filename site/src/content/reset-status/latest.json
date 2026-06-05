@@ -5,24 +5,30 @@
   "confidence": "likely",
   "observed_for_date": "2026-06-05",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-05T00:50:47Z",
+  "generated_at": "2026-06-05T06:52:50Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
-  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-05%20until%3A2026-06-06&src=typed_query&f=live",
+  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-04%20until%3A2026-06-06&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "Chrome/X profile and search showed local-day @thsottiaux posts about a Codex token-counting bug and a reply about Codex complaints, but neither semantically indicated a rate-limit, quota, usage, message-cap, or reset-window recovery.",
+  "rationale": "Chrome/X profile, search, and reply context showed local-day @thsottiaux posts about the Codex Python SDK, a Codex complaint reply, and a Codex token-counting bug. None semantically indicated a rate-limit, quota, usage, message-cap, or reset-window recovery; reset/usage searches only surfaced the prior local-day reset post.",
   "evidence_posts": [
     {
-      "published_at_label": "2026-06-05 05:30:57 +08 (X datetime 2026-06-04T21:30:57Z)",
-      "url": "https://x.com/thsottiaux/status/2062648326332539015",
+      "published_at_label": "2026-06-05 11:12:15 +08 (X datetime 2026-06-05T03:12:15Z)",
+      "url": "https://x.com/thsottiaux/status/2062734215494664697",
       "relevance": "not_related",
-      "summary": "@thsottiaux said OpenAI was fixing a Codex bug that undercounted tokens served to some Pro and Plus accounts; this is usage-adjacent but did not say limits, quotas, caps, or reset windows were reset or recovered."
+      "summary": "@thsottiaux posted that Codex can be used within programs via the Python SDK and linked OpenAI developer docs; this was a Codex SDK/product note, not a reset, quota, usage, cap, or recovery signal."
     },
     {
       "published_at_label": "2026-06-05 08:13:22 +08 (X label 8:13 AM · Jun 5, 2026)",
       "url": "https://x.com/thsottiaux/status/2062689198403105262",
       "relevance": "not_related",
       "summary": "@thsottiaux replied \"That's my line\" to a post asking daily Codex users for their biggest complaint; visible thread context did not include a reset or recovery announcement from @thsottiaux."
+    },
+    {
+      "published_at_label": "2026-06-05 05:30:57 +08 (X datetime 2026-06-04T21:30:57Z)",
+      "url": "https://x.com/thsottiaux/status/2062648326332539015",
+      "relevance": "not_related",
+      "summary": "@thsottiaux said OpenAI was fixing a Codex bug that undercounted tokens served to some Pro and Plus accounts; this is usage-adjacent but did not say limits, quotas, caps, or reset windows were reset or recovered."
     },
     {
       "published_at_label": "2026-06-04 08:25:58 +08 (outside observed_for_date)",
