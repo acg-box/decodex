@@ -114,8 +114,8 @@ Rules:
   the quoted text is short and necessary.
 - Treat official OpenAI Codex changelog entries as evidence for app, mobile, and
   product-surface claims when the post stays within that changelog.
-- Treat X benchmark accounts as format and coverage evidence only, not as proof for a
-  technical claim.
+- Treat X benchmark accounts as historical format inspiration only. They are not
+  coverage evidence, technical evidence, urgency signals, or publish/skip gates.
 - For prerelease reads, map concrete bullets to PR numbers, commit titles, compare
   metadata, or release URLs. Do not publish a generic theme paragraph when the evidence
   can name important commits, anticipated features, protocol/API changes, removals, or
