@@ -1,0 +1,56 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-app-26-602-release-pulse",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "release_pulse",
+  "priority": "normal",
+  "audience": "Codex app users and desktop operators",
+  "candidate_text": [
+    "Codex app 26.602 is out.\n\n- Profile now has activity insights and share cards\n- Computer Use startup/appshot reporting improved\n- Browser/review UI fixes and onboarding roles expanded\n\nSource: https://developers.openai.com/codex/changelog"
+  ],
+  "source_refs": {
+    "urls": [
+      "https://developers.openai.com/codex/changelog"
+    ]
+  },
+  "evidence_notes": [
+    "The official Codex changelog lists the 2026-06-04 Codex app updates entry as version 26.602.",
+    "The changelog says Profile gained activity insights and share cards, with sharing available on consumer ChatGPT plans.",
+    "The changelog says Computer Use startup readiness and appshot error reporting improved.",
+    "The changelog lists browser and review UI fixes plus expanded onboarding role choices."
+  ],
+  "claims": [
+    {
+      "text": "Codex app 26.602 is an official Codex app changelog checkpoint dated 2026-06-04.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Codex app 26.602 adds activity insights and share cards to the Profile section.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Codex app 26.602 improves Computer Use startup readiness, appshot error reporting, browser UI, review UI, and onboarding role choices.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The official app changelog lists concrete reader-visible changes, so a source-led release_pulse is useful without upstream source analysis.",
+    "idempotency_key": "x:decodexspace:openai-codex-app-26.602:release_pulse"
+  },
+  "caveats": [
+    "Do not infer implementation behavior beyond the official changelog entry.",
+    "Benchmark accounts already covered the 26.602 app update, so Publisher should keep the post source-led and concise or record a skip if it would be duplicative.",
+    "This candidate does not require upstream GitHub source, patch, or PR-file analysis."
+  ],
+  "next_steps": [
+    "Hand this candidate to decodex-x-publisher for daily-cap, duplicate, media, and account checks.",
+    "If publishing, write a social_post/v1 record with release_pulse mode and the same source URL.",
+    "If benchmark duplication makes the post low-value by publish time, write a skipped social_post/v1 record instead of posting."
+  ]
+}
