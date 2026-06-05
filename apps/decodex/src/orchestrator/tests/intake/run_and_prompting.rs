@@ -90,7 +90,7 @@ fn dry_run_selects_one_issue_and_plans_worktree() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let tracker = FakeTracker::new(vec![sample_issue("Todo", &[])]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("run once should succeed")
 		.expect("one issue should be selected");
 
@@ -161,7 +161,6 @@ fn targeted_identifier_dispatch_accepts_status_ready_queued_issue() {
 			dispatch_mode: IssueDispatchMode::Normal,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
-		allow_unverified_codex: false,
 		},
 	)
 	.expect("targeted identifier run should succeed")
@@ -195,7 +194,6 @@ fn targeted_inferred_dispatch_keeps_retry_for_active_issue() {
 			dispatch_mode: IssueDispatchMode::Normal,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
-		allow_unverified_codex: false,
 		},
 	)
 	.expect("targeted active identifier run should succeed")
@@ -272,7 +270,6 @@ fn targeted_identifier_dispatch_accepts_status_visible_retained_closeout_lane() 
 			dispatch_mode: IssueDispatchMode::Normal,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
-		allow_unverified_codex: false,
 		},
 	)
 	.expect("targeted retained closeout identifier run should succeed")
@@ -364,7 +361,6 @@ fn targeted_identifier_dispatch_rejects_different_status_visible_closeout_lane()
 			dispatch_mode: IssueDispatchMode::Normal,
 			preferred_run_identity: None,
 			preferred_retry_budget_base: None,
-		allow_unverified_codex: false,
 		},
 	)
 	.expect_err("targeted closeout inference should reject a different visible lane");
@@ -405,7 +401,7 @@ fn dry_run_returns_none_when_intake_has_no_service_owned_candidate() {
 		let tracker = FakeTracker::with_refresh_snapshots_and_project(vec![], vec![vec![]], false);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 		let summary =
-			orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+			orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 				.expect("dry run without queued issues should succeed");
 
 		assert!(summary.is_none(), "empty intake should simply produce no dry-run selection");
@@ -424,7 +420,7 @@ fn dry_run_returns_none_when_intake_has_no_service_owned_candidate() {
 		let tracker = FakeTracker::new(vec![issue]);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 		let summary =
-			orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+			orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 				.expect("dry run should succeed");
 
 		assert!(summary.is_none(), "service-scoped queue labels should isolate intake");
@@ -486,7 +482,7 @@ fn dry_run_falls_back_to_normal_issue_when_retained_retry_loses_ownership() {
 		)
 		.expect("worktree mapping should record");
 
-	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true, false)
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
 		.expect("dry run should succeed")
 		.expect("normal queued issue should be selected after retained retry is excluded");
 

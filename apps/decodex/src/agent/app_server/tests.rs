@@ -16,11 +16,10 @@ use crate::{
 		app_server::{
 			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerCapabilityPreflightFailure,
 			AppServerCapabilityPreflightReport, AppServerDynamicToolFailure, AppServerRunResult,
-			AppServerSchemaProbeEvidence, AppServerThreadArchiveRequest, AppServerTurnFailure,
-			CommandExecHealthCheck, CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
-			ModelProviderCapabilitiesReadResponse, PREFLIGHT_CHECK_CONFIG, PREFLIGHT_CHECK_MODEL,
-			PluginListResponse, ProbeDynamicToolHandler, REQUEST_TIMEOUT, RequestWaitPhase,
-			RunRecorder, RuntimeConfigSummary, SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER,
+			AppServerThreadArchiveRequest, AppServerTurnFailure, CommandExecHealthCheck,
+			CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
+			ModelProviderCapabilitiesReadResponse, PluginListResponse, ProbeDynamicToolHandler,
+			REQUEST_TIMEOUT, RequestWaitPhase, RunRecorder, RuntimeConfigSummary,
 			SkillsListResponse, TurnContinuationGuard, UserInput,
 		},
 		json_rpc::{
@@ -286,220 +285,6 @@ fn probe_result_shape_is_stable() {
 }
 
 #[test]
-fn app_server_compatibility_guard_accepts_current_verified_codex_surfaces() {
-	let schema_evidence = AppServerSchemaProbeEvidence::checked(
-		String::from("target/decodex-app-server-schema-check"),
-		APP_SERVER_SCHEMA_REQUIRED_MARKERS,
-	);
-
-	for (user_agent, expected_codex_cli_version) in [
-		("codex-cli 0.136.0", "codex-cli 0.136.0"),
-		("codex-cli 0.136.0-alpha.2", "codex-cli 0.136.0-alpha.2"),
-		(
-			"Codex Desktop/0.136.0 (Mac OS 26.5.1; arm64) ghostty/1.3.2-main-_6246c288a (decodex; 0.1.0)",
-			"codex-cli 0.136.0",
-		),
-		(
-			"Codex Desktop/0.137.0-alpha.4 (Mac OS 26.5.1; arm64) ghostty/1.3.2-main-_6246c288a (decodex; 0.1.0)",
-			"codex-cli 0.137.0-alpha.4",
-		),
-		("decodex/0.136.0 (Mac OS 26.5.0; arm64) unknown (decodex; 0.1.0)", "codex-cli 0.136.0"),
-		(
-			"decodex/0.136.0-alpha.2 (Mac OS 26.5.0; arm64) unknown (decodex; 0.1.0)",
-			"codex-cli 0.136.0-alpha.2",
-		),
-		(
-			"decodex/0.137.0-alpha.4 (Mac OS 26.5.1; arm64) unknown (decodex; 0.1.0)",
-			"codex-cli 0.137.0-alpha.4",
-		),
-	] {
-		let mut report = AppServerCapabilityPreflightReport::new();
-
-		report.push_ok(
-			PREFLIGHT_CHECK_CONFIG,
-			"config/read returned effective runtime configuration.",
-			BTreeMap::new(),
-		);
-
-		super::record_app_server_compatibility_guard(
-			&mut report,
-			user_agent,
-			false,
-			Some(&schema_evidence),
-		);
-
-		assert!(!report.has_blockers(), "{user_agent} should be supported");
-		assert_eq!(report.compatibility_status(), "supported");
-		assert_eq!(report.compatibility_support_decision(), Some("supported_exact_version"));
-		assert_eq!(
-			report.compatibility_codex_cli_version(),
-			Some(expected_codex_cli_version),
-			"{user_agent} should be the matched Codex CLI version"
-		);
-		assert_eq!(
-			report.compatibility_supported_versions(),
-			Some("codex-cli 0.136.0, codex-cli 0.136.0-alpha.2, codex-cli 0.137.0-alpha.4")
-		);
-		assert_eq!(report.compatibility_capability_evidence(), Some("config=ok"));
-		assert_eq!(report.compatibility_schema_evidence(), Some("checked"));
-		assert_eq!(
-			report.compatibility_schema_cache(),
-			Some("target/decodex-app-server-schema-check")
-		);
-	}
-}
-
-#[test]
-fn app_server_compatibility_guard_rejects_unverified_codex_surfaces() {
-	for user_agent in [
-		"codex-cli 0.137.0-alpha.0",
-		"codex-cli 0.137.0-alpha.5",
-		"codex-cli 0.136.1",
-		"other-app/0.136.0",
-		"openai/codex upstream-main-post-rust-v0.136.0",
-	] {
-		let mut report = AppServerCapabilityPreflightReport::new();
-
-		report.push_ok(
-			PREFLIGHT_CHECK_CONFIG,
-			"config/read returned effective runtime configuration.",
-			BTreeMap::new(),
-		);
-
-		super::record_app_server_compatibility_guard(&mut report, user_agent, false, None);
-
-		assert!(report.has_blockers(), "{user_agent} should be outside support");
-		assert_eq!(report.compatibility_status(), "unsupported");
-		assert!(
-			report
-				.compatibility_support_decision()
-				.is_some_and(|decision| decision.starts_with("unsupported_")),
-			"{user_agent} should record an unsupported decision"
-		);
-		assert_eq!(report.compatibility_schema_evidence(), Some("not_checked"));
-		assert_eq!(report.checks()[1].name, "compatibility");
-		assert_eq!(report.checks()[1].status, super::AppServerCapabilityPreflightStatus::Blocked);
-		assert!(report.checks()[1].summary.contains("outside"));
-		assert!(report.blocker_summary().contains("support_decision=unsupported_"));
-	}
-}
-
-#[test]
-fn app_server_compatibility_guard_allows_unverified_codex_when_requested() {
-	let schema_evidence = AppServerSchemaProbeEvidence::checked(
-		String::from("target/decodex-app-server-schema-check"),
-		APP_SERVER_SCHEMA_REQUIRED_MARKERS,
-	);
-	let mut report = AppServerCapabilityPreflightReport::new();
-
-	report.push_ok(
-		PREFLIGHT_CHECK_CONFIG,
-		"config/read returned effective runtime configuration.",
-		BTreeMap::new(),
-	);
-
-	super::record_app_server_compatibility_guard(
-		&mut report,
-		"codex-cli 0.138.0-alpha.1",
-		true,
-		Some(&schema_evidence),
-	);
-
-	assert!(!report.has_blockers());
-	assert_eq!(report.compatibility_status(), "unverified_allowed");
-	assert_eq!(report.compatibility_support_decision(), Some("unverified_allowed_by_override"));
-	assert_eq!(report.compatibility_schema_evidence(), Some("checked"));
-	assert_eq!(report.compatibility_capability_evidence(), Some("config=ok"));
-	assert_eq!(report.checks()[1].name, "compatibility");
-	assert_eq!(report.checks()[1].status, super::AppServerCapabilityPreflightStatus::Warning);
-	assert_eq!(
-		report.checks()[1].details.get("override").map(String::as_str),
-		Some("allow_unverified_codex")
-	);
-}
-
-#[test]
-fn app_server_compatibility_guard_keeps_unverified_version_blocked_with_schema_evidence() {
-	let schema_evidence = AppServerSchemaProbeEvidence::checked(
-		String::from("target/decodex-app-server-schema-check"),
-		APP_SERVER_SCHEMA_REQUIRED_MARKERS,
-	);
-	let mut report = AppServerCapabilityPreflightReport::new();
-
-	report.push_ok(
-		PREFLIGHT_CHECK_CONFIG,
-		"config/read returned effective runtime configuration.",
-		BTreeMap::new(),
-	);
-
-	super::record_app_server_compatibility_guard(
-		&mut report,
-		"codex-cli 0.137.0",
-		false,
-		Some(&schema_evidence),
-	);
-
-	assert!(report.has_blockers());
-	assert_eq!(report.compatibility_status(), "unsupported");
-	assert_eq!(report.compatibility_support_decision(), Some("unsupported_unverified_version"));
-	assert_eq!(report.compatibility_schema_evidence(), Some("checked"));
-	assert_eq!(report.compatibility_capability_evidence(), Some("config=ok"));
-}
-
-#[test]
-fn app_server_compatibility_guard_records_capability_and_schema_evidence_diagnostics() {
-	let schema_evidence = AppServerSchemaProbeEvidence::checked(
-		String::from("target/decodex-app-server-schema-check"),
-		APP_SERVER_SCHEMA_REQUIRED_MARKERS,
-	);
-	let mut report = AppServerCapabilityPreflightReport::new();
-
-	report.push_ok(
-		PREFLIGHT_CHECK_CONFIG,
-		"config/read returned effective runtime configuration.",
-		BTreeMap::new(),
-	);
-	report.push_ok(
-		PREFLIGHT_CHECK_MODEL,
-		"model/list returned an executable model selection.",
-		BTreeMap::new(),
-	);
-
-	super::record_app_server_compatibility_guard(
-		&mut report,
-		"codex-cli 0.136.0",
-		false,
-		Some(&schema_evidence),
-	);
-
-	let serialized = serde_json::to_value(&report).expect("report should serialize");
-	let compatibility = &serialized["checks"][2];
-
-	assert_eq!(compatibility["name"], "compatibility");
-	assert_eq!(compatibility["status"], "ok");
-	assert_eq!(compatibility["details"]["user_agent"], "codex-cli 0.136.0");
-	assert_eq!(compatibility["details"]["parsed_version"], "codex-cli 0.136.0");
-	assert_eq!(compatibility["details"]["support_decision"], "supported_exact_version");
-	assert_eq!(compatibility["details"]["capability_evidence"], "config=ok, model=ok");
-	assert_eq!(
-		compatibility["details"]["capability_evidence_source"],
-		"bounded_app_server_preflight"
-	);
-	assert_eq!(compatibility["details"]["schema_evidence"], "checked");
-	assert_eq!(compatibility["details"]["schema_cache"], "target/decodex-app-server-schema-check");
-	assert_eq!(
-		compatibility["details"]["schema_marker_count"],
-		super::APP_SERVER_SCHEMA_REQUIRED_MARKERS.len().to_string()
-	);
-	assert!(
-		compatibility["details"]["schema_markers"]
-			.as_str()
-			.expect("schema markers should serialize")
-			.contains("dynamicTools")
-	);
-}
-
-#[test]
 fn generated_schema_marker_validation_accepts_required_markers() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
 	let schema_path = temp_dir.path().join("app-server.schema.json");
@@ -576,30 +361,6 @@ fn generated_schema_marker_validation_rejects_prose_only_markers() {
 	assert!(error.to_string().contains("missing required Decodex markers"));
 	assert!(error.to_string().contains("initialize"));
 	assert!(error.to_string().contains("marketplaceKinds"));
-}
-
-#[test]
-fn app_server_compatibility_versions_match_spec_table() {
-	let spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-		.join("..")
-		.join("..")
-		.join("docs")
-		.join("spec")
-		.join("app-server.md");
-	let spec = fs::read_to_string(spec_path).expect("app-server spec should be readable");
-	let documented_versions = spec
-		.lines()
-		.filter(|line| line.starts_with("| ") && line.contains("`codex-cli "))
-		.filter_map(|line| line.split('`').find_map(|segment| segment.strip_prefix("codex-cli ")))
-		.map(str::to_owned)
-		.collect::<Vec<_>>();
-	let executable_versions = SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER
-		.iter()
-		.map(|version| (*version).to_owned())
-		.collect::<Vec<_>>();
-
-	assert_eq!(documented_versions, executable_versions);
-	assert!(spec.contains("Upstream `main` commits after `rust-v0.136.0` are outside"));
 }
 
 #[test]
@@ -698,7 +459,6 @@ fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 		max_turns: 1,
 		timeout: Duration::from_secs(30),
 		process_env: AppServerProcessEnv::default(),
-		allow_unverified_codex: false,
 		continuation_user_input: None,
 		activity_marker_path: None,
 		resume_thread_id: None,
@@ -707,7 +467,6 @@ fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 		dynamic_tool_handler: None,
 		continuation_guard: None,
 		codex_account_provider: None,
-		compatibility_schema_evidence: None,
 	}
 }
 
@@ -2301,22 +2060,20 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			user_input: String::from(
 				"Call `echo_resume` with `{\\\"text\\\":\\\"FIRST_OK\\\"}`. After the tool succeeds, reply with the exact text CONTINUE.",
 			),
-			max_turns: 3,
-			timeout: Duration::from_secs(30),
-			process_env: AppServerProcessEnv::default(),
-			allow_unverified_codex: false,
-			continuation_user_input: Some(String::from(
+				max_turns: 3,
+				timeout: Duration::from_secs(30),
+				process_env: AppServerProcessEnv::default(),
+				continuation_user_input: Some(String::from(
 				"Call `echo_resume` with `{\\\"text\\\":\\\"SECOND_OK\\\"}`. After the tool succeeds, reply with the exact text DONE.",
 			)),
 			activity_marker_path: Some(marker_path.clone()),
 			resume_thread_id: None,
 			ephemeral_thread: false,
 			command_exec_health_check: None,
-			dynamic_tool_handler: Some(&handler),
-			continuation_guard: Some(&guard),
-			codex_account_provider: None,
-			compatibility_schema_evidence: None,
-		},
+				dynamic_tool_handler: Some(&handler),
+				continuation_guard: Some(&guard),
+				codex_account_provider: None,
+			},
 		&first_state_store,
 	)
 	.expect("first live app-server run should succeed");
@@ -2350,20 +2107,18 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			user_input: String::from(
 				"Call `echo_resume` with `{\\\"text\\\":\\\"SECOND_OK\\\"}`. After the tool succeeds, reply with the exact text DONE.",
 			),
-			max_turns: 1,
-			timeout: Duration::from_secs(30),
-			process_env: AppServerProcessEnv::default(),
-				allow_unverified_codex: false,
+				max_turns: 1,
+				timeout: Duration::from_secs(30),
+				process_env: AppServerProcessEnv::default(),
 				continuation_user_input: None,
 			activity_marker_path: Some(marker_path.clone()),
 			resume_thread_id: Some(first_result.thread_id.clone()),
 			ephemeral_thread: false,
 			command_exec_health_check: None,
-			dynamic_tool_handler: Some(&handler),
-			continuation_guard: None,
-			codex_account_provider: None,
-			compatibility_schema_evidence: None,
-		},
+				dynamic_tool_handler: Some(&handler),
+				continuation_guard: None,
+				codex_account_provider: None,
+			},
 		&resumed_state_store,
 	)
 	.expect("resumed live app-server run should succeed");

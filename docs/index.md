@@ -30,7 +30,7 @@ The split below is by question type, not by human-versus-agent audience.
 
 - Need runtime contracts, invariants, schemas, enums, state machines, or required
   behavior -> `docs/spec/`
-- Need current Decodex/Codex app-server compatibility range or protocol support
+- Need current Decodex/Codex app-server protocol support
   evidence -> `docs/spec/app-server.md`
 - Need Decodex operator lane-control capability support, including inspect,
   pause/resume, scan, interrupt, steer, retained retry/resume, manual attention, or
