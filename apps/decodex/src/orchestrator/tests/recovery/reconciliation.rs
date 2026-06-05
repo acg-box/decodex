@@ -1173,8 +1173,10 @@ fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktr
 		"stalled"
 	);
 
-	let comments = tracker.comments.borrow();
+	assert_dirty_stalled_retained_progress_comments(&tracker.comments.borrow());
+}
 
+fn assert_dirty_stalled_retained_progress_comments(comments: &[String]) {
 	assert!(comments.iter().any(|comment| {
 		comment.contains("decodex retained partial progress and needs attention")
 			&& comment.contains("partial_progress_retained")
