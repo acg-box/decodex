@@ -22,6 +22,7 @@ fn operator_status_text_surfaces_github_cli_authority() {
 				),
 			},
 			active_run_count: 0,
+			running_lane_count: 0,
 			queued_candidate_count: 0,
 			post_review_lane_count: 0,
 			retained_worktree_count: 0,
