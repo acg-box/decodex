@@ -1071,6 +1071,90 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 	assert_eq!(data["activeRuns"][0]["protocol_activity"]["waiting_reason"], "model");
 	assert_eq!(data["activeRuns"][0]["account"]["account_fingerprint"], "acct-1");
 	assert_eq!(data["activeRuns"][0]["accounts"][0]["account_fingerprint"], "acct-1");
+	assert!(data["activeRuns"][0].get("idle_for_seconds").is_some());
+	assert!(data["activeRuns"][0].get("protocol_idle_for_seconds").is_some());
+	assert!(fingerprint["activeRuns"][0].get("idle_for_seconds").is_none());
+	assert!(fingerprint["activeRuns"][0].get("protocol_idle_for_seconds").is_none());
+}
+
+#[test]
+fn operator_dashboard_run_activity_fingerprint_ignores_volatile_timing_fields() {
+	let mut first = serde_json::json!({
+		"accountControl": {
+			"mode": "balanced",
+			"account_selector": null,
+		},
+		"accounts": [],
+		"activeRuns": [
+			{
+				"run_id": "run-1",
+				"status": "running",
+				"phase": "executing",
+				"idle_for_seconds": 4,
+				"protocol_idle_for_seconds": 3,
+				"child_agent_activity": {
+					"current_bucket": "model",
+					"current_elapsed_seconds": 2,
+					"buckets": [
+						{
+							"bucket": "model",
+							"wall_seconds": 2,
+							"event_count": 7,
+						},
+					],
+				},
+			},
+		],
+		"activeRunsComplete": true,
+		"activeRunScope": "complete",
+	});
+	let mut second = serde_json::json!({
+		"accountControl": {
+			"mode": "balanced",
+			"account_selector": null,
+		},
+		"accounts": [],
+		"activeRuns": [
+			{
+				"run_id": "run-1",
+				"status": "running",
+				"phase": "executing",
+				"idle_for_seconds": 5,
+				"protocol_idle_for_seconds": 4,
+				"child_agent_activity": {
+					"current_bucket": "model",
+					"current_elapsed_seconds": 3,
+					"buckets": [
+						{
+							"bucket": "model",
+							"wall_seconds": 3,
+							"event_count": 7,
+						},
+					],
+				},
+			},
+		],
+		"activeRunsComplete": true,
+		"activeRunScope": "complete",
+	});
+
+	orchestrator::strip_dashboard_run_activity_volatile_fields(&mut first);
+	orchestrator::strip_dashboard_run_activity_volatile_fields(&mut second);
+
+	assert_eq!(first, second);
+	assert_eq!(first["activeRuns"][0]["run_id"], "run-1");
+	assert_eq!(first["activeRuns"][0]["child_agent_activity"]["buckets"][0]["event_count"], 7);
+	assert!(first["activeRuns"][0].get("idle_for_seconds").is_none());
+	assert!(
+		first["activeRuns"][0]["child_agent_activity"]
+			.get("current_elapsed_seconds")
+			.is_none()
+	);
+	assert!(
+		first["activeRuns"][0]["child_agent_activity"]["buckets"][0]
+			.get("wall_seconds")
+			.is_none()
+	);
 }
 
 #[test]
