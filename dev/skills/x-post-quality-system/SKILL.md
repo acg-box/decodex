@@ -1,15 +1,22 @@
 ---
 name: x-post-quality-system
-description: Use before Decodex X Publisher decides to publish or generate media. Defines the @decodexspace editorial bar, benchmark-derived post formats, and the decodex_signal_card visual system so automation rejects low-value content and weak images.
+description: Use when Decodex X Publisher needs to decide whether an artifact-backed @decodexspace post or generated media is worth publishing.
 ---
 
 # Decodex X Post Quality System
 
-Use this skill before `x-post-publisher` decides that a candidate is publishable.
-It raises the bar from source-backed correctness to public-reader value and media quality.
+Use this skill before `x-post-publisher` decides that a `social_candidate/v1` or
+explicit operator handoff is worth publishing. It raises the bar from source-backed
+correctness to public-reader value and media quality.
 
 This is a repo-local skill for the `@decodexspace` automation. It is not a generic
 social-media style guide.
+
+This skill evaluates value and media quality only. It must not read upstream Codex
+source or invent missing technical evidence; keep weak candidates as
+`decision.worthiness = "defer"` or `"skip"` before publishing, or write terminal
+`skipped` or `blocked` `social_post/v1` records when the Publisher flow has already
+started.
 
 ## Benchmarks Studied
 
@@ -46,68 +53,23 @@ external operator decision.
 
 ## Good Post Shapes
 
-Prefer one of these shapes.
+Prefer concise release/update cards, dense changelog summaries, practical workflow
+reads, prerelease intros, or concrete operator decisions. A good prerelease intro names
+the tag/source/timing, says what is known, and states what Radar still needs to analyze;
+it should feel more useful than a bare release bot without inventing details. Use
+`operator_impact` only when the public action is external and concrete, such as enabling
+or avoiding a provider/config/path, updating an integration assumption, planning a
+rollout, or watching a beta/availability boundary. Do not turn a Decodex-internal audit
+reminder into an X post.
 
-### Release Or Update Card
-
-Use when a release, prerelease, app update, or changelog entry is the story.
-
-Pattern:
-
-```text
-Codex <app|mobile|CLI> update: <product/version/theme>
-
-What changed:
-- <reader-visible change 1>
-- <reader-visible change 2>
-- <reader-visible change 3>
-
-Source: <source link>
-```
-
-Use a short thread only when the main post already has enough value and details would not
-fit cleanly. Follow-up posts should be `details`, `fixed`, `availability`, or `source`;
-do not fragment weak material into a thread.
-
-### High-Density Changelog
-
-Use when the value is a concise summary of a known source.
-
-Pattern:
-
-```text
-Codex <app|CLI> <version/update> is out.
-
-- <high-signal change 1>
-- <high-signal change 2>
-- <high-signal change 3>
-
-Changelog: <source link>
-```
-
-This shape should be dense and source-led. Do not add commentary that hides the actual
-change.
-
-### Operator Decision
-
-Use `operator_impact` sparingly. It must read as an external operator decision, not a
-Decodex maintenance note.
-
-Good operator-impact posts name a concrete action:
-
-- enable or avoid a provider/config/path
-- update an integration assumption
-- plan a rollout or migration
-- watch a beta/availability boundary
-
-Do not publish an operator-impact post if the action is only "Decodex should audit this
-internally."
+Use threads only when the first post is valuable alone. Follow-ups should be focused
+buckets such as highlights, fixed, added, security, availability, caveats, or source;
+do not split a weak candidate into a thread to make it look substantial.
 
 ## Visual System
 
-`decodex_signal_card` is a visual system, not a fixed image. Each publishable candidate
-should get a fresh candidate-specific image when media is useful, but the image must share
-the same visual grammar.
+`decodex_signal_card` is a visual system, not a fixed image. Publish media only when a
+fresh candidate-specific image is useful; the image must share the same visual grammar.
 
 Required shared elements:
 
@@ -139,28 +101,19 @@ If no fresh, candidate-specific, quality-checked media exists, prefer text-only 
 source link card when the post still has enough standalone value. Otherwise skip or fail
 closed.
 
+Generated image files are temporary Publisher resources. Store them in
+`$CODEX_HOME/decodex/social-media/` or temporary storage by default, not Git. The durable
+repository record should keep the X status/media URL, prompt summary or content hash
+when useful, and any media caveat.
+
 ## Image Prompt Contract
 
-Start from the `docs/spec/social-publishing.md` base prompt, then add source-specific
-slots:
-
-- `subject`: the concrete release/update/workflow being explained
-- `source`: GitHub release, OpenAI changelog, PR, or signal artifact
-- `visual_metaphor`: release card, source card, UI/workflow preview, or operator diagram
-- `palette`: near-black or off-white with restrained magenta, lime, and blue accents
-- `forbidden`: generic abstract art, long text, unreadable labels, people, mascots,
-  decorative blobs, unrelated UI
-
-Before upload, perform a visual quality check. The image must pass all:
-
-- It is specific to this candidate.
-- It is visually consistent with the Decodex system.
-- It is not ugly, noisy, generic, or off-brand.
-- It still makes sense if the post text is read first.
-- It does not rely on AI-rendered readable text.
-
-Record the prompt, media path, and quality-check outcome in `social_post/v1` evidence
-notes or caveats.
+Start from the `docs/spec/social-publishing.md` base prompt, then add `subject`,
+`source`, `visual_metaphor`, `palette`, and `forbidden` slots. Before upload, verify the
+image is candidate-specific, visually consistent, not generic or off-brand, useful with
+the post text, and independent of AI-rendered readable text. Record the prompt summary,
+content hash or final X media URL, and quality-check outcome in `social_post/v1`
+evidence notes or caveats.
 
 ## Failure Rules
 

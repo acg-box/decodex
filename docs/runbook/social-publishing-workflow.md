@@ -11,9 +11,11 @@ Read this when:
 
 Inputs:
 - Source evidence from GitHub, checked-in signal entries, upstream reviews,
-  upstream-impact records, release-delta artifacts, or verified browser observations.
+  upstream-impact records, release-delta artifacts, social candidates, or verified
+  browser observations.
 - The governing schemas:
   - [`../spec/upstream-impact.md`](../spec/upstream-impact.md)
+  - [`../spec/social-candidate.md`](../spec/social-candidate.md)
   - [`../spec/social-publishing.md`](../spec/social-publishing.md)
   - [`../spec/signal-entry.md`](../spec/signal-entry.md)
 
@@ -29,8 +31,11 @@ Depends on:
 
 Outputs:
 - An optional `upstream_impact/v1` artifact under `artifacts/github/impact/`.
+- A `social_candidate/v1` record under `artifacts/github/social-candidates/` when
+  analysis needs a durable Publisher handoff or pre-publication decision.
 - A `social_post/v1` record under `artifacts/social/x/posts/<yyyy-mm-dd>/`.
-- Optional generated media under `artifacts/social/x/images/`.
+- Optional local generated media under `$CODEX_HOME/decodex/social-media/`; generated
+  media files are not committed by default.
 
 ## Style Benchmarks
 
@@ -40,8 +45,19 @@ for technical claims.
 | Account | Useful pattern | Decodex stance |
 | --- | --- | --- |
 | `@Codex_Changelog` | Fast release-aware bullets with a changelog link. | Useful for `release_pulse`, but Decodex should not become a duplicate release bot. |
+| `@CodexReleases` | Version/update cards and short release threads. | Useful for timely release or prerelease intros, but Decodex should add evidence, caveats, and operator framing instead of only mirroring a tag. |
 | `@LLMJunky` | Practical user interpretation: how a feature changes real workflows, what is worth trying, and where limits remain. | Prefer this style when Radar evidence can support the claim quickly. |
 | `@decodexspace` | Low-frequency automated publication channel. | Establish a voice around evidence-backed Codex intelligence and Decodex operator impact. |
+
+Live Chrome readback on 2026-06-04 confirmed two useful benchmark shapes:
+
+- `@Codex_Changelog` works as a single-card pattern: product/version headline, three
+  dense bullets, and a source link. Use this only when the checkpoint itself is the
+  reader value.
+- `@CodexReleases` works as a thread pattern: lead card with highlights, focused
+  follow-ups for fixed/added/availability/security areas, and a source tail. Use this
+  when the release needs structure, but keep Decodex-specific caveats and evidence in
+  the lead instead of burying them in the thread.
 
 ## Workflow
 
@@ -49,20 +65,35 @@ for technical claims.
    - Prefer a source-backed `upstream_review/v1`, merged PR bundle, release-delta
      compare entry, already-rendered `signal_entry/v1`, or `upstream_impact/v1`.
    - Do not start from social engagement alone.
+   - Publisher automation is an artifact consumer. It must not perform fresh upstream
+     Codex source analysis; if the checked artifacts do not support the claim, keep the
+     candidate at `decision.worthiness = "defer"` or `"skip"`, or write a terminal
+     `skipped` or `blocked` `social_post/v1` when the Publisher flow has already
+     started.
 
 2. Classify upstream impact.
-   - Write or update `artifacts/github/impact/<slug>.json` when the change may affect
-     Control Plane or Publisher.
+   - Prefer existing `upstream_impact/v1`. If it is missing and the source-backed
+     review already proves the Control Plane or Publisher implication, write or update
+     `artifacts/github/impact/<slug>.json`.
+   - If impact depends on unreviewed code or patch evidence, route back to the upstream
+     analysis stage instead of resolving it inside Publisher.
    - Use `public_signal_decision`, `control_plane_impact`, and `publisher_angle` from
      [`../spec/upstream-impact.md`](../spec/upstream-impact.md).
 
-3. Decide whether to publish.
+3. Decide whether to create or consume a candidate.
+   - Release checkpoint automation should write `social_candidate/v1` with
+     `decision.worthiness = "publish"`, `"defer"`, or `"skip"`.
+   - General Publisher automation should consume only candidates whose
+     `decision.worthiness = "publish"`. It must not turn `defer` or `skip` decisions
+     into posts.
+
+4. Decide whether to publish.
    - Publish only when the change has a clear `release_pulse`, `practical_explainer`,
      `release_rollup`, `operator_impact`, or valuable `watch_note` angle.
    - Skip when the change is internal cleanup, too weakly sourced, too private, too
      vague, or not useful enough for a reader.
 
-4. Check idempotency and daily cap.
+5. Check idempotency and daily cap.
    - Build a stable idempotency key from account, source, mode, and release checkpoint
      when applicable.
    - Count already-published `@decodexspace` records for the cap day.
@@ -70,42 +101,55 @@ for technical claims.
    - If the candidate would exceed 8 posts, do not post. Write
      `status = "blocked"` with `block.reason = "daily_cap_exceeded"`.
 
-5. Generate media.
+6. Prepare media only when useful.
    - Use the `decodex_signal_card` image template in
      [`../spec/social-publishing.md`](../spec/social-publishing.md).
    - Do not rely on AI-generated text in the image.
-   - Attach media unless the record explains why media was skipped.
+   - Keep generated files in the local media cache or temporary storage, not Git.
+   - It is acceptable to publish text-only when the post is useful with the source link
+     card.
 
-6. Publish through Chrome.
+7. Publish through Chrome.
    - Verify Chrome is logged in as `@decodexspace`.
    - Compose the English post or thread.
-   - Attach generated media when present.
+   - Attach generated media when it is useful and available.
    - Fail closed if account verification, duplicate detection, media upload, or final
      URL readback is unreliable.
    - Close or release Chrome tabs before the automation ends. Keep a tab only when it
      is an explicit human handoff such as login, CAPTCHA, or account approval.
 
-7. Write the publication record.
+8. Write the publication record.
    - Use `schema = "social_post/v1"`.
    - Use `target_account = "decodexspace"` and `controller_account = "hackink"`.
    - Set `status = "published"`, `blocked`, `failed`, or `skipped`.
    - Preserve source refs, evidence notes, claims, decision data, and publication URLs
      when available.
+   - For media, preserve the X status URL and any `/photo/N` readback URL. Do not add a
+     generated image file to Git unless the operator explicitly asks for a permanent
+     sample.
 
-8. Validate.
+9. Validate.
    - Run:
 
 ```bash
-decodex radar validate artifacts/social/x
+decodex radar validate artifacts/github/social-candidates artifacts/social/x
 ```
 
 ## Mode Guidance
+
+For every new prerelease checkpoint, choose one outcome instead of silently skipping:
+`release_pulse`, `watch_note`, `release_rollup`, or a `social_candidate/v1`
+`decision.worthiness = "defer"` or `"skip"` with a durable reason. A prerelease intro
+is useful when it names the tag, channel, published time, source, and what Decodex is
+watching, while clearly avoiding claims that require unreviewed code or PR evidence.
 
 Use `release_pulse` when:
 
 - the release note itself is the story
 - the post is mainly fast awareness
 - the change does not yet justify a deeper Decodex angle
+- a new prerelease is worth introducing from public release metadata, compare metadata,
+  and explicit caveats, even before a full release rollup exists
 
 Use `release_rollup` when:
 
@@ -133,6 +177,8 @@ Use `watch_note` when:
 - the change is interesting but evidence is incomplete
 - rollout or platform status is unclear
 - a strong recommendation would overclaim
+- the prerelease checkpoint is visible but Radar still needs upstream analysis before
+  it can describe behavior changes
 
 ## Guardrails
 
