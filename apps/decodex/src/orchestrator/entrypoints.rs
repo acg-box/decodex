@@ -1034,6 +1034,11 @@ fn hydrate_project_status_from_local_snapshot(
 		hydrate_project_status_from_registered_status(project_status, local_status);
 	} else {
 		project_status.active_run_count = project_snapshot.active_runs.len();
+		project_status.running_lane_count = project_snapshot
+			.active_runs
+			.iter()
+			.filter(|run| operator_run_counts_as_running(run))
+			.count();
 	}
 }
 
@@ -1042,6 +1047,7 @@ fn hydrate_project_status_from_registered_status(
 	local_status: &OperatorProjectStatus,
 ) {
 	project_status.active_run_count = local_status.active_run_count;
+	project_status.running_lane_count = local_status.running_lane_count;
 	project_status.retained_worktree_count = local_status.retained_worktree_count;
 	project_status.waiting_lane_count = local_status.waiting_lane_count;
 	project_status.attention_count = local_status.attention_count;
@@ -1633,6 +1639,7 @@ fn operator_project_status_from_registration(
 		enabled: project.enabled(),
 		github_cli_authority: operator_github_cli_authority_from_registration(project),
 		active_run_count: 0,
+		running_lane_count: 0,
 		queued_candidate_count: 0,
 		post_review_lane_count: 0,
 		retained_worktree_count: 0,
@@ -1664,6 +1671,7 @@ fn operator_project_status_from_dev_registration(
 		enabled: project.enabled(),
 		github_cli_authority: operator_github_cli_authority_from_registration(project),
 		active_run_count: 0,
+		running_lane_count: 0,
 		queued_candidate_count: 0,
 		post_review_lane_count: 0,
 		retained_worktree_count: 0,

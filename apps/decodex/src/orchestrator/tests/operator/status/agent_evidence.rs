@@ -156,6 +156,7 @@ fn agent_evidence_project_status_with_configured_gh() -> OperatorProjectStatus {
 			),
 		},
 		active_run_count: 0,
+		running_lane_count: 0,
 		queued_candidate_count: 0,
 		post_review_lane_count: 0,
 		retained_worktree_count: 0,

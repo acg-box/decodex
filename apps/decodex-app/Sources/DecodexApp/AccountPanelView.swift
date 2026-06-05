@@ -933,7 +933,7 @@ struct AccountRunSummaryView: View {
 		.frame(height: AccountRunChipLayout.height)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.contentShape(Rectangle())
-		.accessibilityLabel("\(runs.count) running lane\(runs.count == 1 ? "" : "s")")
+		.accessibilityLabel("\(runs.count) active lane\(runs.count == 1 ? "" : "s")")
 		.onAppear {
 			placementStore.retainOnly(Set(runs.map(\.id)))
 		}
