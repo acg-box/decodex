@@ -4352,6 +4352,7 @@
 				return (
 					["starting", "running"].includes(run.status) &&
 					run.phase === "executing" &&
+					run.process_alive !== false &&
 					!runNeedsAttention(run)
 				);
 			}
@@ -8903,6 +8904,10 @@
 				return workCount > 0;
 			}
 
+			function projectRunningLaneCount(project) {
+				return project.running_lane_count ?? project.active_run_count ?? 0;
+			}
+
 			function activeProjects(projects) {
 				return projects.filter(projectHasActiveWork);
 			}
@@ -8911,7 +8916,7 @@
 				if (!project.enabled) {
 					return { label: "disabled", tone: "tone-muted", title: "Disabled in registry" };
 				}
-				if ((project.active_run_count ?? 0) > 0) {
+				if (projectRunningLaneCount(project) > 0) {
 					return { label: "running", tone: "tone-run", title: "Active running lanes" };
 				}
 				if ((project.attention_count ?? 0) > 0) {
@@ -8954,7 +8959,7 @@
 				const cleanup = (project.cleanup_blocked_count ?? 0) + (project.cleanup_pending_count ?? 0);
 
 				return [
-					`${project.active_run_count ?? 0} running`,
+					`${projectRunningLaneCount(project)} running`,
 					`${project.waiting_lane_count ?? 0} waiting`,
 					`${project.attention_count ?? 0} attention`,
 					`${cleanup} cleanup`,
@@ -8970,7 +8975,7 @@
 			}
 
 			function renderProjectStats(project) {
-				const running = project.active_run_count ?? 0;
+				const running = projectRunningLaneCount(project);
 				const waiting = project.waiting_lane_count ?? 0;
 				const attention = project.attention_count ?? 0;
 				const cleanup = (project.cleanup_blocked_count ?? 0) + (project.cleanup_pending_count ?? 0);
@@ -9173,7 +9178,7 @@
 
 			function projectWorkSortValue(project) {
 				return [
-					projectNumber(project.active_run_count),
+					projectNumber(projectRunningLaneCount(project)),
 					projectNumber(project.waiting_lane_count),
 					projectNumber(project.attention_count),
 					projectNumber(project.cleanup_blocked_count),
@@ -9251,7 +9256,7 @@
 				if (!project.enabled) {
 					return 5;
 				}
-				if ((project.active_run_count ?? 0) > 0) {
+				if (projectRunningLaneCount(project) > 0) {
 					return 0;
 				}
 				if ((project.attention_count ?? 0) > 0) {
@@ -10239,6 +10244,16 @@
 
 					return counts;
 				}, new Map());
+				const runningCountsByProject = mergedActiveRuns.reduce((counts, run) => {
+					const projectId = run.project_id || snapshot.project_id;
+					if (!projectId || !runCountsAsRunning(run)) {
+						return counts;
+					}
+
+					counts.set(projectId, (counts.get(projectId) || 0) + 1);
+
+					return counts;
+				}, new Map());
 
 				const projects = Array.isArray(snapshot.projects)
 					? snapshot.projects.map((project) => {
@@ -10249,6 +10264,7 @@
 						return {
 							...project,
 							active_run_count: activeCountsByProject.get(project.project_id) || 0,
+							running_lane_count: runningCountsByProject.get(project.project_id) || 0,
 						};
 					})
 					: snapshot.projects;
