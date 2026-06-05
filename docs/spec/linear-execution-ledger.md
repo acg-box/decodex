@@ -224,7 +224,9 @@ repair completion this is `review_repair`; for explicit human-required exits thi
 Retained partial progress is a `needs_attention` event with
 `error_class = "partial_progress_retained"` and
 `terminal_path = "retained_partial_progress"`. It must describe retained tracked
-worktree changes and must not be emitted as `terminal_failure`.
+worktree changes and must not be emitted as `terminal_failure`. If the retained
+disposition absorbs a later runtime failure, the producer should preserve the source
+failure class in `evidence` instead of changing the event type or terminal path.
 
 `failed_command` and `raw_error` are public-summary fields, not private evidence
 escape hatches. Producers must validate those values before writing a Linear comment.

@@ -171,6 +171,7 @@ fn retained_partial_progress_uses_actionable_terminal_failure_comment() {
 		issue_identifier: String::from("PUB-101"),
 		run_id: String::from("pub-101-attempt-3-123"),
 		worktree_path: String::from(".worktrees/PUB-101"),
+		source_error_class: None,
 	});
 	let (error_class, next_action) = orchestrator::terminal_failure_comment_details(
 		false,

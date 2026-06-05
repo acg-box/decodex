@@ -71,6 +71,7 @@ struct TerminalFailureLifecycle<'a> {
 	target_state: &'a str,
 	worktree_path: &'a str,
 	manual_attention_requested: bool,
+	retained_source_error_class: Option<&'a str>,
 }
 
 struct RunStartedLifecycleFields<'a> {
@@ -450,13 +451,21 @@ fn terminal_failure_lifecycle_event(
 	record.next_action = Some(failure.next_action.to_owned());
 
 	if retained_partial_progress {
+		let mut evidence = vec![format!(
+			"Attempt {} stopped with tracked worktree changes retained.",
+			issue_run.attempt_number
+		)];
+
+		if let Some(source_error_class) = failure.retained_source_error_class {
+			evidence.push(format!(
+				"Source failure class `{source_error_class}` was preserved for recovery context."
+			));
+		}
+
 		record.blockers = Some(vec![String::from(
 			"Retained tracked worktree changes require operator recovery.",
 		)]);
-		record.evidence = Some(vec![format!(
-			"Attempt {} stopped with tracked worktree changes retained.",
-			issue_run.attempt_number
-		)]);
+		record.evidence = Some(evidence);
 		record.summary = Some(String::from("Decodex retained partial progress and needs attention."));
 		record.terminal_path = Some(String::from("retained_partial_progress"));
 	} else {
@@ -1626,7 +1635,7 @@ fn retained_partial_progress_error(
 	issue_run: &IssueRunPlan,
 	worktree_path: &str,
 ) -> Option<Report> {
-	if terminal_failure_has_specific_error_class(error)
+	if retained_progress_should_defer_to_terminal_intent(error)
 		|| !worktree_has_tracked_changes(&issue_run.worktree.path)
 	{
 		return None;
@@ -1636,20 +1645,48 @@ fn retained_partial_progress_error(
 		issue_identifier: issue_run.issue.identifier.clone(),
 		run_id: issue_run.run_id.clone(),
 		worktree_path: worktree_path.to_owned(),
+		source_error_class: retained_progress_source_error_class(error).map(ToOwned::to_owned),
 	}))
 }
 
-fn terminal_failure_has_specific_error_class(error: &Report) -> bool {
+fn retained_progress_should_defer_to_terminal_intent(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
 		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
-		|| error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some()
-		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
-		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
-		|| error.downcast_ref::<AppServerTransportFailure>().is_some()
-		|| error.downcast_ref::<AppServerTurnFailure>().is_some()
+		|| error.downcast_ref::<RetainedReviewNeedsAttention>().is_some()
 		|| error.downcast_ref::<ReviewPolicyStopRequested>().is_some()
-		|| error.downcast_ref::<RepoGateFailure>().is_some()
+}
+
+fn retained_progress_source_error_class(error: &Report) -> Option<&'static str> {
+	if let Some(app_server_failure) = error.downcast_ref::<AppServerZeroEvidenceStartFailure>() {
+		Some(app_server_failure.error_class())
+	} else if error.downcast_ref::<StalledRunNeedsAttention>().is_some() {
+		Some("stalled_run_detected")
+	} else if error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some() {
+		Some("github_credentials_unavailable")
+	} else if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerCapabilityPreflightFailure>()
+	{
+		Some(app_server_failure.error_class())
+	} else if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerHomePreflightFailure>()
+	{
+		Some(app_server_failure.error_class())
+	} else if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerTransportFailure>()
+	{
+		Some(app_server_failure.error_class())
+	} else if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerDynamicToolFailure>()
+	{
+		Some(app_server_failure.error_class())
+	} else if let Some(app_server_failure) = error.downcast_ref::<AppServerTurnFailure>() {
+		Some(app_server_failure.error_class())
+	} else if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
+		Some(repo_gate_failure.error_class())
+	} else {
+		None
+	}
 }
 
 fn write_retry_schedule_marker_for_runtime_retry(
@@ -1764,6 +1801,9 @@ where
 	let (error_class, next_action) =
 		terminal_failure_comment_details(manual_attention_requested, error, &recovery_gate);
 	let pr_url = terminal_failure_pr_url(error);
+	let retained_source_error_class = error
+		.downcast_ref::<RetainedPartialProgress>()
+		.and_then(|partial_progress| partial_progress.source_error_class.as_deref());
 	let comment = format_terminal_failure_comment(
 		&issue_run.run_id,
 		issue_run.attempt_number,
@@ -1783,6 +1823,7 @@ where
 			target_state: terminal_failure_state_name,
 			worktree_path,
 			manual_attention_requested,
+			retained_source_error_class,
 		},
 	);
 	let projection = tracker::prepare_linear_execution_event_comment(
