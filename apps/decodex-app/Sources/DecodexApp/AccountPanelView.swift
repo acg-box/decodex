@@ -903,32 +903,59 @@ struct AccountRowView: View {
 struct AccountRunSummaryView: View {
 	let runs: [OperatorRunStatus]
 	@State private var placementStore = AccountRunStripPlacementStore()
+	@State private var scrollProxy = AccountRunStripScrollProxy()
 	@State private var scrollMetrics = AccountRunStripMetrics()
 
 	var body: some View {
-		AccountRunStripScrollView(
-			placementStore: placementStore,
-			onMetricsChange: { metrics in
-				updateScrollMetrics(metrics)
+		HStack(spacing: AccountRunStripLayout.edgeControlSpacing) {
+			AccountRunStripEdgeButton(
+				direction: .backward,
+				isEnabled: scrollMetrics.canScrollBackward
+			) {
+				scrollProxy.scrollToAdjacentRun(.backward)
+			} startContinuousAction: {
+				scrollProxy.startContinuousScroll(.backward)
+			} stopContinuousAction: {
+				scrollProxy.stopContinuousScroll()
 			}
-		) {
-			HStack(spacing: 5) {
-				ForEach(runs) { run in
-					AccountRunChipView(run: run)
-						.modifier(
-							AccountRunChipPlacementReporter(
-								runID: run.id,
-								placementStore: placementStore
-							)
-						)
+
+			AccountRunStripScrollView(
+				placementStore: placementStore,
+				scrollProxy: scrollProxy,
+				onMetricsChange: { metrics in
+					updateScrollMetrics(metrics)
 				}
+			) {
+				HStack(spacing: 5) {
+					ForEach(runs) { run in
+						AccountRunChipView(run: run)
+							.modifier(
+								AccountRunChipPlacementReporter(
+									runID: run.id,
+									placementStore: placementStore
+								)
+							)
+					}
+				}
+				.padding(.trailing, 1)
+				.fixedSize(horizontal: true, vertical: false)
+				.coordinateSpace(name: AccountRunStripLayout.contentCoordinateSpace)
 			}
-			.padding(.trailing, 1)
-			.fixedSize(horizontal: true, vertical: false)
-			.coordinateSpace(name: AccountRunStripLayout.contentCoordinateSpace)
-		}
-		.mask {
-			AccountRunStripFadeMask(metrics: scrollMetrics)
+			.mask {
+				AccountRunStripFadeMask(metrics: scrollMetrics)
+			}
+			.frame(maxWidth: .infinity, alignment: .leading)
+
+			AccountRunStripEdgeButton(
+				direction: .forward,
+				isEnabled: scrollMetrics.canScrollForward
+			) {
+				scrollProxy.scrollToAdjacentRun(.forward)
+			} startContinuousAction: {
+				scrollProxy.startContinuousScroll(.forward)
+			} stopContinuousAction: {
+				scrollProxy.stopContinuousScroll()
+			}
 		}
 		.frame(height: AccountRunChipLayout.height)
 		.frame(maxWidth: .infinity, alignment: .leading)
@@ -958,10 +985,48 @@ struct AccountRunSummaryView: View {
 private enum AccountRunStripLayout {
 	static let contentCoordinateSpace = "account-run-strip-content"
 	static let dragActivationDistance: CGFloat = 1
+	static let edgeControlSpacing: CGFloat = 4
+	static let edgeControlWidth: CGFloat = 12
 	static let fadeWidth: CGFloat = 24
 	static let wheelLineDeltaScale: CGFloat = 11
 	static let wheelMinimumDelta: CGFloat = 0.1
-	static let clickScrollDuration: TimeInterval = 0.24
+	static let clickScrollDuration: TimeInterval = 0.14
+	static let continuousScrollStartDelayNanoseconds: UInt64 = 200_000_000
+	static let continuousScrollTickInterval: TimeInterval = 1.0 / 120.0
+	static let continuousScrollMaximumFrameInterval: TimeInterval = 1.0 / 20.0
+	static let continuousScrollVelocity: CGFloat = 285
+}
+
+private enum AccountRunStripScrollDirection {
+	case backward
+	case forward
+
+	var scrollMultiplier: CGFloat {
+		switch self {
+		case .backward:
+			return -1
+		case .forward:
+			return 1
+		}
+	}
+
+	var symbol: String {
+		switch self {
+		case .backward:
+			return "chevron.left"
+		case .forward:
+			return "chevron.right"
+		}
+	}
+
+	var accessibilityLabel: String {
+		switch self {
+		case .backward:
+			return "Previous running lane"
+		case .forward:
+			return "Next running lane"
+		}
+	}
 }
 
 private struct AccountRunStripMetrics: Equatable {
@@ -992,6 +1057,16 @@ private final class AccountRunStripPlacementStore {
 
 	func frame(for runID: String) -> CGRect? {
 		framesByRunID[runID]
+	}
+
+	func orderedFrames() -> [CGRect] {
+		framesByRunID.values.sorted { left, right in
+			if left.minX == right.minX {
+				return left.width < right.width
+			}
+
+			return left.minX < right.minX
+		}
 	}
 
 	func runID(containing point: NSPoint) -> String? {
@@ -1054,8 +1129,85 @@ private struct AccountRunStripFadeMask: View {
 	}
 }
 
+private struct AccountRunStripEdgeButton: View {
+	let direction: AccountRunStripScrollDirection
+	let isEnabled: Bool
+	let clickAction: () -> Void
+	let startContinuousAction: () -> Void
+	let stopContinuousAction: () -> Void
+	@Environment(\.colorScheme) private var colorScheme
+	@State private var isPressed = false
+	@State private var pressTask: Task<Void, Never>?
+
+	var body: some View {
+		Image(systemName: direction.symbol)
+			.font(.system(size: 10.5, weight: .semibold))
+			.symbolRenderingMode(.monochrome)
+			.foregroundStyle(tint)
+			.scaleEffect(isPressed ? 0.92 : 1)
+		.frame(
+			width: AccountRunStripLayout.edgeControlWidth,
+			height: AccountRunChipLayout.height
+		)
+		.contentShape(Rectangle())
+		.opacity(isEnabled ? 1 : 0)
+		.allowsHitTesting(isEnabled)
+		.highPriorityGesture(
+			DragGesture(minimumDistance: 0)
+				.onChanged { _ in
+					startPress()
+				}
+				.onEnded { _ in
+					endPress()
+				}
+		)
+		.onDisappear {
+			cancelPress()
+		}
+		.help(direction.accessibilityLabel)
+		.accessibilityLabel(direction.accessibilityLabel)
+		.accessibilityHidden(isEnabled == false)
+	}
+
+	private var tint: Color {
+		PanelPalette.primaryText(colorScheme)
+			.opacity(isPressed ? 0.92 : colorScheme == .dark ? 0.62 : 0.5)
+	}
+
+	private func startPress() {
+		guard pressTask == nil else {
+			return
+		}
+
+		isPressed = true
+		clickAction()
+		pressTask = Task {
+			try? await Task.sleep(nanoseconds: AccountRunStripLayout.continuousScrollStartDelayNanoseconds)
+			guard Task.isCancelled == false else {
+				return
+			}
+
+			await MainActor.run {
+				startContinuousAction()
+			}
+		}
+	}
+
+	private func endPress() {
+		cancelPress()
+	}
+
+	private func cancelPress() {
+		pressTask?.cancel()
+		pressTask = nil
+		stopContinuousAction()
+		isPressed = false
+	}
+}
+
 private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 	let placementStore: AccountRunStripPlacementStore
+	let scrollProxy: AccountRunStripScrollProxy
 	let onMetricsChange: (AccountRunStripMetrics) -> Void
 	@ViewBuilder let content: () -> Content
 
@@ -1068,6 +1220,7 @@ private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 			rootView: content(),
 			placementStore: placementStore
 		)
+		scrollProxy.attach(view)
 		view.onMetricsChange = { metrics in
 			context.coordinator.publish(metrics)
 		}
@@ -1077,6 +1230,7 @@ private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 
 	func updateNSView(_ nsView: AccountRunStripContainerView<Content>, context: Context) {
 		context.coordinator.onMetricsChange = onMetricsChange
+		scrollProxy.attach(nsView)
 		nsView.onMetricsChange = { metrics in
 			context.coordinator.publish(metrics)
 		}
@@ -1105,6 +1259,34 @@ private struct AccountRunStripScrollView<Content: View>: NSViewRepresentable {
 	}
 }
 
+@MainActor
+private protocol AccountRunStripScrollable: AnyObject {
+	func scrollToAdjacentRun(_ direction: AccountRunStripScrollDirection)
+	func startContinuousScroll(_ direction: AccountRunStripScrollDirection)
+	func stopContinuousScroll()
+}
+
+@MainActor
+private final class AccountRunStripScrollProxy {
+	private weak var target: (any AccountRunStripScrollable)?
+
+	func attach(_ target: any AccountRunStripScrollable) {
+		self.target = target
+	}
+
+	func scrollToAdjacentRun(_ direction: AccountRunStripScrollDirection) {
+		target?.scrollToAdjacentRun(direction)
+	}
+
+	func startContinuousScroll(_ direction: AccountRunStripScrollDirection) {
+		target?.startContinuousScroll(direction)
+	}
+
+	func stopContinuousScroll() {
+		target?.stopContinuousScroll()
+	}
+}
+
 private final class AccountRunStripNSScrollView: NSScrollView {
 	var onScrollWheelEvent: ((NSEvent) -> Bool)?
 
@@ -1117,9 +1299,10 @@ private final class AccountRunStripNSScrollView: NSScrollView {
 	}
 }
 
-private final class AccountRunStripContainerView<Content: View>: NSView {
+private final class AccountRunStripContainerView<Content: View>: NSView, AccountRunStripScrollable {
 	private let scrollView = AccountRunStripNSScrollView()
 	private let notifyingClipView = AccountRunStripClipView()
+	private let continuousScroller = AccountRunContinuousScroller()
 	private let hostingView: AccountRunDragHostingView<Content>
 	private let placementStore: AccountRunStripPlacementStore
 	private var measuredContentWidth: CGFloat = 0
@@ -1202,6 +1385,42 @@ private final class AccountRunStripContainerView<Content: View>: NSView {
 		scroll(to: clipView.bounds.origin.x + distance)
 	}
 
+	func scrollToAdjacentRun(_ direction: AccountRunStripScrollDirection) {
+		layoutSubtreeIfNeeded()
+
+		guard let offset = adjacentRunOffset(for: direction) else {
+			return
+		}
+
+		scroll(to: offset, animated: true)
+	}
+
+	func startContinuousScroll(_ direction: AccountRunStripScrollDirection) {
+		layoutSubtreeIfNeeded()
+
+		guard measuredContentWidth > clipView.bounds.width + 1 else {
+			return
+		}
+
+		continuousScroller.start { [weak self] elapsedTime in
+			guard let self else {
+				return false
+			}
+
+			let previousOffset = self.clipView.bounds.origin.x
+			let distance = direction.scrollMultiplier
+				* AccountRunStripLayout.continuousScrollVelocity
+				* CGFloat(elapsedTime)
+			self.scroll(by: distance)
+
+			return previousOffset != self.clipView.bounds.origin.x
+		}
+	}
+
+	func stopContinuousScroll() {
+		continuousScroller.stop()
+	}
+
 	private func handleScrollWheel(_ event: NSEvent) -> Bool {
 		layoutSubtreeIfNeeded()
 
@@ -1232,6 +1451,29 @@ private final class AccountRunStripContainerView<Content: View>: NSView {
 		}
 
 		scroll(to: frame.minX, animated: true)
+	}
+
+	private func adjacentRunOffset(for direction: AccountRunStripScrollDirection) -> CGFloat? {
+		let maxOffset = max(0, measuredContentWidth - clipView.bounds.width)
+		guard maxOffset > 0 else {
+			return nil
+		}
+
+		let currentOffset = clipView.bounds.origin.x
+		let orderedOffsets = placementStore.orderedFrames().map(\.minX)
+		let targetOffset: CGFloat?
+		switch direction {
+		case .backward:
+			targetOffset = orderedOffsets.last { offset in
+				offset < currentOffset - 1
+			} ?? (currentOffset > 0 ? 0 : nil)
+		case .forward:
+			targetOffset = orderedOffsets.first { offset in
+				offset > currentOffset + 1
+			} ?? (currentOffset < maxOffset ? maxOffset : nil)
+		}
+
+		return targetOffset.map { min(max(0, $0), maxOffset) }
 	}
 
 	private func wheelScrollDistance(from event: NSEvent) -> CGFloat {
@@ -1305,6 +1547,74 @@ private final class AccountRunStripContainerView<Content: View>: NSView {
 
 	private func publishMetrics() {
 		onMetricsChange?(currentMetrics)
+	}
+}
+
+private final class AccountRunContinuousScroller {
+	private var frameAction: ((TimeInterval) -> Bool)?
+	private var lastTickTime: TimeInterval?
+	private var timer: Timer?
+	private var timerTarget: AccountRunContinuousTimerTarget?
+
+	deinit {
+		stop()
+	}
+
+	func start(_ frameAction: @escaping (TimeInterval) -> Bool) {
+		stop()
+		self.frameAction = frameAction
+		lastTickTime = ProcessInfo.processInfo.systemUptime
+
+		let timerTarget = AccountRunContinuousTimerTarget(scroller: self)
+		let timer = Timer(
+			timeInterval: AccountRunStripLayout.continuousScrollTickInterval,
+			target: timerTarget,
+			selector: #selector(AccountRunContinuousTimerTarget.timerDidFire(_:)),
+			userInfo: nil,
+			repeats: true
+		)
+		self.timerTarget = timerTarget
+		self.timer = timer
+		RunLoop.main.add(timer, forMode: .common)
+	}
+
+	func stop() {
+		timer?.invalidate()
+		timer = nil
+		timerTarget = nil
+		frameAction = nil
+		lastTickTime = nil
+	}
+
+	fileprivate func performFrame() {
+		guard let frameAction else {
+			return
+		}
+
+		let tickTime = ProcessInfo.processInfo.systemUptime
+		let elapsedTime = lastTickTime.map { tickTime - $0 }
+			?? AccountRunStripLayout.continuousScrollTickInterval
+		lastTickTime = tickTime
+
+		let boundedElapsedTime = min(
+			max(elapsedTime, 0),
+			AccountRunStripLayout.continuousScrollMaximumFrameInterval
+		)
+		if frameAction(boundedElapsedTime) == false {
+			stop()
+		}
+	}
+}
+
+private final class AccountRunContinuousTimerTarget: NSObject {
+	weak var scroller: AccountRunContinuousScroller?
+
+	init(scroller: AccountRunContinuousScroller) {
+		self.scroller = scroller
+	}
+
+	@objc func timerDidFire(_ timer: Timer) {
+		scroller?.performFrame()
 	}
 }
 
@@ -1505,6 +1815,7 @@ private enum AccountRunChipLayout {
 	static let horizontalPadding: CGFloat = 6.5
 	static let iconWidth: CGFloat = 9.5
 	static let spacing: CGFloat = 4
+	static let popoverHoverDelayNanoseconds: UInt64 = 320_000_000
 }
 
 struct AccountRunChipView: View {
@@ -1512,6 +1823,7 @@ struct AccountRunChipView: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var isHovered = false
 	@State private var showsPopover = false
+	@State private var hoverPopoverTask: Task<Void, Never>?
 
 	var body: some View {
 		HStack(spacing: AccountRunChipLayout.spacing) {
@@ -1537,12 +1849,41 @@ struct AccountRunChipView: View {
 		.contentShape(RoundedRectangle(cornerRadius: AccountRunChipLayout.cornerRadius, style: .continuous))
 		.onHover { hovering in
 			isHovered = hovering
-			showsPopover = hovering
+			if hovering {
+				schedulePopover()
+			} else {
+				cancelPopover()
+			}
+		}
+		.onDisappear {
+			cancelPopover()
 		}
 		.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
 			OperatorLanePopoverView(run: run)
 				.fixedSize(horizontal: true, vertical: false)
 		}
+	}
+
+	private func schedulePopover() {
+		hoverPopoverTask?.cancel()
+		hoverPopoverTask = Task {
+			try? await Task.sleep(nanoseconds: AccountRunChipLayout.popoverHoverDelayNanoseconds)
+			guard Task.isCancelled == false else {
+				return
+			}
+
+			await MainActor.run {
+				if isHovered {
+					showsPopover = true
+				}
+			}
+		}
+	}
+
+	private func cancelPopover() {
+		hoverPopoverTask?.cancel()
+		hoverPopoverTask = nil
+		showsPopover = false
 	}
 
 	private var symbol: String {
