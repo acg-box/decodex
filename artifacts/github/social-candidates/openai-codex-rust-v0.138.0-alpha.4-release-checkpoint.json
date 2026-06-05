@@ -1,0 +1,449 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0.138.0-alpha.4-release-checkpoint",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "status": "needs_upstream_analysis",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease checkpoints",
+  "candidate_text": [
+    "Codex 0.138.0-alpha.4 is out, but Decodex is holding a public watch note until release-window PR gaps are reviewed. Source: https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4"
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-25469.review.json",
+      "artifacts/github/reviews/openai-codex-pr-26254.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-25469.json",
+      "artifacts/github/impact/openai-codex-pr-26254.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4",
+      "https://github.com/openai/codex/compare/rust-v0.137.0...rust-v0.138.0-alpha.4",
+      "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.2...rust-v0.138.0-alpha.4",
+      "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.3...rust-v0.138.0-alpha.4"
+    ]
+  },
+  "evidence_notes": [
+    "Public release metadata shows rust-v0.138.0-alpha.4 was published as a prerelease on 2026-06-04T22:01:10Z with a sparse body: Release 0.138.0-alpha.4.",
+    "Public release metadata also shows rust-v0.138.0-alpha.3 was published after the previous automation run and was superseded by alpha.4 before this run.",
+    "GitHub compare metadata for rust-v0.137.0...rust-v0.138.0-alpha.4 reports diverged, ahead_by 45, behind_by 1, total_commits 45, with 44 PR-bearing commits.",
+    "Only PR #25469 and PR #26254 in the stable-to-alpha.4 compare window have checked-in upstream_review/v1 and upstream_impact/v1 artifacts.",
+    "GitHub compare metadata for rust-v0.138.0-alpha.2...rust-v0.138.0-alpha.4 reports 15 PR-bearing gaps since the last recorded checkpoint.",
+    "The checked-in release_delta/v1 artifact was generated at 2026-06-02T02:34:53Z for stable rust-v0.136.0 and prerelease rust-v0.136.0-alpha.2, so it does not yet represent the latest prerelease checkpoint."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.138.0-alpha.4 is a public upstream Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Decodex should not publish behavior claims for the alpha.4 checkpoint until release-window PR gaps receive upstream analysis.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.137.0...rust-v0.138.0-alpha.4",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "outcome": "needs_upstream_analysis",
+    "reason": "The new prerelease is real and worth tracking, but the sparse release body plus incomplete checked-in review coverage cannot support reader-value behavior claims.",
+    "idempotency_key": "x:decodexspace:rust-v0.138.0-alpha.4:watch_note:needs_upstream_analysis"
+  },
+  "handoff": {
+    "target": [
+      "codex-upstream-radar-review",
+      "codex-code-analysis"
+    ],
+    "reason": "Review the compare-derived PR gaps before Decodex considers a publishable watch_note, release_pulse, or release_rollup.",
+    "requested_output": "upstream_review/v1 and upstream_impact/v1 coverage for behavior-bearing release-window PRs, then refresh release_delta/v1 if new signals are promoted."
+  },
+  "analysis_gaps": {
+    "checkpoint": "rust-v0.138.0-alpha.4",
+    "release_published_at": "2026-06-04T22:01:10Z",
+    "release_body_status": "sparse",
+    "superseded_checkpoints": [
+      {
+        "checkpoint": "rust-v0.138.0-alpha.3",
+        "status": "no_op",
+        "artifact": "artifacts/github/social-candidates/openai-codex-rust-v0.138.0-alpha.3-release-checkpoint.json"
+      }
+    ],
+    "current_release_delta": {
+      "path": "site/src/content/release-deltas/openai-codex-latest.json",
+      "generated_at": "2026-06-02T02:34:53Z",
+      "stable_tag": "rust-v0.136.0",
+      "prerelease_tag": "rust-v0.136.0-alpha.2"
+    },
+    "stable_to_prerelease_compare": {
+      "base": "rust-v0.137.0",
+      "head": "rust-v0.138.0-alpha.4",
+      "url": "https://github.com/openai/codex/compare/rust-v0.137.0...rust-v0.138.0-alpha.4",
+      "status": "diverged",
+      "ahead_by": 45,
+      "behind_by": 1,
+      "total_commits": 45,
+      "pr_bearing_commits": 44,
+      "reviewed_prs_in_window": [
+        25469,
+        26254
+      ],
+      "missing_review_prs": [
+        {
+          "pr": 23710,
+          "title": "build: use ThinLTO for release binaries",
+          "url": "https://github.com/openai/codex/pull/23710",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 25623,
+          "title": "fix(tui): add reasoning effort fallback shortcuts",
+          "url": "https://github.com/openai/codex/pull/25623",
+          "queue_status": "queued",
+          "review_priority": "critical"
+        },
+        {
+          "pr": 25638,
+          "title": "feat(tui): add /app desktop handoff",
+          "url": "https://github.com/openai/codex/pull/25638",
+          "queue_status": "queued",
+          "review_priority": "normal"
+        },
+        {
+          "pr": 25700,
+          "title": "core: stop threading SandboxPolicy through exec",
+          "url": "https://github.com/openai/codex/pull/25700",
+          "queue_status": "queued",
+          "review_priority": "critical"
+        },
+        {
+          "pr": 25887,
+          "title": "Preserve remote plugin default prompts",
+          "url": "https://github.com/openai/codex/pull/25887",
+          "queue_status": "queued",
+          "review_priority": "high"
+        },
+        {
+          "pr": 25925,
+          "title": "[codex] Copy user Bazel settings into Codex worktrees",
+          "url": "https://github.com/openai/codex/pull/25925",
+          "queue_status": "queued",
+          "review_priority": "high"
+        },
+        {
+          "pr": 25944,
+          "title": "Expose local image paths to models",
+          "url": "https://github.com/openai/codex/pull/25944",
+          "queue_status": "queued",
+          "review_priority": "high"
+        },
+        {
+          "pr": 25945,
+          "title": "Use Azure artifact signing environment secrets",
+          "url": "https://github.com/openai/codex/pull/25945",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 25946,
+          "title": "[codex-analytics] report compaction request token counts",
+          "url": "https://github.com/openai/codex/pull/25946",
+          "queue_status": "queued",
+          "review_priority": "normal"
+        },
+        {
+          "pr": 25947,
+          "title": "Add saved image path hint to standalone image generation",
+          "url": "https://github.com/openai/codex/pull/25947",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 25960,
+          "title": "Restore Windows coverage for code-mode image generation exposure",
+          "url": "https://github.com/openai/codex/pull/25960",
+          "queue_status": "queued",
+          "review_priority": "high"
+        },
+        {
+          "pr": 26002,
+          "title": "log plugin MCP server names",
+          "url": "https://github.com/openai/codex/pull/26002",
+          "queue_status": "queued",
+          "review_priority": "high"
+        },
+        {
+          "pr": 26047,
+          "title": "Fix multiline paste in /goal edit",
+          "url": "https://github.com/openai/codex/pull/26047",
+          "queue_status": "queued",
+          "review_priority": "high"
+        },
+        {
+          "pr": 26074,
+          "title": "Use Windows setup marker as completion signal",
+          "url": "https://github.com/openai/codex/pull/26074",
+          "queue_status": "queued",
+          "review_priority": "critical"
+        },
+        {
+          "pr": 26075,
+          "title": "Fix forked thread name inheritance",
+          "url": "https://github.com/openai/codex/pull/26075",
+          "queue_status": "queued",
+          "review_priority": "critical"
+        },
+        {
+          "pr": 26147,
+          "title": "Gate automatic idle turns in Plan mode",
+          "url": "https://github.com/openai/codex/pull/26147",
+          "queue_status": "queued",
+          "review_priority": "normal"
+        },
+        {
+          "pr": 26172,
+          "title": "Bridge host-loaded skills into the skills extension",
+          "url": "https://github.com/openai/codex/pull/26172",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26175,
+          "title": "feat: guard git enrichment",
+          "url": "https://github.com/openai/codex/pull/26175",
+          "queue_status": "queued",
+          "review_priority": "normal"
+        },
+        {
+          "pr": 26179,
+          "title": "nit: small prompt update for MAv2",
+          "url": "https://github.com/openai/codex/pull/26179",
+          "queue_status": "queued",
+          "review_priority": "normal"
+        },
+        {
+          "pr": 26189,
+          "title": "cli: add package path from install context",
+          "url": "https://github.com/openai/codex/pull/26189",
+          "queue_status": "queued",
+          "review_priority": "critical"
+        },
+        {
+          "pr": 26205,
+          "title": "Route AGENTS.md loading through environment filesystems",
+          "url": "https://github.com/openai/codex/pull/26205",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26216,
+          "title": "[codex] Pin Python SDK to runtime 0.137.0a4",
+          "url": "https://github.com/openai/codex/pull/26216",
+          "queue_status": "queued",
+          "review_priority": "high"
+        },
+        {
+          "pr": 26226,
+          "title": "[codex] Split Python runtime release workflow",
+          "url": "https://github.com/openai/codex/pull/26226",
+          "queue_status": "queued",
+          "review_priority": "normal"
+        },
+        {
+          "pr": 26248,
+          "title": "[codex-analytics] emit forked thread id on initialization",
+          "url": "https://github.com/openai/codex/pull/26248",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26251,
+          "title": "Rewrite oversized tool outputs during remote compaction",
+          "url": "https://github.com/openai/codex/pull/26251",
+          "queue_status": "queued",
+          "review_priority": "normal"
+        },
+        {
+          "pr": 26252,
+          "title": "ci: sign macOS release artifacts with Azure Key Vault",
+          "url": "https://github.com/openai/codex/pull/26252",
+          "queue_status": "queued",
+          "review_priority": "normal"
+        },
+        {
+          "pr": 26260,
+          "title": "codex-pr-body: avoid confidential references",
+          "url": "https://github.com/openai/codex/pull/26260",
+          "queue_status": "queued",
+          "review_priority": "normal"
+        },
+        {
+          "pr": 26265,
+          "title": "Optimize unbounded byte scans with memchr",
+          "url": "https://github.com/openai/codex/pull/26265",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26272,
+          "title": "Load plugin hooks without other plugin capabilities",
+          "url": "https://github.com/openai/codex/pull/26272",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26291,
+          "title": "Bound external agent session detection work",
+          "url": "https://github.com/openai/codex/pull/26291",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26312,
+          "title": "Cleanup experimentalFeature/enablement/set",
+          "url": "https://github.com/openai/codex/pull/26312",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26313,
+          "title": "Simplify Codex CLI README",
+          "url": "https://github.com/openai/codex/pull/26313",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26320,
+          "title": "core: allow excluding tool namespaces from code mode",
+          "url": "https://github.com/openai/codex/pull/26320",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26367,
+          "title": "chore: calm down",
+          "url": "https://github.com/openai/codex/pull/26367",
+          "queue_status": "queued",
+          "review_priority": "high"
+        },
+        {
+          "pr": 26396,
+          "title": "Reduce SQLite contention from OpenTelemetry SDK debug logs",
+          "url": "https://github.com/openai/codex/pull/26396",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26417,
+          "title": "Expose configured marketplace source in plugin list JSON",
+          "url": "https://github.com/openai/codex/pull/26417",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26435,
+          "title": "external-agent-migration: avoid mixed MCP transport configs",
+          "url": "https://github.com/openai/codex/pull/26435",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26436,
+          "title": "app-server: support -c config overrides",
+          "url": "https://github.com/openai/codex/pull/26436",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26444,
+          "title": "[codex] Support model-defined reasoning efforts",
+          "url": "https://github.com/openai/codex/pull/26444",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26445,
+          "title": "[codex] Fix Windows sandbox build script lint",
+          "url": "https://github.com/openai/codex/pull/26445",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26446,
+          "title": "[codex] Use model-advertised reasoning effort order",
+          "url": "https://github.com/openai/codex/pull/26446",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26447,
+          "title": "Remove response.processed websocket request",
+          "url": "https://github.com/openai/codex/pull/26447",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        }
+      ]
+    },
+    "previous_checkpoint_to_current_compare": {
+      "base": "rust-v0.138.0-alpha.2",
+      "head": "rust-v0.138.0-alpha.4",
+      "url": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.2...rust-v0.138.0-alpha.4",
+      "status": "diverged",
+      "ahead_by": 16,
+      "behind_by": 1,
+      "total_commits": 16,
+      "missing_review_prs": [
+        23710,
+        25945,
+        25947,
+        26205,
+        26248,
+        26291,
+        26312,
+        26320,
+        26417,
+        26435,
+        26436,
+        26444,
+        26445,
+        26446,
+        26447
+      ]
+    },
+    "alpha3_to_alpha4_compare": {
+      "base": "rust-v0.138.0-alpha.3",
+      "head": "rust-v0.138.0-alpha.4",
+      "url": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.3...rust-v0.138.0-alpha.4",
+      "status": "diverged",
+      "ahead_by": 8,
+      "behind_by": 1,
+      "total_commits": 8,
+      "missing_review_prs": [
+        23710,
+        26205,
+        26312,
+        26444,
+        26445,
+        26446,
+        26447
+      ]
+    }
+  },
+  "caveats": [
+    "Do not publish this candidate until the gap list has upstream_review/v1 coverage or is explicitly triaged out of reader-value scope.",
+    "The release body alone supports only the tag and timestamp, not behavior claims.",
+    "Compare metadata was used only for release-window gap detection, not source or patch analysis."
+  ],
+  "next_steps": [
+    "codex-upstream-radar-review should refresh or extend the review queue for missing_from_current_review_queue PRs.",
+    "codex-code-analysis should produce upstream_review/v1 for behavior-bearing PR gaps before any release_rollup, release_pulse, or publishable watch_note candidate is promoted.",
+    "Refresh release_delta/v1 after any new signals are rendered so the homepage can map the checkpoint to reviewed evidence."
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0.138.0-alpha.3-release-checkpoint",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "status": "no_op",
+  "priority": "low",
+  "audience": "Codex operators tracking prerelease checkpoints",
+  "candidate_text": [
+    "No standalone X handoff for Codex 0.138.0-alpha.3: alpha.4 superseded it before this run, so Decodex rolls its compare gaps into the alpha.4 checkpoint record."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.3",
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4",
+      "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.2...rust-v0.138.0-alpha.3"
+    ]
+  },
+  "evidence_notes": [
+    "Public release metadata shows rust-v0.138.0-alpha.3 was published as a prerelease on 2026-06-04T20:18:28Z with a sparse body: Release 0.138.0-alpha.3.",
+    "Public release metadata shows rust-v0.138.0-alpha.4 was published on 2026-06-04T22:01:10Z, superseding alpha.3 before this automation run.",
+    "GitHub compare metadata for rust-v0.138.0-alpha.2...rust-v0.138.0-alpha.3 reports diverged, ahead_by 9, behind_by 1, total_commits 9, with eight PR-bearing commits.",
+    "None of the eight alpha.2-to-alpha.3 PR-bearing commits have checked-in upstream_review/v1 artifacts in this repo.",
+    "The checked-in release_delta/v1 artifact was generated at 2026-06-02T02:34:53Z for stable rust-v0.136.0 and prerelease rust-v0.136.0-alpha.2, so it does not represent the alpha.3 checkpoint."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.138.0-alpha.3 is a public upstream Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.3",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Decodex should not create a standalone public handoff for alpha.3 because alpha.4 superseded it before this run.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "skip",
+    "outcome": "no_op",
+    "reason": "The checkpoint is real but no longer has standalone reader value because the newer alpha.4 checkpoint supersedes it and carries the active gap handoff.",
+    "idempotency_key": "x:decodexspace:rust-v0.138.0-alpha.3:watch_note:no_op"
+  },
+  "analysis_gaps": {
+    "checkpoint": "rust-v0.138.0-alpha.3",
+    "release_published_at": "2026-06-04T20:18:28Z",
+    "release_body_status": "sparse",
+    "superseded_by": "rust-v0.138.0-alpha.4",
+    "current_release_delta": {
+      "path": "site/src/content/release-deltas/openai-codex-latest.json",
+      "generated_at": "2026-06-02T02:34:53Z",
+      "stable_tag": "rust-v0.136.0",
+      "prerelease_tag": "rust-v0.136.0-alpha.2"
+    },
+    "previous_checkpoint_to_alpha3_compare": {
+      "base": "rust-v0.138.0-alpha.2",
+      "head": "rust-v0.138.0-alpha.3",
+      "url": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.2...rust-v0.138.0-alpha.3",
+      "status": "diverged",
+      "ahead_by": 9,
+      "behind_by": 1,
+      "total_commits": 9,
+      "missing_review_prs": [
+        {
+          "pr": 25945,
+          "title": "Use Azure artifact signing environment secrets",
+          "url": "https://github.com/openai/codex/pull/25945",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 25947,
+          "title": "Add saved image path hint to standalone image generation",
+          "url": "https://github.com/openai/codex/pull/25947",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26248,
+          "title": "[codex-analytics] emit forked thread id on initialization",
+          "url": "https://github.com/openai/codex/pull/26248",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26291,
+          "title": "Bound external agent session detection work",
+          "url": "https://github.com/openai/codex/pull/26291",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26320,
+          "title": "core: allow excluding tool namespaces from code mode",
+          "url": "https://github.com/openai/codex/pull/26320",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26417,
+          "title": "Expose configured marketplace source in plugin list JSON",
+          "url": "https://github.com/openai/codex/pull/26417",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26435,
+          "title": "external-agent-migration: avoid mixed MCP transport configs",
+          "url": "https://github.com/openai/codex/pull/26435",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        },
+        {
+          "pr": 26436,
+          "title": "app-server: support -c config overrides",
+          "url": "https://github.com/openai/codex/pull/26436",
+          "queue_status": "missing_from_current_review_queue",
+          "review_priority": "unknown"
+        }
+      ]
+    }
+  },
+  "caveats": [
+    "This no-op is an explicit checkpoint decision, not a source-analysis conclusion.",
+    "Compare metadata was used only for release-window gap detection, not source or patch analysis."
+  ],
+  "next_steps": [
+    "Use the alpha.4 release-checkpoint record as the active handoff for the alpha.3 and alpha.4 gap set."
+  ]
+}
