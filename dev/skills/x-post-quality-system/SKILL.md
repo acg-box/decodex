@@ -20,27 +20,29 @@ started.
 
 ## Benchmarks Studied
 
-The standard comes from live-readback sampling, but recurring automation must refresh
-the sample before deciding publishability. Do not rely only on stale benchmark memory
-when the user is asking about current release coverage.
+The standard uses historical style observations as inspiration for layout, density, and
+reader value. Recurring automation must not refresh `@CodexReleases` or
+`@Codex_Changelog` before deciding publishability, must not treat their coverage as
+evidence, and must not decide publish/skip state from whether they posted.
 
-Recent samples:
+Historical style samples:
 
-- 2026-06-05: `@CodexReleases` covered Codex app `26.602` with a release/update card,
-  thread split, and media; it also covered Codex CLI `0.137.0`.
-- 2026-06-05: `@Codex_Changelog` covered Codex app `26.602` and Codex CLI `0.137.0`
-  with dense source-led bullets and changelog links.
-- 2026-06-05: neither benchmark account's visible sample emphasized
-  `rust-v0.138.0-alpha.4` prerelease interpretation. This is a Decodex opportunity,
-  not a reason to skip.
+- 2026-06-05: `@CodexReleases` showed a release/update card, thread split, and media
+  pattern for Codex app `26.602` and Codex CLI `0.137.0`.
+- 2026-06-05: `@Codex_Changelog` showed dense source-led bullets and changelog links
+  for Codex app `26.602` and Codex CLI `0.137.0`.
+- 2026-06-05: prerelease interpretation was identified as a Decodex opportunity
+  because official release metadata and GitHub compare/PR evidence can support a more
+  useful source-backed read than a bare tag repost.
 - 2026-06-03: `@CodexReleases`: 55 visible posts/thread nodes from 2026-06-03 back to
   2026-04-24.
 - 2026-06-03: `@Codex_Changelog`: 34 visible posts from 2026-06-03 back to
   2026-02-18.
 
-Treat these accounts as operational benchmarks, not as technical evidence for claims.
-Every technical claim still needs source-backed GitHub, official OpenAI changelog,
-release, signal, upstream-review, or upstream-impact evidence.
+Treat these accounts as historical style references only, not as runtime inputs,
+coverage evidence, urgency signals, or technical evidence for claims. Every technical
+claim still needs source-backed GitHub, official OpenAI changelog, release, signal,
+upstream-review, or upstream-impact evidence.
 
 ## Editorial Bar
 

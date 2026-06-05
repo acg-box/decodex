@@ -48,7 +48,11 @@ or upstream-impact evidence.
 
 ## Benchmark Patterns
 
-Use these as format patterns only:
+Use these as format patterns only. Historical observations from `@CodexReleases` and
+`@Codex_Changelog` may inspire layout and scanability only when already encoded in repo
+docs or supplied by the operator. Recurring automation must not browse or sample those
+accounts, must not use their coverage as evidence, and must not decide publish/skip
+state from whether they posted.
 
 | Pattern | Good for | Decodex adaptation |
 | --- | --- | --- |
@@ -58,17 +62,12 @@ Use these as format patterns only:
 | Human workflow read | `practical_explainer` and `operator_impact`. | Start with the concrete workflow change, then explain why it matters and what caveat remains. |
 | Watch note | Interesting but incomplete evidence. | Say what changed, why Radar is watching, and what evidence is still missing. |
 
-Refresh the benchmark sample when publishing about a current Codex app, mobile, CLI, or
-prerelease update. `@CodexReleases` and `@Codex_Changelog` often cover the same updates
-quickly; Decodex must either add sharper source-backed value or publish a concise,
-honest watch note. Do not skip an official app update just because the source is the
-OpenAI changelog rather than GitHub.
-
-For prereleases, Decodex should try to be better than the benchmark accounts. If they
-do not cover prereleases, publish a careful prerelease read when compare metadata and
-PR titles reveal useful direction. Keep it as a thread when necessary, but make the
-thread concrete: important PR/commit clusters, anticipated workflow changes,
-protocol/API/schema changes, operator-facing changes, then source/caveat.
+Do not skip an official app update just because the source is the OpenAI changelog
+rather than GitHub. For prereleases, Decodex should provide source-backed
+interpretation beyond release-bot reposts when compare metadata and PR titles reveal
+useful direction. Keep it as a thread when necessary, but make the thread concrete:
+important PR/commit clusters, anticipated workflow changes, protocol/API/schema
+changes, operator-facing changes, then source/caveat.
 
 Keep release and prerelease channels separate. Stable release posts compare the current
 stable release to the previous stable release. Prerelease posts compare the current

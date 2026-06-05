@@ -39,18 +39,18 @@ Outputs:
 
 ## Style Benchmarks
 
-These benchmark observations are for tone and format only. They are not source evidence
-for technical claims.
+These observations are historical tone and format inspiration only. Recurring
+automation must not browse or sample these accounts, must not use their coverage as
+source evidence, and must not decide publish/skip state from whether they posted.
 
 | Account | Useful pattern | Decodex stance |
 | --- | --- | --- |
-| `@CodexReleases` | Fast release/update cards, media, and short thread splits for Codex app, mobile, and CLI updates. | Use as coverage and format benchmark; do not let it replace official source evidence. |
+| `@CodexReleases` | Fast release/update cards, media, and short thread splits for Codex app, mobile, and CLI updates. | Use as static style inspiration; do not let it become a runtime input or evidence source. |
 | `@Codex_Changelog` | Fast release-aware bullets with a changelog link. | Useful for `release_pulse`, but Decodex should not become a duplicate release bot. |
-| `@CodexReleases` | Version/update cards and short release threads. | Useful for timely release or prerelease intros, but Decodex should add evidence, caveats, and operator framing instead of only mirroring a tag. |
 | `@LLMJunky` | Practical user interpretation: how a feature changes real workflows, what is worth trying, and where limits remain. | Prefer this style when Radar evidence can support the claim quickly. |
 | `@decodexspace` | Low-frequency automated publication channel. | Establish a voice around evidence-backed Codex intelligence and Decodex operator impact. |
 
-Live Chrome readback on 2026-06-04 confirmed two useful benchmark shapes:
+Historical samples confirmed two useful shapes:
 
 - `@Codex_Changelog` works as a single-card pattern: product/version headline, three
   dense bullets, and a source link. Use this only when the checkpoint itself is the
@@ -60,15 +60,15 @@ Live Chrome readback on 2026-06-04 confirmed two useful benchmark shapes:
   when the release needs structure, but keep Decodex-specific caveats and evidence in
   the lead instead of burying them in the thread.
 
-For current release/app automation, refresh `@CodexReleases` and
-`@Codex_Changelog` readback before deciding that Decodex should skip. A missed official
-Codex app or mobile changelog entry is a Publisher coverage failure, not an upstream
-GitHub analysis gap.
+For current release/app automation, use official changelog, release, GitHub, checked
+Radar artifacts, and prior `social_post/v1` records as the decision inputs. A missed
+official Codex app or mobile changelog entry is a Publisher coverage failure, not an
+upstream GitHub analysis gap and not something to decide from other accounts.
 
-For current prereleases, lack of benchmark-account coverage is a Decodex advantage.
-Use compare and PR-title metadata to publish an early prerelease read when the direction
-is useful, while labeling the post as alpha metadata interpretation instead of a stable
-feature summary.
+For current prereleases, Decodex's advantage is source-backed interpretation before a
+stable release. Use compare and PR-title metadata to publish an early prerelease read
+when the direction is useful, while labeling the post as alpha metadata interpretation
+instead of a stable feature summary.
 
 Keep release and prerelease channels separate:
 
