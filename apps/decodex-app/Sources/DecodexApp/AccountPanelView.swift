@@ -1047,6 +1047,15 @@ private enum AccountRunStripScrollDirection {
 			return "Next running lane"
 		}
 	}
+
+	var disabledHelp: String {
+		switch self {
+		case .backward:
+			return "Already at the first running lane"
+		case .forward:
+			return "Already at the last running lane"
+		}
+	}
 }
 
 private struct AccountRunStripMetrics: Equatable {
@@ -1168,13 +1177,12 @@ private struct AccountRunStripEdgeButton: View {
 			.font(.system(size: 10.5, weight: .semibold))
 			.symbolRenderingMode(.monochrome)
 			.foregroundStyle(tint)
-			.scaleEffect(isPressed ? 0.92 : 1)
+			.scaleEffect(isEnabled && isPressed ? 0.92 : 1)
 		.frame(
 			width: AccountRunStripLayout.edgeControlWidth,
 			height: AccountRunChipLayout.height
 		)
 		.contentShape(Rectangle())
-		.opacity(isEnabled ? 1 : 0)
 		.allowsHitTesting(isEnabled)
 		.highPriorityGesture(
 			DragGesture(minimumDistance: 0)
@@ -1188,18 +1196,31 @@ private struct AccountRunStripEdgeButton: View {
 		.onDisappear {
 			cancelPress()
 		}
-		.help(direction.accessibilityLabel)
+		.onChange(of: isEnabled) { _, isEnabled in
+			if isEnabled == false {
+				cancelPress()
+			}
+		}
+		.help(isEnabled ? direction.accessibilityLabel : direction.disabledHelp)
 		.accessibilityLabel(direction.accessibilityLabel)
-		.accessibilityHidden(isEnabled == false)
+		.accessibilityValue(isEnabled ? "Available" : "Unavailable")
 	}
 
 	private var tint: Color {
-		PanelPalette.primaryText(colorScheme)
-			.opacity(isPressed ? 0.92 : colorScheme == .dark ? 0.62 : 0.5)
+		let opacity: Double
+		if isEnabled == false {
+			opacity = colorScheme == .dark ? 0.28 : 0.22
+		} else if isPressed {
+			opacity = 0.92
+		} else {
+			opacity = colorScheme == .dark ? 0.62 : 0.5
+		}
+
+		return PanelPalette.primaryText(colorScheme).opacity(opacity)
 	}
 
 	private func startPress() {
-		guard pressTask == nil else {
+		guard isEnabled, pressTask == nil else {
 			return
 		}
 
