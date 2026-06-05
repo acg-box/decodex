@@ -467,7 +467,9 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(response.contains("function codexAccountPoolMergeRank(account)"));
 	assert!(response.contains("function renderCodexAccountPool(accounts, snapshot)"));
 	assert!(!response.contains("function renderCodexAccountPoolHeader(accounts)"));
-	assert!(response.contains("function renderCodexAccountPoolRow(account, snapshot)"));
+	assert!(response.contains(
+		"function renderCodexAccountPoolRow(account, snapshot, isLastAccount = false)"
+	));
 	assert!(response.contains("function renderCodexAccountNameControl(account, snapshot)"));
 	assert!(!response.contains("ACCOUNT_SELECTION_CONFIRMATION_MS"));
 	assert!(!response.contains("accountSelectionConfirmationTimer"));
@@ -918,7 +920,12 @@ fn operator_dashboard_accounts_keeps_window_status_and_credit_copy_compact() {
 	assert!(response.contains("min-height: 42px;"));
 	assert!(response.contains("padding: var(--space-account-row-y) 28px var(--space-account-row-y) var(--space-row-indent);"));
 	assert!(response.contains("border-bottom: 1px solid var(--line);"));
-	assert!(response.contains(".account-pool-list > .account-row:last-child"));
+	assert!(response.contains(".account-pool-list > .account-row.is-last-account"));
+	assert!(response.contains("const lastAccountClass = isLastAccount ? \" is-last-account\" : \"\";"));
+	assert!(response.contains(
+		"accounts.map((account, index) => renderCodexAccountPoolRow(account, snapshot, index === accounts.length - 1))"
+	));
+	assert!(!response.contains(".account-pool-list > .account-row:last-child"));
 	assert!(response.contains("account-row-credit"));
 	assert!(response.contains(".account-row-credit {\n\t\t\t\tgrid-area: credit;"));
 	assert!(response.contains(".account-row-credit {\n\t\t\t\tgrid-area: credit;\n\t\t\t\tjustify-self: center;"));
