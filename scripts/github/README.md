@@ -42,11 +42,12 @@ Rust CLI entrypoints:
 Current checked contracts:
 
 - `analysis_draft.schema.json` is the Codex AI helper output schema.
-- `upstream_review_queue/v1` is validated by `decodex radar validate`.
-- `upstream_review.schema.json` is validated by `decodex radar validate`.
-- `release_delta/v1` is validated by `decodex radar validate`.
-- `upstream_impact.schema.json` is validated by `decodex radar validate`.
-- `social_post.schema.json` is validated by `decodex radar validate`.
+- `upstream_review_queue/v1` artifacts are validated by `decodex radar validate`.
+- `upstream_review/v1` artifacts are validated by `decodex radar validate`.
+- `release_delta/v1` artifacts are validated by `decodex radar validate`.
+- `upstream_impact/v1` artifacts are validated by `decodex radar validate`.
+- `social_candidate/v1` artifacts are validated by `decodex radar validate`.
+- `social_post/v1` artifacts are validated by `decodex radar validate`.
 
 Contract ownership:
 
@@ -54,6 +55,7 @@ Contract ownership:
 - upstream review queue and AI review boundary: `docs/spec/upstream-review.md`
 - output signal shape: `docs/spec/signal-entry.md`
 - upstream impact shape: `docs/spec/upstream-impact.md`
+- social candidate shape: `docs/spec/social-candidate.md`
 - social publication shape: `docs/spec/social-publishing.md`
 
 Example flow:
@@ -120,7 +122,8 @@ decodex radar backfill-release-range \
 GitHub Actions may refresh upstream queues, release deltas, and validation through
 `decodex radar ...`. Codex automation owns AI review of queued subjects and may then
 promote source-backed conclusions into `upstream_impact/v1`, `analysis_draft`,
-`decodex radar render-signal` output, or `social_post/v1`.
+`decodex radar render-signal` output, or `social_candidate/v1`; Publisher automation
+writes terminal `social_post/v1` records.
 
 Do not wire `run_codex_analysis.py` into GitHub Actions. Actions must not pass
 `--allow-ai-analysis-boundary` or set `DECODEX_ALLOW_CODEX_ANALYSIS`; that
@@ -129,9 +132,9 @@ recovery runs that still keep bundle validation and `analysis_draft` schema vali
 inside the helper.
 
 Repo-local skills under `dev/skills/` are reasoning instructions for the Codex
-analysis step and for manual Radar/Publisher work. They do not introduce extra
-intermediate artifact schemas unless the conclusion is promoted into one of the
-checked-in contracts listed above.
+analysis step and for manual Radar/Publisher work. Pre-publication social decisions use
+the checked-in `social_candidate/v1` contract; terminal publication, block, skip, and
+failure outcomes use `social_post/v1`.
 
 Raw bundles and analysis drafts are retained in Git for a 21-day hot window. Archive
 older raw batches as dedicated `radar-archive-*` GitHub Release assets and commit only

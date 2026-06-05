@@ -15,6 +15,7 @@ SIGNAL_SCHEMA = "signal_entry/v1"
 RELEASE_DELTA_SCHEMA = "release_delta/v1"
 UPSTREAM_REVIEW_QUEUE_SCHEMA = "upstream_review_queue/v1"
 UPSTREAM_REVIEW_SCHEMA = "upstream_review/v1"
+SOCIAL_CANDIDATE_SCHEMA = "social_candidate/v1"
 SOCIAL_POST_SCHEMA = "social_post/v1"
 ANALYSIS_MODES = {"pr_first", "commit_only"}
 SIGNAL_KINDS = {"capability", "behavior_change", "try_now"}
@@ -29,7 +30,7 @@ UPSTREAM_REVIEW_ACTION_TYPES = {
     "none",
     "upstream_impact",
     "signal_entry",
-    "social_post",
+    "social_candidate",
     "linear_followup",
 }
 SOCIAL_POST_MODES = {
@@ -627,6 +628,97 @@ def validate_upstream_review(entry: dict[str, Any]) -> ValidationResult:
                 errors.append(f"next_actions[{index}].type must be one of {sorted(UPSTREAM_REVIEW_ACTION_TYPES)}")
             if not isinstance(action.get("reason"), str) or not action["reason"]:
                 errors.append(f"next_actions[{index}].reason must be a non-empty string")
+
+    return ValidationResult(ok=not errors, errors=errors)
+
+
+def validate_social_candidate(entry: dict[str, Any]) -> ValidationResult:
+    errors: list[str] = []
+
+    if entry.get("schema") != SOCIAL_CANDIDATE_SCHEMA:
+        errors.append(f"schema must be {SOCIAL_CANDIDATE_SCHEMA}")
+
+    for field in ("slug", "repo", "audience"):
+        if not isinstance(entry.get(field), str) or not entry[field]:
+            errors.append(f"{field} must be a non-empty string")
+
+    if isinstance(entry.get("repo"), str) and "/" not in entry["repo"]:
+        errors.append("repo must be owner/name")
+    if entry.get("channel") != "x":
+        errors.append("channel must be x")
+    if entry.get("target_account") != "decodexspace":
+        errors.append("target_account must be decodexspace")
+    if entry.get("mode") not in SOCIAL_POST_MODES:
+        errors.append(f"mode must be one of {sorted(SOCIAL_POST_MODES)}")
+    if entry.get("priority") not in SOCIAL_POST_PRIORITIES:
+        errors.append(f"priority must be one of {sorted(SOCIAL_POST_PRIORITIES)}")
+
+    candidate_text = entry.get("candidate_text")
+    if (
+        not isinstance(candidate_text, list)
+        or not candidate_text
+        or not all(isinstance(item, str) and 0 < len(item) <= 280 for item in candidate_text)
+    ):
+        errors.append("candidate_text must be a non-empty list of X-sized strings")
+
+    refs = entry.get("source_refs")
+    if not isinstance(refs, dict):
+        errors.append("source_refs must be an object")
+    else:
+        present = [
+            name
+            for name in ("signals", "upstream_impacts", "upstream_reviews", "release_deltas", "urls")
+            if isinstance(refs.get(name), list) and refs[name]
+        ]
+        if not present:
+            errors.append(
+                "source_refs must include signals, upstream_impacts, upstream_reviews, release_deltas, or urls"
+            )
+        urls = refs.get("urls", [])
+        if urls and (
+            not isinstance(urls, list)
+            or not all(isinstance(url, str) and url.startswith("https://") for url in urls)
+        ):
+            errors.append("source_refs.urls must be a list of https URLs")
+
+    for list_field in ("evidence_notes", "claims"):
+        values = entry.get(list_field)
+        if not isinstance(values, list) or not values:
+            errors.append(f"{list_field} must be a non-empty list")
+
+    claims = entry.get("claims")
+    if isinstance(claims, list):
+        for index, claim in enumerate(claims):
+            if not isinstance(claim, dict):
+                errors.append(f"claims[{index}] must be an object")
+                continue
+            for field in ("text", "evidence"):
+                if not isinstance(claim.get(field), str) or not claim[field]:
+                    errors.append(f"claims[{index}].{field} must be a non-empty string")
+            if claim.get("confidence") not in SIGNAL_CONFIDENCE:
+                errors.append(f"claims[{index}].confidence must be one of {sorted(SIGNAL_CONFIDENCE)}")
+
+    decision = entry.get("decision")
+    if not isinstance(decision, dict):
+        errors.append("decision must be an object")
+    else:
+        if decision.get("worthiness") not in {"publish", "defer", "skip"}:
+            errors.append("decision.worthiness must be one of ['defer', 'publish', 'skip']")
+        for field in ("idempotency_key", "reason"):
+            if not isinstance(decision.get(field), str) or not decision[field]:
+                errors.append(f"decision.{field} must be a non-empty string")
+
+    caveats = entry.get("caveats", [])
+    if caveats is not None and (
+        not isinstance(caveats, list) or not all(isinstance(item, str) and item for item in caveats)
+    ):
+        errors.append("caveats must be a list of non-empty strings when present")
+
+    next_steps = entry.get("next_steps", [])
+    if next_steps is not None and (
+        not isinstance(next_steps, list) or not all(isinstance(item, str) and item for item in next_steps)
+    ):
+        errors.append("next_steps must be a list of non-empty strings when present")
 
     return ValidationResult(ok=not errors, errors=errors)
 

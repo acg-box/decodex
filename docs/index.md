@@ -81,8 +81,9 @@ The split below is by question type, not by human-versus-agent audience.
 - Keep the public site static by default. `site/` consumes checked-in content and
   generated JSON; it must not depend on a live Decodex daemon unless a later decision
   changes that boundary.
-- Keep social publishing static-first as well. Publication, block, skip, and failure
-  outcomes must be checked-in `social_post/v1` records.
+- Keep social publishing static-first as well. Candidate handoffs must be checked-in
+  `social_candidate/v1` records, and publication, block, skip, and failure outcomes
+  must be checked-in `social_post/v1` records.
 - Start each document with a short routing header that says what the document is for,
   when to read it, and what it does not cover.
 - Keep links explicit and stable.

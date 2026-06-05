@@ -59,11 +59,16 @@ Keep these artifacts in Git unless a separate content cleanup explicitly removes
 - the current homepage `release_delta/v1` artifact
 - the latest `upstream_review_queue/v1` artifact under `artifacts/github/review-queue/`
 - `upstream_impact/v1` records that affect Decodex Control Plane or Publisher follow-up
+- `social_candidate/v1` records that preserve `publish`, `defer`, or `skip` Publisher
+  intake decisions
 - `social_post/v1` records, including daily-cap blocks
 - archive manifests under `artifacts/archive/index/`
 
-Generated social images may be archived after the same 21-day hot window when the
-paired `social_post/v1` record keeps enough metadata to recover or regenerate them.
+Generated social images are not warm curated artifacts and should not be committed by
+automation by default. Keep them in a local media cache when visual QA or debugging
+needs them. If an operator explicitly commits a sample image, treat it as a hot artifact
+and archive or remove it after the same 21-day window when the paired `social_post/v1`
+record keeps enough URL/hash/prompt metadata to audit the publication.
 
 ## Cold archive destination
 
