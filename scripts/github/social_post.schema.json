@@ -285,6 +285,7 @@
       }
     },
     "media_refs": {
+      "description": "X media readback URLs, external media pointers, content hashes, or explicitly operator-approved checked-in sample paths. Generated media files are not committed by default.",
       "type": "array",
       "items": {
         "type": "string",

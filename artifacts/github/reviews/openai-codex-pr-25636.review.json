@@ -54,8 +54,8 @@
       "reason": "The rename can affect Decodex Control Plane compatibility and should be tracked as an upstream impact."
     },
     {
-      "type": "social_post",
-      "reason": "The rename is useful to explain publicly for operators following Codex MultiAgentV2 tooling changes."
+      "type": "social_candidate",
+      "reason": "The rename is useful to consider publicly for operators following Codex MultiAgentV2 tooling changes; Publisher should decide the terminal social_post outcome."
     },
     {
       "type": "linear_followup",
