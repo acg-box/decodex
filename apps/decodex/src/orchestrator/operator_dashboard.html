@@ -2125,7 +2125,7 @@
 				cursor: pointer;
 			}
 
-			.account-pool-list > .account-row:last-child {
+			.account-pool-list > .account-row.is-last-account {
 				border-bottom: 0;
 			}
 
@@ -7185,7 +7185,7 @@
 					`;
 				}
 
-				function renderCodexAccountPoolRow(account, snapshot) {
+				function renderCodexAccountPoolRow(account, snapshot, isLastAccount = false) {
 					const weight = codexAccountCapacityLabel(account);
 					const statusTone = codexAccountStatusTone(account);
 					const toneClass = statusTone ? ` is-${statusTone}` : "";
@@ -7207,12 +7207,13 @@
 					const profileExpanded = hasProfileDetails && codexAccountProfileExpanded(account);
 					const profileOpenClass = profileExpanded ? " is-profile-open" : "";
 					const profileToggleableClass = hasProfileDetails ? " is-profile-toggleable" : "";
+					const lastAccountClass = isLastAccount ? " is-last-account" : "";
 					const profileRowToggleAttribute = hasProfileDetails
 						? ` data-account-profile-row-toggle="${escapeHtml(profileKey)}"`
 						: "";
 
 					return `
-							<div class="account-row${selectedClass}${fixedClass}${armedClass}${toneClass}${profileOpenClass}${profileToggleableClass}" data-render-key="account-row:${escapeHtml(profileKey)}"${profileRowToggleAttribute}>
+							<div class="account-row${selectedClass}${fixedClass}${armedClass}${toneClass}${profileOpenClass}${profileToggleableClass}${lastAccountClass}" data-render-key="account-row:${escapeHtml(profileKey)}"${profileRowToggleAttribute}>
 								<div class="account-row-id${identityClass}">
 									${renderCodexAccountNameControl(account, snapshot)}
 									${renderCodexAccountRandomNameButton(account)}
@@ -7446,7 +7447,7 @@
 							<div class="account-pool-guide">
 								${ACCOUNT_POOL_SORT_COLUMNS.map(renderCodexAccountPoolGuideCell).join("")}
 							</div>
-							${accounts.map((account) => renderCodexAccountPoolRow(account, snapshot)).join("")}
+							${accounts.map((account, index) => renderCodexAccountPoolRow(account, snapshot, index === accounts.length - 1)).join("")}
 						</div>
 					`;
 				}
