@@ -1,6 +1,5 @@
 use orchestrator::ReviewHandoffNeedsAttention;
 use orchestrator::PassiveRetainedAttentionRuntime;
-use orchestrator::RepoGateFailure;
 
 #[test]
 fn terminal_failures_without_needs_attention_label_use_nonstartable_guard_state() {
