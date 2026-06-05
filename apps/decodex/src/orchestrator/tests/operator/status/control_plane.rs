@@ -273,11 +273,63 @@ fn control_plane_dev_snapshot_includes_local_active_runs() {
 	assert_eq!(project.project_id, "pubfi");
 	assert_eq!(project.connector_state, "dev");
 	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.running_lane_count, 1);
 	assert_eq!(snapshot.active_runs.len(), 1);
 	assert_eq!(snapshot.active_runs[0].run_id, "run-active");
 	assert_eq!(snapshot.active_runs[0].project_id, "pubfi");
 	assert_eq!(snapshot.active_runs[0].phase, "executing");
 	assert!(snapshot.queued_candidates.is_empty());
+	assert!(snapshot.warnings.contains(&String::from("automation_disabled")));
+}
+
+#[test]
+fn control_plane_dev_snapshot_separates_visible_active_runs_from_running_lanes() {
+	let (temp_dir, config, _workflow) = temp_project_layout();
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	state_store.upsert_project(&registration).expect("project should register");
+	state_store
+		.record_run_attempt("run-active", &issue.id, 1, "running")
+		.expect("active run should record");
+	state_store
+		.upsert_lease(config.service_id(), &issue.id, "run-active", "In Progress")
+		.expect("active lease should record");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+	state::write_run_activity_marker_for_process(&worktree_path, "run-active", 1, u32::MAX)
+		.expect("stopped process marker should write");
+
+	let snapshot =
+		orchestrator::run_control_plane_dev_tick(&state_store).expect("dev snapshot should build");
+	let project = snapshot.projects.first().expect("enabled project should be listed");
+	let run = snapshot.active_runs.first().expect("stopped active run should stay visible");
+
+	assert_eq!(project.active_run_count, snapshot.active_runs.len());
+	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.running_lane_count, 0);
+	assert_eq!(project.attention_count, 1);
+	assert_eq!(run.run_id, "run-active");
+	assert_eq!(run.status, "running");
+	assert_eq!(run.execution_liveness, "process_stopped");
 	assert!(snapshot.warnings.contains(&String::from("automation_disabled")));
 }
 

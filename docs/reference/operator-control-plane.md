@@ -277,6 +277,10 @@ Worktree visibility follows the owning dashboard section:
   when `process_alive` is false.
   `active_lease` is queue lease ownership only; `execution_liveness` explains why
   the lane is still visible when the queue lease is not held.
+- In the JSON snapshot, `active_run_count` follows the same visibility boundary as
+  the top-level `active_runs` list. The `Projects` table's `running` work number uses
+  `running_lane_count`, so stopped, stale, or attention lanes can stay visible as
+  active work without being counted as currently running.
 - Running lanes derive CLI and dashboard text from the same `OperatorRunStatus`
   object. `protocol_activity`, when present, summarizes app-server structured
   notifications for turn status, waiting reason, and recent protocol events. The
