@@ -74,6 +74,13 @@ const SOCIAL_POST_MODES: &[&str] = &[
 const SOCIAL_POST_PRIORITIES: &[&str] = &["critical", "high", "low", "normal"];
 const SOCIAL_POST_STATUSES: &[&str] = &["blocked", "failed", "published", "skipped"];
 const SOCIAL_POST_WORTHINESS: &[&str] = &["block", "publish", "skip"];
+const SOCIAL_POST_LIFECYCLE_STATES: &[&str] = &[
+	"deleted_by_operator",
+	"live",
+	"superseded_failed_attempt",
+	"superseded_published",
+	"superseded_text_only",
+];
 const SOURCE_ITEM_KINDS: &[&str] = &["commit", "pull_request"];
 const UPSTREAM_IMPACT_KINDS: &[&str] =
 	&["browser_observation", "changelog", "commit", "pull_request", "release", "signal"];
@@ -5172,7 +5179,7 @@ fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut Vec<String
 	validate_social_post_claims(entry.get("claims"), errors);
 	validate_social_candidate_decision(entry.get("decision"), errors);
 
-	for field in ["caveats", "next_steps"] {
+	for field in ["caveats", "media_refs", "next_steps"] {
 		validate_optional_string_list(entry.get(field), field, errors);
 	}
 }
@@ -5236,6 +5243,7 @@ fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	validate_social_post_claims(entry.get("claims"), errors);
 	validate_social_post_decision(entry, errors);
 	validate_social_post_status_payload(entry, errors);
+	validate_social_post_lifecycle(entry, errors);
 
 	for field in ["caveats", "media_refs"] {
 		validate_optional_string_list(entry.get(field), field, errors);
@@ -5383,6 +5391,53 @@ fn validate_social_post_status_payload(entry: &Map<String, Value>, errors: &mut 
 		Some("skipped") if entry.get("skip").and_then(Value::as_object).is_none() =>
 			errors.push("skip is required when status is skipped".into()),
 		_ => {},
+	}
+}
+
+fn validate_social_post_lifecycle(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	let Some(lifecycle) = entry.get("post_lifecycle") else {
+		return;
+	};
+	let Some(lifecycle) = lifecycle.as_object() else {
+		errors.push("post_lifecycle must be an object when present".into());
+
+		return;
+	};
+
+	if !matches_one_of(lifecycle.get("current_state"), SOCIAL_POST_LIFECYCLE_STATES) {
+		errors.push(format!(
+			"post_lifecycle.current_state must be one of {}",
+			choices(SOCIAL_POST_LIFECYCLE_STATES)
+		));
+	}
+	if lifecycle.get("quote_eligible").and_then(Value::as_bool).is_none() {
+		errors.push("post_lifecycle.quote_eligible must be boolean".into());
+	}
+	if !is_non_empty_string(lifecycle.get("reason")) {
+		errors.push("post_lifecycle.reason must be a non-empty string".into());
+	}
+	if lifecycle
+		.get("superseded_by_candidate")
+		.is_some_and(|value| !is_non_empty_string(Some(value)))
+	{
+		errors.push("post_lifecycle.superseded_by_candidate must be non-empty when present".into());
+	}
+
+	let current_state = string_field(lifecycle, "current_state");
+	let quote_eligible = lifecycle.get("quote_eligible").and_then(Value::as_bool);
+
+	if quote_eligible == Some(true)
+		&& (string_field(entry, "status") != Some("published") || current_state != Some("live"))
+	{
+		errors
+			.push("post_lifecycle.quote_eligible can be true only for live published posts".into());
+	}
+	if current_state.is_some_and(|state| state.starts_with("superseded"))
+		&& lifecycle.get("superseded_by_candidate").is_none()
+	{
+		errors.push(
+			"post_lifecycle.superseded_by_candidate is required for superseded states".into(),
+		);
 	}
 }
 
@@ -5866,6 +5921,27 @@ mod tests {
 		social_post["decision"]["daily_limit"] = serde_json::json!(9);
 
 		assert_errors(&social_post, ["decision.daily_limit must be 8"]);
+	}
+
+	#[test]
+	fn accepts_deleted_social_post_lifecycle_and_rejects_quote_eligible_deleted_post() {
+		let mut social_post = valid_social_post();
+
+		social_post["post_lifecycle"] = serde_json::json!({
+			"current_state": "deleted_by_operator",
+			"quote_eligible": false,
+			"superseded_by_candidate": "artifacts/github/social-candidates/openai-codex-alpha4.json",
+			"reason": "The operator deleted this post and superseded it with a corrected candidate."
+		});
+
+		assert_errors(&social_post, []);
+
+		social_post["post_lifecycle"]["quote_eligible"] = serde_json::json!(true);
+
+		assert_errors(
+			&social_post,
+			["post_lifecycle.quote_eligible can be true only for live published posts"],
+		);
 	}
 
 	#[test]

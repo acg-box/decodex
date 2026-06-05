@@ -1,0 +1,87 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-138-0-alpha-4-prerelease-delta",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "thread",
+  "priority": "high",
+  "audience": "Codex CLI alpha testers and Decodex Radar readers",
+  "candidate_text": [
+    "Codex CLI 0.138.0-alpha.4 prerelease read\n\nIncrement: alpha.3 -> alpha.4, 8 commits.\n\nMain theme: reasoning-effort and app-server protocol cleanup.\n\nAlpha caveat: metadata read, not stable release notes.",
+    "Protocol/API changes:\n\n- reasoning efforts become model-defined\nhttps://github.com/openai/codex/pull/26444\n\n- model-advertised order is preserved\nhttps://github.com/openai/codex/pull/26446",
+    "Cleanup to watch:\n\n- response.processed websocket request removed\nhttps://github.com/openai/codex/pull/26447\n\n- experimentalFeature/enablement/set trims stale keys\nhttps://github.com/openai/codex/pull/26312",
+    "Why this prerelease matters:\n\nThis is not a broad feature-drop read. It is a tight alpha delta around protocol shape, model metadata, and client compatibility.\n\nCompare:\nhttps://github.com/openai/codex/compare/rust-v0.138.0-alpha.3...rust-v0.138.0-alpha.4"
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.3",
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4",
+      "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.3...rust-v0.138.0-alpha.4",
+      "https://github.com/openai/codex/pull/26444",
+      "https://github.com/openai/codex/pull/26446",
+      "https://github.com/openai/codex/pull/26447",
+      "https://github.com/openai/codex/pull/26312",
+      "https://x.com/CodexReleases",
+      "https://x.com/Codex_Changelog"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.138.0-alpha.4 was published as a prerelease on 2026-06-04T22:01:10Z.",
+    "The prerelease channel baseline is the adjacent previous prerelease rust-v0.138.0-alpha.3, not stable rust-v0.137.0.",
+    "GitHub compare metadata for rust-v0.138.0-alpha.3...rust-v0.138.0-alpha.4 showed 8 ahead commits.",
+    "This is not the first prerelease after a stable release, but local social_post/v1 records did not contain a previous alpha.3 Decodex prerelease post URL to quote.",
+    "The missing alpha.3 quote target is a historical Publisher coverage gap; the candidate must not invent a quote URL.",
+    "The alpha.3 -> alpha.4 commit titles cluster around model-defined reasoning efforts, model-advertised effort order, response.processed websocket removal, experimentalFeature/enablement/set cleanup, AGENTS.md environment filesystem routing, Windows sandbox lint, and release binary ThinLTO.",
+    "Public copy uses direct GitHub PR URLs on first mention instead of raw PR-number-only references.",
+    "A fresh candidate-specific Decodex signal card was generated and visually reviewed at /Users/x/.codex/decodex/social-media/codex-cli-0-138-alpha3-alpha4.svg.png.",
+    "Read-only X benchmark sampling on 2026-06-05 showed @CodexReleases and @Codex_Changelog covering Codex app 26.602 and CLI 0.137.0, but not visible prerelease interpretation for 0.138.0-alpha.4."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.138.0-alpha.4 is the latest observed openai/codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The prerelease-channel comparison for alpha.4 is rust-v0.138.0-alpha.3 to rust-v0.138.0-alpha.4.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.3...rust-v0.138.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.3 to alpha.4 compare window has 8 ahead commits.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.3...rust-v0.138.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.3 to alpha.4 compare window includes model-defined reasoning effort and model-advertised effort ordering work.",
+      "evidence": "https://github.com/openai/codex/pull/26444 and https://github.com/openai/codex/pull/26446",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.3 to alpha.4 compare window removes response.processed websocket request handling and trims stale experimentalFeature/enablement/set keys.",
+      "evidence": "https://github.com/openai/codex/pull/26447 and https://github.com/openai/codex/pull/26312",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "Benchmark accounts are not visibly covering prerelease interpretation, and the adjacent alpha.3 -> alpha.4 compare supports a useful, formatted prerelease delta read with clickable PR URLs and explicit channel-lineage caveats.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-138-0-alpha-4:alpha3-alpha4:thread"
+  },
+  "caveats": [
+    "Do not compare this prerelease post against stable rust-v0.137.0; that belongs to the homepage release-delta index or first-prerelease baseline only.",
+    "Do not quote a previous alpha.3 post unless a real previous Decodex post URL is found.",
+    "Upgrade or testing guidance should point readers to the exact prerelease tag until source review catches up."
+  ],
+  "media_refs": [
+    "/Users/x/.codex/decodex/social-media/codex-cli-0-138-alpha3-alpha4.svg.png"
+  ],
+  "next_steps": [
+    "Publish as a prerelease-channel alpha.3 -> alpha.4 delta read with /Users/x/.codex/decodex/social-media/codex-cli-0-138-alpha3-alpha4.svg.png after media upload reliability is fixed or an explicit text-only fallback is approved.",
+    "For the next prerelease in this train, compare alpha.4 -> alpha.5 and quote the previous alpha.4 prerelease post URL when one exists."
+  ]
+}
