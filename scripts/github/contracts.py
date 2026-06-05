@@ -44,6 +44,13 @@ SOCIAL_POST_MODES = {
 SOCIAL_POST_STATUSES = {"published", "blocked", "failed", "skipped"}
 SOCIAL_POST_PRIORITIES = {"critical", "high", "normal", "low"}
 SOCIAL_POST_WORTHINESS = {"publish", "skip", "block"}
+SOCIAL_POST_LIFECYCLE_STATES = {
+    "deleted_by_operator",
+    "live",
+    "superseded_failed_attempt",
+    "superseded_published",
+    "superseded_text_only",
+}
 SOCIAL_BLOCK_REASONS = {
     "daily_cap_exceeded",
     "duplicate",
@@ -857,6 +864,32 @@ def validate_social_post(entry: dict[str, Any]) -> ValidationResult:
             errors.append("failure is required when status is failed")
     elif status == "skipped" and not isinstance(entry.get("skip"), dict):
         errors.append("skip is required when status is skipped")
+
+    lifecycle = entry.get("post_lifecycle")
+    if lifecycle is not None:
+        if not isinstance(lifecycle, dict):
+            errors.append("post_lifecycle must be an object when present")
+        else:
+            current_state = lifecycle.get("current_state")
+            quote_eligible = lifecycle.get("quote_eligible")
+            if current_state not in SOCIAL_POST_LIFECYCLE_STATES:
+                errors.append(
+                    "post_lifecycle.current_state must be one of "
+                    f"{sorted(SOCIAL_POST_LIFECYCLE_STATES)}"
+                )
+            if not isinstance(quote_eligible, bool):
+                errors.append("post_lifecycle.quote_eligible must be boolean")
+            if not isinstance(lifecycle.get("reason"), str) or not lifecycle["reason"]:
+                errors.append("post_lifecycle.reason must be a non-empty string")
+            superseded_by = lifecycle.get("superseded_by_candidate")
+            if superseded_by is not None and (not isinstance(superseded_by, str) or not superseded_by):
+                errors.append("post_lifecycle.superseded_by_candidate must be non-empty when present")
+            if quote_eligible is True and (status != "published" or current_state != "live"):
+                errors.append("post_lifecycle.quote_eligible can be true only for live published posts")
+            if isinstance(current_state, str) and current_state.startswith("superseded") and superseded_by is None:
+                errors.append(
+                    "post_lifecycle.superseded_by_candidate is required for superseded states"
+                )
 
     for list_field in ("caveats", "media_refs"):
         values = entry.get(list_field, [])
