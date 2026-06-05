@@ -57,8 +57,7 @@ Then keep the body explicit:
 - [`runtime.md`](./runtime.md) defines the runtime state model, reconciliation rules, and
   tracker writeback boundaries.
 - [`app-server.md`](./app-server.md) defines the direct Codex `app-server` interaction
-  contract, current compatibility range, and protocol support evidence used by the
-  runtime.
+  contract and protocol support evidence used by the runtime.
 - [`lane-control.md`](./lane-control.md) defines the CLI/API-first operator
   lane-control capability matrix and the boundary between bottom-layer steer support
   and higher-level policy guardrails.

@@ -92,17 +92,10 @@ const PREFLIGHT_CHECK_MODEL_PROVIDER: &str = "model_provider";
 const PREFLIGHT_CHECK_SKILLS: &str = "skills";
 const PREFLIGHT_CHECK_PLUGINS: &str = "plugins";
 const PREFLIGHT_CHECK_MCP: &str = "mcp";
-const PREFLIGHT_CHECK_COMPATIBILITY: &str = "compatibility";
 const PREFLIGHT_PLUGIN_MARKETPLACE_KIND: &str = "local";
-const APP_SERVER_COMPATIBILITY_SUPPORT_CLAIM: &str = "local_verified_codex_cli_exact_versions";
-const APP_SERVER_COMPATIBILITY_EVIDENCE: &str =
-	"initialize.userAgent plus successful app-server capability preflight";
-const APP_SERVER_COMPATIBILITY_CAPABILITY_SOURCE: &str = "bounded_app_server_preflight";
 const APP_SERVER_SCHEMA_GENERATE_COMMAND: &str =
 	"codex app-server generate-json-schema --experimental";
 const APP_SERVER_SCHEMA_PROBE_OUT_DIR: &str = "target/decodex-app-server-schema-check";
-const APP_SERVER_SCHEMA_NOT_CHECKED_REASON: &str =
-	"normal dispatch uses exact-version allowlist; run decodex probe before expanding support";
 const APP_SERVER_SCHEMA_REQUIRED_MARKERS: &[&str] = &[
 	"initialize",
 	"config/read",
@@ -127,19 +120,6 @@ const APP_SERVER_SCHEMA_REQUIRED_MARKERS: &[&str] = &[
 ];
 const APP_SERVER_SCHEMA_PROSE_KEYS: &[&str] =
 	&["$comment", "comment", "description", "examples", "markdownDescription", "title"];
-const CODEX_CLI_VERSION_STABLE_0_136_0: &str = "0.136.0";
-const CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2: &str = "0.136.0-alpha.2";
-const CODEX_CLI_VERSION_DESKTOP_0_137_0_ALPHA_4: &str = "0.137.0-alpha.4";
-const SUPPORTED_CODEX_CLI_VERSION_MATCH_ORDER: &[&str] = &[
-	CODEX_CLI_VERSION_DESKTOP_0_137_0_ALPHA_4,
-	CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2,
-	CODEX_CLI_VERSION_STABLE_0_136_0,
-];
-const SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER: &[&str] = &[
-	CODEX_CLI_VERSION_STABLE_0_136_0,
-	CODEX_CLI_VERSION_BETA_0_136_0_ALPHA_2,
-	CODEX_CLI_VERSION_DESKTOP_0_137_0_ALPHA_4,
-];
 const JSONRPC_METHOD_NOT_FOUND: i64 = -32_601;
 const CHILD_BUCKET_MODEL: &str = "Model";
 const WAITING_REASON_MODEL_EXECUTION: &str = "model_execution";
@@ -189,6 +169,10 @@ impl AppServerCapabilityPreflightReport {
 		&self.checks
 	}
 
+	pub(crate) fn check_count(&self) -> usize {
+		self.checks.len()
+	}
+
 	fn push_ok(
 		&mut self,
 		name: &'static str,
@@ -217,20 +201,6 @@ impl AppServerCapabilityPreflightReport {
 		});
 	}
 
-	fn push_warning(
-		&mut self,
-		name: &'static str,
-		summary: impl Into<String>,
-		details: BTreeMap<String, String>,
-	) {
-		self.checks.push(AppServerCapabilityPreflightCheck {
-			name,
-			status: AppServerCapabilityPreflightStatus::Warning,
-			summary: summary.into(),
-			details,
-		});
-	}
-
 	fn has_blockers(&self) -> bool {
 		self.checks.iter().any(|check| check.status == AppServerCapabilityPreflightStatus::Blocked)
 	}
@@ -244,51 +214,6 @@ impl AppServerCapabilityPreflightReport {
 			.collect::<Vec<_>>();
 
 		if blockers.is_empty() { String::from("no blockers recorded") } else { blockers.join("; ") }
-	}
-
-	pub(crate) fn compatibility_status(&self) -> &'static str {
-		match self.compatibility_check().map(|check| check.status) {
-			Some(AppServerCapabilityPreflightStatus::Ok) => "supported",
-			Some(AppServerCapabilityPreflightStatus::Warning) => "unverified_allowed",
-			Some(AppServerCapabilityPreflightStatus::Blocked) => "unsupported",
-			None => "not_checked",
-		}
-	}
-
-	pub(crate) fn compatibility_codex_cli_version(&self) -> Option<&str> {
-		self.compatibility_detail("codex_cli_version")
-	}
-
-	pub(crate) fn compatibility_supported_versions(&self) -> Option<&str> {
-		self.compatibility_detail("supported_versions")
-	}
-
-	pub(crate) fn compatibility_support_decision(&self) -> Option<&str> {
-		self.compatibility_detail("support_decision")
-	}
-
-	pub(crate) fn compatibility_capability_evidence(&self) -> Option<&str> {
-		self.compatibility_detail("capability_evidence")
-	}
-
-	pub(crate) fn compatibility_schema_evidence(&self) -> Option<&str> {
-		self.compatibility_detail("schema_evidence")
-	}
-
-	pub(crate) fn compatibility_schema_cache(&self) -> Option<&str> {
-		self.compatibility_detail("schema_cache")
-	}
-
-	pub(crate) fn compatibility_schema_marker_count(&self) -> Option<&str> {
-		self.compatibility_detail("schema_marker_count")
-	}
-
-	fn compatibility_check(&self) -> Option<&AppServerCapabilityPreflightCheck> {
-		self.checks.iter().find(|check| check.name == PREFLIGHT_CHECK_COMPATIBILITY)
-	}
-
-	fn compatibility_detail(&self, detail: &str) -> Option<&str> {
-		self.compatibility_check().and_then(|check| check.details.get(detail)).map(String::as_str)
 	}
 }
 
@@ -513,7 +438,6 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) max_turns: u32,
 	pub(crate) timeout: Duration,
 	pub(crate) process_env: AppServerProcessEnv,
-	pub(crate) allow_unverified_codex: bool,
 	pub(crate) continuation_user_input: Option<String>,
 	pub(crate) activity_marker_path: Option<PathBuf>,
 	pub(crate) resume_thread_id: Option<String>,
@@ -522,7 +446,6 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
 	pub(crate) continuation_guard: Option<&'a dyn TurnContinuationGuard>,
 	pub(crate) codex_account_provider: Option<&'a dyn CodexAccountProvider>,
-	pub(crate) compatibility_schema_evidence: Option<AppServerSchemaProbeEvidence>,
 }
 
 pub(crate) struct AppServerThreadArchiveRequest<'a> {
@@ -1080,17 +1003,7 @@ enum AppServerDynamicToolFailureKind {
 #[serde(rename_all = "snake_case")]
 enum AppServerCapabilityPreflightStatus {
 	Ok,
-	Warning,
 	Blocked,
-}
-impl AppServerCapabilityPreflightStatus {
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::Ok => "ok",
-			Self::Warning => "warning",
-			Self::Blocked => "blocked",
-		}
-	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1199,13 +1112,12 @@ pub(crate) fn archive_app_server_thread_after_success(
 	result
 }
 
-pub(crate) fn probe_app_server(
-	listen: &str,
-	allow_unverified_codex: bool,
-) -> crate::prelude::Result<AppServerRunResult> {
+pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServerRunResult> {
 	let state_store = StateStore::open_in_memory()?;
 	let probe_tool_handler = ProbeDynamicToolHandler;
-	let schema_evidence = probe_app_server_schema(&AppServerProcessEnv::default())?;
+
+	probe_app_server_schema(&AppServerProcessEnv::default())?;
+
 	let result = execute_app_server_run(
 		&AppServerRunRequest {
 			project_id: String::from("probe"),
@@ -1219,7 +1131,6 @@ pub(crate) fn probe_app_server(
 			max_turns: 1,
 			timeout: PROBE_TIMEOUT,
 			process_env: AppServerProcessEnv::default(),
-			allow_unverified_codex,
 			continuation_user_input: None,
 			activity_marker_path: None,
 			resume_thread_id: None,
@@ -1228,7 +1139,6 @@ pub(crate) fn probe_app_server(
 			dynamic_tool_handler: Some(&probe_tool_handler),
 			continuation_guard: None,
 			codex_account_provider: None,
-			compatibility_schema_evidence: Some(schema_evidence),
 		},
 		&state_store,
 	)?;
@@ -1263,25 +1173,6 @@ fn preflight_check_blocker_summary(check: &AppServerCapabilityPreflightCheck) ->
 		summary.push_str(path);
 		summary.push_str("; first_error=");
 		summary.push_str(error);
-	}
-	if check.name == PREFLIGHT_CHECK_COMPATIBILITY {
-		for detail_name in [
-			"support_decision",
-			"parsed_version",
-			"codex_cli_version",
-			"user_agent",
-			"supported_versions",
-			"capability_evidence",
-			"schema_evidence",
-			"schema_cache",
-		] {
-			if let Some(detail) = check.details.get(detail_name) {
-				summary.push(' ');
-				summary.push_str(detail_name);
-				summary.push('=');
-				summary.push_str(detail);
-			}
-		}
 	}
 
 	summary
@@ -2380,14 +2271,8 @@ fn execute_app_server_run_inner(
 
 	write_capability_preflight_marker_best_effort(request);
 
-	let capability_preflight = run_app_server_capability_preflight(
-		&mut client,
-		&mut recorder,
-		&request.cwd,
-		&initialize_response.user_agent,
-		request.allow_unverified_codex,
-		request.compatibility_schema_evidence.as_ref(),
-	)?;
+	let capability_preflight =
+		run_app_server_capability_preflight(&mut client, &mut recorder, &request.cwd)?;
 
 	write_activity_marker_best_effort_for_request(request);
 
@@ -2477,9 +2362,6 @@ fn run_app_server_capability_preflight(
 	client: &mut AppServerClient,
 	recorder: &mut RunRecorder<'_>,
 	cwd: &str,
-	user_agent: &str,
-	allow_unverified_codex: bool,
-	compatibility_schema_evidence: Option<&AppServerSchemaProbeEvidence>,
 ) -> crate::prelude::Result<AppServerCapabilityPreflightReport> {
 	let mut report = AppServerCapabilityPreflightReport::new();
 	let config = preflight_request(recorder, &report, "config/read", || {
@@ -2535,15 +2417,6 @@ fn run_app_server_capability_preflight(
 				error,
 			);
 		},
-	}
-
-	if !report.has_blockers() {
-		record_app_server_compatibility_guard(
-			&mut report,
-			user_agent,
-			allow_unverified_codex,
-			compatibility_schema_evidence,
-		);
 	}
 
 	record_app_server_preflight_report(recorder, &report)?;
@@ -3096,180 +2969,6 @@ fn command_output_excerpt(output: &[u8]) -> String {
 	let excerpt = trimmed.chars().take(1_000).collect::<String>();
 
 	if excerpt.is_empty() { String::from("<empty>") } else { excerpt }
-}
-
-fn record_app_server_compatibility_guard(
-	report: &mut AppServerCapabilityPreflightReport,
-	user_agent: &str,
-	allow_unverified_codex: bool,
-	schema_evidence: Option<&AppServerSchemaProbeEvidence>,
-) {
-	let codex_cli_version = codex_cli_version_from_user_agent(user_agent);
-	let matched_supported_version = supported_codex_cli_version_from_user_agent(user_agent);
-	let mut details = BTreeMap::new();
-
-	details.insert(String::from("user_agent"), user_agent.to_owned());
-	details.insert(
-		String::from("parsed_version"),
-		codex_cli_version
-			.as_deref()
-			.map(|version| format!("codex-cli {version}"))
-			.unwrap_or_else(|| String::from("unparsed")),
-	);
-	details.insert(String::from("supported_versions"), supported_codex_cli_versions_display());
-	details.insert(String::from("allow_unverified_codex"), allow_unverified_codex.to_string());
-	details
-		.insert(String::from("support_claim"), APP_SERVER_COMPATIBILITY_SUPPORT_CLAIM.to_owned());
-	details.insert(
-		String::from("support_decision"),
-		compatibility_support_decision(
-			codex_cli_version.as_deref(),
-			matched_supported_version,
-			allow_unverified_codex,
-		)
-		.to_owned(),
-	);
-	details.insert(String::from("evidence"), APP_SERVER_COMPATIBILITY_EVIDENCE.to_owned());
-	details.insert(String::from("capability_evidence"), compatibility_capability_evidence(report));
-	details.insert(
-		String::from("capability_evidence_source"),
-		APP_SERVER_COMPATIBILITY_CAPABILITY_SOURCE.to_owned(),
-	);
-
-	record_schema_evidence_details(&mut details, schema_evidence);
-
-	if let Some(version) = codex_cli_version.as_deref() {
-		details.insert(String::from("codex_cli_version"), format!("codex-cli {version}"));
-	}
-	if let Some(version) = matched_supported_version {
-		details.insert(String::from("matched_supported_version"), format!("codex-cli {version}"));
-		report.push_ok(
-			PREFLIGHT_CHECK_COMPATIBILITY,
-			"app-server userAgent is within the locally verified Codex CLI capability range.",
-			details,
-		);
-	} else if allow_unverified_codex {
-		details.insert(String::from("override"), String::from("allow_unverified_codex"));
-		report.push_warning(
-			PREFLIGHT_CHECK_COMPATIBILITY,
-			"app-server userAgent is outside the locally verified Codex CLI capability range; continuing because unverified Codex versions are explicitly allowed.",
-			details,
-		);
-	} else {
-		report.push_blocked(
-			PREFLIGHT_CHECK_COMPATIBILITY,
-			"app-server userAgent is outside the locally verified Codex CLI capability range.",
-			details,
-		);
-	}
-}
-
-fn compatibility_support_decision(
-	parsed_version: Option<&str>,
-	matched_supported_version: Option<&str>,
-	allow_unverified_codex: bool,
-) -> &'static str {
-	match (parsed_version, matched_supported_version, allow_unverified_codex) {
-		(_, Some(_), _) => "supported_exact_version",
-		(Some(_), None, true) => "unverified_allowed_by_override",
-		(None, None, true) => "unparsed_user_agent_allowed_by_override",
-		(Some(_), None, false) => "unsupported_unverified_version",
-		(None, None, false) => "unsupported_unparsed_user_agent",
-	}
-}
-
-fn compatibility_capability_evidence(report: &AppServerCapabilityPreflightReport) -> String {
-	let checks = report
-		.checks
-		.iter()
-		.filter(|check| check.name != PREFLIGHT_CHECK_COMPATIBILITY)
-		.map(|check| format!("{}={}", check.name, check.status.as_str()))
-		.collect::<Vec<_>>();
-
-	if checks.is_empty() { String::from("none") } else { checks.join(", ") }
-}
-
-fn record_schema_evidence_details(
-	details: &mut BTreeMap<String, String>,
-	schema_evidence: Option<&AppServerSchemaProbeEvidence>,
-) {
-	if let Some(schema_evidence) = schema_evidence {
-		details.insert(String::from("schema_evidence"), String::from("checked"));
-		details
-			.insert(String::from("schema_command"), APP_SERVER_SCHEMA_GENERATE_COMMAND.to_owned());
-		details.insert(String::from("schema_cache"), schema_evidence.cache_path.clone());
-		details
-			.insert(String::from("schema_marker_count"), schema_evidence.marker_count.to_string());
-		details.insert(String::from("schema_markers"), schema_evidence.required_markers.join(", "));
-	} else {
-		details.insert(String::from("schema_evidence"), String::from("not_checked"));
-		details.insert(
-			String::from("schema_evidence_reason"),
-			APP_SERVER_SCHEMA_NOT_CHECKED_REASON.to_owned(),
-		);
-		details.insert(
-			String::from("schema_required_markers"),
-			APP_SERVER_SCHEMA_REQUIRED_MARKERS.join(", "),
-		);
-	}
-}
-
-fn supported_codex_cli_version_from_user_agent(user_agent: &str) -> Option<&'static str> {
-	let codex_cli_version = codex_cli_version_from_user_agent(user_agent)?;
-
-	SUPPORTED_CODEX_CLI_VERSION_MATCH_ORDER
-		.iter()
-		.copied()
-		.find(|version| codex_cli_version == *version)
-}
-
-fn codex_cli_version_from_user_agent(user_agent: &str) -> Option<String> {
-	let lower_user_agent = user_agent.to_ascii_lowercase();
-
-	if let Some(marker_start) = lower_user_agent.find("codex-cli") {
-		let marker_end = marker_start + "codex-cli".len();
-
-		return user_agent_version_token(&user_agent[marker_end..]);
-	}
-	if let Some(marker_start) = lower_user_agent.find("codex desktop/") {
-		let marker_end = marker_start + "codex desktop/".len();
-
-		return user_agent_version_token(&user_agent[marker_end..]);
-	}
-
-	let first_token = user_agent.split_whitespace().next()?;
-	let (product, version) = first_token.rsplit_once('/')?;
-
-	if !product.to_ascii_lowercase().contains("codex") {
-		return None;
-	}
-
-	user_agent_version_token(version)
-}
-
-fn user_agent_version_token(value: &str) -> Option<String> {
-	let version = value
-		.trim_start_matches(|character: char| {
-			character.is_whitespace() || character == '/' || character == ':'
-		})
-		.chars()
-		.take_while(|character| {
-			character.is_ascii_alphanumeric()
-				|| *character == '.'
-				|| *character == '-'
-				|| *character == '_'
-		})
-		.collect::<String>();
-
-	version.chars().next().is_some_and(|character| character.is_ascii_digit()).then_some(version)
-}
-
-fn supported_codex_cli_versions_display() -> String {
-	SUPPORTED_CODEX_CLI_VERSION_DISPLAY_ORDER
-		.iter()
-		.map(|version| format!("codex-cli {version}"))
-		.collect::<Vec<_>>()
-		.join(", ")
 }
 
 fn record_app_server_preflight_report(

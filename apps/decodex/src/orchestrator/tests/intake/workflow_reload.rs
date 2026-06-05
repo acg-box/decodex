@@ -75,7 +75,6 @@ fn configured_cycle_workflow_snapshot_overrides_invalid_disk_workflow() {
 		dispatch_mode: IssueDispatchMode::Normal,
 		preferred_run_identity: None,
 		preferred_retry_budget_base: None,
-	allow_unverified_codex: false,
 	})
 	.expect("target issue dry run should succeed with the supplied snapshot");
 

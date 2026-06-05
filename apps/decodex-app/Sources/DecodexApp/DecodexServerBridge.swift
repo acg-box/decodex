@@ -237,7 +237,6 @@ actor DecodexServerBridge {
 	static func bundledServerArguments(listenAddress: String) -> [String] {
 		[
 			"serve",
-			"--allow-unverified-codex",
 			"--listen-address", listenAddress,
 		]
 	}
