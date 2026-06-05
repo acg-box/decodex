@@ -945,7 +945,8 @@ fn operator_status_snapshot_counts_stopped_active_process_as_attention_not_runni
 	assert_eq!(run.phase, "executing");
 	assert_eq!(run.process_alive, Some(false));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_stopped"));
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
 
@@ -1011,7 +1012,8 @@ fn operator_status_snapshot_counts_zombie_active_process_as_attention_not_runnin
 	assert_eq!(run.phase, "executing");
 	assert_eq!(run.process_alive, Some(false));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_stopped"));
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
 
@@ -1054,7 +1056,8 @@ fn operator_status_snapshot_counts_previous_boot_process_as_attention_not_runnin
 	assert_eq!(run.process_alive, Some(false));
 	assert_eq!(run.execution_liveness, "process_identity_mismatch");
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("host_boot_id_mismatch"));
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
 
@@ -1100,7 +1103,8 @@ fn operator_status_snapshot_counts_reused_pid_as_attention_not_running() {
 		run.process_liveness_reason.as_deref(),
 		Some("process_start_identity_mismatch")
 	);
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
 
@@ -1142,6 +1146,7 @@ fn operator_status_snapshot_keeps_unleased_live_process_in_running_lanes() {
 	assert_eq!(run.process_alive, Some(true));
 	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_alive"));
 	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.running_lane_count, 1);
 	assert_eq!(project.retained_worktree_count, 0);
 }
 
@@ -1268,7 +1273,8 @@ fn operator_status_snapshot_counts_stale_starting_run_as_attention_not_running()
 	assert!(run.protocol_idle_for_seconds.is_some_and(|idle| {
 		u64::try_from(idle).is_ok_and(|idle| idle >= ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
 	}));
-	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.running_lane_count, 0);
 	assert_eq!(project.attention_count, 1);
 }
 

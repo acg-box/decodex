@@ -1040,6 +1040,7 @@ struct OperatorProjectStatus {
 	enabled: bool,
 	github_cli_authority: OperatorGitHubCliAuthority,
 	active_run_count: usize,
+	running_lane_count: usize,
 	queued_candidate_count: usize,
 	post_review_lane_count: usize,
 	retained_worktree_count: usize,
