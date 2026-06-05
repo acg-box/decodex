@@ -29,8 +29,10 @@ evidence.
 - Official Codex changelog entries from `https://developers.openai.com/codex/changelog`
   when the update is app-shaped, mobile-shaped, or otherwise not represented by an
   `openai/codex` GitHub release
-- Current read-only benchmark observations from `@CodexReleases` and
-  `@Codex_Changelog` for format and coverage gaps only, never as technical evidence
+- Historical style lessons from `@CodexReleases` and `@Codex_Changelog` only when
+  they are already encoded in repo docs or supplied by the operator. Recurring
+  automation must not browse those accounts, use their coverage as evidence, or decide
+  publish/skip state from whether they posted.
 
 This advisory pass does not replace deterministic `release_delta/v1` generation.
 
@@ -78,11 +80,10 @@ source-backed artifacts plus release/compare metadata.
   latest checkpoint but source analysis is incomplete, emit an explicit watch decision:
   either a source-backed `watch_note` candidate that says only what is proven, or a
   durable `needs_upstream_analysis` / no-op record with the gap list.
-- Treat prerelease interpretation as Decodex's differentiated lane. Benchmark accounts
-  often cover stable releases and app changelogs quickly but usually do not explain
-  prerelease direction. Decodex should use release metadata, compare metadata, PR
-  titles, and existing Radar artifacts to produce early theme reads that are better
-  than release-bot reposts while keeping alpha caveats explicit.
+- Treat prerelease interpretation as Decodex's differentiated lane because official
+  release metadata, compare metadata, PR titles, and existing Radar artifacts can
+  support early theme reads. The advantage comes from source-backed interpretation, not
+  from reading or reacting to other accounts' coverage.
 
 ## Release Rollup Path
 
@@ -135,8 +136,8 @@ When the target is an OpenAI Codex prerelease:
 When the target is an official Codex app or mobile changelog entry:
 
 1. Read the current official changelog entry and preserve the version/date.
-2. Check whether `@CodexReleases` or `@Codex_Changelog` already covered it; use that
-   only to calibrate format and urgency.
+2. Use repo-local style lessons only; do not read benchmark accounts or use their
+   coverage to decide urgency or skipping.
 3. Use `release_pulse` for a source-led update card when the changelog lists concrete
    user-visible changes.
 4. Use `watch_note` when the changelog is useful but platform, plan, or rollout limits

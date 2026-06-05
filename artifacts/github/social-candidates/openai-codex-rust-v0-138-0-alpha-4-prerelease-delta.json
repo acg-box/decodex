@@ -24,9 +24,7 @@
       "https://github.com/openai/codex/pull/26444",
       "https://github.com/openai/codex/pull/26446",
       "https://github.com/openai/codex/pull/26447",
-      "https://github.com/openai/codex/pull/26312",
-      "https://x.com/CodexReleases",
-      "https://x.com/Codex_Changelog"
+      "https://github.com/openai/codex/pull/26312"
     ]
   },
   "evidence_notes": [
@@ -37,8 +35,7 @@
     "The missing alpha.3 quote target is a historical Publisher coverage gap; the candidate must not invent a quote URL.",
     "The alpha.3 -> alpha.4 commit titles cluster around model-defined reasoning efforts, model-advertised effort order, response.processed websocket removal, experimentalFeature/enablement/set cleanup, AGENTS.md environment filesystem routing, Windows sandbox lint, and release binary ThinLTO.",
     "Public copy uses direct GitHub PR URLs on first mention instead of raw PR-number-only references.",
-    "A fresh candidate-specific Decodex signal card was generated and visually reviewed at /Users/x/.codex/decodex/social-media/codex-cli-0-138-alpha3-alpha4.svg.png.",
-    "Read-only X benchmark sampling on 2026-06-05 showed @CodexReleases and @Codex_Changelog covering Codex app 26.602 and CLI 0.137.0, but not visible prerelease interpretation for 0.138.0-alpha.4."
+    "A fresh candidate-specific Decodex signal card was generated and visually reviewed at /Users/x/.codex/decodex/social-media/codex-cli-0-138-alpha3-alpha4.svg.png."
   ],
   "claims": [
     {
@@ -69,7 +66,7 @@
   ],
   "decision": {
     "worthiness": "publish",
-    "reason": "Benchmark accounts are not visibly covering prerelease interpretation, and the adjacent alpha.3 -> alpha.4 compare supports a useful, formatted prerelease delta read with clickable PR URLs and explicit channel-lineage caveats.",
+    "reason": "The adjacent alpha.3 -> alpha.4 compare supports a useful, formatted prerelease delta read with clickable PR URLs and explicit channel-lineage caveats.",
     "idempotency_key": "x:decodexspace:openai-codex-rust-v0-138-0-alpha-4:alpha3-alpha4:thread"
   },
   "caveats": [
