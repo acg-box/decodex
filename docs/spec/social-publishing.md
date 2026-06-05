@@ -13,6 +13,7 @@ Read this when:
 Not this document:
 - The upstream GitHub bundle schema. Read [`github-change-bundle.md`](./github-change-bundle.md).
 - The public site signal-entry schema. Read [`signal-entry.md`](./signal-entry.md).
+- The pre-publication handoff candidate. Read [`social-candidate.md`](./social-candidate.md).
 - The social publishing procedure. Read
   [`../runbook/social-publishing-workflow.md`](../runbook/social-publishing-workflow.md).
 
@@ -21,7 +22,7 @@ Defines:
 - Allowed post modes for Decodex Publisher.
 - The automated Chrome publishing boundary.
 - The daily cap and blocked-publication ledger rule.
-- The generated-image style contract.
+- The generated-media publishing and retention boundary.
 
 ## Artifact Identity
 
@@ -32,11 +33,15 @@ The canonical schema identifier is:
 Recommended checked-in locations:
 
 - `artifacts/social/x/posts/<yyyy-mm-dd>/<slug>.json`
-- `artifacts/social/x/images/<slug>.png`
 
-`social_post/v1` is a publication record, not a review-only draft. The record is
-written whether automation publishes the post, skips it, fails safely, or blocks it
-because the daily cap has already been reached.
+`social_post/v1` is a publication record, not a review-only draft or pre-publication
+candidate. Use `social_candidate/v1` for handoff decisions before Publisher evaluates
+account state, idempotency, daily cap, media, and final publication.
+
+Generated media files are not default Git artifacts. Store successful publication
+facts in Git as small JSON records. Store generated image files in a local persistent
+media cache, or discard them after upload, unless an operator explicitly asks to commit
+an exact sample.
 
 ## Required Fields
 
@@ -63,7 +68,8 @@ Optional fields:
 - `failure`: required when `status = "failed"`.
 - `skip`: required when `status = "skipped"`.
 - `caveats`: rollout limits, uncertainty, platform limits, or version gates.
-- `media_refs`: checked-in or locally generated assets used by the post.
+- `media_refs`: optional X media readback URLs, external media pointers, content
+  hashes, or explicitly operator-approved checked-in sample paths.
 
 ## Post Modes
 
@@ -81,6 +87,11 @@ Use exactly one `mode` value:
 `@decodexspace` should mostly use `practical_explainer`, `operator_impact`, and
 evidence-backed `release_rollup`. `release_pulse` is allowed only when the release
 itself is the useful alert.
+
+For prerelease introductions, do not add a new mode. Use `release_pulse` when the
+source-backed value is a timely prerelease alert, `watch_note` when the checkpoint is
+worth tracking but release-window analysis is incomplete, and `release_rollup` only when
+accumulated upstream reviews explain the useful changes.
 
 ## Claim Rules
 
@@ -128,7 +139,7 @@ material needed for post-run analysis:
 - mode and priority
 - AI worthiness reason
 - candidate text
-- generated image prompt or intended media refs, if any
+- intended media pointer or media caveat, if any
 - `daily_count_before`
 - `daily_limit`
 
@@ -160,8 +171,8 @@ login, CAPTCHA, account approval, or a page that still requires operator input.
 
 ## Generated Image Contract
 
-Every published X post should include a generated image unless the publication record
-explains why media was skipped.
+Generated media is optional. Use it only when it adds reader value beyond the text and
+source link card. Do not create or commit an image just to satisfy a default.
 
 Use the stable image template id:
 
@@ -181,12 +192,40 @@ negative space for deterministic overlay text. Do not render long text in the im
 The AI image must not be trusted for text rendering. Render title, PR/tag, mode, and
 source labels with deterministic overlay tooling or keep them in the post text.
 
+When generated media is used, prefer this retention model:
+
+- X is the durable public media host after publication.
+- Git stores only the `social_post/v1` record, final X status URL, optional `/photo/N`
+  readback URL, source refs, idempotency key, and media caveats.
+- A local persistent media cache may store the generated image, prompt, content hash,
+  and upload/readback notes for debugging or visual QA.
+- Git should not store generated image files unless an operator explicitly requests a
+  permanent sample.
+
+Recommended local media-cache layout:
+
+- `$CODEX_HOME/decodex/social-media/x/<yyyy-mm-dd>/<slug>/image.png`
+- `$CODEX_HOME/decodex/social-media/x/<yyyy-mm-dd>/<slug>/manifest.json`
+
+The manifest should stay local and may include prompt summary, generator, dimensions,
+file size, sha256, X status URL, X media URL, and cleanup eligibility. Automation should
+prune old cache entries according to operator policy; the cache is not source control.
+
 ## Release Checkpoints
 
 Release and prerelease publishing is separate from continuous six-hour Radar review.
 Release checkpoint automation may poll upstream releases more frequently than the
 commit review loop, but it must publish only when a new release or prerelease checkpoint
-appears and enough accumulated review evidence exists.
+appears and enough evidence exists for the selected mode.
 
 Rollups must use prior `upstream_review/v1`, `upstream_impact/v1`, `signal_entry/v1`,
 and compare evidence. Sparse Codex prerelease bodies are not sufficient proof.
+However, a prerelease intro does not need to pretend to be a full rollup: it may publish
+a cautious `release_pulse` or `watch_note` from public release metadata, compare
+metadata, and a clear caveat about what Radar has not analyzed yet. If the only fact is
+the tag name with no reader value, automation should write a `social_candidate/v1` with
+`decision.worthiness = "defer"` or `"skip"` instead of posting.
+
+Release checkpoint automation should normally write `social_candidate/v1` first. X
+Publisher consumes only candidates whose `decision.worthiness = "publish"` and writes
+the terminal `social_post/v1` record.

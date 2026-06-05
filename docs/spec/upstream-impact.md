@@ -56,7 +56,8 @@ Recommended checked-in location:
 Optional fields:
 
 - `candidate_followups`: bounded engineering or research follow-up suggestions.
-- `social_notes`: notes useful to a later `social_post/v1`.
+- `social_notes`: notes useful to a later `social_candidate/v1` or terminal
+  `social_post/v1`.
 - `caveats`: uncertainty, version gating, platform limits, or rollout limits.
 
 ## Control Plane impact ladder
@@ -110,9 +111,7 @@ summary.
 - It should normally consume a source-backed `upstream_review/v1` conclusion when the
   change came from continuous Radar.
 - It may support a `signal_entry/v1`.
-- It may support a `social_post/v1`.
-- It may support a `social_candidate/v1` when upstream source analysis identifies a
-  public Publisher opportunity but does not publish.
+- It may support a `social_candidate/v1` or terminal `social_post/v1`.
 - It may justify a later Linear issue or implementation brief.
 
 It does not replace any of those artifacts.

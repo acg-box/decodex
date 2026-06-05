@@ -38,7 +38,7 @@ const DEFAULT_SIGNALS_DIR: &str = "site/src/content/signals";
 const DEFAULT_STABLE_LIMIT: usize = 0;
 const DEFAULT_TAG_PREFIX: &str = "rust-v";
 const RELEASE_DELTA_SCHEMA: &str = "release_delta/v1";
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 const SIGNAL_SCHEMA: &str = "signal_entry/v1";
 const SOCIAL_CANDIDATE_SCHEMA: &str = "social_candidate/v1";
 const SOCIAL_POST_SCHEMA: &str = "social_post/v1";
@@ -77,14 +77,8 @@ const SOCIAL_POST_WORTHINESS: &[&str] = &["block", "publish", "skip"];
 const SOURCE_ITEM_KINDS: &[&str] = &["commit", "pull_request"];
 const UPSTREAM_IMPACT_KINDS: &[&str] =
 	&["browser_observation", "changelog", "commit", "pull_request", "release", "signal"];
-const UPSTREAM_REVIEW_ACTION_TYPES: &[&str] = &[
-	"linear_followup",
-	"none",
-	"signal_entry",
-	"social_candidate",
-	"social_post",
-	"upstream_impact",
-];
+const UPSTREAM_REVIEW_ACTION_TYPES: &[&str] =
+	&["linear_followup", "none", "signal_entry", "social_candidate", "upstream_impact"];
 const UPSTREAM_REVIEW_NEXT_STEPS: &[&str] = &["ai_review_required"];
 const UPSTREAM_REVIEW_PRIORITIES: &[&str] = &["critical", "high", "low", "normal"];
 const UPSTREAM_SOURCE_STATES: &[&str] = &["closed", "commit_only", "merged", "open"];
@@ -155,6 +149,7 @@ const ARTIFACT_KINDS: &[&str] = &[
 	"ledger_export",
 	"release_delta",
 	"signal",
+	"social_candidate",
 	"social_post",
 	"upstream_impact",
 ];
@@ -3234,6 +3229,7 @@ fn initialize_ledger(connection: &Connection) -> crate::prelude::Result<()> {
 		      'analysis',
 		      'signal',
 		      'upstream_impact',
+		      'social_candidate',
 		      'social_post',
 		      'release_delta',
 		      'archive_manifest',
@@ -3263,7 +3259,7 @@ fn initialize_ledger(connection: &Connection) -> crate::prelude::Result<()> {
 		",
 	)?;
 
-	migrate_artifact_link_social_kind(connection)?;
+	migrate_artifact_link_kinds(connection)?;
 
 	connection.execute(
 		"
@@ -3277,7 +3273,7 @@ fn initialize_ledger(connection: &Connection) -> crate::prelude::Result<()> {
 	Ok(())
 }
 
-fn migrate_artifact_link_social_kind(connection: &Connection) -> crate::prelude::Result<()> {
+fn migrate_artifact_link_kinds(connection: &Connection) -> crate::prelude::Result<()> {
 	let table_sql = connection
 		.query_row(
 			"
@@ -3293,7 +3289,7 @@ fn migrate_artifact_link_social_kind(connection: &Connection) -> crate::prelude:
 		return Ok(());
 	};
 
-	if !table_sql.contains("social_draft") {
+	if table_sql.contains("social_candidate") && !table_sql.contains("social_draft") {
 		return Ok(());
 	}
 
@@ -3311,6 +3307,7 @@ fn migrate_artifact_link_social_kind(connection: &Connection) -> crate::prelude:
 		      'analysis',
 		      'signal',
 		      'upstream_impact',
+		      'social_candidate',
 		      'social_post',
 		      'release_delta',
 		      'archive_manifest',
@@ -5196,6 +5193,9 @@ fn validate_social_candidate_source_refs(refs: Option<&Value>, errors: &mut Vec<
 				.into(),
 		);
 	}
+	if refs.get("urls").is_some_and(|urls| !is_https_string_array(urls)) {
+		errors.push("source_refs.urls must be a list of https URLs".into());
+	}
 }
 
 fn validate_social_candidate_decision(decision: Option<&Value>, errors: &mut Vec<String>) {
@@ -5838,6 +5838,15 @@ mod tests {
 	}
 
 	#[test]
+	fn social_candidate_rejects_non_https_source_urls() {
+		let mut candidate = valid_social_candidate();
+
+		candidate["source_refs"]["urls"] = serde_json::json!(["http://example.test"]);
+
+		assert_errors(&candidate, ["source_refs.urls must be a list of https URLs"]);
+	}
+
+	#[test]
 	fn accepts_valid_upstream_impact_and_rejects_bad_angle() {
 		let mut impact = valid_upstream_impact();
 
@@ -6088,7 +6097,7 @@ mod tests {
 			.expect("schema version should be readable");
 
 		assert_eq!(artifact_kind, "social_post");
-		assert_eq!(schema_version, "2");
+		assert_eq!(schema_version, "3");
 	}
 
 	#[test]
@@ -6165,6 +6174,63 @@ mod tests {
 			.expect("artifact link row should be readable");
 
 		assert_eq!(artifact_kind, "social_post");
+	}
+
+	#[test]
+	fn ledger_artifact_link_records_social_candidate_after_schema_migration() {
+		let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+		let db_path = temp_dir.path().join("radar.sqlite3");
+		let social_candidate_path = temp_dir.path().join("candidate.json");
+		let connection =
+			rusqlite::Connection::open(&db_path).expect("temporary ledger should open");
+
+		connection
+			.execute_batch(
+				"
+				CREATE TABLE artifact_link (
+				  repo TEXT NOT NULL,
+				  subject_kind TEXT NOT NULL CHECK (subject_kind IN ('commit', 'pr')),
+				  subject_id TEXT NOT NULL,
+				  artifact_kind TEXT NOT NULL CHECK (
+				    artifact_kind IN (
+				      'bundle',
+				      'analysis',
+				      'signal',
+				      'upstream_impact',
+				      'social_post',
+				      'release_delta',
+				      'archive_manifest',
+				      'ledger_export'
+				    )
+				  ),
+				  path TEXT NOT NULL,
+				  sha256 TEXT NOT NULL,
+				  size_bytes INTEGER NOT NULL,
+				  created_at TEXT NOT NULL,
+				  PRIMARY KEY (repo, subject_kind, subject_id, artifact_kind, path)
+				);
+				",
+			)
+			.expect("legacy artifact link schema should be created");
+
+		drop(connection);
+
+		fs::write(&social_candidate_path, r#"{"schema":"social_candidate/v1"}"#)
+			.expect("social candidate fixture should be written");
+		radar::ledger_bootstrap(&RadarLedgerBootstrapRequest { db_path: db_path.clone() })
+			.expect("ledger bootstrap should add social_candidate artifact kind");
+
+		let summary = radar::ledger_artifact_link(&RadarLedgerArtifactLinkRequest {
+			db_path: db_path.clone(),
+			repo: "openai/codex".into(),
+			subject_kind: "pr".into(),
+			subject_id: "22414".into(),
+			artifact_kind: "social_candidate".into(),
+			path: social_candidate_path,
+		})
+		.expect("social candidate artifact link should be recorded");
+
+		assert_eq!(summary.get("artifact_links"), Some(&1));
 	}
 
 	#[test]
@@ -6615,7 +6681,7 @@ mod tests {
 				"made_with_ai": true,
 				"image_template": "decodex_signal_card"
 			},
-			"media_refs": ["artifacts/social/x/images/openai-codex-pr-22414.png"]
+			"media_refs": ["https://x.com/decodexspace/status/1/photo/1"]
 		})
 	}
 }
