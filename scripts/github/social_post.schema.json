@@ -291,6 +291,70 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "post_lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current_state", "quote_eligible", "reason"],
+      "properties": {
+        "current_state": {
+          "type": "string",
+          "enum": [
+            "live",
+            "deleted_by_operator",
+            "superseded_published",
+            "superseded_text_only",
+            "superseded_failed_attempt"
+          ]
+        },
+        "quote_eligible": {
+          "type": "boolean"
+        },
+        "superseded_by_candidate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "quote_eligible": {
+                "const": true
+              }
+            },
+            "required": ["quote_eligible"]
+          },
+          "then": {
+            "properties": {
+              "current_state": {
+                "const": "live"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "current_state": {
+                "enum": [
+                  "superseded_published",
+                  "superseded_text_only",
+                  "superseded_failed_attempt"
+                ]
+              }
+            },
+            "required": ["current_state"]
+          },
+          "then": {
+            "required": ["superseded_by_candidate"]
+          }
+        }
+      ]
     }
   },
   "allOf": [
@@ -340,6 +404,28 @@
       },
       "then": {
         "required": ["skip"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "post_lifecycle": {
+            "properties": {
+              "quote_eligible": {
+                "const": true
+              }
+            },
+            "required": ["quote_eligible"]
+          }
+        },
+        "required": ["post_lifecycle"]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": "published"
+          }
+        }
       }
     }
   ]

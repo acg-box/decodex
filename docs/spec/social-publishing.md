@@ -69,7 +69,10 @@ Optional fields:
 - `skip`: required when `status = "skipped"`.
 - `caveats`: rollout limits, uncertainty, platform limits, or version gates.
 - `media_refs`: optional X media readback URLs, external media pointers, content
-  hashes, or explicitly operator-approved checked-in sample paths.
+  hashes, local generated assets, or explicitly operator-approved checked-in sample
+  paths.
+- `post_lifecycle`: current live/deleted/superseded state used to decide whether a
+  previous post is eligible as a future quote target.
 
 ## Post Modes
 
@@ -109,6 +112,26 @@ Rules:
 - Do not use a social post to replace the site signal or upstream-impact artifact.
 - Do not quote third-party posts at length. Summarize style or public reaction unless
   the quoted text is short and necessary.
+- Treat official OpenAI Codex changelog entries as evidence for app, mobile, and
+  product-surface claims when the post stays within that changelog.
+- Treat X benchmark accounts as format and coverage evidence only, not as proof for a
+  technical claim.
+- For prerelease reads, map concrete bullets to PR numbers, commit titles, compare
+  metadata, or release URLs. Do not publish a generic theme paragraph when the evidence
+  can name important commits, anticipated features, protocol/API changes, removals, or
+  operator-facing changes.
+- Important PR references in public copy should be clickable on first mention. Prefer
+  direct GitHub PR URLs over raw `#12345` shorthand unless the post relies on a single
+  exact compare URL to cover many small PR references within X length limits.
+- Keep release and prerelease channels separate. Stable release posts must compare the
+  current stable release with the previous stable release. Prerelease posts must compare
+  the current prerelease with the previous prerelease in the same train, except the
+  first prerelease after a stable release, which compares against that stable baseline.
+- For prerelease posts after the first checkpoint in a train, include the previous
+  live, quote-eligible prerelease post URL in `source_refs.urls` when it exists and
+  publish as a quote of that previous post. This keeps the prerelease history visible
+  before the stable release ships. Deleted, superseded, failed, or text-only test posts
+  must not become quote targets for the next prerelease.
 
 ## Decision Object
 
@@ -169,6 +192,26 @@ release research, compose, upload, and readback tabs after the `social_post/v1` 
 captures the result. A tab may stay open only as an explicit human handoff, such as
 login, CAPTCHA, account approval, or a page that still requires operator input.
 
+## Post Lifecycle
+
+`post_lifecycle` records state that can change after the original publication or
+publish attempt. It is optional for ordinary live posts, but required when a post is
+deleted, superseded, failed after drafting, or otherwise must not become the next
+prerelease quote target.
+
+Fields:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `current_state` | string | `live`, `deleted_by_operator`, `superseded_published`, `superseded_text_only`, or `superseded_failed_attempt`. |
+| `quote_eligible` | boolean | May be true only for live published posts that should be quoted by a later prerelease post. |
+| `superseded_by_candidate` | string | Required for superseded states; points to the corrected candidate or replacement artifact. |
+| `reason` | string | Short operator-readable reason for the lifecycle state. |
+
+Deleted, failed, skipped, blocked, or superseded posts must set `quote_eligible =
+false`. Publisher automation must follow this field when building prerelease quote
+chains; it must not quote a post just because a previous `published_urls` entry exists.
+
 ## Generated Image Contract
 
 Generated media is optional. Use it only when it adds reader value beyond the text and
@@ -215,17 +258,40 @@ prune old cache entries according to operator policy; the cache is not source co
 
 Release and prerelease publishing is separate from continuous six-hour Radar review.
 Release checkpoint automation may poll upstream releases more frequently than the
-commit review loop, but it must publish only when a new release or prerelease checkpoint
-appears and enough evidence exists for the selected mode.
+commit review loop, but it must record an explicit terminal outcome whenever a new
+release, prerelease, app update, or changelog checkpoint appears.
 
 Rollups must use prior `upstream_review/v1`, `upstream_impact/v1`, `signal_entry/v1`,
-and compare evidence. Sparse Codex prerelease bodies are not sufficient proof.
-However, a prerelease intro does not need to pretend to be a full rollup: it may publish
-a cautious `release_pulse` or `watch_note` from public release metadata, compare
-metadata, and a clear caveat about what Radar has not analyzed yet. If the only fact is
-the tag name with no reader value, automation should write a `social_candidate/v1` with
-`decision.worthiness = "defer"` or `"skip"` instead of posting.
+and compare evidence. Sparse Codex prerelease bodies are not sufficient proof for
+feature claims.
+
+However, a prerelease intro does not need to pretend to be a full rollup. A sparse
+prerelease may still produce a `watch_note` when the post is useful as a timely
+prerelease read and every claim is limited to source-backed release metadata, compare
+metadata, PR-title metadata, exact source URLs, and explicit caveats. If the only fact
+is the tag name with no reader value, automation should write a `social_candidate/v1`
+with `decision.worthiness = "defer"` or `"skip"` instead of posting.
+
+Official Codex app or mobile changelog entries may produce `release_pulse` posts when
+the changelog itself contains concrete user-visible changes.
 
 Release checkpoint automation should normally write `social_candidate/v1` first. X
 Publisher consumes only candidates whose `decision.worthiness = "publish"` and writes
 the terminal `social_post/v1` record.
+
+Prerelease posts are incremental. They must record:
+
+- previous checkpoint and current checkpoint
+- compare URL for that adjacent pair
+- whether this is the first prerelease after a stable release
+- previous prerelease post URL when one exists, or a caveat when the prior checkpoint
+  has no Decodex post to quote
+- whether any previous post record is deleted, superseded, or otherwise ineligible as a
+  quote target
+
+Prerelease threads must stay scan-friendly:
+
+- one idea per post
+- blank line after the headline when the post has details
+- compact bullets for PR/commit clusters, protocol/API changes, and caveats
+- source URL in the final post or the post that makes the source-backed claim
