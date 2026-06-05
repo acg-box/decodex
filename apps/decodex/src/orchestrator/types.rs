@@ -635,6 +635,7 @@ struct RetainedPartialProgress {
 	issue_identifier: String,
 	run_id: String,
 	worktree_path: String,
+	source_error_class: Option<String>,
 }
 impl Display for RetainedPartialProgress {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

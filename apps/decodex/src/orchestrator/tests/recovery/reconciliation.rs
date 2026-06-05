@@ -1181,7 +1181,11 @@ fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktr
 			&& comment.contains("finish validation and PR handoff or reset the patch manually")
 			&& comment.contains(".worktrees/PUB-102")
 	}));
-	assert!(comments.iter().all(|comment| !comment.contains("stalled_run_detected")));
+	assert!(
+		comments
+			.iter()
+			.all(|comment| !comment.contains("- error_class: `stalled_run_detected`"))
+	);
 	assert!(comments.iter().all(|comment| !comment.contains("decodex run failed and needs attention")));
 
 	let ledger_event = comments
@@ -1211,6 +1215,15 @@ fn stalled_run_reconciliation_reports_retained_partial_progress_for_dirty_worktr
 				.iter()
 				.any(|item| item.contains("tracked worktree changes retained"))),
 		"retained partial progress evidence should mention retained tracked changes"
+	);
+	assert!(
+		ledger_event
+			.evidence
+			.as_deref()
+			.is_some_and(|evidence| evidence
+				.iter()
+				.any(|item| item.contains("Source failure class `stalled_run_detected`"))),
+		"retained partial progress evidence should preserve the stalled source class"
 	);
 }
 
