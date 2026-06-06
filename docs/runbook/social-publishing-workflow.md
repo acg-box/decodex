@@ -33,6 +33,8 @@ Outputs:
 - An optional `upstream_impact/v1` artifact under `artifacts/github/impact/`.
 - A `social_candidate/v1` record under `artifacts/github/social-candidates/` when
   analysis needs a durable Publisher handoff or pre-publication decision.
+- A `social_publish_reservation/v1` record under
+  `artifacts/social/x/reservations/<yyyy-mm-dd>/` before any X compose step.
 - A `social_post/v1` record under `artifacts/social/x/posts/<yyyy-mm-dd>/`.
 - Optional local generated media under `$CODEX_HOME/decodex/social-media/`; generated
   media files are not committed by default.
@@ -143,10 +145,30 @@ one exact compare URL intentionally carries the detailed PR list.
 5. Check idempotency and daily cap.
    - Build a stable idempotency key from account, source, mode, and release checkpoint
      when applicable.
-   - Count already-published `@decodexspace` records for the cap day.
+   - Count already-published `@decodexspace` records for the cap day from checked-in
+     `social_post/v1` records, and inspect open PRs that add `social_post/v1` records
+     when the current worktree may not include every pending publication record.
+   - Check active `social_publish_reservation/v1` records in the current tree and open
+     publication PRs. If another active reservation has the same idempotency key,
+     source URL, exact lead text, release tag, or candidate slug, fail closed instead
+     of composing.
+   - Run live duplicate detection against the `@decodexspace` profile/timeline before
+     composing. Match the candidate's exact lead text, idempotency subject, release
+     tag, source URL, and known prior status URLs.
+   - X search can be an additional signal, but `No results` is not sufficient proof
+     that no duplicate exists. If X search and profile/timeline readback disagree, or
+     either surface is loading-only or unreadable, fail closed.
    - The default cap day uses `Asia/Shanghai`.
    - If the candidate would exceed 8 posts, do not post. Write
      `status = "blocked"` with `block.reason = "daily_cap_exceeded"`.
+   - Before opening the X composer, create an active
+     `social_publish_reservation/v1` record with the idempotency key, duplicate keys,
+     owner/run metadata, `reserved_at`, and `expires_at`.
+   - Commit and push the reservation, or update the publication PR so the reservation
+     is PR-visible. A local-only reservation does not authorize publication.
+   - After the reservation is visible and immediately before clicking Post, repeat the
+     live profile/timeline duplicate readback. If a duplicate appears, cancel or expire
+     the reservation and do not publish.
 
 6. Prepare media only when useful.
    - Use the `decodex_signal_card` image template in
@@ -172,11 +194,17 @@ one exact compare URL intentionally carries the detailed PR list.
    - Use `schema = "social_post/v1"`.
    - Use `target_account = "decodexspace"` and `controller_account = "hackink"`.
    - Set `status = "published"`, `blocked`, `failed`, or `skipped`.
+   - Include the consumed reservation under `source_refs.reservations` when the run
+     reached the compose gate.
    - Preserve source refs, evidence notes, claims, decision data, and publication URLs
      when available.
    - For media, preserve the X status URL and any `/photo/N` readback URL. Do not add a
      generated image file to Git unless the operator explicitly asks for a permanent
      sample.
+   - Update the reservation to `consumed` with `consumed_by_social_post` after a
+     published, blocked, or otherwise terminal audited result. Use `canceled` or
+     `expired` with `release_reason` when publication stops before a durable terminal
+     post record is useful.
 
 9. Validate.
    - Run:
