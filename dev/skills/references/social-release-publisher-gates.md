@@ -66,9 +66,13 @@ For publishable prerelease candidates, evidence must name:
 - Generated images live in `$CODEX_HOME/decodex/social-media/` or temporary storage by
   default, not Git.
 - Before composing any release, app, or prerelease post, check durable records, pending
-  publication PRs when available, and the live `@decodexspace` profile/timeline for the
-  exact lead text, release tag, source URL, and prior status URLs. X search `No
-  results` is not a duplicate-clear signal by itself.
+  publication PRs when available, active `social_publish_reservation/v1` records, and
+  the live `@decodexspace` profile/timeline for the exact lead text, release tag,
+  source URL, and prior status URLs. X search `No results` is not a duplicate-clear
+  signal by itself.
+- Do not open X compose until an active `social_publish_reservation/v1` for the same
+  idempotency key and duplicate keys is committed and PR-visible. Repeat live
+  profile/timeline duplicate readback immediately before clicking Post.
 - If account verification, duplicate detection, media upload, or final readback is
   unreliable, fail closed. Do not downgrade to text-only unless the operator explicitly
   approves that fallback for the current candidate.

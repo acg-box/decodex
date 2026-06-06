@@ -17,6 +17,7 @@ UPSTREAM_REVIEW_QUEUE_SCHEMA = "upstream_review_queue/v1"
 UPSTREAM_REVIEW_SCHEMA = "upstream_review/v1"
 SOCIAL_CANDIDATE_SCHEMA = "social_candidate/v1"
 SOCIAL_POST_SCHEMA = "social_post/v1"
+SOCIAL_PUBLISH_RESERVATION_SCHEMA = "social_publish_reservation/v1"
 ANALYSIS_MODES = {"pr_first", "commit_only"}
 SIGNAL_KINDS = {"capability", "behavior_change", "try_now"}
 SIGNAL_CONFIDENCE = {"confirmed", "likely", "weak"}
@@ -51,6 +52,7 @@ SOCIAL_POST_LIFECYCLE_STATES = {
     "superseded_published",
     "superseded_text_only",
 }
+SOCIAL_PUBLISH_RESERVATION_STATUSES = {"active", "canceled", "consumed", "expired"}
 SOCIAL_BLOCK_REASONS = {
     "daily_cap_exceeded",
     "duplicate",
@@ -687,7 +689,6 @@ def validate_social_candidate(entry: dict[str, Any]) -> ValidationResult:
             or not all(isinstance(url, str) and url.startswith("https://") for url in urls)
         ):
             errors.append("source_refs.urls must be a list of https URLs")
-
     for list_field in ("evidence_notes", "claims"):
         values = entry.get(list_field)
         if not isinstance(values, list) or not values:
@@ -730,6 +731,100 @@ def validate_social_candidate(entry: dict[str, Any]) -> ValidationResult:
     return ValidationResult(ok=not errors, errors=errors)
 
 
+def validate_social_publish_reservation(entry: dict[str, Any]) -> ValidationResult:
+    errors: list[str] = []
+
+    if entry.get("schema") != SOCIAL_PUBLISH_RESERVATION_SCHEMA:
+        errors.append(f"schema must be {SOCIAL_PUBLISH_RESERVATION_SCHEMA}")
+
+    for field in ("slug", "idempotency_key", "reserved_at", "expires_at", "day", "timezone"):
+        if not isinstance(entry.get(field), str) or not entry[field]:
+            errors.append(f"{field} must be a non-empty string")
+
+    if entry.get("channel") != "x":
+        errors.append("channel must be x")
+    if entry.get("target_account") != "decodexspace":
+        errors.append("target_account must be decodexspace")
+    if entry.get("controller_account") != "hackink":
+        errors.append("controller_account must be hackink")
+    if entry.get("mode") not in SOCIAL_POST_MODES:
+        errors.append(f"mode must be one of {sorted(SOCIAL_POST_MODES)}")
+    if entry.get("status") not in SOCIAL_PUBLISH_RESERVATION_STATUSES:
+        errors.append(f"status must be one of {sorted(SOCIAL_PUBLISH_RESERVATION_STATUSES)}")
+
+    refs = entry.get("candidate_refs")
+    if not isinstance(refs, dict):
+        errors.append("candidate_refs must be an object")
+    else:
+        present = [
+            name
+            for name in ("social_candidates", "urls")
+            if isinstance(refs.get(name), list) and refs[name]
+        ]
+        if not present:
+            errors.append("candidate_refs must include social_candidates or urls")
+        social_candidates = refs.get("social_candidates", [])
+        if social_candidates and (
+            not isinstance(social_candidates, list)
+            or not all(isinstance(item, str) and item for item in social_candidates)
+        ):
+            errors.append("candidate_refs.social_candidates must be a list of non-empty strings")
+        urls = refs.get("urls", [])
+        if urls and (
+            not isinstance(urls, list)
+            or not all(isinstance(url, str) and url.startswith("https://") for url in urls)
+        ):
+            errors.append("candidate_refs.urls must be a list of https URLs")
+
+    duplicate_keys = entry.get("duplicate_keys")
+    if (
+        not isinstance(duplicate_keys, list)
+        or not duplicate_keys
+        or not all(isinstance(item, str) and item for item in duplicate_keys)
+    ):
+        errors.append("duplicate_keys must be a non-empty list of strings")
+
+    for field in ("reserved_at", "expires_at"):
+        value = entry.get(field)
+        if isinstance(value, str) and value:
+            try:
+                datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                errors.append(f"{field} must be an RFC3339 timestamp")
+
+    owner = entry.get("owner")
+    if owner is not None:
+        if not isinstance(owner, dict):
+            errors.append("owner must be an object when present")
+        else:
+            for field in ("automation_id", "branch", "pr_url", "run_id"):
+                value = owner.get(field)
+                if value is not None and (not isinstance(value, str) or not value):
+                    errors.append(f"owner.{field} must be non-empty when present")
+            pr_url = owner.get("pr_url")
+            if pr_url is not None and (not isinstance(pr_url, str) or not pr_url.startswith("https://")):
+                errors.append("owner.pr_url must be an https URL when present")
+
+    evidence_notes = entry.get("evidence_notes", [])
+    if evidence_notes is not None and (
+        not isinstance(evidence_notes, list)
+        or not all(isinstance(item, str) and item for item in evidence_notes)
+    ):
+        errors.append("evidence_notes must be a list of non-empty strings when present")
+
+    status = entry.get("status")
+    if status == "consumed" and (
+        not isinstance(entry.get("consumed_by_social_post"), str) or not entry["consumed_by_social_post"]
+    ):
+        errors.append("consumed_by_social_post is required when status is consumed")
+    if status in {"canceled", "expired"} and (
+        not isinstance(entry.get("release_reason"), str) or not entry["release_reason"]
+    ):
+        errors.append("release_reason is required when status is canceled or expired")
+
+    return ValidationResult(ok=not errors, errors=errors)
+
+
 def validate_social_post(entry: dict[str, Any]) -> ValidationResult:
     errors: list[str] = []
 
@@ -765,17 +860,40 @@ def validate_social_post(entry: dict[str, Any]) -> ValidationResult:
     else:
         present = [
             name
-            for name in ("signals", "upstream_impacts", "upstream_reviews", "urls")
+            for name in (
+                "reservations",
+                "signals",
+                "social_candidates",
+                "upstream_impacts",
+                "upstream_reviews",
+                "urls",
+            )
             if isinstance(refs.get(name), list) and refs[name]
         ]
         if not present:
-            errors.append("source_refs must include signals, upstream_impacts, upstream_reviews, or urls")
+            errors.append(
+                "source_refs must include reservations, signals, social_candidates, "
+                "upstream_impacts, upstream_reviews, or urls"
+            )
         urls = refs.get("urls", [])
         if urls and (
             not isinstance(urls, list)
             or not all(isinstance(url, str) and url.startswith("https://") for url in urls)
         ):
             errors.append("source_refs.urls must be a list of https URLs")
+        for field in (
+            "reservations",
+            "signals",
+            "social_candidates",
+            "upstream_impacts",
+            "upstream_reviews",
+        ):
+            values = refs.get(field, [])
+            if values and (
+                not isinstance(values, list)
+                or not all(isinstance(item, str) and item for item in values)
+            ):
+                errors.append(f"source_refs.{field} must be a list of non-empty strings")
 
     for list_field in ("evidence_notes", "claims"):
         values = entry.get(list_field)
