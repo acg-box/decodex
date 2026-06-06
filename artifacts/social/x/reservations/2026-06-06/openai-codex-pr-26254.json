@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "practical_explainer",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-pr-26254:practical_explainer",
   "reserved_at": "2026-06-06T15:55:27Z",
   "expires_at": "2026-06-06T17:55:27Z",
@@ -44,5 +44,6 @@
     "Chrome account readback confirmed the active X account was @decodexspace before this reservation was prepared.",
     "Live @decodexspace profile readback found no MultiAgentV2, 26254, or exact lead-text match; focused X search no-results is supporting evidence only.",
     "Checked publication records show daily_count_after = 7 for @decodexspace on 2026-06-06 Asia/Shanghai, so one additional single-post publication would reach but not exceed the cap of 8."
-  ]
+  ],
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-06/openai-codex-pr-26254.json"
 }
