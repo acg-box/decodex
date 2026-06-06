@@ -1,0 +1,62 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-138-0-alpha-5-superseded-skip",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "low",
+  "audience": "Codex CLI alpha testers and Decodex Radar readers",
+  "candidate_text": [
+    "No standalone alpha.5 post.\n\nCodex CLI 0.138.0-alpha.5 was superseded by alpha.6 before this checkpoint run. Keep alpha.5 as release-window evidence and route unreviewed PRs to upstream review."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.4",
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.5",
+      "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.4...rust-v0.138.0-alpha.5"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.138.0-alpha.5 was published as a prerelease on 2026-06-05T23:27:47Z.",
+    "GitHub release metadata shows rust-v0.138.0-alpha.6 was published on 2026-06-06T03:23:40Z, superseding alpha.5 before this publisher run produced a standalone alpha.5 handoff.",
+    "The prerelease channel baseline for alpha.5 is the adjacent previous prerelease rust-v0.138.0-alpha.4, not stable rust-v0.137.0.",
+    "GitHub compare metadata for rust-v0.138.0-alpha.4...rust-v0.138.0-alpha.5 showed 47 ahead commits.",
+    "No checked upstream_review/v1, upstream_impact/v1, signal_entry/v1, social_candidate/v1, or social_post/v1 artifact was found for the alpha.4 -> alpha.5 compare PRs in this run.",
+    "Unreviewed alpha.4 -> alpha.5 PR-title gaps for codex-upstream-radar-review / codex-code-analysis: #26466 Use Winget release environment secret; #26465 Preserve logical paths during AGENTS.md discovery; #26453 expose remote MCP servers in plugin read; #26473 Add skill for pushing CI configuration changes; #26317 Expose unavailable app templates in plugin detail; #26471 Improve Windows sandbox setup refresh diagnostics; #26431 Pull plugin service less frequently; #25000 ci: test windows cross build; #25955 Emit sandbox outcome telemetry event; #26487 Add use_responses_lite override logic; #26482 refresh expired OAuth tokens before startup; #26256 Keep Bazel startup options stable across commands; #26499 derive exec policy filesystem policy from profile; #26215 allow pairing while disabled; #26480 Add environment shell info; #26210 Encrypt multi-agent v2 message payloads; #26566 nit: doc; #25710 Forward turn moderation metadata through app-server; #26599 Keep v1 spawn metadata visible; #26610 split agent control modules; #25344 expose account token usage [1 of 2]; #26553 Fix long proxy socket paths; #26537 Surface TUI config write error causes; #26500 Open Windows app workspaces via deep link; #26551 Fix /goal usage text for control commands; #26554 Render code comment directives in TUI replay; #26623 reload v2 agents on delivery; #26532 Require absolute cwd in thread settings; #26625 Allow socketpair in proxy-routed Linux sandbox; #26538 Add /usr/bin/bash shell fallback; #26449 add pairing status transport; #26433 Make turn diff tracker multi-env aware; #26636 avoid doubled blank rows while streaming; #26450 add remote control pairing status RPC; #26335 Clean up Rust release workflow; #26547 Align goal extension with core behavior [1 of 2]; #26181 Windows composer background; #26457 restore cancelled prompt cursor at end; #26307 Respect Windows sandbox backend in exec policy; #26484 Add turn profiling analytics; #26552 Make runtime workspace roots absolute in app-server API; #26462 Use state DB first for resume --last; #26469 Speed up TUI startup by reusing plugin discovery; #26631 Add JSON output for plugin subcommands; #26669 Bound WSL local curated discovery; #26548 Finish moving goal runtime to extension [2 of 2]."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.138.0-alpha.5 is an observed openai/codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.5",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The prerelease-channel comparison for alpha.5 is rust-v0.138.0-alpha.4 to rust-v0.138.0-alpha.5.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.4...rust-v0.138.0-alpha.5",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "alpha.5 was superseded by alpha.6 before this run produced a standalone alpha.5 publisher handoff.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.6",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "skip",
+    "reason": "alpha.5 was superseded by alpha.6 before this run; publishing a standalone stale prerelease note would confuse the prerelease chain, so its exact compare gaps are preserved for upstream review instead.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-138-0-alpha-5:alpha4-alpha5:skip"
+  },
+  "caveats": [
+    "This is a durable skip outcome, not a publishable handoff.",
+    "Do not publish alpha.5 as a standalone post unless an operator explicitly asks for a retrospective rollup.",
+    "Do not infer behavior from the listed PR titles until upstream review or code analysis handles the gap list."
+  ],
+  "next_steps": [
+    "Route the alpha.4 -> alpha.5 PR-title gap list to codex-upstream-radar-review / codex-code-analysis if Decodex needs behavior-level claims for a later stable rollup.",
+    "Use alpha.5 only as the adjacent baseline for the alpha.6 prerelease candidate."
+  ]
+}
