@@ -41,9 +41,12 @@ Publish only when all are true:
 - prerelease channel lineage and previous-post quote state were checked through
   `post_lifecycle.quote_eligible`
 - idempotency key has not already been published or blocked for the same source
-- checked-in records, open publication PRs when available, and live `@decodexspace`
-  profile/timeline readback show no matching post for the candidate's exact lead text,
-  idempotency subject, release tag, or source URL
+- checked-in records, active `social_publish_reservation/v1` records, open
+  publication PRs when available, and live `@decodexspace` profile/timeline readback
+  show no matching post for the candidate's exact lead text, idempotency subject,
+  release tag, or source URL
+- an active `social_publish_reservation/v1` with the same idempotency key and
+  duplicate keys has been committed and pushed so it is PR-visible before X compose
 - daily cap of 8 posts for `@decodexspace` in `Asia/Shanghai` is not reached
 
 For release/prerelease/app candidates, apply
@@ -52,6 +55,11 @@ For release/prerelease/app candidates, apply
 Do not treat X search `No results` as sufficient duplicate evidence. Use search only
 as a supporting signal; if profile/timeline readback is unavailable, stale,
 loading-only, or contradicts search, fail closed before composing.
+
+Do not compose from a local-only, uncommitted, or unpushed reservation. After the
+reservation is PR-visible and immediately before clicking Post, repeat live
+profile/timeline duplicate readback. If a duplicate appears, cancel or expire the
+reservation and do not publish.
 
 ## Chrome And Media
 
@@ -83,6 +91,12 @@ Write `artifacts/social/x/posts/<yyyy-mm-dd>/<slug>.json` with:
   details as applicable
 - X status/media URL or media caveat when media was used or skipped
 - `post_lifecycle` when the record can affect future prerelease quote chains
+- the consumed reservation path under `source_refs.reservations` when the compose gate
+  was reached
+
+Update `artifacts/social/x/reservations/<yyyy-mm-dd>/<slug>.json` from `active` to
+`consumed`, `canceled`, or `expired` before the run ends. Do not leave an active
+reservation behind unless the thread is explicitly handed off to a human operator.
 
 Run:
 
