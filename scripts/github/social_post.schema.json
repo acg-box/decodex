@@ -68,6 +68,12 @@
       "additionalProperties": false,
       "anyOf": [
         {
+          "required": ["reservations"]
+        },
+        {
+          "required": ["social_candidates"]
+        },
+        {
           "required": ["signals"]
         },
         {
@@ -81,6 +87,22 @@
         }
       ],
       "properties": {
+        "reservations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "social_candidates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
         "signals": {
           "type": "array",
           "minItems": 1,

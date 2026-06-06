@@ -47,6 +47,8 @@ Current checked contracts:
 - `release_delta/v1` artifacts are validated by `decodex radar validate`.
 - `upstream_impact/v1` artifacts are validated by `decodex radar validate`.
 - `social_candidate/v1` artifacts are validated by `decodex radar validate`.
+- `social_publish_reservation/v1` artifacts are validated by
+  `decodex radar validate`.
 - `social_post/v1` artifacts are validated by `decodex radar validate`.
 
 Contract ownership:

@@ -42,6 +42,7 @@ const SCHEMA_VERSION: i64 = 3;
 const SIGNAL_SCHEMA: &str = "signal_entry/v1";
 const SOCIAL_CANDIDATE_SCHEMA: &str = "social_candidate/v1";
 const SOCIAL_POST_SCHEMA: &str = "social_post/v1";
+const SOCIAL_PUBLISH_RESERVATION_SCHEMA: &str = "social_publish_reservation/v1";
 const UPSTREAM_IMPACT_SCHEMA: &str = "upstream_impact/v1";
 const UPSTREAM_REVIEW_QUEUE_SCHEMA: &str = "upstream_review_queue/v1";
 const UPSTREAM_REVIEW_SCHEMA: &str = "upstream_review/v1";
@@ -81,6 +82,7 @@ const SOCIAL_POST_LIFECYCLE_STATES: &[&str] = &[
 	"superseded_published",
 	"superseded_text_only",
 ];
+const SOCIAL_PUBLISH_RESERVATION_STATUSES: &[&str] = &["active", "canceled", "consumed", "expired"];
 const SOURCE_ITEM_KINDS: &[&str] = &["commit", "pull_request"];
 const UPSTREAM_IMPACT_KINDS: &[&str] =
 	&["browser_observation", "changelog", "commit", "pull_request", "release", "signal"];
@@ -465,11 +467,17 @@ struct ArtifactValidation {
 
 #[derive(Debug)]
 struct ValidationState {
+	active_social_publish_reservation_idempotency_keys: BTreeMap<String, PathBuf>,
+	seen_terminal_social_post_idempotency_keys: BTreeMap<String, PathBuf>,
 	seen_signal_slugs: BTreeMap<String, PathBuf>,
 }
 impl ValidationState {
 	fn new() -> Self {
-		Self { seen_signal_slugs: BTreeMap::new() }
+		Self {
+			active_social_publish_reservation_idempotency_keys: BTreeMap::new(),
+			seen_terminal_social_post_idempotency_keys: BTreeMap::new(),
+			seen_signal_slugs: BTreeMap::new(),
+		}
 	}
 }
 
@@ -1010,6 +1018,22 @@ pub(crate) fn validate(
 
 		if validation.schema.as_deref() == Some(SIGNAL_SCHEMA) {
 			validate_signal_slug_uniqueness(path, &payload, &mut state, &mut errors);
+		}
+		if validation.schema.as_deref() == Some(SOCIAL_POST_SCHEMA) {
+			validate_terminal_social_post_idempotency_key_uniqueness(
+				path,
+				&payload,
+				&mut state,
+				&mut errors,
+			);
+		}
+		if validation.schema.as_deref() == Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) {
+			validate_active_social_publish_reservation_uniqueness(
+				path,
+				&payload,
+				&mut state,
+				&mut errors,
+			);
 		}
 
 		for error in validation.errors {
@@ -4235,6 +4259,8 @@ fn validate_artifact(payload: &Value) -> ArtifactValidation {
 		Some(SIGNAL_SCHEMA) => validate_signal(entry, &mut errors),
 		Some(SOCIAL_CANDIDATE_SCHEMA) => validate_social_candidate(entry, &mut errors),
 		Some(SOCIAL_POST_SCHEMA) => validate_social_post(entry, &mut errors),
+		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) =>
+			validate_social_publish_reservation(entry, &mut errors),
 		Some(UPSTREAM_IMPACT_SCHEMA) => validate_upstream_impact(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_QUEUE_SCHEMA) => validate_upstream_review_queue(entry, &mut errors),
 		Some(UPSTREAM_REVIEW_SCHEMA) => validate_upstream_review(entry, &mut errors),
@@ -5223,6 +5249,105 @@ fn validate_social_candidate_decision(decision: Option<&Value>, errors: &mut Vec
 	}
 }
 
+fn validate_social_publish_reservation(entry: &Map<String, Value>, errors: &mut Vec<String>) {
+	for field in ["slug", "idempotency_key", "reserved_at", "expires_at", "day", "timezone"] {
+		if !is_non_empty_string(entry.get(field)) {
+			errors.push(format!("{field} must be a non-empty string"));
+		}
+	}
+
+	validate_social_publish_reservation_constants(entry, errors);
+	validate_social_publish_reservation_refs(entry.get("candidate_refs"), errors);
+	validate_non_empty_string_list(entry.get("duplicate_keys"), "duplicate_keys", errors);
+	validate_optional_string_list(entry.get("evidence_notes"), "evidence_notes", errors);
+	validate_social_publish_reservation_owner(entry.get("owner"), errors);
+	validate_rfc3339_field(entry, "reserved_at", errors);
+	validate_rfc3339_field(entry, "expires_at", errors);
+	validate_social_publish_reservation_status_payload(entry, errors);
+}
+
+fn validate_social_publish_reservation_constants(
+	entry: &Map<String, Value>,
+	errors: &mut Vec<String>,
+) {
+	if string_field(entry, "channel") != Some("x") {
+		errors.push("channel must be x".into());
+	}
+	if string_field(entry, "target_account") != Some("decodexspace") {
+		errors.push("target_account must be decodexspace".into());
+	}
+	if string_field(entry, "controller_account") != Some("hackink") {
+		errors.push("controller_account must be hackink".into());
+	}
+	if !matches_one_of(entry.get("mode"), SOCIAL_POST_MODES) {
+		errors.push(format!("mode must be one of {}", choices(SOCIAL_POST_MODES)));
+	}
+	if !matches_one_of(entry.get("status"), SOCIAL_PUBLISH_RESERVATION_STATUSES) {
+		errors.push(format!(
+			"status must be one of {}",
+			choices(SOCIAL_PUBLISH_RESERVATION_STATUSES)
+		));
+	}
+}
+
+fn validate_social_publish_reservation_refs(refs: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(refs) = refs.and_then(Value::as_object) else {
+		errors.push("candidate_refs must be an object".into());
+
+		return;
+	};
+	let has_refs = ["social_candidates", "urls"]
+		.iter()
+		.any(|field| non_empty_array(refs.get(*field)).is_some());
+
+	if !has_refs {
+		errors.push("candidate_refs must include social_candidates or urls".into());
+	}
+	if refs.get("urls").is_some_and(|urls| !is_https_string_array(urls)) {
+		errors.push("candidate_refs.urls must be a list of https URLs".into());
+	}
+
+	validate_optional_string_list(
+		refs.get("social_candidates"),
+		"candidate_refs.social_candidates",
+		errors,
+	);
+}
+
+fn validate_social_publish_reservation_owner(owner: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(owner) = owner else {
+		return;
+	};
+	let Some(owner) = owner.as_object() else {
+		errors.push("owner must be an object when present".into());
+
+		return;
+	};
+
+	for field in ["automation_id", "branch", "pr_url", "run_id"] {
+		if owner.get(field).is_some_and(|value| !is_non_empty_string(Some(value))) {
+			errors.push(format!("owner.{field} must be non-empty when present"));
+		}
+	}
+
+	if owner.get("pr_url").is_some_and(|value| !is_https_string(Some(value))) {
+		errors.push("owner.pr_url must be an https URL when present".into());
+	}
+}
+
+fn validate_social_publish_reservation_status_payload(
+	entry: &Map<String, Value>,
+	errors: &mut Vec<String>,
+) {
+	match string_field(entry, "status") {
+		Some("consumed") if !is_non_empty_string(entry.get("consumed_by_social_post")) =>
+			errors.push("consumed_by_social_post is required when status is consumed".into()),
+		Some("canceled" | "expired") if !is_non_empty_string(entry.get("release_reason")) =>
+			errors.push("release_reason is required when status is canceled or expired".into()),
+		_ => {},
+	}
+}
+
 fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	for field in ["slug", "audience"] {
 		if !is_non_empty_string(entry.get(field)) {
@@ -5285,17 +5410,31 @@ fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mut Vec<Strin
 
 		return;
 	};
-	let has_refs = ["signals", "upstream_impacts", "upstream_reviews", "urls"]
-		.iter()
-		.any(|field| non_empty_array(refs.get(*field)).is_some());
+	let has_refs = [
+		"reservations",
+		"signals",
+		"social_candidates",
+		"upstream_impacts",
+		"upstream_reviews",
+		"urls",
+	]
+	.iter()
+	.any(|field| non_empty_array(refs.get(*field)).is_some());
 
 	if !has_refs {
 		errors.push(
-			"source_refs must include signals, upstream_impacts, upstream_reviews, or urls".into(),
+			"source_refs must include reservations, signals, social_candidates, upstream_impacts, upstream_reviews, or urls"
+				.into(),
 		);
 	}
 	if refs.get("urls").is_some_and(|urls| !is_https_string_array(urls)) {
 		errors.push("source_refs.urls must be a list of https URLs".into());
+	}
+
+	for field in
+		["reservations", "signals", "social_candidates", "upstream_impacts", "upstream_reviews"]
+	{
+		validate_optional_string_list(refs.get(field), &format!("source_refs.{field}"), errors);
 	}
 }
 
@@ -5518,6 +5657,78 @@ fn validate_signal_slug_uniqueness(
 	}
 }
 
+fn validate_terminal_social_post_idempotency_key_uniqueness(
+	path: &Path,
+	payload: &Value,
+	state: &mut ValidationState,
+	errors: &mut Vec<String>,
+) {
+	let status = payload.get("status").and_then(Value::as_str);
+
+	if !matches!(status, Some("published" | "blocked")) {
+		return;
+	}
+
+	let Some(key) = payload
+		.get("decision")
+		.and_then(Value::as_object)
+		.and_then(|decision| decision.get("idempotency_key"))
+		.and_then(Value::as_str)
+	else {
+		return;
+	};
+
+	if let Some(existing) =
+		state.seen_terminal_social_post_idempotency_keys.insert(key.to_owned(), path.to_path_buf())
+	{
+		errors.push(format!(
+			"{}: duplicate terminal social_post idempotency_key {key:?} also used by {}",
+			path.display(),
+			existing.display()
+		));
+	}
+	if let Some(existing) = state.active_social_publish_reservation_idempotency_keys.get(key) {
+		errors.push(format!(
+			"{}: terminal social_post idempotency_key {key:?} conflicts with active reservation {}",
+			path.display(),
+			existing.display()
+		));
+	}
+}
+
+fn validate_active_social_publish_reservation_uniqueness(
+	path: &Path,
+	payload: &Value,
+	state: &mut ValidationState,
+	errors: &mut Vec<String>,
+) {
+	if payload.get("status").and_then(Value::as_str) != Some("active") {
+		return;
+	}
+
+	let Some(key) = payload.get("idempotency_key").and_then(Value::as_str) else {
+		return;
+	};
+
+	if let Some(existing) = state.seen_terminal_social_post_idempotency_keys.get(key) {
+		errors.push(format!(
+			"{}: active social_publish_reservation idempotency_key {key:?} conflicts with terminal social_post {}",
+			path.display(),
+			existing.display()
+		));
+	}
+	if let Some(existing) = state
+		.active_social_publish_reservation_idempotency_keys
+		.insert(key.to_owned(), path.to_path_buf())
+	{
+		errors.push(format!(
+			"{}: duplicate active social_publish_reservation idempotency_key {key:?} also used by {}",
+			path.display(),
+			existing.display()
+		));
+	}
+}
+
 fn validate_non_empty_string_list(value: Option<&Value>, label: &str, errors: &mut Vec<String>) {
 	let valid = non_empty_array(value).is_some_and(|values| {
 		values.iter().all(|item| item.as_str().is_some_and(|item| !item.is_empty()))
@@ -5550,6 +5761,17 @@ fn validate_optional_string_list(value: Option<&Value>, label: &str, errors: &mu
 		values.iter().all(|item| item.as_str().is_some_and(|item| !item.is_empty()))
 	}) {
 		errors.push(format!("{label} must be a list of non-empty strings when present"));
+	}
+}
+
+fn validate_rfc3339_field(entry: &Map<String, Value>, field: &str, errors: &mut Vec<String>) {
+	let Some(value) = entry.get(field).and_then(Value::as_str).filter(|value| !value.is_empty())
+	else {
+		return;
+	};
+
+	if OffsetDateTime::parse(value, &Rfc3339).is_err() {
+		errors.push(format!("{field} must be an RFC3339 timestamp"));
 	}
 }
 
@@ -5639,6 +5861,7 @@ fn known_schemas() -> String {
 		SIGNAL_SCHEMA,
 		SOCIAL_CANDIDATE_SCHEMA,
 		SOCIAL_POST_SCHEMA,
+		SOCIAL_PUBLISH_RESERVATION_SCHEMA,
 		UPSTREAM_IMPACT_SCHEMA,
 		UPSTREAM_REVIEW_QUEUE_SCHEMA,
 		UPSTREAM_REVIEW_SCHEMA,
@@ -5841,6 +6064,133 @@ mod tests {
 
 		assert_eq!(errors.len(), 1);
 		assert!(errors[0].contains("duplicate slug"));
+	}
+
+	#[test]
+	fn rejects_duplicate_terminal_social_post_idempotency_keys_across_files() {
+		let social_post = valid_social_post();
+		let mut state = crate::radar::ValidationState::new();
+		let mut errors = Vec::new();
+
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/one.json"),
+			&social_post,
+			&mut state,
+			&mut errors,
+		);
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/two.json"),
+			&social_post,
+			&mut state,
+			&mut errors,
+		);
+
+		assert_eq!(errors.len(), 1);
+		assert!(errors[0].contains("duplicate terminal social_post idempotency_key"));
+	}
+
+	#[test]
+	fn permits_failed_social_post_idempotency_key_retry() {
+		let mut failed_post = valid_social_post();
+
+		failed_post["status"] = serde_json::json!("failed");
+
+		let published_post = valid_social_post();
+		let mut state = crate::radar::ValidationState::new();
+		let mut errors = Vec::new();
+
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/failed.json"),
+			&failed_post,
+			&mut state,
+			&mut errors,
+		);
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/published.json"),
+			&published_post,
+			&mut state,
+			&mut errors,
+		);
+
+		assert!(errors.is_empty());
+	}
+
+	#[test]
+	fn accepts_valid_social_publish_reservation() {
+		let reservation = valid_social_publish_reservation();
+
+		assert_errors(&reservation, []);
+	}
+
+	#[test]
+	fn rejects_duplicate_active_social_publish_reservation_idempotency_keys() {
+		let reservation = valid_social_publish_reservation();
+		let mut state = crate::radar::ValidationState::new();
+		let mut errors = Vec::new();
+
+		radar::validate_active_social_publish_reservation_uniqueness(
+			&PathBuf::from("artifacts/social/x/reservations/one.json"),
+			&reservation,
+			&mut state,
+			&mut errors,
+		);
+		radar::validate_active_social_publish_reservation_uniqueness(
+			&PathBuf::from("artifacts/social/x/reservations/two.json"),
+			&reservation,
+			&mut state,
+			&mut errors,
+		);
+
+		assert_eq!(errors.len(), 1);
+		assert!(errors[0].contains("duplicate active social_publish_reservation"));
+	}
+
+	#[test]
+	fn rejects_active_reservation_for_terminal_social_post_idempotency_key() {
+		let social_post = valid_social_post();
+		let reservation = valid_social_publish_reservation();
+		let mut state = crate::radar::ValidationState::new();
+		let mut errors = Vec::new();
+
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/published.json"),
+			&social_post,
+			&mut state,
+			&mut errors,
+		);
+		radar::validate_active_social_publish_reservation_uniqueness(
+			&PathBuf::from("artifacts/social/x/reservations/active.json"),
+			&reservation,
+			&mut state,
+			&mut errors,
+		);
+
+		assert_eq!(errors.len(), 1);
+		assert!(errors[0].contains("conflicts with terminal social_post"));
+	}
+
+	#[test]
+	fn rejects_terminal_social_post_for_active_reservation_idempotency_key() {
+		let social_post = valid_social_post();
+		let reservation = valid_social_publish_reservation();
+		let mut state = crate::radar::ValidationState::new();
+		let mut errors = Vec::new();
+
+		radar::validate_active_social_publish_reservation_uniqueness(
+			&PathBuf::from("artifacts/social/x/reservations/active.json"),
+			&reservation,
+			&mut state,
+			&mut errors,
+		);
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/published.json"),
+			&social_post,
+			&mut state,
+			&mut errors,
+		);
+
+		assert_eq!(errors.len(), 1);
+		assert!(errors[0].contains("conflicts with active reservation"));
 	}
 
 	#[test]
@@ -6758,6 +7108,42 @@ mod tests {
 				"image_template": "decodex_signal_card"
 			},
 			"media_refs": ["https://x.com/decodexspace/status/1/photo/1"]
+		})
+	}
+
+	fn valid_social_publish_reservation() -> Value {
+		serde_json::json!({
+			"schema": "social_publish_reservation/v1",
+			"slug": "openai-codex-pr-22414",
+			"channel": "x",
+			"target_account": "decodexspace",
+			"controller_account": "hackink",
+			"mode": "operator_impact",
+			"status": "active",
+			"idempotency_key": "x:decodexspace:operator_impact:openai-codex-pr-22414",
+			"reserved_at": "2026-06-02T02:50:00Z",
+			"expires_at": "2026-06-02T03:50:00Z",
+			"day": "2026-06-02",
+			"timezone": "Asia/Shanghai",
+			"candidate_refs": {
+				"social_candidates": [
+					"artifacts/github/social-candidates/openai-codex-pr-22414.json"
+				],
+				"urls": ["https://github.com/openai/codex/pull/22414"]
+			},
+			"duplicate_keys": [
+				"Remote Codex can now use Unix socket endpoints.",
+				"https://github.com/openai/codex/pull/22414"
+			],
+			"owner": {
+				"automation_id": "decodex-x-publisher",
+				"branch": "automation/decodex-x-publisher-2026-06-02-pr-22414",
+				"pr_url": "https://github.com/hack-ink/decodex/pull/1",
+				"run_id": "2026-06-02T02:50:00Z"
+			},
+			"evidence_notes": [
+				"Created before compose after checked-in records and live profile readback were clear."
+			]
 		})
 	}
 }

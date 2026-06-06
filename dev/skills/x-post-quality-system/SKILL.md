@@ -64,8 +64,13 @@ Required shared elements:
   source-agnostic placeholders
 
 Before upload, verify the image is specific, visually consistent, readable as an X
-preview, and not generic or off-brand. Record prompt/media path/quality outcome in
-`social_post/v1` evidence notes or caveats when useful.
+preview, and not generic or off-brand. Also verify the candidate is not already live
+on the `@decodexspace` profile/timeline and does not conflict with any active
+`social_publish_reservation/v1` in checked records or open publication PRs. X search
+`No results` is not enough.
+Record prompt/media path/quality outcome in `social_post/v1` evidence notes or caveats
+when useful.
 
 Fail closed when media is generic, reused, unavailable but required, or when duplicate
-detection, account verification, upload, or final readback is unreliable.
+detection, reservation visibility, account verification, upload, or final readback is
+unreliable.
