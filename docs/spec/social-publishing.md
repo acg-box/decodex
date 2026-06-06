@@ -187,6 +187,14 @@ described here. It must use the logged-in `@decodexspace` account, verify the ac
 before composing, and fail closed when Chrome, login state, X page structure, duplicate
 detection, or media upload is unreliable.
 
+Duplicate detection must not rely on X search alone. Before composing, Publisher
+automation must check durable `social_post/v1` records, open pull requests that add
+`social_post/v1` records when available, and a live `@decodexspace` profile/timeline
+readback for the candidate's exact lead text, idempotency subject, release tag, or
+source URL. Treat an X search `No results` state as weak evidence only; if profile or
+permalink readback is unavailable, stale, loading-only, or contradicts search, fail
+closed instead of publishing.
+
 Chrome tabs are temporary execution resources. Publisher automation must close or
 release research, compose, upload, and readback tabs after the `social_post/v1` record
 captures the result. A tab may stay open only as an explicit human handoff, such as

@@ -143,7 +143,15 @@ one exact compare URL intentionally carries the detailed PR list.
 5. Check idempotency and daily cap.
    - Build a stable idempotency key from account, source, mode, and release checkpoint
      when applicable.
-   - Count already-published `@decodexspace` records for the cap day.
+   - Count already-published `@decodexspace` records for the cap day from checked-in
+     `social_post/v1` records, and inspect open PRs that add `social_post/v1` records
+     when the current worktree may not include every pending publication record.
+   - Run live duplicate detection against the `@decodexspace` profile/timeline before
+     composing. Match the candidate's exact lead text, idempotency subject, release
+     tag, source URL, and known prior status URLs.
+   - X search can be an additional signal, but `No results` is not sufficient proof
+     that no duplicate exists. If X search and profile/timeline readback disagree, or
+     either surface is loading-only or unreadable, fail closed.
    - The default cap day uses `Asia/Shanghai`.
    - If the candidate would exceed 8 posts, do not post. Write
      `status = "blocked"` with `block.reason = "daily_cap_exceeded"`.

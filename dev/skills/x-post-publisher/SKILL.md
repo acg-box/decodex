@@ -41,10 +41,17 @@ Publish only when all are true:
 - prerelease channel lineage and previous-post quote state were checked through
   `post_lifecycle.quote_eligible`
 - idempotency key has not already been published or blocked for the same source
+- checked-in records, open publication PRs when available, and live `@decodexspace`
+  profile/timeline readback show no matching post for the candidate's exact lead text,
+  idempotency subject, release tag, or source URL
 - daily cap of 8 posts for `@decodexspace` in `Asia/Shanghai` is not reached
 
 For release/prerelease/app candidates, apply
 `../references/social-release-publisher-gates.md` before composing.
+
+Do not treat X search `No results` as sufficient duplicate evidence. Use search only
+as a supporting signal; if profile/timeline readback is unavailable, stale,
+loading-only, or contradicts search, fail closed before composing.
 
 ## Chrome And Media
 
