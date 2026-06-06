@@ -18,6 +18,7 @@
       "https://developers.openai.com/codex/changelog",
       "https://x.com/decodexspace/status/2063109099135574379",
       "https://x.com/decodexspace/status/2063109099135574379/photo/1",
+      "https://pbs.twimg.com/media/HKGirQvagAEuudw?format=jpg&name=medium",
       "https://x.com/decodexspace/status/2063198209271554481"
     ]
   },
@@ -27,12 +28,11 @@
     "The changelog says activity insights and share cards were added to the Profile section, with sharing available on consumer ChatGPT plans.",
     "The changelog says Computer Use startup readiness and appshot error reporting improved.",
     "The changelog says browser and review UI issues were fixed and onboarding was expanded with more role choices.",
-    "A post-publication profile timeline audit found an earlier matching @decodexspace post at https://x.com/decodexspace/status/2063109099135574379 with /photo/1 media; this later post is a duplicate publication.",
-    "Asia/Shanghai cap accounting initially found zero checked-in @decodexspace published records for 2026-06-06, but live profile readback proves the correct pre-publish count was at least one.",
-    "X duplicate detection for from:decodexspace with the exact Codex app 26.602 phrase returned no results before composing.",
-    "A post-publication X search repeated the exact phrase and still returned no results even while the profile timeline exposed both matching posts, so X search no-results is not reliable duplicate evidence.",
-    "Chrome account readback showed Decodex @decodexspace before composing.",
-    "The final permalink readback confirmed @decodexspace, @hackink automation attribution, the expected post text, and the official changelog link card."
+    "The canonical publication is the earlier media-attached @decodexspace post at https://x.com/decodexspace/status/2063109099135574379.",
+    "The canonical publication includes a /photo/1 media readback URL and generated media cache evidence from /Users/x/.codex/decodex/social-media/x/2026-06-06/openai-codex-app-26-602/image.png.",
+    "A later text-only duplicate at https://x.com/decodexspace/status/2063198209271554481 was found after publication and is preserved here only as audit evidence.",
+    "The duplicate happened because X search returned no results for the exact phrase even while profile timeline readback later exposed both matching posts.",
+    "Future duplicate detection must prefer checked records, active reservations, open publication PRs, and live profile/timeline readback over X search no-results."
   ],
   "claims": [
     {
@@ -51,13 +51,13 @@
       "confidence": "confirmed"
     },
     {
-      "text": "The published X post is live on @decodexspace and includes the official changelog link card.",
-      "evidence": "https://x.com/decodexspace/status/2063198209271554481",
+      "text": "The canonical published X post is live on @decodexspace and includes the official changelog link.",
+      "evidence": "https://x.com/decodexspace/status/2063109099135574379",
       "confidence": "confirmed"
     },
     {
-      "text": "The published X post duplicates an earlier live @decodexspace Codex app 26.602 post.",
-      "evidence": "https://x.com/decodexspace/status/2063109099135574379",
+      "text": "The canonical published X post includes generated media and a readable /photo/1 media URL.",
+      "evidence": "https://x.com/decodexspace/status/2063109099135574379/photo/1",
       "confidence": "confirmed"
     }
   ],
@@ -67,31 +67,35 @@
     "idempotency_key": "x:decodexspace:codex-app-26-602:release_pulse",
     "reason": "The official changelog has concrete user-visible app changes and enough reader value for a source-led release pulse.",
     "daily_limit": 8,
-    "daily_count_before": 1,
-    "daily_count_after": 2,
+    "daily_count_before": 0,
+    "daily_count_after": 1,
     "day": "2026-06-06",
     "timezone": "Asia/Shanghai"
   },
   "publication": {
-    "posted_at": "2026-06-06T09:56:00Z",
+    "posted_at": "2026-06-06T04:01:00Z",
     "published_urls": [
-      "https://x.com/decodexspace/status/2063198209271554481"
+      "https://x.com/decodexspace/status/2063109099135574379"
     ],
     "publisher": "chrome",
     "account_verified": true,
-    "made_with_ai": false
+    "made_with_ai": true,
+    "image_template": "decodex_signal_card"
   },
+  "media_refs": [
+    "https://x.com/decodexspace/status/2063109099135574379/photo/1",
+    "https://pbs.twimg.com/media/HKGirQvagAEuudw?format=jpg&name=medium",
+    "/Users/x/.codex/decodex/social-media/x/2026-06-06/openai-codex-app-26-602/image.png"
+  ],
   "caveats": [
-    "This post is a duplicate of the earlier media-attached live post at https://x.com/decodexspace/status/2063109099135574379.",
+    "A later duplicate text-only post exists at https://x.com/decodexspace/status/2063198209271554481 and must not be reused as canonical publication evidence.",
     "Do not treat X search no-results as sufficient duplicate-detection evidence for future publication decisions.",
-    "The candidate's declared generated-media path /Users/x/.codex/decodex/social-media/codex-app-26-602.png was missing at publication time.",
-    "The post was intentionally published text-only because the official changelog link card and compact release bullets carried the reader value without a generic replacement image.",
-    "Sharing for profile cards is described as available on consumer ChatGPT plans."
+    "Sharing for profile cards is described by the official changelog as available on consumer ChatGPT plans.",
+    "The local media file is outside Git by default; this record keeps the final X status, /photo/1 URL, and media readback URL instead of committing the generated binary."
   ],
   "post_lifecycle": {
-    "current_state": "superseded_published",
+    "current_state": "live",
     "quote_eligible": false,
-    "superseded_by_candidate": "https://x.com/decodexspace/status/2063109099135574379",
-    "reason": "Post-publication profile readback found an earlier matching live Codex app 26.602 post; this later text-only post is a duplicate and must not be reused as future publication evidence."
+    "reason": "The canonical media-attached app update post remains live, but app release-pulse posts are not prerelease quote-chain anchors."
   }
 }
