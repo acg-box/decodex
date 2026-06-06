@@ -1,0 +1,55 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-app-26-602",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "release_pulse",
+  "priority": "high",
+  "audience": "Codex app users and Decodex operators",
+  "candidate_text": [
+    "Codex app 26.602 is out.\n\nWhat changed:\n- Profile activity insights and share cards\n- Better Computer Use startup and appshot errors\n- Browser/review UI fixes plus expanded onboarding\n\nChangelog: https://developers.openai.com/codex/changelog"
+  ],
+  "source_refs": {
+    "urls": [
+      "https://developers.openai.com/codex/changelog"
+    ]
+  },
+  "evidence_notes": [
+    "The official Codex changelog lists Codex app updates 26.602 on 2026-06-04.",
+    "The changelog says activity insights and share cards were added to the Profile section, with sharing available on consumer ChatGPT plans.",
+    "The changelog says Computer Use startup readiness and appshot error reporting improved.",
+    "The changelog says browser and review UI issues were fixed and onboarding was expanded with more role choices."
+  ],
+  "claims": [
+    {
+      "text": "Codex app 26.602 includes Profile activity insights and share cards.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Codex app 26.602 improves Computer Use startup readiness and appshot error reporting.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Codex app 26.602 includes browser and review UI fixes plus expanded onboarding role choices.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The official changelog has concrete user-visible app changes and enough reader value for a source-led release pulse.",
+    "idempotency_key": "x:decodexspace:codex-app-26-602:release_pulse"
+  },
+  "caveats": [
+    "Sharing for profile cards is described as available on consumer ChatGPT plans."
+  ],
+  "media_refs": [
+    "/Users/x/.codex/decodex/social-media/codex-app-26-602.png"
+  ],
+  "next_steps": [
+    "Hand this candidate to decodex-x-publisher for a source-led Codex app update post using the visually reviewed decodex_signal_card media at /Users/x/.codex/decodex/social-media/codex-app-26-602.png."
+  ]
+}

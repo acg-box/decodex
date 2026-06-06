@@ -39,17 +39,18 @@ Outputs:
 
 ## Style Benchmarks
 
-These benchmark observations are for tone and format only. They are not source evidence
-for technical claims.
+These observations are historical tone and format inspiration only. Recurring
+automation must not browse or sample these accounts, must not use their coverage as
+source evidence, and must not decide publish/skip state from whether they posted.
 
 | Account | Useful pattern | Decodex stance |
 | --- | --- | --- |
+| `@CodexReleases` | Fast release/update cards, media, and short thread splits for Codex app, mobile, and CLI updates. | Use as static style inspiration; do not let it become a runtime input or evidence source. |
 | `@Codex_Changelog` | Fast release-aware bullets with a changelog link. | Useful for `release_pulse`, but Decodex should not become a duplicate release bot. |
-| `@CodexReleases` | Version/update cards and short release threads. | Useful for timely release or prerelease intros, but Decodex should add evidence, caveats, and operator framing instead of only mirroring a tag. |
 | `@LLMJunky` | Practical user interpretation: how a feature changes real workflows, what is worth trying, and where limits remain. | Prefer this style when Radar evidence can support the claim quickly. |
 | `@decodexspace` | Low-frequency automated publication channel. | Establish a voice around evidence-backed Codex intelligence and Decodex operator impact. |
 
-Live Chrome readback on 2026-06-04 confirmed two useful benchmark shapes:
+Historical samples confirmed two useful shapes:
 
 - `@Codex_Changelog` works as a single-card pattern: product/version headline, three
   dense bullets, and a source link. Use this only when the checkpoint itself is the
@@ -59,11 +60,48 @@ Live Chrome readback on 2026-06-04 confirmed two useful benchmark shapes:
   when the release needs structure, but keep Decodex-specific caveats and evidence in
   the lead instead of burying them in the thread.
 
+For current release/app automation, use official changelog, release, GitHub, checked
+Radar artifacts, and prior `social_post/v1` records as the decision inputs. A missed
+official Codex app or mobile changelog entry is a Publisher coverage failure, not an
+upstream GitHub analysis gap and not something to decide from other accounts.
+
+For current prereleases, Decodex's advantage is source-backed interpretation before a
+stable release. Use compare and PR-title metadata to publish an early prerelease read
+when the direction is useful, while labeling the post as alpha metadata interpretation
+instead of a stable feature summary.
+
+Keep release and prerelease channels separate:
+
+- release channel: compare the current stable release to the previous stable release
+- prerelease channel: compare the current prerelease to the previous prerelease in the
+  same train
+- first prerelease after a stable release: compare stable release to first prerelease,
+  and do not quote a previous prerelease post
+- later prereleases: quote the previous `@decodexspace` prerelease post when a previous
+  post URL exists, so readers can follow the full prerelease history before stable
+  release
+
+For prerelease reads, do not write a single generic theme paragraph. First group the
+compare window into reader-facing buckets:
+
+- important PR/commit clusters
+- anticipated user workflow changes
+- protocol/API/schema changes
+- removals, deprecations, or compatibility boundaries
+- plugin, config, sandbox, image/tool, or release-engineering changes
+
+Use those buckets to shape a short thread with line breaks and compact bullets.
+Put direct GitHub PR URLs on the first public mention of important PRs. Use raw PR
+numbers only as secondary shorthand after readers already have a clickable URL or when
+one exact compare URL intentionally carries the detailed PR list.
+
 ## Workflow
 
 1. Start from source evidence.
    - Prefer a source-backed `upstream_review/v1`, merged PR bundle, release-delta
      compare entry, already-rendered `signal_entry/v1`, or `upstream_impact/v1`.
+   - For Codex app and mobile updates, the official Codex changelog is source
+     evidence. Use GitHub only for repository behavior claims.
    - Do not start from social engagement alone.
    - Publisher automation is an artifact consumer. It must not perform fresh upstream
      Codex source analysis; if the checked artifacts do not support the claim, keep the
@@ -90,6 +128,15 @@ Live Chrome readback on 2026-06-04 confirmed two useful benchmark shapes:
 4. Decide whether to publish.
    - Publish only when the change has a clear `release_pulse`, `practical_explainer`,
      `release_rollup`, `operator_impact`, or valuable `watch_note` angle.
+   - For `social_candidate/v1`, use `decision.worthiness = "publish"` as the
+     schema-defined handoff signal. Do not require non-schema `status` or
+     `decision.outcome` fields.
+   - For prerelease candidates, require scan-friendly text that names concrete
+     PRs/commits or source-backed buckets. Treat dense one-paragraph drafts as
+     quality failures even when the technical claims are source-backed.
+   - For prerelease candidates, verify adjacent channel lineage and quote state before
+     composing: previous checkpoint, current checkpoint, compare URL, first-prerelease
+     status, and previous prerelease post URL when available.
    - Skip when the change is internal cleanup, too weakly sourced, too private, too
      vague, or not useful enough for a reader.
 
@@ -115,6 +162,9 @@ Live Chrome readback on 2026-06-04 confirmed two useful benchmark shapes:
    - Attach generated media when it is useful and available.
    - Fail closed if account verification, duplicate detection, media upload, or final
      URL readback is unreliable.
+   - If X file upload stalls the Chrome control channel, stop after one failed upload
+     path. Do not keep retrying and do not publish text-only unless the operator
+     explicitly approves that fallback for the current candidate.
    - Close or release Chrome tabs before the automation ends. Keep a tab only when it
      is an explicit human handoff such as login, CAPTCHA, or account approval.
 
