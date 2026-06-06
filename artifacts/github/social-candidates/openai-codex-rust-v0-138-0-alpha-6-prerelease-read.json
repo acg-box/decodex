@@ -1,0 +1,81 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-138-0-alpha-6-prerelease-read",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "thread",
+  "priority": "high",
+  "audience": "Codex operators tracking prerelease direction before stable notes",
+  "candidate_text": [
+    "Codex CLI 0.138.0-alpha.6 prerelease read\n\nIncrement: alpha.5 -> alpha.6, 11 commits.\n\nMetadata read: protocol cleanup, Responses Lite transport, goal error handling, auth/PATs, managed permissions, and plugin cleanup.\n\nAlpha caveat: not stable release notes.",
+    "Protocol + Responses Lite:\n\n- submission-side Op serde removed\nhttps://github.com/openai/codex/pull/26674\n\n- standalone tools + transport header\nhttps://github.com/openai/codex/pull/26490\nhttps://github.com/openai/codex/pull/26542",
+    "Auth/permissions watch:\n\n- v2 personal access tokens\nhttps://github.com/openai/codex/pull/25731\n\n- managed permission profile allowlists\nhttps://github.com/openai/codex/pull/24852\n\nPR-title metadata only until Radar reviews source.",
+    "Runtime cleanup:\n\n- active goals block after terminal turn errors\nhttps://github.com/openai/codex/pull/26690\n\n- legacy remote plugin startup sync removed\nhttps://github.com/openai/codex/pull/25936",
+    "Compare + caveat:\n\nhttps://github.com/openai/codex/compare/rust-v0.138.0-alpha.5...rust-v0.138.0-alpha.6\n\nNo quote-eligible Decodex prerelease post exists for alpha.5, so Publisher should post this as a fresh thread, not a quote."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.5",
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.6",
+      "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.5...rust-v0.138.0-alpha.6",
+      "https://github.com/openai/codex/pull/26674",
+      "https://github.com/openai/codex/pull/26490",
+      "https://github.com/openai/codex/pull/26542",
+      "https://github.com/openai/codex/pull/25731",
+      "https://github.com/openai/codex/pull/24852",
+      "https://github.com/openai/codex/pull/26690",
+      "https://github.com/openai/codex/pull/25936",
+      "https://github.com/openai/codex/pull/26698",
+      "https://github.com/openai/codex/pull/26716"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.138.0-alpha.6 was published at 2026-06-06T03:23:40Z with only a sparse release body.",
+    "The adjacent alpha.5 -> alpha.6 compare has 11 commits and 10 PR-numbered commits.",
+    "The draft copy is limited to release metadata, compare metadata, and PR-title metadata; it does not claim source-reviewed behavior.",
+    "The current checked release_delta/v1 was generated at 2026-06-05T09:07:58.572455Z for stable rust-v0.137.0 -> prerelease rust-v0.138.0-alpha.4, so alpha.6 is newer than the checked release_delta.",
+    "Checked social_post/v1 records show the prior alpha.4 text-only thread was deleted by the operator and the failed media attempt is not quote-eligible; no alpha.5 Decodex post exists to quote."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.138.0-alpha.6 is the current observed OpenAI Codex prerelease checkpoint for this run.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.6",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct prerelease lineage comparison is rust-v0.138.0-alpha.5 -> rust-v0.138.0-alpha.6.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.5...rust-v0.138.0-alpha.6",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR-title metadata in the alpha.6 window points to protocol cleanup, Responses Lite transport work, auth/PATs, managed permissions, goal terminal behavior, and plugin cleanup.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.5...rust-v0.138.0-alpha.6",
+      "confidence": "likely"
+    },
+    {
+      "text": "No quote-eligible Decodex prerelease post exists for the immediately previous alpha.5 checkpoint.",
+      "evidence": "artifacts/social/x/posts/2026-06-05/openai-codex-rust-v0-138-0-alpha-4-structured-read-text-only.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The adjacent alpha.5 -> alpha.6 compare supports a scan-friendly metadata thread with direct PR URLs and explicit source-review caveats.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-138-0-alpha-6:alpha5-alpha6:thread"
+  },
+  "caveats": [
+    "Behavior claims for alpha.6 remain upstream-analysis gaps; exact gap list: #24852, #25731, #25936, #26013, #26490, #26542, #26674, #26690, #26698, #26716.",
+    "This candidate is based on public release metadata, compare metadata, and PR-title metadata only; codex-upstream-radar-review / codex-code-analysis should review source before a release_rollup makes stronger claims.",
+    "No previous live and quote-eligible alpha.5 @decodexspace post exists, so this should be published as a fresh thread rather than quoted.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If media is required, decodex-x-publisher should generate and verify a fresh candidate-specific decodex_signal_card, then fail closed if upload/readback is unreliable."
+  ],
+  "next_steps": [
+    "Hand this publishable candidate to decodex-x-publisher.",
+    "Before posting, verify @decodexspace account state, daily cap, duplicate/idempotency state, and whether candidate-specific media is required.",
+    "If the Publisher needs stronger behavior language than PR-title metadata, pause publication and route the listed gap PRs to codex-upstream-radar-review / codex-code-analysis."
+  ]
+}
