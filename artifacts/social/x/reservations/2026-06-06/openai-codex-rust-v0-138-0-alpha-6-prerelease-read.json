@@ -1,0 +1,42 @@
+{
+  "schema": "social_publish_reservation/v1",
+  "slug": "openai-codex-rust-v0-138-0-alpha-6-prerelease-read",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "thread",
+  "status": "active",
+  "idempotency_key": "x:decodexspace:openai-codex-rust-v0-138-0-alpha-6:alpha5-alpha6:thread",
+  "reserved_at": "2026-06-06T15:05:55Z",
+  "expires_at": "2026-06-06T19:05:55Z",
+  "day": "2026-06-06",
+  "timezone": "Asia/Shanghai",
+  "candidate_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-rust-v0-138-0-alpha-6-prerelease-read.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.6",
+      "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.5...rust-v0.138.0-alpha.6"
+    ]
+  },
+  "duplicate_keys": [
+    "x:decodexspace:openai-codex-rust-v0-138-0-alpha-6:alpha5-alpha6:thread",
+    "openai-codex-rust-v0-138-0-alpha-6-prerelease-read",
+    "rust-v0.138.0-alpha.6",
+    "Codex CLI 0.138.0-alpha.6 prerelease read",
+    "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.5...rust-v0.138.0-alpha.6",
+    "alpha.5 -> alpha.6"
+  ],
+  "owner": {
+    "automation_id": "manual-publisher-rescue",
+    "run_id": "pr-226-alpha6-publisher-2026-06-06T150555Z",
+    "branch": "codex-release-checkpoint-0.138.0-alpha.6",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/226"
+  },
+  "evidence_notes": [
+    "PR #226 contains a social_candidate/v1 with decision.worthiness = publish for the alpha.5 -> alpha.6 prerelease thread.",
+    "This active reservation is committed and pushed before opening X compose so duplicate publisher runs can fail closed.",
+    "Duplicate detection must check the candidate slug, idempotency key, exact lead text, rust-v0.138.0-alpha.6 tag, and compare URL against checked records, open PRs, active reservations, and live @decodexspace profile/timeline readback."
+  ]
+}
