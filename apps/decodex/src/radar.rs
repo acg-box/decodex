@@ -465,11 +465,15 @@ struct ArtifactValidation {
 
 #[derive(Debug)]
 struct ValidationState {
+	seen_terminal_social_post_idempotency_keys: BTreeMap<String, PathBuf>,
 	seen_signal_slugs: BTreeMap<String, PathBuf>,
 }
 impl ValidationState {
 	fn new() -> Self {
-		Self { seen_signal_slugs: BTreeMap::new() }
+		Self {
+			seen_terminal_social_post_idempotency_keys: BTreeMap::new(),
+			seen_signal_slugs: BTreeMap::new(),
+		}
 	}
 }
 
@@ -1010,6 +1014,14 @@ pub(crate) fn validate(
 
 		if validation.schema.as_deref() == Some(SIGNAL_SCHEMA) {
 			validate_signal_slug_uniqueness(path, &payload, &mut state, &mut errors);
+		}
+		if validation.schema.as_deref() == Some(SOCIAL_POST_SCHEMA) {
+			validate_terminal_social_post_idempotency_key_uniqueness(
+				path,
+				&payload,
+				&mut state,
+				&mut errors,
+			);
 		}
 
 		for error in validation.errors {
@@ -5518,6 +5530,38 @@ fn validate_signal_slug_uniqueness(
 	}
 }
 
+fn validate_terminal_social_post_idempotency_key_uniqueness(
+	path: &Path,
+	payload: &Value,
+	state: &mut ValidationState,
+	errors: &mut Vec<String>,
+) {
+	let status = payload.get("status").and_then(Value::as_str);
+
+	if !matches!(status, Some("published" | "blocked")) {
+		return;
+	}
+
+	let Some(key) = payload
+		.get("decision")
+		.and_then(Value::as_object)
+		.and_then(|decision| decision.get("idempotency_key"))
+		.and_then(Value::as_str)
+	else {
+		return;
+	};
+
+	if let Some(existing) =
+		state.seen_terminal_social_post_idempotency_keys.insert(key.to_owned(), path.to_path_buf())
+	{
+		errors.push(format!(
+			"{}: duplicate terminal social_post idempotency_key {key:?} also used by {}",
+			path.display(),
+			existing.display()
+		));
+	}
+}
+
 fn validate_non_empty_string_list(value: Option<&Value>, label: &str, errors: &mut Vec<String>) {
 	let valid = non_empty_array(value).is_some_and(|values| {
 		values.iter().all(|item| item.as_str().is_some_and(|item| !item.is_empty()))
@@ -5841,6 +5885,55 @@ mod tests {
 
 		assert_eq!(errors.len(), 1);
 		assert!(errors[0].contains("duplicate slug"));
+	}
+
+	#[test]
+	fn rejects_duplicate_terminal_social_post_idempotency_keys_across_files() {
+		let social_post = valid_social_post();
+		let mut state = crate::radar::ValidationState::new();
+		let mut errors = Vec::new();
+
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/one.json"),
+			&social_post,
+			&mut state,
+			&mut errors,
+		);
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/two.json"),
+			&social_post,
+			&mut state,
+			&mut errors,
+		);
+
+		assert_eq!(errors.len(), 1);
+		assert!(errors[0].contains("duplicate terminal social_post idempotency_key"));
+	}
+
+	#[test]
+	fn permits_failed_social_post_idempotency_key_retry() {
+		let mut failed_post = valid_social_post();
+
+		failed_post["status"] = serde_json::json!("failed");
+
+		let published_post = valid_social_post();
+		let mut state = crate::radar::ValidationState::new();
+		let mut errors = Vec::new();
+
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/failed.json"),
+			&failed_post,
+			&mut state,
+			&mut errors,
+		);
+		radar::validate_terminal_social_post_idempotency_key_uniqueness(
+			&PathBuf::from("artifacts/social/x/posts/published.json"),
+			&published_post,
+			&mut state,
+			&mut errors,
+		);
+
+		assert!(errors.is_empty());
 	}
 
 	#[test]
