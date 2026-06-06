@@ -3,44 +3,44 @@
   "question": "Rate limit reset today?",
   "answer": "no",
   "confidence": "likely",
-  "observed_for_date": "2026-06-06",
+  "observed_for_date": "2026-06-07",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-06T00:57:04Z",
+  "generated_at": "2026-06-06T21:48:38Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
-  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-05%20until%3A2026-06-07&src=typed_query&f=live",
+  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-06%20until%3A2026-06-08&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "Chrome/X profile, broad source search, reset-keyword search, and immediate reply-thread context showed local-day @thsottiaux posts about Codex settings, Codex package wording, ChatGPT memory/token utility, and praise for a Codex settings update. None semantically indicated a rate-limit, quota, usage, message-cap, or reset-window recovery; thread replies from other users discussed limits, but @thsottiaux did not post a reset signal today.",
+  "rationale": "Chrome/X was reachable and profile plus replies timelines were refreshed during the 2026-06-07 Asia/Shanghai watch window. The broad X search returned no results, while the refreshed profile/replies timelines showed the newest visible @thsottiaux items were June 6 posts about Codex settings, team praise, ChatGPT memory/token utility, and package install wording. No visible June 7 post semantically indicated a rate-limit, quota, usage, message-cap, or reset-window recovery signal.",
   "evidence_posts": [
     {
-      "published_at_label": "2026-06-06 04:39:57 +08 (X datetime 2026-06-05T20:39:57Z)",
+      "published_at_label": "2026-06-07 05:46 +08 observation",
+      "url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-06%20until%3A2026-06-08&src=typed_query&f=live",
+      "relevance": "not_related",
+      "summary": "Logged-in Chrome/X search for @thsottiaux posts across the local-day coverage window returned no results. This is supporting evidence only because the profile still showed older June 6 posts."
+    },
+    {
+      "published_at_label": "2026-06-06 04:39:57 +08 (outside observed_for_date; X datetime 2026-06-05T20:39:57Z)",
       "url": "https://x.com/thsottiaux/status/2062997876297609257",
       "relevance": "not_related",
-      "summary": "@thsottiaux replied that it was incredible work from @simpsoka and team; immediate thread context tied this to a Codex settings quality-of-life update, not a reset, quota, usage, cap, or recovery signal."
+      "summary": "@thsottiaux praised @simpsoka and team. The refreshed profile/replies timeline showed it as one of the newest visible items, but it was outside the June 7 watch date and did not mention resets, quotas, caps, or recovery windows."
     },
     {
-      "published_at_label": "2026-06-06 04:39:31 +08 (X datetime 2026-06-05T20:39:31Z)",
+      "published_at_label": "2026-06-06 04:39:31 +08 (outside observed_for_date; X datetime 2026-06-05T20:39:31Z)",
       "url": "https://x.com/thsottiaux/status/2062997768470474765",
       "relevance": "not_related",
-      "summary": "@thsottiaux described Codex papercuts and Codex adoption while quoting an OpenAI Developers post about searchable Codex settings; this was product usability context, not reset-window or quota recovery evidence."
+      "summary": "@thsottiaux quoted an OpenAI Developers Codex settings update with a comment about Codex papercuts and adoption. It was product-usability context, not a reset-window or quota recovery signal."
     },
     {
-      "published_at_label": "2026-06-06 02:35:46 +08 (X datetime 2026-06-05T18:35:46Z)",
+      "published_at_label": "2026-06-06 02:35:46 +08 (outside observed_for_date; X datetime 2026-06-05T18:35:46Z)",
       "url": "https://x.com/thsottiaux/status/2062966625733861752",
       "relevance": "not_related",
-      "summary": "@thsottiaux said better memory means shorter prompts and more utility per token while quoting a ChatGPT memory rollout; token utility language was usage-adjacent but did not indicate limits, quotas, caps, or resets."
+      "summary": "@thsottiaux said better memory means shorter prompts and more utility per token while quoting a ChatGPT memory rollout. The token wording was usage-adjacent but did not indicate rate-limit reset, quota reset, message-cap recovery, or a reset window."
     },
     {
-      "published_at_label": "2026-06-06 02:13:48 +08 (X datetime 2026-06-05T18:13:48Z)",
+      "published_at_label": "2026-06-06 02:13:48 +08 (outside observed_for_date; X datetime 2026-06-05T18:13:48Z)",
       "url": "https://x.com/thsottiaux/status/2062961096760447392",
       "relevance": "not_related",
-      "summary": "@thsottiaux corrected the Codex package install wording to `uv add openai-codex`; this package/install note was unrelated to rate-limit resets, usage quotas, message caps, or recovery windows."
-    },
-    {
-      "published_at_label": "2026-06-04 08:25:58 +08 (outside observed_for_date)",
-      "url": "https://x.com/thsottiaux/status/2062329981548802523",
-      "relevance": "not_related",
-      "summary": "@thsottiaux previously said Codex usage limits were reset across all paid plans, but the post falls outside the 2026-06-06 Asia/Shanghai watch window and is not today's reset signal."
+      "summary": "@thsottiaux corrected Codex package install wording to `uv add openai-codex`. This install note was unrelated to rate-limit resets, quota resets, usage resets, message caps, or recovery windows."
     }
   ]
 }
