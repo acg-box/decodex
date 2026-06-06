@@ -3,38 +3,44 @@
   "question": "Rate limit reset today?",
   "answer": "no",
   "confidence": "likely",
-  "observed_for_date": "2026-06-05",
+  "observed_for_date": "2026-06-06",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-05T06:52:50Z",
+  "generated_at": "2026-06-06T00:57:04Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
-  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-04%20until%3A2026-06-06&src=typed_query&f=live",
+  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-05%20until%3A2026-06-07&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "Chrome/X profile, search, and reply context showed local-day @thsottiaux posts about the Codex Python SDK, a Codex complaint reply, and a Codex token-counting bug. None semantically indicated a rate-limit, quota, usage, message-cap, or reset-window recovery; reset/usage searches only surfaced the prior local-day reset post.",
+  "rationale": "Chrome/X profile, broad source search, reset-keyword search, and immediate reply-thread context showed local-day @thsottiaux posts about Codex settings, Codex package wording, ChatGPT memory/token utility, and praise for a Codex settings update. None semantically indicated a rate-limit, quota, usage, message-cap, or reset-window recovery; thread replies from other users discussed limits, but @thsottiaux did not post a reset signal today.",
   "evidence_posts": [
     {
-      "published_at_label": "2026-06-05 11:12:15 +08 (X datetime 2026-06-05T03:12:15Z)",
-      "url": "https://x.com/thsottiaux/status/2062734215494664697",
+      "published_at_label": "2026-06-06 04:39:57 +08 (X datetime 2026-06-05T20:39:57Z)",
+      "url": "https://x.com/thsottiaux/status/2062997876297609257",
       "relevance": "not_related",
-      "summary": "@thsottiaux posted that Codex can be used within programs via the Python SDK and linked OpenAI developer docs; this was a Codex SDK/product note, not a reset, quota, usage, cap, or recovery signal."
+      "summary": "@thsottiaux replied that it was incredible work from @simpsoka and team; immediate thread context tied this to a Codex settings quality-of-life update, not a reset, quota, usage, cap, or recovery signal."
     },
     {
-      "published_at_label": "2026-06-05 08:13:22 +08 (X label 8:13 AM · Jun 5, 2026)",
-      "url": "https://x.com/thsottiaux/status/2062689198403105262",
+      "published_at_label": "2026-06-06 04:39:31 +08 (X datetime 2026-06-05T20:39:31Z)",
+      "url": "https://x.com/thsottiaux/status/2062997768470474765",
       "relevance": "not_related",
-      "summary": "@thsottiaux replied \"That's my line\" to a post asking daily Codex users for their biggest complaint; visible thread context did not include a reset or recovery announcement from @thsottiaux."
+      "summary": "@thsottiaux described Codex papercuts and Codex adoption while quoting an OpenAI Developers post about searchable Codex settings; this was product usability context, not reset-window or quota recovery evidence."
     },
     {
-      "published_at_label": "2026-06-05 05:30:57 +08 (X datetime 2026-06-04T21:30:57Z)",
-      "url": "https://x.com/thsottiaux/status/2062648326332539015",
+      "published_at_label": "2026-06-06 02:35:46 +08 (X datetime 2026-06-05T18:35:46Z)",
+      "url": "https://x.com/thsottiaux/status/2062966625733861752",
       "relevance": "not_related",
-      "summary": "@thsottiaux said OpenAI was fixing a Codex bug that undercounted tokens served to some Pro and Plus accounts; this is usage-adjacent but did not say limits, quotas, caps, or reset windows were reset or recovered."
+      "summary": "@thsottiaux said better memory means shorter prompts and more utility per token while quoting a ChatGPT memory rollout; token utility language was usage-adjacent but did not indicate limits, quotas, caps, or resets."
+    },
+    {
+      "published_at_label": "2026-06-06 02:13:48 +08 (X datetime 2026-06-05T18:13:48Z)",
+      "url": "https://x.com/thsottiaux/status/2062961096760447392",
+      "relevance": "not_related",
+      "summary": "@thsottiaux corrected the Codex package install wording to `uv add openai-codex`; this package/install note was unrelated to rate-limit resets, usage quotas, message caps, or recovery windows."
     },
     {
       "published_at_label": "2026-06-04 08:25:58 +08 (outside observed_for_date)",
       "url": "https://x.com/thsottiaux/status/2062329981548802523",
       "relevance": "not_related",
-      "summary": "@thsottiaux said Codex usage limits were reset across all paid plans, but the post falls on the prior Asia/Shanghai calendar day, not the 2026-06-05 watch window."
+      "summary": "@thsottiaux previously said Codex usage limits were reset across all paid plans, but the post falls outside the 2026-06-06 Asia/Shanghai watch window and is not today's reset signal."
     }
   ]
 }
