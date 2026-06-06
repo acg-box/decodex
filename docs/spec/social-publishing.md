@@ -19,6 +19,7 @@ Not this document:
 
 Defines:
 - The `social_post/v1` artifact shape.
+- The `social_publish_reservation/v1` pre-compose reservation shape.
 - Allowed post modes for Decodex Publisher.
 - The automated Chrome publishing boundary.
 - The daily cap and blocked-publication ledger rule.
@@ -29,14 +30,20 @@ Defines:
 The canonical schema identifier is:
 
 - `social_post/v1`
+- `social_publish_reservation/v1`
 
 Recommended checked-in locations:
 
 - `artifacts/social/x/posts/<yyyy-mm-dd>/<slug>.json`
+- `artifacts/social/x/reservations/<yyyy-mm-dd>/<slug>.json`
 
 `social_post/v1` is a publication record, not a review-only draft or pre-publication
 candidate. Use `social_candidate/v1` for handoff decisions before Publisher evaluates
 account state, idempotency, daily cap, media, and final publication.
+
+`social_publish_reservation/v1` is a pre-compose lease. Publisher automation must
+create a checked, PR-visible active reservation before opening X compose. A local-only,
+uncommitted, or unpushed reservation does not authorize publication.
 
 Generated media files are not default Git artifacts. Store successful publication
 facts in Git as small JSON records. Store generated image files in a local persistent
@@ -56,7 +63,7 @@ an exact sample.
 | `status` | string | `published`, `blocked`, `failed`, or `skipped`. |
 | `audience` | string | Primary reader group. |
 | `text` | array | One or more English post bodies, one array item per thread post. |
-| `source_refs` | object | Links to signal, upstream-impact, upstream-review, release, PR, or changelog evidence. |
+| `source_refs` | object | Links to reservation, candidate, signal, upstream-impact, upstream-review, release, PR, or changelog evidence. |
 | `evidence_notes` | array | Non-empty list of evidence-backed notes that justify the post or skip decision. |
 | `claims` | array | Non-empty list of user-facing claims with evidence references. |
 | `decision` | object | AI worthiness, priority, idempotency key, daily counter, and cap decision. |
@@ -153,6 +160,44 @@ The daily cap is hard. Automation must not publish the ninth `@decodexspace` pos
 the same cap day. Instead it must write a `status = "blocked"` record with
 `block.reason = "daily_cap_exceeded"`.
 
+## Publication Reservation Object
+
+`social_publish_reservation/v1` prevents two Publisher runs from composing the same
+post when durable `social_post/v1` records have not been merged yet.
+
+Required fields:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `schema` | string | Must be `social_publish_reservation/v1`. |
+| `slug` | string | Stable URL-safe identifier for the candidate. |
+| `channel` | string | Must be `x`. |
+| `target_account` | string | Must be `decodexspace`. |
+| `controller_account` | string | Must be `hackink`. |
+| `mode` | string | One value from the post-mode table. |
+| `status` | string | `active`, `consumed`, `canceled`, or `expired`. |
+| `idempotency_key` | string | Same stable key that the terminal `social_post/v1` record will use. |
+| `reserved_at` | string | UTC RFC3339 timestamp. |
+| `expires_at` | string | UTC RFC3339 timestamp for stale-reservation cleanup. |
+| `day` | string | Calendar day used for cap accounting, formatted `YYYY-MM-DD`. |
+| `timezone` | string | Default is `Asia/Shanghai`. |
+| `candidate_refs` | object | Links to `social_candidate/v1` artifacts or source URLs that authorize the reservation. |
+| `duplicate_keys` | array | Non-empty strings to check in durable records, open PRs, and live profile readback. |
+
+Optional fields:
+
+- `owner`: automation id, run id, branch, and PR URL that own the active reservation.
+- `evidence_notes`: notes about duplicate checks and account/profile readback at
+  reservation time.
+- `consumed_by_social_post`: required when `status = "consumed"`.
+- `release_reason`: required when `status = "canceled"` or `status = "expired"`.
+
+Validation rule: `decodex radar validate` rejects duplicate active reservation
+idempotency keys and rejects an active reservation whose key already has a terminal
+`published` or `blocked` `social_post/v1` record. Failed or skipped publication
+attempts do not reserve the key permanently; a retry must create a fresh active
+reservation and consume, cancel, or expire it at the end of the run.
+
 ## Blocked Cap Records
 
 When a candidate is blocked by the daily cap, the record must preserve the review
@@ -188,12 +233,18 @@ before composing, and fail closed when Chrome, login state, X page structure, du
 detection, or media upload is unreliable.
 
 Duplicate detection must not rely on X search alone. Before composing, Publisher
-automation must check durable `social_post/v1` records, open pull requests that add
-`social_post/v1` records when available, and a live `@decodexspace` profile/timeline
-readback for the candidate's exact lead text, idempotency subject, release tag, or
-source URL. Treat an X search `No results` state as weak evidence only; if profile or
-permalink readback is unavailable, stale, loading-only, or contradicts search, fail
-closed instead of publishing.
+automation must check durable `social_post/v1` records, active
+`social_publish_reservation/v1` records in the checked tree and open publication PRs
+when available, and a live `@decodexspace` profile/timeline readback for the
+candidate's exact lead text, idempotency subject, release tag, or source URL. Treat an
+X search `No results` state as weak evidence only; if profile or permalink readback is
+unavailable, stale, loading-only, or contradicts search, fail closed instead of
+publishing.
+
+After the active reservation is PR-visible and immediately before clicking Post,
+Publisher automation must repeat live profile/timeline readback. If a duplicate appears
+at that final gate, cancel or expire the reservation and write a non-published
+`social_post/v1` record only when it adds audit or idempotency value.
 
 Chrome tabs are temporary execution resources. Publisher automation must close or
 release research, compose, upload, and readback tabs after the `social_post/v1` record
