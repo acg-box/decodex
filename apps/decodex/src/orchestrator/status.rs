@@ -297,7 +297,7 @@ fn build_operator_status_snapshot_with_account_mode(
 		active_runs.iter().map(|run| run.run_id.clone()).collect::<HashSet<_>>();
 
 	for run in &recent_runs {
-		if !active_run_ids.contains(&run.run_id) && operator_run_has_live_process(run) {
+		if !active_run_ids.contains(&run.run_id) && operator_run_has_live_execution(run) {
 			active_run_ids.insert(run.run_id.clone());
 			active_runs.push(run.clone());
 		}
@@ -1050,12 +1050,16 @@ fn worktree_cleanup_key(worktree: &OperatorWorktreeStatus) -> String {
 }
 
 fn operator_run_counts_as_active(run: &OperatorRunStatus) -> bool {
-	(run.active_lease || operator_run_has_live_process(run))
+	(run.active_lease || operator_run_has_live_execution(run))
 		&& !matches!(run.phase.as_str(), "completed" | "failed" | "terminated")
 }
 
-fn operator_run_has_live_process(run: &OperatorRunStatus) -> bool {
-	matches!(run.status.as_str(), "starting" | "running") && run.process_alive == Some(true)
+fn operator_run_has_live_execution(run: &OperatorRunStatus) -> bool {
+	matches!(run.status.as_str(), "starting" | "running")
+		&& matches!(
+			run.execution_liveness.as_str(),
+			"process_alive" | "thread_active" | "protocol_observed"
+		)
 }
 
 fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
@@ -4348,8 +4352,14 @@ fn operator_run_status(
 	let timing = operator_run_timing(&run, marker.as_ref(), now_unix_epoch);
 	let app_server_state = operator_run_app_server_state(&run, marker.as_ref());
 	let protocol_summary = operator_run_protocol_summary(&run, marker.as_ref());
-	let status =
-		operator_run_visible_status(run.status(), &app_server_state, &protocol_summary, &timing);
+	let marker_current_operation = marker.as_ref().and_then(RunActivityMarker::current_operation);
+	let status = operator_run_visible_status(
+		run.status(),
+		&app_server_state,
+		&protocol_summary,
+		&timing,
+		marker_current_operation,
+	);
 	let (retry_kind, retry_ready_at_unix_epoch) = visible_operator_run_retry_schedule(
 		&status,
 		marker.as_ref().and_then(RunActivityMarker::retry_kind),
@@ -4364,7 +4374,7 @@ fn operator_run_status(
 	);
 	let current_operation = classify_operator_run_operation(
 		&phase,
-		marker.as_ref().and_then(RunActivityMarker::current_operation),
+		marker_current_operation,
 	);
 	let suspected_stall = operator_run_is_suspected_stall(
 		&phase,
@@ -4706,6 +4716,7 @@ fn operator_run_visible_status(
 	app_server_state: &OperatorRunAppServerState,
 	protocol_summary: &OperatorRunProtocolSummary,
 	timing: &OperatorRunTiming,
+	marker_current_operation: Option<&str>,
 ) -> String {
 	if attempt_status == "starting"
 		&& operator_run_has_app_server_execution_evidence(
@@ -4716,8 +4727,33 @@ fn operator_run_visible_status(
 	{
 		return String::from("running");
 	}
+	if matches!(attempt_status, "failed" | "interrupted" | "stalled")
+		&& operator_marker_operation_allows_terminal_status_promotion(marker_current_operation)
+		&& operator_run_has_live_execution_evidence(app_server_state, timing)
+	{
+		return String::from("running");
+	}
 
 	attempt_status.to_owned()
+}
+
+fn operator_marker_operation_allows_terminal_status_promotion(
+	marker_current_operation: Option<&str>,
+) -> bool {
+	matches!(marker_current_operation, None | Some(RUN_OPERATION_AGENT_RUN))
+}
+
+fn operator_run_has_live_execution_evidence(
+	app_server_state: &OperatorRunAppServerState,
+	timing: &OperatorRunTiming,
+) -> bool {
+	timing.process_alive == Some(true)
+		|| matches!(app_server_state.thread_status.as_deref(), Some("active"))
+		|| !app_server_state.thread_active_flags.is_empty()
+		|| timing.protocol_idle_for_seconds.is_some_and(|idle_for| {
+			u64::try_from(idle_for)
+				.is_ok_and(|idle_for| idle_for < ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
+		})
 }
 
 fn operator_run_has_app_server_execution_evidence(

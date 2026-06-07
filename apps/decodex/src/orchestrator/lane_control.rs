@@ -8,6 +8,7 @@ use std::{
 
 use libc::{ESRCH, SIGKILL, SIGTERM, c_int, pid_t};
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::{
 	config::ServiceConfig,
@@ -393,8 +394,12 @@ pub(super) fn steer_lane_with_state(
 }
 
 fn soft_interrupt_allows_hard_fallback(soft: &LaneSoftInterruptReport) -> bool {
-	matches!(soft.status.as_str(), "pending" | "failed" | "unavailable")
-		&& soft.error_class.as_deref() != Some("lane_not_active")
+	match soft.status.as_str() {
+		"pending" | "failed" | "unavailable" =>
+			soft.error_class.as_deref() != Some("lane_not_active"),
+		"rejected" => soft.error_class.as_deref() == Some("active_lease_missing"),
+		_ => false,
+	}
 }
 
 fn load_lane_control_project(
@@ -510,6 +515,45 @@ fn soft_interrupt_available_for_run(run: &OperatorRunStatus) -> bool {
 		&& run.control_capability.as_ref().is_some_and(|capability| capability.status == "active")
 }
 
+fn lane_control_operator_context(run: &OperatorRunStatus) -> Value {
+	let control_capability = run.control_capability.as_ref().map(|capability| {
+		serde_json::json!({
+			"project_id": capability.project_id.as_str(),
+			"issue_id": capability.issue_id.as_str(),
+			"run_id": capability.run_id.as_str(),
+			"attempt_number": capability.attempt_number,
+			"thread_id": capability.thread_id.as_deref(),
+			"turn_id": capability.turn_id.as_deref(),
+			"transport": capability.transport.as_str(),
+			"channel_path": capability.channel_path.as_str(),
+			"status": capability.status.as_str(),
+			"published_at": capability.published_at.as_str(),
+			"updated_at": capability.updated_at.as_str(),
+		})
+	});
+
+	serde_json::json!({
+		"status": run.status.as_str(),
+		"attempt_status": run.attempt_status.as_str(),
+		"phase": run.phase.as_str(),
+		"wait_reason": run.wait_reason.as_deref(),
+		"current_operation": run.current_operation.as_str(),
+		"active_lease": run.active_lease,
+		"queue_lease_state": run.queue_lease_state.as_str(),
+		"execution_liveness": run.execution_liveness.as_str(),
+		"thread_status": run.thread_status.as_deref(),
+		"process_id": run.process_id,
+		"process_alive": run.process_alive,
+		"process_liveness_reason": run.process_liveness_reason.as_deref(),
+		"branch": run.branch_name.as_deref(),
+		"worktree_path": run.worktree_path.as_deref(),
+		"last_event_type": run.last_event_type.as_deref(),
+		"last_event_at": run.last_event_at.as_deref(),
+		"event_count": run.event_count,
+		"control_capability": control_capability,
+	})
+}
+
 fn attempt_lane_steer(
 	state_store: &StateStore,
 	project: &ServiceConfig,
@@ -518,6 +562,7 @@ fn attempt_lane_steer(
 ) -> Result<LaneSteerReport> {
 	let message_byte_count = request.message.len();
 	let message_line_count = lane_steer_message_line_count(request.message);
+	let context = lane_control_operator_context(run);
 	let metadata = serde_json::json!({
 		"expectedTurnId": request.expected_turn_id,
 		"messageByteCount": message_byte_count,
@@ -534,6 +579,7 @@ fn attempt_lane_steer(
 		action: "steer",
 		timeout_ms: Some(i64::try_from(request.wait_timeout.as_millis()).unwrap_or(i64::MAX)),
 		metadata: Some(&metadata),
+		context: Some(&context),
 	})?;
 
 	if receipt.outcome() != RUN_CONTROL_ACTION_ACCEPTED {
@@ -793,20 +839,14 @@ fn attempt_soft_lane_interrupt(
 		));
 	}
 
-	let receipt = state_store.resolve_run_control_action(RunControlActionRequest {
-		project_id: project.service_id(),
-		issue_id: &run.issue_id,
-		run_id: &run.run_id,
-		attempt_number: run.attempt_number,
-		thread_id: Some(thread_id),
-		turn_id: Some(turn_id),
+	let receipt = resolve_soft_interrupt_control_action(
+		state_store,
+		project,
+		run,
+		thread_id,
+		turn_id,
 		source,
-		action: "interrupt",
-		timeout_ms: Some(
-			i64::try_from(LANE_INTERRUPT_RESPONSE_WAIT.as_millis()).unwrap_or(i64::MAX),
-		),
-		metadata: None,
-	})?;
+	)?;
 
 	if receipt.outcome() != "accepted" {
 		return Ok(LaneSoftInterruptReport::from_control_rejection(&receipt));
@@ -884,6 +924,33 @@ fn attempt_soft_lane_interrupt(
 			})
 		},
 	}
+}
+
+fn resolve_soft_interrupt_control_action(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	run: &OperatorRunStatus,
+	thread_id: &str,
+	turn_id: &str,
+	source: &str,
+) -> Result<RunControlActionReceipt> {
+	let context = lane_control_operator_context(run);
+
+	state_store.resolve_run_control_action(RunControlActionRequest {
+		project_id: project.service_id(),
+		issue_id: &run.issue_id,
+		run_id: &run.run_id,
+		attempt_number: run.attempt_number,
+		thread_id: Some(thread_id),
+		turn_id: Some(turn_id),
+		source,
+		action: "interrupt",
+		timeout_ms: Some(
+			i64::try_from(LANE_INTERRUPT_RESPONSE_WAIT.as_millis()).unwrap_or(i64::MAX),
+		),
+		metadata: None,
+		context: Some(&context),
+	})
 }
 
 fn attempt_hard_lane_interrupt(
@@ -978,6 +1045,7 @@ fn record_hard_interrupt_control_fallback(
 	run: &OperatorRunStatus,
 	_reason: Option<&str>,
 ) -> Result<()> {
+	let context = lane_control_operator_context(run);
 	let receipt = state_store.resolve_run_control_action(RunControlActionRequest {
 		project_id: &run.project_id,
 		issue_id: &run.issue_id,
@@ -989,6 +1057,7 @@ fn record_hard_interrupt_control_fallback(
 		action: "interrupt",
 		timeout_ms: None,
 		metadata: None,
+		context: Some(&context),
 	})?;
 
 	state_store.record_run_control_action_outcome(
