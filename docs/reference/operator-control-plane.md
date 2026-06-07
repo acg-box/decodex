@@ -77,8 +77,11 @@ curl -sS -X POST http://127.0.0.1:8192/api/lane/interrupt \
 `POST /api/lane/interrupt` first writes a soft interrupt request for the active
 app-server child to deliver with `turn/interrupt`. Add `"force": true` only when the
 operator explicitly wants hard process-kill fallback after soft interrupt is
-unavailable or does not return in the local wait window. Hard fallback is reported as
-`hard_interrupt_fallback`, not as a graceful stop.
+unavailable, does not return in the local wait window, or is rejected with
+`active_lease_missing` while the same lane still has recorded live process evidence.
+Hard fallback is reported as `hard_interrupt_fallback`, not as a graceful stop. If no
+signalable child process is recorded, the force response remains a recovery/inspection
+result and must not be read as a successful soft interrupt.
 
 Use `--dev` only for isolated local development:
 
@@ -277,6 +280,11 @@ Worktree visibility follows the owning dashboard section:
   when `process_alive` is false.
   `active_lease` is queue lease ownership only; `execution_liveness` explains why
   the lane is still visible when the queue lease is not held.
+- Lane steer and interrupt rejections such as `active_lease_missing` are private
+  runtime evidence. They should preserve the queue lease state, branch, retained
+  worktree path, current run id and attempt, active channel metadata, and observed
+  process/protocol liveness so operators can decide between wait, force interrupt,
+  retained resume, or manual attention without reconstructing state from local paths.
 - In the JSON snapshot, `active_run_count` follows the same visibility boundary as
   the top-level `active_runs` list. The `Projects` table's `running` work number uses
   `running_lane_count`, so stopped, stale, or attention lanes can stay visible as
