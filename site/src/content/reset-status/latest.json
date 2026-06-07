@@ -3,32 +3,32 @@
   "question": "Rate limit reset today?",
   "answer": "no",
   "confidence": "likely",
-  "observed_for_date": "2026-06-07",
+  "observed_for_date": "2026-06-08",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-06T21:48:38Z",
+  "generated_at": "2026-06-07T21:50:13Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
-  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-06%20until%3A2026-06-08&src=typed_query&f=live",
+  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-07%20until%3A2026-06-09&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "Chrome/X was reachable and profile plus replies timelines were refreshed during the 2026-06-07 Asia/Shanghai watch window. The broad X search returned no results, while the refreshed profile/replies timelines showed the newest visible @thsottiaux items were June 6 posts about Codex settings, team praise, ChatGPT memory/token utility, and package install wording. No visible June 7 post semantically indicated a rate-limit, quota, usage, message-cap, or reset-window recovery signal.",
+  "rationale": "Chrome/X was reachable for the 2026-06-08 Asia/Shanghai watch date. Broad X search returned no @thsottiaux results for the local-day coverage window, and refreshed profile plus replies timelines showed the newest visible @thsottiaux items were still June 6 posts about Codex settings, team praise, ChatGPT memory/token utility, and package install wording. An older June 4 usage-limit reset post was visible, but it is outside today's observed date. No visible June 8 post semantically indicated a rate-limit, quota, usage, message-cap, or reset-window recovery signal.",
   "evidence_posts": [
     {
-      "published_at_label": "2026-06-07 05:46 +08 observation",
-      "url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-06%20until%3A2026-06-08&src=typed_query&f=live",
+      "published_at_label": "2026-06-08 05:50 +08 observation",
+      "url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-07%20until%3A2026-06-09&src=typed_query&f=live",
       "relevance": "not_related",
-      "summary": "Logged-in Chrome/X search for @thsottiaux posts across the local-day coverage window returned no results. This is supporting evidence only because the profile still showed older June 6 posts."
-    },
-    {
-      "published_at_label": "2026-06-06 04:39:57 +08 (outside observed_for_date; X datetime 2026-06-05T20:39:57Z)",
-      "url": "https://x.com/thsottiaux/status/2062997876297609257",
-      "relevance": "not_related",
-      "summary": "@thsottiaux praised @simpsoka and team. The refreshed profile/replies timeline showed it as one of the newest visible items, but it was outside the June 7 watch date and did not mention resets, quotas, caps, or recovery windows."
+      "summary": "Logged-in Chrome/X search for @thsottiaux posts across the local-day coverage window returned no results. This is supporting evidence only because search can miss visible timeline items."
     },
     {
       "published_at_label": "2026-06-06 04:39:31 +08 (outside observed_for_date; X datetime 2026-06-05T20:39:31Z)",
       "url": "https://x.com/thsottiaux/status/2062997768470474765",
       "relevance": "not_related",
-      "summary": "@thsottiaux quoted an OpenAI Developers Codex settings update with a comment about Codex papercuts and adoption. It was product-usability context, not a reset-window or quota recovery signal."
+      "summary": "@thsottiaux quoted an OpenAI Developers Codex settings update and commented on Codex papercuts/adoption. It was product-usability context, not a reset-window or quota recovery signal."
+    },
+    {
+      "published_at_label": "2026-06-06 04:39:57 +08 (outside observed_for_date; X datetime 2026-06-05T20:39:57Z)",
+      "url": "https://x.com/thsottiaux/status/2062997876297609257",
+      "relevance": "not_related",
+      "summary": "@thsottiaux praised @simpsoka and team. It was one of the newest visible timeline items, but it did not mention resets, quotas, caps, or recovery windows."
     },
     {
       "published_at_label": "2026-06-06 02:35:46 +08 (outside observed_for_date; X datetime 2026-06-05T18:35:46Z)",
@@ -41,6 +41,12 @@
       "url": "https://x.com/thsottiaux/status/2062961096760447392",
       "relevance": "not_related",
       "summary": "@thsottiaux corrected Codex package install wording to `uv add openai-codex`. This install note was unrelated to rate-limit resets, quota resets, usage resets, message caps, or recovery windows."
+    },
+    {
+      "published_at_label": "2026-06-04 08:25:58 +08 (outside observed_for_date; X datetime 2026-06-04T00:25:58Z)",
+      "url": "https://x.com/thsottiaux/status/2062329981548802523",
+      "relevance": "not_related",
+      "summary": "An older @thsottiaux post did announce that Codex usage limits had been reset across paid plans. It confirms the kind of semantic signal being watched for, but it is outside the June 8 watch date."
     }
   ]
 }
