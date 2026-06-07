@@ -65,6 +65,8 @@ Before mutating anything, confirm:
 - run id, attempt, thread id, current turn id, and process/protocol liveness
 - control outcome such as accepted, rejected, timed out, failed, or
   `hard_interrupt_fallback`
+- `active_lease_missing` rejections together with process, protocol, channel, branch,
+  and retained worktree evidence when the lane still appears live
 - private evidence and public lifecycle signal
 - PR URL, head branch, and head SHA when the lane has crossed review handoff
 
@@ -77,6 +79,8 @@ or clean labels.
 | --- | --- | --- |
 | Active lane still matches the issue, branch, run id, attempt, and turn. | Let the runtime continue or wait for the control result. | No label change. Use the next CLI/API control only when the operator explicitly asks. |
 | Soft interrupt was accepted and the runtime is still resolving the attempt. | Wait for status, protocol activity, or evidence to settle. | Re-inspect; do not requeue or force-kill. |
+| Soft control was rejected with `active_lease_missing`, but inspect/status still shows the same run id, attempt, branch, active channel, and live child process or protocol activity. | Treat the lane as degraded active execution, not cleanup-only state. | Re-inspect with `decodex lane inspect` or use `decodex lane interrupt <ISSUE> --run-id <RUN_ID> --force` only when the operator explicitly wants hard process fallback. |
+| Forced interrupt after `active_lease_missing` reports no signalable process. | Treat force as non-mutating for the child process. | Inspect retained worktree and private evidence; do not claim the interrupt succeeded or clear attention labels. |
 | Hard fallback reports `hard_interrupt_fallback`. | Treat it as an interrupted runtime event, not a graceful completion. | Inspect retained worktree and evidence; resume only if lineage is exact. |
 | Retained worktree has useful local changes and lineage matches issue, branch, runtime evidence, and PR when present. | Resume or repair the same lane. | Use `decodex run <ISSUE>` when the registered workflow makes it eligible, or use the specific retained recovery runbook. |
 | Review handoff marker is missing or stale but the retained PR lane appears recoverable. | Diagnose before rebind. | Run `decodex recover review-handoff diagnose <ISSUE>` and follow [`recover-review-handoff.md`](./recover-review-handoff.md). |
@@ -110,6 +114,15 @@ Example: `decodex lane interrupt XY-123 --run-id run-abc` reports a soft interru
 request. Re-run `decodex lane inspect` or `decodex status --json`. If protocol
 activity shows the same turn is still stopping, wait or inspect private evidence; do
 not kill the child process from the side.
+
+Example: `decodex lane steer XY-123 --run-id run-abc --expected-turn-id turn-1 ...`
+or `decodex lane interrupt XY-123 --run-id run-abc` reports
+`active_lease_missing` while `decodex lane inspect` still shows the same branch,
+attempt, active channel, and live process/protocol state. Do not treat the lane as
+cleanup-only and do not clear `decodex:needs-attention`. If the operator needs to stop
+the child immediately, retry interrupt with `--force`; otherwise preserve the retained
+worktree and use the private evidence readback to decide whether the lane can be
+resumed or needs manual attention.
 
 Example: `decodex lane interrupt XY-123 --run-id run-abc --force` reports
 `hard_interrupt_fallback`. Inspect the retained worktree before retry. If the worktree
