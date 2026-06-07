@@ -857,6 +857,10 @@ impl StateStore {
 			&resolution.reason,
 			None,
 		)?;
+		let receipt_channel = resolution
+			.channel
+			.clone()
+			.or_else(|| resolution.audit_target.channel.clone());
 
 		Ok(RunControlActionReceipt {
 			project_id: resolution.audit_target.project_id,
@@ -873,7 +877,8 @@ impl StateStore {
 			reason: resolution.reason,
 			audit_record_id: event.record_id(),
 			metadata: resolution.audit_target.metadata,
-			channel: resolution.channel,
+			context: resolution.audit_target.context,
+			channel: receipt_channel,
 		})
 	}
 
@@ -901,6 +906,14 @@ impl StateStore {
 			action: receipt.action.clone(),
 			timeout_ms: None,
 			metadata: receipt.metadata.clone(),
+			context: receipt.context.clone(),
+			attempt_status: None,
+			branch_name: None,
+			worktree_path: None,
+			active_lease: None,
+			event_count: None,
+			last_event_type: None,
+			last_event_at: None,
 			channel: receipt.channel.clone(),
 		};
 
@@ -934,6 +947,14 @@ impl StateStore {
 			action: request.action.to_owned(),
 			timeout_ms: request.timeout_ms,
 			metadata: request.metadata.cloned(),
+			context: None,
+			attempt_status: None,
+			branch_name: None,
+			worktree_path: None,
+			active_lease: None,
+			event_count: None,
+			last_event_type: None,
+			last_event_at: None,
 			channel: request.channel.cloned(),
 		};
 
@@ -975,10 +996,20 @@ impl StateStore {
 				"timeout_ms": target.timeout_ms,
 			},
 			"observed": {
-				"thread_id": target.current_thread_id,
-				"turn_id": target.current_turn_id,
+				"thread_id": target.current_thread_id.as_deref(),
+				"turn_id": target.current_turn_id.as_deref(),
 			},
-			"metadata": target.metadata,
+			"lane": {
+				"attempt_status": target.attempt_status.as_deref(),
+				"active_lease": target.active_lease,
+				"branch": target.branch_name.as_deref(),
+				"worktree_path": target.worktree_path.as_ref().map(|path| path.display().to_string()),
+				"event_count": target.event_count,
+				"last_event_type": target.last_event_type.as_deref(),
+				"last_event_at": target.last_event_at.as_deref(),
+			},
+			"metadata": target.metadata.as_ref(),
+			"context": target.context.as_ref(),
 			"channel": channel.map(|channel| serde_json::json!({
 				"transport": channel.transport(),
 				"channel_path": channel.channel_path().display().to_string(),
@@ -2115,6 +2146,7 @@ struct RunControlAuditTarget {
 	issue_id: String,
 	run_id: String,
 	attempt_number: i64,
+	attempt_status: Option<String>,
 	thread_id: Option<String>,
 	turn_id: Option<String>,
 	source: String,
@@ -2123,6 +2155,13 @@ struct RunControlAuditTarget {
 	current_thread_id: Option<String>,
 	current_turn_id: Option<String>,
 	metadata: Option<Value>,
+	context: Option<Value>,
+	branch_name: Option<String>,
+	worktree_path: Option<PathBuf>,
+	active_lease: Option<bool>,
+	event_count: Option<i64>,
+	last_event_type: Option<String>,
+	last_event_at: Option<String>,
 	channel: Option<RunControlChannel>,
 }
 
@@ -2246,11 +2285,17 @@ fn resolve_run_control_action_locked(
 		.map(|channel| channel.project_id.clone())
 		.or_else(|| state.project_id_for_run(&attempt.issue_id, &attempt.run_id))
 		.unwrap_or_else(|| request.project_id.to_owned());
+	let project_run_status = state.project_run_status(&audit_project_id, attempt);
+	let control_channel = project_run_status
+		.as_ref()
+		.and_then(|status| status.control_channel().cloned())
+		.or_else(|| state.control_channels.get(request.run_id).map(RunControlChannelRecord::as_public));
 	let audit_target = RunControlAuditTarget {
 		project_id: audit_project_id,
 		issue_id: attempt.issue_id.clone(),
 		run_id: attempt.run_id.clone(),
 		attempt_number: attempt.attempt_number,
+		attempt_status: Some(attempt.status.clone()),
 		thread_id: request.thread_id.map(str::to_owned),
 		turn_id: request.turn_id.map(str::to_owned),
 		current_thread_id: attempt.thread_id.clone(),
@@ -2259,7 +2304,22 @@ fn resolve_run_control_action_locked(
 		action: request.action.to_owned(),
 		timeout_ms: request.timeout_ms,
 		metadata: request.metadata.cloned(),
-		channel: None,
+		context: request.context.cloned(),
+		branch_name: project_run_status
+			.as_ref()
+			.and_then(|status| status.branch_name().map(str::to_owned)),
+		worktree_path: project_run_status
+			.as_ref()
+			.and_then(|status| status.worktree_path().map(Path::to_path_buf)),
+		active_lease: project_run_status.as_ref().map(ProjectRunStatus::active_lease),
+		event_count: project_run_status.as_ref().map(ProjectRunStatus::event_count),
+		last_event_type: project_run_status
+			.as_ref()
+			.and_then(|status| status.last_event_type().map(str::to_owned)),
+		last_event_at: project_run_status
+			.as_ref()
+			.and_then(|status| status.last_event_at().map(str::to_owned)),
+		channel: control_channel.clone(),
 	};
 
 	if attempt.issue_id != request.issue_id {
@@ -2291,10 +2351,9 @@ fn resolve_run_control_action_locked(
 		return rejected_run_control_resolution(request, Some(audit_target), "run_not_active");
 	}
 
-	let Some(channel) = state.control_channels.get(request.run_id).cloned() else {
+	let Some(channel) = control_channel else {
 		return rejected_run_control_resolution(request, Some(audit_target), "control_channel_missing");
 	};
-	let channel = channel.as_public();
 	let audit_target = RunControlAuditTarget { channel: Some(channel.clone()), ..audit_target };
 
 	if channel.project_id() != request.project_id
@@ -2342,6 +2401,7 @@ fn rejected_run_control_resolution(
 			issue_id: request.issue_id.to_owned(),
 			run_id: request.run_id.to_owned(),
 			attempt_number: request.attempt_number,
+			attempt_status: None,
 			thread_id: request.thread_id.map(str::to_owned),
 			turn_id: request.turn_id.map(str::to_owned),
 			current_thread_id: None,
@@ -2350,6 +2410,13 @@ fn rejected_run_control_resolution(
 			action: request.action.to_owned(),
 			timeout_ms: request.timeout_ms,
 			metadata: request.metadata.cloned(),
+			context: request.context.cloned(),
+			branch_name: None,
+			worktree_path: None,
+			active_lease: None,
+			event_count: None,
+			last_event_type: None,
+			last_event_at: None,
 			channel: None,
 		}),
 		outcome: RUN_CONTROL_ACTION_REJECTED.to_owned(),

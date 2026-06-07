@@ -2684,6 +2684,7 @@ fn run_control_accepts_active_attempt_and_persists_audit() {
 			action: "noop",
 			timeout_ms: Some(500),
 			metadata: None,
+			context: None,
 		})
 		.expect("control request should resolve");
 
@@ -2755,6 +2756,7 @@ fn run_control_rejects_stale_turn_and_run_mismatch() {
 			action: "steer",
 			timeout_ms: None,
 			metadata: None,
+			context: None,
 		})
 		.expect("stale turn should be audited");
 	let stale_run = store
@@ -2769,6 +2771,7 @@ fn run_control_rejects_stale_turn_and_run_mismatch() {
 			action: "noop",
 			timeout_ms: None,
 			metadata: None,
+			context: None,
 		})
 		.expect("stale run should be audited");
 
@@ -2824,6 +2827,7 @@ fn run_control_rejects_missing_channel_file() {
 			action: "noop",
 			timeout_ms: None,
 			metadata: None,
+			context: None,
 		})
 		.expect("missing channel should be audited");
 
@@ -2835,6 +2839,7 @@ fn run_control_rejects_missing_channel_file() {
 fn run_control_requires_active_run_ownership() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let channel_path = temp_dir.path().join("control.channel");
+	let worktree_path = temp_dir.path().join("PUB-101");
 
 	fs::write(&channel_path, "ready\n").expect("control channel should write");
 
@@ -2844,6 +2849,14 @@ fn run_control_requires_active_run_ownership() {
 		.upsert_lease("pubfi", "issue-1", "run-1", IN_PROGRESS_STATE)
 		.expect("lease should record");
 	store.record_run_attempt("run-1", "issue-1", 1, "running").expect("attempt should record");
+	store
+		.upsert_worktree(
+			"pubfi",
+			"issue-1",
+			"x/pubfi-issue-1",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
 	store
 		.publish_run_control_channel_for_active_attempt("run-1", 1, &channel_path, "local_file")
 		.expect("control channel should publish");
@@ -2861,6 +2874,7 @@ fn run_control_requires_active_run_ownership() {
 			action: "noop",
 			timeout_ms: None,
 			metadata: None,
+			context: None,
 		})
 		.expect("missing lease should be audited");
 
@@ -2880,6 +2894,7 @@ fn run_control_requires_active_run_ownership() {
 			action: "noop",
 			timeout_ms: None,
 			metadata: None,
+			context: None,
 		})
 		.expect("wrong active run should be audited");
 
@@ -2887,4 +2902,28 @@ fn run_control_requires_active_run_ownership() {
 	assert_eq!(no_lease.reason(), "active_lease_missing");
 	assert_eq!(wrong_run.outcome(), "rejected");
 	assert_eq!(wrong_run.reason(), "active_run_mismatch");
+
+	let events = store
+		.list_private_execution_events("pubfi", "issue-1", "run-1", 1)
+		.expect("private control audit should read");
+	let no_lease_event = events
+		.iter()
+		.find(|event| event.record_id() == no_lease.audit_record_id())
+		.expect("missing lease audit event should exist");
+	let expected_worktree_path = worktree_path.display().to_string();
+	let expected_channel_path = channel_path.display().to_string();
+
+	assert_eq!(no_lease_event.payload()["lane"]["active_lease"].as_bool(), Some(false));
+	assert_eq!(no_lease_event.payload()["lane"]["attempt_status"].as_str(), Some("running"));
+	assert_eq!(no_lease_event.payload()["lane"]["branch"].as_str(), Some("x/pubfi-issue-1"));
+	assert_eq!(
+		no_lease_event.payload()["lane"]["worktree_path"].as_str(),
+		Some(expected_worktree_path.as_str())
+	);
+	assert_eq!(no_lease_event.payload()["channel"]["status"].as_str(), Some("active"));
+	assert_eq!(no_lease_event.payload()["channel"]["path_exists"].as_bool(), Some(true));
+	assert_eq!(
+		no_lease_event.payload()["channel"]["channel_path"].as_str(),
+		Some(expected_channel_path.as_str())
+	);
 }
