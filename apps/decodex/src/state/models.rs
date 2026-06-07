@@ -149,6 +149,7 @@ pub struct RunControlActionReceipt {
 	reason: String,
 	audit_record_id: i64,
 	metadata: Option<Value>,
+	context: Option<Value>,
 	channel: Option<RunControlChannel>,
 }
 impl RunControlActionReceipt {
@@ -220,6 +221,11 @@ impl RunControlActionReceipt {
 	/// Optional compact action metadata captured with the audit event.
 	pub fn metadata(&self) -> Option<&Value> {
 		self.metadata.as_ref()
+	}
+
+	/// Optional compact lane context captured with the audit event.
+	pub fn context(&self) -> Option<&Value> {
+		self.context.as_ref()
 	}
 
 	/// Control channel selected for an accepted request.
@@ -573,6 +579,8 @@ pub(crate) struct RunControlActionRequest<'a> {
 	pub(crate) timeout_ms: Option<i64>,
 	/// Optional compact, non-secret action metadata to include in audit evidence.
 	pub(crate) metadata: Option<&'a Value>,
+	/// Optional compact lane context to include in audit evidence.
+	pub(crate) context: Option<&'a Value>,
 }
 
 /// Follow-up outcome for a run-control action handled after initial resolution.
