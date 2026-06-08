@@ -1,0 +1,94 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-pr-26552",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "operator_impact",
+  "status": "published",
+  "audience": "Codex app-server integrators",
+  "text": [
+    "Codex now requires app-server runtimeWorkspaceRoots to be absolute in thread/turn requests. If you mirror v2 calls, resolve roots before sending them: https://github.com/openai/codex/pull/26552"
+  ],
+  "source_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-pr-26552.json"
+    ],
+    "reservations": [
+      "artifacts/social/x/reservations/2026-06-08/openai-codex-pr-26552.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26552.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26552.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26552",
+      "https://github.com/openai/codex/pull/26532",
+      "https://x.com/decodexspace/status/2064014155208867999"
+    ]
+  },
+  "evidence_notes": [
+    "The social_candidate/v1 artifact has decision.worthiness = publish and mode operator_impact for openai-codex-pr-26552.",
+    "The upstream_review/v1 artifact confirms that PR #26552 changes app-server runtimeWorkspaceRoots request fields for thread and turn requests to AbsolutePathBuf.",
+    "The upstream_impact/v1 artifact marks the change as public_signal_decision publish, control_plane_impact compat_risk, and publisher_angle operator_impact.",
+    "Checked social_post/v1 records contained no slug, source URL, or idempotency match before publication.",
+    "Checked social_publish_reservation/v1 records contained no active reservation for this candidate or idempotency key before the new reservation was created.",
+    "Open GitHub PR readback showed only dependency PRs before the reservation PR was created; PR #244 then made the active reservation visible before X compose.",
+    "Chrome account readback initially showed @hackink as active and @decodexspace as available; the automation switched to @decodexspace before reservation or compose.",
+    "Chrome compose readback showed @decodexspace before publishing and the compose dialog showed the exact candidate text.",
+    "Live @decodexspace profile readback before reservation found no 26552, runtimeWorkspaceRoots, runtime workspace roots, source URL, or exact subject match.",
+    "Live @decodexspace profile readback after PR-visible reservation and immediately before clicking Post again found no 26552, runtimeWorkspaceRoots, runtime workspace roots, source URL, or exact subject match.",
+    "After clicking Post, X opened a graduated-access informational modal, but live @decodexspace home timeline readback showed the new status URL with the expected text.",
+    "Independent permalink readback showed the expected @decodexspace post text, GitHub PR card, and no image media.",
+    "The status ID decodes to 2026-06-08T15:58:16.787Z."
+  ],
+  "claims": [
+    {
+      "text": "runtimeWorkspaceRoots in app-server thread and turn requests now require absolute roots.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26552.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Integrators mirroring app-server v2 calls should resolve runtime workspace roots before sending them.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26552.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The PR #26552 operator-impact post is live on @decodexspace.",
+      "evidence": "https://x.com/decodexspace/status/2064014155208867999",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "high",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26552:operator_impact",
+    "reason": "The PR changes a protocol-facing app-server path contract with clear integrator migration value.",
+    "daily_limit": 8,
+    "daily_count_before": 2,
+    "daily_count_after": 3,
+    "day": "2026-06-08",
+    "timezone": "Asia/Shanghai"
+  },
+  "publication": {
+    "posted_at": "2026-06-08T15:58:16.787Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2064014155208867999"
+    ],
+    "publisher": "chrome",
+    "account_verified": true,
+    "made_with_ai": false
+  },
+  "caveats": [
+    "No media was attached; this single operator_impact post remains useful text-only because the reader value is the source-backed migration note and direct PR link.",
+    "Keep the claim scoped to app-server runtimeWorkspaceRoots in thread and turn requests.",
+    "Do not imply broad end-user UI behavior or Decodex runtime adoption."
+  ],
+  "post_lifecycle": {
+    "current_state": "live",
+    "quote_eligible": false,
+    "reason": "This is a standalone operator-impact post, not a prerelease quote-chain anchor."
+  }
+}
