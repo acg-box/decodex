@@ -1,14 +1,14 @@
 {
   "counts": {
-    "critical": 18,
-    "high": 4,
+    "critical": 19,
+    "high": 5,
     "low": 2,
-    "normal": 16,
+    "normal": 14,
     "published_subjects_seen": 0,
     "recent_commits_scanned": 40,
     "subjects_queued": 40
   },
-  "generated_at": "2026-06-08T02:19:37.943725Z",
+  "generated_at": "2026-06-08T08:04:47.078688Z",
   "repo": "openai/codex",
   "schema": "upstream_review_queue/v1",
   "source": {
@@ -820,6 +820,53 @@
     },
     {
       "attention_flags": [
+        "auth_account",
+        "breaking_change",
+        "new_feature",
+        "protocol_change",
+        "rate_limit"
+      ],
+      "changed_file_count": 18,
+      "commit_shas": [
+        "b5eae7326947ad4e7e7003a3f6925f370fb85407",
+        "84b8997c6c294c8e63ea1e85c53e9ef01ed022de",
+        "1b50304606151d6071fb68c7dbb09597b6d8c100"
+      ],
+      "committed_at": "2026-06-08T03:12:05Z",
+      "next_step": "ai_review_required",
+      "pr_number": 26639,
+      "pr_url": "https://github.com/openai/codex/pull/26639",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, breaking_change, new_feature, protocol_change, rate_limit.",
+      "sample_paths": [
+        "codex-rs/app-server-protocol/schema/json/ServerNotification.json",
+        "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+        "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+        "codex-rs/app-server-protocol/schema/json/v2/McpServerStatusUpdatedNotification.json",
+        "codex-rs/app-server-protocol/schema/typescript/v2/McpServerStatusUpdatedNotification.ts",
+        "codex-rs/app-server-protocol/src/protocol/v2/mcp.rs",
+        "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "codex-rs/app-server/README.md",
+        "codex-rs/app-server/src/bespoke_event_handling.rs",
+        "codex-rs/app-server/tests/suite/v2/thread_start.rs",
+        "codex-rs/tui/src/app/app_server_event_targets.rs",
+        "codex-rs/tui/src/app/app_server_events.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "26639",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "app_server_protocol",
+        "cli_tui",
+        "docs_examples",
+        "mcp_plugins",
+        "tests_ci"
+      ],
+      "title": "fix(tui): scope MCP startup status by thread",
+      "url": "https://github.com/openai/codex/pull/26639"
+    },
+    {
+      "attention_flags": [
         "protocol_change",
         "security_policy"
       ],
@@ -941,64 +988,39 @@
     },
     {
       "attention_flags": [
-        "new_feature",
-        "protocol_change"
-      ],
-      "changed_file_count": 1,
-      "commit_shas": [
-        "acc0252dd2ef5f84af46d5acae80a065baa84aab",
-        "faa67b521be5f4cb32c416423e8a6c4e33d9e905",
-        "e3051c46b831615f34c922c2a7e84317613ef1ec"
-      ],
-      "committed_at": "2026-06-05T15:32:42Z",
-      "next_step": "ai_review_required",
-      "pr_number": 26500,
-      "pr_url": "https://github.com/openai/codex/pull/26500",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for new_feature, protocol_change.",
-      "sample_paths": [
-        "codex-rs/cli/src/desktop_app/windows.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "26500",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "cli_tui"
-      ],
-      "title": "Open Windows app workspaces via deep link",
-      "url": "https://github.com/openai/codex/pull/26500"
-    },
-    {
-      "attention_flags": [
         "auth_account",
         "new_feature",
-        "protocol_change"
+        "protocol_change",
+        "security_policy"
       ],
-      "changed_file_count": 4,
+      "changed_file_count": 6,
       "commit_shas": [
-        "99f0fff78b39b88b2a0f3b2f17aa7a1d3a1b0bd5"
+        "e28d2a19b431e3507482c05c2e292aeb9c68bf8c",
+        "02724b98d36c0285a4ded52dd8eeb5cae7dba445"
       ],
-      "committed_at": "2026-06-05T15:32:53Z",
+      "committed_at": "2026-06-08T06:18:23Z",
       "next_step": "ai_review_required",
-      "pr_number": 26551,
-      "pr_url": "https://github.com/openai/codex/pull/26551",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change.",
+      "pr_number": 26719,
+      "pr_url": "https://github.com/openai/codex/pull/26719",
+      "review_priority": "high",
+      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change, security_policy.",
       "sample_paths": [
-        "codex-rs/tui/src/app/thread_goal_actions.rs",
-        "codex-rs/tui/src/chatwidget/slash_dispatch.rs",
-        "codex-rs/tui/src/chatwidget/tests/slash_commands.rs",
-        "codex-rs/tui/src/goal_display.rs"
+        "codex-rs/app-server/tests/suite/v2/web_search.rs",
+        "codex-rs/codex-api/src/endpoint/search.rs",
+        "codex-rs/codex-api/src/search.rs",
+        "codex-rs/core/tests/suite/code_mode.rs",
+        "codex-rs/ext/web-search/src/output.rs",
+        "codex-rs/ext/web-search/src/tool.rs"
       ],
       "source_state": "merged",
-      "subject_id": "26551",
+      "subject_id": "26719",
       "subject_kind": "pr",
       "surface_hints": [
-        "cli_tui",
+        "app_server_protocol",
         "tests_ci"
       ],
-      "title": "Fix `/goal` usage text for control commands",
-      "url": "https://github.com/openai/codex/pull/26551"
+      "title": "[codex] Enable standalone web search in code mode",
+      "url": "https://github.com/openai/codex/pull/26719"
     },
     {
       "attention_flags": [
