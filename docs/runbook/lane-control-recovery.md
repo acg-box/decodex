@@ -53,7 +53,7 @@ Use the local HTTP API only against the same trusted listener when CLI access is
 the active surface:
 
 ```sh
-curl -sS 'http://127.0.0.1:8912/api/lane/inspect?projectId=<service-id>&issue=<ISSUE>&runId=<RUN_ID>'
+curl -sS 'http://127.0.0.1:8192/api/lane/inspect?projectId=<service-id>&issue=<ISSUE>&runId=<RUN_ID>'
 ```
 
 Before mutating anything, confirm:
