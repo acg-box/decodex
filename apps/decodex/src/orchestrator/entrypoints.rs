@@ -655,6 +655,7 @@ fn build_operator_status_snapshot_for_tracker_backoff(
 	snapshot.connector_backoffs.push(status.clone());
 
 	add_operator_snapshot_warning(&mut snapshot, "external_observer_status_skipped");
+	apply_terminal_history_ledger_outcomes(&mut snapshot);
 	refresh_operator_project_summary(&mut snapshot);
 
 	Ok(snapshot)
@@ -1328,6 +1329,7 @@ fn build_operator_state_snapshot_without_live_observers(
 	)?;
 
 	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
+	apply_terminal_history_ledger_outcomes(&mut snapshot);
 	refresh_operator_project_summary(&mut snapshot);
 
 	Ok(snapshot)
