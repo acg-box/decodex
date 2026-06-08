@@ -1,0 +1,306 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-05T06:19:46Z",
+      "message": "Move goal runtime to extension",
+      "sha": "5622e8abb3ffcb17707ddc796dd32b6abe1d46ae",
+      "url": "https://github.com/openai/codex/commit/5622e8abb3ffcb17707ddc796dd32b6abe1d46ae"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-05T18:09:20Z",
+      "message": "Serialize extension goal notifications",
+      "sha": "507e19e199703e9dec844849d145d36ed767fac6",
+      "url": "https://github.com/openai/codex/commit/507e19e199703e9dec844849d145d36ed767fac6"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-05T18:20:23Z",
+      "message": "Merge branch 'main' into etraut/goal-stack-2-app-server-switchover-v2",
+      "sha": "12dbf7c6e13665c8f7f2d303cec8213d7b5b715a",
+      "url": "https://github.com/openai/codex/commit/12dbf7c6e13665c8f7f2d303cec8213d7b5b715a"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "FIFO",
+    "TUI",
+    "JSONRPCE",
+    "UPDATE_GOAL_TOOL_NAME",
+    "GOAL_BLOCKED_METRIC",
+    "GOAL_BUDGET_LIMITED_METRIC",
+    "GOAL_COMPLETED_METRIC",
+    "GOAL_CREATED_METRIC",
+    "GOAL_DURATION_SECONDS_METRIC",
+    "GOAL_RESUMED_METRIC",
+    "GOAL_TOKEN_COUNT_METRIC",
+    "GOAL_USAGE_LIMITED_METRIC",
+    "MAX",
+    "API",
+    "TEST_INSTALLATION_ID",
+    "CREATE_GOAL_TOOL_NAME",
+    "GET_GOAL_TOOL_NAME"
+  ],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1926,6 +1926,7 @@ dependencies = [\n  \"codex-file-search\",\n  \"codex-file-watcher\",\n  \"codex-git-utils\",\n+ \"codex-goal-extension\",\n  \"codex-guardian\",\n  \"codex-hooks\",\n  \"codex-image-generation-extension\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -483,7 +483,6 @@ unwrap_used = \"deny\"\n [workspace.metadata.cargo-shear]\n ignored = [\n     \"codex-agent-graph-store\",\n-    \"codex-goal-extension\",\n     \"icu_provider\",\n     \"openssl-sys\",\n     \"codex-v8-poc\",",
+      "path": "codex-rs/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -41,6 +41,7 @@ codex-extension-api = { workspace = true }\n codex-external-agent-migration = { workspace = true }\n codex-external-agent-sessions = { workspace = true }\n codex-features = { workspace = true }\n+codex-goal-extension = { workspace = true }\n codex-guardian = { workspace = true }\n codex-git-utils = { workspace = true }\n codex-file-watcher = { workspace = true }",
+      "path": "codex-rs/app-server/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 101,
+      "deletions": 55,
+      "patch_excerpt": "@@ -2,6 +2,7 @@ use std::sync::Arc;\n use std::sync::Weak;\n \n use codex_app_server_protocol::ServerNotification;\n+use codex_app_server_protocol::ThreadGoal;\n use codex_app_server_protocol::ThreadGoalUpdatedNotification;\n use codex_core::NewThread;\n use codex_core::StartThreadOptions;\n@@ -12,23 +13,40 @@ use codex_extension_api::AgentSpawner;\n use codex_extension_api::ExtensionEventSink;\n use codex_extension_api::ExtensionRegistry;\n use codex_extension_api::ExtensionRegistryBuilder;\n+use codex_goal_extension::GoalService;\n use codex_login::AuthManager;\n use codex_protocol::ThreadId;\n use codex_protocol::error::CodexErr;\n use codex_protocol::protocol::Event;\n use codex_protocol::protocol::EventMsg;\n+use codex_rollout::state_db::StateDbHandle;\n \n use crate::outgoing_message::OutgoingMessageSender;\n+use crate::thread_state::ThreadListenerCommand;\n+use crate::thread_state::ThreadStateManager;\n...",
+      "path": "codex-rs/app-server/src/extensions.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -191,6 +191,9 @@ mod tests {\n                     guardian_agent_spawner(thread_manager.clone()),\n                     Arc::new(NoopExtensionEventSink),\n                     auth_manager.clone(),\n+                    Some(state_db.clone()),\n+                    thread_manager.clone(),\n+                    Arc::new(codex_goal_extension::GoalService::new()),\n                 ),\n                 /*analytics_events_client*/ None,\n                 Arc::clone(&thread_store),",
+      "path": "codex-rs/app-server/src/mcp_refresh.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 1,
+      "patch_excerpt": "@@ -70,6 +70,7 @@ use codex_core::ThreadManager;\n use codex_core::config::Config;\n use codex_exec_server::EnvironmentManager;\n use codex_feedback::CodexFeedback;\n+use codex_goal_extension::GoalService;\n use codex_login::AuthManager;\n use codex_login::auth::ExternalAuth;\n use codex_login::auth::ExternalAuthRefreshContext;\n@@ -305,6 +306,7 @@ impl MessageProcessor {\n         // resumed, or forked threads to a different persistence backend/root.\n         let thread_store = codex_core::thread_store_from_config(config.as_ref(), state_db.clone());\n         let environment_manager_for_requests = Arc::clone(&environment_manager);\n+        let goal_service = Arc::new(GoalService::new());\n         let thread_manager = Arc::new_cyclic(|thread_manager| {\n             ThreadManager::new(\n                 config.as_ref(),\n@@ -313,8 +315,11 @@ impl MessageProcessor {\n                 environment_manage...",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 10,
+      "patch_excerpt": "@@ -555,16 +555,6 @@ impl OutgoingMessageSender {\n             .await;\n     }\n \n-    pub(crate) fn try_send_server_notification(&self, notification: ServerNotification) {\n-        tracing::trace!(\"app-server event: {notification}\");\n-        let outgoing_message = OutgoingMessage::AppServerNotification(notification);\n-        if let Err(err) = self.sender.try_send(OutgoingEnvelope::Broadcast {\n-            message: outgoing_message,\n-        }) {\n-            warn!(\"failed to send server notification to client without waiting: {err:?}\");\n-        }\n-    }\n-\n     pub(crate) async fn send_server_notification_to_connections(\n         &self,\n         connection_ids: &[ConnectionId],",
+      "path": "codex-rs/app-server/src/outgoing_message.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 2,
+      "patch_excerpt": "@@ -279,8 +279,6 @@ use codex_config::loader::project_trust_key;\n use codex_config::types::McpServerTransportConfig;\n use codex_core::CodexThread;\n use codex_core::CodexThreadSettingsOverrides;\n-use codex_core::ExternalGoalPreviousStatus;\n-use codex_core::ExternalGoalSet;\n use codex_core::ForkSnapshot;\n use codex_core::NewThread;\n #[cfg(test)]",
+      "path": "codex-rs/app-server/src/request_processors.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 95,
+      "deletions": 206,
+      "patch_excerpt": "@@ -1,5 +1,9 @@\n use super::*;\n-use codex_protocol::protocol::validate_thread_goal_objective;\n+use codex_goal_extension::GoalObjectiveUpdate;\n+use codex_goal_extension::GoalService;\n+use codex_goal_extension::GoalServiceError;\n+use codex_goal_extension::GoalSetRequest;\n+use codex_goal_extension::GoalTokenBudgetUpdate;\n \n #[derive(Clone)]\n pub(crate) struct ThreadGoalRequestProcessor {\n@@ -8,6 +12,7 @@ pub(crate) struct ThreadGoalRequestProcessor {\n     config: Arc<Config>,\n     thread_state_manager: ThreadStateManager,\n     state_db: Option<StateDbHandle>,\n+    goal_service: Arc<GoalService>,\n }\n \n impl ThreadGoalRequestProcessor {\n@@ -17,13 +22,15 @@ impl ThreadGoalRequestProcessor {\n         config: Arc<Config>,\n         thread_state_manager: ThreadStateManager,\n         state_db: Option<StateDbHandle>,\n+        goal_service: Arc<GoalService>,\n     ) -> Self {\n         Self {\n         ...",
+      "path": "codex-rs/app-server/src/request_processors/thread_goal_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 18,
+      "deletions": 15,
+      "patch_excerpt": "@@ -244,12 +244,22 @@ pub(super) async fn ensure_listener_task_running(\n         if thread_state.listener_matches(&conversation) {\n             return Ok(());\n         }\n-        thread_state.set_listener(\n+        let (listener_command_rx, listener_generation) = thread_state.set_listener(\n             cancel_tx,\n             &conversation,\n             watch_registration,\n             thread_settings_baseline,\n-        )\n+        );\n+        let Some(listener_command_tx) = thread_state.listener_command_tx() else {\n+            tracing::warn!(\n+                \"thread listener command sender missing immediately after listener registration\"\n+            );\n+            return Ok(());\n+        };\n+        listener_task_context\n+            .thread_state_manager\n+            .register_listener_command_tx(conversation_id, listener_command_tx);\n+        (listener_command_rx, listener_generati...",
+      "path": "codex-rs/app-server/src/request_processors/thread_lifecycle.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 38,
+      "deletions": 1,
+      "patch_excerpt": "@@ -17,6 +17,7 @@ use codex_utils_absolute_path::AbsolutePathBuf;\n use std::collections::HashMap;\n use std::collections::HashSet;\n use std::sync::Arc;\n+use std::sync::Mutex as StdMutex;\n use std::sync::Weak;\n use tokio::sync::Mutex;\n use tokio::sync::mpsc;\n@@ -44,8 +45,9 @@ pub(crate) struct PendingThreadResumeRequest {\n pub(crate) enum ThreadListenerCommand {\n     // SendThreadResumeResponse is used to resume an already running thread by sending the thread's history to the client and atomically subscribing for new updates.\n     SendThreadResumeResponse(Box<PendingThreadResumeRequest>),\n-    // EmitThreadGoalUpdated is used to order app-server goal updates with running-thread resume responses.\n+    // EmitThreadGoalUpdated is used to order goal updates with running-thread resume responses and goal clears.\n     EmitThreadGoalUpdated {\n+        turn_id: Option<String>,\n         goal: Threa...",
+      "path": "codex-rs/app-server/src/thread_state.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 45,
+      "patch_excerpt": "@@ -1,7 +1,5 @@\n use crate::agent::AgentStatus;\n use crate::config::ConstraintResult;\n-use crate::goals::ExternalGoalSet;\n-use crate::goals::GoalRuntimeEvent;\n use crate::session::Codex;\n use crate::session::SessionSettingsUpdate;\n use crate::session::SteerInputError;\n@@ -205,51 +203,11 @@ impl CodexThread {\n         }\n     }\n \n-    pub async fn apply_goal_resume_runtime_effects(&self) -> anyhow::Result<()> {\n+    pub async fn emit_thread_idle_lifecycle_if_idle(&self) {\n         self.codex\n             .session\n-            .goal_runtime_apply(GoalRuntimeEvent::ThreadResumed)\n-            .await\n-    }\n-\n-    pub async fn continue_active_goal_if_idle(&self) -> anyhow::Result<()> {\n-        self.codex\n-            .session\n-            .goal_runtime_apply(GoalRuntimeEvent::MaybeContinueIfIdle)\n-            .await\n-    }\n-\n-    pub async fn prepare_external_goal_mutation(&self) {\n-        ...",
+      "path": "codex-rs/core/src/codex_thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 7,
+      "patch_excerpt": "@@ -33,14 +33,14 @@ fn detects_subagent_notification_fragment_case_insensitively() {\n #[test]\n fn detects_internal_model_context_fragment() {\n     let text = InternalModelContextFragment::new(\n-        InternalContextSource::from_static(\"goal\"),\n-        \"Continue working toward the active thread goal.\",\n+        InternalContextSource::from_static(\"extension\"),\n+        \"Internal steering.\",\n     )\n     .render();\n \n     assert_eq!(\n         text,\n-        \"<codex_internal_context source=\\\"goal\\\">\\nContinue working toward the active thread goal.\\n</codex_internal_context>\"\n+        \"<codex_internal_context source=\\\"extension\\\">\\nInternal steering.\\n</codex_internal_context>\"\n     );\n     assert!(is_contextual_user_fragment(&ContentItem::InputText {\n         text\n@@ -65,21 +65,21 @@ fn does_not_hide_arbitrary_context_tags() {\n #[test]\n fn rejects_invalid_internal_model_context_source() {\n...",
+      "path": "codex-rs/core/src/context/contextual_user_message_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -324,8 +324,8 @@ fn internal_model_context_does_not_parse_as_visible_turn_item() {\n         role: \"user\".to_string(),\n         content: vec![ContentItem::InputText {\n             text: InternalModelContextFragment::new(\n-                InternalContextSource::from_static(\"goal\"),\n-                \"Continue working toward the active thread goal.\",\n+                InternalContextSource::from_static(\"extension\"),\n+                \"Internal steering.\",\n             )\n             .render(),\n         }],",
+      "path": "codex-rs/core/src/event_mapping_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 1622,
+      "patch_excerpt": "@@ -1,1622 +0,0 @@\n-//! Core support for persisted thread goals.\n-//!\n-//! This module bridges core sessions and the state-db goal table. It validates\n-//! goal mutations, converts between state and protocol shapes, emits goal-update\n-//! events, and owns helper hooks used by goal lifecycle behavior.\n-\n-use crate::StateDbHandle;\n-use crate::context::ContextualUserFragment;\n-use crate::context::InternalContextSource;\n-use crate::context::InternalModelContextFragment;\n-use crate::session::TurnInput;\n-use crate::session::session::Session;\n-use crate::session::turn_context::TurnContext;\n-use crate::state::ActiveTurn;\n-use crate::state::TurnState;\n-use crate::tasks::RegularTask;\n-use crate::tools::handlers::goal_spec::UPDATE_GOAL_TOOL_NAME;\n-use anyhow::Context;\n-use codex_features::Feature;\n-use codex_otel::GOAL_BLOCKED_METRIC;\n-use codex_otel::GOAL_BUDGET_LIMITED_METRIC;\n-use codex_otel::GO...",
+      "path": "codex-rs/core/src/goals.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 3,
+      "patch_excerpt": "@@ -39,9 +39,6 @@ pub mod exec_env;\n mod exec_policy;\n #[cfg(test)]\n mod git_info_tests;\n-mod goals;\n-pub use goals::ExternalGoalPreviousStatus;\n-pub use goals::ExternalGoalSet;\n mod guardian;\n mod hook_runtime;\n mod installation_id;",
+      "path": "codex-rs/core/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 2,
+      "patch_excerpt": "@@ -26,7 +26,6 @@ pub(super) async fn spawn_review_thread(\n     let _ = review_features.disable(Feature::WebSearchCached);\n     let _ = review_features.disable(Feature::Goals);\n     let review_web_search_mode = WebSearchMode::Disabled;\n-    let goal_tools_supported = !config.ephemeral && parent_turn_context.goal_tools_enabled();\n     let available_models = sess\n         .services\n         .models_manager\n@@ -126,7 +125,6 @@ pub(super) async fn spawn_review_thread(\n         environments: parent_turn_context.environments.clone(),\n         available_models,\n         unified_exec_shell_mode,\n-        goal_tools_supported,\n         features: review_features,\n         ghost_snapshot: parent_turn_context.ghost_snapshot.clone(),\n         current_date: parent_turn_context.current_date.clone(),",
+      "path": "codex-rs/core/src/session/review.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 3,
+      "patch_excerpt": "@@ -2,7 +2,6 @@ use super::input_queue::InputQueue;\n use super::*;\n use crate::agents_md::LoadedAgentsMd;\n use crate::config::ConstraintError;\n-use crate::goals::GoalRuntimeState;\n use crate::skills::SkillError;\n use crate::state::ActiveTurn;\n use codex_protocol::SessionId;\n@@ -37,7 +36,6 @@ pub(crate) struct Session {\n     pub(crate) conversation: Arc<RealtimeConversationManager>,\n     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,\n     pub(crate) input_queue: InputQueue,\n-    pub(crate) goal_runtime: GoalRuntimeState,\n     pub(crate) guardian_review_session: GuardianReviewSessionManager,\n     pub(crate) services: SessionServices,\n     pub(super) next_internal_sub_id: AtomicU64,\n@@ -1059,7 +1057,6 @@ impl Session {\n                 conversation: Arc::new(RealtimeConversationManager::new()),\n                 active_turn: Mutex::new(None),\n                 input_queue: InputQueue::new...",
+      "path": "codex-rs/core/src/session/session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 72,
+      "deletions": 1252,
+      "patch_excerpt": "@@ -57,11 +57,6 @@ use codex_protocol::request_permissions::PermissionGrantScope;\n use codex_protocol::request_permissions::RequestPermissionProfile;\n use tracing::Span;\n \n-use crate::goals::CreateGoalRequest;\n-use crate::goals::ExternalGoalPreviousStatus;\n-use crate::goals::ExternalGoalSet;\n-use crate::goals::GoalRuntimeEvent;\n-use crate::goals::SetGoalRequest;\n use crate::rollout::recorder::RolloutRecorder;\n use crate::state::ActiveTurn;\n use crate::state::TaskKind;\n@@ -72,11 +67,9 @@ use crate::tasks::execute_user_shell_command;\n use crate::tools::ToolRouter;\n use crate::tools::context::ToolInvocation;\n use crate::tools::context::ToolPayload;\n-use crate::tools::handlers::CreateGoalHandler;\n use crate::tools::handlers::ExecCommandHandler;\n use crate::tools::handlers::RequestPermissionsHandler;\n use crate::tools::handlers::ShellCommandHandler;\n-use crate::tools::handlers::UpdateGoalHand...",
+      "path": "codex-rs/core/src/session/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 30,
+      "patch_excerpt": "@@ -18,7 +18,6 @@ use crate::compact_remote_v2::run_inline_remote_auto_compact_task as run_inline_\n use crate::connectors;\n use crate::context::ContextualUserFragment;\n use crate::feedback_tags;\n-use crate::goals::GoalRuntimeEvent;\n use crate::hook_runtime::inspect_pending_input;\n use crate::hook_runtime::record_additional_contexts;\n use crate::hook_runtime::record_pending_input;\n@@ -151,15 +150,6 @@ pub(crate) async fn run_turn(\n         let error = err.to_codex_protocol_error();\n         sess.emit_turn_error_lifecycle(turn_context.as_ref(), error.clone())\n             .await;\n-        if error == CodexErrorInfo::UsageLimitExceeded\n-            && let Err(err) = sess\n-                .goal_runtime_apply(GoalRuntimeEvent::UsageLimitReached {\n-                    turn_context: turn_context.as_ref(),\n-                })\n-                .await\n-        {\n-            warn!(\"failed to usage...",
+      "path": "codex-rs/core/src/session/turn.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 10,
+      "patch_excerpt": "@@ -91,7 +91,6 @@ pub struct TurnContext {\n     pub(crate) shell_environment_policy: ShellEnvironmentPolicy,\n     pub(crate) available_models: Vec<ModelPreset>,\n     pub(crate) unified_exec_shell_mode: UnifiedExecShellMode,\n-    pub(crate) goal_tools_supported: bool,\n     pub features: ManagedFeatures,\n     pub(crate) ghost_snapshot: GhostSnapshotConfig,\n     pub(crate) final_output_json_schema: Option<Value>,\n@@ -170,10 +169,6 @@ impl TurnContext {\n         ToolEnvironmentMode::from_count(self.environments.turn_environments.len())\n     }\n \n-    pub(crate) fn goal_tools_enabled(&self) -> bool {\n-        self.goal_tools_supported && self.features.get().enabled(Feature::Goals)\n-    }\n-\n     pub(crate) async fn with_model(\n         &self,\n         model: String,\n@@ -264,7 +259,6 @@ impl TurnContext {\n             shell_environment_policy: self.shell_environment_policy.clone(),\n             ...",
+      "path": "codex-rs/core/src/session/turn_context.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 42,
+      "patch_excerpt": "@@ -23,7 +23,6 @@ use tracing::warn;\n \n use crate::config::Config;\n use crate::context::ContextualUserFragment;\n-use crate::goals::GoalRuntimeEvent;\n use crate::hook_runtime::inspect_pending_input;\n use crate::hook_runtime::record_additional_contexts;\n use crate::hook_runtime::record_pending_input;\n@@ -341,15 +340,6 @@ impl Session {\n             .await\n             .clear_turn(&turn_context.sub_id);\n \n-        if let Err(err) = self\n-            .goal_runtime_apply(GoalRuntimeEvent::TurnStarted {\n-                turn_context: turn_context.as_ref(),\n-                token_usage: token_usage_at_turn_start.clone(),\n-            })\n-            .await\n-        {\n-            warn!(\"failed to apply goal runtime turn-start event: {err}\");\n-        }\n         let pending_items = self.input_queue.get_pending_input(&self.active_turn).await;\n         let turn_state = {\n             let mut activ...",
+      "path": "codex-rs/core/src/tasks/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 3,
+      "patch_excerpt": "@@ -1343,9 +1343,6 @@ impl ThreadManagerState {\n             .await?;\n         if is_resumed_thread {\n             new_thread.thread.emit_thread_resume_lifecycle().await;\n-            if let Err(err) = new_thread.thread.apply_goal_resume_runtime_effects().await {\n-                warn!(\"failed to apply goal resume runtime effects: {err}\");\n-            }\n         }\n         Ok(new_thread)\n     }",
+      "path": "codex-rs/core/src/thread_manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 101,
+      "patch_excerpt": "@@ -8,7 +8,6 @@ use crate::session::tests::make_session_and_context;\n use crate::tasks::InterruptedTurnHistoryMarker;\n use crate::tasks::interrupted_turn_history_marker;\n use codex_extension_api::empty_extension_registry;\n-use codex_features::Feature;\n use codex_models_manager::manager::RefreshStrategy;\n use codex_protocol::models::ContentItem;\n use codex_protocol::models::ReasoningItemReasoningSummary;\n@@ -1501,103 +1500,3 @@ async fn interrupted_fork_snapshot_uses_persisted_mid_turn_history_without_live_\n         1,\n     );\n }\n-\n-#[tokio::test]\n-async fn resumed_thread_keeps_paused_goal_paused() -> anyhow::Result<()> {\n-    let temp_dir = tempdir().expect(\"tempdir\");\n-    let mut config = test_config().await;\n-    config.codex_home = temp_dir.path().join(\"codex-home\").abs();\n-    config.cwd = config.codex_home.abs();\n-    config\n-        .features\n-        .enable(Feature::Goals)\n-    ...",
+      "path": "codex-rs/core/src/thread_manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 158,
+      "patch_excerpt": "@@ -1,158 +0,0 @@\n-//! Built-in model tool handlers for persisted thread goals.\n-//!\n-//! The public tool contract intentionally splits goal creation from stopped\n-//! status updates: `create_goal` starts an active objective, while\n-//! `update_goal` can only mark the existing goal complete or blocked.\n-\n-use crate::function_tool::FunctionCallError;\n-use crate::tools::context::FunctionToolOutput;\n-use codex_protocol::protocol::ThreadGoal;\n-use codex_protocol::protocol::ThreadGoalStatus;\n-use serde::Deserialize;\n-use serde::Serialize;\n-use std::fmt::Write as _;\n-\n-mod create_goal;\n-mod get_goal;\n-mod update_goal;\n-\n-pub use create_goal::CreateGoalHandler;\n-pub use get_goal::GetGoalHandler;\n-pub use update_goal::UpdateGoalHandler;\n-\n-#[derive(Debug, Deserialize)]\n-#[serde(rename_all = \"snake_case\")]\n-struct CreateGoalArgs {\n-    objective: String,\n-    token_budget: Option<i64>,\n-}\n-\n-#[de...",
+      "path": "codex-rs/core/src/tools/handlers/goal.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 78,
+      "patch_excerpt": "@@ -1,78 +0,0 @@\n-use crate::function_tool::FunctionCallError;\n-use crate::goals::CreateGoalRequest;\n-use crate::tools::context::ToolInvocation;\n-use crate::tools::context::ToolPayload;\n-use crate::tools::context::boxed_tool_output;\n-use crate::tools::handlers::goal_spec::CREATE_GOAL_TOOL_NAME;\n-use crate::tools::handlers::goal_spec::create_create_goal_tool;\n-use crate::tools::handlers::parse_arguments;\n-use crate::tools::registry::CoreToolRuntime;\n-use crate::tools::registry::ToolExecutor;\n-use codex_tools::ToolName;\n-use codex_tools::ToolSpec;\n-\n-use super::CompletionBudgetReport;\n-use super::CreateGoalArgs;\n-use super::format_goal_error;\n-use super::goal_response;\n-\n-pub struct CreateGoalHandler;\n-\n-#[async_trait::async_trait]\n-impl ToolExecutor<ToolInvocation> for CreateGoalHandler {\n-    fn tool_name(&self) -> ToolName {\n-        ToolName::plain(CREATE_GOAL_TOOL_NAME)\n-    }\n-\n-    ...",
+      "path": "codex-rs/core/src/tools/handlers/goal/create_goal.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 51,
+      "patch_excerpt": "@@ -1,51 +0,0 @@\n-use crate::function_tool::FunctionCallError;\n-use crate::tools::context::ToolInvocation;\n-use crate::tools::context::ToolPayload;\n-use crate::tools::context::boxed_tool_output;\n-use crate::tools::handlers::goal_spec::GET_GOAL_TOOL_NAME;\n-use crate::tools::handlers::goal_spec::create_get_goal_tool;\n-use crate::tools::registry::CoreToolRuntime;\n-use crate::tools::registry::ToolExecutor;\n-use codex_tools::ToolName;\n-use codex_tools::ToolSpec;\n-\n-use super::CompletionBudgetReport;\n-use super::format_goal_error;\n-use super::goal_response;\n-\n-pub struct GetGoalHandler;\n-\n-#[async_trait::async_trait]\n-impl ToolExecutor<ToolInvocation> for GetGoalHandler {\n-    fn tool_name(&self) -> ToolName {\n-        ToolName::plain(GET_GOAL_TOOL_NAME)\n-    }\n-\n-    fn spec(&self) -> ToolSpec {\n-        create_get_goal_tool()\n-    }\n-\n-    async fn handle(\n-        &self,\n-        invocation...",
+      "path": "codex-rs/core/src/tools/handlers/goal/get_goal.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 89,
+      "patch_excerpt": "@@ -1,89 +0,0 @@\n-use crate::function_tool::FunctionCallError;\n-use crate::goals::GoalRuntimeEvent;\n-use crate::goals::SetGoalRequest;\n-use crate::tools::context::ToolInvocation;\n-use crate::tools::context::ToolPayload;\n-use crate::tools::context::boxed_tool_output;\n-use crate::tools::handlers::goal_spec::UPDATE_GOAL_TOOL_NAME;\n-use crate::tools::handlers::goal_spec::create_update_goal_tool;\n-use crate::tools::handlers::parse_arguments;\n-use crate::tools::registry::CoreToolRuntime;\n-use crate::tools::registry::ToolExecutor;\n-use codex_protocol::protocol::ThreadGoalStatus;\n-use codex_tools::ToolName;\n-use codex_tools::ToolSpec;\n-\n-use super::CompletionBudgetReport;\n-use super::UpdateGoalArgs;\n-use super::format_goal_error;\n-use super::goal_response;\n-\n-pub struct UpdateGoalHandler;\n-\n-#[async_trait::async_trait]\n-impl ToolExecutor<ToolInvocation> for UpdateGoalHandler {\n-    fn tool_name(...",
+      "path": "codex-rs/core/src/tools/handlers/goal/update_goal.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 120,
+      "patch_excerpt": "@@ -1,120 +0,0 @@\n-//! Responses API tool definitions for persisted thread goals.\n-//!\n-//! These specs expose goal read/update primitives to the model while keeping\n-//! usage accounting system-managed.\n-\n-use codex_tools::JsonSchema;\n-use codex_tools::ResponsesApiTool;\n-use codex_tools::ToolSpec;\n-use serde_json::json;\n-use std::collections::BTreeMap;\n-\n-pub const GET_GOAL_TOOL_NAME: &str = \"get_goal\";\n-pub const CREATE_GOAL_TOOL_NAME: &str = \"create_goal\";\n-pub const UPDATE_GOAL_TOOL_NAME: &str = \"update_goal\";\n-\n-pub fn create_get_goal_tool() -> ToolSpec {\n-    ToolSpec::Function(ResponsesApiTool {\n-        name: GET_GOAL_TOOL_NAME.to_string(),\n-        description: \"Get the current goal for this thread, including status, budgets, token and elapsed-time usage, and remaining token budget.\"\n-            .to_string(),\n-        strict: false,\n-        defer_loading: None,\n-        parame...",
+      "path": "codex-rs/core/src/tools/handlers/goal_spec.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 5,
+      "patch_excerpt": "@@ -4,8 +4,6 @@ pub(crate) mod apply_patch;\n pub(crate) mod apply_patch_spec;\n mod dynamic;\n pub(crate) mod extension_tools;\n-mod goal;\n-pub(crate) mod goal_spec;\n mod list_available_plugins_to_install;\n pub(crate) mod list_available_plugins_to_install_spec;\n mod mcp;\n@@ -53,9 +51,6 @@ pub use apply_patch::ApplyPatchHandler;\n use codex_protocol::models::AdditionalPermissionProfile;\n use codex_protocol::protocol::AskForApproval;\n pub use dynamic::DynamicToolHandler;\n-pub use goal::CreateGoalHandler;\n-pub use goal::GetGoalHandler;\n-pub use goal::UpdateGoalHandler;\n pub use list_available_plugins_to_install::ListAvailablePluginsToInstallHandler;\n pub use mcp::McpHandler;\n pub use mcp_resource::ListMcpResourceTemplatesHandler;",
+      "path": "codex-rs/core/src/tools/handlers/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 15,
+      "patch_excerpt": "@@ -5,7 +5,6 @@ use std::sync::atomic::Ordering;\n use std::time::Duration;\n \n use crate::function_tool::FunctionCallError;\n-use crate::goals::GoalRuntimeEvent;\n use crate::hook_runtime::PreToolUseHookResult;\n use crate::hook_runtime::record_additional_contexts;\n use crate::hook_runtime::run_post_tool_use_hooks;\n@@ -34,7 +33,6 @@ use codex_tools::ToolSearchInfo;\n use codex_tools::ToolSpec;\n use futures::future::BoxFuture;\n use serde_json::Value;\n-use tracing::warn;\n \n pub(crate) type ToolTelemetryTags = Vec<(&'static str, String)>;\n \n@@ -649,25 +647,13 @@ impl ToolRegistry {\n                 handler_executed: true,\n             },\n         };\n-        let finished = notify_tool_finish_if_unclaimed(\n+        notify_tool_finish_if_unclaimed(\n             &invocation,\n             terminal_outcome_reached.as_deref(),\n             lifecycle_outcome,\n         )\n         .await;\n \n-        if f...",
+      "path": "codex-rs/core/src/tools/registry.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 17,
+      "patch_excerpt": "@@ -6,11 +6,9 @@ use crate::tools::context::ToolInvocation;\n use crate::tools::handlers::ApplyPatchHandler;\n use crate::tools::handlers::CodeModeExecuteHandler;\n use crate::tools::handlers::CodeModeWaitHandler;\n-use crate::tools::handlers::CreateGoalHandler;\n use crate::tools::handlers::DynamicToolHandler;\n use crate::tools::handlers::ExecCommandHandler;\n use crate::tools::handlers::ExecCommandHandlerOptions;\n-use crate::tools::handlers::GetGoalHandler;\n use crate::tools::handlers::ListAvailablePluginsToInstallHandler;\n use crate::tools::handlers::ListMcpResourceTemplatesHandler;\n use crate::tools::handlers::ListMcpResourcesHandler;\n@@ -24,7 +22,6 @@ use crate::tools::handlers::ShellCommandHandler;\n use crate::tools::handlers::ShellCommandHandlerOptions;\n use crate::tools::handlers::TestSyncHandler;\n use crate::tools::handlers::ToolSearchHandler;\n-use crate::tools::handlers::UpdateGoalHa...",
+      "path": "codex-rs/core/src/tools/spec_plan.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 30,
+      "patch_excerpt": "@@ -619,36 +619,7 @@ async fn environment_count_controls_environment_backed_tools() {\n }\n \n #[tokio::test]\n-async fn host_context_gates_goal_and_agent_job_tools() {\n-    let feature_disabled = probe(|turn| {\n-        set_feature(turn, Feature::Goals, /*enabled*/ false);\n-        turn.goal_tools_supported = true;\n-    })\n-    .await;\n-    feature_disabled.assert_visible_lacks(&[\"get_goal\", \"create_goal\", \"update_goal\"]);\n-\n-    let host_disabled = probe(|turn| {\n-        set_feature(turn, Feature::Goals, /*enabled*/ true);\n-        turn.goal_tools_supported = false;\n-    })\n-    .await;\n-    host_disabled.assert_visible_lacks(&[\"get_goal\", \"create_goal\", \"update_goal\"]);\n-\n-    let enabled = probe(|turn| {\n-        set_feature(turn, Feature::Goals, /*enabled*/ true);\n-        turn.goal_tools_supported = true;\n-    })\n-    .await;\n-    enabled.assert_visible_contains(&[\"get_goal\", \"create_...",
+      "path": "codex-rs/core/src/tools/spec_plan_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 3,
+      "patch_excerpt": "@@ -188,9 +188,6 @@ async fn prompt_tools_are_consistent_across_requests() -> anyhow::Result<()> {\n     };\n     expected_tools_names.extend([\n         \"update_plan\",\n-        \"get_goal\",\n-        \"create_goal\",\n-        \"update_goal\",\n         \"request_user_input\",\n         \"apply_patch\",\n         \"view_image\",",
+      "path": "codex-rs/core/tests/suite/prompt_caching.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#26547",
+    "#26548"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Stack\r\n\r\n1. [#26547](https://github.com/openai/codex/pull/26547) - [1 of 2] Align goal extension with core behavior\r\n2. [#26548](https://github.com/openai/codex/pull/26548) - [2 of 2] Move goal runtime to extension\r\n\r\n## Why\r\n\r\nThis PR completes the switch of the goal behavior to the extension-backed runtime and removes the old core goal implementation.\r\n\r\n## What Changed\r\n\r\n- Installs the goal extension for app-server `ThreadManager` sessions.\r\n- Routes app-server thread goal `get`, `set`, and `clear` through `GoalService`.\r\n- Uses thread-idle lifecycle emission after goal resume and snapshot ordering so the extension can decide whether to continue the goal.\r\n- Forwards extension goal updates through a FIFO async app-server notification path so backpressure does not drop them or reorder updates.\r\n- Keeps review turns from enabling goal runtime behavior.\r\n- Plans extension tools before dynamic tools so built-in goal tool names keep their old precedence when goals are enabled.\r\n- Removes the old core goal runtime, core goal tool handlers, and core goal tool specs.\r\n- Updates tests that were coupled to the core-owned goal runtime while leaving the legacy `<goal_context>` compatibility path in core for old threads.\r\n- Removes the stale cargo-shear ignore now that `codex-goal-extension` is used by the workspace.\r\n- Keeps realtime event matching exhaustive after removing the old goal-specific realtime text path.\r\n\r\n\r\n## Validation\r\n\r\n- Ran manual `/goal` runs in TUI. Validated time accounting matched wall-clock time and goal lifecycle state transitions.",
+    "labels": [],
+    "merged_at": "2026-06-05T21:17:30Z",
+    "number": 26548,
+    "state": "merged",
+    "title": "[2 of 2] Finish moving goal runtime to extension",
+    "url": "https://github.com/openai/codex/pull/26548"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

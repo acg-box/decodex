@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26548",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "normal",
+  "audience": "Codex extension and app-server integrators",
+  "candidate_text": [
+    "Codex moved thread goals out of core runtime and into the goal extension path. App-server goal get/set/clear now route through GoalService; legacy <goal_context> compatibility remains. PR: https://github.com/openai/codex/pull/26548"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26548.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26548.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26548"
+    ]
+  },
+  "evidence_notes": [
+    "PR #26548 says the goal behavior switches to the extension-backed runtime.",
+    "The app-server thread goal processor now uses codex_goal_extension::GoalService.",
+    "Core goal runtime and built-in core goal tool handlers/specs were removed.",
+    "The PR states legacy <goal_context> compatibility remains for old threads."
+  ],
+  "claims": [
+    {
+      "text": "Codex goal runtime ownership moved from core to the goal extension path.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26548.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Legacy <goal_context> compatibility remains for old threads.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26548.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "The change is important for extension and app-server operators but may work better inside a broader runtime architecture rollup.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26548:operator_impact"
+  },
+  "caveats": [
+    "Do not frame this as a new user-facing goal command.",
+    "Do not imply old goal context support was fully removed."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to use this as a rollup component or leave it deferred."
+  ]
+}
