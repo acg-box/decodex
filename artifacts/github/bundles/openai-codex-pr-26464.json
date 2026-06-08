@@ -1,0 +1,259 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "cconger",
+      "committed_at": "2026-06-04T20:01:42Z",
+      "message": "build(v8): update rusty_v8 to 149.2.0",
+      "sha": "bab01026e7d4a6329df5513a129ee2c1898d917e",
+      "url": "https://github.com/openai/codex/commit/bab01026e7d4a6329df5513a129ee2c1898d917e"
+    },
+    {
+      "author": "cconger",
+      "committed_at": "2026-06-04T22:14:55Z",
+      "message": "fix(v8): pin artifact target CPU",
+      "sha": "336d10be5c4ec22a11ab0ca5e68dc751876c26ea",
+      "url": "https://github.com/openai/codex/commit/336d10be5c4ec22a11ab0ca5e68dc751876c26ea"
+    },
+    {
+      "author": "cconger",
+      "committed_at": "2026-06-05T19:42:15Z",
+      "message": "build(v8): consume published 149.2.0 artifacts",
+      "sha": "bcff1e61996a1de050a69b576ef0ec5e13430766",
+      "url": "https://github.com/openai/codex/commit/bcff1e61996a1de050a69b576ef0ec5e13430766"
+    },
+    {
+      "author": "cconger",
+      "committed_at": "2026-06-05T21:52:17Z",
+      "message": "ci(v8): publish Windows artifacts from release tags",
+      "sha": "1e1b8ed914d7b4aec4d987ffaf3d1c3e97f3fa4d",
+      "url": "https://github.com/openai/codex/commit/1e1b8ed914d7b4aec4d987ffaf3d1c3e97f3fa4d"
+    },
+    {
+      "author": "cconger",
+      "committed_at": "2026-06-05T23:24:25Z",
+      "message": "fix(v8): keep Bazel consumers on source builds",
+      "sha": "ec64ccb725793f49feb297d7f4ad0f74be0fb32a",
+      "url": "https://github.com/openai/codex/commit/ec64ccb725793f49feb297d7f4ad0f74be0fb32a"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "third_party/v8/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "CPU",
+    "PLATFORM",
+    "SANDBOX",
+    "TARGET",
+    "V8_CPU",
+    "--platforms",
+    "--config",
+    "--build_metadata",
+    "COMMIT_SHA=$(git",
+    "HEAD",
+    "--compilation-mode",
+    "--output-dir",
+    "--bazel-config",
+    "BAZEL_CONFIG",
+    "--sandbox",
+    "--global",
+    "--profile",
+    "--no-self-update",
+    "--toolchain",
+    "--recursive",
+    "SCCACHE_CACHE_SIZE",
+    "SCCACHE_DIR",
+    "SCCACHE_IDLE_TIMEOUT",
+    "--start-server",
+    "GITHUB_PATH",
+    "ARM64",
+    "MSVC",
+    "V8_FROM_SOURCE",
+    "--locked",
+    "--release",
+    "--target",
+    "--features",
+    "--source-root",
+    "RUSTY_V8_ARCHIVE=\"${GITHUB_WORKSPACE}/${archive}\"",
+    "RUSTY_V8_SRC_BINDING_PATH=\"${GITHUB_WORKSPACE}/${binding}\"",
+    "--no-run",
+    "BUILD",
+    "--git",
+    "UNICODE",
+    "V8_TRACE_MAPS",
+    "V8_ENABLE_TURBOFAN",
+    "V8_ENABLE_CHECKS",
+    "BSD",
+    "LICENSE",
+    "HAVE_DLOPEN=0\"",
+    "U_ICUDATAENTRY_IN_COMMON",
+    "CUSTOM_LIBCXX_DEPS",
+    "U_COMMON_IMPLEMENTATION",
+    "MODULE",
+    "--require-hashes",
+    "--index-url",
+    "FP16",
+    "LLVM",
+    "WORKSPACE_ROOT",
+    "COPTS",
+    "HWY_SHARED_DEFINE",
+    "DEFINES",
+    "EXPORT_TEMPLATE_TEST",
+    "DEFAULT",
+    "EXPORT_TEMPLATE_TEST_DEFAULT_DEFAULT",
+    "DCHECK",
+    "V8_CRITICAL_SECTION",
+    "CRT",
+    "STRUNCATE",
+    "DEFINE_LAZY_LEAKY_OBJECT_GETTER",
+    "PASE",
+    "UNREACHABLE",
+    "V8_WEAK",
+    "PKU",
+    "GNU",
+    "ABI",
+    "API",
+    "V8_COPTS",
+    "V8_CUSTOM_LIBCXX_COPTS",
+    "V8_STATIC_LIBRARY_FEATURES",
+    "EOF",
+    "RUSTY_V8_ARCHIVE",
+    "RUSTY_V8_SRC_BINDING_PATH",
+    "CR_LIBCXX_REVISION=7ab65651aed6802d2599dcb7a73b1f82d5179d05\"",
+    "CR_LIBCXX_REVISION=99457fa555797f8c5ac3c076ca288d8481d3b23a\"",
+    "LIBCXX_BUILDING_LIBCXXABI",
+    "LIBC_NAMESPACE=__llvm_libc_cr\"",
+    "LIBCXXABI_SILENT_TERMINATE"
+  ],
+  "files": [
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -214,6 +214,8 @@ common --@v8//:v8_enable_sandbox=True\n # artifact migration ships matching Rust feature selection for Cargo consumers.\n common:v8-release-compat --@v8//:v8_enable_pointer_compression=False\n common:v8-release-compat --@v8//:v8_enable_sandbox=False\n+common:v8-target-x64 --@v8//bazel/config:v8_target_cpu=x64\n+common:v8-target-arm64 --@v8//bazel/config:v8_target_cpu=arm64\n \n # Match rusty_v8's upstream GN release contract for published artifacts: every\n # target object uses Chromium's custom libc++ headers and the archive folds in",
+      "path": ".bazelrc",
+      "status": "modified"
+    },
+    {
+      "additions": 156,
+      "deletions": 0,
+      "patch_excerpt": "@@ -73,72 +73,84 @@ jobs:\n             platform: linux_amd64\n             sandbox: false\n             target: x86_64-unknown-linux-gnu\n+            v8_cpu: x64\n             variant: release\n           - runner: ubuntu-24.04\n             bazel_config: ci-v8\n             platform: linux_amd64\n             sandbox: true\n             target: x86_64-unknown-linux-gnu\n+            v8_cpu: x64\n             variant: ptrcomp-sandbox\n           - runner: ubuntu-24.04-arm\n             bazel_config: ci-v8\n             platform: linux_arm64\n             sandbox: false\n             target: aarch64-unknown-linux-gnu\n+            v8_cpu: arm64\n             variant: release\n           - runner: ubuntu-24.04-arm\n             bazel_config: ci-v8\n             platform: linux_arm64\n             sandbox: true\n             target: aarch64-unknown-linux-gnu\n+            v8_cpu: arm64\n             variant: ptrco...",
+      "path": ".github/workflows/rusty-v8-release.yml",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 0,
+      "patch_excerpt": "@@ -89,72 +89,84 @@ jobs:\n             platform: linux_amd64\n             sandbox: false\n             target: x86_64-unknown-linux-gnu\n+            v8_cpu: x64\n             variant: release\n           - runner: ubuntu-24.04\n             bazel_config: ci-v8\n             platform: linux_amd64\n             sandbox: true\n             target: x86_64-unknown-linux-gnu\n+            v8_cpu: x64\n             variant: ptrcomp-sandbox\n           - runner: ubuntu-24.04-arm\n             bazel_config: ci-v8\n             platform: linux_arm64\n             sandbox: false\n             target: aarch64-unknown-linux-gnu\n+            v8_cpu: arm64\n             variant: release\n           - runner: ubuntu-24.04-arm\n             bazel_config: ci-v8\n             platform: linux_arm64\n             sandbox: true\n             target: aarch64-unknown-linux-gnu\n+            v8_cpu: arm64\n             variant: ptrco...",
+      "path": ".github/workflows/v8-canary.yml",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 16,
+      "patch_excerpt": "@@ -415,18 +415,18 @@ crate.annotation(\n \n inject_repo(crate, \"alsa_lib\")\n \n-bazel_dep(name = \"v8\", version = \"14.7.173.20\")\n+bazel_dep(name = \"v8\", version = \"14.9.207.2\")\n archive_override(\n     module_name = \"v8\",\n-    integrity = \"sha256-v/x6I4X38a2wckzUIft3Dh0SUdkuOTokwxyF7lzW8Lc=\",\n+    integrity = \"sha256-tflbZE5srqal6leMxJjK/ZQtwpF96OMGJ6avd5lice4=\",\n     patch_strip = 3,\n     patches = [\n         \"//patches:v8_module_deps.patch\",\n         \"//patches:v8_bazel_rules.patch\",\n         \"//patches:v8_source_portability.patch\",\n     ],\n-    strip_prefix = \"v8-14.7.173.20\",\n-    urls = [\"https://github.com/v8/v8/archive/refs/tags/14.7.173.20.tar.gz\"],\n+    strip_prefix = \"v8-14.9.207.2\",\n+    urls = [\"https://github.com/v8/v8/archive/refs/tags/14.9.207.2.tar.gz\"],\n )\n \n http_archive(\n@@ -439,20 +439,20 @@ http_archive(\n )\n \n http_archive(\n-    name = \"v8_crate_147_4_0\",\n+    name = \"v8_...",
+      "path": "MODULE.bazel",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1704,7 +1704,7 @@\n       \"utf8_iter_1.0.4\": \"{\\\"dependencies\\\":[],\\\"features\\\":{}}\",\n       \"utf8parse_0.2.2\": \"{\\\"dependencies\\\":[],\\\"features\\\":{\\\"default\\\":[],\\\"nightly\\\":[]}}\",\n       \"uuid_1.20.0\": \"{\\\"dependencies\\\":[{\\\"name\\\":\\\"arbitrary\\\",\\\"optional\\\":true,\\\"req\\\":\\\"^1.1.3\\\"},{\\\"default_features\\\":false,\\\"name\\\":\\\"atomic\\\",\\\"optional\\\":true,\\\"req\\\":\\\"^0.6\\\"},{\\\"default_features\\\":false,\\\"name\\\":\\\"borsh\\\",\\\"optional\\\":true,\\\"req\\\":\\\"^1\\\"},{\\\"default_features\\\":false,\\\"name\\\":\\\"borsh-derive\\\",\\\"optional\\\":true,\\\"req\\\":\\\"^1\\\"},{\\\"features\\\":[\\\"derive\\\"],\\\"name\\\":\\\"bytemuck\\\",\\\"optional\\\":true,\\\"req\\\":\\\"^1.20.0\\\"},{\\\"name\\\":\\\"getrandom\\\",\\\"optional\\\":true,\\\"req\\\":\\\"^0.3\\\",\\\"target\\\":\\\"cfg(not(all(target_arch = \\\\\\\"wasm32\\\\\\\", any(target_os = \\\\\\\"unknown\\\\\\\", target_os = \\\\\\\"none\\\\\\\"))))\\\"},{\\\"default_features\\\":false,\\\"name\\\":\\\"js-sys\\\",\\\"optional\\\":true,\\\"req\\\":\\\"^0.3\\\",\\\"target...",
+      "path": "MODULE.bazel.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -14064,9 +14064,9 @@ dependencies = [\n \n [[package]]\n name = \"v8\"\n-version = \"147.4.0\"\n+version = \"149.2.0\"\n source = \"registry+https://github.com/rust-lang/crates.io-index\"\n-checksum = \"2df8fffd507fb18ed000673a83d937f58e60fb07f3306b2274284125b15137cd\"\n+checksum = \"46dccf61a364b61bbaac70a8ba64a1a1006e87123b7d62eaeec999a3ba31ecdb\"\n dependencies = [\n  \"bindgen\",\n  \"bitflags 2.10.0\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -424,7 +424,7 @@ unicode-width = \"0.2\"\n url = \"2\"\n urlencoding = \"2.1\"\n uuid = \"1\"\n-v8 = \"=147.4.0\"\n+v8 = \"=149.2.0\"\n vt100 = \"0.16.2\"\n walkdir = \"2.5.0\"\n webbrowser = \"1.0\"",
+      "path": "codex-rs/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 37,
+      "deletions": 38,
+      "patch_excerpt": "@@ -3,11 +3,11 @@\n # Scope: Bazel BUILD/defs/BUILD.icu integration only, including dependency\n # wiring, generated sources, and visibility; no standalone V8 source patching.\n \n-diff --git a/orig/v8-14.6.202.11/bazel/defs.bzl b/mod/v8-14.6.202.11/bazel/defs.bzl\n-index 9648e4a..88efd41 100644\n---- a/orig/v8-14.6.202.11/bazel/defs.bzl\n-+++ b/mod/v8-14.6.202.11/bazel/defs.bzl\n-@@ -33,9 +33,21 @@\n+diff --git a/orig/v8-14.9.207.2/bazel/defs.bzl b/mod/v8-14.9.207.2/bazel/defs.bzl\n+index bbe1495..6673518 100644\n+--- a/orig/v8-14.9.207.2/bazel/defs.bzl\n++++ b/mod/v8-14.9.207.2/bazel/defs.bzl\n+@@ -33,9 +33,21 @@ _create_option_int = rule(\n  )\n  \n  def v8_flag(name, default = False):\n@@ -32,7 +32,7 @@ index 9648e4a..88efd41 100644\n  \n  def v8_string(name, default = \"\"):\n      _create_option_string(name = name, build_setting_default = default)\n-@@ -97,7 +109,13 @@\n+@@ -97,7 +109,13 @@ v8_config = ru...",
+      "path": "patches/v8_bazel_rules.patch",
+      "status": "modified"
+    },
+    {
+      "additions": 82,
+      "deletions": 67,
+      "patch_excerpt": "@@ -3,14 +3,25 @@\n # Scope: upstream MODULE.bazel only; affects external repo resolution and Bazel\n # module wiring, not V8 source files.\n \n-diff --git a/orig/v8-14.6.202.11/MODULE.bazel b/mod/v8-14.6.202.11/MODULE.bazel\n---- a/orig/v8-14.6.202.11/MODULE.bazel\n-+++ b/mod/v8-14.6.202.11/MODULE.bazel\n-@@ -8,7 +8,65 @@\n+diff --git a/orig/v8-14.9.207.2/MODULE.bazel b/mod/v8-14.9.207.2/MODULE.bazel\n+index b8bf8bd..573f463 100644\n+--- a/orig/v8-14.9.207.2/MODULE.bazel\n++++ b/mod/v8-14.9.207.2/MODULE.bazel\n+@@ -8,193 +8,67 @@ bazel_dep(name = \"rules_cc\", version = \"0.2.0\")\n  bazel_dep(name = \"rules_python\", version = \"1.0.0\")\n  bazel_dep(name = \"platforms\", version = \"1.0.0\")\n  bazel_dep(name = \"abseil-cpp\", version = \"20250814.0\")\n -bazel_dep(name = \"highway\", version = \"1.2.0\")\n+-\n+-pip = use_extension(\"@rules_python//python/extensions:pip.bzl\", \"pip\")\n+-pip.parse(\n+-    hub_name = \"v8_python...",
+      "path": "patches/v8_module_deps.patch",
+      "status": "modified"
+    },
+    {
+      "additions": 39,
+      "deletions": 39,
+      "patch_excerpt": "@@ -2,10 +2,10 @@\n # Scope: minimal source-level portability fixes only, such as libexecinfo guards,\n # weak glibc symbol handling, and warning annotations; no dependency\n # include-path rewrites or intentional V8 feature changes.\n-diff --git a/orig/v8-14.6.202.11/src/base/bits.h b/mod/v8-14.6.202.11/src/base/bits.h\n+diff --git a/orig/v8-14.9.207.2/src/base/bits.h b/mod/v8-14.9.207.2/src/base/bits.h\n index 179a10f..4791e96 100644\n---- a/orig/v8-14.6.202.11/src/base/bits.h\n-+++ b/mod/v8-14.6.202.11/src/base/bits.h\n+--- a/orig/v8-14.9.207.2/src/base/bits.h\n++++ b/mod/v8-14.9.207.2/src/base/bits.h\n @@ -270,11 +270,17 @@ inline constexpr uint32_t RoundDownToPowerOfTwo32(uint32_t value) {\n  }\n  \n@@ -24,10 +24,10 @@ index 179a10f..4791e96 100644\n  inline constexpr uint32_t RotateLeft32(uint32_t value, uint32_t shift) {\n    return (value << shift) | (value >> ((32 - shift) & 31));\n  }\n-diff --g...",
+      "path": "patches/v8_source_portability.patch",
+      "status": "modified"
+    },
+    {
+      "additions": 115,
+      "deletions": 115,
+      "patch_excerpt": "@@ -30,26 +30,26 @@ config_setting(\n )\n \n alias(\n-    name = \"v8_147_4_0_x86_64_pc_windows_msvc\",\n-    actual = \"@rusty_v8_147_4_0_x86_64_pc_windows_msvc_archive//file\",\n+    name = \"v8_149_2_0_x86_64_pc_windows_msvc\",\n+    actual = \"@rusty_v8_149_2_0_x86_64_pc_windows_msvc_archive//file\",\n )\n \n alias(\n-    name = \"v8_147_4_0_aarch64_pc_windows_msvc\",\n-    actual = \"@rusty_v8_147_4_0_aarch64_pc_windows_msvc_archive//file\",\n+    name = \"v8_149_2_0_aarch64_pc_windows_msvc\",\n+    actual = \"@rusty_v8_149_2_0_aarch64_pc_windows_msvc_archive//file\",\n )\n \n alias(\n-    name = \"v8_147_4_0_aarch64_pc_windows_gnullvm\",\n+    name = \"v8_149_2_0_aarch64_pc_windows_gnullvm\",\n     # `rusty_v8` only ships prebuilt Windows archives for MSVC. Build the\n     # GNU-flavored archive in-tree so windows-gnullvm consumers can link\n     # against a matching ABI instead of trying to reuse the MSVC release.\n-    ac...",
+      "path": "third_party/v8/BUILD.bazel",
+      "status": "modified"
+    },
+    {
+      "additions": 23,
+      "deletions": 17,
+      "patch_excerpt": "@@ -5,23 +5,21 @@ Bazel consumer builds use:\n \n - upstream `denoland/rusty_v8` release archives on Windows MSVC\n - source-built V8 archives on Darwin, GNU Linux, musl Linux, and Windows GNU\n-- `openai/codex` release assets for published musl release pairs\n \n-Cargo builds still use prebuilt `rusty_v8` archives by default. Only Bazel\n-overrides `RUSTY_V8_ARCHIVE`/`RUSTY_V8_SRC_BINDING_PATH` in `MODULE.bazel` to\n-select source-built local archives for its consumer builds.\n+Local Cargo builds still use upstream prebuilt `rusty_v8` archives by default.\n+Selected Cargo CI, release, and package builds override\n+`RUSTY_V8_ARCHIVE`/`RUSTY_V8_SRC_BINDING_PATH` with Codex release assets. Bazel\n+sets those variables independently in `MODULE.bazel` to select source-built\n+local archives and bindings for its consumer builds.\n \n-Source-built Bazel V8 artifacts enable V8's in-process sandbox by default,...",
+      "path": "third_party/v8/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -111,10 +111,11 @@ cc_runtime_stage0_library(\n         \"//conditions:default\": [\"-fPIC\"],\n     }),\n     defines = [\n-        \"CR_LIBCXX_REVISION=7ab65651aed6802d2599dcb7a73b1f82d5179d05\",\n+        \"CR_LIBCXX_REVISION=99457fa555797f8c5ac3c076ca288d8481d3b23a\",\n         \"LIBCXX_BUILDING_LIBCXXABI\",\n         \"LIBC_NAMESPACE=__llvm_libc_cr\",\n         \"_LIBCPP_BUILDING_LIBRARY\",\n+        \"_LIBCPP_CONSTINIT=constinit\",\n         \"_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS\",\n         \"_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE\",\n         \"_LIBCPP_INSTRUMENTED_WITH_ASAN=0\",",
+      "path": "third_party/v8/libcxx.BUILD.bazel",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -65,6 +65,7 @@ cc_runtime_stage0_library(\n     defines = [\n         \"LIBCXXABI_SILENT_TERMINATE\",\n         \"_LIBCPP_BUILDING_LIBRARY\",\n+        \"_LIBCPP_CONSTINIT=constinit\",\n         \"_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS\",\n         \"_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE\",\n         \"_LIBCPP_INSTRUMENTED_WITH_ASAN=0\",",
+      "path": "third_party/v8/libcxxabi.BUILD.bazel",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 2,
+      "patch_excerpt": "@@ -1,2 +0,0 @@\n-1fa3f94d9e09cff1f6bcce94c478e5cb072c0755f6a0357abadb9dd3b48d8127  rusty_v8_release_aarch64-pc-windows-msvc.lib.gz\n-e2827ff98b1a9d4c0343000fc5124ac30dfab3007bc0129c168c9355fc2fcd7c  rusty_v8_release_x86_64-pc-windows-msvc.lib.gz",
+      "path": "third_party/v8/rusty_v8_147_4_0.sha256",
+      "status": "removed"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,2 @@\n+923f2b6ccdc14526b814e171e34c9aafd7969f12304948857c6696d022f0fb3c  rusty_v8_release_aarch64-pc-windows-msvc.lib.gz\n+12b5a791b54e92f748738ad8d0d12dad8d281a2d836638ad1aa6678e3b855d9a  rusty_v8_release_x86_64-pc-windows-msvc.lib.gz",
+      "path": "third_party/v8/rusty_v8_149_2_0.sha256",
+      "status": "added"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "",
+    "labels": [],
+    "merged_at": "2026-06-06T21:27:23Z",
+    "number": 26464,
+    "state": "merged",
+    "title": "build(v8): update rusty_v8 to 149.2.0",
+    "url": "https://github.com/openai/codex/pull/26464"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
