@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26548",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[2 of 2] Finish moving goal runtime to extension",
+        "url": "https://github.com/openai/codex/pull/26548",
+        "meta": "Merged 2026-06-05T21:17:30Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26548",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26548.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex completed the move of thread goal behavior from core-owned runtime and built-in core tools into the goal extension and app-server GoalService path.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26548 says the goal behavior now uses the extension-backed runtime and old core goal implementation is removed.",
+    "The app-server thread goal processor now depends on codex_goal_extension::GoalService and goal request/update types.",
+    "Core goal runtime and built-in goal tool handler/spec files are removed.",
+    "The PR keeps the legacy <goal_context> compatibility path for old threads.",
+    "Extension goal updates are forwarded through FIFO async app-server notification ordering according to the PR body."
+  ],
+  "candidate_followups": [
+    "Audit Decodex assumptions about goal tool ownership before mirroring Codex goal state.",
+    "Treat goal runtime events as extension-owned when interpreting app-server notifications.",
+    "Avoid describing this as removal of all old goal context support because the PR keeps legacy <goal_context> compatibility."
+  ],
+  "social_notes": [
+    "Use an operator-impact framing if Publisher chooses to post: goals moved from core runtime to extension-backed GoalService routing.",
+    "Keep the candidate narrow and avoid implying new user commands."
+  ],
+  "caveats": [
+    "The PR is a runtime ownership migration, not a broad new end-user goal feature.",
+    "Legacy <goal_context> compatibility remains for old threads."
+  ]
+}

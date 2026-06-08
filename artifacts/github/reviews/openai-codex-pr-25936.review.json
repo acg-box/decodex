@@ -1,0 +1,62 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-25936",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "25936",
+    "commit_shas": [
+      "a4bd397630c74317c78f3998df30039adc9279d3"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Remove legacy remote plugin startup sync",
+        "url": "https://github.com/openai/codex/pull/25936",
+        "meta": "Merged 2026-06-05T23:33:01Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Remove legacy remote plugin startup sync",
+        "url": "https://github.com/openai/codex/commit/a4bd397630c74317c78f3998df30039adc9279d3"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-08T14:08:38Z",
+  "observed_change": "Codex removed the legacy startup remote plugin sync path that called /plugins/list while keeping current remote installed-bundle and catalog flows intact.",
+  "changed_surfaces": [
+    "core plugin manager remote sync API",
+    "app-server startup remote plugin sync marker task",
+    "legacy remote plugin list fetch types",
+    "plugin list tests for startup sync behavior"
+  ],
+  "user_visible_path": "Plugin users should no longer expect Codex startup to reconcile curated plugin cache/config through the old /plugins/list sync path; current /ps/plugins/installed and /ps/plugins/list flows remain the active remote paths.",
+  "control_plane_relevance": "Decodex plugin automation should not rely on legacy startup sync side effects or the removed sync_plugins_from_remote API when checking plugin inventory.",
+  "compatibility_risk": "Automation or tests expecting startup_remote_sync markers, sync_plugins_from_remote results, or /plugins/list reconciliation will break and should move to the current installed-bundle and catalog flows.",
+  "adoption_opportunity": "Treat explicit plugin inventory reads and current remote installed-bundle/catalog APIs as the durable path for Decodex plugin state checks.",
+  "community_value": "This has a narrow but concrete operator-impact angle because it names the removed legacy path and the still-supported replacement surfaces.",
+  "deprecated_or_breaking_notes": "The startup remote sync module, sync_plugins_from_remote API, related result/error types, marker task, and tests were removed.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #25936 says it removes the legacy startup remote plugin sync path that called /plugins/list.",
+    "The PR body says current remote installed bundle sync and remote catalog flows, /ps/plugins/installed and /ps/plugins/list, remain intact.",
+    "codex-rs/core-plugins/src/startup_remote_sync.rs is removed.",
+    "codex-rs/core-plugins/src/manager.rs removes startup_remote_sync wiring and sync_plugins_from_remote support.",
+    "codex-rs/core-plugins/src/lib.rs stops exporting PluginRemoteSyncError and RemotePluginSyncResult.",
+    "codex-rs/app-server/tests/suite/v2/plugin_list.rs removes the app_server_startup_remote_plugin_sync_runs_once test.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-25936.json records 8 changed files for the merged PR."
+  ],
+  "caveats": "The current remote installed bundle sync and remote catalog flows remain in scope; this is not a removal of remote plugin support overall.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Removed startup sync behavior can affect Decodex plugin inventory and compatibility assumptions."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The removed and retained plugin paths create a source-backed operator-impact note."
+    }
+  ]
+}
