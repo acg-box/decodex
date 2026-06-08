@@ -131,6 +131,11 @@ Manual commit and landing are separate narrow workflows:
 - Use `status` to inspect the local runtime snapshot for active lanes, retained local
   state, recovery worktrees, account-pool configuration, and the run ledger without
   refreshing live tracker, pull-request, or ChatGPT account usage observers.
+- For completed issue history, treat the Run Ledger outcome and projected
+  `history_lanes[].latest_run.status` as the primary issue-level result. Raw failed
+  attempts under `history_lanes[].attempts` are retained for diagnosis and should not
+  be read as current lane failure when the primary sections show no active, queued,
+  recovery, or post-review work for that issue.
 - Use `status --live` when the operator needs fresh Linear/GitHub observer readback
   before acting. Use `/api/accounts?refresh=1` for fresh ChatGPT account usage probes.
 - Use `run --dry-run` before live automation to validate project loading, issue
