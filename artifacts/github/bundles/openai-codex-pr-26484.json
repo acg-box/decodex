@@ -1,0 +1,198 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-04T23:11:22Z",
+      "message": "Add turn profiling analytics",
+      "sha": "155cc3a5172a6ada58c7d112634611e25ee2bea8",
+      "url": "https://github.com/openai/codex/commit/155cc3a5172a6ada58c7d112634611e25ee2bea8"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-04T23:20:53Z",
+      "message": "Flatten turn profiling fields",
+      "sha": "88dfb09395955c141a3dcd1a217be445d3ccbb25",
+      "url": "https://github.com/openai/codex/commit/88dfb09395955c141a3dcd1a217be445d3ccbb25"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-04T23:24:39Z",
+      "message": "Remove turn profile version",
+      "sha": "10ec681f4e950055e0ec7f5a32710d08c3cb019e",
+      "url": "https://github.com/openai/codex/commit/10ec681f4e950055e0ec7f5a32710d08c3cb019e"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-04T23:35:26Z",
+      "message": "Start tool timing at call recognition",
+      "sha": "3223fb7e0d7478311108a6dc866c137dc1a81f27",
+      "url": "https://github.com/openai/codex/commit/3223fb7e0d7478311108a6dc866c137dc1a81f27"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-04T23:46:40Z",
+      "message": "Keep turn profiling outside tool runtime",
+      "sha": "d7ab5824adb0b46c4385dceda8ce7d83347975d1",
+      "url": "https://github.com/openai/codex/commit/d7ab5824adb0b46c4385dceda8ce7d83347975d1"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-04T23:54:11Z",
+      "message": "Keep turn profiling on phase boundaries",
+      "sha": "e3493e1e09f1244ed150befc6a19b2f24bd4fab4",
+      "url": "https://github.com/openai/codex/commit/e3493e1e09f1244ed150befc6a19b2f24bd4fab4"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-05T00:03:31Z",
+      "message": "Simplify turn profiling state",
+      "sha": "7e3c88efe8f7301c9a41f1cafd7990e896079019",
+      "url": "https://github.com/openai/codex/commit/7e3c88efe8f7301c9a41f1cafd7990e896079019"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-05T00:05:47Z",
+      "message": "Add turn profiling end-to-end coverage",
+      "sha": "75ef521bcb06601924266203fa6934aee8c55da8",
+      "url": "https://github.com/openai/codex/commit/75ef521bcb06601924266203fa6934aee8c55da8"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-05T05:27:25Z",
+      "message": "codex: fix CI failure on PR #26484",
+      "sha": "db43c9b6ef8fc4837a76d6896c73eac827a361bb",
+      "url": "https://github.com/openai/codex/commit/db43c9b6ef8fc4837a76d6896c73eac827a361bb"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-05T05:31:11Z",
+      "message": "Keep CI fix scoped to end-to-end test",
+      "sha": "da3d62da3d7a0d4c7b8ca4aae4e5428f6339027a",
+      "url": "https://github.com/openai/codex/commit/da3d62da3d7a0d4c7b8ca4aae4e5428f6339027a"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-05T15:49:36Z",
+      "message": "codex: address PR review feedback (#26484)",
+      "sha": "27011d2c134732e4d40cd6a82c3a7b443261126c",
+      "url": "https://github.com/openai/codex/commit/27011d2c134732e4d40cd6a82c3a7b443261126c"
+    },
+    {
+      "author": "aibrahim-oai",
+      "committed_at": "2026-06-05T16:31:50Z",
+      "message": "Merge branch 'main' into codex/turn-profiling",
+      "sha": "5496ce26506cb710a9b8c2bf534a03f8a4179b5a",
+      "url": "https://github.com/openai/codex/commit/5496ce26506cb710a9b8c2bf534a03f8a4179b5a"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "RAII",
+    "DEFAULT_READ_TIMEOUT",
+    "JSONRPCR",
+    "V2U",
+    "UNIX_EPOCH",
+    "TURN_TTFM_DURATION_METRIC",
+    "MAX",
+    "ZERO"
+  ],
+  "files": [
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -63,6 +63,8 @@ use crate::facts::SubAgentThreadStartedInput;\n use crate::facts::ThreadInitializationMode;\n use crate::facts::TrackEventsContext;\n use crate::facts::TurnCodexErrorFact;\n+use crate::facts::TurnProfile;\n+use crate::facts::TurnProfileFact;\n use crate::facts::TurnResolvedConfigFact;\n use crate::facts::TurnStatus;\n use crate::facts::TurnSteerRequestError;\n@@ -396,6 +398,18 @@ fn sample_turn_resolved_config(thread_id: &str, turn_id: &str) -> TurnResolvedCo\n     }\n }\n \n+fn sample_turn_profile() -> TurnProfile {\n+    TurnProfile {\n+        before_first_sampling_ms: 100,\n+        sampling_ms: 700,\n+        between_sampling_overhead_ms: 50,\n+        tool_blocking_ms: 250,\n+        after_last_sampling_ms: 134,\n+        sampling_request_count: 2,\n+        sampling_retry_count: 1,\n+    }\n+}\n+\n fn sample_turn_steer_request(\n     thread_id: &str,\n     expected_turn_id: &str,\n@@ -649,6...",
+      "path": "codex-rs/analytics/src/analytics_client_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -19,6 +19,7 @@ use crate::facts::SkillInvokedInput;\n use crate::facts::SubAgentThreadStartedInput;\n use crate::facts::TrackEventsContext;\n use crate::facts::TurnCodexErrorFact;\n+use crate::facts::TurnProfileFact;\n use crate::facts::TurnResolvedConfigFact;\n use crate::facts::TurnTokenUsageFact;\n use crate::reducer::AnalyticsReducer;\n@@ -257,6 +258,12 @@ impl AnalyticsEventsClient {\n         )));\n     }\n \n+    pub fn track_turn_profile(&self, fact: TurnProfileFact) {\n+        self.record_fact(AnalyticsFact::Custom(CustomAnalyticsFact::TurnProfile(\n+            Box::new(fact),\n+        )));\n+    }\n+\n     pub fn track_turn_codex_error(&self, fact: TurnCodexErrorFact) {\n         self.record_fact(AnalyticsFact::Custom(CustomAnalyticsFact::TurnCodexError(\n             Box::new(fact),",
+      "path": "codex-rs/analytics/src/client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -817,6 +817,13 @@ pub(crate) struct CodexTurnEventParams {\n     pub(crate) output_tokens: Option<i64>,\n     pub(crate) reasoning_output_tokens: Option<i64>,\n     pub(crate) total_tokens: Option<i64>,\n+    pub(crate) before_first_sampling_ms: u64,\n+    pub(crate) sampling_ms: u64,\n+    pub(crate) between_sampling_overhead_ms: u64,\n+    pub(crate) tool_blocking_ms: u64,\n+    pub(crate) after_last_sampling_ms: u64,\n+    pub(crate) sampling_request_count: u32,\n+    pub(crate) sampling_retry_count: u32,\n     pub(crate) duration_ms: Option<u64>,\n     pub(crate) started_at: Option<u64>,\n     pub(crate) completed_at: Option<u64>,",
+      "path": "codex-rs/analytics/src/events.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 18,
+      "deletions": 0,
+      "patch_excerpt": "@@ -104,6 +104,23 @@ pub struct TurnTokenUsageFact {\n     pub token_usage: TokenUsage,\n }\n \n+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]\n+pub struct TurnProfile {\n+    pub before_first_sampling_ms: u64,\n+    pub sampling_ms: u64,\n+    pub between_sampling_overhead_ms: u64,\n+    pub tool_blocking_ms: u64,\n+    pub after_last_sampling_ms: u64,\n+    pub sampling_request_count: u32,\n+    pub sampling_retry_count: u32,\n+}\n+\n+#[derive(Clone)]\n+pub struct TurnProfileFact {\n+    pub turn_id: String,\n+    pub profile: TurnProfile,\n+}\n+\n #[derive(Clone)]\n pub struct TurnCodexErrorFact {\n     pub(crate) turn_id: String,\n@@ -476,6 +493,7 @@ pub(crate) enum CustomAnalyticsFact {\n     GuardianReview(Box<GuardianReviewEventParams>),\n     TurnResolvedConfig(Box<TurnResolvedConfigFact>),\n     TurnTokenUsage(Box<TurnTokenUsageFact>),\n+    TurnProfile(Box<TurnProfileFact>),\n     TurnCodexError(Box<Tu...",
+      "path": "codex-rs/analytics/src/facts.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -39,6 +39,8 @@ pub use facts::SubAgentThreadStartedInput;\n pub use facts::ThreadInitializationMode;\n pub use facts::TrackEventsContext;\n pub use facts::TurnCodexErrorFact;\n+pub use facts::TurnProfile;\n+pub use facts::TurnProfileFact;\n pub use facts::TurnResolvedConfigFact;\n pub use facts::TurnStatus;\n pub use facts::TurnSteerRejectionReason;",
+      "path": "codex-rs/analytics/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 52,
+      "deletions": 99,
+      "patch_excerpt": "@@ -72,6 +72,8 @@ use crate::facts::SubAgentThreadStartedInput;\n use crate::facts::ThreadInitializationMode;\n use crate::facts::TurnCodexError;\n use crate::facts::TurnCodexErrorFact;\n+use crate::facts::TurnProfile;\n+use crate::facts::TurnProfileFact;\n use crate::facts::TurnResolvedConfigFact;\n use crate::facts::TurnStatus;\n use crate::facts::TurnSteerRejectionReason;\n@@ -316,13 +318,15 @@ struct CompletedTurnState {\n     duration_ms: Option<u64>,\n }\n \n+#[derive(Default)]\n struct TurnState {\n     connection_id: Option<u64>,\n     thread_id: Option<String>,\n     num_input_images: Option<usize>,\n     resolved_config: Option<TurnResolvedConfigFact>,\n     started_at: Option<u64>,\n     token_usage: Option<TokenUsage>,\n+    profile: Option<TurnProfile>,\n     completed: Option<CompletedTurnState>,\n     codex_error: Option<TurnCodexError>,\n     latest_diff: Option<String>,\n@@ -464,6 +468,9 @@ impl...",
+      "path": "codex-rs/analytics/src/reducer.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 150,
+      "deletions": 2,
+      "patch_excerpt": "@@ -9,6 +9,7 @@ use app_test_support::create_final_assistant_message_sse_response;\n use app_test_support::create_mock_responses_server_repeating_assistant;\n use app_test_support::create_mock_responses_server_sequence;\n use app_test_support::create_mock_responses_server_sequence_unchecked;\n+use app_test_support::create_request_user_input_sse_response;\n use app_test_support::create_shell_command_sse_response;\n use app_test_support::format_with_current_shell_display;\n use app_test_support::to_response;\n@@ -78,6 +79,7 @@ use std::collections::HashMap;\n use std::path::Path;\n use tempfile::TempDir;\n use tokio::time::timeout;\n+use wiremock::ResponseTemplate;\n \n use super::analytics::mount_analytics_capture;\n use super::analytics::wait_for_analytics_event;\n@@ -819,15 +821,31 @@ async fn thread_start_omits_empty_instruction_overrides_from_model_request() ->\n \n #[tokio::test]\n async fn turn_start_...",
+      "path": "codex-rs/app-server/tests/suite/v2/turn_start.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1083,6 +1083,7 @@ async fn run_sampling_request(\n             ResponsesStreamRequest::Sampling,\n         )\n         .await?;\n+        turn_context.turn_timing_state.record_sampling_retry();\n     }\n }\n \n@@ -1795,6 +1796,7 @@ async fn try_run_sampling_request(\n         turn_context.model_info.slug.as_str(),\n         turn_context.provider.info().name.as_str(),\n     );\n+    let sampling_timing_guard = turn_context.turn_timing_state.begin_sampling();\n     let mut stream = client_session\n         .stream(\n             prompt,\n@@ -2208,6 +2210,7 @@ async fn try_run_sampling_request(\n             }\n         }\n     };\n+    drop(sampling_timing_guard);\n \n     flush_assistant_text_segments_all(\n         &sess,\n@@ -2217,7 +2220,13 @@ async fn try_run_sampling_request(\n     )\n     .await;\n \n+    let tool_blocking_timing_guard = if in_flight.is_empty() {\n+        None\n+    } else {\n+        Some(t...",
+      "path": "codex-rs/core/src/session/turn.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 0,
+      "patch_excerpt": "@@ -33,6 +33,7 @@ use crate::session::turn_context::TurnContext;\n use crate::state::ActiveTurn;\n use crate::state::RunningTask;\n use crate::state::TaskKind;\n+use codex_analytics::TurnProfileFact;\n use codex_analytics::TurnTokenUsageFact;\n use codex_login::AuthManager;\n use codex_models_manager::manager::SharedModelsManager;\n@@ -751,6 +752,12 @@ impl Session {\n             .turn_timing_state\n             .time_to_first_token_ms()\n             .await;\n+        self.services\n+            .analytics_events_client\n+            .track_turn_profile(TurnProfileFact {\n+                turn_id: turn_context.sub_id.clone(),\n+                profile: turn_context.turn_timing_state.complete_profile(),\n+            });\n         self.emit_turn_stop_lifecycle(turn_context.extension_data.as_ref())\n             .await;\n         if let Err(err) = self\n@@ -868,6 +875,12 @@ impl Session {\n             .turn_...",
+      "path": "codex-rs/core/src/tasks/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 191,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,8 +1,11 @@\n+use std::sync::Arc;\n+use std::sync::Mutex as StdMutex;\n use std::time::Duration;\n use std::time::Instant;\n use std::time::SystemTime;\n use std::time::UNIX_EPOCH;\n \n+use codex_analytics::TurnProfile;\n use codex_otel::TURN_TTFM_DURATION_METRIC;\n use codex_protocol::items::TurnItem;\n use codex_protocol::models::ResponseItem;\n@@ -39,6 +42,7 @@ pub(crate) async fn record_turn_ttfm_metric(turn_context: &TurnContext, item: &T\n #[derive(Debug, Default)]\n pub(crate) struct TurnTimingState {\n     state: Mutex<TurnTimingStateInner>,\n+    profile: StdMutex<TurnProfileState>,\n }\n \n #[derive(Debug, Default)]\n@@ -49,6 +53,35 @@ struct TurnTimingStateInner {\n     first_message_at: Option<Instant>,\n }\n \n+#[derive(Debug, Default)]\n+struct TurnProfileState {\n+    started_at: Option<Instant>,\n+    last_transition_at: Option<Instant>,\n+    active_phase: Option<TurnProfilePhase>,\n+    seen_s...",
+      "path": "codex-rs/core/src/turn_timing.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 41,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,13 +1,17 @@\n+use codex_analytics::TurnProfile;\n use codex_protocol::items::AgentMessageItem;\n use codex_protocol::items::TurnItem;\n use codex_protocol::models::ContentItem;\n use codex_protocol::models::FunctionCallOutputPayload;\n use codex_protocol::models::ResponseItem;\n use pretty_assertions::assert_eq;\n+use std::time::Duration;\n use std::time::Instant;\n use std::time::SystemTime;\n use std::time::UNIX_EPOCH;\n \n+use super::TurnProfilePhase;\n+use super::TurnProfileState;\n use super::TurnTimingState;\n use super::response_item_records_turn_ttft;\n use crate::ResponseEvent;\n@@ -146,3 +150,40 @@ fn response_item_records_turn_ttft_ignores_empty_non_output_items() {\n         }\n     ));\n }\n+\n+#[test]\n+fn turn_profile_breaks_down_sampling_blocking_and_retry_overhead() {\n+    let started_at = Instant::now();\n+    let mut state = TurnProfileState::default();\n+    state.start(started_at);\n+\n+ ...",
+      "path": "codex-rs/core/src/turn_timing_tests.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#26484"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n\nAdd flat profiling fields to `codex_turn_event` so analytics can explain where turn wall-clock time is spent without changing tool execution behavior.\n\nThe profile reports:\n- time before the first sampling request\n- sampling time across all attempts and follow-ups\n- overhead between sampling requests\n- time blocked in the post-sampling tool drain\n- time after the final sampling request\n- sampling request and retry counts\n\n## Implementation\n\n- Extend the existing turn timing state with constant-memory phase accounting and one RAII phase guard.\n- Observe sampling and the existing post-sampling drain only at turn orchestration boundaries.\n- Keep tool runtime, tool futures, response item handling, and turn lifecycle values unchanged.\n- Add the profiling fields directly to the existing analytics turn event without changing app-server protocol or rollout persistence.\n- Use the existing turn `status` to distinguish completed, failed, and interrupted profiles.\n\nExact sampling/tool overlap is intentionally omitted because measuring tool completion accurately would require hooks in the tool execution path.\n\n## Validation\n\n- Add app-server end-to-end coverage for a single-sampling turn with no blocking tool work.\n- Add app-server end-to-end coverage for `request_user_input` blocking followed by a second sampling request.\n- CI is running on the PR; tests were not executed locally per repository guidance.\n",
+    "labels": [],
+    "merged_at": "2026-06-05T18:27:11Z",
+    "number": 26484,
+    "state": "merged",
+    "title": "[codex] Add turn profiling analytics",
+    "url": "https://github.com/openai/codex/pull/26484"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

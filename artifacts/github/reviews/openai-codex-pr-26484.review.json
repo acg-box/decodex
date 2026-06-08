@@ -1,0 +1,67 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26484",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26484",
+    "commit_shas": [
+      "155cc3a5172a6ada58c7d112634611e25ee2bea8",
+      "88dfb09395955c141a3dcd1a217be445d3ccbb25",
+      "10ec681f4e950055e0ec7f5a32710d08c3cb019e",
+      "3223fb7e0d7478311108a6dc866c137dc1a81f27",
+      "d7ab5824adb0b46c4385dceda8ce7d83347975d1",
+      "e3493e1e09f1244ed150befc6a19b2f24bd4fab4",
+      "7e3c88efe8f7301c9a41f1cafd7990e896079019",
+      "75ef521bcb06601924266203fa6934aee8c55da8",
+      "db43c9b6ef8fc4837a76d6896c73eac827a361bb",
+      "da3d62da3d7a0d4c7b8ca4aae4e5428f6339027a",
+      "27011d2c134732e4d40cd6a82c3a7b443261126c",
+      "5496ce26506cb710a9b8c2bf534a03f8a4179b5a"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Add turn profiling analytics",
+        "url": "https://github.com/openai/codex/pull/26484",
+        "meta": "Merged 2026-06-05T18:27:11Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Add turn profiling end-to-end coverage",
+        "url": "https://github.com/openai/codex/commit/75ef521bcb06601924266203fa6934aee8c55da8"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-08T02:21:54Z",
+  "observed_change": "Codex added flat turn-profiling fields to codex_turn_event analytics so turn wall-clock time can be split across sampling, overhead, post-sampling drain, and surrounding phases.",
+  "changed_surfaces": [
+    "analytics turn event fields",
+    "turn timing state and phase accounting",
+    "turn orchestration boundaries",
+    "app-server turn_start end-to-end tests"
+  ],
+  "user_visible_path": "There is no direct UI or protocol workflow change; analytics consumers gain a phase breakdown for completed, failed, and interrupted turns.",
+  "control_plane_relevance": "Decodex telemetry and scheduler-health work can use this as upstream evidence for turn-phase latency vocabulary, but it should not claim changed tool execution behavior.",
+  "compatibility_risk": "Analytics consumers that assume a fixed codex_turn_event field set should tolerate new flat profiling fields.",
+  "adoption_opportunity": "Map Decodex runtime telemetry to the same phase vocabulary only after confirming local analytics ingestion or dashboard needs.",
+  "community_value": "The change is useful release-rollup background for performance observability, but the PR is not strong enough for standalone public publishing.",
+  "deprecated_or_breaking_notes": "The PR body says tool runtime, tool futures, response item handling, turn lifecycle values, app-server protocol, and rollout persistence stay unchanged.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26484 states it adds flat profiling fields to codex_turn_event for explaining where turn wall-clock time is spent.",
+    "The PR body lists pre-first-sampling time, sampling time, inter-sampling overhead, post-sampling tool drain blocking time, post-final-sampling time, request counts, and retry counts.",
+    "codex-rs/core/src/turn_timing.rs is added with constant-memory phase accounting and an RAII phase guard.",
+    "codex-rs/analytics/src/events.rs and reducer/client tests are changed to carry the new flat profiling fields.",
+    "codex-rs/app-server/tests/suite/v2/turn_start.rs adds end-to-end coverage for single sampling and request_user_input blocking followed by a second sampling request."
+  ],
+  "caveats": "The PR intentionally omits exact sampling/tool overlap because measuring tool completion accurately would require hooks in the tool execution path.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The analytics vocabulary may inform Decodex telemetry work, but no public or implementation follow-up is immediate."
+    }
+  ]
+}
