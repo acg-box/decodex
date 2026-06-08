@@ -204,6 +204,9 @@ where
 	if !warnings.is_empty() {
 		hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
 	}
+
+	apply_terminal_history_ledger_outcomes(&mut snapshot);
+
 	if warnings.contains(&TRACKER_RATE_LIMIT_WARNING) {
 		let review_state_inspector = GhPullRequestReviewStateInspector {
 			github_token_env_var: Some(project.github().token_env_var().to_owned()),

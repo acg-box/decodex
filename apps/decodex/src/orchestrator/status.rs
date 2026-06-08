@@ -530,6 +530,7 @@ where
 		},
 		&mut snapshot,
 	)?;
+	apply_terminal_history_ledger_outcomes(&mut snapshot);
 	refresh_worktree_ownership(
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
@@ -780,6 +781,92 @@ fn hydrate_history_lanes_from_local_ledger(
 	}
 
 	Ok(())
+}
+
+fn apply_terminal_history_ledger_outcomes(snapshot: &mut OperatorStatusSnapshot) {
+	let mut terminal_history_keys = HashSet::new();
+
+	for lane in &mut snapshot.history_lanes {
+		if !history_ledger_outcome_supersedes_local_attempts(&lane.ledger_outcome) {
+			continue;
+		}
+
+		terminal_history_keys.insert(history_lane_group_key(lane));
+
+		apply_terminal_history_ledger_outcome_to_latest_run(lane);
+	}
+
+	if terminal_history_keys.is_empty() {
+		return;
+	}
+
+	let active_run_ids = snapshot
+		.active_runs
+		.iter()
+		.map(|run| run.run_id.clone())
+		.collect::<HashSet<_>>();
+	let active_issue_keys = snapshot
+		.active_runs
+		.iter()
+		.map(operator_run_group_key)
+		.collect::<HashSet<_>>();
+
+	snapshot.recent_runs.retain(|run| {
+		let run_group_key = operator_run_group_key(run);
+
+		active_run_ids.contains(&run.run_id)
+			|| active_issue_keys.contains(&run_group_key)
+			|| !terminal_history_keys.contains(&run_group_key)
+	});
+}
+
+fn history_ledger_outcome_supersedes_local_attempts(
+	outcome: &OperatorHistoryLedgerOutcome,
+) -> bool {
+	outcome.ledger_status == "present"
+		&& matches!(
+			outcome.final_outcome.as_str(),
+			"cleanup_complete" | "closeout" | "landed"
+		)
+}
+
+fn apply_terminal_history_ledger_outcome_to_latest_run(lane: &mut OperatorHistoryLaneStatus) {
+	let final_outcome = lane.ledger_outcome.final_outcome.clone();
+	let final_event_at = lane.ledger_outcome.final_event_at.clone();
+
+	lane.latest_run.status = final_outcome.clone();
+	lane.latest_run.attempt_status = final_outcome;
+	lane.latest_run.phase = String::from("completed");
+	lane.latest_run.wait_reason = None;
+	lane.latest_run.current_operation = String::from("ledger_outcome");
+	lane.latest_run.continuation_pending = false;
+	lane.latest_run.active_lease = false;
+	lane.latest_run.queue_lease_state = String::from("not_held");
+	lane.latest_run.execution_liveness = String::from("not_running");
+	lane.latest_run.suspected_stall = false;
+	lane.latest_run.retry_kind = None;
+	lane.latest_run.next_retry_at = None;
+
+	if let Some(final_event_at) = final_event_at {
+		lane.latest_run.updated_at = final_event_at.clone();
+		lane.latest_run.last_run_activity_at = Some(final_event_at);
+	}
+}
+
+fn history_lane_group_key(lane: &OperatorHistoryLaneStatus) -> String {
+	let issue_id = lane.issue_id.trim();
+
+	if !issue_id.is_empty() && !issue_id.eq_ignore_ascii_case("unknown") {
+		return issue_id.to_ascii_uppercase();
+	}
+
+	let issue_key = lane.issue_key.trim();
+
+	if !issue_key.is_empty() && !issue_key.eq_ignore_ascii_case("unknown") {
+		return issue_key.to_ascii_uppercase();
+	}
+
+	operator_run_group_key(&lane.latest_run)
 }
 
 fn refresh_worktree_ownership(
@@ -1114,6 +1201,7 @@ fn project_last_activity_at(snapshot: &OperatorStatusSnapshot) -> Option<String>
 		.active_runs
 		.iter()
 		.chain(snapshot.recent_runs.iter())
+		.chain(snapshot.history_lanes.iter().map(|lane| &lane.latest_run))
 		.flat_map(|run| {
 			[
 				run.last_progress_at.as_deref(),
