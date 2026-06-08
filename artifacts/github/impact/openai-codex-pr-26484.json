@@ -1,0 +1,44 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26484",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Add turn profiling analytics",
+        "url": "https://github.com/openai/codex/pull/26484",
+        "meta": "Merged 2026-06-05T18:27:11Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26484",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26484.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex added flat turn-profiling fields to codex_turn_event analytics so turn wall-clock time can be split across sampling, overhead, post-sampling drain, and surrounding phases.",
+  "public_signal_decision": "skip",
+  "control_plane_impact": "watch",
+  "publisher_angle": "none",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR body says the profiling fields are added directly to the existing analytics turn event.",
+    "The implementation observes sampling and post-sampling drain at turn orchestration boundaries.",
+    "The PR explicitly keeps tool runtime, tool futures, response item handling, turn lifecycle values, app-server protocol, and rollout persistence unchanged.",
+    "End-to-end tests cover a single-sampling turn and request_user_input blocking followed by a second sampling request."
+  ],
+  "candidate_followups": [
+    "Use the phase vocabulary as reference material if Decodex scheduler-health or live HUD telemetry needs comparable turn-latency buckets.",
+    "Avoid publishing a standalone signal unless a later release note exposes these analytics to operators."
+  ],
+  "social_notes": [
+    "Do not present as a user-facing performance improvement.",
+    "Use only as background evidence in a broader observability rollup."
+  ],
+  "caveats": [
+    "The PR says tests were not executed locally per repository guidance.",
+    "Exact sampling/tool overlap is intentionally omitted."
+  ]
+}
