@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26490",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Use standalone tools for Responses Lite",
+        "url": "https://github.com/openai/codex/pull/26490",
+        "meta": "Merged 2026-06-06T00:23:40Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26490",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26490.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex routes web search and image generation through standalone Codex-owned executors for Responses Lite models instead of relying on hosted Responses tools.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "practical_explainer",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26490 says Responses Lite does not execute hosted Responses tools and needs Codex-owned standalone executors.",
+    "spec_plan.rs suppresses hosted model tool specs when use_responses_lite is true.",
+    "Responses Lite tests cover standalone fallback behavior.",
+    "Web-search and image-generation extensions now compute standalone availability from provider/config state.",
+    "The PR validation includes core, app-server, web-search extension, and image-generation extension tests."
+  ],
+  "candidate_followups": [
+    "Represent hosted Responses tools and standalone Codex executors as separate Control Plane capabilities.",
+    "Check Decodex readbacks for Responses Lite sessions so tool availability is not inferred solely from hosted tool support.",
+    "Use this PR as public explanation material for why Responses Lite tool execution may look different from hosted Responses tool execution."
+  ],
+  "social_notes": [
+    "Lead with the practical distinction: Responses Lite does not execute hosted Responses tools, so Codex uses standalone executors for web search and image generation.",
+    "Mention that availability still depends on provider, model, config, and extension gates."
+  ],
+  "caveats": [
+    "Standalone tool availability remains provider/config/model gated.",
+    "This does not mean every Responses Lite session always exposes both web search and image generation."
+  ]
+}
