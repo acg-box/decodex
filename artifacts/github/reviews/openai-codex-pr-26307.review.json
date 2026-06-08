@@ -1,0 +1,66 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26307",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26307",
+    "commit_shas": [
+      "1069e2b232186a41062acb09e6a8618bf38f39c0",
+      "e81eeb17681260aa57a674008396a9f28c72b523",
+      "733bce9026a455d58beb3767aa1b776ebefb35b8",
+      "a4ae296709b6b998f5084fdbd977165a59ef1f82",
+      "ec258935d84587f16b1dd7ce7c6dfa986ad9a113",
+      "ca363cb953a62ef24d7b3e0ab845b77d8995c973",
+      "c86ad28615e8eff9a0e7bce6243093e2c645566e"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Respect Windows sandbox backend in exec policy",
+        "url": "https://github.com/openai/codex/pull/26307",
+        "meta": "Merged 2026-06-05T18:20:52Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Add Windows exec policy integration coverage",
+        "url": "https://github.com/openai/codex/commit/ca363cb953a62ef24d7b3e0ab845b77d8995c973"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-08T02:21:54Z",
+  "observed_change": "Codex now threads the effective Windows sandbox level through exec-policy decisions so managed filesystem restrictions are evaluated differently when a real Windows sandbox backend is enabled or disabled.",
+  "changed_surfaces": [
+    "core exec-policy approval decisions",
+    "shell and unified exec runtime policy plumbing",
+    "Windows sandbox configuration handling",
+    "exec-policy unit and integration coverage"
+  ],
+  "user_visible_path": "On Windows, benign commands under managed read-only sandbox intent can be allowed when windows.sandbox is enabled, while the same managed restrictions stay conservative when the sandbox backend is disabled.",
+  "control_plane_relevance": "Decodex sandbox and permission-profile guidance should distinguish configured filesystem intent from an actually enforced Windows sandbox backend.",
+  "compatibility_risk": "Any Decodex policy mirror that treats managed filesystem restrictions as enforced without checking Windows sandbox backend state can become too permissive or too strict.",
+  "adoption_opportunity": "Use the upstream split between enabled sandbox backend and disabled configuration intent when designing Decodex Windows probes or permission-profile readbacks.",
+  "community_value": "This is a useful practical watch item for Windows Codex operators because it clarifies why the same filesystem policy can produce different approval behavior.",
+  "deprecated_or_breaking_notes": "The PR removes cwd-sensitive read-only heuristics and stale cwd plumbing from exec-policy approval contexts.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26307 states Windows managed filesystem permissions can now be backed by a real Windows sandbox and the old exec-policy path treated managed read-only as if no backend existed.",
+    "The PR body says effective WindowsSandboxLevel is threaded into shell, unified exec, and intercepted shell exec approval decisions.",
+    "codex-rs/core/src/exec_policy.rs and codex-rs/core/src/tools/runtimes/shell/unix_escalation.rs are changed in the normalized bundle.",
+    "codex-rs/core/src/exec_policy_windows_tests.rs adds Windows coverage for enabled-sandbox and disabled-backend behavior, including writable-root managed profiles.",
+    "The PR validation reports just test -p codex-core exec_policy with 100 passed and 10 leaky plus empirical PowerShell probes for enabled and disabled Windows sandbox behavior."
+  ],
+  "caveats": "The behavior is Windows-specific; Decodex should not generalize the no-backend branch to Unix sandbox policy.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The change affects sandbox and permission-profile compatibility assumptions."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should audit any Windows sandbox wording or policy readbacks that collapse configured intent and enforced backend state."
+    }
+  ]
+}

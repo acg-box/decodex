@@ -1,0 +1,117 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "charliemarsh-oai",
+      "committed_at": "2026-06-04T20:06:10Z",
+      "message": "Reuse plugin discovery during startup",
+      "sha": "409e0170dd329a7b62595db89b51bdf6565a2a8d",
+      "url": "https://github.com/openai/codex/commit/409e0170dd329a7b62595db89b51bdf6565a2a8d"
+    },
+    {
+      "author": "charliemarsh-oai",
+      "committed_at": "2026-06-04T21:21:33Z",
+      "message": "Overlap plugin and model discovery during startup",
+      "sha": "78ae0c5dfaddb1d1ef185d4830306799dcd3782d",
+      "url": "https://github.com/openai/codex/commit/78ae0c5dfaddb1d1ef185d4830306799dcd3782d"
+    },
+    {
+      "author": "charliemarsh-oai",
+      "committed_at": "2026-06-04T23:04:55Z",
+      "message": "Fix plugin cache invalidation race",
+      "sha": "13eb2919b40b3df8179e40204dd0ca15448769f5",
+      "url": "https://github.com/openai/codex/commit/13eb2919b40b3df8179e40204dd0ca15448769f5"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "TUI",
+    "MCP",
+    "DEFAULT_TIMEOUT",
+    "CONFIG_TOML_FILE",
+    "JSONRPC_INVALID_REQUEST",
+    "JSONRPCE"
+  ],
+  "files": [
+    {
+      "additions": 5,
+      "deletions": 3,
+      "patch_excerpt": "@@ -647,9 +647,11 @@ impl CatalogRequestProcessor {\n                 config.features.enabled(Feature::Plugins) && workspace_codex_plugins_enabled;\n             let plugin_hooks = if plugins_enabled {\n                 let plugins_input = config.plugins_config_input();\n-                plugins_manager\n-                    .plugin_hooks_for_layer_stack(&config.config_layer_stack, &plugins_input)\n-                    .await\n+                let plugin_outcome = plugins_manager.plugins_for_config(&plugins_input).await;\n+                codex_core_plugins::PluginHookLoadOutcome {\n+                    hook_sources: plugin_outcome.effective_plugin_hook_sources(),\n+                    hook_load_warnings: plugin_outcome.effective_plugin_hook_warnings(),\n+                }\n             } else {\n                 codex_core_plugins::PluginHookLoadOutcome::default()\n             };",
+      "path": "codex-rs/app-server/src/request_processors/catalog_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 78,
+      "deletions": 0,
+      "patch_excerpt": "@@ -264,6 +264,84 @@ async fn hooks_list_shows_discovered_plugin_hook() -> Result<()> {\n     Ok(())\n }\n \n+#[tokio::test]\n+async fn hooks_list_warms_plugin_capabilities_for_thread_start() -> Result<()> {\n+    let codex_home = TempDir::new()?;\n+    let cwd = TempDir::new()?;\n+    write_plugin_hook_config(\n+        codex_home.path(),\n+        r#\"{\n+  \"hooks\": {\n+    \"PreToolUse\": [\n+      {\n+        \"hooks\": [\n+          {\n+            \"type\": \"command\",\n+            \"command\": \"echo plugin hook\"\n+          }\n+        ]\n+      }\n+    ]\n+  }\n+}\"#,\n+    )?;\n+    let plugin_mcp_path = codex_home\n+        .path()\n+        .join(\"plugins/cache/test/demo/local/.mcp.json\");\n+    std::fs::write(\n+        &plugin_mcp_path,\n+        r#\"{\n+  \"mcpServers\": {\n+    \"plugin-server\": {\n+      \"url\": \"http://127.0.0.1:1/mcp\"\n+    }\n+  }\n+}\"#,\n+    )?;\n+\n+    let mut mcp = TestAppServer::new(codex_home.path(...",
+      "path": "codex-rs/app-server/tests/suite/v2/hooks_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 66,
+      "deletions": 20,
+      "patch_excerpt": "@@ -57,8 +57,9 @@ use codex_config::apply_user_plugin_config_edits;\n use codex_config::clear_user_plugin;\n use codex_config::set_user_plugin_enabled;\n use codex_config::types::PluginConfig;\n-use codex_config::version_for_toml;\n use codex_core_skills::SkillMetadata;\n+use codex_core_skills::config_rules::SkillConfigRules;\n+use codex_core_skills::config_rules::skill_config_rules_from_stack;\n use codex_hooks::plugin_hook_declarations;\n use codex_login::AuthManager;\n use codex_login::CodexAuth;\n@@ -403,7 +404,8 @@ pub struct PluginsManager {\n     featured_plugin_ids_cache: RwLock<Option<CachedFeaturedPluginIds>>,\n     configured_marketplace_upgrade_state: RwLock<ConfiguredMarketplaceUpgradeState>,\n     non_curated_cache_refresh_state: RwLock<NonCuratedCacheRefreshState>,\n-    cached_enabled_outcome: RwLock<Option<CachedPluginLoadOutcome>>,\n+    enabled_outcome_cache: RwLock<EnabledOutcomeCach...",
+      "path": "codex-rs/core-plugins/src/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 91,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1300,6 +1300,97 @@ async fn load_plugins_returns_empty_when_feature_disabled() {\n     assert_eq!(outcome, PluginLoadOutcome::default());\n }\n \n+#[tokio::test]\n+async fn plugin_cache_ignores_unrelated_session_overrides() {\n+    let codex_home = TempDir::new().unwrap();\n+    let plugin_root = codex_home\n+        .path()\n+        .join(\"plugins/cache\")\n+        .join(\"test/sample/local\");\n+    write_plugin(\n+        codex_home.path().join(\"plugins/cache/test\").as_path(),\n+        \"sample/local\",\n+        \"sample\",\n+    );\n+    write_file(\n+        &plugin_root.join(\".mcp.json\"),\n+        r#\"{\n+  \"mcpServers\": {\n+    \"sample\": {\n+      \"url\": \"https://sample.example/mcp\"\n+    }\n+  }\n+}\"#,\n+    );\n+\n+    let user_file = codex_home.path().join(CONFIG_TOML_FILE).abs();\n+    let user_config: toml::Value = toml::from_str(&plugin_config_toml(\n+        /*enabled*/ true, /*plugins_feature_enabled...",
+      "path": "codex-rs/core-plugins/src/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 4,
+      "patch_excerpt": "@@ -16,6 +16,7 @@ use crate::app_event::RealtimeAudioDeviceKind;\n #[cfg(target_os = \"windows\")]\n use crate::app_event::WindowsSandboxEnableMode;\n use crate::app_event_sender::AppEventSender;\n+use crate::app_server_session::AppServerBootstrap;\n use crate::app_server_session::AppServerSession;\n use crate::app_server_session::AppServerStartedThread;\n use crate::app_server_session::TurnPermissionsOverride;\n@@ -727,6 +728,8 @@ impl App {\n         app_server_target: AppServerTarget,\n         state_db: Option<StateDbHandle>,\n         environment_manager: Arc<EnvironmentManager>,\n+        startup_elapsed_before_app: Duration,\n+        startup_bootstrap: Option<AppServerBootstrap>,\n         startup_hooks_browser: Option<HooksListEntry>,\n     ) -> Result<AppExitInfo> {\n         use tokio_stream::StreamExt;\n@@ -774,9 +777,11 @@ impl App {\n                 });\n             }\n         };\n-        let...",
+      "path": "codex-rs/tui/src/app.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -127,6 +127,8 @@ use color_eyre::eyre::Result;\n use color_eyre::eyre::WrapErr;\n use std::collections::HashMap;\n use std::path::PathBuf;\n+use std::time::Duration;\n+use std::time::Instant;\n use uuid::Uuid;\n \n const JSONRPC_INVALID_REQUEST: i64 = -32600;\n@@ -150,6 +152,7 @@ fn is_thread_settings_update_unsupported(source: &JSONRPCErrorError) -> bool {\n /// fetched asynchronously after bootstrap returns so that the TUI can render\n /// its first frame without waiting for the rate-limit round-trip.\n pub(crate) struct AppServerBootstrap {\n+    pub(crate) duration: Duration,\n     pub(crate) account_email: Option<String>,\n     pub(crate) auth_mode: Option<TelemetryAuthMode>,\n     pub(crate) status_account_display: Option<StatusAccountDisplay>,\n@@ -239,6 +242,7 @@ impl AppServerSession {\n     }\n \n     pub(crate) async fn bootstrap(&mut self, config: &Config) -> Result<AppServerBootstrap> {\n+   ...",
+      "path": "codex-rs/tui/src/app_server_session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -25,7 +25,7 @@ pub(crate) enum ExternalAgentConfigMigrationStartupOutcome {\n     ExitRequested,\n }\n \n-fn should_show_external_agent_config_migration_prompt(\n+pub(crate) fn should_show_external_agent_config_migration_prompt(\n     config: &Config,\n     entered_trust_nux: bool,\n ) -> bool {",
+      "path": "codex-rs/tui/src/external_agent_config_migration_startup.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 26,
+      "deletions": 0,
+      "patch_excerpt": "@@ -71,6 +71,7 @@ use std::fs::OpenOptions;\n use std::path::Path;\n use std::path::PathBuf;\n use std::sync::Arc;\n+use std::time::Instant;\n pub use token_usage::TokenUsage;\n use tracing::Level;\n use tracing::error;\n@@ -276,6 +277,7 @@ pub(crate) mod test_support;\n use crate::onboarding::onboarding_screen::OnboardingScreenArgs;\n use crate::onboarding::onboarding_screen::run_onboarding_app;\n use crate::startup_hooks_review::StartupHooksReviewOutcome;\n+use crate::startup_hooks_review::load_startup_hooks_review_entry;\n use crate::startup_hooks_review::maybe_run_startup_hooks_review;\n use crate::tui::Tui;\n pub use cli::Cli;\n@@ -1781,11 +1783,33 @@ async fn run_ratatui_app(\n             resume_picker::SessionSelection::Resume(_)\n         );\n     let bypass_hook_trust_for_startup_review = config.bypass_hook_trust && !is_persistent_resume;\n+    let hooks_request_handle = app_server.request_handle(...",
+      "path": "codex-rs/tui/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 22,
+      "deletions": 9,
+      "patch_excerpt": "@@ -28,7 +28,9 @@ use crate::render::renderable::ColumnRenderable;\n use crate::render::renderable::Renderable;\n use crate::tui::Tui;\n use crate::tui::TuiEvent;\n+use codex_app_server_client::AppServerRequestHandle;\n use codex_app_server_protocol::HooksListEntry;\n+use std::path::PathBuf;\n \n pub(crate) enum StartupHooksReviewOutcome {\n     Continue,\n@@ -42,21 +44,32 @@ enum StartupHooksReviewSelection {\n     ContinueWithoutTrusting,\n }\n \n+pub(crate) async fn load_startup_hooks_review_entry(\n+    request_handle: AppServerRequestHandle,\n+    cwd: PathBuf,\n+) -> HooksListEntry {\n+    let response = match fetch_hooks_list(request_handle, cwd.clone()).await {\n+        Ok(response) => response,\n+        Err(err) => {\n+            tracing::warn!(\"failed to load startup hook review state: {err:#}\");\n+            return HooksListEntry {\n+                cwd,\n+                hooks: Vec::new(),\n+    ...",
+      "path": "codex-rs/tui/src/startup_hooks_review.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n\nTUI startup loads related plugin data from `hooks/list`, session MCP initialization, and plugin skill warmup. These paths repeated filesystem discovery and emitted the same plugin warnings, while `hooks/list` and account/model bootstrap ran serially.\n\nThis change:\n\n- Reuses one immutable plugin load outcome across startup consumers.\n- Keys the cache only on plugin-relevant configuration.\n- Single-flights concurrent plugin loads and prevents invalidated loads from repopulating the cache.\n- Runs hook discovery and account/model bootstrap concurrently.\n- Preserves configuration-migration ordering, hook review behavior, and accurate startup telemetry.\n\nIn 10 alternating release-build launches in the Ruff repository with the existing `~/.codex` configuration, median time to the first editable composer decreased from 833ms to 504ms. The branch was faster in 9 of 10 pairs, with a paired median improvement of 312ms.",
+    "labels": [],
+    "merged_at": "2026-06-05T19:32:43Z",
+    "number": 26469,
+    "state": "merged",
+    "title": "Speed up TUI startup by reusing plugin discovery",
+    "url": "https://github.com/openai/codex/pull/26469"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
