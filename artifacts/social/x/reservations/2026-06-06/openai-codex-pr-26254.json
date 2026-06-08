@@ -1,0 +1,49 @@
+{
+  "schema": "social_publish_reservation/v1",
+  "slug": "openai-codex-pr-26254",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "practical_explainer",
+  "status": "consumed",
+  "idempotency_key": "x:decodexspace:openai-codex-pr-26254:practical_explainer",
+  "reserved_at": "2026-06-06T15:55:27Z",
+  "expires_at": "2026-06-06T17:55:27Z",
+  "day": "2026-06-06",
+  "timezone": "Asia/Shanghai",
+  "candidate_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-pr-26254.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26254.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26254.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26254"
+    ]
+  },
+  "duplicate_keys": [
+    "openai-codex-pr-26254",
+    "x:decodexspace:openai-codex-pr-26254:practical_explainer",
+    "Codex MultiAgentV2 config nuance",
+    "MultiAgentV2",
+    "26254",
+    "https://github.com/openai/codex/pull/26254"
+  ],
+  "owner": {
+    "automation_id": "decodex-x-publisher",
+    "branch": "automation/decodex-x-publisher-pr-26254"
+  },
+  "evidence_notes": [
+    "Checked social_post/v1 records contain no slug, source URL, or idempotency match for openai-codex-pr-26254.",
+    "Checked social_publish_reservation/v1 records contain no active reservation for this candidate or idempotency key.",
+    "Open GitHub PR readback showed only Dependabot PRs and no pending social publication PR for this candidate.",
+    "Chrome account readback confirmed the active X account was @decodexspace before this reservation was prepared.",
+    "Live @decodexspace profile readback found no MultiAgentV2, 26254, or exact lead-text match; focused X search no-results is supporting evidence only.",
+    "Checked publication records show daily_count_after = 7 for @decodexspace on 2026-06-06 Asia/Shanghai, so one additional single-post publication would reach but not exceed the cap of 8."
+  ],
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-06/openai-codex-pr-26254.json"
+}
