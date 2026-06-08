@@ -147,7 +147,7 @@ Manual commit and landing are separate narrow workflows:
   for the 5-minute Linear poll:
 
   ```sh
-  curl -sS -X POST http://127.0.0.1:8912/api/linear-scan \
+  curl -sS -X POST http://127.0.0.1:8192/api/linear-scan \
     -H 'Content-Type: application/json' \
     -d '{"projectId":"<service-id>"}'
   ```

@@ -119,7 +119,7 @@ cargo run -p decodex --bin decodex -- radar refresh-upstream-queue
 cargo run -p decodex --bin decodex -- radar refresh-release-delta
 cargo run -p decodex --bin decodex -- radar validate
 cargo run -p decodex --bin decodex -- run --dry-run
-cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8912
+cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8192
 ```
 
 Project-scoped commands accept `--config <PROJECT_DIR>` after the subcommand when the
@@ -261,7 +261,7 @@ node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399
 node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-codex-auth
 ```
 
-Use hidden `decodex serve --dev --listen-address 127.0.0.1:8912` only when
+Use hidden `decodex serve --dev --listen-address <ADDR>` only when
 developing local account/app snapshot APIs against real runtime state while explicitly
 avoiding scheduler activity. Dev mode deliberately does not register projects, poll
 Linear, dispatch work, or accept `--config`. Decodex App's normal
