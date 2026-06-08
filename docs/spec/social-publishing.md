@@ -45,6 +45,13 @@ account state, idempotency, daily cap, media, and final publication.
 create a checked, PR-visible active reservation before opening X compose. A local-only,
 uncommitted, or unpushed reservation does not authorize publication.
 
+Keep reservations thin. A reservation records ownership of the publish attempt,
+idempotency, cap-day accounting inputs, duplicate keys, candidate/source pointers, and
+the minimum duplicate-gate evidence needed to justify opening compose. It must not copy
+the final post text, final publication URL, publication readback, media readback,
+claims, caveats, or `post_lifecycle`; those belong in the terminal `social_post/v1`
+record.
+
 Generated media files are not default Git artifacts. Store successful publication
 facts in Git as small JSON records. Store generated image files in a local persistent
 media cache, or discard them after upload, unless an operator explicitly asks to commit
@@ -187,8 +194,10 @@ Required fields:
 Optional fields:
 
 - `owner`: automation id, run id, branch, and PR URL that own the active reservation.
-- `evidence_notes`: notes about duplicate checks and account/profile readback at
-  reservation time.
+- `evidence_notes`: short notes about duplicate checks, account/profile readiness, and
+  PR-visible reservation state at reservation time. Keep these notes to the pre-compose
+  gate; final timeline/permalink readback and publication evidence belong in
+  `social_post/v1`.
 - `consumed_by_social_post`: required when `status = "consumed"`.
 - `release_reason`: required when `status = "canceled"` or `status = "expired"`.
 
@@ -245,6 +254,11 @@ After the active reservation is PR-visible and immediately before clicking Post,
 Publisher automation must repeat live profile/timeline readback. If a duplicate appears
 at that final gate, cancel or expire the reservation and write a non-published
 `social_post/v1` record only when it adds audit or idempotency value.
+
+The repeated pre-click readback is publication evidence, not reservation evidence. When
+publication proceeds, store that final readback in the terminal `social_post/v1`
+`evidence_notes`; leave the consumed reservation as the compact lease record plus
+`consumed_by_social_post`.
 
 Chrome tabs are temporary execution resources. Publisher automation must close or
 release research, compose, upload, and readback tabs after the `social_post/v1` record
