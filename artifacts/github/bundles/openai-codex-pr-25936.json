@@ -1,0 +1,112 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-06-02T20:39:24Z",
+      "message": "Remove legacy remote plugin startup sync",
+      "sha": "a4bd397630c74317c78f3998df30039adc9279d3",
+      "url": "https://github.com/openai/codex/commit/a4bd397630c74317c78f3998df30039adc9279d3"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "--check",
+    "HOME=/private/tmp/codex-xin-build-home",
+    "USERPROFILE=/private/tmp/codex-xin-build-home",
+    "DEFAULT_TIMEOUT",
+    "TEST_CURATED_PLUGIN_SHA",
+    "STARTUP_REMOTE_PLUGIN_SYNC_MARKER_FILE",
+    "TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS",
+    "CODEX_TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS",
+    "ALTERNATE_MARKETPLACE_RELATIVE_PATH",
+    "GET",
+    "JSONRPCR",
+    "OPENAI_CURATED_MARKETPLACE_NAME",
+    "CURATED_REPO_SYNC_STARTED",
+    "TODO",
+    "CONFIG_TOML_FILE",
+    "TEST_CURATED_PLUGIN_CACHE_VERSION",
+    "DEFAULT_REMOTE_MARKETPLACE_NAME",
+    "REMOTE_PLUGIN_FETCH_TIMEOUT",
+    "REMOTE_FEATURED_PLUGIN_FETCH_TIMEOUT",
+    "REMOTE_PLUGIN_MUTATION_TIMEOUT",
+    "STARTUP_REMOTE_PLUGIN_SYNC_PREREQUISITE_TIMEOUT"
+  ],
+  "files": [
+    {
+      "additions": 0,
+      "deletions": 89,
+      "patch_excerpt": "@@ -38,7 +38,6 @@ use wiremock::matchers::query_param;\n \n const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);\n const TEST_CURATED_PLUGIN_SHA: &str = \"0123456789abcdef0123456789abcdef01234567\";\n-const STARTUP_REMOTE_PLUGIN_SYNC_MARKER_FILE: &str = \".tmp/app-server-remote-plugin-sync-v1\";\n const TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS: &str =\n     \"CODEX_TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS\";\n const ALTERNATE_MARKETPLACE_RELATIVE_PATH: &str = \".claude-plugin/marketplace.json\";\n@@ -1460,94 +1459,6 @@ enabled = true\n     Ok(())\n }\n \n-#[tokio::test]\n-async fn app_server_startup_remote_plugin_sync_runs_once() -> Result<()> {\n-    let codex_home = TempDir::new()?;\n-    let server = MockServer::start().await;\n-    write_plugin_sync_config(codex_home.path(), &format!(\"{}/backend-api/\", server.uri()))?;\n-    write_chatgpt_auth(\n-        codex_home.path(),\n-        ChatGptAu...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 3,
+      "patch_excerpt": "@@ -11,7 +11,6 @@ mod plugin_bundle_archive;\n pub mod remote;\n pub mod remote_bundle;\n pub mod remote_legacy;\n-pub(crate) mod startup_remote_sync;\n pub mod startup_sync;\n pub mod store;\n #[cfg(test)]\n@@ -37,10 +36,8 @@ pub use manager::PluginInstallOutcome;\n pub use manager::PluginInstallRequest;\n pub use manager::PluginReadOutcome;\n pub use manager::PluginReadRequest;\n-pub use manager::PluginRemoteSyncError;\n pub use manager::PluginUninstallError;\n pub use manager::PluginsConfigInput;\n pub use manager::PluginsManager;\n-pub use manager::RemotePluginSyncResult;\n pub use marketplace_upgrade::ConfiguredMarketplaceUpgradeError as PluginMarketplaceUpgradeError;\n pub use marketplace_upgrade::ConfiguredMarketplaceUpgradeOutcome as PluginMarketplaceUpgradeOutcome;",
+      "path": "codex-rs/core-plugins/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 333,
+      "patch_excerpt": "@@ -1,5 +1,4 @@\n use super::PluginLoadOutcome;\n-use super::startup_remote_sync::start_startup_remote_plugin_sync_once;\n use crate::OPENAI_CURATED_MARKETPLACE_NAME;\n use crate::installed_marketplaces::installed_marketplace_roots_from_layer_stack;\n use crate::loader::PluginHookLoadOutcome;\n@@ -32,7 +31,6 @@ use crate::marketplace::ResolvedMarketplacePlugin;\n use crate::marketplace::find_installable_marketplace_plugin;\n use crate::marketplace::find_marketplace_plugin;\n use crate::marketplace::list_marketplaces;\n-use crate::marketplace::load_marketplace;\n use crate::marketplace::plugin_interface_with_marketplace_category;\n use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeError;\n use crate::marketplace_upgrade::ConfiguredMarketplaceUpgradeOutcome;\n@@ -52,8 +50,6 @@ use crate::store::PluginStore;\n use crate::store::PluginStoreError;\n use codex_analytics::AnalyticsEventsClient;\n use ...",
+      "path": "codex-rs/core-plugins/src/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 444,
+      "patch_excerpt": "@@ -2416,25 +2416,6 @@ enabled = true\n     );\n }\n \n-#[tokio::test]\n-async fn sync_plugins_from_remote_returns_default_when_feature_disabled() {\n-    let tmp = tempfile::tempdir().unwrap();\n-    write_file(\n-        &tmp.path().join(CONFIG_TOML_FILE),\n-        r#\"[features]\n-plugins = false\n-\"#,\n-    );\n-\n-    let config = load_config(tmp.path(), tmp.path()).await;\n-    let outcome = PluginsManager::new(tmp.path().to_path_buf())\n-        .sync_plugins_from_remote(&config, /*auth*/ None, /*additive_only*/ false)\n-        .await\n-        .unwrap();\n-\n-    assert_eq!(outcome, RemotePluginSyncResult::default());\n-}\n-\n #[tokio::test]\n async fn list_marketplaces_includes_curated_repo_marketplace() {\n     let tmp = tempfile::tempdir().unwrap();\n@@ -2925,431 +2906,6 @@ enabled = true\n     );\n }\n \n-#[tokio::test]\n-async fn sync_plugins_from_remote_reconciles_cache_and_config() {\n-    let tmp = tem...",
+      "path": "codex-rs/core-plugins/src/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 66,
+      "patch_excerpt": "@@ -6,19 +6,9 @@ use serde::Deserialize;\n use std::time::Duration;\n use url::Url;\n \n-const DEFAULT_REMOTE_MARKETPLACE_NAME: &str = \"openai-curated\";\n-const REMOTE_PLUGIN_FETCH_TIMEOUT: Duration = Duration::from_secs(30);\n const REMOTE_FEATURED_PLUGIN_FETCH_TIMEOUT: Duration = Duration::from_secs(10);\n const REMOTE_PLUGIN_MUTATION_TIMEOUT: Duration = Duration::from_secs(30);\n \n-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]\n-pub struct RemotePluginStatusSummary {\n-    pub name: String,\n-    #[serde(default = \"default_remote_marketplace_name\")]\n-    pub marketplace_name: String,\n-    pub enabled: bool,\n-}\n-\n #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]\n #[serde(rename_all = \"camelCase\")]\n struct RemotePluginMutationResponse {\n@@ -83,77 +73,28 @@ pub enum RemotePluginMutationError {\n \n #[derive(Debug, thiserror::Error)]\n pub enum RemotePluginFetchError {\n-    #[error(\"chatgpt au...",
+      "path": "codex-rs/core-plugins/src/remote_legacy.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 100,
+      "patch_excerpt": "@@ -1,100 +0,0 @@\n-use std::path::Path;\n-use std::path::PathBuf;\n-use std::sync::Arc;\n-use std::time::Duration;\n-\n-use crate::manager::PluginsConfigInput;\n-use crate::manager::PluginsManager;\n-use crate::startup_sync::has_local_curated_plugins_snapshot;\n-use codex_login::AuthManager;\n-use tracing::info;\n-use tracing::warn;\n-\n-const STARTUP_REMOTE_PLUGIN_SYNC_MARKER_FILE: &str = \".tmp/app-server-remote-plugin-sync-v1\";\n-const STARTUP_REMOTE_PLUGIN_SYNC_PREREQUISITE_TIMEOUT: Duration = Duration::from_secs(10);\n-\n-pub(crate) fn start_startup_remote_plugin_sync_once(\n-    manager: Arc<PluginsManager>,\n-    codex_home: PathBuf,\n-    config: PluginsConfigInput,\n-    auth_manager: Arc<AuthManager>,\n-) {\n-    let marker_path = startup_remote_plugin_sync_marker_path(codex_home.as_path());\n-    if marker_path.is_file() {\n-        return;\n-    }\n-\n-    tokio::spawn(async move {\n-        if marker_p...",
+      "path": "codex-rs/core-plugins/src/startup_remote_sync.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 91,
+      "patch_excerpt": "@@ -1,91 +0,0 @@\n-use super::*;\n-use crate::PluginsManager;\n-use crate::startup_sync::curated_plugins_repo_path;\n-use crate::test_support::TEST_CURATED_PLUGIN_CACHE_VERSION;\n-use crate::test_support::load_plugins_config;\n-use crate::test_support::write_curated_plugin_sha;\n-use crate::test_support::write_file;\n-use crate::test_support::write_openai_curated_marketplace;\n-use codex_config::CONFIG_TOML_FILE;\n-use codex_login::AuthManager;\n-use codex_login::CodexAuth;\n-use pretty_assertions::assert_eq;\n-use std::sync::Arc;\n-use std::time::Duration;\n-use tempfile::tempdir;\n-use wiremock::Mock;\n-use wiremock::MockServer;\n-use wiremock::ResponseTemplate;\n-use wiremock::matchers::header;\n-use wiremock::matchers::method;\n-use wiremock::matchers::path;\n-\n-#[tokio::test]\n-async fn startup_remote_plugin_sync_writes_marker_and_reconciles_state() {\n-    let tmp = tempdir().expect(\"tempdir\");\n-    let c...",
+      "path": "codex-rs/core-plugins/src/startup_remote_sync_tests.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 4,
+      "patch_excerpt": "@@ -88,10 +88,6 @@ pub(crate) fn write_openai_curated_marketplace(root: &Path, plugin_names: &[&str\n     }\n }\n \n-pub(crate) fn write_curated_plugin_sha(codex_home: &Path) {\n-    write_curated_plugin_sha_with(codex_home, TEST_CURATED_PLUGIN_SHA);\n-}\n-\n pub(crate) fn write_curated_plugin_sha_with(codex_home: &Path, sha: &str) {\n     write_file(&codex_home.join(\".tmp/plugins.sha\"), &format!(\"{sha}\\n\"));\n }",
+      "path": "codex-rs/core-plugins/src/test_support.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n\n- Remove the legacy startup remote plugin sync path that called `/plugins/list` and reconciled curated plugin cache/config.\n- Remove the `sync_plugins_from_remote` API, its result/error types, startup marker task, and tests that expected the legacy request.\n- Keep the current remote installed bundle sync and remote catalog flows (`/ps/plugins/installed` and `/ps/plugins/list`) intact.\n\n## Validation\n\n- `just fmt`\n- `git diff --check`\n- `env HOME=/private/tmp/codex-xin-build-home USERPROFILE=/private/tmp/codex-xin-build-home just test -p codex-core-plugins`\n- Searched for legacy `/plugins/list` sync references; remaining matches are `/ps/plugins/list` catalog tests/code.\n\n## Notes\n\n- `just test -p codex-app-server plugin_list` is currently blocked before running filtered tests by an unrelated compile error in `app-server/tests/suite/v2/image_generation.rs`: `app_test_support::McpProcess` is not exported.",
+    "labels": [],
+    "merged_at": "2026-06-05T23:33:01Z",
+    "number": 25936,
+    "state": "merged",
+    "title": "[codex] Remove legacy remote plugin startup sync",
+    "url": "https://github.com/openai/codex/pull/25936"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
