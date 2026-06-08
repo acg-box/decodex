@@ -70,7 +70,7 @@ project. After creating or relabeling queued issues, request the next scan inste
 waiting for the 5-minute window:
 
 ```sh
-curl -sS -X POST http://127.0.0.1:8912/api/linear-scan \
+curl -sS -X POST http://127.0.0.1:8192/api/linear-scan \
   -H 'Content-Type: application/json' \
   -d '{"projectId":"<service-id>"}'
 ```
