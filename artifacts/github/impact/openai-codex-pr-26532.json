@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26532",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Require absolute cwd in thread settings",
+        "url": "https://github.com/openai/codex/pull/26532",
+        "meta": "Merged 2026-06-05T16:29:15Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26532",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26532.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex changed thread settings cwd overrides to absolute path types and moved cwd resolution to the app-server boundary before settings enter core/session code.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR body identifies absolute cwd as the intended boundary for thread settings overrides.",
+    "The change replaces cwd PathBuf settings with AbsolutePathBuf across app-server, core, and protocol-facing settings objects.",
+    "Core-side cwd normalization/resolution is removed from session settings updates.",
+    "The PR leaves environment selection stickiness and cwd-to-default-environment fallback behavior unchanged."
+  ],
+  "candidate_followups": [
+    "Audit Decodex app-server request builders for thread-start, thread-resume, and turn-start cwd override normalization.",
+    "Prefer boundary validation that rejects or resolves relative cwd values before they reach runtime state.",
+    "Keep public content cautious unless this becomes part of a broader app-server migration signal."
+  ],
+  "social_notes": [
+    "Frame as an app-server contract watch note, not as a new end-user workflow.",
+    "Mention that the PR intentionally leaves environment fallback behavior unchanged."
+  ],
+  "caveats": [
+    "The PR is mostly internal contract cleanup.",
+    "No direct Decodex breakage was verified in this run."
+  ]
+}
