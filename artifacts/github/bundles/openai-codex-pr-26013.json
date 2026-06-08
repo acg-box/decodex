@@ -1,0 +1,92 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "vie-oai",
+      "committed_at": "2026-06-04T02:32:04Z",
+      "message": "Gate terminal visualization instructions in TUI",
+      "sha": "a52f7e1e2e945a2facea65781ba429f04524a477",
+      "url": "https://github.com/openai/codex/commit/a52f7e1e2e945a2facea65781ba429f04524a477"
+    },
+    {
+      "author": "vie-oai",
+      "committed_at": "2026-06-04T05:04:09Z",
+      "message": "Fix terminal visualization CI",
+      "sha": "a323a5101b5aa61af6e0c1cecaf5da04391bfa44",
+      "url": "https://github.com/openai/codex/commit/a323a5101b5aa61af6e0c1cecaf5da04391bfa44"
+    },
+    {
+      "author": "vie-oai",
+      "committed_at": "2026-06-05T23:00:19Z",
+      "message": "Merge remote-tracking branch 'origin/main' into codex/terminal-visualization-tui-gate",
+      "sha": "f249259c64745fed22c706240526d7797fdc6691",
+      "url": "https://github.com/openai/codex/commit/f249259c64745fed22c706240526d7797fdc6691"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "TUI",
+    "--lib",
+    "--all",
+    "--check",
+    "GPT",
+    "CLI",
+    "FEATURES",
+    "TERMINAL_VISUALIZATION_INSTRUCTIONS",
+    "ASCII"
+  ],
+  "files": [
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -614,6 +614,9 @@\n             \"terminal_resize_reflow\": {\n               \"type\": \"boolean\"\n             },\n+            \"terminal_visualization_instructions\": {\n+              \"type\": \"boolean\"\n+            },\n             \"tool_call_mcp_elicitation\": {\n               \"type\": \"boolean\"\n             },\n@@ -4737,6 +4740,9 @@\n         \"terminal_resize_reflow\": {\n           \"type\": \"boolean\"\n         },\n+        \"terminal_visualization_instructions\": {\n+          \"type\": \"boolean\"\n+        },\n         \"tool_call_mcp_elicitation\": {\n           \"type\": \"boolean\"\n         },",
+      "path": "codex-rs/core/config.schema.json",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -99,6 +99,8 @@ pub enum Feature {\n     UnifiedExecZshFork,\n     /// Reflow transcript scrollback when the terminal is resized.\n     TerminalResizeReflow,\n+    /// Add terminal-specific visualization guidance to TUI developer instructions.\n+    TerminalVisualizationInstructions,\n     /// Stream structured progress while apply_patch input is being generated.\n     ApplyPatchStreamingEvents,\n     /// Allow exec tools to request additional permissions while staying sandboxed.\n@@ -1118,6 +1120,12 @@ pub const FEATURES: &[FeatureSpec] = &[\n         stage: Stage::UnderDevelopment,\n         default_enabled: false,\n     },\n+    FeatureSpec {\n+        id: Feature::TerminalVisualizationInstructions,\n+        key: \"terminal_visualization_instructions\",\n+        stage: Stage::UnderDevelopment,\n+        default_enabled: false,\n+    },\n     FeatureSpec {\n         id: Feature::GuardianApproval,\n      ...",
+      "path": "codex-rs/features/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 85,
+      "deletions": 1,
+      "patch_excerpt": "@@ -11,6 +11,7 @@ use crate::session_state::MessageHistoryMetadata;\n use crate::session_state::ThreadSessionState;\n use crate::status::StatusAccountDisplay;\n use crate::status::plan_type_display_name;\n+use crate::terminal_visualization_instructions::with_terminal_visualization_instructions;\n use codex_app_server_client::AppServerClient;\n use codex_app_server_client::AppServerEvent;\n use codex_app_server_client::AppServerRequestHandle;\n@@ -1412,6 +1413,9 @@ fn thread_start_params_from_config(\n         ephemeral: Some(config.ephemeral),\n         session_start_source,\n         thread_source: Some(ThreadSource::User),\n+        developer_instructions: with_terminal_visualization_instructions(\n+            config, /*control_instructions*/ None,\n+        ),\n         ..ThreadStartParams::default()\n     }\n }\n@@ -1444,6 +1448,9 @@ fn thread_resume_params_from_config(\n         sandbox,\n         per...",
+      "path": "codex-rs/tui/src/app_server_session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -188,6 +188,7 @@ mod terminal_hyperlinks;\n mod terminal_palette;\n mod terminal_probe;\n mod terminal_title;\n+mod terminal_visualization_instructions;\n mod text_formatting;\n mod theme_picker;\n mod token_usage;",
+      "path": "codex-rs/tui/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,29 @@\n+use crate::legacy_core::config::Config;\n+use codex_features::Feature;\n+\n+pub(crate) const TERMINAL_VISUALIZATION_INSTRUCTIONS: &str = \"\\\n+- This surface is a terminal. When the formatting rules require a visual, include one in the final answer using compact ASCII diagrams, trees, timelines, or tables.\n+- Use tables for exact mappings or comparisons rather than collapsing known mappings into prose.\n+- Use trees for hierarchy or one-to-many relationships, and diagrams or timelines for sequence, change, or state transferred between records across event order.\n+- Use only ASCII characters in visuals.\";\n+\n+pub(crate) fn with_terminal_visualization_instructions(\n+    config: &Config,\n+    control_instructions: Option<String>,\n+) -> Option<String> {\n+    if !config\n+        .features\n+        .enabled(Feature::TerminalVisualizationInstructions)\n+    {\n+        return control_i...",
+      "path": "codex-rs/tui/src/terminal_visualization_instructions.rs",
+      "status": "added"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n- add `Feature::TerminalVisualizationInstructions` as `UnderDevelopment`, disabled by default\n- keep terminal visualization instructions inside the TUI package\n- append them to existing developer instructions for TUI start, resume, and fork flows only when enabled\n- intentionally do not apply them to `codex exec`\n\n## Rollout\nControl behavior is unchanged. TUI dogfooders can enable `terminal_visualization_instructions`; no default user receives the new terminal-specific instructions.\n\nThe shared visualization-selection rule is supplied separately through the `codex_proxy_model_3` Statsig layer for every target Codex model slug in the gated cohort. This TUI feature determines how to render an appropriate visualization on the terminal surface; the model-layer treatment determines when to use one.\n\n## Validation\n- `cargo test -p codex-tui terminal_visualization_instructions_are_gated_for_all_tui_thread_flows --lib`\n- `cargo test -p codex-features --lib`\n- `cargo fmt --all -- --check`\n- `git diff --check`\n- GPT-5.4 and GPT-5.5 real prompt-pipeline smoke tests: both visualized the positive mapping case, abstained on the negative route case, and passed exact prompt-stack verification on CLI and App\n- refreshed onto current `main` with a clean merge and reran the focused validation\n\nThe full 53-probe all-model treatment comparison and requested production coding evals remain rollout gates before broadening beyond the initial employee cohort.\n\nThis PR remains open for normal human review.",
+    "labels": [],
+    "merged_at": "2026-06-06T00:23:46Z",
+    "number": 26013,
+    "state": "merged",
+    "title": "[codex] Gate terminal visualization instructions in TUI",
+    "url": "https://github.com/openai/codex/pull/26013"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
