@@ -1,0 +1,50 @@
+{
+  "schema": "social_publish_reservation/v1",
+  "slug": "openai-codex-rust-v0-138-0-alpha-7-prerelease-read",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "thread",
+  "status": "consumed",
+  "idempotency_key": "x:decodexspace:openai-codex-rust-v0-138-0-alpha-7:alpha6-alpha7:thread",
+  "reserved_at": "2026-06-08T21:54:44Z",
+  "expires_at": "2026-06-09T01:54:44Z",
+  "day": "2026-06-09",
+  "timezone": "Asia/Shanghai",
+  "candidate_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-rust-v0-138-0-alpha-7-prerelease-read.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.7",
+      "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.6...rust-v0.138.0-alpha.7",
+      "https://x.com/decodexspace/status/2063279620129247678"
+    ]
+  },
+  "duplicate_keys": [
+    "x:decodexspace:openai-codex-rust-v0-138-0-alpha-7:alpha6-alpha7:thread",
+    "openai-codex-rust-v0-138-0-alpha-7-prerelease-read",
+    "rust-v0.138.0-alpha.7",
+    "Codex CLI 0.138.0-alpha.7 prerelease read",
+    "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.6...rust-v0.138.0-alpha.7",
+    "alpha.6 -> alpha.7",
+    "2063279620129247678"
+  ],
+  "owner": {
+    "automation_id": "decodex-x-publisher",
+    "run_id": "decodex-x-publisher-2026-06-08T215444Z",
+    "branch": "codex-automation/x-publisher-alpha7",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/248"
+  },
+  "evidence_notes": [
+    "Checked social_post/v1 records contain no slug, source URL, release tag, or idempotency match for openai-codex-rust-v0-138-0-alpha-7-prerelease-read.",
+    "Checked social_publish_reservation/v1 records contain no active reservation for this candidate or idempotency key before this reservation.",
+    "Open GitHub PR readback with the routed y identity returned no pending social publication PRs before this reservation was prepared.",
+    "Official OpenAI Codex changelog readback on 2026-06-08T21:54Z still showed June 4 Codex app 26.602 and Codex CLI 0.137.0 as the latest June entries, so this is a GitHub prerelease metadata candidate rather than an official changelog release pulse.",
+    "Chrome account menu and profile readback confirmed the active X account was @decodexspace before this reservation was prepared.",
+    "Live @decodexspace profile readback found no alpha.7 lead text, rust-v0.138.0-alpha.7 tag, alpha.6 -> alpha.7 compare URL, or exact source subject match.",
+    "Live @decodexspace profile readback showed the prior alpha.6 prerelease thread on the profile; checked social_post/v1 records mark that post live and quote-eligible.",
+    "Checked publication records show daily_count_before = 0 for @decodexspace on 2026-06-09 Asia/Shanghai, so one seven-post thread would not exceed the cap of 8."
+  ],
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-09/openai-codex-rust-v0-138-0-alpha-7-prerelease-read.json"
+}
