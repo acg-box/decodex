@@ -103,6 +103,12 @@ terminal automation signal.
   wait, retained repair, closeout, recovery worktrees, and cleanup debt.
 - Treat runtime DB rows, app-server protocol activity, and Linear execution-ledger
   comments as different evidence surfaces.
+- When interpreting history, prefer terminal Run Ledger outcomes and the projected
+  issue-level `latest_run` status over raw historical attempt rows. A failed raw
+  attempt that remains in an issue's attempt timeline is diagnostic history, not proof
+  that the lane is currently blocked, when the Run Ledger shows terminal closeout,
+  cleanup, or landed completion and the active/backlog/recovery/post-review sections
+  are empty.
 - When app-server preflight mentions `skills/list`, distinguish non-blocking scan
   diagnostics from real blockers. If the run cwd is present and at least one skill is
   enabled, preserve `error_count`, `first_error_path`, and `first_error` as evidence
