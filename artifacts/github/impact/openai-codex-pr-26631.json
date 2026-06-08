@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26631",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Add JSON output for plugin subcommands",
+        "url": "https://github.com/openai/codex/pull/26631",
+        "meta": "Merged 2026-06-05T19:40:31Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26631",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26631.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex added successful stdout JSON output for plugin add/remove and plugin marketplace add/list/upgrade/remove commands while preserving existing human-readable output.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "candidate",
+  "publisher_angle": "practical_explainer",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26631 says --json changes successful stdout only and keeps existing human-readable and error/stderr behavior unchanged.",
+    "codex-rs/cli/src/plugin_cmd.rs adds --json flags to plugin add and plugin remove.",
+    "codex-rs/cli/src/marketplace_cmd.rs adds JSON handling for marketplace add, list, upgrade, and remove.",
+    "CLI tests parse JSON stdout for plugin and marketplace command success cases.",
+    "The JSON field names align marketplace add/remove results with the existing app-server protocol shape according to the PR body."
+  ],
+  "candidate_followups": [
+    "Use --json for Decodex plugin-management probes where successful stdout is currently parsed as text.",
+    "Keep failure handling unchanged because stderr and errors are explicitly outside the new JSON success-output contract.",
+    "Consider a small operator note or issue if Decodex has plugin install/remove automation that can consume this immediately."
+  ],
+  "social_notes": [
+    "Give readers concrete commands: codex plugin add --json, codex plugin remove --json, and codex plugin marketplace list --json.",
+    "State that human-readable output remains unchanged unless --json is used."
+  ],
+  "caveats": [
+    "The PR adds JSON only for successful stdout output.",
+    "This does not by itself change plugin discovery or plugin runtime behavior."
+  ]
+}

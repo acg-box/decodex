@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26450",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "feat(app-server): add remote control pairing status RPC",
+        "url": "https://github.com/openai/codex/pull/26450",
+        "meta": "Merged 2026-06-05T17:33:57Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26450",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26450.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex exposed the remote-control pairing status transport as experimental app-server v2 JSON-RPC method remoteControl/pairing/status.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "candidate",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The app-server protocol registers experimental method remoteControl/pairing/status with shared-read serialization.",
+    "MessageProcessor and RemoteControlRequestProcessor route the method to the remote-control handle.",
+    "The request processor rejects missing or conflicting pairing-code params before calling the transport.",
+    "The app-server README documents the new pairing status API beside pairing/start.",
+    "JSON-RPC integration tests exercise both pairingCode and manualPairingCode request paths."
+  ],
+  "candidate_followups": [
+    "Evaluate whether Decodex Control Plane needs a pairing-status read helper when remote-control enrollment is surfaced.",
+    "Keep request construction strict: exactly one of pairingCode or manualPairingCode.",
+    "Do not treat the method as stable; preserve the upstream experimental label in public and implementation notes."
+  ],
+  "social_notes": [
+    "Frame as a new experimental app-server RPC for Desktop remote-control pairing UX.",
+    "Mention the dependency on lower-level transport support from PR #26449 only if extra context is needed."
+  ],
+  "caveats": [
+    "The method is experimental.",
+    "This review did not probe a live remote-control backend."
+  ]
+}

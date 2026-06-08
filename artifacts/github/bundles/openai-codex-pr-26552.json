@@ -1,0 +1,192 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-05T04:33:24Z",
+      "message": "Require absolute cwd in thread settings",
+      "sha": "7b0e744c2817f02dfb2be7741654b3163cf63640",
+      "url": "https://github.com/openai/codex/commit/7b0e744c2817f02dfb2be7741654b3163cf63640"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-05T05:16:01Z",
+      "message": "Resolve thread settings cwd in app-server",
+      "sha": "581088c7d4effa5370dbfffdd73075c28f0a69a3",
+      "url": "https://github.com/openai/codex/commit/581088c7d4effa5370dbfffdd73075c28f0a69a3"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-05T05:43:17Z",
+      "message": "Remove stale thread environment test overrides",
+      "sha": "763ee1c0f8a5c0874acb23b2b139b1ef0c65d40b",
+      "url": "https://github.com/openai/codex/commit/763ee1c0f8a5c0874acb23b2b139b1ef0c65d40b"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-05T06:04:49Z",
+      "message": "Use cross-platform cwd fixtures in compact tests",
+      "sha": "69c63117537ebd06a9e553bd78a8224ef472b619",
+      "url": "https://github.com/openai/codex/commit/69c63117537ebd06a9e553bd78a8224ef472b619"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-05T06:47:38Z",
+      "message": "Make runtime workspace roots absolute in app-server API",
+      "sha": "51cba6a6237ebe8a9f9c5b6c97c2e1016521c14a",
+      "url": "https://github.com/openai/codex/commit/51cba6a6237ebe8a9f9c5b6c97c2e1016521c14a"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-05T07:06:01Z",
+      "message": "codex: fix CI failure on PR #26552",
+      "sha": "16b2de73300f6b30c4e891fca718ee52025d70cb",
+      "url": "https://github.com/openai/codex/commit/16b2de73300f6b30c4e891fca718ee52025d70cb"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-05T07:18:56Z",
+      "message": "app-server: fix windows clippy import",
+      "sha": "386bced1067c66ff1573f437b03a38199a3b4f3b",
+      "url": "https://github.com/openai/codex/commit/386bced1067c66ff1573f437b03a38199a3b4f3b"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-05T16:39:50Z",
+      "message": "Merge remote-tracking branch 'origin/main' into pakrym/full-ci-app-server-workspace-roots",
+      "sha": "8662abac5d2a62bd4e676912be23f85b361209f4",
+      "url": "https://github.com/openai/codex/commit/8662abac5d2a62bd4e676912be23f85b361209f4"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "TUI",
+    "API",
+    "MCP",
+    "ARC",
+    "JSONRPCE",
+    "DEFAULT_READ_TIMEOUT"
+  ],
+  "files": [
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,10 @@\n {\n   \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n   \"definitions\": {\n+    \"AbsolutePathBuf\": {\n+      \"description\": \"A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\\n\\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.\",\n+      \"type\": \"string\"\n+    },\n     \"ApprovalsReviewer\": {\n       \"description\": \"Configures who approval requests are routed to for review. Examples include sandbox escapes, blocked network access, MCP approval prompts, and ARC escalations. Defaults to `user`. `auto_review` uses a carefully prompted subagent to gather relevant context and apply a risk-based decision framework before approv...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadForkParams.json",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,10 @@\n {\n   \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n   \"definitions\": {\n+    \"AbsolutePathBuf\": {\n+      \"description\": \"A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\\n\\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.\",\n+      \"type\": \"string\"\n+    },\n     \"AgentMessageInputContent\": {\n       \"oneOf\": [\n         {",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadResumeParams.json",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 9,
+      "patch_excerpt": "@@ -107,11 +107,10 @@ pub struct ThreadStartParams {\n     pub service_tier: Option<Option<String>>,\n     #[ts(optional = nullable)]\n     pub cwd: Option<String>,\n-    /// Replace the thread's runtime workspace roots. Relative paths are\n-    /// resolved against the effective cwd for the thread.\n+    /// Replace the thread's runtime workspace roots. Paths must be absolute.\n     #[experimental(\"thread/start.runtimeWorkspaceRoots\")]\n     #[ts(optional = nullable)]\n-    pub runtime_workspace_roots: Option<Vec<PathBuf>>,\n+    pub runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,\n     #[experimental(nested)]\n     #[ts(optional = nullable)]\n     pub approval_policy: Option<AskForApproval>,\n@@ -358,11 +357,10 @@ pub struct ThreadResumeParams {\n     pub service_tier: Option<Option<String>>,\n     #[ts(optional = nullable)]\n     pub cwd: Option<String>,\n-    /// Replace the thread's runtime wo...",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 3,
+      "patch_excerpt": "@@ -88,11 +88,10 @@ pub struct TurnStartParams {\n     #[ts(optional = nullable)]\n     pub cwd: Option<PathBuf>,\n     /// Replace the thread's runtime workspace roots for this turn and\n-    /// subsequent turns. Relative paths are resolved against the effective\n-    /// cwd for the turn.\n+    /// subsequent turns. Paths must be absolute.\n     #[experimental(\"turn/start.runtimeWorkspaceRoots\")]\n     #[ts(optional = nullable)]\n-    pub runtime_workspace_roots: Option<Vec<PathBuf>>,\n+    pub runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,\n     /// Override the approval policy for this turn and subsequent turns.\n     #[experimental(nested)]\n     #[ts(optional = nullable)]",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -130,7 +130,7 @@ Example with notification opt-out:\n \n ## API Overview\n \n-- `thread/start` — create a new thread; emits `thread/started` (including the current `thread.status`) and auto-subscribes you to turn/item events for that thread. When the request includes a `cwd` and the resolved sandbox is `workspace-write` or full access, app-server also marks that project as trusted in the user `config.toml`. Pass `sessionStartSource: \"clear\"` when starting a replacement thread after clearing the current session so `SessionStart` hooks receive `source: \"clear\"` instead of the default `\"startup\"`. Experimental `runtimeWorkspaceRoots` replaces the thread-scoped runtime workspace roots used to materialize `:workspace_roots`; relative paths resolve against the effective thread cwd. For permissions, prefer experimental `permissions` profile selection by id; the legacy `sandbox` shorthand is stil...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 18,
+      "deletions": 0,
+      "patch_excerpt": "@@ -513,6 +513,24 @@ use crate::thread_state::ThreadStateManager;\n use token_usage_replay::latest_token_usage_turn_id_from_rollout_items;\n use token_usage_replay::send_thread_token_usage_update_to_connection;\n \n+fn resolve_request_cwd(cwd: Option<PathBuf>) -> Result<Option<AbsolutePathBuf>, JSONRPCErrorError> {\n+    cwd.map(|cwd| {\n+        AbsolutePathBuf::relative_to_current_dir(path_utils::normalize_for_native_workdir(cwd))\n+            .map_err(|err| invalid_request(format!(\"invalid cwd: {err}\")))\n+    })\n+    .transpose()\n+}\n+\n+fn resolve_runtime_workspace_roots(workspace_roots: Vec<AbsolutePathBuf>) -> Vec<AbsolutePathBuf> {\n+    let mut resolved_roots = Vec::new();\n+    for root in workspace_roots {\n+        if !resolved_roots.iter().any(|existing| existing == &root) {\n+            resolved_roots.push(root);\n+        }\n+    }\n+    resolved_roots\n+}\n+\n mod config_errors;\n mod reque...",
+      "path": "codex-rs/app-server/src/request_processors.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 12,
+      "patch_excerpt": "@@ -56,17 +56,7 @@ fn collect_resume_override_mismatches(\n         }\n     }\n     if let Some(requested_runtime_workspace_roots) = request.runtime_workspace_roots.as_ref() {\n-        let base_cwd = request\n-            .cwd\n-            .as_deref()\n-            .map(|cwd| {\n-                AbsolutePathBuf::resolve_path_against_base(cwd, config_snapshot.cwd.as_path())\n-            })\n-            .unwrap_or_else(|| config_snapshot.cwd.clone());\n-        let requested_runtime_workspace_roots = requested_runtime_workspace_roots\n-            .iter()\n-            .map(|path| AbsolutePathBuf::resolve_path_against_base(path, base_cwd.as_path()))\n-            .collect::<Vec<_>>();\n+        let requested_runtime_workspace_roots = requested_runtime_workspace_roots.to_vec();\n         if requested_runtime_workspace_roots != config_snapshot.workspace_roots {\n             mismatch_details.push(format!...",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 49,
+      "patch_excerpt": "@@ -18,28 +18,6 @@ pub(crate) struct TurnRequestProcessor {\n     skills_watcher: Arc<SkillsWatcher>,\n }\n \n-fn resolve_runtime_workspace_roots(\n-    workspace_roots: Vec<PathBuf>,\n-    base_cwd: &AbsolutePathBuf,\n-) -> Vec<AbsolutePathBuf> {\n-    let mut resolved_roots = Vec::new();\n-    for path in workspace_roots {\n-        let root = AbsolutePathBuf::resolve_path_against_base(path, base_cwd.as_path());\n-        if !resolved_roots.iter().any(|existing| existing == &root) {\n-            resolved_roots.push(root);\n-        }\n-    }\n-    resolved_roots\n-}\n-\n-fn resolve_request_cwd(cwd: Option<PathBuf>) -> Result<Option<AbsolutePathBuf>, JSONRPCErrorError> {\n-    cwd.map(|cwd| {\n-        AbsolutePathBuf::relative_to_current_dir(path_utils::normalize_for_native_workdir(cwd))\n-            .map_err(|err| invalid_request(format!(\"invalid cwd: {err}\")))\n-    })\n-    .transpose()\n-}\n-\n fn map_add...",
+      "path": "codex-rs/app-server/src/request_processors/turn_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 1,
+      "patch_excerpt": "@@ -366,7 +366,10 @@ async fn turn_start_updates_runtime_workspace_roots_for_loaded_thread() -> Resul\n                 text: \"Hello\".to_string(),\n                 text_elements: Vec::new(),\n             }],\n-            runtime_workspace_roots: Some(vec![extra_root.clone(), extra_root.join(\".\")]),\n+            runtime_workspace_roots: Some(vec![\n+                AbsolutePathBuf::from_absolute_path(&extra_root)?,\n+                AbsolutePathBuf::from_absolute_path(extra_root.join(\".\"))?,\n+            ]),\n             ..Default::default()\n         })\n         .await?;",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_resume.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 8,
+      "patch_excerpt": "@@ -197,23 +197,23 @@ async fn thread_start_creates_thread_and_emits_started() -> Result<()> {\n }\n \n #[tokio::test]\n-async fn thread_start_resolves_runtime_workspace_roots_against_cwd() -> Result<()> {\n+async fn thread_start_accepts_absolute_runtime_workspace_roots() -> Result<()> {\n     let server = create_mock_responses_server_repeating_assistant(\"Done\").await;\n     let codex_home = TempDir::new()?;\n     create_config_toml_without_approval_policy(codex_home.path(), &server.uri())?;\n \n     let cwd_tmp = TempDir::new()?;\n     let cwd = cwd_tmp.path().to_path_buf();\n-    let relative_root = PathBuf::from(\"extra-root\");\n-    std::fs::create_dir_all(cwd.join(&relative_root))?;\n+    let extra_root = cwd.join(\"extra-root\");\n+    std::fs::create_dir_all(&extra_root)?;\n \n     let mut mcp = TestAppServer::new(codex_home.path()).await?;\n     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??...",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_start.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2301,6 +2301,8 @@ async fn turn_start_permission_profile_rebinds_runtime_workspace_roots_between_t\n     std::fs::create_dir(&new_root)?;\n     let old_root_text = old_root.to_string_lossy().into_owned();\n     let new_root_text = new_root.to_string_lossy().into_owned();\n+    let old_root = codex_utils_absolute_path::AbsolutePathBuf::from_absolute_path(old_root)?;\n+    let new_root = codex_utils_absolute_path::AbsolutePathBuf::from_absolute_path(new_root)?;\n \n     let server = responses::start_mock_server().await;\n     let response_mock = responses::mount_sse_sequence(",
+      "path": "codex-rs/app-server/tests/suite/v2/turn_start.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 9,
+      "patch_excerpt": "@@ -2245,9 +2245,9 @@ pub struct ConfigOverrides {\n     pub bypass_hook_trust: Option<bool>,\n     /// Additional directories that should be treated as writable roots for this session.\n     pub additional_writable_roots: Vec<PathBuf>,\n-    /// Explicit runtime workspace roots for this session. When set, this is\n-    /// the full runtime root list rather than an additive override.\n-    pub workspace_roots: Option<Vec<PathBuf>>,\n+    /// Explicit absolute runtime workspace roots for this session. When set,\n+    /// this is the full runtime root list rather than an additive override.\n+    pub workspace_roots: Option<Vec<AbsolutePathBuf>>,\n }\n \n fn dedupe_absolute_paths(paths: &mut Vec<AbsolutePathBuf>) {\n@@ -2821,12 +2821,7 @@ impl Config {\n             || !requested_additional_writable_roots.is_empty()\n             || legacy_workspace_roots_explicit;\n         let mut workspace_roots = match...",
+      "path": "codex-rs/core/src/config/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 14,
+      "patch_excerpt": "@@ -1044,13 +1044,7 @@ fn thread_start_params_from_config(config: &Config) -> ThreadStartParams {\n         model: config.model.clone(),\n         model_provider: Some(config.model_provider_id.clone()),\n         cwd: Some(config.cwd.to_string_lossy().to_string()),\n-        runtime_workspace_roots: Some(\n-            config\n-                .workspace_roots\n-                .iter()\n-                .map(AbsolutePathBuf::to_path_buf)\n-                .collect(),\n-        ),\n+        runtime_workspace_roots: Some(config.workspace_roots.clone()),\n         approval_policy: Some(config.permissions.approval_policy.value().into()),\n         approvals_reviewer: approvals_reviewer_override_from_config(config),\n         sandbox: sandbox.flatten(),\n@@ -1075,13 +1069,7 @@ fn thread_resume_params_from_config(config: &Config, thread_id: String) -> Threa\n         model: config.model.clone(),\n         mode...",
+      "path": "codex-rs/exec/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 41,
+      "patch_excerpt": "@@ -708,12 +708,7 @@ impl AppServerSession {\n                     additional_context: None,\n                     environments: None,\n                     cwd: Some(cwd),\n-                    runtime_workspace_roots: Some(\n-                        workspace_roots\n-                            .iter()\n-                            .map(AbsolutePathBuf::to_path_buf)\n-                            .collect(),\n-                    ),\n+                    runtime_workspace_roots: Some(workspace_roots.to_vec()),\n                     approval_policy: Some(approval_policy),\n                     approvals_reviewer: Some(approvals_reviewer.into()),\n                     sandbox_policy,\n@@ -1403,13 +1398,7 @@ fn thread_start_params_from_config(\n         model_provider: thread_params_mode.model_provider_from_config(config),\n         service_tier: service_tier_override_from_config(config),\n         cwd: th...",
+      "path": "codex-rs/tui/src/app_server_session.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#26532",
+    "#26552"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "Stacked on #26532.\n\n## Why\n\n#26532 moves cwd normalization to the app-server/core boundary. `runtimeWorkspaceRoots` still accepted raw paths in v2 requests and in `ConfigOverrides`, which left core responsible for interpreting those roots later. This makes runtime workspace roots follow the same absolute-path boundary as cwd.\n\n## What\n\n- Change v2 `runtimeWorkspaceRoots` request fields for `thread/start`, `thread/resume`, `thread/fork`, and `turn/start` to `AbsolutePathBuf`.\n- Deduplicate already-absolute runtime roots in app-server handlers and pass them through `ConfigOverrides.workspace_roots` as `AbsolutePathBuf`.\n- Update TUI and exec client request builders to pass absolute runtime roots directly.\n- Update app-server docs, schema fixtures, and focused tests for absolute runtime roots.\n\n## Testing\n\n- `just test -p codex-app-server-protocol`\n- `just test -p codex-app-server runtime_workspace_roots`\n- `just test -p codex-core session_permission_profile_rebinds_runtime_workspace_roots`\n- `just test -p codex-tui app_server_session`\n- `just test -p codex-exec`",
+    "labels": [],
+    "merged_at": "2026-06-05T18:36:54Z",
+    "number": 26552,
+    "state": "merged",
+    "title": "Make runtime workspace roots absolute in app-server API",
+    "url": "https://github.com/openai/codex/pull/26552"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
