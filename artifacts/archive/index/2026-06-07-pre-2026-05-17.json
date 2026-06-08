@@ -1,0 +1,53 @@
+{
+  "archive_asset": {
+    "name": "decodex-radar-archive-2026-06-07-pre-2026-05-17.tar.zst",
+    "sha256": "2fe97a74e1ab03543013abd429305f0b3cc268f33e44b3ff3c527883983d762c",
+    "size_bytes": 7015
+  },
+  "archive_id": "2026-06-07-pre-2026-05-17",
+  "checksum_asset": {
+    "name": "SHA256SUMS",
+    "sha256": "809edb57502f5eb0b8a782f04932bf8aedbe12e4be48b0864e9a290e4ba1ce2e"
+  },
+  "created_at": "2026-06-07T03:34:15Z",
+  "cutoff_evidence_before": "2026-05-17T03:33:29Z",
+  "files": [
+    {
+      "evidence_date": "2026-05-13T04:17:20Z",
+      "evidence_source": "site/src/content/signals/openai-codex-pr-22414.json.published_at",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-22414.analysis.json",
+      "sha256": "c6f13a69c921bc85b714df8e447ee467cd847fe911979e1126f36f4a9ace150a",
+      "size_bytes": 2587
+    },
+    {
+      "evidence_date": "2026-05-13T04:11:19Z",
+      "evidence_source": "site/src/content/signals/openai-codex-pr-22425.json.published_at",
+      "kind": "analysis",
+      "path": "artifacts/github/analysis/openai-codex-pr-22425.analysis.json",
+      "sha256": "4f90ff018b487d9cb9c173718102f530637f070fbd49a5fea24c1d3841cd5482",
+      "size_bytes": 2062
+    },
+    {
+      "evidence_date": "2026-05-13T04:17:20Z",
+      "evidence_source": "primary_pr.merged_at",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-22414.json",
+      "sha256": "5c54d39a56cbb4b8a5af3bd7c737c59340d56877478ca999efc636798285edc5",
+      "size_bytes": 12693
+    },
+    {
+      "evidence_date": "2026-05-13T04:11:19Z",
+      "evidence_source": "primary_pr.merged_at",
+      "kind": "bundle",
+      "path": "artifacts/github/bundles/openai-codex-pr-22425.json",
+      "sha256": "9d5736b2b0c39c37f78d03e19fb93b42cfa2fe1187f0e2e499a9359674668add",
+      "size_bytes": 8656
+    }
+  ],
+  "release_tag": "radar-archive-2026-06-07-pre-2026-05-17",
+  "release_url": "https://github.com/hack-ink/decodex/releases/tag/radar-archive-2026-06-07-pre-2026-05-17",
+  "retention_days": 21,
+  "schema": "radar_archive_manifest/v1",
+  "source_commit": "b63295eb9860acb7d2107e548492faeca9ac5f08"
+}
