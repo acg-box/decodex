@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "operator_impact",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-pr-26552:operator_impact",
   "reserved_at": "2026-06-08T15:54:46Z",
   "expires_at": "2026-06-08T17:54:46Z",
@@ -47,5 +47,6 @@
     "Chrome account readback initially showed @hackink as active and @decodexspace as available; the automation switched to @decodexspace before this reservation was prepared.",
     "Live @decodexspace profile readback found no 26552, runtimeWorkspaceRoots, runtime workspace roots, source URL, or exact subject match.",
     "Checked publication records show daily_count_before = 2 for @decodexspace on 2026-06-08 Asia/Shanghai, so one additional single-post publication would not exceed the cap of 8."
-  ]
+  ],
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-08/openai-codex-pr-26552.json"
 }
