@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26674",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "protocol: remove submission-side serde from Op",
+        "url": "https://github.com/openai/codex/pull/26674",
+        "meta": "Merged 2026-06-05T22:41:14Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26674",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26674.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex removed serde/schema support from submission-side Op payloads while preserving event/API-facing serialization where wire consumers still exist.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26674 says submission-side Op payloads are internal handoff types rather than a stable serde wire contract.",
+    "codex-rs/protocol/src/protocol.rs removes serde/schema derives from Submission, Op, and submission-only payloads.",
+    "codex-rs/docs/protocol_v1.md documents that Op submissions are primarily in-process Rust types.",
+    "The PR body says event/API-facing serialization remains where required.",
+    "The request_user_input response serde restoration keeps the wire-payload serialization path explicit."
+  ],
+  "candidate_followups": [
+    "Check Decodex app-server and protocol adapters for any direct serialized Op submission dependency.",
+    "Keep Control Plane integrations anchored to explicit app-server APIs and event serialization.",
+    "Use this as release-rollup background rather than a standalone public feature unless a broader protocol migration note is produced."
+  ],
+  "social_notes": [
+    "If this appears publicly, frame it as a cautious protocol boundary note, not a user feature."
+  ],
+  "caveats": [
+    "Event/API-facing serialization is still preserved where required.",
+    "The change affects submission-side Rust types, not every protocol message."
+  ]
+}
