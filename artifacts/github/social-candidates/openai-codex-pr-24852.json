@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-24852",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Enterprise Codex operators and app-server clients",
+  "candidate_text": [
+    "Codex managed permissions moved to a closed `allowed_permission_profiles` map plus explicit `default_permissions`; app-server configRequirements/read now exposes `allowedPermissionProfiles` and `defaultPermissions`. PR: https://github.com/openai/codex/pull/24852"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-24852.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-24852.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/24852"
+    ]
+  },
+  "evidence_notes": [
+    "PR #24852 defines `allowed_permission_profiles` as a closed allow map.",
+    "The app-server protocol replaces `allowedPermissions` with `allowedPermissionProfiles` and adds `defaultPermissions`.",
+    "Config-loader tests cover strict denial of omitted built-ins and managed defaults.",
+    "The PR says legacy behavior is unchanged when the allowlist is absent."
+  ],
+  "claims": [
+    {
+      "text": "Managed permission profiles are now represented as a closed allow/deny map.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-24852.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "App-server config requirements clients need the `allowedPermissionProfiles` and `defaultPermissions` response shape.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-24852.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR changes enterprise permission semantics and a concrete app-server response contract.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-24852:operator_impact"
+  },
+  "caveats": [
+    "Keep legacy behavior caveat visible when the allowlist is absent.",
+    "Do not frame omitted profiles as denied unless `allowed_permission_profiles` is configured."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this after repository checks pass."
+  ]
+}

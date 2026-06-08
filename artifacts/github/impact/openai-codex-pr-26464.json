@@ -1,0 +1,44 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26464",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "build(v8): update rusty_v8 to 149.2.0",
+        "url": "https://github.com/openai/codex/pull/26464",
+        "meta": "Merged 2026-06-06T21:27:23Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26464",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26464.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex updates its V8 and `rusty_v8` build inputs to 149.2.0, refreshes Bazel patches and release workflows, and replaces the checked Windows artifact hashes.",
+  "public_signal_decision": "skip",
+  "control_plane_impact": "watch",
+  "publisher_angle": "none",
+  "confidence": "confirmed",
+  "evidence": [
+    "Cargo pins `v8` to `=149.2.0`.",
+    "MODULE.bazel moves the V8 source archive to 14.9.207.2.",
+    "Release and canary workflows add `v8_cpu` matrix settings.",
+    "The third_party/v8 artifact aliases and sha256 file names move from 147.4.0 to 149.2.0.",
+    "The review artifact limits the claim to build and release packaging because the PR body is empty."
+  ],
+  "candidate_followups": [
+    "Use this as release-rollup background if a Codex release highlights V8 or builder changes.",
+    "Watch for upstream build or runtime regressions that reference the 149.2.0 V8 baseline."
+  ],
+  "social_notes": [
+    "Do not publish this as a standalone post without additional user-facing release evidence."
+  ],
+  "caveats": [
+    "No direct app-server, CLI, or user workflow behavior is established by this PR alone.",
+    "The PR body is empty, so confidence is about the dependency and packaging change, not product behavior."
+  ]
+}
