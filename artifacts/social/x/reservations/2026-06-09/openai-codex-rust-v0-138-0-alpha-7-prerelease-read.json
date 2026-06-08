@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "thread",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-rust-v0-138-0-alpha-7:alpha6-alpha7:thread",
   "reserved_at": "2026-06-08T21:54:44Z",
   "expires_at": "2026-06-09T01:54:44Z",
@@ -33,7 +33,8 @@
   "owner": {
     "automation_id": "decodex-x-publisher",
     "run_id": "decodex-x-publisher-2026-06-08T215444Z",
-    "branch": "codex-automation/x-publisher-alpha7"
+    "branch": "codex-automation/x-publisher-alpha7",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/248"
   },
   "evidence_notes": [
     "Checked social_post/v1 records contain no slug, source URL, release tag, or idempotency match for openai-codex-rust-v0-138-0-alpha-7-prerelease-read.",
@@ -44,5 +45,6 @@
     "Live @decodexspace profile readback found no alpha.7 lead text, rust-v0.138.0-alpha.7 tag, alpha.6 -> alpha.7 compare URL, or exact source subject match.",
     "Live @decodexspace profile readback showed the prior alpha.6 prerelease thread on the profile; checked social_post/v1 records mark that post live and quote-eligible.",
     "Checked publication records show daily_count_before = 0 for @decodexspace on 2026-06-09 Asia/Shanghai, so one seven-post thread would not exceed the cap of 8."
-  ]
+  ],
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-09/openai-codex-rust-v0-138-0-alpha-7-prerelease-read.json"
 }
