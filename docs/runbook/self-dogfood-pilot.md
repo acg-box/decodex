@@ -330,13 +330,13 @@ wants to observe the self-bootstrap loop without reading source code.
    ```sh
    git rev-parse --short HEAD
    decodex --version
-   SERVE_PID=$(lsof -tiTCP:8912 -sTCP:LISTEN)
-   lsof -nP -iTCP:8912 -sTCP:LISTEN
+   SERVE_PID=$(lsof -tiTCP:8192 -sTCP:LISTEN)
+   lsof -nP -iTCP:8192 -sTCP:LISTEN
    ps -p "$SERVE_PID" -o pid,lstart,command
-   curl -fsS http://127.0.0.1:8912/livez
+   curl -fsS http://127.0.0.1:8192/livez
    ```
 
-   Use the port from the active `--listen-address` if it is not `127.0.0.1:8912`.
+   Use the port from the active `--listen-address` if it is not `127.0.0.1:8192`.
    Treat a missing listener, a binary revision that does not match the current landed
    `HEAD`, or a `decodex serve` start time older than the latest runtime or dashboard
    landing as stale evidence. Restart `decodex serve` after reinstalling or after any
@@ -419,7 +419,7 @@ wants to observe the self-bootstrap loop without reading source code.
    ```sh
    decodex project add ~/.codex/decodex/projects/decodex
    decodex project list
-   decodex serve --listen-address 127.0.0.1:8912
+   decodex serve --listen-address 127.0.0.1:8192
    ```
 
    `serve` owns one operator UI and schedules all enabled registered projects from the
@@ -439,7 +439,7 @@ wants to observe the self-bootstrap loop without reading source code.
    issues, trigger the next scan explicitly instead of waiting for that window:
 
    ```sh
-   curl -sS -X POST http://127.0.0.1:8912/api/linear-scan \
+   curl -sS -X POST http://127.0.0.1:8192/api/linear-scan \
      -H 'Content-Type: application/json' \
      -d '{"projectId":"decodex"}'
    ```
@@ -447,7 +447,7 @@ wants to observe the self-bootstrap loop without reading source code.
 5. Open the operator dashboard:
 
    ```text
-   http://127.0.0.1:8912/
+   http://127.0.0.1:8192/
    ```
 
    For dashboard section meanings and local-vs-external state ownership, read
@@ -537,8 +537,8 @@ wants to observe the self-bootstrap loop without reading source code.
      timing when the ledger recorded those fields; raw attempts and heartbeat details
      stay in the expanded debug view.
      To validate rich local closeout persistence after a lane completes, keep
-     `decodex serve --listen-address 127.0.0.1:8912` running and inspect
-     `decodex status --json` or the 8912 dashboard `Run Ledger`, not a replay of Linear
+     `decodex serve --listen-address 127.0.0.1:8192` running and inspect
+     `decodex status --json` or the operator dashboard `Run Ledger`, not a replay of Linear
      comments. The completed row should still expose the local `run_id`, attempt
      number, lifecycle status, PR or landing reference, closeout or attention reason,
      elapsed timing, and debug-only raw attempt or heartbeat details after the lane
@@ -628,7 +628,7 @@ Decodex is intentionally Unix-only, and the control plane relies on Unix file-de
 `decodex serve` owns the local operator console. Use `--listen-address` when you need a non-default bind address:
 
 ```sh
-decodex serve --listen-address 127.0.0.1:8912
+decodex serve --listen-address <ADDR>
 ```
 
 `serve` has no interval override. It publishes local operator snapshots every
