@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "practical_explainer",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-pr-26469:practical_explainer",
   "reserved_at": "2026-06-08T03:56:50Z",
   "expires_at": "2026-06-08T05:56:50Z",
@@ -43,10 +43,12 @@
     "Checked social_post/v1 records contain no slug, source URL, or idempotency match for openai-codex-pr-26469.",
     "Checked social_publish_reservation/v1 records contain no active reservation for this candidate or idempotency key before this reservation.",
     "Open GitHub PR readback showed only Dependabot PRs and no pending social publication PR for this candidate.",
+    "PR #236 made this active reservation visible before X compose was opened.",
     "Chrome account readback initially showed @hackink as the active X account and @decodexspace as an available account; the automation switched to @decodexspace before reservation.",
     "Chrome account readback then confirmed the active X account menu showed @decodexspace before this reservation was prepared.",
     "Live @decodexspace profile readback found no 26469, plugin discovery, 833ms, or 504ms match.",
     "Focused X search for from:decodexspace \"26469\" returned no results; this is supporting evidence only, not the primary duplicate gate.",
     "Checked publication records show daily_count_before = 0 for @decodexspace on 2026-06-08 Asia/Shanghai, so one additional single-post publication would not exceed the cap of 8."
-  ]
+  ],
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-08/openai-codex-pr-26469.json"
 }
