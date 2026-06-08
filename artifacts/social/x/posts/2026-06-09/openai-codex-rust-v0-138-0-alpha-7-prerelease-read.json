@@ -1,0 +1,176 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-rust-v0-138-0-alpha-7-prerelease-read",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "thread",
+  "status": "published",
+  "audience": "Codex operators tracking prerelease direction before stable notes",
+  "text": [
+    "Codex CLI 0.138.0-alpha.7 prerelease read\n\nIncrement: alpha.6 -> alpha.7, 14 commits.\n\nMetadata read: remote-control/plugin identity, approval + MCP status fixes, standalone web search in code mode, and multi-agent v2 lifecycle/concurrency work.\n\nAlpha caveat: not stable notes.",
+    "Operator surfaces:\n\n- remote-control preserves enrollment on generic websocket 404s\nhttps://github.com/openai/codex/pull/26741\n\n- plugin service gets Codex product SKU\nhttps://github.com/openai/codex/pull/26804",
+    "Approval + MCP watch:\n\n- approval sandbox decisions preserved in unified exec\nhttps://github.com/openai/codex/pull/24981\n\n- MCP startup status scoped by thread\nhttps://github.com/openai/codex/pull/26639\n\nPR-title metadata only until Radar reviews source.",
+    "Workflow/runtime direction:\n\n- standalone web search enabled in code mode\nhttps://github.com/openai/codex/pull/26719\n\n- TUI accepts prompts with resume and fork\nhttps://github.com/openai/codex/pull/26818",
+    "Multi-agent v2 thread:\n\n- agent residency LRU\nhttps://github.com/openai/codex/pull/26632\n\n- concurrency counted by active execution\nhttps://github.com/openai/codex/pull/26969\n\n- close_agent renamed to interrupt_agent\nhttps://github.com/openai/codex/pull/26994",
+    "Release/build background:\n\n- V8/rusty_v8 149.2.0 is checked review context, not standalone social value\nhttps://github.com/openai/codex/pull/26464\n\nOther PR-title gaps: BuildBuddy secret, starlark 0.14.2, proc-macro advisory.",
+    "Lineage + quote:\n\nCompare: https://github.com/openai/codex/compare/rust-v0.138.0-alpha.6...rust-v0.138.0-alpha.7\n\nPrevious quote-eligible Decodex prerelease post: https://x.com/decodexspace/status/2063279620129247678"
+  ],
+  "source_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-rust-v0-138-0-alpha-7-prerelease-read.json"
+    ],
+    "reservations": [
+      "artifacts/social/x/reservations/2026-06-09/openai-codex-rust-v0-138-0-alpha-7-prerelease-read.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26464.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26464.json"
+    ],
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "media_manifests": [
+      "/Users/x/.codex/decodex/social-media/x/2026-06-09/openai-codex-rust-v0-138-0-alpha-7-prerelease-read/manifest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.6",
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.7",
+      "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.6...rust-v0.138.0-alpha.7",
+      "https://github.com/openai/codex/pull/26741",
+      "https://github.com/openai/codex/pull/26804",
+      "https://github.com/openai/codex/pull/24981",
+      "https://github.com/openai/codex/pull/26818",
+      "https://github.com/openai/codex/pull/26639",
+      "https://github.com/openai/codex/pull/26719",
+      "https://github.com/openai/codex/pull/26632",
+      "https://github.com/openai/codex/pull/26969",
+      "https://github.com/openai/codex/pull/26994",
+      "https://github.com/openai/codex/pull/26464",
+      "https://github.com/openai/codex/pull/26895",
+      "https://github.com/openai/codex/pull/24820",
+      "https://github.com/openai/codex/pull/26974",
+      "https://x.com/decodexspace/status/2063279620129247678",
+      "https://x.com/decodexspace/status/2064105899913072989",
+      "https://x.com/decodexspace/status/2064105902429630972",
+      "https://x.com/decodexspace/status/2064105904375844959",
+      "https://x.com/decodexspace/status/2064105906531647956",
+      "https://x.com/decodexspace/status/2064105908586901979",
+      "https://x.com/decodexspace/status/2064105910608527600",
+      "https://x.com/decodexspace/status/2064105912655393101",
+      "https://x.com/decodexspace/status/2064105899913072989/photo/1",
+      "https://pbs.twimg.com/media/HKUtJa7a4AAHnEC?format=jpg&name=medium"
+    ]
+  },
+  "evidence_notes": [
+    "The social_candidate/v1 artifact has decision.worthiness = publish and mode thread for the alpha.6 -> alpha.7 prerelease read.",
+    "Official OpenAI Codex changelog readback at publication time still showed June 4 Codex app 26.602 and Codex CLI 0.137.0 as the latest visible June entries, so this post is a GitHub prerelease metadata read rather than an official changelog release pulse.",
+    "The active reservation was committed, pushed, and made PR-visible in PR #248 before X compose was opened, with idempotency key x:decodexspace:openai-codex-rust-v0-138-0-alpha-7:alpha6-alpha7:thread.",
+    "Validation before reservation publication passed: cargo run -p decodex --bin decodex -- radar validate artifacts/github/social-candidates artifacts/social/x returned OK for 36 Radar artifact JSON files.",
+    "Checked durable social_post/v1 records, active reservation records, and open GitHub PRs showed no alpha.7 idempotency, slug, release tag, compare URL, or source-subject duplicate before compose.",
+    "Chrome account menu and profile readback confirmed the active X account was @decodexspace before compose.",
+    "Live @decodexspace profile readback before reservation and again immediately before clicking Post all found no alpha.7 lead text, rust-v0.138.0-alpha.7 tag, alpha.6 -> alpha.7 compare URL, or exact source subject match.",
+    "Checked social_post/v1 records marked the previous alpha.6 prerelease thread live and quote-eligible, and the live alpha.6 permalink readback showed the expected first post and media before this quote thread was composed.",
+    "A fresh candidate-specific decodex_signal_card was generated locally at /Users/x/.codex/decodex/social-media/x/2026-06-09/openai-codex-rust-v0-138-0-alpha-7-prerelease-read/image.png and visually reviewed before upload.",
+    "The X file chooser accepted the generated PNG on the first upload path, and the composer showed the media group before publication.",
+    "After publication, @decodexspace profile readback showed 16 total posts and the alpha.7 quote post at the top with the expected lead text, uploaded image, alpha.6 quote card, and one reply thread.",
+    "The alpha.7 permalink readback showed all seven expected status URLs in one conversation and all seven expected thread lead phrases.",
+    "The first alpha.7 permalink readback exposed the uploaded media as https://x.com/decodexspace/status/2064105899913072989/photo/1 and https://pbs.twimg.com/media/HKUtJa7a4AAHnEC?format=jpg&name=medium.",
+    "The seven status IDs decode to 2026-06-08T22:02:50.429Z through 2026-06-08T22:02:53.467Z."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.138.0-alpha.7 is the observed OpenAI Codex prerelease checkpoint for this publication run.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.138.0-alpha.7",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The published prerelease lineage comparison is rust-v0.138.0-alpha.6 -> rust-v0.138.0-alpha.7.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.6...rust-v0.138.0-alpha.7",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR-title metadata in the alpha.7 window points to remote-control and plugin-service identity fixes, approval and MCP status cleanup, standalone web search in code mode, and multi-agent v2 lifecycle and concurrency work.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.138.0-alpha.6...rust-v0.138.0-alpha.7",
+      "confidence": "likely"
+    },
+    {
+      "text": "Existing checked Radar review coverage in this compare window is limited to PR #26464, and that review treats the V8/rusty_v8 update as release-packaging background rather than standalone social value.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26464.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The immediately previous alpha.6 Decodex prerelease post was live and quote-eligible before publication.",
+      "evidence": "artifacts/social/x/posts/2026-06-06/openai-codex-rust-v0-138-0-alpha-6-prerelease-read.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.7 X thread is live on @decodexspace with seven status URLs.",
+      "evidence": "https://x.com/decodexspace/status/2064105899913072989",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The first alpha.7 X thread post includes uploaded generated media and a readable /photo/1 media URL.",
+      "evidence": "https://x.com/decodexspace/status/2064105899913072989/photo/1",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "high",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-138-0-alpha-7:alpha6-alpha7:thread",
+    "reason": "The adjacent alpha.6 -> alpha.7 compare supports a scan-friendly metadata thread with direct PR URLs, prior quote lineage, and explicit source-review caveats.",
+    "daily_limit": 8,
+    "daily_count_before": 0,
+    "daily_count_after": 7,
+    "day": "2026-06-09",
+    "timezone": "Asia/Shanghai"
+  },
+  "publication": {
+    "posted_at": "2026-06-08T22:02:50.429Z",
+    "posted_at_last": "2026-06-08T22:02:53.467Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2064105899913072989",
+      "https://x.com/decodexspace/status/2064105902429630972",
+      "https://x.com/decodexspace/status/2064105904375844959",
+      "https://x.com/decodexspace/status/2064105906531647956",
+      "https://x.com/decodexspace/status/2064105908586901979",
+      "https://x.com/decodexspace/status/2064105910608527600",
+      "https://x.com/decodexspace/status/2064105912655393101"
+    ],
+    "publisher": "chrome",
+    "account_verified": true,
+    "made_with_ai": true,
+    "image_template": "decodex_signal_card"
+  },
+  "media_refs": [
+    "https://x.com/decodexspace/status/2064105899913072989/photo/1",
+    "https://pbs.twimg.com/media/HKUtJa7a4AAHnEC?format=jpg&name=medium",
+    "/Users/x/.codex/decodex/social-media/x/2026-06-09/openai-codex-rust-v0-138-0-alpha-7-prerelease-read/image.png"
+  ],
+  "generated_media": {
+    "local_png": "/Users/x/.codex/decodex/social-media/x/2026-06-09/openai-codex-rust-v0-138-0-alpha-7-prerelease-read/image.png",
+    "local_svg": "/Users/x/.codex/decodex/social-media/x/2026-06-09/openai-codex-rust-v0-138-0-alpha-7-prerelease-read/image.svg",
+    "png_sha256": "ff3131774cb3ebf1a562d39da7d237acf4a627da89360c89e89ff2b4a204978f",
+    "svg_sha256": "f408eebee0d1ccf9443a8bce04672ec9f3c02b4181caaad7045baad3a631474c",
+    "dimensions": {
+      "width": 1200,
+      "height": 1200
+    }
+  },
+  "caveats": [
+    "Behavior claims for alpha.7 remain upstream-analysis gaps; exact gap list: #26741, #26804, #24981, #26818, #26639, #26719, #26632, #26969, #26994, #26895, #24820, #26974.",
+    "This post is based on public release metadata, compare metadata, PR-title metadata, and existing checked review/impact context for #26464 only; codex-upstream-radar-review / codex-code-analysis should review source before a release_rollup makes stronger claims.",
+    "The alpha.7 post was published as a quote thread of the previous alpha.6 prerelease post because checked records and live readback showed the alpha.6 post was live and quote-eligible.",
+    "The local media file is outside Git by default; this record keeps the final X status, /photo/1 URL, pbs media readback URL, and SHA-256 metadata instead of committing the generated binary.",
+    "X generated link preview cards for some GitHub URLs during compose."
+  ],
+  "post_lifecycle": {
+    "current_state": "live",
+    "quote_eligible": true,
+    "reason": "This is the live alpha.7 prerelease quote thread and may be quoted by the next prerelease checkpoint if it remains live."
+  }
+}
