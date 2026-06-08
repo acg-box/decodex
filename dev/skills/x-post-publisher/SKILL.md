@@ -61,6 +61,13 @@ reservation is PR-visible and immediately before clicking Post, repeat live
 profile/timeline duplicate readback. If a duplicate appears, cancel or expire the
 reservation and do not publish.
 
+Keep the reservation record thin. It should hold only the publish lease, owner,
+candidate/source refs, idempotency key, duplicate keys, cap-day inputs, and concise
+pre-compose duplicate/account-readiness notes. Do not copy final post text, final
+timeline/permalink readback, publication URLs, media readback, claims, caveats, or
+`post_lifecycle` into `social_publish_reservation/v1`; write those to the terminal
+`social_post/v1`.
+
 ## Chrome And Media
 
 Use `@Chrome` only inside this low-frequency Publisher workflow. Before composing,
@@ -93,10 +100,15 @@ Write `artifacts/social/x/posts/<yyyy-mm-dd>/<slug>.json` with:
 - `post_lifecycle` when the record can affect future prerelease quote chains
 - the consumed reservation path under `source_refs.reservations` when the compose gate
   was reached
+- final profile/timeline/permalink readback evidence after the PR-visible reservation
+  gate and after publication, when available
 
 Update `artifacts/social/x/reservations/<yyyy-mm-dd>/<slug>.json` from `active` to
 `consumed`, `canceled`, or `expired` before the run ends. Do not leave an active
-reservation behind unless the thread is explicitly handed off to a human operator.
+reservation behind unless the thread is explicitly handed off to a human operator. When
+marking a reservation `consumed`, add only `consumed_by_social_post` and any minimal
+status/owner update needed; do not backfill final publication evidence into the
+reservation.
 
 Run:
 
