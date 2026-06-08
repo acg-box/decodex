@@ -1,14 +1,14 @@
 {
   "counts": {
     "critical": 19,
-    "high": 5,
-    "low": 2,
-    "normal": 14,
+    "high": 4,
+    "low": 1,
+    "normal": 16,
     "published_subjects_seen": 0,
     "recent_commits_scanned": 40,
     "subjects_queued": 40
   },
-  "generated_at": "2026-06-08T08:04:47.078688Z",
+  "generated_at": "2026-06-08T14:06:05.15617Z",
   "repo": "openai/codex",
   "schema": "upstream_review_queue/v1",
   "source": {
@@ -17,54 +17,6 @@
     "signals_dir": "site/src/content/signals"
   },
   "subjects": [
-    {
-      "attention_flags": [
-        "deprecated_removed",
-        "new_feature",
-        "protocol_change",
-        "security_policy"
-      ],
-      "changed_file_count": 52,
-      "commit_shas": [
-        "7b0e744c2817f02dfb2be7741654b3163cf63640",
-        "581088c7d4effa5370dbfffdd73075c28f0a69a3",
-        "763ee1c0f8a5c0874acb23b2b139b1ef0c65d40b",
-        "69c63117537ebd06a9e553bd78a8224ef472b619"
-      ],
-      "committed_at": "2026-06-05T16:29:15Z",
-      "next_step": "ai_review_required",
-      "pr_number": 26532,
-      "pr_url": "https://github.com/openai/codex/pull/26532",
-      "review_priority": "critical",
-      "review_reason": "Needs AI review for deprecated_removed, new_feature, protocol_change, security_policy.",
-      "sample_paths": [
-        "codex-rs/app-server/src/request_processors/turn_processor.rs",
-        "codex-rs/core/src/codex_thread.rs",
-        "codex-rs/core/src/guardian/review_session.rs",
-        "codex-rs/core/src/session/mod.rs",
-        "codex-rs/core/src/session/session.rs",
-        "codex-rs/core/src/session/tests.rs",
-        "codex-rs/core/tests/common/test_codex.rs",
-        "codex-rs/core/tests/suite/apply_patch_cli.rs",
-        "codex-rs/core/tests/suite/approvals.rs",
-        "codex-rs/core/tests/suite/auto_review.rs",
-        "codex-rs/core/tests/suite/client.rs",
-        "codex-rs/core/tests/suite/code_mode.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "26532",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "app_server_protocol",
-        "cli_tui",
-        "mcp_plugins",
-        "model_provider",
-        "sandbox_permissions",
-        "tests_ci"
-      ],
-      "title": "Require absolute cwd in thread settings",
-      "url": "https://github.com/openai/codex/pull/26532"
-    },
     {
       "attention_flags": [
         "auth_account",
@@ -867,33 +819,33 @@
     },
     {
       "attention_flags": [
-        "protocol_change",
+        "deprecated_removed",
+        "new_feature",
+        "release_packaging",
         "security_policy"
       ],
       "changed_file_count": 2,
       "commit_shas": [
-        "ee11c0430c82d9853644a50bc6fdb98aadc7433a",
-        "2a0a59f851fbe4fe4ef4d8fa51ce68f33a33c70f"
+        "d93f759a07dc3c9b685930233f441fe2fbce1c10"
       ],
-      "committed_at": "2026-06-05T16:34:36Z",
+      "committed_at": "2026-06-08T09:39:08Z",
       "next_step": "ai_review_required",
-      "pr_number": 26625,
-      "pr_url": "https://github.com/openai/codex/pull/26625",
-      "review_priority": "high",
-      "review_reason": "Needs AI review for protocol_change, security_policy.",
+      "pr_number": 26974,
+      "pr_url": "https://github.com/openai/codex/pull/26974",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for deprecated_removed, new_feature, release_packaging, security_policy.",
       "sample_paths": [
-        "codex-rs/linux-sandbox/src/landlock.rs",
-        "codex-rs/linux-sandbox/tests/suite/managed_proxy.rs"
+        "codex-rs/.cargo/audit.toml",
+        "codex-rs/deny.toml"
       ],
       "source_state": "merged",
-      "subject_id": "26625",
+      "subject_id": "26974",
       "subject_kind": "pr",
       "surface_hints": [
-        "sandbox_permissions",
-        "tests_ci"
+        "config_hooks"
       ],
-      "title": "[codex] Allow socketpair in proxy-routed Linux sandbox",
-      "url": "https://github.com/openai/codex/pull/26625"
+      "title": "Ignore proc-macro-error2 advisory",
+      "url": "https://github.com/openai/codex/pull/26974"
     },
     {
       "attention_flags": [
@@ -1021,42 +973,6 @@
       ],
       "title": "[codex] Enable standalone web search in code mode",
       "url": "https://github.com/openai/codex/pull/26719"
-    },
-    {
-      "attention_flags": [
-        "auth_account",
-        "deprecated_removed",
-        "new_feature",
-        "protocol_change"
-      ],
-      "changed_file_count": 4,
-      "commit_shas": [
-        "f93d333b914a3b2771ff1e662779eab99761f3a3",
-        "65e4e817cbc4191a851eec095d9aa779ae4314ad",
-        "b1f2e1c1b186bba3186da59a55fa5f8bf1415528",
-        "b16bb70cd5e227939c665153d41cf653aaa47792",
-        "ae13535f00b66c3c3fdcbe66697ce1aedf24d5b5"
-      ],
-      "committed_at": "2026-06-05T16:18:29Z",
-      "next_step": "ai_review_required",
-      "pr_number": 26623,
-      "pr_url": "https://github.com/openai/codex/pull/26623",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for auth_account, deprecated_removed, new_feature, protocol_change.",
-      "sample_paths": [
-        "codex-rs/core/src/agent/control/spawn.rs",
-        "codex-rs/core/src/agent/control_tests.rs",
-        "codex-rs/core/src/tools/handlers/multi_agents/send_input.rs",
-        "codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "26623",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "tests_ci"
-      ],
-      "title": "feat: reload v2 agents on delivery",
-      "url": "https://github.com/openai/codex/pull/26623"
     },
     {
       "attention_flags": [
@@ -1480,35 +1396,123 @@
       "url": "https://github.com/openai/codex/pull/26818"
     },
     {
-      "attention_flags": [],
-      "changed_file_count": 6,
-      "commit_shas": [
-        "ac1b6e8188f0c709dfadfff215a05fd324c98cf8",
-        "c5335e4fd15f9fa7b4faf55e1fdeff970943e505"
+      "attention_flags": [
+        "auth_account",
+        "deprecated_removed",
+        "new_feature",
+        "protocol_change",
+        "release_packaging"
       ],
-      "committed_at": "2026-06-05T15:34:34Z",
+      "changed_file_count": 5,
+      "commit_shas": [
+        "46e2da8bc5461a85aff9c060b4213372eb6992b3",
+        "5a56d7ecee1b27a94f1112e1b5e74f45a1f985ea"
+      ],
+      "committed_at": "2026-06-08T08:24:48Z",
       "next_step": "ai_review_required",
-      "pr_number": 26554,
-      "pr_url": "https://github.com/openai/codex/pull/26554",
-      "review_priority": "low",
-      "review_reason": "Needs AI review for surface hints: cli_tui, tests_ci.",
+      "pr_number": 26632,
+      "pr_url": "https://github.com/openai/codex/pull/26632",
+      "review_priority": "normal",
+      "review_reason": "Needs AI review for auth_account, deprecated_removed, new_feature, protocol_change, release_packaging.",
       "sample_paths": [
-        "codex-rs/tui/src/chatwidget/streaming.rs",
-        "codex-rs/tui/src/chatwidget/turn_runtime.rs",
-        "codex-rs/tui/src/git_action_directives.rs",
-        "codex-rs/tui/src/resume_picker.rs",
-        "codex-rs/tui/src/resume_picker/transcript.rs",
-        "codex-rs/tui/src/snapshots/codex_tui__git_action_directives__tests__code_comment_directive_fallback.snap"
+        "codex-rs/core/src/agent/control.rs",
+        "codex-rs/core/src/agent/control/legacy.rs",
+        "codex-rs/core/src/agent/control/residency.rs",
+        "codex-rs/core/src/agent/control/residency_tests.rs",
+        "codex-rs/core/src/agent/control/spawn.rs"
       ],
       "source_state": "merged",
-      "subject_id": "26554",
+      "subject_id": "26632",
       "subject_kind": "pr",
       "surface_hints": [
-        "cli_tui",
         "tests_ci"
       ],
-      "title": "Render code comment directives in TUI replay",
-      "url": "https://github.com/openai/codex/pull/26554"
+      "title": "feat: add v2 agent residency lru",
+      "url": "https://github.com/openai/codex/pull/26632"
+    },
+    {
+      "attention_flags": [
+        "auth_account",
+        "breaking_change",
+        "new_feature",
+        "protocol_change",
+        "release_packaging",
+        "security_policy"
+      ],
+      "changed_file_count": 11,
+      "commit_shas": [
+        "a66741fc0468c7ffa97c690a9aa737a75068699d",
+        "d3e65b3c8f142c79be0a510094edc46e6bf17953",
+        "142344dacca9ff1c6d7ceedc89310800946d81dd",
+        "773a29a9f89f9f36ba0bf9700f9ef6e706d189f4",
+        "4fcd8712ac7358e8b9676e9aac9fabb48538260a",
+        "28d5be36730f14ffe5d949384e91d3b993d03fa0",
+        "37a985e98fcef7f8c6166bdef6766d59d490ce39",
+        "36dcfa4bf3030fb93717714712884d7a4ffef55f",
+        "751112ad6f92aee1e7103dc7dc6c8e088f51a622"
+      ],
+      "committed_at": "2026-06-08T12:21:28Z",
+      "next_step": "ai_review_required",
+      "pr_number": 26969,
+      "pr_url": "https://github.com/openai/codex/pull/26969",
+      "review_priority": "normal",
+      "review_reason": "Needs AI review for auth_account, breaking_change, new_feature, protocol_change, release_packaging, security_policy.",
+      "sample_paths": [
+        "codex-rs/core/src/agent/control.rs",
+        "codex-rs/core/src/agent/control/execution.rs",
+        "codex-rs/core/src/agent/control/execution_tests.rs",
+        "codex-rs/core/src/agent/control/spawn.rs",
+        "codex-rs/core/src/codex_thread.rs",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/state/turn.rs",
+        "codex-rs/core/src/tasks/mod.rs",
+        "codex-rs/core/tests/suite/agent_execution.rs",
+        "codex-rs/core/tests/suite/mod.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "26969",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "tests_ci"
+      ],
+      "title": "feat: count V2 concurrency by active execution",
+      "url": "https://github.com/openai/codex/pull/26969"
+    },
+    {
+      "attention_flags": [
+        "breaking_change",
+        "new_feature",
+        "protocol_change"
+      ],
+      "changed_file_count": 8,
+      "commit_shas": [
+        "2f9beaccb897de72f762966b71307da28298b72b"
+      ],
+      "committed_at": "2026-06-08T12:46:35Z",
+      "next_step": "ai_review_required",
+      "pr_number": 26994,
+      "pr_url": "https://github.com/openai/codex/pull/26994",
+      "review_priority": "normal",
+      "review_reason": "Needs AI review for breaking_change, new_feature, protocol_change.",
+      "sample_paths": [
+        "codex-rs/core/src/agent/control.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_spec.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_tests.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_v2.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_v2/interrupt_agent.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs",
+        "codex-rs/core/src/tools/spec_plan.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "26994",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "tests_ci"
+      ],
+      "title": "Rename multi-agent v2 close_agent to interrupt_agent",
+      "url": "https://github.com/openai/codex/pull/26994"
     },
     {
       "attention_flags": [

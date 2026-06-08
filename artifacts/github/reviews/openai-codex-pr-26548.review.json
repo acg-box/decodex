@@ -1,0 +1,70 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26548",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26548",
+    "commit_shas": [
+      "5622e8abb3ffcb17707ddc796dd32b6abe1d46ae",
+      "507e19e199703e9dec844849d145d36ed767fac6",
+      "12dbf7c6e13665c8f7f2d303cec8213d7b5b715a"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[2 of 2] Finish moving goal runtime to extension",
+        "url": "https://github.com/openai/codex/pull/26548",
+        "meta": "Merged 2026-06-05T21:17:30Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Move goal runtime to extension",
+        "url": "https://github.com/openai/codex/commit/5622e8abb3ffcb17707ddc796dd32b6abe1d46ae"
+      },
+      {
+        "kind": "commit",
+        "title": "Serialize extension goal notifications",
+        "url": "https://github.com/openai/codex/commit/507e19e199703e9dec844849d145d36ed767fac6"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-08T14:08:38Z",
+  "observed_change": "Codex completed the move of thread goal behavior from core-owned runtime and built-in core tools into the goal extension and app-server GoalService path.",
+  "changed_surfaces": [
+    "app-server goal extension installation and ThreadManager session setup",
+    "app-server thread goal get, set, clear, resume, and notification ordering",
+    "core goal runtime state and built-in goal tool handlers",
+    "extension tool planning order and review-thread goal gating",
+    "goal runtime tests and legacy goal-context compatibility coverage"
+  ],
+  "user_visible_path": "Users still interact with goals through the app-server/TUI goal flow, but the runtime ownership is now extension-backed and old core goal tool handlers/specs were removed.",
+  "control_plane_relevance": "Decodex should treat goal behavior as extension-owned when mirroring app-server thread goal state, goal notifications, or model-visible goal tools.",
+  "compatibility_risk": "Integrations that assumed core-owned get_goal, create_goal, or update_goal handlers, or that depended on core goal runtime hooks, need to account for extension registration and GoalService routing instead.",
+  "adoption_opportunity": "Use this as the app-server direction of travel for extension-backed durable runtime features: install the extension, route app-server mutations through the service, and serialize notifications through FIFO app-server delivery.",
+  "community_value": "The public value is mainly an operator-impact note for Codex extension and app-server integrators rather than a broad end-user feature announcement.",
+  "deprecated_or_breaking_notes": "The old core goal runtime, core goal handlers, and core goal tool specs were removed; the PR says the legacy <goal_context> compatibility path remains for old threads.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26548 says it completes the switch of goal behavior to the extension-backed runtime and removes the old core goal implementation.",
+    "codex-rs/app-server/src/extensions.rs adds codex_goal_extension::GoalService and goal-related app-server extension wiring.",
+    "codex-rs/app-server/src/request_processors/thread_goal_processor.rs replaces core goal types with GoalService, GoalSetRequest, and goal update types from codex-goal-extension.",
+    "codex-rs/core/src/goals.rs is removed, and codex-rs/core/src/lib.rs stops exporting ExternalGoalPreviousStatus and ExternalGoalSet.",
+    "codex-rs/core/src/tools/handlers/goal.rs, create_goal.rs, get_goal.rs, update_goal.rs, and goal_spec.rs are removed.",
+    "codex-rs/core/src/session/review.rs keeps review turns from enabling goal runtime behavior by removing goal tool support from review-thread setup.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26548.json records 34 changed files for the merged PR."
+  ],
+  "caveats": "The PR preserves legacy goal context compatibility for old threads, so the migration should not be described as deleting all historical goal context support.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Goal runtime ownership changed in a way that affects app-server and extension integration assumptions."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "There is a narrow operator-impact public angle for extension-backed goal runtime ownership."
+    }
+  ]
+}
