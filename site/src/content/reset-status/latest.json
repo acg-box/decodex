@@ -3,62 +3,38 @@
   "question": "Rate limit reset today?",
   "answer": "no",
   "confidence": "likely",
-  "observed_for_date": "2026-06-08",
+  "observed_for_date": "2026-06-09",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-08T08:19:17Z",
+  "generated_at": "2026-06-08T20:20:19Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
-  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-07%20until%3A2026-06-09&src=typed_query&f=live",
+  "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-08%20until%3A2026-06-10&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "Logged-in Chrome/X profile and broad X search were reachable for the 2026-06-08 Asia/Shanghai watch date. The visible local-day posts included a Codex 10X usage-limit promotion for selected builders, short replies about participation, and unrelated ChatGPT or Codex discussion. The usage-limit promotion is usage-adjacent, but it does not say limits reset, quotas recovered, message caps reset, or users should wait for a reset window. Thread context showed user replies asking about participation or complaining about limits, not a source-account reset signal. An older June 4 usage-limit reset post was visible, but it is outside today's observed date.",
+  "rationale": "Logged-in Chrome/X search and profile review were reachable for the 2026-06-09 Asia/Shanghai watch date. The visible local-day source-account posts were two replies: one clarified that ChatGPT messages do not burn Codex limits, and one encouraged frequent Codex use in a Codex-or-Claude thread. Third-party replies mentioned limits and resets, but @thsottiaux did not announce a reset, quota recovery, message-cap recovery, or reset window. The run occurred early in the local day, so later posts could change the answer.",
   "evidence_posts": [
     {
-      "published_at_label": "2026-06-08 16:19 +08 observation",
-      "url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-07%20until%3A2026-06-09&src=typed_query&f=live",
+      "published_at_label": "2026-06-09 04:20 +08 observation",
+      "url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-08%20until%3A2026-06-10&src=typed_query&f=live",
       "relevance": "not_related",
-      "summary": "Logged-in Chrome/X search for @thsottiaux posts across the local-day coverage window returned six visible June 8 Asia/Shanghai candidate posts. None semantically announced a reset or recovery window."
+      "summary": "Logged-in Chrome/X search for @thsottiaux posts across the widened UTC coverage window returned four visible candidates. Two fell inside 2026-06-09 Asia/Shanghai, and neither semantically announced a reset, quota recovery, message-cap recovery, or reset window."
     },
     {
-      "published_at_label": "2026-06-08 06:21 +08 (X datetime 2026-06-07T22:21:38Z)",
+      "published_at_label": "2026-06-09 01:38 +08 (X datetime 2026-06-08T17:38:01Z)",
+      "url": "https://x.com/thsottiaux/status/2064039257392709683",
+      "relevance": "not_related",
+      "summary": "@thsottiaux replied in a Codex-or-Claude bug-solving thread by encouraging Codex use throughout the day. Immediate replies included user complaints about limits, but the source-account post did not announce reset or recovery behavior."
+    },
+    {
+      "published_at_label": "2026-06-09 01:35 +08 (X datetime 2026-06-08T17:35:20Z)",
+      "url": "https://x.com/thsottiaux/status/2064038582529221017",
+      "relevance": "not_related",
+      "summary": "@thsottiaux replied \"No\" to a question asking whether ChatGPT messages burn Codex limits. This was usage-accounting clarification, not a reset, quota recovery, message-cap recovery, or reset-window signal."
+    },
+    {
+      "published_at_label": "2026-06-08 06:21 +08 (outside observed_for_date; X datetime 2026-06-07T22:21:38Z)",
       "url": "https://x.com/thsottiaux/status/2063748242681307611",
       "relevance": "not_related",
-      "summary": "@thsottiaux said Codex would select one person per day for 100 days to receive 10X usage limits for one month. This is usage-limit related, but it is a selective promotion, not a reset, quota recovery, message-cap recovery, or reset-window signal."
-    },
-    {
-      "published_at_label": "2026-06-08 11:33 +08 (X datetime 2026-06-08T03:33:50Z)",
-      "url": "https://x.com/thsottiaux/status/2063826811373658213",
-      "relevance": "not_related",
-      "summary": "@thsottiaux replied that users should build things when asked how to participate in the 10X usage-limit promotion. Immediate thread context included third-party limit complaints, but the source-account reply did not announce a reset or recovery."
-    },
-    {
-      "published_at_label": "2026-06-08 14:14 +08 (X datetime 2026-06-08T06:14:33Z)",
-      "url": "https://x.com/thsottiaux/status/2063867254945767838",
-      "relevance": "not_related",
-      "summary": "@thsottiaux joked in a model-personality thread. It was unrelated to Codex rate limits, quotas, message caps, or reset windows."
-    },
-    {
-      "published_at_label": "2026-06-08 07:59 +08 (X datetime 2026-06-07T23:59:43Z)",
-      "url": "https://x.com/thsottiaux/status/2063772925644464276",
-      "relevance": "not_related",
-      "summary": "@thsottiaux replied agreement in a thread about ChatGPT's personal-assistant direction. It was product-direction discussion, not a rate-limit reset signal."
-    },
-    {
-      "published_at_label": "2026-06-08 07:53 +08 (X datetime 2026-06-07T23:53:47Z)",
-      "url": "https://x.com/thsottiaux/status/2063771435194261915",
-      "relevance": "not_related",
-      "summary": "@thsottiaux replied in a thread about loops and attached media. The reply was not about reset behavior, quotas, usage caps, or recovery windows."
-    },
-    {
-      "published_at_label": "2026-06-08 07:52 +08 (X datetime 2026-06-07T23:52:05Z)",
-      "url": "https://x.com/thsottiaux/status/2063771005332697532",
-      "relevance": "not_related",
-      "summary": "@thsottiaux replied to a coding-agent usage poll with an adoption comment. Third-party replies mentioned rate limits, but the source-account post did not announce a reset or cap recovery."
-    },
-    {
-      "published_at_label": "2026-06-04 08:25 +08 (outside observed_for_date; X datetime 2026-06-04T00:25:58Z)",
-      "url": "https://x.com/thsottiaux/status/2062329981548802523",
-      "relevance": "not_related",
-      "summary": "An older @thsottiaux post did announce that Codex usage limits had been reset across paid plans. It confirms the target semantic pattern, but it is outside the June 8 watch date."
+      "summary": "The profile's latest visible original post remained the 10X usage-limit promotion for selected Codex builders. It is usage-limit related, but it is outside the watch date and does not announce a general reset or recovery window."
     }
   ]
 }
