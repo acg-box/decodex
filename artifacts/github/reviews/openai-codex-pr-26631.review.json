@@ -1,0 +1,61 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26631",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26631",
+    "commit_shas": [
+      "25dbc5f55c696a58a0e58a55e0649240c909e3ab"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Add JSON output for plugin subcommands",
+        "url": "https://github.com/openai/codex/pull/26631",
+        "meta": "Merged 2026-06-05T19:40:31Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Add JSON output for plugin subcommands",
+        "url": "https://github.com/openai/codex/commit/25dbc5f55c696a58a0e58a55e0649240c909e3ab"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-08T08:07:33Z",
+  "observed_change": "Codex added successful stdout JSON output for plugin add/remove and plugin marketplace add/list/upgrade/remove commands while preserving existing human-readable output.",
+  "changed_surfaces": [
+    "codex plugin add and remove CLI flags and stdout formatting",
+    "codex plugin marketplace add/list/upgrade/remove CLI flags and stdout formatting",
+    "plugin and marketplace outcome serialization",
+    "CLI integration tests for JSON outputs"
+  ],
+  "user_visible_path": "Users and automation can pass --json to supported plugin and marketplace subcommands to receive structured success output instead of parsing human-readable text.",
+  "control_plane_relevance": "Decodex and plugin-management automation can consume Codex plugin command results as JSON when installing, listing, upgrading, or removing plugin marketplaces.",
+  "compatibility_risk": "The PR says --json changes successful stdout only and keeps existing error/stderr behavior unchanged, so callers still need existing error handling for failures.",
+  "adoption_opportunity": "Replace any Decodex parsing of plugin command prose with --json calls for supported successful plugin and marketplace operations.",
+  "community_value": "This is a practical public explainer candidate because it gives plugin operators a concrete machine-readable CLI path.",
+  "deprecated_or_breaking_notes": "No existing human-readable output is removed; --json is additive for successful stdout.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26631 says it adds --json output for codex plugin add/remove and plugin marketplace add/list/upgrade/remove while keeping human-readable output and error behavior unchanged.",
+    "codex-rs/cli/src/plugin_cmd.rs adds --json flags to AddPluginArgs and RemovePluginArgs and serializes PluginInstallOutcome on success.",
+    "codex-rs/cli/src/marketplace_cmd.rs adds --json handling for marketplace add, list, upgrade, and remove commands.",
+    "codex-rs/cli/tests/plugin_cli.rs adds JSON tests for plugin add/remove and marketplace list paths.",
+    "codex-rs/cli/tests/marketplace_add.rs, marketplace_remove.rs, and marketplace_upgrade.rs add JSON stdout assertions for marketplace operations.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26631.json records 6 changed files for the merged PR."
+  ],
+  "caveats": "The JSON mode covers successful stdout; failure handling and stderr behavior remain the same per the PR body.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Machine-readable plugin command output is a Decodex plugin automation adoption candidate."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The change has a concrete try path and clear value for plugin operators."
+    }
+  ]
+}
