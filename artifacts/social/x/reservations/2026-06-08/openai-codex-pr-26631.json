@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "practical_explainer",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-pr-26631:practical_explainer",
   "reserved_at": "2026-06-08T09:54:38Z",
   "expires_at": "2026-06-08T11:54:38Z",
@@ -46,5 +46,6 @@
     "Chrome account switcher exposed @decodexspace, and account menu readback confirmed @decodexspace before this reservation was prepared.",
     "Live @decodexspace profile readback found no 26631, plugin add --json, plugin marketplace, source URL, or exact lead-text match.",
     "Checked publication records show daily_count_before = 1 for @decodexspace on 2026-06-08 Asia/Shanghai, so one additional single-post publication would not exceed the cap of 8."
-  ]
+  ],
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-08/openai-codex-pr-26631.json"
 }
