@@ -1,0 +1,71 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26490",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26490",
+    "commit_shas": [
+      "7ee483d92c3032987ff02381460ea02696336566",
+      "7c7b49719ff76676df444a084bd51596a6bfe18d",
+      "be7d534041a58366edcf5152c1e6de446b2f9d15",
+      "31159463bf179e40aee1812bc68e556ab4c5fef8",
+      "b950c637ccd59ae3564df464c07baeff85d20840",
+      "f6d73aba8d25dfd6a357cbb39f730fc439cf9059"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Use standalone tools for Responses Lite",
+        "url": "https://github.com/openai/codex/pull/26490",
+        "meta": "Merged 2026-06-06T00:23:40Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Use standalone tools for Responses Lite",
+        "url": "https://github.com/openai/codex/commit/7ee483d92c3032987ff02381460ea02696336566"
+      },
+      {
+        "kind": "commit",
+        "title": "Cover Responses Lite tool fallback behavior",
+        "url": "https://github.com/openai/codex/commit/31159463bf179e40aee1812bc68e556ab4c5fef8"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-08T14:08:38Z",
+  "observed_change": "Codex routes web search and image generation through standalone Codex-owned executors for Responses Lite models instead of relying on hosted Responses tools.",
+  "changed_surfaces": [
+    "core tool planning for hosted versus standalone tools",
+    "Responses Lite model behavior",
+    "standalone web-search and image-generation extensions",
+    "core and app-server integration tests for standalone tool fallback"
+  ],
+  "user_visible_path": "When a model uses Responses Lite, Codex can still expose web search and image generation through standalone executors and standalone Responses API endpoints rather than submitting hosted Responses tools that the model will not execute.",
+  "control_plane_relevance": "Decodex should model Responses Lite tool availability separately from hosted Responses tool availability when planning browser, search, image, or extension-backed capabilities.",
+  "compatibility_risk": "Integrations that infer tool availability only from hosted Responses tool support may misclassify Responses Lite sessions; the fallback depends on standalone executors and provider/config gates.",
+  "adoption_opportunity": "Adopt a capability split between hosted tools and client-executed standalone tools in Decodex Control Plane readiness and operator readbacks.",
+  "community_value": "This is a practical public explainer candidate because it clarifies why Responses Lite needs standalone Codex executors for web search and image generation.",
+  "deprecated_or_breaking_notes": "Hosted model tool specs are suppressed for Responses Lite; standalone executors remain hidden without the relevant flags or Responses Lite path.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26490 says Responses Lite does not execute hosted Responses tools and must route web search and image generation through Codex-owned executors and standalone Responses API endpoints.",
+    "codex-rs/core/src/tools/spec_plan.rs returns no hosted model tool specs when turn_context.model_info.use_responses_lite is true.",
+    "codex-rs/core/src/tools/spec_plan.rs adds planning around WebSearchMode and standalone web-run availability.",
+    "codex-rs/core/tests/suite/responses_lite.rs adds integration coverage for Responses Lite standalone fallback behavior.",
+    "codex-rs/ext/web-search/src/extension.rs and codex-rs/ext/image-generation/src/extension.rs change standalone availability checks from feature-enabled wording to availability derived from provider/config state.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26490.json records 11 changed files for the merged PR."
+  ],
+  "caveats": "The standalone path still depends on provider, model, config, and extension availability; this should not be described as every Responses Lite model always getting every tool.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Responses Lite tool planning affects Control Plane capability modeling and operator readbacks."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The PR has a clear public try-and-explain angle for web search and image generation under Responses Lite."
+    }
+  ]
+}
