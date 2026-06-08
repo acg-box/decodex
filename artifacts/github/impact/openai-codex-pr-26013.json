@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26013",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Gate terminal visualization instructions in TUI",
+        "url": "https://github.com/openai/codex/pull/26013",
+        "meta": "Merged 2026-06-06T00:23:46Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26013",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26013.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex adds a disabled-by-default TUI feature that appends terminal-specific visualization instructions to TUI thread start, resume, and fork developer instructions.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "watch",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR body says no default user receives the new terminal-specific instructions.",
+    "The feature catalog marks `TerminalVisualizationInstructions` as `UnderDevelopment` and default disabled.",
+    "The helper text is wired into TUI thread parameter construction rather than `codex exec`.",
+    "The review artifact records the feature gate and rollout caveats."
+  ],
+  "candidate_followups": [
+    "Track whether Codex promotes `terminal_visualization_instructions` beyond the initial cohort.",
+    "Avoid labeling terminal visualization instructions as a general Codex capability in Decodex release summaries.",
+    "If the gate broadens, revisit Decodex terminal-output guidance and public explanation value."
+  ],
+  "social_notes": [
+    "Any public copy must lead with the disabled-by-default and dogfood-gated status.",
+    "Frame this as a watch note, not a try-it-now feature."
+  ],
+  "caveats": [
+    "The behavior is TUI-only and intentionally not applied to `codex exec`.",
+    "The PR references separate model-layer treatment and future eval gates before broadening."
+  ]
+}
