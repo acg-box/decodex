@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26013",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex users watching terminal UX experiments",
+  "candidate_text": [
+    "Codex is dogfooding terminal-specific visualization instructions for the TUI behind the disabled `terminal_visualization_instructions` feature; no default user gets them yet. PR: https://github.com/openai/codex/pull/26013"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26013.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26013.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26013"
+    ]
+  },
+  "evidence_notes": [
+    "PR #26013 says no default user receives the new instructions.",
+    "The feature catalog marks the feature as `UnderDevelopment` and default disabled.",
+    "The helper is wired only into TUI thread start, resume, and fork flows.",
+    "The PR explicitly excludes `codex exec`."
+  ],
+  "claims": [
+    {
+      "text": "Codex added terminal-specific visualization instructions behind a disabled TUI feature gate.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26013.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The feature is not broadly available by default and does not apply to `codex exec`.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26013.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "The change is interesting but the PR frames it as gated dogfood rather than broadly available user behavior.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26013:watch_note"
+  },
+  "caveats": [
+    "Do not imply broad availability.",
+    "Keep the TUI-only and dogfood-gated scope visible."
+  ],
+  "next_steps": [
+    "Let Publisher automation skip or hold this until release context makes the caveat useful."
+  ]
+}

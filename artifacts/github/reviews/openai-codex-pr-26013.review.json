@@ -1,0 +1,68 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26013",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26013",
+    "commit_shas": [
+      "a52f7e1e2e945a2facea65781ba429f04524a477",
+      "a323a5101b5aa61af6e0c1cecaf5da04391bfa44",
+      "f249259c64745fed22c706240526d7797fdc6691"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Gate terminal visualization instructions in TUI",
+        "url": "https://github.com/openai/codex/pull/26013",
+        "meta": "Merged 2026-06-06T00:23:46Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Gate terminal visualization instructions in TUI",
+        "url": "https://github.com/openai/codex/commit/a52f7e1e2e945a2facea65781ba429f04524a477"
+      },
+      {
+        "kind": "commit",
+        "title": "Fix terminal visualization CI",
+        "url": "https://github.com/openai/codex/commit/a323a5101b5aa61af6e0c1cecaf5da04391bfa44"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-08T20:07:03Z",
+  "observed_change": "Codex adds a disabled-by-default TUI feature that appends terminal-specific visualization instructions to TUI thread start, resume, and fork developer instructions.",
+  "changed_surfaces": [
+    "feature flag catalog and config schema",
+    "TUI thread start, resume, and fork developer-instruction assembly",
+    "new terminal visualization instruction helper",
+    "TUI-focused validation coverage"
+  ],
+  "user_visible_path": "A TUI user in the gated cohort can enable `terminal_visualization_instructions` and receive terminal-aware ASCII visualization guidance in TUI sessions; default users and `codex exec` do not receive the new instructions.",
+  "control_plane_relevance": "Decodex should treat terminal visualization guidance as a gated TUI-only behavior, not as a default Codex capability or an app-server protocol change.",
+  "compatibility_risk": "Low for current Decodex integrations because the feature is `UnderDevelopment`, default disabled, and intentionally excluded from `codex exec`; risk is mainly over-reporting it as generally available.",
+  "adoption_opportunity": "Track the gate as a possible future terminal-output quality signal once Codex broadens it beyond the initial cohort.",
+  "community_value": "Interesting as a cautious watch note about terminal-specific output shaping, but not ready for a strong public availability claim.",
+  "deprecated_or_breaking_notes": "No default behavior changes; the PR explicitly says control behavior is unchanged and broad rollout remains gated by further evals.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26013 says the feature is `UnderDevelopment`, disabled by default, applies only to TUI start, resume, and fork flows, and intentionally does not apply to `codex exec`.",
+    "codex-rs/features/src/lib.rs adds `Feature::TerminalVisualizationInstructions` with key `terminal_visualization_instructions`, stage `UnderDevelopment`, and `default_enabled: false`.",
+    "codex-rs/core/config.schema.json exposes the new `terminal_visualization_instructions` boolean feature key.",
+    "codex-rs/tui/src/app_server_session.rs injects `with_terminal_visualization_instructions` into TUI thread start, resume, and fork parameter builders.",
+    "codex-rs/tui/src/terminal_visualization_instructions.rs defines compact ASCII diagram, tree, timeline, and table guidance for terminal surfaces.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26013.json records 5 changed files for the merged PR."
+  ],
+  "caveats": "The PR describes employee-cohort dogfooding and separate model-layer rollout controls; do not present this as broadly shipped behavior.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The gated TUI behavior is useful for Control Plane readiness and release-rollup tracking."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "There is a public watch-note angle, but Publisher should defer until availability is broader or release context makes the caveat useful."
+    }
+  ]
+}
