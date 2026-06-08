@@ -326,7 +326,7 @@ struct ServeCommand {
 	#[command(flatten)]
 	project_config: ProjectConfigArgs,
 	/// Operator UI listen address.
-	#[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8912")]
+	#[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8192")]
 	listen_address: String,
 	/// Start the local dev endpoint without polling or dispatching projects.
 	#[arg(long, hide = true)]
@@ -1639,6 +1639,20 @@ mod tests {
 
 		assert!(error.to_string().contains("--explain"));
 		assert!(error.to_string().contains("[ISSUE]"));
+	}
+
+	#[test]
+	fn parses_serve_default_listen_address() {
+		let cli = Cli::parse_from(["decodex", "serve"]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Serve(ServeCommand {
+				project_config: ProjectConfigArgs { config: None },
+				listen_address,
+				dev: false,
+			}) if listen_address == "127.0.0.1:8192"
+		));
 	}
 
 	#[test]
