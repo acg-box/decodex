@@ -1,0 +1,68 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26450",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26450",
+    "commit_shas": [
+      "7d3240b290464a9102fd68f4438c1bd7ecb2431d"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "feat(app-server): add remote control pairing status RPC",
+        "url": "https://github.com/openai/codex/pull/26450",
+        "meta": "Merged 2026-06-05T17:33:57Z"
+      },
+      {
+        "kind": "commit",
+        "title": "feat(app-server): add remote control pairing status RPC",
+        "url": "https://github.com/openai/codex/commit/7d3240b290464a9102fd68f4438c1bd7ecb2431d"
+      },
+      {
+        "kind": "pull_request",
+        "title": "feat(remote-control): add pairing status transport",
+        "url": "https://github.com/openai/codex/pull/26449",
+        "meta": "Dependency noted by PR #26450"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-08T08:07:33Z",
+  "observed_change": "Codex exposed the remote-control pairing status transport as experimental app-server v2 JSON-RPC method remoteControl/pairing/status.",
+  "changed_surfaces": [
+    "app-server protocol ClientRequest definitions and generated schema export checks",
+    "app-server MessageProcessor and RemoteControlRequestProcessor routing",
+    "remote-control app-server README API documentation",
+    "JSON-RPC integration tests for pairing-code and manual-code status requests"
+  ],
+  "user_visible_path": "Desktop and app-server clients can call remoteControl/pairing/status with exactly one of pairingCode or manualPairingCode and receive claimed: true or false while QR/manual pairing is pending.",
+  "control_plane_relevance": "Decodex Control Plane integrations that track Codex remote-control enrollment can poll a first-party app-server RPC instead of inferring pairing state out of band.",
+  "compatibility_risk": "Clients must send exactly one lookup key and should serialize calls under the remote-control-pairing shared-read scope; missing or conflicting params are invalid requests.",
+  "adoption_opportunity": "Add a bounded Decodex remote-control pairing-status read path if Control Plane adopts or tests Codex remote enrollment.",
+  "community_value": "The PR creates a concrete app-server API worth a public Publisher handoff for Desktop pairing UX and integrator migration awareness.",
+  "deprecated_or_breaking_notes": "No prior RPC is removed, but the new request shape is strict: one of pairingCode or manualPairingCode, not both.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26450 states that it exposes pairing status as experimental app-server v2 RPC remoteControl/pairing/status.",
+    "codex-rs/app-server-protocol/src/protocol/common.rs registers RemoteControlPairingStatus with serialization global_shared_read(\"remote-control-pairing\").",
+    "codex-rs/app-server/src/message_processor.rs routes ClientRequest::RemoteControlPairingStatus to the remote control processor.",
+    "codex-rs/app-server/src/request_processors/remote_control_processor.rs validates pairing status params before calling the transport handle.",
+    "codex-rs/app-server/README.md documents the new remoteControl/pairing/status API beside pairing/start.",
+    "codex-rs/app-server/tests/suite/v2/remote_control.rs adds JSON-RPC coverage for the pairing status path.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26450.json records 8 changed files for the merged PR."
+  ],
+  "caveats": "This RPC depends on the transport support from PR #26449 and remains marked experimental in the app-server protocol.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The new app-server method affects Decodex Control Plane remote-control integration planning."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The source-backed API addition has a clear public explainer angle for app-server and Desktop integrators."
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26450",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex app-server and Desktop integrators",
+  "candidate_text": [
+    "Codex added experimental app-server RPC remoteControl/pairing/status so Desktop can poll whether a QR or manual pairing code was claimed. PR: https://github.com/openai/codex/pull/26450"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26450.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26450.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26450",
+      "https://github.com/openai/codex/pull/26449"
+    ]
+  },
+  "evidence_notes": [
+    "PR #26450 registers experimental remoteControl/pairing/status in app-server v2.",
+    "The request accepts exactly one of pairingCode or manualPairingCode and returns claimed.",
+    "The app-server README and JSON-RPC tests cover the new method."
+  ],
+  "claims": [
+    {
+      "text": "Codex added an experimental app-server RPC for remote-control pairing status.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26450.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The method lets clients check whether a QR or manual pairing code has been claimed.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26450.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR adds a concrete experimental app-server method with a clear Desktop pairing UX path.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26450:operator_impact"
+  },
+  "caveats": [
+    "Preserve the experimental app-server label.",
+    "Do not imply Decodex has already adopted the RPC."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this after repository checks pass."
+  ]
+}

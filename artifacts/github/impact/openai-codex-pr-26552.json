@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26552",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Make runtime workspace roots absolute in app-server API",
+        "url": "https://github.com/openai/codex/pull/26552",
+        "meta": "Merged 2026-06-05T18:36:54Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26552",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26552.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex changed app-server runtimeWorkspaceRoots request fields and ConfigOverrides.workspace_roots to require absolute runtime workspace roots.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26552 explicitly says runtimeWorkspaceRoots now follows the same absolute-path boundary as cwd.",
+    "Protocol thread and turn request fields move runtime_workspace_roots from Vec<PathBuf> to Vec<AbsolutePathBuf>.",
+    "The app-server README changes runtimeWorkspaceRoots documentation from relative-path resolution to paths-must-be-absolute wording.",
+    "Core ConfigOverrides.workspace_roots changes to Option<Vec<AbsolutePathBuf>>.",
+    "TUI and exec request builders pass existing absolute workspace roots directly instead of converting them to PathBuf."
+  ],
+  "candidate_followups": [
+    "Audit Decodex app-server clients and tests that send runtimeWorkspaceRoots.",
+    "Resolve or reject relative runtime roots at the Decodex request boundary before calling upstream Codex app-server APIs.",
+    "Pair this with the existing PR #26532 absolute-cwd review when planning compatibility work."
+  ],
+  "social_notes": [
+    "Frame as an app-server protocol migration note for integrators.",
+    "Avoid claiming a broad end-user workflow change; the observable path is app-server request construction."
+  ],
+  "caveats": [
+    "The PR is stacked on #26532.",
+    "No direct Decodex breakage was reproduced in this run."
+  ]
+}

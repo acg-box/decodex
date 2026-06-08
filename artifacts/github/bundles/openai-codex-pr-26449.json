@@ -1,0 +1,87 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "hefuc-oai",
+      "committed_at": "2026-06-04T19:16:00Z",
+      "message": "feat(remote-control): add pairing status transport",
+      "sha": "acf4f7a893034a677d89703bc6236842b923ee23",
+      "url": "https://github.com/openai/codex/commit/acf4f7a893034a677d89703bc6236842b923ee23"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "URL",
+    "--manifest-path",
+    "--all",
+    "--check",
+    "REMOTE_CONTROL_PAIRING_TIMEOUT",
+    "HTTP",
+    "JSONRPCM",
+    "POST",
+    "ABCD",
+    "TEST_REMOTE_CONTROL_SERVER_TOKEN",
+    "TEST_REFRESHED_REMOTE_CONTROL_SERVER_TOKEN"
+  ],
+  "files": [
+    {
+      "additions": 17,
+      "deletions": 0,
+      "patch_excerpt": "@@ -62,6 +62,23 @@ pub struct RemoteControlPairingStartResponse {\n     pub expires_at: i64,\n }\n \n+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct RemoteControlPairingStatusParams {\n+    #[ts(optional = nullable)]\n+    pub pairing_code: Option<String>,\n+    #[ts(optional = nullable)]\n+    pub manual_pairing_code: Option<String>,\n+}\n+\n+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct RemoteControlPairingStatusResponse {\n+    pub claimed: bool,\n+}\n+\n #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema, TS)]\n #[serde(rename_all = \"camelCase\")]\n #[ts(export_to = \"v2/\")]",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/remote_control.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 66,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3,11 +3,14 @@ use super::pairing_unavailable_error;\n use super::protocol::EnrollRemoteServerRequest;\n use super::protocol::EnrollRemoteServerResponse;\n use super::protocol::RefreshRemoteServerRequest;\n+use super::protocol::RemoteControlPairingStatusRequest;\n+use super::protocol::RemoteControlPairingStatusResponse as BackendRemoteControlPairingStatusResponse;\n use super::protocol::RemoteControlTarget;\n use super::protocol::StartRemoteControlPairingRequest;\n use super::protocol::StartRemoteControlPairingResponse;\n use axum::http::HeaderMap;\n use codex_app_server_protocol::RemoteControlPairingStartResponse;\n+use codex_app_server_protocol::RemoteControlPairingStatusResponse;\n use codex_login::default_client::build_reqwest_client;\n use codex_state::RemoteControlEnrollmentRecord;\n use codex_state::StateRuntime;\n@@ -136,6 +139,69 @@ impl RemoteControlEnrollment {\n         })\n     }\n \n+    p...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/enroll.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 114,
+      "deletions": 0,
+      "patch_excerpt": "@@ -18,6 +18,7 @@ use crate::transport::remote_control::websocket::RemoteControlStatusPublisher;\n use crate::transport::remote_control::websocket::RemoteControlWebsocket;\n \n pub use self::protocol::ClientId;\n+use self::protocol::RemoteControlPairingStatusCode;\n use self::protocol::ServerEvent;\n use self::protocol::StreamId;\n use self::protocol::normalize_remote_control_url;\n@@ -31,6 +32,8 @@ use codex_app_server_protocol::RemoteControlClientsRevokeResponse;\n use codex_app_server_protocol::RemoteControlConnectionStatus;\n use codex_app_server_protocol::RemoteControlPairingStartParams;\n use codex_app_server_protocol::RemoteControlPairingStartResponse;\n+use codex_app_server_protocol::RemoteControlPairingStatusParams;\n+use codex_app_server_protocol::RemoteControlPairingStatusResponse;\n use codex_app_server_protocol::RemoteControlStatusChangedNotification;\n use codex_login::AuthManager;\n use c...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 51,
+      "deletions": 0,
+      "patch_excerpt": "@@ -13,6 +13,7 @@ pub(super) struct RemoteControlTarget {\n     pub(super) enroll_url: String,\n     pub(super) refresh_url: String,\n     pub(super) pair_url: String,\n+    pub(super) pair_status_url: String,\n }\n \n #[derive(Debug, Serialize)]\n@@ -52,6 +53,40 @@ pub(super) struct StartRemoteControlPairingResponse {\n     pub(super) expires_at: String,\n }\n \n+#[derive(Debug, Serialize)]\n+pub(super) struct RemoteControlPairingStatusRequest {\n+    #[serde(skip_serializing_if = \"Option::is_none\")]\n+    pub(super) pairing_code: Option<String>,\n+    #[serde(skip_serializing_if = \"Option::is_none\")]\n+    pub(super) manual_pairing_code: Option<String>,\n+}\n+\n+#[derive(Clone)]\n+pub(super) enum RemoteControlPairingStatusCode {\n+    PairingCode(String),\n+    ManualPairingCode(String),\n+}\n+\n+impl From<RemoteControlPairingStatusCode> for RemoteControlPairingStatusRequest {\n+    fn from(code: RemoteControlPa...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -21,6 +21,7 @@ use codex_app_server_protocol::ConfigWarningNotification;\n use codex_app_server_protocol::JSONRPCMessage;\n use codex_app_server_protocol::RemoteControlConnectionStatus;\n use codex_app_server_protocol::RemoteControlPairingStartParams;\n+use codex_app_server_protocol::RemoteControlPairingStatusParams;\n use codex_app_server_protocol::RemoteControlStatusChangedNotification;\n use codex_app_server_protocol::ServerNotification;\n use codex_config::types::AuthCredentialsStoreMode;",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 216,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,8 @@\n+use super::super::protocol::RemoteControlPairingStatusRequest;\n use super::super::protocol::StartRemoteControlPairingRequest;\n use super::*;\n use pretty_assertions::assert_eq;\n+use std::io;\n \n fn remote_control_enrollment(\n     remote_control_url: &str,\n@@ -66,6 +68,36 @@ async fn pairing_response_error(body: serde_json::Value) -> String {\n     err.to_string()\n }\n \n+async fn pairing_status_error(status: &'static str, body: &'static str) -> (io::Error, String) {\n+    let listener = TcpListener::bind(\"127.0.0.1:0\")\n+        .await\n+        .expect(\"listener should bind\");\n+    let remote_control_url = remote_control_url_for_listener(&listener);\n+    let expected_status_url = normalize_remote_control_url(&remote_control_url)\n+        .expect(\"target should normalize\")\n+        .pair_status_url;\n+    let server_task = tokio::spawn(async move {\n+        let status_request = a...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests/pairing_tests.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## What\n\nAdds transport support for checking remote-control pairing status against the backend.\n\n- Adds the normalized `server/pair/status` backend URL.\n- Adds backend request/response structs for exactly one lookup key: `pairing_code` or `manual_pairing_code`, returning `{ claimed }`.\n- Adds `RemoteControlEnrollment::pairing_status` and `RemoteControlHandle::pairing_status`.\n- Preserves auth refresh/retry behavior and backend error mapping.\n- Adds transport coverage for pending, claimed, manual-code payloads, token refresh, mapped backend errors, malformed responses, and URL normalization.\n\n## Why\n\nDesktop needs a host-authenticated way to poll whether a QR or manual pairing code has been claimed.\n\nRelated backend change: https://github.com/openai/openai/pull/990244\n\n## Verification\n\n- `cargo test --manifest-path app-server-transport/Cargo.toml remote_control::tests::pairing_tests`\n- `cargo fmt --all --check`\n- `git diff --check`",
+    "labels": [],
+    "merged_at": "2026-06-05T17:07:25Z",
+    "number": 26449,
+    "state": "merged",
+    "title": "feat(remote-control): add pairing status transport",
+    "url": "https://github.com/openai/codex/pull/26449"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

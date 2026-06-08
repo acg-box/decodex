@@ -1,0 +1,44 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26449",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "feat(remote-control): add pairing status transport",
+        "url": "https://github.com/openai/codex/pull/26449",
+        "meta": "Merged 2026-06-05T17:07:25Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26449",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26449.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex added host-authenticated remote-control transport support for polling whether a QR or manual pairing code has been claimed.",
+  "public_signal_decision": "skip",
+  "control_plane_impact": "watch",
+  "publisher_angle": "none",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR adds the server/pair/status backend URL, request and response structs, and RemoteControlEnrollment/RemoteControlHandle pairing_status methods.",
+    "The status request accepts exactly one code field and returns claimed: bool.",
+    "Transport tests cover pending, claimed, manual-code, token refresh, backend error mapping, malformed responses, and URL normalization.",
+    "The user-callable app-server RPC lands in dependent PR #26450 rather than this transport-only PR."
+  ],
+  "candidate_followups": [
+    "Track this as supporting evidence for any Decodex remote-control enrollment adoption work.",
+    "Use PR #26450 rather than this PR for public app-server RPC messaging."
+  ],
+  "social_notes": [
+    "Do not publish this transport PR as a standalone signal.",
+    "If mentioned publicly, use it only as dependency evidence for PR #26450."
+  ],
+  "caveats": [
+    "No direct Decodex remote-control adoption was implemented in this run.",
+    "Backend behavior is inferred through the merged openai/codex transport integration and tests, not a live backend probe."
+  ]
+}
