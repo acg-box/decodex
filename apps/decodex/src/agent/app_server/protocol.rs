@@ -153,6 +153,27 @@ impl AppServerClient {
 		self.connection.request("thread/archive", &params, REQUEST_TIMEOUT)
 	}
 
+	pub(super) fn set_thread_goal(
+		&mut self,
+		params: ThreadGoalSetParams,
+	) -> crate::prelude::Result<ThreadGoalSetResponse> {
+		self.connection.request("thread/goal/set", &params, REQUEST_TIMEOUT)
+	}
+
+	pub(super) fn get_thread_goal(
+		&mut self,
+		params: ThreadGoalGetParams,
+	) -> crate::prelude::Result<ThreadGoalGetResponse> {
+		self.connection.request("thread/goal/get", &params, REQUEST_TIMEOUT)
+	}
+
+	pub(super) fn clear_thread_goal(
+		&mut self,
+		params: ThreadGoalClearParams,
+	) -> crate::prelude::Result<ThreadGoalClearResponse> {
+		self.connection.request("thread/goal/clear", &params, REQUEST_TIMEOUT)
+	}
+
 	#[allow(dead_code)]
 	pub(super) fn start_turn(
 		&mut self,
@@ -389,6 +410,84 @@ pub(super) struct ThreadArchiveRequest {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct ThreadArchiveResponse {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum ThreadGoalStatus {
+	Active,
+	Paused,
+	Blocked,
+	UsageLimited,
+	BudgetLimited,
+	Complete,
+}
+impl ThreadGoalStatus {
+	pub(super) const fn as_str(self) -> &'static str {
+		match self {
+			Self::Active => "active",
+			Self::Paused => "paused",
+			Self::Blocked => "blocked",
+			Self::UsageLimited => "usageLimited",
+			Self::BudgetLimited => "budgetLimited",
+			Self::Complete => "complete",
+		}
+	}
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ThreadGoalSetParams {
+	pub(super) thread_id: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(super) objective: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(super) status: Option<ThreadGoalStatus>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub(super) token_budget: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ThreadGoalGetParams {
+	pub(super) thread_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ThreadGoalClearParams {
+	pub(super) thread_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ThreadGoal {
+	#[allow(dead_code)]
+	pub(super) created_at: i64,
+	#[allow(dead_code)]
+	pub(super) objective: String,
+	pub(super) status: ThreadGoalStatus,
+	pub(super) thread_id: String,
+	pub(super) time_used_seconds: i64,
+	pub(super) token_budget: Option<i64>,
+	pub(super) tokens_used: i64,
+	#[allow(dead_code)]
+	pub(super) updated_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ThreadGoalSetResponse {
+	pub(super) goal: ThreadGoal,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ThreadGoalGetResponse {
+	pub(super) goal: Option<ThreadGoal>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ThreadGoalClearResponse {
+	pub(super) cleared: bool,
+}
 
 #[derive(Clone, Debug, Deserialize)]
 pub(super) struct ThreadSessionResponse {
@@ -756,6 +855,14 @@ pub(super) struct TurnCompletedNotification {
 	#[serde(rename = "threadId")]
 	pub(super) thread_id: Option<String>,
 	pub(super) turn: TurnStatusPayload,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ThreadGoalUpdatedNotification {
+	pub(super) goal: ThreadGoal,
+	pub(super) thread_id: String,
+	pub(super) turn_id: Option<String>,
 }
 
 #[derive(Debug)]
