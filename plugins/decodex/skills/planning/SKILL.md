@@ -14,6 +14,11 @@ Use this before queueing a broad feature, migration, or cleanup effort into Deco
 For durable issue text, pair this skill with the delivery plugin's `split` or `issue`
 skill, then use the `labels` skill when applying Decodex intake labels.
 
+Use this after a natural-language promotion follow-up such as `arrange this`,
+`push this forward`, `推进`, or `做` when the accepted Decision Contract is ready to
+become executable work. Do not use planning to turn a plain `research X` request or
+latent contract into queued implementation.
+
 ## Read First
 
 - The registered project `project.toml` for `service_id`, repo path, worktree root,
@@ -44,6 +49,20 @@ Each issue should have:
 
 Do not make the description only a machine-readable fenced block. Generic normal
 dispatch requires a usable briefing surface.
+
+When issues come from an accepted/promoted Decision Contract, each issue should also
+carry:
+
+- objective lineage back to the accepted contract in plain language
+- the accepted scope, non-goals, constraints, objections, and stop conditions relevant
+  to that issue
+- dependency and conflict-domain notes needed to decide whether the issue is ready
+- validation expectations copied from the accepted contract, not from latent evidence
+  alone
+
+Keep internal Execution Program ids, graph edges, and goal mechanics out of the user
+workflow. They may inform issue readiness, but the Linear issue remains the executable
+brief.
 
 ## Parallelism Rules
 
@@ -78,6 +97,10 @@ dispatch requires a usable briefing surface.
    instead of flooding the queue with dependent work.
 5. When a lane stops with `decodex:needs-attention`, resolve the recorded blocker
    before clearing the label or re-queueing.
+6. When the source is a promoted Decision Contract, queue only mapped issues whose
+   dependencies, conflict domains, acceptance, validation expectations, and registered
+   workflow state make them ready. Leave blocked, stale, paused, active, terminal, or
+   unmapped nodes unqueued.
 
 ## Boundaries
 
@@ -89,3 +112,5 @@ dispatch requires a usable briefing surface.
   user asks for automation or the registered workflow requires it.
 - Do not use parallelism as a reason to split one atomic behavior across dependent
   issues that cannot be validated or reviewed independently.
+- Do not promote, accept, or execute a latent research/design result just because it
+  has proposed issue summaries. Promotion is a separate authority boundary.

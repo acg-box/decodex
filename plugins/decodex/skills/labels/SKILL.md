@@ -9,6 +9,10 @@ description: Use when applying, clearing, or interpreting Decodex Linear labels 
 
 Handle Decodex-related Linear labels without changing runtime ownership by accident.
 
+Labels are retained-lane intake and ownership signals. They are not the user-facing
+research/design workflow and they do not promote latent Decision Contracts by
+themselves.
+
 ## Label Catalog
 
 | Label | Meaning |
@@ -53,7 +57,10 @@ If a project-scoped command supplies `--config <project-dir>`, read that project
    checks, dependency checks, or active-lease checks.
 4. Ensure `decodex:manual-only` is absent.
 5. Ensure any prior blocker behind `decodex:needs-attention` is resolved.
-6. Add `decodex:queued:<service-id>`.
+6. For research-to-execution work, ensure the source is an accepted/promoted Decision
+   Contract or an equivalent explicit human execution instruction, not only a plain
+   `research X` result or latent contract.
+7. Add `decodex:queued:<service-id>`.
 
 ## Pause or Opt Out
 
@@ -73,5 +80,8 @@ If a project-scoped command supplies `--config <project-dir>`, read that project
 - Do not use `decodex:active:<service-id>` to mean "please start work".
 - Do not clear `decodex:needs-attention` just to silence a failed lane.
 - Do not add a service-scoped label for the wrong registered service.
+- Do not ask ordinary users to apply queue labels, mention DAG/goal mechanics, or
+  manage internal readiness state just to move from research to execution; route that
+  through promotion, planning, and automation policy.
 - Use `land` when the task is really about human-driven PR landing.
 - Use `commit` when the task is really about human-driven commit creation.
