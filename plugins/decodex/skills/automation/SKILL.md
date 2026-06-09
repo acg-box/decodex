@@ -9,6 +9,13 @@ description: "Use for Decodex runtime-owned automation: registered projects, `se
 
 Operate Decodex as the retained-lane control plane for automatic development.
 
+Automation starts only after execution authority exists. A natural-language
+`research X` request can create a latent Decision Contract, but latent research must
+not dispatch retained lanes, set Codex goals, mutate tracker state, or apply queue
+labels. A later promotion request such as `arrange this`, `push this forward`, `推进`,
+or `做` may feed planning and ready-node queueing only after the accepted contract is
+clear.
+
 ## Governing Surfaces
 
 - `project.toml` under `~/.codex/decodex/projects/<service-id>/` owns repo paths,
@@ -86,6 +93,21 @@ on the next 15-second control-plane tick and still respects tracker rate-limit b
 - `decodex:needs-attention` marks a human-required stop that automation must not
   silently retry.
 - Use the `labels` skill before adding, clearing, or interpreting these labels.
+
+For research-to-execution work, automatic intake also requires:
+
+- an accepted/promoted Decision Contract or an equivalent explicit human instruction
+  that grants execution authority
+- normal Linear issues with natural-language briefs, acceptance, dependencies, and
+  validation expectations
+- readiness under the registered `WORKFLOW.md`, including startable state, dependency
+  policy, opt-out labels, active ownership, terminal-state rules, and local capacity
+- queue labels only on ready issues; blocked, stale, paused, active, terminal, or
+  unmapped internal nodes remain unqueued
+
+Do not expose graph ids, DAG edge editing, hidden goal ids, or queue-label mechanics as
+the ordinary user workflow. Operators may inspect status, but automation policy owns
+the backstage readiness and intake mechanics.
 
 ## Lane Completion
 

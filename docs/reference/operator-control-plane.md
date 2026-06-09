@@ -36,6 +36,10 @@ Decodex currently runs as a local, single-machine control plane:
   promotion and internal Execution Program state are governed by
   [`../spec/loop-runtime.md`](../spec/loop-runtime.md), not by dashboard graph editing
   or user-visible DAG commands.
+- Execution Program readback is intentionally summarized: operators may see counts of
+  ready, blocked, paused, active, completed, stale, and queue-label-eligible nodes plus
+  mapped issue identifiers. Low-level node edges and graph operations remain internal
+  runtime state.
 
 Decodex App is a native shell over the same local runtime and account-pool state. On
 launch it connects to an existing default local listener when one is reachable; if
@@ -148,7 +152,7 @@ work that needs full private payload values.
 
 | Surface | Owns | Does Not Own |
 | --- | --- | --- |
-| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, Decision Contracts, worktree mappings, retry state, retained PR state, review-policy checkpoints with structured independent-review detail, loop-guardrail checkpoints, phase-goal signals, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
+| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, Decision Contracts, internal Execution Programs, worktree mappings, retry state, retained PR state, review-policy checkpoints with structured independent-review detail, loop-guardrail checkpoints, phase-goal signals, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
 | Central project config | `service_id`, repo root, worktree root, tracker/GitHub credential env-var names, enabled project registration | per-run state or issue ownership |
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
 | Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, private execution evidence, connector retry budgets |

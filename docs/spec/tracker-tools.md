@@ -116,6 +116,10 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   tool comments or issue-description payloads. Tracker tools may later publish sparse
   public projections or generated issue links after promotion, but they must not copy
   the private `decodex.decision_contract/1` payload into Linear.
+- Internal Execution Programs are local runtime records, not tracker comments or
+  issue-description payloads. Queue-label mutations for generated issues must follow
+  the Execution Program readiness evaluator: only ready nodes mapped to normal
+  startable Linear issues may receive or retain `decodex:queued:<service-id>`.
 - `issue_progress_checkpoint` must accept only the normalized execution phases `probing`, `implementing`, `verifying`, `blocked`, `ready_for_review`, `review_repair`, `ready_to_land`, and `closeout`.
 - `issue_progress_checkpoint` must not replace `issue_review_checkpoint`, `issue_review_handoff`, `issue_review_repair_complete`, `issue_closeout_complete`, or `issue_terminal_finalize`.
 - `decodex` treats `issue_progress_checkpoint` as execution memory only. Checkpoint phase, focus, next action, blockers, or evidence do not by themselves authorize review handoff, repair completion, merge, closeout, or terminal success.

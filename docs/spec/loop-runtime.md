@@ -162,19 +162,33 @@ An Execution Program is internal loop-runtime state derived from accepted Decisi
 Contracts. It may use DAG semantics, but the graph is backstage state rather than the
 user-facing workflow.
 
-Each program node should carry:
+The runtime-facing Execution Program payload is versioned as
+`decodex.execution_program/1` with `record_version = 1`. It is stored in runtime
+SQLite and carries:
+
+| Field | Meaning |
+| --- | --- |
+| `program_id` | Stable runtime identifier for this internal program. |
+| `service_id` | Registered Decodex service that owns queue-label decisions. |
+| `source_contract_id` | Accepted Decision Contract that authorized the program. |
+| `accepted_contract_fingerprint` | Fingerprint of the accepted contract used for drift detection. |
+| `nodes` | Internal executable nodes. |
+
+Each program node carries:
 
 - objective lineage back to the accepted Decision Contract
-- executable stage such as `decision`, `issue_shaping`, `queued`, `running`,
-  `validation_repair`, `review_wait`, `review_repair`, `landing`, `closeout`,
-  `blocked`, or `done`
-- dependencies and blocker references
-- conflict domain
-- acceptance criteria and validation gates
-- queue intent and service id
-- ready-node selection reason
-- drift status against the accepted contract
-- linked Linear issue identity when the node becomes executable
+- executable stage: `research`, `design`, `spec`, `schema`, `runtime`, `plugin`,
+  `eval`, or `handoff`
+- explicit dependencies with optional terminal-state requirements; when omitted, the
+  registered `WORKFLOW.md` terminal states satisfy the dependency
+- conflict domains for `file`, `module`, `state`, `credentials`,
+  `tracker_ownership`, and `review_surface`
+- acceptance expectations and validation expectations
+- queue intent: `not_ready`, `ready_to_queue`, `queued`, `active`, `paused`, `done`,
+  or `canceled`
+- linked normal Linear issue identity and startability facts when the node becomes
+  executable
+- accepted-contract fingerprint used to detect node-level drift
 
 Normal Linear issues remain the executable Decodex lanes. A program node may become
 eligible only by creating or updating a normal issue with enough natural-language
@@ -182,10 +196,29 @@ briefing for generic dispatch and by applying the configured queue policy. The
 Execution Program does not replace Linear as the team-visible backlog or the runtime
 lane model.
 
-Ready-node selection is runtime-owned. It should choose nodes whose dependencies are
-done, whose conflict domains are available, whose acceptance criteria are concrete,
-and whose queue intent is accepted. If those facts are missing or stale, the node is
-not ready.
+Readiness evaluation is runtime-owned. It classifies nodes as:
+
+| State | Meaning |
+| --- | --- |
+| `not_ready` | The node is intentionally not startable yet. |
+| `ready` | Dependencies, conflicts, acceptance expectations, validation expectations, and issue mapping allow normal execution. |
+| `blocked` | A dependency, conflict domain, missing expectation, or Linear issue mapping blocks execution. |
+| `paused` | The accepted program intentionally paused the node. |
+| `active` | The node already has an active lane and must not retain the queue label. |
+| `completed` | The node is `done` or `canceled`. |
+| `stale` | The node or program no longer matches the accepted Decision Contract. |
+
+Queue-label action is derived from readiness, not from graph presence alone. Only a
+`ready` node whose queue intent is `ready_to_queue` or `queued`, and whose mapped
+Linear issue is in a registered startable state with no opt-out, needs-attention,
+active-label, missing-briefing, or terminal-state blocker, may receive or retain
+`decodex:queued:<service-id>`. Non-startable, blocked, stale, active, paused,
+completed, or unmapped nodes must not receive or retain that queue label.
+
+Operator readback may summarize program progress as counts of ready, blocked, paused,
+active, completed, stale, and queue-label-eligible nodes plus the mapped issue
+identifiers. It must not turn graph ids, edge editing, or DAG commands into the
+primary user workflow.
 
 ## Drift Handling
 

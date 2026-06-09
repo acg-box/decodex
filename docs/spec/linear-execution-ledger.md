@@ -29,9 +29,10 @@ Linear comments, the Decodex runtime database, and short-lived heartbeat markers
   [`post-review-lifecycle.md`](./post-review-lifecycle.md), and
   [`tracker-tools.md`](./tracker-tools.md). Those documents define when events may be
   written; this document defines what the records look like.
-- Decision Contracts are not Linear execution-ledger records. A ledger record may
-  summarize or link to generated issues after promotion, but the versioned
-  `decodex.decision_contract/1` payload and private loop evidence stay in runtime
+- Decision Contracts and internal Execution Programs are not Linear execution-ledger
+  records. A ledger record may summarize or link to generated issues after promotion,
+  but the versioned `decodex.decision_contract/1`,
+  `decodex.execution_program/1`, and private loop evidence payloads stay in runtime
   SQLite.
 
 ## Comment body format
