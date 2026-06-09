@@ -1,0 +1,70 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27035",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27035",
+    "commit_shas": [
+      "d783face3686a981e14453bc228913eac1d74059",
+      "2a15fb7d4eadc623a70b44db8aec1c9243418279",
+      "965e080940e4aeea1d3549c1c4f651bd16af1819",
+      "3928dc19b1a780206384dd5e0a1427c25188c6f0",
+      "6d445696505735e1cc41ef38ee20979282ed4d1f"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Enforce configured network proxy in codex sandbox",
+        "url": "https://github.com/openai/codex/pull/27035",
+        "meta": "Merged 2026-06-08T21:03:37Z"
+      },
+      {
+        "kind": "commit",
+        "title": "fix(cli): enforce configured sandbox network proxy",
+        "url": "https://github.com/openai/codex/commit/d783face3686a981e14453bc228913eac1d74059"
+      },
+      {
+        "kind": "commit",
+        "title": "fix(cli): preserve proxy routing with legacy landlock",
+        "url": "https://github.com/openai/codex/commit/3928dc19b1a780206384dd5e0a1427c25188c6f0"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-09T14:07:34Z",
+  "observed_change": "Codex sandbox now treats any active configured network proxy as the condition for proxy-only network containment across macOS and Linux sandbox paths.",
+  "changed_surfaces": [
+    "codex sandbox CLI network-proxy handling",
+    "Linux sandbox argument construction",
+    "bubblewrap support checks",
+    "sandbox network-proxy integration tests"
+  ],
+  "user_visible_path": "Users running `codex sandbox` with a permission profile that starts the network proxy get direct network access blocked so traffic must route through the proxy path.",
+  "control_plane_relevance": "Decodex sandbox launchers and diagnostics should expect active network proxies to force proxy-only containment and, on Linux, to require bubblewrap even when legacy landlock is configured.",
+  "compatibility_risk": "Moderate: configurations that previously combined legacy landlock or unrestricted filesystem access with an active network proxy may now require bubblewrap support, and WSL1 is rejected for that bubblewrap path.",
+  "adoption_opportunity": "Use the active-proxy rule in Decodex sandbox preflight messaging and network-policy readbacks so operators know why direct network probes are blocked.",
+  "community_value": "High for security-conscious Codex users because the change closes a path where a configured proxy policy did not consistently become the sandbox's only network route.",
+  "deprecated_or_breaking_notes": "No CLI flag is removed, but Linux legacy-landlock behavior changes when a proxy is active because proxy-only networking now takes precedence.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27035 says proxy-only network containment is enabled whenever `codex sandbox` starts a network proxy.",
+    "codex-rs/cli/src/debug_sandbox.rs derives `enforce_managed_network` from `network.is_some()` and passes it into macOS and Linux sandbox setup.",
+    "codex-rs/sandboxing/src/landlock.rs omits `--use-legacy-landlock` when `--allow-network-for-proxy` is present.",
+    "codex-rs/sandboxing/src/manager.rs treats `allow_network_for_proxy` as requiring bubblewrap.",
+    "codex-rs/cli/tests/sandbox_network_proxy.rs adds a Linux regression test that succeeds only when a direct loopback connection is blocked.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-27035.json records 7 changed files for the merged PR."
+  ],
+  "caveats": "The direct network regression test is Linux-only and skips when bubblewrap is unavailable.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Sandbox proxy enforcement affects Decodex permission and network-policy assumptions."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The proxy-only enforcement change has clear security and operator value."
+    }
+  ]
+}
