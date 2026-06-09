@@ -8,9 +8,14 @@ use std::{
 };
 
 #[cfg(unix)] use libc::{F_GETFD, FD_CLOEXEC};
+use rusqlite::{self, Connection};
+use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::{
+	loop_contract::{
+		DecisionContract, DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind,
+	},
 	state::{
 		self, ChildAgentActivitySummary, CodexAccountActivitySummary, CodexAccountMarker,
 		ConnectorBackoffInput, DispatchSlotLimit, EffectiveRuntimeMarker, PreacquiredLeaseGuards,
@@ -61,6 +66,41 @@ fn sample_pub_101_review_orchestration() -> ReviewOrchestrationMarker {
 		0,
 		None,
 	)
+}
+
+fn latent_decision_contract_fixture() -> DecisionContract {
+	serde_json::from_str(include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/fixtures/decision_contract/research_x_latent_contract.json"
+	)))
+	.expect("research X latent contract fixture should deserialize")
+}
+
+fn sample_decision_promotion() -> DecisionPromotion {
+	DecisionPromotion::new(
+		"operator",
+		DecisionPromotionActorKind::User,
+		"2026-06-09T10:00:00Z",
+		"conversation",
+		Some(String::from("User asked Decodex to push this forward.")),
+	)
+	.expect("sample promotion should validate")
+}
+
+fn assert_decision_contract_retargeted(reopened: &StateStore) {
+	assert_eq!(
+		reopened
+			.list_decision_contracts_for_issue("pubfi", "linear-id-101")
+			.expect("canonical decision contracts should list")
+			.len(),
+		1
+	);
+	assert!(
+		reopened
+			.list_decision_contracts_for_issue("pubfi", "PUB-101")
+			.expect("old decision contracts should list")
+			.is_empty()
+	);
 }
 
 fn upsert_handoff_review_policy_checkpoint(
@@ -2146,6 +2186,9 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 		)
 		.expect("private evidence should persist");
 	writer
+		.upsert_decision_contract("pubfi", Some("PUB-101"), latent_decision_contract_fixture())
+		.expect("decision contract should persist");
+	writer
 		.upsert_review_handoff_marker("pubfi", "PUB-101", &handoff)
 		.expect("handoff marker should persist");
 	writer
@@ -2199,6 +2242,9 @@ fn canonicalize_issue_identity_retargets_persistent_rows_without_cache_refresh()
 			.len(),
 		1
 	);
+
+	assert_decision_contract_retargeted(&reopened);
+
 	assert_eq!(
 		reopened
 			.review_handoff_marker("pubfi", "linear-id-101", "x/decodex-pub-101")
@@ -2534,6 +2580,151 @@ fn private_execution_events_filter_issue_run_attempt_and_stay_out_of_linear_cach
 			.expect("linear event cache should read")
 			.is_empty(),
 		"private execution events must not populate the public Linear mirror cache"
+	);
+}
+
+#[test]
+fn decision_contracts_persist_reload_and_promote_without_linear_mirror() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let latent = latent_decision_contract_fixture();
+	let record = store
+		.upsert_decision_contract("decodex", Some("XY-852"), latent)
+		.expect("latent decision contract should persist");
+
+	assert_eq!(record.project_id(), "decodex");
+	assert_eq!(record.source_issue_id(), Some("XY-852"));
+	assert_eq!(record.contract_id(), "research-x-loop-contract");
+	assert_eq!(record.status(), DecisionContractStatus::DraftLatent);
+	assert!(record.created_at_unix() > 0);
+	assert!(record.updated_at_unix() >= record.created_at_unix());
+
+	let promoted = store
+		.promote_decision_contract(
+			"decodex",
+			"research-x-loop-contract",
+			sample_decision_promotion(),
+		)
+		.expect("latent contract should promote");
+
+	assert_eq!(promoted.status(), DecisionContractStatus::AcceptedPromoted);
+	assert_eq!(
+		promoted.contract().promotion().expect("promotion metadata should persist").accepted_by(),
+		"operator"
+	);
+	assert!(
+		store
+			.list_linear_execution_events("decodex", "XY-852")
+			.expect("linear mirror should read")
+			.is_empty(),
+		"decision contracts stay in runtime SQLite and do not populate Linear cache"
+	);
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+	let reloaded = reopened
+		.decision_contract("decodex", "research-x-loop-contract")
+		.expect("decision contract should read")
+		.expect("decision contract should exist");
+
+	assert_eq!(reloaded.status(), DecisionContractStatus::AcceptedPromoted);
+	assert_eq!(reloaded.source_issue_id(), Some("XY-852"));
+	assert_eq!(reloaded.created_at(), record.created_at());
+	assert!(reloaded.updated_at_unix() >= record.updated_at_unix());
+	assert_eq!(reloaded.contract().accepted_authority().accepted_objectives().len(), 2);
+
+	let issue_contracts = reopened
+		.list_decision_contracts_for_issue("decodex", "XY-852")
+		.expect("source issue contracts should list");
+
+	assert_eq!(issue_contracts.len(), 1);
+	assert_eq!(issue_contracts[0].contract_id(), "research-x-loop-contract");
+}
+
+#[test]
+fn decision_contracts_record_human_decision_and_rejection_transitions() {
+	let store = StateStore::open_in_memory().expect("in-memory state store should open");
+
+	store
+		.upsert_decision_contract("decodex", Some("XY-852"), latent_decision_contract_fixture())
+		.expect("latent decision contract should persist");
+
+	let waiting = store
+		.mark_decision_contract_needs_human_decision(
+			"decodex",
+			"research-x-loop-contract",
+			"Choose which generated issue should run first.",
+		)
+		.expect("contract should record human decision need");
+
+	assert_eq!(waiting.status(), DecisionContractStatus::NeedsHumanDecision);
+	assert!(
+		waiting
+			.contract()
+			.execution_readiness()
+			.missing_decisions()
+			.iter()
+			.any(|decision| decision == "Choose which generated issue should run first.")
+	);
+
+	let rejected = store
+		.reject_decision_contract(
+			"decodex",
+			"research-x-loop-contract",
+			Some(String::from("research-x-loop-contract-v2")),
+		)
+		.expect("contract should reject");
+
+	assert_eq!(rejected.status(), DecisionContractStatus::RejectedSuperseded);
+	assert_eq!(
+		rejected.contract().links().superseded_by_contract_id(),
+		Some("research-x-loop-contract-v2")
+	);
+	assert!(
+		store
+			.promote_decision_contract(
+				"decodex",
+				"research-x-loop-contract",
+				sample_decision_promotion()
+			)
+			.is_err(),
+		"rejected contracts cannot later become execution authority"
+	);
+}
+
+#[test]
+fn decision_contract_reload_rejects_row_key_payload_mismatch() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+
+	store
+		.upsert_decision_contract("decodex", Some("XY-852"), latent_decision_contract_fixture())
+		.expect("latent decision contract should persist");
+
+	let mut payload = serde_json::from_str::<Value>(include_str!(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/fixtures/decision_contract/research_x_latent_contract.json"
+	)))
+	.expect("fixture should parse as JSON");
+
+	payload["contract_id"] = serde_json::json!("mismatched-contract-id");
+
+	let connection = Connection::open(&state_path).expect("sqlite should open");
+
+	connection
+		.execute(
+			"UPDATE decision_contracts SET payload_json = ?1 WHERE contract_id = ?2",
+			rusqlite::params![
+				serde_json::to_string(&payload).expect("payload should serialize"),
+				"research-x-loop-contract",
+			],
+		)
+		.expect("decision contract row should corrupt for test");
+
+	assert!(
+		StateStore::open(&state_path).is_err(),
+		"decision contract row key must match the versioned payload contract_id"
 	);
 }
 
