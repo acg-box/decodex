@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27098",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex plugin and app-server operators",
+  "candidate_text": [
+    "Codex app-server `plugin/installed` now returns installed `workspace-directory` plugins by default, while keeping shared-with-me plugins behind `plugin_sharing`. PR: https://github.com/openai/codex/pull/27098"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27098.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27098.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27098"
+    ]
+  },
+  "evidence_notes": [
+    "`plugin/installed` includes `REMOTE_WORKSPACE_MARKETPLACE_NAME` in visible marketplaces by default.",
+    "Shared-with-me marketplaces remain gated behind the `plugin_sharing` feature.",
+    "Filtering now uses explicit marketplace names.",
+    "App-server tests cover workspace-directory installed plugin visibility without plugin sharing."
+  ],
+  "claims": [
+    {
+      "text": "App-server `plugin/installed` now returns installed workspace-directory plugins by default.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27098.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Shared-with-me plugin marketplaces remain gated by `plugin_sharing`.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27098.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR changes installed-plugin readback for a concrete app-server operator path.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27098:operator_impact"
+  },
+  "caveats": [
+    "The change is readback-focused.",
+    "Shared-with-me plugins remain feature-gated."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate."
+  ]
+}
