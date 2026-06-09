@@ -13,6 +13,19 @@ Defines: The runtime scope, source-of-truth boundaries, eligibility rules, lane 
 - One direct `codex app-server` session per run attempt.
 - Supported host targets are Unix only: macOS and Linux. Windows is outside the runtime contract.
 
+## Relationship To Loop Runtime
+
+[`loop-runtime.md`](./loop-runtime.md) owns the natural-language-first layer above
+individual issue lanes: Decodex-native Research/Decision, latent Loop/Decision
+Contracts, internal Execution Programs, phase-scoped goals, unattended execution
+behavior, and loop guardrails.
+
+This document owns the lower-level lane runtime. A promoted Execution Program may
+shape queue intent and normal Linear issues, but executable work still enters this
+runtime as ordinary issue lanes with leases, attempts, validation, review handoff, and
+tracker writeback. The internal program graph is not a replacement for Linear workflow
+state or this state machine.
+
 ## Upstream alignment
 
 - Upstream Symphony is the architectural reference for scheduler and runner ownership.
@@ -104,6 +117,12 @@ This boundary does not create a project-local runtime database contract. The run
 - Lease: A local guarantee that only one active `decodex` run is processing a given issue.
 - Run attempt: One bounded orchestration pass for one issue.
 - Lane: The branch plus linked Git worktree checkout associated with one issue.
+- Decision Contract: An accepted loop-runtime decision package, also called the
+  Loop/Decision Contract. Research output is only latent until accepted or promoted
+  under [`loop-runtime.md`](./loop-runtime.md).
+- Execution Program: Internal loop-runtime state derived from accepted Decision
+  Contracts. It may use DAG semantics, but normal Linear issues remain the executable
+  lanes.
 - Terminal tracker state: A state that should not be auto-started by `decodex`. The default set is `Done`, `Canceled`, and `Duplicate`.
 
 ## Eligibility

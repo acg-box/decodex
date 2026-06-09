@@ -20,6 +20,9 @@ Question this index answers: "why was it designed this way?"
 
 ## Current decisions
 
+- [`natural-language-loop-runtime.md`](./natural-language-loop-runtime.md) records why
+  Decodex keeps execution-graph semantics internal behind a natural-language research
+  and promotion surface.
 - [`decodex-plugin-source.md`](./decodex-plugin-source.md) records why this repository
   owns the canonical Decodex plugin and why generic Playbook guidance should only keep
   portable routing.
