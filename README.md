@@ -117,6 +117,9 @@ cargo run -p decodex --bin decodex -- status --live
 cargo run -p decodex --bin decodex -- diagnose --json
 cargo run -p decodex --bin decodex -- maintenance prune --dry-run
 cargo run -p decodex --bin decodex -- lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>
+cargo run -p decodex --bin decodex -- research compile --intent "research X"
+cargo run -p decodex --bin decodex -- research compile --input research-design-run.json
+cargo run -p decodex --bin decodex -- research promote <CONTRACT_ID>
 cargo run -p decodex --bin decodex -- radar refresh-upstream-queue
 cargo run -p decodex --bin decodex -- radar refresh-release-delta
 cargo run -p decodex --bin decodex -- radar validate
@@ -135,6 +138,15 @@ fresh ChatGPT account usage probes.
 publishes snapshots every 15 seconds, and Linear-backed queue/status scans run at
 most every 5 minutes per project unless an operator or agent requests an explicit
 scan with `POST /api/linear-scan`.
+
+`decodex research compile` is the native Decodex research/design entrypoint. It
+accepts minimal natural-language intake or a structured research/design JSON packet,
+then persists a `decodex.decision_contract/1` payload in local runtime SQLite. Compile
+outcomes distinguish `decision_ready`, `not_decision_ready`, `blocked`, and
+`needs_human_decision`. A compiled contract is latent and cannot queue work, mutate
+tracker state, set goals, or authorize implementation. `decodex research promote`
+records explicit acceptance for a stored contract; only promoted contracts may later
+feed issue shaping or internal Execution Program readiness.
 
 ### Install from Source
 
