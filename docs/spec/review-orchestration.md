@@ -13,6 +13,9 @@ This document defines the target orchestration contract for review behavior. The
 ## Relationship to other specs
 
 - [`runtime.md`](./runtime.md) defines the runtime success and failure writeback boundary through PR-backed `In Review` handoff.
+- [`loop-runtime.md`](./loop-runtime.md) defines the higher-level loop contract for
+  phase-scoped goals, independent fresh-context review, uncovered direction stops, and
+  loop guardrails.
 - [`post-review-lifecycle.md`](./post-review-lifecycle.md) defines the post-`In Review` lane phases and downstream ownership after review handoff succeeds.
 - [`tracker-tools.md`](./tracker-tools.md) defines the issue-scoped tracker tool surface that records bounded review results and completion signals.
 - The registered project `WORKFLOW.md` defines the repo-native bounded review method that each review pass must use when evaluating the current lane head.
@@ -92,6 +95,10 @@ Rules:
 - In `"loop"` mode, internal review must use the same bounded review method and normalized review outcomes as any other review pass.
 - If `"loop"` mode internal review returns an ambiguous or contradictory result that the runtime cannot classify without guessing, stop for `manual_intervention_required`.
 - Internal review pass transitions into the normal PR-backed review handoff flow, not directly into landing.
+- Internal self-review is not the same thing as an independent fresh-context
+  read-only review. When the loop-runtime risk policy requires independent review, use
+  the separate review boundary in [`loop-runtime.md`](./loop-runtime.md) before treating
+  the lane as ready for handoff or landing.
 
 ## External GitHub review
 
