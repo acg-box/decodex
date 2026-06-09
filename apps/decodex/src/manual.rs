@@ -209,7 +209,7 @@ pub(crate) fn run_land(config_path: Option<&Path>, request: &ManualLandRequest) 
 	}
 	if context.prepared_closeout.is_some() && context.review_handoff.is_none() {
 		eyre::bail!(
-			"`decodex land` issue closeout requires a retained review handoff marker so it can write deterministic Linear execution ledger events. Run `decodex recovery review-handoff rebind` for `{}` before retrying.",
+			"`decodex land` issue closeout requires a retained review handoff marker so it can write deterministic Linear execution ledger events. Run `decodex recover review-handoff rebind` for `{}` before retrying.",
 			context.current_branch
 		);
 	}
@@ -534,7 +534,11 @@ fn finalize_land_closeout(
 			eyre::eyre!("`decodex land` issue cleanup requires a retained review handoff marker.")
 		})?;
 
-		clear_manual_closeout_runtime_state(state_store, &prepared_closeout.issue.id)?;
+		clear_manual_closeout_runtime_state(
+			state_store,
+			&prepared_closeout.issue.id,
+			handoff.run_id(),
+		)?;
 		clear_manual_closeout_issue_scope(
 			&prepared_closeout.tracker,
 			&prepared_closeout.issue,
@@ -1578,16 +1582,45 @@ where
 	Ok(())
 }
 
-fn clear_manual_closeout_runtime_state(state_store: &StateStore, issue_id: &str) -> Result<()> {
+fn clear_manual_closeout_runtime_state(
+	state_store: &StateStore,
+	issue_id: &str,
+	handoff_run_id: &str,
+) -> Result<()> {
 	state_store.succeed_active_run_attempts_for_issue(issue_id).wrap_err_with(|| {
 		format!("Failed to finalize active runtime attempts for issue `{issue_id}`.")
 	})?;
+
+	succeed_manual_land_handoff_attempt(state_store, issue_id, handoff_run_id)?;
+
 	state_store
 		.clear_lease(issue_id)
 		.wrap_err_with(|| format!("Failed to clear runtime lease for issue `{issue_id}`."))?;
 	state_store.clear_worktree(issue_id).wrap_err_with(|| {
 		format!("Failed to clear runtime worktree state for issue `{issue_id}`.")
 	})?;
+
+	Ok(())
+}
+
+fn succeed_manual_land_handoff_attempt(
+	state_store: &StateStore,
+	issue_id: &str,
+	handoff_run_id: &str,
+) -> Result<()> {
+	let Some(attempt) = state_store.run_attempt(handoff_run_id)? else {
+		return Ok(());
+	};
+
+	if attempt.issue_id() != issue_id {
+		eyre::bail!(
+			"Manual land handoff run `{handoff_run_id}` belongs to issue `{}`, not `{issue_id}`.",
+			attempt.issue_id()
+		);
+	}
+	if attempt.status() != "succeeded" {
+		state_store.update_run_status(handoff_run_id, "succeeded")?;
+	}
 
 	Ok(())
 }
@@ -2749,7 +2782,7 @@ exit 1\n",
 		let issue = sample_issue("issue-1", "XY-225", true, &["decodex:active:pubfi"]);
 		let other_issue = sample_issue("issue-2", "XY-226", true, &["decodex:active:pubfi"]);
 		let handoff = state::ReviewHandoffMarker::new(
-			"run-1",
+			"run-1-failed",
 			1,
 			"y/decodex-xy-225",
 			"https://github.com/hack-ink/decodex/pull/67",
@@ -2783,7 +2816,7 @@ exit 1\n",
 			.record_run_attempt("run-2", &other_issue.id, 1, "running")
 			.expect("other issue running attempt should persist");
 
-		manual::clear_manual_closeout_runtime_state(&state_store, &issue.id)
+		manual::clear_manual_closeout_runtime_state(&state_store, &issue.id, handoff.run_id())
 			.expect("manual closeout runtime state should clear");
 
 		assert!(
@@ -2834,7 +2867,7 @@ exit 1\n",
 				.expect("run attempt lookup should succeed")
 				.expect("run attempt should remain")
 				.status(),
-			"failed"
+			"succeeded"
 		);
 		assert_eq!(
 			state_store

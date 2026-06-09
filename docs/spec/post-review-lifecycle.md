@@ -94,18 +94,24 @@ success path.
   active automation label, existing PR URL when present, stored handoff head, stored
   orchestration head, PR base/head when readable, and the missing or mismatched marker
   reason. A diagnostic may report a bound marker, active ownership drift, a missing
-  marker, an unverified PR read, or a concrete field mismatch that requires explicit
-  rebind.
+  marker, a pending issue-state transition, an unverified PR read, or a concrete field
+  mismatch that requires explicit rebind.
 - `rebind` is mutating and requires an explicit issue identifier plus PR URL. It must
-  validate the configured project, tracker issue, success-state compatibility, active
-  automation ownership, retained worktree branch, clean worktree, PR repository, PR base,
-  PR head branch, PR head SHA, and open non-draft PR state before writing markers.
+  validate the configured project, tracker issue state, active automation ownership,
+  retained worktree branch, clean worktree, PR repository, PR base, PR head branch, PR
+  head SHA, and open non-draft PR state before writing markers. Existing-marker refresh
+  requires the workflow `tracker.success_state`. Partial normal handoff recovery may
+  also accept the workflow `tracker.in_progress_state` when the marker is missing, or
+  when an already-current marker exists but the issue state was not advanced, and the
+  validated PR plus retained worktree prove the handoff lineage; after the rebind audit
+  succeeds, Decodex must move that issue to `tracker.success_state`.
 - If no review handoff marker exists, `rebind` restores the missing handoff and
   orchestration markers from the validated PR and retained worktree. If a marker already
   exists for the same branch and PR but its stored handoff or orchestration head is
   stale, `rebind` may refresh that marker to the validated PR head. It must reject an
   existing marker for a different PR, and it must reject a current same-branch same-PR
-  marker as a no-op.
+  marker as a no-op unless the issue is still in `tracker.in_progress_state` and only
+  the success-state transition remains.
 - A successful rebind writes the same runtime DB handoff and orchestration marker shapes
   as normal `issue_review_handoff` needs, and records a `review_handoff_rebind` audit
   event. It does not land the PR, queue follow-up work, or substitute for healthy lanes'
