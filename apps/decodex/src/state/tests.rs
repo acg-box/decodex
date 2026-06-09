@@ -81,6 +81,7 @@ fn upsert_handoff_review_policy_checkpoint(
 			status,
 			head_sha,
 			nonclean_rounds,
+			details_json: "{}",
 		})
 		.expect("review policy checkpoint should persist");
 }
@@ -330,6 +331,7 @@ fn review_policy_checkpoints_persist_reload_and_clear_for_run_attempt() {
 			status: "findings",
 			head_sha: "abc123",
 			nonclean_rounds: 2,
+			details_json: r#"{"reviewer":"independent_fresh_context"}"#,
 		})
 		.expect("review policy checkpoint should persist");
 
@@ -341,6 +343,7 @@ fn review_policy_checkpoints_persist_reload_and_clear_for_run_attempt() {
 	assert_eq!(checkpoint.status(), "findings");
 	assert_eq!(checkpoint.head_sha(), "abc123");
 	assert_eq!(checkpoint.nonclean_rounds(), 2);
+	assert_eq!(checkpoint.details_json(), r#"{"reviewer":"independent_fresh_context"}"#);
 	assert!(!checkpoint.updated_at().is_empty());
 	assert!(checkpoint.updated_at_unix() > 0);
 
@@ -352,6 +355,7 @@ fn review_policy_checkpoints_persist_reload_and_clear_for_run_attempt() {
 
 	assert_eq!(reloaded.status(), "findings");
 	assert_eq!(reloaded.nonclean_rounds(), 2);
+	assert_eq!(reloaded.details_json(), r#"{"reviewer":"independent_fresh_context"}"#);
 
 	reopened
 		.clear_review_policy_checkpoints_for_run_attempt("pubfi", "PUB-101", "run-1", 2)
