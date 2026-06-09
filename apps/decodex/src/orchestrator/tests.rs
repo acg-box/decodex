@@ -19,8 +19,7 @@ use color_eyre::{Report, eyre};
 use tempfile::TempDir;
 use time::OffsetDateTime;
 
-use crate::orchestrator::RepoGatePhaseGoalController;
-use crate::tracker::records;
+use crate::{orchestrator::RepoGatePhaseGoalController, tracker::records};
 #[rustfmt::skip]
 	use crate::agent::{
 		ACTIVE_RUN_IDLE_TIMEOUT, MODEL_EXECUTION_IDLE_TIMEOUT,
