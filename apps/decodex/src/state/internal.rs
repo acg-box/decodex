@@ -404,12 +404,33 @@ CREATE TABLE IF NOT EXISTS review_policy_checkpoints (
 	status TEXT NOT NULL,
 	head_sha TEXT NOT NULL,
 	nonclean_rounds INTEGER NOT NULL,
+	details_json TEXT NOT NULL DEFAULT '{}',
 	updated_at TEXT NOT NULL,
 	updated_at_unix INTEGER NOT NULL,
 	PRIMARY KEY (project_id, issue_id, run_id, attempt_number, phase)
 );
 "#,
 		)?;
+		self.ensure_column(
+			"review_policy_checkpoints",
+			"details_json",
+			"ALTER TABLE review_policy_checkpoints ADD COLUMN details_json TEXT NOT NULL DEFAULT '{}'",
+		)?;
+
+		Ok(())
+	}
+
+	fn ensure_column(&self, table: &str, column: &str, add_column_sql: &str) -> Result<()> {
+		let mut statement = self.connection.prepare(&format!("PRAGMA table_info({table})"))?;
+		let column_names = statement.query_map([], |row| row.get::<_, String>(1))?;
+
+		for column_name in column_names {
+			if column_name? == column {
+				return Ok(());
+			}
+		}
+
+		self.connection.execute_batch(add_column_sql)?;
 
 		Ok(())
 	}
@@ -856,10 +877,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		transaction.execute(
 			"INSERT OR IGNORE INTO review_policy_checkpoints (
 					project_id, issue_id, run_id, attempt_number, phase, status, head_sha,
-					nonclean_rounds, updated_at, updated_at_unix
+					nonclean_rounds, details_json, updated_at, updated_at_unix
 				)
 			 SELECT project_id, ?2, run_id, attempt_number, phase, status, head_sha,
-					nonclean_rounds, updated_at, updated_at_unix
+					nonclean_rounds, details_json, updated_at, updated_at_unix
 			 FROM review_policy_checkpoints WHERE issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
 		)?;
@@ -1632,7 +1653,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	fn load_review_policy_checkpoints(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, run_id, attempt_number, phase, status, head_sha, \
-			 nonclean_rounds, updated_at, updated_at_unix FROM review_policy_checkpoints",
+			 nonclean_rounds, details_json, updated_at, updated_at_unix FROM review_policy_checkpoints",
 		)?;
 		let rows = statement.query_map([], |row| {
 			let project_id: String = row.get(0)?;
@@ -1652,8 +1673,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 					status: row.get(5)?,
 					head_sha: row.get(6)?,
 					nonclean_rounds: row.get(7)?,
-					updated_at: row.get(8)?,
-					updated_at_unix: row.get(9)?,
+					details_json: row.get(8)?,
+					updated_at: row.get(9)?,
+					updated_at_unix: row.get(10)?,
 				},
 			))
 		})?;
@@ -1993,6 +2015,7 @@ struct ReviewPolicyRuntimeRecord {
 	status: String,
 	head_sha: String,
 	nonclean_rounds: i64,
+	details_json: String,
 	updated_at: String,
 	updated_at_unix: i64,
 }
@@ -2007,6 +2030,7 @@ impl ReviewPolicyRuntimeRecord {
 			status: self.status.clone(),
 			head_sha: self.head_sha.clone(),
 			nonclean_rounds: self.nonclean_rounds,
+			details_json: self.details_json.clone(),
 			updated_at: self.updated_at.clone(),
 			updated_at_unix: self.updated_at_unix,
 		}
@@ -2952,8 +2976,8 @@ fn persist_review_policy_checkpoints(
 		transaction.execute(
 			"INSERT OR REPLACE INTO review_policy_checkpoints (
 					project_id, issue_id, run_id, attempt_number, phase, status, head_sha,
-					nonclean_rounds, updated_at, updated_at_unix
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+					nonclean_rounds, details_json, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
 			params![
 				record.project_id,
 				record.issue_id,
@@ -2963,6 +2987,7 @@ fn persist_review_policy_checkpoints(
 				record.status,
 				record.head_sha,
 				record.nonclean_rounds,
+				record.details_json,
 				record.updated_at,
 				record.updated_at_unix,
 			],

@@ -1,14 +1,14 @@
 {
   "counts": {
-    "critical": 13,
-    "high": 9,
+    "critical": 14,
+    "high": 8,
     "low": 2,
     "normal": 16,
     "published_subjects_seen": 0,
     "recent_commits_scanned": 40,
     "subjects_queued": 40
   },
-  "generated_at": "2026-06-09T08:06:27.782925Z",
+  "generated_at": "2026-06-09T14:04:59.634102Z",
   "repo": "openai/codex",
   "schema": "upstream_review_queue/v1",
   "source": {
@@ -17,93 +17,6 @@
     "signals_dir": "site/src/content/signals"
   },
   "subjects": [
-    {
-      "attention_flags": [
-        "auth_account",
-        "breaking_change",
-        "deprecated_removed",
-        "new_feature",
-        "protocol_change",
-        "release_packaging"
-      ],
-      "changed_file_count": 9,
-      "commit_shas": [
-        "4d1e4042a966351e21fdd7e6240c453eb15e2e29"
-      ],
-      "committed_at": "2026-06-08T00:35:33Z",
-      "next_step": "ai_review_required",
-      "pr_number": 24820,
-      "pr_url": "https://github.com/openai/codex/pull/24820",
-      "review_priority": "critical",
-      "review_reason": "Needs AI review for auth_account, breaking_change, deprecated_removed, new_feature, protocol_change, release_packaging.",
-      "sample_paths": [
-        "MODULE.bazel.lock",
-        "codex-rs/.cargo/audit.toml",
-        "codex-rs/Cargo.lock",
-        "codex-rs/Cargo.toml",
-        "codex-rs/deny.toml",
-        "codex-rs/execpolicy-legacy/src/arg_matcher.rs",
-        "codex-rs/execpolicy-legacy/src/opt.rs",
-        "codex-rs/execpolicy-legacy/src/policy_parser.rs",
-        "codex-rs/execpolicy/src/parser.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "24820",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "config_hooks",
-        "sandbox_permissions"
-      ],
-      "title": "deps: update starlark to 0.14.2",
-      "url": "https://github.com/openai/codex/pull/24820"
-    },
-    {
-      "attention_flags": [
-        "auth_account",
-        "breaking_change",
-        "new_feature",
-        "protocol_change",
-        "rate_limit"
-      ],
-      "changed_file_count": 18,
-      "commit_shas": [
-        "b5eae7326947ad4e7e7003a3f6925f370fb85407",
-        "84b8997c6c294c8e63ea1e85c53e9ef01ed022de",
-        "1b50304606151d6071fb68c7dbb09597b6d8c100"
-      ],
-      "committed_at": "2026-06-08T03:12:05Z",
-      "next_step": "ai_review_required",
-      "pr_number": 26639,
-      "pr_url": "https://github.com/openai/codex/pull/26639",
-      "review_priority": "critical",
-      "review_reason": "Needs AI review for auth_account, breaking_change, new_feature, protocol_change, rate_limit.",
-      "sample_paths": [
-        "codex-rs/app-server-protocol/schema/json/ServerNotification.json",
-        "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
-        "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
-        "codex-rs/app-server-protocol/schema/json/v2/McpServerStatusUpdatedNotification.json",
-        "codex-rs/app-server-protocol/schema/typescript/v2/McpServerStatusUpdatedNotification.ts",
-        "codex-rs/app-server-protocol/src/protocol/v2/mcp.rs",
-        "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
-        "codex-rs/app-server/README.md",
-        "codex-rs/app-server/src/bespoke_event_handling.rs",
-        "codex-rs/app-server/tests/suite/v2/thread_start.rs",
-        "codex-rs/tui/src/app/app_server_event_targets.rs",
-        "codex-rs/tui/src/app/app_server_events.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "26639",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "app_server_protocol",
-        "cli_tui",
-        "docs_examples",
-        "mcp_plugins",
-        "tests_ci"
-      ],
-      "title": "fix(tui): scope MCP startup status by thread",
-      "url": "https://github.com/openai/codex/pull/26639"
-    },
     {
       "attention_flags": [
         "deprecated_removed",
@@ -568,38 +481,120 @@
     {
       "attention_flags": [
         "auth_account",
+        "deprecated_removed",
         "new_feature",
         "protocol_change",
+        "release_packaging",
         "security_policy"
       ],
-      "changed_file_count": 6,
+      "changed_file_count": 7,
       "commit_shas": [
-        "e28d2a19b431e3507482c05c2e292aeb9c68bf8c",
-        "02724b98d36c0285a4ded52dd8eeb5cae7dba445"
+        "2ff3136992b56306ac00b4f9e894102acaa5237f"
       ],
-      "committed_at": "2026-06-08T06:18:23Z",
+      "committed_at": "2026-06-09T08:23:16Z",
       "next_step": "ai_review_required",
-      "pr_number": 26719,
-      "pr_url": "https://github.com/openai/codex/pull/26719",
-      "review_priority": "high",
-      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change, security_policy.",
+      "pr_number": 27098,
+      "pr_url": "https://github.com/openai/codex/pull/27098",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, deprecated_removed, new_feature, protocol_change, release_packaging, security_policy.",
       "sample_paths": [
-        "codex-rs/app-server/tests/suite/v2/web_search.rs",
-        "codex-rs/codex-api/src/endpoint/search.rs",
-        "codex-rs/codex-api/src/search.rs",
-        "codex-rs/core/tests/suite/code_mode.rs",
-        "codex-rs/ext/web-search/src/output.rs",
-        "codex-rs/ext/web-search/src/tool.rs"
+        "codex-rs/app-server/src/request_processors/plugins.rs",
+        "codex-rs/app-server/tests/suite/v2/plugin_list.rs",
+        "codex-rs/core-plugins/src/discoverable.rs",
+        "codex-rs/core-plugins/src/manager.rs",
+        "codex-rs/core-plugins/src/manager_tests.rs",
+        "codex-rs/core-plugins/src/remote.rs",
+        "codex-rs/core/src/plugins/discoverable_tests.rs"
       ],
       "source_state": "merged",
-      "subject_id": "26719",
+      "subject_id": "27098",
       "subject_kind": "pr",
       "surface_hints": [
         "app_server_protocol",
+        "mcp_plugins",
         "tests_ci"
       ],
-      "title": "[codex] Enable standalone web search in code mode",
-      "url": "https://github.com/openai/codex/pull/26719"
+      "title": "[codex] Return workspace directory installed plugins",
+      "url": "https://github.com/openai/codex/pull/27098"
+    },
+    {
+      "attention_flags": [
+        "auth_account",
+        "breaking_change",
+        "new_feature",
+        "protocol_change"
+      ],
+      "changed_file_count": 57,
+      "commit_shas": [
+        "6bba7d7f0403b1190af5f6def0d08da41946c516",
+        "f5696a6365d98f2e083a5ca7681c49be08acfd7b",
+        "3b2e64054eb41fe13c3e71e4b914db352212746c",
+        "ba4061d420e62206e42e94d09bba3d05f6063ae6",
+        "87f4b5f9cad0d5941821cc5dfbbf81f0d75e76e1"
+      ],
+      "committed_at": "2026-06-09T10:14:48Z",
+      "next_step": "ai_review_required",
+      "pr_number": 27007,
+      "pr_url": "https://github.com/openai/codex/pull/27007",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, breaking_change, new_feature, protocol_change.",
+      "sample_paths": [
+        "codex-rs/analytics/src/analytics_client_tests.rs",
+        "codex-rs/analytics/src/reducer.rs",
+        "codex-rs/app-server-protocol/schema/json/ServerNotification.json",
+        "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+        "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+        "codex-rs/app-server-protocol/schema/json/v2/ItemCompletedNotification.json",
+        "codex-rs/app-server-protocol/schema/json/v2/ItemStartedNotification.json",
+        "codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json",
+        "codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json",
+        "codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json",
+        "codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json",
+        "codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json"
+      ],
+      "source_state": "merged",
+      "subject_id": "27007",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "app_server_protocol",
+        "cli_tui",
+        "docs_examples",
+        "mcp_plugins",
+        "sandbox_permissions",
+        "tests_ci"
+      ],
+      "title": "multi-agent: add path-based v2 activity tracking",
+      "url": "https://github.com/openai/codex/pull/27007"
+    },
+    {
+      "attention_flags": [
+        "auth_account",
+        "breaking_change",
+        "deprecated_removed",
+        "protocol_change"
+      ],
+      "changed_file_count": 1,
+      "commit_shas": [
+        "634643a5e480b62d16468d27ad0b91295b0b74b2",
+        "339810a9339783c34d7b65b293f08f657ba3c93d"
+      ],
+      "committed_at": "2026-06-09T11:27:53Z",
+      "next_step": "ai_review_required",
+      "pr_number": 27166,
+      "pr_url": "https://github.com/openai/codex/pull/27166",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, breaking_change, deprecated_removed, protocol_change.",
+      "sample_paths": [
+        "codex-rs/app-server/src/bespoke_event_handling.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "27166",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "app_server_protocol"
+      ],
+      "title": "app-server: clear stale thread watches after v2 agent interruption",
+      "url": "https://github.com/openai/codex/pull/27166"
     },
     {
       "attention_flags": [

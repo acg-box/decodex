@@ -43,6 +43,37 @@ fn sample_review_repair_apply_inspectors(
 	(inspector, local_repo_inspector)
 }
 
+fn review_checks_json() -> Value {
+	serde_json::json!({
+		"intended_behavior": "Checked the implementation against the issue requirements.",
+		"regression_risk": "Checked shared runtime regression risk for the touched path.",
+		"missing_tests": "Checked whether the current change needs additional tests.",
+		"docs_config_drift": "Checked docs and config drift for the runtime behavior change.",
+		"migration_fallout": "Checked additive runtime-store migration fallout.",
+		"operator_facing_fallout": "Checked Linear and operator-facing fallout.",
+		"loop_decision_contract": "Compared the change against the accepted Loop/Decision Contract and found no mismatch."
+	})
+}
+
+fn accepted_review_findings_json() -> Value {
+	serde_json::json!([{
+		"severity": "medium",
+		"summary": "Accepted reviewer finding",
+		"evidence": ["The reviewer evidence points at the current lane head."],
+		"file": "apps/decodex/src/agent/tracker_tool_bridge/tools.rs",
+		"line": 1,
+		"guidance": "Repair the accepted issue before requesting another review checkpoint."
+	}])
+}
+
+fn accepted_review_findings_for_status_json(status: &str) -> Value {
+	if status == "findings" {
+		accepted_review_findings_json()
+	} else {
+		serde_json::json!([])
+	}
+}
+
 fn seed_review_repair_apply_state(
 	state_store: &StateStore,
 	review_context: &ReviewHandoffContext,
@@ -440,8 +471,10 @@ fn review_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 		&bridge,
 		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
+			"reviewer": "independent_fresh_context",
 			"status": "clean",
 			"head_sha": &sample_local_repo().head_oid[..7],
+			"checks": review_checks_json(),
 			"evidence": ["Closeout and review policy both point at the current lane head."]
 		}),
 	);
@@ -452,6 +485,284 @@ fn review_checkpoint_normalizes_matching_short_head_sha_to_full_head() {
 	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
 
 	assert_eq!(checkpoint.head_sha(), sample_local_repo().head_oid.as_str());
+}
+
+#[test]
+fn independent_review_checkpoint_requires_structured_fresh_context_payload() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+		Ok(sample_local_repo()),
+	]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context,
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+
+	for (payload, expected_error) in [
+		(
+			serde_json::json!({
+				"status": "clean",
+				"head_sha": sample_local_repo().head_oid,
+				"checks": review_checks_json(),
+				"evidence": ["review evidence"]
+			}),
+			"requires `reviewer`",
+		),
+		(
+			serde_json::json!({
+				"reviewer": "self_review",
+				"status": "clean",
+				"head_sha": sample_local_repo().head_oid,
+				"checks": review_checks_json(),
+				"evidence": ["review evidence"]
+			}),
+			"reviewer must be `independent_fresh_context`",
+		),
+		(
+			serde_json::json!({
+				"reviewer": "independent_fresh_context",
+				"status": "clean",
+				"head_sha": sample_local_repo().head_oid,
+				"evidence": ["review evidence"]
+			}),
+			"requires `checks`",
+		),
+		(
+			serde_json::json!({
+				"reviewer": "independent_fresh_context",
+				"status": "clean",
+				"head_sha": sample_local_repo().head_oid,
+				"checks": review_checks_json(),
+				"evidence": []
+			}),
+			"requires `evidence`",
+		),
+		(
+			serde_json::json!({
+				"reviewer": "independent_fresh_context",
+				"status": "findings",
+				"head_sha": sample_local_repo().head_oid,
+				"checks": review_checks_json(),
+				"evidence": ["review evidence"],
+				"accepted_findings": [{
+					"severity": "medium",
+					"summary": "Accepted reviewer finding",
+					"evidence": [],
+					"guidance": "Repair the accepted issue before requesting another checkpoint."
+				}]
+			}),
+			"requires `accepted_findings.evidence`",
+		),
+		(
+			serde_json::json!({
+				"reviewer": "independent_fresh_context",
+				"status": "clean",
+				"head_sha": sample_local_repo().head_oid,
+				"checks": review_checks_json(),
+				"evidence": ["review evidence"],
+				"rejected_findings": [{
+					"severity": "unknown",
+					"summary": "Rejected reviewer finding",
+					"rejection_reason": "Not actionable after validation.",
+					"evidence": ["Reviewer evidence was stale."]
+				}]
+			}),
+			"`rejected_findings.severity` must be",
+		),
+	] {
+		let response =
+			DynamicToolHandler::handle_call(&bridge, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, payload);
+
+		assert!(!response.success);
+		assert!(matches!(
+			response.content_items.as_slice(),
+			[DynamicToolContentItem::InputText { text }] if text.contains(expected_error)
+		));
+	}
+}
+
+#[test]
+fn independent_review_checkpoint_clean_persists_structured_payload() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer read the issue contract, current diff, and HEAD"],
+			"rejected_findings": [{
+				"severity": "low",
+				"summary": "The reviewer asked for a migration note, but no schema or data migration changed.",
+				"rejection_reason": "Not actionable after checking the current diff and docs.",
+				"evidence": ["Only runtime review checkpoint metadata changed."],
+				"file": "apps/decodex/src/agent/tracker_tool_bridge/tools.rs",
+				"line": 1
+			}]
+		}),
+	);
+
+	assert!(response.success);
+
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
+	let details =
+		serde_json::from_str::<Value>(checkpoint.details_json()).expect("details should be json");
+
+	assert_eq!(checkpoint.status(), "clean");
+	assert_eq!(details["reviewer"], "independent_fresh_context");
+	assert_eq!(
+		details["checks"]["loop_decision_contract"],
+		"Compared the change against the accepted Loop/Decision Contract and found no mismatch."
+	);
+	assert_eq!(details["accepted_findings"].as_array().expect("accepted findings array").len(), 0);
+	assert_eq!(details["rejected_findings"][0]["rejection_reason"], "Not actionable after checking the current diff and docs.");
+
+	let events = bridge_state_store(&bridge)
+		.list_private_execution_events_for_run_attempt(
+			&review_context.service_id,
+			&review_context.run_id,
+			review_context.attempt_number,
+		)
+		.expect("private review evidence should read");
+
+	assert_eq!(events.len(), 1);
+	assert_eq!(events[0].event_type(), "review_checkpoint");
+	assert_eq!(events[0].payload()["review"]["reviewer"], "independent_fresh_context");
+}
+
+#[test]
+fn independent_review_checkpoint_findings_store_accepted_repair_guidance() {
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let review_context = sample_review_context_in(temp_dir.path());
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "findings",
+			"head_sha": sample_local_repo().head_oid,
+			"checks": review_checks_json(),
+			"evidence": ["fresh reviewer found one accepted repair item"],
+			"accepted_findings": accepted_review_findings_json()
+		}),
+	);
+
+	assert!(response.success);
+	assert_eq!(
+		DynamicToolHandler::classify_turn_completion(&bridge, "continue")
+			.expect("first accepted findings round should continue"),
+		TurnCompletionStatus::Continue
+	);
+
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &review_context);
+	let details =
+		serde_json::from_str::<Value>(checkpoint.details_json()).expect("details should be json");
+
+	assert_eq!(checkpoint.status(), "findings");
+	assert_eq!(checkpoint.nonclean_rounds(), 1);
+	assert_eq!(details["accepted_findings"][0]["severity"], "medium");
+	assert_eq!(
+		details["accepted_findings"][0]["guidance"],
+		"Repair the accepted issue before requesting another review checkpoint."
+	);
+}
+
+#[test]
+fn review_checkpoint_rejected_finding_is_non_actionable_and_can_handoff_cleanly() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let tracker = FakeTracker::new();
+	let issue = sample_issue();
+	let workflow = sample_workflow();
+	let inspector = FakePullRequestInspector::new(vec![Ok(sample_pull_request())]);
+	let local_repo_inspector =
+		FakeLocalRepoInspector::new(vec![Ok(sample_local_repo()), Ok(sample_local_repo())]);
+	let review_context = sample_review_context_in(temp_dir.path());
+	let bridge = TrackerToolBridge::with_review_handoff_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		review_context.clone(),
+		&inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "clean",
+			"head_sha": sample_local_repo().head_oid,
+			"checks": review_checks_json(),
+			"evidence": ["only rejected non-actionable feedback remained"],
+			"rejected_findings": [{
+				"severity": "low",
+				"summary": "The reviewer requested a migration test.",
+				"rejection_reason": "No migration path changed in the current diff.",
+				"evidence": ["The runtime store column is additive and defaults existing rows."],
+				"file": "apps/decodex/src/state/internal.rs",
+				"line": 1
+			}]
+		}),
+	);
+
+	assert!(response.success);
+
+	let handoff_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME,
+		serde_json::json!({
+			"pr_url": "https://github.com/hack-ink/decodex/pull/48",
+			"summary": "Rejected non-actionable review feedback and prepared handoff."
+		}),
+	);
+
+	assert!(handoff_response.success);
+
+	assert_review_policy_checkpoint_cleared(&bridge, &issue, &review_context);
 }
 
 #[test]
@@ -481,9 +792,12 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 			&bridge,
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
 			serde_json::json!({
+				"reviewer": "independent_fresh_context",
 				"status": "findings",
 				"head_sha": sample_local_repo().head_oid,
-				"evidence": ["owned fix still pending"]
+				"checks": review_checks_json(),
+				"evidence": ["owned fix still pending"],
+				"accepted_findings": accepted_review_findings_json()
 			}),
 		);
 
@@ -505,9 +819,12 @@ fn review_checkpoint_findings_continue_until_budget_then_stop() {
 		&bridge,
 		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
+			"reviewer": "independent_fresh_context",
 			"status": "findings",
 			"head_sha": sample_local_repo().head_oid,
-			"evidence": ["still not converged"]
+			"checks": review_checks_json(),
+			"evidence": ["still not converged"],
+			"accepted_findings": accepted_review_findings_json()
 		}),
 	);
 
@@ -552,9 +869,12 @@ fn review_checkpoint_clean_resets_nonclean_rounds_before_next_findings() {
 			&bridge,
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
 			serde_json::json!({
+				"reviewer": "independent_fresh_context",
 				"status": status,
 				"head_sha": sample_local_repo().head_oid,
-				"evidence": ["review evidence"]
+				"checks": review_checks_json(),
+				"evidence": ["review evidence"],
+				"accepted_findings": accepted_review_findings_for_status_json(status)
 			}),
 		);
 
@@ -594,9 +914,12 @@ fn review_checkpoint_does_not_depend_on_tracker_comment_write() {
 		&bridge,
 		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
+			"reviewer": "independent_fresh_context",
 			"status": "findings",
 			"head_sha": sample_local_repo().head_oid,
-			"evidence": ["tracker write failed before checkpoint persisted"]
+			"checks": review_checks_json(),
+			"evidence": ["tracker write failed before checkpoint persisted"],
+			"accepted_findings": accepted_review_findings_json()
 		}),
 	);
 
@@ -632,8 +955,10 @@ fn review_checkpoint_architecture_and_blocked_statuses_stop_immediately() {
 			&bridge,
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
 			serde_json::json!({
+				"reviewer": "independent_fresh_context",
 				"status": status,
 				"head_sha": sample_local_repo().head_oid,
+				"checks": review_checks_json(),
 				"evidence": ["requires human follow-up"]
 			}),
 		);
@@ -683,9 +1008,12 @@ fn review_checkpoint_phase_switch_resets_nonclean_rounds() {
 		&bridge,
 		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
 		serde_json::json!({
+			"reviewer": "independent_fresh_context",
 			"status": "findings",
 			"head_sha": sample_local_repo().head_oid,
-			"evidence": []
+			"checks": review_checks_json(),
+			"evidence": ["fresh repair-phase review found accepted work"],
+			"accepted_findings": accepted_review_findings_json()
 		}),
 	);
 
@@ -695,6 +1023,56 @@ fn review_checkpoint_phase_switch_resets_nonclean_rounds() {
 
 	assert_eq!(checkpoint.phase(), "repair");
 	assert_eq!(checkpoint.nonclean_rounds(), 1);
+}
+
+#[test]
+fn repair_review_checkpoint_stores_accepted_findings_for_repair_loop() {
+	let tracker = FakeTracker::new();
+	let workflow = sample_workflow();
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let repair_context = sample_review_repair_context_in(
+		temp_dir.path(),
+		"https://github.com/hack-ink/decodex/pull/242",
+	);
+	let issue = sample_review_issue();
+	let pull_request_inspector = FakePullRequestInspector::new(Vec::new());
+	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
+	let bridge = TrackerToolBridge::with_review_repair_for_test(
+		&tracker,
+		&issue,
+		&workflow,
+		repair_context.clone(),
+		&pull_request_inspector,
+		&local_repo_inspector,
+	);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		serde_json::json!({
+			"reviewer": "independent_fresh_context",
+			"status": "findings",
+			"head_sha": sample_local_repo().head_oid,
+			"checks": review_checks_json(),
+			"evidence": ["fresh-context retained repair review accepted one finding"],
+			"accepted_findings": accepted_review_findings_json(),
+			"rejected_findings": [{
+				"severity": "info",
+				"summary": "Reviewer suggested changing unrelated landing code.",
+				"rejection_reason": "Outside this retained repair batch.",
+				"evidence": ["The current PR feedback only concerns the tracker-tool bridge."]
+			}]
+		}),
+	);
+
+	assert!(response.success);
+
+	let checkpoint = persisted_review_policy_checkpoint(&bridge, &issue, &repair_context);
+	let details =
+		serde_json::from_str::<Value>(checkpoint.details_json()).expect("details should be json");
+
+	assert_eq!(checkpoint.phase(), "repair");
+	assert_eq!(details["accepted_findings"][0]["summary"], "Accepted reviewer finding");
+	assert_eq!(details["rejected_findings"][0]["rejection_reason"], "Outside this retained repair batch.");
 }
 
 #[test]
@@ -763,6 +1141,7 @@ fn runtime_review_checkpoint_wins_over_stale_marker_policy_state() {
 			status: "clean",
 			head_sha: &sample_local_repo().head_oid,
 			nonclean_rounds: 0,
+			details_json: "{}",
 		})
 		.expect("runtime review checkpoint should persist");
 	write_review_policy_checkpoint(
