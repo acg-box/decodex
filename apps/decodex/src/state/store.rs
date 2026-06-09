@@ -1734,22 +1734,6 @@ impl StateStore {
 		)
 	}
 
-	/// Remove retained review markers for one issue without clearing its worktree mapping.
-	pub(crate) fn clear_review_markers(&self, issue_id: &str) -> Result<()> {
-		let mut state = self.lock()?;
-
-		state.review_handoffs.retain(|key, _record| key.issue_id != issue_id);
-		state
-			.review_orchestrations
-			.retain(|key, _record| key.issue_id != issue_id);
-		state
-			.review_policy_checkpoints
-			.retain(|key, _record| key.issue_id != issue_id);
-		self.persist_runtime_state_locked(&state)?;
-
-		self.delete_review_markers_locked(issue_id)
-	}
-
 	/// Remove the exact retained review markers created for one handoff identity.
 	pub(crate) fn clear_review_markers_for_handoff(
 		&self,
@@ -2071,17 +2055,6 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_worktree_and_review_markers(issue_id)
-	}
-
-	fn delete_review_markers_locked(&self, issue_id: &str) -> Result<()> {
-		let Some(sqlite) = self.sqlite.as_ref() else {
-			return Ok(());
-		};
-		let mut sqlite = sqlite
-			.lock()
-			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
-
-		sqlite.delete_review_markers(issue_id)
 	}
 
 	fn delete_review_marker_identity_locked(

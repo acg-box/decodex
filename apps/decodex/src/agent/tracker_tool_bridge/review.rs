@@ -486,10 +486,6 @@ impl<'a> TrackerToolBridge<'a> {
 		self.persist_review_orchestration_marker(review_context, &orchestration_marker)?;
 
 		if let Err(error) = self.tracker.update_issue_state(&self.issue.id, success_state_id) {
-			if let Some(state_store) = self.state_store {
-				state_store.clear_review_markers(&self.issue.id)?;
-			}
-
 			return Err(Report::new(ReviewHandoffWritebackFailed {
 				issue_identifier: self.issue.identifier.clone(),
 				run_id: review_context.run_id.clone(),
