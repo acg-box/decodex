@@ -32,6 +32,10 @@ Decodex currently runs as a local, single-machine control plane:
 - Each project row is scoped by `project_id` and canonical `repo_root`.
 - The project-owned `WORKFLOW.md` remains the execution-policy contract for that
   registered repo.
+- The everyday loop-runtime surface remains Codex conversation. Research/decision
+  promotion and internal Execution Program state are governed by
+  [`../spec/loop-runtime.md`](../spec/loop-runtime.md), not by dashboard graph editing
+  or user-visible DAG commands.
 
 Decodex App is a native shell over the same local runtime and account-pool state. On
 launch it connects to an existing default local listener when one is reachable; if
@@ -442,8 +446,9 @@ rate-limited, or unavailable.
 These directions were discussed but are not part of the current implemented contract:
 
 - Active-lane UI controls for steer, retry, task replacement, or lifecycle mutation.
-- Conflict-domain scheduling for `ui-preview`, `docs`, `tests`, `runtime`, or similar
-  lane classes.
+- User-visible conflict-domain scheduling for `ui-preview`, `docs`, `tests`,
+  `runtime`, or similar lane classes. Future conflict-domain scheduling belongs to the
+  internal Execution Program contract, not to ordinary dashboard graph controls.
 - Demo batch planning that automatically selects two or three small visible issues and
   generates operator observation points.
 - Editing project configuration from the operator UI.
@@ -457,6 +462,7 @@ governing spec first, then update the operator runbook and this reference.
 
 ## Authority Links
 
+- Loop-runtime contract: [`../spec/loop-runtime.md`](../spec/loop-runtime.md)
 - Runtime contract: [`../spec/runtime.md`](../spec/runtime.md)
 - Lane-control capability contract: [`../spec/lane-control.md`](../spec/lane-control.md)
 - Linear execution ledger schema: [`../spec/linear-execution-ledger.md`](../spec/linear-execution-ledger.md)

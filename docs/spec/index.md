@@ -54,6 +54,10 @@ Then keep the body explicit:
 
 ## Current governing specs
 
+- [`loop-runtime.md`](./loop-runtime.md) defines the natural-language-first loop
+  runtime, Decodex-native Research/Decision stage, latent Loop/Decision Contract,
+  internal Execution Program, phase-scoped goals, unattended execution behavior, and
+  loop guardrails.
 - [`runtime.md`](./runtime.md) defines the runtime state model, reconciliation rules, and
   tracker writeback boundaries.
 - [`app-server.md`](./app-server.md) defines the direct Codex `app-server` interaction

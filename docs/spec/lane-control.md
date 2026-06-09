@@ -20,6 +20,11 @@ Lane control is the operator-facing ability to inspect and influence a Decodex-o
 lane without bypassing the runtime lease, tracker, retained-worktree, and review
 contracts.
 
+[`loop-runtime.md`](./loop-runtime.md) owns the natural-language-first research,
+promotion, and internal Execution Program contract. Lane control does not expose that
+program as a user-visible DAG surface. Inspect, steer, interrupt, retained retry, and
+manual attention remain lane controls for already-owned runtime lanes.
+
 The first supported operator-control surface for this rollout is CLI/API. Active-lane
 UI controls are intentionally deferred. The dashboard may show local runtime state for
 observation, but it must not become the primary place where agents or operators author
