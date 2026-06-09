@@ -158,10 +158,16 @@ impl DecisionContract {
 
 		promotion.validate()?;
 
-		self.status = DecisionContractStatus::AcceptedPromoted;
-		self.promotion = Some(promotion);
+		let mut candidate = self.clone();
 
-		self.validate()
+		candidate.status = DecisionContractStatus::AcceptedPromoted;
+		candidate.promotion = Some(promotion);
+
+		candidate.validate()?;
+
+		*self = candidate;
+
+		Ok(())
 	}
 
 	pub(crate) fn require_human_decision(&mut self, reason: impl Into<String>) -> Result<()> {
@@ -185,29 +191,46 @@ impl DecisionContract {
 
 		validate_required("decision contract human-decision reason", &reason)?;
 
-		if !self.execution_readiness.missing_decisions.iter().any(|existing| existing == &reason) {
-			self.execution_readiness.missing_decisions.push(reason);
+		let mut candidate = self.clone();
+
+		if !candidate
+			.execution_readiness
+			.missing_decisions
+			.iter()
+			.any(|existing| existing == &reason)
+		{
+			candidate.execution_readiness.missing_decisions.push(reason);
 		}
 
-		self.status = DecisionContractStatus::NeedsHumanDecision;
-		self.promotion = None;
+		candidate.status = DecisionContractStatus::NeedsHumanDecision;
+		candidate.promotion = None;
 
-		self.validate()
+		candidate.validate()?;
+
+		*self = candidate;
+
+		Ok(())
 	}
 
 	pub(crate) fn reject_or_supersede(
 		&mut self,
 		superseded_by_contract_id: Option<String>,
 	) -> Result<()> {
+		let mut candidate = self.clone();
+
 		if let Some(contract_id) = superseded_by_contract_id {
 			validate_required("decision contract superseded_by_contract_id", &contract_id)?;
 
-			self.links.superseded_by_contract_id = Some(contract_id);
+			candidate.links.superseded_by_contract_id = Some(contract_id);
 		}
 
-		self.status = DecisionContractStatus::RejectedSuperseded;
+		candidate.status = DecisionContractStatus::RejectedSuperseded;
 
-		self.validate()
+		candidate.validate()?;
+
+		*self = candidate;
+
+		Ok(())
 	}
 }
 
@@ -686,7 +709,13 @@ mod tests {
 
 		contract.execution_readiness.ready_for_issue_shaping = false;
 
+		let before_failed_promotion = contract.clone();
+
 		assert!(contract.promote(sample_promotion()).is_err());
+		assert_eq!(
+			contract, before_failed_promotion,
+			"failed promotion must not mutate the contract"
+		);
 
 		let mut contract = latent_research_contract_fixture();
 
@@ -695,7 +724,13 @@ mod tests {
 			.missing_decisions
 			.push(String::from("Choose the first generated issue."));
 
+		let before_failed_promotion = contract.clone();
+
 		assert!(contract.promote(sample_promotion()).is_err());
+		assert_eq!(
+			contract, before_failed_promotion,
+			"failed promotion must not mutate the contract"
+		);
 	}
 
 	#[test]
@@ -726,5 +761,25 @@ mod tests {
 		contract.evidence_boundary.private_evidence_refs[0].record_id = Some(0);
 
 		assert!(contract.validate().is_err());
+	}
+
+	#[test]
+	fn failed_non_promotion_transitions_leave_contract_unchanged() {
+		let mut contract = latent_research_contract_fixture();
+		let before_failed_human_decision = contract.clone();
+
+		assert!(contract.require_human_decision(" ").is_err());
+		assert_eq!(
+			contract, before_failed_human_decision,
+			"failed human-decision transition must not mutate the contract"
+		);
+
+		let before_failed_rejection = contract.clone();
+
+		assert!(contract.reject_or_supersede(Some(String::from(" "))).is_err());
+		assert_eq!(
+			contract, before_failed_rejection,
+			"failed rejection transition must not mutate the contract"
+		);
 	}
 }
