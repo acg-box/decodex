@@ -1,0 +1,153 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "stefanstokic-oai",
+      "committed_at": "2026-06-04T21:53:13Z",
+      "message": "Improve external agent import performance",
+      "sha": "3a77fbcc7217e2a49e7447017ac4932625e55912",
+      "url": "https://github.com/openai/codex/commit/3a77fbcc7217e2a49e7447017ac4932625e55912"
+    },
+    {
+      "author": "stefanstokic-oai",
+      "committed_at": "2026-06-05T19:32:19Z",
+      "message": "Merge branch 'main' into codex/external-agent-import-perf",
+      "sha": "cbb1d21dfa72d84973bcc8b58a6deaca53808e0f",
+      "url": "https://github.com/openai/codex/commit/cbb1d21dfa72d84973bcc8b58a6deaca53808e0f"
+    },
+    {
+      "author": "stefanstokic-oai",
+      "committed_at": "2026-06-08T13:36:48Z",
+      "message": "Merge branch 'main' into codex/external-agent-import-perf",
+      "sha": "2a416e92a12e43d044e4a39096f1825a29b11d3f",
+      "url": "https://github.com/openai/codex/commit/2a416e92a12e43d044e4a39096f1825a29b11d3f"
+    },
+    {
+      "author": "stefanstokic-oai",
+      "committed_at": "2026-06-08T15:17:22Z",
+      "message": "Merge branch 'main' into codex/external-agent-import-perf",
+      "sha": "1188ee05a5b82e99bc653820a27c8830d66ab7bf",
+      "url": "https://github.com/openai/codex/commit/1188ee05a5b82e99bc653820a27c8830d66ab7bf"
+    },
+    {
+      "author": "stefanstokic-oai",
+      "committed_at": "2026-06-08T15:19:24Z",
+      "message": "Refine external agent session import pipeline",
+      "sha": "fd0f44bb07220d2ae600bca3c38b2af596ae21e1",
+      "url": "https://github.com/openai/codex/commit/fd0f44bb07220d2ae600bca3c38b2af596ae21e1"
+    },
+    {
+      "author": "stefanstokic-oai",
+      "committed_at": "2026-06-08T17:12:22Z",
+      "message": "Merge branch 'main' into codex/external-agent-import-perf",
+      "sha": "583174aca7660c1a872ac7aead5abb335dec1f65",
+      "url": "https://github.com/openai/codex/commit/583174aca7660c1a872ac7aead5abb335dec1f65"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP",
+    "API",
+    "JSONRPCE",
+    "SESSION_IMPORT_CONCURRENCY",
+    "CARGO_PKG_VERSION",
+    "HOME",
+    "DEFAULT_TIMEOUT",
+    "SESSIONS",
+    "JSONRPCR",
+    "EXTERNAL_SESSION_IMPORTED_MARKER",
+    "EXTERNAL",
+    "SESSION",
+    "IMPORTED",
+    "MAX"
+  ],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -474,6 +474,7 @@ impl MessageProcessor {\n         let external_agent_config_processor = ExternalAgentConfigRequestProcessor::new(\n             outgoing.clone(),\n             Arc::clone(&thread_manager),\n+            Arc::clone(&thread_store),\n             config_manager.clone(),\n             config_processor.clone(),\n             arg0_paths,",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -461,6 +461,7 @@ mod command_exec_processor;\n mod config_processor;\n mod environment_processor;\n mod external_agent_config_processor;\n+mod external_agent_session_import;\n mod feedback_doctor_report;\n mod feedback_processor;\n mod fs_processor;",
+      "path": "codex-rs/app-server/src/request_processors.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 128,
+      "patch_excerpt": "@@ -26,53 +26,47 @@ use codex_app_server_protocol::MigrationDetails;\n use codex_app_server_protocol::PluginsMigration;\n use codex_app_server_protocol::ServerNotification;\n use codex_arg0::Arg0DispatchPaths;\n-use codex_core::StartThreadOptions;\n use codex_core::ThreadManager;\n-use codex_core::config::ConfigOverrides;\n use codex_external_agent_sessions::ExternalAgentSessionMigration as CoreSessionMigration;\n-use codex_external_agent_sessions::ImportedExternalAgentSession;\n-use codex_external_agent_sessions::PendingSessionImport;\n-use codex_external_agent_sessions::prepare_validated_session_imports;\n-use codex_external_agent_sessions::record_imported_session;\n-use codex_protocol::ThreadId;\n-use codex_protocol::protocol::InitialHistory;\n-use codex_thread_store::ThreadMetadataPatch;\n+use codex_thread_store::ThreadStore;\n use std::collections::HashSet;\n use std::path::PathBuf;\n-use tokio::sync...",
+      "path": "codex-rs/app-server/src/request_processors/external_agent_config_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 260,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,260 @@\n+use std::path::PathBuf;\n+use std::sync::Arc;\n+\n+use chrono::Utc;\n+use codex_arg0::Arg0DispatchPaths;\n+use codex_core::ThreadManager;\n+use codex_core::config::ConfigOverrides;\n+use codex_external_agent_sessions::CompletedExternalAgentSessionImport;\n+use codex_external_agent_sessions::ExternalAgentSessionMigration;\n+use codex_external_agent_sessions::ImportedExternalAgentSession;\n+use codex_external_agent_sessions::PendingSessionImport;\n+use codex_external_agent_sessions::prepare_validated_session_import;\n+use codex_external_agent_sessions::record_completed_session_imports;\n+use codex_models_manager::manager::RefreshStrategy;\n+use codex_protocol::ThreadId;\n+use codex_protocol::models::BaseInstructions;\n+use codex_protocol::protocol::MultiAgentVersion;\n+use codex_protocol::protocol::ThreadMemoryMode;\n+use codex_rollout::is_persisted_rollout_item;\n+use codex_thread_store::...",
+      "path": "codex-rs/app-server/src/request_processors/external_agent_session_import.rs",
+      "status": "added"
+    },
+    {
+      "additions": 92,
+      "deletions": 0,
+      "patch_excerpt": "@@ -435,6 +435,98 @@ async fn external_agent_config_import_creates_session_rollouts() -> Result<()> {\n     Ok(())\n }\n \n+#[tokio::test]\n+async fn external_agent_config_import_does_not_initialize_required_mcp() -> Result<()> {\n+    let server = create_mock_responses_server_repeating_assistant(\"unused\").await;\n+    let codex_home = TempDir::new()?;\n+    create_config_toml(codex_home.path(), &server.uri())?;\n+    let mut config = std::fs::read_to_string(codex_home.path().join(\"config.toml\"))?;\n+    config.push_str(\n+        r#\"\n+[mcp_servers.required_broken]\n+command = \"this-command-does-not-exist\"\n+required = true\n+\"#,\n+    );\n+    std::fs::write(codex_home.path().join(\"config.toml\"), config)?;\n+    let project_root = codex_home.path().join(\"repo\");\n+    let recent_timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);\n+    let session_dir = codex_home.path().joi...",
+      "path": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 106,
+      "deletions": 85,
+      "patch_excerpt": "@@ -1,10 +1,7 @@\n use crate::ConversationMessage;\n use crate::ImportedExternalAgentSession;\n use crate::MessageRole;\n-use crate::records::conversation_messages;\n-use crate::records::project_root_from_records;\n-use crate::records::read_records;\n-use crate::records::source_title_from_records;\n+use crate::records::read_session_import;\n use crate::summarize_for_label;\n use codex_protocol::models::ContentItem;\n use codex_protocol::models::ResponseItem;\n@@ -23,44 +20,55 @@ use std::path::Path;\n \n const EXTERNAL_SESSION_IMPORTED_MARKER: &str = \"<EXTERNAL SESSION IMPORTED>\";\n \n-pub fn load_session_for_import(path: &Path) -> io::Result<Option<ImportedExternalAgentSession>> {\n-    let records = read_records(path)?;\n-    let Some(cwd) = project_root_from_records(&records) else {\n+#[cfg(test)]\n+fn load_session_for_import(path: &Path) -> io::Result<Option<ImportedExternalAgentSession>> {\n+    Ok(\n+  ...",
+      "path": "codex-rs/external-agent-sessions/src/export.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 51,
+      "deletions": 16,
+      "patch_excerpt": "@@ -30,6 +30,13 @@ struct ImportedExternalAgentSessionRecord {\n     source_modified_at: Option<i64>,\n }\n \n+#[derive(Debug, PartialEq, Eq)]\n+pub struct CompletedExternalAgentSessionImport {\n+    pub source_path: PathBuf,\n+    pub source_content_sha256: String,\n+    pub imported_thread_id: ThreadId,\n+}\n+\n #[derive(Debug, Clone, Copy)]\n pub(super) struct ImportedSourceState {\n     pub source_modified_at: Option<i64>,\n@@ -43,29 +50,50 @@ pub fn has_current_session_been_imported(\n     load_import_ledger(codex_home)?.contains_current_source(source_path)\n }\n \n-pub fn record_imported_session(\n+#[cfg(test)]\n+pub(crate) fn record_imported_session(\n     codex_home: &Path,\n     source_path: &Path,\n     imported_thread_id: ThreadId,\n ) -> io::Result<()> {\n-    let mut ledger = load_import_ledger(codex_home)?;\n     let source_path = canonical_source_path(source_path)?;\n-    let content_sha256 = sessio...",
+      "path": "codex-rs/external-agent-sessions/src/ledger.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 85,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,85 @@\n+use super::CompletedExternalAgentSessionImport;\n+use super::ImportedExternalAgentSessionLedger;\n+use super::record_completed_session_imports;\n+use codex_protocol::ThreadId;\n+use sha2::Digest;\n+use sha2::Sha256;\n+use tempfile::TempDir;\n+\n+#[test]\n+fn empty_ledger_does_not_read_source() {\n+    let root = TempDir::new().expect(\"tempdir\");\n+    let missing_source = root.path().join(\"missing-session.jsonl\");\n+\n+    assert!(\n+        !ImportedExternalAgentSessionLedger::default()\n+            .contains_current_source(&missing_source)\n+            .expect(\"empty ledger cannot contain sources\")\n+    );\n+}\n+\n+#[test]\n+fn completed_imports_do_not_read_source_files() {\n+    let root = TempDir::new().expect(\"tempdir\");\n+    let codex_home = root.path().join(\"codex-home\");\n+    let source_path = root.path().join(\"session.jsonl\");\n+    let contents = b\"session contents\";\n+    std::fs...",
+      "path": "codex-rs/external-agent-sessions/src/ledger_tests.rs",
+      "status": "added"
+    },
+    {
+      "additions": 68,
+      "deletions": 108,
+      "patch_excerpt": "@@ -6,15 +6,15 @@ mod ledger;\n mod records;\n \n use codex_protocol::protocol::RolloutItem;\n-use std::collections::HashSet;\n use std::io;\n use std::path::Path;\n use std::path::PathBuf;\n \n pub use detect::detect_recent_sessions;\n-pub use export::load_session_for_import;\n+use export::load_session_for_import_with_content_sha256;\n+pub use ledger::CompletedExternalAgentSessionImport;\n pub use ledger::has_current_session_been_imported;\n-pub use ledger::record_imported_session;\n+pub use ledger::record_completed_session_imports;\n pub use records::SessionSummary;\n pub use records::summarize_session;\n \n@@ -31,105 +31,51 @@ pub struct ExternalAgentSessionMigration {\n pub struct ImportedExternalAgentSession {\n     pub cwd: PathBuf,\n     pub title: Option<String>,\n+    pub first_user_message: Option<String>,\n     pub rollout_items: Vec<RolloutItem>,\n }\n \n #[derive(Debug, Clone)]\n pub struct PendingSess...",
+      "path": "codex-rs/external-agent-sessions/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 106,
+      "deletions": 49,
+      "patch_excerpt": "@@ -4,6 +4,8 @@ use crate::MessageRole;\n use crate::summarize_for_label;\n use crate::truncate;\n use serde_json::Value as JsonValue;\n+use sha2::Digest;\n+use sha2::Sha256;\n use std::fs::File;\n use std::io;\n use std::io::BufRead;\n@@ -21,6 +23,13 @@ pub struct SessionSummary {\n     pub migration: ExternalAgentSessionMigration,\n }\n \n+pub(super) struct ParsedSessionImport {\n+    pub cwd: Option<PathBuf>,\n+    pub source_title: Option<String>,\n+    pub messages: Vec<ConversationMessage>,\n+    pub content_sha256: String,\n+}\n+\n pub fn summarize_session(path: &Path) -> io::Result<Option<SessionSummary>> {\n     let file = File::open(path)?;\n     let reader = BufReader::new(file);\n@@ -37,7 +46,7 @@ pub fn summarize_session(path: &Path) -> io::Result<Option<SessionSummary>> {\n         if trimmed.is_empty() {\n             continue;\n         }\n-        let Ok(record) = serde_json::from_str::<JsonValue>...",
+      "path": "codex-rs/external-agent-sessions/src/records.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nImporting large external-agent session histories currently starts a full live Codex thread for every imported session. This initializes unrelated runtime systems and repeats expensive transcript, metadata, hashing, and ledger work.\n\nOn a 50-session, 238 MiB fixture, the existing path took roughly 70 seconds to complete the import and 77 seconds end to end.\n\n## What changed\n\n- Persist imported sessions directly through `ThreadStore` instead of starting full live threads.\n- Process imports through a bounded five-session pipeline.\n- Parse, extract, and hash each source file in one pass.\n- Move blocking source preparation onto the blocking thread pool.\n- Reuse prepared content hashes and update the import ledger once per batch.\n- Avoid metadata readback for newly written rollouts.\n- Preserve imported conversation history and visible thread metadata.\n- Keep the implementation out of `codex-core` and avoid changes to the public `ThreadStore` trait.\n\n## Performance\n\nFor the same 50-session, 238 MiB fixture:\n\n| Path | Import completion | End to end |\n| --- | ---: | ---: |\n| Existing import | 69.61s | 76.62s |\n| This change | 5.95s | 6.58s |\n\nAll 50 sessions imported successfully with no warnings or contention signals.\n\n## Validation\n\n- `just test -p codex-external-agent-sessions`\n- `just test -p codex-app-server external_agent_config_import`\n- Verified imports do not initialize unrelated required MCP servers.\n- Verified previously imported source versions are skipped and changed sources can be imported again.\n- Verified imported rollouts remain readable through thread listing and history APIs.\n",
+    "labels": [],
+    "merged_at": "2026-06-08T18:16:32Z",
+    "number": 26637,
+    "state": "merged",
+    "title": "[codex] Speed up external agent session imports",
+    "url": "https://github.com/openai/codex/pull/26637"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
