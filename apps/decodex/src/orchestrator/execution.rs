@@ -3,8 +3,11 @@ use agent::CodexAccountPool;
 use agent::CodexAccountProvider;
 use agent::AppServerThreadArchiveRequest;
 use records::LinearExecutionEventPublicProjection;
+use sha2::Digest;
 
 use crate::tracker::privacy_classifier::PublicProjectionPrivacyClassifier;
+
+const LOOP_GUARDRAIL_CONVERGENCE_BUDGET: i64 = 3;
 
 #[derive(Debug)]
 pub(crate) struct AppServerZeroEvidenceStartFailure {
@@ -163,6 +166,10 @@ impl RepoGatePhaseGoalController<'_> {
 			&self.issue_run.worktree.path,
 		) {
 			Ok(()) => {
+				self.state_store.clear_loop_guardrail_checkpoints_for_issue(
+					self.project.service_id(),
+					&self.issue_run.issue.id,
+				)?;
 				self.record_phase_goal_transition(
 					phase,
 					"validation_pass",
@@ -187,6 +194,15 @@ impl RepoGatePhaseGoalController<'_> {
 					)?;
 
 					if repo_gate_failure.disposition() == RepoGateFailureDisposition::ContinueRepair {
+						if let Some(loop_guardrail_stop) = retryable_failure_loop_guardrail_stop(
+							self.project,
+							self.state_store,
+							self.issue_run,
+							&error,
+						)? {
+							return Err(Report::new(loop_guardrail_stop).wrap_err(error));
+						}
+
 						let detail = format!(
 							"Repo gate failed with `{}`. Inspect the worktree, run the registered canonicalize and verify commands, and repair only the validation failure.",
 							repo_gate_failure.error_class()
@@ -324,6 +340,25 @@ struct ZeroEvidenceAppServerStartFailureDiagnostic {
 	source_error_chain: Vec<String>,
 }
 
+struct LoopGuardrailWorktreeFingerprint {
+	head_sha: String,
+	tracked_status_hash: String,
+	tracked_diff_hash: String,
+}
+
+struct FailureHandlingContext<'a, T>
+where
+	T: IssueTracker,
+{
+	tracker: &'a T,
+	project: &'a ServiceConfig,
+	workflow: &'a WorkflowDocument,
+	state_store: &'a StateStore,
+	issue_run: &'a IssueRunPlan,
+	worktree_path: &'a str,
+	retry_budget_attempts: i64,
+}
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum TerminalFailureEventRecordStatus {
 	Recorded,
@@ -367,6 +402,13 @@ where
 	match result {
 		Ok(summary) => {
 			persist_issue_run_outcome(state_store, &issue_run.run_id, &summary)?;
+
+			if !summary.continuation_pending {
+				state_store.clear_loop_guardrail_checkpoints_for_issue(
+					project.service_id(),
+					&issue_run.issue.id,
+				)?;
+			}
 
 			tracing::info!(
 				project_id = project.service_id(),
@@ -1332,6 +1374,7 @@ where
 				issue_identifier: issue_run.issue.identifier.clone(),
 				label: workflow.frontmatter().tracker().needs_attention_label().to_owned(),
 				run_id: issue_run.run_id.clone(),
+				error_class: tracker_tool_bridge.manual_attention_error_class(),
 			}));
 		},
 		RunCompletionDisposition::ReviewRepair => {
@@ -1492,6 +1535,7 @@ fn preserve_manual_attention_request(
 			issue_identifier: issue_run.issue.identifier.clone(),
 			label: workflow.frontmatter().tracker().needs_attention_label().to_owned(),
 			run_id: issue_run.run_id.clone(),
+			error_class: None,
 		})
 		.wrap_err(error);
 	}
@@ -1690,8 +1734,183 @@ fn truncate_private_diagnostic_text(text: &str) -> String {
 	truncated
 }
 
+fn retryable_failure_loop_guardrail_stop(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	error: &Report,
+) -> Result<Option<LoopGuardrailStopRequested>> {
+	let Some(worktree_fingerprint) =
+		loop_guardrail_worktree_fingerprint(&issue_run.worktree.path)?
+	else {
+		return Ok(None);
+	};
+	let mut observations = Vec::new();
+
+	if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>()
+		&& repo_gate_failure.disposition() == RepoGateFailureDisposition::ContinueRepair
+	{
+		observations.push((
+			LoopGuardrailReason::ValidationRepeat,
+			format!(
+				"{}:{}:{}",
+				repo_gate_failure.error_class(),
+				worktree_fingerprint.head_sha.as_str(),
+				loop_guardrail_text_hash(&error.to_string())
+			),
+			Some(repo_gate_failure.error_class()),
+		));
+		observations.push((
+			LoopGuardrailReason::RemainingDeltaUnchanged,
+			format!(
+				"{}:{}:{}:{}",
+				repo_gate_failure.error_class(),
+				worktree_fingerprint.head_sha.as_str(),
+				worktree_fingerprint.tracked_status_hash.as_str(),
+				worktree_fingerprint.tracked_diff_hash.as_str()
+			),
+			Some(repo_gate_failure.error_class()),
+		));
+	}
+
+	observations.push((
+		LoopGuardrailReason::NoEffectiveDiff,
+		format!(
+			"{}:{}:{}",
+			worktree_fingerprint.head_sha.as_str(),
+			worktree_fingerprint.tracked_status_hash.as_str(),
+			worktree_fingerprint.tracked_diff_hash.as_str()
+		),
+		retained_progress_source_error_class(error),
+	));
+
+	for (reason, fingerprint, source_error_class) in observations {
+		let checkpoint = state_store.observe_loop_guardrail_checkpoint(
+			LoopGuardrailCheckpointInput {
+				project_id: project.service_id(),
+				issue_id: &issue_run.issue.id,
+				reason: reason.error_class(),
+				fingerprint: &fingerprint,
+				run_id: &issue_run.run_id,
+				attempt_number: issue_run.attempt_number,
+				details_json: &json!({
+					"schema": "decodex.loop_guardrail_checkpoint/1",
+					"reason": reason.error_class(),
+					"source_error_class": source_error_class,
+					"head_sha": worktree_fingerprint.head_sha.as_str(),
+					"tracked_status_hash": worktree_fingerprint.tracked_status_hash.as_str(),
+					"tracked_diff_hash": worktree_fingerprint.tracked_diff_hash.as_str(),
+					"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
+				})
+				.to_string(),
+			},
+		)?;
+
+		record_loop_guardrail_private_event(
+			project,
+			state_store,
+			issue_run,
+			&checkpoint,
+			source_error_class,
+		)?;
+
+		if checkpoint.consecutive_count() >= LOOP_GUARDRAIL_CONVERGENCE_BUDGET {
+			return Ok(Some(LoopGuardrailStopRequested {
+				issue_identifier: issue_run.issue.identifier.clone(),
+				run_id: issue_run.run_id.clone(),
+				reason,
+				consecutive_count: checkpoint.consecutive_count(),
+				fingerprint,
+				source_error_class: source_error_class.map(ToOwned::to_owned),
+			}));
+		}
+	}
+
+	Ok(None)
+}
+
+fn loop_guardrail_worktree_fingerprint(
+	worktree_path: &Path,
+) -> Result<Option<LoopGuardrailWorktreeFingerprint>> {
+	let Some(head_sha) = worktree_head_oid(worktree_path)? else {
+		return Ok(None);
+	};
+	let Some(tracked_status) =
+		git_guardrail_output(worktree_path, &["status", "--porcelain", "--untracked-files=no"])?
+	else {
+		return Ok(None);
+	};
+	let Some(tracked_diff) =
+		git_guardrail_output(worktree_path, &["diff", "--binary", "--no-ext-diff", "HEAD", "--"])?
+	else {
+		return Ok(None);
+	};
+
+	Ok(Some(LoopGuardrailWorktreeFingerprint {
+		head_sha,
+		tracked_status_hash: loop_guardrail_text_hash(&tracked_status),
+		tracked_diff_hash: loop_guardrail_text_hash(&tracked_diff),
+	}))
+}
+
+fn git_guardrail_output(worktree_path: &Path, args: &[&str]) -> Result<Option<String>> {
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(worktree_path)
+		.args(args)
+		.output()?;
+
+	if !output.status.success() {
+		return Ok(None);
+	}
+
+	Ok(Some(String::from_utf8_lossy(&output.stdout).into_owned()))
+}
+
+fn loop_guardrail_text_hash(text: &str) -> String {
+	let digest = <Sha256 as Digest>::digest(text.as_bytes());
+	let mut hash = String::with_capacity(64);
+
+	for byte in digest {
+		hash.push(char::from(b"0123456789abcdef"[(byte >> 4) as usize]));
+		hash.push(char::from(b"0123456789abcdef"[(byte & 0x0f) as usize]));
+	}
+
+	hash
+}
+
+fn record_loop_guardrail_private_event(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	checkpoint: &LoopGuardrailCheckpoint,
+	source_error_class: Option<&str>,
+) -> Result<()> {
+	state_store
+		.append_private_execution_event(
+			project.service_id(),
+			&issue_run.issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+			"loop_guardrail_checkpoint",
+			json!({
+				"schema": "decodex.loop_guardrail_checkpoint/1",
+				"reason": checkpoint.reason(),
+				"fingerprint": checkpoint.fingerprint(),
+				"consecutive_count": checkpoint.consecutive_count(),
+				"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
+				"checkpoint_run_id": checkpoint.run_id(),
+				"checkpoint_attempt_number": checkpoint.attempt_number(),
+				"source_error_class": source_error_class,
+				"details": checkpoint.details_json(),
+			}),
+		)
+		.map(|_| ())
+}
+
 fn run_failure_requires_terminal_attention(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
+		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
 		|| error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
 		|| error.downcast_ref::<AppServerPhaseGoalFailure>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
@@ -1729,54 +1948,27 @@ where
 	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
 	let retry_budget_attempts =
 		retry_budget_attempts_for_current_failure(state_store, issue_run)?;
+	let failure_context = FailureHandlingContext {
+		tracker,
+		project,
+		workflow,
+		state_store,
+		issue_run,
+		worktree_path: &worktree_path,
+		retry_budget_attempts,
+	};
+	let loop_guardrail_stop = if requires_terminal_attention {
+		None
+	} else {
+		retryable_failure_loop_guardrail_stop(project, state_store, issue_run, error)?
+	};
+
+	if let Some(loop_guardrail_stop) = loop_guardrail_stop {
+		return apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop);
+	}
 
 	if !requires_terminal_attention && retry_budget_attempts < max_attempts {
-		let (retry_error_class, retry_next_action) = retry_comment_details(error);
-
-		write_retry_schedule_marker_for_runtime_retry(
-			error,
-			workflow,
-			issue_run,
-			retry_budget_attempts,
-		)?;
-
-		tracing::warn!(
-			project_id = project.service_id(),
-			issue_id = issue_run.issue.id,
-			issue = issue_run.issue.identifier,
-			run_id = issue_run.run_id,
-			attempt = issue_run.attempt_number,
-			retry_budget_attempt = retry_budget_attempts,
-			max_attempts,
-			branch = issue_run.worktree.branch_name,
-			worktree_path = %worktree_path,
-			error_class = retry_error_class,
-			"Run failed and remains retryable."
-		);
-
-		tracker::create_public_comment(
-			tracker,
-			&issue_run.issue.id,
-			&format_retry_comment(RetryComment {
-				run_id: &issue_run.run_id,
-				attempt_number: issue_run.attempt_number,
-				retry_budget_attempt_number: retry_budget_attempts,
-				max_attempts,
-				worktree_path,
-				branch_name: &issue_run.worktree.branch_name,
-				error_class: retry_error_class,
-				next_action: &retry_next_action,
-			}),
-		)?;
-
-		write_retry_budget_marker(
-			&issue_run.worktree.path,
-			&issue_run.run_id,
-			issue_run.attempt_number,
-			retry_budget_attempts,
-		)?;
-
-		return Ok(());
+		return apply_retryable_failure_writeback(&failure_context, error, max_attempts);
 	}
 
 	let retained_partial_progress = retained_partial_progress_error(
@@ -1832,6 +2024,119 @@ where
 	Ok(())
 }
 
+fn apply_retryable_failure_writeback<T>(
+	context: &FailureHandlingContext<'_, T>,
+	error: &Report,
+	max_attempts: i64,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	let (retry_error_class, retry_next_action) = retry_comment_details(error);
+
+	write_retry_schedule_marker_for_runtime_retry(
+		error,
+		context.workflow,
+		context.issue_run,
+		context.retry_budget_attempts,
+	)?;
+
+	tracing::warn!(
+		project_id = context.project.service_id(),
+		issue_id = context.issue_run.issue.id,
+		issue = context.issue_run.issue.identifier,
+		run_id = context.issue_run.run_id,
+		attempt = context.issue_run.attempt_number,
+		retry_budget_attempt = context.retry_budget_attempts,
+		max_attempts,
+		branch = context.issue_run.worktree.branch_name,
+		worktree_path = %context.worktree_path,
+		error_class = retry_error_class,
+		"Run failed and remains retryable."
+	);
+
+	tracker::create_public_comment(
+		context.tracker,
+		&context.issue_run.issue.id,
+		&format_retry_comment(RetryComment {
+			run_id: &context.issue_run.run_id,
+			attempt_number: context.issue_run.attempt_number,
+			retry_budget_attempt_number: context.retry_budget_attempts,
+			max_attempts,
+			worktree_path: context.worktree_path.to_owned(),
+			branch_name: &context.issue_run.worktree.branch_name,
+			error_class: retry_error_class,
+			next_action: &retry_next_action,
+		}),
+	)?;
+
+	write_retry_budget_marker(
+		&context.issue_run.worktree.path,
+		&context.issue_run.run_id,
+		context.issue_run.attempt_number,
+		context.retry_budget_attempts,
+	)?;
+
+	Ok(())
+}
+
+fn apply_loop_guardrail_failure_writeback<T>(
+	context: &FailureHandlingContext<'_, T>,
+	loop_guardrail_stop: LoopGuardrailStopRequested,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	let terminal_error = Report::new(loop_guardrail_stop);
+	let privacy_classifier = configured_public_projection_privacy_classifier(context.project)?;
+	let outcome = apply_terminal_failure_writeback(
+		context.tracker,
+		TerminalFailureWritebackRuntime {
+			service_id: context.project.service_id(),
+			state_store: Some(context.state_store),
+			privacy_classifier: &privacy_classifier,
+		},
+		context.workflow,
+		context.issue_run,
+		context.worktree_path,
+		false,
+		&terminal_error,
+	)?;
+
+	if outcome.retry_guarded_by_state {
+		write_terminal_guard_marker(
+			&context.issue_run.worktree.path,
+			&context.issue_run.run_id,
+			context.issue_run.attempt_number,
+		)?;
+
+		context
+			.state_store
+			.update_run_status(&context.issue_run.run_id, TERMINAL_GUARDED_RUN_STATUS)?;
+	}
+
+	write_retry_budget_marker(
+		&context.issue_run.worktree.path,
+		&context.issue_run.run_id,
+		context.issue_run.attempt_number,
+		context.retry_budget_attempts,
+	)?;
+
+	tracing::warn!(
+		project_id = context.project.service_id(),
+		issue_id = context.issue_run.issue.id,
+		issue = context.issue_run.issue.identifier,
+		run_id = context.issue_run.run_id,
+		attempt = context.issue_run.attempt_number,
+		branch = context.issue_run.worktree.branch_name,
+		worktree_path = context.worktree_path,
+		error_class = outcome.error_class,
+		"Run stopped by loop guardrail."
+	);
+
+	Ok(())
+}
+
 fn retry_budget_attempts_for_current_failure(
 	state_store: &StateStore,
 	issue_run: &IssueRunPlan,
@@ -1874,6 +2179,7 @@ fn retained_partial_progress_error(
 
 fn retained_progress_should_defer_to_terminal_intent(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
+		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
 		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
 		|| error.downcast_ref::<RetainedReviewNeedsAttention>().is_some()

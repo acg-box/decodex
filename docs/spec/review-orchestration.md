@@ -253,7 +253,7 @@ Current required behavior:
 - The terminal failure path must preserve the normalized review-stop class instead of
   collapsing it into a generic retry failure:
   - `architecture_review_required`
-  - `review_policy_exhausted`
+  - `review_policy_exhausted` or the loop-guardrail projection `review_churn`
   - `review_policy_blocked`
 - A terminal failure comment may point the operator toward a bounded research follow-up,
   but that guidance is not a research dispatch signal.

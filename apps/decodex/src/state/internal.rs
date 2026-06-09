@@ -131,6 +131,7 @@ struct StateData {
 	review_handoffs: HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
 	review_orchestrations: HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
 	review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
+	loop_guardrail_checkpoints: HashMap<LoopGuardrailKey, LoopGuardrailRuntimeRecord>,
 	connector_backoffs: HashMap<(String, String), ConnectorBackoff>,
 	dispatch_slot_configs: HashMap<String, DispatchSlotConfig>,
 	issue_claim_guards: HashMap<String, IssueClaimGuard>,
@@ -151,6 +152,7 @@ impl StateData {
 		self.review_handoffs = loaded.review_handoffs;
 		self.review_orchestrations = loaded.review_orchestrations;
 		self.review_policy_checkpoints = loaded.review_policy_checkpoints;
+		self.loop_guardrail_checkpoints = loaded.loop_guardrail_checkpoints;
 		self.connector_backoffs = loaded.connector_backoffs;
 	}
 
@@ -354,6 +356,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_connector_backoffs_schema()?;
 		self.bootstrap_private_execution_events_schema()?;
 		self.bootstrap_decision_contracts_schema()?;
+		self.bootstrap_loop_guardrail_schema()?;
 		self.record_schema_version()?;
 
 		Ok(())
@@ -453,6 +456,28 @@ CREATE TABLE IF NOT EXISTS run_control_channels (
 );
 CREATE INDEX IF NOT EXISTS run_control_channels_project_issue_idx
 ON run_control_channels (project_id, issue_id, attempt_number);
+"#,
+		)?;
+
+		Ok(())
+	}
+
+	fn bootstrap_loop_guardrail_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS loop_guardrail_checkpoints (
+	project_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	reason TEXT NOT NULL,
+	fingerprint TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	attempt_number INTEGER NOT NULL,
+	consecutive_count INTEGER NOT NULL,
+	details_json TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, issue_id, reason)
+);
 "#,
 		)?;
 
@@ -560,6 +585,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_review_handoffs(&mut state)?;
 		self.load_review_orchestrations(&mut state)?;
 		self.load_review_policy_checkpoints(&mut state)?;
+		self.load_loop_guardrail_checkpoints(&mut state)?;
 		self.load_connector_backoffs(&mut state)?;
 
 		Ok(state)
@@ -600,6 +626,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_review_handoffs(&transaction, state)?;
 		persist_review_orchestrations(&transaction, state)?;
 		persist_review_policy_checkpoints(&transaction, state)?;
+		persist_loop_guardrail_checkpoints(&transaction, state)?;
 		persist_connector_backoffs(&transaction, state)?;
 
 		transaction.commit()?;
@@ -621,6 +648,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"DELETE FROM decision_contracts WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM loop_guardrail_checkpoints WHERE project_id = ?1",
 			params![service_id],
 		)?;
 		transaction.commit()?;
@@ -875,6 +906,20 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
+			"INSERT OR IGNORE INTO loop_guardrail_checkpoints (
+					project_id, issue_id, reason, fingerprint, run_id, attempt_number,
+					consecutive_count, details_json, updated_at, updated_at_unix
+				)
+			 SELECT project_id, ?2, reason, fingerprint, run_id, attempt_number,
+					consecutive_count, details_json, updated_at, updated_at_unix
+			 FROM loop_guardrail_checkpoints WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM loop_guardrail_checkpoints WHERE issue_id = ?1",
+			params![previous_issue_id],
+		)?;
+		transaction.execute(
 			"INSERT OR IGNORE INTO review_policy_checkpoints (
 					project_id, issue_id, run_id, attempt_number, phase, status, head_sha,
 					nonclean_rounds, details_json, updated_at, updated_at_unix
@@ -938,6 +983,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			"DELETE FROM review_policy_checkpoints WHERE issue_id = ?1",
 			params![issue_id],
 		)?;
+		transaction.execute(
+			"DELETE FROM loop_guardrail_checkpoints WHERE issue_id = ?1",
+			params![issue_id],
+		)?;
 		transaction.commit()?;
 
 		Ok(())
@@ -970,6 +1019,34 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			params![project_id, issue_id, run_id, attempt_number],
 		)?;
 		transaction.commit()?;
+
+		Ok(())
+	}
+
+	fn delete_loop_guardrail_checkpoints_for_issue(
+		&mut self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<()> {
+		self.connection.execute(
+			"DELETE FROM loop_guardrail_checkpoints WHERE project_id = ?1 AND issue_id = ?2",
+			params![project_id, issue_id],
+		)?;
+
+		Ok(())
+	}
+
+	fn delete_loop_guardrail_checkpoint(
+		&mut self,
+		project_id: &str,
+		issue_id: &str,
+		reason: &str,
+	) -> Result<()> {
+		self.connection.execute(
+			"DELETE FROM loop_guardrail_checkpoints \
+			 WHERE project_id = ?1 AND issue_id = ?2 AND reason = ?3",
+			params![project_id, issue_id, reason],
+		)?;
 
 		Ok(())
 	}
@@ -1689,6 +1766,43 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn load_loop_guardrail_checkpoints(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, issue_id, reason, fingerprint, run_id, attempt_number, \
+			 consecutive_count, details_json, updated_at, updated_at_unix \
+			 FROM loop_guardrail_checkpoints",
+		)?;
+		let rows = statement.query_map([], |row| {
+			let project_id: String = row.get(0)?;
+			let issue_id: String = row.get(1)?;
+			let reason: String = row.get(2)?;
+
+			Ok((
+				LoopGuardrailKey::new(&project_id, &issue_id, &reason),
+				LoopGuardrailRuntimeRecord {
+					project_id,
+					issue_id,
+					reason,
+					fingerprint: row.get(3)?,
+					run_id: row.get(4)?,
+					attempt_number: row.get(5)?,
+					consecutive_count: row.get(6)?,
+					details_json: row.get(7)?,
+					updated_at: row.get(8)?,
+					updated_at_unix: row.get(9)?,
+				},
+			))
+		})?;
+
+		for row in rows {
+			let (key, record) = row?;
+
+			state.loop_guardrail_checkpoints.insert(key, record);
+		}
+
+		Ok(())
+	}
+
 	fn load_connector_backoffs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, connector, sync_phase, quota_class, reset_unix_epoch, \
@@ -2030,6 +2144,52 @@ impl ReviewPolicyRuntimeRecord {
 			status: self.status.clone(),
 			head_sha: self.head_sha.clone(),
 			nonclean_rounds: self.nonclean_rounds,
+			details_json: self.details_json.clone(),
+			updated_at: self.updated_at.clone(),
+			updated_at_unix: self.updated_at_unix,
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct LoopGuardrailKey {
+	project_id: String,
+	issue_id: String,
+	reason: String,
+}
+impl LoopGuardrailKey {
+	fn new(project_id: &str, issue_id: &str, reason: &str) -> Self {
+		Self {
+			project_id: project_id.to_owned(),
+			issue_id: issue_id.to_owned(),
+			reason: reason.to_owned(),
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+struct LoopGuardrailRuntimeRecord {
+	project_id: String,
+	issue_id: String,
+	reason: String,
+	fingerprint: String,
+	run_id: String,
+	attempt_number: i64,
+	consecutive_count: i64,
+	details_json: String,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl LoopGuardrailRuntimeRecord {
+	fn as_public(&self) -> LoopGuardrailCheckpoint {
+		LoopGuardrailCheckpoint {
+			project_id: self.project_id.clone(),
+			issue_id: self.issue_id.clone(),
+			reason: self.reason.clone(),
+			fingerprint: self.fingerprint.clone(),
+			run_id: self.run_id.clone(),
+			attempt_number: self.attempt_number,
+			consecutive_count: self.consecutive_count,
 			details_json: self.details_json.clone(),
 			updated_at: self.updated_at.clone(),
 			updated_at_unix: self.updated_at_unix,
@@ -2987,6 +3147,34 @@ fn persist_review_policy_checkpoints(
 				record.status,
 				record.head_sha,
 				record.nonclean_rounds,
+				record.details_json,
+				record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
+fn persist_loop_guardrail_checkpoints(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for record in state.loop_guardrail_checkpoints.values() {
+		transaction.execute(
+			"INSERT OR REPLACE INTO loop_guardrail_checkpoints (
+					project_id, issue_id, reason, fingerprint, run_id, attempt_number,
+					consecutive_count, details_json, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+			params![
+				record.project_id,
+				record.issue_id,
+				record.reason,
+				record.fingerprint,
+				record.run_id,
+				record.attempt_number,
+				record.consecutive_count,
 				record.details_json,
 				record.updated_at,
 				record.updated_at_unix,

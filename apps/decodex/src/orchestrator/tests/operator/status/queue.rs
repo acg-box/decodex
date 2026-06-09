@@ -202,6 +202,90 @@ fn live_operator_status_snapshot_reports_only_open_tracker_blockers() {
 }
 
 #[test]
+fn live_operator_status_snapshot_marks_repeated_open_blockers_as_stale_program() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut issue = sample_issue_with_sort_fields(
+		"issue-blocked",
+		"PUB-108",
+		"Todo",
+		&[],
+		Some(1),
+		"2026-03-13T04:16:17.133Z",
+	);
+
+	issue.blockers = vec![sample_blocker("issue-open", "PUB-105", "Todo")];
+
+	for expected_reason in [
+		"open_tracker_blockers",
+		"open_tracker_blockers",
+		"dependency_program_stale",
+	] {
+		let tracker = FakeTracker::new(vec![issue.clone()]);
+		let snapshot = orchestrator::build_live_operator_status_snapshot(
+			&tracker,
+			&config,
+			&workflow,
+			&state_store,
+			10,
+		)
+		.expect("snapshot should build");
+		let candidate =
+			snapshot.queued_candidates.first().expect("blocked queued issue should exist");
+
+		assert_eq!(candidate.reason, expected_reason);
+		assert_eq!(candidate.classification, "blocked");
+		assert_eq!(candidate.blocker_identifiers, vec![String::from("PUB-105")]);
+	}
+
+	let checkpoint = state_store
+		.loop_guardrail_checkpoint(config.service_id(), &issue.id, "dependency_program_stale")
+		.expect("dependency guardrail checkpoint should read")
+		.expect("dependency guardrail checkpoint should exist");
+
+	assert_eq!(checkpoint.consecutive_count(), 3);
+
+	issue.blockers = vec![sample_blocker("issue-open", "PUB-105", "Done")];
+
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("resolved blocker snapshot should build");
+	let candidate =
+		snapshot.queued_candidates.first().expect("ready queued issue should exist");
+
+	assert_eq!(candidate.reason, "eligible_for_dispatch");
+	assert!(
+		state_store
+			.loop_guardrail_checkpoint(config.service_id(), &issue.id, "dependency_program_stale")
+			.expect("cleared dependency checkpoint should read")
+			.is_none()
+	);
+
+	issue.blockers = vec![sample_blocker("issue-open", "PUB-105", "Todo")];
+
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let snapshot = orchestrator::build_live_operator_status_snapshot(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		10,
+	)
+	.expect("recurring blocker snapshot should build");
+	let candidate =
+		snapshot.queued_candidates.first().expect("blocked queued issue should exist");
+
+	assert_eq!(candidate.reason, "open_tracker_blockers");
+	assert_eq!(candidate.blocker_identifiers, vec![String::from("PUB-105")]);
+}
+
+#[test]
 fn live_operator_status_snapshot_excludes_claimed_candidates_from_waiting_intake_count() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");

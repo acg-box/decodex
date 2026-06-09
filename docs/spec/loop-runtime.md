@@ -286,14 +286,15 @@ generic retry bucket. Normalized outcomes include:
 
 | Outcome | Use when |
 | --- | --- |
-| `validation_failure_repeated` | The same validation class repeats after bounded repair. |
-| `no_effective_diff` | Repeated attempts do not change the head, evidence, or decision state. |
-| `review_policy_exhausted` | Review findings exceed the accepted repair convergence budget. |
+| `validation_repeat` | The same validation class repeats after bounded repair. Legacy public summaries may still use `validation_failure_repeated`. |
+| `no_effective_diff` | Repeated attempts do not change the tracked delta, evidence, or decision state. |
+| `remaining_delta_unchanged` | Validation text or failure presentation changes, but the remaining tracked delta is unchanged across bounded repair attempts. |
+| `review_churn` | Review findings exceed the accepted repair convergence budget. Existing review-policy stops may still appear as `review_policy_exhausted`. |
 | `architecture_review_required` | The lane needs architecture direction before more repair. |
 | `review_policy_blocked` | Review cannot proceed from available evidence. |
-| `dependency_blocked` | The node is waiting on dependency state that is not progressing. |
-| `research_contract_required` | Execution uncovered a missing or contradictory decision contract. |
-| `ownership_ambiguous` | Tracker, PR, branch, or runtime ownership evidence is contradictory. |
+| `dependency_program_stale` | The node is waiting on dependency state that is not progressing. Legacy summaries may still use `dependency_blocked`. |
+| `uncovered_direction` | Execution uncovered a missing or contradictory decision contract. Legacy summaries may still use `research_contract_required`. |
+| `ambiguous_retained_progress` | Tracker, PR, branch, retained worktree, or runtime ownership evidence is contradictory. Legacy summaries may still use `ownership_ambiguous`. |
 
 These outcomes should route to failure attribution, research-contract feedback,
 architecture review, or manual attention. They must not spin in automatic retries.
