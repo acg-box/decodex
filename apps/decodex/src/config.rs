@@ -1318,11 +1318,16 @@ mod tests {
 	}
 
 	#[test]
-	fn rejects_project_scoped_codex_fixed_account() {
-		let temp_dir = TempDir::new().expect("temp dir should exist");
-		let config_path = write_config_file(
-			temp_dir.path(),
-			r#"
+	fn rejects_removed_project_scoped_codex_account_fields() {
+		for (case_name, removed_field) in [
+			("project-scoped account selection", r#"fixed_account = "primary@example.com""#),
+			("legacy account path override", r#"path = "accounts/codex-auth.jsonl""#),
+		] {
+			let temp_dir = TempDir::new().expect("temp dir should exist");
+			let config_path = write_config_file(
+				temp_dir.path(),
+				&format!(
+					r#"
 				service_id = "pubfi"
 
 				[tracker]
@@ -1332,37 +1337,22 @@ mod tests {
 					token_env_var = "HOME"
 
 					[codex.accounts]
-					fixed_account = "primary@example.com"
-				"#,
-		);
-		let error = ServiceConfig::from_path(&config_path)
-			.expect_err("project-scoped account selection should fail");
+					{removed_field}
+				"#
+				),
+			);
+			let error = ServiceConfig::from_path(&config_path).expect_err(case_name);
 
-		assert!(error.to_string().contains("fixed_account"));
-	}
-
-	#[test]
-	fn rejects_legacy_codex_accounts_path_override() {
-		let temp_dir = TempDir::new().expect("temp dir should exist");
-		let config_path = write_config_file(
-			temp_dir.path(),
-			r#"
-				service_id = "pubfi"
-
-				[tracker]
-					api_key_env_var = "HOME"
-
-					[github]
-					token_env_var = "HOME"
-
-					[codex.accounts]
-					path = "accounts/codex-auth.jsonl"
-				"#,
-		);
-		let error = ServiceConfig::from_path(&config_path)
-			.expect_err("legacy account path override should fail");
-
-		assert!(error.to_string().contains("path"));
+			assert!(
+				error.to_string().contains(
+					removed_field
+						.split_once(" = ")
+						.expect("removed field assignment should include a separator")
+						.0
+				),
+				"unexpected error for `{case_name}`: {error:?}"
+			);
+		}
 	}
 
 	#[test]
