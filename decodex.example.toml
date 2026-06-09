@@ -14,6 +14,9 @@ token_env_var = "GITHUB_TOKEN"
 [codex]
 external_review_enabled = true
 internal_review_mode    = "loop"
+# Phase-scoped app-server goals: "auto" falls back when unsupported, "required"
+# fails dispatch when goal methods are unavailable, and "off" disables them.
+goal_support = "auto"
 
 # Optional shared Codex account pool.
 # Uncomment the block to use the global `~/.codex/decodex/accounts.jsonl` pool.

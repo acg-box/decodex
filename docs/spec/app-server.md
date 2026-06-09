@@ -64,6 +64,22 @@ Support evidence has two distinct layers:
 `decodex probe stdio://` reports the probe result with `preflight_checks`, `thread`,
 `turn`, `events`, and `output`. A passing probe must include `output=PROBE_OK`.
 
+Phase-scoped goal support is optional and capability-gated. App-server surfaces that
+support goals may expose `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`,
+and `thread/goal/updated`. These methods and events are not part of the required MVP
+preflight because older app-server builds may omit them. Normal dispatch detects goal
+support by attempting the goal methods for a configured phase-goal lane:
+
+- `codex.goal_support = "auto"` attempts goal support and records
+  `phase_goal_unavailable` private evidence before falling back to ordinary Decodex
+  continuation when a goal method is missing.
+- `codex.goal_support = "required"` treats missing goal methods as an app-server
+  phase-goal failure and routes the lane to the human-required path.
+- `codex.goal_support = "off"` does not call goal methods.
+
+Goal events are phase signals only. A `complete` goal status triggers Decodex-owned
+validation or handoff policy; it never satisfies terminal issue completion by itself.
+
 To validate an upstream app-server protocol change:
 
 1. Install or select the target Codex binary locally without disrupting active lanes.
@@ -108,6 +124,10 @@ To validate an upstream app-server protocol change:
   - `thread/archive` after successful completion writeback, for every locally
     recorded terminal attempt thread on the issue that has not already recorded a
     successful archive event
+- Optional phase-goal requests:
+  - `thread/goal/set`
+  - `thread/goal/get`
+  - `thread/goal/clear`
 - Required notifications for the MVP:
   - `thread/started`
   - `thread/status/changed`
@@ -115,6 +135,9 @@ To validate an upstream app-server protocol change:
   - `turn/completed`
 
 Additional notifications may be recorded opportunistically for diagnostics.
+When available, `thread/goal/updated` is recorded as local protocol activity and may
+summarize the active phase and status for operator readback. It is not a public
+tracker signal.
 
 The follow-up alignment phase should also record tool-related requests and notifications needed for issue-scoped tracker writes.
 
@@ -151,11 +174,20 @@ app-server connection for active turns.
 4. When `[codex.accounts]` is enabled, select a shared ChatGPT account and send
    `account/login/start` with `chatgptAuthTokens`.
 5. Send `thread/start`.
-6. Send `turn/start`.
-7. Consume notifications until that turn reaches a terminal outcome.
-8. If the project-owned continuation policy allows another same-thread turn, send another `turn/start` on the same thread.
-9. Persist the local run journal and classify the bounded run result.
-10. After successful completion writeback, best-effort archive all locally recorded
+6. If phase-scoped goals are enabled for the project and the controller has a phase
+   goal for this run, send `thread/goal/set`.
+7. Send `turn/start`.
+8. Consume notifications until that turn reaches a terminal outcome.
+9. If a phase goal is active, send `thread/goal/get` after the turn completes. If the
+   goal status is `complete`, Decodex runs the next owned phase transition such as
+   repository validation, validation repair, review repair, or handoff evidence. If
+   the goal remains active and bounded continuation is allowed, Decodex may start
+   another turn on the same thread. If the goal method is missing in `auto` mode,
+   Decodex records the fallback and resumes ordinary continuation classification.
+10. If the project-owned continuation policy allows another same-thread turn, send
+   another `turn/start` on the same thread.
+11. Persist the local run journal and classify the bounded run result.
+12. After successful completion writeback, best-effort archive all locally recorded
     terminal attempt threads for the issue so prior failed retry attempts do not keep
     the Codex conversation list visible.
 
@@ -272,6 +304,43 @@ The resume request owns these fields:
 - `developerInstructions`
 
 Decodex must not inject project-owned config, model, personality, service-tier, sandbox, or approval-policy overrides into `thread/resume`. Resumed child runs keep inheriting runtime defaults from the active Codex runtime.
+
+## `thread/goal/*`
+
+Methods:
+
+- `thread/goal/set`
+- `thread/goal/get`
+- `thread/goal/clear`
+
+These methods are optional. Decodex only calls them when centralized project config
+enables `codex.goal_support` and a phase-goal controller has a scoped goal for the
+run.
+
+`thread/goal/set` request fields:
+
+- `threadId`
+- `objective`
+- `status`, set to `active` by Decodex
+- `tokenBudget`, optional
+
+`thread/goal/get` request fields:
+
+- `threadId`
+
+`thread/goal/clear` request fields:
+
+- `threadId`
+
+Goal responses should include the active `goal` object with `threadId`, `objective`,
+`status`, optional `tokenBudget`, `tokensUsed`, `timeUsedSeconds`, and timestamps.
+Decodex recognizes `active`, `paused`, `blocked`, `usageLimited`, `budgetLimited`,
+and `complete` statuses. A missing goal after Decodex set one is an invalid
+phase-goal state, not a successful no-op.
+
+Decodex clears a thread goal best-effort only after the lane reaches an explicit
+terminal completion path. Clear failures remain diagnostics and do not replace the
+terminal tracker contract.
 
 ## `turn/start`
 

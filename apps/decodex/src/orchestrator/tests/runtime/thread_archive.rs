@@ -61,6 +61,7 @@ fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 		event_count: 1,
 		final_output: String::new(),
 		continuation_pending: false,
+		phase_goal_status: None,
 	};
 	let candidates =
 		super::completed_issue_thread_archive_candidates(&state_store, &issue_run, &run_result)
