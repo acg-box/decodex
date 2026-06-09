@@ -287,12 +287,12 @@ fn build_continuation_user_input(
 fn build_handoff_internal_review_guidance(internal_review_mode: InternalReviewMode) -> String {
 	match internal_review_mode {
 		InternalReviewMode::Loop => format!(
-			"- Follow the repo-native bounded review method from `WORKFLOW.md`: review the actual current diff and branch state, run both the requirements pass and the adversarial reviewer pass, fix only the smallest coherent owned batch, rerun verification, and re-read `HEAD` before deciding the next normalized review status.\n- Every time the repo-native bounded review method produces a result for the current head, call `{}` with that normalized status, the exact current `HEAD` SHA, and any concise evidence items.\n",
+			"- Request an independent fresh-context read-only review pass for the actual current diff and branch state. The reviewer must not edit files, push, land, or mutate tracker state.\n- Use the repo-native bounded review method from `WORKFLOW.md`: run the requirements pass and the adversarial reviewer pass against the current `HEAD`, including regression risk, missing tests, docs/config drift, migration fallout, operator-facing fallout, and mismatch with the accepted Loop/Decision Contract.\n- Validate reviewer comments before repair. Record accepted findings separately from rejected or non-actionable comments, fix only the smallest coherent owned batch, rerun verification, and re-read `HEAD` before deciding the normalized review status.\n- Every time the independent review pass produces a result for the current head, call `{}` with reviewer `independent_fresh_context`, that normalized status, the exact current `HEAD` SHA, concise evidence, checklist notes, and structured accepted/rejected findings.\n",
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME
 		),
 		InternalReviewMode::Prompt => format!("- {PROMPT_ONLY_INTERNAL_REVIEW_INSTRUCTION}\n"),
 		InternalReviewMode::Off => format!(
-			"- `codex.internal_review_mode = \"off\"` for this project, so skip internal self-review and do not call `{}`.\n",
+			"- `codex.internal_review_mode = \"off\"` for this project, so skip internal review and do not call `{}`.\n",
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME
 		),
 	}
@@ -301,12 +301,12 @@ fn build_handoff_internal_review_guidance(internal_review_mode: InternalReviewMo
 fn build_repair_internal_review_guidance(internal_review_mode: InternalReviewMode) -> String {
 	match internal_review_mode {
 		InternalReviewMode::Loop => format!(
-			"- Follow the repo-native bounded review method from `WORKFLOW.md`: review the actual repaired branch state, run both the requirements pass and the adversarial reviewer pass, fix only the smallest coherent owned batch, rerun verification, and re-read `HEAD` before deciding the next normalized review status.\n- Every time the repo-native bounded review method produces a result for the current repaired head, call `{}` with that normalized status, the exact current `HEAD` SHA, and any concise evidence items.\n",
+			"- Request an independent fresh-context read-only review pass for the actual repaired branch state. The reviewer must not edit files, push, land, or mutate tracker state.\n- Use the repo-native bounded review method from `WORKFLOW.md`: run the requirements pass and the adversarial reviewer pass against the current repaired `HEAD`, including regression risk, missing tests, docs/config drift, migration fallout, operator-facing fallout, and mismatch with the accepted Loop/Decision Contract.\n- Validate reviewer comments before repair. Record accepted findings separately from rejected or non-actionable comments, fix only the smallest coherent owned batch, rerun verification, and re-read `HEAD` before deciding the normalized review status.\n- Every time the independent review pass produces a result for the current repaired head, call `{}` with reviewer `independent_fresh_context`, that normalized status, the exact current `HEAD` SHA, concise evidence, checklist notes, and structured accepted/rejected findings.\n",
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME
 		),
 		InternalReviewMode::Prompt => format!("- {PROMPT_ONLY_INTERNAL_REVIEW_INSTRUCTION}\n"),
 		InternalReviewMode::Off => format!(
-			"- `codex.internal_review_mode = \"off\"` for this project, so skip internal self-review and do not call `{}`.\n",
+			"- `codex.internal_review_mode = \"off\"` for this project, so skip internal review and do not call `{}`.\n",
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME
 		),
 	}
@@ -347,12 +347,12 @@ fn build_handoff_continuation_review_guidance(
 ) -> String {
 	match internal_review_mode {
 		InternalReviewMode::Loop => format!(
-			"- Resume the repo-native bounded review method from `WORKFLOW.md`: review the actual current diff and branch state, run both the requirements pass and the adversarial reviewer pass, fix only the smallest coherent owned batch, rerun verification, and re-read `HEAD` before deciding the next normalized review status.\n- After each bounded review result for the current head, call `{}` with the normalized status and current `HEAD` SHA.\n",
+			"- Resume by requesting an independent fresh-context read-only review pass for the actual current diff and branch state; the reviewer must not edit files, push, land, or mutate tracker state.\n- Apply the repo-native bounded review method from `WORKFLOW.md`, validate comments before repair, record accepted findings separately from rejected or non-actionable comments, fix only the smallest coherent owned batch, rerun verification, and re-read `HEAD` before deciding the normalized review status.\n- After each independent review result for the current head, call `{}` with reviewer `independent_fresh_context`, the normalized status, current `HEAD` SHA, checklist notes, and structured accepted/rejected findings.\n",
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME
 		),
 		InternalReviewMode::Prompt => format!("- {PROMPT_ONLY_INTERNAL_REVIEW_INSTRUCTION}\n"),
 		InternalReviewMode::Off => format!(
-			"- `codex.internal_review_mode = \"off\"` for this project, so continue without internal self-review and do not call `{}`.\n",
+			"- `codex.internal_review_mode = \"off\"` for this project, so continue without internal review and do not call `{}`.\n",
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME
 		),
 	}
@@ -361,12 +361,12 @@ fn build_handoff_continuation_review_guidance(
 fn build_repair_continuation_review_guidance(internal_review_mode: InternalReviewMode) -> String {
 	match internal_review_mode {
 		InternalReviewMode::Loop => format!(
-			"- Resume the repo-native bounded review method from `WORKFLOW.md`: review the actual repaired branch state, run both the requirements pass and the adversarial reviewer pass, fix only the smallest coherent owned batch, rerun verification, and re-read `HEAD` before deciding the next normalized review status.\n- After each bounded review result for the repaired head, call `{}` with the normalized status and current `HEAD` SHA.\n",
+			"- Resume by requesting an independent fresh-context read-only review pass for the actual repaired branch state; the reviewer must not edit files, push, land, or mutate tracker state.\n- Apply the repo-native bounded review method from `WORKFLOW.md`, validate comments before repair, record accepted findings separately from rejected or non-actionable comments, fix only the smallest coherent owned batch, rerun verification, and re-read `HEAD` before deciding the normalized review status.\n- After each independent review result for the repaired head, call `{}` with reviewer `independent_fresh_context`, the normalized status, current `HEAD` SHA, checklist notes, and structured accepted/rejected findings.\n",
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME
 		),
 		InternalReviewMode::Prompt => format!("- {PROMPT_ONLY_INTERNAL_REVIEW_INSTRUCTION}\n"),
 		InternalReviewMode::Off => format!(
-			"- `codex.internal_review_mode = \"off\"` for this project, so continue without internal self-review and do not call `{}`.\n",
+			"- `codex.internal_review_mode = \"off\"` for this project, so continue without internal review and do not call `{}`.\n",
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME
 		),
 	}
