@@ -14,6 +14,7 @@ mod commit_message;
 mod default_branch_sync;
 mod git_credentials;
 mod github;
+mod loop_contract;
 mod maintenance;
 mod manual;
 mod orchestrator;
