@@ -1763,65 +1763,29 @@ Then validate the lane.
 	}
 
 	#[test]
-	fn rejects_string_global_concurrency_limit() {
-		let result = parse_valid_workflow_with(|markdown| {
-			*markdown = markdown
-				.replace("max_concurrent_agents = 1", "max_concurrent_agents = \"unlimited\"");
-		});
-		let error = result.expect_err("string global concurrency should be invalid");
+	fn rejects_invalid_global_concurrency_limits() {
+		for (case_name, replacement, expected) in [
+			(
+				"string global concurrency",
+				"max_concurrent_agents = \"unlimited\"",
+				"must be an integer greater than or equal to zero",
+			),
+			(
+				"negative global concurrency",
+				"max_concurrent_agents = -1",
+				"must be greater than or equal to zero",
+			),
+		] {
+			let result = parse_valid_workflow_with(|markdown| {
+				*markdown = markdown.replace("max_concurrent_agents = 1", replacement);
+			});
+			let error = result.expect_err(case_name);
 
-		assert!(
-			error.to_string().contains("must be an integer greater than or equal to zero"),
-			"unexpected error: {error:?}"
-		);
-	}
-
-	#[test]
-	fn rejects_negative_global_concurrency_limit() {
-		let result = WorkflowDocument::parse_markdown(
-			r#"
-+++
-version = 1
-
-[tracker]
-provider = "linear"
-startable_states = ["Todo"]
-terminal_states = ["Done", "Canceled", "Duplicate"]
-in_progress_state = "In Progress"
-success_state = "In Review"
-completed_state = "Done"
-failure_state = "Todo"
-opt_out_label = "decodex:manual-only"
-needs_attention_label = "decodex:needs-attention"
-
-[agent]
-transport = "stdio://"
-
-[execution]
-max_attempts = 3
-max_turns = 1
-max_retry_backoff_ms = 300000
-max_concurrent_agents = -1
-gate_profiles = {}
-canonicalize_commands = []
-verify_commands = []
-
-[execution.workspace_hooks]
-after_create_commands = []
-before_remove_commands = []
-timeout_seconds = 60
-
-[context]
-read_first = []
-+++
-			"#,
-		);
-		let error = result.expect_err("negative global concurrency should be invalid");
-
-		assert!(
-			error.to_string().contains("must be greater than or equal to zero"),
-			"unexpected error: {error:?}"
-		);
+			assert!(
+				error.to_string().contains(expected),
+				"unexpected error for `{case_name}`: {error:?}"
+			);
+		}
 	}
 
 	fn parse_valid_workflow_with(rewrite: impl FnOnce(&mut String)) -> Result<WorkflowDocument> {
