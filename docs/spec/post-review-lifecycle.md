@@ -305,6 +305,11 @@ At any phase, contradictory signals or exhausted repair/convergence budgets forc
 - Operator status must report an exhausted retained post-review lane as `blocked` with a retry-budget reason instead of continuing to classify it as `needs_review_repair` or `ready_to_land`.
 - If the lane's PR is already merged, exhausted local closeout, default-branch sync, or cleanup retries must be reported as `closeout_blocked` or `cleanup_blocked` with the retained PR URL from the runtime handoff row.
 - Structural churn is not a generic retry case. If repair rounds exceed the configured convergence budget, the runtime must stop for human intervention or architecture rethink rather than patching indefinitely.
+- Three consecutive non-clean fresh-context review rounds in the same phase are a
+  review-churn guardrail. Public writeback may use `review_policy_exhausted` or the
+  normalized loop reason `review_churn`, but the recovery rule is the same: inspect the
+  repeated findings for the exact current head and choose a new repair strategy,
+  architecture review, or manual resolution before requeueing.
 - A repair batch that changes the head must return to `review_wait` for that new head instead of continuing downstream on stale review state.
 
 ### Landing and closeout failures

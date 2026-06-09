@@ -2138,7 +2138,9 @@ fn queued_issue_blocker_identifiers(
 	workflow: &WorkflowDocument,
 	reason: &str,
 ) -> Vec<String> {
-	if reason != "open_tracker_blockers" {
+	if reason != "open_tracker_blockers"
+		&& reason != LoopGuardrailReason::DependencyProgramStale.error_class()
+	{
 		return Vec::new();
 	}
 
@@ -2148,6 +2150,51 @@ fn queued_issue_blocker_identifiers(
 		.filter(|blocker| !state_name_is_terminal(&blocker.state.name, workflow))
 		.map(|blocker| blocker.identifier.clone())
 		.collect()
+}
+
+fn observe_dependency_program_stale_guardrail(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+) -> crate::prelude::Result<LoopGuardrailCheckpoint> {
+	let blocker_fingerprint = dependency_blocker_fingerprint(issue, workflow);
+	let checkpoint = state_store.observe_loop_guardrail_checkpoint(
+		LoopGuardrailCheckpointInput {
+			project_id: project.service_id(),
+			issue_id: &issue.id,
+			reason: LoopGuardrailReason::DependencyProgramStale.error_class(),
+			fingerprint: &blocker_fingerprint,
+			run_id: "queued-dependency-blocker",
+			attempt_number: 0,
+			details_json: &json!({
+				"schema": "decodex.loop_guardrail_checkpoint/1",
+				"reason": LoopGuardrailReason::DependencyProgramStale.error_class(),
+				"blockers": queued_issue_blocker_identifiers(
+					issue,
+					workflow,
+					"open_tracker_blockers",
+				),
+				"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
+			})
+			.to_string(),
+		},
+	)?;
+
+	Ok(checkpoint)
+}
+
+fn dependency_blocker_fingerprint(issue: &TrackerIssue, workflow: &WorkflowDocument) -> String {
+	let mut blockers = issue
+		.blockers
+		.iter()
+		.filter(|blocker| !state_name_is_terminal(&blocker.state.name, workflow))
+		.map(|blocker| format!("{}:{}", blocker.identifier, blocker.state.name))
+		.collect::<Vec<_>>();
+
+	blockers.sort();
+
+	loop_guardrail_text_hash(&blockers.join("|"))
 }
 
 fn classify_queued_issue<T>(
@@ -2186,8 +2233,27 @@ where
 		return Ok(("blocked", "issue_opted_out"));
 	}
 	if !todo_blocker_rule_passes(issue, workflow) {
-		return Ok(("blocked", "open_tracker_blockers"));
+		let checkpoint = observe_dependency_program_stale_guardrail(
+			project,
+			workflow,
+			state_store,
+			issue,
+		)?;
+		let reason = if checkpoint.consecutive_count() >= LOOP_GUARDRAIL_CONVERGENCE_BUDGET {
+			LoopGuardrailReason::DependencyProgramStale.error_class()
+		} else {
+			"open_tracker_blockers"
+		};
+
+		return Ok(("blocked", reason));
 	}
+
+	state_store.clear_loop_guardrail_checkpoint(
+		project.service_id(),
+		&issue.id,
+		LoopGuardrailReason::DependencyProgramStale.error_class(),
+	)?;
+
 	if !issue_has_generic_dispatch_briefing(issue) {
 		return Ok(("blocked", "missing_dispatch_briefing"));
 	}

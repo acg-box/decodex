@@ -817,6 +817,7 @@ impl<'a> TrackerToolBridge<'a> {
 				}
 
 				self.manual_attention_comment_recorded.replace(true);
+				self.manual_attention_error_class.replace(Some(comment.error_class.clone()));
 
 				let verb = if created { "added" } else { "already existed for" };
 
