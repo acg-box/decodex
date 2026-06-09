@@ -20,6 +20,10 @@ results.
   documentation lanes.
 - A research run may contain useful evidence, alternatives, and objections, but it does
   not by itself define repository truth.
+- For Decodex-specific loop-runtime work, `decodex research compile` supersedes this
+  artifact lane as the runtime-owned path. It stores a
+  `decodex.decision_contract/1` payload in local runtime SQLite and leaves the result
+  latent until explicit promotion.
 
 ## Promotion rules
 
@@ -31,6 +35,9 @@ results.
   `docs/reference/`.
 - If a research result records a durable tradeoff or design choice, promote the
   conclusion into `docs/decisions/`.
+- If a Decodex-native research/design result should feed issue shaping or unattended
+  execution, promote the stored Decision Contract first. Do not infer acceptance from
+  a research summary or from a `docs/research/` JSON artifact.
 
 ## Practical reading rule
 

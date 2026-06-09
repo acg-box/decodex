@@ -60,6 +60,9 @@ state or this state machine.
   paths and credentials plus `WORKFLOW.md` for execution policy. They do not store
   runtime ownership.
 - The local SQLite database must not become a replacement for the human issue backlog. It is the operator control-plane state for this machine.
+- `decodex research compile` and `decodex research promote` are runtime-local
+  Decision Contract writes. They update the SQLite `decision_contracts` surface and do
+  not by themselves create Linear issues, queue intent, goals, or executable lanes.
 
 The evidence boundary is ordered from private runtime authority to public collaboration
 mirror:
