@@ -68,7 +68,7 @@ mirror:
 | --- | --- |
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, and recovery detail belong. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing active lease ownership. |
-| Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase. This row is the authority for review handoff and retained repair gating. |
+| Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating. |
 | Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
 | Logs under `~/.codex/decodex/logs/` and `.decodex-run-activity` | Diagnostic process and liveness signals. They may explain what a local process did, but they are not the structured execution ledger and must not be replayed as tracker state. |
 | Linear execution ledger comments | Low-frequency public projection for team-visible lifecycle state. They carry coarse start, progress phase, PR, handoff, failure, landing, closeout, and cleanup summaries only. |
@@ -83,7 +83,8 @@ The following facts are local runtime truth and must not be rebuilt from Linear 
 - active run-control channel metadata and local control audit events
 - protocol events, event counts, event timestamps, and thread/liveness hydration fields
 - private execution events carrying structured local evidence for an issue/run/attempt
-- review-policy checkpoint state: current phase, normalized status, lane head, and consecutive non-clean round count
+- review-policy checkpoint state: current phase, normalized status, lane head,
+  consecutive non-clean round count, and structured independent-review detail
 - retry and backoff state: queued retry kind, due time, retry budget, and connector backoff
 - phase timing and operator activity summaries
 - retained worktree mappings, retained PR handoff identity, post-review phase, and cleanup or repair ownership
@@ -301,7 +302,28 @@ When `codex.internal_review_mode = "loop"`, handoff and retained review-repair r
 - latest checkpoint `findings` with three or more consecutive non-clean rounds in the same phase: fail the turn through the human-required failure path
 - latest checkpoint `needs_architecture_review` or `blocked`: fail the turn through the human-required failure path
 
-`decodex` persists this review-policy state in the runtime SQLite `review_policy_checkpoints` table keyed by project, issue, run, attempt, and phase. The stored row contains `phase`, `status`, `head_sha`, and `nonclean_rounds`, and it is the only authority used to require a current clean checkpoint before `issue_review_handoff` or `issue_review_repair_complete`. Legacy `.decodex-run-activity` marker fields with the same names may be parsed to seed a missing runtime row during compatibility recovery, but a runtime-store checkpoint always wins over stale marker values. Recording `issue_review_handoff` or `issue_review_repair_complete` clears the runtime checkpoint for that run attempt and only best-effort clears any legacy marker fields. When `codex.internal_review_mode = "prompt"` or `"off"`, Decodex does not expose `issue_review_checkpoint`, does not require a clean checkpoint before review handoff or repair completion, and ignores stale review-policy state while classifying clean turn boundaries.
+`decodex` persists this review-policy state in the runtime SQLite
+`review_policy_checkpoints` table keyed by project, issue, run, attempt, and phase.
+The stored row contains `phase`, `status`, `head_sha`, `nonclean_rounds`, and
+`details_json`, and it is the only authority used to require a current clean
+checkpoint before `issue_review_handoff` or `issue_review_repair_complete`.
+`details_json` holds the structured independent fresh-context review payload,
+including checklist notes, accepted findings, rejected findings, and repair guidance.
+Each accepted checkpoint also appends a private `review_checkpoint` execution event
+with the same structured payload for local operator and repair readback. Linear
+receives only coarse lifecycle projections; raw reviewer findings stay in local
+runtime evidence unless another allowlisted lifecycle summary renders a public-safe
+summary.
+Legacy `.decodex-run-activity` marker fields with the same names may be parsed to seed
+a missing runtime row during compatibility recovery, but a runtime-store checkpoint
+always wins over stale marker values. Legacy marker recovery seeds an empty
+`details_json` payload because old markers did not carry structured finding evidence.
+Recording `issue_review_handoff` or `issue_review_repair_complete` clears the runtime
+checkpoint for that run attempt and only best-effort clears any legacy marker fields.
+When `codex.internal_review_mode = "prompt"` or `"off"`, Decodex does not expose
+`issue_review_checkpoint`, does not require a clean checkpoint before review handoff
+or repair completion, and ignores stale review-policy state while classifying clean
+turn boundaries.
 
 The review-policy human-required failure path is also the boundary for any later
 runtime-owned research escalation. The current runtime must not dispatch research from a

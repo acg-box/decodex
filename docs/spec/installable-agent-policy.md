@@ -54,7 +54,7 @@ policy.
 | Project execution gates, canonicalization and verification commands, gate profiles, and workspace hooks | [`workflow-file.md`](./workflow-file.md) plus the registered project `WORKFLOW.md` |
 | Service identity, repo root, worktree root, and tracker or GitHub credential environment-variable names | Centralized project `project.toml`; see the operator surface map in [`../reference/operator-control-plane.md`](../reference/operator-control-plane.md) |
 | Automatic intake labels, active ownership, retry behavior, and retained lane planning | [`runtime.md`](./runtime.md) and [`owned-lane-policy.md`](./owned-lane-policy.md) |
-| Review handoff, bounded self-review, external-review pass signals, repair rounds, and architecture escalation | [`review-orchestration.md`](./review-orchestration.md) and the registered project `WORKFLOW.md` bounded review method |
+| Review handoff, bounded independent review, external-review pass signals, repair rounds, and architecture escalation | [`review-orchestration.md`](./review-orchestration.md) and the registered project `WORKFLOW.md` bounded review method |
 | Post-`In Review` waiting, repair, landing, closeout, cleanup, and manual-intervention phases | [`post-review-lifecycle.md`](./post-review-lifecycle.md) |
 | Local commit-message schema for Decodex-managed history | [`commit-messages.md`](./commit-messages.md) |
 | Operator procedures, pilot setup, and live validation steps | [`../runbook/index.md`](../runbook/index.md) and the specific runbook for the procedure |
