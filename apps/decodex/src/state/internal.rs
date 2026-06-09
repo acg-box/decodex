@@ -853,23 +853,6 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
-	fn delete_review_markers(&mut self, issue_id: &str) -> Result<()> {
-		let transaction = self.connection.transaction()?;
-
-		transaction.execute("DELETE FROM review_handoffs WHERE issue_id = ?1", params![issue_id])?;
-		transaction.execute(
-			"DELETE FROM review_orchestrations WHERE issue_id = ?1",
-			params![issue_id],
-		)?;
-		transaction.execute(
-			"DELETE FROM review_policy_checkpoints WHERE issue_id = ?1",
-			params![issue_id],
-		)?;
-		transaction.commit()?;
-
-		Ok(())
-	}
-
 	fn delete_review_marker_identity(
 		&mut self,
 		project_id: &str,
