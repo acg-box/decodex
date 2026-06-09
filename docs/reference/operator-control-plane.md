@@ -131,7 +131,7 @@ work that needs full private payload values.
 
 | Surface | Owns | Does Not Own |
 | --- | --- | --- |
-| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, worktree mappings, retry state, retained PR state, review-policy checkpoints, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
+| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, Decision Contracts, worktree mappings, retry state, retained PR state, review-policy checkpoints, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
 | Central project config | `service_id`, repo root, worktree root, tracker/GitHub credential env-var names, enabled project registration | per-run state or issue ownership |
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
 | Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, private execution evidence, connector retry budgets |
@@ -270,6 +270,9 @@ Interpret the surfaces in this order:
 Do not backfill Linear with private evidence just to make the issue history look like a
 complete execution transcript. If a teammate needs a public update, write or wait for
 the next allowlisted lifecycle summary instead of pasting local evidence payloads.
+The same boundary applies to Decision Contracts: the operator surface may show status,
+readiness summary, generated issue links, or public projection references, but the
+versioned contract payload and private evidence references remain runtime-local.
 
 Worktree visibility follows the owning dashboard section:
 
