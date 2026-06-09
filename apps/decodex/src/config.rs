@@ -190,6 +190,8 @@ pub struct ProjectCodexConfig {
 	internal_review_mode: InternalReviewMode,
 	#[serde(default = "default_external_review_enabled")]
 	external_review_enabled: bool,
+	#[serde(default = "default_goal_support_mode")]
+	goal_support: ProjectCodexGoalSupportMode,
 	accounts: Option<ProjectCodexAccountsConfig>,
 }
 impl ProjectCodexConfig {
@@ -201,6 +203,11 @@ impl ProjectCodexConfig {
 	/// Whether Decodex should drive the retained external `@codex review` loop.
 	pub fn external_review_enabled(&self) -> bool {
 		self.external_review_enabled
+	}
+
+	/// Whether app-server phase-scoped goal support is enabled for lane runs.
+	pub fn goal_support(&self) -> ProjectCodexGoalSupportMode {
+		self.goal_support
 	}
 
 	/// Optional ChatGPT accounts used to seed Codex app-server auth.
@@ -232,6 +239,7 @@ impl Default for ProjectCodexConfig {
 		Self {
 			internal_review_mode: default_internal_review_mode(),
 			external_review_enabled: default_external_review_enabled(),
+			goal_support: default_goal_support_mode(),
 			accounts: None,
 		}
 	}
@@ -427,6 +435,44 @@ impl Default for InternalReviewMode {
 	}
 }
 
+/// Project policy for app-server phase-scoped goal support.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectCodexGoalSupportMode {
+	/// Use phase goals when the app-server supports them, otherwise fall back safely.
+	Auto,
+	/// Require app-server phase goal methods for every eligible lane run.
+	Required,
+	/// Disable app-server phase goals.
+	Off,
+}
+impl ProjectCodexGoalSupportMode {
+	/// Config string for this mode.
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::Auto => "auto",
+			Self::Required => "required",
+			Self::Off => "off",
+		}
+	}
+
+	/// Whether Decodex should attempt to use app-server goal methods.
+	pub const fn enabled(self) -> bool {
+		!matches!(self, Self::Off)
+	}
+
+	/// Whether missing app-server goal methods should fail the run.
+	pub const fn required(self) -> bool {
+		matches!(self, Self::Required)
+	}
+}
+
+impl Default for ProjectCodexGoalSupportMode {
+	fn default() -> Self {
+		default_goal_support_mode()
+	}
+}
+
 /// Canonical repository root for the current Git checkout.
 pub fn canonical_repo_root_for_checkout(cwd: &Path) -> Result<Option<PathBuf>> {
 	let worktree_root = git_absolute_rev_parse(cwd, "show-toplevel")?
@@ -460,6 +506,10 @@ const fn default_external_review_enabled() -> bool {
 
 const fn default_internal_review_mode() -> InternalReviewMode {
 	InternalReviewMode::Loop
+}
+
+const fn default_goal_support_mode() -> ProjectCodexGoalSupportMode {
+	ProjectCodexGoalSupportMode::Auto
 }
 
 const fn default_privacy_classifier_timeout_ms() -> u64 {
@@ -944,7 +994,7 @@ mod tests {
 	use tempfile::TempDir;
 
 	use crate::{
-		config::{self, InternalReviewMode, ServiceConfig},
+		config::{self, InternalReviewMode, ProjectCodexGoalSupportMode, ServiceConfig},
 		worktree::WorktreeManager,
 	};
 
@@ -1211,6 +1261,45 @@ mod tests {
 
 			assert_eq!(config.codex().internal_review_mode(), expected_mode);
 			assert_eq!(config.codex().external_review_enabled(), expected_external_review);
+		}
+	}
+
+	#[test]
+	fn parses_codex_goal_support_modes() {
+		for (case_name, codex_body, expected_goal_support) in [
+			("default goal support", "", ProjectCodexGoalSupportMode::Auto),
+			(
+				"explicit required goal support",
+				r#"goal_support = "required""#,
+				ProjectCodexGoalSupportMode::Required,
+			),
+			(
+				"explicit off goal support",
+				r#"goal_support = "off""#,
+				ProjectCodexGoalSupportMode::Off,
+			),
+		] {
+			let temp_dir = TempDir::new().expect("temp dir should exist");
+			let config_path = write_config_file(
+				temp_dir.path(),
+				&format!(
+					r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+
+				[codex]
+				{codex_body}
+			"#
+				),
+			);
+			let config = ServiceConfig::from_path(&config_path).expect(case_name);
+
+			assert_eq!(config.codex().goal_support(), expected_goal_support);
 		}
 	}
 

@@ -7,6 +7,15 @@ mod repo_gate_failure {
 		RetryAfterBackoff,
 		NeedsHumanAttention,
 	}
+	impl RepoGateFailureDisposition {
+		pub(super) const fn as_str(self) -> &'static str {
+			match self {
+				Self::ContinueRepair => "continue_repair",
+				Self::RetryAfterBackoff => "retry_after_backoff",
+				Self::NeedsHumanAttention => "needs_human_attention",
+			}
+		}
+	}
 
 	#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 	pub(super) enum RepoGateFailureKind {
