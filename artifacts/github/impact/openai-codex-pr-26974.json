@@ -1,0 +1,43 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26974",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Ignore proc-macro-error2 advisory",
+        "url": "https://github.com/openai/codex/pull/26974",
+        "meta": "Merged 2026-06-08T09:39:08Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26974",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26974.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex adds a documented temporary ignore for RUSTSEC-2026-0173 because `proc-macro-error2` is pulled transitively through `i18n-embed-fl` and `age` into `codex-secrets` local storage.",
+  "public_signal_decision": "skip",
+  "control_plane_impact": "watch",
+  "publisher_angle": "none",
+  "confidence": "confirmed",
+  "evidence": [
+    "Audit and deny config both add `RUSTSEC-2026-0173` with the `proc-macro-error2` transitive path through `i18n-embed-fl` and `age`.",
+    "The PR body identifies `codex-secrets` local storage as the affected dependency path.",
+    "Both config changes include a removal condition tied to migrating off `age` or upstream `age` dropping `i18n-embed-fl`.",
+    "The upstream review records no API, protocol, or user workflow change."
+  ],
+  "candidate_followups": [
+    "Keep this as a watch item for Codex local secrets dependency posture.",
+    "Do not promote this advisory ignore as a public feature or migration unless a later upstream change replaces the dependency path."
+  ],
+  "social_notes": [
+    "No standalone social candidate is recommended; this is advisory accounting."
+  ],
+  "caveats": [
+    "The impact artifact does not independently validate the RustSec advisory severity or exploitability.",
+    "Future dependency migration may change the watch status."
+  ]
+}

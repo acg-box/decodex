@@ -1,0 +1,43 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-24820",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "deps: update starlark to 0.14.2",
+        "url": "https://github.com/openai/codex/pull/24820",
+        "meta": "Merged 2026-06-08T00:35:33Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/24820",
+        "meta": "artifacts/github/reviews/openai-codex-pr-24820.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex updates the Starlark dependency used by execpolicy parsing from 0.13.0 to 0.14.2 and adapts execpolicy parser code to the new API.",
+  "public_signal_decision": "skip",
+  "control_plane_impact": "watch",
+  "publisher_angle": "none",
+  "confidence": "confirmed",
+  "evidence": [
+    "codex-rs/Cargo.toml bumps Starlark to 0.14.2 with `default-features = false`.",
+    "Execpolicy parser code now uses `Module::with_temp_heap(...)` and legacy allocation signatures compatible with the new Starlark API.",
+    "Audit and deny configuration refresh the advisory exception set and removal notes for the resolved graph.",
+    "The upstream review records no new user-facing command, UI path, or policy-language capability."
+  ],
+  "candidate_followups": [
+    "Keep this PR as release-rollup background for dependency hygiene rather than as a public signal.",
+    "Avoid treating the lockfile churn as evidence of a new Codex execpolicy feature."
+  ],
+  "social_notes": [
+    "No standalone social candidate is recommended; public value is too low without a user-visible path."
+  ],
+  "caveats": [
+    "The dependency graph changed broadly, but the source evidence points to maintenance and API adaptation.",
+    "The artifact does not independently audit Starlark 0.14.2 security content beyond the upstream PR evidence."
+  ]
+}
