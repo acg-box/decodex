@@ -1,0 +1,99 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-06-09T00:49:57Z",
+      "message": "Return workspace directory installed plugins",
+      "sha": "2ff3136992b56306ac00b4f9e894102acaa5237f",
+      "url": "https://github.com/openai/codex/commit/2ff3136992b56306ac00b4f9e894102acaa5237f"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "OPENAI_CURATED_MARKETPLACE_NAME",
+    "REMOTE_GLOBAL_MARKETPLACE_NAME",
+    "REMOTE_WORKSPACE_MARKETPLACE_NAME",
+    "REMOTE_WORKSPACE_SHARED_WITH_ME_MARKETPLACE_NAME",
+    "REMOTE_WORKSPACE_SHARED_WITH_ME_PRIVATE_MARKETPLACE_NAME",
+    "REMOTE_WORKSPACE_SHARED_WITH_ME_UNLISTED_MARKETPLACE_NAME",
+    "LISTED",
+    "PRIVATE",
+    "GLOBAL",
+    "WORKSPACE",
+    "DEFAULT_TIMEOUT",
+    "JSONRPCR",
+    "TOOL_SUGGEST_DISCOVERABLE_PLUGIN_ALLOWLIST",
+    "TEST_CURATED_PLUGIN_CACHE_VERSION",
+    "TEST_CURATED_PLUGIN_SHA",
+    "OPENAI_BUNDLED_MARKETPLACE_NAME"
+  ],
+  "files": [
+    {
+      "additions": 19,
+      "deletions": 13,
+      "patch_excerpt": "@@ -9,8 +9,11 @@ use codex_config::types::McpServerConfig;\n use codex_core_plugins::OPENAI_CURATED_MARKETPLACE_NAME;\n use codex_core_plugins::PluginListBackgroundTaskOptions;\n use codex_core_plugins::remote::REMOTE_GLOBAL_MARKETPLACE_NAME;\n+use codex_core_plugins::remote::REMOTE_WORKSPACE_MARKETPLACE_NAME;\n+use codex_core_plugins::remote::REMOTE_WORKSPACE_SHARED_WITH_ME_MARKETPLACE_NAME;\n+use codex_core_plugins::remote::REMOTE_WORKSPACE_SHARED_WITH_ME_PRIVATE_MARKETPLACE_NAME;\n+use codex_core_plugins::remote::REMOTE_WORKSPACE_SHARED_WITH_ME_UNLISTED_MARKETPLACE_NAME;\n use codex_core_plugins::remote::RemoteAppTemplateUnavailableReason;\n-use codex_core_plugins::remote::RemotePluginScope;\n use codex_core_plugins::remote::is_valid_remote_plugin_id;\n use codex_core_plugins::remote::validate_remote_plugin_id;\n use codex_mcp::McpOAuthLoginSupport;\n@@ -149,15 +152,18 @@ fn convert_configured_mar...",
+      "path": "codex-rs/app-server/src/request_processors/plugins.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 86,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2371,6 +2371,92 @@ plugin_sharing = true\n     Ok(())\n }\n \n+#[tokio::test]\n+async fn plugin_installed_includes_workspace_directory_without_plugin_sharing() -> Result<()> {\n+    let codex_home = TempDir::new()?;\n+    let server = MockServer::start().await;\n+    std::fs::write(\n+        codex_home.path().join(\"config.toml\"),\n+        format!(\n+            r#\"chatgpt_base_url = \"{}/backend-api/\"\n+\n+[features]\n+plugins = true\n+remote_plugin = false\n+plugin_sharing = false\n+\"#,\n+            server.uri()\n+        ),\n+    )?;\n+    write_chatgpt_auth(\n+        codex_home.path(),\n+        ChatGptAuthFixture::new(\"chatgpt-token\")\n+            .account_id(\"account-123\")\n+            .chatgpt_user_id(\"user-123\")\n+            .chatgpt_account_id(\"account-123\"),\n+        AuthCredentialsStoreMode::File,\n+    )?;\n+    let mut workspace_installed_body: serde_json::Value =\n+        serde_json::from_str...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 2,
+      "patch_excerpt": "@@ -14,7 +14,6 @@ use crate::PluginsConfigInput;\n use crate::PluginsManager;\n use crate::marketplace::MarketplacePluginInstallPolicy;\n use crate::remote::REMOTE_GLOBAL_MARKETPLACE_NAME;\n-use crate::remote::RemotePluginScope;\n \n const TOOL_SUGGEST_DISCOVERABLE_PLUGIN_ALLOWLIST: &[&str] = &[\n     \"github@openai-curated\",\n@@ -100,7 +99,9 @@ impl PluginsManager {\n             .collect::<HashSet<_>>();\n         installed_app_connector_ids.extend(input.loaded_plugin_app_connector_ids.iter().cloned());\n         let remote_installed_marketplaces = if input.plugins.remote_plugin_enabled {\n-            self.build_remote_installed_plugin_marketplaces_from_cache(&[RemotePluginScope::Global])\n+            self.build_remote_installed_plugin_marketplaces_from_cache(&[\n+                REMOTE_GLOBAL_MARKETPLACE_NAME,\n+            ])\n         } else {\n             None\n         };",
+      "path": "codex-rs/core-plugins/src/discoverable.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 6,
+      "patch_excerpt": "@@ -38,7 +38,6 @@ use crate::marketplace_upgrade::configured_git_marketplace_names;\n use crate::marketplace_upgrade::upgrade_configured_git_marketplaces;\n use crate::remote::RemoteInstalledPlugin;\n use crate::remote::RemotePluginCatalogError;\n-use crate::remote::RemotePluginScope;\n use crate::remote::RemotePluginServiceConfig;\n use crate::remote_legacy::RemotePluginFetchError;\n use crate::remote_legacy::RemotePluginMutationError;\n@@ -560,14 +559,19 @@ impl PluginsManager {\n \n     pub fn build_remote_installed_plugin_marketplaces_from_cache(\n         &self,\n-        visible_scopes: &[RemotePluginScope],\n+        visible_marketplaces: &[&str],\n     ) -> Option<Vec<crate::remote::RemoteMarketplace>> {\n         let cache = match self.remote_installed_plugins_cache.read() {\n             Ok(cache) => cache,\n             Err(err) => err.into_inner(),\n         };\n         let plugins = cache.as_...",
+      "path": "codex-rs/core-plugins/src/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 46,
+      "deletions": 4,
+      "patch_excerpt": "@@ -6,8 +6,10 @@ use crate::loader::load_plugins_from_layer_stack;\n use crate::loader::refresh_non_curated_plugin_cache;\n use crate::loader::refresh_non_curated_plugin_cache_force_reinstall;\n use crate::marketplace::MarketplacePluginInstallPolicy;\n+use crate::remote::REMOTE_GLOBAL_MARKETPLACE_NAME;\n+use crate::remote::REMOTE_WORKSPACE_MARKETPLACE_NAME;\n+use crate::remote::REMOTE_WORKSPACE_SHARED_WITH_ME_MARKETPLACE_NAME;\n use crate::remote::RemoteInstalledPlugin;\n-use crate::remote::RemotePluginScope;\n use crate::startup_sync::curated_plugins_repo_path;\n use crate::test_support::TEST_CURATED_PLUGIN_CACHE_VERSION;\n use crate::test_support::TEST_CURATED_PLUGIN_SHA;\n@@ -137,8 +139,15 @@ fn remote_installed_linear_plugin() -> RemoteInstalledPlugin {\n }\n \n fn remote_installed_plugin(name: &str) -> RemoteInstalledPlugin {\n+    remote_installed_plugin_in_marketplace(name, REMOTE_GLOBAL_MARKETPL...",
+      "path": "codex-rs/core-plugins/src/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 4,
+      "patch_excerpt": "@@ -845,14 +845,12 @@ pub(crate) async fn fetch_remote_installed_plugins(\n \n pub fn group_remote_installed_plugins_by_marketplaces(\n     plugins: &[RemoteInstalledPlugin],\n-    visible_scopes: &[RemotePluginScope],\n+    visible_marketplaces: &[&str],\n ) -> Vec<RemoteMarketplace> {\n     let mut plugins_by_marketplace = BTreeMap::<String, Vec<RemotePluginSummary>>::new();\n \n     for plugin in plugins {\n-        if !RemotePluginScope::from_marketplace_name(&plugin.marketplace_name)\n-            .is_some_and(|scope| visible_scopes.contains(&scope))\n-        {\n+        if !visible_marketplaces.contains(&plugin.marketplace_name.as_str()) {\n             continue;\n         }\n         let Ok(plugin_id) = PluginId::new(plugin.name.clone(), plugin.marketplace_name.clone())",
+      "path": "codex-rs/core-plugins/src/remote.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -7,7 +7,7 @@ use crate::plugins::test_support::write_plugins_feature_config;\n use codex_core_plugins::OPENAI_BUNDLED_MARKETPLACE_NAME;\n use codex_core_plugins::PluginInstallRequest;\n use codex_core_plugins::PluginsManager;\n-use codex_core_plugins::remote::RemotePluginScope;\n+use codex_core_plugins::remote::REMOTE_GLOBAL_MARKETPLACE_NAME;\n use codex_core_plugins::remote::RemotePluginServiceConfig;\n use codex_core_plugins::remote::fetch_and_cache_global_remote_plugin_catalog;\n use codex_core_plugins::startup_sync::curated_plugins_repo_path;\n@@ -362,7 +362,7 @@ remote_plugin = true\n         .build_and_cache_remote_installed_plugin_marketplaces(\n             &config.plugins_config_input(),\n             Some(&auth),\n-            &[RemotePluginScope::Global],\n+            &[REMOTE_GLOBAL_MARKETPLACE_NAME],\n             /*on_effective_plugins_changed*/ None,\n         )\n         .await",
+      "path": "codex-rs/core/src/plugins/discoverable_tests.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n\n- return installed `workspace-directory` remote plugins by default in `plugin/installed`\n- keep shared-with-me installed plugins gated behind `plugin_sharing`\n- filter remote installed plugin marketplaces by canonical marketplace name instead of coarse workspace scope\n\n## Validation\n\n- `just fmt`\n- `just test -p codex-core-plugins`\n- `just test -p codex-app-server`\n- `just fix -p codex-core-plugins`\n- `just fix -p codex-app-server`\n- `$xin-build` targeted verification:\n  - `just test -p codex-core-plugins build_remote_installed_plugin_marketplaces_from_cache_filters_by_marketplace_name`\n  - `just test -p codex-app-server plugin_installed_includes_workspace_directory_without_plugin_sharing`\n  - `just test -p codex-app-server plugin_installed_includes_remote_shared_with_me_plugins`\n  - `just test -p codex-app-server plugin_list_omits_shared_with_me_kind_when_plugin_sharing_disabled`\n",
+    "labels": [],
+    "merged_at": "2026-06-09T08:23:17Z",
+    "number": 27098,
+    "state": "merged",
+    "title": "[codex] Return workspace directory installed plugins",
+    "url": "https://github.com/openai/codex/pull/27098"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

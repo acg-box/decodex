@@ -1,0 +1,61 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27098",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27098",
+    "commit_shas": [
+      "2ff3136992b56306ac00b4f9e894102acaa5237f"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Return workspace directory installed plugins",
+        "url": "https://github.com/openai/codex/pull/27098",
+        "meta": "Merged 2026-06-09T08:23:17Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Return workspace directory installed plugins",
+        "url": "https://github.com/openai/codex/commit/2ff3136992b56306ac00b4f9e894102acaa5237f"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-09T14:07:34Z",
+  "observed_change": "Codex app-server `plugin/installed` now includes installed `workspace-directory` remote plugins by default while keeping shared-with-me marketplaces gated behind `plugin_sharing`.",
+  "changed_surfaces": [
+    "app-server v2 plugin installed request processing",
+    "core plugin remote-installed marketplace filtering",
+    "remote plugin marketplace constants",
+    "plugin installed and manager regression tests"
+  ],
+  "user_visible_path": "App-server clients calling `plugin/installed` can see installed workspace-directory remote plugins even when `remote_plugin` and `plugin_sharing` feature gates are disabled.",
+  "control_plane_relevance": "Decodex plugin inventory and installation surfaces should expect workspace-directory installed plugins to appear as ordinary installed entries from app-server readback.",
+  "compatibility_risk": "Moderate for clients that assumed `plugin/installed` would omit workspace-directory remote plugins unless sharing was enabled; the response may now contain an additional `workspace-directory` marketplace.",
+  "adoption_opportunity": "Use the app-server readback instead of separately inferring workspace-directory installed plugins, and keep shared-with-me entries gated by `plugin_sharing`.",
+  "community_value": "High for plugin operators because installed workspace plugins become visible through the primary app-server installed-plugin path.",
+  "deprecated_or_breaking_notes": "No field is removed, but the filtering model changes from coarse remote scopes to explicit canonical marketplace names.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27098 says `plugin/installed` returns installed `workspace-directory` remote plugins by default and keeps shared-with-me plugins behind `plugin_sharing`.",
+    "codex-rs/app-server/src/request_processors/plugins.rs always adds `REMOTE_WORKSPACE_MARKETPLACE_NAME` to visible marketplaces and adds shared-with-me marketplaces only when `Feature::PluginSharing` is enabled.",
+    "codex-rs/core-plugins/src/remote.rs filters remote installed plugins by explicit marketplace names instead of `RemotePluginScope`.",
+    "codex-rs/app-server/tests/suite/v2/plugin_list.rs adds coverage for `workspace-directory` appearing without plugin sharing while shared plugins are excluded.",
+    "codex-rs/core-plugins/src/manager_tests.rs adds marketplace-name filtering coverage.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-27098.json records 7 changed files for the merged PR."
+  ],
+  "caveats": "The change is about installed plugin readback; it does not make shared-with-me plugin marketplaces visible without the `plugin_sharing` feature.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Plugin installed readback affects Decodex Control Plane plugin inventory."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The workspace-directory installed-plugin readback has a clear operator-facing public angle."
+    }
+  ]
+}
