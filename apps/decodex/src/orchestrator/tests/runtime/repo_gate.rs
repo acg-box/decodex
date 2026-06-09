@@ -119,6 +119,74 @@ fn repo_gate_falls_back_to_full_gate_when_changed_file_classification_is_unavail
 }
 
 #[test]
+fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
+	let workflow_markdown = sample_workflow_markdown(
+		"pubfi",
+		&[],
+		"Phase goal validation policy.\n",
+		3,
+	)
+	.replace(
+		"canonicalize_commands = []",
+		"canonicalize_commands = [\"printf canonicalized > phase-canonicalized.txt\"]",
+	)
+	.replace(
+		"verify_commands = []",
+		"verify_commands = [\"test -f phase-canonicalized.txt && printf verified > phase-verified.txt\"]",
+	);
+	let (_temp_dir, config, workflow) =
+		temp_project_layout_with_workflow_markdown(&workflow_markdown);
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.repo_root().to_path_buf(),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1"),
+		retry_budget_base: 0,
+	};
+	let controller = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &issue_run,
+	};
+	let transition = controller
+		.phase_goal_completed(PhaseGoalKind::ImplementToValidationReady)
+		.expect("completed implementation phase should run the repo gate");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
+		.expect("private phase goal events should load");
+
+	assert!(config.repo_root().join("phase-canonicalized.txt").exists());
+	assert!(config.repo_root().join("phase-verified.txt").exists());
+	assert!(matches!(
+		transition,
+		PhaseGoalTransition::Continue(PhaseGoalSpec {
+			phase: PhaseGoalKind::HandoffEvidence,
+			..
+		})
+	));
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_transition"
+			&& event.payload()["signal"] == "validation_pass"
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_next"
+			&& event.payload()["phase"] == "handoff_evidence"
+	}));
+}
+
+#[test]
 fn repo_gate_shell_falls_back_to_non_login_posix_sh_for_missing_absolute_shell() {
 	let (shell, shell_flag) = orchestrator::repo_gate_shell_from_env(Some(OsString::from(
 		"/definitely-missing-shell-for-tests",
