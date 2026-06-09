@@ -7,8 +7,10 @@ use crate::{
 		ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
 		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
-		ISSUE_TRANSITION_TOOL_NAME, LabelArgs, NormalizedProgressCheckpoint, PendingReviewAction,
-		PendingReviewCompletion, ProgressCheckpointArgs, ReviewCheckpointArgs, ReviewExecutionMode,
+		ISSUE_TRANSITION_TOOL_NAME, LabelArgs, NormalizedProgressCheckpoint,
+		NormalizedReviewCheckpointPayload, PendingReviewAction, PendingReviewCompletion,
+		ProgressCheckpointArgs, ReviewCheckpointArgs, ReviewCheckpointChecksArgs,
+		ReviewCheckpointFindingArgs, ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode,
 		ReviewHandoffArgs, ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus,
 		RunCompletionDisposition, TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
 	},
@@ -21,6 +23,7 @@ use crate::{
 
 const COMMENT_KIND_MANUAL_ATTENTION: &str = "manual_attention";
 const MANUAL_ATTENTION_TERMINAL_PATH: &str = "manual_attention";
+const INDEPENDENT_FRESH_CONTEXT_REVIEWER: &str = "independent_fresh_context";
 
 #[derive(Debug)]
 struct NormalizedManualAttentionComment {
@@ -31,6 +34,12 @@ struct NormalizedManualAttentionComment {
 	failed_command: Option<String>,
 	raw_error: Option<String>,
 	summary: Option<String>,
+}
+
+struct ReviewCheckpointPayloadCounts {
+	evidence: usize,
+	accepted_findings: usize,
+	rejected_findings: usize,
 }
 
 impl<'a> TrackerToolBridge<'a> {
@@ -242,23 +251,96 @@ impl<'a> TrackerToolBridge<'a> {
 	pub(super) fn review_checkpoint_tool_specs(&self) -> [DynamicToolSpec; 1] {
 		[DynamicToolSpec::new(
 			ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
-			"Record the current repo-native bounded-review result for the leased issue so Decodex can decide whether the lane may continue or must stop for human intervention. `head_sha` must resolve to the current lane HEAD.",
+			"Record the independent fresh-context read-only bounded-review result for the leased issue so Decodex can decide whether the lane may continue, repair accepted findings, or stop for human intervention. `head_sha` must resolve to the current lane HEAD.",
 			serde_json::json!({
 				"type": "object",
 				"properties": {
 					"issue_id": { "type": "string" },
 					"issue_identifier": { "type": "string" },
+					"reviewer": {
+						"type": "string",
+						"enum": ["independent_fresh_context"]
+					},
 					"status": {
 						"type": "string",
 						"enum": ["clean", "findings", "needs_architecture_review", "blocked"]
 					},
 					"head_sha": { "type": "string" },
+					"checks": {
+						"type": "object",
+						"properties": {
+							"intended_behavior": { "type": "string" },
+							"regression_risk": { "type": "string" },
+							"missing_tests": { "type": "string" },
+							"docs_config_drift": { "type": "string" },
+							"migration_fallout": { "type": "string" },
+							"operator_facing_fallout": { "type": "string" },
+							"loop_decision_contract": { "type": "string" }
+						},
+						"required": [
+							"intended_behavior",
+							"regression_risk",
+							"missing_tests",
+							"docs_config_drift",
+							"migration_fallout",
+							"operator_facing_fallout",
+							"loop_decision_contract"
+						],
+						"additionalProperties": false
+					},
 					"evidence": {
 						"type": "array",
-						"items": { "type": "string" }
+						"items": { "type": "string" },
+						"minItems": 1
+					},
+					"accepted_findings": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["critical", "high", "medium", "low", "info"]
+								},
+								"summary": { "type": "string" },
+								"evidence": {
+									"type": "array",
+									"items": { "type": "string" },
+									"minItems": 1
+								},
+								"file": { "type": "string" },
+								"line": { "type": "integer", "minimum": 1 },
+								"guidance": { "type": "string" }
+							},
+							"required": ["severity", "summary", "evidence", "guidance"],
+							"additionalProperties": false
+						}
+					},
+					"rejected_findings": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"properties": {
+								"severity": {
+									"type": "string",
+									"enum": ["critical", "high", "medium", "low", "info"]
+								},
+								"summary": { "type": "string" },
+								"rejection_reason": { "type": "string" },
+								"evidence": {
+									"type": "array",
+									"items": { "type": "string" },
+									"minItems": 1
+								},
+								"file": { "type": "string" },
+								"line": { "type": "integer", "minimum": 1 }
+							},
+							"required": ["severity", "summary", "rejection_reason", "evidence"],
+							"additionalProperties": false
+						}
 					}
 				},
-				"required": ["status", "head_sha", "evidence"],
+				"required": ["reviewer", "status", "head_sha", "checks", "evidence"],
 				"additionalProperties": false
 			}),
 		)]
@@ -879,12 +961,19 @@ impl<'a> TrackerToolBridge<'a> {
 			Ok(head_sha) => head_sha,
 			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
-		let evidence = parsed
-			.evidence
-			.into_iter()
-			.map(|item| item.trim().to_owned())
-			.filter(|item| !item.is_empty())
-			.collect::<Vec<_>>();
+		let checkpoint_payload =
+			match normalize_review_checkpoint_payload(parsed, review_policy_status) {
+				Ok(payload) => payload,
+				Err(error) => return DynamicToolCallResponse::failure(error),
+			};
+		let details_json = match serde_json::to_string(&checkpoint_payload) {
+			Ok(details_json) => details_json,
+			Err(error) =>
+				return DynamicToolCallResponse::failure(format!(
+					"Failed to serialize the structured review checkpoint for issue `{}`: {error}",
+					self.issue.identifier
+				)),
+		};
 		let nonclean_rounds = match self.review_checkpoint_nonclean_rounds(
 			review_context,
 			review_policy_phase,
@@ -900,6 +989,17 @@ impl<'a> TrackerToolBridge<'a> {
 			review_policy_status,
 			&head_sha,
 			nonclean_rounds,
+			&details_json,
+		) {
+			return DynamicToolCallResponse::failure(error);
+		}
+		if let Err(error) = self.append_private_review_checkpoint(
+			review_context,
+			review_policy_phase,
+			review_policy_status,
+			&head_sha,
+			nonclean_rounds,
+			&checkpoint_payload,
 		) {
 			return DynamicToolCallResponse::failure(error);
 		}
@@ -909,7 +1009,11 @@ impl<'a> TrackerToolBridge<'a> {
 			review_policy_status,
 			&head_sha,
 			nonclean_rounds,
-			evidence.len(),
+			ReviewCheckpointPayloadCounts {
+				evidence: checkpoint_payload.evidence.len(),
+				accepted_findings: checkpoint_payload.accepted_findings.len(),
+				rejected_findings: checkpoint_payload.rejected_findings.len(),
+			},
 		);
 
 		DynamicToolCallResponse::success(message)
@@ -947,13 +1051,12 @@ impl<'a> TrackerToolBridge<'a> {
 		review_policy_status: ReviewPolicyStatus,
 		head_sha: &str,
 		nonclean_rounds: i64,
-		evidence_count: usize,
+		counts: ReviewCheckpointPayloadCounts,
 	) -> String {
-		let evidence_suffix = if evidence_count == 0 {
-			String::from("no evidence items recorded")
-		} else {
-			format!("{evidence_count} evidence item(s) recorded")
-		};
+		let evidence_suffix = format!(
+			"{} evidence item(s), {} accepted finding(s), and {} rejected finding(s) recorded",
+			counts.evidence, counts.accepted_findings, counts.rejected_findings,
+		);
 
 		match review_policy_status {
 			ReviewPolicyStatus::Clean => format!(
@@ -975,6 +1078,47 @@ impl<'a> TrackerToolBridge<'a> {
 				self.issue.identifier,
 			),
 		}
+	}
+
+	fn append_private_review_checkpoint(
+		&self,
+		review_context: &ReviewHandoffContext,
+		review_policy_phase: ReviewPolicyPhase,
+		review_policy_status: ReviewPolicyStatus,
+		head_sha: &str,
+		nonclean_rounds: i64,
+		checkpoint_payload: &NormalizedReviewCheckpointPayload,
+	) -> Result<(), String> {
+		let state_store = self.state_store.ok_or_else(|| {
+			format!(
+				"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires the Decodex runtime state store for issue `{}`.",
+				self.issue.identifier
+			)
+		})?;
+		let private_payload = serde_json::json!({
+			"phase": review_policy_phase.as_str(),
+			"status": review_policy_status.as_str(),
+			"head_sha": head_sha,
+			"nonclean_rounds": nonclean_rounds,
+			"review": checkpoint_payload,
+		});
+
+		state_store
+			.append_private_execution_event(
+				&review_context.service_id,
+				&self.issue.id,
+				&review_context.run_id,
+				review_context.attempt_number,
+				"review_checkpoint",
+				private_payload,
+			)
+			.map(|_| ())
+			.map_err(|error| {
+				format!(
+					"Failed to persist the private review checkpoint for issue `{}`: {error}",
+					self.issue.identifier
+				)
+			})
 	}
 
 	fn clear_review_policy_state_after_completion(
@@ -1359,6 +1503,195 @@ fn normalize_required_comment_field(
 			"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` requires `{field_name}`."
 		)
 	})?;
+
+	Ok(value)
+}
+
+fn normalize_review_checkpoint_payload(
+	parsed: ReviewCheckpointArgs,
+	status: ReviewPolicyStatus,
+) -> Result<NormalizedReviewCheckpointPayload, String> {
+	let reviewer = parsed
+		.reviewer
+		.map(|reviewer| reviewer.trim().to_owned())
+		.filter(|reviewer| !reviewer.is_empty())
+		.ok_or_else(|| {
+			format!(
+				"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `reviewer` set to `{INDEPENDENT_FRESH_CONTEXT_REVIEWER}`."
+			)
+		})?;
+
+	if reviewer != INDEPENDENT_FRESH_CONTEXT_REVIEWER {
+		return Err(format!(
+			"`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` reviewer must be `{INDEPENDENT_FRESH_CONTEXT_REVIEWER}`, not `{reviewer}`."
+		));
+	}
+
+	let checks = normalize_review_checkpoint_checks(
+		parsed
+			.checks
+			.ok_or_else(|| format!("`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `checks`."))?,
+	)?;
+	let evidence = normalize_required_review_evidence_list(parsed.evidence, "evidence")?;
+	let accepted_findings = parsed
+		.accepted_findings
+		.into_iter()
+		.map(normalize_review_checkpoint_finding)
+		.collect::<Result<Vec<_>, _>>()?;
+	let rejected_findings = parsed
+		.rejected_findings
+		.into_iter()
+		.map(normalize_rejected_review_checkpoint_finding)
+		.collect::<Result<Vec<_>, _>>()?;
+
+	if status == ReviewPolicyStatus::Findings && accepted_findings.is_empty() {
+		return Err(String::from(
+			"`issue_review_checkpoint` status `findings` requires at least one accepted finding. Put non-actionable reviewer comments in `rejected_findings` and use `clean` if no accepted repair remains.",
+		));
+	}
+	if status == ReviewPolicyStatus::Clean && !accepted_findings.is_empty() {
+		return Err(String::from(
+			"`issue_review_checkpoint` status `clean` cannot include accepted findings. Reject non-actionable comments explicitly or use status `findings` for accepted repair work.",
+		));
+	}
+
+	Ok(NormalizedReviewCheckpointPayload {
+		reviewer,
+		checks,
+		evidence,
+		accepted_findings,
+		rejected_findings,
+	})
+}
+
+fn normalize_review_checkpoint_checks(
+	checks: ReviewCheckpointChecksArgs,
+) -> Result<ReviewCheckpointChecksArgs, String> {
+	Ok(ReviewCheckpointChecksArgs {
+		intended_behavior: normalize_required_review_text(
+			checks.intended_behavior,
+			"checks.intended_behavior",
+		)?,
+		regression_risk: normalize_required_review_text(
+			checks.regression_risk,
+			"checks.regression_risk",
+		)?,
+		missing_tests: normalize_required_review_text(
+			checks.missing_tests,
+			"checks.missing_tests",
+		)?,
+		docs_config_drift: normalize_required_review_text(
+			checks.docs_config_drift,
+			"checks.docs_config_drift",
+		)?,
+		migration_fallout: normalize_required_review_text(
+			checks.migration_fallout,
+			"checks.migration_fallout",
+		)?,
+		operator_facing_fallout: normalize_required_review_text(
+			checks.operator_facing_fallout,
+			"checks.operator_facing_fallout",
+		)?,
+		loop_decision_contract: normalize_required_review_text(
+			checks.loop_decision_contract,
+			"checks.loop_decision_contract",
+		)?,
+	})
+}
+
+fn normalize_review_checkpoint_finding(
+	finding: ReviewCheckpointFindingArgs,
+) -> Result<ReviewCheckpointFindingArgs, String> {
+	let severity = normalize_review_severity(finding.severity, "accepted_findings.severity")?;
+
+	Ok(ReviewCheckpointFindingArgs {
+		severity,
+		summary: normalize_required_review_text(finding.summary, "accepted_findings.summary")?,
+		evidence: normalize_required_review_evidence_list(
+			finding.evidence,
+			"accepted_findings.evidence",
+		)?,
+		file: normalize_optional_review_file(finding.file)?,
+		line: normalize_optional_review_line(finding.line)?,
+		guidance: normalize_required_review_text(finding.guidance, "accepted_findings.guidance")?,
+	})
+}
+
+fn normalize_rejected_review_checkpoint_finding(
+	finding: ReviewCheckpointRejectedFindingArgs,
+) -> Result<ReviewCheckpointRejectedFindingArgs, String> {
+	let severity = normalize_review_severity(finding.severity, "rejected_findings.severity")?;
+
+	Ok(ReviewCheckpointRejectedFindingArgs {
+		severity,
+		summary: normalize_required_review_text(finding.summary, "rejected_findings.summary")?,
+		rejection_reason: normalize_required_review_text(
+			finding.rejection_reason,
+			"rejected_findings.rejection_reason",
+		)?,
+		evidence: normalize_required_review_evidence_list(
+			finding.evidence,
+			"rejected_findings.evidence",
+		)?,
+		file: normalize_optional_review_file(finding.file)?,
+		line: normalize_optional_review_line(finding.line)?,
+	})
+}
+
+fn normalize_review_severity(severity: String, field_name: &str) -> Result<String, String> {
+	let severity = severity.trim().to_ascii_lowercase();
+
+	match severity.as_str() {
+		"critical" | "high" | "medium" | "low" | "info" => Ok(severity),
+		other => Err(format!(
+			"`{field_name}` must be `critical`, `high`, `medium`, `low`, or `info`, not `{other}`."
+		)),
+	}
+}
+
+fn normalize_required_review_text(value: String, field_name: &str) -> Result<String, String> {
+	let value = tracker_tool_bridge::normalize_summary(&value);
+
+	if value.is_empty() {
+		return Err(format!("`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `{field_name}`."));
+	}
+
+	Ok(value)
+}
+
+fn normalize_required_review_evidence_list(
+	values: Vec<String>,
+	field_name: &str,
+) -> Result<Vec<String>, String> {
+	let values = tracker_tool_bridge::normalize_progress_list(values);
+
+	if values.is_empty() {
+		return Err(format!("`{ISSUE_REVIEW_CHECKPOINT_TOOL_NAME}` requires `{field_name}`."));
+	}
+
+	Ok(values)
+}
+
+fn normalize_optional_review_file(value: Option<String>) -> Result<Option<String>, String> {
+	let Some(file) = tracker_tool_bridge::normalize_optional_progress_field(value) else {
+		return Ok(None);
+	};
+
+	if file.starts_with('/') {
+		return Err(String::from(
+			"`issue_review_checkpoint` file references must be repository-relative paths.",
+		));
+	}
+
+	Ok(Some(file))
+}
+
+fn normalize_optional_review_line(value: Option<u64>) -> Result<Option<u64>, String> {
+	if matches!(value, Some(0)) {
+		return Err(String::from(
+			"`issue_review_checkpoint` line references must be one-based when supplied.",
+		));
+	}
 
 	Ok(value)
 }
