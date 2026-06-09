@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26934",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Prune stale curated plugin caches",
+        "url": "https://github.com/openai/codex/pull/26934",
+        "meta": "Merged 2026-06-08T21:46:59Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26934",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26934.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex curated plugin cache refresh now removes cached plugin directories whose names are no longer present in the raw openai-curated marketplace manifest.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records raw marketplace-name loading before curated cache refresh.",
+    "The loader removes stale caches for plugin names that no longer appear in the raw curated marketplace.",
+    "The PR body says user config is left untouched.",
+    "Manager tests cover a stale `google-sheets` cache being removed after the marketplace omits it."
+  ],
+  "candidate_followups": [
+    "Make Decodex plugin inventory distinguish stale cache pruning from user config deletion.",
+    "Show curated marketplace removal as cache state, not as a failed plugin install.",
+    "Keep diagnostics tolerant of removed openai-curated plugin names."
+  ],
+  "social_notes": [
+    "Public copy should say config stays untouched.",
+    "Avoid implying all remote or local plugin caches are pruned; this is openai-curated refresh."
+  ],
+  "caveats": [
+    "The change is scoped to curated plugin cache refresh.",
+    "Existing user config remains in place even when stale cache directories are removed."
+  ]
+}

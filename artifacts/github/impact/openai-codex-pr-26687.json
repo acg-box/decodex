@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26687",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Pair thread environment settings",
+        "url": "https://github.com/openai/codex/pull/26687",
+        "meta": "Merged 2026-06-08T20:55:15Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26687",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26687.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex now treats cwd and environment selection as one paired thread setting while preserving the app-server public `thread/settings/update` cwd shape.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records that `turn/start` environments now apply to this turn and subsequent turns.",
+    "`TurnEnvironmentSelections` carries a legacy fallback cwd and synchronizes the primary environment cwd.",
+    "Core session configuration now stores sticky thread-level environment selections rather than a standalone cwd field.",
+    "The PR body says public app-server params are preserved while top-level cwd is translated internally."
+  ],
+  "candidate_followups": [
+    "Audit Decodex retained-lane resume and dashboard code for any separate cwd/environment storage.",
+    "Use paired environment settings when displaying execution context for app-server threads.",
+    "Keep compatibility messaging clear: public app-server request params did not remove top-level cwd."
+  ],
+  "social_notes": [
+    "Public copy should frame this as an app-server execution-context semantics change.",
+    "Avoid saying the public app-server `cwd` field was removed."
+  ],
+  "caveats": [
+    "Public app-server params are preserved.",
+    "The risk is primarily semantic drift for app-server consumers and internal integrations."
+  ]
+}

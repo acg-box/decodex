@@ -1,0 +1,76 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26486",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26486",
+    "commit_shas": [
+      "6ca9ccf9cd12de3a88ffa2a001eb78a0b2f97c10",
+      "0165dbf6eda0ccb61187df6752a4e08de93f520c",
+      "9457965868264ba8838440a6d9ff539d830ee0af",
+      "2ff147fc6a4721000547e8b0d6b8ea8d97d58f24",
+      "c5a021feb1b677c105f0f51044311b62b18925af",
+      "034835589958076a97792994e22e724ad6d9a496"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Route image edits through referenced file paths",
+        "url": "https://github.com/openai/codex/pull/26486",
+        "meta": "Merged 2026-06-08T21:23:56Z"
+      },
+      {
+        "kind": "commit",
+        "title": "draft",
+        "url": "https://github.com/openai/codex/commit/6ca9ccf9cd12de3a88ffa2a001eb78a0b2f97c10"
+      },
+      {
+        "kind": "commit",
+        "title": "fix",
+        "url": "https://github.com/openai/codex/commit/0165dbf6eda0ccb61187df6752a4e08de93f520c"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-09T20:07:10Z",
+  "observed_change": "Codex image generation extension replaces the old `action` argument with explicit image references: omitted references generate a new image, while `referenced_image_paths` or a bounded recent-image fallback drive edits.",
+  "changed_surfaces": [
+    "image generation extension tool schema",
+    "image generation extension instructions",
+    "image edit request construction",
+    "app-server v2 imagegen integration tests",
+    "codex-utils-image prompt image loading"
+  ],
+  "user_visible_path": "When the model edits an attached or local image, Codex can pass exact referenced file paths to the edit request instead of inferring inputs from conversation history.",
+  "control_plane_relevance": "Decodex tool-routing prompts and any automation that invokes Codex image editing should stop sending `action` and prefer explicit local image paths when available.",
+  "compatibility_risk": "High for callers or prompt instructions that still emit `action = generate` or `action = edit`, because `ImagegenArgs` denies unknown fields and the schema now exposes `referenced_image_paths` and `num_last_images_to_include` instead.",
+  "adoption_opportunity": "Audit Decodex image-tool instructions and app-server attachment plumbing so referenced local images are passed as paths and fallback history inclusion stays minimal.",
+  "community_value": "High for Codex image users because edit inputs become explicit and less dependent on fragile recent-image heuristics.",
+  "deprecated_or_breaking_notes": "The `action` enum is removed from the imagegen tool schema; generation is represented by omitted image references, and edits are represented by populated references.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26486 says image edits should use exact selected images and replaces `action` with optional `referenced_image_paths`.",
+    "codex-rs/ext/image-generation/src/tool.rs removes `ImagegenAction`, adds `referenced_image_paths` and `num_last_images_to_include`, and loads referenced absolute image paths through `codex-utils-image`.",
+    "codex-rs/ext/image-generation/imagegen_description.md tells the model to omit references for generation, use `referenced_image_paths` for edits with local paths, and use recent-image fallback only when a target lacks a local path.",
+    "codex-rs/ext/image-generation/src/tests.rs renames generation tests around omitted references and adds reference-path edit request coverage.",
+    "codex-rs/app-server/tests/suite/v2/imagegen_extension.rs adds an integration test for an attached model-visible image routed through the image edit endpoint.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26486.json records 6 changed files for the merged PR."
+  ],
+  "caveats": "The PR body also mentions `num_last_images_to_include`; the durable public value is strongest when local file paths are available.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The image tool schema change can break old action-based callers and affects Decodex tool instructions."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The explicit image edit input path has a clear practical explainer angle for Codex users."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should audit image-edit tool prompts and attachment routing for the new schema."
+    }
+  ]
+}

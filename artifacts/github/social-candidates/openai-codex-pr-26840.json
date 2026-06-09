@@ -1,0 +1,55 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26840",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex app-server, plugin, and path-handling integrators",
+  "candidate_text": [
+    "Watch item: Codex added a typed `PathUri` crate for immutable `file:` URI identifiers and legacy absolute-path deserialization. No public protocol field changed yet, but this points to future path-safe app-server/plugin payloads. PR: https://github.com/openai/codex/pull/26840"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26840.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26840.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26840"
+    ]
+  },
+  "evidence_notes": [
+    "The PR body frames `PathUri` as stable `file:` URI identifiers across processes and operating systems.",
+    "`PathUri` validates `file:` URLs and serializes as canonical URI text.",
+    "Serde migration accepts legacy absolute native paths.",
+    "No app-server or public protocol field is wired to `PathUri` in this PR."
+  ],
+  "claims": [
+    {
+      "text": "Codex added a typed `PathUri` utility for immutable `file:` URI identifiers.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26840.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The PR does not yet change a public protocol field.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26840.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "watch_note_only: the source-backed migration signal is useful, but the PR is infrastructure until a later payload adopts `PathUri`.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26840:watch_note:defer"
+  },
+  "caveats": [
+    "This is not a publication request.",
+    "Future behavior depends on later PRs adopting `PathUri` in protocol or app-server payloads."
+  ],
+  "next_steps": [
+    "Do not hand this defer candidate directly to Publisher for posting.",
+    "Use it as release-rollup context if a later source-reviewed PR wires `PathUri` into user-visible behavior."
+  ]
+}

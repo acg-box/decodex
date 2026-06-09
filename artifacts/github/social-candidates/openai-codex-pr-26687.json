@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26687",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "critical",
+  "audience": "Codex app-server and Control Plane operators",
+  "candidate_text": [
+    "Codex now pairs thread cwd with environment selections: `turn/start` environments can become sticky for later turns while app-server keeps the public `cwd` shape. Control-plane clients should model them as one setting. PR: https://github.com/openai/codex/pull/26687"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26687.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26687.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26687"
+    ]
+  },
+  "evidence_notes": [
+    "`turn/start` environments are documented as applying to this turn and subsequent turns.",
+    "`TurnEnvironmentSelections` pairs fallback cwd with selected environments.",
+    "The PR body says public app-server params are unchanged while app-server translates top-level cwd internally.",
+    "Core session configuration stores sticky thread-level environment selections."
+  ],
+  "claims": [
+    {
+      "text": "Codex pairs cwd and environment selection as a sticky thread setting.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26687.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The public app-server cwd request shape remains translated rather than removed.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26687.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR changes concrete app-server execution-context semantics used by Control Plane operators.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26687:operator_impact"
+  },
+  "caveats": [
+    "Public app-server request params are preserved.",
+    "The main risk is semantic drift for app-server consumers and internal integrations."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate."
+  ]
+}
