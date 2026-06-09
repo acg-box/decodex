@@ -88,7 +88,29 @@ or clean labels.
 | Queue label should be added, removed, or interpreted. | Use service-scoped label policy. | Follow the `labels` skill; do not guess `<service-id>` or clear `needs-attention` before fixing the blocker. |
 | Broad steer materially changes the objective or acceptance contract. | Preserve audit and resolve lifecycle explicitly. | Update and requeue the same issue, create a new issue/lane, or route the owned run to manual attention. |
 | Operator wants a different issue or replacement task. | Treat as task replacement, not steer. | Stop or pause through supported controls as needed, then create/update/requeue through the supported lifecycle. |
+| Status or Linear failure summary reports a loop guardrail reason. | Stop automatic recovery and inspect the reason-specific evidence. | Follow the loop guardrail recovery table below before clearing `decodex:needs-attention` or requeueing. |
 | Evidence is missing, contradictory, or would require guessing whether local work is safe to overwrite. | Stop automatic recovery. | Use manual attention with structured public blockers and keep private evidence local. |
+
+## Loop Guardrail Recovery
+
+Loop guardrails stop non-converging automation after three consecutive matching
+observations. They preserve retained worktrees and private evidence; they do not mean
+the operator should delete local progress to make the queue clean.
+
+| Guardrail reason | Inspect first | Resume only after |
+| --- | --- | --- |
+| `validation_repeat` | The repeated validation failure, repo-gate output, retained worktree, and prior repair attempts. | The repair strategy changes, the validation cause is fixed manually, or the issue is routed to architecture/research review. |
+| `no_effective_diff` | The retained worktree status, private retry evidence, and whether any useful tracked delta exists. | A human identifies a concrete next diff, commits/resets the retained work intentionally, or updates the issue scope. |
+| `remaining_delta_unchanged` | The unchanged tracked delta and latest validation evidence. | The next repair is bounded and materially different, or the retained patch is accepted/reset manually. |
+| `review_churn` or `review_policy_exhausted` | Fresh-context review checkpoints, accepted findings, rejected findings, and the current head. | A new repair strategy, architecture review, or manual decision is recorded. |
+| `dependency_program_stale` | The open blocker issue, Execution Program readiness, and whether the dependency split is still correct. | The dependency is resolved, the program is refreshed/split, or a research/decision contract updates execution authority. |
+| `uncovered_direction` | The missing requirement, decision, or research gap named in public/private evidence. | A research or Decision Contract captures the missing direction and the issue is updated or requeued from that authority. |
+| `ambiguous_retained_progress` | Retained worktree diff, ownership markers, PR lineage if present, and private evidence. | A human chooses one path: resume same lane, finish manual repair, or reset/discard the retained patch explicitly. |
+
+For every guardrail stop, keep `decodex:needs-attention` until the blocker above is
+resolved. If the issue returns to automation, request a Linear scan or let the next
+scheduled scan observe the corrected tracker state; do not bypass the guardrail with a
+manual retry that leaves the same evidence unchanged.
 
 ## Broad Steer Examples
 

@@ -233,6 +233,16 @@ worktree changes and must not be emitted as `terminal_failure`. If the retained
 disposition absorbs a later runtime failure, the producer should preserve the source
 failure class in `evidence` instead of changing the event type or terminal path.
 
+Loop guardrail stops are public `needs_attention` or `terminal_failure` records with
+the runtime-owned `terminal_path = "manual_attention"` unless retained partial
+progress has already taken precedence. The public record may use these normalized
+`error_class` values: `validation_repeat`, `no_effective_diff`,
+`remaining_delta_unchanged`, `review_churn`, `dependency_program_stale`,
+`uncovered_direction`, or `ambiguous_retained_progress`. The Linear record must carry
+only the public reason and next action; fingerprints, full checkpoint payloads,
+review details, and worktree diagnostics remain in runtime SQLite private execution
+events and `loop_guardrail_checkpoints`.
+
 `failed_command` and `raw_error` are public-summary fields, not private evidence
 escape hatches. Producers must validate those values before writing a Linear comment.
 When the exact failed command or raw error contains private information, producers must
