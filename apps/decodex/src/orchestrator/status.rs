@@ -280,29 +280,19 @@ fn build_operator_status_snapshot_with_account_mode(
 	account_activity_mode: AccountActivityMode,
 ) -> crate::prelude::Result<OperatorStatusSnapshot> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
-	let (active_runs, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
+	let (leased_runs, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
 	let project_display_name = operator_project_display_name(project);
 	let recent_runs = recent_runs
 		.into_iter()
 		.map(|run| operator_run_status(project, &project_display_name, run, now_unix_epoch))
 		.collect::<crate::prelude::Result<Vec<_>>>()?;
-	let mut active_runs = active_runs
-		.into_iter()
-		.map(|run| operator_run_status(project, &project_display_name, run, now_unix_epoch))
-		.collect::<crate::prelude::Result<Vec<_>>>()?
-		.into_iter()
-		.filter(operator_run_counts_as_active)
-		.collect::<Vec<_>>();
-	let mut active_run_ids =
-		active_runs.iter().map(|run| run.run_id.clone()).collect::<HashSet<_>>();
-
-	for run in &recent_runs {
-		if !active_run_ids.contains(&run.run_id) && operator_run_has_live_execution(run) {
-			active_run_ids.insert(run.run_id.clone());
-			active_runs.push(run.clone());
-		}
-	}
-
+	let active_runs = operator_active_run_statuses(
+		project,
+		&project_display_name,
+		leased_runs,
+		&recent_runs,
+		now_unix_epoch,
+	)?;
 	let history_lanes = operator_history_lanes(&active_runs, &recent_runs);
 	let (worktrees, mut warnings, warning_details) =
 		operator_status_worktrees(project, state_store)?;
@@ -346,6 +336,33 @@ fn build_operator_status_snapshot_with_account_mode(
 	refresh_operator_project_summary(&mut snapshot);
 
 	Ok(snapshot)
+}
+
+fn operator_active_run_statuses(
+	project: &ServiceConfig,
+	project_display_name: &str,
+	leased_runs: Vec<ProjectRunStatus>,
+	recent_runs: &[OperatorRunStatus],
+	now_unix_epoch: i64,
+) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
+	let mut active_runs = leased_runs
+		.into_iter()
+		.map(|run| operator_run_status(project, project_display_name, run, now_unix_epoch))
+		.collect::<crate::prelude::Result<Vec<_>>>()?
+		.into_iter()
+		.filter(operator_run_counts_as_active)
+		.collect::<Vec<_>>();
+	let mut active_run_ids =
+		active_runs.iter().map(|run| run.run_id.clone()).collect::<HashSet<_>>();
+
+	for run in recent_runs {
+		if !active_run_ids.contains(&run.run_id) && operator_run_has_live_execution(run) {
+			active_run_ids.insert(run.run_id.clone());
+			active_runs.push(run.clone());
+		}
+	}
+
+	Ok(active_runs)
 }
 
 fn global_codex_account_control_status() -> OperatorCodexAccountControlStatus {
@@ -1143,16 +1160,16 @@ fn operator_run_counts_as_active(run: &OperatorRunStatus) -> bool {
 
 fn operator_run_has_live_execution(run: &OperatorRunStatus) -> bool {
 	matches!(run.status.as_str(), "starting" | "running")
-		&& matches!(
+		&& (matches!(
 			run.execution_liveness.as_str(),
 			"process_alive" | "thread_active" | "protocol_observed"
-		)
+		) || operator_run_has_recent_app_server_execution(run))
 }
 
 fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
 	matches!(run.status.as_str(), "starting" | "running")
 		&& run.phase == "executing"
-		&& run.process_alive != Some(false)
+		&& (run.process_alive != Some(false) || operator_run_has_recent_app_server_execution(run))
 		&& !operator_run_needs_attention(run)
 }
 
@@ -1162,7 +1179,17 @@ fn operator_run_needs_attention(run: &OperatorRunStatus) -> bool {
 		|| run.process_alive == Some(false)
 			&& matches!(run.status.as_str(), "starting" | "running")
 			&& run.wait_reason.is_none()
+			&& !operator_run_has_recent_app_server_execution(run)
 		|| operator_run_has_stale_execution_without_known_process(run)
+}
+
+fn operator_run_has_recent_app_server_execution(run: &OperatorRunStatus) -> bool {
+	matches!(run.thread_status.as_deref(), Some("active"))
+		|| !run.thread_active_flags.is_empty()
+		|| run.protocol_idle_for_seconds.is_some_and(|idle_for| {
+			u64::try_from(idle_for)
+				.is_ok_and(|idle_for| idle_for < ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
+		})
 }
 
 fn operator_run_has_stale_execution_without_known_process(run: &OperatorRunStatus) -> bool {
@@ -6162,6 +6189,9 @@ fn operator_run_queue_lease_summary(run: &OperatorRunStatus) -> String {
 		"thread_active" => String::from("not_held (thread_active keeps lane visible)"),
 		"protocol_observed" => String::from("not_held (protocol_observed keeps lane visible)"),
 		"process_stopped" => String::from("not_held (process_stopped needs attention)"),
+		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH if operator_run_has_recent_app_server_execution(run) => {
+			String::from("not_held (app_server_activity keeps lane visible)")
+		},
 		EXECUTION_LIVENESS_PROCESS_IDENTITY_MISMATCH => {
 			String::from("not_held (process_identity_mismatch needs attention)")
 		},
