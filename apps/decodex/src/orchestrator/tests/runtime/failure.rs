@@ -4,6 +4,8 @@ use orchestrator::{
 	AgentGitCredentialEnvironment, AgentGitCredentialsUnavailable, RepoGateFailureKind,
 };
 use orchestrator::AppServerZeroEvidenceStartFailure;
+use orchestrator::LoopGuardrailReason;
+use orchestrator::LoopGuardrailStopRequested;
 
 fn git_config_value(
 	repo_root: &Path,
@@ -36,6 +38,32 @@ fn injected_git_config_keys(credentials: &AgentGitCredentialEnvironment) -> Vec<
 		.filter(|(key, _)| key.starts_with("GIT_CONFIG_KEY_"))
 		.map(|(_, value)| value)
 		.collect()
+}
+
+fn loop_guardrail_issue_run(
+	config: &ServiceConfig,
+	issue: &TrackerIssue,
+	attempt_number: i64,
+) -> IssueRunPlan {
+	IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: issue.state.name.clone(),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.repo_root().to_path_buf(),
+			reused_existing: true,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number,
+		run_id: format!("pub-101-attempt-{attempt_number}-123"),
+		retry_budget_base: 0,
+	}
 }
 
 #[test]
@@ -74,6 +102,112 @@ fn terminal_failure_comments_surface_actionable_error_classes() {
 			assert!(comment.contains(expected_snippet), "{error_class} missing {expected_snippet}");
 		}
 	}
+}
+
+#[test]
+fn loop_guardrail_terminal_failure_details_normalize_stop_classes() {
+	let recovery_gate = "clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired";
+
+	for (reason, error_class, expected_snippet) in [
+		(
+			LoopGuardrailReason::ValidationRepeat,
+			"validation_repeat",
+			"repeated validation failure",
+		),
+		(
+			LoopGuardrailReason::NoEffectiveDiff,
+			"no_effective_diff",
+			"do not continue automatic repair",
+		),
+		(
+			LoopGuardrailReason::RemainingDeltaUnchanged,
+			"remaining_delta_unchanged",
+			"unchanged remaining delta",
+		),
+		(
+			LoopGuardrailReason::ReviewChurn,
+			"review_churn",
+			"repeated review findings",
+		),
+		(
+			LoopGuardrailReason::DependencyProgramStale,
+			"dependency_program_stale",
+			"Execution Program readiness",
+		),
+		(
+			LoopGuardrailReason::UncoveredDirection,
+			"uncovered_direction",
+			"research or decision contract",
+		),
+		(
+			LoopGuardrailReason::AmbiguousRetainedProgress,
+			"ambiguous_retained_progress",
+			"retained partial progress",
+		),
+	] {
+		let error = Report::new(LoopGuardrailStopRequested {
+			issue_identifier: String::from("PUB-101"),
+			run_id: String::from("pub-101-attempt-3-123"),
+			reason,
+			consecutive_count: 3,
+			fingerprint: String::from("fingerprint"),
+			source_error_class: Some(String::from("repo_gate_verify_failed")),
+		});
+		let (actual_error_class, next_action) =
+			orchestrator::terminal_failure_comment_details(false, &error, recovery_gate);
+
+		assert_eq!(actual_error_class, error_class);
+		assert!(next_action.contains(expected_snippet), "{error_class} missing expected action");
+		assert!(next_action.contains("clear label `decodex:needs-attention`"));
+	}
+}
+
+#[test]
+fn manual_attention_loop_error_classes_preserve_runtime_attribution() {
+	let recovery_gate = "clear label `decodex:needs-attention`, then move the issue back to a startable state if another automated run is desired";
+
+	for (source_error_class, expected_error_class, expected_snippet) in [
+		("review_policy_exhausted", "review_churn", "repeated review findings"),
+		(
+			"dependency_blocked",
+			"dependency_program_stale",
+			"Execution Program readiness",
+		),
+		(
+			"research_contract_required",
+			"uncovered_direction",
+			"research or decision contract",
+		),
+		(
+			"ownership_ambiguous",
+			"ambiguous_retained_progress",
+			"retained partial progress",
+		),
+	] {
+		let error = Report::new(ManualAttentionRequested {
+			issue_identifier: String::from("PUB-101"),
+			label: String::from("decodex:needs-attention"),
+			run_id: String::from("pub-101-attempt-1-123"),
+			error_class: Some(String::from(source_error_class)),
+		});
+		let (actual_error_class, next_action) =
+			orchestrator::terminal_failure_comment_details(true, &error, recovery_gate);
+
+		assert_eq!(actual_error_class, expected_error_class);
+		assert!(next_action.contains(expected_snippet), "{expected_error_class} action missing");
+	}
+
+	let generic = Report::new(ManualAttentionRequested {
+		issue_identifier: String::from("PUB-101"),
+		label: String::from("decodex:needs-attention"),
+		run_id: String::from("pub-101-attempt-1-123"),
+		error_class: Some(String::from("operator_requested_stop")),
+	});
+	let (actual_error_class, next_action) =
+		orchestrator::terminal_failure_comment_details(true, &generic, recovery_gate);
+
+	assert_eq!(actual_error_class, "human_attention_required");
+	assert!(next_action.contains("inspect the issue comment and worktree"));
 }
 
 #[test]
@@ -469,6 +603,171 @@ fn repo_gate_lock_contention_terminal_failures_preserve_specific_error_class_aft
 
 	assert_eq!(error_class, "repo_gate_git_lock_contention");
 	assert!(next_action.contains("active or stale `.git/index.lock` holder"));
+}
+
+#[test]
+fn loop_guardrail_stops_repeated_validation_failures_after_three_observations() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+	let error = || {
+		Report::new(orchestrator::RepoGateFailure::new(
+			RepoGateFailureKind::VerifyCommandFailed,
+			String::from("Repo verify command `cargo make test` failed: same assertion failed"),
+		))
+	};
+
+	for attempt_number in 1..=2 {
+		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+
+		assert!(
+			orchestrator::retryable_failure_loop_guardrail_stop(
+				&config,
+				&state_store,
+				&issue_run,
+				&error(),
+			)
+			.expect("guardrail observation should persist")
+			.is_none(),
+			"guardrail should allow repair attempt {attempt_number}"
+		);
+	}
+
+	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
+	let stop = orchestrator::retryable_failure_loop_guardrail_stop(
+		&config,
+		&state_store,
+		&issue_run,
+		&error(),
+	)
+	.expect("third matching failure should evaluate")
+	.expect("third matching validation failure should stop");
+
+	assert_eq!(stop.reason, orchestrator::LoopGuardrailReason::ValidationRepeat);
+	assert_eq!(stop.consecutive_count, 3);
+	assert_eq!(stop.source_error_class.as_deref(), Some("repo_gate_verify_failed"));
+
+	let checkpoint = state_store
+		.loop_guardrail_checkpoint(config.service_id(), &issue.id, "validation_repeat")
+		.expect("validation checkpoint should read")
+		.expect("validation checkpoint should exist");
+
+	assert_eq!(checkpoint.consecutive_count(), 3);
+
+	let events = state_store
+		.list_private_execution_events(config.service_id(), &issue.id, &issue_run.run_id, 3)
+		.expect("private events should list");
+
+	assert_eq!(events.len(), 1);
+	assert_eq!(events[0].event_type(), "loop_guardrail_checkpoint");
+	assert_eq!(events[0].payload()["reason"], "validation_repeat");
+}
+
+#[test]
+fn loop_guardrail_stops_unchanged_remaining_delta_when_validation_text_changes() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+
+	for attempt_number in 1..=2 {
+		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let error = Report::new(orchestrator::RepoGateFailure::new(
+			RepoGateFailureKind::VerifyCommandFailed,
+			format!("Repo verify command failed with assertion variant {attempt_number}"),
+		));
+
+		assert!(
+			orchestrator::retryable_failure_loop_guardrail_stop(
+				&config,
+				&state_store,
+				&issue_run,
+				&error,
+			)
+			.expect("guardrail observation should persist")
+			.is_none()
+		);
+	}
+
+	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
+	let error = Report::new(orchestrator::RepoGateFailure::new(
+		RepoGateFailureKind::VerifyCommandFailed,
+		String::from("Repo verify command failed with assertion variant 3"),
+	));
+	let stop = orchestrator::retryable_failure_loop_guardrail_stop(
+		&config,
+		&state_store,
+		&issue_run,
+		&error,
+	)
+	.expect("third unchanged delta should evaluate")
+	.expect("unchanged remaining delta should stop");
+
+	assert_eq!(stop.reason, orchestrator::LoopGuardrailReason::RemainingDeltaUnchanged);
+	assert_eq!(stop.consecutive_count, 3);
+	assert_eq!(stop.source_error_class.as_deref(), Some("repo_gate_verify_failed"));
+
+	let validation_checkpoint = state_store
+		.loop_guardrail_checkpoint(config.service_id(), &issue.id, "validation_repeat")
+		.expect("validation checkpoint should read")
+		.expect("validation checkpoint should exist");
+
+	assert_eq!(
+		validation_checkpoint.consecutive_count(),
+		1,
+		"changing validation text should keep validation_repeat below threshold"
+	);
+
+	let delta_checkpoint = state_store
+		.loop_guardrail_checkpoint(config.service_id(), &issue.id, "remaining_delta_unchanged")
+		.expect("remaining-delta checkpoint should read")
+		.expect("remaining-delta checkpoint should exist");
+
+	assert_eq!(delta_checkpoint.consecutive_count(), 3);
+}
+
+#[test]
+fn loop_guardrail_stops_no_effective_diff_for_retryable_errors_without_delta() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+
+	for attempt_number in 1..=2 {
+		let issue_run = loop_guardrail_issue_run(&config, &issue, attempt_number);
+		let error = Report::msg("child exited without useful change");
+
+		assert!(
+			orchestrator::retryable_failure_loop_guardrail_stop(
+				&config,
+				&state_store,
+				&issue_run,
+				&error,
+			)
+			.expect("guardrail observation should persist")
+			.is_none()
+		);
+	}
+
+	let issue_run = loop_guardrail_issue_run(&config, &issue, 3);
+	let error = Report::msg("child exited without useful change");
+	let stop = orchestrator::retryable_failure_loop_guardrail_stop(
+		&config,
+		&state_store,
+		&issue_run,
+		&error,
+	)
+	.expect("third no-diff observation should evaluate")
+	.expect("no effective diff should stop");
+
+	assert_eq!(stop.reason, orchestrator::LoopGuardrailReason::NoEffectiveDiff);
+	assert_eq!(stop.consecutive_count, 3);
+	assert_eq!(stop.source_error_class, None);
+
+	let checkpoint = state_store
+		.loop_guardrail_checkpoint(config.service_id(), &issue.id, "no_effective_diff")
+		.expect("no-diff checkpoint should read")
+		.expect("no-diff checkpoint should exist");
+
+	assert_eq!(checkpoint.consecutive_count(), 3);
 }
 
 #[test]

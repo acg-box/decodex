@@ -43,6 +43,7 @@ fn terminal_failures_without_needs_attention_label_use_nonstartable_guard_state(
 		issue_identifier: issue.identifier.clone(),
 		label: String::from("decodex:needs-attention"),
 		run_id: issue_run.run_id.clone(),
+		error_class: None,
 	});
 
 	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
@@ -124,6 +125,7 @@ fn terminal_failures_apply_incremental_label_mutations_when_issue_labels_paginat
 		issue_identifier: issue.identifier.clone(),
 		label: String::from("decodex:needs-attention"),
 		run_id: issue_run.run_id.clone(),
+		error_class: None,
 	});
 
 	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
@@ -729,6 +731,7 @@ fn explicit_manual_attention_keeps_manual_terminal_path_with_dirty_worktree() {
 		issue_identifier: issue.identifier.clone(),
 		label: String::from("decodex:needs-attention"),
 		run_id: issue_run.run_id.clone(),
+		error_class: None,
 	});
 
 	state_store

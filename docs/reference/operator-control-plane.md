@@ -152,7 +152,7 @@ work that needs full private payload values.
 
 | Surface | Owns | Does Not Own |
 | --- | --- | --- |
-| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, Decision Contracts, internal Execution Programs, worktree mappings, retry state, retained PR state, review-policy checkpoints with structured independent-review detail, phase-goal signals, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
+| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, Decision Contracts, internal Execution Programs, worktree mappings, retry state, retained PR state, review-policy checkpoints with structured independent-review detail, loop-guardrail checkpoints, phase-goal signals, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
 | Central project config | `service_id`, repo root, worktree root, tracker/GitHub credential env-var names, enabled project registration | per-run state or issue ownership |
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
 | Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, private execution evidence, connector retry budgets |
@@ -241,7 +241,7 @@ protocol activity durable outside the local operator surface.
 | `Accounts` | Shared Codex account pool and usage table from `~/.codex/decodex/accounts.jsonl` when `[codex.accounts]` is enabled for a project. Account identity can be obscured from the `Account` column header eye without changing the underlying snapshot. The row weight column shows the capacity multiplier used for pool usage estimates: `pro` accounts count as `20x`, and all other plans count as `1x`. Usage probes read Codex `/wham/usage` for window capacity and `/wham/profiles/me` for profile token stats such as lifetime tokens, peak daily tokens, longest task, streaks, and daily token activity. Selecting an account writes the global `[codex.accounts].fixed_account` selector in `~/.codex/decodex/config.toml`; clearing it returns all new account-pool runs to balanced account selection. Account display-name rerolls write `[codex.account_names.offsets]` in the same global config so Decodex App and the dashboard share the privacy-preserving names. Theme, sort, and identity-visibility preferences are client-local presentation state. The selector is global and does not pin a project to an account. |
 | `Projects` | Fleet-level project table. The section-level filter toggles between active project work and the full registry. Location is its own compact path column and can be obscured from the location header eye. `Activity` shows a relative timestamp or `-`; `Work` is `running/waiting/attention`. It should not duplicate per-lane details already shown below. |
 | `Running Lanes` | Active leased or live-executing issue lanes. A lane here is currently owned by this local control plane, or a live process/thread/protocol marker still explains active execution even when the queue lease is not held. It shows issue identity, phase, operation, attempt, queue lease state, execution liveness, thread/protocol status, child-agent activity when captured, phase-goal status when app-server reports it, timing, branch, and worktree. |
-| `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after stalled reconciliation, failure writeback, or retries, the candidate is partial retained progress and not just a generic stalled or retry-budget hold. Running lanes are not repeated as normal intake work. |
+| `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. Repeated identical open dependency blockers surface as `dependency_program_stale` after the guardrail threshold so operators can distinguish a stale Execution Program/dependency plan from a newly blocked queue item. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after stalled reconciliation, failure writeback, or retries, the candidate is partial retained progress and not just a generic stalled or retry-budget hold. Running lanes are not repeated as normal intake work. |
 | `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. |
 | `Recovery Worktrees` | Retained local worktrees that are not currently owned by `Running Lanes`, `Review & Landing`, or queued attention in `Intake Queue`. This is the cleanup or recovery inbox for recovered paths, retained PR leftovers, and cleanup-only local worktrees. Empty is the normal healthy state. |
 | `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Raw local attempts and heartbeat details stay in debug expansion. |
@@ -338,6 +338,11 @@ Worktree visibility follows the owning dashboard section:
   diagnostic phase evidence only; it is not a Run Ledger outcome and does not replace
   repo validation, bounded review, PR handoff, manual attention, landing, closeout, or
   terminal finalization.
+- Loop guardrail stops may appear as `validation_repeat`, `no_effective_diff`,
+  `remaining_delta_unchanged`, `review_churn`, `dependency_program_stale`,
+  `uncovered_direction`, or `ambiguous_retained_progress`. Use the public reason to
+  choose the recovery path, then inspect `decodex evidence` or local status for
+  `loop_guardrail_checkpoint` evidence before clearing attention labels or retrying.
 - `Review & Landing` means a retained PR lane still owns the path for review repair,
   landing, closeout, or retained-lane cleanup.
 - `missing_review_handoff_record` in `Review & Landing` means Decodex found a retained
@@ -364,6 +369,10 @@ Worktree visibility follows the owning dashboard section:
   command output.
 - `Intake Queue` means queued attention still owns the path, including partial retained
   progress after retries.
+- `dependency_program_stale` in `Intake Queue` means the same open blocker fingerprint
+  has repeated through the guardrail threshold. Refresh the dependency issue, split or
+  repair the Execution Program, or route research/decision work before requeueing; do
+  not clear it as a transient queue delay.
 - `linear_active_label_present` in `Intake Queue` means the issue still carries
   service active ownership while it is also queued, but local status could not prove a
   matching active lease. Treat it as a recovery/attention row, not ready work. If its
