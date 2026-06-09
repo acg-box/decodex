@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26639",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex app-server, MCP, and multi-agent operators",
+  "candidate_text": [
+    "Codex app-server MCP startup notifications now carry nullable `threadId`, so subagent MCP failures stay scoped to the owning thread instead of polluting the parent transcript. App-server clients should handle the new field. PR: https://github.com/openai/codex/pull/26639"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26639.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26639.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26639"
+    ]
+  },
+  "evidence_notes": [
+    "The app-server protocol struct, JSON schema, and TypeScript type add nullable `threadId` to MCP startup notifications.",
+    "The app-server README documents `threadId` as the owning thread or null for app-scoped startup.",
+    "The TUI routes MCP startup notifications by thread and treats missing thread ids as app-scoped.",
+    "PR #26639 says child-owned MCP failures should not pollute the parent transcript."
+  ],
+  "claims": [
+    {
+      "text": "MCP startup notifications now include nullable thread ownership in the app-server protocol.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26639.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Subagent MCP startup failures should stay visible in the owning thread instead of the parent transcript.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26639.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR combines a concrete app-server protocol change with a visible multi-agent MCP diagnostic fix.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26639:operator_impact"
+  },
+  "caveats": [
+    "Clients with strict generated schemas may need to accept the new nullable field.",
+    "The TUI currently ignores app-scoped null notifications until an app-level target exists."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this after repository checks pass."
+  ]
+}
