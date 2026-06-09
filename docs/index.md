@@ -30,6 +30,9 @@ The split below is by question type, not by human-versus-agent audience.
 
 - Need runtime contracts, invariants, schemas, enums, state machines, or required
   behavior -> `docs/spec/`
+- Need the natural-language-first loop-runtime contract, Research/Decision stage,
+  latent Loop/Decision Contract, internal Execution Program, phase-scoped goals,
+  unattended execution behavior, or loop guardrails -> `docs/spec/loop-runtime.md`
 - Need current Decodex/Codex app-server protocol support
   evidence -> `docs/spec/app-server.md`
 - Need Decodex operator lane-control capability support, including inspect,
@@ -46,6 +49,9 @@ The split below is by question type, not by human-versus-agent audience.
   implementation surface maps -> `docs/reference/`
 - Need durable design rationale, packaging choices, or static-site tradeoffs ->
   `docs/decisions/`
+- Need rationale for keeping execution-graph semantics internal behind a
+  natural-language user surface ->
+  `docs/decisions/natural-language-loop-runtime.md`
 - Need the current Radar, Control Plane, and Publisher capability boundary ->
   `docs/decisions/radar-control-plane-publisher.md`
 - Need Radar raw-artifact retention, archive manifests, or GitHub Release archive
@@ -89,3 +95,5 @@ The split below is by question type, not by human-versus-agent audience.
 - Keep links explicit and stable.
 - Treat `docs/research/` and `docs/plans/` as supporting or historical evidence, not as
   primary authority lanes.
+- Treat research output as latent until accepted or promoted through the loop-runtime
+  contract in `docs/spec/loop-runtime.md`.

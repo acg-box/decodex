@@ -16,6 +16,8 @@ Repo-native agent orchestration, upstream Codex radar, and public publishing.
 ## Feature Highlights
 
 - Rust CLI and runtime for repo-native retained coding-agent lanes.
+- Natural-language-first loop-runtime contract with research/decision promotion,
+  internal execution-program state, and normal Linear issue lanes.
 - Native macOS app for Decodex Codex account-pool management.
 - Explicit project registry under `~/.codex/decodex/projects/<service-id>/`.
 - Local operator listener with a dashboard at `/` and `/dashboard`, WebSocket
@@ -333,6 +335,7 @@ structure. For the authoritative layout and ownership map, read
 
 - Product and development overview: this `README.md`
 - Unified documentation router: `docs/index.md`
+- Natural-language loop-runtime contract: `docs/spec/loop-runtime.md`
 - Normative specs: `docs/spec/index.md`
 - Procedural runbooks: `docs/runbook/index.md`
 - Current implementation references: `docs/reference/index.md`
