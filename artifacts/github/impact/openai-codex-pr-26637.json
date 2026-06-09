@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26637",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Speed up external agent session imports",
+        "url": "https://github.com/openai/codex/pull/26637",
+        "meta": "Merged 2026-06-08T18:16:32Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26637",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26637.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex imports external-agent session histories directly through ThreadStore with a bounded preparation pipeline instead of starting full live threads for every imported session.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "candidate",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR body says imports now persist directly through `ThreadStore` and process through a bounded five-session pipeline.",
+    "The added app-server import module prepares imports, reuses content hashes, and writes stored threads rather than starting unrelated live runtime systems.",
+    "Regression coverage verifies imports do not initialize unrelated required MCP servers.",
+    "The PR reports a large-fixture import speedup from about 70 seconds to about 6 seconds while keeping rollouts readable through thread listing and history APIs."
+  ],
+  "candidate_followups": [
+    "Check whether Decodex external-agent import monitoring should distinguish stored-thread writes from live-thread starts.",
+    "If Decodex exposes bulk external-agent import status, present unchanged-source skips and completed batch ledger updates as import evidence.",
+    "Avoid treating required MCP startup diagnostics as import prerequisites when using this upstream path."
+  ],
+  "social_notes": [
+    "Public copy should focus on faster external-agent history ingestion and the removal of required-MCP startup side effects.",
+    "Use the PR's 50-session fixture numbers as upstream-measured evidence, not a universal benchmark."
+  ],
+  "caveats": [
+    "The change does not alter the public ThreadStore trait according to the PR body.",
+    "Performance may differ outside the upstream 50-session fixture."
+  ]
+}
