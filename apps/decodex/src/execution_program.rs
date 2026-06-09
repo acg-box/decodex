@@ -38,6 +38,21 @@ pub(crate) enum ExecutionProgramNodeStage {
 	/// Review, PR, delivery, or handoff work.
 	Handoff,
 }
+impl ExecutionProgramNodeStage {
+	/// Stable machine-readable stage name.
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::Research => "research",
+			Self::Design => "design",
+			Self::Spec => "spec",
+			Self::Schema => "schema",
+			Self::Runtime => "runtime",
+			Self::Plugin => "plugin",
+			Self::Eval => "eval",
+			Self::Handoff => "handoff",
+		}
+	}
+}
 
 /// Queue intent for one internal Execution Program node.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
@@ -59,6 +74,19 @@ pub(crate) enum ExecutionQueueIntent {
 	Canceled,
 }
 impl ExecutionQueueIntent {
+	/// Stable machine-readable queue-intent name.
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::NotReady => "not_ready",
+			Self::ReadyToQueue => "ready_to_queue",
+			Self::Queued => "queued",
+			Self::Active => "active",
+			Self::Paused => "paused",
+			Self::Done => "done",
+			Self::Canceled => "canceled",
+		}
+	}
+
 	fn is_terminal(self) -> bool {
 		matches!(self, Self::Done | Self::Canceled)
 	}
@@ -82,7 +110,8 @@ pub(crate) enum ExecutionConflictDomainKind {
 	ReviewSurface,
 }
 impl ExecutionConflictDomainKind {
-	fn as_str(self) -> &'static str {
+	/// Stable machine-readable conflict-domain class name.
+	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::File => "file",
 			Self::Module => "module",
@@ -157,6 +186,11 @@ impl ExecutionConflictDomain {
 	/// Stable conflict-domain key.
 	pub(crate) fn key(&self) -> &str {
 		&self.key
+	}
+
+	/// Stable conflict-domain kind.
+	pub(crate) fn kind(&self) -> ExecutionConflictDomainKind {
+		self.kind
 	}
 
 	fn validate(&self) -> Result<()> {
@@ -282,6 +316,11 @@ impl ExecutionLinearIssueMapping {
 	/// Linear issue identifier such as `XY-853`.
 	pub(crate) fn issue_identifier(&self) -> &str {
 		&self.issue_identifier
+	}
+
+	/// Linear issue id used by tracker APIs.
+	pub(crate) fn issue_id(&self) -> &str {
+		&self.issue_id
 	}
 
 	/// Tracker workflow state for the mapped issue.
@@ -439,9 +478,19 @@ impl ExecutionProgramNode {
 		&self.node_id
 	}
 
+	/// Node execution stage.
+	pub(crate) fn stage(&self) -> ExecutionProgramNodeStage {
+		self.stage
+	}
+
 	/// Node queue intent.
 	pub(crate) fn queue_intent(&self) -> ExecutionQueueIntent {
 		self.queue_intent
+	}
+
+	/// Conflict domains occupied by this node.
+	pub(crate) fn conflict_domains(&self) -> &[ExecutionConflictDomain] {
+		&self.conflict_domains
 	}
 
 	/// Linked normal Linear issue, when the node is executable.

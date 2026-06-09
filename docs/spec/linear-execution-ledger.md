@@ -32,8 +32,8 @@ Linear comments, the Decodex runtime database, and short-lived heartbeat markers
 - Decision Contracts and internal Execution Programs are not Linear execution-ledger
   records. A ledger record may summarize or link to generated issues after promotion,
   but the versioned `decodex.decision_contract/1`,
-  `decodex.execution_program/1`, and private loop evidence payloads stay in runtime
-  SQLite.
+  `decodex.execution_program/1`, `decodex.harness_outcome/1`, and private loop
+  evidence payloads stay in runtime SQLite.
 
 ## Comment body format
 
@@ -352,6 +352,8 @@ runtime telemetry:
 - token counts, largest tool-output sizes, and context-pressure warnings
 - review-policy convergence counters that only guide the current retained-lane retry
   loop
+- harness-outcome telemetry and improvement-candidate payloads that correlate
+  contracts, validation, review, repair, PR outcomes, and guardrail stops
 - full `issue_progress_checkpoint` payloads, including raw focus, next action,
   blockers, evidence, verification, and local head evidence
 - transient diagnostic details that help the local operator understand whether an active

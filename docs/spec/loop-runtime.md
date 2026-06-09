@@ -345,6 +345,30 @@ attempts, dependency blockers, and accepted contract gaps should feed improvemen
 - ready-node selection and conflict-domain policy
 - future loop guardrails
 
+Runtime outcome feedback is recorded as local private execution evidence. The
+versioned payload is `decodex.harness_outcome/1` with `event_type =
+"harness_outcome"` in `private_execution_events`. It correlates:
+
+- source intent, Decision Contract ids, generated issue identifiers, generated node
+  ids, and conflict domains
+- phase-goal signals, validation results, validation failure classes, and repair
+  attempts
+- independent review checkpoint status, accepted findings, rejected findings, and
+  non-clean review rounds
+- manual-attention or guardrail reason codes such as `uncovered_direction`,
+  `dependency_program_stale`, `validation_repeat`, or `no_effective_diff`
+- PR handoff, retained repair, closeout, cleanup, and terminal failure outcomes as
+  summarized from cached Linear execution records and local runtime state
+- candidate harness improvements such as `missing_validator`, `weak_prompt`,
+  `missing_issue_template_field`, `underspecified_decision_contract`, and
+  `stale_readiness_model`
+
+Operator readback may summarize improvement candidates through `decodex evidence` or
+derived agent-evidence files. Default readback must expose only compact candidate kind,
+reason code, target, source-event count, and recommendation text. Full private payloads
+remain local and require explicit private evidence readback such as
+`--include-payload`.
+
 Harness improvement does not retroactively change a lane's accepted Decision Contract.
 It also does not authorize automatic execution from latent research output. Apply
 future policy changes only after the relevant spec, decision, or project contract is
