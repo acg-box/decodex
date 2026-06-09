@@ -509,6 +509,7 @@ pub(crate) struct ReviewPolicyCheckpoint {
 	status: String,
 	head_sha: String,
 	nonclean_rounds: i64,
+	details_json: String,
 	updated_at: String,
 	updated_at_unix: i64,
 }
@@ -544,6 +545,10 @@ impl ReviewPolicyCheckpoint {
 
 	pub(crate) fn nonclean_rounds(&self) -> i64 {
 		self.nonclean_rounds
+	}
+
+	pub(crate) fn details_json(&self) -> &str {
+		&self.details_json
 	}
 
 	pub(crate) fn updated_at(&self) -> &str {
