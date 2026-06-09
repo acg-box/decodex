@@ -175,6 +175,9 @@ While in `review_repair`:
 - the runtime must reuse the retained lane when it is still valid
 - repair work must stay bound to the same issue, branch lineage, and PR
 - the runtime must validate each external-review claim against the codebase, tests, and requirements before changing code
+- when a fresh-context `issue_review_checkpoint` exists for the repair phase, repair
+  work must operate on accepted findings from that checkpoint; rejected or
+  non-actionable comments remain evidence, not repair scope
 - the repaired head must pass the local pre-review gate before being pushed
 - when `codex.internal_review_mode = "loop"`, every repaired-head bounded-review result must first be recorded through `issue_review_checkpoint`
 - every addressed review thread must receive an in-thread reply for the repaired head
@@ -194,7 +197,7 @@ repeated repair checkpoints stay in `findings` for three consecutive rounds, or 
 checkpoint reports `needs_architecture_review` / `blocked`, the runtime must stop for
 human intervention instead of patch-on-patch churn. When
 `codex.internal_review_mode = "prompt"` or `"off"`, retained repair completion skips that
-self-review checkpoint requirement but still requires the repaired head to be pushed and
+independent-review checkpoint requirement but still requires the repaired head to be pushed and
 the configured repository validation gate to pass.
 The same completion also requires that the PR still belongs to the retained lane, points
 at the repaired lane HEAD, and remains open and ready for fresh review.
