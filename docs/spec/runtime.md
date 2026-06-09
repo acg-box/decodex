@@ -44,7 +44,7 @@ state or this state machine.
 
 ## Source of truth boundaries
 
-- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, run-control channels, protocol events, private execution events, latent and promoted Decision Contracts, worktree mappings, retained PR state, review-policy checkpoints, loop-guardrail checkpoints, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
+- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, run-control channels, protocol events, private execution events, latent and promoted Decision Contracts, internal Execution Programs, worktree mappings, retained PR state, review-policy checkpoints, loop-guardrail checkpoints, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
 - Linear remains the team-visible tracker surface for issue lifecycle, queue/active/manual-attention labels, and coarse lifecycle summaries such as start, PR-ready, blocked, failed, landed, and done.
 - Versioned Linear execution event comments use the schema in
   [`linear-execution-ledger.md`](./linear-execution-ledger.md), but fine-grained runtime truth must not be rebuilt from comments every tick.
@@ -71,6 +71,7 @@ mirror:
 | --- | --- |
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, and recovery detail belong. |
 | Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, but the JSON payload remains the contract authority. |
+| Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads derived from accepted Decision Contracts. They hold internal node readiness, dependency, conflict-domain, queue-intent, drift, and normal-issue mapping state; Linear issue descriptions and ledger comments are only coarse projections. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing active lease ownership. |
 | Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating. |
 | Runtime SQLite `loop_guardrail_checkpoints` | Latest convergence checkpoint for one project, issue, and guardrail reason. It stores the fingerprint, consecutive count, run id, attempt number, and structured detail used to stop non-converging loops without replaying Linear comments. |
@@ -131,8 +132,9 @@ This boundary does not create a project-local runtime database contract. The run
   is `decodex.decision_contract/1`; statuses are `draft_latent`,
   `accepted_promoted`, `rejected_superseded`, and `needs_human_decision`.
 - Execution Program: Internal loop-runtime state derived from accepted Decision
-  Contracts. It may use DAG semantics, but normal Linear issues remain the executable
-  lanes.
+  Contracts. The runtime-facing serialized payload is
+  `decodex.execution_program/1`. It may use DAG semantics, but normal Linear issues
+  remain the executable lanes.
 - Terminal tracker state: A state that should not be auto-started by `decodex`. The default set is `Done`, `Canceled`, and `Duplicate`.
 
 ## Eligibility
