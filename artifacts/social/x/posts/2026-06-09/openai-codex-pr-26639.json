@@ -1,0 +1,103 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-pr-26639",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "operator_impact",
+  "status": "published",
+  "audience": "Codex app-server, MCP, and multi-agent operators",
+  "text": [
+    "Codex app-server MCP startup notifications now carry nullable `threadId`, so subagent MCP failures stay scoped to the owning thread instead of polluting the parent transcript. App-server clients should handle the new field. PR: https://github.com/openai/codex/pull/26639"
+  ],
+  "source_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-pr-26639.json"
+    ],
+    "reservations": [
+      "artifacts/social/x/reservations/2026-06-09/openai-codex-pr-26639.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26639.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26639.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26639",
+      "https://x.com/decodexspace/status/2064286885279879399"
+    ]
+  },
+  "evidence_notes": [
+    "The social_candidate/v1 artifact has decision.worthiness = publish and mode operator_impact for openai-codex-pr-26639.",
+    "The upstream_review/v1 artifact confirms that PR #26639 adds nullable threadId ownership to app-server MCP startup notifications and routes MCP startup diagnostics by owning thread.",
+    "The upstream_impact/v1 artifact marks the change as public_signal_decision publish, control_plane_impact compat_risk, and publisher_angle operator_impact.",
+    "The x-post-quality-system gate passed because the single post states what changed, who needs to act, and the direct source that proves it; it is not a generic watch note or dense release paragraph.",
+    "Checked durable social_post/v1 records contained no published or blocked record for this idempotency key before publication.",
+    "Checked durable social_publish_reservation/v1 records contained no active reservation for this idempotency key before the new reservation was created.",
+    "Open GitHub PR readback with routed hackink credentials showed PR #258 contained only an alpha.2 defer candidate and release delta; no open publication PR added this idempotency key.",
+    "PR #259 made the active reservation visible before X compose.",
+    "Chrome account readback initially showed @hackink active with @decodexspace available; the automation switched to @decodexspace and verified the account menu before reservation and compose.",
+    "Live @decodexspace profile readback before reservation found no PR 26639, mcpServer/startupStatus/updated, threadId, subagent MCP failures, source URL, or lead-subject match.",
+    "Live @decodexspace profile readback after PR-visible reservation and immediately before compose again found no PR 26639, mcpServer/startupStatus/updated, threadId, subagent MCP failures, source URL, or lead-subject match.",
+    "The compose dialog showed @decodexspace and the exact 270-character candidate text before the modal Post button was clicked.",
+    "Home timeline readback immediately after posting showed the new @decodexspace status URL with the expected text and GitHub PR card.",
+    "Permalink readback showed the expected @decodexspace post text, Automated by @hackink attribution, GitHub PR #26639 card, and no attached image media.",
+    "The status ID decodes to 2026-06-09T10:02:00.703Z."
+  ],
+  "claims": [
+    {
+      "text": "Codex app-server MCP startup notifications now include nullable thread ownership.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26639.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Subagent MCP startup failures are scoped to the owning thread instead of polluting the parent transcript.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26639.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "External app-server clients with strict schemas should accept the new nullable threadId field.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26639.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The PR #26639 operator-impact post is live on @decodexspace.",
+      "evidence": "https://x.com/decodexspace/status/2064286885279879399",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "high",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26639:operator_impact",
+    "reason": "The PR combines a concrete app-server protocol change with a visible multi-agent MCP diagnostic fix.",
+    "daily_limit": 8,
+    "daily_count_before": 7,
+    "daily_count_after": 8,
+    "day": "2026-06-09",
+    "timezone": "Asia/Shanghai"
+  },
+  "publication": {
+    "posted_at": "2026-06-09T10:02:00.703Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2064286885279879399"
+    ],
+    "publisher": "chrome",
+    "account_verified": true,
+    "made_with_ai": false
+  },
+  "media_refs": [
+    "media_caveat: no media was attached; this non-release operator_impact post remains valuable text-only because the source-backed protocol warning and GitHub PR card are the reader value."
+  ],
+  "caveats": [
+    "Keep the protocol claim scoped to the app-server MCP startup notification shape and generated strict-client compatibility.",
+    "Do not imply Decodex has already adopted the upstream thread-scoped MCP startup event path.",
+    "This filled the eighth 2026-06-09 Asia/Shanghai @decodexspace cap slot; no further posts should publish for that cap day."
+  ],
+  "post_lifecycle": {
+    "current_state": "live",
+    "quote_eligible": false,
+    "reason": "This is a standalone operator-impact post, not a prerelease quote-chain anchor."
+  }
+}
