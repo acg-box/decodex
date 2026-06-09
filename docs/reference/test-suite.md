@@ -14,9 +14,9 @@ standards for keeping, merging, or deleting tests.
 
 ## Current Snapshot
 
-This snapshot lists 971 default-runnable `nextest` tests. One additional ignored
+This snapshot lists 1024 default-runnable `nextest` tests. One additional ignored
 live app-server test is listed only with verbose or JSON inventory output. The repo
-gate run for this inventory reported 971 passed tests and 1 skipped test. Regenerate
+gate run for this inventory reported 1024 passed tests and 1 skipped test. Regenerate
 the runnable inventory with:
 
 ```sh
@@ -45,14 +45,15 @@ cargo nextest list --workspace --all-targets --all-features 2>/dev/null \
 
 | Group | Count | Primary surfaces | Owns |
 | --- | ---: | --- | --- |
-| Orchestrator | 460 | `apps/decodex/src/orchestrator/tests.rs`, `apps/decodex/src/orchestrator/tests/**/*.rs` | Intake, retry, review/landing, runtime cleanup, operator status, repo gates |
-| Tracker tool bridge | 91 | `apps/decodex/src/agent/tracker_tool_bridge/tests.rs`, `apps/decodex/src/agent/tracker_tool_bridge/tests/**/*.rs` | Dynamic tracker tools, continuation guards, review handoff writes, closeout writes |
-| App-server protocol/runtime | 80 | `apps/decodex/src/agent/app_server/tests.rs`, `apps/decodex/src/agent/json_rpc.rs`, app-server protocol tests | JSON-RPC parsing, turn execution, dynamic tools, thread config, transport failures |
-| Runtime state, locks, and maintenance | 60 | `state::tests`, `runtime::tests`, `maintenance::tests` | Persistent local state, lock ownership, runtime database contracts, local retention |
-| Workflow and config parsing | 45 | `workflow::tests`, `config::tests`, `codex_config::tests` | `WORKFLOW.md`, project config, Codex config edits, removed-field rejection, default policy |
+| Orchestrator | 472 | `apps/decodex/src/orchestrator/tests.rs`, `apps/decodex/src/orchestrator/tests/**/*.rs` | Intake, retry, review/landing, runtime cleanup, operator status, repo gates |
+| Tracker tool bridge | 96 | `apps/decodex/src/agent/tracker_tool_bridge/tests.rs`, `apps/decodex/src/agent/tracker_tool_bridge/tests/**/*.rs` | Dynamic tracker tools, continuation guards, review handoff writes, closeout writes |
+| App-server protocol/runtime | 86 | `apps/decodex/src/agent/app_server/tests.rs`, `apps/decodex/src/agent/json_rpc.rs`, app-server protocol tests | JSON-RPC parsing, turn execution, dynamic tools, thread config, transport failures |
+| Runtime state, locks, and maintenance | 66 | `state::tests`, `runtime::tests`, `maintenance::tests` | Persistent local state, lock ownership, runtime database contracts, local retention |
+| Workflow and config parsing | 46 | `workflow::tests`, `config::tests`, `codex_config::tests` | `WORKFLOW.md`, project config, Codex config edits, removed-field rejection, default policy |
 | Git, worktree, landing, and recovery helpers | 120 | `worktree::tests`, `manual::tests`, `commit_message::tests`, `github::tests`, `default_branch_sync::tests`, `pull_request::tests`, `recovery::tests`, `git_credentials::tests` | Git/worktree behavior, manual landing, GitHub/PR helpers, recovery commands, commit-message policy |
 | Radar content validation | 33 | `radar::tests` | Upstream Radar schemas, bundles, signal rendering, social publication ledgers |
-| Account, CLI, archive, and tracker integration | 82 | `accounts::tests`, `agent::codex_accounts::tests`, `agent::decodex_tool_bridge::tests`, `app_bridge::tests`, `cli::tests`, `archive_hygiene::tests`, `tracker::*::tests` | User-facing commands, account pools, app bridge parsing, archive hygiene, direct tracker adapter and public-text behavior |
+| Account, CLI, archive, and tracker integration | 84 | `accounts::tests`, `agent::codex_accounts::tests`, `agent::decodex_tool_bridge::tests`, `app_bridge::tests`, `cli::tests`, `archive_hygiene::tests`, `tracker::*::tests` | User-facing commands, account pools, app bridge parsing, archive hygiene, direct tracker adapter and public-text behavior |
+| Loop contract and research surfaces | 21 | `loop_contract::tests`, `execution_program::tests`, `research_design::tests`, `plugin_surface_tests` | Decision Contract schema, Execution Program readiness, research compile/promote, and plugin trigger behavior |
 
 ## Orchestrator Inventory
 
@@ -68,8 +69,9 @@ large catch-all test file unless the behavior crosses several of these stages.
 | `apps/decodex/src/orchestrator/tests/intake/candidate_selection.rs` | 22 | Candidate ordering, retained lane preference, closeout dispatch policy |
 | `apps/decodex/src/orchestrator/tests/retry/scheduling.rs` | 24 | Retry timing, dry-run behavior, retry marker semantics |
 | `apps/decodex/src/orchestrator/tests/retry/selection.rs` | 14 | Retry queue selection and blocked retry candidates |
-| `apps/decodex/src/orchestrator/tests/runtime/repo_gate.rs` | 8 | Repo gate command selection, cleanliness, shell fallback, and failure classification |
-| `apps/decodex/src/orchestrator/tests/runtime/failure.rs` | 33 | Failure comments, runtime credentials, cleanup, lease release |
+| `apps/decodex/src/orchestrator/tests/runtime/repo_gate.rs` | 9 | Repo gate command selection, cleanliness, shell fallback, and failure classification |
+| `apps/decodex/src/orchestrator/tests/runtime/failure.rs` | 38 | Failure comments, runtime credentials, cleanup, lease release |
+| `apps/decodex/src/orchestrator/tests/runtime/loop_scenarios.rs` | 2 | Research-to-execution loop scenarios, queue shaping, phase-goal validation, review, guardrails, and harness feedback |
 | `apps/decodex/src/orchestrator/tests/runtime/thread_archive.rs` | 1 | Completed-thread archive candidate filtering |
 | `apps/decodex/src/orchestrator/tests/recovery/reconciliation.rs` | 22 | Stale lease, recovery worktree, and reconciliation behavior |
 | `apps/decodex/src/orchestrator/tests/recovery/terminal_support.rs` | 0 | Shared retained recovery and closeout fixtures |
@@ -82,12 +84,12 @@ large catch-all test file unless the behavior crosses several of these stages.
 | `apps/decodex/src/orchestrator/tests/operator/status/control_plane.rs` | 10 | Registered project control-plane rows |
 | `apps/decodex/src/orchestrator/tests/operator/status/running_lanes.rs` | 34 | Running lanes, stalled lanes, active-run hydration, and local worktrees |
 | `apps/decodex/src/orchestrator/tests/operator/status/history.rs` | 7 | Run ledger and Linear history hydration |
-| `apps/decodex/src/orchestrator/tests/operator/status/text.rs` | 9 | Human-readable operator status text |
+| `apps/decodex/src/orchestrator/tests/operator/status/text.rs` | 10 | Human-readable operator status text |
 | `apps/decodex/src/orchestrator/tests/operator/status/publishing.rs` | 11 | Snapshot publishing, degraded observers, and tracker backoff |
-| `apps/decodex/src/orchestrator/tests/operator/status/queue.rs` | 17 | Intake queue classifications and shared-claim visibility |
+| `apps/decodex/src/orchestrator/tests/operator/status/queue.rs` | 18 | Intake queue classifications and shared-claim visibility |
 | `apps/decodex/src/orchestrator/tests/operator/status/http.rs` | 31 | Operator dashboard HTTP pages/assets, `/livez`, WebSocket control, and removed snapshot-route responses |
 | `apps/decodex/src/orchestrator/tests/operator/status/dashboard.rs` | 34 | Dashboard client rendering contracts |
-| `apps/decodex/src/orchestrator/tests/operator/status/agent_evidence.rs` | 4 | Agent evidence snapshots and private evidence readback |
+| `apps/decodex/src/orchestrator/tests/operator/status/agent_evidence.rs` | 6 | Agent evidence snapshots and private evidence readback |
 | `apps/decodex/src/orchestrator/tests/review_landing/status_support.rs` | 0 | Shared Review & Landing status fixtures |
 | `apps/decodex/src/orchestrator/tests/review_landing/status_rows.rs` | 18 | Review & Landing status rows and handoff lineage |
 | `apps/decodex/src/orchestrator/tests/review_landing/orchestration.rs` | 17 | Review orchestration, admin merge, and repair routing |
