@@ -535,6 +535,10 @@ pub(crate) struct DecisionContractLinks {
 }
 #[allow(dead_code)]
 impl DecisionContractLinks {
+	pub(crate) fn generated_issue_ids(&self) -> &[String] {
+		&self.generated_issue_ids
+	}
+
 	pub(crate) fn generated_issue_identifiers(&self) -> &[String] {
 		&self.generated_issue_identifiers
 	}

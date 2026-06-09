@@ -1,7 +1,5 @@
 use std::collections::{self, BTreeMap};
 
-use state::PrivateExecutionEvent;
-
 const AGENT_HANDOFF_INDEX_SCHEMA: &str = "decodex.agent_handoff_index/1";
 const AGENT_BLOCKER_SNAPSHOT_SCHEMA: &str = "decodex.blocker_snapshot/1";
 const AGENT_RUN_CAPSULE_SCHEMA: &str = "decodex.run_capsule/1";
@@ -261,6 +259,7 @@ struct PrivateEvidenceReadback {
 	event_count: usize,
 	latest_event_type: Option<String>,
 	latest_event_at: Option<String>,
+	improvement_candidates: Vec<HarnessImprovementCandidateSummary>,
 	events: Vec<PrivateEvidenceReadbackEvent>,
 	warnings: Vec<String>,
 }
@@ -648,6 +647,7 @@ fn build_private_evidence_readback(
 		event_count: events.len(),
 		latest_event_type: latest_event.map(|event| event.event_type().to_owned()),
 		latest_event_at: latest_event.map(|event| event.recorded_at().to_owned()),
+		improvement_candidates: harness_improvement_candidates_from_private_events(&events),
 		events: events
 			.iter()
 			.map(|event| private_evidence_readback_event(event, request.include_payload))
@@ -719,12 +719,12 @@ fn resolve_private_evidence_target(
 }
 
 fn private_evidence_direct_lookup_issue_id(
-	events: &[PrivateExecutionEvent],
+	events: &[state::PrivateExecutionEvent],
 	selector: &str,
 ) -> Result<Option<String>> {
 	let issue_ids = events
 		.iter()
-		.map(PrivateExecutionEvent::issue_id)
+		.map(state::PrivateExecutionEvent::issue_id)
 		.collect::<collections::BTreeSet<_>>();
 
 	if issue_ids.is_empty() {
@@ -767,7 +767,7 @@ fn private_evidence_run_matches_issue(
 }
 
 fn private_evidence_readback_event(
-	event: &PrivateExecutionEvent,
+	event: &state::PrivateExecutionEvent,
 	include_payload: bool,
 ) -> PrivateEvidenceReadbackEvent {
 	PrivateEvidenceReadbackEvent {
@@ -895,6 +895,10 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 	output.push_str(&format!("payload_mode: {}\n", readback.payload_mode));
 	output.push_str(&format!("event_count: {}\n", readback.event_count));
 	output.push_str(&format!(
+		"improvement_candidate_count: {}\n",
+		readback.improvement_candidates.len()
+	));
+	output.push_str(&format!(
 		"latest_event_type: {}\n",
 		readback.latest_event_type.as_deref().unwrap_or("none")
 	));
@@ -905,6 +909,23 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 
 	if !readback.warnings.is_empty() {
 		output.push_str(&format!("warnings: {}\n", readback.warnings.join(", ")));
+	}
+
+	output.push_str("\nImprovement Candidates\n");
+
+	if readback.improvement_candidates.is_empty() {
+		output.push_str("- none\n");
+	} else {
+		for candidate in &readback.improvement_candidates {
+			output.push_str(&format!(
+				"- kind: {}\n  reason_code: {}\n  target: {}\n  source_event_count: {}\n  recommendation: {}\n",
+				candidate.kind,
+				candidate.reason_code,
+				candidate.target,
+				candidate.source_event_count,
+				candidate.recommendation
+			));
+		}
 	}
 
 	output.push_str("\nEvents\n");
