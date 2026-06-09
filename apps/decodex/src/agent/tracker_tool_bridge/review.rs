@@ -81,6 +81,7 @@ impl<'a> TrackerToolBridge<'a> {
 		review_policy_status: ReviewPolicyStatus,
 		head_sha: &str,
 		nonclean_rounds: i64,
+		details_json: &str,
 	) -> Result<(), String> {
 		let state_store = self.state_store.ok_or_else(|| {
 			format!(
@@ -99,6 +100,7 @@ impl<'a> TrackerToolBridge<'a> {
 				status: review_policy_status.as_str(),
 				head_sha,
 				nonclean_rounds,
+				details_json,
 			})
 			.map_err(|error| {
 				format!(
@@ -980,6 +982,7 @@ impl<'a> TrackerToolBridge<'a> {
 			status: status.as_str(),
 			head_sha,
 			nonclean_rounds,
+			details_json: "{}",
 		})?;
 
 		Ok(Some(ReviewPolicyState {

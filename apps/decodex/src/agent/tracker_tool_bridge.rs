@@ -776,10 +776,61 @@ struct TerminalFinalizeArgs {
 struct ReviewCheckpointArgs {
 	#[serde(flatten)]
 	scope: ScopeArgs,
+	reviewer: Option<String>,
 	status: String,
 	head_sha: String,
+	checks: Option<ReviewCheckpointChecksArgs>,
 	#[serde(default)]
 	evidence: Vec<String>,
+	#[serde(default)]
+	accepted_findings: Vec<ReviewCheckpointFindingArgs>,
+	#[serde(default)]
+	rejected_findings: Vec<ReviewCheckpointRejectedFindingArgs>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewCheckpointChecksArgs {
+	intended_behavior: String,
+	regression_risk: String,
+	missing_tests: String,
+	docs_config_drift: String,
+	migration_fallout: String,
+	operator_facing_fallout: String,
+	loop_decision_contract: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewCheckpointFindingArgs {
+	severity: String,
+	summary: String,
+	#[serde(default)]
+	evidence: Vec<String>,
+	file: Option<String>,
+	line: Option<u64>,
+	guidance: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewCheckpointRejectedFindingArgs {
+	severity: String,
+	summary: String,
+	rejection_reason: String,
+	#[serde(default)]
+	evidence: Vec<String>,
+	file: Option<String>,
+	line: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct NormalizedReviewCheckpointPayload {
+	reviewer: String,
+	checks: ReviewCheckpointChecksArgs,
+	evidence: Vec<String>,
+	accepted_findings: Vec<ReviewCheckpointFindingArgs>,
+	rejected_findings: Vec<ReviewCheckpointRejectedFindingArgs>,
 }
 
 #[derive(Debug, Deserialize)]
