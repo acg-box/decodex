@@ -110,6 +110,7 @@ token_env_var = "GITHUB_TOKEN"
 [codex]
 internal_review_mode = "prompt"
 external_review_enabled = false
+goal_support = "auto"
 
 # Optional secondary public-projection privacy guard.
 # [privacy_classifier]
@@ -131,6 +132,10 @@ Notes:
 - `github.token_env_var` is required for PR-backed review handoff validation and post-review PR-state inspection and must name the environment variable that stores the GitHub token.
 - For the self-dogfood pilot, use `codex.internal_review_mode = "loop"` for the runtime-owned self-review checkpoint loop, `"prompt"` to add only `Review your work repeatedly and fix any logic bugs until no new issues are found.`, or `"off"` to skip internal self-review. If omitted, the default is `"loop"`.
 - Keep `codex.external_review_enabled = false` when the retained lane should skip the runtime-owned `@codex review` request and rely on the PR-backed handoff plus the normal PR landing checks.
+- Use `codex.goal_support = "auto"` to let retained lanes use phase-scoped app-server
+  goals when the selected Codex build supports them and fall back safely when it does
+  not. Use `"required"` only for a project that must fail fast when goal methods are
+  absent, and `"off"` to disable goal handling.
 - With `codex.external_review_enabled = false`, a one-shot `decodex run` may continue draining the same retained lane after review handoff if the retained landing gates are already satisfied. If those gates are still pending, the run exits cleanly at the retained waiting boundary instead of spinning.
 - `[privacy_classifier]` is optional and disabled when omitted. If enabled, `endpoint`
   must be an operator-managed loopback HTTP service; Decodex sends only rendered
