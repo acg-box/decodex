@@ -178,7 +178,8 @@ read-only review pass. This pass is distinct from in-thread self-review:
 - it does not rely on the implementer's memory of the change
 - it stays read-only while producing findings
 - it checks intended behavior, regression risk, tests, docs/config drift, migration
-  fallout, and operator-facing fallout
+  fallout, operator-facing fallout, and mismatch with the accepted Loop/Decision
+  Contract
 - candidate findings must be validated before repair work changes the lane
 
 The review orchestration contract, including internal/external review modes and
