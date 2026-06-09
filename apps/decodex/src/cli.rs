@@ -1549,30 +1549,59 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_commit_with_manual_authority() {
-		let cli = Cli::parse_from(["decodex", "commit", "ship hotfix", "--manual-authority"]);
+	fn parses_manual_authority_commands() {
+		enum ExpectedCommand {
+			Commit,
+			Land,
+		}
 
-		assert!(matches!(
-			cli.command,
-			Command::Commit(CommitCommand { authority: None, manual_authority: true, .. })
-		));
-	}
+		for (case_name, args, expected) in [
+			(
+				"commit manual authority",
+				&["decodex", "commit", "ship hotfix", "--manual-authority"][..],
+				ExpectedCommand::Commit,
+			),
+			(
+				"land manual authority",
+				&[
+					"decodex",
+					"land",
+					"ship hotfix",
+					"--manual-authority",
+					"--pr",
+					"https://github.com/hack-ink/decodex/pull/64",
+				][..],
+				ExpectedCommand::Land,
+			),
+		] {
+			let cli = Cli::parse_from(args.iter().copied());
 
-	#[test]
-	fn parses_land_with_manual_authority() {
-		let cli = Cli::parse_from([
-			"decodex",
-			"land",
-			"ship hotfix",
-			"--manual-authority",
-			"--pr",
-			"https://github.com/hack-ink/decodex/pull/64",
-		]);
-
-		assert!(matches!(
-			cli.command,
-			Command::Land(LandCommand { authority: None, manual_authority: true, pr: Some(_), .. })
-		));
+			match expected {
+				ExpectedCommand::Commit => assert!(
+					matches!(
+						cli.command,
+						Command::Commit(CommitCommand {
+							authority: None,
+							manual_authority: true,
+							..
+						})
+					),
+					"unexpected parsed command for `{case_name}`"
+				),
+				ExpectedCommand::Land => assert!(
+					matches!(
+						cli.command,
+						Command::Land(LandCommand {
+							authority: None,
+							manual_authority: true,
+							pr: Some(_),
+							..
+						})
+					),
+					"unexpected parsed command for `{case_name}`"
+				),
+			}
+		}
 	}
 
 	#[test]
@@ -1601,33 +1630,37 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_run_with_positional_issue_and_dry_run() {
-		let cli = Cli::parse_from(["decodex", "run", "issue-1", "--dry-run"]);
+	fn parses_run_modes() {
+		for (case_name, args, expected_issue, expected_dry_run, expected_explain) in [
+			(
+				"positional issue dry run",
+				&["decodex", "run", "issue-1", "--dry-run"][..],
+				Some("issue-1"),
+				true,
+				false,
+			),
+			("default run", &["decodex", "run"][..], None, false, false),
+			(
+				"explain dry run",
+				&["decodex", "run", "--dry-run", "--explain"][..],
+				None,
+				true,
+				true,
+			),
+		] {
+			let cli = Cli::parse_from(args.iter().copied());
 
-		assert!(matches!(
-			cli.command,
-			Command::Run(RunCommand { issue: Some(_), dry_run: true, explain: false, .. })
-		));
-	}
-
-	#[test]
-	fn parses_run_without_issue() {
-		let cli = Cli::parse_from(["decodex", "run"]);
-
-		assert!(matches!(
-			cli.command,
-			Command::Run(RunCommand { issue: None, dry_run: false, explain: false, .. })
-		));
-	}
-
-	#[test]
-	fn parses_run_dry_run_explain() {
-		let cli = Cli::parse_from(["decodex", "run", "--dry-run", "--explain"]);
-
-		assert!(matches!(
-			cli.command,
-			Command::Run(RunCommand { issue: None, dry_run: true, explain: true, .. })
-		));
+			assert!(
+				matches!(
+					cli.command,
+					Command::Run(RunCommand { issue, dry_run, explain, .. })
+						if issue.as_deref() == expected_issue
+							&& dry_run == expected_dry_run
+							&& explain == expected_explain
+				),
+				"unexpected parsed run command for `{case_name}`"
+			);
+		}
 
 		let error = Cli::try_parse_from(["decodex", "run", "--explain"])
 			.expect_err("explain should require dry-run");
@@ -1642,48 +1675,41 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_serve_default_listen_address() {
-		let cli = Cli::parse_from(["decodex", "serve"]);
+	fn parses_serve_modes() {
+		for (case_name, args, expected_listen_address, expected_config, expected_dev) in [
+			("default listen address", &["decodex", "serve"][..], "127.0.0.1:8192", None, false),
+			(
+				"custom listen address and project config",
+				&[
+					"decodex",
+					"serve",
+					"--config",
+					"./project.toml",
+					"--listen-address",
+					"127.0.0.1:9000",
+				][..],
+				"127.0.0.1:9000",
+				Some("./project.toml"),
+				false,
+			),
+			("dev mode", &["decodex", "serve", "--dev"][..], "127.0.0.1:8192", None, true),
+		] {
+			let cli = Cli::parse_from(args.iter().copied());
 
-		assert!(matches!(
-			cli.command,
-			Command::Serve(ServeCommand {
-				project_config: ProjectConfigArgs { config: None },
-				listen_address,
-				dev: false,
-			}) if listen_address == "127.0.0.1:8192"
-		));
-	}
-
-	#[test]
-	fn parses_serve_with_listen_address_and_project_config() {
-		let cli = Cli::parse_from([
-			"decodex",
-			"serve",
-			"--config",
-			"./project.toml",
-			"--listen-address",
-			"127.0.0.1:9000",
-		]);
-
-		assert!(matches!(
-		cli.command,
-			Command::Serve(ServeCommand {
-				project_config: ProjectConfigArgs { config: Some(config) },
-				listen_address,
-				dev,
-			})
-				if listen_address == "127.0.0.1:9000"
-					&& !dev
-					&& config == Path::new("./project.toml")
-		));
-	}
-
-	#[test]
-	fn parses_serve_dev() {
-		let cli = Cli::parse_from(["decodex", "serve", "--dev"]);
-
-		assert!(matches!(cli.command, Command::Serve(ServeCommand { dev: true, .. })));
+			assert!(
+				matches!(
+					cli.command,
+					Command::Serve(ServeCommand {
+						project_config: ProjectConfigArgs { config },
+						listen_address,
+						dev,
+					}) if listen_address == expected_listen_address
+						&& config.as_deref() == expected_config.map(Path::new)
+						&& dev == expected_dev
+				),
+				"unexpected parsed serve command for `{case_name}`"
+			);
+		}
 	}
 
 	#[test]
@@ -1957,33 +1983,56 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_project_add() {
-		let cli = Cli::parse_from(["decodex", "project", "add", "./project.toml"]);
+	fn parses_project_subcommands() {
+		enum ExpectedProjectSubcommand {
+			Add,
+			Enable,
+			Remove,
+		}
 
-		assert!(matches!(
-			cli.command,
-			Command::Project(ProjectCommand { command: ProjectSubcommand::Add(_) })
-		));
-	}
+		for (case_name, args, expected) in [
+			(
+				"add",
+				&["decodex", "project", "add", "./project.toml"][..],
+				ExpectedProjectSubcommand::Add,
+			),
+			(
+				"enable",
+				&["decodex", "project", "enable", "pubfi"][..],
+				ExpectedProjectSubcommand::Enable,
+			),
+			(
+				"remove",
+				&["decodex", "project", "remove", "vibe-mono"][..],
+				ExpectedProjectSubcommand::Remove,
+			),
+		] {
+			let cli = Cli::parse_from(args.iter().copied());
 
-	#[test]
-	fn parses_project_enable() {
-		let cli = Cli::parse_from(["decodex", "project", "enable", "pubfi"]);
-
-		assert!(matches!(
-			cli.command,
-			Command::Project(ProjectCommand { command: ProjectSubcommand::Enable(_) })
-		));
-	}
-
-	#[test]
-	fn parses_project_remove() {
-		let cli = Cli::parse_from(["decodex", "project", "remove", "vibe-mono"]);
-
-		assert!(matches!(
-			cli.command,
-			Command::Project(ProjectCommand { command: ProjectSubcommand::Remove(_) })
-		));
+			match expected {
+				ExpectedProjectSubcommand::Add => assert!(
+					matches!(
+						cli.command,
+						Command::Project(ProjectCommand { command: ProjectSubcommand::Add(_) })
+					),
+					"unexpected parsed project subcommand for `{case_name}`"
+				),
+				ExpectedProjectSubcommand::Enable => assert!(
+					matches!(
+						cli.command,
+						Command::Project(ProjectCommand { command: ProjectSubcommand::Enable(_) })
+					),
+					"unexpected parsed project subcommand for `{case_name}`"
+				),
+				ExpectedProjectSubcommand::Remove => assert!(
+					matches!(
+						cli.command,
+						Command::Project(ProjectCommand { command: ProjectSubcommand::Remove(_) })
+					),
+					"unexpected parsed project subcommand for `{case_name}`"
+				),
+			}
+		}
 	}
 
 	#[test]
