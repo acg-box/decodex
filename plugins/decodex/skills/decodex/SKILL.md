@@ -8,8 +8,11 @@ description: Use as the conductor for Decodex work whenever the user asks to use
 ## Goal
 
 Route agent work through the right Decodex surface without duplicating the runtime
-specs. Decodex has two supported use modes:
+specs. Decodex has these supported use modes:
 
+- Research/design mode: natural-language requests such as `research X` enter the
+  Decodex-native Research/Decision path. The result is a latent Decision Contract,
+  not execution authority.
 - Manual CLI mode: a human is driving local development, commits, PR preparation,
   landing, status inspection, project registration, account selection, or dry-run
   checks.
@@ -17,10 +20,35 @@ specs. Decodex has two supported use modes:
   contracts, `serve`, `run`, tracker labels, issue-scoped tools, review handoff,
   landing, closeout, and operator status.
 - Planning support: agents shape Decodex-friendly issue sets, queue strategy,
-  dependency boundaries, and concurrency before retained-lane automation starts.
-- Research/design mode: Decodex compiles ambiguous planning intent into local
-  Decision Contracts with `decodex research compile`, then records acceptance with
-  `decodex research promote` before any execution authority exists.
+  dependency boundaries, and concurrency after a human request or accepted/promoted
+  Decision Contract needs executable issue shaping.
+
+## Natural-Language Research Routing
+
+Keep the everyday user surface conversational. Do not require the user to mention
+Research Lanes, Decision Lanes, DAGs, Execution Programs, queue labels, or Codex goal
+commands.
+
+Route by intent:
+
+1. If the user says `research X`, asks for a design investigation, or asks Decodex to
+   figure out what should be done before implementation, treat it as research/design
+   intake. Produce or update a latent Decision Contract with evidence, assumptions,
+   options, objections, non-goals, acceptance criteria, stop conditions, readiness,
+   and open decisions. Do not queue work, create execution authority, mutate tracker
+   state, or start implementation from the research request alone.
+2. If the user later says `arrange this`, `push this forward`, `推进`, `做`, or an
+   equivalent follow-up that clearly accepts or promotes the prior contract, treat that
+   as promotion to execution authority. Preserve the accepted contract boundary; if
+   direction is still missing or contradictory, ask for the missing decision instead
+   of starting work.
+3. After promotion, use `planning` to convert the accepted contract into normal
+   Linear issues with clear natural-language briefs, dependencies, acceptance, and
+   validation. Keep Execution Program and graph mechanics as internal readiness state.
+4. Use `labels` and `automation` only for nodes/issues that are ready under the
+   registered project policy. Queue labels are an intake signal for retained lanes,
+   not a shortcut around blockers, opt-outs, terminal states, active leases, or
+   missing briefing.
 
 ## First Steps
 
@@ -37,6 +65,11 @@ specs. Decodex has two supported use modes:
    - `commit` for `decodex commit`.
    - `land` for `decodex land`.
    - `labels` for Decodex Linear labels.
+
+Use explicit `decodex research compile` and `decodex research promote` commands only
+when the operator is asking for the manual CLI surface. Ordinary conversational
+research/promotion should still follow the same latent-then-promoted authority
+boundary without making the user learn the commands.
 
 ## Authority Split
 
