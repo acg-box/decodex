@@ -44,7 +44,7 @@ state or this state machine.
 
 ## Source of truth boundaries
 
-- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, run-control channels, protocol events, private execution events, worktree mappings, retained PR state, review-policy checkpoints, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
+- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, run-control channels, protocol events, private execution events, latent and promoted Decision Contracts, worktree mappings, retained PR state, review-policy checkpoints, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
 - Linear remains the team-visible tracker surface for issue lifecycle, queue/active/manual-attention labels, and coarse lifecycle summaries such as start, PR-ready, blocked, failed, landed, and done.
 - Versioned Linear execution event comments use the schema in
   [`linear-execution-ledger.md`](./linear-execution-ledger.md), but fine-grained runtime truth must not be rebuilt from comments every tick.
@@ -67,6 +67,7 @@ mirror:
 | Surface | Boundary |
 | --- | --- |
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, and recovery detail belong. |
+| Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, but the JSON payload remains the contract authority. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing active lease ownership. |
 | Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating. |
 | Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
@@ -120,7 +121,9 @@ This boundary does not create a project-local runtime database contract. The run
 - Lane: The branch plus linked Git worktree checkout associated with one issue.
 - Decision Contract: An accepted loop-runtime decision package, also called the
   Loop/Decision Contract. Research output is only latent until accepted or promoted
-  under [`loop-runtime.md`](./loop-runtime.md).
+  under [`loop-runtime.md`](./loop-runtime.md). The runtime-facing serialized payload
+  is `decodex.decision_contract/1`; statuses are `draft_latent`,
+  `accepted_promoted`, `rejected_superseded`, and `needs_human_decision`.
 - Execution Program: Internal loop-runtime state derived from accepted Decision
   Contracts. It may use DAG semantics, but normal Linear issues remain the executable
   lanes.
@@ -425,6 +428,8 @@ The runtime database stores at least:
 - run attempts and attempt status
 - protocol event journals
 - private execution events scoped by project, issue, run, and attempt
+- Decision Contracts scoped by project and contract id, with optional source issue
+  linkage for later issue shaping
 - worktree mappings
 - retained PR and post-review state
 - review-policy checkpoints
