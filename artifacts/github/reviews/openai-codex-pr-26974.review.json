@@ -1,0 +1,55 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26974",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26974",
+    "commit_shas": [
+      "d93f759a07dc3c9b685930233f441fe2fbce1c10"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Ignore proc-macro-error2 advisory",
+        "url": "https://github.com/openai/codex/pull/26974",
+        "meta": "Merged 2026-06-08T09:39:08Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Ignore proc-macro-error2 advisory",
+        "url": "https://github.com/openai/codex/commit/d93f759a07dc3c9b685930233f441fe2fbce1c10"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-09T02:05:45Z",
+  "observed_change": "Codex adds a documented temporary ignore for RUSTSEC-2026-0173 because `proc-macro-error2` is pulled transitively through `i18n-embed-fl` and `age` into `codex-secrets` local storage.",
+  "changed_surfaces": [
+    "cargo-audit advisory configuration",
+    "cargo-deny advisory configuration",
+    "local secrets storage dependency risk accounting"
+  ],
+  "user_visible_path": "No new Codex command or UI path changes; this is security-advisory bookkeeping for a transitive dependency in local secrets storage.",
+  "control_plane_relevance": "Decodex should treat this as a security-posture watch item around Codex local secret storage dependencies, not as a runtime protocol or auth behavior change.",
+  "compatibility_risk": "Low for Decodex integration behavior; the risk is advisory visibility and future dependency migration rather than an immediate API change.",
+  "adoption_opportunity": "Keep the advisory and removal condition visible in release rollups if local secret storage dependency posture becomes relevant to operators.",
+  "community_value": "Low for public publishing because the change documents an ignored advisory and removal condition rather than a user-facing improvement.",
+  "deprecated_or_breaking_notes": "The ignore is explicitly temporary until `codex-secrets` moves off `age` or `age` drops `i18n-embed-fl`; no feature is deprecated or removed here.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26974 says it ignores RUSTSEC-2026-0173 in cargo-deny and cargo-audit config and leaves the ignore temporary until `codex-secrets` moves off `age` or `age` drops `i18n-embed-fl`.",
+    "codex-rs/.cargo/audit.toml adds `RUSTSEC-2026-0173` with the path `proc-macro-error2 via i18n-embed-fl/age/codex-secrets`.",
+    "codex-rs/deny.toml adds the same advisory id with a removal condition tied to local secrets storage migration or the upstream `age` dependency path.",
+    "The PR validation notes `cargo deny check --hide-inclusion-graph`.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26974.json records 2 changed files for the merged PR."
+  ],
+  "caveats": "The artifact records the upstream project's stated advisory exception; it does not independently verify exploitability or replacement timing for `age` or `i18n-embed-fl`.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Security-advisory posture around local secrets storage is worth tracking as a watch item."
+    }
+  ]
+}
