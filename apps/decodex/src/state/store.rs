@@ -1679,6 +1679,104 @@ impl StateStore {
 		Ok(record.as_public())
 	}
 
+	/// Create or replace one local internal Execution Program payload.
+	#[allow(dead_code)]
+	pub(crate) fn upsert_execution_program(
+		&self,
+		project_id: &str,
+		program: ExecutionProgram,
+	) -> Result<ExecutionProgramRecord> {
+		validate_execution_program_record_inputs(project_id, &program)?;
+
+		let now = timestamp_parts();
+		let mut state = self.lock_without_refresh()?;
+		let key = ExecutionProgramKey::new(project_id, program.program_id());
+		let (created_at, created_at_unix) = state
+			.execution_programs
+			.get(&key)
+			.map_or_else(|| (now.text.clone(), now.unix), |record| {
+				(record.created_at.clone(), record.created_at_unix)
+			});
+		let record = ExecutionProgramRuntimeRecord {
+			project_id: project_id.to_owned(),
+			source_contract_id: program.source_contract_id().to_owned(),
+			program,
+			created_at,
+			created_at_unix,
+			updated_at: now.text,
+			updated_at_unix: now.unix,
+		};
+
+		state.execution_programs.insert(record.key(), record.clone());
+		self.upsert_execution_program_locked(&record)?;
+
+		Ok(record.as_public())
+	}
+
+	/// Read one local internal Execution Program by project and program id.
+	#[allow(dead_code)]
+	pub(crate) fn execution_program(
+		&self,
+		project_id: &str,
+		program_id: &str,
+	) -> Result<Option<ExecutionProgramRecord>> {
+		validate_required_execution_program_field("project_id", project_id)?;
+		validate_required_execution_program_field("program_id", program_id)?;
+
+		let state = self.lock()?;
+
+		Ok(state
+			.execution_programs
+			.get(&ExecutionProgramKey::new(project_id, program_id))
+			.map(ExecutionProgramRuntimeRecord::as_public))
+	}
+
+	/// List local internal Execution Programs derived from one Decision Contract.
+	#[allow(dead_code)]
+	pub(crate) fn list_execution_programs_for_contract(
+		&self,
+		project_id: &str,
+		source_contract_id: &str,
+	) -> Result<Vec<ExecutionProgramRecord>> {
+		validate_required_execution_program_field("project_id", project_id)?;
+		validate_required_execution_program_field("source_contract_id", source_contract_id)?;
+
+		let state = self.lock()?;
+		let mut records = state
+			.execution_programs
+			.values()
+			.filter(|record| {
+				record.project_id == project_id && record.source_contract_id == source_contract_id
+			})
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_execution_program_runtime_records);
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
+	/// List local internal Execution Programs retained for one project.
+	#[allow(dead_code)]
+	pub(crate) fn list_execution_programs(
+		&self,
+		project_id: &str,
+	) -> Result<Vec<ExecutionProgramRecord>> {
+		validate_required_execution_program_field("project_id", project_id)?;
+
+		let state = self.lock()?;
+		let mut records = state
+			.execution_programs
+			.values()
+			.filter(|record| record.project_id == project_id)
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_execution_program_runtime_records);
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
 	/// Count protocol journal records for one run.
 	pub fn event_count(&self, run_id: &str) -> Result<i64> {
 		let state = self.lock()?;
@@ -2196,6 +2294,21 @@ impl StateStore {
 		sqlite.upsert_decision_contract(record)
 	}
 
+	#[allow(dead_code)]
+	fn upsert_execution_program_locked(
+		&self,
+		record: &ExecutionProgramRuntimeRecord,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_execution_program(record)
+	}
+
 	fn delete_lease_locked(&self, issue_id: &str) -> Result<()> {
 		let Some(sqlite) = self.sqlite.as_ref() else {
 			return Ok(());
@@ -2612,6 +2725,25 @@ fn validate_decision_contract_record_inputs(
 fn validate_required_decision_contract_field(name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("Decision contract {name} must not be empty.");
+	}
+
+	Ok(())
+}
+
+#[allow(dead_code)]
+fn validate_execution_program_record_inputs(
+	project_id: &str,
+	program: &ExecutionProgram,
+) -> Result<()> {
+	validate_required_execution_program_field("project_id", project_id)?;
+
+	program.validate()
+}
+
+#[allow(dead_code)]
+fn validate_required_execution_program_field(name: &str, value: &str) -> Result<()> {
+	if value.trim().is_empty() {
+		eyre::bail!("Execution program {name} must not be empty.");
 	}
 
 	Ok(())
