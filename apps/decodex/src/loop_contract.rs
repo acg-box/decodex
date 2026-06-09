@@ -1,0 +1,730 @@
+//! Versioned Loop/Decision Contract model for research-to-execution handoff.
+
+use serde::{Deserialize, Serialize};
+
+use crate::prelude::{Result, eyre};
+
+pub(crate) const DECISION_CONTRACT_SCHEMA: &str = "decodex.decision_contract/1";
+pub(crate) const DECISION_CONTRACT_RECORD_VERSION: u16 = 1;
+
+/// Runtime-facing state for a Loop/Decision Contract.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum DecisionContractStatus {
+	DraftLatent,
+	AcceptedPromoted,
+	RejectedSuperseded,
+	NeedsHumanDecision,
+}
+impl DecisionContractStatus {
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::DraftLatent => "draft_latent",
+			Self::AcceptedPromoted => "accepted_promoted",
+			Self::RejectedSuperseded => "rejected_superseded",
+			Self::NeedsHumanDecision => "needs_human_decision",
+		}
+	}
+}
+
+/// Actor class that accepted or promoted the contract.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum DecisionPromotionActorKind {
+	User,
+	RuntimePolicy,
+}
+
+/// Versioned research-to-execution contract payload.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionContract {
+	#[serde(default = "decision_contract_schema")]
+	schema: String,
+	#[serde(default = "decision_contract_record_version")]
+	record_version: u16,
+	contract_id: String,
+	status: DecisionContractStatus,
+	source_intent: DecisionSourceIntent,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	research_provenance: Vec<DecisionResearchProvenance>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	research_evidence: Vec<DecisionResearchEvidence>,
+	accepted_authority: DecisionAcceptedAuthority,
+	execution_readiness: DecisionExecutionReadiness,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	promotion: Option<DecisionPromotion>,
+	#[serde(default)]
+	links: DecisionContractLinks,
+	evidence_boundary: DecisionEvidenceBoundary,
+}
+#[allow(dead_code)]
+impl DecisionContract {
+	pub(crate) fn contract_id(&self) -> &str {
+		&self.contract_id
+	}
+
+	pub(crate) fn status(&self) -> DecisionContractStatus {
+		self.status
+	}
+
+	pub(crate) fn source_intent(&self) -> &DecisionSourceIntent {
+		&self.source_intent
+	}
+
+	pub(crate) fn accepted_authority(&self) -> &DecisionAcceptedAuthority {
+		&self.accepted_authority
+	}
+
+	pub(crate) fn execution_readiness(&self) -> &DecisionExecutionReadiness {
+		&self.execution_readiness
+	}
+
+	pub(crate) fn promotion(&self) -> Option<&DecisionPromotion> {
+		self.promotion.as_ref()
+	}
+
+	pub(crate) fn links(&self) -> &DecisionContractLinks {
+		&self.links
+	}
+
+	pub(crate) fn validate(&self) -> Result<()> {
+		validate_required("decision contract schema", &self.schema)?;
+		validate_required("decision contract contract_id", &self.contract_id)?;
+
+		self.source_intent.validate()?;
+		self.accepted_authority.validate(self.status)?;
+		self.execution_readiness.validate(self.status)?;
+		self.links.validate()?;
+		self.evidence_boundary.validate()?;
+
+		if self.schema != DECISION_CONTRACT_SCHEMA {
+			eyre::bail!(
+				"Decision contract `{}` has unsupported schema `{}`.",
+				self.contract_id,
+				self.schema
+			);
+		}
+		if self.record_version != DECISION_CONTRACT_RECORD_VERSION {
+			eyre::bail!(
+				"Decision contract `{}` has unsupported record_version `{}`.",
+				self.contract_id,
+				self.record_version
+			);
+		}
+		if self.status == DecisionContractStatus::AcceptedPromoted && self.promotion.is_none() {
+			eyre::bail!(
+				"Accepted decision contract `{}` must include promotion metadata.",
+				self.contract_id
+			);
+		}
+		if matches!(
+			self.status,
+			DecisionContractStatus::DraftLatent | DecisionContractStatus::NeedsHumanDecision
+		) && self.promotion.is_some()
+		{
+			eyre::bail!(
+				"Latent decision contract `{}` must not carry promotion metadata.",
+				self.contract_id
+			);
+		}
+
+		if let Some(promotion) = &self.promotion {
+			promotion.validate()?;
+		}
+
+		for provenance in &self.research_provenance {
+			provenance.validate()?;
+		}
+		for evidence in &self.research_evidence {
+			evidence.validate()?;
+		}
+
+		Ok(())
+	}
+
+	pub(crate) fn promote(&mut self, promotion: DecisionPromotion) -> Result<()> {
+		match self.status {
+			DecisionContractStatus::DraftLatent | DecisionContractStatus::NeedsHumanDecision => {},
+			DecisionContractStatus::AcceptedPromoted => {
+				eyre::bail!("Decision contract `{}` is already promoted.", self.contract_id);
+			},
+			DecisionContractStatus::RejectedSuperseded => {
+				eyre::bail!(
+					"Decision contract `{}` was rejected or superseded and cannot be promoted.",
+					self.contract_id
+				);
+			},
+		}
+
+		promotion.validate()?;
+
+		self.status = DecisionContractStatus::AcceptedPromoted;
+		self.promotion = Some(promotion);
+
+		self.validate()
+	}
+
+	pub(crate) fn require_human_decision(&mut self, reason: impl Into<String>) -> Result<()> {
+		match self.status {
+			DecisionContractStatus::DraftLatent | DecisionContractStatus::NeedsHumanDecision => {},
+			DecisionContractStatus::AcceptedPromoted => {
+				eyre::bail!(
+					"Accepted decision contract `{}` cannot be moved back to needs-human-decision.",
+					self.contract_id
+				);
+			},
+			DecisionContractStatus::RejectedSuperseded => {
+				eyre::bail!(
+					"Rejected decision contract `{}` cannot be moved to needs-human-decision.",
+					self.contract_id
+				);
+			},
+		}
+
+		let reason = reason.into();
+
+		validate_required("decision contract human-decision reason", &reason)?;
+
+		if !self.execution_readiness.missing_decisions.iter().any(|existing| existing == &reason) {
+			self.execution_readiness.missing_decisions.push(reason);
+		}
+
+		self.status = DecisionContractStatus::NeedsHumanDecision;
+		self.promotion = None;
+
+		self.validate()
+	}
+
+	pub(crate) fn reject_or_supersede(
+		&mut self,
+		superseded_by_contract_id: Option<String>,
+	) -> Result<()> {
+		if let Some(contract_id) = superseded_by_contract_id {
+			validate_required("decision contract superseded_by_contract_id", &contract_id)?;
+
+			self.links.superseded_by_contract_id = Some(contract_id);
+		}
+
+		self.status = DecisionContractStatus::RejectedSuperseded;
+
+		self.validate()
+	}
+}
+
+/// Natural-language source intent that led to research or design work.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionSourceIntent {
+	summary: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	user_utterance: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	source_issue_identifier: Option<String>,
+}
+#[allow(dead_code)]
+impl DecisionSourceIntent {
+	pub(crate) fn summary(&self) -> &str {
+		&self.summary
+	}
+
+	pub(crate) fn source_issue_identifier(&self) -> Option<&str> {
+		self.source_issue_identifier.as_deref()
+	}
+
+	fn validate(&self) -> Result<()> {
+		validate_required("decision contract source_intent.summary", &self.summary)?;
+		validate_optional(
+			"decision contract source_intent.user_utterance",
+			self.user_utterance.as_deref(),
+		)?;
+
+		validate_optional(
+			"decision contract source_intent.source_issue_identifier",
+			self.source_issue_identifier.as_deref(),
+		)
+	}
+}
+
+/// Research or design source used to produce the contract.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionResearchProvenance {
+	kind: String,
+	reference: String,
+	summary: String,
+}
+impl DecisionResearchProvenance {
+	fn validate(&self) -> Result<()> {
+		validate_required("decision contract research_provenance.kind", &self.kind)?;
+		validate_required("decision contract research_provenance.reference", &self.reference)?;
+
+		validate_required("decision contract research_provenance.summary", &self.summary)
+	}
+}
+
+/// Non-authoritative research evidence retained before promotion.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionResearchEvidence {
+	claim: String,
+	support: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	source_ref: Option<String>,
+}
+impl DecisionResearchEvidence {
+	fn validate(&self) -> Result<()> {
+		validate_required("decision contract research_evidence.claim", &self.claim)?;
+		validate_required("decision contract research_evidence.support", &self.support)?;
+
+		validate_optional(
+			"decision contract research_evidence.source_ref",
+			self.source_ref.as_deref(),
+		)
+	}
+}
+
+/// Proposed or accepted execution authority carried by the contract.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionAcceptedAuthority {
+	#[serde(default)]
+	accepted_objectives: Vec<String>,
+	#[serde(default)]
+	non_goals: Vec<String>,
+	#[serde(default)]
+	constraints: Vec<String>,
+	#[serde(default)]
+	assumptions: Vec<String>,
+	#[serde(default)]
+	objections: Vec<String>,
+	#[serde(default)]
+	stop_conditions: Vec<String>,
+}
+#[allow(dead_code)]
+impl DecisionAcceptedAuthority {
+	pub(crate) fn accepted_objectives(&self) -> &[String] {
+		&self.accepted_objectives
+	}
+
+	pub(crate) fn non_goals(&self) -> &[String] {
+		&self.non_goals
+	}
+
+	pub(crate) fn stop_conditions(&self) -> &[String] {
+		&self.stop_conditions
+	}
+
+	fn validate(&self, status: DecisionContractStatus) -> Result<()> {
+		if status == DecisionContractStatus::AcceptedPromoted && self.accepted_objectives.is_empty()
+		{
+			eyre::bail!("Accepted decision contracts must include accepted objectives.");
+		}
+
+		validate_string_list("decision contract accepted_objectives", &self.accepted_objectives)?;
+		validate_string_list("decision contract non_goals", &self.non_goals)?;
+		validate_string_list("decision contract constraints", &self.constraints)?;
+		validate_string_list("decision contract assumptions", &self.assumptions)?;
+		validate_string_list("decision contract objections", &self.objections)?;
+
+		validate_string_list("decision contract stop_conditions", &self.stop_conditions)
+	}
+}
+
+/// Natural-language readiness summary for later issue shaping.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionExecutionReadiness {
+	summary: String,
+	ready_for_issue_shaping: bool,
+	#[serde(default)]
+	missing_decisions: Vec<String>,
+	#[serde(default)]
+	validation_expectations: Vec<String>,
+	#[serde(default)]
+	risk_notes: Vec<String>,
+}
+#[allow(dead_code)]
+impl DecisionExecutionReadiness {
+	pub(crate) fn summary(&self) -> &str {
+		&self.summary
+	}
+
+	pub(crate) fn ready_for_issue_shaping(&self) -> bool {
+		self.ready_for_issue_shaping
+	}
+
+	pub(crate) fn missing_decisions(&self) -> &[String] {
+		&self.missing_decisions
+	}
+
+	fn validate(&self, status: DecisionContractStatus) -> Result<()> {
+		validate_required("decision contract execution_readiness.summary", &self.summary)?;
+		validate_string_list("decision contract missing_decisions", &self.missing_decisions)?;
+		validate_string_list(
+			"decision contract validation_expectations",
+			&self.validation_expectations,
+		)?;
+		validate_string_list("decision contract risk_notes", &self.risk_notes)?;
+
+		match status {
+			DecisionContractStatus::AcceptedPromoted => {
+				if !self.ready_for_issue_shaping {
+					eyre::bail!("Accepted decision contracts must be ready for issue shaping.");
+				}
+				if !self.missing_decisions.is_empty() {
+					eyre::bail!(
+						"Accepted decision contracts must not carry unresolved missing decisions."
+					);
+				}
+			},
+			DecisionContractStatus::NeedsHumanDecision =>
+				if self.missing_decisions.is_empty() {
+					eyre::bail!(
+						"Needs-human-decision contracts must include at least one missing decision."
+					);
+				},
+			DecisionContractStatus::DraftLatent | DecisionContractStatus::RejectedSuperseded => {},
+		}
+
+		Ok(())
+	}
+}
+
+/// Promotion metadata that records who or what accepted the contract and when.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionPromotion {
+	accepted_by: String,
+	accepted_by_kind: DecisionPromotionActorKind,
+	accepted_at: String,
+	acceptance_source: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	promotion_reason: Option<String>,
+}
+#[allow(dead_code)]
+impl DecisionPromotion {
+	pub(crate) fn new(
+		accepted_by: impl Into<String>,
+		accepted_by_kind: DecisionPromotionActorKind,
+		accepted_at: impl Into<String>,
+		acceptance_source: impl Into<String>,
+		promotion_reason: Option<String>,
+	) -> Result<Self> {
+		let promotion = Self {
+			accepted_by: accepted_by.into(),
+			accepted_by_kind,
+			accepted_at: accepted_at.into(),
+			acceptance_source: acceptance_source.into(),
+			promotion_reason,
+		};
+
+		promotion.validate()?;
+
+		Ok(promotion)
+	}
+
+	pub(crate) fn accepted_by(&self) -> &str {
+		&self.accepted_by
+	}
+
+	pub(crate) fn accepted_at(&self) -> &str {
+		&self.accepted_at
+	}
+
+	fn validate(&self) -> Result<()> {
+		validate_required("decision contract promotion.accepted_by", &self.accepted_by)?;
+		validate_required("decision contract promotion.accepted_at", &self.accepted_at)?;
+		validate_required(
+			"decision contract promotion.acceptance_source",
+			&self.acceptance_source,
+		)?;
+
+		validate_optional(
+			"decision contract promotion.promotion_reason",
+			self.promotion_reason.as_deref(),
+		)
+	}
+}
+
+/// Links from the decision contract to generated execution surfaces.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionContractLinks {
+	#[serde(default)]
+	generated_issue_ids: Vec<String>,
+	#[serde(default)]
+	generated_issue_identifiers: Vec<String>,
+	#[serde(default)]
+	execution_program_node_ids: Vec<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	superseded_by_contract_id: Option<String>,
+}
+#[allow(dead_code)]
+impl DecisionContractLinks {
+	pub(crate) fn generated_issue_identifiers(&self) -> &[String] {
+		&self.generated_issue_identifiers
+	}
+
+	pub(crate) fn execution_program_node_ids(&self) -> &[String] {
+		&self.execution_program_node_ids
+	}
+
+	pub(crate) fn superseded_by_contract_id(&self) -> Option<&str> {
+		self.superseded_by_contract_id.as_deref()
+	}
+
+	fn validate(&self) -> Result<()> {
+		validate_string_list(
+			"decision contract links.generated_issue_ids",
+			&self.generated_issue_ids,
+		)?;
+		validate_string_list(
+			"decision contract links.generated_issue_identifiers",
+			&self.generated_issue_identifiers,
+		)?;
+		validate_string_list(
+			"decision contract links.execution_program_node_ids",
+			&self.execution_program_node_ids,
+		)?;
+
+		validate_optional(
+			"decision contract links.superseded_by_contract_id",
+			self.superseded_by_contract_id.as_deref(),
+		)
+	}
+}
+
+/// Boundary between private runtime evidence and public tracker projection.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionEvidenceBoundary {
+	#[serde(default)]
+	private_evidence_refs: Vec<DecisionPrivateEvidenceRef>,
+	#[serde(default)]
+	public_projection_refs: Vec<DecisionPublicProjectionRef>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	public_summary: Option<String>,
+}
+#[allow(dead_code)]
+impl DecisionEvidenceBoundary {
+	pub(crate) fn private_evidence_refs(&self) -> &[DecisionPrivateEvidenceRef] {
+		&self.private_evidence_refs
+	}
+
+	pub(crate) fn public_projection_refs(&self) -> &[DecisionPublicProjectionRef] {
+		&self.public_projection_refs
+	}
+
+	fn validate(&self) -> Result<()> {
+		for evidence_ref in &self.private_evidence_refs {
+			evidence_ref.validate()?;
+		}
+		for projection_ref in &self.public_projection_refs {
+			projection_ref.validate()?;
+		}
+
+		validate_optional(
+			"decision contract evidence_boundary.public_summary",
+			self.public_summary.as_deref(),
+		)
+	}
+}
+
+/// Reference to local-only runtime evidence that must not be mirrored to Linear.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionPrivateEvidenceRef {
+	project_id: String,
+	issue_id: String,
+	run_id: String,
+	attempt_number: i64,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	record_id: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	event_type: Option<String>,
+}
+impl DecisionPrivateEvidenceRef {
+	fn validate(&self) -> Result<()> {
+		validate_required("decision contract private_evidence_ref.project_id", &self.project_id)?;
+		validate_required("decision contract private_evidence_ref.issue_id", &self.issue_id)?;
+		validate_required("decision contract private_evidence_ref.run_id", &self.run_id)?;
+
+		if self.attempt_number < 1 {
+			eyre::bail!("Decision contract private evidence attempt_number must be positive.");
+		}
+
+		if let Some(record_id) = self.record_id
+			&& record_id < 1
+		{
+			eyre::bail!("Decision contract private evidence record_id must be positive.");
+		}
+
+		validate_optional(
+			"decision contract private_evidence_ref.event_type",
+			self.event_type.as_deref(),
+		)
+	}
+}
+
+/// Reference to a low-frequency public projection such as Linear or a generated issue.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionPublicProjectionRef {
+	surface: String,
+	reference: String,
+	summary: String,
+}
+impl DecisionPublicProjectionRef {
+	fn validate(&self) -> Result<()> {
+		validate_required("decision contract public_projection_ref.surface", &self.surface)?;
+		validate_required("decision contract public_projection_ref.reference", &self.reference)?;
+
+		validate_required("decision contract public_projection_ref.summary", &self.summary)
+	}
+}
+
+fn decision_contract_schema() -> String {
+	DECISION_CONTRACT_SCHEMA.to_owned()
+}
+
+fn decision_contract_record_version() -> u16 {
+	DECISION_CONTRACT_RECORD_VERSION
+}
+
+fn validate_required(name: &str, value: &str) -> Result<()> {
+	if value.trim().is_empty() {
+		eyre::bail!("{name} must not be empty.");
+	}
+
+	Ok(())
+}
+
+fn validate_optional(name: &str, value: Option<&str>) -> Result<()> {
+	if let Some(value) = value {
+		validate_required(name, value)?;
+	}
+
+	Ok(())
+}
+
+fn validate_string_list(name: &str, values: &[String]) -> Result<()> {
+	for value in values {
+		validate_required(name, value)?;
+	}
+
+	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::loop_contract::{
+		DecisionContract, DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind,
+	};
+
+	fn latent_research_contract_fixture() -> DecisionContract {
+		serde_json::from_str(include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"),
+			"/fixtures/decision_contract/research_x_latent_contract.json"
+		)))
+		.expect("research X latent contract fixture should deserialize")
+	}
+
+	fn sample_promotion() -> DecisionPromotion {
+		DecisionPromotion {
+			accepted_by: String::from("operator"),
+			accepted_by_kind: DecisionPromotionActorKind::User,
+			accepted_at: String::from("2026-06-09T10:00:00Z"),
+			acceptance_source: String::from("conversation"),
+			promotion_reason: Some(String::from("User asked to push this forward.")),
+		}
+	}
+
+	#[test]
+	fn latent_research_contract_fixture_serializes_with_expected_boundary() {
+		let contract = latent_research_contract_fixture();
+
+		contract.validate().expect("latent contract should validate");
+
+		assert_eq!(contract.contract_id(), "research-x-loop-contract");
+		assert_eq!(contract.status(), DecisionContractStatus::DraftLatent);
+		assert_eq!(contract.source_intent().summary(), "Research X and shape follow-up work.");
+		assert_eq!(contract.accepted_authority().accepted_objectives().len(), 2);
+		assert!(contract.execution_readiness().ready_for_issue_shaping());
+		assert_eq!(contract.evidence_boundary.private_evidence_refs().len(), 1);
+		assert_eq!(contract.evidence_boundary.public_projection_refs().len(), 1);
+		assert!(contract.promotion().is_none());
+	}
+
+	#[test]
+	fn promotion_records_acceptance_metadata_and_blocks_double_promotion() {
+		let mut contract = latent_research_contract_fixture();
+
+		contract.promote(sample_promotion()).expect("latent contract should promote");
+
+		assert_eq!(contract.status(), DecisionContractStatus::AcceptedPromoted);
+		assert_eq!(
+			contract.promotion().expect("promotion should exist").accepted_at(),
+			"2026-06-09T10:00:00Z"
+		);
+		assert!(
+			contract
+				.promote(contract.promotion().expect("promotion should exist").clone())
+				.is_err()
+		);
+	}
+
+	#[test]
+	fn rejected_contract_cannot_be_promoted() {
+		let mut contract = latent_research_contract_fixture();
+
+		contract
+			.reject_or_supersede(Some(String::from("research-x-replacement")))
+			.expect("contract should reject");
+
+		assert_eq!(contract.status(), DecisionContractStatus::RejectedSuperseded);
+		assert_eq!(contract.links().superseded_by_contract_id(), Some("research-x-replacement"));
+		assert!(
+			contract
+				.promote(DecisionPromotion { promotion_reason: None, ..sample_promotion() })
+				.is_err()
+		);
+	}
+
+	#[test]
+	fn accepted_contracts_require_readiness_without_missing_decisions() {
+		let mut contract = latent_research_contract_fixture();
+
+		contract.execution_readiness.ready_for_issue_shaping = false;
+
+		assert!(contract.promote(sample_promotion()).is_err());
+
+		let mut contract = latent_research_contract_fixture();
+
+		contract
+			.execution_readiness
+			.missing_decisions
+			.push(String::from("Choose the first generated issue."));
+
+		assert!(contract.promote(sample_promotion()).is_err());
+	}
+
+	#[test]
+	fn latent_contracts_reject_promotion_metadata() {
+		let mut contract = latent_research_contract_fixture();
+
+		contract.promotion = Some(sample_promotion());
+
+		assert!(contract.validate().is_err());
+	}
+
+	#[test]
+	fn validation_rejects_empty_optional_boundary_values() {
+		let mut contract = latent_research_contract_fixture();
+
+		contract.links.generated_issue_identifiers.push(String::from(" "));
+
+		assert!(contract.validate().is_err());
+
+		let mut contract = latent_research_contract_fixture();
+
+		contract.evidence_boundary.public_summary = Some(String::new());
+
+		assert!(contract.validate().is_err());
+
+		let mut contract = latent_research_contract_fixture();
+
+		contract.evidence_boundary.private_evidence_refs[0].record_id = Some(0);
+
+		assert!(contract.validate().is_err());
+	}
+}

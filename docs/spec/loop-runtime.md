@@ -75,6 +75,50 @@ A Research/Decision stage may produce a latent Loop/Decision Contract with:
 The latent contract is a candidate decision package. It becomes authoritative only
 after the user or an accepted runtime policy promotes it.
 
+## Decision Contract Schema
+
+The runtime-facing Decision Contract payload is versioned as
+`decodex.decision_contract/1` with `record_version = 1`.
+
+The payload carries these top-level fields:
+
+| Field | Meaning |
+| --- | --- |
+| `contract_id` | Stable runtime identifier for this decision package. |
+| `status` | One of `draft_latent`, `accepted_promoted`, `rejected_superseded`, or `needs_human_decision`. |
+| `source_intent` | Natural-language source intent, including the original utterance or issue reference when known. |
+| `research_provenance` | Research/design sources used to produce the candidate package. |
+| `research_evidence` | Non-authoritative evidence claims retained for later review and issue shaping. |
+| `accepted_authority` | Objectives, non-goals, constraints, assumptions, objections, and stop conditions that become authority only when status is `accepted_promoted`. |
+| `execution_readiness` | Natural-language readiness summary, missing decisions, validation expectations, and risk notes. It must not expose graph ids or require the user to operate a DAG. Accepted contracts must be ready for issue shaping and must not carry unresolved missing decisions. |
+| `promotion` | Metadata recording who or what accepted the decision, the acceptance source, and the acceptance time. Required only for `accepted_promoted`. |
+| `links` | Generated Linear issue ids/identifiers or internal Execution Program node ids when those exist. |
+| `evidence_boundary` | Local private evidence references and sparse public projection references. |
+
+The status is the authority boundary:
+
+- `draft_latent` means the research/design result is stored but cannot enqueue,
+  mutate tracker state, set goals, or authorize implementation.
+- `accepted_promoted` means the payload's `accepted_authority` fields may be used by
+  the loop runtime to shape queue intent, generated issues, or internal Execution
+  Program nodes. The payload must include promotion metadata, set
+  `execution_readiness.ready_for_issue_shaping = true`, and leave
+  `execution_readiness.missing_decisions` empty.
+- `rejected_superseded` means the payload is retained for audit/history but must not
+  be promoted later.
+- `needs_human_decision` means the package is incomplete or contradictory enough that
+  execution must wait for more direction. The payload must include at least one
+  `execution_readiness.missing_decisions` entry.
+
+Research provenance and research evidence are not execution authority. They explain
+why the candidate package exists and give future agents enough context to avoid asking
+the user to restate all details after promotion.
+
+The runtime stores Decision Contracts in local SQLite first. Linear issue descriptions,
+Linear execution-ledger comments, generated issue text, and operator summaries may link
+to or summarize an accepted contract, but they are public/coarse mirrors and must not
+become the source of truth for private loop state.
+
 ## Promotion Boundary
 
 Promotion is the boundary between design and execution authority.
