@@ -1319,6 +1319,31 @@ where
 	Ok(())
 }
 
+fn run_completion_repo_gate(workflow: &WorkflowDocument, issue_run: &IssueRunPlan) -> Result<()> {
+	let selected_repo_gate =
+		select_repo_gate_for_worktree(workflow.frontmatter().execution(), &issue_run.worktree.path);
+
+	write_run_operation_marker_best_effort(
+		&issue_run.worktree.path,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		RUN_OPERATION_REPO_GATE,
+	);
+	run_repo_gate_commands(
+		selected_repo_gate.canonicalize_commands(),
+		selected_repo_gate.verify_commands(),
+		&issue_run.worktree.path,
+	)?;
+	write_run_operation_marker_best_effort(
+		&issue_run.worktree.path,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		RUN_OPERATION_REVIEW_WRITEBACK,
+	);
+
+	Ok(())
+}
+
 fn apply_run_completion_disposition<T>(
 	tracker: &T,
 	project: &ServiceConfig,
@@ -1333,27 +1358,7 @@ where
 	match tracker_tool_bridge.completion_disposition()? {
 		RunCompletionDisposition::ReviewHandoff => {
 			validate_review_handoff_runtime(project, false)?;
-
-			let selected_repo_gate =
-				select_repo_gate_for_worktree(workflow.frontmatter().execution(), &issue_run.worktree.path);
-
-			write_run_operation_marker_best_effort(
-				&issue_run.worktree.path,
-				&issue_run.run_id,
-				issue_run.attempt_number,
-				RUN_OPERATION_REPO_GATE,
-			);
-			run_repo_gate_commands(
-				selected_repo_gate.canonicalize_commands(),
-				selected_repo_gate.verify_commands(),
-				&issue_run.worktree.path,
-			)?;
-			write_run_operation_marker_best_effort(
-				&issue_run.worktree.path,
-				&issue_run.run_id,
-				issue_run.attempt_number,
-				RUN_OPERATION_REVIEW_WRITEBACK,
-			);
+			run_completion_repo_gate(workflow, issue_run)?;
 
 			tracker_tool_bridge.apply_review_handoff().map_err(|error| {
 				if let Some(writeback_error) = error.downcast_ref::<ReviewHandoffWritebackFailed>()
@@ -1368,6 +1373,18 @@ where
 					error
 				}
 			})?;
+
+			record_harness_outcome_best_effort(
+				state_store,
+				project.service_id(),
+				issue_run,
+				HarnessOutcomeKind::ReviewHandoff,
+				None,
+				Some("passed"),
+				tracker_tool_bridge
+					.review_context()
+					.and_then(|context| context.recorded_pr_url.as_deref()),
+			);
 		},
 		RunCompletionDisposition::ManualAttention => {
 			return Err(Report::new(ManualAttentionRequested {
@@ -1378,28 +1395,21 @@ where
 			}));
 		},
 		RunCompletionDisposition::ReviewRepair => {
-			let selected_repo_gate =
-				select_repo_gate_for_worktree(workflow.frontmatter().execution(), &issue_run.worktree.path);
-
-			write_run_operation_marker_best_effort(
-				&issue_run.worktree.path,
-				&issue_run.run_id,
-				issue_run.attempt_number,
-				RUN_OPERATION_REPO_GATE,
-			);
-			run_repo_gate_commands(
-				selected_repo_gate.canonicalize_commands(),
-				selected_repo_gate.verify_commands(),
-				&issue_run.worktree.path,
-			)?;
-			write_run_operation_marker_best_effort(
-				&issue_run.worktree.path,
-				&issue_run.run_id,
-				issue_run.attempt_number,
-				RUN_OPERATION_REVIEW_WRITEBACK,
-			);
+			run_completion_repo_gate(workflow, issue_run)?;
 
 			tracker_tool_bridge.apply_review_repair()?;
+
+			record_harness_outcome_best_effort(
+				state_store,
+				project.service_id(),
+				issue_run,
+				HarnessOutcomeKind::ReviewRepair,
+				None,
+				Some("passed"),
+				tracker_tool_bridge
+					.review_context()
+					.and_then(|context| context.recorded_pr_url.as_deref()),
+			);
 		},
 		RunCompletionDisposition::Closeout => {
 			write_run_operation_marker_best_effort(
@@ -1426,6 +1436,18 @@ where
 			)?;
 
 			tracker_tool_bridge.clear_closeout_issue_scope()?;
+
+			record_harness_outcome_best_effort(
+				state_store,
+				project.service_id(),
+				issue_run,
+				HarnessOutcomeKind::Closeout,
+				None,
+				Some("passed"),
+				tracker_tool_bridge
+					.review_context()
+					.and_then(|context| context.recorded_pr_url.as_deref()),
+			);
 		},
 	}
 
@@ -2076,6 +2098,15 @@ where
 		context.issue_run.attempt_number,
 		context.retry_budget_attempts,
 	)?;
+	record_harness_outcome_best_effort(
+		context.state_store,
+		context.project.service_id(),
+		context.issue_run,
+		HarnessOutcomeKind::RetryableFailure,
+		Some(retry_error_class),
+		Some("failed"),
+		None,
+	);
 
 	Ok(())
 }
@@ -2282,6 +2313,23 @@ where
 		forget_terminal_failure_writeback_event(runtime, event_status, &writeback)?;
 
 		return Err(error);
+	}
+	if let Some(state_store) = runtime.state_store {
+		let outcome = if writeback.projection.record.event_type == "needs_attention" {
+			HarnessOutcomeKind::ManualAttention
+		} else {
+			HarnessOutcomeKind::TerminalFailure
+		};
+
+		record_harness_outcome_best_effort(
+			state_store,
+			runtime.service_id,
+			issue_run,
+			outcome,
+			Some(writeback.error_class),
+			None,
+			writeback.projection.record.pr_url.as_deref(),
+		);
 	}
 
 	Ok(terminal_failure_outcome(&writeback))
