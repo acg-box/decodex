@@ -127,6 +127,7 @@ struct StateData {
 	worktrees: HashMap<String, WorktreeMappingRecord>,
 	linear_execution_events: HashMap<String, LinearExecutionEventRuntimeRecord>,
 	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
+	decision_contracts: HashMap<DecisionContractKey, DecisionContractRuntimeRecord>,
 	review_handoffs: HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
 	review_orchestrations: HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
 	review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
@@ -146,6 +147,7 @@ impl StateData {
 		self.worktrees = loaded.worktrees;
 		self.linear_execution_events = loaded.linear_execution_events;
 		self.private_execution_events = loaded.private_execution_events;
+		self.decision_contracts = loaded.decision_contracts;
 		self.review_handoffs = loaded.review_handoffs;
 		self.review_orchestrations = loaded.review_orchestrations;
 		self.review_policy_checkpoints = loaded.review_policy_checkpoints;
@@ -351,6 +353,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_run_control_channels_schema()?;
 		self.bootstrap_connector_backoffs_schema()?;
 		self.bootstrap_private_execution_events_schema()?;
+		self.bootstrap_decision_contracts_schema()?;
 		self.record_schema_version()?;
 
 		Ok(())
@@ -501,6 +504,31 @@ ON private_execution_events (
 		Ok(())
 	}
 
+	fn bootstrap_decision_contracts_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS decision_contracts (
+	project_id TEXT NOT NULL,
+	contract_id TEXT NOT NULL,
+	source_issue_id TEXT,
+	status TEXT NOT NULL,
+	payload_json TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, contract_id)
+);
+CREATE INDEX IF NOT EXISTS decision_contracts_source_issue_idx
+ON decision_contracts (project_id, source_issue_id, updated_at_unix);
+CREATE INDEX IF NOT EXISTS decision_contracts_status_idx
+ON decision_contracts (project_id, status, updated_at_unix);
+"#,
+		)?;
+
+		Ok(())
+	}
+
 	fn record_schema_version(&self) -> Result<()> {
 		self.connection.execute_batch(
 			r#"
@@ -528,6 +556,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_worktrees(&mut state)?;
 		self.load_linear_execution_events(&mut state)?;
 		self.load_private_execution_events(&mut state)?;
+		self.load_decision_contracts(&mut state)?;
 		self.load_review_handoffs(&mut state)?;
 		self.load_review_orchestrations(&mut state)?;
 		self.load_review_policy_checkpoints(&mut state)?;
@@ -567,6 +596,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_worktrees(&transaction, state)?;
 		persist_linear_execution_events(&transaction, state)?;
 		persist_private_execution_events(&transaction, state)?;
+		persist_decision_contracts(&transaction, state)?;
 		persist_review_handoffs(&transaction, state)?;
 		persist_review_orchestrations(&transaction, state)?;
 		persist_review_policy_checkpoints(&transaction, state)?;
@@ -587,6 +617,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"DELETE FROM run_control_channels WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM decision_contracts WHERE project_id = ?1",
 			params![service_id],
 		)?;
 		transaction.commit()?;
@@ -767,6 +801,37 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(self.connection.last_insert_rowid())
 	}
 
+	#[allow(dead_code)]
+	fn upsert_decision_contract(&self, record: &DecisionContractRuntimeRecord) -> Result<()> {
+		let payload_json = serde_json::to_string(&record.contract)?;
+
+		self.connection.execute(
+			"INSERT INTO decision_contracts (
+					project_id, contract_id, source_issue_id, status, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+			 ON CONFLICT(project_id, contract_id) DO UPDATE SET
+				 source_issue_id = excluded.source_issue_id,
+				 status = excluded.status,
+				 payload_json = excluded.payload_json,
+				 updated_at = excluded.updated_at,
+				 updated_at_unix = excluded.updated_at_unix",
+			params![
+				&record.project_id,
+				record.contract.contract_id(),
+				record.source_issue_id.as_deref(),
+				record.status.as_str(),
+				payload_json,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+
+		Ok(())
+	}
+
 	fn delete_lease(&mut self, issue_id: &str) -> Result<()> {
 		self.connection
 			.execute("DELETE FROM leases WHERE issue_id = ?1", params![issue_id])?;
@@ -803,6 +868,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"UPDATE private_execution_events SET issue_id = ?2 WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
+		transaction.execute(
+			"UPDATE decision_contracts SET source_issue_id = ?2 WHERE source_issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
@@ -1407,6 +1476,76 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn load_decision_contracts(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, contract_id, source_issue_id, status, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM decision_contracts \
+			 ORDER BY project_id ASC, contract_id ASC",
+		)?;
+		let rows = statement.query_map([], |row| {
+			Ok((
+				row.get::<_, String>(0)?,
+				row.get::<_, String>(1)?,
+				row.get::<_, Option<String>>(2)?,
+				row.get::<_, String>(3)?,
+				row.get::<_, String>(4)?,
+				row.get::<_, String>(5)?,
+				row.get::<_, i64>(6)?,
+				row.get::<_, String>(7)?,
+				row.get::<_, i64>(8)?,
+			))
+		})?;
+
+		for row in rows {
+			let (
+				project_id,
+				contract_id,
+				source_issue_id,
+				status,
+				payload_json,
+				created_at,
+				created_at_unix,
+				updated_at,
+				updated_at_unix,
+			) = row?;
+			let contract = serde_json::from_str::<DecisionContract>(&payload_json)?;
+			let contract_status = contract.status();
+
+			contract.validate()?;
+
+			if contract_id != contract.contract_id() {
+				eyre::bail!(
+					"Decision contract row `{contract_id}` contained payload `{}`.",
+					contract.contract_id()
+				);
+			}
+			if status != contract_status.as_str() {
+				tracing::warn!(
+					project_id = %project_id,
+					contract_id = %contract_id,
+					"decision contract status column differed from payload status"
+				);
+			}
+
+			state.decision_contracts.insert(
+				DecisionContractKey::new(&project_id, &contract_id),
+				DecisionContractRuntimeRecord {
+					project_id,
+					source_issue_id,
+					status: contract_status,
+					contract,
+					created_at,
+					created_at_unix,
+					updated_at,
+					updated_at_unix,
+				},
+			);
+		}
+
+		Ok(())
+	}
+
 	fn load_review_handoffs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, branch_name, run_id, attempt_number, pr_url, \
@@ -1711,6 +1850,49 @@ impl PrivateExecutionEventRuntimeRecord {
 			payload: self.payload.clone(),
 			recorded_at: self.recorded_at.clone(),
 			recorded_at_unix: self.recorded_at_unix,
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct DecisionContractKey {
+	project_id: String,
+	contract_id: String,
+}
+impl DecisionContractKey {
+	fn new(project_id: &str, contract_id: &str) -> Self {
+		Self { project_id: project_id.to_owned(), contract_id: contract_id.to_owned() }
+	}
+}
+
+#[derive(Clone, Debug)]
+struct DecisionContractRuntimeRecord {
+	project_id: String,
+	source_issue_id: Option<String>,
+	contract: DecisionContract,
+	status: DecisionContractStatus,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl DecisionContractRuntimeRecord {
+	#[allow(dead_code)]
+	fn key(&self) -> DecisionContractKey {
+		DecisionContractKey::new(&self.project_id, self.contract.contract_id())
+	}
+
+	#[allow(dead_code)]
+	fn as_public(&self) -> DecisionContractRecord {
+		DecisionContractRecord {
+			project_id: self.project_id.clone(),
+			source_issue_id: self.source_issue_id.clone(),
+			contract: self.contract.clone(),
+			status: self.status,
+			created_at: self.created_at.clone(),
+			created_at_unix: self.created_at_unix,
+			updated_at: self.updated_at.clone(),
+			updated_at_unix: self.updated_at_unix,
 		}
 	}
 }
@@ -2695,6 +2877,35 @@ fn persist_private_execution_events(
 	Ok(())
 }
 
+fn persist_decision_contracts(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for record in state.decision_contracts.values() {
+		let payload_json = serde_json::to_string(&record.contract)?;
+
+		transaction.execute(
+			"INSERT OR REPLACE INTO decision_contracts (
+					project_id, contract_id, source_issue_id, status, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+			params![
+				&record.project_id,
+				record.contract.contract_id(),
+				record.source_issue_id.as_deref(),
+				record.status.as_str(),
+				payload_json,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
 fn persist_review_handoffs(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for record in state.review_handoffs.values() {
 		transaction.execute(
@@ -3473,6 +3684,16 @@ fn compare_private_execution_event_runtime_records(
 	right: &PrivateExecutionEventRuntimeRecord,
 ) -> cmp::Ordering {
 	left.record_id.cmp(&right.record_id)
+}
+
+#[allow(dead_code)]
+fn compare_decision_contract_runtime_records(
+	left: &DecisionContractRuntimeRecord,
+	right: &DecisionContractRuntimeRecord,
+) -> cmp::Ordering {
+	left.updated_at_unix
+		.cmp(&right.updated_at_unix)
+		.then_with(|| left.contract.contract_id().cmp(right.contract.contract_id()))
 }
 
 fn compare_project_run_status(left: &ProjectRunStatus, right: &ProjectRunStatus) -> cmp::Ordering {

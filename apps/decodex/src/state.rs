@@ -22,6 +22,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	config::ServiceConfig,
+	loop_contract::{DecisionContract, DecisionContractStatus, DecisionPromotion},
 	prelude::{Result, eyre},
 	tracker::records::{self, LinearExecutionEventRecord},
 };
