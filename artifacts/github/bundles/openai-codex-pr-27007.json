@@ -1,0 +1,475 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-08T14:45:30Z",
+      "message": "feat: new tui mav2",
+      "sha": "6bba7d7f0403b1190af5f6def0d08da41946c516",
+      "url": "https://github.com/openai/codex/commit/6bba7d7f0403b1190af5f6def0d08da41946c516"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-08T16:26:11Z",
+      "message": "fix multi-agent activity tracking regressions",
+      "sha": "f5696a6365d98f2e083a5ca7681c49be08acfd7b",
+      "url": "https://github.com/openai/codex/commit/f5696a6365d98f2e083a5ca7681c49be08acfd7b"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-08T16:38:53Z",
+      "message": "fix argument comment lint",
+      "sha": "3b2e64054eb41fe13c3e71e4b914db352212746c",
+      "url": "https://github.com/openai/codex/commit/3b2e64054eb41fe13c3e71e4b914db352212746c"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T09:22:41Z",
+      "message": "fix comments",
+      "sha": "ba4061d420e62206e42e94d09bba3d05f6063ae6",
+      "url": "https://github.com/openai/codex/commit/ba4061d420e62206e42e94d09bba3d05f6063ae6"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T09:54:33Z",
+      "message": "fix",
+      "sha": "87f4b5f9cad0d5941821cc5dfbbf81f0d75e76e1",
+      "url": "https://github.com/openai/codex/commit/87f4b5f9cad0d5941821cc5dfbbf81f0d75e76e1"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "TUI",
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND",
+    "DEFAULT_ROLE_NAME",
+    "AGENT_STATUS_PREVIEW_LINES",
+    "AGENT_STATUS_PREVIEW_ITEMS",
+    "AGENT_STATUS_PREVIEW_GRAPHEMES",
+    "AGENT_STATUS_PREVIEW_INDENT",
+    "MAX",
+    "MCP",
+    "PAGE_SIZE"
+  ],
+  "files": [
+    {
+      "additions": 9,
+      "deletions": 2,
+      "patch_excerpt": "@@ -108,6 +108,7 @@ use codex_app_server_protocol::ServerNotification;\n use codex_app_server_protocol::ServerRequest;\n use codex_app_server_protocol::ServerResponse;\n use codex_app_server_protocol::SessionSource as AppServerSessionSource;\n+use codex_app_server_protocol::SubAgentActivityKind;\n use codex_app_server_protocol::Thread;\n use codex_app_server_protocol::ThreadArchiveParams;\n use codex_app_server_protocol::ThreadArchiveResponse;\n@@ -3788,6 +3789,12 @@ async fn turn_event_counts_completed_tool_items() {\n             reasoning_effort: None,\n             agents_states: Default::default(),\n         },\n+        ThreadItem::SubAgentActivity {\n+            id: \"sub-agent-activity-1\".to_string(),\n+            kind: SubAgentActivityKind::Interacted,\n+            agent_thread_id: \"thread-child\".to_string(),\n+            agent_path: \"/root/child\".to_string(),\n+        },\n         ThreadItem...",
+      "path": "codex-rs/analytics/src/analytics_client_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 1,
+      "patch_excerpt": "@@ -360,7 +360,9 @@ impl TurnToolCounts {\n             ThreadItem::FileChange { .. } => self.file_change += 1,\n             ThreadItem::McpToolCall { .. } => self.mcp_tool_call += 1,\n             ThreadItem::DynamicToolCall { .. } => self.dynamic_tool_call += 1,\n-            ThreadItem::CollabAgentToolCall { .. } => self.subagent_tool_call += 1,\n+            ThreadItem::CollabAgentToolCall { .. } | ThreadItem::SubAgentActivity { .. } => {\n+                self.subagent_tool_call += 1;\n+            }\n             ThreadItem::WebSearch { .. } => self.web_search += 1,\n             ThreadItem::ImageGeneration { .. } => self.image_generation += 1,\n             ThreadItem::UserMessage { .. }\n@@ -1091,6 +1093,18 @@ impl AnalyticsReducer {\n                 );\n             }\n             ServerNotification::ItemCompleted(notification) => {\n+                if matches!(notification.item, ThreadIte...",
+      "path": "codex-rs/analytics/src/reducer.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3177,6 +3177,14 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -4107,6 +4115,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThre...",
+      "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -15580,6 +15580,14 @@\n         ],\n         \"type\": \"object\"\n       },\n+      \"SubAgentActivityKind\": {\n+        \"enum\": [\n+          \"started\",\n+          \"interacted\",\n+          \"interrupted\"\n+        ],\n+        \"type\": \"string\"\n+      },\n       \"SubAgentSource\": {\n         \"oneOf\": [\n           {\n@@ -16892,6 +16900,38 @@\n             \"title\": \"CollabAgentToolCallThreadItem\",\n             \"type\": \"object\"\n           },\n+          {\n+            \"properties\": {\n+              \"agentPath\": {\n+                \"type\": \"string\"\n+              },\n+              \"agentThreadId\": {\n+                \"type\": \"string\"\n+              },\n+              \"id\": {\n+                \"type\": \"string\"\n+              },\n+              \"kind\": {\n+                \"$ref\": \"#/definitions/v2/SubAgentActivityKind\"\n+              },\n+              \"type\": {\n+                \"enum\": [\n+                  \"subAge...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -13397,6 +13397,14 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -14709,6 +14717,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivity...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -466,6 +466,14 @@\n       \"minLength\": 1,\n       \"type\": \"string\"\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"TextElement\": {\n       \"properties\": {\n         \"byteRange\": {\n@@ -989,6 +997,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ItemCompletedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -466,6 +466,14 @@\n       \"minLength\": 1,\n       \"type\": \"string\"\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"TextElement\": {\n       \"properties\": {\n         \"byteRange\": {\n@@ -989,6 +997,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ItemStartedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -610,6 +610,14 @@\n       \"minLength\": 1,\n       \"type\": \"string\"\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"TextElement\": {\n       \"properties\": {\n         \"byteRange\": {\n@@ -1133,6 +1141,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"tit...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ReviewStartResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -861,6 +861,14 @@\n         }\n       ]\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -1617,6 +1625,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThreadItemType\",\n+  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadForkResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -676,6 +676,14 @@\n         }\n       ]\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -1432,6 +1440,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThreadItemType\",\n+  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadListResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -676,6 +676,14 @@\n         }\n       ]\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -1432,6 +1440,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThreadItemType\",\n+  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadMetadataUpdateResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -676,6 +676,14 @@\n         }\n       ]\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -1432,6 +1440,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThreadItemType\",\n+  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadReadResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -861,6 +861,14 @@\n         }\n       ]\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -1617,6 +1625,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThreadItemType\",\n+  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadResumeResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -676,6 +676,14 @@\n         }\n       ]\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -1432,6 +1440,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThreadItemType\",\n+  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadRollbackResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -861,6 +861,14 @@\n         }\n       ]\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -1617,6 +1625,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThreadItemType\",\n+  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -676,6 +676,14 @@\n         }\n       ]\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -1432,6 +1440,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThreadItemType\",\n+  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -676,6 +676,14 @@\n         }\n       ]\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"SubAgentSource\": {\n       \"oneOf\": [\n         {\n@@ -1432,6 +1440,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"title\": \"SubAgentActivityThreadItemType\",\n+  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadUnarchiveResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -610,6 +610,14 @@\n       \"minLength\": 1,\n       \"type\": \"string\"\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"TextElement\": {\n       \"properties\": {\n         \"byteRange\": {\n@@ -1133,6 +1141,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"tit...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnCompletedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -610,6 +610,14 @@\n       \"minLength\": 1,\n       \"type\": \"string\"\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"TextElement\": {\n       \"properties\": {\n         \"byteRange\": {\n@@ -1133,6 +1141,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"tit...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 0,
+      "patch_excerpt": "@@ -610,6 +610,14 @@\n       \"minLength\": 1,\n       \"type\": \"string\"\n     },\n+    \"SubAgentActivityKind\": {\n+      \"enum\": [\n+        \"started\",\n+        \"interacted\",\n+        \"interrupted\"\n+      ],\n+      \"type\": \"string\"\n+    },\n     \"TextElement\": {\n       \"properties\": {\n         \"byteRange\": {\n@@ -1133,6 +1141,38 @@\n           \"title\": \"CollabAgentToolCallThreadItem\",\n           \"type\": \"object\"\n         },\n+        {\n+          \"properties\": {\n+            \"agentPath\": {\n+              \"type\": \"string\"\n+            },\n+            \"agentThreadId\": {\n+              \"type\": \"string\"\n+            },\n+            \"id\": {\n+              \"type\": \"string\"\n+            },\n+            \"kind\": {\n+              \"$ref\": \"#/definitions/SubAgentActivityKind\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"subAgentActivity\"\n+              ],\n+              \"tit...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/TurnStartedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,5 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type SubAgentActivityKind = \"started\" | \"interacted\" | \"interrupted\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/SubAgentActivityKind.ts",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -20,6 +20,7 @@ import type { McpToolCallResult } from \"./McpToolCallResult\";\n import type { McpToolCallStatus } from \"./McpToolCallStatus\";\n import type { MemoryCitation } from \"./MemoryCitation\";\n import type { PatchApplyStatus } from \"./PatchApplyStatus\";\n+import type { SubAgentActivityKind } from \"./SubAgentActivityKind\";\n import type { UserInput } from \"./UserInput\";\n import type { WebSearchAction } from \"./WebSearchAction\";\n \n@@ -98,4 +99,4 @@ reasoningEffort: ReasoningEffort | null,\n /**\n  * Last known status of the target agents, when available.\n  */\n-agentsStates: { [key in string]?: CollabAgentState }, } | { \"type\": \"webSearch\", id: string, query: string, action: WebSearchAction | null, } | { \"type\": \"imageView\", id: string, path: AbsolutePathBuf, } | { \"type\": \"imageGeneration\", id: string, status: string, revisedPrompt: string | null, result: string, savedPath?: AbsolutePat...",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ThreadItem.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -356,6 +356,7 @@ export type { SkillsListParams } from \"./SkillsListParams\";\n export type { SkillsListResponse } from \"./SkillsListResponse\";\n export type { SortDirection } from \"./SortDirection\";\n export type { SpendControlLimitSnapshot } from \"./SpendControlLimitSnapshot\";\n+export type { SubAgentActivityKind } from \"./SubAgentActivityKind\";\n export type { SubagentMigration } from \"./SubagentMigration\";\n export type { TerminalInteractionNotification } from \"./TerminalInteractionNotification\";\n export type { TextElement } from \"./TextElement\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 0,
+      "patch_excerpt": "@@ -178,6 +178,20 @@ pub fn item_event_to_server_notification(\n                 completed_at_ms: end_event.completed_at_ms,\n             })\n         }\n+        EventMsg::SubAgentActivity(activity) => {\n+            let item = ThreadItem::SubAgentActivity {\n+                id: activity.event_id,\n+                kind: activity.kind.into(),\n+                agent_thread_id: activity.agent_thread_id.to_string(),\n+                agent_path: String::from(activity.agent_path),\n+            };\n+            ServerNotification::ItemCompleted(ItemCompletedNotification {\n+                thread_id,\n+                turn_id,\n+                item,\n+                completed_at_ms: activity.occurred_at_ms,\n+            })\n+        }\n         EventMsg::CollabWaitingBegin(begin_event) => {\n             let receiver_thread_ids = begin_event\n                 .receiver_thread_ids",
+      "path": "codex-rs/app-server-protocol/src/protocol/event_mapping.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 0,
+      "patch_excerpt": "@@ -203,6 +203,7 @@ impl ThreadHistoryBuilder {\n             EventMsg::CollabAgentInteractionEnd(payload) => {\n                 self.handle_collab_agent_interaction_end(payload)\n             }\n+            EventMsg::SubAgentActivity(payload) => self.handle_sub_agent_activity(payload),\n             EventMsg::CollabWaitingBegin(payload) => self.handle_collab_waiting_begin(payload),\n             EventMsg::CollabWaitingEnd(payload) => self.handle_collab_waiting_end(payload),\n             EventMsg::CollabCloseBegin(payload) => self.handle_collab_close_begin(payload),\n@@ -702,6 +703,18 @@ impl ThreadHistoryBuilder {\n         });\n     }\n \n+    fn handle_sub_agent_activity(\n+        &mut self,\n+        payload: &codex_protocol::protocol::SubAgentActivityEvent,\n+    ) {\n+        self.upsert_item_in_current_turn(ThreadItem::SubAgentActivity {\n+            id: payload.event_id.clone(),\n+           ...",
+      "path": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 0,
+      "patch_excerpt": "@@ -29,6 +29,7 @@ use codex_protocol::protocol::GuardianRiskLevel as CoreGuardianRiskLevel;\n use codex_protocol::protocol::GuardianUserAuthorization as CoreGuardianUserAuthorization;\n use codex_protocol::protocol::PatchApplyStatus as CorePatchApplyStatus;\n use codex_protocol::protocol::ReviewDecision as CoreReviewDecision;\n+use codex_protocol::protocol::SubAgentActivityKind as CoreSubAgentActivityKind;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use schemars::JsonSchema;\n use serde::Deserialize;\n@@ -336,6 +337,14 @@ pub enum ThreadItem {\n     },\n     #[serde(rename_all = \"camelCase\")]\n     #[ts(rename_all = \"camelCase\")]\n+    SubAgentActivity {\n+        id: String,\n+        kind: SubAgentActivityKind,\n+        agent_thread_id: String,\n+        agent_path: String,\n+    },\n+    #[serde(rename_all = \"camelCase\")]\n+    #[ts(rename_all = \"camelCase\")]\n     WebSearch {\n         id: Strin...",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/item.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -844,6 +844,7 @@ pub(crate) async fn apply_bespoke_event_handling(\n         | EventMsg::CollabAgentSpawnEnd(_)\n         | EventMsg::CollabAgentInteractionBegin(_)\n         | EventMsg::CollabAgentInteractionEnd(_)\n+        | EventMsg::SubAgentActivity(_)\n         | EventMsg::CollabWaitingBegin(_)\n         | EventMsg::CollabWaitingEnd(_)\n         | EventMsg::CollabCloseBegin(_)",
+      "path": "codex-rs/app-server/src/bespoke_event_handling.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1431,7 +1431,8 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<String> {\n         | EventMsg::CollabCloseBegin(_)\n         | EventMsg::CollabCloseEnd(_)\n         | EventMsg::CollabResumeBegin(_)\n-        | EventMsg::CollabResumeEnd(_) => None,\n+        | EventMsg::CollabResumeEnd(_)\n+        | EventMsg::SubAgentActivity(_) => None,\n     }\n }",
+      "path": "codex-rs/core/src/session/turn.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 6,
+      "patch_excerpt": "@@ -14,15 +14,11 @@ use crate::tools::registry::ToolExecutor;\n use codex_protocol::AgentPath;\n use codex_protocol::models::ResponseInputItem;\n use codex_protocol::openai_models::ReasoningEffort;\n-use codex_protocol::protocol::CollabAgentInteractionBeginEvent;\n-use codex_protocol::protocol::CollabAgentInteractionEndEvent;\n-use codex_protocol::protocol::CollabAgentSpawnBeginEvent;\n-use codex_protocol::protocol::CollabAgentSpawnEndEvent;\n-use codex_protocol::protocol::CollabCloseBeginEvent;\n-use codex_protocol::protocol::CollabCloseEndEvent;\n use codex_protocol::protocol::CollabWaitingBeginEvent;\n use codex_protocol::protocol::CollabWaitingEndEvent;\n use codex_protocol::protocol::InterAgentCommunication;\n+use codex_protocol::protocol::SubAgentActivityEvent;\n+use codex_protocol::protocol::SubAgentActivityKind;\n use codex_protocol::user_input::UserInput;\n use codex_tools::ToolName;\n use serde...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 21,
+      "patch_excerpt": "@@ -59,18 +59,9 @@ async fn handle_interrupt_agent(\n                 .to_string(),\n         ));\n     }\n-    session\n-        .send_event(\n-            &turn,\n-            CollabCloseBeginEvent {\n-                call_id: call_id.clone(),\n-                started_at_ms: now_unix_timestamp_ms(),\n-                sender_thread_id: session.thread_id,\n-                receiver_thread_id: agent_id,\n-            }\n-            .into(),\n-        )\n-        .await;\n+    let receiver_agent_path = receiver_agent.agent_path.clone().ok_or_else(|| {\n+        FunctionCallError::RespondToModel(\"target agent is missing an agent_path\".to_string())\n+    })?;\n     let status = session.services.agent_control.get_status(agent_id).await;\n     let result = match session\n         .services\n@@ -81,22 +72,20 @@ async fn handle_interrupt_agent(\n         Ok(_) | Err(CodexErr::ThreadNotFound(_)) | Err(CodexErr::Inter...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2/interrupt_agent.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 30,
+      "patch_excerpt": "@@ -69,7 +69,6 @@ pub(crate) async fn handle_message_string_tool(\n         call_id,\n         ..\n     } = invocation;\n-    let prompt = String::new();\n     let receiver_thread_id = resolve_agent_target(&session, &turn, &target).await?;\n     let receiver_agent = session\n         .services\n@@ -96,52 +95,32 @@ pub(crate) async fn handle_message_string_tool(\n         .ensure_v2_agent_loaded(resume_config, receiver_thread_id)\n         .await\n         .map_err(|err| collab_agent_error(receiver_thread_id, err))?;\n-    session\n-        .send_event(\n-            &turn,\n-            CollabAgentInteractionBeginEvent {\n-                call_id: call_id.clone(),\n-                started_at_ms: now_unix_timestamp_ms(),\n-                sender_thread_id: session.thread_id,\n-                receiver_thread_id,\n-                prompt: prompt.clone(),\n-            }\n-            .into(),\n-        )\n-     ...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 28,
+      "deletions": 79,
+      "patch_excerpt": "@@ -61,24 +61,8 @@ async fn handle_spawn_agent(\n \n     let message = args.message.clone();\n     let initial_operation = parse_collab_input(Some(args.message), /*items*/ None)?;\n-    let prompt = String::new();\n-\n     let session_source = turn.session_source.clone();\n     let child_depth = next_thread_spawn_depth(&session_source);\n-    session\n-        .send_event(\n-            &turn,\n-            CollabAgentSpawnBeginEvent {\n-                call_id: call_id.clone(),\n-                started_at_ms: now_unix_timestamp_ms(),\n-                sender_thread_id: session.thread_id,\n-                prompt: prompt.clone(),\n-                model: args.model.clone().unwrap_or_default(),\n-                reasoning_effort: args.reasoning_effort.clone().unwrap_or_default(),\n-            }\n-            .into(),\n-        )\n-        .await;\n     let mut config =\n         build_agent_spawn_config(&sess...",
+      "path": "codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -384,6 +384,7 @@ async fn run_codex_tool_session_inner(\n                     | EventMsg::CollabCloseEnd(_)\n                     | EventMsg::CollabResumeBegin(_)\n                     | EventMsg::CollabResumeEnd(_)\n+                    | EventMsg::SubAgentActivity(_)\n                     | EventMsg::RealtimeConversationStarted(_)\n                     | EventMsg::RealtimeConversationSdp(_)\n                     | EventMsg::RealtimeConversationRealtime(_)",
+      "path": "codex-rs/mcp-server/src/codex_tool_runner.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 30,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1324,6 +1324,9 @@ pub enum EventMsg {\n     CollabResumeBegin(CollabResumeBeginEvent),\n     /// Collab interaction: resume end.\n     CollabResumeEnd(CollabResumeEndEvent),\n+\n+    /// Path-based v2 sub-agent activity.\n+    SubAgentActivity(SubAgentActivityEvent),\n }\n \n #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS, EnumIter)]\n@@ -1543,6 +1546,12 @@ impl From<CollabResumeEndEvent> for EventMsg {\n     }\n }\n \n+impl From<SubAgentActivityEvent> for EventMsg {\n+    fn from(event: SubAgentActivityEvent) -> Self {\n+        EventMsg::SubAgentActivity(event)\n+    }\n+}\n+\n /// Agent lifecycle status, derived from emitted events.\n #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS, Default)]\n #[serde(rename_all = \"snake_case\")]\n@@ -3865,6 +3874,27 @@ pub struct CollabAgentInteractionEndEvent {\n     pub status: AgentStatus,\n }\n \n+#[deriv...",
+      "path": "codex-rs/protocol/src/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 1,
+      "patch_excerpt": "@@ -21,6 +21,7 @@ use codex_protocol::protocol::McpToolCallEndEvent;\n use codex_protocol::protocol::PatchApplyBeginEvent;\n use codex_protocol::protocol::PatchApplyEndEvent;\n use codex_protocol::protocol::PatchApplyStatus;\n+use codex_protocol::protocol::SubAgentActivityEvent;\n use codex_protocol::protocol::TurnAbortReason;\n use serde::Serialize;\n \n@@ -110,6 +111,7 @@ pub(crate) enum ToolRuntimePayload<'a> {\n     CollabWaitingEnd(&'a codex_protocol::protocol::CollabWaitingEndEvent),\n     CollabCloseBegin(&'a codex_protocol::protocol::CollabCloseBeginEvent),\n     CollabCloseEnd(&'a codex_protocol::protocol::CollabCloseEndEvent),\n+    SubAgentActivity(&'a SubAgentActivityEvent),\n }\n \n impl Serialize for ToolRuntimePayload<'_> {\n@@ -132,6 +134,7 @@ impl Serialize for ToolRuntimePayload<'_> {\n             ToolRuntimePayload::CollabWaitingEnd(event) => event.serialize(serializer),\n             ...",
+      "path": "codex-rs/rollout-trace/src/protocol_event.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 46,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,46 @@\n+use codex_protocol::AgentPath;\n+use codex_protocol::ThreadId;\n+use codex_protocol::protocol::EventMsg;\n+use codex_protocol::protocol::SubAgentActivityEvent;\n+use codex_protocol::protocol::SubAgentActivityKind;\n+use pretty_assertions::assert_eq;\n+use serde_json::json;\n+\n+use super::ToolRuntimeTraceEvent;\n+use super::tool_runtime_trace_event;\n+use crate::ExecutionStatus;\n+\n+#[test]\n+fn sub_agent_activity_is_a_terminal_tool_runtime_event() -> anyhow::Result<()> {\n+    let agent_thread_id = ThreadId::new();\n+    let event = EventMsg::SubAgentActivity(SubAgentActivityEvent {\n+        event_id: \"call-spawn\".to_string(),\n+        occurred_at_ms: 1234,\n+        agent_thread_id,\n+        agent_path: AgentPath::try_from(\"/root/reviewer\").map_err(anyhow::Error::msg)?,\n+        kind: SubAgentActivityKind::Started,\n+    });\n+\n+    let Some(ToolRuntimeTraceEvent::Ended {\n+        too...",
+      "path": "codex-rs/rollout-trace/src/protocol_event_tests.rs",
+      "status": "added"
+    },
+    {
+      "additions": 139,
+      "deletions": 5,
+      "patch_excerpt": "@@ -7,6 +7,10 @@ use codex_protocol::protocol::CollabAgentSpawnEndEvent;\n use codex_protocol::protocol::CollabCloseBeginEvent;\n use codex_protocol::protocol::CollabCloseEndEvent;\n use codex_protocol::protocol::InterAgentCommunication;\n+use codex_protocol::protocol::SubAgentActivityEvent;\n+use codex_protocol::protocol::SubAgentActivityKind;\n+use serde::Deserialize;\n+use serde_json::Value;\n \n use super::super::TraceReducer;\n use crate::model::ConversationItem;\n@@ -52,6 +56,11 @@ pub(in crate::reducer) struct ObservedAgentResultEdge {\n     pub(in crate::reducer) carried_payload: Option<RawPayloadRef>,\n }\n \n+#[derive(Deserialize)]\n+struct AgentMessageInvocationArgs {\n+    message: String,\n+}\n+\n /// Builds the stable edge id for the spawn relationship between two threads.\n pub(in crate::reducer) fn spawn_edge_id(parent_thread_id: &str, child_thread_id: &str) -> String {\n     format!(\"edge:spa...",
+      "path": "codex-rs/rollout-trace/src/reducer/tool/agents.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 258,
+      "deletions": 0,
+      "patch_excerpt": "@@ -194,6 +194,92 @@ fn spawn_runtime_payload_falls_back_to_child_thread_without_delivery_item() -> a\n     Ok(())\n }\n \n+#[test]\n+fn sub_agent_started_activity_creates_spawn_edge() -> anyhow::Result<()> {\n+    let temp = TempDir::new()?;\n+    let writer = create_started_agent_writer(&temp)?;\n+    start_agent_turn(&writer, \"turn-1\")?;\n+    let child_thread_id = \"019d0000-0000-7000-8000-000000000002\";\n+    let invocation_payload = writer.write_json_payload(\n+        RawPayloadKind::ToolInvocation,\n+        &json!({\n+            \"tool_name\": \"spawn_agent\",\n+            \"payload\": {\n+                \"type\": \"function\",\n+                \"arguments\": \"{\\\"message\\\":\\\"review this\\\",\\\"task_name\\\":\\\"reviewer\\\"}\"\n+            }\n+        }),\n+    )?;\n+    writer.append_with_context(\n+        trace_context_for_agent(\"turn-1\"),\n+        RawTraceEventPayload::ToolCallStarted {\n+            tool_call_id:...",
+      "path": "codex-rs/rollout-trace/src/reducer/tool/agents_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 1,
+      "patch_excerpt": "@@ -269,7 +269,7 @@ fn dispatched_tool_kind(tool_name: &str, _payload: &ToolDispatchPayload) -> Tool\n         \"send_message\" => ToolCallKind::SendMessage,\n         \"followup_task\" | \"assign_task\" => ToolCallKind::AssignAgentTask,\n         \"wait_agent\" => ToolCallKind::WaitAgent,\n-        \"close_agent\" => ToolCallKind::CloseAgent,\n+        \"close_agent\" | \"interrupt_agent\" => ToolCallKind::CloseAgent,\n         other => ToolCallKind::Other {\n             name: other.to_string(),\n         },\n@@ -425,6 +425,19 @@ mod tests {\n         )));\n     }\n \n+    #[test]\n+    fn classifies_interrupt_agent_as_close_agent() {\n+        assert_eq!(\n+            dispatched_tool_kind(\n+                \"interrupt_agent\",\n+                &ToolDispatchPayload::Function {\n+                    arguments: r#\"{\"target\":\"/root/child\"}\"#.to_string(),\n+                },\n+            ),\n+            ToolCallKind::Clo...",
+      "path": "codex-rs/rollout-trace/src/tool_dispatch.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -91,7 +91,8 @@ pub fn should_persist_event_msg(ev: &EventMsg) -> bool {\n         | EventMsg::TurnStarted(_)\n         | EventMsg::TurnComplete(_)\n         | EventMsg::WebSearchEnd(_)\n-        | EventMsg::ImageGenerationEnd(_) => true,\n+        | EventMsg::ImageGenerationEnd(_)\n+        | EventMsg::SubAgentActivity(_) => true,\n         EventMsg::ItemCompleted(event) => {\n             // Plan items are derived from streaming tags and are not part of the\n             // raw ResponseItem history, so we persist their completion to replay",
+      "path": "codex-rs/rollout/src/policy.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -327,6 +327,7 @@ async fn run_turn(thread: &CodexThread, thread_id: &str, prompt: String) -> anyh\n             | EventMsg::CollabCloseEnd(_)\n             | EventMsg::CollabResumeBegin(_)\n             | EventMsg::CollabResumeEnd(_)\n+            | EventMsg::SubAgentActivity(_)\n             | EventMsg::AgentMessageContentDelta(_)\n             | EventMsg::PlanDelta(_)\n             | EventMsg::ReasoningContentDelta(_)",
+      "path": "codex-rs/thread-manager-sample/src/main.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 0,
+      "patch_excerpt": "@@ -62,6 +62,7 @@ use crate::multi_agents::agent_picker_status_dot_spans;\n use crate::multi_agents::format_agent_picker_item_name;\n use crate::multi_agents::next_agent_shortcut_matches;\n use crate::multi_agents::previous_agent_shortcut_matches;\n+use crate::multi_agents::sub_agent_activity_display;\n use crate::pager_overlay::Overlay;\n use crate::render::highlight::highlight_bash_to_lines;\n use crate::render::renderable::Renderable;\n@@ -197,6 +198,7 @@ use toml::Value as TomlValue;\n use uuid::Uuid;\n mod agent_message_consolidation;\n mod agent_navigation;\n+mod agent_status_feed;\n mod app_server_event_targets;\n mod app_server_events;\n pub(crate) mod app_server_requests;\n@@ -266,6 +268,20 @@ fn collab_receiver_thread_ids(notification: &ServerNotification) -> Option<&[Str\n     }\n }\n \n+fn sub_agent_activity_item(notification: &ServerNotification) -> Option<&ThreadItem> {\n+    match notification...",
+      "path": "codex-rs/tui/src/app.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 66,
+      "deletions": 0,
+      "patch_excerpt": "@@ -19,6 +19,7 @@\n //! updated or marked closed.\n \n use crate::multi_agents::AgentPickerThreadEntry;\n+use crate::multi_agents::SubAgentActivityDisplay;\n use crate::multi_agents::format_agent_picker_item_name;\n use crate::multi_agents::next_agent_shortcut;\n use crate::multi_agents::previous_agent_shortcut;\n@@ -86,16 +87,56 @@ impl AgentNavigationState {\n         if !self.threads.contains_key(&thread_id) {\n             self.order.push(thread_id);\n         }\n+        let (previous_agent_path, previous_is_running) = self\n+            .threads\n+            .get(&thread_id)\n+            .map(|entry| (entry.agent_path.clone(), entry.is_running))\n+            .unwrap_or((None, false));\n         self.threads.insert(\n             thread_id,\n             AgentPickerThreadEntry {\n                 agent_nickname,\n                 agent_role,\n+                agent_path: previous_agent_path,\n+        ...",
+      "path": "codex-rs/tui/src/app/agent_navigation.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 209,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,209 @@\n+//! Bounded, best-effort previews for the v2 `/agent` status output.\n+\n+use super::ThreadBufferedEvent;\n+use super::ThreadEventStore;\n+use crate::history_cell::HistoryCell;\n+use crate::history_cell::plain_lines;\n+use crate::text_formatting::truncate_text;\n+use codex_app_server_protocol::CollabAgentTool;\n+use codex_app_server_protocol::ServerNotification;\n+use codex_app_server_protocol::SubAgentActivityKind;\n+use codex_app_server_protocol::ThreadItem;\n+use ratatui::style::Stylize;\n+use ratatui::text::Line;\n+use std::collections::HashSet;\n+\n+const AGENT_STATUS_PREVIEW_LINES: usize = 3;\n+const AGENT_STATUS_PREVIEW_ITEMS: usize = 6;\n+const AGENT_STATUS_PREVIEW_GRAPHEMES: usize = 240;\n+const AGENT_STATUS_PREVIEW_INDENT: u16 = 4;\n+\n+#[derive(Debug)]\n+pub(super) struct AgentStatusHistoryCell {\n+    entries: Vec<AgentStatusThreadPreview>,\n+}\n+\n+impl AgentStatusHistoryCell {\n+ ...",
+      "path": "codex-rs/tui/src/app/agent_status_feed.rs",
+      "status": "added"
+    },
+    {
+      "additions": 109,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,109 @@\n+use super::*;\n+use codex_app_server_protocol::CommandExecutionSource;\n+use codex_app_server_protocol::CommandExecutionStatus;\n+use codex_app_server_protocol::ItemCompletedNotification;\n+use codex_utils_absolute_path::AbsolutePathBuf;\n+\n+#[test]\n+fn agent_status_uses_bounded_buffered_activity() {\n+    let mut store = ThreadEventStore::new(/*capacity*/ 8);\n+    store.push_notification(ServerNotification::ItemCompleted(\n+        ItemCompletedNotification {\n+            item: ThreadItem::CommandExecution {\n+                id: \"command-1\".to_string(),\n+                command: \"cargo test -p codex-tui\".to_string(),\n+                cwd: AbsolutePathBuf::try_from(\"/workspace\").expect(\"absolute path\"),\n+                process_id: None,\n+                source: CommandExecutionSource::Agent,\n+                status: CommandExecutionStatus::Completed,\n+                command...",
+      "path": "codex-rs/tui/src/app/agent_status_feed_tests.rs",
+      "status": "added"
+    },
+    {
+      "additions": 22,
+      "deletions": 10,
+      "patch_excerpt": "@@ -14,8 +14,10 @@\n //! `SessionSource::SubAgent(ThreadSpawn { parent_thread_id, .. })` edges until no new children are\n //! found. The primary thread itself is never included in the output.\n \n+use codex_app_server_protocol::SessionSource;\n use codex_app_server_protocol::Thread;\n use codex_protocol::ThreadId;\n+use codex_protocol::protocol::SubAgentSource;\n use std::collections::HashMap;\n use std::collections::HashSet;\n \n@@ -26,6 +28,7 @@ pub(crate) struct LoadedSubagentThread {\n     pub(crate) thread_id: ThreadId,\n     pub(crate) agent_nickname: Option<String>,\n     pub(crate) agent_role: Option<String>,\n+    pub(crate) agent_path: Option<String>,\n }\n \n /// Walks the spawn tree rooted at `primary_thread_id` and returns every descendant subagent.\n@@ -84,23 +87,30 @@ pub(crate) fn find_loaded_subagent_threads_for_primary(\n                     thread_id,\n                     agent_nickname:...",
+      "path": "codex-rs/tui/src/app/loaded_threads.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 78,
+      "deletions": 9,
+      "patch_excerpt": "@@ -8,6 +8,60 @@ use super::*;\n \n impl App {\n     pub(super) async fn open_agent_picker(&mut self, app_server: &mut AppServerSession) {\n+        self.backfill_loaded_subagent_threads(app_server).await;\n+        // V2 subagents are identified by canonical paths observed from activity events or loaded\n+        // thread metadata. Prefer local buffered turn state for liveness, and fall back to\n+        // thread/read only when no local event channel exists.\n+        let path_backed_thread_ids: Vec<_> = self\n+            .agent_navigation\n+            .ordered_path_backed_subagent_threads(self.primary_thread_id)\n+            .into_iter()\n+            .map(|(thread_id, _)| thread_id)\n+            .collect();\n+        for thread_id in path_backed_thread_ids {\n+            if let Some(channel) = self.thread_event_channels.get(&thread_id)\n+                && channel.attachment() == ThreadEventAt...",
+      "path": "codex-rs/tui/src/app/session_lifecycle.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 93,
+      "deletions": 0,
+      "patch_excerpt": "@@ -22,6 +22,7 @@ use crate::history_cell::PlainHistoryCell;\n use crate::history_cell::UserHistoryCell;\n use crate::history_cell::new_session_info;\n use crate::multi_agents::AgentPickerThreadEntry;\n+use crate::multi_agents::SubAgentActivityDisplay;\n use assert_matches::assert_matches;\n \n use crate::app_command::AppCommand as Op;\n@@ -1164,6 +1165,8 @@ async fn collab_receiver_notification_caches_thread_without_app_server_read() {\n         Some(&AgentPickerThreadEntry {\n             agent_nickname: None,\n             agent_role: None,\n+            agent_path: None,\n+            is_running: false,\n             is_closed: false,\n         })\n     );\n@@ -1223,6 +1226,8 @@ async fn open_agent_picker_keeps_missing_threads_for_replay() -> Result<()> {\n         Some(&AgentPickerThreadEntry {\n             agent_nickname: None,\n             agent_role: None,\n+            agent_path: None,\n+         ...",
+      "path": "codex-rs/tui/src/app/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 17,
+      "deletions": 0,
+      "patch_excerpt": "@@ -31,6 +31,12 @@ pub(super) struct FeedbackThreadEvent {\n     pub(super) result: Result<String, String>,\n }\n \n+#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n+pub(super) enum ThreadEventAttachment {\n+    Live,\n+    ReplayOnly,\n+}\n+\n #[derive(Debug)]\n pub(super) struct ThreadEventStore {\n     pub(super) session: Option<ThreadSessionState>,\n@@ -285,6 +291,7 @@ pub(super) struct ThreadEventChannel {\n     pub(super) sender: mpsc::Sender<ThreadBufferedEvent>,\n     pub(super) receiver: Option<mpsc::Receiver<ThreadBufferedEvent>>,\n     pub(super) store: Arc<Mutex<ThreadEventStore>>,\n+    attachment: ThreadEventAttachment,\n }\n \n impl ThreadEventChannel {\n@@ -294,9 +301,18 @@ impl ThreadEventChannel {\n             sender,\n             receiver: Some(receiver),\n             store: Arc::new(Mutex::new(ThreadEventStore::new(capacity))),\n+            attachment: ThreadEventAttachment::Live,\n         ...",
+      "path": "codex-rs/tui/src/app/thread_events.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -896,6 +896,14 @@ impl App {\n         &mut self,\n         notification: &ServerNotification,\n     ) {\n+        if let Some(activity) =\n+            sub_agent_activity_item(notification).and_then(sub_agent_activity_display)\n+        {\n+            self.agent_navigation.record_sub_agent_activity(activity);\n+            self.sync_active_agent_label();\n+            return;\n+        }\n+\n         let Some(receiver_thread_ids) = collab_receiver_thread_ids(notification) else {\n             return;\n         };",
+      "path": "codex-rs/tui/src/app/thread_routing.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -327,6 +327,7 @@ impl ChatWidget {\n                 reasoning_effort,\n                 agents_states,\n             }),\n+            item @ ThreadItem::SubAgentActivity { .. } => self.on_sub_agent_activity(item),\n             ThreadItem::EnteredReviewMode { review, .. } if !from_replay => {\n                 self.enter_review_mode_with_hint(review, /*from_replay*/ false);\n             }",
+      "path": "codex-rs/tui/src/chatwidget/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -190,6 +190,7 @@ impl ChatWidget {\n                 reasoning_effort,\n                 agents_states,\n             }),\n+            item @ ThreadItem::SubAgentActivity { .. } => self.on_sub_agent_activity(item),\n             ThreadItem::DynamicToolCall { .. } => {}\n         }",
+      "path": "codex-rs/tui/src/chatwidget/replay.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -144,6 +144,13 @@ impl ChatWidget {\n         }\n     }\n \n+    pub(super) fn on_sub_agent_activity(&mut self, item: ThreadItem) {\n+        self.record_visible_turn_activity();\n+        if let Some(cell) = multi_agents::sub_agent_activity_history_cell(&item) {\n+            self.on_collab_event(cell);\n+        }\n+    }\n+\n     pub(crate) fn handle_file_change_completed_now(&mut self, item: ThreadItem) {\n         let ThreadItem::FileChange { status, .. } = item else {\n             return;",
+      "path": "codex-rs/tui/src/chatwidget/tool_lifecycle.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -191,6 +191,7 @@ mod terminal_title;\n mod terminal_visualization_instructions;\n mod text_formatting;\n mod theme_picker;\n+mod thread_transcript;\n mod token_usage;\n mod tooltips;\n mod transcript_reflow;",
+      "path": "codex-rs/tui/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 62,
+      "deletions": 0,
+      "patch_excerpt": "@@ -11,6 +11,7 @@ use codex_app_server_protocol::CollabAgentState;\n use codex_app_server_protocol::CollabAgentStatus;\n use codex_app_server_protocol::CollabAgentTool;\n use codex_app_server_protocol::CollabAgentToolCallStatus;\n+use codex_app_server_protocol::SubAgentActivityKind;\n use codex_app_server_protocol::ThreadItem;\n use codex_protocol::ThreadId;\n use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;\n@@ -35,10 +36,21 @@ pub(crate) struct AgentPickerThreadEntry {\n     pub(crate) agent_nickname: Option<String>,\n     /// Agent type shown in brackets when present, for example `worker`.\n     pub(crate) agent_role: Option<String>,\n+    /// Canonical v2 agent path, when the thread was observed through v2 activity.\n+    pub(crate) agent_path: Option<String>,\n+    /// Whether the latest liveness refresh says the agent thread is actively working.\n+    pub(crate) is_run...",
+      "path": "codex-rs/tui/src/multi_agents.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 8,
+      "patch_excerpt": "@@ -4,8 +4,6 @@ use std::path::Path;\n use std::path::PathBuf;\n use std::sync::Arc;\n \n-mod transcript;\n-\n use crate::app_server_session::AppServerSession;\n use crate::clipboard_paste::normalize_pasted_search_query;\n use crate::color::blend;\n@@ -25,6 +23,9 @@ use crate::status::format_directory_display;\n use crate::terminal_palette::best_color;\n use crate::terminal_palette::default_bg;\n use crate::text_formatting::truncate_text;\n+use crate::thread_transcript::RawReasoningVisibility;\n+use crate::thread_transcript::TranscriptCells;\n+use crate::thread_transcript::load_session_transcript;\n use crate::tui::FrameRequester;\n use crate::tui::Tui;\n use crate::tui::TuiEvent;\n@@ -60,9 +61,6 @@ use tokio::sync::mpsc;\n use tokio_stream::StreamExt;\n use tokio_stream::wrappers::UnboundedReceiverStream;\n use tracing::warn;\n-use transcript::RawReasoningVisibility;\n-use transcript::TranscriptCells;\n-use tra...",
+      "path": "codex-rs/tui/src/resume_picker.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,3 +1,5 @@\n+//! Render persisted thread turns into history-cell building blocks.\n+\n use std::sync::Arc;\n \n use crate::app_server_session::AppServerSession;\n@@ -7,6 +9,7 @@ use crate::history_cell::HistoryCell;\n use crate::history_cell::PlainHistoryCell;\n use crate::history_cell::ReasoningSummaryCell;\n use crate::history_cell::UserHistoryCell;\n+use crate::multi_agents::sub_agent_activity_summary;\n use codex_app_server_protocol::Thread;\n use codex_app_server_protocol::ThreadItem;\n use codex_protocol::ThreadId;\n@@ -191,6 +194,11 @@ fn fallback_transcript_cell(item: &ThreadItem) -> Option<PlainHistoryCell> {\n         ThreadItem::CollabAgentToolCall { tool, status, .. } => {\n             vec![format!(\"agent tool: {tool:?} · {status:?}\").dim().into()]\n         }\n+        ThreadItem::SubAgentActivity {\n+            kind, agent_path, ..\n+        } => {\n+            vec![sub_agent_activity_s...",
+      "path": "codex-rs/tui/src/thread_transcript.rs",
+      "status": "renamed"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nMulti-agent v2 identifies agents by canonical paths, but its tool handlers still emitted the larger legacy collaboration begin/end events built around nickname and role metadata. App-server, rollout-trace, analytics, and TUI consumers therefore lacked one compact path-based completion signal that behaved consistently across live events and replay.\n\nThe TUI also needs a bounded `/agent` status surface for v2 agents. It should use recent local activity for previews, refresh liveness without loading full histories, and keep the legacy picker available when no path-backed v2 agent is known.\n\n## What changed\n\n- Replace the v2 `spawn_agent`, `send_message`, `followup_task`, and `interrupt_agent` legacy lifecycle emissions with a success-only `SubAgentActivity` event. The event records the tool call ID, occurrence time, affected thread, canonical agent path, and `started`, `interacted`, or `interrupted` kind.\n- Expose the activity as a completion-only app-server v2 `subAgentActivity` thread item in live notifications and reconstructed history, regenerate the protocol schemas, and count it in sub-agent tool analytics.\n- Track canonical paths from live activity and loaded-thread metadata in the TUI, and render the activity in live and replayed transcripts.\n- Make `/agent` list running path-backed agents with summaries from bounded local event buffers. Each summary is capped at 240 graphemes, the scan is capped at six recent items, only the last three wrapped lines are shown, and command output is omitted. Liveness falls back to metadata-only `thread/read` when local turn state is unavailable.\n- Persist the activity as a terminal rollout-trace runtime payload and reduce it to the corresponding spawn, send, follow-up, or close interaction edge. `interrupt_agent` is classified as a close-edge operation.\n- Preserve the legacy picker when no path-backed v2 agent is known.\n\n## Compatibility\n\nApp-server v2 clients that consumed `collabAgentToolCall` begin/end pairs for these tools must handle the new completion-only `subAgentActivity` item. Legacy v1 collaboration behavior is unchanged.\n\n## Screenshot\n\n<img width=\"684\" height=\"288\" alt=\"Screenshot 2026-06-08 at 15 40 47\" src=\"https://github.com/user-attachments/assets/194b3cd0-619d-45fb-b587-cf3e2b1b8a1d\" />\n\n## Testing\n\n- `just test -p codex-app-server-protocol`\n- `just test -p codex-rollout-trace`\n- Added focused coverage for activity analytics, terminal trace serialization, spawn-edge reduction, `interrupt_agent` classification, TUI status rendering without aggregated command output, and clearing stale running state after a completed turn.\n",
+    "labels": [],
+    "merged_at": "2026-06-09T10:14:48Z",
+    "number": 27007,
+    "state": "merged",
+    "title": "multi-agent: add path-based v2 activity tracking",
+    "url": "https://github.com/openai/codex/pull/27007"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
