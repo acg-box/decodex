@@ -22,6 +22,7 @@ fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 		active_runs: vec![active_run.clone()],
 		recent_runs: vec![active_run],
 		history_lanes: Vec::new(),
+		execution_programs: Vec::new(),
 		queued_candidates: vec![agent_evidence_blocked_candidate()],
 		worktrees: operator_status_text_worktrees(),
 		post_review_lanes: vec![agent_evidence_missing_handoff_lane()],

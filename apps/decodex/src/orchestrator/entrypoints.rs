@@ -1086,6 +1086,7 @@ fn append_control_plane_project_snapshot(
 	snapshot.active_runs.extend(project_snapshot.active_runs);
 	snapshot.recent_runs.extend(project_snapshot.recent_runs);
 	snapshot.history_lanes.extend(project_snapshot.history_lanes);
+	snapshot.execution_programs.extend(project_snapshot.execution_programs);
 	snapshot.queued_candidates.extend(project_snapshot.queued_candidates);
 	snapshot.worktrees.extend(project_snapshot.worktrees);
 	snapshot.post_review_lanes.extend(project_snapshot.post_review_lanes);
@@ -1616,6 +1617,7 @@ fn empty_control_plane_snapshot(limit: usize) -> OperatorStatusSnapshot {
 		active_runs: Vec::new(),
 		recent_runs: Vec::new(),
 		history_lanes: Vec::new(),
+		execution_programs: Vec::new(),
 		queued_candidates: Vec::new(),
 		worktrees: Vec::new(),
 		post_review_lanes: Vec::new(),
