@@ -1,14 +1,14 @@
 {
   "counts": {
-    "critical": 14,
-    "high": 8,
+    "critical": 13,
+    "high": 9,
     "low": 2,
     "normal": 16,
     "published_subjects_seen": 0,
     "recent_commits_scanned": 40,
     "subjects_queued": 40
   },
-  "generated_at": "2026-06-09T02:04:16.262124Z",
+  "generated_at": "2026-06-09T08:06:27.782925Z",
   "repo": "openai/codex",
   "schema": "upstream_review_queue/v1",
   "source": {
@@ -17,42 +17,6 @@
     "signals_dir": "site/src/content/signals"
   },
   "subjects": [
-    {
-      "attention_flags": [
-        "breaking_change",
-        "deprecated_removed",
-        "new_feature",
-        "protocol_change",
-        "security_policy"
-      ],
-      "changed_file_count": 6,
-      "commit_shas": [
-        "f5fa53ac9c2a7f7955bbff34cb0a5c65450facd7"
-      ],
-      "committed_at": "2026-06-07T18:33:16Z",
-      "next_step": "ai_review_required",
-      "pr_number": 24981,
-      "pr_url": "https://github.com/openai/codex/pull/24981",
-      "review_priority": "critical",
-      "review_reason": "Needs AI review for breaking_change, deprecated_removed, new_feature, protocol_change, security_policy.",
-      "sample_paths": [
-        "codex-rs/core/src/tools/runtimes/shell/unix_escalation.rs",
-        "codex-rs/core/src/tools/runtimes/shell/unix_escalation_tests.rs",
-        "codex-rs/core/src/tools/runtimes/unified_exec.rs",
-        "codex-rs/core/tests/common/zsh_fork.rs",
-        "codex-rs/core/tests/suite/mod.rs",
-        "codex-rs/core/tests/suite/unified_exec_zsh_fork_approvals.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "24981",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "sandbox_permissions",
-        "tests_ci"
-      ],
-      "title": "fix: preserve approval sandbox decisions in unified exec",
-      "url": "https://github.com/openai/codex/pull/24981"
-    },
     {
       "attention_flags": [
         "auth_account",
@@ -891,67 +855,36 @@
     },
     {
       "attention_flags": [
-        "breaking_change",
-        "protocol_change",
-        "release_packaging",
-        "security_policy"
+        "auth_account",
+        "new_feature",
+        "protocol_change"
       ],
-      "changed_file_count": 6,
+      "changed_file_count": 3,
       "commit_shas": [
-        "e2f5c6b3a76ed210213a0b5db0270f8f25a49050"
+        "df5b449689130d0e0dbd65ab882aa784a9c02028"
       ],
-      "committed_at": "2026-06-07T16:24:54Z",
+      "committed_at": "2026-06-09T04:39:35Z",
       "next_step": "ai_review_required",
-      "pr_number": 26895,
-      "pr_url": "https://github.com/openai/codex/pull/26895",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for breaking_change, protocol_change, release_packaging, security_policy.",
+      "pr_number": 27085,
+      "pr_url": "https://github.com/openai/codex/pull/27085",
+      "review_priority": "high",
+      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change.",
       "sample_paths": [
-        ".github/workflows/bazel.yml",
-        ".github/workflows/rust-ci-full.yml",
-        ".github/workflows/rust-ci.yml",
-        ".github/workflows/rusty-v8-release.yml",
-        ".github/workflows/sdk.yml",
-        ".github/workflows/v8-canary.yml"
+        "codex-rs/app-server/src/request_processors/plugins.rs",
+        "codex-rs/app-server/tests/suite/v2/plugin_install.rs",
+        "codex-rs/core-plugins/src/remote.rs"
       ],
       "source_state": "merged",
-      "subject_id": "26895",
+      "subject_id": "27085",
       "subject_kind": "pr",
       "surface_hints": [
+        "app_server_protocol",
+        "mcp_plugins",
         "release_packaging",
         "tests_ci"
       ],
-      "title": "ci: use bazel environment for BuildBuddy secret",
-      "url": "https://github.com/openai/codex/pull/26895"
-    },
-    {
-      "attention_flags": [
-        "auth_account",
-        "deprecated_removed",
-        "new_feature"
-      ],
-      "changed_file_count": 1,
-      "commit_shas": [
-        "b1e12943b72d40437ae60188113ab90f24a2b05c",
-        "cd0612d55a3e7bf522c77c7d210c9009c7d3fcc0"
-      ],
-      "committed_at": "2026-06-07T21:34:35Z",
-      "next_step": "ai_review_required",
-      "pr_number": 26818,
-      "pr_url": "https://github.com/openai/codex/pull/26818",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for auth_account, deprecated_removed, new_feature.",
-      "sample_paths": [
-        "codex-rs/cli/src/main.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "26818",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "cli_tui"
-      ],
-      "title": "fix(tui): accept prompts with resume and fork",
-      "url": "https://github.com/openai/codex/pull/26818"
+      "title": "Use server app auth requirements for remote plugin install",
+      "url": "https://github.com/openai/codex/pull/27085"
     },
     {
       "attention_flags": [
@@ -1427,6 +1360,84 @@
       ],
       "title": "Update web search citation prompt",
       "url": "https://github.com/openai/codex/pull/27096"
+    },
+    {
+      "attention_flags": [
+        "auth_account",
+        "deprecated_removed",
+        "new_feature",
+        "protocol_change",
+        "security_policy"
+      ],
+      "changed_file_count": 5,
+      "commit_shas": [
+        "c7fdf9c2ce7cc02ccaf21ff8c5eaac2e819be14f",
+        "884a749d4bc85a2e3dadaab442ea77427b6377a0"
+      ],
+      "committed_at": "2026-06-09T02:23:35Z",
+      "next_step": "ai_review_required",
+      "pr_number": 27106,
+      "pr_url": "https://github.com/openai/codex/pull/27106",
+      "review_priority": "normal",
+      "review_reason": "Needs AI review for auth_account, deprecated_removed, new_feature, protocol_change, security_policy.",
+      "sample_paths": [
+        "codex-rs/core/src/compact_remote.rs",
+        "codex-rs/core/src/compact_remote_v2.rs",
+        "codex-rs/core/src/context_manager/history.rs",
+        "codex-rs/core/src/context_manager/mod.rs",
+        "codex-rs/core/src/session/mod.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "27106",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "internal_churn"
+      ],
+      "title": "[codex] Remove remote compaction failure log",
+      "url": "https://github.com/openai/codex/pull/27106"
+    },
+    {
+      "attention_flags": [
+        "deprecated_removed",
+        "new_feature",
+        "protocol_change",
+        "release_packaging",
+        "security_policy"
+      ],
+      "changed_file_count": 6,
+      "commit_shas": [
+        "7dbe7f3e920ed08b1f2bab4abae6c09da35c80c6",
+        "80893eea9662598d4f6371df0eb5f4d09f4c0140",
+        "0294cf23c0a03e9c340c13c80c24093d381a46e7",
+        "f0dba2abb15768c83f2ee46976d95b0328cb409e",
+        "89096fe6d91d9570ea8563dae1937147496f1ffa",
+        "6d893fd1ae65b23eb890ff12164c2c368fa52af1",
+        "d2b82c00f03db7dc3b296430dbee944a58c6aec3",
+        "8d74c889a3e294ec4018f6fccb9495f2ad565b78"
+      ],
+      "committed_at": "2026-06-09T04:32:46Z",
+      "next_step": "ai_review_required",
+      "pr_number": 26880,
+      "pr_url": "https://github.com/openai/codex/pull/26880",
+      "review_priority": "normal",
+      "review_reason": "Needs AI review for deprecated_removed, new_feature, protocol_change, release_packaging, security_policy.",
+      "sample_paths": [
+        "codex-rs/core/src/git_info_tests.rs",
+        "codex-rs/git-utils/src/fsmonitor.rs",
+        "codex-rs/git-utils/src/fsmonitor_tests.rs",
+        "codex-rs/git-utils/src/info.rs",
+        "codex-rs/git-utils/src/lib.rs",
+        "codex-rs/tui/src/get_git_diff.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "26880",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "cli_tui",
+        "tests_ci"
+      ],
+      "title": "[codex] preserve fsmonitor for worktree Git reads",
+      "url": "https://github.com/openai/codex/pull/26880"
     },
     {
       "attention_flags": [

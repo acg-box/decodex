@@ -1,0 +1,68 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26202",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26202",
+    "commit_shas": [
+      "95202ed2120c490f12f954daeb9ca8167f4e6dc8",
+      "c7f7ad74df9090665b12869705c54268794d289d",
+      "69c1858bc0c90ef389b581719229395e42676ed3",
+      "0fd91f10f38d70146f7b1d6ed6a3df34207c97cd",
+      "c7a47e5b23d8f0bf2742a052139eda48ab4982d6"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Restore release symbol artifacts with line tables",
+        "url": "https://github.com/openai/codex/pull/26202",
+        "meta": "Merged 2026-06-08T17:16:37Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Restore release symbol artifacts with line tables",
+        "url": "https://github.com/openai/codex/commit/95202ed2120c490f12f954daeb9ca8167f4e6dc8"
+      },
+      {
+        "kind": "commit",
+        "title": "Move release symbol profile into Cargo config",
+        "url": "https://github.com/openai/codex/commit/0fd91f10f38d70146f7b1d6ed6a3df34207c97cd"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-09T08:08:13Z",
+  "observed_change": "Codex restores separate release symbol archives while switching release builds to line-tables-only debuginfo and stripping packaged binaries after symbol capture.",
+  "changed_surfaces": [
+    "release workflow packaging",
+    "release symbol archive script",
+    "Cargo release profile debug and strip settings",
+    "Windows PDB staging",
+    "Linux bwrap stripping and digest behavior"
+  ],
+  "user_visible_path": "Users of release binaries do not get a new CLI path, but release operators and crash triage workflows regain sidecar symbol artifacts that can symbolicate shipped binaries without carrying full debuginfo in the distributed executables.",
+  "control_plane_relevance": "Decodex has no immediate app-server or runtime compatibility change to absorb, but release-monitoring and crash-diagnostics workflows should know that upstream Codex release artifacts can include symbol archives again.",
+  "compatibility_risk": "Low for Decodex runtime integration; the changed surface is release artifact packaging and debug metadata rather than a protocol, CLI flag, or config schema.",
+  "adoption_opportunity": "Track symbol archive availability in release-rollup or diagnostic tooling if Decodex later consumes upstream Codex release assets for crash triage.",
+  "community_value": "Moderate for operators who debug release binaries, because the change restores symbolication support while avoiding the prior full-debuginfo release-build timeout problem.",
+  "deprecated_or_breaking_notes": "The PR changes release artifact contents and packaging flow, but it does not deprecate a Codex user command or require a migration for normal CLI users.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26202 says release symbol archives are restored for macOS, Linux, and Windows binaries.",
+    "codex-rs/Cargo.toml changes the release profile to `debug = \"line-tables-only\"` and `strip = false` before packaging.",
+    ".github/scripts/archive-release-symbols-and-strip-binaries.sh is added to archive symbols and strip Unix release binaries after symbol capture.",
+    ".github/workflows/rust-release.yml installs binutils, configures macOS packed split debuginfo, and invokes the archive-and-strip script before packaging.",
+    ".github/workflows/rust-release-windows.yml stages PDB files alongside Windows release binaries, including underscore-to-hyphen name handling.",
+    "The PR validation notes macOS dSYM symbolication smoke coverage and Linux and Windows archive-script control-flow checks.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26202.json records 4 changed files for the merged PR."
+  ],
+  "caveats": "The full release matrix only runs for tags or manual dispatches, so the PR's own validation cannot prove future release-run timing across every target.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Release artifact and symbolication behavior is useful release-rollup and diagnostic context, but not an immediate public post."
+    }
+  ]
+}
