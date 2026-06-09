@@ -18,6 +18,9 @@ specs. Decodex has two supported use modes:
   landing, closeout, and operator status.
 - Planning support: agents shape Decodex-friendly issue sets, queue strategy,
   dependency boundaries, and concurrency before retained-lane automation starts.
+- Research/design mode: Decodex compiles ambiguous planning intent into local
+  Decision Contracts with `decodex research compile`, then records acceptance with
+  `decodex research promote` before any execution authority exists.
 
 ## First Steps
 
@@ -38,6 +41,9 @@ specs. Decodex has two supported use modes:
 ## Authority Split
 
 - Runtime behavior belongs to `apps/decodex/src/` and `docs/spec/`.
+- Decodex-native research/design behavior belongs to `apps/decodex/src/research_design.rs`
+  and `docs/spec/loop-runtime.md`; external research artifacts are supporting
+  evidence only for Decodex runtime semantics.
 - Operator lane-control capabilities belong to `docs/spec/lane-control.md`, with the
   low-level app-server method boundary in `docs/spec/app-server.md`.
 - Operator procedures belong to `docs/runbook/`.
@@ -59,3 +65,6 @@ Treat this plugin and the Decodex repository docs as the Decodex-specific author
   shell state when a registered project config declares them.
 - Do not turn a manual CLI task into retained-lane automation unless the user asks for
   automation or the current registered workflow requires it.
+- Do not treat a research summary, `docs/research/` artifact, or compiled latent
+  contract as accepted execution authority. A Decodex research/design result must be
+  promoted before later issue shaping or Execution Program readiness can consume it.
