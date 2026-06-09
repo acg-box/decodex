@@ -1095,6 +1095,80 @@ fn operator_dashboard_run_activity_event_summarizes_active_runs() {
 	assert!(fingerprint["activeRuns"][0].get("protocol_idle_for_seconds").is_none());
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn operator_dashboard_run_activity_event_keeps_unleased_app_server_active_run() {
+	let temp_dir = TempDir::new().expect("temp dir should exist");
+	let _home_guard =
+		TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("temp path should be UTF-8"));
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	git_status_success(
+		config.repo_root(),
+		&["remote", "add", "origin", "git@github.com:hack-ink/pubfi-mono-v2.git"],
+	);
+
+	state_store.upsert_project(&registration).expect("project should register");
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	state::write_run_thread_status_marker(
+		&worktree_path,
+		"run-1",
+		1,
+		Some("thread-1"),
+		Some("turn-1"),
+		"active",
+		&[],
+	)
+	.expect("thread status should write");
+
+	rewrite_run_activity_marker_host_boot_id(&worktree_path, "previous-boot");
+
+	let event =
+		orchestrator::build_operator_run_activity_event(&state_store).expect("event should build");
+	let message = orchestrator::dashboard_websocket_message(
+		event.event.event_type,
+		&event.event.payload,
+	)
+	.expect("event should serialize");
+	let (payload, _consumed) = websocket_text_payload(&message).expect("event should be a text frame");
+	let payload: Value = serde_json::from_slice(payload).expect("event data should be json");
+	let data = &payload["payload"];
+	let active_runs = data["activeRuns"].as_array().expect("active runs should list");
+
+	assert_eq!(payload["type"], "runActivity");
+	assert_eq!(data["activeRunsComplete"], true);
+	assert_eq!(active_runs.len(), 1);
+	assert_eq!(active_runs[0]["run_id"], "run-1");
+	assert_eq!(active_runs[0]["project_id"], "pubfi");
+	assert_eq!(active_runs[0]["project_display_name"], "hack-ink/pubfi-mono-v2");
+	assert_eq!(active_runs[0]["active_lease"], false);
+	assert_eq!(active_runs[0]["execution_liveness"], "process_identity_mismatch");
+	assert_eq!(active_runs[0]["process_alive"], false);
+	assert_eq!(active_runs[0]["process_liveness_reason"], "host_boot_id_mismatch");
+	assert_eq!(active_runs[0]["thread_status"], "active");
+}
+
 #[test]
 fn operator_dashboard_run_activity_fingerprint_ignores_volatile_timing_fields() {
 	let mut first = serde_json::json!({
