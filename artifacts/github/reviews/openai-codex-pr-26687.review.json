@@ -1,0 +1,91 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26687",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26687",
+    "commit_shas": [
+      "534befc48bc2eec3bd002a31f5ac2c3e23a1f29a",
+      "bf26b031e535e3fb925bfacf41daf44ef87231ee",
+      "e0f10fa7e41d0cbfe3504b38c735e1de866cab27",
+      "09dccdf652b9c4c4995517a0191679836d69b026",
+      "4e459c4fcc4b6c10438e8e5e12430e64f3dd43ba",
+      "68060899b6a45f5d67c84938ffc906545c5e3b41",
+      "e239da0a36a20367e88e0f9d7d71b5cfb6cb5ca0",
+      "505dbae2c71a5886d6e12ff1082279fef26d94fd",
+      "d63b1a125f6e97fd1d4f26232455343207521b89",
+      "d98e9b984c0325d31fb1b58969e279fbedd09aca",
+      "fc6f77e19b0b41235d88a4879609a28eed97bb2b",
+      "6046b245a3f0efe30ca4012dec10c06c6fa32445",
+      "6a420d41ac70f172bb6deb9b75b6c2f5c93cdfa8",
+      "4923381143d028955a8542cd8c390f1505e83851",
+      "d10fb7bc65892d496a9e9ae0e0eed585ddd21d5f",
+      "acb9e264576e9d76f8438129f3eb321ff9ac2fd5",
+      "1c883fdb9219aff8ed78464669480a58f7745ce6",
+      "12e18e679d1dc46c712b87fc8f21c04ff95a8310",
+      "c1205d9c1a9d6fd80f6d4cea7198805c243fb9f6",
+      "f6e390602e97aa867a228c399846440d54d93cb3"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Pair thread environment settings",
+        "url": "https://github.com/openai/codex/pull/26687",
+        "meta": "Merged 2026-06-08T20:55:15Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Pair thread environment settings",
+        "url": "https://github.com/openai/codex/commit/534befc48bc2eec3bd002a31f5ac2c3e23a1f29a"
+      },
+      {
+        "kind": "commit",
+        "title": "Move turn environment selections to protocol",
+        "url": "https://github.com/openai/codex/commit/e239da0a36a20367e88e0f9d7d71b5cfb6cb5ca0"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-09T20:07:10Z",
+  "observed_change": "Codex now treats cwd and environment selection as one paired thread setting while preserving the app-server public `thread/settings/update` cwd shape.",
+  "changed_surfaces": [
+    "app-server v2 turn start environment semantics",
+    "app-server thread settings translation",
+    "core thread configuration snapshots",
+    "Codex user-input and guardian review submission paths",
+    "MCP, memory, and thread-manager callsites that submit user turns"
+  ],
+  "user_visible_path": "App-server clients can keep sending top-level `cwd`, but `turn/start` environments now describe the current and subsequent turns, reducing silent cwd/environment desynchronization after settings updates.",
+  "control_plane_relevance": "Decodex app-server consumers should treat cwd and selected execution environments as a single sticky thread setting when replaying, resuming, or displaying retained-lane execution context.",
+  "compatibility_risk": "Moderate for strict app-server or internal Codex integrations that assumed turn environment selections were only turn-scoped or that patched an internal `ThreadSettingsOverrides.cwd` field directly; the PR says the public app-server params are unchanged.",
+  "adoption_opportunity": "Use the paired environment settings shape for Decodex retained-lane cwd readback, thread resume diagnostics, and future remote-environment displays instead of storing cwd independently.",
+  "community_value": "Medium-high for Codex operators because it clarifies that cwd and environment selection are one execution-context setting and closes a class of next-turn context drift.",
+  "deprecated_or_breaking_notes": "The internal top-level cwd override is replaced by `ThreadSettingsOverrides.environments`; public `thread/settings/update` params remain translated by app-server.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26687 says cwd and environment selections are a single logical setting and that app-server keeps `thread/settings/update` public params unchanged while translating top-level `cwd` into the paired internal shape.",
+    "codex-rs/app-server-protocol/src/protocol/v2/turn.rs changes the environment comment from turn-scoped environments to environments for this turn and subsequent turns.",
+    "codex-rs/protocol/src/protocol.rs adds `TurnEnvironmentSelections` with a legacy fallback cwd and synchronization of the primary environment cwd.",
+    "codex-rs/core/src/session/session.rs replaces the session configuration cwd field with sticky thread-level environment selections.",
+    "codex-rs/app-server/src/request_processors/turn_processor.rs builds environment overrides before constructing thread settings overrides.",
+    "Tests and callsites across core, app-server, MCP, memories, and thread-manager sample stop passing `Op::UserInput.environments` directly and instead use thread settings overrides.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26687.json records 90 changed files for the merged PR."
+  ],
+  "caveats": "The public app-server request shape is preserved; the risk is mainly semantic and internal-integration drift rather than a removed public field.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "This changes app-server execution-context semantics that Decodex Control Plane consumers should model."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The paired cwd/environment behavior is an operator-facing app-server concept worth a concise Publisher handoff."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should verify retained-lane resume and dashboard readback do not store cwd separately from environment selections."
+    }
+  ]
+}

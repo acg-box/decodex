@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26934",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex plugin operators",
+  "candidate_text": [
+    "Codex curated plugin refresh now prunes stale cached plugins whose names disappeared from the openai-curated marketplace, instead of continuing to load old cache entries. Config stays untouched. PR: https://github.com/openai/codex/pull/26934"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26934.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26934.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26934"
+    ]
+  },
+  "evidence_notes": [
+    "The PR body says stale curated plugin caches are removed when names disappear from the raw marketplace.",
+    "The loader reads raw marketplace plugin names before cache refresh.",
+    "The marketplace helper extracts raw plugin names from the manifest.",
+    "Regression coverage uses a stale `google-sheets` cache and verifies it is removed."
+  ],
+  "claims": [
+    {
+      "text": "Curated plugin refresh prunes stale cache entries that disappeared from the openai-curated marketplace.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26934.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Existing user config is left untouched by the cache-pruning change.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26934.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR changes a visible plugin-cache behavior operators may need to diagnose.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26934:operator_impact"
+  },
+  "caveats": [
+    "The change is scoped to openai-curated plugin cache refresh.",
+    "User config is not deleted."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate."
+  ]
+}
