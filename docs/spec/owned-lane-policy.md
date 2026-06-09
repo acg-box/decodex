@@ -155,7 +155,7 @@ This action requires:
 | `In Review` lane has no actionable review yet | PR still belongs to lane; no requested changes that require repair; checks or review are still pending | `wait_for_external_signal` | Yes, when new signal arrives |
 | `In Review` lane now has actionable review repair work | PR still belongs to lane; actionable review feedback is present; retained lane remains reusable | `resume_retained_lane` | Yes |
 | `In Review` lane has green checks, satisfied review, and is mergeable | PR still belongs to lane; approvals satisfied; unresolved blocking review work absent; checks green; mergeable | `ready_to_land` | Yes |
-| Pre-PR self-review or post-review repair churn exceeded the configured convergence budget | Runtime-owned review checkpoints show repeated `findings` in the same phase crossed the configured limit; the lane no longer has a bounded low-risk patch path | `manual_intervention_required` | No |
+| Pre-PR independent review or post-review repair churn exceeded the configured convergence budget | Runtime-owned review checkpoints show repeated `findings` in the same phase crossed the configured limit; the lane no longer has a bounded low-risk patch path | `manual_intervention_required` | No |
 | Review-policy stop may need research escalation | Runtime-owned review checkpoints identify `needs_architecture_review` or repeated `findings` exhaustion with matching current head, phase, evidence, and stop class | `manual_intervention_required` | No direct retry; future research escalation may run only through a separate structured adapter contract |
 | Merge already happened but closeout or cleanup is incomplete | Merged PR is authoritative; closeout or cleanup evidence is still missing | `continue` | Yes |
 | Signals are contradictory or incomplete in a way that requires guesswork | Tracker, retained lane, review, or cleanup signals disagree materially | `manual_intervention_required` | No |
@@ -174,8 +174,11 @@ For review-policy churn, the runtime counts only structured review checkpoints:
 
 - phase is `handoff` before the first PR-backed review handoff succeeds
 - phase is `repair` during retained review-repair runs
-- every `findings` checkpoint increments the runtime checkpoint's non-clean round count
+- every `findings` checkpoint increments the runtime checkpoint's non-clean round
+  count and must carry at least one accepted independent-review finding
 - `clean` does not stop the lane and resets that non-clean round count to zero for the current phase
+- `clean` may carry rejected or non-actionable reviewer comments, but those comments
+  are not repair input
 - recording `issue_review_handoff` or `issue_review_repair_complete` clears the retained review-policy state
 
 Review-policy stops are also the only review failures eligible for a future
@@ -264,9 +267,9 @@ This policy is not normative about the exact local helper names used to satisfy 
 
 In particular:
 
-- deciding whether a pre-PR self-review gate is satisfied belongs to orchestration
+- deciding whether a pre-PR independent-review gate is satisfied belongs to orchestration
 - deciding whether the current PR head needs a fresh review request belongs to orchestration
-- counting pre-PR self-review churn and post-review repair churn belongs to orchestration
+- counting pre-PR independent-review churn and post-review repair churn belongs to orchestration
 - deciding that the lane has crossed from bounded repair into architecture rethink or manual escalation belongs to orchestration
 - executing the concrete review-request side effect belongs to the local workflow adapter
 - retrying that side effect after missing acknowledgement is an orchestration policy decision implemented through the same local adapter
