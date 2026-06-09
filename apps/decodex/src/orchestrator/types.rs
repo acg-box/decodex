@@ -1099,6 +1099,7 @@ struct OperatorStatusSnapshot {
 	active_runs: Vec<OperatorRunStatus>,
 	recent_runs: Vec<OperatorRunStatus>,
 	history_lanes: Vec<OperatorHistoryLaneStatus>,
+	execution_programs: Vec<OperatorExecutionProgramStatus>,
 	queued_candidates: Vec<OperatorQueuedIssueStatus>,
 	worktrees: Vec<OperatorWorktreeStatus>,
 	post_review_lanes: Vec<OperatorPostReviewLaneStatus>,
@@ -1146,6 +1147,62 @@ struct OperatorProjectStatus {
 	connector_state: String,
 	last_activity_at: Option<String>,
 	warning_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorExecutionProgramStatus {
+	program_id: String,
+	source_contract_id: String,
+	node_count: usize,
+	ready_count: usize,
+	blocked_count: usize,
+	paused_count: usize,
+	active_count: usize,
+	completed_count: usize,
+	stale_count: usize,
+	queue_label_eligible_count: usize,
+	mapped_issue_identifiers: Vec<String>,
+	readback_warning: Option<String>,
+}
+impl OperatorExecutionProgramStatus {
+	fn from_summary(
+		record: &ExecutionProgramRecord,
+		summary: ExecutionProgramOperatorSummary,
+	) -> Self {
+		Self {
+			program_id: summary.program_id,
+			source_contract_id: record.source_contract_id().to_owned(),
+			node_count: record.program().nodes().len(),
+			ready_count: summary.ready_count,
+			blocked_count: summary.blocked_count,
+			paused_count: summary.paused_count,
+			active_count: summary.active_count,
+			completed_count: summary.completed_count,
+			stale_count: summary.stale_count,
+			queue_label_eligible_count: summary.queue_label_eligible_count,
+			mapped_issue_identifiers: summary.mapped_issue_identifiers,
+			readback_warning: None,
+		}
+	}
+
+	fn missing_contract(record: &ExecutionProgramRecord) -> Self {
+		let node_count = record.program().nodes().len();
+
+		Self {
+			program_id: record.program_id().to_owned(),
+			source_contract_id: record.source_contract_id().to_owned(),
+			node_count,
+			ready_count: 0,
+			blocked_count: 0,
+			paused_count: 0,
+			active_count: 0,
+			completed_count: 0,
+			stale_count: node_count,
+			queue_label_eligible_count: 0,
+			mapped_issue_identifiers: Vec::new(),
+			readback_warning: Some(String::from("source_decision_contract_missing")),
+		}
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

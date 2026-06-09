@@ -549,6 +549,52 @@ impl DecisionContractRecord {
 	}
 }
 
+/// SQLite-backed internal Execution Program retained by the local runtime.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ExecutionProgramRecord {
+	project_id: String,
+	program: ExecutionProgram,
+	source_contract_id: String,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+#[allow(dead_code)]
+impl ExecutionProgramRecord {
+	pub(crate) fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	pub(crate) fn program(&self) -> &ExecutionProgram {
+		&self.program
+	}
+
+	pub(crate) fn program_id(&self) -> &str {
+		self.program.program_id()
+	}
+
+	pub(crate) fn source_contract_id(&self) -> &str {
+		&self.source_contract_id
+	}
+
+	pub(crate) fn created_at(&self) -> &str {
+		&self.created_at
+	}
+
+	pub(crate) fn created_at_unix(&self) -> i64 {
+		self.created_at_unix
+	}
+
+	pub(crate) fn updated_at(&self) -> &str {
+		&self.updated_at
+	}
+
+	pub(crate) fn updated_at_unix(&self) -> i64 {
+		self.updated_at_unix
+	}
+}
+
 /// Latest runtime-owned review-policy checkpoint for one run phase.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReviewPolicyCheckpoint {

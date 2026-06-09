@@ -12,6 +12,7 @@ mod cli;
 mod codex_config;
 mod commit_message;
 mod default_branch_sync;
+mod execution_program;
 mod git_credentials;
 mod github;
 mod loop_contract;
@@ -88,4 +89,5 @@ fn install_panic_hook() {
 	}));
 }
 
+#[cfg(test)] mod plugin_surface_tests;
 #[cfg(test)] mod test_support;
