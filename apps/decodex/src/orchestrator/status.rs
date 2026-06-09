@@ -327,6 +327,7 @@ fn build_operator_status_snapshot_with_account_mode(
 		active_runs,
 		recent_runs,
 		history_lanes,
+		execution_programs: Vec::new(),
 		queued_candidates: Vec::new(),
 		worktrees,
 		post_review_lanes: Vec::new(),
@@ -534,6 +535,9 @@ where
 		options.account_activity_mode,
 	)?;
 
+	snapshot.execution_programs =
+		operator_execution_program_statuses(project, workflow, state_store)?;
+
 	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
 	hydrate_live_operator_external_observers(
 		LiveOperatorStatusObserverContext {
@@ -555,6 +559,36 @@ where
 	refresh_operator_project_summary(&mut snapshot);
 
 	Ok(snapshot)
+}
+
+fn operator_execution_program_statuses(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+) -> crate::prelude::Result<Vec<OperatorExecutionProgramStatus>> {
+	let policy = ExecutionWorkflowPolicy::from_workflow(project.service_id(), workflow)?;
+	let context = ExecutionProgramReadinessContext::new();
+	let mut statuses = Vec::new();
+
+	for record in state_store.list_execution_programs(project.service_id())? {
+		let Some(contract) =
+			state_store.decision_contract(project.service_id(), record.source_contract_id())?
+		else {
+			statuses.push(OperatorExecutionProgramStatus::missing_contract(&record));
+
+			continue;
+		};
+		let evaluation = record.program().evaluate(contract.contract(), &policy, &context)?;
+
+		statuses.push(OperatorExecutionProgramStatus::from_summary(
+			&record,
+			evaluation.operator_summary(),
+		));
+	}
+
+	statuses.sort_by(|left, right| left.program_id.cmp(&right.program_id));
+
+	Ok(statuses)
 }
 
 fn hydrate_live_operator_external_observers<T>(
@@ -5164,8 +5198,15 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 		"Stale closed queue labels: {}\n",
 		stale_closed_queue_labels.len()
 	));
+	output.push_str(&format!(
+		"Execution programs: {}\n",
+		snapshot.execution_programs.len()
+	));
 	output.push_str(&format!("Recovery worktrees: {}\n", recovery_worktrees.len()));
 	output.push_str(&format!("Post-review lanes: {}\n", snapshot.post_review_lanes.len()));
+
+	append_rendered_execution_programs(&mut output, snapshot);
+
 	output.push_str("\nRunning Lanes\n");
 
 	if snapshot.active_runs.is_empty() {
@@ -5215,6 +5256,44 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	append_rendered_post_review_lanes(&mut output, snapshot);
 
 	output
+}
+
+fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorStatusSnapshot) {
+	output.push_str("\nExecution Programs\n");
+
+	if snapshot.execution_programs.is_empty() {
+		output.push_str("- none\n");
+
+		return;
+	}
+
+	for program in &snapshot.execution_programs {
+		let mapped_issues = if program.mapped_issue_identifiers.is_empty() {
+			String::from("none")
+		} else {
+			program.mapped_issue_identifiers.join(", ")
+		};
+		let readback_warning = program
+			.readback_warning
+			.as_ref()
+			.map_or_else(String::new, |warning| format!(" readback_warning={warning}"));
+
+		output.push_str(&format!(
+			"- program_id: {} source_contract_id: {} nodes={} ready={} blocked={} paused={} active={} completed={} stale={} queue_label_eligible={} mapped_issues={}{}\n",
+			program.program_id,
+			program.source_contract_id,
+			program.node_count,
+			program.ready_count,
+			program.blocked_count,
+			program.paused_count,
+			program.active_count,
+			program.completed_count,
+			program.stale_count,
+			program.queue_label_eligible_count,
+			mapped_issues,
+			readback_warning,
+		));
+	}
 }
 
 fn append_rendered_github_cli_authority(output: &mut String, snapshot: &OperatorStatusSnapshot) {

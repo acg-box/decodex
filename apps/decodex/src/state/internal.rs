@@ -128,6 +128,7 @@ struct StateData {
 	linear_execution_events: HashMap<String, LinearExecutionEventRuntimeRecord>,
 	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
 	decision_contracts: HashMap<DecisionContractKey, DecisionContractRuntimeRecord>,
+	execution_programs: HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
 	review_handoffs: HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
 	review_orchestrations: HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
 	review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
@@ -148,6 +149,7 @@ impl StateData {
 		self.linear_execution_events = loaded.linear_execution_events;
 		self.private_execution_events = loaded.private_execution_events;
 		self.decision_contracts = loaded.decision_contracts;
+		self.execution_programs = loaded.execution_programs;
 		self.review_handoffs = loaded.review_handoffs;
 		self.review_orchestrations = loaded.review_orchestrations;
 		self.review_policy_checkpoints = loaded.review_policy_checkpoints;
@@ -354,6 +356,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_connector_backoffs_schema()?;
 		self.bootstrap_private_execution_events_schema()?;
 		self.bootstrap_decision_contracts_schema()?;
+		self.bootstrap_execution_programs_schema()?;
 		self.record_schema_version()?;
 
 		Ok(())
@@ -529,6 +532,28 @@ ON decision_contracts (project_id, status, updated_at_unix);
 		Ok(())
 	}
 
+	fn bootstrap_execution_programs_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS execution_programs (
+	project_id TEXT NOT NULL,
+	program_id TEXT NOT NULL,
+	source_contract_id TEXT NOT NULL,
+	payload_json TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, program_id)
+);
+CREATE INDEX IF NOT EXISTS execution_programs_source_contract_idx
+ON execution_programs (project_id, source_contract_id, updated_at_unix);
+"#,
+		)?;
+
+		Ok(())
+	}
+
 	fn record_schema_version(&self) -> Result<()> {
 		self.connection.execute_batch(
 			r#"
@@ -537,7 +562,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	value TEXT NOT NULL
 );
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '9')
+VALUES ('schema_version', '10')
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 "#,
 		)?;
@@ -557,6 +582,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_linear_execution_events(&mut state)?;
 		self.load_private_execution_events(&mut state)?;
 		self.load_decision_contracts(&mut state)?;
+		self.load_execution_programs(&mut state)?;
 		self.load_review_handoffs(&mut state)?;
 		self.load_review_orchestrations(&mut state)?;
 		self.load_review_policy_checkpoints(&mut state)?;
@@ -597,6 +623,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_linear_execution_events(&transaction, state)?;
 		persist_private_execution_events(&transaction, state)?;
 		persist_decision_contracts(&transaction, state)?;
+		persist_execution_programs(&transaction, state)?;
 		persist_review_handoffs(&transaction, state)?;
 		persist_review_orchestrations(&transaction, state)?;
 		persist_review_policy_checkpoints(&transaction, state)?;
@@ -621,6 +648,10 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"DELETE FROM decision_contracts WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM execution_programs WHERE project_id = ?1",
 			params![service_id],
 		)?;
 		transaction.commit()?;
@@ -821,6 +852,35 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				record.contract.contract_id(),
 				record.source_issue_id.as_deref(),
 				record.status.as_str(),
+				payload_json,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+
+		Ok(())
+	}
+
+	#[allow(dead_code)]
+	fn upsert_execution_program(&self, record: &ExecutionProgramRuntimeRecord) -> Result<()> {
+		let payload_json = serde_json::to_string(&record.program)?;
+
+		self.connection.execute(
+			"INSERT INTO execution_programs (
+					project_id, program_id, source_contract_id, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+			 ON CONFLICT(project_id, program_id) DO UPDATE SET
+				 source_contract_id = excluded.source_contract_id,
+				 payload_json = excluded.payload_json,
+				 updated_at = excluded.updated_at,
+				 updated_at_unix = excluded.updated_at_unix",
+			params![
+				&record.project_id,
+				record.program.program_id(),
+				&record.source_contract_id,
 				payload_json,
 				&record.created_at,
 				record.created_at_unix,
@@ -1546,6 +1606,71 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn load_execution_programs(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, source_contract_id, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM execution_programs \
+			 ORDER BY project_id ASC, program_id ASC",
+		)?;
+		let rows = statement.query_map([], |row| {
+			Ok((
+				row.get::<_, String>(0)?,
+				row.get::<_, String>(1)?,
+				row.get::<_, String>(2)?,
+				row.get::<_, String>(3)?,
+				row.get::<_, String>(4)?,
+				row.get::<_, i64>(5)?,
+				row.get::<_, String>(6)?,
+				row.get::<_, i64>(7)?,
+			))
+		})?;
+
+		for row in rows {
+			let (
+				project_id,
+				program_id,
+				source_contract_id,
+				payload_json,
+				created_at,
+				created_at_unix,
+				updated_at,
+				updated_at_unix,
+			) = row?;
+			let program = serde_json::from_str::<ExecutionProgram>(&payload_json)?;
+
+			program.validate()?;
+
+			if program_id != program.program_id() {
+				eyre::bail!(
+					"Execution program row `{program_id}` contained payload `{}`.",
+					program.program_id()
+				);
+			}
+			if source_contract_id != program.source_contract_id() {
+				eyre::bail!(
+					"Execution program row `{program_id}` carried source contract `{source_contract_id}` but payload references `{}`.",
+					program.source_contract_id()
+				);
+			}
+
+			state.execution_programs.insert(
+				ExecutionProgramKey::new(&project_id, &program_id),
+				ExecutionProgramRuntimeRecord {
+					project_id,
+					source_contract_id,
+					program,
+					created_at,
+					created_at_unix,
+					updated_at,
+					updated_at_unix,
+				},
+			);
+		}
+
+		Ok(())
+	}
+
 	fn load_review_handoffs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, branch_name, run_id, attempt_number, pr_url, \
@@ -1889,6 +2014,47 @@ impl DecisionContractRuntimeRecord {
 			source_issue_id: self.source_issue_id.clone(),
 			contract: self.contract.clone(),
 			status: self.status,
+			created_at: self.created_at.clone(),
+			created_at_unix: self.created_at_unix,
+			updated_at: self.updated_at.clone(),
+			updated_at_unix: self.updated_at_unix,
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ExecutionProgramKey {
+	project_id: String,
+	program_id: String,
+}
+impl ExecutionProgramKey {
+	fn new(project_id: &str, program_id: &str) -> Self {
+		Self { project_id: project_id.to_owned(), program_id: program_id.to_owned() }
+	}
+}
+
+#[derive(Clone, Debug)]
+struct ExecutionProgramRuntimeRecord {
+	project_id: String,
+	source_contract_id: String,
+	program: ExecutionProgram,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl ExecutionProgramRuntimeRecord {
+	#[allow(dead_code)]
+	fn key(&self) -> ExecutionProgramKey {
+		ExecutionProgramKey::new(&self.project_id, self.program.program_id())
+	}
+
+	#[allow(dead_code)]
+	fn as_public(&self) -> ExecutionProgramRecord {
+		ExecutionProgramRecord {
+			project_id: self.project_id.clone(),
+			program: self.program.clone(),
+			source_contract_id: self.source_contract_id.clone(),
 			created_at: self.created_at.clone(),
 			created_at_unix: self.created_at_unix,
 			updated_at: self.updated_at.clone(),
@@ -2906,6 +3072,34 @@ fn persist_decision_contracts(
 	Ok(())
 }
 
+fn persist_execution_programs(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for record in state.execution_programs.values() {
+		let payload_json = serde_json::to_string(&record.program)?;
+
+		transaction.execute(
+			"INSERT OR REPLACE INTO execution_programs (
+					project_id, program_id, source_contract_id, payload_json, created_at,
+					created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+			params![
+				&record.project_id,
+				record.program.program_id(),
+				&record.source_contract_id,
+				payload_json,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
 fn persist_review_handoffs(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for record in state.review_handoffs.values() {
 		transaction.execute(
@@ -3694,6 +3888,16 @@ fn compare_decision_contract_runtime_records(
 	left.updated_at_unix
 		.cmp(&right.updated_at_unix)
 		.then_with(|| left.contract.contract_id().cmp(right.contract.contract_id()))
+}
+
+#[allow(dead_code)]
+fn compare_execution_program_runtime_records(
+	left: &ExecutionProgramRuntimeRecord,
+	right: &ExecutionProgramRuntimeRecord,
+) -> cmp::Ordering {
+	left.updated_at_unix
+		.cmp(&right.updated_at_unix)
+		.then_with(|| left.program.program_id().cmp(right.program.program_id()))
 }
 
 fn compare_project_run_status(left: &ProjectRunStatus, right: &ProjectRunStatus) -> cmp::Ordering {
