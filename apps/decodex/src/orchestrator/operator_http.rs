@@ -513,18 +513,20 @@ fn build_operator_run_activity_event(
 				continue;
 			},
 		};
-		let (runs, _) = state_store.list_project_runs(project.service_id(), 0)?;
+		let (leased_runs, recent_runs) =
+			state_store.list_project_runs(project.service_id(), DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT)?;
 		let project_display_name = operator_project_display_name(&project);
-		let mut project_active_runs = Vec::new();
-
-		for run in runs {
-			let run_status =
-				operator_run_status(&project, &project_display_name, run, now_unix_epoch)?;
-
-			if operator_run_counts_as_active(&run_status) {
-				project_active_runs.push(run_status);
-			}
-		}
+		let recent_runs = recent_runs
+			.into_iter()
+			.map(|run| operator_run_status(&project, &project_display_name, run, now_unix_epoch))
+			.collect::<Result<Vec<_>>>()?;
+		let project_active_runs = operator_active_run_statuses(
+			&project,
+			&project_display_name,
+			leased_runs,
+			&recent_runs,
+			now_unix_epoch,
+		)?;
 
 		if project_active_runs.is_empty() {
 			continue;
