@@ -43,6 +43,7 @@ fn operator_status_text_surfaces_github_cli_authority() {
 		queued_candidates: Vec::new(),
 		recent_runs: Vec::new(),
 		history_lanes: Vec::new(),
+		execution_programs: Vec::new(),
 		worktrees: Vec::new(),
 		post_review_lanes: Vec::new(),
 	};
@@ -72,6 +73,7 @@ fn operator_status_text_renders_human_readable_sections() {
 		queued_candidates: operator_status_text_queued_candidates(),
 		recent_runs: vec![active_run],
 		history_lanes: Vec::new(),
+		execution_programs: Vec::new(),
 		worktrees: operator_status_text_worktrees(),
 		post_review_lanes: operator_status_text_post_review_lanes(),
 	};
@@ -152,6 +154,50 @@ fn operator_status_text_renders_human_readable_sections() {
 }
 
 #[test]
+fn operator_status_text_surfaces_execution_program_summary() {
+	let snapshot = OperatorStatusSnapshot {
+		project_id: String::from("decodex"),
+		run_limit: 10,
+		warnings: Vec::new(),
+		warning_details: Vec::new(),
+		connector_backoffs: Vec::new(),
+		projects: Vec::new(),
+		account_control: OperatorCodexAccountControlStatus {
+			mode: String::from("balanced"),
+			account_selector: None,
+		},
+		accounts: Vec::new(),
+		active_runs: Vec::new(),
+		queued_candidates: Vec::new(),
+		recent_runs: Vec::new(),
+		history_lanes: Vec::new(),
+		execution_programs: vec![OperatorExecutionProgramStatus {
+			program_id: String::from("program-853"),
+			source_contract_id: String::from("contract-852"),
+			node_count: 3,
+			ready_count: 1,
+			blocked_count: 1,
+			paused_count: 0,
+			active_count: 0,
+			completed_count: 1,
+			stale_count: 0,
+			queue_label_eligible_count: 1,
+			mapped_issue_identifiers: vec![String::from("XY-853")],
+			readback_warning: None,
+		}],
+		worktrees: Vec::new(),
+		post_review_lanes: Vec::new(),
+	};
+	let rendered = orchestrator::render_operator_status(&snapshot);
+
+	assert!(rendered.contains("Execution programs: 1"));
+	assert!(rendered.contains("Execution Programs"));
+	assert!(rendered.contains(
+		"program_id: program-853 source_contract_id: contract-852 nodes=3 ready=1 blocked=1 paused=0 active=0 completed=1 stale=0 queue_label_eligible=1 mapped_issues=XY-853"
+	));
+}
+
+#[test]
 fn queue_explain_renders_candidate_reasons_without_running_dispatch() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let candidates = operator_status_text_queued_candidates();
@@ -210,6 +256,7 @@ fn operator_status_text_explains_empty_backlog_checks() {
 		queued_candidates: Vec::new(),
 		recent_runs: Vec::new(),
 		history_lanes: Vec::new(),
+		execution_programs: Vec::new(),
 		worktrees: Vec::new(),
 		post_review_lanes: Vec::new(),
 	};
@@ -245,6 +292,7 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 		queued_candidates: Vec::new(),
 		recent_runs: Vec::new(),
 		history_lanes: Vec::new(),
+		execution_programs: Vec::new(),
 		worktrees: vec![orchestrator::OperatorWorktreeStatus {
 			issue_id: String::from("issue-3"),
 			issue_identifier: Some(String::from("PUB-103")),
@@ -312,6 +360,7 @@ fn operator_status_text_terminal_run_freshness_uses_terminal_update() {
 		queued_candidates: Vec::new(),
 		recent_runs: vec![terminal_run],
 		history_lanes,
+		execution_programs: Vec::new(),
 		worktrees: Vec::new(),
 		post_review_lanes: Vec::new(),
 	};
@@ -350,6 +399,7 @@ fn operator_status_text_active_run_without_live_activity_does_not_promote_update
 		queued_candidates: Vec::new(),
 		recent_runs: vec![active_run],
 		history_lanes: Vec::new(),
+		execution_programs: Vec::new(),
 		worktrees: Vec::new(),
 		post_review_lanes: Vec::new(),
 	};
@@ -383,6 +433,7 @@ fn operator_status_text_explains_unleased_live_running_lane() {
 		queued_candidates: Vec::new(),
 		recent_runs: vec![active_run],
 		history_lanes: Vec::new(),
+		execution_programs: Vec::new(),
 		worktrees: Vec::new(),
 		post_review_lanes: Vec::new(),
 	};
