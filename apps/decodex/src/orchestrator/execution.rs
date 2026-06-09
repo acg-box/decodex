@@ -112,6 +112,199 @@ where
 	run_result: &'a AppServerRunResult,
 }
 
+struct RepoGatePhaseGoalController<'a> {
+	project: &'a ServiceConfig,
+	workflow: &'a WorkflowDocument,
+	state_store: &'a StateStore,
+	issue_run: &'a IssueRunPlan,
+}
+impl RepoGatePhaseGoalController<'_> {
+	fn initial_phase_goal_kind(&self) -> PhaseGoalKind {
+		match self.issue_run.dispatch_mode {
+			IssueDispatchMode::Normal | IssueDispatchMode::Retry =>
+				PhaseGoalKind::ImplementToValidationReady,
+			IssueDispatchMode::ReviewRepair => PhaseGoalKind::RepairAcceptedReviewFindings,
+			IssueDispatchMode::Closeout => PhaseGoalKind::HandoffEvidence,
+		}
+	}
+
+	fn latest_persisted_phase_goal(&self) -> Result<Option<PhaseGoalKind>> {
+		let events = self.state_store.list_private_execution_events(
+			self.project.service_id(),
+			&self.issue_run.issue.id,
+			&self.issue_run.run_id,
+			self.issue_run.attempt_number,
+		)?;
+
+		Ok(events
+			.iter()
+			.rev()
+			.filter(|event| event.event_type() == "phase_goal_next")
+			.find_map(|event| event.payload().get("phase").and_then(Value::as_str))
+			.and_then(phase_goal_kind_from_str))
+	}
+
+	fn validate_phase_goal_output(&self, phase: PhaseGoalKind) -> Result<PhaseGoalTransition> {
+		let selected_repo_gate = select_repo_gate_for_worktree(
+			self.workflow.frontmatter().execution(),
+			&self.issue_run.worktree.path,
+		);
+
+		write_run_operation_marker_best_effort(
+			&self.issue_run.worktree.path,
+			&self.issue_run.run_id,
+			self.issue_run.attempt_number,
+			RUN_OPERATION_REPO_GATE,
+		);
+
+		match run_repo_gate_commands(
+			selected_repo_gate.canonicalize_commands(),
+			selected_repo_gate.verify_commands(),
+			&self.issue_run.worktree.path,
+		) {
+			Ok(()) => {
+				self.record_phase_goal_transition(
+					phase,
+					"validation_pass",
+					json!({ "nextPhase": PhaseGoalKind::HandoffEvidence.as_str() }),
+				)?;
+
+				let next_goal = self.phase_goal_spec(PhaseGoalKind::HandoffEvidence, None);
+
+				self.persist_next_phase_goal(&next_goal, "validation_pass")?;
+
+				Ok(PhaseGoalTransition::Continue(next_goal))
+			},
+			Err(error) => {
+				if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
+					self.record_phase_goal_transition(
+						phase,
+						"validation_fail",
+						json!({
+							"errorClass": repo_gate_failure.error_class(),
+							"disposition": repo_gate_failure.disposition().as_str(),
+						}),
+					)?;
+
+					if repo_gate_failure.disposition() == RepoGateFailureDisposition::ContinueRepair {
+						let detail = format!(
+							"Repo gate failed with `{}`. Inspect the worktree, run the registered canonicalize and verify commands, and repair only the validation failure.",
+							repo_gate_failure.error_class()
+						);
+						let next_goal =
+							self.phase_goal_spec(PhaseGoalKind::RepairValidationFailures, Some(&detail));
+
+						self.persist_next_phase_goal(&next_goal, "validation_fail")?;
+
+						return Ok(PhaseGoalTransition::Continue(next_goal));
+					}
+				}
+
+				Err(error)
+			},
+		}
+	}
+
+	fn phase_goal_spec(
+		&self,
+		phase: PhaseGoalKind,
+		detail: Option<&str>,
+	) -> PhaseGoalSpec {
+		let objective = match phase {
+			PhaseGoalKind::ImplementToValidationReady => format!(
+				"Decodex phase: {}\nProduce the smallest coherent implementation and documentation change for {} that is ready for the registered Decodex repo gate. Do not push, request review, or treat goal completion as issue completion.",
+				phase.as_str(),
+				self.issue_run.issue.identifier
+			),
+			PhaseGoalKind::RepairValidationFailures => format!(
+				"Decodex phase: {}\nRepair repo-gate failures for {} in the current worktree without widening issue scope. {}",
+				phase.as_str(),
+				self.issue_run.issue.identifier,
+				detail.unwrap_or("Run the registered canonicalize and verify commands before completing this phase.")
+			),
+			PhaseGoalKind::RepairAcceptedReviewFindings => format!(
+				"Decodex phase: {}\nRepair accepted review findings for {} on the retained PR head without widening issue scope. Do not request fresh external review before Decodex validation.",
+				phase.as_str(),
+				self.issue_run.issue.identifier
+			),
+			PhaseGoalKind::HandoffEvidence => format!(
+				"Decodex phase: {}\nAfter Decodex validation, prepare PR-backed handoff evidence for {}: run the bounded review policy as instructed, push the branch when ready, create or update the non-draft PR, then record the required Decodex terminal path. Goal completion alone is not issue success.",
+				phase.as_str(),
+				self.issue_run.issue.identifier
+			),
+		};
+
+		PhaseGoalSpec::new(phase, objective, None)
+	}
+
+	fn persist_next_phase_goal(&self, goal: &PhaseGoalSpec, reason: &str) -> Result<()> {
+		self.state_store.append_private_execution_event(
+			self.project.service_id(),
+			&self.issue_run.issue.id,
+			&self.issue_run.run_id,
+			self.issue_run.attempt_number,
+			"phase_goal_next",
+			json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": goal.phase.as_str(),
+				"reason": reason,
+			}),
+		)?;
+
+		Ok(())
+	}
+
+	fn record_phase_goal_transition(
+		&self,
+		phase: PhaseGoalKind,
+		signal: &str,
+		payload: Value,
+	) -> Result<()> {
+		self.state_store.append_private_execution_event(
+			self.project.service_id(),
+			&self.issue_run.issue.id,
+			&self.issue_run.run_id,
+			self.issue_run.attempt_number,
+			"phase_goal_transition",
+			json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": phase.as_str(),
+				"signal": signal,
+				"payload": payload,
+			}),
+		)?;
+
+		Ok(())
+	}
+}
+
+impl PhaseGoalController for RepoGatePhaseGoalController<'_> {
+	fn initial_phase_goal(&self) -> Result<Option<PhaseGoalSpec>> {
+		if let Some(phase) = self.latest_persisted_phase_goal()? {
+			return Ok(Some(self.phase_goal_spec(phase, None)));
+		}
+
+		Ok(Some(self.phase_goal_spec(self.initial_phase_goal_kind(), None)))
+	}
+
+	fn phase_goal_completed(&self, phase: PhaseGoalKind) -> Result<PhaseGoalTransition> {
+		match phase {
+			PhaseGoalKind::HandoffEvidence => {
+				self.record_phase_goal_transition(
+					phase,
+					"handoff_evidence_goal_complete",
+					json!({ "terminalPathRequired": true }),
+				)?;
+
+				Ok(PhaseGoalTransition::CompleteRun)
+			},
+			PhaseGoalKind::ImplementToValidationReady
+			| PhaseGoalKind::RepairValidationFailures
+			| PhaseGoalKind::RepairAcceptedReviewFindings => self.validate_phase_goal_output(phase),
+		}
+	}
+}
+
 struct ThreadArchiveCandidate {
 	run_id: String,
 	attempt_number: i64,
@@ -578,6 +771,13 @@ where
 	);
 	let decodex_tool_bridge =
 		DecodexToolBridge::new(&tracker_tool_bridge, build_decodex_run_context(workflow, issue_run));
+	let phase_goal_controller =
+		build_phase_goal_controller(project, workflow, state_store, issue_run);
+	let phase_goal_controller_ref = phase_goal_controller
+		.as_ref()
+		.map(|controller| controller as &dyn PhaseGoalController);
+	let continuation_user_input =
+		build_issue_run_continuation_user_input(project, workflow, issue_run, &review_context);
 	let run_result = agent::execute_app_server_run(
 		&AppServerRunRequest {
 			project_id: project.service_id().to_owned(),
@@ -602,27 +802,22 @@ where
 				issue_run,
 				&review_context,
 			),
-				max_turns: workflow.frontmatter().execution().max_turns(),
-				timeout: ACTIVE_RUN_IDLE_TIMEOUT,
-				process_env: agent_git_credentials.process_env().clone(),
-				continuation_user_input: Some(build_continuation_user_input(
-				&issue_run.issue,
-				workflow,
-				issue_run.dispatch_mode,
-				review_context.recorded_pr_url.as_deref(),
-				workflow.frontmatter().tracker().success_state(),
-				project.codex().internal_review_mode(),
-			)),
+			max_turns: workflow.frontmatter().execution().max_turns(),
+			timeout: ACTIVE_RUN_IDLE_TIMEOUT,
+			process_env: agent_git_credentials.process_env().clone(),
+			continuation_user_input: Some(continuation_user_input),
 			activity_marker_path: Some(issue_run.worktree.path.clone()),
 			resume_thread_id: resolve_resume_thread_id(state_store, issue_run)?,
 			ephemeral_thread: false,
 			command_exec_health_check: None,
 			dynamic_tool_handler: Some(&decodex_tool_bridge),
 			continuation_guard: Some(&continuation_guard),
-				codex_account_provider: codex_account_pool
-					.as_ref()
-					.map(|pool| pool as &dyn CodexAccountProvider),
-			},
+			phase_goal_controller: phase_goal_controller_ref,
+			phase_goal_required: project.codex().goal_support().required(),
+			codex_account_provider: codex_account_pool
+				.as_ref()
+				.map(|pool| pool as &dyn CodexAccountProvider),
+		},
 		state_store,
 	)
 	.map_err(|error| {
@@ -651,6 +846,46 @@ where
 		transport: &transport,
 		run_result: &run_result,
 	})
+}
+
+fn build_issue_run_continuation_user_input(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	issue_run: &IssueRunPlan,
+	review_context: &ReviewHandoffContext,
+) -> String {
+	build_continuation_user_input(
+		&issue_run.issue,
+		workflow,
+		issue_run.dispatch_mode,
+		review_context.recorded_pr_url.as_deref(),
+		workflow.frontmatter().tracker().success_state(),
+		project.codex().internal_review_mode(),
+	)
+}
+
+fn build_phase_goal_controller<'a>(
+	project: &'a ServiceConfig,
+	workflow: &'a WorkflowDocument,
+	state_store: &'a StateStore,
+	issue_run: &'a IssueRunPlan,
+) -> Option<RepoGatePhaseGoalController<'a>> {
+	project.codex().goal_support().enabled().then_some(RepoGatePhaseGoalController {
+		project,
+		workflow,
+		state_store,
+		issue_run,
+	})
+}
+
+fn phase_goal_kind_from_str(value: &str) -> Option<PhaseGoalKind> {
+	match value {
+		"implement_to_validation_ready" => Some(PhaseGoalKind::ImplementToValidationReady),
+		"repair_validation_failures" => Some(PhaseGoalKind::RepairValidationFailures),
+		"repair_accepted_review_findings" => Some(PhaseGoalKind::RepairAcceptedReviewFindings),
+		"handoff_evidence" => Some(PhaseGoalKind::HandoffEvidence),
+		_ => None,
+	}
 }
 
 fn build_issue_turn_continuation_guard<'a, T>(
@@ -1458,6 +1693,7 @@ fn truncate_private_diagnostic_text(text: &str) -> String {
 fn run_failure_requires_terminal_attention(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
+		|| error.downcast_ref::<AppServerPhaseGoalFailure>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
 		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
 		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
@@ -1662,6 +1898,8 @@ fn retained_progress_source_error_class(error: &Report) -> Option<&'static str> 
 	} else if let Some(app_server_failure) =
 		error.downcast_ref::<AppServerTransportFailure>()
 	{
+		Some(app_server_failure.error_class())
+	} else if let Some(app_server_failure) = error.downcast_ref::<AppServerPhaseGoalFailure>() {
 		Some(app_server_failure.error_class())
 	} else if let Some(app_server_failure) =
 		error.downcast_ref::<AppServerDynamicToolFailure>()
