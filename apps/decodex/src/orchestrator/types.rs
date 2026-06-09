@@ -579,6 +579,7 @@ struct ManualAttentionRequested {
 	issue_identifier: String,
 	label: String,
 	run_id: String,
+	error_class: Option<String>,
 }
 impl Display for ManualAttentionRequested {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -644,6 +645,103 @@ impl Display for RetainedPartialProgress {
 }
 
 impl Error for RetainedPartialProgress {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LoopGuardrailReason {
+	ValidationRepeat,
+	NoEffectiveDiff,
+	RemainingDeltaUnchanged,
+	ReviewChurn,
+	DependencyProgramStale,
+	UncoveredDirection,
+	AmbiguousRetainedProgress,
+}
+impl LoopGuardrailReason {
+	fn error_class(self) -> &'static str {
+		match self {
+			Self::ValidationRepeat => "validation_repeat",
+			Self::NoEffectiveDiff => "no_effective_diff",
+			Self::RemainingDeltaUnchanged => "remaining_delta_unchanged",
+			Self::ReviewChurn => "review_churn",
+			Self::DependencyProgramStale => "dependency_program_stale",
+			Self::UncoveredDirection => "uncovered_direction",
+			Self::AmbiguousRetainedProgress => "ambiguous_retained_progress",
+		}
+	}
+
+	fn from_error_class(error_class: &str) -> Option<Self> {
+		match error_class {
+			"validation_repeat" | "validation_failure_repeated" => Some(Self::ValidationRepeat),
+			"no_effective_diff" => Some(Self::NoEffectiveDiff),
+			"remaining_delta_unchanged" => Some(Self::RemainingDeltaUnchanged),
+			"review_churn" | "review_policy_exhausted" => Some(Self::ReviewChurn),
+			"dependency_program_stale" | "dependency_blocked" => {
+				Some(Self::DependencyProgramStale)
+			},
+			"uncovered_direction" | "research_contract_required" => {
+				Some(Self::UncoveredDirection)
+			},
+			"ambiguous_retained_progress" | "ownership_ambiguous" => {
+				Some(Self::AmbiguousRetainedProgress)
+			},
+			_ => None,
+		}
+	}
+
+	fn terminal_next_action(self, recovery_gate: &str) -> String {
+		match self {
+			Self::ValidationRepeat => format!(
+				"inspect the repeated validation failure, preserved worktree, and prior repair attempts; change repair strategy or route the issue to architecture/research review manually, {recovery_gate}"
+			),
+			Self::NoEffectiveDiff => format!(
+				"inspect the retained worktree and retry evidence; do not continue automatic repair until a human identifies a concrete next diff or resets the lane, {recovery_gate}"
+			),
+			Self::RemainingDeltaUnchanged => format!(
+				"inspect the unchanged remaining delta and validation evidence; decide the next bounded repair manually before requeueing, {recovery_gate}"
+			),
+			Self::ReviewChurn => format!(
+				"inspect the repeated review findings and current head; decide the next repair or architecture review manually before requeueing, {recovery_gate}"
+			),
+			Self::DependencyProgramStale => format!(
+				"inspect the dependency blocker and Execution Program readiness evidence; refresh dependencies or split/research the program before requeueing, {recovery_gate}"
+			),
+			Self::UncoveredDirection => format!(
+				"capture the missing direction in a research or decision contract before continuing execution, {recovery_gate}"
+			),
+			Self::AmbiguousRetainedProgress => format!(
+				"inspect retained partial progress and ownership evidence; choose resume, reset, or manual repair explicitly before clearing the guard, {recovery_gate}"
+			),
+		}
+	}
+}
+
+#[derive(Debug)]
+struct LoopGuardrailStopRequested {
+	issue_identifier: String,
+	run_id: String,
+	reason: LoopGuardrailReason,
+	consecutive_count: i64,
+	fingerprint: String,
+	source_error_class: Option<String>,
+}
+impl Display for LoopGuardrailStopRequested {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let source = self.source_error_class.as_deref().unwrap_or("none");
+
+		write!(
+			f,
+			"Run `{}` for issue `{}` hit loop guardrail `{}` after {} consecutive matching observations with source `{}` and fingerprint `{}`; stop automatic retries.",
+			self.run_id,
+			self.issue_identifier,
+			self.reason.error_class(),
+			self.consecutive_count,
+			source,
+			self.fingerprint
+		)
+	}
+}
+
+impl Error for LoopGuardrailStopRequested {}
 
 #[derive(Debug)]
 struct AgentGitCredentialsUnavailable {

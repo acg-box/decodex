@@ -44,7 +44,7 @@ state or this state machine.
 
 ## Source of truth boundaries
 
-- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, run-control channels, protocol events, private execution events, latent and promoted Decision Contracts, worktree mappings, retained PR state, review-policy checkpoints, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
+- The Decodex runtime SQLite database is the single-machine source of truth for active leases, attempts, run-control channels, protocol events, private execution events, latent and promoted Decision Contracts, worktree mappings, retained PR state, review-policy checkpoints, loop-guardrail checkpoints, retry state, phase timing, project registration, tracker cache, PR cache, and connector backoff.
 - Linear remains the team-visible tracker surface for issue lifecycle, queue/active/manual-attention labels, and coarse lifecycle summaries such as start, PR-ready, blocked, failed, landed, and done.
 - Versioned Linear execution event comments use the schema in
   [`linear-execution-ledger.md`](./linear-execution-ledger.md), but fine-grained runtime truth must not be rebuilt from comments every tick.
@@ -73,6 +73,7 @@ mirror:
 | Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, but the JSON payload remains the contract authority. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing active lease ownership. |
 | Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating. |
+| Runtime SQLite `loop_guardrail_checkpoints` | Latest convergence checkpoint for one project, issue, and guardrail reason. It stores the fingerprint, consecutive count, run id, attempt number, and structured detail used to stop non-converging loops without replaying Linear comments. |
 | Agent evidence under `~/.codex/decodex/agent-evidence/<service-id>/` | Derived local handoff view for repair agents. It may reference private evidence readback commands and compact run capsules, but it is not scheduling authority and is not a public mirror. |
 | Logs under `~/.codex/decodex/logs/` and `.decodex-run-activity` | Diagnostic process and liveness signals. They may explain what a local process did, but they are not the structured execution ledger and must not be replayed as tracker state. |
 | Linear execution ledger comments | Low-frequency public projection for team-visible lifecycle state. They carry coarse start, progress phase, PR, handoff, failure, landing, closeout, and cleanup summaries only. |
@@ -89,6 +90,8 @@ The following facts are local runtime truth and must not be rebuilt from Linear 
 - private execution events carrying structured local evidence for an issue/run/attempt
 - review-policy checkpoint state: current phase, normalized status, lane head,
   consecutive non-clean round count, and structured independent-review detail
+- loop-guardrail checkpoint state: normalized reason, fingerprint, consecutive
+  observation count, source run, and structured stop detail
 - retry and backoff state: queued retry kind, due time, retry budget, and connector backoff
 - phase timing and operator activity summaries
 - retained worktree mappings, retained PR handoff identity, post-review phase, and cleanup or repair ownership
@@ -336,6 +339,16 @@ When `decodex` runs the repo-native gate during `validating`, it must preserve t
 
 The continued-repair classes above are ordinary bounded churn: the coding agent should keep repairing code and rerun the repo gate rather than requesting `manual_attention` just because the gate has not passed yet. Human-attention exits remain reserved for environment, toolchain, or operator-owned blockers that the coding agent cannot clear from the retained worktree alone.
 
+Continued repair is still bounded by loop guardrails. For each retryable failure,
+Decodex records local `loop_guardrail_checkpoint` evidence and updates the
+`loop_guardrail_checkpoints` row for any matching convergence reason. Three
+consecutive observations with the same fingerprint stop automatic retry and route the
+lane through the human-required failure path. Repo-gate failures record both
+`validation_repeat` and `remaining_delta_unchanged` observations; retryable failures
+with no changing tracked delta record `no_effective_diff`. Fingerprints use the lane
+HEAD plus the tracked worktree status and diff against `HEAD`, so retained partial
+progress remains inspectable instead of being deleted or hidden.
+
 When `codex.internal_review_mode = "loop"`, handoff and retained review-repair runs also consume the latest structured `issue_review_checkpoint` state for the current phase and current lane head from the owned lane:
 
 - no checkpoint and no terminal path: allow a clean continuation boundary
@@ -435,6 +448,27 @@ Runtime-owned review-policy stops use the same human-required failure path, but 
 - `architecture_review_required`
 - `review_policy_blocked`
 
+Runtime loop guardrails use the same human-required failure path, but preserve a
+structured failure-attribution `error_class` so operator status and Linear summaries
+can distinguish the stop class:
+
+- `validation_repeat`: the same validation failure repeated three times.
+- `no_effective_diff`: retryable attempts repeated without a changed tracked delta.
+- `remaining_delta_unchanged`: validation text changed but the remaining tracked delta
+  stayed unchanged for three attempts.
+- `dependency_program_stale`: a queued issue kept the same open dependency blocker
+  fingerprint across three status observations, indicating Execution Program readiness
+  or issue decomposition is stale.
+- `uncovered_direction`: execution found missing direction that must feed back into a
+  research or Decision Contract before more implementation.
+- `ambiguous_retained_progress`: retained local work or ownership evidence is useful
+  but ambiguous enough that a human must choose resume, reset, or manual repair.
+
+Review repair churn uses the bounded review policy above and may appear publicly as
+`review_policy_exhausted` or the normalized loop reason `review_churn`; both mean the
+operator should inspect repeated review findings and stop patch-on-patch repair until
+the next strategy is explicit.
+
 If the configured `decodex:needs-attention` label is unavailable on the team and the configured failure state is startable, `decodex` must still block automatic reselection by leaving the issue in a non-startable guard state such as `In Progress`. In that case the failure comment must explain that the label could not be applied and that a human must move the issue back to a startable state manually after repair. Restart recovery must preserve that guard by writing a retained-worktree marker under `.worktrees/<ISSUE>/.decodex-terminal-guarded` and consulting it before redispatching recovered `In Progress` lanes.
 
 Any issue carrying `decodex:needs-attention` is ineligible for another automatic run until a human clears the label and returns the issue to a startable state.
@@ -472,6 +506,7 @@ The runtime database stores at least:
 - worktree mappings
 - retained PR and post-review state
 - review-policy checkpoints
+- loop-guardrail checkpoints
 - retry state and retry budgets
 - phase timing and operator activity summaries
 - tracker and PR cache rows needed to survive connector outages
