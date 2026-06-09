@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26486",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "practical_explainer",
+  "priority": "critical",
+  "audience": "Codex users and image-tool integrators",
+  "candidate_text": [
+    "Codex image edits now use explicit `referenced_image_paths` instead of an `action` flag, with `num_last_images_to_include` only as fallback for images without local paths. Old action-based calls need updating. PR: https://github.com/openai/codex/pull/26486"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26486.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26486.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26486"
+    ]
+  },
+  "evidence_notes": [
+    "The imagegen tool schema removes `action` and adds `referenced_image_paths` plus `num_last_images_to_include`.",
+    "Tool instructions say to omit image references for generation and use referenced paths for edits when available.",
+    "The app-server integration test covers attached images routed to image edit.",
+    "`ImagegenArgs` denies unknown fields, so old action-based payloads need updating."
+  ],
+  "claims": [
+    {
+      "text": "Codex image edits now prefer explicit referenced image paths.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26486.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Old `action`-based imagegen calls need updating for the new schema.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26486.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR changes a concrete image tool schema and gives users a clearer edit-input path.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26486:practical_explainer"
+  },
+  "caveats": [
+    "The fallback recent-image path should stay minimal and only apply when no local file path exists.",
+    "This applies to the image-generation extension schema."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate."
+  ]
+}
