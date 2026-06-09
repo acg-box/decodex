@@ -1,0 +1,76 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27007",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27007",
+    "commit_shas": [
+      "6bba7d7f0403b1190af5f6def0d08da41946c516",
+      "f5696a6365d98f2e083a5ca7681c49be08acfd7b",
+      "3b2e64054eb41fe13c3e71e4b914db352212746c",
+      "ba4061d420e62206e42e94d09bba3d05f6063ae6",
+      "87f4b5f9cad0d5941821cc5dfbbf81f0d75e76e1"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "multi-agent: add path-based v2 activity tracking",
+        "url": "https://github.com/openai/codex/pull/27007",
+        "meta": "Merged 2026-06-09T10:14:48Z"
+      },
+      {
+        "kind": "commit",
+        "title": "feat: new tui mav2",
+        "url": "https://github.com/openai/codex/commit/6bba7d7f0403b1190af5f6def0d08da41946c516"
+      },
+      {
+        "kind": "commit",
+        "title": "fix multi-agent activity tracking regressions",
+        "url": "https://github.com/openai/codex/commit/f5696a6365d98f2e083a5ca7681c49be08acfd7b"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-09T14:07:34Z",
+  "observed_change": "Codex multi-agent v2 now emits a path-based completion-only `SubAgentActivity` thread item for spawn, message, follow-up, and interrupt activity instead of legacy collaboration begin/end items.",
+  "changed_surfaces": [
+    "app-server v2 protocol schemas and TypeScript exports",
+    "multi-agent v2 tool event emission",
+    "app-server live notification and thread-history mapping",
+    "TUI `/agent` status and transcript rendering",
+    "analytics and rollout-trace reducers"
+  ],
+  "user_visible_path": "Codex TUI users get a bounded `/agent` status surface for path-backed v2 agents, while app-server v2 clients observe `subAgentActivity` items with `started`, `interacted`, or `interrupted` kinds.",
+  "control_plane_relevance": "Decodex app-server consumers and retained-lane dashboards should parse `ThreadItem::SubAgentActivity` and use `agentPath` as the stable v2 child-agent identity signal.",
+  "compatibility_risk": "High for strict app-server v2 clients that depended on `collabAgentToolCall` begin/end pairs for multi-agent v2 tools; the PR explicitly moves those tools to completion-only `subAgentActivity` items while leaving legacy v1 collaboration behavior unchanged.",
+  "adoption_opportunity": "Adopt the path-based activity item in Decodex lane activity displays, child-agent liveness, and replay reducers instead of inferring v2 state from nickname or role-based legacy events.",
+  "community_value": "High for Codex operators because the change exposes a compact, schema-backed signal for multi-agent v2 activity and makes `/agent` status more useful without loading full histories.",
+  "deprecated_or_breaking_notes": "The PR compatibility note says v2 clients that consumed legacy collaboration begin/end pairs for these tools must handle the new completion-only `subAgentActivity` item.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27007 states that v2 `spawn_agent`, `send_message`, `followup_task`, and `interrupt_agent` replace legacy lifecycle emissions with a success-only `SubAgentActivity` event.",
+    "The app-server protocol schema adds `SubAgentActivityKind` and a `subAgentActivity` thread-item shape carrying `id`, `kind`, `agentThreadId`, and `agentPath`.",
+    "codex-rs/app-server-protocol/src/protocol/event_mapping.rs maps `EventMsg::SubAgentActivity` to `ItemCompletedNotification`.",
+    "codex-rs/app-server-protocol/src/protocol/thread_history.rs reconstructs `SubAgentActivity` items for thread history.",
+    "multi-agent v2 handlers remove legacy collaboration spawn/interaction/close event imports and emit `SubAgentActivityEvent` values.",
+    "TUI files add path-backed agent state, transcript rendering, and `/agent` status support with bounded summaries.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-27007.json records 57 changed files for the merged PR."
+  ],
+  "caveats": "The change is scoped to multi-agent v2; the PR says legacy v1 collaboration behavior is unchanged.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "This is a schema-backed app-server v2 protocol change with Decodex Control Plane compatibility implications."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The new path-based activity signal has a clear operator-facing public angle."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should verify its app-server v2 consumers parse and display `subAgentActivity` correctly."
+    }
+  ]
+}
