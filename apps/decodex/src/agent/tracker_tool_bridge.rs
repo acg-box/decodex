@@ -136,6 +136,7 @@ pub(crate) struct TrackerToolBridge<'a> {
 	local_opt_out_requested: RefCell<bool>,
 	manual_attention_requested: RefCell<bool>,
 	manual_attention_comment_recorded: RefCell<bool>,
+	manual_attention_error_class: RefCell<Option<String>>,
 	continuation_blocking_tracker_write: RefCell<Option<String>>,
 	pending_review_completion: RefCell<Option<PendingReviewCompletion>>,
 	finalized_completion_path: RefCell<Option<RunCompletionDisposition>>,
@@ -162,6 +163,7 @@ impl<'a> TrackerToolBridge<'a> {
 			),
 			manual_attention_requested: RefCell::new(false),
 			manual_attention_comment_recorded: RefCell::new(false),
+			manual_attention_error_class: RefCell::new(None),
 			continuation_blocking_tracker_write: RefCell::new(None),
 			pending_review_completion: RefCell::new(None),
 			finalized_completion_path: RefCell::new(None),
@@ -215,6 +217,7 @@ impl<'a> TrackerToolBridge<'a> {
 			),
 			manual_attention_requested: RefCell::new(false),
 			manual_attention_comment_recorded: RefCell::new(false),
+			manual_attention_error_class: RefCell::new(None),
 			continuation_blocking_tracker_write: RefCell::new(None),
 			pending_review_completion: RefCell::new(None),
 			finalized_completion_path: RefCell::new(None),
@@ -356,6 +359,10 @@ impl<'a> TrackerToolBridge<'a> {
 
 	pub(crate) fn review_context(&self) -> Option<&ReviewHandoffContext> {
 		self.review_context.as_ref()
+	}
+
+	pub(crate) fn manual_attention_error_class(&self) -> Option<String> {
+		self.manual_attention_error_class.borrow().clone()
 	}
 }
 
