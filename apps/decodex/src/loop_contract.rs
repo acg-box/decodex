@@ -49,6 +49,8 @@ pub(crate) struct DecisionContract {
 	research_provenance: Vec<DecisionResearchProvenance>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	research_evidence: Vec<DecisionResearchEvidence>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	research_options: Vec<DecisionResearchOption>,
 	accepted_authority: DecisionAcceptedAuthority,
 	execution_readiness: DecisionExecutionReadiness,
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -73,6 +75,10 @@ impl DecisionContract {
 
 	pub(crate) fn accepted_authority(&self) -> &DecisionAcceptedAuthority {
 		&self.accepted_authority
+	}
+
+	pub(crate) fn research_options(&self) -> &[DecisionResearchOption] {
+		&self.research_options
 	}
 
 	pub(crate) fn execution_readiness(&self) -> &DecisionExecutionReadiness {
@@ -137,6 +143,9 @@ impl DecisionContract {
 		}
 		for evidence in &self.research_evidence {
 			evidence.validate()?;
+		}
+		for option in &self.research_options {
+			option.validate()?;
 		}
 
 		Ok(())
@@ -303,6 +312,35 @@ impl DecisionResearchEvidence {
 	}
 }
 
+/// Option comparison retained as non-authoritative research context.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct DecisionResearchOption {
+	option: String,
+	#[serde(default)]
+	tradeoffs: Vec<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	decision: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	rejected_reason: Option<String>,
+}
+#[allow(dead_code)]
+impl DecisionResearchOption {
+	pub(crate) fn option(&self) -> &str {
+		&self.option
+	}
+
+	fn validate(&self) -> Result<()> {
+		validate_required("decision contract research_options.option", &self.option)?;
+		validate_string_list("decision contract research_options.tradeoffs", &self.tradeoffs)?;
+		validate_optional("decision contract research_options.decision", self.decision.as_deref())?;
+
+		validate_optional(
+			"decision contract research_options.rejected_reason",
+			self.rejected_reason.as_deref(),
+		)
+	}
+}
+
 /// Proposed or accepted execution authority carried by the contract.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub(crate) struct DecisionAcceptedAuthority {
@@ -360,6 +398,12 @@ pub(crate) struct DecisionExecutionReadiness {
 	validation_expectations: Vec<String>,
 	#[serde(default)]
 	risk_notes: Vec<String>,
+	#[serde(default)]
+	proposed_issue_summaries: Vec<String>,
+	#[serde(default)]
+	conflict_domains: Vec<String>,
+	#[serde(default)]
+	queue_intent: Vec<String>,
 }
 #[allow(dead_code)]
 impl DecisionExecutionReadiness {
@@ -375,6 +419,14 @@ impl DecisionExecutionReadiness {
 		&self.missing_decisions
 	}
 
+	pub(crate) fn proposed_issue_summaries(&self) -> &[String] {
+		&self.proposed_issue_summaries
+	}
+
+	pub(crate) fn conflict_domains(&self) -> &[String] {
+		&self.conflict_domains
+	}
+
 	fn validate(&self, status: DecisionContractStatus) -> Result<()> {
 		validate_required("decision contract execution_readiness.summary", &self.summary)?;
 		validate_string_list("decision contract missing_decisions", &self.missing_decisions)?;
@@ -383,6 +435,12 @@ impl DecisionExecutionReadiness {
 			&self.validation_expectations,
 		)?;
 		validate_string_list("decision contract risk_notes", &self.risk_notes)?;
+		validate_string_list(
+			"decision contract proposed_issue_summaries",
+			&self.proposed_issue_summaries,
+		)?;
+		validate_string_list("decision contract conflict_domains", &self.conflict_domains)?;
+		validate_string_list("decision contract queue_intent", &self.queue_intent)?;
 
 		match status {
 			DecisionContractStatus::AcceptedPromoted => {

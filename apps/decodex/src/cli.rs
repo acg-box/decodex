@@ -6,7 +6,7 @@ use std::{
 };
 
 use clap::{
-	Args, Parser, Subcommand,
+	Args, Parser, Subcommand, ValueEnum,
 	builder::{
 		Styles,
 		styling::{AnsiColor, Effects},
@@ -34,6 +34,10 @@ use crate::{
 		RadarValidateRequest,
 	},
 	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
+	research_design::{
+		self, ResearchDesignCompileRequest, ResearchDesignOutcome, ResearchDesignPromoteRequest,
+		ResearchDesignRunInput,
+	},
 	runtime,
 };
 
@@ -69,6 +73,7 @@ impl Cli {
 			Command::Status(args) => args.run(),
 			Command::Diagnose(args) => args.run(),
 			Command::Evidence(args) => args.run(),
+			Command::Research(args) => args.run(),
 			Command::Recover(args) => args.run(),
 			Command::ArchiveLinear(args) => args.run(),
 			Command::Maintenance(args) => args.run(),
@@ -607,6 +612,127 @@ impl EvidenceCommand {
 			json: self.json,
 			include_payload: self.include_payload,
 		})
+	}
+}
+
+#[derive(Debug, Args)]
+struct ResearchCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
+	#[command(subcommand)]
+	command: ResearchSubcommand,
+}
+impl ResearchCommand {
+	fn run(&self) -> Result<()> {
+		match &self.command {
+			ResearchSubcommand::Compile(args) => args.run(self.project_config.as_path()),
+			ResearchSubcommand::Promote(args) => args.run(self.project_config.as_path()),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct ResearchCompileCommand {
+	/// Structured research/design input JSON. Use `-` to read from stdin.
+	#[arg(long, value_name = "JSON")]
+	input: Option<PathBuf>,
+	/// Natural-language research/design intent for minimal intake.
+	#[arg(long, value_name = "TEXT", conflicts_with = "input")]
+	intent: Option<String>,
+	/// Source tracker issue identifier to link to the contract.
+	#[arg(long, value_name = "ISSUE")]
+	source_issue: Option<String>,
+	/// Outcome for minimal natural-language intake.
+	#[arg(long, value_enum, default_value = "not-decision-ready")]
+	outcome: ResearchOutcomeArg,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+}
+impl ResearchCompileCommand {
+	fn run(&self, config_path: Option<&Path>) -> Result<()> {
+		let input = self.research_input()?;
+		let report =
+			research_design::run_compile(ResearchDesignCompileRequest { config_path, input })?;
+
+		if self.json {
+			println!("{}", serde_json::to_string_pretty(&report)?);
+		} else {
+			println!(
+				"research compile {}: contract={} status={} ready_after_promotion={} authority={}",
+				research_outcome_label(report.outcome),
+				report.contract_id,
+				report.contract_status.as_str(),
+				report.issue_generation_ready_after_promotion,
+				report.execution_authority_granted
+			);
+			println!("{}", report.feedback);
+		}
+
+		Ok(())
+	}
+
+	fn research_input(&self) -> Result<ResearchDesignRunInput> {
+		match (&self.input, &self.intent) {
+			(Some(path), None) => read_research_input(path),
+			(None, Some(intent)) => Ok(ResearchDesignRunInput::from_intent(
+				intent.clone(),
+				self.source_issue.clone(),
+				self.outcome.into(),
+			)),
+			(None, None) =>
+				eyre::bail!("research compile requires either --input <JSON> or --intent <TEXT>."),
+			(Some(_), Some(_)) =>
+				eyre::bail!("research compile accepts --input or --intent, not both."),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct ResearchPromoteCommand {
+	/// Decision Contract identifier to promote.
+	#[arg(value_name = "CONTRACT_ID")]
+	contract_id: String,
+	/// Actor accepting the contract.
+	#[arg(long, value_name = "TEXT", default_value = "operator")]
+	accepted_by: String,
+	/// Acceptance source, usually conversation or runtime policy.
+	#[arg(long, value_name = "TEXT", default_value = "conversation")]
+	acceptance_source: String,
+	/// RFC3339 acceptance timestamp. Defaults to current UTC time.
+	#[arg(long, value_name = "RFC3339")]
+	accepted_at: Option<String>,
+	/// Optional acceptance reason.
+	#[arg(long, value_name = "TEXT")]
+	reason: Option<String>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+}
+impl ResearchPromoteCommand {
+	fn run(&self, config_path: Option<&Path>) -> Result<()> {
+		let report = research_design::run_promote(ResearchDesignPromoteRequest {
+			config_path,
+			contract_id: &self.contract_id,
+			accepted_by: &self.accepted_by,
+			accepted_at: self.accepted_at.as_deref(),
+			acceptance_source: &self.acceptance_source,
+			promotion_reason: self.reason.clone(),
+		})?;
+
+		if self.json {
+			println!("{}", serde_json::to_string_pretty(&report)?);
+		} else {
+			println!(
+				"research promote: contract={} status={} authority={} ready={}",
+				report.contract_id,
+				report.contract_status.as_str(),
+				report.execution_authority_granted,
+				report.ready_for_issue_shaping
+			);
+		}
+
+		Ok(())
 	}
 }
 
@@ -1319,6 +1445,8 @@ enum Command {
 	Diagnose(DiagnoseCommand),
 	/// Inspect local-only private execution evidence for one issue or run.
 	Evidence(EvidenceCommand),
+	/// Compile or promote Decodex-native research/design contracts.
+	Research(ResearchCommand),
 	/// Diagnose or explicitly repair supported retained-lane recovery cases.
 	Recover(RecoverCommand),
 	/// Dry-run or archive old terminal Linear issues by repo label.
@@ -1376,6 +1504,33 @@ enum LaneSubcommand {
 	Interrupt(LaneInterruptCommand),
 	/// Send operator-supplied text to an active steerable turn.
 	Steer(LaneSteerCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum ResearchSubcommand {
+	/// Compile bounded research/design input into a latent Decision Contract.
+	Compile(ResearchCompileCommand),
+	/// Promote an accepted Decision Contract into execution authority.
+	Promote(ResearchPromoteCommand),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+enum ResearchOutcomeArg {
+	DecisionReady,
+	NotDecisionReady,
+	Blocked,
+	NeedsHumanDecision,
+}
+impl From<ResearchOutcomeArg> for ResearchDesignOutcome {
+	fn from(value: ResearchOutcomeArg) -> Self {
+		match value {
+			ResearchOutcomeArg::DecisionReady => Self::DecisionReady,
+			ResearchOutcomeArg::NotDecisionReady => Self::NotDecisionReady,
+			ResearchOutcomeArg::Blocked => Self::Blocked,
+			ResearchOutcomeArg::NeedsHumanDecision => Self::NeedsHumanDecision,
+		}
+	}
 }
 
 #[derive(Debug, Subcommand)]
@@ -1448,6 +1603,15 @@ fn lane_steer_report_is_failure(report: &LaneSteerReport) -> bool {
 	matches!(report.outcome.as_str(), "rejected" | "failed" | "timed_out" | "fallback")
 }
 
+fn research_outcome_label(outcome: ResearchDesignOutcome) -> &'static str {
+	match outcome {
+		ResearchDesignOutcome::DecisionReady => "decision-ready",
+		ResearchDesignOutcome::NotDecisionReady => "not-decision-ready",
+		ResearchDesignOutcome::Blocked => "blocked",
+		ResearchDesignOutcome::NeedsHumanDecision => "needs-human-decision",
+	}
+}
+
 fn render_lane_steer_report(report: &LaneSteerReport) -> String {
 	format!(
 		"lane steer {}: issue={} run_id={} attempt={} expected_turn_id={} current_turn_id={} response_turn_id={} failure_class={} audit_record_id={} delivery_status={}\n",
@@ -1462,6 +1626,22 @@ fn render_lane_steer_report(report: &LaneSteerReport) -> String {
 		report.audit_record_id,
 		report.delivery_status
 	)
+}
+
+fn read_research_input(path: &Path) -> Result<ResearchDesignRunInput> {
+	let raw = if path == Path::new("-") {
+		let mut raw = String::new();
+
+		io::stdin().read_to_string(&mut raw)?;
+
+		raw
+	} else {
+		fs::read_to_string(path)?
+	};
+
+	serde_json::from_str(&raw).map_err(|error| {
+		eyre::eyre!("Failed to parse research input `{}`: {error}", path.display())
+	})
 }
 
 fn read_attempt_request(request: &str) -> Result<AttemptRequest> {
@@ -1504,9 +1684,10 @@ mod tests {
 		RadarLedgerIngestExistingCommand, RadarLedgerSubcommand, RadarLedgerSummaryCommand,
 		RadarRefreshReleaseDeltaCommand, RadarRefreshUpstreamQueueCommand,
 		RadarRenderSignalCommand, RadarSubcommand, RadarValidateCommand, RecoverCommand,
-		RecoverSubcommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
-		ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand,
-		StatusCommand,
+		RecoverSubcommand, ResearchCommand, ResearchCompileCommand, ResearchOutcomeArg,
+		ResearchPromoteCommand, ResearchSubcommand, ReviewHandoffDiagnoseCommand,
+		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
+		RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -2221,6 +2402,81 @@ mod tests {
 				&& run_id == "run-1"
 				&& expected_turn_id == "turn-1"
 				&& message == "adjust the current implementation"
+		));
+	}
+
+	#[test]
+	fn parses_research_compile_with_intent_and_project_config() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"research",
+			"--config",
+			"./project.toml",
+			"compile",
+			"--intent",
+			"research X",
+			"--source-issue",
+			"XY-860",
+			"--outcome",
+			"needs-human-decision",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Research(ResearchCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command: ResearchSubcommand::Compile(ResearchCompileCommand {
+					intent: Some(intent),
+					source_issue: Some(source_issue),
+					outcome: ResearchOutcomeArg::NeedsHumanDecision,
+					json: true,
+					..
+				})
+			}) if config == Path::new("./project.toml")
+				&& intent == "research X"
+				&& source_issue == "XY-860"
+		));
+	}
+
+	#[test]
+	fn parses_research_promote_with_acceptance_metadata() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"research",
+			"--config",
+			"./project.toml",
+			"promote",
+			"research-design-contract",
+			"--accepted-by",
+			"operator",
+			"--accepted-at",
+			"2026-06-10T00:00:00Z",
+			"--acceptance-source",
+			"conversation",
+			"--reason",
+			"push this forward",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Research(ResearchCommand {
+				project_config: ProjectConfigArgs { config: Some(config) },
+				command: ResearchSubcommand::Promote(ResearchPromoteCommand {
+					contract_id,
+					accepted_by,
+					accepted_at: Some(accepted_at),
+					acceptance_source,
+					reason: Some(reason),
+					json: true,
+				})
+			}) if config == Path::new("./project.toml")
+				&& contract_id == "research-design-contract"
+				&& accepted_by == "operator"
+				&& accepted_at == "2026-06-10T00:00:00Z"
+				&& acceptance_source == "conversation"
+				&& reason == "push this forward"
 		));
 	}
 
