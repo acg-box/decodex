@@ -37,9 +37,9 @@ This is a break-glass path. Healthy lanes should keep using
 operators should not use rebind just because a normal review handoff is still in
 progress.
 
-Only rebind when the diagnosis says the review handoff marker is absent, or says the
+Only rebind when the diagnosis says the review handoff marker is absent, says the
 existing same-branch same-PR marker must be refreshed after the retained worktree and
-PR head have been checked.
+PR head have been checked, or reports `review_handoff_state_transition_pending`.
 
 ```sh
 decodex recover review-handoff rebind <ISSUE> --pr <PR_URL> --dry-run
@@ -49,12 +49,17 @@ decodex recover review-handoff rebind <ISSUE> --pr <PR_URL>
 The non-dry-run command writes runtime DB handoff/orchestration markers and records a
 `review_handoff_rebind` audit event on the tracker issue. For a stale existing marker,
 it refreshes only the same branch and same PR after validating the clean retained
-worktree head matches the PR head. It does not merge the PR, change issue state, queue
-follow-up issues, or clean worktrees.
+worktree head matches the PR head. For a partial normal handoff where the marker is
+missing, or where an already-current marker exists but the issue state was not
+advanced, the command may also move the issue from the workflow
+`tracker.in_progress_state` to `tracker.success_state` after the rebind audit
+succeeds. It does not merge the PR, queue follow-up issues, or clean worktrees.
 
 The command rejects the rebind unless all of these are true:
 
-- the issue is in the workflow `tracker.success_state`
+- the issue is in the workflow `tracker.success_state`, or the issue is still in
+  `tracker.in_progress_state` from a partial normal handoff with a missing or
+  already-current marker
 - the issue does not have opt-out or needs-attention labels
 - the issue still has `decodex:active:<service-id>` ownership
 - the retained worktree branch matches the runtime DB worktree mapping
@@ -65,7 +70,8 @@ The command rejects the rebind unless all of these are true:
 - the PR is open and non-draft
 - the PR head branch and head SHA match the retained worktree
 - no review handoff marker already exists for the issue/branch, or the existing marker
-  is for the same branch and PR and needs a head/orchestration refresh
+  is for the same branch and PR and needs a head/orchestration refresh or pending issue
+  state transition
 
 After a successful rebind, run:
 
