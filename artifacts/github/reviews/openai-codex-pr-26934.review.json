@@ -1,0 +1,59 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26934",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26934",
+    "commit_shas": [
+      "a65d2d5a2bc1987b53a3afab765f1240da867060"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Prune stale curated plugin caches",
+        "url": "https://github.com/openai/codex/pull/26934",
+        "meta": "Merged 2026-06-08T21:46:59Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Prune stale curated plugin caches",
+        "url": "https://github.com/openai/codex/commit/a65d2d5a2bc1987b53a3afab765f1240da867060"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-09T20:07:10Z",
+  "observed_change": "Codex curated plugin cache refresh now removes cached plugin directories whose names are no longer present in the raw openai-curated marketplace manifest.",
+  "changed_surfaces": [
+    "core plugin curated-cache refresh",
+    "marketplace manifest loading",
+    "plugin manager regression tests"
+  ],
+  "user_visible_path": "Users with an old cached curated plugin, such as the standalone Google Sheets plugin named in the PR body, will no longer keep loading that stale cache after the curated marketplace drops it.",
+  "control_plane_relevance": "Decodex plugin inventory and install-cache mirrors should treat curated marketplace absence as cache-pruning evidence, not as proof that user config was deleted.",
+  "compatibility_risk": "Moderate for operators relying on stale curated plugin cache entries after a plugin is removed from the marketplace; existing config remains untouched, but the stale cached implementation is pruned.",
+  "adoption_opportunity": "Reflect curated-cache pruning in Decodex plugin status and explain removed marketplace entries separately from user-selected config.",
+  "community_value": "Medium for Codex plugin operators because it clarifies why a previously cached curated plugin may disappear from loadable cache after marketplace changes.",
+  "deprecated_or_breaking_notes": "No user config key is removed, but stale plugin caches for names absent from the raw curated marketplace are deleted during refresh.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26934 says curated plugin startup refresh removes cached plugins whose names no longer appear in the raw openai-curated marketplace and leaves existing config untouched.",
+    "codex-rs/core-plugins/src/marketplace.rs adds `load_raw_marketplace_plugin_names` to read names directly from the raw marketplace manifest.",
+    "codex-rs/core-plugins/src/loader.rs loads those raw marketplace names before refreshing curated plugin cache.",
+    "codex-rs/core-plugins/src/manager_tests.rs adds `refresh_curated_plugin_cache_removes_cache_for_plugin_removed_from_marketplace` covering a stale `google-sheets` cache.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-26934.json records 3 changed files for the merged PR."
+  ],
+  "caveats": "The change is scoped to openai-curated plugin cache refresh; it does not remove the user's config selection.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Curated plugin cache pruning affects plugin inventory and operator diagnostics."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The stale-cache behavior is useful public operator guidance for plugin users."
+    }
+  ]
+}
