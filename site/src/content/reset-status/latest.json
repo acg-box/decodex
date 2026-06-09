@@ -5,18 +5,36 @@
   "confidence": "likely",
   "observed_for_date": "2026-06-09",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-09T08:18:55Z",
+  "generated_at": "2026-06-09T14:18:21Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
   "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-08%20until%3A2026-06-10&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "Logged-in Chrome/X search, profile review, Replies review, and focused thread context were reachable for the 2026-06-09 Asia/Shanghai watch date. Fresh same-day candidates included a selected-person 10X Codex usage-limit promotion, a wordplay reply using \"Reset\", controller/dial and nested-loop posts, ChatGPT/Codex product discussion, the earlier Codex-all-day reply, and a clarification that ChatGPT messages do not burn Codex limits. None semantically announced a general rate-limit reset, quota recovery, message-cap recovery, or reset window. Some third-party replies asked about resets or extra tokens, but the source-account posts did not provide a reset signal.",
+  "rationale": "Logged-in Chrome/X search, profile review, and Replies review were reachable for the 2026-06-09 Asia/Shanghai watch date. A refreshed Latest search at 2026-06-09 22:18 +08 showed three newer source-account candidates since the prior artifact: a thread org-chart reply, a Codex /goal usage poll, and a Codex /goal quote. Earlier same-day candidates still included the selected-person 10X usage-limit promotion, reset wordplay, controller/dial and nested-loop posts, ChatGPT/Codex product discussion, the earlier Codex-all-day reply, and a clarification that ChatGPT messages do not burn Codex limits. None semantically announced a general rate-limit reset, quota recovery, message-cap recovery, or reset window.",
   "evidence_posts": [
     {
-      "published_at_label": "2026-06-09 16:18 +08 observation",
+      "published_at_label": "2026-06-09 22:18 +08 observation",
       "url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-08%20until%3A2026-06-10&src=typed_query&f=live",
       "relevance": "not_related",
-      "summary": "Logged-in Chrome/X search for @thsottiaux posts across the widened UTC coverage window returned ten visible source-account candidates inside 2026-06-09 Asia/Shanghai. The search results included usage-limit, reset-wordplay, product, and Codex enthusiasm posts, but no reset, quota recovery, message-cap recovery, or reset-window announcement."
+      "summary": "Logged-in Chrome/X Latest search for @thsottiaux posts across the widened UTC coverage window returned source-account candidates inside 2026-06-09 Asia/Shanghai, including newer /goal and thread-management posts plus the earlier usage-limit, reset-wordplay, product, and Codex enthusiasm posts. The refreshed search did not show a reset, quota recovery, message-cap recovery, or reset-window announcement."
+    },
+    {
+      "published_at_label": "2026-06-09 19:41 +08 (X datetime 2026-06-09T11:41:13Z)",
+      "url": "https://x.com/thsottiaux/status/2064311852461371604",
+      "relevance": "not_related",
+      "summary": "@thsottiaux replied that another user would soon need an org chart for their threads. This was thread-management banter, not rate-limit reset or recovery behavior."
+    },
+    {
+      "published_at_label": "2026-06-09 19:27 +08 (X datetime 2026-06-09T11:27:38Z)",
+      "url": "https://x.com/thsottiaux/status/2064308436133716008",
+      "relevance": "not_related",
+      "summary": "@thsottiaux posted a poll asking whether people use Codex /goal occasionally or as their main way to get things done. The poll was about workflow usage, not quota reset, message-cap recovery, or a reset window."
+    },
+    {
+      "published_at_label": "2026-06-09 19:25 +08 (X datetime 2026-06-09T11:25:21Z)",
+      "url": "https://x.com/thsottiaux/status/2064307859903447396",
+      "relevance": "not_related",
+      "summary": "@thsottiaux quoted a Codex /goal memory-reduction post and described using Codex one /goal at a time. This was product/workflow enthusiasm and did not imply rate-limit reset or recovery."
     },
     {
       "published_at_label": "2026-06-09 14:08 +08 (X datetime 2026-06-09T06:08:34Z)",

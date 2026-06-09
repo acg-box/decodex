@@ -139,8 +139,25 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   branch/PR projection anchor changing. Repeated private evidence updates inside the
   same public signal must append private runtime events without adding Linear comments.
 - `issue_review_checkpoint` is available only when `codex.internal_review_mode = "loop"`, and only during the pre-PR handoff phase and retained review-repair runs; `closeout` does not expose it.
-- `issue_review_checkpoint` must accept only these normalized statuses: `clean`, `findings`, `needs_architecture_review`, `blocked`.
-- `issue_review_checkpoint` must bind every checkpoint to an explicit `head_sha` for the currently reviewed lane head.
+- `issue_review_checkpoint` must accept only these normalized statuses:
+  `clean`, `findings`, `needs_architecture_review`, `blocked`.
+- `issue_review_checkpoint` must bind every checkpoint to an explicit `head_sha`
+  for the currently reviewed lane head.
+- `issue_review_checkpoint` records the independent fresh-context read-only review
+  result as structured runtime evidence. The reviewer source is
+  `independent_fresh_context`; every new checkpoint payload must include checklist notes for
+  intended behavior, regression risk, missing tests, docs/config drift, migration
+  fallout, operator-facing fallout, and Loop/Decision Contract mismatch.
+- Review payload findings are split into accepted findings and rejected findings.
+  Accepted findings are the only repair input. Rejected findings record the
+  rejection reason for non-actionable, stale, out-of-scope, or unvalidated reviewer
+  comments.
+- A `findings` checkpoint must carry at least one accepted finding. A `clean`
+  checkpoint may carry rejected findings, but must not carry accepted findings.
+- Top-level checkpoint evidence is required. Accepted findings must include severity,
+  non-empty evidence, file and line references when possible, and concrete repair
+  guidance. Rejected findings must include severity, non-empty evidence, and the
+  rejection reason.
 - When `codex.internal_review_mode = "loop"`, `decodex` treats `issue_review_checkpoint` as the only authoritative structured review-policy signal. Skill prose or wrapper-local result words must not replace it.
 - When `codex.internal_review_mode = "loop"`, `issue_review_handoff` and `issue_review_repair_complete` must require the latest `clean` checkpoint for the current phase and current lane head, not merely any older clean checkpoint from the same lane.
 - When `codex.internal_review_mode = "prompt"` or `"off"`, `issue_review_handoff` and `issue_review_repair_complete` must not require `issue_review_checkpoint`; they still must pass PR validation, branch/head checks, and the configured repository validation gate before writeback.

@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27007",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "multi-agent: add path-based v2 activity tracking",
+        "url": "https://github.com/openai/codex/pull/27007",
+        "meta": "Merged 2026-06-09T10:14:48Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27007",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27007.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex multi-agent v2 now emits a path-based completion-only `SubAgentActivity` thread item for spawn, message, follow-up, and interrupt activity instead of legacy collaboration begin/end items.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records a schema-backed `subAgentActivity` thread item with `agentPath`, `agentThreadId`, and activity kind.",
+    "The PR compatibility note says v2 clients that consumed legacy collaboration begin/end pairs must handle the new completion-only item.",
+    "Event mapping and thread-history code both convert `SubAgentActivity` into app-server-visible thread items.",
+    "TUI code adds path-backed agent status and transcript rendering."
+  ],
+  "candidate_followups": [
+    "Update Decodex app-server v2 parsers and dashboard reducers to recognize `subAgentActivity` items.",
+    "Check retained-lane child-agent liveness and replay code for assumptions about legacy collaboration begin/end pairs.",
+    "Use `agentPath` as the stable v2 child-agent identity when available."
+  ],
+  "social_notes": [
+    "Public copy should say this is an app-server v2 and multi-agent v2 change.",
+    "Avoid implying legacy v1 collaboration behavior changed."
+  ],
+  "caveats": [
+    "The change is scoped to multi-agent v2.",
+    "Clients still need to tolerate historical thread data that contains legacy collaboration items."
+  ]
+}

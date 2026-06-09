@@ -29,8 +29,9 @@ There is one shared review loop for Decodex-owned lanes:
 3. validate and repair the actionable findings for the current lane head
 4. request review again until the lane passes or stops for escalation
 
-Internal self-review is selected per service through the registered project config
-`[codex].internal_review_mode`. The supported modes are `"loop"`, `"prompt"`, and `"off"`.
+Internal review behavior is selected per service through the registered project config
+`[codex].internal_review_mode`. The supported modes are `"loop"`, `"prompt"`, and
+`"off"`.
 External GitHub review may be enabled or disabled per service through the registered project
 config `[codex].external_review_enabled`. When enabled, each review source participates in the
 retained review loop. When external review is disabled, Decodex skips the runtime-owned `@codex
@@ -39,7 +40,8 @@ satisfied and the PR is already on the deterministic clean merge path.
 
 When external review is enabled, the difference is reviewer source:
 
-- Internal self-review in `"loop"` mode uses a runtime-controlled Codex review checkpoint for the current lane head.
+- Internal review in `"loop"` mode uses a runtime-controlled independent
+  fresh-context read-only Codex review checkpoint for the current lane head.
 - Internal self-review in `"prompt"` mode injects only the prompt `Review your work repeatedly and fix any logic bugs until no new issues are found.` and does not expose or require the checkpoint tool.
 - External review uses a GitHub PR comment request by posting `@codex review` on the current PR.
 
@@ -59,7 +61,10 @@ After any review arrives:
 - repair only the verified issues
 - keep the repair batch scoped to the smallest coherent owned change set
 - rerun the repository validation required for the current head before the next review request
-- when `codex.internal_review_mode = "loop"`, record the normalized bounded-review result for the exact current `HEAD` through `issue_review_checkpoint`
+- when `codex.internal_review_mode = "loop"`, record the normalized bounded-review
+  result for the exact current `HEAD` through `issue_review_checkpoint`, including
+  the explicit independent reviewer source, checklist notes, accepted findings,
+  rejected findings, non-empty evidence, and repair guidance
 
 The current repository's bounded review method is defined in the registered project `WORKFLOW.md`. This spec does not replace that method; it defines how review requests and review outcomes are orchestrated around it.
 
@@ -81,24 +86,34 @@ Rules:
   - if the repeated churn is rooted in an architectural defect or root-cause issue that local patching will not converge, stop for `manual_intervention_required`
   - if the findings are normal and not rooted in architectural churn, continue and reset that review mode's three-round budget
 
-## Internal self-review
+## Internal review modes
 
-Internal self-review mode is service-controlled.
+Internal review mode is service-controlled.
 
 Rules:
 
-- `codex.internal_review_mode = "loop"` uses the runtime-owned internal self-review checkpoint loop. Decodex exposes `issue_review_checkpoint`, requires a current `clean` checkpoint before `issue_review_handoff` or `issue_review_repair_complete`, and applies the review-policy stop rules to stale or non-clean checkpoint state.
+- `codex.internal_review_mode = "loop"` uses the runtime-owned independent
+  fresh-context read-only review checkpoint loop. Decodex exposes
+  `issue_review_checkpoint`, requires a current `clean` checkpoint before
+  `issue_review_handoff` or `issue_review_repair_complete`, stores structured
+  accepted/rejected finding evidence, and applies the review-policy stop rules to
+  stale or non-clean checkpoint state.
 - `codex.internal_review_mode = "prompt"` injects exactly the prompt `Review your work repeatedly and fix any logic bugs until no new issues are found.` into the agent instructions. Decodex does not expose `issue_review_checkpoint`, does not require a clean checkpoint before handoff or repair completion, and ignores stale review-policy checkpoint state for turn-stop classification.
-- `codex.internal_review_mode = "off"` skips internal self-review. Decodex does not expose `issue_review_checkpoint`, does not require a clean checkpoint before handoff or repair completion, and ignores stale review-policy checkpoint state for turn-stop classification.
+- `codex.internal_review_mode = "off"` skips internal review. Decodex does not expose `issue_review_checkpoint`, does not require a clean checkpoint before handoff or repair completion, and ignores stale review-policy checkpoint state for turn-stop classification.
 - Omitted `codex.internal_review_mode` defaults to `"loop"`. `codex.internal_review_enabled` is rejected.
-- In `"loop"` mode, the runtime may choose the exact local transport or child-conversation mechanism, but it must remain a fully runtime-controlled review request.
+- In `"loop"` mode, the runtime may choose the exact local transport or
+  child-conversation mechanism, but it must remain a fully runtime-controlled
+  read-only review request. The reviewer must not edit files, push, land, or mutate
+  tracker state.
 - In `"loop"` mode, internal review must use the same bounded review method and normalized review outcomes as any other review pass.
+- In `"loop"` mode, a `findings` checkpoint requires at least one accepted finding;
+  rejected or non-actionable reviewer comments may be recorded with a `clean`
+  checkpoint and must not become repair input.
 - If `"loop"` mode internal review returns an ambiguous or contradictory result that the runtime cannot classify without guessing, stop for `manual_intervention_required`.
 - Internal review pass transitions into the normal PR-backed review handoff flow, not directly into landing.
-- Internal self-review is not the same thing as an independent fresh-context
-  read-only review. When the loop-runtime risk policy requires independent review, use
-  the separate review boundary in [`loop-runtime.md`](./loop-runtime.md) before treating
-  the lane as ready for handoff or landing.
+- Prompt-only self-review is not sufficient when the loop-runtime risk policy
+  requires independent review. Use the loop-mode independent checkpoint boundary
+  before treating the lane as ready for handoff or landing.
 
 ## External GitHub review
 

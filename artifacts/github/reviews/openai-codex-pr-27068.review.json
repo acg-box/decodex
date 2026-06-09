@@ -1,0 +1,67 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27068",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27068",
+    "commit_shas": [
+      "c84c6bbd105eeef517ee1411a75fc7f06f2a9515",
+      "aef829d185388be2dfa51b4d66be78836176ab92",
+      "65c5b125134e8afa0c7dd86014d95c490e791671"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Show effective sandbox modes in /debug-config",
+        "url": "https://github.com/openai/codex/pull/27068",
+        "meta": "Merged 2026-06-09T00:03:53Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Fix debug config sandbox mode rendering",
+        "url": "https://github.com/openai/codex/commit/c84c6bbd105eeef517ee1411a75fc7f06f2a9515"
+      },
+      {
+        "kind": "commit",
+        "title": "Add debug config sandbox mode snapshot",
+        "url": "https://github.com/openai/codex/commit/65c5b125134e8afa0c7dd86014d95c490e791671"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-09T14:07:34Z",
+  "observed_change": "Codex `/debug-config` now displays `allowed_sandbox_modes` after finalized permission constraints filter out modes that are not actually usable.",
+  "changed_surfaces": [
+    "TUI `/debug-config` rendering",
+    "permission-profile constraint checks",
+    "sandbox mode requirement formatting",
+    "snapshot and unit regression coverage"
+  ],
+  "user_visible_path": "Users running `/debug-config` see sandbox modes that remain valid after effective permission constraints such as `permissions.filesystem.deny_read` are applied.",
+  "control_plane_relevance": "Decodex operator diagnostics can treat `/debug-config` allowed sandbox modes as effective options rather than raw managed requirements.",
+  "compatibility_risk": "Low to moderate: the command output may omit `danger-full-access` or `external-sandbox` even when those modes appear in raw requirements, so parsers or docs that expected raw lists should update their interpretation.",
+  "adoption_opportunity": "Mirror the effective-mode framing in Decodex permission diagnostics and avoid recommending sandbox modes that the finalized permission profile rejects.",
+  "community_value": "Medium for Codex users debugging managed permissions because it prevents `/debug-config` from advertising sandbox modes that cannot actually be selected.",
+  "deprecated_or_breaking_notes": "No config key is removed; this is a diagnostic readback correction that changes output semantics from raw requirements to effective allowed modes.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27068 says `/debug-config` renders `allowed_sandbox_modes` from finalized permission constraints instead of the raw requirements list.",
+    "codex-rs/tui/src/debug_config.rs adds `sandbox_mode_is_allowed_by_permissions` and filters modes through `permissions.can_set_permission_profile`.",
+    "The regression test constructs deny-read filesystem requirements and asserts only `read-only` and `workspace-write` remain in the rendered output.",
+    "The new snapshot records `allowed_sandbox_modes: read-only, workspace-write` alongside a deny-read requirement source.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-27068.json records 2 changed files for the merged PR."
+  ],
+  "caveats": "The change improves diagnostic output; it does not add a new sandbox mode or permission profile.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Effective sandbox-mode readback affects Decodex operator diagnostics."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The corrected `/debug-config` output has a concrete, user-visible troubleshooting angle."
+    }
+  ]
+}

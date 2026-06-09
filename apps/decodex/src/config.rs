@@ -193,7 +193,7 @@ pub struct ProjectCodexConfig {
 	accounts: Option<ProjectCodexAccountsConfig>,
 }
 impl ProjectCodexConfig {
-	/// Internal self-review behavior Decodex should request for agent runs.
+	/// Internal review behavior Decodex should request for agent runs.
 	pub fn internal_review_mode(&self) -> InternalReviewMode {
 		self.internal_review_mode
 	}
@@ -394,15 +394,15 @@ impl ServiceConfigDocument {
 	}
 }
 
-/// Internal self-review mode for agent runs.
+/// Internal review mode for agent runs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InternalReviewMode {
-	/// Use the existing runtime-owned checkpoint loop.
+	/// Use the runtime-owned independent review checkpoint loop.
 	Loop,
 	/// Add a prompt-only self-review instruction without the checkpoint loop.
 	Prompt,
-	/// Disable internal self-review behavior.
+	/// Disable internal review behavior.
 	Off,
 }
 impl InternalReviewMode {

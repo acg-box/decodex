@@ -1,0 +1,43 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27166",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "app-server: clear stale thread watches after v2 agent interruption",
+        "url": "https://github.com/openai/codex/pull/27166",
+        "meta": "Merged 2026-06-09T11:27:54Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27166",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27166.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex app-server now clears stale thread watches when a v2 `SubAgentActivity::Interrupted` event references a child thread that is no longer loaded.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review ties this fix directly to PR #27007's move to `SubAgentActivity::Interrupted`.",
+    "App-server bespoke event handling now removes a missing interrupted child thread from `ThreadWatchManager`.",
+    "The regression test asserts loaded status becomes `NotLoaded` and running count returns to zero.",
+    "The app-server still forwards the completed activity notification after cleanup."
+  ],
+  "candidate_followups": [
+    "Verify Decodex running-turn and shutdown readbacks do not carry stale child-agent watches after adopting PR #27007.",
+    "Avoid duplicate cleanup that would conflict with upstream app-server watch removal."
+  ],
+  "social_notes": [
+    "Treat this as a supporting correctness follow-up to the path-based activity change unless a release rollup needs it."
+  ],
+  "caveats": [
+    "This fix is primarily relevant after the PR #27007 protocol change.",
+    "It is not a standalone user workflow."
+  ]
+}
