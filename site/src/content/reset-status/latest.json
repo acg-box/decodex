@@ -5,18 +5,48 @@
   "confidence": "likely",
   "observed_for_date": "2026-06-09",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-08T20:20:19Z",
+  "generated_at": "2026-06-09T08:18:55Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
   "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-08%20until%3A2026-06-10&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "Logged-in Chrome/X search and profile review were reachable for the 2026-06-09 Asia/Shanghai watch date. The visible local-day source-account posts were two replies: one clarified that ChatGPT messages do not burn Codex limits, and one encouraged frequent Codex use in a Codex-or-Claude thread. Third-party replies mentioned limits and resets, but @thsottiaux did not announce a reset, quota recovery, message-cap recovery, or reset window. The run occurred early in the local day, so later posts could change the answer.",
+  "rationale": "Logged-in Chrome/X search, profile review, Replies review, and focused thread context were reachable for the 2026-06-09 Asia/Shanghai watch date. Fresh same-day candidates included a selected-person 10X Codex usage-limit promotion, a wordplay reply using \"Reset\", controller/dial and nested-loop posts, ChatGPT/Codex product discussion, the earlier Codex-all-day reply, and a clarification that ChatGPT messages do not burn Codex limits. None semantically announced a general rate-limit reset, quota recovery, message-cap recovery, or reset window. Some third-party replies asked about resets or extra tokens, but the source-account posts did not provide a reset signal.",
   "evidence_posts": [
     {
-      "published_at_label": "2026-06-09 04:20 +08 observation",
+      "published_at_label": "2026-06-09 16:18 +08 observation",
       "url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-08%20until%3A2026-06-10&src=typed_query&f=live",
       "relevance": "not_related",
-      "summary": "Logged-in Chrome/X search for @thsottiaux posts across the widened UTC coverage window returned four visible candidates. Two fell inside 2026-06-09 Asia/Shanghai, and neither semantically announced a reset, quota recovery, message-cap recovery, or reset window."
+      "summary": "Logged-in Chrome/X search for @thsottiaux posts across the widened UTC coverage window returned ten visible source-account candidates inside 2026-06-09 Asia/Shanghai. The search results included usage-limit, reset-wordplay, product, and Codex enthusiasm posts, but no reset, quota recovery, message-cap recovery, or reset-window announcement."
+    },
+    {
+      "published_at_label": "2026-06-09 14:08 +08 (X datetime 2026-06-09T06:08:34Z)",
+      "url": "https://x.com/thsottiaux/status/2064228137924448569",
+      "relevance": "not_related",
+      "summary": "@thsottiaux replied to criticism of the 10X usage-limit promotion with a remark about 99 days left in the promotion period. This referenced the selective daily promotion, not a reset or recovery window."
+    },
+    {
+      "published_at_label": "2026-06-09 14:06 +08 (X datetime 2026-06-09T06:06:57Z)",
+      "url": "https://x.com/thsottiaux/status/2064227730884055063",
+      "relevance": "not_related",
+      "summary": "@thsottiaux wrote \"My schedule: Rest => Reset => Rest => Reset => ...\" in a thread where another user misread \"won't rest until it is perfect\" as \"won't reset until it is perfect.\" The focused thread context made this wordplay, not rate-limit reset behavior."
+    },
+    {
+      "published_at_label": "2026-06-09 14:05 +08 to 13:54 +08",
+      "url": "https://x.com/thsottiaux/status/2064227305212580184",
+      "relevance": "not_related",
+      "summary": "Same-hour visible posts about Fable naming, nested loops, a Codex controller image, and a Codex dial going to 11 were reviewed from search/profile surfaces. They were product or joke context, not quota reset or message-cap recovery signals."
+    },
+    {
+      "published_at_label": "2026-06-09 13:27 +08 (X datetime 2026-06-09T05:27:13Z)",
+      "url": "https://x.com/thsottiaux/status/2064217733722669539",
+      "relevance": "not_related",
+      "summary": "@thsottiaux said ChatGPT is becoming more interactive and that the team and Codex will not rest until it is perfect. Thread context later produced the reset wordplay reply, but this post was not about limits or recovery."
+    },
+    {
+      "published_at_label": "2026-06-09 12:43 +08 (X datetime 2026-06-09T04:43:18Z)",
+      "url": "https://x.com/thsottiaux/status/2064206679475134881",
+      "relevance": "not_related",
+      "summary": "@thsottiaux identified the first selected person for a Codex 10X usage-limit promotion. This is usage-limit related and involves extra capacity for one selected builder, but it does not announce a general rate-limit reset, quota recovery, message-cap recovery, or reset window."
     },
     {
       "published_at_label": "2026-06-09 01:38 +08 (X datetime 2026-06-08T17:38:01Z)",
@@ -29,12 +59,6 @@
       "url": "https://x.com/thsottiaux/status/2064038582529221017",
       "relevance": "not_related",
       "summary": "@thsottiaux replied \"No\" to a question asking whether ChatGPT messages burn Codex limits. This was usage-accounting clarification, not a reset, quota recovery, message-cap recovery, or reset-window signal."
-    },
-    {
-      "published_at_label": "2026-06-08 06:21 +08 (outside observed_for_date; X datetime 2026-06-07T22:21:38Z)",
-      "url": "https://x.com/thsottiaux/status/2063748242681307611",
-      "relevance": "not_related",
-      "summary": "The profile's latest visible original post remained the 10X usage-limit promotion for selected Codex builders. It is usage-limit related, but it is outside the watch date and does not announce a general reset or recovery window."
     }
   ]
 }
