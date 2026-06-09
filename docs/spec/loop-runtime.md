@@ -54,10 +54,12 @@ through the lane runtime contract.
 
 ## Research/Decision Stage
 
-Decodex should own a native Research/Decision stage for Decodex work. That stage may
-eventually replace the external research skill for Decodex planning, but the current
-external `docs/research/` artifact lane remains supporting evidence only until a
-Decodex-native adapter is implemented.
+Decodex owns a native Research/Decision compiler for Decodex work. That stage accepts
+natural-language intent such as `research X` plus bounded research/design evidence
+when available, then stores a local Decision Contract candidate. It supersedes the
+external research skill for Decodex runtime authority: the old external
+`docs/research/` artifact lane remains supporting evidence and inspiration for method,
+but it is not the authority surface for Decodex loop state.
 
 A Research/Decision stage may produce a latent Loop/Decision Contract with:
 
@@ -75,6 +77,19 @@ A Research/Decision stage may produce a latent Loop/Decision Contract with:
 The latent contract is a candidate decision package. It becomes authoritative only
 after the user or an accepted runtime policy promotes it.
 
+Native research/design compiler outcomes are:
+
+| Outcome | Contract status | Meaning |
+| --- | --- | --- |
+| `decision_ready` | `draft_latent` | Bounded evidence, option comparison, assumptions, objections, and proposed issue-readiness data are sufficient for downstream issue shaping after promotion. It is still not execution authority while latent. |
+| `not_decision_ready` | `draft_latent` | The run preserved useful evidence or objections, but missing evidence or unresolved direction means it must not become implementation work. |
+| `blocked` | `draft_latent` | The run cannot finish its bounded research/design pass because a non-decision blocker must be resolved first. |
+| `needs_human_decision` | `needs_human_decision` | The package needs explicit human direction before promotion or execution can be considered. |
+
+The compiler may fold AI-owned subwork into the main contract as provenance and
+evidence, but the main contract remains coherent and the user does not choose
+subagents, graph ids, lanes, or goal commands.
+
 ## Decision Contract Schema
 
 The runtime-facing Decision Contract payload is versioned as
@@ -89,8 +104,9 @@ The payload carries these top-level fields:
 | `source_intent` | Natural-language source intent, including the original utterance or issue reference when known. |
 | `research_provenance` | Research/design sources used to produce the candidate package. |
 | `research_evidence` | Non-authoritative evidence claims retained for later review and issue shaping. |
+| `research_options` | Non-authoritative option comparisons retained with tradeoffs, selected decision notes, or rejected-option reasons. |
 | `accepted_authority` | Objectives, non-goals, constraints, assumptions, objections, and stop conditions that become authority only when status is `accepted_promoted`. |
-| `execution_readiness` | Natural-language readiness summary, missing decisions, validation expectations, and risk notes. It must not expose graph ids or require the user to operate a DAG. Accepted contracts must be ready for issue shaping and must not carry unresolved missing decisions. |
+| `execution_readiness` | Natural-language readiness summary, missing decisions, validation expectations, risk notes, proposed issue summaries, conflict domains, and queue intent. It must not expose graph ids or require the user to operate a DAG. Accepted contracts must be ready for issue shaping and must not carry unresolved missing decisions. |
 | `promotion` | Metadata recording who or what accepted the decision, the acceptance source, and the acceptance time. Required only for `accepted_promoted`. |
 | `links` | Generated Linear issue ids/identifiers or internal Execution Program node ids when those exist. |
 | `evidence_boundary` | Local private evidence references and sparse public projection references. |

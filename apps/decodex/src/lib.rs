@@ -24,6 +24,7 @@ mod prelude {
 }
 mod radar;
 mod recovery;
+mod research_design;
 mod run_control;
 mod runtime;
 mod tracker;
