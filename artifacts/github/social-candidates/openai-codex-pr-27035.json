@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27035",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex sandbox and security-policy operators",
+  "candidate_text": [
+    "Codex sandbox now enforces an active configured network proxy as the only network path, including Linux legacy-landlock cases that now require bubblewrap isolation. PR: https://github.com/openai/codex/pull/27035"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27035.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27035.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27035"
+    ]
+  },
+  "evidence_notes": [
+    "`debug_sandbox.rs` enables managed-network enforcement when a proxy is active.",
+    "Linux sandbox code lets proxy-only networking take precedence over legacy landlock.",
+    "Sandbox manager checks make active proxy containment require bubblewrap.",
+    "The Linux test verifies direct loopback access is blocked when the proxy policy is active."
+  ],
+  "claims": [
+    {
+      "text": "An active configured network proxy now triggers proxy-only sandbox containment.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27035.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Linux proxy containment takes precedence over legacy landlock and may require bubblewrap.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27035.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR changes sandbox network enforcement in a way security-focused operators can act on.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27035:operator_impact"
+  },
+  "caveats": [
+    "The direct-network regression test is Linux-only.",
+    "Bubblewrap availability remains host-dependent."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate."
+  ]
+}
