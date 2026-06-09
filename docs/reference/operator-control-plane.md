@@ -147,6 +147,11 @@ The evidence command reads runtime SQLite directly, so it remains useful when tr
 or GitHub connectors are unavailable. By default it prints compact payload summaries
 rather than full structured payloads; add `--include-payload` only for local repair
 work that needs full private payload values.
+When a run has harness-outcome telemetry, the evidence readback also summarizes
+candidate improvements by kind, reason code, target, source-event count, and
+recommendation. These summaries are local operator guidance; they are not Linear
+ledger records and do not automatically edit prompts, skills, validators, issue
+templates, or loop policy.
 
 ## State Ownership
 
@@ -294,6 +299,10 @@ the next allowlisted lifecycle summary instead of pasting local evidence payload
 The same boundary applies to Decision Contracts: the operator surface may show status,
 readiness summary, generated issue links, or public projection references, but the
 versioned contract payload and private evidence references remain runtime-local.
+Harness-outcome telemetry follows the same rule: the operator surface may show compact
+improvement-candidate summaries, while the correlated source intent, contract payloads,
+review details, validation diagnostics, and guardrail checkpoints remain private
+runtime evidence unless explicitly read through the local evidence command.
 
 Worktree visibility follows the owning dashboard section:
 
