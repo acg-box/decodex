@@ -15,7 +15,7 @@ use std::{
 };
 
 use color_eyre::Report;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{self, Value};
 use time::OffsetDateTime;
 
@@ -30,10 +30,11 @@ use self::protocol::{
 	ModelListParams, ModelListResponse, ModelProviderCapabilitiesReadResponse, ModelSummary,
 	PermissionGrantScope, PermissionsRequestApprovalResponse, PluginListParams, PluginListResponse,
 	ProbeDynamicToolHandler, RunOutcome, RuntimeConfigSummary, SkillsListParams,
-	SkillsListResponse, ThreadArchiveRequest, ThreadResumeRequest, ThreadSessionResponse,
-	ThreadStartRequest, ThreadStatusChangedNotification, ToolRequestUserInputResponse,
-	TurnCompletedNotification, TurnError, TurnInterruptRequest, TurnStartRequest, TurnSteerRequest,
-	UserInput,
+	SkillsListResponse, ThreadArchiveRequest, ThreadGoal, ThreadGoalClearParams,
+	ThreadGoalGetParams, ThreadGoalSetParams, ThreadGoalStatus, ThreadGoalUpdatedNotification,
+	ThreadResumeRequest, ThreadSessionResponse, ThreadStartRequest,
+	ThreadStatusChangedNotification, ToolRequestUserInputResponse, TurnCompletedNotification,
+	TurnError, TurnInterruptRequest, TurnStartRequest, TurnSteerRequest, UserInput,
 };
 use crate::{
 	agent::{
@@ -154,6 +155,154 @@ pub(crate) trait TurnContinuationGuard {
 		Ok(())
 	}
 }
+
+pub(crate) trait PhaseGoalController {
+	fn initial_phase_goal(&self) -> crate::prelude::Result<Option<PhaseGoalSpec>>;
+	fn phase_goal_completed(
+		&self,
+		phase: PhaseGoalKind,
+	) -> crate::prelude::Result<PhaseGoalTransition>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PhaseGoalKind {
+	ImplementToValidationReady,
+	RepairValidationFailures,
+	RepairAcceptedReviewFindings,
+	HandoffEvidence,
+}
+impl PhaseGoalKind {
+	pub(crate) const fn as_str(self) -> &'static str {
+		match self {
+			Self::ImplementToValidationReady => "implement_to_validation_ready",
+			Self::RepairValidationFailures => "repair_validation_failures",
+			Self::RepairAcceptedReviewFindings => "repair_accepted_review_findings",
+			Self::HandoffEvidence => "handoff_evidence",
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum PhaseGoalTransition {
+	Continue(PhaseGoalSpec),
+	CompleteRun,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AppServerPhaseGoalFailureKind {
+	Unsupported { method: &'static str },
+	MissingTerminalPath { phase: PhaseGoalKind },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AppServerDynamicToolFailureKind {
+	Protocol,
+	Tool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum AppServerCapabilityPreflightStatus {
+	Ok,
+	Blocked,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum AppServerCapabilityPreflightFailureKind {
+	MethodFailed { method: &'static str, error: String, timed_out: bool },
+	BlockedState,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RequestWaitPhase {
+	Initialize,
+	AccountLogin,
+	ThreadStart,
+	ThreadResume,
+	TurnStart,
+	TurnExecution,
+}
+impl RequestWaitPhase {
+	fn label(self) -> &'static str {
+		match self {
+			Self::Initialize => "initialize",
+			Self::AccountLogin => "account/login/start",
+			Self::ThreadStart => "thread/start",
+			Self::ThreadResume => "thread/resume",
+			Self::TurnStart => "turn/start",
+			Self::TurnExecution => "turn execution",
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PhaseGoalSpec {
+	pub(crate) phase: PhaseGoalKind,
+	pub(crate) objective: String,
+	pub(crate) token_budget: Option<i64>,
+}
+impl PhaseGoalSpec {
+	pub(crate) fn new(
+		phase: PhaseGoalKind,
+		objective: impl Into<String>,
+		token_budget: Option<i64>,
+	) -> Self {
+		Self { phase, objective: objective.into(), token_budget }
+	}
+}
+
+#[derive(Debug)]
+pub(crate) struct AppServerPhaseGoalFailure {
+	kind: AppServerPhaseGoalFailureKind,
+}
+impl AppServerPhaseGoalFailure {
+	fn unsupported(method: &'static str) -> Self {
+		Self { kind: AppServerPhaseGoalFailureKind::Unsupported { method } }
+	}
+
+	fn missing_terminal_path(phase: PhaseGoalKind) -> Self {
+		Self { kind: AppServerPhaseGoalFailureKind::MissingTerminalPath { phase } }
+	}
+
+	pub(crate) fn error_class(&self) -> &'static str {
+		match self.kind {
+			AppServerPhaseGoalFailureKind::Unsupported { .. } =>
+				"app_server_phase_goal_unsupported",
+			AppServerPhaseGoalFailureKind::MissingTerminalPath { .. } =>
+				"phase_goal_terminal_path_missing",
+		}
+	}
+
+	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
+		match self.kind {
+			AppServerPhaseGoalFailureKind::Unsupported { method } => format!(
+				"select a Codex app-server with `{method}` support or set `codex.goal_support = \"auto\"` or `\"off\"`, restart `decodex serve`, {recovery_gate}"
+			),
+			AppServerPhaseGoalFailureKind::MissingTerminalPath { phase } => format!(
+				"inspect the retained lane after phase goal `{}` completed without a terminal Decodex path, finish validation/review/handoff or route manual attention, {recovery_gate}",
+				phase.as_str()
+			),
+		}
+	}
+}
+
+impl Display for AppServerPhaseGoalFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+		match self.kind {
+			AppServerPhaseGoalFailureKind::Unsupported { method } => {
+				write!(formatter, "Codex app-server goal method `{method}` is unavailable.")
+			},
+			AppServerPhaseGoalFailureKind::MissingTerminalPath { phase } => write!(
+				formatter,
+				"Phase goal `{}` completed without a Decodex terminal completion path.",
+				phase.as_str()
+			),
+		}
+	}
+}
+
+impl Error for AppServerPhaseGoalFailure {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct AppServerCapabilityPreflightReport {
@@ -445,6 +594,8 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) command_exec_health_check: Option<CommandExecHealthCheck>,
 	pub(crate) dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
 	pub(crate) continuation_guard: Option<&'a dyn TurnContinuationGuard>,
+	pub(crate) phase_goal_controller: Option<&'a dyn PhaseGoalController>,
+	pub(crate) phase_goal_required: bool,
 	pub(crate) codex_account_provider: Option<&'a dyn CodexAccountProvider>,
 }
 
@@ -506,6 +657,13 @@ pub(crate) struct AppServerRunResult {
 	pub(crate) event_count: i64,
 	pub(crate) final_output: String,
 	pub(crate) continuation_pending: bool,
+	pub(crate) phase_goal_status: Option<PhaseGoalRunStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct PhaseGoalRunStatus {
+	pub(crate) phase: PhaseGoalKind,
+	pub(crate) status: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -757,6 +915,8 @@ impl ProtocolActivityAccumulator {
 
 struct RunRecorder<'a> {
 	state_store: &'a StateStore,
+	project_id: &'a str,
+	issue_id: &'a str,
 	run_id: &'a str,
 	attempt_number: i64,
 	activity_marker_path: Option<&'a PathBuf>,
@@ -767,14 +927,35 @@ struct RunRecorder<'a> {
 	protocol_activity: ProtocolActivityAccumulator,
 }
 impl<'a> RunRecorder<'a> {
+	#[cfg(test)]
 	fn new(
 		state_store: &'a StateStore,
 		run_id: &'a str,
 		attempt_number: i64,
 		activity_marker_path: Option<&'a PathBuf>,
 	) -> Self {
+		Self::new_with_context(
+			state_store,
+			"unknown",
+			"unknown",
+			run_id,
+			attempt_number,
+			activity_marker_path,
+		)
+	}
+
+	fn new_with_context(
+		state_store: &'a StateStore,
+		project_id: &'a str,
+		issue_id: &'a str,
+		run_id: &'a str,
+		attempt_number: i64,
+		activity_marker_path: Option<&'a PathBuf>,
+	) -> Self {
 		Self {
 			state_store,
+			project_id,
+			issue_id,
 			run_id,
 			attempt_number,
 			activity_marker_path,
@@ -784,6 +965,14 @@ impl<'a> RunRecorder<'a> {
 			child_activity: ChildActivityAccumulator::new(),
 			protocol_activity: ProtocolActivityAccumulator::new(),
 		}
+	}
+
+	fn project_id(&self) -> &str {
+		self.project_id
+	}
+
+	fn issue_id(&self) -> &str {
+		self.issue_id
 	}
 
 	fn mark_activity(&self) -> crate::prelude::Result<()> {
@@ -907,6 +1096,12 @@ struct TurnLoopResult {
 	turn_count: u32,
 	final_output: String,
 	continuation_pending: bool,
+	phase_goal_status: Option<PhaseGoalRunStatus>,
+}
+
+struct PhaseGoalRuntime<'a> {
+	controller: &'a dyn PhaseGoalController,
+	active_goal: PhaseGoalSpec,
 }
 
 #[derive(Clone, Copy)]
@@ -989,47 +1184,6 @@ impl DynamicToolFailureDiagnostic {
 			namespace,
 			message: failure.message.clone(),
 			next_action: failure.diagnostic_next_action(),
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum AppServerDynamicToolFailureKind {
-	Protocol,
-	Tool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum AppServerCapabilityPreflightStatus {
-	Ok,
-	Blocked,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum AppServerCapabilityPreflightFailureKind {
-	MethodFailed { method: &'static str, error: String, timed_out: bool },
-	BlockedState,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RequestWaitPhase {
-	Initialize,
-	AccountLogin,
-	ThreadStart,
-	ThreadResume,
-	TurnStart,
-	TurnExecution,
-}
-impl RequestWaitPhase {
-	fn label(self) -> &'static str {
-		match self {
-			Self::Initialize => "initialize",
-			Self::AccountLogin => "account/login/start",
-			Self::ThreadStart => "thread/start",
-			Self::ThreadResume => "thread/resume",
-			Self::TurnStart => "turn/start",
-			Self::TurnExecution => "turn execution",
 		}
 	}
 }
@@ -1138,6 +1292,8 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 			command_exec_health_check: Some(CommandExecHealthCheck::probe()),
 			dynamic_tool_handler: Some(&probe_tool_handler),
 			continuation_guard: None,
+			phase_goal_controller: None,
+			phase_goal_required: false,
 			codex_account_provider: None,
 		},
 		&state_store,
@@ -1374,6 +1530,9 @@ fn protocol_activity_category(event_type: &str) -> &'static str {
 fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> Option<String> {
 	let normalized = event_type.to_ascii_lowercase();
 
+	if matches!(event_type, "thread/goal/set" | "thread/goal/get" | "thread/goal/updated") {
+		return phase_goal_activity_detail(payload_value);
+	}
 	if event_type == "thread/status/changed" {
 		return payload_value.and_then(|value| {
 			string_at_paths(value, &[&["params", "status", "type"], &["status", "type"]])
@@ -1446,6 +1605,20 @@ fn protocol_activity_detail(event_type: &str, payload_value: Option<&Value>) -> 
 	}
 
 	None
+}
+
+fn phase_goal_activity_detail(payload_value: Option<&Value>) -> Option<String> {
+	let value = payload_value?;
+	let status = string_at_paths(
+		value,
+		&[&["payload", "status"], &["params", "goal", "status"], &["goal", "status"], &["status"]],
+	)?;
+	let phase = string_at_paths(value, &[&["phase"], &["payload", "phase"]]);
+
+	Some(match phase {
+		Some(phase) => format!("{phase}/{status}"),
+		None => status,
+	})
 }
 
 fn protocol_steer_detail(payload_value: Option<&Value>) -> Option<String> {
@@ -2252,8 +2425,10 @@ fn execute_app_server_run_inner(
 	request: &AppServerRunRequest<'_>,
 	state_store: &StateStore,
 ) -> crate::prelude::Result<AppServerRunResult> {
-	let mut recorder = RunRecorder::new(
+	let mut recorder = RunRecorder::new_with_context(
 		state_store,
+		&request.project_id,
+		&request.issue_id,
 		&request.run_id,
 		request.attempt_number,
 		request.activity_marker_path.as_ref(),
@@ -2325,6 +2500,7 @@ fn execute_app_server_run_inner(
 		event_count: state_store.event_count(&request.run_id)?,
 		final_output: turn_result.final_output,
 		continuation_pending: turn_result.continuation_pending,
+		phase_goal_status: turn_result.phase_goal_status,
 	})
 }
 
@@ -3220,6 +3396,12 @@ fn execute_turn_loop(
 ) -> crate::prelude::Result<TurnLoopResult> {
 	let mut next_input = request.user_input.clone();
 	let mut turn_count = 0_u32;
+	let mut phase_goal_runtime =
+		initialize_phase_goal_runtime(client, recorder, request, thread_id)?;
+	let mut phase_goal_status = phase_goal_runtime.as_ref().map(|runtime| PhaseGoalRunStatus {
+		phase: runtime.active_goal.phase,
+		status: ThreadGoalStatus::Active.as_str().to_owned(),
+	});
 
 	loop {
 		let turn_id = start_turn_for_run(
@@ -3242,17 +3424,32 @@ fn execute_turn_loop(
 		let final_turn_id = outcome.turn_id;
 		let final_output = outcome.final_output;
 
-		if let Some(continuation_pending) =
-			resolve_turn_completion(request, turn_count, &final_output)?
-		{
+		if let Some((continuation_pending, observed_phase_goal_status)) = resolve_turn_completion(
+			client,
+			recorder,
+			request,
+			&mut phase_goal_runtime,
+			thread_id,
+			turn_count,
+			&final_output,
+		)? {
+			if observed_phase_goal_status.is_some() {
+				phase_goal_status = observed_phase_goal_status;
+			}
+
 			return Ok(TurnLoopResult {
 				turn_id: final_turn_id,
 				turn_count,
 				final_output,
 				continuation_pending,
+				phase_goal_status,
 			});
 		}
 
+		phase_goal_status = phase_goal_runtime.as_ref().map(|runtime| PhaseGoalRunStatus {
+			phase: runtime.active_goal.phase,
+			status: ThreadGoalStatus::Active.as_str().to_owned(),
+		});
 		next_input =
 			request.continuation_user_input.clone().unwrap_or_else(|| request.user_input.clone());
 	}
@@ -3289,11 +3486,116 @@ fn start_turn_for_run(
 }
 
 fn resolve_turn_completion(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
 	request: &AppServerRunRequest<'_>,
+	phase_goal_runtime: &mut Option<PhaseGoalRuntime<'_>>,
+	thread_id: &str,
 	turn_count: u32,
 	final_output: &str,
+) -> crate::prelude::Result<Option<(bool, Option<PhaseGoalRunStatus>)>> {
+	let completion_status = classify_turn_completion(request.dynamic_tool_handler, final_output)?;
+
+	if phase_goal_runtime.is_some() {
+		let observed_goal_result = {
+			let runtime = phase_goal_runtime
+				.as_ref()
+				.expect("phase goal runtime should be present after is_some check");
+
+			get_thread_phase_goal(client, recorder, thread_id, runtime)
+		};
+		let observed_goal = match observed_goal_result {
+			Ok(goal) => goal,
+			Err(error) if !request.phase_goal_required && app_server_method_not_found(&error) => {
+				record_phase_goal_unavailable(recorder, "thread/goal/get", &error)?;
+
+				*phase_goal_runtime = None;
+
+				return resolve_turn_completion_without_phase_goal(
+					request,
+					turn_count,
+					completion_status,
+					final_output,
+				)
+				.map(|result| result.map(|continuation_pending| (continuation_pending, None)));
+			},
+			Err(error) if request.phase_goal_required && app_server_method_not_found(&error) => {
+				return Err(Report::new(AppServerPhaseGoalFailure::unsupported("thread/goal/get"))
+					.wrap_err(error));
+			},
+			Err(error) => return Err(error),
+		};
+		let runtime = phase_goal_runtime
+			.as_mut()
+			.expect("phase goal runtime should still be present after goal status read");
+		let observed_status = PhaseGoalRunStatus {
+			phase: runtime.active_goal.phase,
+			status: observed_goal.status.as_str().to_owned(),
+		};
+
+		if observed_goal.status == ThreadGoalStatus::Complete {
+			let transition = runtime.controller.phase_goal_completed(runtime.active_goal.phase)?;
+
+			record_phase_goal_completed(recorder, runtime.active_goal.phase, &observed_goal)?;
+
+			match transition {
+				PhaseGoalTransition::Continue(next_goal) => {
+					if completion_status == TurnCompletionStatus::Complete {
+						return Ok(Some((false, Some(observed_status))));
+					}
+
+					set_thread_phase_goal(client, recorder, thread_id, &next_goal)?;
+
+					runtime.active_goal = next_goal;
+
+					if turn_count >= request.max_turns {
+						return Ok(Some((true, Some(observed_status))));
+					}
+					if continuation_boundary_reached(request.continuation_guard, turn_count)? {
+						return Ok(Some((true, Some(observed_status))));
+					}
+
+					return Ok(None);
+				},
+				PhaseGoalTransition::CompleteRun => {
+					if completion_status == TurnCompletionStatus::Complete {
+						clear_thread_phase_goal_best_effort(client, recorder, thread_id);
+
+						return Ok(Some((false, Some(observed_status))));
+					}
+
+					return Err(Report::new(AppServerPhaseGoalFailure::missing_terminal_path(
+						runtime.active_goal.phase,
+					)));
+				},
+			}
+		}
+		if completion_status == TurnCompletionStatus::Complete {
+			clear_thread_phase_goal_best_effort(client, recorder, thread_id);
+
+			return Ok(Some((false, Some(observed_status))));
+		}
+		if turn_count >= request.max_turns {
+			return Ok(Some((true, Some(observed_status))));
+		}
+		if continuation_boundary_reached(request.continuation_guard, turn_count)? {
+			return Ok(Some((true, Some(observed_status))));
+		}
+
+		return Ok(None);
+	}
+
+	resolve_turn_completion_without_phase_goal(request, turn_count, completion_status, final_output)
+		.map(|result| result.map(|continuation_pending| (continuation_pending, None)))
+}
+
+fn resolve_turn_completion_without_phase_goal(
+	request: &AppServerRunRequest<'_>,
+	turn_count: u32,
+	completion_status: TurnCompletionStatus,
+	final_output: &str,
 ) -> crate::prelude::Result<Option<bool>> {
-	match classify_turn_completion(request.dynamic_tool_handler, final_output)? {
+	match completion_status {
 		TurnCompletionStatus::Complete => Ok(Some(false)),
 		TurnCompletionStatus::Continue => {
 			if request.max_turns <= 1 {
@@ -3312,6 +3614,180 @@ fn resolve_turn_completion(
 			Ok(None)
 		},
 	}
+}
+
+fn initialize_phase_goal_runtime<'a>(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	request: &'a AppServerRunRequest<'_>,
+	thread_id: &str,
+) -> crate::prelude::Result<Option<PhaseGoalRuntime<'a>>> {
+	let Some(controller) = request.phase_goal_controller else {
+		return Ok(None);
+	};
+	let Some(active_goal) = controller.initial_phase_goal()? else {
+		return Ok(None);
+	};
+
+	match set_thread_phase_goal(client, recorder, thread_id, &active_goal) {
+		Ok(()) => Ok(Some(PhaseGoalRuntime { controller, active_goal })),
+		Err(error) if !request.phase_goal_required && app_server_method_not_found(&error) => {
+			record_phase_goal_unavailable(recorder, "thread/goal/set", &error)?;
+
+			Ok(None)
+		},
+		Err(error) if request.phase_goal_required && app_server_method_not_found(&error) =>
+			Err(Report::new(AppServerPhaseGoalFailure::unsupported("thread/goal/set"))
+				.wrap_err(error)),
+		Err(error) => Err(error),
+	}
+}
+
+fn set_thread_phase_goal(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	thread_id: &str,
+	goal: &PhaseGoalSpec,
+) -> crate::prelude::Result<()> {
+	let response = client.set_thread_goal(ThreadGoalSetParams {
+		thread_id: thread_id.to_owned(),
+		objective: Some(goal.objective.clone()),
+		status: Some(ThreadGoalStatus::Active),
+		token_budget: goal.token_budget,
+	})?;
+	let payload = serde_json::json!({
+		"phase": goal.phase.as_str(),
+		"status": response.goal.status.as_str(),
+		"threadId": response.goal.thread_id,
+		"tokenBudget": response.goal.token_budget,
+		"tokensUsed": response.goal.tokens_used,
+		"timeUsedSeconds": response.goal.time_used_seconds,
+	});
+
+	recorder.record("thread/goal/set", &payload.to_string())?;
+
+	record_phase_goal_private_event(recorder, "phase_goal_set", goal.phase, &payload)
+}
+
+fn get_thread_phase_goal(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	thread_id: &str,
+	runtime: &PhaseGoalRuntime<'_>,
+) -> crate::prelude::Result<ThreadGoal> {
+	let response =
+		client.get_thread_goal(ThreadGoalGetParams { thread_id: thread_id.to_owned() })?;
+	let goal = response.goal.ok_or_else(|| {
+		Report::new(AppServerPhaseGoalFailure::missing_terminal_path(runtime.active_goal.phase))
+			.wrap_err("Codex app-server returned no active phase goal for a goal-controlled lane.")
+	})?;
+	let payload = serde_json::json!({
+		"phase": runtime.active_goal.phase.as_str(),
+		"status": goal.status.as_str(),
+		"threadId": goal.thread_id,
+		"tokenBudget": goal.token_budget,
+		"tokensUsed": goal.tokens_used,
+		"timeUsedSeconds": goal.time_used_seconds,
+	});
+
+	recorder.record("thread/goal/get", &payload.to_string())?;
+
+	record_phase_goal_private_event(
+		recorder,
+		"phase_goal_status",
+		runtime.active_goal.phase,
+		&payload,
+	)?;
+
+	Ok(goal)
+}
+
+fn clear_thread_phase_goal_best_effort(
+	client: &mut AppServerClient,
+	recorder: &mut RunRecorder<'_>,
+	thread_id: &str,
+) {
+	match client.clear_thread_goal(ThreadGoalClearParams { thread_id: thread_id.to_owned() }) {
+		Ok(response) => {
+			let payload = serde_json::json!({ "cleared": response.cleared, "threadId": thread_id });
+
+			if let Err(error) = recorder.record("thread/goal/clear", &payload.to_string()) {
+				tracing::warn!(?error, "Failed to record app-server goal clear response.");
+			}
+		},
+		Err(error) =>
+			tracing::warn!(?error, "Failed to clear app-server phase goal after terminal path."),
+	}
+}
+
+fn record_phase_goal_completed(
+	recorder: &mut RunRecorder<'_>,
+	phase: PhaseGoalKind,
+	goal: &ThreadGoal,
+) -> crate::prelude::Result<()> {
+	let payload = serde_json::json!({
+		"schema": "decodex.phase_goal_signal/1",
+		"phase": phase.as_str(),
+		"signal": "goal_complete",
+		"threadId": goal.thread_id,
+		"status": goal.status.as_str(),
+		"tokenBudget": goal.token_budget,
+		"tokensUsed": goal.tokens_used,
+		"timeUsedSeconds": goal.time_used_seconds,
+	});
+
+	record_phase_goal_private_event(recorder, "phase_goal_completed", phase, &payload)
+}
+
+fn record_phase_goal_unavailable(
+	recorder: &mut RunRecorder<'_>,
+	method: &'static str,
+	error: &Report,
+) -> crate::prelude::Result<()> {
+	recorder.state_store.append_private_execution_event(
+		recorder.project_id(),
+		recorder.issue_id(),
+		recorder.run_id,
+		recorder.attempt_number,
+		"phase_goal_unavailable",
+		serde_json::json!({
+			"schema": "decodex.phase_goal_signal/1",
+			"signal": "goal_unavailable",
+			"method": method,
+			"fallback": "no_goal",
+			"error": error.to_string(),
+		}),
+	)?;
+
+	Ok(())
+}
+
+fn record_phase_goal_private_event(
+	recorder: &mut RunRecorder<'_>,
+	event_type: &str,
+	phase: PhaseGoalKind,
+	payload: &Value,
+) -> crate::prelude::Result<()> {
+	recorder.state_store.append_private_execution_event(
+		recorder.project_id(),
+		recorder.issue_id(),
+		recorder.run_id,
+		recorder.attempt_number,
+		event_type,
+		serde_json::json!({
+			"schema": "decodex.phase_goal_signal/1",
+			"phase": phase.as_str(),
+			"payload": payload,
+		}),
+	)?;
+
+	Ok(())
+}
+
+fn app_server_method_not_found(error: &Report) -> bool {
+	let text = error.to_string().to_lowercase();
+
+	text.contains("-32601") || text.contains("method not found")
 }
 
 fn build_thread_start_request(
@@ -3652,6 +4128,19 @@ fn handle_turn_execution_notification(
 				payload.turn.status
 			);
 		},
+		"thread/goal/updated" => {
+			let payload: ThreadGoalUpdatedNotification =
+				serde_json::from_value(notification.params.clone())?;
+
+			if payload.thread_id != target_thread_id
+				|| payload.turn_id.as_deref().is_some_and(|turn_id| turn_id != target_turn_id)
+			{
+				return Ok(None);
+			}
+
+			let _status = payload.goal.status;
+		},
+		"thread/goal/cleared" => {},
 		_ => {},
 	}
 

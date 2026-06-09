@@ -15,12 +15,14 @@ use crate::{
 	agent::{
 		app_server::{
 			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerCapabilityPreflightFailure,
-			AppServerCapabilityPreflightReport, AppServerDynamicToolFailure, AppServerRunResult,
-			AppServerThreadArchiveRequest, AppServerTurnFailure, CommandExecHealthCheck,
-			CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
-			ModelProviderCapabilitiesReadResponse, PluginListResponse, ProbeDynamicToolHandler,
-			REQUEST_TIMEOUT, RequestWaitPhase, RunRecorder, RuntimeConfigSummary,
-			SkillsListResponse, TurnContinuationGuard, UserInput,
+			AppServerCapabilityPreflightReport, AppServerDynamicToolFailure,
+			AppServerPhaseGoalFailure, AppServerRunResult, AppServerThreadArchiveRequest,
+			AppServerTurnFailure, CommandExecHealthCheck, CommandExecResponse,
+			EffectiveThreadConfig, InitializeResponse, ModelProviderCapabilitiesReadResponse,
+			PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition,
+			PluginListResponse, ProbeDynamicToolHandler, REQUEST_TIMEOUT, RequestWaitPhase,
+			RunRecorder, RuntimeConfigSummary, SkillsListResponse, TurnContinuationGuard,
+			UserInput,
 		},
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
@@ -39,6 +41,164 @@ use crate::{
 	state::{self, ProtocolActivitySummary, StateStore},
 	test_support::TestEnvVarGuard,
 };
+
+const PHASE_GOAL_FAKE_CODEX_SCRIPT_TEMPLATE: &str = r#"#!/usr/bin/env python3
+import json
+import os
+import sys
+
+TURN_OUTPUTS = __TURN_OUTPUTS__
+GOAL_STATUSES = __GOAL_STATUSES__
+UNSUPPORTED_GOAL_METHODS = __UNSUPPORTED_GOAL_METHODS__
+
+goal = {
+    "objective": "",
+    "tokenBudget": None,
+}
+turn_count = 0
+goal_get_count = 0
+
+def send(value):
+    print(json.dumps(value), flush=True)
+
+def reply(message_id, result):
+    send({"id": message_id, "result": result})
+
+def method_not_found(message_id, method):
+    send({"id": message_id, "error": {
+        "code": -32601,
+        "message": "Method not found: " + str(method),
+    }})
+
+def goal_payload(status):
+    return {
+        "createdAt": 1,
+        "objective": goal["objective"],
+        "status": status,
+        "threadId": "thread-1",
+        "timeUsedSeconds": 0,
+        "tokenBudget": goal["tokenBudget"],
+        "tokensUsed": 0,
+        "updatedAt": 1,
+    }
+
+for line in sys.stdin:
+    message = json.loads(line)
+    method = message.get("method")
+    message_id = message.get("id")
+    params = message.get("params") or {}
+
+    if method == "initialize":
+        reply(message_id, {
+            "userAgent": "codex-cli 0.136.0",
+            "codexHome": os.environ["CODEX_HOME"],
+            "platformFamily": "unix",
+            "platformOs": "macos",
+        })
+    elif method == "initialized":
+        continue
+    elif method == "config/read":
+        reply(message_id, {"config": {
+            "model": "gpt-5.5",
+            "model_provider": "openai",
+            "approval_policy": {"type": "never"},
+            "sandbox_mode": {"type": "dangerFullAccess"},
+        }})
+    elif method == "model/list":
+        reply(message_id, {"data": [{
+            "id": "gpt-5.5",
+            "model": "gpt-5.5",
+            "displayName": "GPT-5.5",
+            "isDefault": True,
+            "hidden": False,
+        }], "nextCursor": None})
+    elif method == "modelProvider/capabilities/read":
+        reply(message_id, {"imageGeneration": True, "namespaceTools": True, "webSearch": True})
+    elif method == "skills/list":
+        cwd = params.get("cwds", [""])[0]
+        reply(message_id, {"data": [{"cwd": cwd, "errors": [], "skills": [{
+            "enabled": True,
+            "name": "fake-skill",
+            "scope": "user",
+        }]}]})
+    elif method == "plugin/list":
+        reply(message_id, {"marketplaces": [{"name": "fake", "plugins": [{
+            "enabled": True,
+            "id": "fake-plugin",
+            "installed": True,
+            "name": "Fake Plugin",
+        }]}], "marketplaceLoadErrors": []})
+    elif method == "mcpServerStatus/list":
+        reply(message_id, {"data": [], "nextCursor": None})
+    elif method == "thread/start":
+        reply(message_id, {
+            "thread": {"id": "thread-1"},
+            "model": "gpt-5.5",
+            "modelProvider": "openai",
+            "serviceTier": None,
+            "cwd": params.get("cwd"),
+            "instructionSources": [],
+            "approvalPolicy": {"type": "never"},
+            "approvalsReviewer": "user",
+            "sandbox": {"type": "dangerFullAccess"},
+            "reasoningEffort": None,
+        })
+    elif method == "thread/goal/set":
+        if UNSUPPORTED_GOAL_METHODS:
+            method_not_found(message_id, method)
+        else:
+            goal["objective"] = params.get("objective") or ""
+            goal["tokenBudget"] = params.get("tokenBudget")
+            reply(message_id, {"goal": goal_payload("active")})
+    elif method == "thread/goal/get":
+        if UNSUPPORTED_GOAL_METHODS:
+            method_not_found(message_id, method)
+        else:
+            if GOAL_STATUSES:
+                status = GOAL_STATUSES[min(goal_get_count, len(GOAL_STATUSES) - 1)]
+            else:
+                status = "active"
+            goal_get_count += 1
+            reply(message_id, {"goal": None if status == "none" else goal_payload(status)})
+    elif method == "thread/goal/clear":
+        if UNSUPPORTED_GOAL_METHODS:
+            method_not_found(message_id, method)
+        else:
+            reply(message_id, {"cleared": True})
+    elif method == "turn/start":
+        turn_count += 1
+        turn_id = "turn-" + str(turn_count)
+        if TURN_OUTPUTS:
+            output = TURN_OUTPUTS[min(turn_count - 1, len(TURN_OUTPUTS) - 1)]
+        else:
+            output = "DONE"
+        reply(message_id, {"turn": {"id": turn_id, "status": "running", "error": None}})
+        send({"method": "thread/status/changed", "params": {
+            "threadId": "thread-1",
+            "status": {"type": "active", "activeFlags": []},
+        }})
+        send({"method": "turn/started", "params": {
+            "threadId": "thread-1",
+            "turn": {"id": turn_id, "status": "running", "error": None},
+        }})
+        if not UNSUPPORTED_GOAL_METHODS:
+            send({"method": "thread/goal/updated", "params": {
+                "threadId": "thread-1",
+                "turnId": turn_id,
+                "goal": goal_payload("active"),
+            }})
+        send({"method": "item/completed", "params": {
+            "threadId": "thread-1",
+            "turnId": turn_id,
+            "item": {"type": "agentMessage", "text": output},
+        }})
+        send({"method": "turn/completed", "params": {
+            "threadId": "thread-1",
+            "turn": {"id": turn_id, "status": "completed", "error": None},
+        }})
+    else:
+        method_not_found(message_id, method)
+"#;
 
 struct RejectingCompletionHandler;
 impl DynamicToolHandler for RejectingCompletionHandler {
@@ -229,6 +389,54 @@ impl TurnContinuationGuard for LiveResumeBoundaryGuard {
 	}
 }
 
+struct ContinueTokenCompletionHandler;
+impl DynamicToolHandler for ContinueTokenCompletionHandler {
+	fn tool_specs(&self) -> Vec<DynamicToolSpec> {
+		Vec::new()
+	}
+
+	fn handle_call(&self, _tool_name: &str, _arguments: Value) -> DynamicToolCallResponse {
+		DynamicToolCallResponse::failure(String::from("unused"))
+	}
+
+	fn classify_turn_completion(&self, final_output: &str) -> Result<TurnCompletionStatus> {
+		Ok(if final_output.trim() == "CONTINUE" {
+			TurnCompletionStatus::Continue
+		} else {
+			TurnCompletionStatus::Complete
+		})
+	}
+}
+
+struct TestPhaseGoalController {
+	initial_phase: PhaseGoalKind,
+}
+impl TestPhaseGoalController {
+	fn new(initial_phase: PhaseGoalKind) -> Self {
+		Self { initial_phase }
+	}
+}
+
+impl PhaseGoalController for TestPhaseGoalController {
+	fn initial_phase_goal(&self) -> Result<Option<PhaseGoalSpec>> {
+		Ok(Some(PhaseGoalSpec::new(self.initial_phase, "test phase goal", None)))
+	}
+
+	fn phase_goal_completed(&self, phase: PhaseGoalKind) -> Result<PhaseGoalTransition> {
+		Ok(match phase {
+			PhaseGoalKind::ImplementToValidationReady
+			| PhaseGoalKind::RepairValidationFailures
+			| PhaseGoalKind::RepairAcceptedReviewFindings =>
+				PhaseGoalTransition::Continue(PhaseGoalSpec::new(
+					PhaseGoalKind::HandoffEvidence,
+					"prepare handoff evidence",
+					None,
+				)),
+			PhaseGoalKind::HandoffEvidence => PhaseGoalTransition::CompleteRun,
+		})
+	}
+}
+
 fn notification_message(method: &str, params: Value) -> WireMessage {
 	WireMessage {
 		raw: params.to_string(),
@@ -278,6 +486,7 @@ fn probe_result_shape_is_stable() {
 		event_count: 3,
 		final_output: String::from("PROBE_OK"),
 		continuation_pending: false,
+		phase_goal_status: None,
 	};
 
 	assert_eq!(result.final_output, "PROBE_OK");
@@ -466,6 +675,8 @@ fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 		command_exec_health_check: None,
 		dynamic_tool_handler: None,
 		continuation_guard: None,
+		phase_goal_controller: None,
+		phase_goal_required: false,
 		codex_account_provider: None,
 	}
 }
@@ -660,6 +871,196 @@ for line in sys.stdin:
             "message": "unexpected method " + str(method)
         }})
 "#
+}
+
+fn phase_goal_fake_codex_script(
+	turn_outputs: &[&str],
+	goal_statuses: &[&str],
+	unsupported_goal_methods: bool,
+) -> String {
+	let outputs_json = serde_json::to_string(turn_outputs).expect("turn outputs should serialize");
+	let statuses_json =
+		serde_json::to_string(goal_statuses).expect("goal statuses should serialize");
+	let unsupported_goal = if unsupported_goal_methods { "True" } else { "False" };
+
+	PHASE_GOAL_FAKE_CODEX_SCRIPT_TEMPLATE
+		.replace("__TURN_OUTPUTS__", &outputs_json)
+		.replace("__GOAL_STATUSES__", &statuses_json)
+		.replace("__UNSUPPORTED_GOAL_METHODS__", unsupported_goal)
+}
+
+fn execute_phase_goal_fake_app_server<'a, F>(
+	script: String,
+	configure: F,
+) -> (Result<AppServerRunResult>, StateStore)
+where
+	F: FnOnce(&mut super::AppServerRunRequest<'a>),
+{
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let worktree_path = temp_dir.path().join("worktree");
+	let fake_bin_dir = install_fake_codex_script(&temp_dir, &script);
+	let path_env = env::var("PATH").unwrap_or_default();
+	let _path_guard =
+		TestEnvVarGuard::set("PATH", &format!("{}:{path_env}", fake_bin_dir.display()));
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let mut request = minimal_run_request();
+
+	fs::create_dir_all(&worktree_path).expect("worktree directory should create");
+
+	request.run_id = String::from("phase-goal-run");
+	request.issue_id = String::from("phase-goal-issue");
+	request.cwd = worktree_path.display().to_string();
+	request.timeout = Duration::from_secs(5);
+
+	configure(&mut request);
+
+	let result = super::execute_app_server_run(&request, &state_store);
+
+	(result, state_store)
+}
+
+fn private_phase_goal_events(state_store: &StateStore, event_type: &str) -> Vec<Value> {
+	state_store
+		.list_private_execution_events("test-project", "phase-goal-issue", "phase-goal-run", 1)
+		.expect("private phase goal events should load")
+		.into_iter()
+		.filter(|event| event.event_type() == event_type)
+		.map(|event| event.payload().clone())
+		.collect()
+}
+
+#[test]
+fn phase_goal_auto_mode_falls_back_when_app_server_goal_methods_are_missing() {
+	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
+	let script = phase_goal_fake_codex_script(&["DONE"], &[], true);
+	let (result, state_store) = execute_phase_goal_fake_app_server(script, |request| {
+		request.phase_goal_controller = Some(&controller);
+		request.phase_goal_required = false;
+	});
+	let result = result.expect("auto mode should fall back to no-goal execution");
+	let unavailable_events = private_phase_goal_events(&state_store, "phase_goal_unavailable");
+
+	assert_eq!(result.final_output, "DONE");
+	assert_eq!(result.phase_goal_status, None);
+	assert_eq!(unavailable_events.len(), 1);
+	assert_eq!(unavailable_events[0]["method"], "thread/goal/set");
+	assert_eq!(unavailable_events[0]["fallback"], "no_goal");
+}
+
+#[test]
+fn phase_goal_required_mode_fails_when_goal_methods_are_missing() {
+	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
+	let script = phase_goal_fake_codex_script(&["DONE"], &[], true);
+	let (result, _state_store) = execute_phase_goal_fake_app_server(script, |request| {
+		request.phase_goal_controller = Some(&controller);
+		request.phase_goal_required = true;
+	});
+	let error = result.expect_err("required goal mode should fail on missing app-server support");
+	let failure = error
+		.downcast_ref::<AppServerPhaseGoalFailure>()
+		.expect("missing goal support should be a typed phase-goal failure");
+
+	assert_eq!(failure.error_class(), "app_server_phase_goal_unsupported");
+	assert!(error.to_string().contains("thread/goal/set"));
+}
+
+#[test]
+fn phase_goal_complete_runs_validation_transition_before_handoff_goal() {
+	let handler = ContinueTokenCompletionHandler;
+	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
+	let script =
+		phase_goal_fake_codex_script(&["CONTINUE", "DONE"], &["complete", "complete"], false);
+	let (result, state_store) = execute_phase_goal_fake_app_server(script, |request| {
+		request.max_turns = 3;
+		request.dynamic_tool_handler = Some(&handler);
+		request.phase_goal_controller = Some(&controller);
+	});
+	let result = result.expect("completed phase goal should advance to handoff evidence goal");
+	let completed_events = private_phase_goal_events(&state_store, "phase_goal_completed");
+	let goal_set_events = private_phase_goal_events(&state_store, "phase_goal_set");
+
+	assert_eq!(result.turn_count, 2);
+	assert_eq!(result.final_output, "DONE");
+	assert_eq!(
+		result.phase_goal_status,
+		Some(super::PhaseGoalRunStatus {
+			phase: PhaseGoalKind::HandoffEvidence,
+			status: String::from("complete"),
+		})
+	);
+	assert_eq!(
+		completed_events.iter().filter_map(|event| event["phase"].as_str()).collect::<Vec<_>>(),
+		vec!["implement_to_validation_ready", "handoff_evidence"]
+	);
+	assert_eq!(goal_set_events.len(), 2);
+	assert_eq!(goal_set_events[1]["phase"], "handoff_evidence");
+}
+
+#[test]
+fn still_active_phase_goal_continues_same_thread_until_terminal_output() {
+	let handler = ContinueTokenCompletionHandler;
+	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
+	let script = phase_goal_fake_codex_script(&["CONTINUE", "DONE"], &["active", "active"], false);
+	let (result, _state_store) = execute_phase_goal_fake_app_server(script, |request| {
+		request.max_turns = 2;
+		request.dynamic_tool_handler = Some(&handler);
+		request.phase_goal_controller = Some(&controller);
+	});
+	let result = result.expect("active goal should allow another bounded turn");
+
+	assert_eq!(result.turn_count, 2);
+	assert_eq!(result.turn_id, "turn-2");
+	assert_eq!(result.final_output, "DONE");
+	assert!(!result.continuation_pending);
+	assert_eq!(
+		result.phase_goal_status,
+		Some(super::PhaseGoalRunStatus {
+			phase: PhaseGoalKind::ImplementToValidationReady,
+			status: String::from("active"),
+		})
+	);
+}
+
+#[test]
+fn still_active_phase_goal_stops_at_max_turns_with_continuation_pending() {
+	let handler = ContinueTokenCompletionHandler;
+	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
+	let script = phase_goal_fake_codex_script(&["CONTINUE"], &["active"], false);
+	let (result, _state_store) = execute_phase_goal_fake_app_server(script, |request| {
+		request.max_turns = 1;
+		request.dynamic_tool_handler = Some(&handler);
+		request.phase_goal_controller = Some(&controller);
+	});
+	let result = result.expect("active goal should exit cleanly at max_turns");
+
+	assert_eq!(result.turn_count, 1);
+	assert!(result.continuation_pending);
+	assert_eq!(
+		result.phase_goal_status,
+		Some(super::PhaseGoalRunStatus {
+			phase: PhaseGoalKind::ImplementToValidationReady,
+			status: String::from("active"),
+		})
+	);
+}
+
+#[test]
+fn phase_goal_handoff_complete_without_terminal_completion_is_invalid() {
+	let handler = ContinueTokenCompletionHandler;
+	let controller = TestPhaseGoalController::new(PhaseGoalKind::HandoffEvidence);
+	let script = phase_goal_fake_codex_script(&["CONTINUE"], &["complete"], false);
+	let (result, _state_store) = execute_phase_goal_fake_app_server(script, |request| {
+		request.max_turns = 2;
+		request.dynamic_tool_handler = Some(&handler);
+		request.phase_goal_controller = Some(&controller);
+	});
+	let error = result.expect_err("handoff goal completion cannot replace terminal path");
+	let failure = error
+		.downcast_ref::<AppServerPhaseGoalFailure>()
+		.expect("missing terminal path should be a typed phase-goal failure");
+
+	assert_eq!(failure.error_class(), "phase_goal_terminal_path_missing");
+	assert!(error.to_string().contains("handoff_evidence"));
 }
 
 #[test]
@@ -2072,6 +2473,8 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			command_exec_health_check: None,
 				dynamic_tool_handler: Some(&handler),
 				continuation_guard: Some(&guard),
+				phase_goal_controller: None,
+				phase_goal_required: false,
 				codex_account_provider: None,
 			},
 		&first_state_store,
@@ -2117,6 +2520,8 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 			command_exec_health_check: None,
 				dynamic_tool_handler: Some(&handler),
 				continuation_guard: None,
+				phase_goal_controller: None,
+				phase_goal_required: false,
 				codex_account_provider: None,
 			},
 		&resumed_state_store,
