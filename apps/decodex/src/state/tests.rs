@@ -13,6 +13,10 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use crate::{
+	execution_program::{
+		ExecutionLinearIssueMapping, ExecutionProgram, ExecutionProgramNode,
+		ExecutionProgramNodeStage, ExecutionQueueIntent,
+	},
 	loop_contract::{
 		DecisionContract, DecisionContractStatus, DecisionPromotion, DecisionPromotionActorKind,
 	},
@@ -85,6 +89,28 @@ fn sample_decision_promotion() -> DecisionPromotion {
 		Some(String::from("User asked Decodex to push this forward.")),
 	)
 	.expect("sample promotion should validate")
+}
+
+fn sample_execution_program(contract: &DecisionContract) -> ExecutionProgram {
+	let node = ExecutionProgramNode::new(
+		"runtime-readiness",
+		ExecutionProgramNodeStage::Runtime,
+		"Implement runtime readiness evaluation.",
+		ExecutionQueueIntent::ReadyToQueue,
+	)
+	.expect("program node should validate")
+	.with_acceptance_expectations([String::from("Readiness can explain startability.")])
+	.expect("acceptance expectations should attach")
+	.with_validation_expectations([String::from("Run the registered repo gate.")])
+	.expect("validation expectations should attach")
+	.with_linear_issue(
+		ExecutionLinearIssueMapping::new("issue-853", "XY-853", "Todo")
+			.expect("issue mapping should validate"),
+	)
+	.expect("issue mapping should attach");
+
+	ExecutionProgram::from_accepted_contract("program-853", "decodex", contract, vec![node])
+		.expect("execution program should derive from accepted contract")
 }
 
 fn assert_decision_contract_retargeted(reopened: &StateStore) {
@@ -2689,6 +2715,92 @@ fn decision_contracts_record_human_decision_and_rejection_transitions() {
 			)
 			.is_err(),
 		"rejected contracts cannot later become execution authority"
+	);
+}
+
+#[test]
+fn execution_programs_persist_reload_and_list_by_contract() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let mut contract = latent_decision_contract_fixture();
+
+	contract.promote(sample_decision_promotion()).expect("contract should promote");
+
+	let program = sample_execution_program(&contract);
+	let record = store
+		.upsert_execution_program("decodex", program)
+		.expect("execution program should persist");
+
+	assert_eq!(record.project_id(), "decodex");
+	assert_eq!(record.program_id(), "program-853");
+	assert_eq!(record.source_contract_id(), "research-x-loop-contract");
+	assert_eq!(record.program().nodes().len(), 1);
+	assert!(record.created_at_unix() > 0);
+	assert!(record.updated_at_unix() >= record.created_at_unix());
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+	let reloaded = reopened
+		.execution_program("decodex", "program-853")
+		.expect("execution program should read")
+		.expect("execution program should exist");
+
+	assert_eq!(reloaded.created_at(), record.created_at());
+	assert_eq!(reloaded.program().source_contract_id(), "research-x-loop-contract");
+
+	let contract_programs = reopened
+		.list_execution_programs_for_contract("decodex", "research-x-loop-contract")
+		.expect("contract programs should list");
+
+	assert_eq!(contract_programs.len(), 1);
+	assert_eq!(contract_programs[0].program_id(), "program-853");
+
+	let project_programs =
+		reopened.list_execution_programs("decodex").expect("project programs should list");
+
+	assert_eq!(project_programs.len(), 1);
+	assert_eq!(project_programs[0].program_id(), "program-853");
+}
+
+#[test]
+fn execution_program_reload_rejects_row_key_payload_mismatch() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let mut contract = latent_decision_contract_fixture();
+
+	contract.promote(sample_decision_promotion()).expect("contract should promote");
+	store
+		.upsert_execution_program("decodex", sample_execution_program(&contract))
+		.expect("execution program should persist");
+
+	let connection = Connection::open(&state_path).expect("sqlite should open");
+	let mut payload: Value = serde_json::from_str(
+		&connection
+			.query_row(
+				"SELECT payload_json FROM execution_programs WHERE program_id = ?1",
+				["program-853"],
+				|row| row.get::<_, String>(0),
+			)
+			.expect("payload should load"),
+	)
+	.expect("payload should parse");
+
+	payload["program_id"] = serde_json::json!("program-mismatch");
+
+	connection
+		.execute(
+			"UPDATE execution_programs SET payload_json = ?1 WHERE program_id = ?2",
+			[
+				serde_json::to_string(&payload).expect("payload should serialize"),
+				String::from("program-853"),
+			],
+		)
+		.expect("payload should corrupt");
+
+	assert!(
+		StateStore::open(&state_path).is_err(),
+		"execution program row key must match the versioned payload program_id"
 	);
 }
 
