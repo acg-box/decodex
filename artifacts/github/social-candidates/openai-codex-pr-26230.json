@@ -1,0 +1,59 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26230",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex config, app-server, and delegated-agent operators",
+  "candidate_text": [
+    "Codex now serializes Auto Review as `auto_review`, still accepts legacy `guardian_subagent`, and carries the active reviewer into spawned agents. Strict app-server/config clients should update expectations. PR: https://github.com/openai/codex/pull/26230"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26230.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26230.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26230"
+    ]
+  },
+  "evidence_notes": [
+    "The protocol enums now serialize Auto Review as `auto_review` while retaining `guardian_subagent` as an alias.",
+    "Config/debug/TUI tests update canonical output expectations to `auto_review`.",
+    "The multi-agent spawn path copies the active turn's approval reviewer into spawned-agent config.",
+    "The PR body says delegated work must not silently fall back to user review."
+  ],
+  "claims": [
+    {
+      "text": "Auto Review now serializes canonically as `auto_review` across core protocol and app-server output.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26230.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "`guardian_subagent` remains accepted as backward-compatible input.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26230.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Spawned agents inherit the active turn's approval reviewer.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26230.review.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR changes canonical config/protocol output and delegated-agent reviewer continuity with compatibility implications for strict clients.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26230:operator_impact"
+  },
+  "caveats": [
+    "This PR does not cover adjacent Guardian policy changes.",
+    "Legacy `guardian_subagent` input remains accepted."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate."
+  ]
+}
