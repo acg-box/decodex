@@ -21,6 +21,7 @@ pub(crate) struct ReviewPolicyCheckpointInput<'a> {
 	pub(crate) status: &'a str,
 	pub(crate) head_sha: &'a str,
 	pub(crate) nonclean_rounds: i64,
+	pub(crate) details_json: &'a str,
 }
 
 /// Local runtime store for leases, attempts, worktrees, protocol events, and private evidence.
@@ -1842,6 +1843,7 @@ impl StateStore {
 			status: input.status.to_owned(),
 			head_sha: input.head_sha.to_owned(),
 			nonclean_rounds: input.nonclean_rounds,
+			details_json: input.details_json.to_owned(),
 			updated_at: now.text,
 			updated_at_unix: now.unix,
 		};
