@@ -1,0 +1,83 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-139-0-alpha-2-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease direction before stable notes",
+  "candidate_text": [
+    "No 0.139.0-alpha.2 post handoff yet.\n\nAdjacent alpha.1 -> alpha.2 has 8 ahead commits, but the release body is sparse and PR behavior needs Radar review before public copy.\n\nSource: https://github.com/openai/codex/releases/tag/rust-v0.139.0-alpha.2"
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.139.0-alpha.1",
+      "https://github.com/openai/codex/releases/tag/rust-v0.139.0-alpha.2",
+      "https://github.com/openai/codex/compare/rust-v0.139.0-alpha.1...rust-v0.139.0-alpha.2",
+      "https://github.com/openai/codex/pull/26840",
+      "https://github.com/openai/codex/pull/27088",
+      "https://github.com/openai/codex/pull/27068",
+      "https://github.com/openai/codex/pull/27092",
+      "https://github.com/openai/codex/pull/27096",
+      "https://github.com/openai/codex/pull/25177",
+      "https://github.com/openai/codex/pull/27106"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.139.0-alpha.2 was published at 2026-06-09T04:13:33Z with only a sparse release body.",
+    "Per the prerelease lineage gate, alpha.2 is a later 0.139 prerelease and the correct release-window comparison is adjacent rust-v0.139.0-alpha.1 -> rust-v0.139.0-alpha.2, not stable rust-v0.138.0 -> alpha.2.",
+    "The adjacent alpha.1 -> alpha.2 compare is diverged with 8 ahead commits and 1 behind commit in GitHub compare metadata.",
+    "PR-title metadata in the adjacent compare points to typed file URIs, TUI bare URL linkification, effective sandbox modes in /debug-config, StoredThread extra config, web search citation prompt updates, cloud requirements preservation across resets, and remote compaction log cleanup, but these behavior claims are unreviewed by this publisher automation.",
+    "The refreshed checked release_delta/v1 now records stable rust-v0.138.0 -> prerelease rust-v0.139.0-alpha.2 with 45 ahead commits and no tracked signal slugs; it does not replace the adjacent prerelease comparison required for alpha.2 publishing decisions.",
+    "Official Codex changelog readback for this run shows Codex CLI 0.138.0 on 2026-06-08 as the latest official CLI release entry, so alpha.2 is a GitHub prerelease checkpoint rather than an official Codex changelog entry."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.139.0-alpha.2 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.139.0-alpha.2",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct later-prerelease comparison is rust-v0.139.0-alpha.1 -> rust-v0.139.0-alpha.2.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.139.0-alpha.1...rust-v0.139.0-alpha.2",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.2 release body is sparse and does not describe user-facing behavior beyond the version checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.139.0-alpha.2",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR-title metadata in the alpha.2 compare points to typed file URI, sandbox/debug-config, thread config, web-search citation, cloud requirements, TUI linkification, and log-cleanup areas.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.139.0-alpha.1...rust-v0.139.0-alpha.2",
+      "confidence": "likely"
+    },
+    {
+      "text": "Behavior claims for the alpha.2 window require upstream source review before a publishable Decodex thread.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the later 0.139 prerelease body is sparse and the adjacent alpha.1 -> alpha.2 compare needs source review before public copy.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-139-0-alpha-2:alpha1-alpha2:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "No previous live and quote-eligible @decodexspace 0.139 prerelease post exists: alpha.1 is a defer candidate and the previous live alpha.7 thread belongs to the 0.138 train.",
+    "Future 0.139 prereleases should keep using adjacent prerelease-to-prerelease lineage unless the channel resets at a new stable release.",
+    "Exact source-review gap list for alpha.1 -> alpha.2: #26840, #27088, #27068, #27092, #27096, #25177, #27106. The compare also references issue #26774 through #27088, but it is not a pull-request source URL."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.2 defer record to decodex-x-publisher.",
+    "Route the listed gap PRs to codex-upstream-radar-review / codex-code-analysis before turning alpha.2 into a release_rollup or operator_impact post.",
+    "Use the refreshed release_delta/v1 only as stable-to-latest-prerelease site metadata; use the adjacent alpha.1 -> alpha.2 compare for prerelease publisher lineage."
+  ],
+  "media_refs": null
+}
