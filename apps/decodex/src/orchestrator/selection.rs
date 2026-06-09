@@ -197,7 +197,22 @@ fn terminal_failure_comment_details(
 				retained_review_needs_attention.reason
 			),
 		)
+	} else if let Some(loop_guardrail_stop) = error.downcast_ref::<LoopGuardrailStopRequested>() {
+		(
+			loop_guardrail_stop.reason.error_class(),
+			loop_guardrail_stop.reason.terminal_next_action(recovery_gate),
+		)
 	} else if manual_attention_requested {
+		if let Some(manual_attention) = error.downcast_ref::<ManualAttentionRequested>()
+			&& let Some(error_class) = manual_attention.error_class.as_deref()
+			&& let Some(reason) = LoopGuardrailReason::from_error_class(error_class)
+		{
+			return (
+				reason.error_class(),
+				reason.terminal_next_action(recovery_gate),
+			);
+		}
+
 		(
 			"human_attention_required",
 			format!(

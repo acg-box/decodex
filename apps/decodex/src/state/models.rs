@@ -657,6 +657,66 @@ impl ReviewPolicyCheckpoint {
 	}
 }
 
+/// Latest loop-guardrail checkpoint for one issue and stop reason.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct LoopGuardrailCheckpoint {
+	project_id: String,
+	issue_id: String,
+	reason: String,
+	fingerprint: String,
+	run_id: String,
+	attempt_number: i64,
+	consecutive_count: i64,
+	details_json: String,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+impl LoopGuardrailCheckpoint {
+	#[cfg(test)]
+	pub(crate) fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	#[cfg(test)]
+	pub(crate) fn issue_id(&self) -> &str {
+		&self.issue_id
+	}
+
+	pub(crate) fn reason(&self) -> &str {
+		&self.reason
+	}
+
+	pub(crate) fn fingerprint(&self) -> &str {
+		&self.fingerprint
+	}
+
+	pub(crate) fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	pub(crate) fn attempt_number(&self) -> i64 {
+		self.attempt_number
+	}
+
+	pub(crate) fn consecutive_count(&self) -> i64 {
+		self.consecutive_count
+	}
+
+	pub(crate) fn details_json(&self) -> &str {
+		&self.details_json
+	}
+
+	#[cfg(test)]
+	pub(crate) fn updated_at(&self) -> &str {
+		&self.updated_at
+	}
+
+	#[cfg(test)]
+	pub(crate) fn updated_at_unix(&self) -> i64 {
+		self.updated_at_unix
+	}
+}
+
 /// Foundation request for resolving a local run-control action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(not(test), allow(dead_code))]

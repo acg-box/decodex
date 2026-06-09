@@ -1,5 +1,5 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use sha1::{Digest as _, Sha1};
+use sha1::Sha1;
 
 use crate::accounts::{self, AccountUseRequest};
 
@@ -1201,12 +1201,12 @@ fn websocket_upgrade_required_response() -> Vec<u8> {
 fn websocket_accept_key(key: &str) -> String {
 	const WEBSOCKET_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-	let mut hasher = Sha1::new();
+	let mut hasher = <Sha1 as sha1::Digest>::new();
 
-	hasher.update(key.as_bytes());
-	hasher.update(WEBSOCKET_GUID.as_bytes());
+	sha1::Digest::update(&mut hasher, key.as_bytes());
+	sha1::Digest::update(&mut hasher, WEBSOCKET_GUID.as_bytes());
 
-	STANDARD.encode(hasher.finalize())
+	STANDARD.encode(sha1::Digest::finalize(hasher))
 }
 
 fn operator_http_header_value<'a>(request: &'a str, header_name: &str) -> Option<&'a str> {
