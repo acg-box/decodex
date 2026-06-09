@@ -387,7 +387,7 @@ fn review_handoff_apply_does_not_duplicate_existing_ledger_event() {
 }
 
 #[test]
-fn reports_partial_review_handoff_when_state_transition_fails_after_tracker_record_write() {
+fn keeps_review_handoff_marker_when_state_transition_fails_after_tracker_record_write() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::with_state_update_error("tracker state write failed");
 	let issue = sample_issue();
@@ -445,11 +445,13 @@ fn reports_partial_review_handoff_when_state_transition_fails_after_tracker_reco
 	assert!(error.to_string().contains("tracker state write failed"));
 	assert_eq!(tracker.comments.borrow().len(), 1);
 	assert!(tracker.state_updates.borrow().is_empty());
-	assert!(
+	assert_eq!(
 		bridge_state_store(&bridge)
 			.review_handoff_marker(TEST_SERVICE_ID, &issue.id, "x/decodex-pub-618")
 			.expect("runtime handoff marker read should succeed")
-			.is_none()
+			.expect("partial review handoff should keep the retained marker")
+			.pr_url(),
+		"https://github.com/hack-ink/decodex/pull/49"
 	);
 }
 
