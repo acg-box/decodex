@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26840",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Add typed file URIs",
+        "url": "https://github.com/openai/codex/pull/26840",
+        "meta": "Merged 2026-06-08T23:33:42Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26840",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26840.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex adds a `codex-utils-path-uri` crate for immutable typed `file:` URIs that serialize as canonical URI text while still accepting legacy absolute native paths during deserialization.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "watch",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records the new `PathUri` type and its `file:`-only validation boundary.",
+    "The PR body says the type is intended for cross-process and cross-OS identifiers without eager native path interpretation.",
+    "Serde migration accepts both canonical URI text and legacy absolute native paths.",
+    "Tests cover URI authorities, encoded metadata, non-UTF-8 POSIX paths, and legacy round trips."
+  ],
+  "candidate_followups": [
+    "Watch future app-server and plugin payloads for adoption of `PathUri`.",
+    "Keep Decodex path handling explicit about URI strings versus native local filesystem paths.",
+    "Prefer URI-preserving storage where Decodex crosses process or OS boundaries."
+  ],
+  "social_notes": [
+    "Use defer or watch-note framing unless a later PR wires `PathUri` into user-visible protocol fields.",
+    "Do not imply a public app-server field changed in this PR."
+  ],
+  "caveats": [
+    "This PR adds infrastructure only.",
+    "Legacy absolute native path input remains accepted during migration."
+  ]
+}
