@@ -1,0 +1,105 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-4-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease direction before stable notes",
+  "candidate_text": [
+    "No 0.140.0-alpha.4 post handoff yet.\n\nLatest public 0.140 prerelease. alpha.2 -> alpha.4 has 27 commits, but the release body is sparse and 20 primary PRs lack Decodex review.\n\nSource: https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.4"
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.2",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.4",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.2...rust-v0.140.0-alpha.4",
+      "https://github.com/openai/codex/pull/26701",
+      "https://github.com/openai/codex/pull/27129",
+      "https://github.com/openai/codex/pull/27094",
+      "https://github.com/openai/codex/pull/24999",
+      "https://github.com/openai/codex/pull/27078",
+      "https://github.com/openai/codex/pull/27285",
+      "https://github.com/openai/codex/pull/27107",
+      "https://github.com/openai/codex/pull/27261",
+      "https://github.com/openai/codex/pull/27174",
+      "https://github.com/openai/codex/pull/27198",
+      "https://github.com/openai/codex/pull/27375",
+      "https://github.com/openai/codex/pull/27383",
+      "https://github.com/openai/codex/pull/27259",
+      "https://github.com/openai/codex/pull/27264",
+      "https://github.com/openai/codex/pull/27280",
+      "https://github.com/openai/codex/pull/27315",
+      "https://github.com/openai/codex/pull/27276",
+      "https://github.com/openai/codex/pull/27299",
+      "https://github.com/openai/codex/pull/27391",
+      "https://github.com/openai/codex/pull/27407",
+      "https://github.com/openai/codex/pull/27304",
+      "https://github.com/openai/codex/pull/26041",
+      "https://github.com/openai/codex/pull/25018",
+      "https://github.com/openai/codex/pull/26859",
+      "https://github.com/openai/codex/pull/27064",
+      "https://github.com/openai/codex/pull/27421"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.140.0-alpha.4 was published at 2026-06-10T19:46:17Z with only a sparse release body: Release 0.140.0-alpha.4.",
+    "GitHub release metadata has no release object for rust-v0.140.0-alpha.3 in this run's readback, although the Git tag exists; this record treats rust-v0.140.0-alpha.4 as the next public prerelease release checkpoint after rust-v0.140.0-alpha.2.",
+    "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.2 -> rust-v0.140.0-alpha.4; GitHub compare metadata reports 27 ahead commits.",
+    "PR-title metadata in the alpha.2 -> alpha.4 compare points to plugin identity and hosted plugin runtime, provider-default memory models, app-server realtime/background-terminal/delete APIs, MCP startup and manager behavior, goal analytics, thread-list and rollout performance, ToolExecutor refactors, SQLite recovery, and release build tooling.",
+    "Checked Radar review/impact artifacts cover only part of the alpha.4 window: #26701, #27129, #27174, #27198, and #27383 have review and impact records, while #27375 has review without a matching upstream_impact/v1 record in this checkout.",
+    "The refreshed checked release_delta/v1 records stable rust-v0.139.0 -> latest prerelease rust-v0.140.0-alpha.4 with 54 ahead commits and no tracked signal slugs.",
+    "Official Codex changelog readback for this run shows Codex app 26.608 and ChatGPT for iOS 1.2026.153 on 2026-06-09; rust-v0.140.0-alpha.4 is a GitHub prerelease checkpoint, not an official changelog entry."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.140.0-alpha.4 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.2 -> rust-v0.140.0-alpha.4.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.2...rust-v0.140.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.4 release body is sparse and does not describe user-facing behavior beyond the version checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.4",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR-title metadata in the alpha.4 compare points to plugin, memory-model, app-server, MCP, analytics, thread-list, rollout, ToolExecutor, recovery, and release-build areas.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.2...rust-v0.140.0-alpha.4",
+      "confidence": "likely"
+    },
+    {
+      "text": "Behavior claims for the alpha.4 window require upstream source review before a publishable Decodex prerelease thread.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the alpha.4 release body is sparse and the adjacent alpha.2 -> alpha.4 compare has unreviewed PR-title gaps.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-4:alpha2-alpha4:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "No previous live and quote-eligible @decodexspace 0.140 prerelease post exists; alpha.2 was also recorded as a defer / needs_upstream_analysis checkpoint.",
+    "Do not compare later 0.140 prereleases against stable 0.139.0 or alpha.2 if a newer public prerelease checkpoint exists; later 0.140 prereleases should use adjacent prerelease-to-prerelease lineage from alpha.4.",
+    "Exact source-review gap list for alpha.2 -> alpha.4 primary compare PRs: #27094, #24999, #27078, #27285, #27107, #27261, #27259, #27264, #27280, #27315, #27276, #27299, #27391, #27407, #27304, #26041, #25018, #26859, #27064, #27421.",
+    "Impact bridge gap: #27375 has an upstream_review/v1 artifact but no matching upstream_impact/v1 artifact in this checkout.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "media_refs": null,
+  "next_steps": [
+    "Do not hand this alpha.4 defer record to decodex-x-publisher.",
+    "Route the listed source-review gap PRs to codex-upstream-radar-review / codex-code-analysis before turning alpha.4 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Use the refreshed release_delta/v1 only as stable-to-latest-prerelease site metadata; use adjacent prerelease-to-prerelease lineage for future 0.140 prereleases after alpha.4."
+  ]
+}
