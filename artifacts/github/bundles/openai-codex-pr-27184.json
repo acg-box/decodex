@@ -1,0 +1,433 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T12:58:40Z",
+      "message": "skills: load selected executor capability roots",
+      "sha": "5d7823925c88f09568bafda637fccd92b56a9b6a",
+      "url": "https://github.com/openai/codex/commit/5d7823925c88f09568bafda637fccd92b56a9b6a"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T13:21:19Z",
+      "message": "fix CI",
+      "sha": "0f384f1b4d7e7542f1202fc966b8c6475fa27d0f",
+      "url": "https://github.com/openai/codex/commit/0f384f1b4d7e7542f1202fc966b8c6475fa27d0f"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T13:39:35Z",
+      "message": "some small fixes",
+      "sha": "f0df7cb06b999489e989767092ecc767fa7c30cc",
+      "url": "https://github.com/openai/codex/commit/f0df7cb06b999489e989767092ecc767fa7c30cc"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T13:48:25Z",
+      "message": "Fix executor skills Clippy violations",
+      "sha": "fec64281b4558807c592629485958b02f0869d55",
+      "url": "https://github.com/openai/codex/commit/fec64281b4558807c592629485958b02f0869d55"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T14:01:43Z",
+      "message": "Fix executor skill locator test setup",
+      "sha": "f607c8696bc512aefbcf3fc038d6c53d77d4663c",
+      "url": "https://github.com/openai/codex/commit/f607c8696bc512aefbcf3fc038d6c53d77d4663c"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T14:24:22Z",
+      "message": "Normalize Windows executor skill test paths",
+      "sha": "2400fd9198b798764a5090410c8761a69fd61734",
+      "url": "https://github.com/openai/codex/commit/2400fd9198b798764a5090410c8761a69fd61734"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T16:50:46Z",
+      "message": "process comments",
+      "sha": "ed85bf407760a9dcc0ebb6971dc0505c1d4f3a1a",
+      "url": "https://github.com/openai/codex/commit/ed85bf407760a9dcc0ebb6971dc0505c1d4f3a1a"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "CCA",
+    "MCP",
+    "HTTP",
+    "SKILL",
+    "API",
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND",
+    "BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS",
+    "BUILT_IN_PERMISSION_PROFILE_WORKSPACE",
+    "JSONRPCR",
+    "READ_TIMEOUT",
+    "SKILL_NAME",
+    "SKILL_MARKER",
+    "EXECUTOR_SKILL_BODY_MARKER",
+    "LOCAL_SKILL_MARKER",
+    "LOCAL_SKILL_BODY_MARKER",
+    "FEATURES",
+    "SERVICE_TIER_DEFAULT_REQUEST_VALUE",
+    "TEST_INSTALLATION_ID",
+    "MAX_SKILL_NAME_BYTES",
+    "MAX_SKILL_PATH_BYTES",
+    "HOST_AUTHORITY_ID",
+    "SKILLS_INSTRUCTIONS_CLOSE_TAG",
+    "SKILLS_INSTRUCTIONS_OPEN_TAG",
+    "MAX_AVAILABLE_SKILLS_CHARS",
+    "MAX_MAIN_PROMPT_CHARS",
+    "MAX_AVAILABLE_SKILLS_BYTES",
+    "MAX_MAIN_PROMPT_BYTES",
+    "SKILL_CONTENTS",
+    "NEXT_TEST_ROOT_ID"
+  ],
+  "files": [
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1994,6 +1994,7 @@ dependencies = [\n  \"codex-rollout\",\n  \"codex-sandboxing\",\n  \"codex-shell-command\",\n+ \"codex-skills-extension\",\n  \"codex-state\",\n  \"codex-thread-store\",\n  \"codex-tools\",\n@@ -3796,8 +3797,11 @@ dependencies = [\n  \"async-trait\",\n  \"codex-core\",\n  \"codex-core-skills\",\n+ \"codex-exec-server\",\n  \"codex-extension-api\",\n  \"codex-protocol\",\n+ \"codex-utils-absolute-path\",\n+ \"codex-utils-string\",\n  \"pretty_assertions\",\n  \"tokio\",\n ]",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -212,6 +212,7 @@ codex-sandboxing = { path = \"sandboxing\" }\n codex-secrets = { path = \"secrets\" }\n codex-shell-command = { path = \"shell-command\" }\n codex-shell-escalation = { path = \"shell-escalation\" }\n+codex-skills-extension = { path = \"ext/skills\" }\n codex-skills = { path = \"skills\" }\n codex-state = { path = \"state\" }\n codex-stdio-to-uds = { path = \"stdio-to-uds\" }",
+      "path": "codex-rs/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 52,
+      "deletions": 0,
+      "patch_excerpt": "@@ -180,6 +180,36 @@\n       ],\n       \"type\": \"object\"\n     },\n+    \"CapabilityRootLocation\": {\n+      \"description\": \"Location used to resolve a selected capability root.\",\n+      \"oneOf\": [\n+        {\n+          \"description\": \"A path owned by an execution environment.\",\n+          \"properties\": {\n+            \"environmentId\": {\n+              \"type\": \"string\"\n+            },\n+            \"path\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"environment\"\n+              ],\n+              \"title\": \"EnvironmentCapabilityRootLocationType\",\n+              \"type\": \"string\"\n+            }\n+          },\n+          \"required\": [\n+            \"environmentId\",\n+            \"path\",\n+            \"type\"\n+          ],\n+          \"title\": \"EnvironmentCapabilityRootLocation\",\n+          \"type\": \"object\"\n+        }\n+      ]\n+    },\n  ...",
+      "path": "codex-rs/app-server-protocol/schema/json/ClientRequest.json",
+      "status": "modified"
+    },
+    {
+      "additions": 52,
+      "deletions": 0,
+      "patch_excerpt": "@@ -6765,6 +6765,36 @@\n         ],\n         \"type\": \"string\"\n       },\n+      \"CapabilityRootLocation\": {\n+        \"description\": \"Location used to resolve a selected capability root.\",\n+        \"oneOf\": [\n+          {\n+            \"description\": \"A path owned by an execution environment.\",\n+            \"properties\": {\n+              \"environmentId\": {\n+                \"type\": \"string\"\n+              },\n+              \"path\": {\n+                \"type\": \"string\"\n+              },\n+              \"type\": {\n+                \"enum\": [\n+                  \"environment\"\n+                ],\n+                \"title\": \"EnvironmentCapabilityRootLocationType\",\n+                \"type\": \"string\"\n+              }\n+            },\n+            \"required\": [\n+              \"environmentId\",\n+              \"path\",\n+              \"type\"\n+            ],\n+            \"title\": \"EnvironmentCapabilityRootLocation\"...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 52,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1087,6 +1087,36 @@\n       ],\n       \"type\": \"string\"\n     },\n+    \"CapabilityRootLocation\": {\n+      \"description\": \"Location used to resolve a selected capability root.\",\n+      \"oneOf\": [\n+        {\n+          \"description\": \"A path owned by an execution environment.\",\n+          \"properties\": {\n+            \"environmentId\": {\n+              \"type\": \"string\"\n+            },\n+            \"path\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"environment\"\n+              ],\n+              \"title\": \"EnvironmentCapabilityRootLocationType\",\n+              \"type\": \"string\"\n+            }\n+          },\n+          \"required\": [\n+            \"environmentId\",\n+            \"path\",\n+            \"type\"\n+          ],\n+          \"title\": \"EnvironmentCapabilityRootLocation\",\n+          \"type\": \"object\"\n+        }\n+      ]\n+    },\n...",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 52,
+      "deletions": 0,
+      "patch_excerpt": "@@ -64,6 +64,36 @@\n         }\n       ]\n     },\n+    \"CapabilityRootLocation\": {\n+      \"description\": \"Location used to resolve a selected capability root.\",\n+      \"oneOf\": [\n+        {\n+          \"description\": \"A path owned by an execution environment.\",\n+          \"properties\": {\n+            \"environmentId\": {\n+              \"type\": \"string\"\n+            },\n+            \"path\": {\n+              \"type\": \"string\"\n+            },\n+            \"type\": {\n+              \"enum\": [\n+                \"environment\"\n+              ],\n+              \"title\": \"EnvironmentCapabilityRootLocationType\",\n+              \"type\": \"string\"\n+            }\n+          },\n+          \"required\": [\n+            \"environmentId\",\n+            \"path\",\n+            \"type\"\n+          ],\n+          \"title\": \"EnvironmentCapabilityRootLocation\",\n+          \"type\": \"object\"\n+        }\n+      ]\n+    },\n     \"DynamicToolS...",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ThreadStartParams.json",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,8 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+/**\n+ * Location used to resolve a selected capability root.\n+ */\n+export type CapabilityRootLocation = { \"type\": \"environment\", environmentId: string, path: string, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/CapabilityRootLocation.ts",
+      "status": "added"
+    },
+    {
+      "additions": 17,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,17 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+import type { CapabilityRootLocation } from \"./CapabilityRootLocation\";\n+\n+/**\n+ * A user-selected root that can expose one or more runtime capabilities.\n+ */\n+export type SelectedCapabilityRoot = {\n+/**\n+ * Stable identifier supplied by the capability selection platform.\n+ */\n+id: string,\n+/**\n+ * Where the selected root can be resolved.\n+ */\n+location: CapabilityRootLocation, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/SelectedCapabilityRoot.ts",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -40,6 +40,7 @@ export type { ByteRange } from \"./ByteRange\";\n export type { CancelLoginAccountParams } from \"./CancelLoginAccountParams\";\n export type { CancelLoginAccountResponse } from \"./CancelLoginAccountResponse\";\n export type { CancelLoginAccountStatus } from \"./CancelLoginAccountStatus\";\n+export type { CapabilityRootLocation } from \"./CapabilityRootLocation\";\n export type { ChatgptAuthTokensRefreshParams } from \"./ChatgptAuthTokensRefreshParams\";\n export type { ChatgptAuthTokensRefreshReason } from \"./ChatgptAuthTokensRefreshReason\";\n export type { ChatgptAuthTokensRefreshResponse } from \"./ChatgptAuthTokensRefreshResponse\";\n@@ -334,6 +335,7 @@ export type { ReviewTarget } from \"./ReviewTarget\";\n export type { SandboxMode } from \"./SandboxMode\";\n export type { SandboxPolicy } from \"./SandboxPolicy\";\n export type { SandboxWorkspaceWrite } from \"./SandboxWorkspaceWrite\";\n+export ...",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -11,6 +11,8 @@ use super::TurnEnvironmentParams;\n use super::TurnItemsView;\n use super::shared::v2_enum_from_core;\n use codex_experimental_api_macros::ExperimentalApi;\n+pub use codex_protocol::capabilities::CapabilityRootLocation;\n+pub use codex_protocol::capabilities::SelectedCapabilityRoot;\n use codex_protocol::config_types::CollaborationMode;\n use codex_protocol::config_types::Personality;\n use codex_protocol::config_types::ReasoningSummary;\n@@ -153,6 +155,10 @@ pub struct ThreadStartParams {\n     #[experimental(\"thread/start.dynamicTools\")]\n     #[ts(optional = nullable)]\n     pub dynamic_tools: Option<Vec<DynamicToolSpec>>,\n+    /// Capability roots selected for this thread by the hosting platform.\n+    #[experimental(\"thread/start.selectedCapabilityRoots\")]\n+    #[ts(optional = nullable)]\n+    pub selected_capability_roots: Option<Vec<SelectedCapabilityRoot>>,\n     /// Test-only...",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -49,6 +49,7 @@ codex-hooks = { workspace = true }\n codex-otel = { workspace = true }\n codex-plugin = { workspace = true }\n codex-shell-command = { workspace = true }\n+codex-skills-extension = { workspace = true }\n codex-utils-cli = { workspace = true }\n codex-utils-pty = { workspace = true }\n codex-backend-client = { workspace = true }",
+      "path": "codex-rs/app-server/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 1,
+      "patch_excerpt": "@@ -130,7 +130,7 @@ Example with notification opt-out:\n \n ## API Overview\n \n-- `thread/start` — create a new thread; emits `thread/started` (including the current `thread.status`) and auto-subscribes you to turn/item events for that thread. When the request includes a `cwd` and the resolved sandbox is `workspace-write` or full access, app-server also marks that project as trusted in the user `config.toml`. Pass `sessionStartSource: \"clear\"` when starting a replacement thread after clearing the current session so `SessionStart` hooks receive `source: \"clear\"` instead of the default `\"startup\"`. Experimental `runtimeWorkspaceRoots` replaces the thread-scoped runtime workspace roots used to materialize `:workspace_roots`; paths must be absolute. For permissions, prefer experimental `permissions` profile selection by id; the legacy `sandbox` shorthand is still accepted but cannot be combined...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -32,6 +32,7 @@ pub(crate) fn thread_extensions<S>(\n     state_db: Option<StateDbHandle>,\n     thread_manager: Weak<ThreadManager>,\n     goal_service: Arc<GoalService>,\n+    executor_skill_provider: Arc<dyn codex_skills_extension::SkillProvider>,\n ) -> Arc<ExtensionRegistry<Config>>\n where\n     S: AgentSpawner<StartThreadOptions, Spawned = NewThread, Error = CodexErr> + 'static,\n@@ -51,6 +52,11 @@ where\n     codex_memories_extension::install(&mut builder, codex_otel::global());\n     codex_web_search_extension::install(&mut builder, auth_manager.clone());\n     codex_image_generation_extension::install(&mut builder, auth_manager);\n+    codex_skills_extension::install_with_providers(\n+        &mut builder,\n+        codex_skills_extension::SkillProviders::new()\n+            .with_executor_provider(executor_skill_provider),\n+    );\n     Arc::new(builder.build())\n }",
+      "path": "codex-rs/app-server/src/extensions.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 1,
+      "patch_excerpt": "@@ -181,19 +181,27 @@ mod tests {\n             .await\n             .expect(\"refresh tests require state db\");\n         let thread_store = thread_store_from_config(&good_config, Some(state_db.clone()));\n+        let environment_manager = Arc::new(EnvironmentManager::default_for_tests());\n+        let executor_skill_provider: Arc<dyn codex_skills_extension::SkillProvider> = Arc::new(\n+            codex_skills_extension::ExecutorSkillProvider::new_with_restriction_product(\n+                Arc::clone(&environment_manager),\n+                SessionSource::Exec.restriction_product(),\n+            ),\n+        );\n         let thread_manager = Arc::new_cyclic(|thread_manager| {\n             ThreadManager::new(\n                 &good_config,\n                 auth_manager.clone(),\n                 SessionSource::Exec,\n-                Arc::new(EnvironmentManager::default_for_tests()),\n+           ...",
+      "path": "codex-rs/app-server/src/mcp_refresh.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 0,
+      "patch_excerpt": "@@ -307,6 +307,14 @@ impl MessageProcessor {\n         // resumed, or forked threads to a different persistence backend/root.\n         let thread_store = codex_core::thread_store_from_config(config.as_ref(), state_db.clone());\n         let environment_manager_for_requests = Arc::clone(&environment_manager);\n+        let environment_manager_for_extensions = Arc::clone(&environment_manager);\n+        let restriction_product = session_source.restriction_product();\n+        let executor_skill_provider: Arc<dyn codex_skills_extension::SkillProvider> = Arc::new(\n+            codex_skills_extension::ExecutorSkillProvider::new_with_restriction_product(\n+                environment_manager_for_extensions,\n+                restriction_product,\n+            ),\n+        );\n         let goal_service = Arc::new(GoalService::new());\n         let thread_manager = Arc::new_cyclic(|thread_manager| {\n      ...",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,5 +1,7 @@\n use super::*;\n use crate::error_code::method_not_found;\n+use codex_app_server_protocol::SelectedCapabilityRoot;\n+use codex_extension_api::ExtensionDataInit;\n use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;\n use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;\n \n@@ -822,6 +824,7 @@ impl ThreadRequestProcessor {\n             base_instructions,\n             developer_instructions,\n             dynamic_tools,\n+            selected_capability_roots,\n             mock_experimental_field: _mock_experimental_field,\n             experimental_raw_events,\n             personality,\n@@ -877,6 +880,7 @@ impl ThreadRequestProcessor {\n                 config,\n                 typesafe_overrides,\n                 dynamic_tools,\n+                selected_capability_roots.unwrap_or_default(),\n                 session_start_source,\n                 ...",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 148,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,148 @@\n+use std::time::Duration;\n+\n+use anyhow::Result;\n+use app_test_support::TestAppServer;\n+use app_test_support::to_response;\n+use codex_app_server_protocol::CapabilityRootLocation;\n+use codex_app_server_protocol::JSONRPCResponse;\n+use codex_app_server_protocol::RequestId;\n+use codex_app_server_protocol::SelectedCapabilityRoot;\n+use codex_app_server_protocol::ThreadStartParams;\n+use codex_app_server_protocol::ThreadStartResponse;\n+use codex_app_server_protocol::TurnStartParams;\n+use codex_app_server_protocol::UserInput;\n+use core_test_support::responses;\n+use tempfile::TempDir;\n+use tokio::time::timeout;\n+\n+const READ_TIMEOUT: Duration = Duration::from_secs(10);\n+const SKILL_NAME: &str = \"demo-plugin:deploy\";\n+const SKILL_MARKER: &str = \"EXECUTOR_SKILL_BODY_MARKER\";\n+const LOCAL_SKILL_MARKER: &str = \"LOCAL_SKILL_BODY_MARKER\";\n+\n+#[tokio::test]\n+async fn selected_executor_r...",
+      "path": "codex-rs/app-server/tests/suite/v2/executor_skills.rs",
+      "status": "added"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,6 +12,7 @@ mod connection_handling_websocket;\n #[cfg(unix)]\n mod connection_handling_websocket_unix;\n mod dynamic_tools;\n+mod executor_skills;\n mod experimental_api;\n mod experimental_feature_list;\n mod external_agent_config;",
+      "path": "codex-rs/app-server/tests/suite/v2/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -793,6 +793,7 @@ async fn skills_changed_notification_is_emitted_after_skill_change() -> Result<(\n             thread_source: None,\n             dynamic_tools: None,\n             environments: None,\n+            selected_capability_roots: None,\n             mock_experimental_field: None,\n             experimental_raw_events: false,\n         })",
+      "path": "codex-rs/app-server/tests/suite/v2/skills_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 8,
+      "patch_excerpt": "@@ -169,8 +169,8 @@ where\n     let mut file_systems_by_skill_path: HashMap<AbsolutePathBuf, Arc<dyn ExecutorFileSystem>> =\n         HashMap::new();\n     for root in roots {\n-        let root_path = canonicalize_for_skill_identity(&root.path);\n         let fs = root.file_system;\n+        let root_path = canonicalize_for_skill_identity(fs.as_ref(), &root.path).await;\n         let skills_before_root = outcome.skills.len();\n         discover_skills_under_root(\n             fs.as_ref(),\n@@ -471,8 +471,13 @@ fn dedupe_skill_roots_by_path(roots: &mut Vec<SkillRoot>) {\n     roots.retain(|root| seen.insert(root.path.clone()));\n }\n \n-fn canonicalize_for_skill_identity(path: &AbsolutePathBuf) -> AbsolutePathBuf {\n-    path.canonicalize().unwrap_or_else(|_| path.clone())\n+async fn canonicalize_for_skill_identity(\n+    fs: &dyn ExecutorFileSystem,\n+    path: &AbsolutePathBuf,\n+) -> AbsolutePathBuf {\n...",
+      "path": "codex-rs/core-skills/src/loader.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -103,6 +103,7 @@ pub(crate) async fn run_codex_thread_interactive(\n         parent_rollout_thread_trace: codex_rollout_trace::ThreadTraceContext::disabled(),\n         parent_trace: None,\n         environment_selections: parent_ctx.environments.clone(),\n+        thread_extension_init: codex_extension_api::ExtensionDataInit::default(),\n         analytics_events_client: Some(parent_session.services.analytics_events_client.clone()),\n         thread_store: Arc::clone(&parent_session.services.thread_store),\n         attestation_provider: parent_session.services.attestation_provider.clone(),",
+      "path": "codex-rs/core/src/codex_delegate.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -51,6 +51,7 @@ use codex_config::types::OAuthCredentialsStoreMode;\n use codex_exec_server::Environment;\n use codex_exec_server::EnvironmentManager;\n use codex_exec_server::FileSystemSandboxContext;\n+use codex_extension_api::ExtensionDataInit;\n use codex_extension_api::PromptSlot;\n use codex_features::FEATURES;\n use codex_features::Feature;\n@@ -417,6 +418,7 @@ pub(crate) struct CodexSpawnArgs {\n     pub(crate) user_shell_override: Option<shell::Shell>,\n     pub(crate) parent_trace: Option<W3cTraceContext>,\n     pub(crate) environment_selections: ResolvedTurnEnvironments,\n+    pub(crate) thread_extension_init: ExtensionDataInit,\n     pub(crate) analytics_events_client: Option<AnalyticsEventsClient>,\n     pub(crate) thread_store: Arc<dyn ThreadStore>,\n     pub(crate) attestation_provider: Option<Arc<dyn AttestationProvider>>,\n@@ -497,6 +499,7 @@ impl Codex {\n             parent_rollout_t...",
+      "path": "codex-rs/core/src/session/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 2,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use crate::agents_md::LoadedAgentsMd;\n use crate::config::ConstraintError;\n use crate::skills::SkillError;\n use crate::state::ActiveTurn;\n+use codex_extension_api::ExtensionDataInit;\n use codex_protocol::SessionId;\n use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;\n use codex_protocol::config_types::ServiceTier;\n@@ -487,6 +488,7 @@ impl Session {\n         plugins_manager: Arc<PluginsManager>,\n         mcp_manager: Arc<McpManager>,\n         extensions: Arc<codex_extension_api::ExtensionRegistry<crate::config::Config>>,\n+        thread_extension_init: ExtensionDataInit,\n         agent_control: AgentControl,\n         environment_manager: Arc<EnvironmentManager>,\n         analytics_events_client: Option<AnalyticsEventsClient>,\n@@ -961,8 +963,10 @@ impl Session {\n             );\n             let session_extension_data =\n                 codex_extension_api:...",
+      "path": "codex-rs/core/src/session/session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -4690,6 +4690,7 @@ async fn session_new_fails_when_zsh_fork_enabled_without_packaged_zsh() {\n         plugins_manager,\n         mcp_manager,\n         Arc::new(codex_extension_api::ExtensionRegistryBuilder::new().build()),\n+        codex_extension_api::ExtensionDataInit::default(),\n         AgentControl::default(),\n         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),\n         /*analytics_events_client*/ None,\n@@ -5030,6 +5031,7 @@ async fn make_session_with_config_and_rx(\n         plugins_manager,\n         mcp_manager,\n         Arc::new(codex_extension_api::ExtensionRegistryBuilder::new().build()),\n+        codex_extension_api::ExtensionDataInit::default(),\n         AgentControl::default(),\n         Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),\n         /*analytics_events_client*/ None,\n@@ -5131,6 +5133,7 @@ async fn make_session_with_h...",
+      "path": "codex-rs/core/src/session/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -731,6 +731,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {\n         environment_selections: ResolvedTurnEnvironments {\n             turn_environments: Vec::new(),\n         },\n+        thread_extension_init: codex_extension_api::ExtensionDataInit::default(),\n         analytics_events_client: None,\n         thread_store,\n         attestation_provider: None,",
+      "path": "codex-rs/core/src/session/tests/guardian_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 0,
+      "patch_excerpt": "@@ -21,6 +21,7 @@ use codex_app_server_protocol::ThreadHistoryBuilder;\n use codex_app_server_protocol::TurnStatus;\n use codex_core_plugins::PluginsManager;\n use codex_exec_server::EnvironmentManager;\n+use codex_extension_api::ExtensionDataInit;\n use codex_extension_api::ExtensionRegistry;\n use codex_extension_api::empty_extension_registry;\n use codex_features::Feature;\n@@ -182,6 +183,7 @@ pub struct StartThreadOptions {\n     pub metrics_service_name: Option<String>,\n     pub parent_trace: Option<W3cTraceContext>,\n     pub environments: Vec<TurnEnvironmentSelection>,\n+    pub thread_extension_init: ExtensionDataInit,\n }\n \n pub(crate) struct ResumeThreadWithHistoryOptions {\n@@ -576,6 +578,7 @@ impl ThreadManager {\n             metrics_service_name: None,\n             parent_trace: None,\n             environments,\n+            thread_extension_init: ExtensionDataInit::default(),\n         })...",
+      "path": "codex-rs/core/src/thread_manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 79,
+      "deletions": 0,
+      "patch_excerpt": "@@ -331,6 +331,7 @@ async fn start_thread_rejects_explicit_local_environment_when_default_provider_i\n                 environment_id: \"local\".to_string(),\n                 cwd: config.cwd.clone(),\n             }],\n+            thread_extension_init: Default::default(),\n         })\n         .await;\n     let err = match result {\n@@ -368,6 +369,7 @@ async fn start_thread_keeps_internal_threads_hidden_from_normal_lookups() {\n             metrics_service_name: None,\n             parent_trace: None,\n             environments: Vec::new(),\n+            thread_extension_init: Default::default(),\n         })\n         .await\n         .expect(\"internal thread should start\");\n@@ -384,6 +386,81 @@ async fn start_thread_keeps_internal_threads_hidden_from_normal_lookups() {\n     assert!(manager.list_thread_ids().await.is_empty());\n }\n \n+#[tokio::test]\n+async fn start_thread_seeds_extension_data_before_l...",
+      "path": "codex-rs/core/src/thread_manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -757,6 +757,7 @@ async fn subagent_stop_replaces_stop_and_skips_internal_subagents() -> Result<()\n             metrics_service_name: None,\n             parent_trace: None,\n             environments: Vec::new(),\n+            thread_extension_init: Default::default(),\n         })\n         .await?;",
+      "path": "codex-rs/core/tests/suite/subagent_notifications.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -59,3 +59,4 @@ pub use registry::ExtensionRegistry;\n pub use registry::ExtensionRegistryBuilder;\n pub use registry::empty_extension_registry;\n pub use state::ExtensionData;\n+pub use state::ExtensionDataInit;",
+      "path": "codex-rs/ext/extension-api/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 32,
+      "deletions": 1,
+      "patch_excerpt": "@@ -7,6 +7,32 @@ use std::sync::PoisonError;\n \n type ErasedData = Arc<dyn Any + Send + Sync>;\n \n+/// Typed values supplied before an [`ExtensionData`] scope is created.\n+///\n+/// Hosts consume this value once to seed a scope before lifecycle contributors\n+/// run. It does not install extensions or provide persistence.\n+#[derive(Debug, Default)]\n+pub struct ExtensionDataInit {\n+    entries: HashMap<TypeId, ErasedData>,\n+}\n+\n+impl ExtensionDataInit {\n+    /// Creates an empty extension data initializer.\n+    pub fn new() -> Self {\n+        Self::default()\n+    }\n+\n+    /// Stores `value` as the initial attachment of type `T`.\n+    pub fn insert<T>(&mut self, value: T) -> Option<Arc<T>>\n+    where\n+        T: Any + Send + Sync,\n+    {\n+        self.entries\n+            .insert(TypeId::of::<T>(), Arc::new(value))\n+            .map(downcast_data)\n+    }\n+}\n+\n /// Typed extension-owned data at...",
+      "path": "codex-rs/ext/extension-api/src/state.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -17,8 +17,11 @@ workspace = true\n async-trait = { workspace = true }\n codex-core = { workspace = true }\n codex-core-skills = { workspace = true }\n+codex-exec-server = { workspace = true }\n codex-extension-api = { workspace = true }\n codex-protocol = { workspace = true }\n+codex-utils-absolute-path = { workspace = true }\n+codex-utils-string = { workspace = true }\n \n [dev-dependencies]\n pretty_assertions = { workspace = true }",
+      "path": "codex-rs/ext/skills/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 32,
+      "deletions": 3,
+      "patch_excerpt": "@@ -1,4 +1,5 @@\n use codex_core_skills::model::SkillDependencies;\n+use codex_exec_server::EnvironmentPathRef;\n \n /// Source authority that owns a skill package and must be used to read it.\n #[derive(Clone, Debug, PartialEq, Eq, Hash)]\n@@ -56,9 +57,37 @@ impl SkillAuthority {\n #[derive(Clone, Debug, PartialEq, Eq, Hash)]\n pub struct SkillPackageId(pub String);\n \n-/// Opaque resource id inside a skill package.\n+/// Opaque resource id inside a skill package, optionally bound to the\n+/// environment path that owns its contents.\n #[derive(Clone, Debug, PartialEq, Eq, Hash)]\n-pub struct SkillResourceId(pub String);\n+pub struct SkillResourceId {\n+    id: String,\n+    environment_path: Option<EnvironmentPathRef>,\n+}\n+\n+impl SkillResourceId {\n+    pub fn new(id: impl Into<String>) -> Self {\n+        Self {\n+            id: id.into(),\n+            environment_path: None,\n+        }\n+    }\n+\n+    p...",
+      "path": "codex-rs/ext/skills/src/catalog.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 81,
+      "deletions": 23,
+      "patch_excerpt": "@@ -6,27 +6,32 @@ use codex_core_skills::SkillInstructions;\n use codex_core_skills::injection::InjectedHostSkillPrompts;\n use codex_core_skills::injection::SkillInjection;\n use codex_extension_api::ConfigContributor;\n+use codex_extension_api::ContextContributor;\n use codex_extension_api::ContextualUserFragment;\n use codex_extension_api::ExtensionData;\n use codex_extension_api::ExtensionEventSink;\n use codex_extension_api::ExtensionRegistryBuilder;\n+use codex_extension_api::PromptFragment;\n use codex_extension_api::ThreadLifecycleContributor;\n use codex_extension_api::ThreadStartInput;\n use codex_extension_api::TurnInputContext;\n use codex_extension_api::TurnInputContributor;\n+use codex_protocol::capabilities::SelectedCapabilityRoot;\n use codex_protocol::protocol::Event;\n use codex_protocol::protocol::EventMsg;\n use codex_protocol::protocol::WarningEvent;\n \n-use crate::catalog::SkillAutho...",
+      "path": "codex-rs/ext/skills/src/extension.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -8,6 +8,8 @@ mod state;\n \n pub use extension::install;\n pub use extension::install_with_providers;\n+pub use provider::ExecutorSkillProvider;\n pub use provider::HostSkillProvider;\n+pub use provider::SkillProvider;\n pub use sources::SkillProviderSource;\n pub use sources::SkillProviders;",
+      "path": "codex-rs/ext/skills/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 1,
+      "patch_excerpt": "@@ -2,9 +2,11 @@ use std::future::Future;\n use std::pin::Pin;\n use std::sync::Arc;\n \n+mod executor;\n mod host;\n \n use codex_core_skills::HostLoadedSkills;\n+use codex_protocol::capabilities::SelectedCapabilityRoot;\n \n use crate::catalog::SkillAuthority;\n use crate::catalog::SkillCatalog;\n@@ -14,12 +16,13 @@ use crate::catalog::SkillReadResult;\n use crate::catalog::SkillResourceId;\n use crate::catalog::SkillSearchResult;\n \n+pub use executor::ExecutorSkillProvider;\n pub use host::HostSkillProvider;\n \n #[derive(Clone, Debug)]\n pub struct SkillListQuery {\n     pub turn_id: String,\n-    pub executor_authorities: Vec<SkillAuthority>,\n+    pub executor_roots: Vec<SelectedCapabilityRoot>,\n     pub host: Option<Arc<HostLoadedSkills>>,\n     pub include_host_skills: bool,\n     pub include_bundled_skills: bool,",
+      "path": "codex-rs/ext/skills/src/provider.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 197,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,197 @@\n+use std::path::PathBuf;\n+use std::sync::Arc;\n+\n+use codex_core_skills::SkillMetadata;\n+use codex_core_skills::filter_skill_load_outcome_for_product;\n+use codex_core_skills::loader::SkillRoot;\n+use codex_core_skills::loader::load_skills_from_roots;\n+use codex_exec_server::EnvironmentManager;\n+use codex_exec_server::EnvironmentPathRef;\n+use codex_protocol::capabilities::CapabilityRootLocation;\n+use codex_protocol::protocol::Product;\n+use codex_protocol::protocol::SkillScope;\n+use codex_utils_absolute_path::AbsolutePathBuf;\n+\n+use crate::catalog::SkillAuthority;\n+use crate::catalog::SkillCatalog;\n+use crate::catalog::SkillCatalogEntry;\n+use crate::catalog::SkillPackageId;\n+use crate::catalog::SkillProviderError;\n+use crate::catalog::SkillReadResult;\n+use crate::catalog::SkillResourceId;\n+use crate::catalog::SkillSearchResult;\n+use crate::catalog::SkillSourceKind;\n+use cra...",
+      "path": "codex-rs/ext/skills/src/provider/executor.rs",
+      "status": "added"
+    },
+    {
+      "additions": 5,
+      "deletions": 5,
+      "patch_excerpt": "@@ -55,12 +55,12 @@ impl SkillProvider for HostSkillProvider {\n             };\n             let Some(skill) = host_loaded_skills.outcome().skills.iter().find(|skill| {\n                 let skill_path = skill.path_to_skills_md.to_string_lossy();\n-                skill_path == request.resource.0.as_str()\n-                    || skill_path.replace('\\\\', \"/\") == request.resource.0\n+                skill_path == request.resource.as_str()\n+                    || skill_path.replace('\\\\', \"/\") == request.resource.as_str()\n             }) else {\n                 return Err(SkillProviderError::new(format!(\n                     \"host skill resource is not loaded: {}\",\n-                    request.resource.0\n+                    request.resource.as_str()\n                 )));\n             };\n \n@@ -70,7 +70,7 @@ impl SkillProvider for HostSkillProvider {\n                 .map_err(|err| {\n            ...",
+      "path": "codex-rs/ext/skills/src/provider/host.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 14,
+      "patch_excerpt": "@@ -2,11 +2,14 @@ use codex_core_skills::render_available_skills_body;\n use codex_extension_api::ContextualUserFragment;\n use codex_protocol::protocol::SKILLS_INSTRUCTIONS_CLOSE_TAG;\n use codex_protocol::protocol::SKILLS_INSTRUCTIONS_OPEN_TAG;\n+use codex_utils_string::take_bytes_at_char_boundary;\n \n use crate::catalog::SkillCatalog;\n \n-const MAX_AVAILABLE_SKILLS_CHARS: usize = 8_000;\n-const MAX_MAIN_PROMPT_CHARS: usize = 40_000;\n+const MAX_AVAILABLE_SKILLS_BYTES: usize = 8_000;\n+const MAX_MAIN_PROMPT_BYTES: usize = 8_000;\n+pub(crate) const MAX_SKILL_NAME_BYTES: usize = 256;\n+pub(crate) const MAX_SKILL_PATH_BYTES: usize = 1_024;\n \n #[derive(Debug, Clone, PartialEq, Eq)]\n pub(crate) struct AvailableSkillsFragment {\n@@ -32,7 +35,7 @@ impl ContextualUserFragment for AvailableSkillsFragment {\n }\n \n pub(crate) fn available_skills_fragment(catalog: &SkillCatalog) -> Option<AvailableSkillsFragme...",
+      "path": "codex-rs/ext/skills/src/render.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -93,12 +93,12 @@ fn push_selected(\n }\n \n fn entry_matches_path(entry: &SkillCatalogEntry, path: &str) -> bool {\n-    entry.main_prompt.0 == path\n+    entry.main_prompt.as_str() == path\n         || entry.id.0 == path\n         || entry\n             .display_path\n             .as_deref()\n-            .is_some_and(|display_path| display_path == path)\n+            .is_some_and(|display_path| normalize_skill_path(display_path) == path)\n }\n \n fn path_is_skill(path: &str) -> bool {",
+      "path": "codex-rs/ext/skills/src/selection.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -46,7 +46,7 @@ impl SkillProviderSource {\n     fn should_list(&self, query: &SkillListQuery) -> bool {\n         match &self.kind {\n             SkillSourceKind::Host => query.include_host_skills,\n-            SkillSourceKind::Executor => !query.executor_authorities.is_empty(),\n+            SkillSourceKind::Executor => !query.executor_roots.is_empty(),\n             SkillSourceKind::Remote => query.include_remote_skills,\n             SkillSourceKind::Custom(_) => true,\n         }",
+      "path": "codex-rs/ext/skills/src/sources.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,4 +1,5 @@\n use codex_core::config::Config;\n+use codex_protocol::capabilities::SelectedCapabilityRoot;\n use std::sync::Mutex;\n \n use crate::catalog::SkillCatalog;\n@@ -22,12 +23,17 @@ impl SkillsExtensionConfig {\n #[derive(Debug)]\n pub(crate) struct SkillsThreadState {\n     config: Mutex<SkillsExtensionConfig>,\n+    selected_roots: Vec<SelectedCapabilityRoot>,\n }\n \n impl SkillsThreadState {\n-    pub(crate) fn new(config: SkillsExtensionConfig) -> Self {\n+    pub(crate) fn new(\n+        config: SkillsExtensionConfig,\n+        selected_roots: Vec<SelectedCapabilityRoot>,\n+    ) -> Self {\n         Self {\n             config: Mutex::new(config),\n+            selected_roots,\n         }\n     }\n \n@@ -44,6 +50,10 @@ impl SkillsThreadState {\n             .lock()\n             .unwrap_or_else(std::sync::PoisonError::into_inner) = config;\n     }\n+\n+    pub(crate) fn selected_roots(&self) -> &[Se...",
+      "path": "codex-rs/ext/skills/src/state.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 337,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,337 @@\n+use std::io;\n+use std::path::Path;\n+use std::sync::Arc;\n+use std::sync::atomic::AtomicUsize;\n+use std::sync::atomic::Ordering;\n+\n+use async_trait::async_trait;\n+use codex_core_skills::HostLoadedSkills;\n+use codex_core_skills::loader::SkillRoot;\n+use codex_core_skills::loader::load_skills_from_roots;\n+use codex_exec_server::CopyOptions;\n+use codex_exec_server::CreateDirectoryOptions;\n+use codex_exec_server::EnvironmentManager;\n+use codex_exec_server::ExecutorFileSystem;\n+use codex_exec_server::FileMetadata;\n+use codex_exec_server::FileSystemResult;\n+use codex_exec_server::FileSystemSandboxContext;\n+use codex_exec_server::ReadDirectoryEntry;\n+use codex_exec_server::RemoveOptions;\n+use codex_protocol::capabilities::CapabilityRootLocation;\n+use codex_protocol::capabilities::SelectedCapabilityRoot;\n+use codex_protocol::protocol::SkillScope;\n+use codex_skills_extension::Exec...",
+      "path": "codex-rs/ext/skills/tests/executor_file_system_authority.rs",
+      "status": "added"
+    },
+    {
+      "additions": 135,
+      "deletions": 64,
+      "patch_excerpt": "@@ -14,7 +14,8 @@ use codex_extension_api::ExtensionData;\n use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::ThreadStartInput;\n use codex_extension_api::TurnInputContext;\n-use codex_extension_api::TurnInputEnvironment;\n+use codex_protocol::capabilities::CapabilityRootLocation;\n+use codex_protocol::capabilities::SelectedCapabilityRoot;\n use codex_protocol::protocol::SKILLS_INSTRUCTIONS_OPEN_TAG;\n use codex_protocol::protocol::SessionSource;\n use codex_protocol::user_input::UserInput;\n@@ -112,6 +113,7 @@ async fn installed_extension_loads_host_skills_from_legacy_roots() -> TestResult\n         .await;\n \n     assert_eq!(2, fragments.len());\n+    assert_eq!(\"developer\", fragments[0].role());\n     assert!(fragments[0].render().contains(\"demo\"));\n     assert!(fragments[0].render().contains(&skill_prompt_path));\n     assert_eq!(\"user\", fragments[1].role());\n@@ -128,42 ...",
+      "path": "codex-rs/ext/skills/tests/skills_extension.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -251,6 +251,7 @@ impl MemoryStartupContext {\n                 metrics_service_name: None,\n                 parent_trace: None,\n                 environments,\n+                thread_extension_init: Default::default(),\n             })\n             .await?;",
+      "path": "codex-rs/memories/write/src/runtime.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 30,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,30 @@\n+use schemars::JsonSchema;\n+use serde::Deserialize;\n+use serde::Serialize;\n+use ts_rs::TS;\n+\n+/// A user-selected root that can expose one or more runtime capabilities.\n+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct SelectedCapabilityRoot {\n+    /// Stable identifier supplied by the capability selection platform.\n+    pub id: String,\n+    /// Where the selected root can be resolved.\n+    pub location: CapabilityRootLocation,\n+}\n+\n+/// Location used to resolve a selected capability root.\n+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]\n+#[serde(tag = \"type\", rename_all = \"camelCase\")]\n+#[ts(tag = \"type\")]\n+#[ts(export_to = \"v2/\")]\n+pub enum CapabilityRootLocation {\n+    /// A path owned by an execution environment.\n+    Environment {\n+ ...",
+      "path": "codex-rs/protocol/src/capabilities.rs",
+      "status": "added"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -9,6 +9,7 @@ pub use session_id::SessionId;\n pub use thread_id::ThreadId;\n pub use tool_name::ToolName;\n pub mod approvals;\n+pub mod capabilities;\n pub mod config_types;\n pub mod dynamic_tools;\n pub mod error;",
+      "path": "codex-rs/protocol/src/lib.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\r\n\r\nCCA is moving toward a split runtime where the orchestrator may not have a filesystem, while executors can expose preinstalled plugins and skills. A thread therefore needs to select capabilities without asking app-server or core to interpret executor-owned paths through the orchestrator's filesystem.\r\n\r\nThe longer-term model is broader than executor skills:\r\n\r\n- A plugin is a bundle of skills, MCP servers, connectors/apps, and hooks.\r\n- A plugin root can be local, executor-owned, or hosted by a backend.\r\n- Components inside one plugin can use different access and execution mechanisms. A skill may be read from a filesystem or through backend tools; an HTTP MCP server can run without an executor; a stdio MCP server or hook needs an execution environment.\r\n- Core should carry generic extension initialization data. The extension that owns a component should discover it, expose it to the model, and invoke it through the appropriate runtime.\r\n\r\nThis PR establishes that architecture through one complete vertical: selecting a root on an executor, discovering the skills beneath it, exposing those skills to the model, and reading an explicitly invoked `SKILL.md` through the same executor.\r\n\r\n## Contract\r\n\r\n`thread/start` gains an experimental `selectedCapabilityRoots` field:\r\n\r\n```json\r\n{\r\n  \"selectedCapabilityRoots\": [\r\n    {\r\n      \"id\": \"deploy-plugin@1\",\r\n      \"location\": {\r\n        \"type\": \"environment\",\r\n        \"environmentId\": \"workspace\",\r\n        \"path\": \"/opt/codex/plugins/deploy\"\r\n      }\r\n    }\r\n  ]\r\n}\r\n```\r\n\r\nThe root is intentionally not classified as a \"plugin\" or \"skill\" in the API. It can point at a standalone skill, a directory containing several skills, or a plugin containing skills and other components. This PR only teaches the skills extension how to consume it; later extensions can resolve MCP, connector, and hook components from the same selection.\r\n\r\nThe platform-supplied `id` is stable selection identity. The location says which runtime owns the root and gives that runtime an opaque path. App-server does not inspect or canonicalize the path.\r\n\r\n## What changed\r\n\r\n### Generic thread extension initialization\r\n\r\nApp-server converts selected roots into `ExtensionDataInit`. Core carries that generic initialization value until the final thread ID is known, then creates thread-scoped `ExtensionData` before lifecycle contributors run.\r\n\r\nThis keeps `Session` and core independent of the capability-selection contract. The initialization value is consumed during construction; it is not retained as another long-lived `Session` field.\r\n\r\n### Executor-backed skills\r\n\r\nThe skills extension now owns an `ExecutorSkillProvider` that:\r\n\r\n- resolves the selected environment through `EnvironmentManager`\r\n- discovers, canonicalizes, and reads skills through that environment's `ExecutorFileSystem`\r\n- contributes the bounded selected-skill catalog as stable developer context\r\n- reads an explicitly invoked skill body through the authority that listed it\r\n- warns when an environment or root is unavailable\r\n- never falls back to the orchestrator filesystem for an executor-owned root\r\n\r\nSkill catalog and instruction fragments have hard byte bounds, which also bound them below the 10K-token per-item context limit. If a selected executor skill has the same name as a legacy local skill, the executor selection owns that invocation and the local body is not injected a second time.\r\n\r\nExisting local and bundled skill loading remains in place. Omitting `selectedCapabilityRoots` therefore preserves current local-only behavior.\r\n\r\n## Current semantics\r\n\r\n- Only environment-owned locations are represented in this first contract.\r\n- Roots are resolved by the destination extension, not by app-server or core.\r\n- An unavailable executor or invalid root produces a warning and no capabilities from that root; it does not trigger a local-filesystem fallback.\r\n- Selection applies to a newly started active thread.\r\n- MCP servers, connectors, and hooks beneath a selected plugin root are not activated yet.\r\n- Selection is not yet persisted or inherited across resume, fork, or subagent creation. Existing local capabilities continue to behave as they do today in those flows.\r\n\r\n## Planned vertical follow-ups\r\n\r\n1. **Hosted HTTP MCP:** add an extension-backed HTTP MCP source that works without an executor, then replace the special-purpose MCP plugins loader with that implementation.\r\n2. **Executor MCP:** register and execute stdio MCP servers through the environment that owns the selected plugin root.\r\n3. **Backend skills:** add a hosted skill source whose catalog and bodies are accessed through extension tools rather than a filesystem.\r\n4. **Connectors and hooks:** activate those components through their owning extensions, using the same selected-root boundary and component-specific runtime.\r\n5. **Durable selection:** define the desired-selection lifecycle, persist it, and make resume, fork, and subagent inheritance explicit rather than accidental.\r\n6. **Local convergence:** incrementally route existing local plugin, skill, and MCP loading through the same extension model while preserving current local behavior.\r\n\r\nEach follow-up remains reviewable as an end-to-end capability. The platform selects roots, generic thread extension data carries the selection, and the owning extension resolves and operates its component.\r\n\r\n## Verification\r\n\r\nCoverage added for:\r\n\r\n- app-server end-to-end discovery and explicit invocation of a skill inside an executor-selected plugin root\r\n- exclusive invocation when a selected executor skill collides with a local skill name\r\n- executor filesystem authority for discovery, canonicalization, and reads\r\n- thread extension initialization before lifecycle contributors run\r\n- stable executor catalog context, explicit invocation, context rebuilding, hidden skills, and preserved host/remote catalog behavior\r\n\r\nTargeted protocol, core-skills, skills-extension, core lifecycle, and app-server executor-skill tests were run during development.\r\n",
+    "labels": [],
+    "merged_at": "2026-06-09T17:51:55Z",
+    "number": 27184,
+    "state": "merged",
+    "title": "Load selected executor skills through extensions",
+    "url": "https://github.com/openai/codex/pull/27184"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
