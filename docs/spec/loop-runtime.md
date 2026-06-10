@@ -205,6 +205,31 @@ briefs, and ordinary operator summaries may expose only coarse reason codes or n
 actions rendered by allowlisted lifecycle paths. They must not mirror raw changed
 surfaces, graph ids, transcript text, or private recovery payloads.
 
+When the final disposition is `requires_human`, detached lanes must create a durable
+decision request instead of asking a transient Codex chat. The private payload is
+versioned as `decodex.authority_decision_request/1` with
+`event_type = "authority_decision_request"` in `private_execution_events`. It links
+the issue id, issue identifier, run id, attempt number, Authority Boundary Check
+record id, retained worktree or diff evidence, and recovery-attempt context. It also
+stores the public-safe decision request id, reason code, boundary type, proposed
+change, why the change exceeds accepted authority, options, recommendation, resume
+condition, and `phase = "human_required"`.
+
+The matching Linear projection must add or preserve `decodex:needs-attention` and
+write an allowlisted `manual_attention` comment with the public-safe request fields.
+It must not expose internal graph ids, host-local paths, raw diffs, credentials,
+transcripts, logs, or sensitive runtime payloads. Operator status and dashboard
+snapshots surface the request as `phase = human_required`, the boundary reason,
+boundary type, `decision_request_id`, and `next_action` so operators can find the
+decision without SQLite inspection.
+
+A decision request is resolved only by an explicit issue update, Decision Contract
+update, or supported policy update that accepts, rejects, or revises the proposed
+direction. After that deliberate decision, an operator may clear
+`decodex:needs-attention` and requeue or resume through normal Decodex lifecycle
+controls. Raw tracker mutation, direct database edits, and internal graph ids are not
+supported resume mechanisms.
+
 Harness feedback may recommend Decision Contract, issue-template, validator, prompt,
 or readiness-model hardening from boundary-check failures. Those recommendations are
 advisory. They do not modify the accepted Decision Contract, queue eligibility, or
