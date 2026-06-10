@@ -1,0 +1,38 @@
+{
+  "schema": "social_publish_reservation/v1",
+  "slug": "openai-codex-pr-26486",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "practical_explainer",
+  "status": "active",
+  "idempotency_key": "x:decodexspace:openai-codex-pr-26486:practical_explainer",
+  "reserved_at": "2026-06-10T15:54:39Z",
+  "expires_at": "2026-06-10T17:54:39Z",
+  "day": "2026-06-10",
+  "timezone": "Asia/Shanghai",
+  "candidate_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-pr-26486.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26486"
+    ]
+  },
+  "duplicate_keys": [
+    "x:decodexspace:openai-codex-pr-26486:practical_explainer",
+    "openai-codex-pr-26486",
+    "https://github.com/openai/codex/pull/26486",
+    "referenced_image_paths",
+    "action flag"
+  ],
+  "owner": {
+    "automation_id": "decodex-x-publisher",
+    "branch": "codex/x-publisher-pr-26486-20260610"
+  },
+  "evidence_notes": [
+    "Durable records and active reservations in the current tree have no published, blocked, or active record for this idempotency key.",
+    "Open GitHub PRs checked at reservation time did not include social/x post or reservation files.",
+    "Current Asia/Shanghai cap day has 3 published @decodexspace records before this reservation."
+  ]
+}
