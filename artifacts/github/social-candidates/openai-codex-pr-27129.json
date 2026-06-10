@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27129",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "practical_explainer",
+  "priority": "high",
+  "audience": "Codex model-provider and memory-feature operators",
+  "candidate_text": [
+    "Codex memory startup now asks the active model provider for default extraction and consolidation models. Bedrock gets provider-specific defaults, while explicit memory model config still wins. PR: https://github.com/openai/codex/pull/27129"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27129.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27129.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27129"
+    ]
+  },
+  "evidence_notes": [
+    "The upstream review records provider-owned defaults for memory extraction and consolidation model selection.",
+    "Amazon Bedrock overrides both memory defaults to its provider-specific `openai.gpt-5.4` model ID.",
+    "Explicit `memories.extract_model` and `memories.consolidation_model` config overrides remain highest priority."
+  ],
+  "claims": [
+    {
+      "text": "Codex memory extraction and consolidation defaults are now provider-aware.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27129.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Explicit memory model config overrides still take precedence over provider defaults.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27129.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR gives non-OpenAI provider users a concrete memory-model default change with a clear Bedrock example.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27129:practical_explainer"
+  },
+  "caveats": [
+    "The source-backed custom provider example is Bedrock.",
+    "The PR does not remove explicit memory model override keys."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate.",
+    "Use provider-owned defaults in Decodex provider-neutral background task design."
+  ]
+}
