@@ -1,5 +1,7 @@
 use orchestrator::HarnessOutcomeKind;
 use orchestrator::HarnessOutcomeRecordInput;
+use orchestrator::AuthorityBoundaryCheckInput;
+use orchestrator::AuthorityBoundaryDisposition;
 
 use crate::loop_contract::DecisionContract;
 
@@ -248,6 +250,95 @@ fn private_evidence_readback_summarizes_payloads_without_connector() {
 }
 
 #[test]
+fn agent_evidence_authority_boundary_readback_recommends_candidates_without_payload_leakage() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let private_marker = "PRIVATE_AUTHORITY_READBACK_PAYLOAD";
+
+	state_store
+		.upsert_worktree(
+			TEST_SERVICE_ID,
+			"issue-boundary",
+			"x/pubfi-pub-111",
+			".worktrees/PUB-111",
+		)
+		.expect("worktree should persist");
+	state_store
+		.record_run_attempt("run-boundary", "issue-boundary", 1, "terminal_guarded")
+		.expect("run should persist");
+
+	orchestrator::record_authority_boundary_check_private_event(
+		&state_store,
+		AuthorityBoundaryCheckInput {
+			project_id: TEST_SERVICE_ID,
+			issue_id: "issue-boundary",
+			issue_identifier: "PUB-111",
+			run_id: "run-boundary",
+			attempt_number: 1,
+			decision_contract_ids: vec!["contract-boundary"],
+			attempted_recovery_reason: "ambiguous_retained_progress",
+			changed_surfaces: vec![orchestrator::AuthorityBoundaryChangedSurface {
+				surface: "validation_review_gate",
+				change_summary: private_marker,
+				classification: orchestrator::AuthorityBoundaryDisposition::InsufficientEvidence,
+			}],
+			disposition: AuthorityBoundaryDisposition::InsufficientEvidence,
+			final_disposition_reason: "Authority evidence is underspecified for recovery.",
+			improvement_signals: vec![
+				orchestrator::AuthorityBoundaryImprovementSignal {
+					kind: "underspecified_decision_contract",
+					reason_code: "authority_underspecified",
+					target: "decision_contract:contract-boundary",
+					recommendation: "Record validation-gate authority before recovery.",
+				},
+				orchestrator::AuthorityBoundaryImprovementSignal {
+					kind: "missing_issue_template_field",
+					reason_code: "authority_boundary_template_gap",
+					target: "issue_template:loop_recovery",
+					recommendation: "Add changed-surface prompts to the issue template.",
+				},
+			],
+		},
+	)
+	.expect("authority boundary check should persist");
+
+	let request = EvidenceRequest {
+		config_path: None,
+		issue: "PUB-111",
+		run_id: Some("run-boundary"),
+		attempt_number: Some(1),
+		json: true,
+		include_payload: false,
+	};
+	let readback = orchestrator::build_private_evidence_readback(
+		&state_store,
+		&config,
+		&request,
+	)
+	.expect("authority boundary evidence should read");
+	let rendered = orchestrator::render_private_evidence_readback(&readback);
+
+	assert_eq!(readback.event_count, 1);
+	assert_eq!(readback.latest_event_type.as_deref(), Some("authority_boundary_check"));
+	assert!(readback.events.iter().all(|event| event.payload.is_none()));
+	assert!(
+		readback.improvement_candidates.iter().any(|candidate| {
+			candidate.kind == "underspecified_decision_contract"
+				&& candidate.reason_code == "authority_underspecified"
+				&& candidate.target == "decision_contract:contract-boundary"
+		})
+	);
+	assert!(
+		readback.improvement_candidates.iter().any(|candidate| {
+			candidate.kind == "missing_issue_template_field"
+				&& candidate.reason_code == "authority_boundary_template_gap"
+		})
+	);
+	assert!(rendered.contains("authority_underspecified"));
+	assert!(!rendered.contains(private_marker));
+}
+
+#[test]
 fn private_evidence_readback_reports_missing_events_for_known_run() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -338,6 +429,84 @@ fn harness_outcome_records_validation_review_and_repair_signals() {
 	state_store
 		.record_run_attempt("run-harness", "issue-harness", 2, "failed")
 		.expect("run should persist");
+
+	record_harness_signal_fixture_events(&state_store);
+
+	let recorded = orchestrator::record_harness_outcome_for_issue_run(
+		&state_store,
+		HarnessOutcomeRecordInput {
+			project_id: TEST_SERVICE_ID,
+			issue_id: "issue-harness",
+			issue_identifier: "PUB-110",
+			run_id: "run-harness",
+			attempt_number: 2,
+			outcome: HarnessOutcomeKind::RetryableFailure,
+			error_class: Some("repo_gate_verify_failed"),
+			validation_result: Some("failed"),
+			pr_url: None,
+		},
+	)
+	.expect("harness outcome should record");
+	let payload = recorded.payload();
+
+	assert_eq!(recorded.event_type(), "harness_outcome");
+	assert_eq!(payload["schema"], "decodex.harness_outcome/1");
+	assert_eq!(payload["validation"]["result"], "failed");
+	assert_eq!(payload["validation"]["failure_count"], 2);
+	assert_eq!(
+		payload["validation"]["failure_classes"],
+		serde_json::json!(["phase_goal_validation_fail", "repo_gate_verify_failed"])
+	);
+	assert_eq!(payload["repair"]["repair_attempt_observed"], true);
+	assert_eq!(payload["review"]["accepted_finding_count"], 1);
+	assert_eq!(payload["authority_boundary"]["failed_check_count"], 1);
+	assert_eq!(payload["authority_boundary"]["improvement_signal_count"], 1);
+	assert!(
+		payload["improvement_candidates"]
+			.as_array()
+			.expect("candidates should be an array")
+			.iter()
+			.any(|candidate| candidate["reason_code"] == "accepted_review_findings")
+	);
+	assert!(
+		payload["improvement_candidates"]
+			.as_array()
+			.expect("candidates should be an array")
+			.iter()
+			.any(|candidate| candidate["reason_code"] == "authority_underspecified")
+	);
+
+	let request = EvidenceRequest {
+		config_path: None,
+		issue: "issue-harness",
+		run_id: Some("run-harness"),
+		attempt_number: Some(2),
+		json: true,
+		include_payload: false,
+	};
+	let readback = orchestrator::build_private_evidence_readback(
+		&state_store,
+		&config,
+		&request,
+	)
+	.expect("private evidence should read");
+
+	assert!(
+		readback
+			.improvement_candidates
+			.iter()
+			.any(|candidate| candidate.reason_code == "accepted_review_findings")
+	);
+	assert!(
+		readback
+			.improvement_candidates
+			.iter()
+			.any(|candidate| candidate.reason_code == "authority_underspecified")
+	);
+	assert!(readback.events.iter().all(|event| event.payload.is_none()));
+}
+
+fn record_harness_signal_fixture_events(state_store: &StateStore) {
 	state_store
 		.append_private_execution_event(
 			TEST_SERVICE_ID,
@@ -388,63 +557,32 @@ fn harness_outcome_records_validation_review_and_repair_signals() {
 		)
 		.expect("progress evidence should append");
 
-	let recorded = orchestrator::record_harness_outcome_for_issue_run(
-		&state_store,
-		HarnessOutcomeRecordInput {
+	orchestrator::record_authority_boundary_check_private_event(
+		state_store,
+		AuthorityBoundaryCheckInput {
 			project_id: TEST_SERVICE_ID,
 			issue_id: "issue-harness",
 			issue_identifier: "PUB-110",
 			run_id: "run-harness",
 			attempt_number: 2,
-			outcome: HarnessOutcomeKind::RetryableFailure,
-			error_class: Some("repo_gate_verify_failed"),
-			validation_result: Some("failed"),
-			pr_url: None,
+			decision_contract_ids: vec!["contract-harness"],
+			attempted_recovery_reason: "uncovered_direction",
+			changed_surfaces: vec![orchestrator::AuthorityBoundaryChangedSurface {
+				surface: "accepted_behavior",
+				change_summary: "Public behavior would change.",
+				classification: orchestrator::AuthorityBoundaryDisposition::RequiresHuman,
+			}],
+			disposition: AuthorityBoundaryDisposition::RequiresHuman,
+			final_disposition_reason: "Accepted behavior needs explicit authority.",
+			improvement_signals: vec![orchestrator::AuthorityBoundaryImprovementSignal {
+				kind: "underspecified_decision_contract",
+				reason_code: "authority_underspecified",
+				target: "decision_contract:contract-harness",
+				recommendation: "Record accepted-behavior authority before recovery.",
+			}],
 		},
 	)
-	.expect("harness outcome should record");
-	let payload = recorded.payload();
-
-	assert_eq!(recorded.event_type(), "harness_outcome");
-	assert_eq!(payload["schema"], "decodex.harness_outcome/1");
-	assert_eq!(payload["validation"]["result"], "failed");
-	assert_eq!(payload["validation"]["failure_count"], 2);
-	assert_eq!(
-		payload["validation"]["failure_classes"],
-		serde_json::json!(["phase_goal_validation_fail", "repo_gate_verify_failed"])
-	);
-	assert_eq!(payload["repair"]["repair_attempt_observed"], true);
-	assert_eq!(payload["review"]["accepted_finding_count"], 1);
-	assert!(
-		payload["improvement_candidates"]
-			.as_array()
-			.expect("candidates should be an array")
-			.iter()
-			.any(|candidate| candidate["reason_code"] == "accepted_review_findings")
-	);
-
-	let request = EvidenceRequest {
-		config_path: None,
-		issue: "issue-harness",
-		run_id: Some("run-harness"),
-		attempt_number: Some(2),
-		json: true,
-		include_payload: false,
-	};
-	let readback = orchestrator::build_private_evidence_readback(
-		&state_store,
-		&config,
-		&request,
-	)
-	.expect("private evidence should read");
-
-	assert!(
-		readback
-			.improvement_candidates
-			.iter()
-			.any(|candidate| candidate.reason_code == "accepted_review_findings")
-	);
-	assert!(readback.events.iter().all(|event| event.payload.is_none()));
+	.expect("authority boundary evidence should append");
 }
 
 #[test]
