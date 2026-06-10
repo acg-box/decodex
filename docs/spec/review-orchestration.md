@@ -85,10 +85,10 @@ Rules:
 
 - A resend caused by missing acknowledgement is a retry of the current request, not a new review round.
 - A review round does not complete until the lane either requests the next review or stops for escalation.
-- The first three review results from the same review source consume the normal convergence budget.
-- When the fourth review result arrives from the same review source, the lane must request an architecture check:
-  - if the repeated churn is rooted in an architectural defect or root-cause issue that local patching will not converge, stop for `manual_intervention_required`
-  - if the findings are normal and not rooted in architectural churn, continue and reset that review source's three-round budget
+- Each `findings` result from the same review source consumes the normal convergence budget for the current review phase.
+- The third consecutive non-clean result for the same phase stops the current repair strategy as review churn. Further autonomous work requires an Architecture Recovery Packet plus Authority Boundary Check for the current lane head.
+- Recovery may continue only when the Authority Boundary Check is `within_authority` and recovery budget remains. Otherwise the lane stops for `manual_intervention_required`.
+- There is no fourth-result reset path; `clean` is the only review result that clears the non-clean round count.
 
 ## Review levels
 
@@ -259,7 +259,7 @@ The lane must stop for `manual_intervention_required` when any of these occur:
 - GitHub Review pass signals do not match the strict required pair exactly
 - admin merge is unsupported for the repository
 - merged PR visibility does not arrive within the configured polling ceiling
-- architecture check concludes that repeated review churn is rooted in a non-converging architectural defect
+- Authority Boundary Check or architecture recovery outcome concludes repeated review churn is outside the lane authority, insufficiently evidenced, externally blocked, or recovery budget exhausted
 
 ## Review-stop research escalation
 
@@ -268,8 +268,13 @@ does not dispatch research automatically.
 
 Current required behavior:
 
-- `needs_architecture_review`, `blocked`, and convergence-budget exhaustion still
-  terminate through `manual_intervention_required`.
+- `needs_architecture_review` and `blocked` terminate through
+  `manual_intervention_required`.
+- Convergence-budget exhaustion for repeated accepted findings is normalized as
+  `review_churn`. It stops the current repair strategy and may continue only through
+  autonomous architecture recovery when the Authority Boundary Check is
+  `within_authority` and recovery budget remains. Otherwise it terminates through
+  `manual_intervention_required`.
 - The terminal failure path must preserve the normalized review-stop class instead of
   collapsing it into a generic retry failure:
   - `architecture_review_required`
