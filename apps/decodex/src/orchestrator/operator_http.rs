@@ -518,10 +518,13 @@ fn build_operator_run_activity_event(
 		let project_display_name = operator_project_display_name(&project);
 		let recent_runs = recent_runs
 			.into_iter()
-			.map(|run| operator_run_status(&project, &project_display_name, run, now_unix_epoch))
+			.map(|run| {
+				operator_run_status(&project, state_store, &project_display_name, run, now_unix_epoch)
+			})
 			.collect::<Result<Vec<_>>>()?;
 		let project_active_runs = operator_active_run_statuses(
 			&project,
+			state_store,
 			&project_display_name,
 			leased_runs,
 			&recent_runs,
