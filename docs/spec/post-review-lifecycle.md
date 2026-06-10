@@ -200,10 +200,12 @@ in `In Review`; it does not re-run the original `issue_review_handoff` state tra
 When `[codex].review` is `"standard"` or `"strict"`,
 `issue_review_repair_complete` is valid only when the latest retained repair
 checkpoint is `clean` for the current repaired head. If repeated repair checkpoints
-stay in `findings` for three consecutive rounds, or the checkpoint reports
-`needs_architecture_review` / `blocked`, the runtime must stop for human
-intervention instead of patch-on-patch churn. When `[codex].review` is `"off"` or
-`"basic"`, retained repair completion skips that Decodex Review checkpoint
+stay in `findings` for three consecutive rounds, the runtime must stop the current
+patch-on-patch strategy and run the architecture recovery boundary check before
+either retrying with a materially different implementation strategy or routing to
+human intervention. If the checkpoint reports `needs_architecture_review` /
+`blocked`, the runtime must stop for human intervention. When `[codex].review` is
+`"off"` or `"basic"`, retained repair completion skips that Decodex Review checkpoint
 requirement but still requires the repaired head to be pushed and the configured
 repository validation gate to pass.
 The same completion also requires that the PR still belongs to the retained lane, points
@@ -295,7 +297,11 @@ If merge is authoritative but closeout fails due to a deterministic infrastructu
 10. `review_wait`, `review_repair`, or `ready_to_land` may transition directly to `cleanup` when the tracker issue reaches a terminal cancellation state before merge and only deterministic local cleanup remains.
 11. `cleanup -> finished` when the retained worktree and lane branch state are clean.
 
-At any phase, contradictory signals or exhausted repair/convergence budgets force `manual_intervention_required`.
+At any phase, contradictory signals force `manual_intervention_required`. Exhausted
+retry budgets also force the human-attention path. Exhausted repair/convergence
+budgets first follow the owning review or loop guardrail policy: engineering strategy
+changes may continue only through autonomous architecture recovery inside the
+Authority Envelope; otherwise the lane becomes human-required.
 
 ## Failure, retry, and cancellation rules
 
@@ -311,12 +317,13 @@ At any phase, contradictory signals or exhausted repair/convergence budgets forc
 - Watch-level child failures in `review_repair` and deterministic post-review tail stages consume the same `execution.max_attempts` retry budget as normal issue execution. Once that budget is exhausted, the runtime must write the human-attention failure state, remove active automation ownership, and block the lane from further post-review redispatch.
 - Operator status must report an exhausted retained post-review lane as `blocked` with a retry-budget reason instead of continuing to classify it as `needs_review_repair` or `ready_to_land`.
 - If the lane's PR is already merged, exhausted local closeout, default-branch sync, or cleanup retries must be reported as `closeout_blocked` or `cleanup_blocked` with the retained PR URL from the runtime handoff row.
-- Structural churn is not a generic retry case. If repair rounds exceed the configured convergence budget, the runtime must stop for human intervention or architecture rethink rather than patching indefinitely.
+- Structural churn is not a generic retry case. If repair rounds exceed the configured convergence budget, the runtime must stop the current repair strategy and either enter architecture recovery under the Authority Envelope or require human intervention rather than patching indefinitely.
 - Three consecutive non-clean fresh-context review rounds in the same phase are a
   review-churn guardrail. Public writeback may use `review_policy_exhausted` or the
   normalized loop reason `review_churn`, but the recovery rule is the same: inspect the
-  repeated findings for the exact current head and choose a new repair strategy,
-  architecture review, or manual resolution before requeueing.
+  repeated findings for the exact current head, the Architecture Recovery Packet, and
+  the Authority Boundary Check before choosing a new repair strategy, architecture
+  review, or manual resolution before requeueing.
 - A repair batch that changes the head must return to `review_wait` for that new head instead of continuing downstream on stale review state.
 
 ### Landing and closeout failures

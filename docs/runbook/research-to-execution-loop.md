@@ -62,8 +62,12 @@ evidence.
 5. Follow review and guardrail outcomes.
 
    Accepted independent-review findings route to repair. Three non-clean review
-   rounds, `needs_architecture_review`, or `blocked` escalates instead of continuing
-   patch churn. Repeated validation failures stop after the configured threshold.
+   rounds stop the current repair strategy instead of continuing patch churn.
+   Repeated validation failures do the same. Engineering convergence failures may
+   continue only through autonomous architecture recovery after the Authority
+   Boundary Check is `within_authority` and recovery budget remains; `blocked`,
+   `needs_architecture_review`, external blockers, insufficient evidence, or exhausted
+   recovery budget become human-required stops.
 
 6. Preserve uncovered direction as research feedback.
 
