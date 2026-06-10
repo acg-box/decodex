@@ -1519,6 +1519,25 @@ impl StateStore {
 		Ok(records.into_iter().map(|record| record.as_public()).collect())
 	}
 
+	/// List private execution events for one project/issue tuple.
+	pub(crate) fn list_private_execution_events_for_issue(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+	) -> Result<Vec<PrivateExecutionEvent>> {
+		let state = self.lock()?;
+		let mut records = state
+			.private_execution_events
+			.iter()
+			.filter(|record| record.project_id == project_id && record.issue_id == issue_id)
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_private_execution_event_runtime_records);
+
+		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
 	/// List private execution events for one project/run/attempt tuple.
 	pub fn list_private_execution_events_for_run_attempt(
 		&self,
