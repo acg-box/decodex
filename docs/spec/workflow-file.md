@@ -120,10 +120,9 @@ Removed fields:
 
 Child-run execution policy is not part of the project-owned workflow contract. `decodex` must let `codex app-server` inherit sandbox and approval behavior from the active Codex runtime instead of declaring repo-local overrides in `WORKFLOW.md`.
 
-Codex app-server-adjacent runtime settings such as `codex.goal_support` and
-`codex.review` belong to the centralized project `project.toml`, not to
-`WORKFLOW.md`. `WORKFLOW.md` still owns the bounded turn budget and repo gate used
-after a phase goal completes.
+Codex app-server-adjacent runtime settings such as `codex.review` belong to the
+centralized project `project.toml`, not to `WORKFLOW.md`. `WORKFLOW.md` still owns
+the bounded turn budget and repo gate used after a phase goal completes.
 
 ## `[execution]`
 

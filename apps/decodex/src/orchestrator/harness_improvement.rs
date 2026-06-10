@@ -520,8 +520,7 @@ fn harness_outcome_signals(
 
 	for event in events {
 		match event.event_type() {
-			"phase_goal_completed" | "phase_goal_set" | "phase_goal_unavailable" =>
-				push_phase_goal_signal(&mut signals, event),
+			"phase_goal_completed" | "phase_goal_set" => push_phase_goal_signal(&mut signals, event),
 			"review_checkpoint" => push_review_signal(&mut signals, event.payload()),
 			"loop_guardrail_checkpoint" => push_guardrail_signal(&mut signals, event.payload()),
 			"authority_boundary_check" => push_authority_boundary_signal(&mut signals, event.payload()),
