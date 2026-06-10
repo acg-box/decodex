@@ -1,6 +1,7 @@
 use serde_json::{self, Value};
 
-use crate::{agent::tracker_tool_bridge::{
+use crate::{
+	agent::tracker_tool_bridge::{
 		self, AuthorityDecisionOptionArgs, AuthorityDecisionRequestArgs, CommentArgs,
 		DynamicToolCallResponse, DynamicToolSpec, ExecutionProgressPhase, ISSUE_COMMENT_TOOL_NAME,
 		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
@@ -13,10 +14,17 @@ use crate::{agent::tracker_tool_bridge::{
 		ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode, ReviewHandoffArgs,
 		ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus, RunCompletionDisposition,
 		TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
-	}, orchestrator::{self, AuthorityDecisionOption, AuthorityDecisionRequestInput, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE}, state::{self, StateStore}, tracker::{
+	},
+	orchestrator::{
+		self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AuthorityDecisionOption,
+		AuthorityDecisionRequestInput,
+	},
+	state::{self, StateStore},
+	tracker::{
 		self, public_text, records,
 		records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
-	}};
+	},
+};
 
 const COMMENT_KIND_MANUAL_ATTENTION: &str = "manual_attention";
 const MANUAL_ATTENTION_TERMINAL_PATH: &str = "manual_attention";
