@@ -1,0 +1,130 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-09T05:12:43Z",
+      "message": "Use provider defaults for memory models",
+      "sha": "00f1e544854c67163899cd0c6c3091c6d4a7694e",
+      "url": "https://github.com/openai/codex/commit/00f1e544854c67163899cd0c6c3091c6d4a7694e"
+    },
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-09T19:32:33Z",
+      "message": "comments",
+      "sha": "38b487f2a4eb2291eab6ccea41d24455acfbe9c0",
+      "url": "https://github.com/openai/codex/commit/38b487f2a4eb2291eab6ccea41d24455acfbe9c0"
+    },
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-09T21:52:24Z",
+      "message": "changes",
+      "sha": "b3dce407ff660c49d616be8920bc50a74ced8ac1",
+      "url": "https://github.com/openai/codex/commit/b3dce407ff660c49d616be8920bc50a74ced8ac1"
+    },
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-09T23:19:12Z",
+      "message": "changes",
+      "sha": "717e4b299bf0815a2fd1bd77d61ed5f3fbc7ae40",
+      "url": "https://github.com/openai/codex/commit/717e4b299bf0815a2fd1bd77d61ed5f3fbc7ae40"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MODEL",
+    "REASONING_EFFORT",
+    "CONCURRENCY_LIMIT",
+    "JOB_LEASE_SECONDS",
+    "MOCK_PROVIDER_PHASE_ONE_MODEL",
+    "MOCK_PROVIDER_PHASE_TWO_MODEL",
+    "AMAZON_BEDROCK_GPT_5_4_MODEL_ID",
+    "DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL",
+    "DEFAULT_MEMORY_EXTRACTION_PREFERRED_MODEL",
+    "DEFAULT_MEMORY_CONSOLIDATION_PREFERRED_MODEL"
+  ],
+  "files": [
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3320,6 +3320,8 @@ dependencies = [\n  \"codex-features\",\n  \"codex-git-utils\",\n  \"codex-login\",\n+ \"codex-model-provider\",\n+ \"codex-model-provider-info\",\n  \"codex-models-manager\",\n  \"codex-otel\",\n  \"codex-protocol\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -21,6 +21,7 @@ codex-config = { workspace = true }\n codex-features = { workspace = true }\n codex-git-utils = { workspace = true }\n codex-login = { workspace = true }\n+codex-model-provider = { workspace = true }\n codex-otel = { workspace = true }\n codex-protocol = { workspace = true }\n codex-rollout = { workspace = true }\n@@ -39,6 +40,7 @@ tracing = { workspace = true, features = [\"log\"] }\n uuid = { workspace = true, features = [\"v4\", \"v5\"] }\n \n [dev-dependencies]\n+codex-model-provider-info = { workspace = true }\n codex-models-manager = { workspace = true }\n core_test_support = { workspace = true }\n pretty_assertions = { workspace = true }",
+      "path": "codex-rs/memories/write/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 2,
+      "patch_excerpt": "@@ -76,7 +76,6 @@ signal to remove stale memories derived only from those resources.\n }\n \n mod stage_one {\n-    pub(super) const MODEL: &str = \"gpt-5.4-mini\";\n     pub(super) const REASONING_EFFORT: codex_protocol::openai_models::ReasoningEffort =\n         codex_protocol::openai_models::ReasoningEffort::Low;\n     pub(super) const CONCURRENCY_LIMIT: usize = 8;\n@@ -101,7 +100,6 @@ mod stage_one {\n }\n \n mod stage_two {\n-    pub(super) const MODEL: &str = \"gpt-5.4\";\n     pub(super) const REASONING_EFFORT: codex_protocol::openai_models::ReasoningEffort =\n         codex_protocol::openai_models::ReasoningEffort::Medium;\n     pub(super) const JOB_LEASE_SECONDS: i64 = 3_600;",
+      "path": "codex-rs/memories/write/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 5,
+      "patch_excerpt": "@@ -190,11 +190,12 @@ async fn build_request_context(\n     context: &MemoryStartupContext,\n     config: &Config,\n ) -> StageOneRequestContext {\n-    let model_name = config\n-        .memories\n-        .extract_model\n-        .clone()\n-        .unwrap_or(crate::stage_one::MODEL.to_string());\n+    let model_name = config.memories.extract_model.clone().unwrap_or_else(|| {\n+        context\n+            .provider()\n+            .memory_extraction_preferred_model()\n+            .to_string()\n+    });\n     context\n         .stage_one_request_context(config, &model_name, crate::stage_one::REASONING_EFFORT)\n         .await",
+      "path": "codex-rs/memories/write/src/phase1.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 3,
+      "patch_excerpt": "@@ -16,6 +16,7 @@ use crate::workspace::write_workspace_diff;\n use codex_config::Constrained;\n use codex_core::config::Config;\n use codex_features::Feature;\n+use codex_model_provider::ModelProvider;\n use codex_protocol::ThreadId;\n use codex_protocol::protocol::AgentStatus;\n use codex_protocol::protocol::AskForApproval;\n@@ -76,7 +77,7 @@ pub async fn run(context: Arc<MemoryStartupContext>, config: Arc<Config>) {\n     }\n \n     // 3. Build the locked-down config used by the consolidation agent.\n-    let Some(agent_config) = agent::get_config(config.as_ref()) else {\n+    let Some(agent_config) = agent::get_config(config.as_ref(), context.provider()) else {\n         // If we can't get the config, we can't consolidate.\n         tracing::error!(\"failed to get agent config\");\n         job::failed(\n@@ -297,7 +298,7 @@ mod agent {\n     use super::*;\n     use tracing::warn;\n \n-    pub(super) fn get...",
+      "path": "codex-rs/memories/write/src/phase2.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 54,
+      "deletions": 0,
+      "patch_excerpt": "@@ -13,6 +13,9 @@ use codex_login::AuthManager;\n use codex_login::CodexAuth;\n use codex_login::auth_env_telemetry::collect_auth_env_telemetry;\n use codex_login::default_client::originator;\n+use codex_model_provider::ModelProvider;\n+use codex_model_provider::SharedModelProvider;\n+use codex_model_provider::create_model_provider;\n use codex_otel::SessionTelemetry;\n use codex_otel::TelemetryAuthMode;\n use codex_protocol::SessionId;\n@@ -68,6 +71,7 @@ pub(crate) struct MemoryStartupContext {\n     thread: Arc<CodexThread>,\n     thread_manager: Arc<ThreadManager>,\n     auth_manager: Arc<AuthManager>,\n+    provider: SharedModelProvider,\n     session_telemetry: SessionTelemetry,\n }\n \n@@ -79,6 +83,51 @@ impl MemoryStartupContext {\n         thread: Arc<CodexThread>,\n         config: &Config,\n         source: SessionSource,\n+    ) -> Self {\n+        let provider = create_model_provider(\n+            ...",
+      "path": "codex-rs/memories/write/src/runtime.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 315,
+      "deletions": 3,
+      "patch_excerpt": "@@ -1,12 +1,30 @@\n+use crate::extensions::seed_extension_instructions;\n+use crate::memory_root;\n+use crate::phase1;\n+use crate::phase2;\n+use crate::runtime::MemoryStartupContext;\n use crate::start_memories_startup_task;\n+use codex_config::types::MemoriesConfig;\n use codex_features::Feature;\n use codex_git_utils::diff_since_latest_init;\n use codex_git_utils::reset_git_repository;\n+use codex_login::AuthManager;\n+use codex_login::CodexAuth;\n+use codex_model_provider::ModelProvider;\n+use codex_model_provider::ProviderAccountResult;\n+use codex_model_provider::SharedModelProvider;\n+use codex_model_provider::create_model_provider;\n+use codex_model_provider_info::ModelProviderInfo;\n use codex_protocol::ThreadId;\n use codex_protocol::config_types::ServiceTier;\n+use codex_protocol::models::ContentItem;\n+use codex_protocol::models::ResponseItem;\n+use codex_protocol::openai_models::ModelsResponse;\n ...",
+      "path": "codex-rs/memories/write/src/startup_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -68,6 +68,14 @@ impl ModelProvider for AmazonBedrockModelProvider {\n         AMAZON_BEDROCK_GPT_5_4_MODEL_ID\n     }\n \n+    fn memory_extraction_preferred_model(&self) -> &'static str {\n+        AMAZON_BEDROCK_GPT_5_4_MODEL_ID\n+    }\n+\n+    fn memory_consolidation_preferred_model(&self) -> &'static str {\n+        AMAZON_BEDROCK_GPT_5_4_MODEL_ID\n+    }\n+\n     fn auth_manager(&self) -> Option<Arc<AuthManager>> {\n         None\n     }",
+      "path": "codex-rs/model-provider/src/amazon_bedrock/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 22,
+      "deletions": 0,
+      "patch_excerpt": "@@ -74,6 +74,14 @@ pub type ProviderAccountResult = std::result::Result<ProviderAccountState, Provi\n /// require a backend-specific model ID.\n pub const DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL: &str = \"codex-auto-review\";\n \n+/// Default model used for memory extraction when a provider does not require a\n+/// backend-specific model ID.\n+pub const DEFAULT_MEMORY_EXTRACTION_PREFERRED_MODEL: &str = \"gpt-5.4-mini\";\n+\n+/// Default model used for memory consolidation when a provider does not require\n+/// a backend-specific model ID.\n+pub const DEFAULT_MEMORY_CONSOLIDATION_PREFERRED_MODEL: &str = \"gpt-5.4\";\n+\n /// Runtime provider abstraction used by model execution.\n ///\n /// Implementations own provider-specific behavior for a model backend. The\n@@ -96,6 +104,20 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {\n         DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL\n     }\n \n+    /// Returns the...",
+      "path": "codex-rs/model-provider/src/provider.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#26288"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\r\n\r\nMemory startup used hardcoded OpenAI model slugs for extraction and consolidation. That works for the default OpenAI-compatible path, but provider-specific backends can require different model identifiers. In particular, Amazon Bedrock should use its Bedrock model ID for these background memory requests instead of the OpenAI `gpt-5.4-mini` / `gpt-5.4` slugs.\r\n\r\n## What Changed\r\n\r\n- Added provider-owned preferred memory model methods alongside `approval_review_preferred_model`.\r\n- Updated memory extraction and consolidation to resolve their default model through the active `ModelProvider`.\r\n- Added Amazon Bedrock overrides so both memory stages use `openai.gpt-5.4` through Bedrock’s provider-specific model ID.\r\n- Kept explicit `memories.extract_model` and `memories.consolidation_model` config overrides taking precedence.\r\n- Added startup coverage for default OpenAI and Bedrock memory model selection.\r\n\r\n#closes #26288\r\n\r\n",
+    "labels": [],
+    "merged_at": "2026-06-09T23:49:09Z",
+    "number": 27129,
+    "state": "merged",
+    "title": "feat: use provider defaults for memory models",
+    "url": "https://github.com/openai/codex/pull/27129"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

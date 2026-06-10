@@ -1,0 +1,232 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-06T04:05:34Z",
+      "message": "Handle Ctrl-C for non-TTY unified exec",
+      "sha": "b564da44fb798e9e8e5c89ff912ab72a70a2ba9c",
+      "url": "https://github.com/openai/codex/commit/b564da44fb798e9e8e5c89ff912ab72a70a2ba9c"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-08T21:35:29Z",
+      "message": "Report unsupported process interrupts",
+      "sha": "5b5caa9431c818837eadc6d01cdd64e3b597ce9d",
+      "url": "https://github.com/openai/codex/commit/5b5caa9431c818837eadc6d01cdd64e3b597ce9d"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-08T22:00:38Z",
+      "message": "Avoid expect_err in exec server test",
+      "sha": "83c0b87e952501c98f96957c3df2b2efa45352f7",
+      "url": "https://github.com/openai/codex/commit/83c0b87e952501c98f96957c3df2b2efa45352f7"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-09T15:23:10Z",
+      "message": "Report SIGINT exit code for unified exec",
+      "sha": "9ff7581214ba17137fd351893766e6be3612ff05",
+      "url": "https://github.com/openai/codex/commit/9ff7581214ba17137fd351893766e6be3612ff05"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-09T16:59:29Z",
+      "message": "codex: fix CI failure on PR #26734",
+      "sha": "e605b381502ef535c95f6e57798cc78a08703912",
+      "url": "https://github.com/openai/codex/commit/e605b381502ef535c95f6e57798cc78a08703912"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-09T18:53:52Z",
+      "message": "Merge remote-tracking branch 'origin/main' into pakrym/unified-exec-non-tty-interrupt",
+      "sha": "eb4878b26439e36e1446fc72da6a8b25b495bfd1",
+      "url": "https://github.com/openai/codex/commit/eb4878b26439e36e1446fc72da6a8b25b495bfd1"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "SIGINT",
+    "INT",
+    "UNIFIED_EXEC_OUTPUT_MAX_TOKENS",
+    "EARLY_EXIT_GRACE_PERIOD",
+    "UNIFIED_EXEC_ENV",
+    "NETWORK_ACCESS_DENIED_MESSAGE",
+    "LATE_NETWORK_DENIAL_GRACE_PERIOD",
+    "INTERRUPT",
+    "READY",
+    "POST",
+    "NUL",
+    "EXEC_EXITED_METHOD",
+    "EXEC_METHOD",
+    "EXEC_OUTPUT_DELTA_METHOD",
+    "EXEC_READ_METHOD",
+    "EXEC_SIGNAL_METHOD",
+    "EXEC_TERMINATE_METHOD",
+    "EXEC_WRITE_METHOD",
+    "INITIALIZED_METHOD",
+    "JSONRPCE",
+    "MAX",
+    "ENVIRONMENT_INFO_METHOD",
+    "INITIALIZE_METHOD",
+    "CLI",
+    "PTY",
+    "SIGTERM",
+    "ESRCH",
+    "SIGKILL"
+  ],
+  "files": [
+    {
+      "additions": 14,
+      "deletions": 1,
+      "patch_excerpt": "@@ -14,6 +14,7 @@ use tokio_util::sync::CancellationToken;\n \n use crate::exec::is_likely_sandbox_denied;\n use codex_exec_server::ExecProcess;\n+use codex_exec_server::ProcessSignal as ExecServerProcessSignal;\n use codex_exec_server::ReadResponse as ExecReadResponse;\n use codex_exec_server::StartedExecProcess;\n use codex_exec_server::WriteStatus;\n@@ -23,6 +24,7 @@ use codex_protocol::protocol::TruncationPolicy;\n use codex_sandboxing::SandboxType;\n use codex_utils_output_truncation::formatted_truncate_text;\n use codex_utils_pty::ExecCommandSession;\n+use codex_utils_pty::ProcessSignal as PtyProcessSignal;\n use codex_utils_pty::SpawnedPty;\n \n use super::UNIFIED_EXEC_OUTPUT_MAX_TOKENS;\n@@ -31,7 +33,6 @@ use super::head_tail_buffer::HeadTailBuffer;\n use super::process_state::ProcessState;\n \n const EARLY_EXIT_GRACE_PERIOD: Duration = Duration::from_millis(150);\n-\n pub(crate) trait SpawnLifecycle...",
+      "path": "codex-rs/core/src/unified_exec/process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 23,
+      "deletions": 17,
+      "patch_excerpt": "@@ -72,6 +72,7 @@ const UNIFIED_EXEC_ENV: [(&str, &str); 10] = [\n const NETWORK_ACCESS_DENIED_MESSAGE: &str =\n     \"Network access was denied by the Codex sandbox network proxy.\";\n const LATE_NETWORK_DENIAL_GRACE_PERIOD: Duration = Duration::from_millis(100);\n+const INTERRUPT: &str = \"\\u{3}\";\n \n /// Test-only override for deterministic unified exec process IDs.\n ///\n@@ -617,24 +618,29 @@ impl UnifiedExecProcessManager {\n \n         if !request.input.is_empty() {\n             if !tty {\n-                return Err(UnifiedExecError::StdinClosed);\n-            }\n-            match process.write(request.input.as_bytes()).await {\n-                Ok(()) => {\n-                    // Give the remote process a brief window to react so that we are\n-                    // more likely to capture its output in the poll below.\n-                    tokio::time::sleep(Duration::from_millis(100)).await;\n+...",
+      "path": "codex-rs/core/src/unified_exec/process_manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5,6 +5,7 @@ use codex_exec_server::ExecProcess;\n use codex_exec_server::ExecProcessEventReceiver;\n use codex_exec_server::ExecServerError;\n use codex_exec_server::ProcessId;\n+use codex_exec_server::ProcessSignal;\n use codex_exec_server::ReadResponse;\n use codex_exec_server::StartedExecProcess;\n use codex_exec_server::WriteResponse;\n@@ -63,6 +64,10 @@ impl ExecProcess for MockExecProcess {\n         Ok(self.write_response.clone())\n     }\n \n+    async fn signal(&self, _signal: ProcessSignal) -> Result<(), ExecServerError> {\n+        Ok(())\n+    }\n+\n     async fn terminate(&self) -> Result<(), ExecServerError> {\n         Ok(())\n     }",
+      "path": "codex-rs/core/src/unified_exec/process_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 243,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1995,6 +1995,249 @@ async fn write_stdin_returns_exit_metadata_and_clears_session() -> Result<()> {\n     Ok(())\n }\n \n+#[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n+async fn write_stdin_ctrl_c_interrupts_non_tty_session() -> Result<()> {\n+    assert_write_stdin_ctrl_c_interrupts_non_tty_session(\n+        \"trap\",\n+        \"trap 'echo INT-TRAP; exit 42' INT; echo READY; while true; do sleep 30; done\",\n+        /*expected_exit_code*/ 42,\n+        Some(\"INT-TRAP\"),\n+    )\n+    .await\n+}\n+\n+#[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n+async fn write_stdin_ctrl_c_default_interrupt_reports_130_for_non_tty_session() -> Result<()> {\n+    assert_write_stdin_ctrl_c_interrupts_non_tty_session(\n+        \"default\",\n+        \"echo READY; exec sleep 30\",\n+        /*expected_exit_code*/ 130,\n+        /*expected_interrupt_output*/ None,\n+    )\n+    .await\n+}\n+\n+async fn a...",
+      "path": "codex-rs/core/tests/suite/unified_exec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 25,
+      "deletions": 0,
+      "patch_excerpt": "@@ -35,6 +35,7 @@ use crate::protocol::EXEC_EXITED_METHOD;\n use crate::protocol::EXEC_METHOD;\n use crate::protocol::EXEC_OUTPUT_DELTA_METHOD;\n use crate::protocol::EXEC_READ_METHOD;\n+use crate::protocol::EXEC_SIGNAL_METHOD;\n use crate::protocol::EXEC_TERMINATE_METHOD;\n use crate::protocol::EXEC_WRITE_METHOD;\n use crate::protocol::EnvironmentInfo;\n@@ -80,8 +81,11 @@ use crate::protocol::INITIALIZED_METHOD;\n use crate::protocol::InitializeParams;\n use crate::protocol::InitializeResponse;\n use crate::protocol::ProcessOutputChunk;\n+use crate::protocol::ProcessSignal;\n use crate::protocol::ReadParams;\n use crate::protocol::ReadResponse;\n+use crate::protocol::SignalParams;\n+use crate::protocol::SignalResponse;\n use crate::protocol::TerminateParams;\n use crate::protocol::TerminateResponse;\n use crate::protocol::WriteParams;\n@@ -394,6 +398,23 @@ impl ExecServerClient {\n         .await\n     }\n \n+...",
+      "path": "codex-rs/exec-server/src/client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -93,9 +93,12 @@ pub use protocol::HttpRequestResponse;\n pub use protocol::InitializeParams;\n pub use protocol::InitializeResponse;\n pub use protocol::ProcessOutputChunk;\n+pub use protocol::ProcessSignal;\n pub use protocol::ReadParams;\n pub use protocol::ReadResponse;\n pub use protocol::ShellInfo;\n+pub use protocol::SignalParams;\n+pub use protocol::SignalResponse;\n pub use protocol::TerminateParams;\n pub use protocol::TerminateResponse;\n pub use protocol::WriteParams;",
+      "path": "codex-rs/exec-server/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 51,
+      "deletions": 3,
+      "patch_excerpt": "@@ -10,6 +10,7 @@ use codex_protocol::config_types::EnvironmentVariablePattern;\n use codex_protocol::config_types::ShellEnvironmentPolicy;\n use codex_protocol::shell_environment;\n use codex_utils_pty::ExecCommandSession;\n+use codex_utils_pty::ProcessSignal as PtyProcessSignal;\n use codex_utils_pty::TerminalSize;\n use tokio::sync::Mutex;\n use tokio::sync::Notify;\n@@ -33,8 +34,11 @@ use crate::protocol::ExecOutputStream;\n use crate::protocol::ExecParams;\n use crate::protocol::ExecResponse;\n use crate::protocol::ProcessOutputChunk;\n+use crate::protocol::ProcessSignal;\n use crate::protocol::ReadParams;\n use crate::protocol::ReadResponse;\n+use crate::protocol::SignalParams;\n+use crate::protocol::SignalResponse;\n use crate::protocol::TerminateParams;\n use crate::protocol::TerminateResponse;\n use crate::protocol::WriteParams;\n@@ -272,7 +276,6 @@ impl LocalProcess {\n         &self,\n         para...",
+      "path": "codex-rs/exec-server/src/local_process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -10,6 +10,7 @@ use crate::ExecServerError;\n use crate::ProcessId;\n use crate::protocol::ExecParams;\n use crate::protocol::ProcessOutputChunk;\n+use crate::protocol::ProcessSignal;\n use crate::protocol::ReadResponse;\n use crate::protocol::WriteResponse;\n \n@@ -178,6 +179,8 @@ pub trait ExecProcess: Send + Sync {\n \n     async fn write(&self, chunk: Vec<u8>) -> Result<WriteResponse, ExecServerError>;\n \n+    async fn signal(&self, signal: ProcessSignal) -> Result<(), ExecServerError>;\n+\n     async fn terminate(&self) -> Result<(), ExecServerError>;\n }",
+      "path": "codex-rs/exec-server/src/process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 18,
+      "deletions": 0,
+      "patch_excerpt": "@@ -15,6 +15,7 @@ pub const INITIALIZED_METHOD: &str = \"initialized\";\n pub const EXEC_METHOD: &str = \"process/start\";\n pub const EXEC_READ_METHOD: &str = \"process/read\";\n pub const EXEC_WRITE_METHOD: &str = \"process/write\";\n+pub const EXEC_SIGNAL_METHOD: &str = \"process/signal\";\n pub const EXEC_TERMINATE_METHOD: &str = \"process/terminate\";\n pub const EXEC_OUTPUT_DELTA_METHOD: &str = \"process/output\";\n pub const EXEC_EXITED_METHOD: &str = \"process/exited\";\n@@ -166,6 +167,23 @@ pub struct WriteResponse {\n     pub status: WriteStatus,\n }\n \n+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]\n+#[serde(rename_all = \"camelCase\")]\n+pub enum ProcessSignal {\n+    Interrupt,\n+}\n+\n+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]\n+#[serde(rename_all = \"camelCase\")]\n+pub struct SignalParams {\n+    pub process_id: ProcessId,\n+    pub signal: ProcessSignal,\n+}\n+\n+#[deriv...",
+      "path": "codex-rs/exec-server/src/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,6 +12,7 @@ use crate::StartedExecProcess;\n use crate::client::LazyRemoteExecServerClient;\n use crate::client::Session;\n use crate::protocol::ExecParams;\n+use crate::protocol::ProcessSignal;\n use crate::protocol::ReadResponse;\n use crate::protocol::WriteResponse;\n \n@@ -76,6 +77,11 @@ impl ExecProcess for RemoteExecProcess {\n         self.session.write(chunk).await\n     }\n \n+    async fn signal(&self, signal: ProcessSignal) -> Result<(), ExecServerError> {\n+        trace!(\"exec process signal\");\n+        self.session.signal(signal).await\n+    }\n+\n     async fn terminate(&self) -> Result<(), ExecServerError> {\n         trace!(\"exec process terminate\");\n         self.session.terminate().await",
+      "path": "codex-rs/exec-server/src/remote_process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -42,6 +42,8 @@ use crate::protocol::InitializeParams;\n use crate::protocol::InitializeResponse;\n use crate::protocol::ReadParams;\n use crate::protocol::ReadResponse;\n+use crate::protocol::SignalParams;\n+use crate::protocol::SignalResponse;\n use crate::protocol::TerminateParams;\n use crate::protocol::TerminateResponse;\n use crate::protocol::WriteParams;\n@@ -171,6 +173,14 @@ impl ExecServerHandler {\n         session.process().exec_write(params).await\n     }\n \n+    pub(crate) async fn signal(\n+        &self,\n+        params: SignalParams,\n+    ) -> Result<SignalResponse, JSONRPCErrorError> {\n+        let session = self.require_initialized_for(\"exec\")?;\n+        session.process().signal(params).await\n+    }\n+\n     pub(crate) async fn terminate(\n         &self,\n         params: TerminateParams,",
+      "path": "codex-rs/exec-server/src/server/handler.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5,6 +5,8 @@ use crate::protocol::ExecParams;\n use crate::protocol::ExecResponse;\n use crate::protocol::ReadParams;\n use crate::protocol::ReadResponse;\n+use crate::protocol::SignalParams;\n+use crate::protocol::SignalResponse;\n use crate::protocol::TerminateParams;\n use crate::protocol::TerminateResponse;\n use crate::protocol::WriteParams;\n@@ -49,6 +51,13 @@ impl ProcessHandler {\n         self.process.exec_write(params).await\n     }\n \n+    pub(crate) async fn signal(\n+        &self,\n+        params: SignalParams,\n+    ) -> Result<SignalResponse, JSONRPCErrorError> {\n+        self.process.signal_process(params).await\n+    }\n+\n     pub(crate) async fn terminate(\n         &self,\n         params: TerminateParams,",
+      "path": "codex-rs/exec-server/src/server/process_handler.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3,6 +3,7 @@ use std::sync::Arc;\n use crate::protocol::ENVIRONMENT_INFO_METHOD;\n use crate::protocol::EXEC_METHOD;\n use crate::protocol::EXEC_READ_METHOD;\n+use crate::protocol::EXEC_SIGNAL_METHOD;\n use crate::protocol::EXEC_TERMINATE_METHOD;\n use crate::protocol::EXEC_WRITE_METHOD;\n use crate::protocol::ExecParams;\n@@ -32,6 +33,7 @@ use crate::protocol::INITIALIZE_METHOD;\n use crate::protocol::INITIALIZED_METHOD;\n use crate::protocol::InitializeParams;\n use crate::protocol::ReadParams;\n+use crate::protocol::SignalParams;\n use crate::protocol::TerminateParams;\n use crate::protocol::WriteParams;\n use crate::rpc::RpcRouter;\n@@ -77,6 +79,12 @@ pub(crate) fn build_router() -> RpcRouter<ExecServerHandler> {\n             handler.exec_write(params).await\n         },\n     );\n+    router.request(\n+        EXEC_SIGNAL_METHOD,\n+        |handler: Arc<ExecServerHandler>, params: SignalParams| async...",
+      "path": "codex-rs/exec-server/src/server/registry.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 123,
+      "deletions": 2,
+      "patch_excerpt": "@@ -1,5 +1,3 @@\n-#![cfg(unix)]\n-\n mod common;\n \n use std::sync::Arc;\n@@ -13,6 +11,7 @@ use codex_exec_server::ExecParams;\n use codex_exec_server::ExecProcess;\n use codex_exec_server::ExecProcessEvent;\n use codex_exec_server::ProcessId;\n+use codex_exec_server::ProcessSignal;\n use codex_exec_server::ReadResponse;\n use codex_exec_server::StartedExecProcess;\n use codex_exec_server::WriteStatus;\n@@ -505,6 +504,98 @@ async fn assert_exec_process_rejects_write_without_pipe_stdin(use_remote: bool)\n     Ok(())\n }\n \n+async fn assert_exec_process_signal_interrupts_process(use_remote: bool) -> Result<()> {\n+    let context = create_process_context(use_remote).await?;\n+    let process_id = \"proc-signal\".to_string();\n+    let session = context\n+        .backend\n+        .start(ExecParams {\n+            process_id: process_id.clone().into(),\n+            argv: vec![\n+                \"/bin/sh\".to_string...",
+      "path": "codex-rs/exec-server/tests/exec_process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -17,6 +17,8 @@ pub use pipe::spawn_process_no_stdin as spawn_pipe_process_no_stdin;\n pub use process::ProcessDriver;\n /// Handle for interacting with a spawned process (PTY or pipe).\n pub use process::ProcessHandle;\n+/// Process signal supported by spawned-process handles.\n+pub use process::ProcessSignal;\n /// Bundle of process handles plus split output and exit receivers returned by spawn helpers.\n pub use process::SpawnedProcess;\n /// Terminal size in character cells used for PTY spawn and resize operations.",
+      "path": "codex-rs/utils/pty/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 19,
+      "deletions": 1,
+      "patch_excerpt": "@@ -19,7 +19,9 @@ use tokio::task::JoinHandle;\n \n use crate::process::ChildTerminator;\n use crate::process::ProcessHandle;\n+use crate::process::ProcessSignal;\n use crate::process::SpawnedProcess;\n+use crate::process::exit_code_from_status;\n \n #[cfg(target_os = \"linux\")]\n use libc;\n@@ -32,6 +34,22 @@ struct PipeChildTerminator {\n }\n \n impl ChildTerminator for PipeChildTerminator {\n+    fn signal(&mut self, signal: ProcessSignal) -> io::Result<()> {\n+        match signal {\n+            ProcessSignal::Interrupt => {\n+                #[cfg(unix)]\n+                {\n+                    crate::process_group::interrupt_process_group(self.process_group_id)\n+                }\n+\n+                #[cfg(not(unix))]\n+                {\n+                    Err(crate::process::unsupported_signal(signal))\n+                }\n+            }\n+        }\n+    }\n+\n     fn kill(&mut self) -> io::Result<()> {\n...",
+      "path": "codex-rs/utils/pty/src/pipe.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 48,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2,6 +2,7 @@ use core::fmt;\n use std::io;\n #[cfg(unix)]\n use std::os::fd::RawFd;\n+use std::process::ExitStatus;\n use std::sync::Arc;\n use std::sync::Mutex as StdMutex;\n use std::sync::atomic::AtomicBool;\n@@ -17,7 +18,39 @@ use tokio::sync::watch;\n use tokio::task::AbortHandle;\n use tokio::task::JoinHandle;\n \n+#[derive(Clone, Copy, Debug, PartialEq, Eq)]\n+pub enum ProcessSignal {\n+    Interrupt,\n+}\n+\n+pub(crate) fn unsupported_signal(signal: ProcessSignal) -> io::Error {\n+    match signal {\n+        ProcessSignal::Interrupt => io::Error::new(\n+            io::ErrorKind::Unsupported,\n+            \"process interrupt is not supported by this process backend\",\n+        ),\n+    }\n+}\n+\n+pub(crate) fn exit_code_from_status(status: ExitStatus) -> i32 {\n+    if let Some(code) = status.code() {\n+        return code;\n+    }\n+\n+    #[cfg(unix)]\n+    {\n+        use std::os::unix::process::ExitStatu...",
+      "path": "codex-rs/utils/pty/src/process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 24,
+      "deletions": 19,
+      "patch_excerpt": "@@ -118,15 +118,10 @@ pub fn kill_process_group_by_pid(_pid: u32) -> io::Result<()> {\n }\n \n #[cfg(unix)]\n-/// Send SIGTERM to a specific process group ID (best-effort).\n-///\n-/// Returns `Ok(true)` when SIGTERM was delivered to an existing group and\n-/// `Ok(false)` when the group no longer exists.\n-pub fn terminate_process_group(process_group_id: u32) -> io::Result<bool> {\n+fn signal_process_group_id(pgid: libc::pid_t, signal: libc::c_int) -> io::Result<bool> {\n     use std::io::ErrorKind;\n \n-    let pgid = process_group_id as libc::pid_t;\n-    let result = unsafe { libc::killpg(pgid, libc::SIGTERM) };\n+    let result = unsafe { libc::killpg(pgid, signal) };\n     if result == -1 {\n         let err = io::Error::last_os_error();\n         if err.kind() == ErrorKind::NotFound || err.raw_os_error() == Some(libc::ESRCH) {\n@@ -138,29 +133,39 @@ pub fn terminate_process_group(process_group_id: ...",
+      "path": "codex-rs/utils/pty/src/process_group.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 25,
+      "deletions": 1,
+      "patch_excerpt": "@@ -30,10 +30,13 @@ use tokio::task::JoinHandle;\n \n use crate::process::ChildTerminator;\n use crate::process::ProcessHandle;\n+use crate::process::ProcessSignal;\n use crate::process::PtyHandles;\n use crate::process::PtyMasterHandle;\n use crate::process::SpawnedProcess;\n use crate::process::TerminalSize;\n+#[cfg(unix)]\n+use crate::process::exit_code_from_status;\n \n /// Returns true when ConPTY support is available (Windows only).\n #[cfg(windows)]\n@@ -54,6 +57,19 @@ struct PtyChildTerminator {\n }\n \n impl ChildTerminator for PtyChildTerminator {\n+    fn signal(&mut self, signal: ProcessSignal) -> std::io::Result<()> {\n+        match signal {\n+            ProcessSignal::Interrupt => {\n+                #[cfg(unix)]\n+                if let Some(process_group_id) = self.process_group_id {\n+                    return crate::process_group::interrupt_process_group(process_group_id);\n+               ...",
+      "path": "codex-rs/utils/pty/src/pty.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#26734"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nA long-running unified exec process started with `tty: false` could not be interrupted via `write_stdin`: ordinary non-TTY stdin writes are rejected once stdin is closed, but an exact U+0003 payload should still map to a process interrupt. The interrupt should flow through the same process lifecycle path as a real signal so Codex preserves process-reported output and exit metadata instead of fabricating a Ctrl-C exit code or tearing down the session early.\n\n## What Changed\n\n- Add `process/signal` to exec-server with `ProcessSignal::Interrupt` and an empty response.\n- Add a non-consuming `ProcessHandle::signal` path for spawned processes; on Unix it sends SIGINT to the process group and leaves terminate/hard-kill unchanged.\n- Route non-TTY U+0003 `write_stdin` through `process.signal(...)` instead of `terminate`, then let the normal post-write collection path drain output and observe exit.\n- Add exec-server coverage where a shell `trap INT` handler prints the signal and exits with its own code.\n- Add unified exec coverage where a `tty: false` process traps SIGINT, emits output, and exits with its own code.\n\n## Validation\n\n- `just test -p codex-exec-server exec_process_signal_interrupts_process`\n- `just test -p codex-exec-server`\n- `just test -p codex-core write_stdin_ctrl_c_interrupts_non_tty_session`\n",
+    "labels": [],
+    "merged_at": "2026-06-09T22:10:18Z",
+    "number": 26734,
+    "state": "merged",
+    "title": "[codex] Handle Ctrl-C for non-TTY unified exec",
+    "url": "https://github.com/openai/codex/pull/26734"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
