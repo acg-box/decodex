@@ -106,8 +106,11 @@ Post-control CLI recovery:
 4. If status reports loop guardrail or architecture recovery state, inspect private
    evidence before clearing attention labels or retrying. Autonomous recovery is valid
    only when the Authority Boundary Check is `within_authority` and recovery budget
-   remains; boundary, external, insufficient-evidence, and exhausted-recovery outcomes
-   need a human decision or updated authority first.
+   remains for an engineering convergence reason. Boundary, dependency,
+   uncovered-direction, ownership/lineage ambiguity, external,
+   insufficient-evidence, and exhausted-recovery outcomes are not cleared by
+   Authority Boundary Check alone; follow `docs/runbook/lane-control-recovery.md`
+   for the reason-specific resume rule before returning the lane to automation.
 5. If the operator changed labels or issue state and wants the scheduler to notice
    before the next poll, request `POST /api/linear-scan`; this is a refresh request,
    not a retry command.
