@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "operator_impact",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-pr-27191:operator_impact",
   "reserved_at": "2026-06-10T09:56:46Z",
   "expires_at": "2026-06-10T11:56:46Z",
@@ -36,8 +36,10 @@
   ],
   "owner": {
     "automation_id": "decodex-x-publisher",
-    "branch": "codex/x-publisher-pr27191-20260610"
+    "branch": "codex/x-publisher-pr27191-20260610",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/290"
   },
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-10/openai-codex-pr-27191.json",
   "evidence_notes": [
     "Checked durable social_post/v1 records: no PR27191 slug, source URL, or idempotency-key match.",
     "Checked durable social_publish_reservation/v1 records: no PR27191 slug or idempotency-key match.",
