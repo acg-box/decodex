@@ -75,6 +75,7 @@ struct HarnessOutcomePayload {
 	validation: HarnessValidationOutcome,
 	repair: HarnessRepairOutcome,
 	review: HarnessReviewOutcome,
+	authority_boundary: HarnessAuthorityBoundaryOutcome,
 	manual_attention: Option<HarnessManualAttentionOutcome>,
 	pr_lifecycle: HarnessPrLifecycleOutcome,
 	linear_projection: HarnessLinearProjectionSummary,
@@ -162,6 +163,13 @@ struct HarnessReviewOutcome {
 }
 
 #[derive(Serialize)]
+struct HarnessAuthorityBoundaryOutcome {
+	dispositions: Vec<String>,
+	failed_check_count: usize,
+	improvement_signal_count: usize,
+}
+
+#[derive(Serialize)]
 struct HarnessManualAttentionOutcome {
 	reason_code: String,
 }
@@ -191,6 +199,9 @@ struct HarnessOutcomeSignals {
 	nonclean_rounds: i64,
 	repair_phase_events: usize,
 	guardrail_reasons: std::collections::BTreeSet<String>,
+	authority_boundary_dispositions: std::collections::BTreeSet<String>,
+	authority_boundary_failed_check_count: usize,
+	authority_boundary_candidates: Vec<HarnessImprovementCandidateSummary>,
 }
 
 pub(crate) fn record_harness_outcome_for_issue_run(
@@ -240,6 +251,7 @@ pub(crate) fn harness_improvement_candidates_from_private_events(
 	if signals.validation_failure_count == 0
 		&& signals.accepted_finding_count == 0
 		&& signals.guardrail_reasons.is_empty()
+		&& signals.authority_boundary_candidates.is_empty()
 	{
 		return Vec::new();
 	}
@@ -378,6 +390,11 @@ fn harness_outcome_payload(
 		rejected_finding_count: signals.rejected_finding_count,
 		nonclean_rounds: signals.nonclean_rounds,
 	};
+	let authority_boundary = HarnessAuthorityBoundaryOutcome {
+		dispositions: signals.authority_boundary_dispositions.iter().cloned().collect(),
+		failed_check_count: signals.authority_boundary_failed_check_count,
+		improvement_signal_count: signals.authority_boundary_candidates.len(),
+	};
 	let manual_attention =
 		input.error_class.filter(|_| input.outcome == HarnessOutcomeKind::ManualAttention).map(
 			|reason| HarnessManualAttentionOutcome { reason_code: reason.to_owned() },
@@ -411,6 +428,7 @@ fn harness_outcome_payload(
 		validation,
 		repair,
 		review,
+		authority_boundary,
 		manual_attention,
 		pr_lifecycle,
 		linear_projection,
@@ -506,6 +524,7 @@ fn harness_outcome_signals(
 				push_phase_goal_signal(&mut signals, event),
 			"review_checkpoint" => push_review_signal(&mut signals, event.payload()),
 			"loop_guardrail_checkpoint" => push_guardrail_signal(&mut signals, event.payload()),
+			"authority_boundary_check" => push_authority_boundary_signal(&mut signals, event.payload()),
 			"progress_checkpoint" => push_progress_signal(&mut signals, event.payload()),
 			_ => {},
 		}
@@ -562,6 +581,60 @@ fn push_guardrail_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
 		signals.validation_failure_count += 1;
 
 		signals.validation_failure_classes.insert(error_class);
+	}
+}
+
+fn push_authority_boundary_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
+	if let Some(disposition) = json_string(payload.get("disposition")) {
+		signals.authority_boundary_dispositions.insert(disposition.clone());
+
+		if disposition != "within_authority" {
+			signals.authority_boundary_failed_check_count += 1;
+		}
+		if matches!(disposition.as_str(), "requires_human" | "insufficient_evidence")
+			&& json_array_len(payload.get("improvement_signals")) == 0
+			&& authority_boundary_final_reason_mentions_underspecified(payload)
+		{
+			let target = first_decision_contract_target(payload)
+				.unwrap_or_else(|| String::from("issue:local-readback"));
+
+			signals.authority_boundary_candidates.push(HarnessImprovementCandidateSummary {
+				kind: String::from("underspecified_decision_contract"),
+				reason_code: String::from("authority_underspecified"),
+				target,
+				source_event_count: 1,
+				recommendation: String::from(
+					"Add explicit authority-envelope fields before retrying autonomous recovery.",
+				),
+			});
+		}
+	}
+	if let Some(improvement_signals) = payload
+		.get("improvement_signals")
+		.and_then(Value::as_array)
+	{
+		for signal in improvement_signals {
+			let Some(kind) = json_string(signal.get("kind")) else {
+				continue;
+			};
+			let Some(reason_code) = json_string(signal.get("reason_code")) else {
+				continue;
+			};
+			let Some(target) = json_string(signal.get("target")) else {
+				continue;
+			};
+			let Some(recommendation) = json_string(signal.get("recommendation")) else {
+				continue;
+			};
+
+			signals.authority_boundary_candidates.push(HarnessImprovementCandidateSummary {
+				kind,
+				reason_code,
+				target,
+				source_event_count: 1,
+				recommendation,
+			});
+		}
 	}
 }
 
@@ -730,6 +803,16 @@ fn push_signal_candidates(
 			recommendation,
 		);
 	}
+	for candidate in &signals.authority_boundary_candidates {
+		insert_candidate(
+			candidates,
+			&candidate.kind,
+			&candidate.reason_code,
+			&candidate.target,
+			candidate.source_event_count,
+			&candidate.recommendation,
+		);
+	}
 
 	if input.error_class == Some("uncovered_direction")
 		|| linear_projection.final_error_class.as_deref() == Some("uncovered_direction")
@@ -743,6 +826,31 @@ fn push_signal_candidates(
 			"Feed the uncovered direction back into the Decision Contract before retrying.",
 		);
 	}
+}
+
+fn authority_boundary_final_reason_mentions_underspecified(payload: &Value) -> bool {
+	let reason = payload
+		.get("final_disposition")
+		.and_then(|value| json_string(value.get("reason")))
+		.or_else(|| json_string(payload.get("final_disposition_reason")));
+
+	reason.is_some_and(|reason| {
+		let reason = reason.to_ascii_lowercase();
+
+		reason.contains("underspecified")
+			|| reason.contains("missing contract")
+			|| reason.contains("missing authority")
+	})
+}
+
+fn first_decision_contract_target(payload: &Value) -> Option<String> {
+	payload
+		.get("decision_contract_ids")
+		.and_then(Value::as_array)?
+		.iter()
+		.filter_map(Value::as_str)
+		.find(|contract_id| !contract_id.is_empty())
+		.map(|contract_id| format!("decision_contract:{contract_id}"))
 }
 
 fn guardrail_candidate_kind(reason: &str) -> (&'static str, &'static str) {
