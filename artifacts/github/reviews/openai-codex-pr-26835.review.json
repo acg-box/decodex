@@ -1,0 +1,74 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26835",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26835",
+    "commit_shas": [
+      "4f1183c281d837c81ee3f13f4b9207fc4bbd7115",
+      "4678bad085f9dac6876e0466c5f922635926d7db",
+      "583f8cca1bd6d6a4ea2762ad6ec1e39d646a8d51",
+      "3a804efa84757c84da11729a04e04995d5c04c8c"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Test extension API contracts",
+        "url": "https://github.com/openai/codex/pull/26835",
+        "meta": "Merged 2026-06-09T18:30:24Z"
+      },
+      {
+        "kind": "commit",
+        "title": "test extension API contracts",
+        "url": "https://github.com/openai/codex/commit/4f1183c281d837c81ee3f13f4b9207fc4bbd7115"
+      },
+      {
+        "kind": "commit",
+        "title": "codex: address PR review feedback (#26835)",
+        "url": "https://github.com/openai/codex/commit/4678bad085f9dac6876e0466c5f922635926d7db"
+      },
+      {
+        "kind": "commit",
+        "title": "test: explain forced initializer overlap",
+        "url": "https://github.com/openai/codex/commit/583f8cca1bd6d6a4ea2762ad6ec1e39d646a8d51"
+      },
+      {
+        "kind": "commit",
+        "title": "codex: address PR review feedback (#26835)",
+        "url": "https://github.com/openai/codex/commit/3a804efa84757c84da11729a04e04995d5c04c8c"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-10T08:05:59Z",
+  "observed_change": "Codex added direct integration tests for the extension API public contract without changing the runtime extension API behavior.",
+  "changed_surfaces": [
+    "codex-extension-api integration tests",
+    "ExtensionData typed-state test coverage",
+    "extension registry ordering and contributor behavior tests",
+    "test-only dependency metadata"
+  ],
+  "user_visible_path": "None; this PR adds regression coverage for extension API contracts rather than a new CLI, TUI, app-server, plugin, or SDK behavior path.",
+  "control_plane_relevance": "Useful as watch evidence that upstream is stabilizing the extension API contract, but it does not require a Decodex runtime or Control Plane change by itself.",
+  "compatibility_risk": "None identified from the source bundle; the changed files are tests, Cargo metadata for dev-dependencies, and lockfile entries.",
+  "adoption_opportunity": "Keep the tested extension API contracts in mind when Decodex evaluates future extension-backed plugin or MCP adoption work.",
+  "community_value": "Low as a standalone public signal because the PR is mostly validation coverage, not user-observable behavior.",
+  "deprecated_or_breaking_notes": "No deprecated, removed, migration, or breaking behavior was found in the reviewed source evidence.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26835 says the API crate had no direct test suite and adds public-surface integration tests for `ExtensionData`, registry ordering, capability adapters, and contributor behavior.",
+    "codex-rs/ext/extension-api/tests/capabilities.rs adds tests for `NoopResponseItemInjector` and closure-based agent spawning.",
+    "codex-rs/ext/extension-api/tests/registry.rs adds contributor ordering, approval short-circuiting, event sink retention, and registry behavior tests.",
+    "codex-rs/ext/extension-api/tests/state.rs adds typed-state insert, replace, remove, concurrency, and poison-recovery coverage.",
+    "The only non-test source changes in the bundle are dev-dependency additions in Cargo metadata and the lockfile."
+  ],
+  "caveats": "The PR is valuable for confidence in later extension API work, but it should not be promoted as a shipped feature on its own.",
+  "next_actions": [
+    {
+      "type": "none",
+      "reason": "Review trace is enough; no impact, signal, social, or Linear follow-up is warranted from this test-only PR alone."
+    }
+  ]
+}
