@@ -569,6 +569,13 @@ fn harness_outcome_records_validation_review_and_repair_signals() {
 			.iter()
 			.any(|candidate| candidate["reason_code"] == "authority_underspecified")
 	);
+	assert!(
+		payload["improvement_candidates"]
+			.as_array()
+			.expect("candidates should be an array")
+			.iter()
+			.any(|candidate| candidate["reason_code"] == "architecture_recovery_exhausted")
+	);
 
 	let request = EvidenceRequest {
 		config_path: None,
@@ -596,6 +603,21 @@ fn harness_outcome_records_validation_review_and_repair_signals() {
 			.improvement_candidates
 			.iter()
 			.any(|candidate| candidate.reason_code == "authority_underspecified")
+	);
+	assert!(
+		readback
+			.improvement_candidates
+			.iter()
+			.any(|candidate| candidate.reason_code == "architecture_recovery_exhausted")
+	);
+	assert!(
+		readback.architecture_recoveries.iter().any(|recovery| {
+			recovery.reason_code == "architecture_recovery_exhausted"
+				&& recovery.guardrail_reason.as_deref() == Some("validation_repeat")
+				&& recovery.boundary_disposition.as_deref() == Some("within_authority")
+				&& recovery.recovery_budget_attempt == Some(2)
+				&& recovery.recovery_budget_max_attempts == Some(1)
+		})
 	);
 	assert!(readback.events.iter().all(|event| event.payload.is_none()));
 }
@@ -677,6 +699,27 @@ fn record_harness_signal_fixture_events(state_store: &StateStore) {
 		},
 	)
 	.expect("authority boundary evidence should append");
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			"issue-harness",
+			"run-harness",
+			2,
+			"architecture_recovery_terminal",
+			serde_json::json!({
+				"schema": "decodex.architecture_recovery_terminal/1",
+				"record_version": 1,
+				"reason_code": "architecture_recovery_exhausted",
+				"guardrail_reason": "validation_repeat",
+				"boundary_disposition": "within_authority",
+				"recovery_budget": {
+					"attempt": 2,
+					"max_attempts": 1,
+				},
+			}),
+		)
+		.expect("architecture recovery evidence should append");
 }
 
 #[test]

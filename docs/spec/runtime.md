@@ -363,7 +363,13 @@ The continued-repair classes above are ordinary bounded churn: the coding agent 
 Continued repair is still bounded by loop guardrails. For each retryable failure,
 Decodex records local `loop_guardrail_checkpoint` evidence and updates the
 `loop_guardrail_checkpoints` row for any matching convergence reason. Three
-consecutive observations with the same fingerprint stop automatic retry and route the
+consecutive observations with the same fingerprint stop the current ineffective
+strategy. Before terminalizing the lane, Decodex records an Architecture Recovery
+Packet and an Authority Boundary Check. If the disposition is `within_authority` and
+the bounded recovery budget remains, Decodex records `architecture_recovery_started`
+and schedules a materially different recovery strategy. Otherwise it records a
+terminal recovery reason such as `contract_boundary_required`,
+`external_dependency_required`, or `architecture_recovery_exhausted` and routes the
 lane through the human-required failure path. Repo-gate failures record both
 `validation_repeat` and `remaining_delta_unchanged` observations; retryable failures
 with no changing tracked delta record `no_effective_diff`. Fingerprints use the lane
@@ -377,7 +383,7 @@ state for the current phase and current lane head from the owned lane:
 - no checkpoint and no terminal path: allow a clean continuation boundary
 - latest checkpoint `clean` and no terminal path: allow continuation so the agent can finish handoff or repair completion
 - latest checkpoint `findings` with fewer than three consecutive non-clean rounds in the same phase: allow continuation
-- latest checkpoint `findings` with three or more consecutive non-clean rounds in the same phase: fail the turn through the human-required failure path
+- latest checkpoint `findings` with three or more consecutive non-clean rounds in the same phase: treat this as `review_churn`, stop the current repair strategy, and run the architecture recovery boundary check before either retrying with a materially different implementation strategy or routing to the human-required path
 - latest checkpoint `needs_architecture_review` or `blocked`: fail the turn through the human-required failure path
 
 `decodex` persists this review-policy state in the runtime SQLite
@@ -404,9 +410,13 @@ or repair completion, and ignores stale review-policy state while classifying cl
 turn boundaries.
 
 The review-policy human-required failure path is also the boundary for any later
-runtime-owned research escalation. The current runtime must not dispatch research from a
-review stop. Future escalation may only consume structured review-stop evidence through
-the adapter contract defined by [`review-orchestration.md`](./review-orchestration.md).
+runtime-owned research escalation. The current runtime must not dispatch research from
+a review stop. Exhausted review findings may enter architecture recovery only as an
+implementation-strategy change after the Authority Boundary Check returns
+`within_authority`; `needs_architecture_review` and `blocked` review stops remain
+human-required. Future research escalation may only consume structured review-stop
+evidence through the adapter contract defined by
+[`review-orchestration.md`](./review-orchestration.md).
 
 ### Success writeback
 
@@ -473,15 +483,18 @@ linked to the Authority Boundary Check record. Status JSON and dashboard snapsho
 must expose the compact request fields (`phase = human_required`, reason, boundary,
 `decision_request_id`, and `next_action`) so the lane is operable without inspecting
 SQLite directly.
-Runtime-owned review-policy stops use the same human-required failure path, but with dedicated `error_class` values:
+Runtime-owned review-policy stops use either bounded architecture recovery or the same
+human-required failure path, with dedicated `error_class` values:
 
-- `review_policy_exhausted`
+- `review_policy_exhausted`: normalized to `review_churn` for the architecture
+  recovery boundary check before terminal human attention is considered.
 - `architecture_review_required`
 - `review_policy_blocked`
 
-Runtime loop guardrails use the same human-required failure path, but preserve a
-structured failure-attribution `error_class` so operator status and Linear summaries
-can distinguish the stop class:
+Runtime loop guardrails may start bounded architecture recovery before using the
+human-required failure path. When recovery cannot proceed, the terminal writeback
+preserves a structured failure-attribution `error_class` so operator status and
+Linear summaries can distinguish the stop class or recovery boundary:
 
 - `validation_repeat`: the same validation failure repeated three times.
 - `no_effective_diff`: retryable attempts repeated without a changed tracked delta.
@@ -494,6 +507,12 @@ can distinguish the stop class:
   research or Decision Contract before more implementation.
 - `ambiguous_retained_progress`: retained local work or ownership evidence is useful
   but ambiguous enough that a human must choose resume, reset, or manual repair.
+- `contract_boundary_required`: recovery would change accepted authority, or evidence
+  is insufficient to prove that it would not.
+- `external_dependency_required`: recovery depends on a dependency, project policy,
+  or Execution Program readiness change outside the current lane.
+- `architecture_recovery_exhausted`: the lane already used its bounded autonomous
+  architecture recovery budget.
 
 Review repair churn uses the bounded review policy above and may appear publicly as
 `review_policy_exhausted` or the normalized loop reason `review_churn`; both mean the
@@ -502,7 +521,8 @@ the next strategy is explicit.
 
 When a stopped lane is eligible for future autonomous recovery, the recovery worker
 must consume the latest Authority Boundary Check or record a fresh one before changing
-implementation direction. `requires_human` and `insufficient_evidence` dispositions
+implementation direction. `requires_human` and `insufficient_evidence` dispositions,
+external/manual blockers, validation/review weakening, and exhausted recovery budgets
 must route through the human-required path or a later accepted recovery contract; they
 must not be treated as retryable repo-gate failures.
 The supported resume path is deliberate: accept, reject, or revise the requested
