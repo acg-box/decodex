@@ -260,6 +260,7 @@ struct PrivateEvidenceReadback {
 	latest_event_type: Option<String>,
 	latest_event_at: Option<String>,
 	decision_requests: Vec<PrivateEvidenceDecisionRequestSummary>,
+	architecture_recoveries: Vec<PrivateEvidenceArchitectureRecoverySummary>,
 	improvement_candidates: Vec<HarnessImprovementCandidateSummary>,
 	events: Vec<PrivateEvidenceReadbackEvent>,
 	warnings: Vec<String>,
@@ -274,6 +275,16 @@ struct PrivateEvidenceDecisionRequestSummary {
 	next_action: String,
 	recommendation: Option<String>,
 	resume_condition: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PrivateEvidenceArchitectureRecoverySummary {
+	reason_code: String,
+	guardrail_reason: Option<String>,
+	boundary_disposition: Option<String>,
+	recovery_budget_attempt: Option<u64>,
+	recovery_budget_max_attempts: Option<u64>,
+	next_action: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -660,6 +671,7 @@ fn build_private_evidence_readback(
 		latest_event_type: latest_event.map(|event| event.event_type().to_owned()),
 		latest_event_at: latest_event.map(|event| event.recorded_at().to_owned()),
 		decision_requests: authority_decision_requests_from_private_events(&events),
+		architecture_recoveries: architecture_recoveries_from_private_events(&events),
 		improvement_candidates: harness_improvement_candidates_from_private_events(&events),
 		events: events
 			.iter()
@@ -800,6 +812,86 @@ fn authority_decision_request_from_private_event(
 		recommendation,
 		resume_condition,
 	})
+}
+
+fn architecture_recoveries_from_private_events(
+	events: &[state::PrivateExecutionEvent],
+) -> Vec<PrivateEvidenceArchitectureRecoverySummary> {
+	events
+		.iter()
+		.filter(|event| {
+			matches!(
+				event.event_type(),
+				ARCHITECTURE_RECOVERY_PACKET_EVENT_TYPE
+					| ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE
+					| ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE
+			)
+		})
+		.filter_map(architecture_recovery_from_private_event)
+		.collect()
+}
+
+fn architecture_recovery_from_private_event(
+	event: &state::PrivateExecutionEvent,
+) -> Option<PrivateEvidenceArchitectureRecoverySummary> {
+	let payload = event.payload();
+	let reason_code = payload.get("reason_code")?.as_str()?.to_owned();
+	let guardrail_reason = payload
+		.get("guardrail_reason")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			payload
+				.get("loop_guardrail")
+				.and_then(|guardrail| guardrail.get("reason"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned);
+	let boundary_disposition = payload
+		.get("boundary_disposition")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			payload
+				.get("authority_boundary_check")
+				.and_then(|boundary| boundary.get("disposition"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned);
+	let recovery_budget_attempt = payload
+		.get("recovery_budget")
+		.and_then(|budget| budget.get("attempt"))
+		.and_then(Value::as_u64);
+	let recovery_budget_max_attempts = payload
+		.get("recovery_budget")
+		.and_then(|budget| budget.get("max_attempts"))
+		.and_then(Value::as_u64);
+	let next_action = architecture_recovery_next_action(&reason_code);
+
+	Some(PrivateEvidenceArchitectureRecoverySummary {
+		reason_code,
+		guardrail_reason,
+		boundary_disposition,
+		recovery_budget_attempt,
+		recovery_budget_max_attempts,
+		next_action,
+	})
+}
+
+fn architecture_recovery_next_action(reason_code: &str) -> String {
+	match reason_code {
+		"architecture_recovery_started" => {
+			String::from("Retry with a materially different implementation strategy inside authority.")
+		},
+		"architecture_recovery_exhausted" => {
+			String::from("Require a new accepted recovery strategy or architecture decision before retrying.")
+		},
+		"external_dependency_required" => {
+			String::from("Resolve the dependency or Execution Program readiness blocker before retrying.")
+		},
+		"contract_boundary_required" => {
+			String::from("Resolve the Decision Contract or Authority Envelope boundary before retrying.")
+		},
+		_ => String::from("Inspect the Architecture Recovery Packet before retrying."),
+	}
 }
 
 fn private_evidence_run_matches_issue(

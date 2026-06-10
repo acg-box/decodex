@@ -10,9 +10,16 @@ pub(crate) const AUTHORITY_DECISION_REQUEST_SCHEMA: &str =
 pub(crate) const AUTHORITY_DECISION_REQUEST_EVENT_TYPE: &str = "authority_decision_request";
 #[allow(dead_code)]
 pub(crate) const AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE: &str = "authority_boundary_check";
+pub(crate) const ARCHITECTURE_RECOVERY_PACKET_EVENT_TYPE: &str =
+	"architecture_recovery_packet";
+pub(crate) const ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE: &str =
+	"architecture_recovery_started";
+pub(crate) const ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE: &str =
+	"architecture_recovery_terminal";
 
 #[allow(dead_code)]
 const AUTHORITY_BOUNDARY_CHECK_SCHEMA: &str = "decodex.authority_boundary_check/1";
+const ARCHITECTURE_RECOVERY_PACKET_SCHEMA: &str = "decodex.architecture_recovery_packet/1";
 
 trait PullRequestReviewStateInspector {
 	fn inspect_review_state(
@@ -809,7 +816,7 @@ impl Display for RetainedPartialProgress {
 
 impl Error for RetainedPartialProgress {}
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct LoopGuardrailStopRequested {
 	issue_identifier: String,
 	run_id: String,
@@ -817,20 +824,54 @@ struct LoopGuardrailStopRequested {
 	consecutive_count: i64,
 	fingerprint: String,
 	source_error_class: Option<String>,
+	architecture_recovery_reason_code: Option<String>,
+}
+impl LoopGuardrailStopRequested {
+	fn terminal_error_class(&self) -> &'static str {
+		match self.architecture_recovery_reason_code.as_deref() {
+			Some("architecture_recovery_exhausted") => "architecture_recovery_exhausted",
+			Some("contract_boundary_required") => "contract_boundary_required",
+			Some("external_dependency_required") => "external_dependency_required",
+			Some("architecture_recovery_started") | None => self.reason.error_class(),
+			Some(_) => self.reason.error_class(),
+		}
+	}
+
+	fn terminal_next_action(&self, recovery_gate: &str) -> String {
+		match self.architecture_recovery_reason_code.as_deref() {
+			Some("architecture_recovery_exhausted") => format!(
+				"inspect the Architecture Recovery Packet and prior recovery attempts; recovery budget is exhausted, {recovery_gate}"
+			),
+			Some("contract_boundary_required") => format!(
+				"inspect the Authority Boundary Check and resolve the Decision Contract or authority evidence before retrying, {recovery_gate}"
+			),
+			Some("external_dependency_required") => format!(
+				"inspect the dependency or Execution Program readiness blocker and resolve that external dependency before retrying, {recovery_gate}"
+			),
+			Some("architecture_recovery_started") | None =>
+				self.reason.terminal_next_action(recovery_gate),
+			Some(_) => self.reason.terminal_next_action(recovery_gate),
+		}
+	}
 }
 impl Display for LoopGuardrailStopRequested {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let source = self.source_error_class.as_deref().unwrap_or("none");
+		let architecture_recovery = self
+			.architecture_recovery_reason_code
+			.as_deref()
+			.unwrap_or("none");
 
 		write!(
 			f,
-			"Run `{}` for issue `{}` hit loop guardrail `{}` after {} consecutive matching observations with source `{}` and fingerprint `{}`; stop automatic retries.",
+			"Run `{}` for issue `{}` hit loop guardrail `{}` after {} consecutive matching observations with source `{}` and fingerprint `{}`; architecture recovery reason `{}`.",
 			self.run_id,
 			self.issue_identifier,
 			self.reason.error_class(),
 			self.consecutive_count,
 			source,
-			self.fingerprint
+			self.fingerprint,
+			architecture_recovery
 		)
 	}
 }

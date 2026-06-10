@@ -1,6 +1,6 @@
 mod loop_scenarios {
 use color_eyre::Report;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::agent::PhaseGoalController;
 use crate::agent::PhaseGoalKind;
@@ -170,6 +170,7 @@ impl LoopScenarioHarness {
 			self.record_requires_human_authority_boundary(contract.contract_id());
 
 		self.record_uncovered_direction_guardrail();
+		self.record_architecture_recovery_exhausted();
 		self.state_store
 			.record_run_attempt(
 				self.run_id,
@@ -203,6 +204,30 @@ impl LoopScenarioHarness {
 			private_review_marker,
 			private_authority_marker,
 		);
+	}
+
+	fn record_architecture_recovery_exhausted(&self) {
+		self.state_store
+			.append_private_execution_event(
+				"decodex",
+				self.issue_id,
+				self.run_id,
+				self.attempt_number,
+				"architecture_recovery_terminal",
+				json!({
+					"schema": "decodex.architecture_recovery_terminal/1",
+					"record_version": 1,
+					"reason_code": "architecture_recovery_exhausted",
+					"guardrail_reason": "validation_repeat",
+					"authority_boundary_check_record_id": 99,
+					"boundary_disposition": "within_authority",
+					"recovery_budget": {
+						"attempt": 2,
+						"max_attempts": 1,
+					},
+				}),
+			)
+			.expect("architecture recovery terminal event should persist");
 	}
 
 	fn record_review_checkpoint_and_assert_repair_then_escalation(&self) -> &'static str {
@@ -675,6 +700,13 @@ fn loop_scenario_assert_harness_candidates(
 				&& candidate["reason_code"] == "authority_boundary_validator_gap"
 		}),
 		"authority gaps should recommend validator hardening"
+	);
+	assert!(
+		candidates.iter().any(|candidate| {
+			candidate["kind"] == "recovery_budget_exhausted"
+				&& candidate["reason_code"] == "architecture_recovery_exhausted"
+		}),
+		"exhausted architecture recovery should recommend recovery-budget hardening"
 	);
 	assert!(
 		!candidate_json.contains(private_review_marker),
