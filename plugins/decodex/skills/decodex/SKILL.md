@@ -81,6 +81,10 @@ boundary without making the user learn the commands.
   feedback. Treat them as candidates for an explicit accepted improvement path; do not
   auto-edit prompts, skills, validators, issue templates, or loop policies solely
   because a private outcome record suggested them.
+- Architecture recovery may change implementation strategy only inside the accepted
+  Authority Envelope. Authority Boundary Check outcomes that require human direction,
+  lack evidence, depend on external/manual state, or exhaust recovery budget route to
+  manual attention instead of asking a detached Codex conversation mid-run.
 - Operator lane-control capabilities belong to `docs/spec/lane-control.md`, with the
   low-level app-server method boundary in `docs/spec/app-server.md`.
 - Operator procedures belong to `docs/runbook/`.
