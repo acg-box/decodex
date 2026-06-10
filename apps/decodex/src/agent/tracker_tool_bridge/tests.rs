@@ -23,7 +23,7 @@ use crate::{
 		ReviewPolicyStopRequested, RunCompletionDisposition, TrackerToolBridge,
 		TurnCompletionStatus,
 	},
-	config::InternalReviewMode,
+	config::ReviewLevel,
 	prelude::eyre,
 	state::{
 		self, ReviewHandoffMarker, ReviewOrchestrationMarker, ReviewPolicyCheckpoint, StateStore,
@@ -43,7 +43,7 @@ include!("tests/mutation/dispatch.rs");
 include!("tests/mutation/continuation.rs");
 include!("tests/mutation/progress.rs");
 
-// Review handoff, repair, closeout, and internal-review policy.
+// Review handoff, repair, closeout, and Decodex Review policy.
 include!("tests/review/policy.rs");
 include!("tests/review/handoff.rs");
 
@@ -447,7 +447,7 @@ fn sample_review_context() -> ReviewHandoffContext {
 		cwd: PathBuf::from("/tmp/PUB-618"),
 		github_token_env_var: Some(String::from("HOME")),
 		github_command_path: None,
-		internal_review_mode: InternalReviewMode::Loop,
+		review_level: ReviewLevel::Standard,
 		mode: ReviewExecutionMode::Handoff,
 		recorded_pr_url: None,
 	}
@@ -475,7 +475,7 @@ fn sample_review_context_in(cwd: &Path) -> ReviewHandoffContext {
 		cwd: cwd.to_path_buf(),
 		github_token_env_var: Some(String::from("HOME")),
 		github_command_path: None,
-		internal_review_mode: InternalReviewMode::Loop,
+		review_level: ReviewLevel::Standard,
 		mode: ReviewExecutionMode::Handoff,
 		recorded_pr_url: None,
 	}
@@ -491,7 +491,7 @@ fn sample_review_repair_context_in(cwd: &Path, pr_url: &str) -> ReviewHandoffCon
 		cwd: cwd.to_path_buf(),
 		github_token_env_var: Some(String::from("HOME")),
 		github_command_path: None,
-		internal_review_mode: InternalReviewMode::Loop,
+		review_level: ReviewLevel::Standard,
 		mode: ReviewExecutionMode::Repair,
 		recorded_pr_url: Some(pr_url.to_owned()),
 	}
@@ -507,7 +507,7 @@ fn sample_closeout_context_in(cwd: &Path, pr_url: &str) -> ReviewHandoffContext 
 		cwd: cwd.to_path_buf(),
 		github_token_env_var: Some(String::from("HOME")),
 		github_command_path: None,
-		internal_review_mode: InternalReviewMode::Loop,
+		review_level: ReviewLevel::Standard,
 		mode: ReviewExecutionMode::Closeout,
 		recorded_pr_url: Some(pr_url.to_owned()),
 	}

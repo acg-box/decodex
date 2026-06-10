@@ -1014,7 +1014,7 @@ impl<'a> TrackerToolBridge<'a> {
 		&self,
 		review_context: &ReviewHandoffContext,
 	) -> std::result::Result<(), String> {
-		if !review_context.internal_review_checkpoint_enabled() {
+		if !review_context.decodex_review_checkpoint_enabled() {
 			return Ok(());
 		}
 
@@ -1046,7 +1046,7 @@ impl<'a> TrackerToolBridge<'a> {
 		&self,
 		review_context: &ReviewHandoffContext,
 	) -> crate::prelude::Result<Option<ReviewPolicyStopRequested>> {
-		if !review_context.internal_review_checkpoint_enabled() {
+		if !review_context.decodex_review_checkpoint_enabled() {
 			return Ok(None);
 		}
 

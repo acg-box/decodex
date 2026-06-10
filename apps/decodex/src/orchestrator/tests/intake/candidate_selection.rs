@@ -794,12 +794,12 @@ fn retained_closeout_identity_reuse_respects_attempt_history() {
 }
 
 #[test]
-fn internal_review_only_retained_drain_handles_same_issue_closeout_after_merge_visibility() {
+fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visibility() {
 	for closeout_available in [true, false] {
 		let (temp_dir, config, workflow) = temp_project_layout();
-		let config = service_config_with_external_review_enabled(
+		let config = service_config_with_review_level(
 			&service_config_with_github_token_env_var(&config, "PATH"),
-			false,
+			ReviewLevel::Standard,
 		);
 		let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -857,7 +857,7 @@ fn internal_review_only_retained_drain_handles_same_issue_closeout_after_merge_v
 			..handoff_summary.clone()
 		};
 		let closeout_dispatches = RefCell::new(Vec::new());
-		let drained = orchestrator::drain_internal_review_only_retained_tail_with_inspector(
+		let drained = orchestrator::drain_non_github_review_retained_tail_with_inspector(
 			&tracker,
 			&config,
 			&workflow,
@@ -878,7 +878,7 @@ fn internal_review_only_retained_drain_handles_same_issue_closeout_after_merge_v
 				if closeout_available { Ok(Some(closeout_summary.clone())) } else { Ok(None) }
 			},
 		)
-		.expect("internal-review-only retained drain should succeed");
+		.expect("non-GitHub-review retained drain should succeed");
 
 		if closeout_available {
 			assert_eq!(
@@ -942,9 +942,9 @@ fn assert_admin_merge_invocation(
 }
 
 #[test]
-fn internal_review_only_retained_drain_stops_cleanly_when_checks_are_pending() {
+fn non_github_review_retained_drain_stops_cleanly_when_checks_are_pending() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_external_review_enabled(&config, false);
+	let config = service_config_with_review_level(&config, ReviewLevel::Standard);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let issue = candidate_selection_service_owned_issue("In Review");
 	let tracker = FakeTracker::with_refresh_snapshots(
@@ -968,7 +968,7 @@ fn internal_review_only_retained_drain_stops_cleanly_when_checks_are_pending() {
 
 	let handoff_summary = sample_handoff_summary(&issue, &repo_root);
 	let closeout_dispatches = RefCell::new(Vec::new());
-	let drained = orchestrator::drain_internal_review_only_retained_tail_with_inspector(
+	let drained = orchestrator::drain_non_github_review_retained_tail_with_inspector(
 		&tracker,
 		&config,
 		&workflow,

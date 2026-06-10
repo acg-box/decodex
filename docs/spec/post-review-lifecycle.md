@@ -23,7 +23,11 @@ Defines: Post-`In Review` lane phases, phase-to-action-class mapping, authoritat
   Linear comment event-ledger schema used by post-review handoff, repair, landing,
   closeout, and cleanup records.
 - [`owned-lane-policy.md`](./owned-lane-policy.md) defines the allowed action classes and the fallback policy for waiting, repair re-entry, landing readiness, automatic recovery, and manual intervention.
-- [`review-orchestration.md`](./review-orchestration.md) defines the shared internal/external review loop, the optional service-level external-review toggle, strict external-review request and pass signals when that loop is enabled, round accounting, and the rule that external pass flows into Decodex-directed admin merge instead of a separate manual landing request.
+- [`review-orchestration.md`](./review-orchestration.md) defines the shared Self
+  Check, Decodex Review, and GitHub Review loop, strict GitHub Review request and
+  pass signals when that level is enabled, round accounting, and the rule that
+  GitHub Review pass flows into Decodex-directed admin merge instead of a separate
+  manual landing request.
 - This document narrows those action classes into the specific post-`In Review` lane phases and transitions that Decodex must honor after review handoff succeeds.
 
 ## Core invariants
@@ -174,12 +178,14 @@ While in `review_repair`:
 
 - the runtime must reuse the retained lane when it is still valid
 - repair work must stay bound to the same issue, branch lineage, and PR
-- the runtime must validate each external-review claim against the codebase, tests, and requirements before changing code
+- the runtime must validate each GitHub Review claim against the codebase, tests, and requirements before changing code
 - when a fresh-context `issue_review_checkpoint` exists for the repair phase, repair
   work must operate on accepted findings from that checkpoint; rejected or
   non-actionable comments remain evidence, not repair scope
 - the repaired head must pass the local pre-review gate before being pushed
-- when `codex.internal_review_mode = "loop"`, every repaired-head bounded-review result must first be recorded through `issue_review_checkpoint`
+- when `[codex].review` is `"standard"` or `"strict"`, every repaired-head
+  bounded Decodex Review result must first be recorded through
+  `issue_review_checkpoint`
 - every addressed review thread must receive an in-thread reply for the repaired head
 - only threads whose landed fix is verified on that repaired head may be resolved; pushback or clarification threads stay open
 - once a new head is pushed and fresh review is requested on the same PR, the lane returns to `review_wait` for that new head
@@ -191,14 +197,15 @@ In the current XY-174 slice, a retained repair run finishes by recording an expl
 the `review_repair` terminal path. Applying that completion refreshes the local
 runtime handoff row to the repaired PR head while keeping the tracker issue
 in `In Review`; it does not re-run the original `issue_review_handoff` state transition.
-When `codex.internal_review_mode = "loop"`, `issue_review_repair_complete` is valid only
-when the latest retained repair checkpoint is `clean` for the current repaired head. If
-repeated repair checkpoints stay in `findings` for three consecutive rounds, or the
-checkpoint reports `needs_architecture_review` / `blocked`, the runtime must stop for
-human intervention instead of patch-on-patch churn. When
-`codex.internal_review_mode = "prompt"` or `"off"`, retained repair completion skips that
-independent-review checkpoint requirement but still requires the repaired head to be pushed and
-the configured repository validation gate to pass.
+When `[codex].review` is `"standard"` or `"strict"`,
+`issue_review_repair_complete` is valid only when the latest retained repair
+checkpoint is `clean` for the current repaired head. If repeated repair checkpoints
+stay in `findings` for three consecutive rounds, or the checkpoint reports
+`needs_architecture_review` / `blocked`, the runtime must stop for human
+intervention instead of patch-on-patch churn. When `[codex].review` is `"off"` or
+`"basic"`, retained repair completion skips that Decodex Review checkpoint
+requirement but still requires the repaired head to be pushed and the configured
+repository validation gate to pass.
 The same completion also requires that the PR still belongs to the retained lane, points
 at the repaired lane HEAD, and remains open and ready for fresh review.
 
