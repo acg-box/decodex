@@ -716,6 +716,35 @@ struct CommentArgs {
 	failed_command: Option<String>,
 	raw_error: Option<String>,
 	summary: Option<String>,
+	decision_request: Option<AuthorityDecisionRequestArgs>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuthorityDecisionRequestArgs {
+	boundary_check_id: i64,
+	decision_request_id: String,
+	reason_code: String,
+	boundary_type: String,
+	proposed_change: String,
+	why_exceeds_authority: String,
+	#[serde(default)]
+	options: Vec<AuthorityDecisionOptionArgs>,
+	recommendation: String,
+	resume_condition: String,
+	#[serde(default)]
+	retained_worktree_evidence: Vec<String>,
+	#[serde(default)]
+	retained_diff_evidence: Vec<String>,
+	#[serde(default)]
+	recovery_attempt_context: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AuthorityDecisionOptionArgs {
+	label: String,
+	description: String,
 }
 
 #[derive(Debug, Deserialize)]

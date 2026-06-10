@@ -160,6 +160,11 @@ The readback includes:
   present. Default readback may expose the event type, payload keys, disposition
   previews, and sanitized improvement candidates, but not raw changed-surface payloads
   unless `--include-payload` is explicitly requested.
+- Authority decision request summaries when `authority_decision_request` events are
+  present. Default readback may expose the decision request id, phase, reason,
+  boundary, recommendation, resume condition, and next action, but not retained
+  worktree evidence, raw diff payloads, recovery context, transcripts, logs, or
+  credentials unless `--include-payload` is explicitly requested for local repair.
 - harness improvement candidates derived from `decodex.harness_outcome/1` events or,
   when no harness outcome has been recorded yet, directly from private validation,
   review, guardrail, and authority-boundary signals
@@ -172,10 +177,11 @@ for full structured local payloads when a repair requires them. This flag still
 reads from the local runtime store only; it must not mirror payloads into Linear,
 GitHub, or agent-evidence files.
 
-Authority Boundary Check candidates are advisory harness feedback. They may recommend
-Decision Contract, issue-template, validator, prompt, or readiness-model hardening
-when recovery evidence shows underspecified authority. They do not change queue
-eligibility, accepted Decision Contracts, or project policy by themselves.
+Authority Boundary Check candidates and authority decision request summaries are
+readback surfaces. They may recommend Decision Contract, issue-template, validator,
+prompt, readiness-model, or issue-authority hardening when recovery evidence shows
+underspecified authority. They do not change queue eligibility, accepted Decision
+Contracts, or project policy by themselves.
 
 ## Event Stream
 
