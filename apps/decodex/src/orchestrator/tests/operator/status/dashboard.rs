@@ -32,6 +32,18 @@ fn operator_app_snapshot_endpoint_returns_json() {
 }
 
 #[test]
+fn operator_dashboard_surfaces_loop_status_fields() {
+	let response = dashboard_response();
+
+	assert!(response.contains("function loopStatusFacts(loopStatus)"));
+	assert!(response.contains("function loopStatusInline(loopStatus)"));
+	assert!(response.contains("loopStatusInline(run.loop_status)"));
+	assert!(response.contains("loopStatusFacts(run.loop_status)"));
+	assert!(response.contains("loopStatusFacts(lane.loop_status)"));
+	assert!(response.contains("loopStatusFacts(attention.loop_status)"));
+}
+
+#[test]
 fn operator_dashboard_background_wash_stays_viewport_fixed() {
 	let response = dashboard_response();
 

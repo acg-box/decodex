@@ -1423,6 +1423,8 @@ struct OperatorRunStatus {
 	last_event_at: Option<String>,
 	event_count: i64,
 	private_evidence: AgentPrivateEvidenceRef,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	loop_status: Option<OperatorLoopStatus>,
 	control_capability: Option<OperatorRunControlCapability>,
 	process_id: Option<u32>,
 	process_alive: Option<bool>,
@@ -1483,6 +1485,8 @@ struct OperatorQueuedIssueAttentionStatus {
 	current_operation: Option<String>,
 	thread_status: Option<String>,
 	attempt_status: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	loop_status: Option<OperatorLoopStatus>,
 	auto_retry_blocked_reason: Option<String>,
 	attention_error_class: Option<String>,
 	attention_next_action: Option<String>,
@@ -1507,6 +1511,59 @@ struct OperatorAuthorityDecisionRequestStatus {
 	next_action: String,
 	recommendation: Option<String>,
 	resume_condition: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorLoopStatus {
+	review_level: String,
+	autonomy: String,
+	summary: String,
+	next_action: Option<String>,
+	review: Option<OperatorReviewLoopStatus>,
+	architecture_recovery: Option<OperatorArchitectureRecoveryStatus>,
+	boundary: Option<OperatorBoundaryStatus>,
+	decision_request: Option<OperatorAuthorityDecisionRequestStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorReviewLoopStatus {
+	phase: String,
+	status: String,
+	checkpoint: Option<OperatorReviewCheckpointStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorReviewCheckpointStatus {
+	head_sha: String,
+	round: i64,
+	nonclean_rounds: i64,
+	updated_at: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorArchitectureRecoveryStatus {
+	status: String,
+	reason_code: String,
+	guardrail_reason: Option<String>,
+	boundary_disposition: Option<String>,
+	round: Option<u64>,
+	budget: Option<OperatorRecoveryBudgetStatus>,
+	next_action: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorRecoveryBudgetStatus {
+	attempt: u64,
+	max_attempts: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorBoundaryStatus {
+	disposition: String,
+	reason: Option<String>,
+	attempted_recovery_reason: Option<String>,
+	changed_surface_count: usize,
+	improvement_signal_count: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1547,6 +1604,8 @@ struct OperatorPostReviewLaneStatus {
 	unresolved_review_threads: Option<usize>,
 	readback_warning: Option<String>,
 	readback_root_cause: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	loop_status: Option<OperatorLoopStatus>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

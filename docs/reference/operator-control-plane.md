@@ -152,6 +152,13 @@ candidate improvements by kind, reason code, target, source-event count, and
 recommendation. These summaries are local operator guidance; they are not Linear
 ledger records and do not automatically edit prompts, skills, validators, issue
 templates, or loop policy.
+The same private-evidence readback exposes compact review checkpoint, architecture
+recovery, and authority-boundary summaries for the selected run/attempt: review phase,
+status, head, round, finding counts; recovery reason, boundary disposition, budget;
+and boundary disposition, reason, attempted recovery, changed-surface count, and
+improvement-signal count. These summaries are safe operator readback; raw reviewer
+finding bodies, changed-surface payloads, retained diffs, logs, and transcripts remain
+hidden unless `--include-payload` is explicitly requested for local repair.
 
 ## State Ownership
 
@@ -246,8 +253,8 @@ protocol activity durable outside the local operator surface.
 | `Accounts` | Shared Codex account pool and usage table from `~/.codex/decodex/accounts.jsonl` when `[codex.accounts]` is enabled for a project. Account identity can be obscured from the `Account` column header eye without changing the underlying snapshot. The row weight column shows the capacity multiplier used for pool usage estimates: `pro` accounts count as `20x`, and all other plans count as `1x`. Usage probes read Codex `/wham/usage` for window capacity and `/wham/profiles/me` for profile token stats such as lifetime tokens, peak daily tokens, longest task, streaks, and daily token activity. Selecting an account writes the global `[codex.accounts].fixed_account` selector in `~/.codex/decodex/config.toml`; clearing it returns all new account-pool runs to balanced account selection. Account display-name rerolls write `[codex.account_names.offsets]` in the same global config so Decodex App and the dashboard share the privacy-preserving names. Theme, sort, and identity-visibility preferences are client-local presentation state. The selector is global and does not pin a project to an account. |
 | `Projects` | Fleet-level project table. The section-level filter toggles between active project work and the full registry. Location is its own compact path column and can be obscured from the location header eye. `Activity` shows a relative timestamp or `-`; `Work` is `running/waiting/attention`. It should not duplicate per-lane details already shown below. |
 | `Running Lanes` | Active leased or live-executing issue lanes. A lane here is currently owned by this local control plane, or a live process/thread/protocol marker still explains active execution even when the queue lease is not held. It shows issue identity, phase, operation, attempt, queue lease state, execution liveness, thread/protocol status, child-agent activity when captured, phase-goal status when app-server reports it, timing, branch, and worktree. |
-| `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. Repeated identical open dependency blockers surface as `dependency_program_stale` after the guardrail threshold so operators can distinguish a stale Execution Program/dependency plan from a newly blocked queue item. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after stalled reconciliation, failure writeback, or retries, the candidate is partial retained progress and not just a generic stalled or retry-budget hold. Human-required authority stops expose their compact decision request fields here: `phase = human_required`, reason, boundary, `decision_request_id`, and `next_action`. Running lanes are not repeated as normal intake work. |
-| `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. |
+| `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. Repeated identical open dependency blockers surface as `dependency_program_stale` after the guardrail threshold so operators can distinguish a stale Execution Program/dependency plan from a newly blocked queue item. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after stalled reconciliation, failure writeback, or retries, the candidate is partial retained progress and not just a generic stalled or retry-budget hold. Human-required authority stops expose their compact decision request fields here: `phase = human_required`, reason, boundary, `decision_request_id`, and `next_action`. When queued attention still maps to a run/attempt, it also carries the same compact loop status used by running lanes. Running lanes are not repeated as normal intake work. |
+| `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. Retained lanes expose compact loop status for their bound handoff run/attempt so operators can see review repair checkpoint state, architecture recovery stops, and boundary/human-required disposition without direct SQLite inspection. |
 | `Recovery Worktrees` | Retained local worktrees that are not currently owned by `Running Lanes`, `Review & Landing`, or queued attention in `Intake Queue`. This is the cleanup or recovery inbox for recovered paths, retained PR leftovers, and cleanup-only local worktrees. Empty is the normal healthy state. |
 | `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Raw local attempts and heartbeat details stay in debug expansion. |
 
@@ -271,7 +278,10 @@ Recommended readback sequence:
 4. For authority-boundary stops, inspect `decision_requests` for the public-safe
    decision request id, boundary, recommendation, resume condition, and next action,
    then use the linked Authority Boundary Check summary to audit the stop.
-5. Use `--include-payload` only when compact payload summaries are insufficient for
+5. For Decodex Review or architecture recovery stops, inspect `review_checkpoints`,
+   `architecture_recoveries`, and `boundary_checks` before deciding whether the lane
+   is still autonomous, exhausted, or human-required.
+6. Use `--include-payload` only when compact payload summaries are insufficient for
    local repair. Do not paste full payloads into Linear or GitHub.
 
 The command does not require live Linear or GitHub observer access. It resolves known
@@ -341,6 +351,12 @@ Worktree visibility follows the owning dashboard section:
   and snapshot health, not repeated in each lane debug row. These high-frequency
   details remain local/operator-only and are not written to Linear except through
   existing lifecycle summaries.
+- Status JSON and the dashboard share a `loop_status` object when a row can be tied
+  to a runtime run/attempt. It carries `review_level`, `autonomy`, concise `summary`
+  and `next_action`, plus optional `review`, `architecture_recovery`, `boundary`, and
+  `decision_request` subobjects. Text status renders the same state as `loop_status`,
+  `loop_review`, `loop_architecture_recovery`, and `loop_boundary` lines so operators
+  can answer what the lane is doing and why without knowing runtime event names.
 - Dynamic tool failures appear in local protocol activity as
   `item/tool/call/failure` with a normalized failure class and next action. Invalid
   or undeclared app-server tool requests are protocol failures; declared Decodex
