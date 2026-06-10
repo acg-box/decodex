@@ -377,12 +377,25 @@ fn local_operator_history_lanes_prefer_terminal_ledger_outcome() {
 	assert_eq!(lane.latest_run.status, "closeout");
 	assert_eq!(lane.latest_run.attempt_status, "closeout");
 	assert_eq!(lane.latest_run.phase, "completed");
+	assert_eq!(
+		lane
+			.latest_run
+			.loop_status
+			.as_ref()
+			.expect("terminal history should keep loop readback")
+			.summary,
+		"terminal lifecycle: closeout"
+	);
 	assert_eq!(lane.ledger_outcome.final_outcome, "closeout");
 	assert_eq!(lane.attempts.len(), 1);
 	assert_eq!(lane.attempts[0].status, "failed");
 	assert_eq!(
 		snapshot_json["history_lanes"][0]["latest_run"]["status"],
 		"closeout"
+	);
+	assert_eq!(
+		snapshot_json["history_lanes"][0]["latest_run"]["loop_status"]["summary"],
+		"terminal lifecycle: closeout"
 	);
 	assert_eq!(
 		snapshot_json["history_lanes"][0]["attempts"][0]["status"],
