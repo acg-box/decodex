@@ -483,6 +483,12 @@ linked to the Authority Boundary Check record. Status JSON and dashboard snapsho
 must expose the compact request fields (`phase = human_required`, reason, boundary,
 `decision_request_id`, and `next_action`) so the lane is operable without inspecting
 SQLite directly.
+Operator status JSON and dashboard snapshots also expose compact loop readback for
+the same owned run/attempt when available: review level, review phase/status/round,
+architecture recovery reason and budget, boundary-check disposition, and whether the
+lane is still autonomous or has crossed into human-required handling. These fields are
+readback only and do not replace the runtime review-policy, recovery, or boundary
+decisions.
 Runtime-owned review-policy stops use either bounded architecture recovery or the same
 human-required failure path, with dedicated `error_class` values:
 
