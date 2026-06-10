@@ -1,4 +1,0 @@
-interface:
-  display_name: "Rate Limit Reset Watch"
-  short_description: "Judge whether today contains a semantic rate-limit-reset post."
-  default_prompt: "Check today’s @thsottiaux X posts and write a reset-status artifact."

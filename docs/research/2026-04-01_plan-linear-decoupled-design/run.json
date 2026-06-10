@@ -1,7 +1,7 @@
 {
   "schema": "research-run/2",
   "run_id": "2026-04-01_plan-linear-decoupled-design",
-  "question": "How should the plan plugin keep its old docs/plans strengths after moving storage to Linear while staying decoupled from decodex and from overly specific Linear transport details?",
+  "question": "How should the plan plugin keep its old legacy saved-plan strengths after moving storage to Linear while staying decoupled from decodex and from overly specific Linear transport details?",
   "success_criteria": [
     "Identify the clean boundary between decodex, the routed Linear issue, and the plan plugin's machine authority surfaces.",
     "Compare at least two viable plan-plugin architecture options for the Linear-backed design.",
@@ -9,7 +9,7 @@
   ],
   "constraints": [
     "Keep decodex plan-agnostic and dependent only on generic issue briefing plus normal tracker and PR surfaces.",
-    "Assume the canonical plan storage remains in Linear rather than reverting to repository-local docs/plans authority.",
+    "Assume the canonical plan storage remains in Linear rather than reverting to repository-local saved-plan authority.",
     "Use bounded repository-local evidence from decodex and the repo-local plan plugin only."
   ],
   "stop_rule": "Stop once the bounded pass can recommend one design shape for the Linear-backed plan plugin and name the smallest contract corrections needed to make it reliable.",
@@ -79,7 +79,7 @@
         },
         {
           "id": "T2",
-          "summary": "The current direct use of routed issue exports is pragmatic and keeps the plugin thin, but it also couples execution more tightly to Linear export shape than the old docs/plans model needed.",
+          "summary": "The current direct use of routed issue exports is pragmatic and keeps the plugin thin, but it also couples execution more tightly to Linear export shape than the old saved-plan model needed.",
           "supporting_evidence_ids": [
             "E3",
             "E4"
@@ -120,7 +120,7 @@
         {
           "id": "E8",
           "kind": "inference",
-          "summary": "Keeping execution bound directly to issue.documents content and linked-document enumeration preserves current behavior but does not recover the old docs/plans-style transport decoupling."
+          "summary": "Keeping execution bound directly to issue.documents content and linked-document enumeration preserves current behavior but does not recover the old saved-plan transport decoupling."
         }
       ]
     },
@@ -130,7 +130,7 @@
       "tradeoffs": [
         {
           "id": "T4",
-          "summary": "A thin Linear ingress adapter preserves the successful old docs/plans semantics after the move to Linear, but only if the adapter owns raw export validation and the core stops depending on full routed issue exports.",
+          "summary": "A thin Linear ingress adapter preserves the successful old saved-plan semantics after the move to Linear, but only if the adapter owns raw export validation and the core stops depending on full routed issue exports.",
           "supporting_evidence_ids": [
             "E4",
             "E6",
@@ -215,7 +215,7 @@
       "tradeoffs": [
         {
           "id": "T6",
-          "summary": "A staged design preserves the successful move from docs/plans to Linear while avoiding a premature promise of a transport-agnostic core before runtime ownership and canonical selection semantics are cleaned up.",
+          "summary": "A staged design preserves the successful move from legacy saved-plan storage to Linear while avoiding a premature promise of a transport-agnostic core before runtime ownership and canonical selection semantics are cleaned up.",
           "supporting_evidence_ids": [
             "E9",
             "E10",
@@ -303,7 +303,7 @@
       "tradeoffs": [
         {
           "id": "T8",
-          "summary": "Moving task progress and task-status ownership out of spec and into runtime-owned state restores the old docs/plans-style separation between stable intent and execution state, but it requires a schema revision to tracked-plan rather than a wording-only fix.",
+          "summary": "Moving task progress and task-status ownership out of spec and into runtime-owned state restores the old saved-plan separation between stable intent and execution state, but it requires a schema revision to tracked-plan rather than a wording-only fix.",
           "supporting_evidence_ids": [
             "E9",
             "E13",
@@ -417,7 +417,7 @@
         },
         {
           "id": "T12",
-          "summary": "Adding an explicit plan revision or lineage contract is more verbose than timestamp selection, but it restores deterministic authority after replans and preserves one of the old docs/plans strengths: clear canonical ownership.",
+          "summary": "Adding an explicit plan revision or lineage contract is more verbose than timestamp selection, but it restores deterministic authority after replans and preserves one of the old saved-plan strengths: clear canonical ownership.",
           "supporting_evidence_ids": [
             "E17",
             "E21"
