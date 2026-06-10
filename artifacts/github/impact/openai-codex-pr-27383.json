@@ -1,0 +1,44 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27383",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Remove async-trait from extension contributors",
+        "url": "https://github.com/openai/codex/pull/27383",
+        "meta": "Merged 2026-06-10T12:31:09Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27383",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27383.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex extension contributors now return an explicit boxed `ExtensionFuture` from async contributor methods instead of relying on `async-trait`, while preserving boxed, `Send`, dynamically dispatched future behavior.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records the new `ExtensionFuture<'a, T>` alias and contributor trait signature rewrites.",
+    "Production extension crates were updated to return `Box::pin(async move { ... })` instead of using `async-trait`.",
+    "`async-trait` was removed from direct extension API, guardian, and MCP extension dependencies.",
+    "The PR states no runtime behavior change is intended, so the primary risk is source compatibility for implementors."
+  ],
+  "candidate_followups": [
+    "Audit Decodex extension API prototypes for `async-trait` contributor implementations.",
+    "Treat `ExtensionFuture` as the upstream object-safe async contributor contract in future plugin or extension experiments.",
+    "Do not turn this into public user-facing content unless paired with a broader extension API explainer."
+  ],
+  "social_notes": [
+    "If used publicly later, keep it as a cautious extension-author watch note and avoid implying end-user behavior changed."
+  ],
+  "caveats": [
+    "The source bundle supports a compile-time API shape change, not a runtime behavior change.",
+    "Out-of-tree contributor implementations need their own compile validation against the new trait signatures."
+  ]
+}
