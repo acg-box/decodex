@@ -343,7 +343,7 @@ fn review_checkpoint_tool_surface_excludes_closeout() {
 }
 
 #[test]
-fn review_checkpoint_tool_surface_respects_internal_review_config() {
+fn review_checkpoint_tool_surface_respects_review_level() {
 	let tracker = FakeTracker::new();
 	let issue = sample_issue();
 	let review_issue = sample_review_issue();
@@ -357,8 +357,8 @@ fn review_checkpoint_tool_surface_respects_internal_review_config() {
 		"https://github.com/hack-ink/decodex/pull/242",
 	);
 
-	review_context.internal_review_mode = InternalReviewMode::Off;
-	repair_context.internal_review_mode = InternalReviewMode::Off;
+	review_context.review_level = ReviewLevel::Off;
+	repair_context.review_level = ReviewLevel::Off;
 
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
@@ -402,12 +402,12 @@ fn review_checkpoint_tool_surface_respects_internal_review_config() {
 	assert!(matches!(
 		checkpoint_response.content_items.as_slice(),
 		[DynamicToolContentItem::InputText{ text }]
-			if text.contains("codex.internal_review_mode = \"off\"")
+			if text.contains("[codex].review = \"off\"")
 	));
 }
 
 #[test]
-fn prompt_only_internal_review_mode_does_not_expose_checkpoint_tool() {
+fn basic_review_level_does_not_expose_checkpoint_tool() {
 	let tracker = FakeTracker::new();
 	let issue = sample_issue();
 	let workflow = sample_workflow();
@@ -416,7 +416,7 @@ fn prompt_only_internal_review_mode_does_not_expose_checkpoint_tool() {
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let mut review_context = sample_review_context_in(temp_dir.path());
 
-	review_context.internal_review_mode = InternalReviewMode::Prompt;
+	review_context.review_level = ReviewLevel::Basic;
 
 	let bridge = TrackerToolBridge::with_review_handoff_for_test(
 		&tracker,
@@ -446,7 +446,7 @@ fn prompt_only_internal_review_mode_does_not_expose_checkpoint_tool() {
 	assert!(matches!(
 		checkpoint_response.content_items.as_slice(),
 		[DynamicToolContentItem::InputText{ text }]
-			if text.contains("codex.internal_review_mode = \"prompt\"")
+			if text.contains("[codex].review = \"basic\"")
 	));
 }
 
@@ -1198,7 +1198,7 @@ fn review_handoff_requires_a_clean_checkpoint() {
 }
 
 #[test]
-fn review_completion_skips_clean_checkpoint_when_internal_review_disabled() {
+fn review_completion_skips_clean_checkpoint_when_review_gate_disabled() {
 	for completion_path in ["handoff", "repair"] {
 		let temp_dir = TempDir::new().expect("tempdir should create");
 		let tracker = FakeTracker::new();
@@ -1210,7 +1210,7 @@ fn review_completion_skips_clean_checkpoint_when_internal_review_disabled() {
 			let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
 			let mut review_context = sample_review_context_in(temp_dir.path());
 
-			review_context.internal_review_mode = InternalReviewMode::Off;
+			review_context.review_level = ReviewLevel::Off;
 
 			let bridge = TrackerToolBridge::with_review_handoff_for_test(
 				&tracker,
@@ -1237,7 +1237,7 @@ fn review_completion_skips_clean_checkpoint_when_internal_review_disabled() {
 				sample_review_repair_apply_inspectors(pr_url);
 			let mut review_context = sample_review_repair_context_in(temp_dir.path(), pr_url);
 
-			review_context.internal_review_mode = InternalReviewMode::Off;
+			review_context.review_level = ReviewLevel::Off;
 
 			let bridge = TrackerToolBridge::with_review_repair_for_test(
 				&tracker,
@@ -1262,7 +1262,7 @@ fn review_completion_skips_clean_checkpoint_when_internal_review_disabled() {
 }
 
 #[test]
-fn disabled_internal_review_ignores_stale_review_policy_stop_state() {
+fn disabled_review_gate_ignores_stale_review_policy_stop_state() {
 	let temp_dir = TempDir::new().expect("tempdir should create");
 	let tracker = FakeTracker::new();
 	let issue = sample_issue();
@@ -1271,7 +1271,7 @@ fn disabled_internal_review_ignores_stale_review_policy_stop_state() {
 	let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
 	let mut review_context = sample_review_context_in(temp_dir.path());
 
-	review_context.internal_review_mode = InternalReviewMode::Off;
+	review_context.review_level = ReviewLevel::Off;
 
 	write_review_policy_checkpoint(
 		&review_context,
@@ -1290,7 +1290,7 @@ fn disabled_internal_review_ignores_stale_review_policy_stop_state() {
 		&local_repo_inspector,
 	);
 	let completion_status = DynamicToolHandler::classify_turn_completion(&bridge, "done")
-		.expect("disabled internal review should ignore stale review stop state");
+		.expect("disabled review gate should ignore stale review stop state");
 
 	assert_eq!(completion_status, TurnCompletionStatus::Continue);
 }

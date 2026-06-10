@@ -79,7 +79,7 @@ fn build_normal_prompt_surfaces(
 		IssueDispatchMode::Normal,
 		None,
 		workflow.frontmatter().tracker().success_state(),
-		config.codex().internal_review_mode(),
+		config.codex().review_level(),
 	);
 
 	PromptSurfaces { developer_instructions, user_input, continuation_input }
@@ -609,7 +609,7 @@ fn normal_prompts_require_issue_prefixed_pull_request_title() {
 		IssueDispatchMode::Normal,
 		None,
 		workflow.frontmatter().tracker().success_state(),
-		config.codex().internal_review_mode(),
+		config.codex().review_level(),
 	);
 	let expected_title = "XY-381: Ensure Decodex-created PR titles include issue authority prefix";
 	let create_or_update_instruction =
@@ -673,21 +673,21 @@ fn retry_prompts_include_recovery_context() {
 }
 
 #[test]
-fn normal_prompts_respect_non_loop_internal_review_modes() {
+fn normal_prompts_respect_non_standard_review_levels() {
 	for (mode, expected, forbidden_checkpoint) in [
 		(
-			InternalReviewMode::Off,
-			"do not call `issue_review_checkpoint`",
+			ReviewLevel::Off,
+			"[codex].review = \"off\"",
 			None,
 		),
 		(
-			InternalReviewMode::Prompt,
-			"Review your work repeatedly and fix any logic bugs until no new issues are found.",
+			ReviewLevel::Basic,
+			"Self Check: Review your work repeatedly and fix any logic bugs until no new issues are found.",
 			Some(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME),
 		),
 	] {
 		let (_temp_dir, config, workflow) = temp_project_layout();
-		let config = service_config_with_internal_review_mode(&config, mode);
+		let config = service_config_with_review_level(&config, mode);
 		let prompts = build_normal_prompt_surfaces(&config, &workflow);
 
 		for prompt in prompts.all() {
@@ -747,7 +747,7 @@ fn multi_turn_prompts_allow_nonterminal_yield_boundary() {
 		IssueDispatchMode::Normal,
 		None,
 		workflow.frontmatter().tracker().success_state(),
-		config.codex().internal_review_mode(),
+		config.codex().review_level(),
 	);
 
 	assert!(user_input.contains("you may end the turn without"));
@@ -801,7 +801,7 @@ fn closeout_prompts_forbid_clean_continuation_boundaries() {
 		IssueDispatchMode::Closeout,
 		Some(pr_url),
 		workflow.frontmatter().tracker().success_state(),
-		config.codex().internal_review_mode(),
+		config.codex().review_level(),
 	);
 
 	for prompt in [&developer_instructions, &user_input, &continuation_input] {
@@ -857,17 +857,14 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 		IssueDispatchMode::ReviewRepair,
 		Some(pr_url),
 		workflow.frontmatter().tracker().success_state(),
-		config.codex().internal_review_mode(),
+		config.codex().review_level(),
 	);
 
 	assert!(developer_instructions.contains(ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME));
 	assert!(developer_instructions.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
 	assert!(developer_instructions.contains("Do not move the issue back to `In Progress`"));
 	assert!(developer_instructions.contains("do not call `issue_review_handoff`"));
-	assert!(
-		developer_instructions
-			.contains("Request an independent fresh-context read-only review pass")
-	);
+	assert!(developer_instructions.contains("Decodex Review: request an independent fresh-context read-only review pass"));
 	assert!(developer_instructions.contains("structured accepted/rejected findings"));
 	assert!(developer_instructions.contains(
 		"including non-thread review summaries, validate the claim against the codebase, tests, and requirements"
@@ -879,7 +876,7 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 	assert!(developer_instructions.contains("Do not merge or land the PR yourself"));
 	assert!(user_input.contains(pr_url));
 	assert!(user_input.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
-	assert!(user_input.contains("Request an independent fresh-context read-only review pass"));
+	assert!(user_input.contains("Decodex Review: request an independent fresh-context read-only review pass"));
 	assert!(user_input.contains("structured accepted/rejected findings"));
 	assert!(user_input.contains(
 		"Read the current review feedback on `https://github.com/hack-ink/decodex/pull/77`, including non-thread review summaries"
@@ -896,10 +893,7 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 		"resolve only the GitHub review threads whose fixes landed and verified on the repaired head"
 	));
 	assert!(continuation_input.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
-	assert!(
-		continuation_input
-			.contains("Resume by requesting an independent fresh-context read-only review pass")
-	);
+	assert!(continuation_input.contains("Resume by requesting a Decodex Review pass"));
 	assert!(continuation_input.contains("structured accepted/rejected findings"));
 	assert!(continuation_input.contains(
 		"Validate each actionable review claim against the codebase, tests, and requirements before changing code"
@@ -911,7 +905,7 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 	);
 	assert!(continuation_input.contains("retained landing fallback"));
 	assert!(continuation_input.contains("do not merge or land the PR yourself"));
-	assert!(continuation_input.contains("Do not request fresh external review yourself"));
+	assert!(continuation_input.contains("Do not request GitHub Review yourself"));
 	assert!(continuation_input.contains("In Review"));
 	assert!(continuation_input.contains("review_repair"));
 
@@ -930,9 +924,9 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 }
 
 #[test]
-fn review_repair_prompts_skip_internal_review_checkpoint_when_disabled() {
+fn review_repair_prompts_skip_decodex_review_checkpoint_when_off() {
 	let (_temp_dir, config, workflow) = temp_project_layout_with_max_turns(4);
-	let config = service_config_with_internal_review_mode(&config, InternalReviewMode::Off);
+	let config = service_config_with_review_level(&config, ReviewLevel::Off);
 	let issue = sample_issue("In Review", &[]);
 	let tracker = FakeTracker::new(vec![issue.clone()]);
 	let issue_run = orchestrator::IssueRunPlan {
@@ -976,11 +970,11 @@ fn review_repair_prompts_skip_internal_review_checkpoint_when_disabled() {
 		IssueDispatchMode::ReviewRepair,
 		Some(pr_url),
 		workflow.frontmatter().tracker().success_state(),
-		config.codex().internal_review_mode(),
+		config.codex().review_level(),
 	);
 
 	for prompt in [&developer_instructions, &user_input, &continuation_input] {
-		assert!(prompt.contains("codex.internal_review_mode = \"off\""));
+		assert!(prompt.contains("[codex].review = \"off\""));
 		assert!(prompt.contains("do not call `issue_review_checkpoint`"));
 		assert!(!prompt.contains("Follow the repo-native bounded review method"));
 		assert!(!prompt.contains("only after the latest `issue_review_checkpoint`"));
@@ -994,7 +988,7 @@ fn review_repair_prompts_skip_internal_review_checkpoint_when_disabled() {
 	assert!(user_input.contains("required validation has passed"));
 	assert!(continuation_input.contains("required validation has passed"));
 	assert!(user_input.contains("validate each actionable claim against the codebase"));
-	assert!(continuation_input.contains("Do not request fresh external review yourself"));
+	assert!(continuation_input.contains("Do not request GitHub Review from this run"));
 }
 
 #[test]
@@ -1047,7 +1041,7 @@ Custom workflow.
 		IssueDispatchMode::ReviewRepair,
 		Some("https://github.com/hack-ink/decodex/pull/77"),
 		workflow.frontmatter().tracker().success_state(),
-		InternalReviewMode::Loop,
+		ReviewLevel::Standard,
 	);
 
 	assert!(continuation_input.contains("Ready For QA"));
@@ -1128,11 +1122,11 @@ fn review_repair_prompts_surface_architecture_check_on_fourth_external_round() {
 		Some(pr_url),
 	);
 
-	assert!(developer_instructions.contains("external review round 4"));
+	assert!(developer_instructions.contains("GitHub Review round 4"));
 	assert!(developer_instructions.contains("architectural or root-cause defect"));
-	assert!(developer_instructions.contains("reset the external review-round budget"));
-	assert!(user_input.contains("external review round 4"));
-	assert!(user_input.contains("Do not request fresh external review yourself"));
+	assert!(developer_instructions.contains("reset the GitHub Review round budget"));
+	assert!(user_input.contains("GitHub Review round 4"));
+	assert!(user_input.contains("Do not request GitHub Review yourself"));
 }
 
 #[test]
@@ -1241,7 +1235,7 @@ fn review_repair_prompts_ignore_newer_unrelated_branch_orchestration_records() {
 	)
 	.expect("review repair developer instructions should build");
 
-	assert!(!developer_instructions.contains("external review round 4"));
+	assert!(!developer_instructions.contains("GitHub Review round 4"));
 	assert!(!developer_instructions.contains("architectural or root-cause defect"));
 }
 
@@ -1291,7 +1285,7 @@ fn closeout_prompts_require_retained_pr_closeout_completion() {
 		IssueDispatchMode::Closeout,
 		Some(pr_url),
 		workflow.frontmatter().tracker().success_state(),
-		config.codex().internal_review_mode(),
+		config.codex().review_level(),
 	);
 
 	assert!(developer_instructions.contains(ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME));
@@ -1700,7 +1694,7 @@ fn continuation_guard_allows_closeout_continuation_after_issue_reaches_completed
 			cwd: worktree.path.clone(),
 			github_token_env_var: None,
 			github_command_path: None,
-			internal_review_mode: InternalReviewMode::Loop,
+			review_level: ReviewLevel::Strict,
 			mode: ReviewExecutionMode::Closeout,
 			recorded_pr_url: Some(String::from(pr_url)),
 		},
@@ -1784,7 +1778,7 @@ fn continuation_guard_blocks_closeout_continuation_when_completed_issue_pr_is_op
 			cwd: worktree.path.clone(),
 			github_token_env_var: None,
 			github_command_path: None,
-			internal_review_mode: InternalReviewMode::Loop,
+			review_level: ReviewLevel::Strict,
 			mode: ReviewExecutionMode::Closeout,
 			recorded_pr_url: Some(String::from(pr_url)),
 		},
@@ -1867,7 +1861,7 @@ fn continuation_guard_errors_when_completed_issue_pr_state_cannot_be_read() {
 			cwd: worktree.path.clone(),
 			github_token_env_var: None,
 			github_command_path: None,
-			internal_review_mode: InternalReviewMode::Loop,
+			review_level: ReviewLevel::Strict,
 			mode: ReviewExecutionMode::Closeout,
 			recorded_pr_url: Some(String::from(pr_url)),
 		},
