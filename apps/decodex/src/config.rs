@@ -189,19 +189,12 @@ impl ProjectGitHubConfig {
 pub struct ProjectCodexConfig {
 	#[serde(default = "default_review_level")]
 	review: ReviewLevel,
-	#[serde(default = "default_goal_support_mode")]
-	goal_support: ProjectCodexGoalSupportMode,
 	accounts: Option<ProjectCodexAccountsConfig>,
 }
 impl ProjectCodexConfig {
 	/// Review level Decodex should apply for agent runs.
 	pub fn review_level(&self) -> ReviewLevel {
 		self.review
-	}
-
-	/// Whether app-server phase-scoped goal support is enabled for lane runs.
-	pub fn goal_support(&self) -> ProjectCodexGoalSupportMode {
-		self.goal_support
 	}
 
 	/// Optional ChatGPT accounts used to seed Codex app-server auth.
@@ -431,44 +424,6 @@ impl Default for ReviewLevel {
 	}
 }
 
-/// Project policy for app-server phase-scoped goal support.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectCodexGoalSupportMode {
-	/// Use phase goals when the app-server supports them, otherwise fall back safely.
-	Auto,
-	/// Require app-server phase goal methods for every eligible lane run.
-	Required,
-	/// Disable app-server phase goals.
-	Off,
-}
-impl ProjectCodexGoalSupportMode {
-	/// Config string for this mode.
-	pub const fn as_str(self) -> &'static str {
-		match self {
-			Self::Auto => "auto",
-			Self::Required => "required",
-			Self::Off => "off",
-		}
-	}
-
-	/// Whether Decodex should attempt to use app-server goal methods.
-	pub const fn enabled(self) -> bool {
-		!matches!(self, Self::Off)
-	}
-
-	/// Whether missing app-server goal methods should fail the run.
-	pub const fn required(self) -> bool {
-		matches!(self, Self::Required)
-	}
-}
-
-impl Default for ProjectCodexGoalSupportMode {
-	fn default() -> Self {
-		default_goal_support_mode()
-	}
-}
-
 /// Canonical repository root for the current Git checkout.
 pub fn canonical_repo_root_for_checkout(cwd: &Path) -> Result<Option<PathBuf>> {
 	let worktree_root = git_absolute_rev_parse(cwd, "show-toplevel")?
@@ -498,10 +453,6 @@ pub fn checkouts_share_repository(a: &Path, b: &Path) -> Result<bool> {
 
 const fn default_review_level() -> ReviewLevel {
 	ReviewLevel::Strict
-}
-
-const fn default_goal_support_mode() -> ProjectCodexGoalSupportMode {
-	ProjectCodexGoalSupportMode::Auto
 }
 
 const fn default_privacy_classifier_timeout_ms() -> u64 {
@@ -986,7 +937,7 @@ mod tests {
 	use tempfile::TempDir;
 
 	use crate::{
-		config::{self, ProjectCodexGoalSupportMode, ReviewLevel, ServiceConfig},
+		config::{self, ReviewLevel, ServiceConfig},
 		worktree::WorktreeManager,
 	};
 
@@ -1245,20 +1196,10 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_codex_goal_support_modes() {
-		for (case_name, codex_body, expected_goal_support) in [
-			("default goal support", "", ProjectCodexGoalSupportMode::Auto),
-			(
-				"explicit required goal support",
-				r#"goal_support = "required""#,
-				ProjectCodexGoalSupportMode::Required,
-			),
-			(
-				"explicit off goal support",
-				r#"goal_support = "off""#,
-				ProjectCodexGoalSupportMode::Off,
-			),
-		] {
+	fn rejects_removed_codex_goal_field() {
+		let removed_field = ["goal", "support"].join("_");
+
+		for removed_value in ["auto", "required", "off"] {
 			let temp_dir = TempDir::new().expect("temp dir should exist");
 			let config_path = write_config_file(
 				temp_dir.path(),
@@ -1273,13 +1214,17 @@ mod tests {
 				token_env_var = "HOME"
 
 				[codex]
-				{codex_body}
+				{removed_field} = "{removed_value}"
 			"#
 				),
 			);
-			let config = ServiceConfig::from_path(&config_path).expect(case_name);
+			let error = ServiceConfig::from_path(&config_path)
+				.expect_err("removed goal field should be rejected");
 
-			assert_eq!(config.codex().goal_support(), expected_goal_support);
+			assert!(
+				error.to_string().contains(&removed_field),
+				"unexpected error for removed value `{removed_value}`: {error:?}"
+			);
 		}
 	}
 

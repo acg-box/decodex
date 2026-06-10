@@ -13,9 +13,6 @@ token_env_var = "GITHUB_TOKEN"
 # Omit this block to use `review = "strict"`.
 [codex]
 review = "strict"
-# Phase-scoped app-server goals: "auto" falls back when unsupported, "required"
-# fails dispatch when goal methods are unavailable, and "off" disables them.
-goal_support = "auto"
 
 # Optional shared Codex account pool.
 # Uncomment the block to use the global `~/.codex/decodex/accounts.jsonl` pool.
