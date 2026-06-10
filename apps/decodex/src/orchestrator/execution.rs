@@ -815,9 +815,7 @@ where
 		DecodexToolBridge::new(&tracker_tool_bridge, build_decodex_run_context(workflow, issue_run));
 	let phase_goal_controller =
 		build_phase_goal_controller(project, workflow, state_store, issue_run);
-	let phase_goal_controller_ref = phase_goal_controller
-		.as_ref()
-		.map(|controller| controller as &dyn PhaseGoalController);
+	let phase_goal_controller_ref = Some(&phase_goal_controller as &dyn PhaseGoalController);
 	let continuation_user_input =
 		build_issue_run_continuation_user_input(project, workflow, issue_run, &review_context);
 	let run_result = agent::execute_app_server_run(
@@ -855,7 +853,6 @@ where
 			dynamic_tool_handler: Some(&decodex_tool_bridge),
 			continuation_guard: Some(&continuation_guard),
 			phase_goal_controller: phase_goal_controller_ref,
-			phase_goal_required: project.codex().goal_support().required(),
 			codex_account_provider: codex_account_pool
 				.as_ref()
 				.map(|pool| pool as &dyn CodexAccountProvider),
@@ -911,13 +908,13 @@ fn build_phase_goal_controller<'a>(
 	workflow: &'a WorkflowDocument,
 	state_store: &'a StateStore,
 	issue_run: &'a IssueRunPlan,
-) -> Option<RepoGatePhaseGoalController<'a>> {
-	project.codex().goal_support().enabled().then_some(RepoGatePhaseGoalController {
+) -> RepoGatePhaseGoalController<'a> {
+	RepoGatePhaseGoalController {
 		project,
 		workflow,
 		state_store,
 		issue_run,
-	})
+	}
 }
 
 fn phase_goal_kind_from_str(value: &str) -> Option<PhaseGoalKind> {

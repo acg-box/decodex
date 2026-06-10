@@ -167,10 +167,9 @@ Project contracts are managed outside checkouts under
 - `WORKFLOW.md` for execution policy
 
 The redacted template for a project config lives at `decodex.example.toml`.
-Project `[codex].goal_support` controls phase-scoped app-server goals. The default
-`"auto"` attempts goal methods and falls back to ordinary Decodex continuation when a
-selected app-server lacks them; `"required"` fails fast on missing goal support, and
-`"off"` disables goal handling.
+Phase-scoped app-server goals are mandatory for retained lane execution. Decodex
+rejects a connected Codex app-server that lacks required `thread/goal/*` methods
+instead of falling back to ordinary continuation.
 When a project enables `[codex.accounts]`, the shared ChatGPT account pool is
 `~/.codex/decodex/accounts.jsonl`; it is global Decodex state, not a project-local
 file, and project configs do not own an account-pool path override. Set
