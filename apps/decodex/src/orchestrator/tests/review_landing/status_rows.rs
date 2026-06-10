@@ -135,7 +135,7 @@ fn build_post_review_lane_statuses_preserves_handoff_marker_when_pr_readback_fai
 #[test]
 fn build_post_review_lane_statuses_skips_external_review_when_disabled() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_external_review_enabled(&config, false);
+	let config = service_config_with_review_level(&config, ReviewLevel::Standard);
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = sample_issue("In Review", &[]);
 	let tracker =
@@ -187,7 +187,7 @@ fn build_post_review_lane_statuses_skips_external_review_when_disabled() {
 
 	assert_eq!(lanes.len(), 1);
 	assert_eq!(lanes[0].classification, "ready_to_land");
-	assert_eq!(lanes[0].reason, "internal_review_only_ready_to_land");
+	assert_eq!(lanes[0].reason, "non_github_review_ready_to_land");
 	assert_eq!(lanes[0].pr_url.as_deref(), Some(pr_url));
 }
 

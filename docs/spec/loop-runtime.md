@@ -275,8 +275,8 @@ read-only review pass. This pass is distinct from in-thread self-review:
   Contract
 - candidate findings must be validated before repair work changes the lane
 
-The review orchestration contract, including internal/external review modes and
-review-stop classes, is defined by [`review-orchestration.md`](./review-orchestration.md).
+The review orchestration contract, including review levels and review-stop classes,
+is defined by [`review-orchestration.md`](./review-orchestration.md).
 
 ## Unattended Execution
 

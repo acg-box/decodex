@@ -432,8 +432,7 @@ fn idle_operator_status_snapshot_includes_configured_codex_accounts() {
 	let mut config_toml = service_config_toml_for_config(
 		&base_config,
 		base_config.github().token_env_var(),
-		base_config.codex().internal_review_mode(),
-		base_config.codex().external_review_enabled(),
+		base_config.codex().review_level(),
 	);
 
 	config_toml.push_str(&format!(
@@ -491,8 +490,7 @@ fn status_command_snapshot_does_not_probe_configured_codex_accounts() {
 	let mut config_toml = service_config_toml_for_config(
 		&base_config,
 		base_config.github().token_env_var(),
-		base_config.codex().internal_review_mode(),
-		base_config.codex().external_review_enabled(),
+		base_config.codex().review_level(),
 	);
 
 	config_toml.push_str(

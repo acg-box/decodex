@@ -470,8 +470,8 @@ fn reconcile_retained_review_lane<T>(
 where
 	T: IssueTracker,
 {
-	if !project.codex().external_review_enabled() {
-		return handle_internal_review_only_lane(
+	if !project.codex().review_level().uses_github_review() {
+		return handle_non_github_review_lane(
 			tracker,
 			project,
 			workflow,
@@ -529,7 +529,7 @@ where
 	}
 }
 
-fn handle_internal_review_only_lane<T>(
+fn handle_non_github_review_lane<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -552,7 +552,7 @@ where
 			state_store,
 			lane,
 			now_unix_epoch,
-			"internal_review_only_merge_visibility_timeout",
+			"non_github_review_merge_visibility_timeout",
 		);
 	}
 	if external_review_requires_repair(&lane.review_state, &lane.orchestration_marker)
@@ -598,8 +598,8 @@ where
 		&mut runtime,
 		lane,
 		RetainedAdminMergeReasons {
-			admin_merge_unavailable: "internal_review_only_admin_merge_unavailable",
-			admin_merge_failed: "internal_review_only_admin_merge_failed",
+			admin_merge_unavailable: "non_github_review_admin_merge_unavailable",
+			admin_merge_failed: "non_github_review_admin_merge_failed",
 		},
 	)
 }
@@ -2321,7 +2321,7 @@ where
 		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
 
-	if let Some(retained_summary) = drain_internal_review_only_retained_tail_with_inspector(
+	if let Some(retained_summary) = drain_non_github_review_retained_tail_with_inspector(
 		tracker,
 		project,
 		workflow,
@@ -2371,7 +2371,7 @@ where
 	})
 }
 
-fn drain_internal_review_only_retained_tail_with_inspector<T, I, F>(
+fn drain_non_github_review_retained_tail_with_inspector<T, I, F>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
@@ -2385,7 +2385,7 @@ where
 	I: PullRequestReviewStateInspector,
 	F: FnMut(&RunSummary) -> Result<Option<RunSummary>>,
 {
-	if project.codex().external_review_enabled()
+	if project.codex().review_level().uses_github_review()
 		|| summary.continuation_pending
 		|| !matches!(
 			summary.dispatch_mode,
@@ -2426,7 +2426,7 @@ where
 
 			return Ok(None);
 		}
-		if lane.reason != "internal_review_only_waiting_for_merge"
+		if lane.reason != "non_github_review_waiting_for_merge"
 			|| pass + 1 == INTERNAL_RETAINED_DRAIN_MAX_PASSES
 		{
 			return Ok(None);
