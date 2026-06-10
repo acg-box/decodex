@@ -312,11 +312,11 @@ fn retained_review_needs_attention_error_class(reason: &str) -> &'static str {
 		"external_review_pass_signal_missing" => "external_review_pass_signal_missing",
 		"external_review_request_ci_red_manual_attention" =>
 			"external_review_request_ci_red_manual_attention",
-		"internal_review_only_admin_merge_failed" => "internal_review_only_admin_merge_failed",
-		"internal_review_only_admin_merge_unavailable" =>
-			"internal_review_only_admin_merge_unavailable",
-		"internal_review_only_merge_visibility_timeout" =>
-			"internal_review_only_merge_visibility_timeout",
+		"non_github_review_admin_merge_failed" => "non_github_review_admin_merge_failed",
+		"non_github_review_admin_merge_unavailable" =>
+			"non_github_review_admin_merge_unavailable",
+		"non_github_review_merge_visibility_timeout" =>
+			"non_github_review_merge_visibility_timeout",
 		"pull_request_is_draft" => "pull_request_is_draft",
 		"pull_request_merge_commit_lineage_check_failed" =>
 			"pull_request_merge_commit_lineage_check_failed",
