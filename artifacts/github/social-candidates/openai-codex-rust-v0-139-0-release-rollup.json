@@ -1,0 +1,112 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-139-0-release-rollup",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "release_rollup",
+  "priority": "high",
+  "audience": "Codex operators tracking stable CLI releases and operator-facing surfaces",
+  "candidate_text": [
+    "Codex CLI 0.139.0 stable is out.\n\nTop notes: web search in code mode, richer tool/connector schemas, plugin marketplace provenance/cache work, image-edit path fixes, and sandbox/proxy correctness.\n\nSource: https://github.com/openai/codex/releases/tag/rust-v0.139.0",
+    "Feature picks:\n\n- standalone web search in code mode\nhttps://github.com/openai/codex/pull/26719\n\n- tool schemas preserve oneOf/allOf plus more shallow structure\nhttps://github.com/openai/codex/pull/24118\nhttps://github.com/openai/codex/pull/27084",
+    "Operator/plugin notes:\n\n- marketplace JSON adds marketplaceSource\nhttps://github.com/openai/codex/pull/27009\n\n- plugin lists can use cached catalog before background refresh\nhttps://github.com/openai/codex/pull/26932",
+    "Workflow fixes:\n\n- resume/fork --last parses prompt correctly\nhttps://github.com/openai/codex/pull/26818\n\n- TUI bare URLs with ~ linkify end to end\nhttps://github.com/openai/codex/pull/27088\n\n- thread resets preserve cloud requirements\nhttps://github.com/openai/codex/pull/25177",
+    "Reviewed Decodex-relevant fixes:\n\n- MCP startup status stays scoped to owning thread\nhttps://github.com/openai/codex/pull/26639\n\n- image edits use referenced file paths\nhttps://github.com/openai/codex/pull/26486\n\nBoth have checked Radar review/impact artifacts.",
+    "Sandbox/operator notes:\n\n- approved unified-exec escalation survives zsh-fork/intercepted exec paths\nhttps://github.com/openai/codex/pull/24981\n\n- configured network proxy now enforces proxy-only containment\nhttps://github.com/openai/codex/pull/27035",
+    "Lineage + caveat:\n\nStable compare: rust-v0.138.0 -> rust-v0.139.0\nhttps://github.com/openai/codex/compare/rust-v0.138.0...rust-v0.139.0\n\nRelease notes are source evidence; unreviewed PR details should stay release-note-scoped."
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-24981.review.json",
+      "artifacts/github/reviews/openai-codex-pr-26464.review.json",
+      "artifacts/github/reviews/openai-codex-pr-26486.review.json",
+      "artifacts/github/reviews/openai-codex-pr-26639.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27009.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27035.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-24981.json",
+      "artifacts/github/impact/openai-codex-pr-26464.json",
+      "artifacts/github/impact/openai-codex-pr-26486.json",
+      "artifacts/github/impact/openai-codex-pr-26639.json",
+      "artifacts/github/impact/openai-codex-pr-27009.json",
+      "artifacts/github/impact/openai-codex-pr-27035.json"
+    ],
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.138.0",
+      "https://github.com/openai/codex/releases/tag/rust-v0.139.0",
+      "https://github.com/openai/codex/compare/rust-v0.138.0...rust-v0.139.0",
+      "https://github.com/openai/codex/pull/26719",
+      "https://github.com/openai/codex/pull/24118",
+      "https://github.com/openai/codex/pull/27084",
+      "https://github.com/openai/codex/pull/27009",
+      "https://github.com/openai/codex/pull/26932",
+      "https://github.com/openai/codex/pull/27081",
+      "https://github.com/openai/codex/pull/26818",
+      "https://github.com/openai/codex/pull/27088",
+      "https://github.com/openai/codex/pull/25177",
+      "https://github.com/openai/codex/pull/26639",
+      "https://github.com/openai/codex/pull/26486",
+      "https://github.com/openai/codex/pull/24981",
+      "https://github.com/openai/codex/pull/27035",
+      "https://github.com/openai/codex/pull/26202",
+      "https://github.com/openai/codex/pull/26464"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows stable rust-v0.139.0 was published at 2026-06-09T20:13:29Z with a detailed release body.",
+    "The official Codex changelog readback for this run shows Codex CLI 0.139.0 on 2026-06-09 with matching release-note bullets, so this stable checkpoint is backed by both the official changelog and GitHub release metadata.",
+    "The stable release lineage gate selects rust-v0.138.0 -> rust-v0.139.0; GitHub compare metadata reports 45 ahead commits and 1 behind commit for that stable-to-stable window.",
+    "The release body highlights standalone web search in code mode, oneOf/allOf tool schemas, doctor environment reporting, plugin marketplace provenance/cache behavior, resume/fork parsing, MCP startup scoping, image edit path routing, URL linkification, thread-reset config preservation, sandbox escalation preservation, and proxy-only network containment.",
+    "Checked Radar review and impact artifacts support stronger Decodex/operator claims for PRs #24981, #26486, #26639, #27009, and #27035; PRs #26202 and #26464 have checked review/impact context but are release-engineering chores rather than standalone social value.",
+    "Release-note bullets without checked Radar review in this tree remain release-note-scoped in candidate copy: #26719, #24118, #27084, #27081, #26932, #26818, #27088, and #25177."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.139.0 is the current observed stable OpenAI Codex CLI release checkpoint for this run.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.139.0",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct stable release lineage comparison is rust-v0.138.0 -> rust-v0.139.0.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.138.0...rust-v0.139.0",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The 0.139.0 release notes highlight standalone web search, richer tool schemas, plugin marketplace provenance/cache behavior, image edit path routing, and sandbox/proxy correctness.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.139.0",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Checked Radar review/impact artifacts support Decodex-relevant operator claims for MCP startup scoping, image edit path routing, sandbox escalation preservation, proxy-only containment, and marketplace JSON provenance.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Several release-note bullets still lack checked Radar source review in this tree and should remain release-note-scoped until codex-upstream-radar-review covers them.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The stable 0.139.0 release body provides concrete reader-facing release-note evidence, direct PR links, and enough checked Radar context for operator caveats.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-139-0:stable138-stable139:release_rollup"
+  },
+  "caveats": [
+    "This candidate is based on public GitHub release metadata, release-body text, compare metadata, direct PR URLs, refreshed release_delta/v1 metadata, and existing checked review/impact context for selected PRs.",
+    "Do not imply Decodex has adopted or verified every 0.139.0 behavior; route deeper behavior or compatibility claims for unreviewed PRs to codex-upstream-radar-review / codex-code-analysis.",
+    "The current 2026-06-10 Asia/Shanghai cap day has no checked @decodexspace social_post/v1 records yet, but decodex-x-publisher must still verify daily cap, duplicate/idempotency state, pending publication PRs, and live @decodexspace profile state before composing.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If media is required, decodex-x-publisher should generate and verify a fresh candidate-specific decodex_signal_card, then fail closed if upload/readback is unreliable."
+  ],
+  "next_steps": [
+    "Hand this publishable candidate to decodex-x-publisher.",
+    "Before posting, verify @decodexspace account state, daily cap, duplicate/idempotency state, pending publication PRs, and whether candidate-specific media is required.",
+    "If the Publisher needs stronger behavior language than release notes and checked Radar artifacts support, pause publication and route the relevant PRs to codex-upstream-radar-review / codex-code-analysis."
+  ]
+}
