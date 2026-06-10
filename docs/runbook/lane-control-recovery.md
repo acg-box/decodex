@@ -93,7 +93,8 @@ or clean labels.
 | Operator wants a different issue or replacement task. | Treat as task replacement, not steer. | Stop or pause through supported controls as needed, then create/update/requeue through the supported lifecycle. |
 | Status or Linear failure summary reports a loop guardrail reason. | Stop automatic recovery and inspect the reason-specific evidence. | Follow the loop guardrail recovery table below before clearing `decodex:needs-attention` or requeueing. |
 | Authority Boundary Check reports `within_authority`. | Continue only if lane identity, ownership, and validation evidence still match. | Resume through the supported retained-lane path; keep the boundary-check event as private evidence. |
-| Authority Boundary Check reports `requires_human` or `insufficient_evidence`. | Stop automatic recovery. | Keep or apply `decodex:needs-attention`, capture the missing direction or evidence, and continue only after the Decision Contract, issue, policy, or human direction explicitly authorizes the change. |
+| Authority Boundary Check reports `requires_human`. | Stop automatic recovery and preserve the durable decision request. | Keep or apply `decodex:needs-attention`, inspect the Linear decision request and private `authority_decision_request` evidence, then continue only after the issue, Decision Contract, or policy accepts, rejects, or revises the requested authority change. |
+| Authority Boundary Check reports `insufficient_evidence`. | Stop automatic recovery unless later evidence proves the change is inside authority. | Keep or apply `decodex:needs-attention`, capture the missing evidence, and continue only after the Decision Contract, issue, policy, or human direction explicitly authorizes the change. |
 | Evidence is missing, contradictory, or would require guessing whether local work is safe to overwrite. | Stop automatic recovery. | Use manual attention with structured public blockers and keep private evidence local. |
 
 ## Loop Guardrail Recovery
@@ -116,6 +117,16 @@ For every guardrail stop, keep `decodex:needs-attention` until the blocker above
 resolved. If the issue returns to automation, request a Linear scan or let the next
 scheduled scan observe the corrected tracker state; do not bypass the guardrail with a
 manual retry that leaves the same evidence unchanged.
+
+For authority-boundary decision requests, the supported resume sequence is:
+
+1. Record the decision in the issue, accepted Decision Contract, or project policy.
+2. Clear or preserve `decodex:needs-attention` according to that decision.
+3. Requeue or resume through supported Decodex lifecycle controls only after the
+   status/evidence tuple still matches the retained lane.
+
+Do not resume by editing raw tracker records, mutating runtime SQLite directly, or
+referring to internal graph ids as the operator-facing decision.
 
 ## Broad Steer Examples
 
