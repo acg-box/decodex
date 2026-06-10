@@ -1,0 +1,61 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-06-08T23:03:21Z",
+      "message": "Use server app auth requirements for remote plugin install",
+      "sha": "df5b449689130d0e0dbd65ab882aa784a9c02028",
+      "url": "https://github.com/openai/codex/commit/df5b449689130d0e0dbd65ab882aa784a9c02028"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "REMOTE_PLUGIN_ID",
+    "TEST_ALLOW_HTTP_REMOTE_PLUGIN_BUNDLE_DOWNLOADS",
+    "DEFAULT_TIMEOUT",
+    "JSONRPCR",
+    "GET",
+    "POST"
+  ],
+  "files": [
+    {
+      "additions": 38,
+      "deletions": 11,
+      "patch_excerpt": "@@ -1519,7 +1519,7 @@ impl PluginRequestProcessor {\n         // Cache first so a backend install cannot succeed when local materialization fails.\n         // If this backend call fails, the cache entry is harmless because remote installed state\n         // is still backend-gated.\n-        codex_core_plugins::remote::install_remote_plugin(\n+        let install_result = codex_core_plugins::remote::install_remote_plugin(\n             &remote_plugin_service_config,\n             auth.as_ref(),\n             &actual_remote_marketplace_name,\n@@ -1538,7 +1538,7 @@ impl PluginRequestProcessor {\n \n         let mut plugin_metadata =\n             plugin_telemetry_metadata_from_root(&result.plugin_id, &result.installed_path).await;\n-        plugin_metadata.remote_plugin_id = Some(remote_plugin_id);\n+        plugin_metadata.remote_plugin_id = Some(remote_plugin_id.clone());\n         self.analytics_even...",
+      "path": "codex-rs/app-server/src/request_processors/plugins.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 102,
+      "deletions": 0,
+      "patch_excerpt": "@@ -288,6 +288,59 @@ async fn plugin_install_writes_remote_plugin_to_cloud_and_cache() -> Result<()>\n     Ok(())\n }\n \n+#[tokio::test]\n+async fn plugin_install_uses_remote_apps_needing_auth_response() -> Result<()> {\n+    let codex_home = TempDir::new()?;\n+    let server = MockServer::start().await;\n+    let bundle_url = mount_remote_plugin_bundle(\n+        &server,\n+        /*status_code*/ 200,\n+        remote_plugin_bundle_tar_gz_bytes(\"linear\")?,\n+    )\n+    .await;\n+    configure_remote_plugin_with_apps_test(codex_home.path(), &server)?;\n+    mount_remote_plugin_detail(&server, REMOTE_PLUGIN_ID, \"1.2.3\", Some(&bundle_url)).await;\n+    mount_empty_remote_installed_plugins(&server).await;\n+    mount_remote_plugin_install_with_apps_needing_auth(&server, REMOTE_PLUGIN_ID, &[\"alpha\"]).await;\n+\n+    let mut mcp = TestAppServer::new_with_env(\n+        codex_home.path(),\n+        &[(TEST_ALLO...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_install.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 3,
+      "patch_excerpt": "@@ -550,6 +550,12 @@ struct RemotePluginInstalledResponse {\n struct RemotePluginMutationResponse {\n     id: String,\n     enabled: bool,\n+    app_ids_needing_auth: Option<Vec<String>>,\n+}\n+\n+#[derive(Debug, Clone, PartialEq, Eq)]\n+pub struct RemotePluginInstallResult {\n+    pub app_ids_needing_auth: Option<Vec<String>>,\n }\n \n pub async fn fetch_remote_marketplaces(\n@@ -1071,15 +1077,20 @@ pub async fn install_remote_plugin(\n     auth: Option<&CodexAuth>,\n     _marketplace_name: &str,\n     plugin_id: &str,\n-) -> Result<(), RemotePluginCatalogError> {\n+) -> Result<RemotePluginInstallResult, RemotePluginCatalogError> {\n     let auth = ensure_chatgpt_auth(auth)?;\n     // Remote plugin IDs uniquely identify remote plugins, so the caller-provided\n     // marketplace name is not validated before sending the install mutation.\n \n     let base_url = config.chatgpt_base_url.trim_end_matches('/');\n  ...",
+      "path": "codex-rs/core-plugins/src/remote.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n- request `includeAppsNeedingAuth=true` when installing remote plugins\n- return backend-provided `app_ids_needing_auth` from the remote install client\n- use those app IDs to populate `appsNeedingAuth` without refetching accessible apps, with fallback for older responses\n\n## Testing\n- `just fmt`\n- `just test -p codex-app-server`\n- `just test -p codex-core-plugins`\n- real app-server install/uninstall check with Notion remote plugin\n- subagent review found no blocking issues\n",
+    "labels": [],
+    "merged_at": "2026-06-09T04:39:35Z",
+    "number": 27085,
+    "state": "merged",
+    "title": "Use server app auth requirements for remote plugin install",
+    "url": "https://github.com/openai/codex/pull/27085"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

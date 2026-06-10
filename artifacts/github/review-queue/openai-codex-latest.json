@@ -1,14 +1,14 @@
 {
   "counts": {
     "critical": 19,
-    "high": 10,
+    "high": 12,
     "low": 0,
-    "normal": 11,
+    "normal": 9,
     "published_subjects_seen": 0,
     "recent_commits_scanned": 40,
     "subjects_queued": 40
   },
-  "generated_at": "2026-06-10T02:06:16.841927Z",
+  "generated_at": "2026-06-10T08:04:41.120407Z",
   "repo": "openai/codex",
   "schema": "upstream_review_queue/v1",
   "source": {
@@ -17,61 +17,6 @@
     "signals_dir": "site/src/content/signals"
   },
   "subjects": [
-    {
-      "attention_flags": [
-        "auth_account",
-        "breaking_change",
-        "new_feature",
-        "protocol_change",
-        "release_packaging"
-      ],
-      "changed_file_count": 7,
-      "commit_shas": [
-        "3c842f79d482b0f96fcf9a039264ef1896345d17",
-        "758e981a1d26ae66fd2c1ff530873e378705b45b",
-        "882a9b4991823dd85cfc97ebf3557bfcf6623f4d",
-        "e03cce53589b3ad050d3d251741014fef5e88940",
-        "ffe52eeeeb6e01460d784b230f9a260e9a89e488",
-        "cf89de2c574b750f864b0f9a44fb2e136ce9e093",
-        "43038a2be12ee9e09bbb23e494a069213a12ea49",
-        "80f6b9758cd4938041cdf619b06c72657f13abcb",
-        "18883637213c269c4e589668169cc91b52f3b38e",
-        "9fba3263e8f0b6ff53ca995c40de0259cb0452a5",
-        "2cfc5a19b265c1860e9bd4eb2519cf38b984464b",
-        "4fc4e5baeb335cd5b6faca38e4a1bae6f623d66d",
-        "6cf3f6526a586c33b27ce11ad50f54aaf366462c",
-        "8a99473f3a265925e8b94e7f652c8584bc67084a",
-        "bd2279b23436fa40f838d9c469c8c6029cf7cffc",
-        "14a6f970c14aa660e94dbb5085e6a3e8fd3ad211",
-        "3eb69a100fb57eacb88073eb944149315aab00c1",
-        "1bf23e23a4360abe0be9b536a9b84ca24a13c92c",
-        "ad09d4f63e134d7bdb6f7dad8d726229f6669b06"
-      ],
-      "committed_at": "2026-06-08T23:33:41Z",
-      "next_step": "ai_review_required",
-      "pr_number": 26840,
-      "pr_url": "https://github.com/openai/codex/pull/26840",
-      "review_priority": "critical",
-      "review_reason": "Needs AI review for auth_account, breaking_change, new_feature, protocol_change, release_packaging.",
-      "sample_paths": [
-        ".github/CODEOWNERS",
-        "codex-rs/Cargo.lock",
-        "codex-rs/Cargo.toml",
-        "codex-rs/utils/path-uri/BUILD.bazel",
-        "codex-rs/utils/path-uri/Cargo.toml",
-        "codex-rs/utils/path-uri/src/lib.rs",
-        "codex-rs/utils/path-uri/src/tests.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "26840",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "config_hooks",
-        "tests_ci"
-      ],
-      "title": "Add typed file URIs",
-      "url": "https://github.com/openai/codex/pull/26840"
-    },
     {
       "attention_flags": [
         "deprecated_removed",
@@ -851,6 +796,45 @@
     },
     {
       "attention_flags": [
+        "auth_account",
+        "deprecated_removed",
+        "protocol_change",
+        "release_packaging"
+      ],
+      "changed_file_count": 5,
+      "commit_shas": [
+        "e2348d4ce90e1991f9ea47acea2d2139e8d19c0c",
+        "3cb6016b3ea47d94f0966e50c18f6d6b8d3b6d2c",
+        "ea56e2180a47bb14d9914f800e8e726a8b593414",
+        "28e836c8888fbc001fceb444e2fccfff52e0ff01",
+        "675cdc7a2696bf763f5e18cb226c325ea61d1d5b"
+      ],
+      "committed_at": "2026-06-10T03:52:09Z",
+      "next_step": "ai_review_required",
+      "pr_number": 27285,
+      "pr_url": "https://github.com/openai/codex/pull/27285",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, deprecated_removed, protocol_change, release_packaging.",
+      "sample_paths": [
+        "codex-rs/analytics/src/reducer.rs",
+        "codex-rs/app-server/src/extensions.rs",
+        "codex-rs/app-server/src/mcp_refresh.rs",
+        "codex-rs/app-server/src/message_processor.rs",
+        "codex-rs/app-server/tests/suite/v2/turn_start.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "27285",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "app_server_protocol",
+        "mcp_plugins",
+        "tests_ci"
+      ],
+      "title": "[codex] Fix post-merge analytics integration failures",
+      "url": "https://github.com/openai/codex/pull/27285"
+    },
+    {
+      "attention_flags": [
         "new_feature",
         "protocol_change",
         "release_packaging",
@@ -1193,65 +1177,90 @@
     },
     {
       "attention_flags": [
-        "auth_account",
         "new_feature",
         "protocol_change"
       ],
-      "changed_file_count": 2,
+      "changed_file_count": 4,
       "commit_shas": [
-        "0d1f9d3e58fcf073ad1840a7bcf364ebb414ec26"
+        "d047caf12e4d0670a3abf28a4f2915fa3f70732d",
+        "f73d37d6769e342190b234e4d84c91e3a5fc8832"
       ],
-      "committed_at": "2026-06-08T23:07:56Z",
+      "committed_at": "2026-06-10T04:41:06Z",
       "next_step": "ai_review_required",
-      "pr_number": 27084,
-      "pr_url": "https://github.com/openai/codex/pull/27084",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change.",
+      "pr_number": 27107,
+      "pr_url": "https://github.com/openai/codex/pull/27107",
+      "review_priority": "high",
+      "review_reason": "Needs AI review for new_feature, protocol_change.",
       "sample_paths": [
-        "codex-rs/tools/src/json_schema.rs",
-        "codex-rs/tools/src/json_schema_tests.rs"
+        "codex-rs/core/src/hook_runtime.rs",
+        "codex-rs/core/src/mcp_tool_exposure.rs",
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/turn.rs"
       ],
       "source_state": "merged",
-      "subject_id": "27084",
+      "subject_id": "27107",
       "subject_kind": "pr",
       "surface_hints": [
-        "tests_ci"
+        "config_hooks",
+        "mcp_plugins"
       ],
-      "title": "chore: preserve one more schema layer during large tool compaction",
-      "url": "https://github.com/openai/codex/pull/27084"
+      "title": "Add spans to run_turn",
+      "url": "https://github.com/openai/codex/pull/27107"
     },
     {
       "attention_flags": [
         "auth_account",
-        "breaking_change",
-        "new_feature"
+        "new_feature",
+        "protocol_change",
+        "security_policy"
       ],
-      "changed_file_count": 5,
+      "changed_file_count": 8,
       "commit_shas": [
-        "b7fac96d42dbee0dc1941fd6322afe6868c4ead4"
+        "c504b328b7d835c0b33fea762d9a3d796ec336dc",
+        "6b4aa397aae0f0283f11b0d8da02da2e2ac88711",
+        "67da7c5e3b76018780d3cbc7ef3119c56ce5e32f",
+        "eb7002afa00aecddc79b7b2b032a15a78e336101",
+        "34ec33192dfec437986360b687d9a0a888ca521d",
+        "41dda768e5f3d9d339982a94b8d6a21399d68c01",
+        "abfe7ab2d0ad692c724a49bddfd64e40c836307b",
+        "e5c5f0dca5345d8c3e611d4fdaeb2de8b6bdd08c",
+        "6385c6b3b2620c233e771995c328a62a4ef5ceb6",
+        "dfca54a28e98ef7df5407e66ef45ec53bf93eff6",
+        "71772262f3766a508575724d94cec2322ca06796",
+        "a4439ecce64c51bd084dca079c150294a2f44394",
+        "cc2754bbba0afeac1bb785bc1577c6349ab38da5",
+        "a48cb410f214216e21c198be03aa601c01ab19c3",
+        "04b6ef2a7812f427e1f88790e3f4dc3a5b24415b",
+        "0588a59e00333db60c45a80602c47061df309690",
+        "4052ad0f2d8095406635faefa30522324067cd14",
+        "c4e6566a709a825200b021c42952decc6a398895",
+        "6fa2495bc95331e9f06340cd2011e8aad794a384"
       ],
-      "committed_at": "2026-06-09T00:02:36Z",
+      "committed_at": "2026-06-10T07:17:58Z",
       "next_step": "ai_review_required",
-      "pr_number": 27088,
-      "pr_url": "https://github.com/openai/codex/pull/27088",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for auth_account, breaking_change, new_feature.",
+      "pr_number": 27261,
+      "pr_url": "https://github.com/openai/codex/pull/27261",
+      "review_priority": "high",
+      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change, security_policy.",
       "sample_paths": [
-        "codex-rs/tui/src/lib.rs",
-        "codex-rs/tui/src/markdown_render.rs",
-        "codex-rs/tui/src/markdown_render_tests.rs",
-        "codex-rs/tui/src/markdown_text_merge.rs",
-        "codex-rs/tui/src/snapshots/codex_tui__markdown_render__markdown_render_tests__bare_url_with_tilde_keeps_complete_hyperlink.snap"
+        "codex-rs/codex-mcp/src/connection_manager.rs",
+        "codex-rs/codex-mcp/src/connection_manager_tests.rs",
+        "codex-rs/codex-mcp/src/mcp/mod.rs",
+        "codex-rs/core/src/connectors.rs",
+        "codex-rs/core/src/mcp_tool_call_tests.rs",
+        "codex-rs/core/src/session/mcp.rs",
+        "codex-rs/core/src/session/session.rs",
+        "codex-rs/core/src/state/service.rs"
       ],
       "source_state": "merged",
-      "subject_id": "27088",
+      "subject_id": "27261",
       "subject_kind": "pr",
       "surface_hints": [
-        "cli_tui",
+        "mcp_plugins",
         "tests_ci"
       ],
-      "title": "fix(tui): linkify complete bare URLs with tildes",
-      "url": "https://github.com/openai/codex/pull/27088"
+      "title": "[codex] Make MCP connection startup fallible",
+      "url": "https://github.com/openai/codex/pull/27261"
     },
     {
       "attention_flags": [
