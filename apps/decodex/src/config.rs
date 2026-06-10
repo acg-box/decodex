@@ -187,14 +187,18 @@ impl ProjectGitHubConfig {
 #[serde(deny_unknown_fields)]
 #[derive(Default)]
 pub struct ProjectCodexConfig {
-	#[serde(default = "default_review_level")]
-	review: ReviewLevel,
+	#[serde(default)]
+	review: Option<ReviewLevel>,
+	#[serde(default)]
+	external_review_enabled: Option<bool>,
+	#[serde(default)]
+	internal_review_mode: Option<LegacyInternalReviewMode>,
 	accounts: Option<ProjectCodexAccountsConfig>,
 }
 impl ProjectCodexConfig {
 	/// Review level Decodex should apply for agent runs.
 	pub fn review_level(&self) -> ReviewLevel {
-		self.review
+		self.review.unwrap_or_else(|| self.legacy_review_level())
 	}
 
 	/// Optional ChatGPT accounts used to seed Codex app-server auth.
@@ -219,6 +223,29 @@ impl ProjectCodexConfig {
 
 		Ok(())
 	}
+
+	fn legacy_review_level(&self) -> ReviewLevel {
+		match self.external_review_enabled {
+			Some(true) => ReviewLevel::Strict,
+			Some(false) =>
+				match self.internal_review_mode.unwrap_or(LegacyInternalReviewMode::Prompt) {
+					LegacyInternalReviewMode::Prompt => ReviewLevel::Standard,
+					LegacyInternalReviewMode::Off => ReviewLevel::Basic,
+				},
+			None => match self.internal_review_mode {
+				Some(LegacyInternalReviewMode::Prompt) => ReviewLevel::Standard,
+				Some(LegacyInternalReviewMode::Off) => ReviewLevel::Basic,
+				None => default_review_level(),
+			},
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum LegacyInternalReviewMode {
+	Prompt,
+	Off,
 }
 
 /// Optional local-only classifier for public Linear projection text.
@@ -1193,6 +1220,57 @@ mod tests {
 
 			assert_eq!(config.codex().review_level(), expected_level);
 		}
+	}
+
+	#[test]
+	fn parses_legacy_codex_review_fields() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let config_path = write_config_file(
+			temp_dir.path(),
+			r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+
+				[codex]
+				external_review_enabled = false
+				internal_review_mode = "prompt"
+			"#,
+		);
+		let config = ServiceConfig::from_path(&config_path)
+			.expect("legacy codex review fields should parse");
+
+		assert_eq!(config.codex().review_level(), ReviewLevel::Standard);
+	}
+
+	#[test]
+	fn explicit_codex_review_field_overrides_legacy_review_fields() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let config_path = write_config_file(
+			temp_dir.path(),
+			r#"
+				service_id = "pubfi"
+
+				[tracker]
+				api_key_env_var = "HOME"
+
+				[github]
+				token_env_var = "HOME"
+
+				[codex]
+				review = "basic"
+				external_review_enabled = true
+				internal_review_mode = "prompt"
+			"#,
+		);
+		let config =
+			ServiceConfig::from_path(&config_path).expect("explicit review field should parse");
+
+		assert_eq!(config.codex().review_level(), ReviewLevel::Basic);
 	}
 
 	#[test]
