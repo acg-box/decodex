@@ -2,21 +2,26 @@ use serde_json::{self, Value};
 
 use crate::{
 	agent::tracker_tool_bridge::{
-		self, CommentArgs, DynamicToolCallResponse, DynamicToolSpec, ExecutionProgressPhase,
-		ISSUE_COMMENT_TOOL_NAME, ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
-		ISSUE_LABEL_ADD_TOOL_NAME, ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
-		ISSUE_REVIEW_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_HANDOFF_TOOL_NAME,
-		ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME, ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
-		ISSUE_TRANSITION_TOOL_NAME, LabelArgs, NormalizedProgressCheckpoint,
-		NormalizedReviewCheckpointPayload, PendingReviewAction, PendingReviewCompletion,
-		ProgressCheckpointArgs, ReviewCheckpointArgs, ReviewCheckpointChecksArgs,
-		ReviewCheckpointFindingArgs, ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode,
-		ReviewHandoffArgs, ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus,
-		RunCompletionDisposition, TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
+		self, AuthorityDecisionOptionArgs, AuthorityDecisionRequestArgs, CommentArgs,
+		DynamicToolCallResponse, DynamicToolSpec, ExecutionProgressPhase, ISSUE_COMMENT_TOOL_NAME,
+		ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME, ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME, ISSUE_REVIEW_CHECKPOINT_TOOL_NAME,
+		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LabelArgs,
+		NormalizedProgressCheckpoint, NormalizedReviewCheckpointPayload, PendingReviewAction,
+		PendingReviewCompletion, ProgressCheckpointArgs, ReviewCheckpointArgs,
+		ReviewCheckpointChecksArgs, ReviewCheckpointFindingArgs,
+		ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode, ReviewHandoffArgs,
+		ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus, RunCompletionDisposition,
+		TerminalFinalizeArgs, TrackerToolBridge, TransitionArgs,
+	},
+	orchestrator::{
+		self, AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE, AuthorityDecisionOption,
+		AuthorityDecisionRequestInput,
 	},
 	state::{self, StateStore},
 	tracker::{
-		self, records,
+		self, public_text, records,
 		records::{LinearExecutionEventIdentity, LinearExecutionEventRecord},
 	},
 };
@@ -34,6 +39,29 @@ struct NormalizedManualAttentionComment {
 	failed_command: Option<String>,
 	raw_error: Option<String>,
 	summary: Option<String>,
+	decision_request: Option<NormalizedAuthorityDecisionRequest>,
+}
+
+#[derive(Debug)]
+struct NormalizedAuthorityDecisionRequest {
+	boundary_check_id: i64,
+	decision_request_id: String,
+	reason_code: String,
+	boundary_type: String,
+	proposed_change: String,
+	why_exceeds_authority: String,
+	options: Vec<NormalizedAuthorityDecisionOption>,
+	recommendation: String,
+	resume_condition: String,
+	retained_worktree_evidence: Vec<String>,
+	retained_diff_evidence: Vec<String>,
+	recovery_attempt_context: Vec<String>,
+}
+
+#[derive(Debug)]
+struct NormalizedAuthorityDecisionOption {
+	label: String,
+	description: String,
 }
 
 struct ReviewCheckpointPayloadCounts {
@@ -118,7 +146,7 @@ impl<'a> TrackerToolBridge<'a> {
 	pub(super) fn comment_tool_specs(&self) -> Vec<DynamicToolSpec> {
 		vec![DynamicToolSpec::new(
 			ISSUE_COMMENT_TOOL_NAME,
-			"Add an allowlisted public summary comment to the currently leased issue. The supported automation kind is `manual_attention`; Decodex renders the Linear comment from structured public fields.",
+			"Add an allowlisted public summary comment to the currently leased issue. The supported automation kind is `manual_attention`; Decodex renders the Linear comment from structured public fields and may attach a durable authority-boundary decision request.",
 			serde_json::json!({
 				"type": "object",
 				"properties": {
@@ -140,7 +168,56 @@ impl<'a> TrackerToolBridge<'a> {
 					},
 					"failed_command": { "type": "string" },
 					"raw_error": { "type": "string" },
-					"summary": { "type": "string" }
+					"summary": { "type": "string" },
+					"decision_request": {
+						"type": "object",
+						"properties": {
+							"boundary_check_id": { "type": "integer" },
+							"decision_request_id": { "type": "string" },
+							"reason_code": { "type": "string" },
+							"boundary_type": { "type": "string" },
+							"proposed_change": { "type": "string" },
+							"why_exceeds_authority": { "type": "string" },
+							"options": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"label": { "type": "string" },
+										"description": { "type": "string" }
+									},
+									"required": ["label", "description"],
+									"additionalProperties": false
+								}
+							},
+							"recommendation": { "type": "string" },
+							"resume_condition": { "type": "string" },
+							"retained_worktree_evidence": {
+								"type": "array",
+								"items": { "type": "string" }
+							},
+							"retained_diff_evidence": {
+								"type": "array",
+								"items": { "type": "string" }
+							},
+							"recovery_attempt_context": {
+								"type": "array",
+								"items": { "type": "string" }
+							}
+						},
+						"required": [
+							"boundary_check_id",
+							"decision_request_id",
+							"reason_code",
+							"boundary_type",
+							"proposed_change",
+							"why_exceeds_authority",
+							"options",
+							"recommendation",
+							"resume_condition"
+						],
+						"additionalProperties": false
+					}
 				},
 				"required": ["kind", "error_class", "next_action", "blockers", "evidence"],
 				"additionalProperties": false
@@ -792,6 +869,16 @@ impl<'a> TrackerToolBridge<'a> {
 			Ok(comment) => comment,
 			Err(error) => return DynamicToolCallResponse::failure(error),
 		};
+
+		if let Some(decision_request) = comment.decision_request.as_ref()
+			&& let Err(error) = self.append_private_authority_decision_request(
+				review_context,
+				state_store,
+				decision_request,
+			) {
+			return DynamicToolCallResponse::failure(error);
+		}
+
 		let record = self.manual_attention_execution_event(review_context, &comment);
 		let body = format_manual_attention_comment(review_context, &comment);
 		let projection = match tracker::prepare_linear_execution_event_comment(
@@ -844,6 +931,8 @@ impl<'a> TrackerToolBridge<'a> {
 			tracker_tool_bridge::normalize_optional_progress_field(parsed.failed_command);
 		let raw_error = tracker_tool_bridge::normalize_optional_progress_field(parsed.raw_error);
 		let summary = tracker_tool_bridge::normalize_optional_progress_field(parsed.summary);
+		let decision_request =
+			parsed.decision_request.map(Self::normalize_authority_decision_request).transpose()?;
 
 		validate_public_error_class(&error_class)?;
 
@@ -866,6 +955,205 @@ impl<'a> TrackerToolBridge<'a> {
 			failed_command,
 			raw_error,
 			summary,
+			decision_request,
+		})
+	}
+
+	fn normalize_authority_decision_request(
+		parsed: AuthorityDecisionRequestArgs,
+	) -> Result<NormalizedAuthorityDecisionRequest, String> {
+		let decision_request_id = normalize_required_decision_request_field(
+			Some(parsed.decision_request_id),
+			"decision_request_id",
+		)?;
+		let reason_code =
+			normalize_required_decision_request_field(Some(parsed.reason_code), "reason_code")?;
+		let boundary_type =
+			normalize_required_decision_request_field(Some(parsed.boundary_type), "boundary_type")?;
+		let proposed_change = normalize_required_decision_request_field(
+			Some(parsed.proposed_change),
+			"proposed_change",
+		)?;
+		let why_exceeds_authority = normalize_required_decision_request_field(
+			Some(parsed.why_exceeds_authority),
+			"why_exceeds_authority",
+		)?;
+		let recommendation = normalize_required_decision_request_field(
+			Some(parsed.recommendation),
+			"recommendation",
+		)?;
+		let resume_condition = normalize_required_decision_request_field(
+			Some(parsed.resume_condition),
+			"resume_condition",
+		)?;
+		let options = parsed
+			.options
+			.into_iter()
+			.map(Self::normalize_authority_decision_option)
+			.collect::<Result<Vec<_>, _>>()?;
+		let retained_worktree_evidence =
+			tracker_tool_bridge::normalize_progress_list(parsed.retained_worktree_evidence);
+		let retained_diff_evidence =
+			tracker_tool_bridge::normalize_progress_list(parsed.retained_diff_evidence);
+		let recovery_attempt_context =
+			tracker_tool_bridge::normalize_progress_list(parsed.recovery_attempt_context);
+
+		if parsed.boundary_check_id < 1 {
+			return Err(String::from(
+				"`decision_request.boundary_check_id` must be a positive private evidence record id.",
+			));
+		}
+
+		validate_public_error_class(&reason_code)?;
+		validate_public_error_class(&boundary_type)?;
+
+		if options.is_empty() {
+			return Err(String::from(
+				"`decision_request.options` must include at least one public option.",
+			));
+		}
+
+		validate_public_decision_request_text(
+			&decision_request_id,
+			&proposed_change,
+			&why_exceeds_authority,
+			&options,
+			&recommendation,
+			&resume_condition,
+		)?;
+
+		Ok(NormalizedAuthorityDecisionRequest {
+			boundary_check_id: parsed.boundary_check_id,
+			decision_request_id,
+			reason_code,
+			boundary_type,
+			proposed_change,
+			why_exceeds_authority,
+			options,
+			recommendation,
+			resume_condition,
+			retained_worktree_evidence,
+			retained_diff_evidence,
+			recovery_attempt_context,
+		})
+	}
+
+	fn normalize_authority_decision_option(
+		parsed: AuthorityDecisionOptionArgs,
+	) -> Result<NormalizedAuthorityDecisionOption, String> {
+		let label = normalize_required_decision_request_field(Some(parsed.label), "option.label")?;
+		let description = normalize_required_decision_request_field(
+			Some(parsed.description),
+			"option.description",
+		)?;
+
+		validate_public_decision_request_field("decision_request.option.label", &label)?;
+		validate_public_decision_request_field(
+			"decision_request.option.description",
+			&description,
+		)?;
+
+		Ok(NormalizedAuthorityDecisionOption { label, description })
+	}
+
+	fn append_private_authority_decision_request(
+		&self,
+		review_context: &ReviewHandoffContext,
+		state_store: &StateStore,
+		decision_request: &NormalizedAuthorityDecisionRequest,
+	) -> Result<(), String> {
+		let boundary_events = state_store
+			.list_private_execution_events(
+				&review_context.service_id,
+				&self.issue.id,
+				&review_context.run_id,
+				review_context.attempt_number,
+			)
+			.map_err(|error| {
+				format!(
+					"Failed to inspect authority boundary evidence for issue `{}`: {error}",
+					self.issue.identifier
+				)
+			})?;
+		let Some(boundary_event) = boundary_events
+			.iter()
+			.find(|event| event.record_id() == decision_request.boundary_check_id)
+		else {
+			return Err(format!(
+				"`decision_request.boundary_check_id` {} does not reference a private event for issue `{}` run `{}` attempt {}.",
+				decision_request.boundary_check_id,
+				self.issue.identifier,
+				review_context.run_id,
+				review_context.attempt_number
+			));
+		};
+
+		if boundary_event.event_type() != AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE {
+			return Err(format!(
+				"`decision_request.boundary_check_id` {} references `{}` instead of an authority boundary check.",
+				decision_request.boundary_check_id,
+				boundary_event.event_type()
+			));
+		}
+
+		let disposition = boundary_event.payload().get("disposition").and_then(Value::as_str);
+
+		if disposition != Some("requires_human") {
+			return Err(format!(
+				"`decision_request.boundary_check_id` {} must reference a `requires_human` authority boundary check.",
+				decision_request.boundary_check_id
+			));
+		}
+
+		let options = decision_request
+			.options
+			.iter()
+			.map(|option| AuthorityDecisionOption {
+				label: option.label.as_str(),
+				description: option.description.as_str(),
+			})
+			.collect::<Vec<_>>();
+		let retained_worktree_evidence = decision_request
+			.retained_worktree_evidence
+			.iter()
+			.map(String::as_str)
+			.collect::<Vec<_>>();
+		let retained_diff_evidence =
+			decision_request.retained_diff_evidence.iter().map(String::as_str).collect::<Vec<_>>();
+		let recovery_attempt_context = decision_request
+			.recovery_attempt_context
+			.iter()
+			.map(String::as_str)
+			.collect::<Vec<_>>();
+
+		orchestrator::record_authority_decision_request_private_event(
+			state_store,
+			AuthorityDecisionRequestInput {
+				project_id: &review_context.service_id,
+				issue_id: &self.issue.id,
+				issue_identifier: &self.issue.identifier,
+				run_id: &review_context.run_id,
+				attempt_number: review_context.attempt_number,
+				boundary_check_record_id: decision_request.boundary_check_id,
+				decision_request_id: &decision_request.decision_request_id,
+				reason_code: &decision_request.reason_code,
+				boundary_type: &decision_request.boundary_type,
+				proposed_change: &decision_request.proposed_change,
+				why_exceeds_authority: &decision_request.why_exceeds_authority,
+				options,
+				recommendation: &decision_request.recommendation,
+				resume_condition: &decision_request.resume_condition,
+				retained_worktree_evidence,
+				retained_diff_evidence,
+				recovery_attempt_context,
+			},
+		)
+		.map(|_| ())
+		.map_err(|error| {
+			format!(
+				"Failed to persist authority decision request `{}` for issue `{}`: {error}",
+				decision_request.decision_request_id, self.issue.identifier
+			)
 		})
 	}
 
@@ -874,12 +1162,18 @@ impl<'a> TrackerToolBridge<'a> {
 		review_context: &ReviewHandoffContext,
 		comment: &NormalizedManualAttentionComment,
 	) -> LinearExecutionEventRecord {
+		let decision_request_id = comment
+			.decision_request
+			.as_ref()
+			.map(|request| request.decision_request_id.as_str())
+			.unwrap_or_default();
 		let anchor = records::stable_event_anchor(&[
 			COMMENT_KIND_MANUAL_ATTENTION,
 			comment.error_class.as_str(),
 			comment.next_action.as_str(),
 			comment.failed_command.as_deref().unwrap_or_default(),
 			comment.raw_error.as_deref().unwrap_or_default(),
+			decision_request_id,
 		]);
 		let mut record = LinearExecutionEventRecord::new(
 			LinearExecutionEventIdentity {
@@ -1508,6 +1802,49 @@ fn normalize_required_comment_field(
 	Ok(value)
 }
 
+fn normalize_required_decision_request_field(
+	value: Option<String>,
+	field_name: &str,
+) -> Result<String, String> {
+	tracker_tool_bridge::normalize_optional_progress_field(value)
+		.ok_or_else(|| format!("`decision_request.{field_name}` must be present and non-empty."))
+}
+
+fn validate_public_decision_request_text(
+	decision_request_id: &str,
+	proposed_change: &str,
+	why_exceeds_authority: &str,
+	options: &[NormalizedAuthorityDecisionOption],
+	recommendation: &str,
+	resume_condition: &str,
+) -> Result<(), String> {
+	validate_public_decision_request_field(
+		"decision_request.decision_request_id",
+		decision_request_id,
+	)?;
+	validate_public_decision_request_field("decision_request.proposed_change", proposed_change)?;
+	validate_public_decision_request_field(
+		"decision_request.why_exceeds_authority",
+		why_exceeds_authority,
+	)?;
+	validate_public_decision_request_field("decision_request.recommendation", recommendation)?;
+	validate_public_decision_request_field("decision_request.resume_condition", resume_condition)?;
+
+	for option in options {
+		validate_public_decision_request_field("decision_request.option.label", &option.label)?;
+		validate_public_decision_request_field(
+			"decision_request.option.description",
+			&option.description,
+		)?;
+	}
+
+	Ok(())
+}
+
+fn validate_public_decision_request_field(field_name: &str, value: &str) -> Result<(), String> {
+	public_text::validate_public_text_field(field_name, value).map_err(|error| error.to_string())
+}
+
 fn normalize_review_checkpoint_payload(
 	parsed: ReviewCheckpointArgs,
 	status: ReviewPolicyStatus,
@@ -1741,6 +2078,21 @@ fn format_manual_attention_comment(
 		lines.push(format!("- evidence: {evidence}"));
 	}
 
+	if let Some(request) = comment.decision_request.as_ref() {
+		lines.push(String::from("- decision_request: authority_boundary"));
+		lines.push(format!("- decision_request_id: `{}`", request.decision_request_id));
+		lines.push(format!("- decision_reason: `{}`", request.reason_code));
+		lines.push(format!("- boundary: `{}`", request.boundary_type));
+		lines.push(format!("- proposed_change: {}", request.proposed_change));
+		lines.push(format!("- why_exceeds_authority: {}", request.why_exceeds_authority));
+
+		for option in &request.options {
+			lines.push(format!("- decision_option: `{}` - {}", option.label, option.description));
+		}
+
+		lines.push(format!("- recommendation: {}", request.recommendation));
+		lines.push(format!("- resume_condition: {}", request.resume_condition));
+	}
 	if let Some(failed_command) = comment.failed_command.as_deref() {
 		lines.push(format!("- failed_command: {failed_command}"));
 	}

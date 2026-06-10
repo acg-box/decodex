@@ -196,6 +196,14 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   values are public-safe. The tool must reject private-looking command or error
   text before any Linear mutation. The agent must not speculate about
   capabilities or environment restrictions that it did not directly verify.
+- For authority-boundary stops, `manual_attention` may include a structured
+  `decision_request` object. Its Linear-rendered fields are public-safe only:
+  `decision_request_id`, `reason_code`, `boundary_type`, `proposed_change`,
+  `why_exceeds_authority`, options, recommendation, and `resume_condition`. Its
+  private fields, including the Authority Boundary Check record id, retained
+  worktree evidence, retained diff evidence, and recovery-attempt context, must be
+  written to private runtime evidence before the Linear write and must not be
+  rendered into the public comment.
 - The human-attention exit is not complete until the explanatory comment is successfully written after the label request. A label-only signal must be rejected as an invalid completion disposition.
 - The run is not complete until `issue_terminal_finalize` succeeds against the matching terminal path. An execution-state checkpoint or an agent summary message is not a substitute.
 - Issues that carry the configured `needs_attention_label` must remain ineligible for future automatic selection until a human clears the label.
