@@ -5384,14 +5384,15 @@ fn validated_dynamic_tool_call_payload(
 	if let Some(target_turn_id) = target_turn_id
 		&& payload.turn_id != target_turn_id
 	{
-		return Err(Box::new(DynamicToolCallDispatch::protocol_failure(
-			Some(payload.tool),
-			payload.namespace,
-			format!(
-				"Dynamic tool call targeted turn `{}`, but the active turn is `{target_turn_id}`.",
-				payload.turn_id
-			),
-		)));
+		tracing::warn!(
+			target_thread_id,
+			target_turn_id,
+			payload_thread_id = payload.thread_id.as_str(),
+			payload_turn_id = payload.turn_id.as_str(),
+			tool = payload.tool.as_str(),
+			namespace = payload.namespace.as_deref().unwrap_or(""),
+			"Dynamic tool call turn id differed from the active turn; accepting thread-bound request."
+		);
 	}
 
 	Ok(payload)
