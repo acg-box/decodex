@@ -60,7 +60,7 @@
   },
   "evidence_notes": [
     "GitHub release metadata shows stable rust-v0.139.0 was published at 2026-06-09T20:13:29Z with a detailed release body.",
-    "The official Codex changelog readback for this run still shows Codex CLI 0.138.0 on 2026-06-08 as the latest CLI changelog entry, so rust-v0.139.0 is a GitHub release checkpoint rather than an official changelog checkpoint.",
+    "The official Codex changelog readback for this run shows Codex CLI 0.139.0 on 2026-06-09 with matching release-note bullets, so this stable checkpoint is backed by both the official changelog and GitHub release metadata.",
     "The stable release lineage gate selects rust-v0.138.0 -> rust-v0.139.0; GitHub compare metadata reports 45 ahead commits and 1 behind commit for that stable-to-stable window.",
     "The release body highlights standalone web search in code mode, oneOf/allOf tool schemas, doctor environment reporting, plugin marketplace provenance/cache behavior, resume/fork parsing, MCP startup scoping, image edit path routing, URL linkification, thread-reset config preservation, sandbox escalation preservation, and proxy-only network containment.",
     "Checked Radar review and impact artifacts support stronger Decodex/operator claims for PRs #24981, #26486, #26639, #27009, and #27035; PRs #26202 and #26464 have checked review/impact context but are release-engineering chores rather than standalone social value.",
