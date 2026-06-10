@@ -5,10 +5,14 @@ use crate::tracker;
 type PullRequestReadbackResult =
 	std::result::Result<PullRequestReviewState, PullRequestReadbackFailure>;
 
+pub(crate) const AUTHORITY_DECISION_REQUEST_SCHEMA: &str =
+	"decodex.authority_decision_request/1";
+pub(crate) const AUTHORITY_DECISION_REQUEST_EVENT_TYPE: &str = "authority_decision_request";
+#[allow(dead_code)]
+pub(crate) const AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE: &str = "authority_boundary_check";
+
 #[allow(dead_code)]
 const AUTHORITY_BOUNDARY_CHECK_SCHEMA: &str = "decodex.authority_boundary_check/1";
-#[allow(dead_code)]
-const AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE: &str = "authority_boundary_check";
 
 trait PullRequestReviewStateInspector {
 	fn inspect_review_state(
@@ -322,6 +326,35 @@ pub(crate) struct AuthorityBoundaryCheckInput<'a> {
 	pub(crate) disposition: AuthorityBoundaryDisposition,
 	pub(crate) final_disposition_reason: &'a str,
 	pub(crate) improvement_signals: Vec<AuthorityBoundaryImprovementSignal<'a>>,
+}
+
+/// One public-safe option offered in a durable authority decision request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct AuthorityDecisionOption<'a> {
+	pub(crate) label: &'a str,
+	pub(crate) description: &'a str,
+}
+
+/// Input for persisting the full local decision packet for an authority-boundary stop.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AuthorityDecisionRequestInput<'a> {
+	pub(crate) project_id: &'a str,
+	pub(crate) issue_id: &'a str,
+	pub(crate) issue_identifier: &'a str,
+	pub(crate) run_id: &'a str,
+	pub(crate) attempt_number: i64,
+	pub(crate) boundary_check_record_id: i64,
+	pub(crate) decision_request_id: &'a str,
+	pub(crate) reason_code: &'a str,
+	pub(crate) boundary_type: &'a str,
+	pub(crate) proposed_change: &'a str,
+	pub(crate) why_exceeds_authority: &'a str,
+	pub(crate) options: Vec<AuthorityDecisionOption<'a>>,
+	pub(crate) recommendation: &'a str,
+	pub(crate) resume_condition: &'a str,
+	pub(crate) retained_worktree_evidence: Vec<&'a str>,
+	pub(crate) retained_diff_evidence: Vec<&'a str>,
+	pub(crate) recovery_attempt_context: Vec<&'a str>,
 }
 
 /// One bounded run invocation and its optional daemon-planned overrides.
@@ -1402,6 +1435,8 @@ struct OperatorQueuedIssueStatus {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct OperatorQueuedIssueAttentionStatus {
 	summary: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	decision_request: Option<OperatorAuthorityDecisionRequestStatus>,
 	run_id: Option<String>,
 	attempt_number: Option<i64>,
 	current_operation: Option<String>,
@@ -1420,6 +1455,17 @@ struct OperatorQueuedIssueAttentionStatus {
 	process_liveness_reason: Option<String>,
 	worktree_path: Option<String>,
 	worktree_has_tracked_changes: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorAuthorityDecisionRequestStatus {
+	phase: String,
+	reason: String,
+	boundary: String,
+	decision_request_id: String,
+	next_action: String,
+	recommendation: Option<String>,
+	resume_condition: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1929,6 +1975,62 @@ pub(crate) fn record_authority_boundary_check_private_event(
 	)
 }
 
+pub(crate) fn record_authority_decision_request_private_event(
+	state_store: &StateStore,
+	input: AuthorityDecisionRequestInput<'_>,
+) -> Result<PrivateExecutionEvent> {
+	validate_authority_decision_request_input(&input)?;
+
+	let options = input
+		.options
+		.iter()
+		.map(|option| {
+			json!({
+				"label": option.label,
+				"description": option.description,
+			})
+		})
+		.collect::<Vec<_>>();
+	let payload = json!({
+		"schema": AUTHORITY_DECISION_REQUEST_SCHEMA,
+		"record_version": 1,
+		"decision_request_id": input.decision_request_id,
+		"issue": {
+			"id": input.issue_id,
+			"identifier": input.issue_identifier,
+		},
+		"run": {
+			"run_id": input.run_id,
+			"attempt_number": input.attempt_number,
+		},
+		"authority_boundary_check": {
+			"record_id": input.boundary_check_record_id,
+			"event_type": AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE,
+		},
+		"phase": "human_required",
+		"reason": input.reason_code,
+		"boundary": input.boundary_type,
+		"proposed_change": input.proposed_change,
+		"why_exceeds_authority": input.why_exceeds_authority,
+		"options": options,
+		"recommendation": input.recommendation,
+		"resume_condition": input.resume_condition,
+		"next_action": input.resume_condition,
+		"retained_worktree_evidence": input.retained_worktree_evidence,
+		"retained_diff_evidence": input.retained_diff_evidence,
+		"recovery_attempt_context": input.recovery_attempt_context,
+	});
+
+	state_store.append_private_execution_event(
+		input.project_id,
+		input.issue_id,
+		input.run_id,
+		input.attempt_number,
+		AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
+		payload,
+	)
+}
+
 fn validate_authority_boundary_check_input(
 	input: &AuthorityBoundaryCheckInput<'_>,
 ) -> Result<()> {
@@ -1967,6 +2069,54 @@ fn validate_authority_boundary_check_input(
 			"authority boundary improvement recommendation",
 			signal.recommendation,
 		)?;
+	}
+
+	Ok(())
+}
+
+fn validate_authority_decision_request_input(
+	input: &AuthorityDecisionRequestInput<'_>,
+) -> Result<()> {
+	authority_boundary_required("authority decision project_id", input.project_id)?;
+	authority_boundary_required("authority decision issue_id", input.issue_id)?;
+	authority_boundary_required("authority decision issue_identifier", input.issue_identifier)?;
+	authority_boundary_required("authority decision run_id", input.run_id)?;
+	authority_boundary_required(
+		"authority decision decision_request_id",
+		input.decision_request_id,
+	)?;
+	authority_boundary_required("authority decision reason_code", input.reason_code)?;
+	authority_boundary_required("authority decision boundary_type", input.boundary_type)?;
+	authority_boundary_required("authority decision proposed_change", input.proposed_change)?;
+	authority_boundary_required(
+		"authority decision why_exceeds_authority",
+		input.why_exceeds_authority,
+	)?;
+	authority_boundary_required("authority decision recommendation", input.recommendation)?;
+	authority_boundary_required("authority decision resume_condition", input.resume_condition)?;
+
+	if input.attempt_number < 1 {
+		eyre::bail!("Authority decision attempt_number must be positive.");
+	}
+	if input.boundary_check_record_id < 1 {
+		eyre::bail!("Authority decision boundary_check_record_id must be positive.");
+	}
+	if input.options.is_empty() {
+		eyre::bail!("Authority decision options must not be empty.");
+	}
+
+	for option in &input.options {
+		authority_boundary_required("authority decision option label", option.label)?;
+		authority_boundary_required("authority decision option description", option.description)?;
+	}
+	for evidence in &input.retained_worktree_evidence {
+		authority_boundary_required("authority decision retained_worktree_evidence", evidence)?;
+	}
+	for evidence in &input.retained_diff_evidence {
+		authority_boundary_required("authority decision retained_diff_evidence", evidence)?;
+	}
+	for context in &input.recovery_attempt_context {
+		authority_boundary_required("authority decision recovery_attempt_context", context)?;
 	}
 
 	Ok(())

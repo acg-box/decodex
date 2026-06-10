@@ -259,9 +259,21 @@ struct PrivateEvidenceReadback {
 	event_count: usize,
 	latest_event_type: Option<String>,
 	latest_event_at: Option<String>,
+	decision_requests: Vec<PrivateEvidenceDecisionRequestSummary>,
 	improvement_candidates: Vec<HarnessImprovementCandidateSummary>,
 	events: Vec<PrivateEvidenceReadbackEvent>,
 	warnings: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PrivateEvidenceDecisionRequestSummary {
+	decision_request_id: String,
+	phase: String,
+	reason: String,
+	boundary: String,
+	next_action: String,
+	recommendation: Option<String>,
+	resume_condition: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -647,6 +659,7 @@ fn build_private_evidence_readback(
 		event_count: events.len(),
 		latest_event_type: latest_event.map(|event| event.event_type().to_owned()),
 		latest_event_at: latest_event.map(|event| event.recorded_at().to_owned()),
+		decision_requests: authority_decision_requests_from_private_events(&events),
 		improvement_candidates: harness_improvement_candidates_from_private_events(&events),
 		events: events
 			.iter()
@@ -740,6 +753,53 @@ fn private_evidence_direct_lookup_issue_id(
 	eyre::bail!(
 		"Direct private evidence lookup for issue `{selector}` matched multiple local issue ids for the supplied run and attempt; pass the local issue id from `decodex status --json`."
 	)
+}
+
+fn authority_decision_requests_from_private_events(
+	events: &[state::PrivateExecutionEvent],
+) -> Vec<PrivateEvidenceDecisionRequestSummary> {
+	events
+		.iter()
+		.filter(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
+		.filter_map(authority_decision_request_from_private_event)
+		.collect()
+}
+
+fn authority_decision_request_from_private_event(
+	event: &state::PrivateExecutionEvent,
+) -> Option<PrivateEvidenceDecisionRequestSummary> {
+	let payload = event.payload();
+	let decision_request_id = payload.get("decision_request_id")?.as_str()?.to_owned();
+	let reason = payload.get("reason")?.as_str()?.to_owned();
+	let boundary = payload.get("boundary")?.as_str()?.to_owned();
+	let phase = payload
+		.get("phase")
+		.and_then(Value::as_str)
+		.unwrap_or("human_required")
+		.to_owned();
+	let next_action = payload
+		.get("next_action")
+		.or_else(|| payload.get("resume_condition"))?
+		.as_str()?
+		.to_owned();
+	let recommendation = payload
+		.get("recommendation")
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let resume_condition = payload
+		.get("resume_condition")
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+
+	Some(PrivateEvidenceDecisionRequestSummary {
+		decision_request_id,
+		phase,
+		reason,
+		boundary,
+		next_action,
+		recommendation,
+		resume_condition,
+	})
 }
 
 fn private_evidence_run_matches_issue(
@@ -899,6 +959,10 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 		readback.improvement_candidates.len()
 	));
 	output.push_str(&format!(
+		"decision_request_count: {}\n",
+		readback.decision_requests.len()
+	));
+	output.push_str(&format!(
 		"latest_event_type: {}\n",
 		readback.latest_event_type.as_deref().unwrap_or("none")
 	));
@@ -909,6 +973,23 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 
 	if !readback.warnings.is_empty() {
 		output.push_str(&format!("warnings: {}\n", readback.warnings.join(", ")));
+	}
+
+	output.push_str("\nDecision Requests\n");
+
+	if readback.decision_requests.is_empty() {
+		output.push_str("- none\n");
+	} else {
+		for request in &readback.decision_requests {
+			output.push_str(&format!(
+				"- id: {}\n  phase: {}\n  reason: {}\n  boundary: {}\n  next_action: {}\n",
+				request.decision_request_id,
+				request.phase,
+				request.reason,
+				request.boundary,
+				request.next_action
+			));
+		}
 	}
 
 	output.push_str("\nImprovement Candidates\n");

@@ -462,6 +462,14 @@ currently kind `manual_attention`, so the Linear-visible summary is rendered fro
 structured public fields instead of an arbitrary agent-authored body. Private command
 or error details must remain in local runtime evidence when they cannot pass the
 public-text guard.
+For authority-boundary stops, the same path must include a durable decision request:
+the public comment carries the reason code, boundary type, proposed change, why it
+exceeds accepted authority, options, recommendation, and resume condition, while the
+full `decodex.authority_decision_request/1` packet stays in private execution events
+linked to the Authority Boundary Check record. Status JSON and dashboard snapshots
+must expose the compact request fields (`phase = human_required`, reason, boundary,
+`decision_request_id`, and `next_action`) so the lane is operable without inspecting
+SQLite directly.
 Runtime-owned review-policy stops use the same human-required failure path, but with dedicated `error_class` values:
 
 - `review_policy_exhausted`
@@ -494,6 +502,11 @@ must consume the latest Authority Boundary Check or record a fresh one before ch
 implementation direction. `requires_human` and `insufficient_evidence` dispositions
 must route through the human-required path or a later accepted recovery contract; they
 must not be treated as retryable repo-gate failures.
+The supported resume path is deliberate: accept, reject, or revise the requested
+authority change in the issue, Decision Contract, or project policy; then clear
+`decodex:needs-attention` and requeue or resume through Decodex controls. Direct
+tracker mutation, database edits, and internal graph ids are not valid resume
+interfaces.
 
 If the configured `decodex:needs-attention` label is unavailable on the team and the configured failure state is startable, `decodex` must still block automatic reselection by leaving the issue in a non-startable guard state such as `In Progress`. In that case the failure comment must explain that the label could not be applied and that a human must move the issue back to a startable state manually after repair. Restart recovery must preserve that guard by writing a retained-worktree marker under `.worktrees/<ISSUE>/.decodex-terminal-guarded` and consulting it before redispatching recovered `In Progress` lanes.
 
