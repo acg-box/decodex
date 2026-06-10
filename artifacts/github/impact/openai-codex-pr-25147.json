@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-25147",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Retry streamable HTTP initialize failures",
+        "url": "https://github.com/openai/codex/pull/25147",
+        "meta": "Merged 2026-06-09T22:49:49Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/25147",
+        "meta": "artifacts/github/reviews/openai-codex-pr-25147.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex RMCP streamable HTTP startup now retries transient initialize and initialized-notification failures, recreates the transport between attempts, and retries only the read-only `tools/list` operation after initialization.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "candidate",
+  "publisher_angle": "practical_explainer",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records retry orchestration for streamable HTTP initialize and initialized-notification failures.",
+    "`tools/list` is the only post-initialize MCP operation identified as retried, preserving the no-replay boundary for side-effecting tool calls.",
+    "The HTTP adapter now turns retryable streamable HTTP POST statuses into typed client errors.",
+    "Integration tests cover initialize, initialized notification, no-status request failure, and `tools/list` retry paths."
+  ],
+  "candidate_followups": [
+    "Compare Decodex MCP readiness probes with Codex's retry-only-startup boundary.",
+    "Avoid retrying mutating MCP calls unless a later upstream contract makes a specific call idempotent.",
+    "Track initialize retry and `tools/list` retry outcomes separately in operator evidence if Decodex adopts similar probes."
+  ],
+  "social_notes": [
+    "Public copy should emphasize reliability for streamable HTTP MCP startup.",
+    "Call out the safety boundary: initialize and read-only `tools/list` are retried, side-effecting tool calls are not.",
+    "Avoid claiming all MCP transport failures are automatically recoverable."
+  ],
+  "caveats": [
+    "Retries remain bounded by operation deadlines and retry classification.",
+    "The PR does not make mutating MCP tool calls replayable."
+  ]
+}
