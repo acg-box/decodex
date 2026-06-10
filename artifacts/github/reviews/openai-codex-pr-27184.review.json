@@ -1,0 +1,79 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27184",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27184",
+    "commit_shas": [
+      "5d7823925c88f09568bafda637fccd92b56a9b6a",
+      "0f384f1b4d7e7542f1202fc966b8c6475fa27d0f",
+      "f0df7cb06b999489e989767092ecc767fa7c30cc",
+      "fec64281b4558807c592629485958b02f0869d55",
+      "f607c8696bc512aefbcf3fc038d6c53d77d4663c",
+      "2400fd9198b798764a5090410c8761a69fd61734",
+      "ed85bf407760a9dcc0ebb6971dc0505c1d4f3a1a"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Load selected executor skills through extensions",
+        "url": "https://github.com/openai/codex/pull/27184",
+        "meta": "Merged 2026-06-09T17:51:55Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Add selected root protocol",
+        "url": "https://github.com/openai/codex/commit/5d7823925c88f09568bafda637fccd92b56a9b6a"
+      },
+      {
+        "kind": "commit",
+        "title": "Load executor skills from selected roots",
+        "url": "https://github.com/openai/codex/commit/fec64281b4558807c592629485958b02f0869d55"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-10T02:09:14Z",
+  "observed_change": "Codex app-server `thread/start` now accepts experimental `selectedCapabilityRoots` and uses extension initialization to load explicitly selected executor-owned skills without falling back to the orchestrator filesystem.",
+  "changed_surfaces": [
+    "app-server v2 `thread/start` protocol schemas and TypeScript exports",
+    "app-server thread start request processing",
+    "core thread/session extension initialization",
+    "skills extension catalog, prompt contribution, and read path",
+    "executor filesystem authority tests"
+  ],
+  "user_visible_path": "An app-server client can start a thread with an environment-owned selected capability root, then invoke a skill from that root; omitting `selectedCapabilityRoots` preserves existing local and bundled skill behavior.",
+  "control_plane_relevance": "High for Decodex Control Plane: capability selection can move from orchestrator-local plugin paths toward executor-owned roots while preserving the extension that owns discovery and invocation.",
+  "compatibility_risk": "Moderate for strict app-server clients and Control Plane adapters because the new field is experimental and optional, but selected roots require environment-owned absolute paths, unavailable roots only warn, and no orchestrator filesystem fallback occurs.",
+  "adoption_opportunity": "Create a Decodex follow-up to evaluate selected capability roots for executor-side plugins and skills, while accounting for the PR caveats that MCP, connectors, hooks, persistence, resume, fork, and subagent inheritance are not yet active.",
+  "community_value": "High for Codex operators because it is the first end-to-end app-server vertical for executor-owned capability roots and split-runtime skill loading.",
+  "deprecated_or_breaking_notes": "The PR does not remove local skill loading; current semantics are additive and experimental, but selected executor roots deliberately override colliding local skills and avoid local fallback.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27184 states `thread/start` gains experimental `selectedCapabilityRoots` and that app-server does not inspect or canonicalize the selected path.",
+    "codex-rs/protocol/src/capabilities.rs adds `SelectedCapabilityRoot` with stable `id` plus `CapabilityRootLocation::Environment { environmentId, path }`.",
+    "codex-rs/app-server-protocol/src/protocol/v2/thread.rs exposes `selected_capability_roots: Option<Vec<SelectedCapabilityRoot>>` on `ThreadStartParams`.",
+    "codex-rs/app-server/src/request_processors/thread_processor.rs converts selected roots into `ExtensionDataInit` before creating the thread.",
+    "codex-rs/ext/skills/src/provider/executor.rs resolves the selected environment, loads skills through that environment's filesystem, warns on unavailable environments or invalid paths, and reads the invoked skill through the bound environment resource.",
+    "codex-rs/app-server/tests/suite/v2/executor_skills.rs starts a thread with a selected executor plugin root and asserts the executor skill body is injected while the colliding local skill body is not.",
+    "codex-rs/ext/skills/tests/executor_file_system_authority.rs verifies skill loading and reads use the supplied executor filesystem and selected-root identity.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-27184.json records 46 changed files for the merged PR."
+  ],
+  "caveats": "The PR states only environment-owned locations are represented; MCP, connectors, hooks, durable selection, resume, fork, and subagent inheritance remain follow-ups.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "This is an app-server protocol and extension-loading change with direct Decodex Control Plane implications."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The selected executor-root vertical has a clear operator-facing public angle."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should evaluate selected capability roots for executor-side plugin and skill loading."
+    }
+  ]
+}
