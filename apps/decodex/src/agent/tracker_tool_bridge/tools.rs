@@ -1263,11 +1263,12 @@ impl<'a> TrackerToolBridge<'a> {
 			};
 		let details_json = match serde_json::to_string(&checkpoint_payload) {
 			Ok(details_json) => details_json,
-			Err(error) =>
+			Err(error) => {
 				return DynamicToolCallResponse::failure(format!(
 					"Failed to serialize the structured review checkpoint for issue `{}`: {error}",
 					self.issue.identifier
-				)),
+				));
+			},
 		};
 		let nonclean_rounds = match self.review_checkpoint_nonclean_rounds(
 			review_context,

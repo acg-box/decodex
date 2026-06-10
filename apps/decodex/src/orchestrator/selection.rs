@@ -199,8 +199,8 @@ fn terminal_failure_comment_details(
 		)
 	} else if let Some(loop_guardrail_stop) = error.downcast_ref::<LoopGuardrailStopRequested>() {
 		(
-			loop_guardrail_stop.reason.error_class(),
-			loop_guardrail_stop.reason.terminal_next_action(recovery_gate),
+			loop_guardrail_stop.terminal_error_class(),
+			loop_guardrail_stop.terminal_next_action(recovery_gate),
 		)
 	} else if manual_attention_requested {
 		if let Some(manual_attention) = error.downcast_ref::<ManualAttentionRequested>()

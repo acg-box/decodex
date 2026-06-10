@@ -91,7 +91,7 @@ or clean labels.
 | Queue label should be added, removed, or interpreted. | Use service-scoped label policy. | Follow the `labels` skill; do not guess `<service-id>` or clear `needs-attention` before fixing the blocker. |
 | Broad steer materially changes the objective or acceptance contract. | Preserve audit and resolve lifecycle explicitly. | Update and requeue the same issue, create a new issue/lane, or route the owned run to manual attention. |
 | Operator wants a different issue or replacement task. | Treat as task replacement, not steer. | Stop or pause through supported controls as needed, then create/update/requeue through the supported lifecycle. |
-| Status or Linear failure summary reports a loop guardrail reason. | Stop automatic recovery and inspect the reason-specific evidence. | Follow the loop guardrail recovery table below before clearing `decodex:needs-attention` or requeueing. |
+| Status or Linear failure summary reports a loop guardrail reason. | Inspect the reason-specific evidence, Architecture Recovery Packet, and Authority Boundary Check. | Follow the loop guardrail recovery table below before clearing `decodex:needs-attention` or requeueing. |
 | Authority Boundary Check reports `within_authority`. | Continue only if lane identity, ownership, and validation evidence still match. | Resume through the supported retained-lane path; keep the boundary-check event as private evidence. |
 | Authority Boundary Check reports `requires_human`. | Stop automatic recovery and preserve the durable decision request. | Keep or apply `decodex:needs-attention`, inspect the Linear decision request and private `authority_decision_request` evidence, then continue only after the issue, Decision Contract, or policy accepts, rejects, or revises the requested authority change. |
 | Authority Boundary Check reports `insufficient_evidence`. | Stop automatic recovery unless later evidence proves the change is inside authority. | Keep or apply `decodex:needs-attention`, capture the missing evidence, and continue only after the Decision Contract, issue, policy, or human direction explicitly authorizes the change. |
@@ -103,20 +103,36 @@ Loop guardrails stop non-converging automation after three consecutive matching
 observations. They preserve retained worktrees and private evidence; they do not mean
 the operator should delete local progress to make the queue clean.
 
+Current runtime guardrail handling is two-stage:
+
+1. stop the current ineffective repair strategy and record a private
+   `architecture_recovery_packet`
+2. record or consume an Authority Boundary Check to decide whether autonomous
+   architecture recovery may continue
+
+If the boundary check is `within_authority` and recovery budget remains, Decodex may
+record `architecture_recovery_started` and retry with a materially different
+implementation strategy. If the check is `requires_human` or `insufficient_evidence`,
+or if recovery budget is exhausted, Decodex must keep or apply manual attention with a
+typed reason such as `contract_boundary_required`, `external_dependency_required`, or
+`architecture_recovery_exhausted`.
+
 | Guardrail reason | Inspect first | Resume only after |
 | --- | --- | --- |
-| `validation_repeat` | The repeated validation failure, repo-gate output, retained worktree, and prior repair attempts. | The repair strategy changes, the validation cause is fixed manually, or the issue is routed to architecture/research review. |
-| `no_effective_diff` | The retained worktree status, private retry evidence, and whether any useful tracked delta exists. | A human identifies a concrete next diff, commits/resets the retained work intentionally, or updates the issue scope. |
-| `remaining_delta_unchanged` | The unchanged tracked delta and latest validation evidence. | The next repair is bounded and materially different, or the retained patch is accepted/reset manually. |
-| `review_churn` or `review_policy_exhausted` | Fresh-context review checkpoints, accepted findings, rejected findings, and the current head. | A new repair strategy, architecture review, or manual decision is recorded. |
-| `dependency_program_stale` | The open blocker issue, Execution Program readiness, and whether the dependency split is still correct. | The dependency is resolved, the program is refreshed/split, or a research/decision contract updates execution authority. |
+| `validation_repeat` | The repeated validation failure, repo-gate output, retained worktree, prior repair attempts, Architecture Recovery Packet, and boundary disposition. | Autonomous recovery may continue only when the boundary is `within_authority` and budget remains; otherwise a human fixes the cause or records new authority. |
+| `no_effective_diff` | The retained worktree status, private retry evidence, whether any useful tracked delta exists, Architecture Recovery Packet, and boundary disposition. | Autonomous recovery may continue only when evidence proves the next strategy is an engineering implementation change inside authority; otherwise a human identifies the next diff, resets intentionally, or updates authority. |
+| `remaining_delta_unchanged` | The unchanged tracked delta, latest validation evidence, Architecture Recovery Packet, and boundary disposition. | The next repair must be bounded, materially different, and inside authority; otherwise a human accepts/resets the patch or updates authority. |
+| `review_churn` or `review_policy_exhausted` | Fresh-context review checkpoints, accepted findings, rejected findings, current head, Architecture Recovery Packet, and boundary disposition. | A materially different implementation strategy may continue only inside authority; architecture/product direction changes require human authority. |
+| `dependency_program_stale` | The open blocker issue, Execution Program readiness, and whether the dependency split is still correct. | Resolve the dependency, refresh/split the program, or update the research/Decision Contract; do not auto-recover as ordinary implementation work. |
 | `uncovered_direction` | The missing requirement, decision, or research gap named in public/private evidence. | A research or Decision Contract captures the missing direction and the issue is updated or requeued from that authority. |
-| `ambiguous_retained_progress` | Retained worktree diff, ownership markers, PR lineage if present, and private evidence. | A human chooses one path: resume same lane, finish manual repair, or reset/discard the retained patch explicitly. |
+| `ambiguous_retained_progress` | Retained worktree diff, ownership markers, PR lineage if present, private evidence, and boundary disposition. | A human chooses one path: resume same lane, finish manual repair, or reset/discard the retained patch explicitly. |
 
-For every guardrail stop, keep `decodex:needs-attention` until the blocker above is
-resolved. If the issue returns to automation, request a Linear scan or let the next
-scheduled scan observe the corrected tracker state; do not bypass the guardrail with a
-manual retry that leaves the same evidence unchanged.
+For every human-required guardrail stop, keep `decodex:needs-attention` until the
+blocker above is resolved. If the issue returns to automation, request a Linear scan
+or let the next scheduled scan observe the corrected tracker state; do not bypass the
+guardrail with a manual retry that leaves the same evidence unchanged. Do not clear
+manual attention for `architecture_recovery_exhausted` until a new accepted recovery
+strategy, issue update, or Decision Contract update exists.
 
 For authority-boundary decision requests, the supported resume sequence is:
 
