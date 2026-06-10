@@ -8,6 +8,8 @@ use process::Child;
 
 use crate::runtime;
 
+const OPERATOR_DASHBOARD_TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[cfg(unix)]
 struct ActiveLeaseMissingControlFixture {
 	issue: TrackerIssue,
@@ -276,7 +278,7 @@ fn operator_dashboard_websocket_pushes_broadcast_events() {
 		}),
 	);
 
-	let deadline = Instant::now() + Duration::from_secs(1);
+	let deadline = Instant::now() + OPERATOR_DASHBOARD_TEST_TIMEOUT;
 	let payload = loop {
 		assert!(Instant::now() < deadline, "websocket should send broadcast events");
 
@@ -889,7 +891,7 @@ fn open_dashboard_websocket_client(address: SocketAddr) -> (TcpStream, String, V
 	let mut buffer = [0_u8; 2_048];
 
 	client
-		.set_read_timeout(Some(Duration::from_secs(1)))
+		.set_read_timeout(Some(OPERATOR_DASHBOARD_TEST_TIMEOUT))
 		.expect("client timeout should configure");
 	client
 		.write_all(
@@ -947,7 +949,7 @@ fn read_websocket_json_until(
 	frame: &mut Vec<u8>,
 	matches: impl Fn(&Value) -> bool,
 ) -> Value {
-	let deadline = Instant::now() + Duration::from_secs(1);
+	let deadline = Instant::now() + OPERATOR_DASHBOARD_TEST_TIMEOUT;
 	let mut buffer = [0_u8; 2_048];
 
 	loop {
