@@ -23,8 +23,6 @@ content or follow-up work:
    `decision.worthiness = "publish"` or explicit operator handoffs that name checked
    Radar artifacts, then write a low-frequency
    `social_post/v1` publication, block, skip, or failure record for `@decodexspace`.
-6. `rate-limit-reset-watch`: review today's `@thsottiaux` X posts with AI semantic
-   judgment and refresh the homepage `reset_status/v1` artifact.
 
 Use only the skills needed for the current artifact. Do not publish a social post just
 because a signal exists.
@@ -63,6 +61,6 @@ release metadata, compare metadata, and caveats create real reader value.
 Checked-in contracts for this workflow are `upstream_review_queue/v1`,
 `upstream_review/v1`, `github_change_bundle/v1`, `analysis_draft`, `signal_entry/v1`,
 `upstream_impact/v1`, `release_delta/v1`, `social_candidate/v1`, `social_post/v1`, and
-`reset_status/v1`. The triage, code-analysis, release-analysis, and reset-watch skills
-are reasoning passes unless their conclusions are promoted into one of those
+their supporting generated artifacts. The triage, code-analysis, and release-analysis
+skills are reasoning passes unless their conclusions are promoted into one of those
 contracts.
