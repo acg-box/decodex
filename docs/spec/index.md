@@ -100,7 +100,7 @@ Then keep the body explicit:
 - [`owned-lane-policy.md`](./owned-lane-policy.md) defines the fallback policy for
   Decodex-owned lanes, including manual-intervention and automatic-recovery decisions.
 - [`review-orchestration.md`](./review-orchestration.md) defines the shared
-  internal/external review loop, strict external-review signals, round accounting, and
+  Self Check, Decodex Review, and GitHub Review loop, strict GitHub Review signals, round accounting, and
   direct landing entry rules.
 - [`post-review-lifecycle.md`](./post-review-lifecycle.md) defines the normative post-
   `In Review` lane phases, transitions, and ownership boundaries through landing,

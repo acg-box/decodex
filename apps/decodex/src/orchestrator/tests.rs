@@ -30,7 +30,7 @@ use crate::{orchestrator::RepoGatePhaseGoalController, tracker::records};
 		TrackerToolBridge, TurnContinuationGuard,
 	};
 #[rustfmt::skip]
-use crate::config::{InternalReviewMode, ServiceConfig};
+use crate::config::{ReviewLevel, ServiceConfig};
 #[rustfmt::skip]
 use crate::github;
 #[rustfmt::skip]
@@ -1107,8 +1107,7 @@ fn sample_service_config_toml(
 	tracker_api_key_env_var: &str,
 	github_token_env_var: &str,
 	worktree_root: Option<&Path>,
-	internal_review_mode: InternalReviewMode,
-	external_review_enabled: bool,
+	review_level: ReviewLevel,
 ) -> String {
 	let mut toml = format!(
 		r#"service_id = "{service_id}"
@@ -1121,18 +1120,9 @@ token_env_var = "{github_token_env_var}"
 "#
 	);
 
-	if internal_review_mode != InternalReviewMode::Loop || !external_review_enabled {
+	if review_level != ReviewLevel::Strict {
 		toml.push_str("\n\n[codex]\n");
-
-		if internal_review_mode != InternalReviewMode::Loop {
-			toml.push_str(&format!(
-				"internal_review_mode = \"{}\"\n",
-				internal_review_mode.as_str()
-			));
-		}
-		if !external_review_enabled {
-			toml.push_str("external_review_enabled = false\n");
-		}
+		toml.push_str(&format!("review = \"{}\"\n", review_level.as_str()));
 	}
 
 	toml.push_str(
@@ -1153,8 +1143,7 @@ repo_root = "."
 fn service_config_toml_for_config(
 	config: &ServiceConfig,
 	github_token_env_var: &str,
-	internal_review_mode: InternalReviewMode,
-	external_review_enabled: bool,
+	review_level: ReviewLevel,
 ) -> String {
 	let default_worktree_root = config.repo_root().join(".worktrees");
 	let worktree_root =
@@ -1165,8 +1154,7 @@ fn service_config_toml_for_config(
 		config.tracker().api_key_env_var(),
 		github_token_env_var,
 		worktree_root,
-		internal_review_mode,
-		external_review_enabled,
+		review_level,
 	)
 }
 
@@ -1176,46 +1164,19 @@ fn service_config_with_github_token_env_var(
 ) -> ServiceConfig {
 	write_service_config(
 		config.repo_root(),
-		&service_config_toml_for_config(
-			config,
-			token_env_var,
-			config.codex().internal_review_mode(),
-			config.codex().external_review_enabled(),
-		),
+		&service_config_toml_for_config(config, token_env_var, config.codex().review_level()),
 	);
 
 	load_service_config(config.repo_root())
 }
 
-fn service_config_with_external_review_enabled(
+fn service_config_with_review_level(
 	config: &ServiceConfig,
-	external_review_enabled: bool,
+	review_level: ReviewLevel,
 ) -> ServiceConfig {
 	write_service_config(
 		config.repo_root(),
-		&service_config_toml_for_config(
-			config,
-			config.github().token_env_var(),
-			config.codex().internal_review_mode(),
-			external_review_enabled,
-		),
-	);
-
-	load_service_config(config.repo_root())
-}
-
-fn service_config_with_internal_review_mode(
-	config: &ServiceConfig,
-	internal_review_mode: InternalReviewMode,
-) -> ServiceConfig {
-	write_service_config(
-		config.repo_root(),
-		&service_config_toml_for_config(
-			config,
-			config.github().token_env_var(),
-			internal_review_mode,
-			config.codex().external_review_enabled(),
-		),
+		&service_config_toml_for_config(config, config.github().token_env_var(), review_level),
 	);
 
 	load_service_config(config.repo_root())
@@ -1300,7 +1261,7 @@ fn temp_project_layout_with_tracker_project_slug_max_turns_and_read_first(
 
 	write_service_config(
 		&repo_root,
-		&sample_service_config_toml("pubfi", "HOME", "HOME", None, InternalReviewMode::Loop, true),
+		&sample_service_config_toml("pubfi", "HOME", "HOME", None, ReviewLevel::Strict),
 	);
 	git_status_success(&repo_root, &["init", "-b", "main"]);
 	git_status_success(&repo_root, &["config", "user.name", "Decodex Tests"]);
@@ -1330,7 +1291,7 @@ fn temp_project_layout_with_workflow_markdown(
 
 	write_service_config(
 		&repo_root,
-		&sample_service_config_toml("pubfi", "HOME", "HOME", None, InternalReviewMode::Loop, true),
+		&sample_service_config_toml("pubfi", "HOME", "HOME", None, ReviewLevel::Strict),
 	);
 	git_status_success(&repo_root, &["init", "-b", "main"]);
 	git_status_success(&repo_root, &["config", "user.name", "Decodex Tests"]);

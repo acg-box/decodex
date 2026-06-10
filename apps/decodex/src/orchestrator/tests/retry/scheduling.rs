@@ -1287,9 +1287,9 @@ fn spawn_sleeping_daemon_child(
 #[test]
 fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_external_review_enabled(
+	let config = service_config_with_review_level(
 		&service_config_with_github_token_env_var(&base_config, "PATH"),
-		false,
+		ReviewLevel::Standard,
 	);
 	let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1397,9 +1397,9 @@ fn daemon_tick_reconciles_ready_retained_review_lane_before_dry_run_planning() {
 #[test]
 fn daemon_tick_clears_terminal_mapping_without_worktree_before_retained_land() {
 	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_external_review_enabled(
+	let config = service_config_with_review_level(
 		&service_config_with_github_token_env_var(&base_config, "PATH"),
-		false,
+		ReviewLevel::Standard,
 	);
 	let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 	let state_store = StateStore::open_in_memory().expect("state store should open");

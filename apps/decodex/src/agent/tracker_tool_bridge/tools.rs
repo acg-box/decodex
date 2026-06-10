@@ -53,7 +53,7 @@ impl<'a> TrackerToolBridge<'a> {
 				if self
 					.review_context
 					.as_ref()
-					.is_some_and(ReviewHandoffContext::internal_review_checkpoint_enabled)
+					.is_some_and(ReviewHandoffContext::decodex_review_checkpoint_enabled)
 				{
 					tool_specs.extend(self.review_checkpoint_tool_specs());
 				}
@@ -67,7 +67,7 @@ impl<'a> TrackerToolBridge<'a> {
 				if self
 					.review_context
 					.as_ref()
-					.is_some_and(ReviewHandoffContext::internal_review_checkpoint_enabled)
+					.is_some_and(ReviewHandoffContext::decodex_review_checkpoint_enabled)
 				{
 					tool_specs.extend(self.review_checkpoint_tool_specs());
 				}
@@ -934,10 +934,10 @@ impl<'a> TrackerToolBridge<'a> {
 			));
 		};
 
-		if !review_context.internal_review_checkpoint_enabled() {
+		if !review_context.decodex_review_checkpoint_enabled() {
 			return DynamicToolCallResponse::failure(format!(
-				"`issue_review_checkpoint` is disabled because `codex.internal_review_mode = \"{}\"` for this run.",
-				review_context.internal_review_mode.as_str()
+				"`issue_review_checkpoint` is disabled because `[codex].review = \"{}\"` for this run.",
+				review_context.review_level.as_str()
 			));
 		}
 
@@ -1141,7 +1141,7 @@ impl<'a> TrackerToolBridge<'a> {
 						self.issue.identifier
 					)
 				})?;
-		} else if review_context.internal_review_checkpoint_enabled() {
+		} else if review_context.decodex_review_checkpoint_enabled() {
 			return Err(format!(
 				"Runtime state store is required to clear review policy state for issue `{}` after recording `{tool_name}`.",
 				self.issue.identifier
