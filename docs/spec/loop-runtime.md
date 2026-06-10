@@ -181,8 +181,9 @@ Contract, issue, project policy, lane ownership, and private evidence.
 Before autonomous loop recovery continues a detached or guardrail-pressured lane, the
 runtime must record a private Authority Boundary Check when the attempted recovery
 could change the Authority Envelope or when evidence is too weak to prove that it does
-not. This check is evidence plumbing for downstream recovery workers; this spec does
-not implement the full autonomous architecture recovery execution loop.
+not. Guardrail recovery may continue only when this check returns
+`within_authority` and the recovery budget still has room. `requires_human` and
+`insufficient_evidence` are hard stops for the current autonomous lane.
 
 The private payload is versioned as `decodex.authority_boundary_check/1` with
 `event_type = "authority_boundary_check"` in `private_execution_events`. It records:
@@ -234,6 +235,44 @@ Harness feedback may recommend Decision Contract, issue-template, validator, pro
 or readiness-model hardening from boundary-check failures. Those recommendations are
 advisory. They do not modify the accepted Decision Contract, queue eligibility, or
 project policy by themselves.
+
+## Architecture Recovery Packet
+
+When loop guardrails detect non-converging automation, Decodex first stops the current
+ineffective strategy. It then records a private Architecture Recovery Packet before
+deciding whether to continue autonomously or require human attention.
+
+The private payload is versioned as `decodex.architecture_recovery_packet/1` with
+`event_type = "architecture_recovery_packet"` in `private_execution_events`. It
+records:
+
+- issue id, issue identifier, title, run id, attempt number, branch, and dispatch mode
+- Decision Contract ids, statuses, source issue ids, and update timestamps when known
+- Execution Program ids linked to those contracts when known
+- retained worktree HEAD, tracked status, diff/status hashes, and compact diff stat
+- validation failure or loop-guardrail source class and private error summary
+- latest review checkpoint status and accepted/rejected finding counts when present
+- prior architecture recovery attempts for the issue
+- recovery budget attempt and maximum
+- loop-guardrail reason, threshold, consecutive count, fingerprint, and source class
+- linked Authority Boundary Check record id, disposition, and final reason
+
+If the boundary check is `within_authority` and budget remains, Decodex records
+`event_type = "architecture_recovery_started"` with reason code
+`architecture_recovery_started`, clears the stopped guardrail reason, and starts a
+materially different implementation strategy. This recovery may change internal
+architecture, plumbing, tests, and docs needed to satisfy the same accepted objective.
+It must not weaken validation or review gates.
+
+If recovery would exceed the Authority Envelope, lacks enough evidence to prove that
+it stays inside the envelope, depends on external/manual state, or exhausts its
+bounded recovery budget, Decodex records `event_type =
+"architecture_recovery_terminal"` with a reason code such as
+`contract_boundary_required`, `external_dependency_required`, or
+`architecture_recovery_exhausted`, then routes through the human-required failure
+path. Boundary stops should also record an `authority_decision_request` private event
+so operator status can surface the decision request without exposing raw private
+payloads.
 
 ## Promotion Boundary
 
@@ -429,8 +468,25 @@ generic retry bucket. Normalized outcomes include:
 | `uncovered_direction` | Execution uncovered a missing or contradictory decision contract. Legacy summaries may still use `research_contract_required`. |
 | `ambiguous_retained_progress` | Tracker, PR, branch, retained worktree, or runtime ownership evidence is contradictory. Legacy summaries may still use `ownership_ambiguous`. |
 
-These outcomes should route to failure attribution, research-contract feedback,
-architecture review, or manual attention. They must not spin in automatic retries.
+These outcomes first stop the ineffective strategy. The runtime must then classify
+whether autonomous architecture recovery is allowed:
+
+- Engineering implementation problems such as repeated repo-gate validation failures
+  or no-effective-diff repair loops may continue only after an Authority Boundary
+  Check records `within_authority` and recovery budget remains.
+- Product goal, accepted behavior, public API/config/workflow contract, security,
+  credential, billing, privacy, destructive data-loss, validation-weakening, review
+  weakening, lane-ownership, or accepted Decision Contract changes must stop with a
+  human-required reason.
+- Dependency or Execution Program staleness that requires external/manual state must
+  stop with `external_dependency_required` or an equivalent typed reason.
+- Missing or contradictory evidence must stop with `contract_boundary_required`,
+  `insufficient_evidence`, or an equivalent typed reason until accepted authority is
+  recorded.
+
+Allowed recovery attempts are bounded and recorded. Exhausting the recovery budget is
+itself a terminal recovery outcome, not a reason to silently fall back to the same
+patch strategy.
 
 ## Harness Improvement Loop
 
@@ -460,8 +516,8 @@ versioned payload is `decodex.harness_outcome/1` with `event_type =
 - PR handoff, retained repair, closeout, cleanup, and terminal failure outcomes as
   summarized from cached Linear execution records and local runtime state
 - candidate harness improvements such as `missing_validator`, `weak_prompt`,
-  `missing_issue_template_field`, `underspecified_decision_contract`, and
-  `stale_readiness_model`
+  `missing_issue_template_field`, `underspecified_decision_contract`,
+  `stale_readiness_model`, and `recovery_budget_exhausted`
 
 Operator readback may summarize improvement candidates through `decodex evidence` or
 derived agent-evidence files. Default readback must expose only compact candidate kind,
