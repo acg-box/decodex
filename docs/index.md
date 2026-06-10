@@ -23,8 +23,6 @@ The split below is by question type, not by human-versus-agent audience.
   - `docs/reference/index.md` when the question is "how is it currently organized or
     implemented?"
   - `docs/decisions/index.md` when the question is "why was it designed this way?"
-- Use `docs/plans/` only when a planning tool or historical execution workflow
-  explicitly points to a saved plan artifact there.
 
 ## Routing matrix
 
@@ -73,8 +71,6 @@ The split below is by question type, not by human-versus-agent audience.
 - Need repository execution defaults or tracker-state policy -> registered project
   `WORKFLOW.md`
 - Need repo task names or automation entrypoints -> `Makefile.toml`
-- Need historical saved execution plans from the original static-site bootstrap ->
-  `docs/plans/`
 
 ## Retrieval rules
 
@@ -93,7 +89,6 @@ The split below is by question type, not by human-versus-agent audience.
 - Start each document with a short routing header that says what the document is for,
   when to read it, and what it does not cover.
 - Keep links explicit and stable.
-- Treat `docs/research/` and `docs/plans/` as supporting or historical evidence, not as
-  primary authority lanes.
+- Treat `docs/research/` as supporting evidence, not as a primary authority lane.
 - Treat research output as latent until accepted or promoted through the loop-runtime
   contract in `docs/spec/loop-runtime.md`.

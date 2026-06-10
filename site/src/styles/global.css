@@ -765,78 +765,6 @@ code {
   font-size: 0.78rem;
 }
 
-.reset-inline {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem 0.7rem;
-  max-width: 100%;
-  color: var(--stage-soft);
-  font-size: 0.92rem;
-  line-height: 1.25;
-  transition:
-    color 180ms ease,
-    transform 180ms ease;
-}
-
-.reset-inline:hover,
-.reset-inline:focus-visible {
-  transform: translateY(-0.04rem);
-}
-
-.reset-inline__question {
-  color: var(--stage-ink);
-  font-weight: 760;
-}
-
-.reset-inline:hover .reset-inline__question,
-.reset-inline:focus-visible .reset-inline__question {
-  color: var(--accent-strong);
-}
-
-.reset-inline__answer {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--stage-soft);
-  font-weight: 760;
-}
-
-.reset-inline__dot {
-  width: 0.48rem;
-  height: 0.48rem;
-  border-radius: 50%;
-  background: var(--stage-muted);
-  box-shadow: 0 0 0 0.18rem rgba(119, 131, 151, 0.18);
-  transition:
-    background-color 180ms ease,
-    box-shadow 180ms ease,
-    transform 180ms ease;
-}
-
-.reset-inline:hover .reset-inline__dot,
-.reset-inline:focus-visible .reset-inline__dot {
-  transform: scale(1.12);
-}
-
-.reset-inline--positive .reset-inline__answer {
-  color: var(--success);
-}
-
-.reset-inline--positive .reset-inline__dot {
-  background: var(--success);
-  box-shadow: 0 0 0 0.18rem color-mix(in srgb, var(--success) 18%, transparent);
-}
-
-.reset-inline--neutral .reset-inline__answer {
-  color: var(--stage-soft);
-}
-
-.reset-inline--neutral .reset-inline__dot {
-  background: var(--stage-muted);
-  box-shadow: 0 0 0 0.18rem rgba(119, 131, 151, 0.18);
-}
-
 .utility-strip {
   position: relative;
   z-index: 20;
@@ -901,10 +829,6 @@ code {
 
 .utility-row--download {
   z-index: 3;
-}
-
-.utility-row--reset {
-  min-width: 0;
 }
 
 .utility-row--download:hover,
@@ -976,8 +900,6 @@ code {
 }
 
 .utility-row .appcast-download__title,
-.utility-row .reset-inline__question,
-.utility-row .reset-inline__answer,
 .utility-row--window strong {
   color: var(--stage-ink);
   font-size: 0.92rem;
@@ -990,19 +912,6 @@ code {
   font-size: 0.82rem;
   line-height: 1.18;
   white-space: nowrap;
-}
-
-.utility-row--reset .reset-inline {
-  justify-content: flex-end;
-}
-
-.utility-row--reset .reset-inline__question {
-  display: none;
-}
-
-.utility-row--reset .reset-inline__answer {
-  font-size: 0.92rem;
-  font-weight: 820;
 }
 
 .utility-row--window a {
