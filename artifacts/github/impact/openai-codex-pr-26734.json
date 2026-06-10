@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26734",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Handle Ctrl-C for non-TTY unified exec",
+        "url": "https://github.com/openai/codex/pull/26734",
+        "meta": "Merged 2026-06-09T22:10:18Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26734",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26734.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex unified exec now maps a non-TTY `write_stdin` Ctrl-C payload to a real process interrupt through a new exec-server `process/signal` method, then drains process output and exit metadata instead of rejecting stdin as closed.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records a new exec-server `process/signal` method and `ProcessSignal::Interrupt` payload.",
+    "Unified exec non-TTY U+0003 is routed to `process.signal(...)` instead of returning `StdinClosed`.",
+    "PTY and pipe backends now deliver SIGINT to the process group on Unix and report signal-derived exit code 130 for the default path.",
+    "Unified exec tests cover both trap-handled Ctrl-C output and default SIGINT exit metadata."
+  ],
+  "candidate_followups": [
+    "Audit Decodex background-process interrupt controls for graceful interrupt versus terminate versus hard-kill semantics.",
+    "Treat unsupported `process/signal` as a version or backend capability boundary when reading Codex app-server or exec-server state.",
+    "Expose operator evidence that distinguishes a process-observed interrupt from a fabricated cancellation result."
+  ],
+  "social_notes": [
+    "Frame this as real Ctrl-C handling for non-TTY unified exec sessions.",
+    "Mention `process/signal` only as the enabling protocol detail; avoid implying every backend supports interrupts equally.",
+    "Do not present this as a general process-management API beyond `ProcessSignal::Interrupt`."
+  ],
+  "caveats": [
+    "The source confirms Unix SIGINT behavior; non-Unix backends can report unsupported interrupts.",
+    "Consumers need a current exec-server implementation before relying on `process/signal`."
+  ]
+}
