@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26701",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "practical_explainer",
+  "priority": "critical",
+  "audience": "Codex TUI plugin users and plugin operators",
+  "candidate_text": [
+    "Codex's TUI plugin menu now has a remote plugin identity path: remote marketplace rows can open details and route install/uninstall by remote plugin ID, while local plugin paths still work. PR: https://github.com/openai/codex/pull/26701"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26701.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26701.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26701"
+    ]
+  },
+  "evidence_notes": [
+    "The upstream review records `PluginLocation::Local` and `PluginLocation::Remote` as the TUI identity split.",
+    "Plugin install and uninstall events now carry remote marketplace identity where needed.",
+    "Tests cover remote plugin rows, details, install/uninstall actions, and admin-disabled states."
+  ],
+  "claims": [
+    {
+      "text": "The Codex TUI plugin menu can route remote plugin detail, install, and uninstall actions by remote identity.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26701.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Local plugin path behavior remains supported alongside remote plugin identity.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26701.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR adds a visible remote-plugin identity path that plugin operators can understand without overclaiming full sharing UI.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26701:practical_explainer"
+  },
+  "caveats": [
+    "The PR does not add complete share-management UI.",
+    "Remote availability and admin-disabled state still constrain install affordances."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate.",
+    "Audit Decodex plugin readback for remote IDs and marketplace names."
+  ]
+}
