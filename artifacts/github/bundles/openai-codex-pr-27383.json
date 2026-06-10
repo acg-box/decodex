@@ -1,0 +1,193 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-10T12:01:45Z",
+      "message": "Remove async-trait from extension contributors",
+      "sha": "9c223af9d01e5e895d668d29291c45b794eeda83",
+      "url": "https://github.com/openai/codex/commit/9c223af9d01e5e895d668d29291c45b794eeda83"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-10T12:04:59Z",
+      "message": "Merge branch 'main' into jif/remove-async-trait-extension-api",
+      "sha": "6b0115c1838acfe99839e07a64bcaffbf9bebeb4",
+      "url": "https://github.com/openai/codex/commit/6b0115c1838acfe99839e07a64bcaffbf9bebeb4"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "RPITIT",
+    "MCP",
+    "CODEX_APPS_MCP_SERVER_NAME",
+    "MAX_SKILL_NAME_BYTES",
+    "MAX_SKILL_PATH_BYTES"
+  ],
+  "files": [
+    {
+      "additions": 0,
+      "deletions": 3,
+      "patch_excerpt": "@@ -2921,7 +2921,6 @@ dependencies = [\n name = \"codex-extension-api\"\n version = \"0.0.0\"\n dependencies = [\n- \"async-trait\",\n  \"codex-config\",\n  \"codex-context-fragments\",\n  \"codex-protocol\",\n@@ -3070,7 +3069,6 @@ dependencies = [\n name = \"codex-guardian\"\n version = \"0.0.0\"\n dependencies = [\n- \"async-trait\",\n  \"codex-core\",\n  \"codex-extension-api\",\n  \"codex-protocol\",\n@@ -3255,7 +3253,6 @@ dependencies = [\n name = \"codex-mcp-extension\"\n version = \"0.0.0\"\n dependencies = [\n- \"async-trait\",\n  \"codex-config\",\n  \"codex-core\",\n  \"codex-core-plugins\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 131,
+      "deletions": 96,
+      "patch_excerpt": "@@ -1922,26 +1922,27 @@ async fn record_token_usage_info_notifies_extension_contributors() {\n         records: Arc<std::sync::Mutex<Vec<RecordedTokenUsage>>>,\n     }\n \n-    #[async_trait::async_trait]\n     impl codex_extension_api::TokenUsageContributor for TokenUsageRecorder {\n-        async fn on_token_usage(\n-            &self,\n-            session_store: &codex_extension_api::ExtensionData,\n-            thread_store: &codex_extension_api::ExtensionData,\n-            turn_store: &codex_extension_api::ExtensionData,\n-            token_usage: &TokenUsageInfo,\n-        ) {\n-            self.records\n-                .lock()\n-                .expect(\"token usage records lock\")\n-                .push(RecordedTokenUsage {\n-                    session_level_id: session_store.level_id().to_string(),\n-                    thread_level_id: thread_store.level_id().to_string(),\n-                   ...",
+      "path": "codex-rs/core/src/session/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 13,
+      "patch_excerpt": "@@ -7,20 +7,21 @@ use std::sync::Arc;\n \n struct RewriteAgentMessageContributor;\n \n-#[async_trait::async_trait]\n impl TurnItemContributor for RewriteAgentMessageContributor {\n-    async fn contribute(\n-        &self,\n-        _thread_store: &ExtensionData,\n-        _turn_store: &ExtensionData,\n-        item: &mut TurnItem,\n-    ) -> Result<(), String> {\n-        if let TurnItem::AgentMessage(agent_message) = item {\n-            agent_message.content = vec![AgentMessageContent::Text {\n-                text: \"plan contributed assistant text\".to_string(),\n-            }];\n-        }\n-        Ok(())\n+    fn contribute<'a>(\n+        &'a self,\n+        _thread_store: &'a ExtensionData,\n+        _turn_store: &'a ExtensionData,\n+        item: &'a mut TurnItem,\n+    ) -> codex_extension_api::ExtensionFuture<'a, Result<(), String>> {\n+        Box::pin(async move {\n+            if let TurnItem::Agen...",
+      "path": "codex-rs/core/src/session/turn_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 30,
+      "deletions": 28,
+      "patch_excerpt": "@@ -167,41 +167,43 @@ struct TestTurnItemContributor;\n #[derive(Debug)]\n struct TurnItemContributorRan;\n \n-#[async_trait::async_trait]\n impl TurnItemContributor for TestTurnItemContributor {\n-    async fn contribute(\n-        &self,\n-        _thread_store: &ExtensionData,\n-        turn_store: &ExtensionData,\n-        item: &mut TurnItem,\n-    ) -> Result<(), String> {\n-        turn_store.insert(TurnItemContributorRan);\n-        if let TurnItem::AgentMessage(agent_message) = item {\n-            agent_message.memory_citation = Some(MemoryCitation {\n-                entries: Vec::new(),\n-                rollout_ids: Vec::new(),\n-            });\n-        }\n-        Ok(())\n+    fn contribute<'a>(\n+        &'a self,\n+        _thread_store: &'a ExtensionData,\n+        turn_store: &'a ExtensionData,\n+        item: &'a mut TurnItem,\n+    ) -> codex_extension_api::ExtensionFuture<'a, Result<(), St...",
+      "path": "codex-rs/core/src/stream_events_utils_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 17,
+      "deletions": 13,
+      "patch_excerpt": "@@ -394,20 +394,24 @@ async fn start_thread_seeds_extension_data_before_lifecycle_contributors_run() {\n         observed: Arc<std::sync::Mutex<Option<(String, String)>>>,\n     }\n \n-    #[async_trait::async_trait]\n     impl codex_extension_api::ThreadLifecycleContributor<Config> for InitialDataRecorder {\n-        async fn on_thread_start(&self, input: codex_extension_api::ThreadStartInput<'_, Config>) {\n-            let marker = input\n-                .thread_store\n-                .get::<InitialMarker>()\n-                .expect(\"initial extension data should be available\");\n-            *self\n-                .observed\n-                .lock()\n-                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((\n-                input.thread_store.level_id().to_string(),\n-                marker.0.to_string(),\n-            ));\n+        fn on_thread_start<'a>(\n+            &'a sel...",
+      "path": "codex-rs/core/src/thread_manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 9,
+      "patch_excerpt": "@@ -388,16 +388,17 @@ mod tests {\n \n     struct RecordExtensionTurnItemContributor;\n \n-    #[async_trait::async_trait]\n     impl TurnItemContributor for RecordExtensionTurnItemContributor {\n-        async fn contribute(\n-            &self,\n-            _thread_store: &ExtensionData,\n-            turn_store: &ExtensionData,\n-            _item: &mut TurnItem,\n-        ) -> Result<(), String> {\n-            turn_store.insert(ExtensionTurnItemContributorRan);\n-            Ok(())\n+        fn contribute<'a>(\n+            &'a self,\n+            _thread_store: &'a ExtensionData,\n+            turn_store: &'a ExtensionData,\n+            _item: &'a mut TurnItem,\n+        ) -> codex_extension_api::ExtensionFuture<'a, Result<(), String>> {\n+            Box::pin(async move {\n+                turn_store.insert(ExtensionTurnItemContributorRan);\n+                Ok(())\n+            })\n         }\n     }",
+      "path": "codex-rs/core/src/tools/handlers/extension_tools.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -14,7 +14,6 @@ doctest = false\n workspace = true\n \n [dependencies]\n-async-trait = { workspace = true }\n codex-config = { workspace = true }\n codex-context-fragments = { workspace = true }\n codex-protocol = { workspace = true }",
+      "path": "codex-rs/ext/extension-api/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 83,
+      "deletions": 42,
+      "patch_excerpt": "@@ -1,4 +1,5 @@\n use std::future::Future;\n+use std::pin::Pin;\n use std::sync::Arc;\n \n use codex_context_fragments::ContextualUserFragment;\n@@ -36,16 +37,18 @@ pub use turn_lifecycle::TurnErrorInput;\n pub use turn_lifecycle::TurnStartInput;\n pub use turn_lifecycle::TurnStopInput;\n \n+/// Boxed, sendable future returned by asynchronous extension contributors.\n+pub type ExtensionFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;\n+\n /// Extension contribution that resolves runtime MCP servers from host config.\n ///\n /// Contributors run in registration order. Later contributions for the same\n /// name replace earlier ones. Implementations must contribute only names they\n /// own and must apply any source-specific policy before returning a server.\n /// Plugin-owned servers and their provenance continue to be resolved by the\n /// plugin manager until that ownership moves into an exte...",
+      "path": "codex-rs/ext/extension-api/src/contributors.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -31,6 +31,7 @@ pub use codex_tools::parse_tool_input_schema_without_compaction;\n pub use contributors::ApprovalReviewContributor;\n pub use contributors::ConfigContributor;\n pub use contributors::ContextContributor;\n+pub use contributors::ExtensionFuture;\n pub use contributors::McpServerContribution;\n pub use contributors::McpServerContributor;\n pub use contributors::PromptFragment;",
+      "path": "codex-rs/ext/extension-api/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 66,
+      "deletions": 61,
+      "patch_excerpt": "@@ -1,5 +1,3 @@\n-use std::future::Future;\n-use std::pin::Pin;\n use std::sync::Arc;\n use std::sync::Mutex;\n \n@@ -9,6 +7,7 @@ use codex_extension_api::ContextContributor;\n use codex_extension_api::ContextualUserFragment;\n use codex_extension_api::ExtensionData;\n use codex_extension_api::ExtensionEventSink;\n+use codex_extension_api::ExtensionFuture;\n use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::PromptFragment;\n use codex_extension_api::ThreadLifecycleContributor;\n@@ -37,32 +36,32 @@ impl ContextContributor for AllContributors {\n         &'a self,\n         _session_store: &'a ExtensionData,\n         _thread_store: &'a ExtensionData,\n-    ) -> Pin<Box<dyn Future<Output = Vec<PromptFragment>> + Send + 'a>> {\n+    ) -> ExtensionFuture<'a, Vec<PromptFragment>> {\n         Box::pin(std::future::ready(Vec::new()))\n     }\n }\n \n-#[async_trait::async_trait]\n impl Thread...",
+      "path": "codex-rs/ext/extension-api/tests/registry.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 199,
+      "deletions": 184,
+      "patch_excerpt": "@@ -1,12 +1,12 @@\n use std::sync::Arc;\n use std::sync::Weak;\n \n-use async_trait::async_trait;\n use codex_analytics::AnalyticsEventsClient;\n use codex_core::ThreadManager;\n use codex_extension_api::ConfigContributor;\n use codex_extension_api::ExtensionData;\n use codex_extension_api::ExtensionEventSink;\n+use codex_extension_api::ExtensionFuture;\n use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::ThreadIdleInput;\n use codex_extension_api::ThreadLifecycleContributor;\n@@ -95,76 +95,83 @@ impl<C> GoalExtension<C> {\n     }\n }\n \n-#[async_trait]\n impl<C> ThreadLifecycleContributor<C> for GoalExtension<C>\n where\n     C: Send + Sync + 'static,\n {\n-    async fn on_thread_start(&self, input: ThreadStartInput<'_, C>) {\n-        let enabled = (self.goals_enabled)(input.config);\n-        let tools_available_for_thread = input.persistent_thread_state_available\n-            && !...",
+      "path": "codex-rs/ext/goal/src/extension.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -14,7 +14,6 @@ doctest = false\n workspace = true\n \n [dependencies]\n-async-trait = { workspace = true }\n codex-core = { workspace = true }\n codex-extension-api = { workspace = true }\n codex-protocol = { workspace = true }",
+      "path": "codex-rs/ext/guardian/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 8,
+      "patch_excerpt": "@@ -3,6 +3,7 @@ use std::sync::Arc;\n use codex_core::config::Config;\n use codex_extension_api::AgentSpawnFuture;\n use codex_extension_api::AgentSpawner;\n+use codex_extension_api::ExtensionFuture;\n use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::ThreadLifecycleContributor;\n use codex_extension_api::ThreadStartInput;\n@@ -47,18 +48,23 @@ impl GuardianThreadContext {\n     }\n }\n \n-#[async_trait::async_trait]\n impl<S> ThreadLifecycleContributor<Config> for GuardianExtension<S>\n where\n     S: Send + Sync,\n {\n-    async fn on_thread_start(&self, input: ThreadStartInput<'_, Config>) {\n-        let Ok(forked_from_thread_id) = ThreadId::from_string(input.thread_store.level_id()) else {\n-            return;\n-        };\n-        input.thread_store.insert(GuardianThreadContext {\n-            forked_from_thread_id,\n-        });\n+    fn on_thread_start<'a>(\n+        &'a self...",
+      "path": "codex-rs/ext/guardian/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 5,
+      "patch_excerpt": "@@ -3,6 +3,7 @@ use std::sync::Arc;\n use codex_core::config::Config;\n use codex_extension_api::ConfigContributor;\n use codex_extension_api::ExtensionData;\n+use codex_extension_api::ExtensionFuture;\n use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::ThreadLifecycleContributor;\n use codex_extension_api::ThreadStartInput;\n@@ -41,13 +42,17 @@ impl From<&Config> for ImageGenerationExtensionConfig {\n     }\n }\n \n-#[async_trait::async_trait]\n impl ThreadLifecycleContributor<Config> for ImageGenerationExtension {\n     /// Seeds image-generation availability when a thread begins.\n-    async fn on_thread_start(&self, input: ThreadStartInput<'_, Config>) {\n-        input\n-            .thread_store\n-            .insert(ImageGenerationExtensionConfig::from(input.config));\n+    fn on_thread_start<'a>(\n+        &'a self,\n+        input: ThreadStartInput<'a, Config>,\n+    ) -> ...",
+      "path": "codex-rs/ext/image-generation/src/extension.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -14,7 +14,6 @@ doctest = false\n workspace = true\n \n [dependencies]\n-async-trait = { workspace = true }\n codex-core = { workspace = true }\n codex-extension-api = { workspace = true }\n codex-features = { workspace = true }",
+      "path": "codex-rs/ext/mcp/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 18,
+      "deletions": 13,
+      "patch_excerpt": "@@ -1,4 +1,5 @@\n use codex_core::config::Config;\n+use codex_extension_api::ExtensionFuture;\n use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::McpServerContribution;\n use codex_extension_api::McpServerContributor;\n@@ -7,21 +8,25 @@ use codex_mcp::hosted_plugin_runtime_mcp_server_config;\n \n struct HostedPluginRuntimeExtension;\n \n-#[async_trait::async_trait]\n impl McpServerContributor<Config> for HostedPluginRuntimeExtension {\n-    async fn contribute(&self, config: &Config) -> Vec<McpServerContribution> {\n-        let name = CODEX_APPS_MCP_SERVER_NAME.to_string();\n-        if !config.features.enabled(codex_features::Feature::Apps) {\n-            return vec![McpServerContribution::Remove { name }];\n-        }\n+    fn contribute<'a>(\n+        &'a self,\n+        config: &'a Config,\n+    ) -> ExtensionFuture<'a, Vec<McpServerContribution>> {\n+        Box::pin(async ...",
+      "path": "codex-rs/ext/mcp/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 5,
+      "patch_excerpt": "@@ -150,11 +150,15 @@ fn installed_manager(config: &Config) -> McpManager {\n \n struct RemoveCodexApps;\n \n-#[async_trait::async_trait]\n impl McpServerContributor<Config> for RemoveCodexApps {\n-    async fn contribute(&self, _config: &Config) -> Vec<McpServerContribution> {\n-        vec![McpServerContribution::Remove {\n-            name: CODEX_APPS_MCP_SERVER_NAME.to_string(),\n-        }]\n+    fn contribute<'a>(\n+        &'a self,\n+        _config: &'a Config,\n+    ) -> codex_extension_api::ExtensionFuture<'a, Vec<McpServerContribution>> {\n+        Box::pin(async move {\n+            vec![McpServerContribution::Remove {\n+                name: CODEX_APPS_MCP_SERVER_NAME.to_string(),\n+            }]\n+        })\n     }\n }",
+      "path": "codex-rs/ext/mcp/tests/hosted_apps_mcp.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 5,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use codex_core::config::Config;\n use codex_extension_api::ConfigContributor;\n use codex_extension_api::ContextContributor;\n use codex_extension_api::ExtensionData;\n+use codex_extension_api::ExtensionFuture;\n use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::PromptFragment;\n use codex_extension_api::ThreadLifecycleContributor;\n@@ -69,12 +70,16 @@ impl ContextContributor for MemoriesExtension {\n     }\n }\n \n-#[async_trait::async_trait]\n impl ThreadLifecycleContributor<Config> for MemoriesExtension {\n-    async fn on_thread_start(&self, input: ThreadStartInput<'_, Config>) {\n-        input\n-            .thread_store\n-            .insert(MemoriesExtensionConfig::from_config(input.config));\n+    fn on_thread_start<'a>(\n+        &'a self,\n+        input: ThreadStartInput<'a, Config>,\n+    ) -> ExtensionFuture<'a, ()> {\n+        Box::pin(async move {\n+ ...",
+      "path": "codex-rs/ext/memories/src/extension.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -14,7 +14,6 @@ doctest = false\n workspace = true\n \n [dependencies]\n-async-trait = { workspace = true }\n codex-core = { workspace = true }\n codex-core-skills = { workspace = true }\n codex-exec-server = { workspace = true }\n@@ -24,5 +23,6 @@ codex-utils-absolute-path = { workspace = true }\n codex-utils-string = { workspace = true }\n \n [dev-dependencies]\n+async-trait = { workspace = true }\n pretty_assertions = { workspace = true }\n tokio = { workspace = true, features = [\"macros\", \"rt-multi-thread\"] }",
+      "path": "codex-rs/ext/skills/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 109,
+      "deletions": 99,
+      "patch_excerpt": "@@ -10,6 +10,7 @@ use codex_extension_api::ContextContributor;\n use codex_extension_api::ContextualUserFragment;\n use codex_extension_api::ExtensionData;\n use codex_extension_api::ExtensionEventSink;\n+use codex_extension_api::ExtensionFuture;\n use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::PromptFragment;\n use codex_extension_api::ThreadLifecycleContributor;\n@@ -44,18 +45,22 @@ struct SkillsExtension {\n     event_sink: Arc<dyn ExtensionEventSink>,\n }\n \n-#[async_trait::async_trait]\n impl ThreadLifecycleContributor<Config> for SkillsExtension {\n-    async fn on_thread_start(&self, input: ThreadStartInput<'_, Config>) {\n-        let selected_roots = input\n-            .thread_store\n-            .get::<Vec<SelectedCapabilityRoot>>()\n-            .map(|selected_roots| selected_roots.as_ref().clone())\n-            .unwrap_or_default();\n-        input.thread_store....",
+      "path": "codex-rs/ext/skills/src/extension.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 5,
+      "patch_excerpt": "@@ -9,6 +9,7 @@ use codex_api::SearchSettings;\n use codex_core::config::Config;\n use codex_extension_api::ConfigContributor;\n use codex_extension_api::ExtensionData;\n+use codex_extension_api::ExtensionFuture;\n use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::ThreadLifecycleContributor;\n use codex_extension_api::ThreadStartInput;\n@@ -80,12 +81,16 @@ fn search_settings(config: &Config, web_search_mode: WebSearchMode) -> SearchSet\n     }\n }\n \n-#[async_trait::async_trait]\n impl ThreadLifecycleContributor<Config> for WebSearchExtension {\n-    async fn on_thread_start(&self, input: ThreadStartInput<'_, Config>) {\n-        input\n-            .thread_store\n-            .insert(WebSearchExtensionConfig::from(input.config));\n+    fn on_thread_start<'a>(\n+        &'a self,\n+        input: ThreadStartInput<'a, Config>,\n+    ) -> ExtensionFuture<'a, ()> {\n+        Box::pin...",
+      "path": "codex-rs/ext/web-search/src/extension.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nExtension contributors are registered behind `dyn Trait` objects, so native `async fn`/RPITIT methods would make these traits non-object-safe. Spell out the boxed, `Send` future contract directly so `extension-api` no longer needs `async-trait` while retaining the existing runtime model.\n\n## What changed\n\n- add a shared `ExtensionFuture` alias and use it for asynchronous contributor methods\n- migrate production and test implementations to return `Box::pin(async move { ... })`\n- remove `async-trait` dependencies where they are no longer used, keeping it dev-only where unrelated test executors still require it\n\n## Behavior\n\nNo behavior change is intended. Contributor futures remain boxed, `Send`, dynamically dispatched, and lazily executed; cancellation and callback ordering stay unchanged.\n\n## Testing\n\n- `just test -p codex-extension-api` (11 passed)\n- affected extension crates (64 passed)\n- targeted `codex-core` contributor tests (14 passed)\n- `just fmt`\n- `just bazel-lock-update`\n- `just bazel-lock-check`\n\nA broad local `codex-core` run compiled successfully but encountered unrelated sandbox and missing test-binary fixture failures; CI will run the full checks.",
+    "labels": [],
+    "merged_at": "2026-06-10T12:31:09Z",
+    "number": 27383,
+    "state": "merged",
+    "title": "Remove async-trait from extension contributors",
+    "url": "https://github.com/openai/codex/pull/27383"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

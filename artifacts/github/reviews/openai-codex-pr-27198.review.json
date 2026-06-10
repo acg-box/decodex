@@ -1,0 +1,76 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27198",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27198",
+    "commit_shas": [
+      "c86af903969cdfa1fbeba67fbd454710f0d53de2",
+      "fa313ba390f5372cd7dfa2e2a05b890f93b9b3a1",
+      "19a14a08106a029b63c08e0a930c2c3bd769183b",
+      "e7ea9109a9e343fd1cc6a62d4c50d2d7b9cf1660"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Use plugin-service MCP as the hosted plugin runtime",
+        "url": "https://github.com/openai/codex/pull/27198",
+        "meta": "Merged 2026-06-10T10:54:21Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Use plugin-service MCP as hosted plugin runtime",
+        "url": "https://github.com/openai/codex/commit/c86af903969cdfa1fbeba67fbd454710f0d53de2"
+      },
+      {
+        "kind": "commit",
+        "title": "Regenerate config schema for removed Apps flag",
+        "url": "https://github.com/openai/codex/commit/19a14a08106a029b63c08e0a930c2c3bd769183b"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-10T14:15:22Z",
+  "observed_change": "Codex now resolves the hosted `codex_apps` MCP runtime through an extension-owned `/ps/mcp` plugin-service route, removes the temporary `apps_mcp_path_override` plumbing, and exposes hosted skills as MCP resources on the same streamable HTTP connection as connector tools.",
+  "changed_surfaces": [
+    "hosted plugin MCP runtime route selection",
+    "MCP extension contribution ordering and `codex_apps` auth gating",
+    "app-server plugin install, read, resource, and elicitation tests",
+    "config feature schema and config-lock compatibility for removed `apps_mcp_path_override`",
+    "MCP resource list/read response truncation"
+  ],
+  "user_visible_path": "App-server clients with ChatGPT auth now reach the hosted plugin runtime through `/backend-api/ps/mcp` or the custom-base equivalent, can see hosted skills through MCP resource list/read tools, and no longer get a configurable `apps_mcp_path_override` path.",
+  "control_plane_relevance": "High for Decodex Control Plane because hosted plugin capabilities move behind the extension-owned MCP runtime and because app-server plugin and resource flows now exercise `/ps/mcp` instead of the legacy Apps endpoint.",
+  "compatibility_risk": "High for adapters or local configs that assumed `apps_mcp_path_override` selected the hosted Apps route; older boolean or structured config still deserializes as ignored compatibility input, but new effective runtime selection comes from extension contribution ordering and ChatGPT auth gating.",
+  "adoption_opportunity": "Align Decodex hosted-plugin probes with the plugin-service `/ps/mcp` runtime, consume hosted skills through MCP resources, and preserve fallback behavior for hosts that do not install the MCP extension.",
+  "community_value": "High for Codex plugin and app-server operators because it makes hosted connector tools and backend-provided skills share the MCP subsystem instead of requiring a second hosted-skill client or orchestrator filesystem download.",
+  "deprecated_or_breaking_notes": "`apps_mcp_path_override` is removed from effective config and schema output; compatibility deserialization and config-lock normalization keep older locks replayable, but the override no longer controls the hosted runtime path.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27198 states the MCP extension now contributes `codex_apps` as the hosted plugin runtime at `/ps/mcp`, with connector actions as MCP tools and hosted skills as MCP resources.",
+    "The app-server test fixtures in `app_list.rs`, `mcp_resource.rs`, `mcp_server_elicitation.rs`, `plugin_install.rs`, and `plugin_read.rs change the hosted route from `/api/codex/apps` to `/api/codex/ps/mcp`.",
+    "`codex-rs/codex-mcp/src/mcp/mod.rs` removes `apps_mcp_path_override` from `McpConfig` while retaining product-SKU, ChatGPT auth, and app enablement inputs.",
+    "`codex-rs/ext/mcp/src/lib.rs` renames the hosted extension path around `hosted_plugin_runtime_mcp_server_config` and contributes the reserved `codex_apps` server through the MCP extension.",
+    "`codex-rs/core/config.schema.json` and `codex-rs/features/src/feature_configs.rs` replace the path override feature with removed compatibility shapes that deserialize but do not produce effective feature entries.",
+    "`codex-rs/core/src/config_lock.rs` and `codex-rs/core/src/session/config_lock.rs` normalize removed compatibility entries so older config locks remain comparable.",
+    "`codex-rs/core/src/tools/handlers/mcp_resource.rs` passes the turn truncation policy into MCP resource serialization and adds tests for capped resource-read payloads.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27198.json` records 27 changed files for the merged PR."
+  ],
+  "caveats": "The source review confirms Codex client and app-server behavior; backend plugin enablement remains account or workspace state owned by the hosted endpoint, and the PR explicitly does not add thread-local backend plugin selection.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The hosted plugin runtime route and removed config override create direct Control Plane compatibility and adoption work."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The hosted plugin-service MCP runtime has a clear public operator angle."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should audit hosted-plugin probes, MCP resource reads, and legacy Apps endpoint assumptions against `/ps/mcp`."
+    }
+  ]
+}

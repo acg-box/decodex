@@ -1,0 +1,63 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T11:12:39Z",
+      "message": "fix(tui): keep child MCP warnings out of parent",
+      "sha": "ec27d8d71b40bd86900682e989e3ea64bcd72f79",
+      "url": "https://github.com/openai/codex/commit/ec27d8d71b40bd86900682e989e3ea64bcd72f79"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T11:47:58Z",
+      "message": "fix(tui): reject child MCP updates before status restore",
+      "sha": "1bfa6cfe558427f95780c9a1ea2c6a00257b8235",
+      "url": "https://github.com/openai/codex/commit/1bfa6cfe558427f95780c9a1ea2c6a00257b8235"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T11:56:16Z",
+      "message": "test(tui): annotate stream error details argument",
+      "sha": "ffedf368162b5ea8b085b5619505a18980a734d8",
+      "url": "https://github.com/openai/codex/commit/ffedf368162b5ea8b085b5619505a18980a734d8"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP"
+  ],
+  "files": [
+    {
+      "additions": 9,
+      "deletions": 0,
+      "patch_excerpt": "@@ -6,6 +6,15 @@ impl ChatWidget {\n         notification: ServerNotification,\n         replay_kind: Option<ReplayKind>,\n     ) {\n+        // Reject misrouted child updates before shared notification handling mutates parent state.\n+        if let ServerNotification::McpServerStatusUpdated(notification) = &notification\n+            && let (Some(notification_thread_id), Some(thread_id)) =\n+                (notification.thread_id.as_deref(), self.thread_id())\n+            && notification_thread_id != thread_id.to_string()\n+        {\n+            return;\n+        }\n+\n         let from_replay = replay_kind.is_some();\n         let is_resume_initial_replay =\n             matches!(replay_kind, Some(ReplayKind::ResumeInitialMessages));",
+      "path": "codex-rs/tui/src/chatwidget/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 41,
+      "deletions": 0,
+      "patch_excerpt": "@@ -25,6 +25,47 @@ fn notify_mcp_status_error(chat: &mut ChatWidget, name: &str, error: &str) {\n     );\n }\n \n+#[tokio::test]\n+async fn mcp_startup_ignores_status_for_other_thread() {\n+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;\n+    chat.show_welcome_banner = false;\n+    chat.set_mcp_startup_expected_servers([\"sentry\".to_string()]);\n+    let parent_thread_id = ThreadId::new();\n+    let child_thread_id = ThreadId::new();\n+    chat.thread_id = Some(parent_thread_id);\n+    chat.on_stream_error(\n+        \"Connection interrupted, retrying\".to_string(),\n+        /*additional_details*/ None,\n+    );\n+    let status_before = chat.status_state.current_status.clone();\n+    let retry_status_header_before = chat.status_state.retry_status_header.clone();\n+\n+    for status in [\n+        McpServerStartupState::Starting,\n+        McpServerStartupState::Fai...",
+      "path": "codex-rs/tui/src/chatwidget/tests/mcp_startup.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nMCP startup status notifications are thread-owned, but `ChatWidget` trusted upstream routing. If routing state delivered a tagged child notification to the active parent widget, the child MCP failure could still mutate the parent's startup state and transcript. Rejecting it only inside the MCP handler was also too late because shared notification handling could already restore and consume the parent's retry status.\n\n## What changed\n\n- Validate a tagged MCP status notification against the visible `ChatWidget` thread before shared notification handling mutates any parent state.\n- Cover child `Starting` and `Failed` notifications delivered to a retrying parent widget, asserting that they preserve its visible retry error and saved status header while producing no history or MCP status mutation.\n\n## User impact\n\nSubagent MCP startup failures remain scoped to the child transcript instead of appearing as duplicate warnings in the parent transcript.\n\n## Testing\n\n- `just test -p codex-tui mcp_startup_ignores_status_for_other_thread`\n- `just test -p codex-tui primary_thread_ignores_child_mcp_startup_notifications`\n- `just fmt`\n",
+    "labels": [],
+    "merged_at": "2026-06-10T09:45:50Z",
+    "number": 27174,
+    "state": "merged",
+    "title": "feat: keep child MCP warnings out of parent transcript",
+    "url": "https://github.com/openai/codex/pull/27174"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
