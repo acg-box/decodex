@@ -155,8 +155,8 @@ This action requires:
 | `In Review` lane has no actionable review yet | PR still belongs to lane; no requested changes that require repair; checks or review are still pending | `wait_for_external_signal` | Yes, when new signal arrives |
 | `In Review` lane now has actionable review repair work | PR still belongs to lane; actionable review feedback is present; retained lane remains reusable | `resume_retained_lane` | Yes |
 | `In Review` lane has green checks, satisfied review, and is mergeable | PR still belongs to lane; approvals satisfied; unresolved blocking review work absent; checks green; mergeable | `ready_to_land` | Yes |
-| Pre-PR independent review or post-review repair churn exceeded the configured convergence budget | Runtime-owned review checkpoints show repeated `findings` in the same phase crossed the configured limit; the lane no longer has a bounded low-risk patch path | `manual_intervention_required` | No |
-| Review-policy stop may need research escalation | Runtime-owned review checkpoints identify `needs_architecture_review` or repeated `findings` exhaustion with matching current head, phase, evidence, and stop class | `manual_intervention_required` | No direct retry; future research escalation may run only through a separate structured adapter contract |
+| Pre-PR independent review or post-review repair churn exceeded the configured convergence budget | Runtime-owned review checkpoints show repeated `findings` in the same phase crossed the configured limit; the current repair strategy no longer has a bounded low-risk patch path | `architecture_recovery_boundary` | Yes, only through a new Architecture Recovery Packet plus Authority Boundary Check when the boundary is `within_authority` and recovery budget remains |
+| Review-policy stop cannot recover autonomously | Runtime-owned review checkpoints identify `needs_architecture_review`, an Authority Boundary Check result outside the lane authority, insufficient recovery evidence, or exhausted recovery budget for the current head, phase, evidence, and stop class | `manual_intervention_required` | No direct retry; future research escalation may run only through a separate structured adapter contract |
 | Merge already happened but closeout or cleanup is incomplete | Merged PR is authoritative; closeout or cleanup evidence is still missing | `continue` | Yes |
 | Signals are contradictory or incomplete in a way that requires guesswork | Tracker, retained lane, review, or cleanup signals disagree materially | `manual_intervention_required` | No |
 
@@ -168,7 +168,9 @@ Automation must stop and require a human when any of these are true:
 - continuing would rewrite or override evidence the operator should inspect first
 - the runtime cannot prove that the retained worktree, PR, and tracker issue still belong to the same owned lane
 - a required failure guard could not be applied cleanly
-- the lane has already crossed the configured retry or repair convergence limit
+- the lane has already crossed the configured retry limit
+- review repair convergence has crossed the architecture recovery boundary and
+  recovery is outside authority, insufficiently evidenced, or exhausted
 
 For review-policy churn, the runtime counts only structured review checkpoints:
 
@@ -183,9 +185,13 @@ For review-policy churn, the runtime counts only structured review checkpoints:
 
 Review-policy stops are also the only review failures eligible for a future
 runtime-owned research escalation path. That path is not an additional action class and
-does not change the current stop decision: the implementation lane still enters
-`manual_intervention_required`, receives the configured human-attention guard, and
-stays ineligible until the blocking signal is materially cleared.
+does not by itself clear the current stop decision. `needs_architecture_review` and
+`blocked` still enter `manual_intervention_required`, receive the configured
+human-attention guard, and stay ineligible until the blocking signal is materially
+cleared. Convergence-budget exhaustion for repeated accepted findings first follows
+the loop-runtime architecture recovery boundary: a materially different engineering
+strategy may continue only when the Authority Boundary Check is `within_authority`
+and recovery budget remains; otherwise the lane enters `manual_intervention_required`.
 
 Any future research escalation must use the same runtime decision class plus a separate
 adapter contract. Free-form terminal comments, skill prose, old review memory, or stale
@@ -214,7 +220,8 @@ Examples of materially cleared signals:
 
 ## Automatic-recovery prerequisites
 
-Automatic recovery is allowed only when all of the following are true:
+Automatic recovery after a human-required or externally blocked stop is allowed only
+when all of the following are true:
 
 - the authoritative blocker was actually cleared, not merely commented on
 - the lane still has a valid owned worktree or a clearly recoverable replacement path

@@ -136,6 +136,12 @@ terminal automation signal.
   enabled, preserve `error_count`, `first_error_path`, and `first_error` as evidence
   but do not stop the lane solely because unrelated installed skill metadata failed to
   scan. Missing cwd coverage or zero enabled skills remain blockers.
+- When status reports loop guardrail reasons, inspect the current recovery state before
+  treating the lane as human-required. Engineering convergence failures may still be
+  autonomous after an Architecture Recovery Packet and Authority Boundary Check prove
+  the next strategy is inside the Authority Envelope. Boundary, external,
+  uncovered-direction, ownership, insufficient evidence, and exhausted-recovery
+  outcomes remain human-required stops.
 - Before assuming a lane is stuck, compare lane phase, wait reason, last run activity,
   protocol activity, active lease state, and child-agent activity when present.
 

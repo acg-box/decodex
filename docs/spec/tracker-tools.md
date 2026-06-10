@@ -249,7 +249,9 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - If a tracker tool call fails because it targeted the wrong issue or an unsupported operation, treat that as a policy violation, not as a retryable transport error.
 - When `[codex].review` is `"standard"` or `"strict"`, if the latest
   `issue_review_checkpoint` reports `findings` for the third consecutive non-clean
-  round on the same phase, or reports `needs_architecture_review` / `blocked`,
+  round on the same phase, `decodex` must stop the current repair strategy and apply
+  the loop-runtime architecture recovery boundary before any further autonomous
+  repair. If the checkpoint reports `needs_architecture_review` / `blocked`,
   `decodex` must stop the lane through the human-required failure path instead of
   retrying automatically.
 - Review-policy stops do not dispatch research directly. `decodex` may surface
