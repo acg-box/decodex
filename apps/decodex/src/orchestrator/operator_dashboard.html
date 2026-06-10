@@ -5059,6 +5059,61 @@
 				return facts;
 			}
 
+			function loopStatusFacts(loopStatus) {
+				if (!loopStatus) {
+					return [];
+				}
+
+				const facts = [];
+				if (loopStatus.review?.status) {
+					const checkpoint = loopStatus.review.checkpoint;
+					const round =
+						checkpoint && checkpoint.round != null ? ` r${checkpoint.round}` : "";
+					facts.push([
+						"Review",
+						`${displayToken(loopStatus.review.phase)} ${displayToken(loopStatus.review.status)}${round}`,
+					]);
+				}
+				if (loopStatus.architecture_recovery?.status) {
+					const recovery = loopStatus.architecture_recovery;
+					const budget = recovery.budget
+						? ` ${recovery.budget.attempt}/${recovery.budget.max_attempts}`
+						: "";
+					facts.push([
+						"Recovery",
+						`${displayToken(recovery.status)} ${displayToken(recovery.reason_code)}${budget}`,
+					]);
+				}
+				if (loopStatus.boundary?.disposition) {
+					facts.push(["Boundary", displayToken(loopStatus.boundary.disposition)]);
+				}
+				if (loopStatus.decision_request?.decision_request_id) {
+					facts.push(["Decision", loopStatus.decision_request.decision_request_id]);
+				}
+				if (loopStatus.autonomy) {
+					facts.push(["Autonomy", displayToken(loopStatus.autonomy)]);
+				}
+
+				return facts;
+			}
+
+			function loopStatusInline(loopStatus) {
+				if (!loopStatus) {
+					return "";
+				}
+				if (loopStatus.decision_request?.reason) {
+					return displayToken(loopStatus.decision_request.reason);
+				}
+				if (loopStatus.architecture_recovery?.status) {
+					return displayToken(loopStatus.architecture_recovery.status);
+				}
+				if (loopStatus.review?.status) {
+					return displayToken(loopStatus.review.status);
+				}
+
+				return displayToken(loopStatus.autonomy || "");
+			}
+
 			function renderAttentionFacts(candidate) {
 				const attention = candidate.attention;
 				if (!attention) {
@@ -5109,6 +5164,7 @@
 				if (attention.last_activity_at) {
 					facts.push(["Last", formatTimestampCompact(attention.last_activity_at)]);
 				}
+				facts.push(...loopStatusFacts(attention.loop_status));
 
 				if (!facts.length) {
 					return "";
@@ -8737,6 +8793,7 @@
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
 								["Branch", optionalCardToken(lane.branch_name)],
+								...loopStatusFacts(lane.loop_status),
 								...postReviewReadbackFacts(lane),
 							],
 						});
@@ -8760,6 +8817,7 @@
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
 								["Branch", optionalCardToken(lane.branch_name)],
+								...loopStatusFacts(lane.loop_status),
 								...postReviewReadbackFacts(lane),
 							],
 						});
@@ -8779,6 +8837,7 @@
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
 								["Branch", optionalCardToken(lane.branch_name)],
+								...loopStatusFacts(lane.loop_status),
 								...postReviewReadbackFacts(lane),
 							],
 						});
@@ -8799,6 +8858,7 @@
 								["Threads", reviewThreadToken(lane.unresolved_review_threads)],
 								["PR", optionalCardToken(lane.pr_url)],
 								["Branch", optionalCardToken(lane.branch_name)],
+								...loopStatusFacts(lane.loop_status),
 								...postReviewReadbackFacts(lane),
 							],
 						});
@@ -9610,6 +9670,10 @@
 									statusBits.push(inlineStatusFact("Continuation", "Pending"));
 								}
 							}
+							const loopInline = loopStatusInline(run.loop_status);
+							if (loopInline && !displayTextRepeats(summary, loopInline)) {
+								statusBits.push(inlineStatusFact("Loop", loopInline));
+							}
 							const attemptNumber = attemptNumberFromRun(run);
 							return `
 							<article class="run-card ${tone}" data-render-key="${escapeHtml(renderKey)}">
@@ -9644,6 +9708,8 @@
 										${field("Worktree", run.worktree_path || "none")}
 										${field("Queue lease", runQueueLeaseSummary(run))}
 										${field("Execution liveness", runExecutionLivenessSummary(run))}
+										${field("Loop", run.loop_status?.summary || "none")}
+										${field("Review loop", loopStatusFacts(run.loop_status).map(([label, value]) => `${label}: ${value}`).join("; ") || "none")}
 										${field("Model", runModelSummary(run))}
 										${field("Child agent", childAgentDebugSummary(childAgentActivity(run)))}
 										${field("Context pressure", childAgentContextSummary(childAgentActivity(run)))}
