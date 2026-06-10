@@ -1,0 +1,61 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-ios-1-2026-153",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "release_pulse",
+  "priority": "normal",
+  "audience": "Codex mobile users and operators who coordinate Codex work from iOS",
+  "candidate_text": [
+    "Codex mobile update: ChatGPT for iOS 1.2026.153.\n\n- Better Windows-host attachment support\n- Skills/plugins inline in composer\n- Clearer side chat + queued prompts\n- UI polish for messages, tools, Face ID, archives\n\nSource: https://developers.openai.com/codex/changelog"
+  ],
+  "source_refs": {
+    "urls": [
+      "https://developers.openai.com/codex/changelog"
+    ]
+  },
+  "evidence_notes": [
+    "The official Codex changelog lists ChatGPT for iOS 1.2026.153 on 2026-06-09.",
+    "The changelog says attachment support on Windows hosts was improved.",
+    "The changelog says skills and plugins now appear directly inline in the composer.",
+    "The changelog says side chat and queued prompt visibility improved while a thread is running.",
+    "The changelog says message styling, navigation, tool activity, Face ID behavior, archived-thread browsing, and thread UI polish improved."
+  ],
+  "claims": [
+    {
+      "text": "ChatGPT for iOS 1.2026.153 is an official Codex mobile changelog checkpoint.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The iOS update improves attachment support on Windows hosts.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The iOS update shows skills and plugins inline in the composer.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The iOS update improves side chat, queued prompt visibility, Face ID behavior, archived-thread browsing, and related thread UI polish.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The official changelog has concrete mobile app changes that answer what changed, who can use it, and what source proves it.",
+    "idempotency_key": "x:decodexspace:codex-ios-1-2026-153:release_pulse"
+  },
+  "caveats": [
+    "This candidate is based only on the official Codex changelog; do not infer CLI, GitHub prerelease, or Decodex runtime behavior from it.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If media is useful, decodex-x-publisher should generate and verify a fresh candidate-specific decodex_signal_card and fail closed if upload or readback is unreliable."
+  ],
+  "next_steps": [
+    "Hand this publishable mobile release-pulse candidate to decodex-x-publisher.",
+    "Before posting, verify @decodexspace account state, daily cap, duplicate/idempotency state, pending publication PRs, and whether candidate-specific media adds reader value.",
+    "Do not publish from this release checkpoint automation."
+  ]
+}
