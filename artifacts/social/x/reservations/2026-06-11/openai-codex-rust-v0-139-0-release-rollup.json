@@ -34,7 +34,8 @@
   ],
   "owner": {
     "automation_id": "decodex-x-publisher",
-    "branch": "codex/x-publisher-rust-v0-139-0-20260611"
+    "branch": "codex/x-publisher-rust-v0-139-0-20260611",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/304"
   },
   "evidence_notes": [
     "Checked durable social_post/v1 records contain no published or blocked record for this idempotency key.",
