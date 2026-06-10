@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "release_rollup",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-rust-v0-139-0:stable138-stable139:release_rollup",
   "reserved_at": "2026-06-10T21:59:19Z",
   "expires_at": "2026-06-10T23:59:18Z",
@@ -37,6 +37,7 @@
     "branch": "codex/x-publisher-rust-v0-139-0-20260611",
     "pr_url": "https://github.com/hack-ink/decodex/pull/304"
   },
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-11/openai-codex-rust-v0-139-0-release-rollup.json",
   "evidence_notes": [
     "Checked durable social_post/v1 records contain no published or blocked record for this idempotency key.",
     "Checked durable social_publish_reservation/v1 records contain no active reservation for this idempotency key before this reservation.",
