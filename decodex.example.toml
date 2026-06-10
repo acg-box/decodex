@@ -10,10 +10,9 @@ token_env_var = "GITHUB_TOKEN"
 # command_path = "/opt/homebrew/bin/gh"
 
 # Optional Codex-specific runtime policy.
-# Omit this block to use `internal_review_mode = "loop"` and `external_review_enabled = true`.
+# Omit this block to use `review = "strict"`.
 [codex]
-external_review_enabled = true
-internal_review_mode    = "loop"
+review = "strict"
 # Phase-scoped app-server goals: "auto" falls back when unsupported, "required"
 # fails dispatch when goal methods are unavailable, and "off" disables them.
 goal_support = "auto"

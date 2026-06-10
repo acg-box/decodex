@@ -426,25 +426,24 @@ fn reconcile_post_review_orchestration_routes_non_clean_landing_to_agent_fallbac
 #[test]
 fn reconcile_post_review_orchestration_runs_admin_merge_without_external_review_when_disabled() {
 	assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_review(
-		InternalReviewMode::Loop,
+		ReviewLevel::Standard,
 	);
 }
 
 #[test]
-fn reconcile_post_review_orchestration_runs_admin_merge_in_prompt_internal_review_mode() {
+fn reconcile_post_review_orchestration_runs_admin_merge_in_basic_review_level() {
 	assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_review(
-		InternalReviewMode::Prompt,
+		ReviewLevel::Basic,
 	);
 }
 
 fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_review(
-	internal_review_mode: InternalReviewMode,
+	review_level: ReviewLevel,
 ) {
 	let (temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_internal_review_mode(&config, internal_review_mode);
-	let config = service_config_with_external_review_enabled(
+	let config = service_config_with_review_level(
 		&service_config_with_github_token_env_var(&config, "PATH"),
-		false,
+		review_level,
 	);
 	let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 	let repo_root = config.repo_root().to_path_buf();
@@ -524,12 +523,12 @@ fn assert_reconcile_post_review_orchestration_runs_admin_merge_without_external_
 }
 
 #[test]
-fn reconcile_post_review_orchestration_routes_internal_review_only_non_clean_landing_to_agent_fallback(
+fn reconcile_post_review_orchestration_routes_non_github_review_non_clean_landing_to_agent_fallback(
 ) {
 	let (temp_dir, config, workflow) = temp_project_layout();
-	let config = service_config_with_external_review_enabled(
+	let config = service_config_with_review_level(
 		&service_config_with_github_token_env_var(&config, "PATH"),
-		false,
+		ReviewLevel::Standard,
 	);
 	let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 	let repo_root = config.repo_root().to_path_buf();
@@ -581,7 +580,7 @@ fn reconcile_post_review_orchestration_routes_internal_review_only_non_clean_lan
 	assert_eq!(marker.phase(), "repair_required");
 	assert!(
 		!invocation_log_path.exists(),
-		"non-clean internal-review-only retained landing must not invoke runtime admin merge"
+		"non-clean non-GitHub-review retained landing must not invoke runtime admin merge"
 	);
 	assert!(tracker.comments.borrow().is_empty());
 	assert!(tracker.label_additions.borrow().is_empty());
