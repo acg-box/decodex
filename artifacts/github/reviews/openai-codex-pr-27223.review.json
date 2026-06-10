@@ -1,0 +1,59 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27223",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27223",
+    "commit_shas": [
+      "f0566d8a72018d542d5cd745825a478d4d21b401"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "fix: use plugin service route for remote uninstall",
+        "url": "https://github.com/openai/codex/pull/27223",
+        "meta": "Merged 2026-06-09T19:52:06Z"
+      },
+      {
+        "kind": "commit",
+        "title": "fix: use plugin service route for remote uninstall",
+        "url": "https://github.com/openai/codex/commit/f0566d8a72018d542d5cd745825a478d4d21b401"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-10T08:05:59Z",
+  "observed_change": "Codex remote plugin uninstall now posts to the plugin-service route under `/ps/plugins/{plugin_id}/uninstall` instead of `/plugins/{plugin_id}/uninstall`.",
+  "changed_surfaces": [
+    "remote plugin uninstall mutation route",
+    "app-server remote plugin uninstall request assertions",
+    "core plugin remote uninstall client"
+  ],
+  "user_visible_path": "App-server remote plugin uninstall requests should now reach the backend route expected by the plugin service, allowing remote uninstall state to update successfully.",
+  "control_plane_relevance": "High for Decodex remote plugin management because uninstall success depends on the upstream service route used by the Codex client.",
+  "compatibility_risk": "Low for app-server clients because the client-facing uninstall command is unchanged; the risk is mainly for code or tests that mirrored the old backend route directly.",
+  "adoption_opportunity": "Align any Decodex remote-plugin mocks, diagnostics, or backend-route assumptions with the `/ps/plugins/{plugin_id}/uninstall` route.",
+  "community_value": "Medium for remote plugin operators because it fixes a concrete uninstall failure path.",
+  "deprecated_or_breaking_notes": "The old backend mutation route is replaced in Codex client code and tests; no app-server client method removal was found.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27223 says remote plugin uninstall requests were sent to `/plugins/{plugin_id}/uninstall` but the plugin service expects `/ps/plugins/{plugin_id}/uninstall`.",
+    "codex-rs/core-plugins/src/remote.rs changes the uninstall URL format to `{base_url}/ps/plugins/{plugin_id}/uninstall`.",
+    "codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs updates mock expectations and request-count assertions to `/backend-api/ps/plugins/{REMOTE_PLUGIN_ID}/uninstall`.",
+    "The PR body reports production verification with a locally built app-server where uninstall succeeded and the follow-up plugin list showed `installed: false` and `enabled: false`.",
+    "The normalized bundle artifacts/github/bundles/openai-codex-pr-27223.json records the core remote client and app-server uninstall test changes for the merged PR."
+  ],
+  "caveats": "The source-backed behavior change is narrow: it fixes the backend route for uninstall and does not change the app-server public command shape.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Remote plugin management diagnostics and mocks should track the corrected plugin-service route."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The uninstall route fix has a concise operator-facing public angle."
+    }
+  ]
+}
