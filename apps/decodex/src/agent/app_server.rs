@@ -107,6 +107,10 @@ const APP_SERVER_SCHEMA_REQUIRED_MARKERS: &[&str] = &[
 	"mcpServerStatus/list",
 	"thread/start",
 	"thread/resume",
+	"thread/goal/set",
+	"thread/goal/get",
+	"thread/goal/clear",
+	"thread/goal/updated",
 	"turn/start",
 	"thread/archive",
 	"command/exec",
@@ -277,7 +281,7 @@ impl AppServerPhaseGoalFailure {
 	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
 		match self.kind {
 			AppServerPhaseGoalFailureKind::Unsupported { method } => format!(
-				"select a Codex app-server with `{method}` support or set `codex.goal_support = \"auto\"` or `\"off\"`, restart `decodex serve`, {recovery_gate}"
+				"select or upgrade to a Codex app-server that supports required phase-goal method `{method}`, confirm with `decodex probe stdio://`, restart `decodex serve`, {recovery_gate}"
 			),
 			AppServerPhaseGoalFailureKind::MissingTerminalPath { phase } => format!(
 				"inspect the retained lane after phase goal `{}` completed without a terminal Decodex path, finish validation/review/handoff or route manual attention, {recovery_gate}",
@@ -291,7 +295,10 @@ impl Display for AppServerPhaseGoalFailure {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
 		match self.kind {
 			AppServerPhaseGoalFailureKind::Unsupported { method } => {
-				write!(formatter, "Codex app-server goal method `{method}` is unavailable.")
+				write!(
+					formatter,
+					"Unsupported Codex app-server: required phase-goal method `{method}` is unavailable."
+				)
 			},
 			AppServerPhaseGoalFailureKind::MissingTerminalPath { phase } => write!(
 				formatter,
@@ -595,7 +602,6 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) dynamic_tool_handler: Option<&'a dyn DynamicToolHandler>,
 	pub(crate) continuation_guard: Option<&'a dyn TurnContinuationGuard>,
 	pub(crate) phase_goal_controller: Option<&'a dyn PhaseGoalController>,
-	pub(crate) phase_goal_required: bool,
 	pub(crate) codex_account_provider: Option<&'a dyn CodexAccountProvider>,
 }
 
@@ -1293,7 +1299,6 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 			dynamic_tool_handler: Some(&probe_tool_handler),
 			continuation_guard: None,
 			phase_goal_controller: None,
-			phase_goal_required: false,
 			codex_account_provider: None,
 		},
 		&state_store,
@@ -3506,20 +3511,7 @@ fn resolve_turn_completion(
 		};
 		let observed_goal = match observed_goal_result {
 			Ok(goal) => goal,
-			Err(error) if !request.phase_goal_required && app_server_method_not_found(&error) => {
-				record_phase_goal_unavailable(recorder, "thread/goal/get", &error)?;
-
-				*phase_goal_runtime = None;
-
-				return resolve_turn_completion_without_phase_goal(
-					request,
-					turn_count,
-					completion_status,
-					final_output,
-				)
-				.map(|result| result.map(|continuation_pending| (continuation_pending, None)));
-			},
-			Err(error) if request.phase_goal_required && app_server_method_not_found(&error) => {
+			Err(error) if app_server_method_not_found(&error) => {
 				return Err(Report::new(AppServerPhaseGoalFailure::unsupported("thread/goal/get"))
 					.wrap_err(error));
 			},
@@ -3631,12 +3623,7 @@ fn initialize_phase_goal_runtime<'a>(
 
 	match set_thread_phase_goal(client, recorder, thread_id, &active_goal) {
 		Ok(()) => Ok(Some(PhaseGoalRuntime { controller, active_goal })),
-		Err(error) if !request.phase_goal_required && app_server_method_not_found(&error) => {
-			record_phase_goal_unavailable(recorder, "thread/goal/set", &error)?;
-
-			Ok(None)
-		},
-		Err(error) if request.phase_goal_required && app_server_method_not_found(&error) =>
+		Err(error) if app_server_method_not_found(&error) =>
 			Err(Report::new(AppServerPhaseGoalFailure::unsupported("thread/goal/set"))
 				.wrap_err(error)),
 		Err(error) => Err(error),
@@ -3737,29 +3724,6 @@ fn record_phase_goal_completed(
 	});
 
 	record_phase_goal_private_event(recorder, "phase_goal_completed", phase, &payload)
-}
-
-fn record_phase_goal_unavailable(
-	recorder: &mut RunRecorder<'_>,
-	method: &'static str,
-	error: &Report,
-) -> crate::prelude::Result<()> {
-	recorder.state_store.append_private_execution_event(
-		recorder.project_id(),
-		recorder.issue_id(),
-		recorder.run_id,
-		recorder.attempt_number,
-		"phase_goal_unavailable",
-		serde_json::json!({
-			"schema": "decodex.phase_goal_signal/1",
-			"signal": "goal_unavailable",
-			"method": method,
-			"fallback": "no_goal",
-			"error": error.to_string(),
-		}),
-	)?;
-
-	Ok(())
 }
 
 fn record_phase_goal_private_event(
