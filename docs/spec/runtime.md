@@ -226,18 +226,19 @@ After each `app-server` turn completes, `decodex` must resolve one continuation 
 - invalid completion signaling
   - If the turn records both signals, or records one terminal path but fails to finalize it explicitly, the attempt is invalid and must fail rather than guessing a completion path.
 
-Phase-scoped Codex goals are an optional continuation helper inside this same
-bounded-turn model. When centralized project config enables `codex.goal_support`,
-Decodex may set one scoped goal for the active phase:
+Phase-scoped Codex goals are a mandatory continuation contract inside this same
+bounded-turn model for retained lane runs. Decodex sets one scoped goal for the
+active phase:
 
 - `implement_to_validation_ready`
 - `repair_validation_failures`
 - `repair_accepted_review_findings`
 - `handoff_evidence`
 
-`auto` goal support falls back to ordinary continuation if the selected app-server
-does not expose goal methods. `required` goal support fails fast through the
-human-required path when goal methods are missing. `off` disables goal calls.
+Missing required app-server goal methods fail fast through the human-required
+unsupported-app-server path. Decodex does not fall back to ordinary continuation
+without a phase goal, and project config does not expose a mode to disable the goal
+contract.
 
 After a turn completes with an active phase goal, Decodex reads the goal status and
 uses it only as a phase signal:
@@ -515,7 +516,7 @@ mutations, or duplicate comment for that logical event.
 
 The local runtime store is the global Decodex SQLite database for one local installation. It lives at `~/.codex/decodex/runtime.sqlite3`, not inside any registered project checkout or worktree. Every row that belongs to a repo is scoped by `project_id`. Decodex logs live beside that database under `~/.codex/decodex/logs/`, the optional shared Codex account pool lives at `~/.codex/decodex/accounts.jsonl`, global operator config lives at `~/.codex/decodex/config.toml`, bounded local account usage estimates live at `~/.codex/decodex/account-usage-history.jsonl`, and agent-readable derived evidence lives under `~/.codex/decodex/agent-evidence/<service-id>/`; vendor-qualified app-data directories and per-project runtime databases are not part of the runtime contract. Global operator config owns account-pool routing and shared account display-name offsets. Account usage history owns local seven-day display estimates and non-secret account capacity weights only; it does not contain token material and does not decide scheduling. UI-only preferences such as theme, table sorting, and local privacy visibility are not runtime state.
 
-Project contracts live outside registered repositories under `~/.codex/decodex/projects/<service-id>/`. Each project directory must contain `project.toml` and `WORKFLOW.md`; arbitrary project file names such as `<service-id>.toml` are not part of the contract. `project.toml` must set `[paths].repo_root` so the project contract is explicit. The `[github]` table owns the routed token environment variable and may also set `command_path` when the expected `gh` binary should be explicit for GUI-launched runs. The `[codex]` table owns app-server-adjacent runtime policy such as `review` and `goal_support`. `review` accepts `"off"`, `"basic"`, `"standard"`, and `"strict"` and defaults to `"strict"` when omitted. `goal_support` accepts `"auto"`, `"required"`, and `"off"` and defaults to `"auto"` when omitted. Project registration stores the centralized `config_path`, target `repo_root`, `worktree_root`, and workflow path in the global runtime database. Commands that start inside a registered checkout or lane worktree resolve the project through that registry; they do not discover or trust worktree-local config files. Project config refreshes preserve an existing enabled or disabled registry toggle; only explicit operator commands such as `decodex project add <project-dir>`, `decodex project enable <service-id>`, and `decodex project disable <service-id>` may change that toggle. `decodex serve` schedules and polls enabled registered projects from the global runtime database; the operator and App projections must still expose active runtime DB-backed attempts for disabled projects because pause is a future-dispatch control, not a visibility or ownership deletion. It must not scan `.codex` history, repo-local config files, or currently open worktrees to infer additional projects.
+Project contracts live outside registered repositories under `~/.codex/decodex/projects/<service-id>/`. Each project directory must contain `project.toml` and `WORKFLOW.md`; arbitrary project file names such as `<service-id>.toml` are not part of the contract. `project.toml` must set `[paths].repo_root` so the project contract is explicit. The `[github]` table owns the routed token environment variable and may also set `command_path` when the expected `gh` binary should be explicit for GUI-launched runs. The `[codex]` table owns app-server-adjacent runtime policy such as `review`. `review` accepts `"off"`, `"basic"`, `"standard"`, and `"strict"` and defaults to `"strict"` when omitted. Phase-scoped goal support is mandatory and is not project-configurable. Project registration stores the centralized `config_path`, target `repo_root`, `worktree_root`, and workflow path in the global runtime database. Commands that start inside a registered checkout or lane worktree resolve the project through that registry; they do not discover or trust worktree-local config files. Project config refreshes preserve an existing enabled or disabled registry toggle; only explicit operator commands such as `decodex project add <project-dir>`, `decodex project enable <service-id>`, and `decodex project disable <service-id>` may change that toggle. `decodex serve` schedules and polls enabled registered projects from the global runtime database; the operator and App projections must still expose active runtime DB-backed attempts for disabled projects because pause is a future-dispatch control, not a visibility or ownership deletion. It must not scan `.codex` history, repo-local config files, or currently open worktrees to infer additional projects.
 
 `project.toml` may also configure `[privacy_classifier]` with a loopback HTTP
 `endpoint` and bounded `timeout_ms` for an operator-managed local classifier runtime.

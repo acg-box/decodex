@@ -64,18 +64,13 @@ Support evidence has two distinct layers:
 `decodex probe stdio://` reports the probe result with `preflight_checks`, `thread`,
 `turn`, `events`, and `output`. A passing probe must include `output=PROBE_OK`.
 
-Phase-scoped goal support is optional and capability-gated. App-server surfaces that
-support goals may expose `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`,
-and `thread/goal/updated`. These methods and events are not part of the required MVP
-preflight because older app-server builds may omit them. Normal dispatch detects goal
-support by attempting the goal methods for a configured phase-goal lane:
-
-- `codex.goal_support = "auto"` attempts goal support and records
-  `phase_goal_unavailable` private evidence before falling back to ordinary Decodex
-  continuation when a goal method is missing.
-- `codex.goal_support = "required"` treats missing goal methods as an app-server
-  phase-goal failure and routes the lane to the human-required path.
-- `codex.goal_support = "off"` does not call goal methods.
+Phase-scoped goal support is mandatory and capability-gated for retained lane
+execution. App-server surfaces must expose `thread/goal/set`, `thread/goal/get`,
+`thread/goal/clear`, and `thread/goal/updated`. Decodex rejects old or incompatible
+app-server builds that lack these methods with a typed unsupported-app-server blocker.
+It must not fall back to ordinary continuation, and it must not reject newer, beta,
+alpha, or unknown app-server versions solely because of the version string when the
+required goal methods work.
 
 Goal events are phase signals only. A `complete` goal status triggers Decodex-owned
 validation or handoff policy; it never satisfies terminal issue completion by itself.
@@ -87,8 +82,9 @@ To validate an upstream app-server protocol change:
    target/decodex-app-server-schema-check`.
 3. Confirm the generated schema contains every required marker in this spec:
    `initialize`, `thread/start`, `thread/resume`, `turn/start`, `thread/archive`,
-   `command/exec`, bounded preflight methods, `item/tool/call`, dynamic tool
-   `namespace`, dynamic tool `deferLoading`, `inputText`, and
+   `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`,
+   `thread/goal/updated`, `command/exec`, bounded preflight methods,
+   `item/tool/call`, dynamic tool `namespace`, dynamic tool `deferLoading`, `inputText`, and
    `PluginListParams.marketplaceKinds`.
 4. Run `decodex probe stdio://` and require `PROBE_OK`.
 5. Update this spec or the runtime preflight only when the protocol shape or required
@@ -120,24 +116,23 @@ To validate an upstream app-server protocol change:
   - `command/exec` for bounded app-server health checks only
   - `thread/start`
   - `thread/resume` when retrying a persisted same-thread continuation
+  - `thread/goal/set`
+  - `thread/goal/get`
+  - `thread/goal/clear`
   - `turn/start`
   - `thread/archive` after successful completion writeback, for every locally
     recorded terminal attempt thread on the issue that has not already recorded a
     successful archive event
-- Optional phase-goal requests:
-  - `thread/goal/set`
-  - `thread/goal/get`
-  - `thread/goal/clear`
 - Required notifications for the MVP:
   - `thread/started`
   - `thread/status/changed`
+  - `thread/goal/updated`
   - `turn/started`
   - `turn/completed`
 
 Additional notifications may be recorded opportunistically for diagnostics.
-When available, `thread/goal/updated` is recorded as local protocol activity and may
-summarize the active phase and status for operator readback. It is not a public
-tracker signal.
+`thread/goal/updated` is recorded as local protocol activity and may summarize the
+active phase and status for operator readback. It is not a public tracker signal.
 
 The follow-up alignment phase should also record tool-related requests and notifications needed for issue-scoped tracker writes.
 
@@ -174,16 +169,15 @@ app-server connection for active turns.
 4. When `[codex.accounts]` is enabled, select a shared ChatGPT account and send
    `account/login/start` with `chatgptAuthTokens`.
 5. Send `thread/start`.
-6. If phase-scoped goals are enabled for the project and the controller has a phase
-   goal for this run, send `thread/goal/set`.
+6. Send `thread/goal/set` with the controller-owned phase goal for the run.
 7. Send `turn/start`.
 8. Consume notifications until that turn reaches a terminal outcome.
-9. If a phase goal is active, send `thread/goal/get` after the turn completes. If the
-   goal status is `complete`, Decodex runs the next owned phase transition such as
-   repository validation, validation repair, review repair, or handoff evidence. If
-   the goal remains active and bounded continuation is allowed, Decodex may start
-   another turn on the same thread. If the goal method is missing in `auto` mode,
-   Decodex records the fallback and resumes ordinary continuation classification.
+9. Send `thread/goal/get` after the turn completes. If the goal status is `complete`,
+   Decodex runs the next owned phase transition such as repository validation,
+   validation repair, review repair, or handoff evidence. If the goal remains active
+   and bounded continuation is allowed, Decodex may start another turn on the same
+   thread. If a required goal method is missing, Decodex fails the run with the typed
+   unsupported-app-server reason instead of continuing without a goal.
 10. If the project-owned continuation policy allows another same-thread turn, send
    another `turn/start` on the same thread.
 11. Persist the local run journal and classify the bounded run result.
@@ -313,9 +307,9 @@ Methods:
 - `thread/goal/get`
 - `thread/goal/clear`
 
-These methods are optional. Decodex only calls them when centralized project config
-enables `codex.goal_support` and a phase-goal controller has a scoped goal for the
-run.
+These methods are required for retained lane execution. Decodex calls them when a
+phase-goal controller has a scoped goal for the run and treats missing methods as an
+unsupported app-server capability failure.
 
 `thread/goal/set` request fields:
 
