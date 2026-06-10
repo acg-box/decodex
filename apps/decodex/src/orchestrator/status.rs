@@ -2355,6 +2355,13 @@ where
 	};
 	let attention_next_action =
 		attention_record.as_ref().and_then(|record| record.next_action.clone());
+	let decision_request = operator_queued_issue_decision_request_status(
+		project,
+		state_store,
+		issue,
+		attention_record.as_ref(),
+		marker.as_ref(),
+	)?;
 	let attempt_status = marker
 		.as_ref()
 		.and_then(|marker| state_store.run_attempt(marker.run_id()).transpose())
@@ -2373,6 +2380,7 @@ where
 
 	Ok(Some(OperatorQueuedIssueAttentionStatus {
 		summary,
+		decision_request,
 		run_id: marker.as_ref().map(|marker| marker.run_id().to_owned()),
 		attempt_number: marker.as_ref().map(RunActivityMarker::attempt_number),
 		current_operation: marker
@@ -2409,6 +2417,73 @@ where
 			.then(|| relative_worktree_path_for_path(project, &worktree_path)),
 		worktree_has_tracked_changes,
 	}))
+}
+
+fn operator_queued_issue_decision_request_status(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+	attention_record: Option<&LinearExecutionEventRecord>,
+	marker: Option<&RunActivityMarker>,
+) -> crate::prelude::Result<Option<OperatorAuthorityDecisionRequestStatus>> {
+	let run_id = attention_record
+		.map(|record| record.run_id.as_str())
+		.or_else(|| marker.map(RunActivityMarker::run_id));
+	let attempt_number = attention_record
+		.map(|record| record.attempt_number)
+		.or_else(|| marker.map(RunActivityMarker::attempt_number));
+	let (Some(run_id), Some(attempt_number)) = (run_id, attempt_number) else {
+		return Ok(None);
+	};
+	let events = state_store.list_private_execution_events(
+		project.service_id(),
+		&issue.id,
+		run_id,
+		attempt_number,
+	)?;
+
+	Ok(events
+		.iter()
+		.rev()
+		.find(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
+		.and_then(operator_authority_decision_request_status_from_event))
+}
+
+fn operator_authority_decision_request_status_from_event(
+	event: &PrivateExecutionEvent,
+) -> Option<OperatorAuthorityDecisionRequestStatus> {
+	let payload = event.payload();
+	let decision_request_id = payload.get("decision_request_id")?.as_str()?.to_owned();
+	let reason = payload.get("reason")?.as_str()?.to_owned();
+	let boundary = payload.get("boundary")?.as_str()?.to_owned();
+	let phase = payload
+		.get("phase")
+		.and_then(Value::as_str)
+		.unwrap_or("human_required")
+		.to_owned();
+	let next_action = payload
+		.get("next_action")
+		.or_else(|| payload.get("resume_condition"))?
+		.as_str()?
+		.to_owned();
+	let recommendation = payload
+		.get("recommendation")
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let resume_condition = payload
+		.get("resume_condition")
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+
+	Some(OperatorAuthorityDecisionRequestStatus {
+		phase,
+		reason,
+		boundary,
+		decision_request_id,
+		next_action,
+		recommendation,
+		resume_condition,
+	})
 }
 
 fn operator_queued_issue_private_evidence_missing(
@@ -5850,6 +5925,17 @@ fn append_rendered_queued_issue(
 			attention.worktree_path.as_deref().unwrap_or("none"),
 			attention.last_activity_at.as_deref().unwrap_or("none"),
 		));
+
+		if let Some(decision_request) = attention.decision_request.as_ref() {
+			output.push_str(&format!(
+				"  decision_request_phase: {}\n  decision_request_reason: {}\n  decision_request_boundary: {}\n  decision_request_id: {}\n  decision_request_next_action: {}\n",
+				decision_request.phase,
+				decision_request.reason,
+				decision_request.boundary,
+				decision_request.decision_request_id,
+				decision_request.next_action
+			));
+		}
 	}
 }
 
