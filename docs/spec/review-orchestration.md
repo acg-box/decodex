@@ -268,8 +268,13 @@ does not dispatch research automatically.
 
 Current required behavior:
 
-- `needs_architecture_review`, `blocked`, and convergence-budget exhaustion still
-  terminate through `manual_intervention_required`.
+- `needs_architecture_review` and `blocked` terminate through
+  `manual_intervention_required`.
+- Convergence-budget exhaustion for repeated accepted findings is normalized as
+  `review_churn`. It stops the current repair strategy and may continue only through
+  autonomous architecture recovery when the Authority Boundary Check is
+  `within_authority` and recovery budget remains. Otherwise it terminates through
+  `manual_intervention_required`.
 - The terminal failure path must preserve the normalized review-stop class instead of
   collapsing it into a generic retry failure:
   - `architecture_review_required`

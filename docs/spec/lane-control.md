@@ -213,15 +213,22 @@ the next lane action from authoritative signals. It is also the correct route wh
 requested control would overwrite useful partial work, hide a blocker, or require
 guessing human intent.
 
-Loop guardrail outcomes are manual-attention stop reasons, not active-lane controls.
+Loop guardrail outcomes are not active-lane controls. They first stop the current
+ineffective strategy. Engineering convergence reasons such as `validation_repeat`,
+`no_effective_diff`, `remaining_delta_unchanged`, or `review_churn` may then enter
+autonomous architecture recovery only after an Architecture Recovery Packet and
+Authority Boundary Check prove the next strategy is inside the Authority Envelope and
+recovery budget remains. Boundary, dependency, uncovered-direction, ownership, and
+exhausted-recovery outcomes become manual-attention stops.
+
 When status or failure writeback reports `validation_repeat`, `no_effective_diff`,
 `remaining_delta_unchanged`, `review_churn`, `dependency_program_stale`,
 `uncovered_direction`, or `ambiguous_retained_progress`, operators must inspect the
-retained worktree, private evidence, blocker state, or review findings named by that
-reason before clearing `decodex:needs-attention`. Do not use steer, retry, label
-cleanup, or hard interrupt to bypass the guardrail without changing the underlying
-repair strategy, dependency readiness, research contract, or retained-progress
-ownership decision.
+retained worktree, private evidence, blocker state, recovery packet, boundary check,
+or review findings named by that reason before clearing `decodex:needs-attention`.
+Do not use steer, retry, label cleanup, or hard interrupt to bypass the guardrail
+without changing the underlying repair strategy, dependency readiness, research
+contract, authority decision, or retained-progress ownership decision.
 
 Agents must not simulate manual attention by editing tracker state directly. The valid
 agent path is:
