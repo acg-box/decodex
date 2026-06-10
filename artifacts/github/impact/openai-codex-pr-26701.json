@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26701",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "TUI Plugin Sharing 1 - add remote plugin identity",
+        "url": "https://github.com/openai/codex/pull/26701",
+        "meta": "Merged 2026-06-09T23:34:39Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26701",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26701.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex TUI plugin popups now carry a `PluginLocation` that can address either a local marketplace path or a remote marketplace name, letting remote plugin detail, install, and uninstall actions use remote plugin identity while preserving local plugin flows.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "candidate",
+  "publisher_angle": "practical_explainer",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records `PluginLocation::Local` and `PluginLocation::Remote` as the new TUI plugin identity branch.",
+    "Plugin install background events now pass `PluginLocation` instead of only a local marketplace path.",
+    "Plugin popup handling adds remote source, remote plugin ID, availability, detail, install, and uninstall behavior.",
+    "TUI tests cover remote rows, remote details, remote install/uninstall, and admin-disabled plugin affordances."
+  ],
+  "candidate_followups": [
+    "Represent remote plugin IDs and marketplace names distinctly from local marketplace paths in Decodex operator views.",
+    "Check install/uninstall readback for remote plugins before assuming a path-backed local plugin model.",
+    "Preserve the source caveat that this PR is identity and popup routing, not complete share-management UI."
+  ],
+  "social_notes": [
+    "Public copy should frame this as the first TUI remote-plugin identity path.",
+    "Mention that local plugin paths still work.",
+    "Avoid claiming end-to-end plugin sharing management or account policy controls."
+  ],
+  "caveats": [
+    "The PR intentionally avoids adding share-management UI.",
+    "Remote plugin policy remains constrained by server-side availability and admin-disabled states."
+  ]
+}

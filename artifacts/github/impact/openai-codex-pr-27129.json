@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27129",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "feat: use provider defaults for memory models",
+        "url": "https://github.com/openai/codex/pull/27129",
+        "meta": "Merged 2026-06-09T23:49:09Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27129",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27129.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex memory extraction and consolidation now resolve their default model names through the active `ModelProvider`, with Amazon Bedrock overriding both memory stages to use its provider-specific `openai.gpt-5.4` model ID while explicit memory model config still takes precedence.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "watch",
+  "publisher_angle": "practical_explainer",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records provider-owned default hooks for memory extraction and consolidation model names.",
+    "Memory phase 1 now falls back to `memory_extraction_preferred_model()` when `memories.extract_model` is unset.",
+    "Memory phase 2 passes the active provider into consolidation agent config selection.",
+    "Amazon Bedrock overrides both memory defaults to use its provider-specific `openai.gpt-5.4` model ID while explicit config overrides remain authoritative."
+  ],
+  "candidate_followups": [
+    "Use provider-owned default hooks for Decodex background tasks that choose model names outside direct user prompts.",
+    "Track Bedrock and other provider-specific model IDs separately from OpenAI-compatible slugs in operator explanations.",
+    "Keep explicit user config overrides higher priority than provider defaults."
+  ],
+  "social_notes": [
+    "Public copy should explain that memory startup defaults are now provider-aware.",
+    "Mention Bedrock as the concrete source-backed example.",
+    "Avoid claiming every provider has a custom memory model override."
+  ],
+  "caveats": [
+    "The PR confirms Bedrock and default OpenAI-compatible hooks only.",
+    "Explicit memory model config remains the highest-priority selection path."
+  ]
+}

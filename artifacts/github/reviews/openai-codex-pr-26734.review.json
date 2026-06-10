@@ -1,0 +1,76 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26734",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26734",
+    "commit_shas": [
+      "b564da44fb798e9e8e5c89ff912ab72a70a2ba9c",
+      "5b5caa9431c818837eadc6d01cdd64e3b597ce9d",
+      "83c0b87e952501c98f96957c3df2b2efa45352f7",
+      "9ff7581214ba17137fd351893766e6be3612ff05",
+      "e605b381502ef535c95f6e57798cc78a08703912",
+      "eb4878b26439e36e1446fc72da6a8b25b495bfd1"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Handle Ctrl-C for non-TTY unified exec",
+        "url": "https://github.com/openai/codex/pull/26734",
+        "meta": "Merged 2026-06-09T22:10:18Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Handle Ctrl-C for non-TTY unified exec",
+        "url": "https://github.com/openai/codex/commit/b564da44fb798e9e8e5c89ff912ab72a70a2ba9c"
+      },
+      {
+        "kind": "commit",
+        "title": "Report SIGINT exit code for unified exec",
+        "url": "https://github.com/openai/codex/commit/9ff7581214ba17137fd351893766e6be3612ff05"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-10T20:07:16Z",
+  "observed_change": "Codex unified exec now maps a non-TTY `write_stdin` Ctrl-C payload to a real process interrupt through a new exec-server `process/signal` method, then drains process output and exit metadata instead of rejecting stdin as closed.",
+  "changed_surfaces": [
+    "unified exec `write_stdin` handling for non-TTY sessions",
+    "exec-server `process/signal` JSON-RPC protocol and `ProcessSignal::Interrupt` type",
+    "local and remote exec process signal dispatch",
+    "Unix process-group SIGINT support and signal-derived exit-code reporting",
+    "exec-server and unified-exec interrupt tests"
+  ],
+  "user_visible_path": "Codex clients that keep a long-running non-TTY unified exec session can send U+0003 through `write_stdin` to interrupt the process and still receive process-produced output plus the observed exit code, including 130 for the default SIGINT path or a trap-defined exit.",
+  "control_plane_relevance": "High for Decodex Control Plane and any app-server or exec-server adapter that models process interruption, because non-TTY Ctrl-C now depends on a protocol-level signal path rather than a stdin write or hard termination fallback.",
+  "compatibility_risk": "Medium for mixed-version or third-party exec-server implementations that do not implement `process/signal`; those hosts may report unsupported interrupts instead of delivering SIGINT, and non-TTY Ctrl-C semantics change from `StdinClosed` or termination to process-observed interruption.",
+  "adoption_opportunity": "Teach Decodex process-control probes and operator UI to distinguish graceful interrupt, unsupported interrupt, terminate, and hard-kill paths for non-TTY background commands.",
+  "community_value": "High for Codex users running long-lived non-TTY commands because Ctrl-C can now behave like an actual process interrupt while preserving output and exit metadata.",
+  "deprecated_or_breaking_notes": "No API removal is visible, but `process/signal` is a new exec-server method and non-TTY U+0003 no longer follows the old closed-stdin behavior.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26734 states that non-TTY U+0003 `write_stdin` should route through `process.signal(...)` and then let normal collection drain output and observe process exit.",
+    "`codex-rs/exec-server/src/protocol.rs` adds the `process/signal` method, `ProcessSignal::Interrupt`, `SignalParams`, and `SignalResponse`.",
+    "`codex-rs/exec-server/src/process.rs`, `local_process.rs`, and `remote_process.rs` add signal dispatch to the exec-process abstraction.",
+    "`codex-rs/utils/pty/src/process_group.rs`, `pipe.rs`, and `pty.rs` add process-group SIGINT support and signal-derived exit-code handling.",
+    "`codex-rs/core/tests/suite/unified_exec.rs` adds coverage for trap-handled Ctrl-C exit 42 and default SIGINT exit 130 in non-TTY sessions.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-26734.json` records 19 changed files for the merged PR."
+  ],
+  "caveats": "The bundle confirms Unix process-group interrupt support and unsupported-signal reporting for other backends; downstream clients still need current exec-server support before relying on `process/signal`.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The new signal protocol and non-TTY interrupt semantics affect Control Plane process-control assumptions."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The change has a clear public operator angle for long-running command interruption."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should audit non-TTY interrupt, unsupported interrupt, terminate, and hard-kill handling against the new Codex behavior."
+    }
+  ]
+}
