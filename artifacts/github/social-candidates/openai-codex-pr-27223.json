@@ -1,0 +1,53 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27223",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "normal",
+  "audience": "Codex remote plugin operators",
+  "candidate_text": [
+    "Codex remote plugin uninstall now targets the plugin service route `/ps/plugins/{id}/uninstall`, matching backend expectations and app-server tests. PR: https://github.com/openai/codex/pull/27223"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27223.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27223.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27223"
+    ]
+  },
+  "evidence_notes": [
+    "The remote uninstall client now posts to `/ps/plugins/{plugin_id}/uninstall`.",
+    "App-server uninstall tests assert the corrected backend route.",
+    "The PR body reports production verification of uninstall success.",
+    "The app-server client-facing uninstall command shape is unchanged."
+  ],
+  "claims": [
+    {
+      "text": "Remote plugin uninstall now uses the plugin-service backend route.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27223.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The app-server public uninstall command shape is unchanged.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27223.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR fixes a concrete remote plugin uninstall path operators may hit.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27223:operator_impact"
+  },
+  "caveats": [
+    "This is a backend-route fix, not a new app-server client command."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate."
+  ]
+}

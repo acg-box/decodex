@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27191",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex MCP, plugin, and app-server operators",
+  "candidate_text": [
+    "Codex is routing hosted Apps MCP through extension contributions: app-server installs `codex-mcp-extension`, resolves runtime/effective MCP views, and keeps ChatGPT auth gating for `codex_apps`. PR: https://github.com/openai/codex/pull/27191"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27191.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27191.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27191"
+    ]
+  },
+  "evidence_notes": [
+    "`McpServerContributor` adds extension-owned set/remove overlays for MCP server config.",
+    "App-server installs `codex_mcp_extension` and uses runtime/effective MCP views.",
+    "The hosted Apps MCP contribution remains Apps and ChatGPT-auth gated.",
+    "Tests cover contribution without an executor, auth gating, and Apps-disabled removal."
+  ],
+  "claims": [
+    {
+      "text": "Hosted Apps MCP is now contributed through the extension model in app-server.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27191.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "App-server MCP APIs now distinguish configured, runtime, and effective server views.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27191.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR changes a concrete hosted MCP/app-server operator path and carries Control Plane compatibility risk.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27191:operator_impact"
+  },
+  "caveats": [
+    "This PR does not introduce a generic plugin activation framework.",
+    "Generic manifest-declared stdio MCP activation is left to a later vertical."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate."
+  ]
+}
