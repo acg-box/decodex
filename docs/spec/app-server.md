@@ -215,7 +215,7 @@ When dynamic tools are enabled, `decodex` must also:
 2. Answer `item/tool/call` requests with `DynamicToolCallResponse`.
 3. Serialize dynamic tool output items with schema-approved `type` values such as `inputText`.
 4. Keep every `dynamicTools[].name` and populated `dynamicTools[].namespace` within the app-server identifier pattern `^[a-zA-Z0-9_-]+$`.
-5. Validate incoming `item/tool/call` thread, turn, tool-name, namespace, and response shape before treating the request as handled.
+5. Validate incoming `item/tool/call` thread, tool-name, namespace, and response shape before treating the request as handled. Dynamic tool request `turnId` is diagnostic context only: the app-server may emit a request-scoped turn id that differs from the active `turn/start` id, so Decodex records mismatches but keeps the authorization boundary on the active thread and declared tool surface.
 
 The client-side dynamic bridge may expose narrow Decodex-owned tools that are local to one run attempt, such as the deferred `decodex.decodex_run_context` tool. These tools must stay small and side-effect-bounded so they can move to a process-local MCP server if the surface expands. Broader stateful or cross-service tool families remain MCP candidates rather than reasons to grow the client bridge indefinitely.
 
