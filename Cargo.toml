@@ -10,7 +10,7 @@ edition     = "2024"
 homepage    = "https://decodex.space"
 license     = "GPL-3.0"
 repository  = "https://github.com/hack-ink/decodex"
-version     = "0.1.0"
+version     = "0.2.0"
 
 [workspace.dependencies]
 base64             = { version = "0.22" }
