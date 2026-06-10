@@ -67,9 +67,9 @@ belongs to the operator environment, not this source-lane migration.
 After code or checked-in docs change, run:
 
 ```sh
-cargo test -p decodex review --all-features
-cargo test -p decodex config --all-features
-cargo test -p decodex run_and_prompting --all-features
+cargo test -p decodex review --all-features -- --test-threads=1
+cargo test -p decodex config --all-features -- --test-threads=1
+cargo test -p decodex normal_prompts --all-features -- --test-threads=1
 cargo make fmt
 cargo make lint-fix
 cargo make test
