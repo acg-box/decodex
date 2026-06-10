@@ -156,6 +156,13 @@ The readback includes:
 - event count, latest event type, and latest event timestamp
 - compact event rows with record id, event type, recorded timestamp, and payload
   summaries
+- Authority Boundary Check summaries when `authority_boundary_check` events are
+  present. Default readback may expose the event type, payload keys, disposition
+  previews, and sanitized improvement candidates, but not raw changed-surface payloads
+  unless `--include-payload` is explicitly requested.
+- harness improvement candidates derived from `decodex.harness_outcome/1` events or,
+  when no harness outcome has been recorded yet, directly from private validation,
+  review, guardrail, and authority-boundary signals
 - `private_execution_evidence_missing` when the selected run is known but has no
   private execution events
 
@@ -164,6 +171,11 @@ log, token, and secret-shaped payload keys. Operators may pass `--include-payloa
 for full structured local payloads when a repair requires them. This flag still
 reads from the local runtime store only; it must not mirror payloads into Linear,
 GitHub, or agent-evidence files.
+
+Authority Boundary Check candidates are advisory harness feedback. They may recommend
+Decision Contract, issue-template, validator, prompt, or readiness-model hardening
+when recovery evidence shows underspecified authority. They do not change queue
+eligibility, accepted Decision Contracts, or project policy by themselves.
 
 ## Event Stream
 
