@@ -1,0 +1,47 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27198",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Use plugin-service MCP as the hosted plugin runtime",
+        "url": "https://github.com/openai/codex/pull/27198",
+        "meta": "Merged 2026-06-10T10:54:21Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27198",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27198.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex now resolves the hosted `codex_apps` MCP runtime through an extension-owned `/ps/mcp` plugin-service route, removes the temporary `apps_mcp_path_override` plumbing, and exposes hosted skills as MCP resources on the same streamable HTTP connection as connector tools.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records the route change from `/api/codex/apps` to `/api/codex/ps/mcp` in app-server MCP fixtures.",
+    "`McpConfig` no longer carries `apps_mcp_path_override`, and removed compatibility forms are ignored during effective feature resolution.",
+    "The MCP extension contributes the reserved `codex_apps` server through `hosted_plugin_runtime_mcp_server_config`.",
+    "Hosted skills are exercised through MCP resource list/read paths while connector actions remain MCP tools."
+  ],
+  "candidate_followups": [
+    "Audit Decodex hosted-plugin probes and fixtures for legacy `/apps` endpoint or path-override assumptions.",
+    "Prefer MCP resource list/read paths for backend-provided hosted skills when evaluating hosted plugin support.",
+    "Retain fallback expectations for hosts that do not install the MCP extension and for non-ChatGPT auth states that remove `codex_apps`."
+  ],
+  "social_notes": [
+    "Public copy should frame this as a hosted plugin runtime routing and architecture change, not as a new backend service launch.",
+    "Mention that `apps_mcp_path_override` is removed from effective config, while old forms deserialize only for compatibility.",
+    "Avoid claiming thread-local backend plugin selection; the PR explicitly leaves backend plugin enablement account/workspace-owned."
+  ],
+  "caveats": [
+    "Backend plugin enablement remains owned by hosted account or workspace state.",
+    "Hosts without the MCP extension retain the legacy Apps endpoint behavior.",
+    "The removed path override is accepted only as ignored compatibility input."
+  ]
+}
