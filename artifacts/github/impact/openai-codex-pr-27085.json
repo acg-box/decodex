@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27085",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Use server app auth requirements for remote plugin install",
+        "url": "https://github.com/openai/codex/pull/27085",
+        "meta": "Merged 2026-06-09T04:39:35Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27085",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27085.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex remote plugin install now asks the plugin service for app IDs requiring authentication and returns those IDs through the app-server install response.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "candidate",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records `includeAppsNeedingAuth=true` in the install request path.",
+    "Remote install now parses optional backend `app_ids_needing_auth` into a `RemotePluginInstallResult`.",
+    "App-server plugin install uses backend app IDs to populate `appsNeedingAuth` while retaining fallback behavior.",
+    "App-server tests cover install responses that use remote apps-needing-auth metadata."
+  ],
+  "candidate_followups": [
+    "Prefer server-provided app IDs when Decodex guides post-install plugin auth prompts.",
+    "Keep fallback handling for older backend responses that omit `app_ids_needing_auth`.",
+    "Avoid redundant accessible-app refetches when install response metadata is already present."
+  ],
+  "social_notes": [
+    "Public copy should frame this as more direct post-install auth guidance for remote plugins.",
+    "Do not claim that every remote plugin install will need auth; the field is backend-provided and optional."
+  ],
+  "caveats": [
+    "The backend field may be absent for older responses.",
+    "The source review confirms Codex client handling, not every production backend rollout detail."
+  ]
+}

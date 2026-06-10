@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27191",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Route hosted Apps MCP through extensions",
+        "url": "https://github.com/openai/codex/pull/27191",
+        "meta": "Merged 2026-06-09T20:44:16Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27191",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27191.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex app-server now installs a hosted Apps MCP extension and resolves MCP APIs through runtime and effective MCP views instead of relying only on configured servers or the legacy Apps loader.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records a new `McpServerContributor` contract and hosted Apps MCP extension.",
+    "App-server installs `codex_mcp_extension` and uses runtime/effective MCP views across refresh, status, connector, resource, OAuth, and thread-start paths.",
+    "The hosted Apps MCP contribution is gated by Apps and ChatGPT auth, and hosts without the extension retain the legacy loader.",
+    "Tests cover hosted Apps MCP contribution without an executor, auth gating, and Apps-disabled removal."
+  ],
+  "candidate_followups": [
+    "Audit Decodex Control Plane code for assumptions that configured MCP servers equal runtime-visible MCP servers.",
+    "Treat extension-contributed MCP servers as first-class app-server state in status, refresh, OAuth, and connector readback.",
+    "Keep legacy Apps MCP fallback assumptions scoped to hosts that do not install the MCP extension."
+  ],
+  "social_notes": [
+    "Public copy should emphasize the runtime/effective MCP view split and hosted Apps MCP extension path.",
+    "Avoid implying that this PR ships a generic plugin activation framework; the PR explicitly says that is a follow-up."
+  ],
+  "caveats": [
+    "The change is one vertical in an external-plugins stack.",
+    "Generic manifest-declared stdio MCP activation remains a future vertical."
+  ]
+}
