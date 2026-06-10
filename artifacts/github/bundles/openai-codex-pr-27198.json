@@ -1,0 +1,259 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T15:04:42Z",
+      "message": "Use plugin-service MCP as hosted plugin runtime",
+      "sha": "c86af903969cdfa1fbeba67fbd454710f0d53de2",
+      "url": "https://github.com/openai/codex/commit/c86af903969cdfa1fbeba67fbd454710f0d53de2"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T16:03:04Z",
+      "message": "nit fix",
+      "sha": "fa313ba390f5372cd7dfa2e2a05b890f93b9b3a1",
+      "url": "https://github.com/openai/codex/commit/fa313ba390f5372cd7dfa2e2a05b890f93b9b3a1"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-09T21:13:57Z",
+      "message": "Regenerate config schema for removed Apps flag",
+      "sha": "19a14a08106a029b63c08e0a930c2c3bd769183b",
+      "url": "https://github.com/openai/codex/commit/19a14a08106a029b63c08e0a930c2c3bd769183b"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-10T10:38:13Z",
+      "message": "nits",
+      "sha": "e7ea9109a9e343fd1cc6a62d4c50d2d7b9cf1660",
+      "url": "https://github.com/openai/codex/commit/e7ea9109a9e343fd1cc6a62d4c50d2d7b9cf1660"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP",
+    "HTTP",
+    "URL",
+    "CLI",
+    "CCA",
+    "SKU",
+    "CODEX_APPS_MCP_SERVER_NAME",
+    "TOML",
+    "LOCAL_FS",
+    "API",
+    "SKILL",
+    "FEATURES"
+  ],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1516,7 +1516,7 @@ async fn start_apps_server_with_delays_and_control_inner(\n             get(workspace_settings_response),\n         )\n         .with_state(state)\n-        .nest_service(\"/api/codex/apps\", mcp_service);\n+        .nest_service(\"/api/codex/ps/mcp\", mcp_service);\n \n     let handle = tokio::spawn(async move {\n         let _ = axum::serve(listener, router).await;",
+      "path": "codex-rs/app-server/tests/suite/v2/app_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -256,7 +256,7 @@ async fn start_resource_apps_mcp_server() -> Result<(String, JoinHandle<()>)> {\n         Arc::new(LocalSessionManager::default()),\n         StreamableHttpServerConfig::default(),\n     );\n-    let router = Router::new().nest_service(\"/api/codex/apps\", mcp_service);\n+    let router = Router::new().nest_service(\"/api/codex/ps/mcp\", mcp_service);\n     let apps_server_handle = tokio::spawn(async move {\n         let _ = axum::serve(listener, router).await;\n     });",
+      "path": "codex-rs/app-server/tests/suite/v2/mcp_resource.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -406,7 +406,7 @@ async fn start_apps_server() -> Result<(String, JoinHandle<()>)> {\n             get(list_directory_connectors),\n         )\n         .with_state(state)\n-        .nest_service(\"/api/codex/apps\", mcp_service);\n+        .nest_service(\"/api/codex/ps/mcp\", mcp_service);\n \n     let handle = tokio::spawn(async move {\n         let _ = axum::serve(listener, router).await;",
+      "path": "codex-rs/app-server/tests/suite/v2/mcp_server_elicitation.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1289,7 +1289,7 @@ async fn start_apps_server(\n             get(list_directory_connectors),\n         )\n         .with_state(state)\n-        .nest_service(\"/api/codex/apps\", mcp_service);\n+        .nest_service(\"/api/codex/ps/mcp\", mcp_service);\n \n     let handle = tokio::spawn(async move {\n         let _ = axum::serve(listener, router).await;",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_install.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1914,7 +1914,7 @@ async fn start_apps_server(\n             get(list_directory_connectors),\n         )\n         .with_state(state)\n-        .nest_service(\"/api/codex/apps\", mcp_service);\n+        .nest_service(\"/api/codex/ps/mcp\", mcp_service);\n \n     let handle = tokio::spawn(async move {\n         let _ = axum::serve(listener, router).await;",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_read.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -29,8 +29,8 @@ pub use mcp::configured_mcp_servers;\n pub use mcp::effective_mcp_servers;\n pub use mcp::effective_mcp_servers_from_configured;\n pub use mcp::host_owned_codex_apps_enabled;\n+pub use mcp::hosted_plugin_runtime_mcp_server_config;\n pub use mcp::tool_plugin_provenance;\n-pub use mcp::with_codex_apps_mcp;\n \n pub use mcp::McpServerStatusSnapshot;\n pub use mcp::McpSnapshotDetail;",
+      "path": "codex-rs/codex-mcp/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 37,
+      "deletions": 46,
+      "patch_excerpt": "@@ -106,8 +106,6 @@ pub struct McpPermissionPromptAutoApproveContext {\n pub struct McpConfig {\n     /// Base URL for ChatGPT-hosted app MCP servers, copied from the root config.\n     pub chatgpt_base_url: String,\n-    /// Optional path override for the host-owned apps MCP server.\n-    pub apps_mcp_path_override: Option<String>,\n     /// Optional product SKU forwarded to the host-owned apps MCP server.\n     pub apps_mcp_product_sku: Option<String>,\n     /// Codex home directory used for MCP OAuth state and app-tool cache files.\n@@ -128,22 +126,18 @@ pub struct McpConfig {\n     pub use_legacy_landlock: bool,\n     /// Whether the app MCP integration is enabled by config.\n     ///\n-    /// ChatGPT auth is checked separately at runtime before the host-owned apps\n-    /// MCP server is added.\n+    /// ChatGPT auth is checked separately before a materialized host-owned Apps\n+    /// server can ...",
+      "path": "codex-rs/codex-mcp/src/mcp/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 68,
+      "patch_excerpt": "@@ -16,7 +16,6 @@ use std::path::PathBuf;\n fn test_mcp_config(codex_home: PathBuf) -> McpConfig {\n     McpConfig {\n         chatgpt_base_url: \"https://chatgpt.com\".to_string(),\n-        apps_mcp_path_override: None,\n         apps_mcp_product_sku: None,\n         codex_home,\n         mcp_oauth_credentials_store_mode: OAuthCredentialsStoreMode::default(),\n@@ -27,7 +26,6 @@ fn test_mcp_config(codex_home: PathBuf) -> McpConfig {\n         codex_linux_sandbox_exe: None,\n         use_legacy_landlock: false,\n         apps_enabled: false,\n-        legacy_apps_mcp_loader_enabled: true,\n         prefix_mcp_tool_names: true,\n         client_elicitation_capability: ElicitationCapability::default(),\n         configured_mcp_servers: HashMap::new(),\n@@ -178,52 +176,27 @@ fn tool_plugin_provenance_collects_app_and_mcp_sources() {\n #[test]\n fn codex_apps_mcp_url_for_base_url_keeps_existing_paths() {\n     a...",
+      "path": "codex-rs/codex-mcp/src/mcp/mod_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 26,
+      "deletions": 3,
+      "patch_excerpt": "@@ -9,6 +9,7 @@ use schemars::schema::ObjectValidation;\n use schemars::schema::RootSchema;\n use schemars::schema::Schema;\n use schemars::schema::SchemaObject;\n+use schemars::schema::SubschemaValidation;\n use serde_json::Map;\n use serde_json::Value;\n use std::path::Path;\n@@ -46,9 +47,7 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {\n         if feature.id == codex_features::Feature::AppsMcpPathOverride {\n             validation.properties.insert(\n                 feature.key.to_string(),\n-                schema_gen.subschema_for::<codex_features::FeatureToml<\n-                    codex_features::AppsMcpPathOverrideConfigToml,\n-                >>(),\n+                removed_apps_mcp_path_override_schema(schema_gen),\n             );\n             continue;\n         }\n@@ -76,6 +75,30 @@ pub fn features_schema(schema_gen: &mut SchemaGenerator) -> Schema {\n     Schema::O...",
+      "path": "codex-rs/config/src/schema.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 35,
+      "deletions": 25,
+      "patch_excerpt": "@@ -226,18 +226,6 @@\n       },\n       \"type\": \"object\"\n     },\n-    \"AppsMcpPathOverrideConfigToml\": {\n-      \"additionalProperties\": false,\n-      \"properties\": {\n-        \"enabled\": {\n-          \"type\": \"boolean\"\n-        },\n-        \"path\": {\n-          \"type\": \"string\"\n-        }\n-      },\n-      \"type\": \"object\"\n-    },\n     \"AskForApproval\": {\n       \"description\": \"Determines the conditions under which the user is consulted to approve running the command proposed by Codex.\",\n       \"oneOf\": [\n@@ -408,7 +396,23 @@\n               \"type\": \"boolean\"\n             },\n             \"apps_mcp_path_override\": {\n-              \"$ref\": \"#/definitions/FeatureToml_for_AppsMcpPathOverrideConfigToml\"\n+              \"anyOf\": [\n+                {\n+                  \"type\": \"boolean\"\n+                },\n+                {\n+                  \"additionalProperties\": false,\n+                  \"properti...",
+      "path": "codex-rs/core/config.schema.json",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 83,
+      "patch_excerpt": "@@ -5500,14 +5500,9 @@ async fn to_mcp_config_preserves_apps_feature_from_config() -> std::io::Result<(\n     .await?;\n     let plugins_manager = PluginsManager::new(codex_home.path().to_path_buf());\n \n-    config.apps_mcp_path_override = Some(\"/custom/mcp\".to_string());\n     config.apps_mcp_product_sku = Some(\"tpp\".to_string());\n     let mcp_config = config.to_mcp_config(&plugins_manager).await;\n     assert!(mcp_config.apps_enabled);\n-    assert_eq!(\n-        mcp_config.apps_mcp_path_override.as_deref(),\n-        Some(\"/custom/mcp\")\n-    );\n     assert_eq!(mcp_config.apps_mcp_product_sku.as_deref(), Some(\"tpp\"));\n \n     let _ = config.features.disable(Feature::Apps);\n@@ -8862,84 +8857,6 @@ allow_login_shell = false\n     Ok(())\n }\n \n-#[tokio::test]\n-async fn config_loads_apps_mcp_path_override_from_feature_config() -> std::io::Result<()> {\n-    let codex_home = TempDir::new()?;\n-    let t...",
+      "path": "codex-rs/core/src/config/config_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 24,
+      "patch_excerpt": "@@ -58,7 +58,6 @@ use codex_config::types::WindowsSandboxModeToml;\n use codex_core_plugins::PluginsConfigInput;\n use codex_exec_server::ExecutorFileSystem;\n use codex_exec_server::LOCAL_FS;\n-use codex_features::AppsMcpPathOverrideConfigToml;\n use codex_features::CodeModeConfigToml;\n use codex_features::Feature;\n use codex_features::FeatureConfigSource;\n@@ -931,9 +930,6 @@ pub struct Config {\n     /// Base URL for requests to ChatGPT (as opposed to the OpenAI API).\n     pub chatgpt_base_url: String,\n \n-    /// Optional path override for the host-owned apps MCP server.\n-    pub apps_mcp_path_override: Option<String>,\n-\n     /// Optional product SKU forwarded to the host-owned apps MCP server.\n     pub apps_mcp_product_sku: Option<String>,\n \n@@ -1415,7 +1411,6 @@ impl Config {\n \n         McpConfig {\n             chatgpt_base_url: self.chatgpt_base_url.clone(),\n-            apps_mcp_path_ove...",
+      "path": "codex-rs/core/src/config/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -125,6 +125,9 @@ fn config_lock_for_comparison(\n ) -> ConfigLockfileToml {\n     let mut lockfile = lockfile.clone();\n     clear_config_lock_debug_controls(&mut lockfile.config);\n+    if let Some(features) = lockfile.config.features.as_mut() {\n+        features.clear_removed_compatibility_entries();\n+    }\n     if options.allow_codex_version_mismatch {\n         lockfile.codex_version.clear();\n     }",
+      "path": "codex-rs/core/src/config_lock.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 7,
+      "patch_excerpt": "@@ -11,6 +11,7 @@ use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;\n use codex_mcp::EffectiveMcpServer;\n use codex_mcp::McpConfig;\n use codex_mcp::ToolPluginProvenance;\n+use codex_mcp::codex_apps_mcp_server_config;\n use codex_mcp::configured_mcp_servers;\n use codex_mcp::effective_mcp_servers;\n use codex_mcp::tool_plugin_provenance as collect_tool_plugin_provenance;\n@@ -40,16 +41,24 @@ impl McpManager {\n         }\n     }\n \n-    /// Returns the MCP config after applying runtime-only extension overlays.\n+    /// Returns the MCP config after applying compatibility built-ins and\n+    /// runtime-only extension overlays.\n     pub async fn runtime_config(&self, config: &Config) -> McpConfig {\n         let mut mcp_config = config.to_mcp_config(self.plugins_manager.as_ref()).await;\n-        let contributions = self.contributions(config).await;\n-        if contributions\n-            .iter()\n-            ...",
+      "path": "codex-rs/core/src/mcp.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 26,
+      "deletions": 5,
+      "patch_excerpt": "@@ -2,7 +2,6 @@ use anyhow::Context;\n use codex_config::config_toml::ConfigLockfileToml;\n use codex_config::config_toml::ConfigToml;\n use codex_config::types::MemoriesToml;\n-use codex_features::AppsMcpPathOverrideConfigToml;\n use codex_features::Feature;\n use codex_features::FeatureToml;\n use codex_features::FeaturesToml;\n@@ -149,10 +148,6 @@ fn save_config_resolved_fields(\n         resolved_config_to_toml(&config.multi_agent_v2, \"features.multi_agent_v2\")?;\n     multi_agent_v2.enabled = Some(config.features.enabled(Feature::MultiAgentV2));\n     features.multi_agent_v2 = Some(FeatureToml::Config(multi_agent_v2));\n-    features.apps_mcp_path_override = Some(FeatureToml::Config(AppsMcpPathOverrideConfigToml {\n-        enabled: Some(config.features.enabled(Feature::AppsMcpPathOverride)),\n-        path: config.apps_mcp_path_override.clone(),\n-    }));\n     lock_config.memories = Some(resolve...",
+      "path": "codex-rs/core/src/session/config_lock.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 1,
+      "patch_excerpt": "@@ -7,6 +7,8 @@ use codex_protocol::items::McpToolCallItem;\n use codex_protocol::items::McpToolCallStatus;\n use codex_protocol::items::TurnItem;\n use codex_protocol::mcp::CallToolResult;\n+use codex_protocol::protocol::TruncationPolicy;\n+use codex_utils_output_truncation::truncate_text;\n use rmcp::model::ListResourceTemplatesResult;\n use rmcp::model::ListResourcesResult;\n use rmcp::model::ReadResourceResult;\n@@ -270,7 +272,10 @@ fn normalize_required_string(field: &str, value: String) -> Result<String, Funct\n     }\n }\n \n-fn serialize_function_output<T>(payload: T) -> Result<FunctionToolOutput, FunctionCallError>\n+fn serialize_function_output<T>(\n+    payload: T,\n+    truncation_policy: TruncationPolicy,\n+) -> Result<FunctionToolOutput, FunctionCallError>\n where\n     T: Serialize,\n {\n@@ -279,6 +284,9 @@ where\n             \"failed to serialize MCP resource response: {err}\"\n         ))\n     ...",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -117,7 +117,7 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourceTemplatesHandler {\n         .await;\n \n         match payload_result {\n-            Ok(payload) => match serialize_function_output(payload) {\n+            Ok(payload) => match serialize_function_output(payload, turn.truncation_policy) {\n                 Ok(output) => {\n                     let content = function_call_output_content_items_to_text(&output.body)\n                         .unwrap_or_default();",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource/list_mcp_resource_templates.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -115,7 +115,7 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourcesHandler {\n         .await;\n \n         match payload_result {\n-            Ok(payload) => match serialize_function_output(payload) {\n+            Ok(payload) => match serialize_function_output(payload, turn.truncation_policy) {\n                 Ok(output) => {\n                     let content = function_call_output_content_items_to_text(&output.body)\n                         .unwrap_or_default();",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource/list_mcp_resources.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -93,7 +93,7 @@ impl ToolExecutor<ToolInvocation> for ReadMcpResourceHandler {\n         .await;\n \n         match payload_result {\n-            Ok(payload) => match serialize_function_output(payload) {\n+            Ok(payload) => match serialize_function_output(payload, turn.truncation_policy) {\n                 Ok(output) => {\n                     let content = function_call_output_content_items_to_text(&output.body)\n                         .unwrap_or_default();",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource/read_mcp_resource.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 37,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use super::*;\n use pretty_assertions::assert_eq;\n use rmcp::model::AnnotateAble;\n+use rmcp::model::ResourceContents;\n use serde_json::json;\n \n fn resource(uri: &str, name: &str) -> Resource {\n@@ -123,3 +124,39 @@ fn template_with_server_serializes_server_field() {\n         })\n     );\n }\n+\n+#[test]\n+fn serialize_function_output_preserves_small_payload() {\n+    let payload = json!({\"server\": \"hosted\", \"resources\": []});\n+    let expected = serde_json::to_string(&payload).expect(\"serialize payload\");\n+\n+    let output = serialize_function_output(payload, TruncationPolicy::Bytes(1_024))\n+        .expect(\"serialize function output\")\n+        .into_text();\n+\n+    assert_eq!(output, expected);\n+}\n+\n+#[test]\n+fn serialize_function_output_caps_read_resource_payload() {\n+    let truncation_policy = TruncationPolicy::Bytes(8_000);\n+    let payload = ReadResourcePayload {\n+        s...",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 9,
+      "patch_excerpt": "@@ -11,12 +11,3 @@ pub enum McpServerContribution {\n     /// Removes a named MCP server.\n     Remove { name: String },\n }\n-\n-impl McpServerContribution {\n-    /// Returns the stable server name owned by this contribution.\n-    pub fn name(&self) -> &str {\n-        match self {\n-            Self::Set { name, .. } | Self::Remove { name } => name,\n-        }\n-    }\n-}",
+      "path": "codex-rs/ext/extension-api/src/contributors/mcp.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 6,
+      "patch_excerpt": "@@ -3,12 +3,12 @@ use codex_extension_api::ExtensionRegistryBuilder;\n use codex_extension_api::McpServerContribution;\n use codex_extension_api::McpServerContributor;\n use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;\n-use codex_mcp::codex_apps_mcp_server_config;\n+use codex_mcp::hosted_plugin_runtime_mcp_server_config;\n \n-struct HostedAppsMcpExtension;\n+struct HostedPluginRuntimeExtension;\n \n #[async_trait::async_trait]\n-impl McpServerContributor<Config> for HostedAppsMcpExtension {\n+impl McpServerContributor<Config> for HostedPluginRuntimeExtension {\n     async fn contribute(&self, config: &Config) -> Vec<McpServerContribution> {\n         let name = CODEX_APPS_MCP_SERVER_NAME.to_string();\n         if !config.features.enabled(codex_features::Feature::Apps) {\n@@ -17,15 +17,14 @@ impl McpServerContributor<Config> for HostedAppsMcpExtension {\n \n         vec![McpServerContribution::Set {\n           ...",
+      "path": "codex-rs/ext/mcp/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 76,
+      "deletions": 9,
+      "patch_excerpt": "@@ -6,44 +6,100 @@ use codex_core::config::Config;\n use codex_core::config::ConfigBuilder;\n use codex_core_plugins::PluginsManager;\n use codex_extension_api::ExtensionRegistryBuilder;\n+use codex_extension_api::McpServerContribution;\n+use codex_extension_api::McpServerContributor;\n use codex_login::CodexAuth;\n use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;\n use pretty_assertions::assert_eq;\n \n+type TestResult = Result<(), Box<dyn std::error::Error>>;\n+\n #[tokio::test]\n-async fn contributes_hosted_apps_mcp_without_an_executor() -> Result<(), Box<dyn std::error::Error>>\n-{\n+async fn contributes_hosted_plugin_runtime_without_an_executor() -> TestResult {\n     let codex_home = tempfile::tempdir()?;\n     let config = ConfigBuilder::default()\n         .codex_home(codex_home.path().to_path_buf())\n         .fallback_cwd(Some(codex_home.path().to_path_buf()))\n         .cli_overrides(vec![\n            ...",
+      "path": "codex-rs/ext/mcp/tests/hosted_apps_mcp.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 13,
+      "patch_excerpt": "@@ -70,21 +70,11 @@ impl FeatureConfig for MultiAgentV2ConfigToml {\n \n #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]\n #[serde(deny_unknown_fields)]\n-pub struct AppsMcpPathOverrideConfigToml {\n+pub(crate) struct RemovedAppsMcpPathOverrideConfigToml {\n     #[serde(skip_serializing_if = \"Option::is_none\")]\n-    pub enabled: Option<bool>,\n+    enabled: Option<bool>,\n     #[serde(skip_serializing_if = \"Option::is_none\")]\n-    pub path: Option<String>,\n-}\n-\n-impl FeatureConfig for AppsMcpPathOverrideConfigToml {\n-    fn enabled(&self) -> Option<bool> {\n-        self.enabled.or(self.path.as_ref().map(|_| true))\n-    }\n-\n-    fn set_enabled(&mut self, enabled: bool) {\n-        self.enabled = Some(enabled);\n-    }\n+    path: Option<String>,\n }\n \n #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]",
+      "path": "codex-rs/features/src/feature_configs.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 16,
+      "patch_excerpt": "@@ -16,13 +16,13 @@ use toml::Table;\n \n mod feature_configs;\n mod legacy;\n-pub use feature_configs::AppsMcpPathOverrideConfigToml;\n pub use feature_configs::CodeModeConfigToml;\n pub use feature_configs::MultiAgentV2ConfigToml;\n pub use feature_configs::NetworkProxyConfigToml;\n pub use feature_configs::NetworkProxyDomainPermissionToml;\n pub use feature_configs::NetworkProxyModeToml;\n pub use feature_configs::NetworkProxyUnixSocketPermissionToml;\n+use feature_configs::RemovedAppsMcpPathOverrideConfigToml;\n use legacy::LegacyFeatureToggles;\n pub use legacy::legacy_feature_keys;\n \n@@ -143,7 +143,7 @@ pub enum Feature {\n     Apps,\n     /// Enable MCP apps.\n     EnableMcpApps,\n-    /// Use the new path for the host-owned apps MCP server.\n+    /// Removed compatibility flag for the legacy Apps MCP path override.\n     AppsMcpPathOverride,\n     /// Removed compatibility flag retained as a no-op n...",
+      "path": "codex-rs/features/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 21,
+      "deletions": 0,
+      "patch_excerpt": "@@ -83,6 +83,27 @@ fn plugin_hooks_is_removed_and_disabled_by_default() {\n     assert_eq!(feature_for_key(\"plugin_hooks\"), Some(Feature::PluginHooks));\n }\n \n+#[test]\n+fn removed_apps_mcp_path_override_shapes_are_ignored() {\n+    let features = [\n+        toml::from_str::<FeaturesToml>(\"apps_mcp_path_override = true\")\n+            .expect(\"boolean compatibility form should deserialize\"),\n+        toml::from_str::<FeaturesToml>(\n+            r#\"\n+[apps_mcp_path_override]\n+enabled = true\n+path = \"/custom/mcp\"\n+\"#,\n+        )\n+        .expect(\"structured compatibility form should deserialize\"),\n+    ];\n+\n+    assert_eq!(\n+        features.map(|features| features.entries()),\n+        [BTreeMap::new(), BTreeMap::new()]\n+    );\n+}\n+\n #[test]\n fn code_mode_only_requires_code_mode() {\n     let mut features = Features::with_defaults();",
+      "path": "codex-rs/features/src/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -251,7 +251,6 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R\n         model_catalog: None,\n         model_verbosity: None,\n         chatgpt_base_url: \"https://chatgpt.com/backend-api/\".to_string(),\n-        apps_mcp_path_override: None,\n         apps_mcp_product_sku: None,\n         realtime_audio: RealtimeAudioConfig::default(),\n         experimental_realtime_ws_base_url: None,",
+      "path": "codex-rs/thread-manager-sample/src/main.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27191",
+    "#27184"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Stack\n\n- Base: #27191\n- This PR is the third vertical and should be reviewed against `jif/external-plugins-2`, not `main`.\n\n## Why\n\n#27191 moves the host-owned Apps MCP registration behind an extension contributor, but deliberately preserves the existing endpoint-selection feature while that contribution contract lands. App-server can therefore resolve the server through extensions, yet the hosted plugin endpoint is still selected through temporary `apps_mcp_path_override` plumbing.\n\nThat is not the long-term plugin model. A plugin can bundle skills, connectors, MCP servers, and hooks, and those components do not all need the same source or execution environment. In particular, an authenticated HTTP MCP server can expose plugin capabilities directly from a backend without an executor or an orchestrator filesystem.\n\nThis PR completes that hosted vertical. App-server's MCP extension now owns the aggregate hosted plugin runtime at `/ps/mcp`. Connector actions continue to arrive as MCP tools, while backend-provided skills arrive as MCP resources and use Codex's existing resource list/read paths. No second backend client, skill filesystem, or generic plugin activation framework is introduced.\n\nThe backend route remains the hosted implementation. This change replaces Codex's temporary endpoint-selection mechanism, not the service behind the endpoint.\n\n## What changed\n\n### Hosted plugin runtime\n\nThe MCP extension now contributes `codex_apps` as the hosted plugin runtime rather than as a configurable Apps endpoint:\n\n- `https://chatgpt.com` resolves to `https://chatgpt.com/backend-api/ps/mcp`;\n- a bare custom ChatGPT base resolves to `/api/codex/ps/mcp`;\n- the existing product-SKU header and ChatGPT authentication behavior are preserved;\n- executor availability is never consulted for this streamable HTTP transport.\n\nThe same MCP connection carries both component shapes supported by the hosted endpoint:\n\n- connector actions are discovered and invoked as MCP tools;\n- hosted skills are enumerated and read as MCP resources through the existing `list_mcp_resources` and `read_mcp_resource` paths.\n\nThis keeps component access in the subsystem that already owns the protocol instead of downloading backend skills into an orchestrator filesystem or inventing a parallel hosted-skill client.\n\n### Explicit runtime ordering\n\n`McpManager` now resolves the reserved `codex_apps` entry in three ordered phases:\n\n1. install the legacy Apps fallback for compatibility;\n2. apply ordered extension `Set` or `Remove` overlays;\n3. apply the final ChatGPT-auth gate without synthesizing the server again.\n\nThis ordering is important:\n\n- an ordinary configured or plugin MCP server cannot claim the auth-bearing `codex_apps` name;\n- an extension-contributed hosted runtime wins over the fallback;\n- an extension `Remove` remains authoritative;\n- a host without the MCP extension retains the legacy Apps endpoint and current local-only behavior.\n\nThe temporary `legacy_apps_mcp_loader_enabled` coordination flag is no longer needed.\n\n### Remove the path override\n\nThe `apps_mcp_path_override` feature and its runtime plumbing are removed, including:\n\n- the feature registry entry and structured feature config;\n- `Config` and `McpConfig` fields;\n- config schema output;\n- config-lock materialization;\n- URL override handling in `codex-mcp`.\n\nExisting boolean and structured forms still deserialize as ignored compatibility input. They are omitted from new serialized config, and config-lock comparison normalizes the removed input so older locks remain replayable.\n\n### App-server coverage\n\nApp-server MCP fixtures now serve the hosted route at `/api/codex/ps/mcp`. Existing resource-read and tool/elicitation flows therefore exercise the extension-owned endpoint rather than succeeding through the legacy fallback.\n\nThe stack also adds the missing `codex_chatgpt::connectors` re-export for the manager-backed connector helper introduced in #27191.\n\n## Compatibility\n\n- App-server installs the extension and uses `/ps/mcp` for the hosted runtime.\n- CLI and other hosts that do not install the extension retain the legacy Apps endpoint.\n- Apps disabled or non-ChatGPT authentication removes `codex_apps` from the effective runtime view.\n- Existing local plugins, local skills, executor-selected skills, configured MCP servers, and MCP OAuth behavior are otherwise unchanged.\n- Backend plugin enablement remains account/workspace state owned by the hosted endpoint; this PR does not add thread-local backend plugin selection.\n\n## Architectural fit\n\nThe stack now proves two independent runtime shapes:\n\n1. #27184 resolves filesystem-backed skills through the executor that owns a selected root.\n2. #27191 and this PR resolve a backend-hosted HTTP MCP through an extension with no executor.\n\nTogether they preserve the intended separation:\n\n- selection identifies a plugin/root when explicit selection is needed;\n- each component's owning extension resolves its concrete access mechanism;\n- execution stays with the runtime required by that component;\n- existing skills, MCP, connector, and hook subsystems remain the downstream consumers.\n\n## Planned follow-ups\n\n1. **Executor stdio MCP:** selecting an executor plugin registers a manifest-declared stdio MCP server and executes it in the environment that owns the plugin.\n2. **Optional backend selection:** only if CCA needs thread-local selection distinct from backend account/workspace enablement, add a concrete backend-owned capability location and surface those selected skills through the skills catalog.\n3. **Connector metadata and hooks:** activate those plugin components through their existing owning subsystems, with executor hooks remaining environment-bound.\n4. **Propagation and persistence:** define explicit resume, fork, subagent, refresh, and environment-removal semantics once selected roots have multiple real consumers.\n5. **Local convergence:** migrate legacy local skill, MCP, connector, and hook paths behind their owning extensions one vertical at a time, then remove duplicate core managers and compatibility plumbing after parity.\n\n## Verification\n\nCoverage in this change exercises:\n\n- extension-owned `/backend-api/ps/mcp` registration without an executor;\n- preservation of the legacy endpoint in hosts without the extension;\n- extension `Set` and `Remove` precedence over the legacy fallback;\n- ChatGPT-auth gating for the reserved server;\n- hosted MCP resource reads with and without an active thread;\n- connector tool invocation and MCP elicitation through the hosted route;\n- ignored boolean and structured forms of the removed path override;\n- config-lock replay compatibility for the removed feature.\n\n`cargo check -p codex-features -p codex-mcp-extension -p codex-app-server` passes. Tests and Clippy were not run locally under the current development instruction; CI provides the full validation pass.\n",
+    "labels": [],
+    "merged_at": "2026-06-10T10:54:21Z",
+    "number": 27198,
+    "state": "merged",
+    "title": "Use plugin-service MCP as the hosted plugin runtime",
+    "url": "https://github.com/openai/codex/pull/27198"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
