@@ -1,0 +1,51 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "ericning-o",
+      "committed_at": "2026-06-09T17:34:45Z",
+      "message": "fix: use plugin service route for remote uninstall",
+      "sha": "f0566d8a72018d542d5cd745825a478d4d21b401",
+      "url": "https://github.com/openai/codex/commit/f0566d8a72018d542d5cd745825a478d4d21b401"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "POST",
+    "REMOTE_PLUGIN_ID",
+    "WORKSPACE_REMOTE_PLUGIN_ID"
+  ],
+  "files": [
+    {
+      "additions": 9,
+      "deletions": 9,
+      "patch_excerpt": "@@ -206,7 +206,7 @@ async fn plugin_uninstall_writes_remote_plugin_to_cloud_when_remote_plugin_enabl\n \n     Mock::given(method(\"POST\"))\n         .and(path(format!(\n-            \"/backend-api/plugins/{REMOTE_PLUGIN_ID}/uninstall\"\n+            \"/backend-api/ps/plugins/{REMOTE_PLUGIN_ID}/uninstall\"\n         )))\n         .and(header(\"authorization\", \"Bearer chatgpt-token\"))\n         .and(header(\"chatgpt-account-id\", \"account-123\"))\n@@ -249,7 +249,7 @@ async fn plugin_uninstall_writes_remote_plugin_to_cloud_when_remote_plugin_enabl\n     wait_for_remote_plugin_request_count(\n         &server,\n         \"POST\",\n-        &format!(\"/plugins/{REMOTE_PLUGIN_ID}/uninstall\"),\n+        &format!(\"/ps/plugins/{REMOTE_PLUGIN_ID}/uninstall\"),\n         /*expected_count*/ 1,\n     )\n     .await?;\n@@ -278,7 +278,7 @@ async fn plugin_uninstall_uses_detail_scope_for_cache_namespace() -> Result<()>\n \n     Mock::g...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_uninstall.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1124,7 +1124,7 @@ pub async fn uninstall_remote_plugin(\n     let plugin_name = plugin.name;\n \n     let base_url = config.chatgpt_base_url.trim_end_matches('/');\n-    let url = format!(\"{base_url}/plugins/{plugin_id}/uninstall\");\n+    let url = format!(\"{base_url}/ps/plugins/{plugin_id}/uninstall\");\n     let client = build_reqwest_client();\n     let request = authenticated_request(client.post(&url), auth)?;\n     let response: RemotePluginMutationResponse = send_and_decode(request, &url).await?;",
+      "path": "codex-rs/core-plugins/src/remote.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\r\n\r\nRemote plugin uninstall requests were sent to `/plugins/{plugin_id}/uninstall`, but the plugin service expects these mutations under `/ps/plugins`.\r\n\r\n## What changed\r\n\r\n- Send remote uninstall requests to `/ps/plugins/{plugin_id}/uninstall`.\r\n- Update app-server uninstall tests and request assertions to use the corrected route.\r\n\r\n## Testing\r\n\r\n- `just test -p codex-core-plugins` (203 passed)\r\n- Verified against production using the locally built app-server: the uninstall succeeded, and a follow-up plugin list reported `installed: false` and `enabled: false`.",
+    "labels": [],
+    "merged_at": "2026-06-09T19:52:06Z",
+    "number": 27223,
+    "state": "merged",
+    "title": "fix: use plugin service route for remote uninstall",
+    "url": "https://github.com/openai/codex/pull/27223"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
