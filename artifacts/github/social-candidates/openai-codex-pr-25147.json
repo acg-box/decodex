@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-25147",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "practical_explainer",
+  "priority": "critical",
+  "audience": "Codex MCP, hosted plugin, and streamable HTTP operators",
+  "candidate_text": [
+    "Codex now retries streamable HTTP MCP initialize failures and read-only `tools/list` calls, rebuilding the transport without replaying side-effecting tool calls. PR: https://github.com/openai/codex/pull/25147"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-25147.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-25147.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/25147"
+    ]
+  },
+  "evidence_notes": [
+    "The upstream review records retry orchestration for initialize and initialized-notification failures.",
+    "`tools/list` is retried as a read-only post-initialize discovery operation.",
+    "Side-effecting MCP tool calls are intentionally outside the retry boundary."
+  ],
+  "claims": [
+    {
+      "text": "Streamable HTTP MCP initialize and initialized-notification failures can be retried.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-25147.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Codex limits post-initialize retry to read-only `tools/list` rather than replaying mutating tool calls.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-25147.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR gives MCP operators a practical reliability boundary for startup retries.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-25147:practical_explainer"
+  },
+  "caveats": [
+    "Retries are bounded by operation deadlines and retry classification.",
+    "The PR does not authorize replaying side-effecting MCP tool calls."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate.",
+    "Compare Decodex MCP readiness probes with the retry-only-startup boundary."
+  ]
+}
