@@ -19,6 +19,10 @@ use crate::loop_contract::DecisionContract;
 use crate::loop_contract::DecisionContractStatus;
 use crate::loop_contract::DecisionPromotion;
 use crate::loop_contract::DecisionPromotionActorKind;
+use crate::orchestrator::AuthorityBoundaryChangedSurface;
+use crate::orchestrator::AuthorityBoundaryCheckInput;
+use crate::orchestrator::AuthorityBoundaryDisposition;
+use crate::orchestrator::AuthorityBoundaryImprovementSignal;
 use crate::orchestrator;
 use crate::orchestrator::HarnessOutcomeKind;
 use crate::orchestrator::HarnessOutcomeRecordInput;
@@ -162,6 +166,8 @@ impl LoopScenarioHarness {
 	) {
 		let private_review_marker =
 			self.record_review_checkpoint_and_assert_repair_then_escalation();
+		let private_authority_marker =
+			self.record_requires_human_authority_boundary(contract.contract_id());
 
 		self.record_uncovered_direction_guardrail();
 		self.state_store
@@ -192,7 +198,11 @@ impl LoopScenarioHarness {
 		)
 		.expect("harness outcome should record");
 
-		loop_scenario_assert_harness_candidates(recorded.payload(), private_review_marker);
+		loop_scenario_assert_harness_candidates(
+			recorded.payload(),
+			private_review_marker,
+			private_authority_marker,
+		);
 	}
 
 	fn record_review_checkpoint_and_assert_repair_then_escalation(&self) -> &'static str {
@@ -297,6 +307,76 @@ impl LoopScenarioHarness {
 
 		assert_eq!(uncovered_checkpoint.reason(), "uncovered_direction");
 		assert_eq!(uncovered_checkpoint.consecutive_count(), 1);
+	}
+
+	fn record_requires_human_authority_boundary(
+		&self,
+		contract_id: &str,
+	) -> &'static str {
+		let private_authority_marker = "PRIVATE_AUTHORITY_PAYLOAD_SHOULD_NOT_SURFACE";
+		let event = orchestrator::record_authority_boundary_check_private_event(
+			&self.state_store,
+			AuthorityBoundaryCheckInput {
+				project_id: "decodex",
+				issue_id: self.issue_id,
+				issue_identifier: self.issue_identifier,
+				run_id: self.run_id,
+				attempt_number: self.attempt_number,
+				decision_contract_ids: vec![contract_id],
+				attempted_recovery_reason: "uncovered_direction",
+				changed_surfaces: vec![AuthorityBoundaryChangedSurface {
+					surface: "accepted_behavior",
+					change_summary: private_authority_marker,
+					classification: AuthorityBoundaryDisposition::RequiresHuman,
+				}],
+				disposition: AuthorityBoundaryDisposition::RequiresHuman,
+				final_disposition_reason:
+					"Accepted behavior would change and the authority envelope is underspecified.",
+				improvement_signals: vec![
+					AuthorityBoundaryImprovementSignal {
+						kind: "underspecified_decision_contract",
+						reason_code: "authority_underspecified",
+						target: "decision_contract:research-x-loop-contract",
+						recommendation:
+							"Add explicit accepted-behavior authority before autonomous recovery.",
+					},
+					AuthorityBoundaryImprovementSignal {
+						kind: "missing_issue_template_field",
+						reason_code: "authority_boundary_template_gap",
+						target: "issue_template:loop_recovery",
+						recommendation:
+							"Require issue briefs to name authority-sensitive changed surfaces.",
+					},
+					AuthorityBoundaryImprovementSignal {
+						kind: "missing_validator",
+						reason_code: "authority_boundary_validator_gap",
+						target: "validator:authority_boundary",
+						recommendation:
+							"Add a validator that fails recovery when accepted behavior changes.",
+					},
+				],
+			},
+		)
+		.expect("authority boundary event should persist");
+
+		assert_eq!(event.event_type(), "authority_boundary_check");
+		assert_eq!(event.payload()["schema"], "decodex.authority_boundary_check/1");
+		assert_eq!(event.payload()["disposition"], "requires_human");
+		assert_eq!(event.payload()["issue"]["identifier"], self.issue_identifier);
+		assert_eq!(event.payload()["run"]["run_id"], self.run_id);
+		assert_eq!(
+			event.payload()["decision_contract_ids"],
+			serde_json::json!([contract_id])
+		);
+		assert!(
+			self.state_store
+				.list_linear_execution_events("decodex", self.issue_id)
+				.expect("linear cache should read")
+				.is_empty(),
+			"authority boundary checks must stay out of the public Linear mirror"
+		);
+
+		private_authority_marker
 	}
 }
 
@@ -551,6 +631,7 @@ fn loop_scenario_repo_gate_failure() -> Report {
 fn loop_scenario_assert_harness_candidates(
 	payload: &Value,
 	private_review_marker: &str,
+	private_authority_marker: &str,
 ) {
 	let candidates = payload["improvement_candidates"]
 		.as_array()
@@ -572,9 +653,36 @@ fn loop_scenario_assert_harness_candidates(
 		}),
 		"accepted review findings should recommend a prompt or fixture improvement"
 	);
+	assert_eq!(payload["authority_boundary"]["failed_check_count"], 1);
+	assert_eq!(payload["authority_boundary"]["improvement_signal_count"], 3);
+	assert!(
+		candidates.iter().any(|candidate| {
+			candidate["kind"] == "underspecified_decision_contract"
+				&& candidate["reason_code"] == "authority_underspecified"
+		}),
+		"authority underspecification should recommend a contract improvement"
+	);
+	assert!(
+		candidates.iter().any(|candidate| {
+			candidate["kind"] == "missing_issue_template_field"
+				&& candidate["reason_code"] == "authority_boundary_template_gap"
+		}),
+		"authority gaps should recommend issue-template hardening"
+	);
+	assert!(
+		candidates.iter().any(|candidate| {
+			candidate["kind"] == "missing_validator"
+				&& candidate["reason_code"] == "authority_boundary_validator_gap"
+		}),
+		"authority gaps should recommend validator hardening"
+	);
 	assert!(
 		!candidate_json.contains(private_review_marker),
 		"harness recommendations must summarize private events without leaking raw payloads"
+	);
+	assert!(
+		!candidate_json.contains(private_authority_marker),
+		"authority-boundary recommendations must not leak raw changed-surface payloads"
 	);
 }
 

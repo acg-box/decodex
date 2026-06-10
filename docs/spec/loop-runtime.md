@@ -135,6 +135,81 @@ Linear execution-ledger comments, generated issue text, and operator summaries m
 to or summarize an accepted contract, but they are public/coarse mirrors and must not
 become the source of truth for private loop state.
 
+## Authority Envelope
+
+The Authority Envelope is the loop-runtime boundary that decides what an autonomous
+recovery attempt may change without asking for human direction. It is derived from the
+accepted Decision Contract, project `WORKFLOW.md`, registered project policy, current
+issue briefing, and explicit user direction or steering that is still within the same
+accepted objective.
+
+The core rule is:
+
+> Decodex may autonomously change how engineering is implemented, but it must not
+> silently change what was authorized.
+
+Within authority:
+
+- internal refactors, schema plumbing, tests, or docs needed to satisfy the same
+  accepted objective and acceptance criteria
+- replacement of one implementation strategy with another when public behavior,
+  validation strength, project policy, and user direction remain unchanged
+- additional private evidence, diagnostics, and harness feedback that do not change
+  the authorized work
+- stricter local validation or review evidence that preserves or narrows the
+  accepted contract
+
+Human-required:
+
+- product goal changes or replacement of the issue objective
+- accepted behavior changes, even when the code delta is small
+- public API, CLI, configuration, workflow, or compatibility-contract changes not
+  authorized by the accepted contract
+- security, credential, billing, privacy, destructive data-loss, or live-operation
+  risk that was not already accepted
+- validation, review, or repo-gate weakening
+- ownership conflicts with another active, retained, review, landing, or cleanup lane
+- changes to accepted Decision Contract objectives, non-goals, constraints,
+  acceptance criteria, validation expectations, or stop conditions
+
+`insufficient_evidence` is also a stop disposition. Use it when the runtime cannot
+prove whether a recovery is inside or outside the envelope from the current Decision
+Contract, issue, project policy, lane ownership, and private evidence.
+
+## Authority Boundary Check
+
+Before autonomous loop recovery continues a detached or guardrail-pressured lane, the
+runtime must record a private Authority Boundary Check when the attempted recovery
+could change the Authority Envelope or when evidence is too weak to prove that it does
+not. This check is evidence plumbing for downstream recovery workers; this spec does
+not implement the full autonomous architecture recovery execution loop.
+
+The private payload is versioned as `decodex.authority_boundary_check/1` with
+`event_type = "authority_boundary_check"` in `private_execution_events`. It records:
+
+- issue id and issue identifier
+- run id and attempt number
+- referenced Decision Contract ids when known
+- attempted recovery reason, such as `uncovered_direction`,
+  `ambiguous_retained_progress`, `review_churn`, or `hard_interrupt_fallback`
+- changed surfaces, each with a surface kind, compact change summary, and local
+  classification
+- final disposition: `within_authority`, `requires_human`, or `insufficient_evidence`
+- final disposition reason
+- sanitized harness improvement signals when the check reveals an underspecified
+  contract field, incomplete issue template, weak prompt, weak validator, or stale
+  readiness model
+
+Authority Boundary Checks are local private evidence. Linear, GitHub, generated issue
+briefs, and ordinary operator summaries may expose only coarse reason codes or next
+actions rendered by allowlisted lifecycle paths. They must not mirror raw changed
+surfaces, graph ids, transcript text, or private recovery payloads.
+
+Harness feedback may recommend Decision Contract, issue-template, validator, prompt,
+or readiness-model hardening from boundary-check failures. Those recommendations are
+advisory. They do not modify the accepted Decision Contract, queue eligibility, or
+project policy by themselves.
+
 ## Promotion Boundary
 
 Promotion is the boundary between design and execution authority.
