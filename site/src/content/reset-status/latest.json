@@ -5,42 +5,48 @@
   "confidence": "likely",
   "observed_for_date": "2026-06-10",
   "timezone": "Asia/Shanghai",
-  "generated_at": "2026-06-09T20:18:13Z",
+  "generated_at": "2026-06-10T08:25:45Z",
   "source_account": "@thsottiaux",
   "source_url": "https://x.com/thsottiaux",
   "search_url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-09%20until%3A2026-06-11&src=typed_query&f=live",
   "judgment_mode": "ai_semantic_review",
-  "rationale": "Logged-in Chrome/X search and profile review were reachable for the 2026-06-10 Asia/Shanghai watch date. A refreshed widened Latest search at 2026-06-10 04:18 +08 showed the newest visible source-account candidate at 2026-06-09 19:41 +08, before today's window, and a strict UTC-date search returned no articles. With no visible @thsottiaux posts inside today's Asia/Shanghai window, there was no semantic rate-limit reset, quota recovery, message-cap recovery, or reset-window signal to mark yes.",
+  "rationale": "Logged-in Chrome/X search and profile review were reachable for the 2026-06-10 Asia/Shanghai watch date. A refreshed widened Latest search at 2026-06-10 16:23 +08 and strict date search showed three same-day @thsottiaux candidates, all about model naming, model-roadmap sentiment, or the Codex App. Thread context included other users requesting limit resets, but no source-account post announced or implied a rate-limit reset, quota recovery, message-cap recovery, or reset window.",
   "evidence_posts": [
     {
-      "published_at_label": "2026-06-10 04:18 +08 observation",
+      "published_at_label": "2026-06-10 16:23 +08 observation",
       "url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-09%20until%3A2026-06-11&src=typed_query&f=live",
       "relevance": "not_related",
-      "summary": "Logged-in Chrome/X Latest search for @thsottiaux posts across the widened UTC coverage window loaded and was refreshed. The latest visible source-account result was before 2026-06-10 Asia/Shanghai, so there were no visible same-day candidates announcing a reset, quota recovery, message-cap recovery, or reset window."
+      "summary": "Logged-in Chrome/X Latest search for @thsottiaux posts across the widened UTC coverage window loaded and was refreshed. The newest visible source-account results inside the 2026-06-10 Asia/Shanghai window were three posts at 12:45-12:56 +08; none announced a reset, quota recovery, message-cap recovery, or reset window."
     },
     {
-      "published_at_label": "2026-06-10 04:18 +08 observation",
+      "published_at_label": "2026-06-10 16:25 +08 observation",
       "url": "https://x.com/search?q=from%3Athsottiaux%20since%3A2026-06-10%20until%3A2026-06-11&src=typed_query&f=live",
       "relevance": "not_related",
-      "summary": "Strict X Latest search for @thsottiaux posts with since:2026-06-10 until:2026-06-11 returned no articles and showed a no-results state. This supports that no UTC-date source-account reset signal was visible during the run."
+      "summary": "Strict X Latest search for @thsottiaux posts with since:2026-06-10 until:2026-06-11 returned the same three source-account candidates visible in today's +08 window. They were about model naming/royalty jokes, confidence in model roadmap direction, and the Codex App, not limit reset behavior."
     },
     {
-      "published_at_label": "2026-06-09 19:41 +08 (X datetime 2026-06-09T11:41:13Z)",
-      "url": "https://x.com/thsottiaux/status/2064311852461371604",
+      "published_at_label": "2026-06-10 12:56 +08 (X datetime 2026-06-10T04:56:03Z)",
+      "url": "https://x.com/thsottiaux/status/2064572276180484475",
       "relevance": "not_related",
-      "summary": "Latest visible source-account result in the widened search was a reply that another user would soon need an org chart for their threads. It was before today's Asia/Shanghai window and was thread-management banter, not rate-limit reset or recovery behavior."
+      "summary": "Source-account post said the author would like to claim royalty fees and quoted an older GPT-5.4-Pro naming joke. Replies included other users asking for a reset button or limit reset, but the @thsottiaux post itself did not indicate reset, quota recovery, message-cap recovery, or a reset window."
     },
     {
-      "published_at_label": "2026-06-09 19:27 +08 (X datetime 2026-06-09T11:27:38Z)",
-      "url": "https://x.com/thsottiaux/status/2064308436133716008",
+      "published_at_label": "2026-06-10 12:55 +08 (X datetime 2026-06-10T04:55:25Z)",
+      "url": "https://x.com/thsottiaux/status/2064572118264913923",
       "relevance": "not_related",
-      "summary": "Latest visible profile post was a poll asking whether people use Codex /goal occasionally or as their main way to get things done. It was before today's Asia/Shanghai window and was about workflow usage, not quota reset, message-cap recovery, or a reset window."
+      "summary": "Source-account reply said the author felt pretty good about things in a thread about model roadmap/release sentiment. The immediate thread context discussed model competition and user hopes, not a reset-window announcement or quota/message-cap recovery."
     },
     {
-      "published_at_label": "2026-06-09 19:25 +08 (X datetime 2026-06-09T11:25:21Z)",
-      "url": "https://x.com/thsottiaux/status/2064307859903447396",
+      "published_at_label": "2026-06-10 12:45 +08 (X datetime 2026-06-10T04:45:42Z)",
+      "url": "https://x.com/thsottiaux/status/2064569673367404624",
       "relevance": "not_related",
-      "summary": "Profile review also showed a quote about using Codex one /goal at a time. It was before today's Asia/Shanghai window and reflected product/workflow enthusiasm, not rate-limit reset or recovery."
+      "summary": "Source-account reply said the author cannot live without the Codex App and that it is built for everyone. Replies included complaints or requests about Codex limits, but no source-account reset, quota recovery, message-cap recovery, or reset-window signal."
+    },
+    {
+      "published_at_label": "2026-06-10 16:25 +08 profile review",
+      "url": "https://x.com/thsottiaux",
+      "relevance": "not_related",
+      "summary": "Profile review showed the latest visible profile post as the 12:56 +08 model-naming/royalty joke, followed by prior 2026-06-09 Codex workflow posts. The profile view did not show a same-day source-account reset announcement."
     }
   ]
 }
