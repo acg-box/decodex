@@ -202,6 +202,7 @@ struct HarnessOutcomeSignals {
 	authority_boundary_dispositions: std::collections::BTreeSet<String>,
 	authority_boundary_failed_check_count: usize,
 	authority_boundary_candidates: Vec<HarnessImprovementCandidateSummary>,
+	architecture_recovery_budget_exhausted_count: usize,
 }
 
 pub(crate) fn record_harness_outcome_for_issue_run(
@@ -524,6 +525,9 @@ fn harness_outcome_signals(
 			"review_checkpoint" => push_review_signal(&mut signals, event.payload()),
 			"loop_guardrail_checkpoint" => push_guardrail_signal(&mut signals, event.payload()),
 			"authority_boundary_check" => push_authority_boundary_signal(&mut signals, event.payload()),
+			"architecture_recovery_terminal" => {
+				push_architecture_recovery_signal(&mut signals, event.payload());
+			},
 			"progress_checkpoint" => push_progress_signal(&mut signals, event.payload()),
 			_ => {},
 		}
@@ -634,6 +638,14 @@ fn push_authority_boundary_signal(signals: &mut HarnessOutcomeSignals, payload: 
 				recommendation,
 			});
 		}
+	}
+}
+
+fn push_architecture_recovery_signal(signals: &mut HarnessOutcomeSignals, payload: &Value) {
+	if json_string(payload.get("reason_code")).as_deref()
+		== Some("architecture_recovery_exhausted")
+	{
+		signals.architecture_recovery_budget_exhausted_count += 1;
 	}
 }
 
@@ -813,6 +825,16 @@ fn push_signal_candidates(
 		);
 	}
 
+	if signals.architecture_recovery_budget_exhausted_count > 0 {
+		insert_candidate(
+			candidates,
+			"recovery_budget_exhausted",
+			"architecture_recovery_exhausted",
+			&format!("issue:{}", input.issue_identifier),
+			signals.architecture_recovery_budget_exhausted_count,
+			"Increase recovery evidence quality or require a new accepted architecture decision before retrying.",
+		);
+	}
 	if input.error_class == Some("uncovered_direction")
 		|| linear_projection.final_error_class.as_deref() == Some("uncovered_direction")
 	{

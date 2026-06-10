@@ -12,6 +12,63 @@ fn build_retry_recovery_context(dispatch_mode: IssueDispatchMode) -> Option<Stri
 	})
 }
 
+fn build_architecture_recovery_context(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+) -> Option<String> {
+	let events = match state_store
+		.list_private_execution_events_for_issue(project.service_id(), &issue_run.issue.id)
+	{
+		Ok(events) => events,
+		Err(error) => {
+			tracing::warn!(
+				?error,
+				issue = issue_run.issue.identifier,
+				run_id = issue_run.run_id,
+				"Prompt could not read architecture recovery evidence."
+			);
+
+			return None;
+		},
+	};
+	let event = events
+		.iter()
+		.rev()
+		.find(|event| {
+			matches!(
+				event.event_type(),
+				ARCHITECTURE_RECOVERY_PACKET_EVENT_TYPE
+					| ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE
+					| ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE
+			)
+		})?;
+
+	if event.event_type() != ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE {
+		return None;
+	}
+
+	let payload = event.payload();
+	let guardrail_reason = payload
+		.get("guardrail_reason")
+		.and_then(Value::as_str)
+		.unwrap_or("loop_guardrail");
+	let recovery_attempt = payload
+		.get("recovery_budget")
+		.and_then(|budget| budget.get("attempt"))
+		.and_then(Value::as_u64)
+		.unwrap_or(1);
+	let recovery_max = payload
+		.get("recovery_budget")
+		.and_then(|budget| budget.get("max_attempts"))
+		.and_then(Value::as_u64)
+		.unwrap_or(1);
+
+	Some(format!(
+		"Architecture recovery context\n- Decodex recorded `architecture_recovery_started` for guardrail `{guardrail_reason}` after an Authority Boundary Check returned `within_authority`.\n- This is autonomous architecture recovery attempt {recovery_attempt} of {recovery_max}; start a materially different implementation strategy instead of repeating the ineffective repair.\n- Preserve the accepted Decision Contract, public API/config behavior, and validation/review gates. Do not ask the user through chat while detached; use manual attention only if the next viable action crosses authority."
+	))
+}
+
 fn review_pull_request_title(issue: &TrackerIssue) -> String {
 	let title = issue.title.trim();
 	let prefix = format!("{}:", issue.identifier);
@@ -69,6 +126,11 @@ where
 	sections.push(String::from(TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION));
 
 	if let Some(recovery_context) = build_retry_recovery_context(issue_run.dispatch_mode) {
+		sections.push(recovery_context);
+	}
+	if let Some(recovery_context) =
+		build_architecture_recovery_context(project, state_store, issue_run)
+	{
 		sections.push(recovery_context);
 	}
 
@@ -168,8 +230,10 @@ where
 		.resolved_completed_state();
 	let review_level = project.codex().review_level();
 	let recovery_context = build_retry_recovery_context(issue_run.dispatch_mode)
+		.into_iter()
+		.chain(build_architecture_recovery_context(project, state_store, issue_run))
 		.map(|section| format!("{section}\n\n"))
-		.unwrap_or_default();
+		.collect::<String>();
 
 	match issue_run.dispatch_mode {
 			IssueDispatchMode::ReviewRepair => format!(
