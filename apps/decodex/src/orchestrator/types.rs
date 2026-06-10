@@ -1,7 +1,14 @@
+use state::PrivateExecutionEvent;
+
 use crate::tracker;
 
 type PullRequestReadbackResult =
 	std::result::Result<PullRequestReviewState, PullRequestReadbackFailure>;
+
+#[allow(dead_code)]
+const AUTHORITY_BOUNDARY_CHECK_SCHEMA: &str = "decodex.authority_boundary_check/1";
+#[allow(dead_code)]
+const AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE: &str = "authority_boundary_check";
 
 trait PullRequestReviewStateInspector {
 	fn inspect_review_state(
@@ -101,6 +108,24 @@ pub(crate) enum RetryKind {
 	Failure,
 }
 
+/// Final authority disposition for one loop recovery boundary check.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AuthorityBoundaryDisposition {
+	WithinAuthority,
+	RequiresHuman,
+	InsufficientEvidence,
+}
+impl AuthorityBoundaryDisposition {
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::WithinAuthority => "within_authority",
+			Self::RequiresHuman => "requires_human",
+			Self::InsufficientEvidence => "insufficient_evidence",
+		}
+	}
+}
+
 pub(crate) enum RetryDispatchDecision {
 	Blocked { excluded_issue_ids: Vec<String> },
 	Dispatch(Box<RunSummary>),
@@ -192,6 +217,111 @@ impl ReviewOrchestrationPhase {
 enum PostReviewLaneStateLoad {
 	Classification(PostReviewLaneClassification),
 	ReviewState(PullRequestReviewState),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LoopGuardrailReason {
+	ValidationRepeat,
+	NoEffectiveDiff,
+	RemainingDeltaUnchanged,
+	ReviewChurn,
+	DependencyProgramStale,
+	UncoveredDirection,
+	AmbiguousRetainedProgress,
+}
+impl LoopGuardrailReason {
+	fn error_class(self) -> &'static str {
+		match self {
+			Self::ValidationRepeat => "validation_repeat",
+			Self::NoEffectiveDiff => "no_effective_diff",
+			Self::RemainingDeltaUnchanged => "remaining_delta_unchanged",
+			Self::ReviewChurn => "review_churn",
+			Self::DependencyProgramStale => "dependency_program_stale",
+			Self::UncoveredDirection => "uncovered_direction",
+			Self::AmbiguousRetainedProgress => "ambiguous_retained_progress",
+		}
+	}
+
+	fn from_error_class(error_class: &str) -> Option<Self> {
+		match error_class {
+			"validation_repeat" | "validation_failure_repeated" => Some(Self::ValidationRepeat),
+			"no_effective_diff" => Some(Self::NoEffectiveDiff),
+			"remaining_delta_unchanged" => Some(Self::RemainingDeltaUnchanged),
+			"review_churn" | "review_policy_exhausted" => Some(Self::ReviewChurn),
+			"dependency_program_stale" | "dependency_blocked" => {
+				Some(Self::DependencyProgramStale)
+			},
+			"uncovered_direction" | "research_contract_required" => {
+				Some(Self::UncoveredDirection)
+			},
+			"ambiguous_retained_progress" | "ownership_ambiguous" => {
+				Some(Self::AmbiguousRetainedProgress)
+			},
+			_ => None,
+		}
+	}
+
+	fn terminal_next_action(self, recovery_gate: &str) -> String {
+		match self {
+			Self::ValidationRepeat => format!(
+				"inspect the repeated validation failure, preserved worktree, and prior repair attempts; change repair strategy or route the issue to architecture/research review manually, {recovery_gate}"
+			),
+			Self::NoEffectiveDiff => format!(
+				"inspect the retained worktree and retry evidence; do not continue automatic repair until a human identifies a concrete next diff or resets the lane, {recovery_gate}"
+			),
+			Self::RemainingDeltaUnchanged => format!(
+				"inspect the unchanged remaining delta and validation evidence; decide the next bounded repair manually before requeueing, {recovery_gate}"
+			),
+			Self::ReviewChurn => format!(
+				"inspect the repeated review findings and current head; decide the next repair or architecture review manually before requeueing, {recovery_gate}"
+			),
+			Self::DependencyProgramStale => format!(
+				"inspect the dependency blocker and Execution Program readiness evidence; refresh dependencies or split/research the program before requeueing, {recovery_gate}"
+			),
+			Self::UncoveredDirection => format!(
+				"capture the missing direction in a research or decision contract before continuing execution, {recovery_gate}"
+			),
+			Self::AmbiguousRetainedProgress => format!(
+				"inspect retained partial progress and ownership evidence; choose resume, reset, or manual repair explicitly before clearing the guard, {recovery_gate}"
+			),
+		}
+	}
+}
+
+/// One surface considered by an authority boundary check.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct AuthorityBoundaryChangedSurface<'a> {
+	pub(crate) surface: &'a str,
+	pub(crate) change_summary: &'a str,
+	pub(crate) classification: AuthorityBoundaryDisposition,
+}
+
+/// Sanitized harness feedback emitted from an authority boundary check.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct AuthorityBoundaryImprovementSignal<'a> {
+	pub(crate) kind: &'a str,
+	pub(crate) reason_code: &'a str,
+	pub(crate) target: &'a str,
+	pub(crate) recommendation: &'a str,
+}
+
+/// Input for persisting a structured authority boundary check as private evidence.
+#[allow(dead_code)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AuthorityBoundaryCheckInput<'a> {
+	pub(crate) project_id: &'a str,
+	pub(crate) issue_id: &'a str,
+	pub(crate) issue_identifier: &'a str,
+	pub(crate) run_id: &'a str,
+	pub(crate) attempt_number: i64,
+	pub(crate) decision_contract_ids: Vec<&'a str>,
+	pub(crate) attempted_recovery_reason: &'a str,
+	pub(crate) changed_surfaces: Vec<AuthorityBoundaryChangedSurface<'a>>,
+	pub(crate) disposition: AuthorityBoundaryDisposition,
+	pub(crate) final_disposition_reason: &'a str,
+	pub(crate) improvement_signals: Vec<AuthorityBoundaryImprovementSignal<'a>>,
 }
 
 /// One bounded run invocation and its optional daemon-planned overrides.
@@ -645,75 +775,6 @@ impl Display for RetainedPartialProgress {
 }
 
 impl Error for RetainedPartialProgress {}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LoopGuardrailReason {
-	ValidationRepeat,
-	NoEffectiveDiff,
-	RemainingDeltaUnchanged,
-	ReviewChurn,
-	DependencyProgramStale,
-	UncoveredDirection,
-	AmbiguousRetainedProgress,
-}
-impl LoopGuardrailReason {
-	fn error_class(self) -> &'static str {
-		match self {
-			Self::ValidationRepeat => "validation_repeat",
-			Self::NoEffectiveDiff => "no_effective_diff",
-			Self::RemainingDeltaUnchanged => "remaining_delta_unchanged",
-			Self::ReviewChurn => "review_churn",
-			Self::DependencyProgramStale => "dependency_program_stale",
-			Self::UncoveredDirection => "uncovered_direction",
-			Self::AmbiguousRetainedProgress => "ambiguous_retained_progress",
-		}
-	}
-
-	fn from_error_class(error_class: &str) -> Option<Self> {
-		match error_class {
-			"validation_repeat" | "validation_failure_repeated" => Some(Self::ValidationRepeat),
-			"no_effective_diff" => Some(Self::NoEffectiveDiff),
-			"remaining_delta_unchanged" => Some(Self::RemainingDeltaUnchanged),
-			"review_churn" | "review_policy_exhausted" => Some(Self::ReviewChurn),
-			"dependency_program_stale" | "dependency_blocked" => {
-				Some(Self::DependencyProgramStale)
-			},
-			"uncovered_direction" | "research_contract_required" => {
-				Some(Self::UncoveredDirection)
-			},
-			"ambiguous_retained_progress" | "ownership_ambiguous" => {
-				Some(Self::AmbiguousRetainedProgress)
-			},
-			_ => None,
-		}
-	}
-
-	fn terminal_next_action(self, recovery_gate: &str) -> String {
-		match self {
-			Self::ValidationRepeat => format!(
-				"inspect the repeated validation failure, preserved worktree, and prior repair attempts; change repair strategy or route the issue to architecture/research review manually, {recovery_gate}"
-			),
-			Self::NoEffectiveDiff => format!(
-				"inspect the retained worktree and retry evidence; do not continue automatic repair until a human identifies a concrete next diff or resets the lane, {recovery_gate}"
-			),
-			Self::RemainingDeltaUnchanged => format!(
-				"inspect the unchanged remaining delta and validation evidence; decide the next bounded repair manually before requeueing, {recovery_gate}"
-			),
-			Self::ReviewChurn => format!(
-				"inspect the repeated review findings and current head; decide the next repair or architecture review manually before requeueing, {recovery_gate}"
-			),
-			Self::DependencyProgramStale => format!(
-				"inspect the dependency blocker and Execution Program readiness evidence; refresh dependencies or split/research the program before requeueing, {recovery_gate}"
-			),
-			Self::UncoveredDirection => format!(
-				"capture the missing direction in a research or decision contract before continuing execution, {recovery_gate}"
-			),
-			Self::AmbiguousRetainedProgress => format!(
-				"inspect retained partial progress and ownership evidence; choose resume, reset, or manual repair explicitly before clearing the guard, {recovery_gate}"
-			),
-		}
-	}
-}
 
 #[derive(Debug)]
 struct LoopGuardrailStopRequested {
@@ -1804,6 +1865,119 @@ struct PullRequestCommitPayload {
 #[derive(Deserialize)]
 struct PullRequestStatusCheckRollup {
 	state: String,
+}
+
+#[allow(dead_code)]
+pub(crate) fn record_authority_boundary_check_private_event(
+	state_store: &StateStore,
+	input: AuthorityBoundaryCheckInput<'_>,
+) -> Result<PrivateExecutionEvent> {
+	validate_authority_boundary_check_input(&input)?;
+
+	let changed_surfaces = input
+		.changed_surfaces
+		.iter()
+		.map(|surface| {
+			json!({
+				"surface": surface.surface,
+				"change_summary": surface.change_summary,
+				"classification": surface.classification.as_str(),
+			})
+		})
+		.collect::<Vec<_>>();
+	let improvement_signals = input
+		.improvement_signals
+		.iter()
+		.map(|signal| {
+			json!({
+				"kind": signal.kind,
+				"reason_code": signal.reason_code,
+				"target": signal.target,
+				"recommendation": signal.recommendation,
+			})
+		})
+		.collect::<Vec<_>>();
+	let payload = json!({
+		"schema": AUTHORITY_BOUNDARY_CHECK_SCHEMA,
+		"record_version": 1,
+		"issue": {
+			"id": input.issue_id,
+			"identifier": input.issue_identifier,
+		},
+		"run": {
+			"run_id": input.run_id,
+			"attempt_number": input.attempt_number,
+		},
+		"decision_contract_ids": input.decision_contract_ids,
+		"attempted_recovery_reason": input.attempted_recovery_reason,
+		"changed_surfaces": changed_surfaces,
+		"disposition": input.disposition.as_str(),
+		"final_disposition": {
+			"disposition": input.disposition.as_str(),
+			"reason": input.final_disposition_reason,
+		},
+		"improvement_signals": improvement_signals,
+	});
+
+	state_store.append_private_execution_event(
+		input.project_id,
+		input.issue_id,
+		input.run_id,
+		input.attempt_number,
+		AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE,
+		payload,
+	)
+}
+
+fn validate_authority_boundary_check_input(
+	input: &AuthorityBoundaryCheckInput<'_>,
+) -> Result<()> {
+	authority_boundary_required("authority boundary project_id", input.project_id)?;
+	authority_boundary_required("authority boundary issue_id", input.issue_id)?;
+	authority_boundary_required("authority boundary issue_identifier", input.issue_identifier)?;
+	authority_boundary_required("authority boundary run_id", input.run_id)?;
+	authority_boundary_required(
+		"authority boundary attempted_recovery_reason",
+		input.attempted_recovery_reason,
+	)?;
+	authority_boundary_required(
+		"authority boundary final_disposition_reason",
+		input.final_disposition_reason,
+	)?;
+
+	if input.attempt_number < 1 {
+		eyre::bail!("Authority boundary attempt_number must be positive.");
+	}
+
+	for contract_id in &input.decision_contract_ids {
+		authority_boundary_required("authority boundary decision_contract_id", contract_id)?;
+	}
+	for surface in &input.changed_surfaces {
+		authority_boundary_required("authority boundary changed surface", surface.surface)?;
+		authority_boundary_required(
+			"authority boundary changed surface summary",
+			surface.change_summary,
+		)?;
+	}
+	for signal in &input.improvement_signals {
+		authority_boundary_required("authority boundary improvement kind", signal.kind)?;
+		authority_boundary_required("authority boundary improvement reason_code", signal.reason_code)?;
+		authority_boundary_required("authority boundary improvement target", signal.target)?;
+		authority_boundary_required(
+			"authority boundary improvement recommendation",
+			signal.recommendation,
+		)?;
+	}
+
+	Ok(())
+}
+
+fn authority_boundary_required(name: &str, value: &str) -> Result<()> {
+	if value.trim().is_empty() {
+		eyre::bail!("{name} must not be empty.");
+	}
+
+	Ok(())
 }
 
 fn classify_pull_request_readback_report(error: &Report) -> PullRequestReadbackRootCause {

@@ -89,9 +89,12 @@ The following facts are local runtime truth and must not be rebuilt from Linear 
 - active run-control channel metadata and local control audit events
 - protocol events, event counts, event timestamps, and thread/liveness hydration fields
 - private execution events carrying structured local evidence for an issue/run/attempt
+- authority-boundary-check events that classify whether a loop recovery attempt is
+  inside the accepted Authority Envelope, requires human direction, or lacks enough
+  evidence to decide
 - harness-outcome events correlating Decision Contracts, generated issue or node ids,
-  validation/review/repair/manual-attention/PR lifecycle outcomes, and private
-  improvement candidates
+  authority-boundary checks, validation/review/repair/manual-attention/PR lifecycle
+  outcomes, and private improvement candidates
 - review-policy checkpoint state: current phase, normalized status, lane head,
   consecutive non-clean round count, and structured independent-review detail
 - loop-guardrail checkpoint state: normalized reason, fingerprint, consecutive
@@ -138,6 +141,18 @@ This boundary does not create a project-local runtime database contract. The run
   Contracts. The runtime-facing serialized payload is
   `decodex.execution_program/1`. It may use DAG semantics, but normal Linear issues
   remain the executable lanes.
+- Authority Envelope: The accepted boundary from the Decision Contract, project
+  policy, issue briefing, and explicit user direction. Lane recovery may change
+  implementation details inside this envelope, but product goals, accepted behavior,
+  public API/config contracts, security/credential/billing/data-loss risk, validation
+  or review-gate strength, lane ownership, and accepted contract fields require human
+  authority when they would change.
+- Authority Boundary Check: A private execution event with schema
+  `decodex.authority_boundary_check/1` and event type `authority_boundary_check`.
+  It records issue id, issue identifier, run id, attempt number, Decision Contract ids,
+  attempted recovery reason, changed surfaces, final disposition
+  (`within_authority`, `requires_human`, or `insufficient_evidence`), final reason, and
+  sanitized harness improvement signals.
 - Terminal tracker state: A state that should not be auto-started by `decodex`. The default set is `Done`, `Canceled`, and `Duplicate`.
 
 ## Eligibility
@@ -473,6 +488,12 @@ Review repair churn uses the bounded review policy above and may appear publicly
 `review_policy_exhausted` or the normalized loop reason `review_churn`; both mean the
 operator should inspect repeated review findings and stop patch-on-patch repair until
 the next strategy is explicit.
+
+When a stopped lane is eligible for future autonomous recovery, the recovery worker
+must consume the latest Authority Boundary Check or record a fresh one before changing
+implementation direction. `requires_human` and `insufficient_evidence` dispositions
+must route through the human-required path or a later accepted recovery contract; they
+must not be treated as retryable repo-gate failures.
 
 If the configured `decodex:needs-attention` label is unavailable on the team and the configured failure state is startable, `decodex` must still block automatic reselection by leaving the issue in a non-startable guard state such as `In Progress`. In that case the failure comment must explain that the label could not be applied and that a human must move the issue back to a startable state manually after repair. Restart recovery must preserve that guard by writing a retained-worktree marker under `.worktrees/<ISSUE>/.decodex-terminal-guarded` and consulting it before redispatching recovered `In Progress` lanes.
 
