@@ -142,7 +142,7 @@ stateDiagram-v2
     cleanup --> [*]: lane state clean
 ```
 
-At any phase, contradictory state, exhausted repair budget, or a non-self-healing merge failure must stop the lane in `manual_intervention_required` instead of guessing a next step.
+At any phase, contradictory state or a non-self-healing merge failure must stop the lane in `manual_intervention_required` instead of guessing a next step. Exhausted repair or convergence budget first follows the owning review or loop guardrail policy: only an in-envelope Architecture Recovery Packet may continue autonomously; otherwise the lane stops as human-required.
 
 | Lane phase | Required action class | Entry conditions | Exit conditions |
 | --- | --- | --- | --- |
