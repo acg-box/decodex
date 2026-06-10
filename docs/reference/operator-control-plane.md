@@ -343,9 +343,11 @@ Worktree visibility follows the owning dashboard section:
 - Phase-goal protocol activity may appear as `thread/goal/set`,
   `thread/goal/get`, `thread/goal/updated`, or `thread/goal/clear`. These events
   help explain whether a retained lane is implementing, repairing validation,
-  repairing accepted review findings, or preparing handoff evidence. Goal status is
-  diagnostic phase evidence only; it is not a Run Ledger outcome and does not replace
-  repo validation, bounded review, PR handoff, manual attention, landing, closeout, or
+  repairing accepted review findings, or preparing handoff evidence. Retained lanes
+  require this goal-method support; missing goal methods surface as an unsupported
+  app-server blocker rather than ordinary continuation. Goal status is diagnostic
+  phase evidence only; it is not a Run Ledger outcome and does not replace repo
+  validation, bounded review, PR handoff, manual attention, landing, closeout, or
   terminal finalization.
 - Loop guardrail stops may appear as `validation_repeat`, `no_effective_diff`,
   `remaining_delta_unchanged`, `review_churn`, `dependency_program_stale`,
