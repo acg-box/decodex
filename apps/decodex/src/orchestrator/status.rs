@@ -284,10 +284,13 @@ fn build_operator_status_snapshot_with_account_mode(
 	let project_display_name = operator_project_display_name(project);
 	let recent_runs = recent_runs
 		.into_iter()
-		.map(|run| operator_run_status(project, &project_display_name, run, now_unix_epoch))
+		.map(|run| {
+			operator_run_status(project, state_store, &project_display_name, run, now_unix_epoch)
+		})
 		.collect::<crate::prelude::Result<Vec<_>>>()?;
 	let active_runs = operator_active_run_statuses(
 		project,
+		state_store,
 		&project_display_name,
 		leased_runs,
 		&recent_runs,
@@ -341,6 +344,7 @@ fn build_operator_status_snapshot_with_account_mode(
 
 fn operator_active_run_statuses(
 	project: &ServiceConfig,
+	state_store: &StateStore,
 	project_display_name: &str,
 	leased_runs: Vec<ProjectRunStatus>,
 	recent_runs: &[OperatorRunStatus],
@@ -348,7 +352,7 @@ fn operator_active_run_statuses(
 ) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
 	let mut active_runs = leased_runs
 		.into_iter()
-		.map(|run| operator_run_status(project, project_display_name, run, now_unix_epoch))
+		.map(|run| operator_run_status(project, state_store, project_display_name, run, now_unix_epoch))
 		.collect::<crate::prelude::Result<Vec<_>>>()?
 		.into_iter()
 		.filter(operator_run_counts_as_active)
@@ -898,6 +902,18 @@ fn apply_terminal_history_ledger_outcome_to_latest_run(lane: &mut OperatorHistor
 	lane.latest_run.retry_kind = None;
 	lane.latest_run.next_retry_at = None;
 
+	if let Some(loop_status) = lane.latest_run.loop_status.as_mut() {
+		loop_status.summary = format!("terminal lifecycle: {}", lane.latest_run.status);
+		loop_status.next_action = None;
+
+		if loop_status
+			.review
+			.as_ref()
+			.is_some_and(|review| review.status == "pending" && review.checkpoint.is_none())
+		{
+			loop_status.review = None;
+		}
+	}
 	if let Some(final_event_at) = final_event_at {
 		lane.latest_run.updated_at = final_event_at.clone();
 		lane.latest_run.last_run_activity_at = Some(final_event_at);
@@ -2362,6 +2378,13 @@ where
 		attention_record.as_ref(),
 		marker.as_ref(),
 	)?;
+	let loop_status = operator_queued_issue_loop_status(
+		project,
+		state_store,
+		issue,
+		attention_record.as_ref(),
+		marker.as_ref(),
+	)?;
 	let attempt_status = marker
 		.as_ref()
 		.and_then(|marker| state_store.run_attempt(marker.run_id()).transpose())
@@ -2392,6 +2415,7 @@ where
 			.and_then(RunActivityMarker::thread_status)
 			.map(str::to_owned),
 		attempt_status,
+		loop_status,
 		auto_retry_blocked_reason,
 		attention_error_class,
 		attention_next_action,
@@ -2417,6 +2441,35 @@ where
 			.then(|| relative_worktree_path_for_path(project, &worktree_path)),
 		worktree_has_tracked_changes,
 	}))
+}
+
+fn operator_queued_issue_loop_status(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+	attention_record: Option<&LinearExecutionEventRecord>,
+	marker: Option<&RunActivityMarker>,
+) -> crate::prelude::Result<Option<OperatorLoopStatus>> {
+	let run_id = attention_record
+		.map(|record| record.run_id.as_str())
+		.or_else(|| marker.map(RunActivityMarker::run_id));
+	let attempt_number = attention_record
+		.map(|record| record.attempt_number)
+		.or_else(|| marker.map(RunActivityMarker::attempt_number));
+
+	match (run_id, attempt_number) {
+		(Some(run_id), Some(attempt_number)) => operator_loop_status_for_run(
+			project,
+			state_store,
+			&issue.id,
+			run_id,
+			attempt_number,
+			Some("handoff"),
+			None,
+		)
+		.map(Some),
+		_ => Ok(None),
+	}
 }
 
 fn operator_queued_issue_decision_request_status(
@@ -2826,10 +2879,12 @@ where
 
 		lanes.push(degraded_post_review_lane_status_from_classification(
 			project,
+			state_store,
 			&worktree,
+			&review_handoff,
 			issue_identifier,
 			classification,
-		));
+		)?);
 	}
 
 	lanes.sort_by(|left, right| left.issue_identifier.cmp(&right.issue_identifier));
@@ -2839,11 +2894,23 @@ where
 
 fn degraded_post_review_lane_status_from_classification(
 	project: &ServiceConfig,
+	state_store: &StateStore,
 	worktree: &WorktreeMapping,
+	review_handoff: &ReviewHandoffMarker,
 	issue_identifier: String,
 	classification: PostReviewLaneClassification,
-) -> OperatorPostReviewLaneStatus {
-	OperatorPostReviewLaneStatus {
+) -> crate::prelude::Result<OperatorPostReviewLaneStatus> {
+	let loop_status = operator_loop_status_for_run(
+		project,
+		state_store,
+		worktree.issue_id(),
+		review_handoff.run_id(),
+		review_handoff.attempt_number(),
+		Some("repair"),
+		None,
+	)?;
+
+	Ok(OperatorPostReviewLaneStatus {
 		issue_id: worktree.issue_id().to_owned(),
 		issue_identifier,
 		issue_state: String::from("tracker_readback_degraded"),
@@ -2860,7 +2927,8 @@ fn degraded_post_review_lane_status_from_classification(
 		unresolved_review_threads: classification.unresolved_review_threads,
 		readback_warning: classification.readback_warning,
 		readback_root_cause: classification.readback_root_cause,
-	}
+		loop_status: Some(loop_status),
+	})
 }
 
 fn retained_issue_identifier_from_worktree(worktree: &WorktreeMapping) -> String {
@@ -2991,13 +3059,13 @@ where
 		local_branch_name,
 		local_head_oid,
 	};
-		let mut classification = classify_post_review_lane_with_project(
-			&snapshot,
-			context.project,
-			context.workflow,
-			context.state_store,
-			context.review_state_inspector,
-		)?;
+	let mut classification = classify_post_review_lane_with_project(
+		&snapshot,
+		context.project,
+		context.workflow,
+		context.state_store,
+		context.review_state_inspector,
+	)?;
 
 	if retry_budget_exhausted {
 		classification = retry_budget_exhausted_post_review_lane_classification(
@@ -3018,9 +3086,10 @@ where
 
 	Ok(Some(post_review_lane_status_from_classification(
 		context.project,
+		context.state_store,
 		&snapshot,
 		classification,
-	)))
+	)?))
 }
 
 fn apply_active_ownership_warning_to_post_review_lane(
@@ -3043,10 +3112,13 @@ fn apply_active_ownership_warning_to_post_review_lane(
 
 fn post_review_lane_status_from_classification(
 	project: &ServiceConfig,
+	state_store: &StateStore,
 	snapshot: &PostReviewLaneSnapshot,
 	classification: PostReviewLaneClassification,
-) -> OperatorPostReviewLaneStatus {
-	OperatorPostReviewLaneStatus {
+) -> crate::prelude::Result<OperatorPostReviewLaneStatus> {
+	let loop_status = operator_post_review_loop_status(project, state_store, snapshot)?;
+
+	Ok(OperatorPostReviewLaneStatus {
 		issue_id: snapshot.issue.id.clone(),
 		issue_identifier: snapshot.issue.identifier.clone(),
 		issue_state: snapshot.issue.state.name.clone(),
@@ -3066,7 +3138,29 @@ fn post_review_lane_status_from_classification(
 		unresolved_review_threads: classification.unresolved_review_threads,
 		readback_warning: classification.readback_warning,
 		readback_root_cause: classification.readback_root_cause,
-	}
+		loop_status,
+	})
+}
+
+fn operator_post_review_loop_status(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	snapshot: &PostReviewLaneSnapshot,
+) -> crate::prelude::Result<Option<OperatorLoopStatus>> {
+	let Some(review_handoff) = snapshot.review_handoff.as_ref() else {
+		return Ok(None);
+	};
+
+	operator_loop_status_for_run(
+		project,
+		state_store,
+		&snapshot.issue.id,
+		review_handoff.run_id(),
+		review_handoff.attempt_number(),
+		Some("repair"),
+		None,
+	)
+	.map(Some)
 }
 
 fn post_review_lane_static_block_reason(
@@ -4032,6 +4126,7 @@ fn blocked_post_review_lane_status(
 		readback_warning: None,
 		readback_root_cause: post_review_readback_root_cause_for_reason(reason)
 			.map(|root_cause| root_cause.as_str().to_owned()),
+		loop_status: None,
 	}
 }
 
@@ -4634,6 +4729,7 @@ fn append_primary_account_if_missing(
 
 fn operator_run_status(
 	project: &ServiceConfig,
+	state_store: &StateStore,
 	project_display_name: &str,
 	run: ProjectRunStatus,
 	now_unix_epoch: i64,
@@ -4656,7 +4752,7 @@ fn operator_run_status(
 		marker.as_ref().and_then(RunActivityMarker::retry_ready_at_unix_epoch),
 		now_unix_epoch,
 	);
-	let (phase, mut wait_reason) = classify_operator_run_phase(
+	let (phase, wait_reason) = classify_operator_run_phase(
 		&status,
 		retry_kind.as_deref(),
 		retry_ready_at_unix_epoch,
@@ -4680,14 +4776,7 @@ fn operator_run_status(
 		timing.protocol_idle_for_seconds,
 		matches!(status.as_str(), "starting" | "running"),
 	);
-
-	if wait_reason.is_none() && phase == "executing" {
-		wait_reason = protocol_activity
-			.as_ref()
-			.and_then(|summary| summary.waiting_reason.clone())
-			.filter(|reason| reason != "turn_completed");
-	}
-
+	let wait_reason = operator_run_wait_reason(&phase, wait_reason, protocol_activity.as_ref());
 	let (account, accounts) = operator_run_accounts(marker.as_ref());
 	let branch_name = run.branch_name().map(str::to_owned);
 	let worktree_path = operator_run_relative_worktree_path(project, &run);
@@ -4697,6 +4786,8 @@ fn operator_run_status(
 		worktree_path.as_deref(),
 	);
 	let private_evidence = operator_run_private_evidence(project, &run, issue_identifier.as_deref());
+	let loop_status =
+		operator_run_loop_status(project, state_store, &run, &status, &phase, &current_operation)?;
 	let control_capability = operator_run_control_capability(&run, &app_server_state);
 	let execution_liveness =
 		operator_run_execution_liveness(&status, &timing, &app_server_state, &protocol_summary);
@@ -4737,6 +4828,7 @@ fn operator_run_status(
 		last_event_at: protocol_summary.last_event_at,
 		event_count: protocol_summary.event_count,
 		private_evidence,
+		loop_status: Some(loop_status),
 		control_capability,
 		process_id: timing.process_id,
 		process_alive: timing.process_alive,
@@ -4756,6 +4848,20 @@ fn operator_run_status(
 		branch_name,
 		worktree_path,
 	})
+}
+
+fn operator_run_wait_reason(
+	phase: &str,
+	wait_reason: Option<String>,
+	protocol_activity: Option<&ProtocolActivitySummary>,
+) -> Option<String> {
+	if wait_reason.is_some() || phase != "executing" {
+		return wait_reason;
+	}
+
+	protocol_activity
+		.and_then(|summary| summary.waiting_reason.clone())
+		.filter(|reason| reason != "turn_completed")
 }
 
 fn operator_run_accounts(
@@ -4789,6 +4895,401 @@ fn operator_run_private_evidence(
 		run.run_id(),
 		run.attempt_number(),
 	)
+}
+
+fn operator_run_loop_status(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	run: &ProjectRunStatus,
+	status: &str,
+	phase: &str,
+	current_operation: &str,
+) -> crate::prelude::Result<OperatorLoopStatus> {
+	operator_loop_status_for_run(
+		project,
+		state_store,
+		run.issue_id(),
+		run.run_id(),
+		run.attempt_number(),
+		operator_run_default_review_phase(status, phase, current_operation),
+		operator_run_lifecycle_loop_summary(status, phase, current_operation),
+	)
+}
+
+fn operator_run_default_review_phase(
+	status: &str,
+	phase: &str,
+	current_operation: &str,
+) -> Option<&'static str> {
+	if operator_run_has_terminal_lifecycle(status, phase, current_operation) {
+		return None;
+	}
+
+	Some("handoff")
+}
+
+fn operator_run_lifecycle_loop_summary(
+	status: &str,
+	phase: &str,
+	current_operation: &str,
+) -> Option<String> {
+	operator_run_has_terminal_lifecycle(status, phase, current_operation)
+		.then(|| format!("terminal lifecycle: {status}"))
+}
+
+fn operator_run_has_terminal_lifecycle(
+	status: &str,
+	phase: &str,
+	current_operation: &str,
+) -> bool {
+	phase == "completed"
+		|| current_operation == "ledger_outcome"
+		|| matches!(
+			status,
+			"succeeded"
+				| "failed"
+				| "interrupted"
+				| "cleanup_complete"
+				| "closeout"
+				| "landed"
+				| "manual_attention"
+				| TERMINAL_GUARDED_RUN_STATUS
+		)
+}
+
+fn operator_loop_status_for_run(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+	attempt_number: i64,
+	default_review_phase: Option<&str>,
+	lifecycle_summary: Option<String>,
+) -> crate::prelude::Result<OperatorLoopStatus> {
+	let review_level = project.codex().review_level();
+	let review = operator_review_loop_status(
+		review_level,
+		state_store,
+		project.service_id(),
+		issue_id,
+		run_id,
+		attempt_number,
+		default_review_phase,
+	)?;
+	let events = state_store.list_private_execution_events(
+		project.service_id(),
+		issue_id,
+		run_id,
+		attempt_number,
+	)?;
+	let architecture_recovery = events
+		.iter()
+		.rev()
+		.find_map(operator_architecture_recovery_status_from_event);
+	let boundary = events.iter().rev().find_map(operator_boundary_status_from_event);
+	let decision_request = events
+		.iter()
+		.rev()
+		.find(|event| event.event_type() == AUTHORITY_DECISION_REQUEST_EVENT_TYPE)
+		.and_then(operator_authority_decision_request_status_from_event);
+	let autonomy = operator_loop_autonomy(
+		boundary.as_ref(),
+		architecture_recovery.as_ref(),
+		decision_request.as_ref(),
+	);
+	let summary = operator_loop_status_summary(
+		review.as_ref(),
+		architecture_recovery.as_ref(),
+		boundary.as_ref(),
+		decision_request.as_ref(),
+		autonomy,
+		lifecycle_summary.as_deref(),
+	);
+	let next_action = operator_loop_status_next_action(
+		review.as_ref(),
+		architecture_recovery.as_ref(),
+		boundary.as_ref(),
+		decision_request.as_ref(),
+	);
+
+	Ok(OperatorLoopStatus {
+		review_level: review_level.as_str().to_owned(),
+		autonomy: autonomy.to_owned(),
+		summary,
+		next_action,
+		review,
+		architecture_recovery,
+		boundary,
+		decision_request,
+	})
+}
+
+fn operator_review_loop_status(
+	review_level: ReviewLevel,
+	state_store: &StateStore,
+	project_id: &str,
+	issue_id: &str,
+	run_id: &str,
+	attempt_number: i64,
+	default_review_phase: Option<&str>,
+) -> crate::prelude::Result<Option<OperatorReviewLoopStatus>> {
+	let latest_checkpoint = ["handoff", "repair"]
+		.into_iter()
+		.filter_map(|phase| {
+			state_store
+				.review_policy_checkpoint(project_id, issue_id, run_id, attempt_number, phase)
+				.transpose()
+		})
+		.collect::<crate::prelude::Result<Vec<_>>>()?
+		.into_iter()
+		.max_by(|left, right| {
+			left.updated_at_unix()
+				.cmp(&right.updated_at_unix())
+				.then_with(|| left.phase().cmp(right.phase()))
+		});
+
+	if let Some(checkpoint) = latest_checkpoint {
+		let nonclean_rounds = checkpoint.nonclean_rounds();
+
+		return Ok(Some(OperatorReviewLoopStatus {
+			phase: checkpoint.phase().to_owned(),
+			status: checkpoint.status().to_owned(),
+			checkpoint: Some(OperatorReviewCheckpointStatus {
+				head_sha: checkpoint.head_sha().to_owned(),
+				round: nonclean_rounds,
+				nonclean_rounds,
+				updated_at: checkpoint.updated_at().to_owned(),
+			}),
+		}));
+	}
+
+	if review_level.requires_review_checkpoint()
+		&& let Some(default_review_phase) = default_review_phase
+	{
+		return Ok(Some(OperatorReviewLoopStatus {
+			phase: default_review_phase.to_owned(),
+			status: String::from("pending"),
+			checkpoint: None,
+		}));
+	}
+
+	Ok(None)
+}
+
+fn operator_architecture_recovery_status_from_event(
+	event: &PrivateExecutionEvent,
+) -> Option<OperatorArchitectureRecoveryStatus> {
+	if !matches!(
+		event.event_type(),
+		ARCHITECTURE_RECOVERY_PACKET_EVENT_TYPE
+			| ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE
+			| ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE
+	) {
+		return None;
+	}
+
+	let payload = event.payload();
+	let reason_code = payload.get("reason_code")?.as_str()?.to_owned();
+	let guardrail_reason = payload
+		.get("guardrail_reason")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			payload
+				.get("loop_guardrail")
+				.and_then(|guardrail| guardrail.get("reason"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned);
+	let boundary_disposition = payload
+		.get("boundary_disposition")
+		.and_then(Value::as_str)
+		.or_else(|| {
+			payload
+				.get("authority_boundary_check")
+				.and_then(|boundary| boundary.get("disposition"))
+				.and_then(Value::as_str)
+		})
+		.map(str::to_owned);
+	let recovery_budget_attempt = payload
+		.get("recovery_budget")
+		.and_then(|budget| budget.get("attempt"))
+		.and_then(Value::as_u64);
+	let recovery_budget_max_attempts = payload
+		.get("recovery_budget")
+		.and_then(|budget| budget.get("max_attempts"))
+		.and_then(Value::as_u64);
+	let budget = recovery_budget_attempt
+		.zip(recovery_budget_max_attempts)
+		.map(|(attempt, max_attempts)| OperatorRecoveryBudgetStatus { attempt, max_attempts });
+	let next_action = operator_architecture_recovery_next_action(&reason_code);
+
+	Some(OperatorArchitectureRecoveryStatus {
+		status: operator_architecture_recovery_status_for_reason(&reason_code).to_owned(),
+		reason_code,
+		guardrail_reason,
+		boundary_disposition,
+		round: recovery_budget_attempt,
+		budget,
+		next_action,
+	})
+}
+
+fn operator_architecture_recovery_status_for_reason(reason_code: &str) -> &'static str {
+	match reason_code {
+		"architecture_recovery_started" => "active",
+		"architecture_recovery_exhausted" => "exhausted",
+		"contract_boundary_required" | "external_dependency_required" => "human_required",
+		_ => "terminal",
+	}
+}
+
+fn operator_architecture_recovery_next_action(reason_code: &str) -> String {
+	match reason_code {
+		"architecture_recovery_started" => {
+			String::from("Retry with a materially different implementation strategy inside authority.")
+		},
+		"architecture_recovery_exhausted" => {
+			String::from("Require a new accepted recovery strategy or architecture decision before retrying.")
+		},
+		"external_dependency_required" => {
+			String::from("Resolve the dependency or Execution Program readiness blocker before retrying.")
+		},
+		"contract_boundary_required" => {
+			String::from("Resolve the Decision Contract or Authority Envelope boundary before retrying.")
+		},
+		_ => String::from("Inspect the Architecture Recovery Packet before retrying."),
+	}
+}
+
+fn operator_boundary_status_from_event(
+	event: &PrivateExecutionEvent,
+) -> Option<OperatorBoundaryStatus> {
+	if event.event_type() != AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE {
+		return None;
+	}
+
+	let payload = event.payload();
+	let disposition = payload
+		.get("final_disposition")
+		.and_then(|final_disposition| final_disposition.get("disposition"))
+		.and_then(Value::as_str)
+		.or_else(|| payload.get("disposition").and_then(Value::as_str))?
+		.to_owned();
+	let reason = payload
+		.get("final_disposition")
+		.and_then(|final_disposition| final_disposition.get("reason"))
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let attempted_recovery_reason = payload
+		.get("attempted_recovery_reason")
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let changed_surface_count = payload
+		.get("changed_surfaces")
+		.and_then(Value::as_array)
+		.map_or(0, Vec::len);
+	let improvement_signal_count = payload
+		.get("improvement_signals")
+		.and_then(Value::as_array)
+		.map_or(0, Vec::len);
+
+	Some(OperatorBoundaryStatus {
+		disposition,
+		reason,
+		attempted_recovery_reason,
+		changed_surface_count,
+		improvement_signal_count,
+	})
+}
+
+fn operator_loop_autonomy(
+	boundary: Option<&OperatorBoundaryStatus>,
+	architecture_recovery: Option<&OperatorArchitectureRecoveryStatus>,
+	decision_request: Option<&OperatorAuthorityDecisionRequestStatus>,
+) -> &'static str {
+	if decision_request.is_some() {
+		return "human_required";
+	}
+	if boundary.is_some_and(|boundary| {
+		matches!(boundary.disposition.as_str(), "requires_human" | "insufficient_evidence")
+	}) {
+		return "human_required";
+	}
+	if architecture_recovery.is_some_and(|recovery| recovery.status != "active") {
+		return "human_required";
+	}
+
+	"autonomous"
+}
+
+fn operator_loop_status_summary(
+	review: Option<&OperatorReviewLoopStatus>,
+	architecture_recovery: Option<&OperatorArchitectureRecoveryStatus>,
+	boundary: Option<&OperatorBoundaryStatus>,
+	decision_request: Option<&OperatorAuthorityDecisionRequestStatus>,
+	autonomy: &str,
+	lifecycle_summary: Option<&str>,
+) -> String {
+	if let Some(request) = decision_request {
+		return format!(
+			"human-required boundary stop: {} on {}",
+			request.reason, request.boundary
+		);
+	}
+	if let Some(recovery) = architecture_recovery {
+		return format!(
+			"architecture recovery {}: {}",
+			recovery.status, recovery.reason_code
+		);
+	}
+	if let Some(review) = review {
+		return format!("review {}: {}", review.phase, review.status);
+	}
+	if let Some(boundary) = boundary {
+		return format!("boundary check: {}", boundary.disposition);
+	}
+	if let Some(lifecycle_summary) = lifecycle_summary {
+		return lifecycle_summary.to_owned();
+	}
+
+	format!("loop autonomy: {autonomy}")
+}
+
+fn operator_loop_status_next_action(
+	review: Option<&OperatorReviewLoopStatus>,
+	architecture_recovery: Option<&OperatorArchitectureRecoveryStatus>,
+	boundary: Option<&OperatorBoundaryStatus>,
+	decision_request: Option<&OperatorAuthorityDecisionRequestStatus>,
+) -> Option<String> {
+	if let Some(request) = decision_request {
+		return Some(request.next_action.clone());
+	}
+	if let Some(recovery) = architecture_recovery {
+		return Some(recovery.next_action.clone());
+	}
+	if let Some(boundary) = boundary
+		&& matches!(boundary.disposition.as_str(), "requires_human" | "insufficient_evidence")
+	{
+		return Some(String::from(
+			"Resolve the Authority Boundary Check before retrying the lane.",
+		));
+	}
+
+	review.and_then(|review| match review.status.as_str() {
+		"pending" => Some(String::from(
+			"Record the independent Decodex Review checkpoint for the current lane head.",
+		)),
+		"findings" => Some(String::from(
+			"Repair validated review findings and record a fresh checkpoint.",
+		)),
+		"blocked" => Some(String::from(
+			"Resolve the blocked Decodex Review before continuing.",
+		)),
+		"needs_architecture_review" => Some(String::from(
+			"Get architecture direction before continuing review repair.",
+		)),
+		_ => None,
+	})
 }
 
 fn operator_run_control_capability(
@@ -5459,8 +5960,14 @@ fn append_rendered_post_review_lanes(output: &mut String, snapshot: &OperatorSta
 	}
 
 	for lane in &snapshot.post_review_lanes {
+		let loop_status = render_loop_status_summary(lane.loop_status.as_ref());
+		let loop_review = render_loop_review_summary(lane.loop_status.as_ref());
+		let loop_architecture_recovery =
+			render_loop_architecture_recovery_summary(lane.loop_status.as_ref());
+		let loop_boundary = render_loop_boundary_summary(lane.loop_status.as_ref());
+
 		output.push_str(&format!(
-			"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n  readback_root_cause: {}\n",
+			"- issue_id: {}\n  issue: {}\n  state: {}\n  classification: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  pr_url: {}\n  pr_head_sha: {}\n  pr_state: {}\n  review_decision: {}\n  mergeable: {}\n  check_state: {}\n  unresolved_review_threads: {}\n  readback_warning: {}\n  readback_root_cause: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n",
 			lane.issue_id,
 			lane.issue_identifier,
 			lane.issue_state,
@@ -5478,7 +5985,11 @@ fn append_rendered_post_review_lanes(output: &mut String, snapshot: &OperatorSta
 				.unresolved_review_threads
 				.map_or_else(|| String::from("none"), |value| value.to_string()),
 			lane.readback_warning.as_deref().unwrap_or("none"),
-			lane.readback_root_cause.as_deref().unwrap_or("none")
+			lane.readback_root_cause.as_deref().unwrap_or("none"),
+			loop_status,
+			loop_review,
+			loop_architecture_recovery,
+			loop_boundary
 		));
 	}
 }
@@ -5907,8 +6418,14 @@ fn append_rendered_queued_issue(
 	));
 
 	if let Some(attention) = &queued_issue.attention {
+		let loop_status = render_loop_status_summary(attention.loop_status.as_ref());
+		let loop_review = render_loop_review_summary(attention.loop_status.as_ref());
+		let loop_architecture_recovery =
+			render_loop_architecture_recovery_summary(attention.loop_status.as_ref());
+		let loop_boundary = render_loop_boundary_summary(attention.loop_status.as_ref());
+
 		output.push_str(&format!(
-			"  attention: {}\n  attention_run: {}\n  attention_attempt: {}\n  attention_operation: {}\n  attention_thread: {}\n  attention_cause: {}\n  attention_next_action: {}\n  attention_auto_retry: {}\n  attention_retry_budget_attempts: {}\n  attention_worktree: {}\n  attention_last_activity: {}\n",
+			"  attention: {}\n  attention_run: {}\n  attention_attempt: {}\n  attention_operation: {}\n  attention_thread: {}\n  attention_cause: {}\n  attention_next_action: {}\n  attention_auto_retry: {}\n  attention_retry_budget_attempts: {}\n  attention_worktree: {}\n  attention_last_activity: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n",
 			attention.summary,
 			attention.run_id.as_deref().unwrap_or("none"),
 			attention
@@ -5924,6 +6441,10 @@ fn append_rendered_queued_issue(
 				.map_or_else(|| String::from("none"), |value| value.to_string()),
 			attention.worktree_path.as_deref().unwrap_or("none"),
 			attention.last_activity_at.as_deref().unwrap_or("none"),
+			loop_status,
+			loop_review,
+			loop_architecture_recovery,
+			loop_boundary
 		));
 
 		if let Some(decision_request) = attention.decision_request.as_ref() {
@@ -6037,6 +6558,70 @@ fn render_protocol_activity_summary(summary: Option<&ProtocolActivitySummary>) -
 	};
 
 	format!("turn={turn}; waiting={wait}; rate_limit={rate_limit}; recent={recent}")
+}
+
+fn render_loop_status_summary(status: Option<&OperatorLoopStatus>) -> String {
+	let Some(status) = status else {
+		return String::from("none");
+	};
+	let next_action = status.next_action.as_deref().unwrap_or("none");
+
+	format!(
+		"{}; review_level={}; autonomy={}; next_action={next_action}",
+		status.summary, status.review_level, status.autonomy
+	)
+}
+
+fn render_loop_review_summary(status: Option<&OperatorLoopStatus>) -> String {
+	let Some(review) = status.and_then(|status| status.review.as_ref()) else {
+		return String::from("none");
+	};
+	let checkpoint = review.checkpoint.as_ref().map_or_else(
+		|| String::from("checkpoint=none"),
+		|checkpoint| {
+			format!(
+				"checkpoint=head:{} round:{} updated:{}",
+				checkpoint.head_sha, checkpoint.round, checkpoint.updated_at
+			)
+		},
+	);
+
+	format!("phase={} status={} {checkpoint}", review.phase, review.status)
+}
+
+fn render_loop_architecture_recovery_summary(status: Option<&OperatorLoopStatus>) -> String {
+	let Some(recovery) = status.and_then(|status| status.architecture_recovery.as_ref()) else {
+		return String::from("none");
+	};
+	let budget = recovery.budget.as_ref().map_or_else(
+		|| String::from("none"),
+		|budget| format!("{}/{}", budget.attempt, budget.max_attempts),
+	);
+
+	format!(
+		"status={} reason={} guardrail={} boundary={} budget={} next_action={}",
+		recovery.status,
+		recovery.reason_code,
+		recovery.guardrail_reason.as_deref().unwrap_or("none"),
+		recovery.boundary_disposition.as_deref().unwrap_or("none"),
+		budget,
+		recovery.next_action
+	)
+}
+
+fn render_loop_boundary_summary(status: Option<&OperatorLoopStatus>) -> String {
+	let Some(boundary) = status.and_then(|status| status.boundary.as_ref()) else {
+		return String::from("none");
+	};
+
+	format!(
+		"disposition={} reason={} attempted_recovery={} changed_surfaces={} improvement_signals={}",
+		boundary.disposition,
+		boundary.reason.as_deref().unwrap_or("none"),
+		boundary.attempted_recovery_reason.as_deref().unwrap_or("none"),
+		boundary.changed_surface_count,
+		boundary.improvement_signal_count
+	)
 }
 
 fn render_control_capability_summary(
@@ -6343,10 +6928,15 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let account = render_account_summary(run.account.as_ref());
 	let accounts = render_accounts_summary(&run.accounts);
 	let private_evidence = render_private_evidence_reference(run);
+	let loop_status = render_loop_status_summary(run.loop_status.as_ref());
+	let loop_review = render_loop_review_summary(run.loop_status.as_ref());
+	let loop_architecture_recovery =
+		render_loop_architecture_recovery_summary(run.loop_status.as_ref());
+	let loop_boundary = render_loop_boundary_summary(run.loop_status.as_ref());
 	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -6375,6 +6965,10 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		protocol_activity,
 		context_pressure,
 		private_evidence,
+		loop_status,
+		loop_review,
+		loop_architecture_recovery,
+		loop_boundary,
 		control_capability,
 		thread_id,
 		turn_id,

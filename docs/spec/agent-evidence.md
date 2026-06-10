@@ -165,6 +165,11 @@ The readback includes:
   boundary, recommendation, resume condition, and next action, but not retained
   worktree evidence, raw diff payloads, recovery context, transcripts, logs, or
   credentials unless `--include-payload` is explicitly requested for local repair.
+- Decodex Review checkpoint summaries when `review_checkpoint` events are present.
+  Default readback may expose review phase, normalized status, head SHA, non-clean
+  round, accepted/rejected finding counts, and compact next action, but not raw
+  reviewer finding bodies or checklist payloads unless `--include-payload` is
+  explicitly requested for local repair.
 - Architecture Recovery Packet summaries when `architecture_recovery_packet`,
   `architecture_recovery_started`, or `architecture_recovery_terminal` events are
   present. Default readback may expose the recovery reason code, guardrail reason,
