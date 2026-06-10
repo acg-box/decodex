@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27184",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Load selected executor skills through extensions",
+        "url": "https://github.com/openai/codex/pull/27184",
+        "meta": "Merged 2026-06-09T17:51:55Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27184",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27184.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex app-server `thread/start` now accepts experimental `selectedCapabilityRoots` and uses extension initialization to load explicitly selected executor-owned skills without falling back to the orchestrator filesystem.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "candidate",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records the new `selectedCapabilityRoots` thread/start field and `CapabilityRootLocation::Environment` protocol shape.",
+    "App-server converts selected roots into `ExtensionDataInit` before thread creation.",
+    "The executor skill provider resolves selected environments and reads skill bodies through the environment filesystem.",
+    "App-server and skills-extension tests prove selected executor skills are model-visible and colliding local skill bodies are not injected."
+  ],
+  "candidate_followups": [
+    "Create a Decodex Control Plane issue to evaluate `selectedCapabilityRoots` as the handoff format for executor-owned plugins and skills.",
+    "Audit current plugin, skill, and MCP selection paths for assumptions that app-server or the orchestrator can canonicalize selected plugin roots.",
+    "Track upstream follow-ups for MCP, connectors, hooks, durable selection, resume, fork, and subagent inheritance before treating the model as complete."
+  ],
+  "social_notes": [
+    "Public copy should call the field experimental and scoped to executor-owned skills in this PR.",
+    "Avoid implying MCP servers, connectors, hooks, persistence, resume, fork, or subagent inheritance are already implemented."
+  ],
+  "caveats": [
+    "Only environment-owned selected roots are represented in this first contract.",
+    "Unavailable environments or invalid roots warn rather than falling back to local filesystem reads.",
+    "Existing local and bundled skill loading remains when no selected roots are supplied."
+  ]
+}
