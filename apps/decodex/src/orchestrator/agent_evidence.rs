@@ -6,6 +6,7 @@ const AGENT_RUN_CAPSULE_SCHEMA: &str = "decodex.run_capsule/1";
 const AGENT_EVIDENCE_EVENT_SCHEMA: &str = "decodex.agent_evidence_event/1";
 const PRIVATE_EVIDENCE_READBACK_SCHEMA: &str = "decodex.private_execution_evidence_readback/1";
 const PRIVATE_EVIDENCE_PAYLOAD_PREVIEW_LIMIT: usize = 160;
+const REVIEW_CHECKPOINT_EVENT_TYPE: &str = "review_checkpoint";
 const HANDOFF_INDEX_FILE_NAME: &str = "handoff-index.json";
 const BLOCKERS_DIR_NAME: &str = "blockers";
 const RUNS_DIR_NAME: &str = "runs";
@@ -259,6 +260,8 @@ struct PrivateEvidenceReadback {
 	event_count: usize,
 	latest_event_type: Option<String>,
 	latest_event_at: Option<String>,
+	review_checkpoints: Vec<PrivateEvidenceReviewCheckpointSummary>,
+	boundary_checks: Vec<PrivateEvidenceBoundaryCheckSummary>,
 	decision_requests: Vec<PrivateEvidenceDecisionRequestSummary>,
 	architecture_recoveries: Vec<PrivateEvidenceArchitectureRecoverySummary>,
 	improvement_candidates: Vec<HarnessImprovementCandidateSummary>,
@@ -275,6 +278,28 @@ struct PrivateEvidenceDecisionRequestSummary {
 	next_action: String,
 	recommendation: Option<String>,
 	resume_condition: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PrivateEvidenceReviewCheckpointSummary {
+	phase: String,
+	status: String,
+	head_sha: Option<String>,
+	round: Option<u64>,
+	accepted_finding_count: usize,
+	rejected_finding_count: usize,
+	next_action: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct PrivateEvidenceBoundaryCheckSummary {
+	disposition: String,
+	reason: Option<String>,
+	attempted_recovery_reason: Option<String>,
+	decision_contract_count: usize,
+	changed_surface_count: usize,
+	improvement_signal_count: usize,
+	next_action: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -670,6 +695,8 @@ fn build_private_evidence_readback(
 		event_count: events.len(),
 		latest_event_type: latest_event.map(|event| event.event_type().to_owned()),
 		latest_event_at: latest_event.map(|event| event.recorded_at().to_owned()),
+		review_checkpoints: review_checkpoints_from_private_events(&events),
+		boundary_checks: boundary_checks_from_private_events(&events),
 		decision_requests: authority_decision_requests_from_private_events(&events),
 		architecture_recoveries: architecture_recoveries_from_private_events(&events),
 		improvement_candidates: harness_improvement_candidates_from_private_events(&events),
@@ -765,6 +792,129 @@ fn private_evidence_direct_lookup_issue_id(
 	eyre::bail!(
 		"Direct private evidence lookup for issue `{selector}` matched multiple local issue ids for the supplied run and attempt; pass the local issue id from `decodex status --json`."
 	)
+}
+
+fn review_checkpoints_from_private_events(
+	events: &[state::PrivateExecutionEvent],
+) -> Vec<PrivateEvidenceReviewCheckpointSummary> {
+	events
+		.iter()
+		.filter(|event| event.event_type() == REVIEW_CHECKPOINT_EVENT_TYPE)
+		.filter_map(review_checkpoint_from_private_event)
+		.collect()
+}
+
+fn review_checkpoint_from_private_event(
+	event: &state::PrivateExecutionEvent,
+) -> Option<PrivateEvidenceReviewCheckpointSummary> {
+	let payload = event.payload();
+	let phase = payload.get("phase")?.as_str()?.to_owned();
+	let status = payload.get("status")?.as_str()?.to_owned();
+	let head_sha = payload
+		.get("head_sha")
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let round = payload
+		.get("nonclean_rounds")
+		.or_else(|| payload.get("round"))
+		.and_then(Value::as_u64);
+	let accepted_finding_count = payload
+		.get("review")
+		.and_then(|review| review.get("accepted_findings"))
+		.or_else(|| payload.get("accepted_findings"))
+		.and_then(Value::as_array)
+		.map_or(0, Vec::len);
+	let rejected_finding_count = payload
+		.get("review")
+		.and_then(|review| review.get("rejected_findings"))
+		.or_else(|| payload.get("rejected_findings"))
+		.and_then(Value::as_array)
+		.map_or(0, Vec::len);
+	let next_action = review_checkpoint_next_action(&status);
+
+	Some(PrivateEvidenceReviewCheckpointSummary {
+		phase,
+		status,
+		head_sha,
+		round,
+		accepted_finding_count,
+		rejected_finding_count,
+		next_action,
+	})
+}
+
+fn review_checkpoint_next_action(status: &str) -> String {
+	match status {
+		"clean" => String::from("Proceed with review handoff when repo gate evidence is current."),
+		"findings" => String::from("Repair accepted findings, rerun validation, and checkpoint the repaired head."),
+		"blocked" => String::from("Resolve the blocking review condition before continuing."),
+		"needs_architecture_review" => {
+			String::from("Escalate for an architecture decision before further repair churn.")
+		},
+		_ => String::from("Inspect the Decodex Review checkpoint summary before continuing."),
+	}
+}
+
+fn boundary_checks_from_private_events(
+	events: &[state::PrivateExecutionEvent],
+) -> Vec<PrivateEvidenceBoundaryCheckSummary> {
+	events
+		.iter()
+		.filter(|event| event.event_type() == AUTHORITY_BOUNDARY_CHECK_EVENT_TYPE)
+		.filter_map(boundary_check_from_private_event)
+		.collect()
+}
+
+fn boundary_check_from_private_event(
+	event: &state::PrivateExecutionEvent,
+) -> Option<PrivateEvidenceBoundaryCheckSummary> {
+	let payload = event.payload();
+	let disposition = payload.get("disposition")?.as_str()?.to_owned();
+	let reason = payload
+		.get("final_disposition")
+		.and_then(|final_disposition| final_disposition.get("reason"))
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let attempted_recovery_reason = payload
+		.get("attempted_recovery_reason")
+		.and_then(Value::as_str)
+		.map(str::to_owned);
+	let decision_contract_count = payload
+		.get("decision_contract_ids")
+		.and_then(Value::as_array)
+		.map_or(0, Vec::len);
+	let changed_surface_count = payload
+		.get("changed_surfaces")
+		.and_then(Value::as_array)
+		.map_or(0, Vec::len);
+	let improvement_signal_count = payload
+		.get("improvement_signals")
+		.and_then(Value::as_array)
+		.map_or(0, Vec::len);
+	let next_action = boundary_check_next_action(&disposition);
+
+	Some(PrivateEvidenceBoundaryCheckSummary {
+		disposition,
+		reason,
+		attempted_recovery_reason,
+		decision_contract_count,
+		changed_surface_count,
+		improvement_signal_count,
+		next_action,
+	})
+}
+
+fn boundary_check_next_action(disposition: &str) -> String {
+	match disposition {
+		"within_authority" => {
+			String::from("Continue autonomous architecture recovery inside the accepted boundary.")
+		},
+		"requires_human" => String::from("Stop for a human boundary decision before continuing."),
+		"insufficient_evidence" => {
+			String::from("Provide boundary evidence or a Decision Contract before retrying.")
+		},
+		_ => String::from("Inspect the authority boundary summary before continuing."),
+	}
 }
 
 fn authority_decision_requests_from_private_events(
@@ -1032,6 +1182,27 @@ fn truncate_private_evidence_payload_preview(value: &str) -> String {
 fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> String {
 	let mut output = String::new();
 
+	append_private_evidence_readback_header(&mut output, readback);
+	append_private_evidence_decision_requests(&mut output, &readback.decision_requests);
+	append_private_evidence_review_checkpoints(&mut output, &readback.review_checkpoints);
+	append_private_evidence_architecture_recoveries(
+		&mut output,
+		&readback.architecture_recoveries,
+	);
+	append_private_evidence_boundary_checks(&mut output, &readback.boundary_checks);
+	append_private_evidence_improvement_candidates(
+		&mut output,
+		&readback.improvement_candidates,
+	);
+	append_private_evidence_events(&mut output, &readback.events);
+
+	output
+}
+
+fn append_private_evidence_readback_header(
+	output: &mut String,
+	readback: &PrivateEvidenceReadback,
+) {
 	output.push_str(&format!("Project: {}\n", readback.project_id));
 	output.push_str("Private Execution Evidence\n");
 	output.push_str(&format!("issue_selector: {}\n", readback.issue_selector));
@@ -1055,6 +1226,18 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 		readback.decision_requests.len()
 	));
 	output.push_str(&format!(
+		"review_checkpoint_count: {}\n",
+		readback.review_checkpoints.len()
+	));
+	output.push_str(&format!(
+		"architecture_recovery_count: {}\n",
+		readback.architecture_recoveries.len()
+	));
+	output.push_str(&format!(
+		"boundary_check_count: {}\n",
+		readback.boundary_checks.len()
+	));
+	output.push_str(&format!(
 		"latest_event_type: {}\n",
 		readback.latest_event_type.as_deref().unwrap_or("none")
 	));
@@ -1066,13 +1249,18 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 	if !readback.warnings.is_empty() {
 		output.push_str(&format!("warnings: {}\n", readback.warnings.join(", ")));
 	}
+}
 
+fn append_private_evidence_decision_requests(
+	output: &mut String,
+	decision_requests: &[PrivateEvidenceDecisionRequestSummary],
+) {
 	output.push_str("\nDecision Requests\n");
 
-	if readback.decision_requests.is_empty() {
+	if decision_requests.is_empty() {
 		output.push_str("- none\n");
 	} else {
-		for request in &readback.decision_requests {
+		for request in decision_requests {
 			output.push_str(&format!(
 				"- id: {}\n  phase: {}\n  reason: {}\n  boundary: {}\n  next_action: {}\n",
 				request.decision_request_id,
@@ -1083,13 +1271,98 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 			));
 		}
 	}
+}
 
-	output.push_str("\nImprovement Candidates\n");
+fn append_private_evidence_review_checkpoints(
+	output: &mut String,
+	review_checkpoints: &[PrivateEvidenceReviewCheckpointSummary],
+) {
+	output.push_str("\nReview Checkpoints\n");
 
-	if readback.improvement_candidates.is_empty() {
+	if review_checkpoints.is_empty() {
 		output.push_str("- none\n");
 	} else {
-		for candidate in &readback.improvement_candidates {
+		for checkpoint in review_checkpoints {
+			output.push_str(&format!(
+				"- phase: {}\n  status: {}\n  head_sha: {}\n  round: {}\n  accepted_findings: {}\n  rejected_findings: {}\n  next_action: {}\n",
+				checkpoint.phase,
+				checkpoint.status,
+				checkpoint.head_sha.as_deref().unwrap_or("none"),
+				checkpoint
+					.round
+					.map_or_else(|| String::from("none"), |round| round.to_string()),
+				checkpoint.accepted_finding_count,
+				checkpoint.rejected_finding_count,
+				checkpoint.next_action
+			));
+		}
+	}
+}
+
+fn append_private_evidence_architecture_recoveries(
+	output: &mut String,
+	architecture_recoveries: &[PrivateEvidenceArchitectureRecoverySummary],
+) {
+	output.push_str("\nArchitecture Recoveries\n");
+
+	if architecture_recoveries.is_empty() {
+		output.push_str("- none\n");
+	} else {
+		for recovery in architecture_recoveries {
+			output.push_str(&format!(
+				"- reason_code: {}\n  guardrail_reason: {}\n  boundary_disposition: {}\n  budget: {}/{}\n  next_action: {}\n",
+				recovery.reason_code,
+				recovery.guardrail_reason.as_deref().unwrap_or("none"),
+				recovery.boundary_disposition.as_deref().unwrap_or("none"),
+				recovery
+					.recovery_budget_attempt
+					.map_or_else(|| String::from("none"), |attempt| attempt.to_string()),
+				recovery
+					.recovery_budget_max_attempts
+					.map_or_else(|| String::from("none"), |max_attempts| max_attempts.to_string()),
+				recovery.next_action
+			));
+		}
+	}
+}
+
+fn append_private_evidence_boundary_checks(
+	output: &mut String,
+	boundary_checks: &[PrivateEvidenceBoundaryCheckSummary],
+) {
+	output.push_str("\nBoundary Checks\n");
+
+	if boundary_checks.is_empty() {
+		output.push_str("- none\n");
+	} else {
+		for boundary in boundary_checks {
+			output.push_str(&format!(
+				"- disposition: {}\n  reason: {}\n  attempted_recovery: {}\n  decision_contracts: {}\n  changed_surfaces: {}\n  improvement_signals: {}\n  next_action: {}\n",
+				boundary.disposition,
+				boundary.reason.as_deref().unwrap_or("none"),
+				boundary
+					.attempted_recovery_reason
+					.as_deref()
+					.unwrap_or("none"),
+				boundary.decision_contract_count,
+				boundary.changed_surface_count,
+				boundary.improvement_signal_count,
+				boundary.next_action
+			));
+		}
+	}
+}
+
+fn append_private_evidence_improvement_candidates(
+	output: &mut String,
+	improvement_candidates: &[HarnessImprovementCandidateSummary],
+) {
+	output.push_str("\nImprovement Candidates\n");
+
+	if improvement_candidates.is_empty() {
+		output.push_str("- none\n");
+	} else {
+		for candidate in improvement_candidates {
 			output.push_str(&format!(
 				"- kind: {}\n  reason_code: {}\n  target: {}\n  source_event_count: {}\n  recommendation: {}\n",
 				candidate.kind,
@@ -1100,16 +1373,21 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 			));
 		}
 	}
+}
 
+fn append_private_evidence_events(
+	output: &mut String,
+	events: &[PrivateEvidenceReadbackEvent],
+) {
 	output.push_str("\nEvents\n");
 
-	if readback.events.is_empty() {
+	if events.is_empty() {
 		output.push_str("- none\n");
 
-		return output;
+		return;
 	}
 
-	for event in &readback.events {
+	for event in events {
 		output.push_str(&format!(
 			"- record_id: {}\n  event_type: {}\n  recorded_at: {}\n  payload: {}\n",
 			event.record_id,
@@ -1122,8 +1400,6 @@ fn render_private_evidence_readback(readback: &PrivateEvidenceReadback) -> Strin
 			output.push_str(&format!("  full_payload: {}\n", payload));
 		}
 	}
-
-	output
 }
 
 fn render_private_evidence_payload_summary(
