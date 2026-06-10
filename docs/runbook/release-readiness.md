@@ -80,6 +80,10 @@ Collect evidence in this order:
 9. Dogfood at least one real Decodex lane with `[codex].review = "standard"`.
    The lane must reach PR handoff or another release-safe terminal state, and it must
    leave an inspectable Decodex Review checkpoint.
+   Manual PR review comments or local self-check notes do not replace the runtime
+   checkpoint: `decodex evidence <ISSUE> --json` for the dogfood lane must show a
+   non-empty `review_checkpoints` array. The release remains blocked, even if the
+   implementation PR lands, when that runtime checkpoint is absent.
 10. Read the dogfood lane private evidence:
 
    ```sh
