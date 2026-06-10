@@ -680,10 +680,12 @@ impl ResearchCompileCommand {
 				self.source_issue.clone(),
 				self.outcome.into(),
 			)),
-			(None, None) =>
-				eyre::bail!("research compile requires either --input <JSON> or --intent <TEXT>."),
-			(Some(_), Some(_)) =>
-				eyre::bail!("research compile accepts --input or --intent, not both."),
+			(None, None) => {
+				eyre::bail!("research compile requires either --input <JSON> or --intent <TEXT>.")
+			},
+			(Some(_), Some(_)) => {
+				eyre::bail!("research compile accepts --input or --intent, not both.")
+			},
 		}
 	}
 }

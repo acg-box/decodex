@@ -4,10 +4,13 @@ use agent::CodexAccountProvider;
 use agent::AppServerThreadArchiveRequest;
 use records::LinearExecutionEventPublicProjection;
 use sha2::Digest;
+use state::DecisionContractRecord;
 
 use crate::tracker::privacy_classifier::PublicProjectionPrivacyClassifier;
 
 const LOOP_GUARDRAIL_CONVERGENCE_BUDGET: i64 = 3;
+const ARCHITECTURE_RECOVERY_BUDGET: usize = 1;
+const ARCHITECTURE_RECOVERY_RETRY_KIND: &str = "architecture_recovery";
 
 #[derive(Debug)]
 pub(crate) struct AppServerZeroEvidenceStartFailure {
@@ -98,6 +101,12 @@ struct PreparedTerminalFailureWriteback {
 	projection: LinearExecutionEventPublicProjection,
 	error_class: &'static str,
 	retry_guarded_by_state: bool,
+}
+
+struct ArchitectureRecoveryStart {
+	attempt_number: usize,
+	max_attempts: usize,
+	detail: String,
 }
 
 struct CompletedAppServerRun<'a, T>
@@ -200,7 +209,27 @@ impl RepoGatePhaseGoalController<'_> {
 							self.issue_run,
 							&error,
 						)? {
-							return Err(Report::new(loop_guardrail_stop).wrap_err(error));
+							match loop_guardrail_architecture_recovery_decision(
+								self.project,
+								self.state_store,
+								self.issue_run,
+								loop_guardrail_stop,
+								&error,
+							)? {
+								LoopGuardrailRecoveryDecision::Start(recovery) => {
+									let next_goal = self.phase_goal_spec(
+										PhaseGoalKind::RepairValidationFailures,
+										Some(&recovery.detail),
+									);
+
+									self.persist_next_phase_goal(&next_goal, "architecture_recovery_started")?;
+
+									return Ok(PhaseGoalTransition::Continue(next_goal));
+								},
+								LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) => {
+									return Err(Report::new(loop_guardrail_stop).wrap_err(error));
+								},
+							}
 						}
 
 						let detail = format!(
@@ -357,6 +386,41 @@ where
 	issue_run: &'a IssueRunPlan,
 	worktree_path: &'a str,
 	retry_budget_attempts: i64,
+}
+
+struct ArchitectureRecoveryBoundary {
+	disposition: AuthorityBoundaryDisposition,
+	final_reason: &'static str,
+	boundary_type: &'static str,
+}
+
+struct ArchitectureRecoveryPacketInput<'a> {
+	project: &'a ServiceConfig,
+	issue_run: &'a IssueRunPlan,
+	loop_guardrail_stop: &'a LoopGuardrailStopRequested,
+	error: &'a Report,
+	contracts: &'a [DecisionContractRecord],
+	boundary_check_record_id: i64,
+	boundary_disposition: AuthorityBoundaryDisposition,
+	boundary_final_reason: &'a str,
+	reason_code: &'a str,
+	recovery_attempt_number: usize,
+	prior_started_count: usize,
+}
+
+struct ArchitectureRecoveryTerminalEventInput<'a> {
+	project: &'a ServiceConfig,
+	issue_run: &'a IssueRunPlan,
+	stop: &'a LoopGuardrailStopRequested,
+	boundary_check_record_id: i64,
+	boundary_disposition: AuthorityBoundaryDisposition,
+	reason_code: &'a str,
+	recovery_attempt_number: usize,
+}
+
+enum LoopGuardrailRecoveryDecision {
+	Start(ArchitectureRecoveryStart),
+	HumanRequired(LoopGuardrailStopRequested),
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -1841,6 +1905,7 @@ fn retryable_failure_loop_guardrail_stop(
 				consecutive_count: checkpoint.consecutive_count(),
 				fingerprint,
 				source_error_class: source_error_class.map(ToOwned::to_owned),
+				architecture_recovery_reason_code: None,
 			}));
 		}
 	}
@@ -1927,6 +1992,595 @@ fn record_loop_guardrail_private_event(
 		.map(|_| ())
 }
 
+fn loop_guardrail_stop_from_review_policy(
+	review_policy_stop: &ReviewPolicyStopRequested,
+) -> LoopGuardrailStopRequested {
+	LoopGuardrailStopRequested {
+		issue_identifier: review_policy_stop.issue_identifier.clone(),
+		run_id: review_policy_stop.run_id.clone(),
+		reason: LoopGuardrailReason::ReviewChurn,
+		consecutive_count: review_policy_stop.nonclean_rounds.unwrap_or_default(),
+		fingerprint: format!(
+			"{}:{}",
+			review_policy_stop.head_sha,
+			review_policy_stop.nonclean_rounds.unwrap_or_default()
+		),
+		source_error_class: Some(review_policy_stop.reason.error_class().to_owned()),
+		architecture_recovery_reason_code: None,
+	}
+}
+
+fn loop_guardrail_architecture_recovery_decision(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	mut loop_guardrail_stop: LoopGuardrailStopRequested,
+	error: &Report,
+) -> Result<LoopGuardrailRecoveryDecision> {
+	let prior_started_count =
+		architecture_recovery_started_count(state_store, project, issue_run)?;
+	let recovery_attempt_number = prior_started_count.saturating_add(1);
+	let boundary = classify_loop_guardrail_authority_boundary(&loop_guardrail_stop, error);
+	let contracts = architecture_recovery_contracts_for_issue(state_store, project, issue_run)?;
+	let decision_contract_ids =
+		contracts.iter().map(|contract| contract.contract_id().to_owned()).collect::<Vec<_>>();
+	let decision_contract_id_refs =
+		decision_contract_ids.iter().map(String::as_str).collect::<Vec<_>>();
+	let boundary_event = record_authority_boundary_check_private_event(
+		state_store,
+		AuthorityBoundaryCheckInput {
+			project_id: project.service_id(),
+			issue_id: &issue_run.issue.id,
+			issue_identifier: &issue_run.issue.identifier,
+			run_id: &issue_run.run_id,
+			attempt_number: issue_run.attempt_number,
+			decision_contract_ids: decision_contract_id_refs,
+			attempted_recovery_reason: loop_guardrail_stop.reason.error_class(),
+			changed_surfaces: architecture_recovery_changed_surfaces(&boundary),
+			disposition: boundary.disposition,
+			final_disposition_reason: boundary.final_reason,
+			improvement_signals: architecture_recovery_improvement_signals(
+				loop_guardrail_stop.reason,
+				&boundary,
+			),
+		},
+	)?;
+	let budget_exhausted = prior_started_count >= ARCHITECTURE_RECOVERY_BUDGET;
+	let reason_code = architecture_recovery_reason_code(&boundary, budget_exhausted);
+
+	record_architecture_recovery_packet(
+		state_store,
+		ArchitectureRecoveryPacketInput {
+			project,
+			issue_run,
+			loop_guardrail_stop: &loop_guardrail_stop,
+			error,
+			contracts: &contracts,
+			boundary_check_record_id: boundary_event.record_id(),
+			boundary_disposition: boundary.disposition,
+			boundary_final_reason: boundary.final_reason,
+			reason_code,
+			recovery_attempt_number,
+			prior_started_count,
+		},
+	)?;
+
+	if budget_exhausted || boundary.disposition != AuthorityBoundaryDisposition::WithinAuthority {
+		loop_guardrail_stop.architecture_recovery_reason_code = Some(reason_code.to_owned());
+
+		record_architecture_recovery_terminal_event(
+			state_store,
+			ArchitectureRecoveryTerminalEventInput {
+				project,
+				issue_run,
+				stop: &loop_guardrail_stop,
+				boundary_check_record_id: boundary_event.record_id(),
+				boundary_disposition: boundary.disposition,
+				reason_code,
+				recovery_attempt_number,
+			},
+		)?;
+
+		if boundary.disposition != AuthorityBoundaryDisposition::WithinAuthority {
+			let decision_request_id = format!(
+				"{}-{}-{}-{}",
+				issue_run.issue.identifier,
+				issue_run.run_id,
+				issue_run.attempt_number,
+				reason_code
+			);
+
+			record_authority_decision_request_private_event(
+				state_store,
+				architecture_recovery_decision_request_input(
+					project,
+					issue_run,
+					&loop_guardrail_stop,
+					boundary_event.record_id(),
+					&decision_request_id,
+					reason_code,
+					boundary.final_reason,
+				),
+			)?;
+		}
+
+		return Ok(LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop));
+	}
+
+	state_store.clear_loop_guardrail_checkpoint(
+		project.service_id(),
+		&issue_run.issue.id,
+		loop_guardrail_stop.reason.error_class(),
+	)?;
+
+	record_architecture_recovery_started_event(
+		state_store,
+		project,
+		issue_run,
+		&loop_guardrail_stop,
+		boundary_event.record_id(),
+		recovery_attempt_number,
+	)?;
+
+	Ok(LoopGuardrailRecoveryDecision::Start(ArchitectureRecoveryStart {
+		attempt_number: recovery_attempt_number,
+		max_attempts: ARCHITECTURE_RECOVERY_BUDGET,
+		detail: architecture_recovery_goal_detail(&loop_guardrail_stop, recovery_attempt_number),
+	}))
+}
+
+fn classify_loop_guardrail_authority_boundary(
+	stop: &LoopGuardrailStopRequested,
+	error: &Report,
+) -> ArchitectureRecoveryBoundary {
+	let source_is_repo_gate =
+		stop.source_error_class.as_deref().is_some_and(|class| class.starts_with("repo_gate_"))
+			|| error.downcast_ref::<RepoGateFailure>().is_some_and(|failure| {
+				failure.disposition() == RepoGateFailureDisposition::ContinueRepair
+			});
+
+	match stop.reason {
+		LoopGuardrailReason::ValidationRepeat | LoopGuardrailReason::RemainingDeltaUnchanged
+			if source_is_repo_gate =>
+		{
+			ArchitectureRecoveryBoundary {
+				disposition: AuthorityBoundaryDisposition::WithinAuthority,
+				final_reason: "Repo-gate convergence failed on an engineering implementation problem; architecture recovery may change implementation strategy without weakening validation.",
+				boundary_type: "implementation_strategy",
+			}
+		},
+		LoopGuardrailReason::NoEffectiveDiff if source_is_repo_gate => {
+			ArchitectureRecoveryBoundary {
+				disposition: AuthorityBoundaryDisposition::WithinAuthority,
+				final_reason: "No-effective-diff convergence followed repo-gate repair work; architecture recovery may replace the ineffective implementation strategy.",
+				boundary_type: "implementation_strategy",
+			}
+		},
+		LoopGuardrailReason::ReviewChurn => ArchitectureRecoveryBoundary {
+			disposition: AuthorityBoundaryDisposition::WithinAuthority,
+			final_reason: "Review churn can be recovered autonomously only by changing implementation architecture while preserving accepted behavior and review standards.",
+			boundary_type: "implementation_strategy",
+		},
+		LoopGuardrailReason::DependencyProgramStale => ArchitectureRecoveryBoundary {
+			disposition: AuthorityBoundaryDisposition::RequiresHuman,
+			final_reason: "The next viable action changes dependency or Execution Program readiness and requires accepted authority.",
+			boundary_type: "external_dependency",
+		},
+		LoopGuardrailReason::UncoveredDirection => ArchitectureRecoveryBoundary {
+			disposition: AuthorityBoundaryDisposition::RequiresHuman,
+			final_reason: "Execution uncovered missing direction that changes the accepted Decision Contract.",
+			boundary_type: "decision_contract",
+		},
+		LoopGuardrailReason::AmbiguousRetainedProgress => ArchitectureRecoveryBoundary {
+			disposition: AuthorityBoundaryDisposition::InsufficientEvidence,
+			final_reason: "Retained progress ownership is underspecified, so Decodex lacks evidence that recovery is inside authority.",
+			boundary_type: "retained_ownership",
+		},
+		_ => ArchitectureRecoveryBoundary {
+			disposition: AuthorityBoundaryDisposition::InsufficientEvidence,
+			final_reason: "Guardrail evidence is insufficient to prove autonomous recovery stays inside the Authority Envelope.",
+			boundary_type: "authority_evidence",
+		},
+	}
+}
+
+fn architecture_recovery_started_count(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	issue_run: &IssueRunPlan,
+) -> Result<usize> {
+	Ok(state_store
+		.list_private_execution_events_for_issue(project.service_id(), &issue_run.issue.id)?
+		.iter()
+		.filter(|event| event.event_type() == ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE)
+		.count())
+}
+
+fn architecture_recovery_contracts_for_issue(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	issue_run: &IssueRunPlan,
+) -> Result<Vec<DecisionContractRecord>> {
+	let mut records = Vec::new();
+
+	for issue_id in [&issue_run.issue.id, &issue_run.issue.identifier] {
+		for record in state_store.list_decision_contracts_for_issue(project.service_id(), issue_id)? {
+			if records
+				.iter()
+				.all(|existing: &DecisionContractRecord| existing.contract_id() != record.contract_id())
+			{
+				records.push(record);
+			}
+		}
+	}
+
+	records.sort_by(|left, right| left.contract_id().cmp(right.contract_id()));
+
+	Ok(records)
+}
+
+fn architecture_recovery_changed_surfaces(
+	boundary: &ArchitectureRecoveryBoundary,
+) -> Vec<AuthorityBoundaryChangedSurface<'static>> {
+	vec![AuthorityBoundaryChangedSurface {
+		surface: boundary.boundary_type,
+		change_summary: "Replace the non-converging guardrail repair strategy with a materially different architecture recovery strategy.",
+		classification: boundary.disposition,
+	}]
+}
+
+fn architecture_recovery_improvement_signals(
+	reason: LoopGuardrailReason,
+	boundary: &ArchitectureRecoveryBoundary,
+) -> Vec<AuthorityBoundaryImprovementSignal<'static>> {
+	match boundary.disposition {
+		AuthorityBoundaryDisposition::WithinAuthority => match reason {
+			LoopGuardrailReason::ValidationRepeat | LoopGuardrailReason::RemainingDeltaUnchanged => {
+				vec![AuthorityBoundaryImprovementSignal {
+					kind: "missing_validator",
+					reason_code: "validation_guardrail_repeated",
+					target: "validator:repo_gate",
+					recommendation: "Promote the repeated repo-gate failure into an earlier deterministic validator or fixture.",
+				}]
+			},
+			_ => vec![AuthorityBoundaryImprovementSignal {
+				kind: "weak_prompt",
+				reason_code: "architecture_recovery_strategy_needed",
+				target: "prompt:phase_goal_repair",
+				recommendation: "Prompt recovery agents to replace the ineffective strategy instead of repeating patch-only repair.",
+			}],
+		},
+		AuthorityBoundaryDisposition::RequiresHuman => vec![AuthorityBoundaryImprovementSignal {
+			kind: "underspecified_decision_contract",
+			reason_code: "contract_boundary_required",
+			target: "decision_contract:authority_envelope",
+			recommendation: "Record explicit accepted authority before retrying autonomous recovery.",
+		}],
+		AuthorityBoundaryDisposition::InsufficientEvidence => {
+			vec![AuthorityBoundaryImprovementSignal {
+				kind: "underspecified_decision_contract",
+				reason_code: "authority_evidence_missing",
+				target: "issue_template:loop_recovery",
+				recommendation: "Capture retained ownership, validation, and Decision Contract evidence before recovery.",
+			}]
+		},
+	}
+}
+
+fn architecture_recovery_reason_code(
+	boundary: &ArchitectureRecoveryBoundary,
+	budget_exhausted: bool,
+) -> &'static str {
+	if budget_exhausted {
+		"architecture_recovery_exhausted"
+	} else if boundary.boundary_type == "external_dependency" {
+		"external_dependency_required"
+	} else if boundary.disposition == AuthorityBoundaryDisposition::WithinAuthority {
+		"architecture_recovery_started"
+	} else {
+		"contract_boundary_required"
+	}
+}
+
+fn record_architecture_recovery_packet(
+	state_store: &StateStore,
+	input: ArchitectureRecoveryPacketInput<'_>,
+) -> Result<()> {
+	let programs = architecture_recovery_programs_for_contracts(
+		state_store,
+		input.project.service_id(),
+		input.contracts,
+	)?;
+	let retained = architecture_recovery_retained_worktree(&input.issue_run.worktree.path)?;
+	let review = architecture_recovery_review_findings(state_store, input.project, input.issue_run)?;
+
+	state_store
+		.append_private_execution_event(
+			input.project.service_id(),
+			&input.issue_run.issue.id,
+			&input.issue_run.run_id,
+			input.issue_run.attempt_number,
+			ARCHITECTURE_RECOVERY_PACKET_EVENT_TYPE,
+			json!({
+				"schema": ARCHITECTURE_RECOVERY_PACKET_SCHEMA,
+				"record_version": 1,
+				"state": input.reason_code,
+				"reason_code": input.reason_code,
+				"issue": architecture_recovery_issue_payload(input.issue_run),
+				"run": architecture_recovery_run_payload(input.issue_run),
+				"decision_contract_context": input.contracts
+					.iter()
+					.map(architecture_recovery_contract_payload)
+					.collect::<Vec<_>>(),
+				"execution_program_context": programs
+					.iter()
+					.map(architecture_recovery_program_payload)
+					.collect::<Vec<_>>(),
+				"retained_worktree": retained,
+				"validation_failures": architecture_recovery_validation_failures(
+					input.loop_guardrail_stop,
+					input.error,
+				),
+				"review_findings": review,
+				"prior_recovery_attempts": {
+					"started_count": input.prior_started_count,
+				},
+				"recovery_budget": {
+					"attempt": input.recovery_attempt_number,
+					"max_attempts": ARCHITECTURE_RECOVERY_BUDGET,
+				},
+				"loop_guardrail": {
+					"reason": input.loop_guardrail_stop.reason.error_class(),
+					"consecutive_count": input.loop_guardrail_stop.consecutive_count,
+					"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
+					"fingerprint": input.loop_guardrail_stop.fingerprint.as_str(),
+					"source_error_class": input.loop_guardrail_stop.source_error_class.as_deref(),
+				},
+				"authority_boundary_check": {
+					"record_id": input.boundary_check_record_id,
+					"disposition": input.boundary_disposition.as_str(),
+					"reason": input.boundary_final_reason,
+				},
+			}),
+		)
+		.map(|_| ())
+}
+
+fn architecture_recovery_programs_for_contracts(
+	state_store: &StateStore,
+	project_id: &str,
+	contracts: &[DecisionContractRecord],
+) -> Result<Vec<ExecutionProgramRecord>> {
+	let mut programs = Vec::new();
+
+	for contract in contracts {
+		for program in state_store
+			.list_execution_programs_for_contract(project_id, contract.contract_id())?
+		{
+			if programs
+				.iter()
+				.all(|existing: &ExecutionProgramRecord| existing.program_id() != program.program_id())
+			{
+				programs.push(program);
+			}
+		}
+	}
+
+	programs.sort_by(|left, right| left.program_id().cmp(right.program_id()));
+
+	Ok(programs)
+}
+
+fn architecture_recovery_retained_worktree(worktree_path: &Path) -> Result<Value> {
+	let fingerprint = loop_guardrail_worktree_fingerprint(worktree_path)?;
+	let tracked_status =
+		git_guardrail_output(worktree_path, &["status", "--porcelain", "--untracked-files=no"])?;
+	let diff_stat =
+		git_guardrail_output(worktree_path, &["diff", "--stat", "--no-ext-diff", "HEAD", "--"])?;
+
+	Ok(json!({
+		"head_sha": fingerprint.as_ref().map(|value| value.head_sha.as_str()),
+		"tracked_status_hash": fingerprint
+			.as_ref()
+			.map(|value| value.tracked_status_hash.as_str()),
+		"tracked_diff_hash": fingerprint.as_ref().map(|value| value.tracked_diff_hash.as_str()),
+		"tracked_status": tracked_status.unwrap_or_default(),
+		"diff_stat": diff_stat.unwrap_or_default(),
+	}))
+}
+
+fn architecture_recovery_review_findings(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	issue_run: &IssueRunPlan,
+) -> Result<Value> {
+	let events = state_store.list_private_execution_events_for_issue(
+		project.service_id(),
+		&issue_run.issue.id,
+	)?;
+	let latest_review = events
+		.iter()
+		.rev()
+		.find(|event| event.event_type() == "review_checkpoint")
+		.map(|event| event.payload());
+	let Some(payload) = latest_review else {
+		return Ok(json!({
+			"latest_status": null,
+			"accepted_finding_count": 0,
+			"rejected_finding_count": 0,
+		}));
+	};
+	let review = payload.get("review").unwrap_or(payload);
+
+	Ok(json!({
+		"latest_status": payload.get("status").and_then(Value::as_str),
+		"accepted_finding_count": review
+			.get("accepted_findings")
+			.and_then(Value::as_array)
+			.map_or(0, Vec::len),
+		"rejected_finding_count": review
+			.get("rejected_findings")
+			.and_then(Value::as_array)
+			.map_or(0, Vec::len),
+		"nonclean_rounds": payload.get("nonclean_rounds").and_then(Value::as_i64).unwrap_or(0),
+	}))
+}
+
+fn architecture_recovery_issue_payload(issue_run: &IssueRunPlan) -> Value {
+	json!({
+		"id": issue_run.issue.id.as_str(),
+		"identifier": issue_run.issue.identifier.as_str(),
+		"title": issue_run.issue.title.as_str(),
+	})
+}
+
+fn architecture_recovery_run_payload(issue_run: &IssueRunPlan) -> Value {
+	json!({
+		"run_id": issue_run.run_id.as_str(),
+		"attempt_number": issue_run.attempt_number,
+		"branch": issue_run.worktree.branch_name.as_str(),
+		"dispatch_mode": issue_run.dispatch_mode.as_str(),
+	})
+}
+
+fn architecture_recovery_contract_payload(record: &DecisionContractRecord) -> Value {
+	json!({
+		"contract_id": record.contract_id(),
+		"source_issue_id": record.source_issue_id(),
+		"status": record.status().as_str(),
+		"updated_at": record.updated_at(),
+	})
+}
+
+fn architecture_recovery_program_payload(record: &ExecutionProgramRecord) -> Value {
+	json!({
+		"program_id": record.program_id(),
+		"source_contract_id": record.source_contract_id(),
+		"updated_at": record.updated_at(),
+	})
+}
+
+fn architecture_recovery_validation_failures(
+	stop: &LoopGuardrailStopRequested,
+	error: &Report,
+) -> Value {
+	json!({
+		"guardrail_reason": stop.reason.error_class(),
+		"source_error_class": stop.source_error_class.as_deref(),
+		"error_summary": truncate_private_diagnostic_text(&error.to_string()),
+	})
+}
+
+fn record_architecture_recovery_started_event(
+	state_store: &StateStore,
+	project: &ServiceConfig,
+	issue_run: &IssueRunPlan,
+	stop: &LoopGuardrailStopRequested,
+	boundary_check_record_id: i64,
+	recovery_attempt_number: usize,
+) -> Result<()> {
+	state_store
+		.append_private_execution_event(
+			project.service_id(),
+			&issue_run.issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+			ARCHITECTURE_RECOVERY_STARTED_EVENT_TYPE,
+			json!({
+				"schema": "decodex.architecture_recovery_started/1",
+				"record_version": 1,
+				"reason_code": "architecture_recovery_started",
+				"guardrail_reason": stop.reason.error_class(),
+				"authority_boundary_check_record_id": boundary_check_record_id,
+				"recovery_budget": {
+					"attempt": recovery_attempt_number,
+					"max_attempts": ARCHITECTURE_RECOVERY_BUDGET,
+				},
+				"next_strategy": "materially_different_architecture_recovery",
+			}),
+		)
+		.map(|_| ())
+}
+
+fn record_architecture_recovery_terminal_event(
+	state_store: &StateStore,
+	input: ArchitectureRecoveryTerminalEventInput<'_>,
+) -> Result<()> {
+	state_store
+		.append_private_execution_event(
+			input.project.service_id(),
+			&input.issue_run.issue.id,
+			&input.issue_run.run_id,
+			input.issue_run.attempt_number,
+			ARCHITECTURE_RECOVERY_TERMINAL_EVENT_TYPE,
+			json!({
+				"schema": "decodex.architecture_recovery_terminal/1",
+				"record_version": 1,
+				"reason_code": input.reason_code,
+				"guardrail_reason": input.stop.reason.error_class(),
+				"authority_boundary_check_record_id": input.boundary_check_record_id,
+				"boundary_disposition": input.boundary_disposition.as_str(),
+				"recovery_budget": {
+					"attempt": input.recovery_attempt_number,
+					"max_attempts": ARCHITECTURE_RECOVERY_BUDGET,
+				},
+			}),
+		)
+		.map(|_| ())
+}
+
+fn architecture_recovery_decision_request_input<'a>(
+	project: &'a ServiceConfig,
+	issue_run: &'a IssueRunPlan,
+	stop: &'a LoopGuardrailStopRequested,
+	boundary_check_record_id: i64,
+	decision_request_id: &'a str,
+	reason_code: &'a str,
+	final_reason: &'a str,
+) -> AuthorityDecisionRequestInput<'a> {
+	AuthorityDecisionRequestInput {
+		project_id: project.service_id(),
+		issue_id: &issue_run.issue.id,
+		issue_identifier: &issue_run.issue.identifier,
+		run_id: &issue_run.run_id,
+		attempt_number: issue_run.attempt_number,
+		boundary_check_record_id,
+		decision_request_id,
+		reason_code,
+		boundary_type: "architecture_recovery",
+		proposed_change: "Continue loop recovery with a materially different architecture strategy.",
+		why_exceeds_authority: final_reason,
+		options: vec![
+			AuthorityDecisionOption {
+				label: "Authorize recovery",
+				description: "Update the issue, Decision Contract, or policy to allow this recovery.",
+			},
+			AuthorityDecisionOption {
+				label: "Keep stopped",
+				description: "Leave the lane in manual attention until the boundary is resolved.",
+			},
+		],
+		recommendation: "Resolve the authority boundary before requeueing the lane.",
+		resume_condition: "Accept, reject, or revise the requested authority in the issue, Decision Contract, or project policy before clearing needs-attention.",
+		retained_worktree_evidence: vec![issue_run.worktree.branch_name.as_str()],
+		retained_diff_evidence: vec![stop.fingerprint.as_str()],
+		recovery_attempt_context: vec![stop.reason.error_class()],
+	}
+}
+
+fn architecture_recovery_goal_detail(
+	stop: &LoopGuardrailStopRequested,
+	recovery_attempt_number: usize,
+) -> String {
+	format!(
+		"Loop guardrail `{}` stopped the current ineffective strategy after {} matching observations. Decodex recorded an Architecture Recovery Packet and an Authority Boundary Check with `within_authority`; use autonomous architecture recovery attempt {} of {}. Start a materially different implementation strategy, preserve the accepted Decision Contract and all validation/review gates, and request human attention only if the next viable action would change product behavior, public API/config contract, security, data, credential, billing, validation standards, or accepted authority.",
+		stop.reason.error_class(),
+		stop.consecutive_count,
+		recovery_attempt_number,
+		ARCHITECTURE_RECOVERY_BUDGET
+	)
+}
+
 fn run_failure_requires_terminal_attention(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
@@ -1982,8 +2636,35 @@ where
 		retryable_failure_loop_guardrail_stop(project, state_store, issue_run, error)?
 	};
 
+	if let Some(review_policy_stop) = error.downcast_ref::<ReviewPolicyStopRequested>()
+		&& review_policy_stop.reason == ReviewPolicyStopReason::Exhausted
+	{
+		return match loop_guardrail_architecture_recovery_decision(
+			project,
+			state_store,
+			issue_run,
+			loop_guardrail_stop_from_review_policy(review_policy_stop),
+			error,
+		)? {
+			LoopGuardrailRecoveryDecision::Start(recovery) =>
+				apply_architecture_recovery_retry_writeback(&failure_context, recovery, max_attempts),
+			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
+				apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop),
+		};
+	}
 	if let Some(loop_guardrail_stop) = loop_guardrail_stop {
-		return apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop);
+		return match loop_guardrail_architecture_recovery_decision(
+			project,
+			state_store,
+			issue_run,
+			loop_guardrail_stop,
+			error,
+		)? {
+			LoopGuardrailRecoveryDecision::Start(recovery) =>
+				apply_architecture_recovery_retry_writeback(&failure_context, recovery, max_attempts),
+			LoopGuardrailRecoveryDecision::HumanRequired(loop_guardrail_stop) =>
+				apply_loop_guardrail_failure_writeback(&failure_context, loop_guardrail_stop),
+		};
 	}
 
 	if !requires_terminal_attention && retry_budget_attempts < max_attempts {
@@ -2102,6 +2783,78 @@ where
 		HarnessOutcomeKind::RetryableFailure,
 		Some(retry_error_class),
 		Some("failed"),
+		None,
+	);
+
+	Ok(())
+}
+
+fn apply_architecture_recovery_retry_writeback<T>(
+	context: &FailureHandlingContext<'_, T>,
+	recovery: ArchitectureRecoveryStart,
+	max_attempts: i64,
+) -> Result<()>
+where
+	T: IssueTracker,
+{
+	let retry_attempt = u32::try_from(context.retry_budget_attempts).unwrap_or(u32::MAX).max(1);
+	let delay = retry_delay(RetryKind::Failure, retry_attempt, context.workflow);
+	let retry_ready_at_unix_epoch = OffsetDateTime::now_utc().unix_timestamp().saturating_add(
+		i64::try_from((delay.as_millis().saturating_add(999)) / 1_000).unwrap_or(i64::MAX),
+	);
+	let recovery_max_attempts =
+		max_attempts.saturating_add(i64::try_from(recovery.max_attempts).unwrap_or(0));
+
+	state::write_run_retry_schedule(
+		&context.issue_run.worktree.path,
+		&context.issue_run.run_id,
+		context.issue_run.attempt_number,
+		ARCHITECTURE_RECOVERY_RETRY_KIND,
+		retry_ready_at_unix_epoch,
+	)?;
+
+	write_retry_budget_marker(
+		&context.issue_run.worktree.path,
+		&context.issue_run.run_id,
+		context.issue_run.attempt_number,
+		context.retry_budget_attempts,
+	)?;
+
+	tracing::warn!(
+		project_id = context.project.service_id(),
+		issue_id = context.issue_run.issue.id,
+		issue = context.issue_run.issue.identifier,
+		run_id = context.issue_run.run_id,
+		attempt = context.issue_run.attempt_number,
+		recovery_attempt = recovery.attempt_number,
+		max_recovery_attempts = recovery.max_attempts,
+		branch = context.issue_run.worktree.branch_name,
+		worktree_path = %context.worktree_path,
+		"Loop guardrail started autonomous architecture recovery."
+	);
+
+	tracker::create_public_comment(
+		context.tracker,
+		&context.issue_run.issue.id,
+		&format_retry_comment(RetryComment {
+			run_id: &context.issue_run.run_id,
+			attempt_number: context.issue_run.attempt_number,
+			retry_budget_attempt_number: context.retry_budget_attempts,
+			max_attempts: recovery_max_attempts,
+			worktree_path: context.worktree_path.to_owned(),
+			branch_name: &context.issue_run.worktree.branch_name,
+			error_class: "architecture_recovery_started",
+			next_action: "decodex recorded a within-authority boundary check and will retry with a materially different architecture recovery strategy",
+		}),
+	)?;
+
+	record_harness_outcome_best_effort(
+		context.state_store,
+		context.project.service_id(),
+		context.issue_run,
+		HarnessOutcomeKind::RetryableFailure,
+		Some("architecture_recovery_started"),
+		Some("architecture_recovery_started"),
 		None,
 	);
 

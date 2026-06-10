@@ -1103,8 +1103,10 @@ where
 	} else {
 		let retry_budget_attempts =
 			child_exit_retry_budget_attempt_count(&context, &issue, child)?;
+		let retry_budget_limit =
+			child_exit_retry_budget_limit(&context, &issue, child)?;
 
-		if retry_budget_attempts >= context.workflow.frontmatter().execution().max_attempts() {
+		if retry_budget_attempts >= retry_budget_limit {
 			return terminalize_exhausted_child_exit_retry(
 				context,
 				issue,
@@ -1225,6 +1227,31 @@ where
 	};
 
 	Ok(u32::try_from(retry_budget_attempts).unwrap_or(u32::MAX).max(1))
+}
+
+fn child_exit_retry_budget_limit<T>(
+	context: &ChildExitRetryContext<'_, T>,
+	issue: &TrackerIssue,
+	child: ChildRunRef<'_>,
+) -> Result<u32>
+where
+	T: IssueTracker,
+{
+	let max_attempts = context.workflow.frontmatter().execution().max_attempts();
+	let worktree = child_exit_worktree_spec(context, issue)?;
+	let Some(marker) = state::read_run_activity_marker_snapshot(&worktree.path)? else {
+		return Ok(max_attempts);
+	};
+
+	if marker.run_id() == child.run_id
+		&& marker.attempt_number() == child.attempt_number
+		&& marker.retry_kind() == Some(ARCHITECTURE_RECOVERY_RETRY_KIND)
+	{
+		return Ok(max_attempts
+			.saturating_add(u32::try_from(ARCHITECTURE_RECOVERY_BUDGET).unwrap_or(0)));
+	}
+
+	Ok(max_attempts)
 }
 
 fn terminalize_exhausted_child_exit_retry<T>(
