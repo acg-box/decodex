@@ -3702,8 +3702,9 @@ fn clear_thread_phase_goal_best_effort(
 				tracing::warn!(?error, "Failed to record app-server goal clear response.");
 			}
 		},
-		Err(error) =>
-			tracing::warn!(?error, "Failed to clear app-server phase goal after terminal path."),
+		Err(error) => {
+			tracing::warn!(?error, "Failed to clear app-server phase goal after terminal path.")
+		},
 	}
 }
 
