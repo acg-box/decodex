@@ -103,13 +103,21 @@ Post-control CLI recovery:
 3. If the lane is retained and lineage is exact, use the registered workflow path such
    as `decodex run <ISSUE>` for retry/resume. If status reports a retained review
    handoff mismatch, use `docs/runbook/recover-review-handoff.md`.
-4. If the operator changed labels or issue state and wants the scheduler to notice
+4. If status reports loop guardrail or architecture recovery state, inspect private
+   evidence before clearing attention labels or retrying. Autonomous recovery is valid
+   only when the Authority Boundary Check is `within_authority` and recovery budget
+   remains for an engineering convergence reason. Boundary, dependency,
+   uncovered-direction, ownership/lineage ambiguity, external,
+   insufficient-evidence, and exhausted-recovery outcomes are not cleared by
+   Authority Boundary Check alone; follow `docs/runbook/lane-control-recovery.md`
+   for the reason-specific resume rule before returning the lane to automation.
+5. If the operator changed labels or issue state and wants the scheduler to notice
    before the next poll, request `POST /api/linear-scan`; this is a refresh request,
    not a retry command.
-5. If the new operator text replaces the task or changes acceptance materially, do not
+6. If the new operator text replaces the task or changes acceptance materially, do not
    hide that as steer. Resolve the old lane explicitly, then update/requeue the same
    issue or create a new issue for the replacement work.
-6. If the evidence is ambiguous or useful retained work would be overwritten, route to
+7. If the evidence is ambiguous or useful retained work would be overwritten, route to
    manual attention instead of direct Linear label mutation.
 
 Manual commit and landing are separate narrow workflows:
