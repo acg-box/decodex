@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27174",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "practical_explainer",
+  "priority": "high",
+  "audience": "Codex multi-agent and MCP users",
+  "candidate_text": [
+    "Codex TUI now drops child-thread MCP startup status updates before they can mutate a parent chat, so subagent MCP failures stay out of the parent transcript. PR: https://github.com/openai/codex/pull/27174"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27174.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27174.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27174"
+    ]
+  },
+  "evidence_notes": [
+    "The TUI now checks MCP status notification `thread_id` against the visible `ChatWidget` thread before shared handling.",
+    "Tests cover child `Starting` and `Failed` MCP status notifications delivered to a retrying parent widget.",
+    "The tests preserve the parent retry status and avoid parent history or MCP status mutation.",
+    "No app-server schema or MCP payload shape changed in this PR."
+  ],
+  "claims": [
+    {
+      "text": "Child-thread MCP startup status updates are rejected before mutating the parent chat state.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27174.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Subagent MCP failures should no longer appear as duplicate parent-transcript warnings in the TUI.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27174.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR has a concrete user-visible multi-agent/MCP transcript cleanup path.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27174:practical_explainer"
+  },
+  "caveats": [
+    "This is a TUI routing guard, not a protocol-schema change.",
+    "The behavior depends on tagged MCP status notifications carrying thread ids."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate."
+  ]
+}
