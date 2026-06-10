@@ -1918,6 +1918,60 @@ fn dynamic_tool_call_enforces_declared_namespace() {
 }
 
 #[test]
+fn dynamic_tool_call_accepts_thread_bound_request_when_payload_turn_id_differs() {
+	let handler = NamespacedDynamicToolHandler { seen_namespace: RefCell::new(None) };
+	let request = JsonRpcRequest {
+		id: serde_json::json!(1),
+		method: String::from("item/tool/call"),
+		params: serde_json::json!({
+			"arguments": {},
+			"callId": "call-1",
+			"namespace": "tracker",
+			"threadId": "thread-1",
+			"tool": "tracker_tool",
+			"turnId": "tool-call-turn"
+		}),
+	};
+	let dispatch =
+		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("active-turn"));
+
+	assert!(dispatch.response.success);
+	assert!(dispatch.terminal_failure.is_none());
+	assert_eq!(*handler.seen_namespace.borrow(), Some(String::from("tracker")));
+}
+
+#[test]
+fn dynamic_tool_call_rejects_wrong_thread_even_when_payload_turn_id_differs() {
+	let handler = NamespacedDynamicToolHandler { seen_namespace: RefCell::new(None) };
+	let request = JsonRpcRequest {
+		id: serde_json::json!(1),
+		method: String::from("item/tool/call"),
+		params: serde_json::json!({
+			"arguments": {},
+			"callId": "call-1",
+			"namespace": "tracker",
+			"threadId": "thread-2",
+			"tool": "tracker_tool",
+			"turnId": "tool-call-turn"
+		}),
+	};
+	let dispatch =
+		super::handle_dynamic_tool_call(Some(&handler), &request, "thread-1", Some("active-turn"));
+
+	assert!(!dispatch.response.success);
+	assert_eq!(*handler.seen_namespace.borrow(), None);
+	assert_eq!(
+		dispatch.terminal_failure.as_ref().map(super::AppServerDynamicToolFailure::error_class),
+		Some("app_server_dynamic_tool_protocol_failure")
+	);
+	assert!(matches!(
+		dispatch.response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText { text }]
+			if text.contains("targeted thread `thread-2`")
+	));
+}
+
+#[test]
 fn dynamic_tool_call_rejects_invalid_response_shape() {
 	let handler = EmptyToolResponseHandler;
 	let request = JsonRpcRequest {
