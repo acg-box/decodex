@@ -70,6 +70,9 @@ def method_not_found(message_id, method):
         "message": "Method not found: " + str(method),
     }})
 
+def unsupported_goal_method(method):
+    return method in UNSUPPORTED_GOAL_METHODS
+
 def goal_payload(status):
     return {
         "createdAt": 1,
@@ -144,14 +147,14 @@ for line in sys.stdin:
             "reasoningEffort": None,
         })
     elif method == "thread/goal/set":
-        if UNSUPPORTED_GOAL_METHODS:
+        if unsupported_goal_method(method):
             method_not_found(message_id, method)
         else:
             goal["objective"] = params.get("objective") or ""
             goal["tokenBudget"] = params.get("tokenBudget")
             reply(message_id, {"goal": goal_payload("active")})
     elif method == "thread/goal/get":
-        if UNSUPPORTED_GOAL_METHODS:
+        if unsupported_goal_method(method):
             method_not_found(message_id, method)
         else:
             if GOAL_STATUSES:
@@ -161,7 +164,7 @@ for line in sys.stdin:
             goal_get_count += 1
             reply(message_id, {"goal": None if status == "none" else goal_payload(status)})
     elif method == "thread/goal/clear":
-        if UNSUPPORTED_GOAL_METHODS:
+        if unsupported_goal_method(method):
             method_not_found(message_id, method)
         else:
             reply(message_id, {"cleared": True})
@@ -181,7 +184,7 @@ for line in sys.stdin:
             "threadId": "thread-1",
             "turn": {"id": turn_id, "status": "running", "error": None},
         }})
-        if not UNSUPPORTED_GOAL_METHODS:
+        if not unsupported_goal_method("thread/goal/updated"):
             send({"method": "thread/goal/updated", "params": {
                 "threadId": "thread-1",
                 "turnId": turn_id,
@@ -676,7 +679,6 @@ fn minimal_run_request<'a>() -> super::AppServerRunRequest<'a> {
 		dynamic_tool_handler: None,
 		continuation_guard: None,
 		phase_goal_controller: None,
-		phase_goal_required: false,
 		codex_account_provider: None,
 	}
 }
@@ -876,17 +878,18 @@ for line in sys.stdin:
 fn phase_goal_fake_codex_script(
 	turn_outputs: &[&str],
 	goal_statuses: &[&str],
-	unsupported_goal_methods: bool,
+	unsupported_goal_methods: &[&str],
 ) -> String {
 	let outputs_json = serde_json::to_string(turn_outputs).expect("turn outputs should serialize");
 	let statuses_json =
 		serde_json::to_string(goal_statuses).expect("goal statuses should serialize");
-	let unsupported_goal = if unsupported_goal_methods { "True" } else { "False" };
+	let unsupported_goal =
+		serde_json::to_string(unsupported_goal_methods).expect("methods should serialize");
 
 	PHASE_GOAL_FAKE_CODEX_SCRIPT_TEMPLATE
 		.replace("__TURN_OUTPUTS__", &outputs_json)
 		.replace("__GOAL_STATUSES__", &statuses_json)
-		.replace("__UNSUPPORTED_GOAL_METHODS__", unsupported_goal)
+		.replace("__UNSUPPORTED_GOAL_METHODS__", &unsupported_goal)
 }
 
 fn execute_phase_goal_fake_app_server<'a, F>(
@@ -930,32 +933,13 @@ fn private_phase_goal_events(state_store: &StateStore, event_type: &str) -> Vec<
 }
 
 #[test]
-fn phase_goal_auto_mode_falls_back_when_app_server_goal_methods_are_missing() {
+fn phase_goal_set_method_is_required_when_phase_controller_is_present() {
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
-	let script = phase_goal_fake_codex_script(&["DONE"], &[], true);
-	let (result, state_store) = execute_phase_goal_fake_app_server(script, |request| {
-		request.phase_goal_controller = Some(&controller);
-		request.phase_goal_required = false;
-	});
-	let result = result.expect("auto mode should fall back to no-goal execution");
-	let unavailable_events = private_phase_goal_events(&state_store, "phase_goal_unavailable");
-
-	assert_eq!(result.final_output, "DONE");
-	assert_eq!(result.phase_goal_status, None);
-	assert_eq!(unavailable_events.len(), 1);
-	assert_eq!(unavailable_events[0]["method"], "thread/goal/set");
-	assert_eq!(unavailable_events[0]["fallback"], "no_goal");
-}
-
-#[test]
-fn phase_goal_required_mode_fails_when_goal_methods_are_missing() {
-	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
-	let script = phase_goal_fake_codex_script(&["DONE"], &[], true);
+	let script = phase_goal_fake_codex_script(&["DONE"], &[], &["thread/goal/set"]);
 	let (result, _state_store) = execute_phase_goal_fake_app_server(script, |request| {
 		request.phase_goal_controller = Some(&controller);
-		request.phase_goal_required = true;
 	});
-	let error = result.expect_err("required goal mode should fail on missing app-server support");
+	let error = result.expect_err("missing goal set support should fail immediately");
 	let failure = error
 		.downcast_ref::<AppServerPhaseGoalFailure>()
 		.expect("missing goal support should be a typed phase-goal failure");
@@ -965,11 +949,27 @@ fn phase_goal_required_mode_fails_when_goal_methods_are_missing() {
 }
 
 #[test]
+fn phase_goal_get_method_is_required_after_turn_completion() {
+	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
+	let script = phase_goal_fake_codex_script(&["DONE"], &[], &["thread/goal/get"]);
+	let (result, _state_store) = execute_phase_goal_fake_app_server(script, |request| {
+		request.phase_goal_controller = Some(&controller);
+	});
+	let error = result.expect_err("missing goal get support should fail after the turn");
+	let failure = error
+		.downcast_ref::<AppServerPhaseGoalFailure>()
+		.expect("missing goal support should be a typed phase-goal failure");
+
+	assert_eq!(failure.error_class(), "app_server_phase_goal_unsupported");
+	assert!(error.to_string().contains("thread/goal/get"));
+}
+
+#[test]
 fn phase_goal_complete_runs_validation_transition_before_handoff_goal() {
 	let handler = ContinueTokenCompletionHandler;
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
 	let script =
-		phase_goal_fake_codex_script(&["CONTINUE", "DONE"], &["complete", "complete"], false);
+		phase_goal_fake_codex_script(&["CONTINUE", "DONE"], &["complete", "complete"], &[]);
 	let (result, state_store) = execute_phase_goal_fake_app_server(script, |request| {
 		request.max_turns = 3;
 		request.dynamic_tool_handler = Some(&handler);
@@ -1000,7 +1000,7 @@ fn phase_goal_complete_runs_validation_transition_before_handoff_goal() {
 fn still_active_phase_goal_continues_same_thread_until_terminal_output() {
 	let handler = ContinueTokenCompletionHandler;
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
-	let script = phase_goal_fake_codex_script(&["CONTINUE", "DONE"], &["active", "active"], false);
+	let script = phase_goal_fake_codex_script(&["CONTINUE", "DONE"], &["active", "active"], &[]);
 	let (result, _state_store) = execute_phase_goal_fake_app_server(script, |request| {
 		request.max_turns = 2;
 		request.dynamic_tool_handler = Some(&handler);
@@ -1025,7 +1025,7 @@ fn still_active_phase_goal_continues_same_thread_until_terminal_output() {
 fn still_active_phase_goal_stops_at_max_turns_with_continuation_pending() {
 	let handler = ContinueTokenCompletionHandler;
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
-	let script = phase_goal_fake_codex_script(&["CONTINUE"], &["active"], false);
+	let script = phase_goal_fake_codex_script(&["CONTINUE"], &["active"], &[]);
 	let (result, _state_store) = execute_phase_goal_fake_app_server(script, |request| {
 		request.max_turns = 1;
 		request.dynamic_tool_handler = Some(&handler);
@@ -1048,7 +1048,7 @@ fn still_active_phase_goal_stops_at_max_turns_with_continuation_pending() {
 fn phase_goal_handoff_complete_without_terminal_completion_is_invalid() {
 	let handler = ContinueTokenCompletionHandler;
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::HandoffEvidence);
-	let script = phase_goal_fake_codex_script(&["CONTINUE"], &["complete"], false);
+	let script = phase_goal_fake_codex_script(&["CONTINUE"], &["complete"], &[]);
 	let (result, _state_store) = execute_phase_goal_fake_app_server(script, |request| {
 		request.max_turns = 2;
 		request.dynamic_tool_handler = Some(&handler);
@@ -2528,7 +2528,6 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 				dynamic_tool_handler: Some(&handler),
 				continuation_guard: Some(&guard),
 				phase_goal_controller: None,
-				phase_goal_required: false,
 				codex_account_provider: None,
 			},
 		&first_state_store,
@@ -2575,7 +2574,6 @@ fn live_app_server_resume_round_trip_updates_marker_and_state() {
 				dynamic_tool_handler: Some(&handler),
 				continuation_guard: None,
 				phase_goal_controller: None,
-				phase_goal_required: false,
 				codex_account_provider: None,
 			},
 		&resumed_state_store,

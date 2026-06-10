@@ -109,7 +109,6 @@ token_env_var = "GITHUB_TOKEN"
 
 [codex]
 review = "basic"
-goal_support = "auto"
 
 # Optional secondary public-projection privacy guard.
 # [privacy_classifier]
@@ -133,10 +132,9 @@ Notes:
   use only Self Check, `"standard"` when it should also require Decodex Review, and
   `"strict"` when it should additionally request GitHub Review after PR handoff.
   `"off"` skips review gates. If omitted, the default is `"strict"`.
-- Use `codex.goal_support = "auto"` to let retained lanes use phase-scoped app-server
-  goals when the selected Codex build supports them and fall back safely when it does
-  not. Use `"required"` only for a project that must fail fast when goal methods are
-  absent, and `"off"` to disable goal handling.
+- Retained lanes require phase-scoped app-server goals. If the selected Codex
+  app-server lacks `thread/goal/*` methods, Decodex fails fast with an unsupported
+  app-server blocker instead of using ordinary non-goal continuation.
 - With non-strict review levels, a one-shot `decodex run` may continue draining the
   same retained lane after review handoff if the retained landing gates are already
   satisfied. If those gates are still pending, the run exits cleanly at the retained
