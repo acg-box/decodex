@@ -46,6 +46,8 @@ Question this index answers: "which sequence should I execute?"
   explicitly rebinding retained review lanes blocked by a missing or stale runtime DB
   handoff
   marker.
+- [`review-config-migration.md`](./review-config-migration.md) for one-time migration
+  from historical review config keys to `[codex].review` levels.
 - [`research-to-execution-loop.md`](./research-to-execution-loop.md) for compiling
   latent research contracts, promoting accepted results, inspecting Execution Program
   queue shaping, and following validation, review, guardrail, and harness feedback.

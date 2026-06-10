@@ -19,7 +19,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 #[cfg(test)]
 use crate::tracker::privacy_classifier::DISABLED_PUBLIC_PROJECTION_PRIVACY_CLASSIFIER;
 use crate::{
-	config::InternalReviewMode,
+	config::ReviewLevel,
 	github,
 	prelude::eyre,
 	state::StateStore,
@@ -491,13 +491,13 @@ pub(crate) struct ReviewHandoffContext {
 	pub(crate) cwd: PathBuf,
 	pub(crate) github_token_env_var: Option<String>,
 	pub(crate) github_command_path: Option<PathBuf>,
-	pub(crate) internal_review_mode: InternalReviewMode,
+	pub(crate) review_level: ReviewLevel,
 	pub(crate) mode: ReviewExecutionMode,
 	pub(crate) recorded_pr_url: Option<String>,
 }
 impl ReviewHandoffContext {
-	pub(crate) fn internal_review_checkpoint_enabled(&self) -> bool {
-		self.internal_review_mode.requires_review_checkpoint()
+	pub(crate) fn decodex_review_checkpoint_enabled(&self) -> bool {
+		self.review_level.requires_review_checkpoint()
 	}
 }
 

@@ -96,8 +96,7 @@ fn control_plane_context_failure_includes_project_warning_detail() {
 			missing_env_var,
 			base_config.github().token_env_var(),
 			None,
-			base_config.codex().internal_review_mode(),
-			base_config.codex().external_review_enabled(),
+			base_config.codex().review_level(),
 		),
 	);
 
@@ -353,7 +352,7 @@ fn control_plane_snapshot_aggregates_top_level_lanes_for_all_registered_projects
 
 	write_service_config(
 		idle_base_config.repo_root(),
-		&sample_service_config_toml("rsnap", "HOME", "HOME", None, InternalReviewMode::Loop, true),
+		&sample_service_config_toml("rsnap", "HOME", "HOME", None, ReviewLevel::Strict),
 	);
 
 	let idle_config = load_service_config(idle_base_config.repo_root());
@@ -518,8 +517,7 @@ fn service_scoped_project_registration(
 			"HOME",
 			"HOME",
 			None,
-			InternalReviewMode::Loop,
-			true,
+			ReviewLevel::Strict,
 		),
 	);
 

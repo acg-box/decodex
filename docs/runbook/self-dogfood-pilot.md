@@ -108,8 +108,7 @@ api_key_env_var = "LINEAR_API_KEY"
 token_env_var = "GITHUB_TOKEN"
 
 [codex]
-internal_review_mode = "prompt"
-external_review_enabled = false
+review = "basic"
 goal_support = "auto"
 
 # Optional secondary public-projection privacy guard.
@@ -130,13 +129,18 @@ Notes:
 - Decodex does not expose repo-local model or reasoning overrides. `codex app-server` inherits those defaults from `~/.codex/config.toml`.
 - `api_key_env_var` is required and must name the environment variable that stores the Linear API token.
 - `github.token_env_var` is required for PR-backed review handoff validation and post-review PR-state inspection and must name the environment variable that stores the GitHub token.
-- For the self-dogfood pilot, use `codex.internal_review_mode = "loop"` for the runtime-owned self-review checkpoint loop, `"prompt"` to add only `Review your work repeatedly and fix any logic bugs until no new issues are found.`, or `"off"` to skip internal self-review. If omitted, the default is `"loop"`.
-- Keep `codex.external_review_enabled = false` when the retained lane should skip the runtime-owned `@codex review` request and rely on the PR-backed handoff plus the normal PR landing checks.
+- For the self-dogfood pilot, use `[codex].review = "basic"` when the lane should
+  use only Self Check, `"standard"` when it should also require Decodex Review, and
+  `"strict"` when it should additionally request GitHub Review after PR handoff.
+  `"off"` skips review gates. If omitted, the default is `"strict"`.
 - Use `codex.goal_support = "auto"` to let retained lanes use phase-scoped app-server
   goals when the selected Codex build supports them and fall back safely when it does
   not. Use `"required"` only for a project that must fail fast when goal methods are
   absent, and `"off"` to disable goal handling.
-- With `codex.external_review_enabled = false`, a one-shot `decodex run` may continue draining the same retained lane after review handoff if the retained landing gates are already satisfied. If those gates are still pending, the run exits cleanly at the retained waiting boundary instead of spinning.
+- With non-strict review levels, a one-shot `decodex run` may continue draining the
+  same retained lane after review handoff if the retained landing gates are already
+  satisfied. If those gates are still pending, the run exits cleanly at the retained
+  waiting boundary instead of spinning.
 - `[privacy_classifier]` is optional and disabled when omitted. If enabled, `endpoint`
   must be an operator-managed loopback HTTP service; Decodex sends only rendered
   public projection text fields to it, never private runtime evidence.

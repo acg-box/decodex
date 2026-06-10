@@ -142,7 +142,9 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   public lifecycle signal changes materially, such as the normalized phase or public
   branch/PR projection anchor changing. Repeated private evidence updates inside the
   same public signal must append private runtime events without adding Linear comments.
-- `issue_review_checkpoint` is available only when `codex.internal_review_mode = "loop"`, and only during the pre-PR handoff phase and retained review-repair runs; `closeout` does not expose it.
+- `issue_review_checkpoint` is available only when `[codex].review` is `"standard"`
+  or `"strict"`, and only during the pre-PR handoff phase and retained
+  review-repair runs; `closeout` does not expose it.
 - `issue_review_checkpoint` must accept only these normalized statuses:
   `clean`, `findings`, `needs_architecture_review`, `blocked`.
 - `issue_review_checkpoint` must bind every checkpoint to an explicit `head_sha`
@@ -162,9 +164,17 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   non-empty evidence, file and line references when possible, and concrete repair
   guidance. Rejected findings must include severity, non-empty evidence, and the
   rejection reason.
-- When `codex.internal_review_mode = "loop"`, `decodex` treats `issue_review_checkpoint` as the only authoritative structured review-policy signal. Skill prose or wrapper-local result words must not replace it.
-- When `codex.internal_review_mode = "loop"`, `issue_review_handoff` and `issue_review_repair_complete` must require the latest `clean` checkpoint for the current phase and current lane head, not merely any older clean checkpoint from the same lane.
-- When `codex.internal_review_mode = "prompt"` or `"off"`, `issue_review_handoff` and `issue_review_repair_complete` must not require `issue_review_checkpoint`; they still must pass PR validation, branch/head checks, and the configured repository validation gate before writeback.
+- When `[codex].review` is `"standard"` or `"strict"`, `decodex` treats
+  `issue_review_checkpoint` as the only authoritative structured review-policy
+  signal. Skill prose or wrapper-local result words must not replace it.
+- When `[codex].review` is `"standard"` or `"strict"`, `issue_review_handoff` and
+  `issue_review_repair_complete` must require the latest `clean` checkpoint for the
+  current phase and current lane head, not merely any older clean checkpoint from the
+  same lane.
+- When `[codex].review` is `"off"` or `"basic"`, `issue_review_handoff` and
+  `issue_review_repair_complete` must not require `issue_review_checkpoint`; they
+  still must pass PR validation, branch/head checks, and the configured repository
+  validation gate before writeback.
 - `issue_review_handoff` must validate that the supplied PR belongs to the current repository and lane branch, points at the validated lane HEAD, is open, and is ready for review before `decodex` accepts the handoff.
 - `issue_review_repair_complete` must validate that the supplied PR belongs to the current repository and retained lane branch, points at the validated lane HEAD, is open, and is ready for fresh review before `decodex` accepts retained repair completion.
 - `issue_review_handoff` records the success metadata during the turn, but `decodex` owns the final completion comment and `In Review` transition after service-side validation succeeds.
@@ -229,7 +239,11 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
 - If the agent never reaches a tracker write, `decodex` may perform a minimal fallback write during reconciliation or terminal failure handling.
 - If a tracker tool call fails transiently, the failure should be surfaced to the run journal so retry logic can reason about it.
 - If a tracker tool call fails because it targeted the wrong issue or an unsupported operation, treat that as a policy violation, not as a retryable transport error.
-- When `codex.internal_review_mode = "loop"`, if the latest `issue_review_checkpoint` reports `findings` for the third consecutive non-clean round on the same phase, or reports `needs_architecture_review` / `blocked`, `decodex` must stop the lane through the human-required failure path instead of retrying automatically.
+- When `[codex].review` is `"standard"` or `"strict"`, if the latest
+  `issue_review_checkpoint` reports `findings` for the third consecutive non-clean
+  round on the same phase, or reports `needs_architecture_review` / `blocked`,
+  `decodex` must stop the lane through the human-required failure path instead of
+  retrying automatically.
 - Review-policy stops do not dispatch research directly. `decodex` may surface
   operator guidance for a bounded research follow-up, but future runtime-owned research
   escalation is valid only after a separate adapter contract can verify the current

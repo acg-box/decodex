@@ -2,9 +2,9 @@
 
 Purpose: Define the normative review orchestration contract that sits above runtime-native review handoff, retained review repair, and landing.
 Status: normative
-Read this when: You are implementing or reviewing how a Decodex-owned lane requests internal or external review, counts review rounds, reacts to review results, or transitions from review pass into handoff or landing.
+Read this when: You are implementing or reviewing how a Decodex-owned lane requests Self Check, Decodex Review, or GitHub Review, counts review rounds, reacts to review results, or transitions from review pass into handoff or landing.
 Not this document: The low-level app-server protocol, the post-`In Review` lane phase model, the tracker tool schema, or local skill payloads.
-Defines: Shared review-loop semantics, reviewer-source-specific rules, strict external-review adapter signals, review-round accounting, architecture-escalation rules, landing entry requirements, and manual-intervention boundaries.
+Defines: Shared review-loop semantics, reviewer-source-specific rules, strict GitHub Review adapter signals, review-round accounting, architecture-escalation rules, landing entry requirements, and manual-intervention boundaries.
 
 ## Implementation note
 
@@ -29,28 +29,32 @@ There is one shared review loop for Decodex-owned lanes:
 3. validate and repair the actionable findings for the current lane head
 4. request review again until the lane passes or stops for escalation
 
-Internal review behavior is selected per service through the registered project config
-`[codex].internal_review_mode`. The supported modes are `"loop"`, `"prompt"`, and
-`"off"`.
-External GitHub review may be enabled or disabled per service through the registered project
-config `[codex].external_review_enabled`. When enabled, each review source participates in the
-retained review loop. When external review is disabled, Decodex skips the runtime-owned `@codex
-review` request and may land directly from the retained lane once the normal landing gates are
-satisfied and the PR is already on the deterministic clean merge path.
+Review behavior is selected per service through the registered project config
+`[codex].review`. The supported levels are `"off"`, `"basic"`, `"standard"`, and
+`"strict"`.
 
-When external review is enabled, the difference is reviewer source:
+The levels map to review sources as follows:
 
-- Internal review in `"loop"` mode uses a runtime-controlled independent
-  fresh-context read-only Codex review checkpoint for the current lane head.
-- Internal self-review in `"prompt"` mode injects only the prompt `Review your work repeatedly and fix any logic bugs until no new issues are found.` and does not expose or require the checkpoint tool.
-- External review uses a GitHub PR comment request by posting `@codex review` on the current PR.
+- `off`: no review gate.
+- `basic`: Self Check only. The agent reviews its own work repeatedly and fixes
+  obvious issues before handoff.
+- `standard`: Self Check plus Decodex Review. Decodex exposes and requires the
+  runtime-owned independent fresh-context `issue_review_checkpoint` gate.
+- `strict`: Standard plus GitHub Review. After Decodex Review and PR-backed
+  handoff, Decodex uses the runtime-owned GitHub `@codex review` path where the
+  existing adapter supports it.
+
+When the configured level does not include GitHub Review, Decodex skips the
+runtime-owned `@codex review` request and may land directly from the retained lane
+once the normal landing gates are satisfied and the PR is already on the
+deterministic clean merge path.
 
 ## Shared invariants
 
 1. Review always applies to the current lane head, not an older remembered implementation state.
 2. While a review request is outstanding, the lane itself must not push unrelated new commits.
 3. If PR state, branch lineage, or retained-lane ownership changes externally while review is pending, the lane must stop for `manual_intervention_required` instead of trying to recover automatically.
-4. Internal and external review rounds are counted independently.
+4. Decodex Review and GitHub Review rounds are counted independently.
 5. Review pass is fail-closed. If the expected pass signals are missing, contradictory, or ambiguous, the lane must stop for manual intervention instead of guessing success.
 
 ## Shared repair rules
@@ -61,7 +65,7 @@ After any review arrives:
 - repair only the verified issues
 - keep the repair batch scoped to the smallest coherent owned change set
 - rerun the repository validation required for the current head before the next review request
-- when `codex.internal_review_mode = "loop"`, record the normalized bounded-review
+- when `[codex].review` is `"standard"` or `"strict"`, record the normalized Decodex Review
   result for the exact current `HEAD` through `issue_review_checkpoint`, including
   the explicit independent reviewer source, checklist notes, accepted findings,
   rejected findings, non-empty evidence, and repair guidance
@@ -81,51 +85,59 @@ Rules:
 
 - A resend caused by missing acknowledgement is a retry of the current request, not a new review round.
 - A review round does not complete until the lane either requests the next review or stops for escalation.
-- The first three review results in the same review mode consume the normal convergence budget.
-- When the fourth review result arrives in the same review mode, the lane must request an architecture check:
+- The first three review results from the same review source consume the normal convergence budget.
+- When the fourth review result arrives from the same review source, the lane must request an architecture check:
   - if the repeated churn is rooted in an architectural defect or root-cause issue that local patching will not converge, stop for `manual_intervention_required`
-  - if the findings are normal and not rooted in architectural churn, continue and reset that review mode's three-round budget
+  - if the findings are normal and not rooted in architectural churn, continue and reset that review source's three-round budget
 
-## Internal review modes
+## Review levels
 
-Internal review mode is service-controlled.
+Review level is service-controlled.
 
 Rules:
 
-- `codex.internal_review_mode = "loop"` uses the runtime-owned independent
-  fresh-context read-only review checkpoint loop. Decodex exposes
+- `[codex].review = "off"` skips Self Check, Decodex Review, and GitHub Review.
+  Decodex does not expose `issue_review_checkpoint`, does not require a clean
+  checkpoint before handoff or repair completion, and ignores stale review-policy
+  checkpoint state for turn-stop classification.
+- `[codex].review = "basic"` injects the Self Check instruction and does not expose
+  or require the checkpoint tool. It does not use GitHub Review.
+- `[codex].review = "standard"` uses Self Check plus the runtime-owned independent
+  fresh-context read-only Decodex Review checkpoint loop. Decodex exposes
   `issue_review_checkpoint`, requires a current `clean` checkpoint before
   `issue_review_handoff` or `issue_review_repair_complete`, stores structured
   accepted/rejected finding evidence, and applies the review-policy stop rules to
-  stale or non-clean checkpoint state.
-- `codex.internal_review_mode = "prompt"` injects exactly the prompt `Review your work repeatedly and fix any logic bugs until no new issues are found.` into the agent instructions. Decodex does not expose `issue_review_checkpoint`, does not require a clean checkpoint before handoff or repair completion, and ignores stale review-policy checkpoint state for turn-stop classification.
-- `codex.internal_review_mode = "off"` skips internal review. Decodex does not expose `issue_review_checkpoint`, does not require a clean checkpoint before handoff or repair completion, and ignores stale review-policy checkpoint state for turn-stop classification.
-- Omitted `codex.internal_review_mode` defaults to `"loop"`. `codex.internal_review_enabled` is rejected.
-- In `"loop"` mode, the runtime may choose the exact local transport or
+  stale or non-clean checkpoint state. It does not use GitHub Review.
+- `[codex].review = "strict"` uses the standard requirements and then participates
+  in the GitHub Review loop.
+- Omitted `[codex].review` defaults to `"strict"`.
+- In `"standard"` and `"strict"` levels, the runtime may choose the exact local transport or
   child-conversation mechanism, but it must remain a fully runtime-controlled
   read-only review request. The reviewer must not edit files, push, land, or mutate
   tracker state.
-- In `"loop"` mode, internal review must use the same bounded review method and normalized review outcomes as any other review pass.
-- In `"loop"` mode, a `findings` checkpoint requires at least one accepted finding;
+- In `"standard"` and `"strict"` levels, Decodex Review must use the same bounded review method and normalized review outcomes as any other review pass.
+- In `"standard"` and `"strict"` levels, a `findings` checkpoint requires at least one accepted finding;
   rejected or non-actionable reviewer comments may be recorded with a `clean`
   checkpoint and must not become repair input.
-- If `"loop"` mode internal review returns an ambiguous or contradictory result that the runtime cannot classify without guessing, stop for `manual_intervention_required`.
-- Internal review pass transitions into the normal PR-backed review handoff flow, not directly into landing.
-- Prompt-only self-review is not sufficient when the loop-runtime risk policy
-  requires independent review. Use the loop-mode independent checkpoint boundary
+- If Decodex Review returns an ambiguous or contradictory result that the runtime
+  cannot classify without guessing, stop for `manual_intervention_required`.
+- Decodex Review pass transitions into the normal PR-backed review handoff flow, not
+  directly into landing.
+- Self Check is not sufficient when the loop-runtime risk policy
+  requires independent review. Use the Decodex Review checkpoint boundary
   before treating the lane as ready for handoff or landing.
 
-## External GitHub review
+## GitHub Review
 
-External review is adapter-driven and uses strict observable GitHub signals.
+GitHub Review is adapter-driven and uses strict observable GitHub signals.
 
 ### Request and acknowledgement
 
-The external review request is made by posting `@codex review` on the current PR.
+The GitHub Review request is made by posting `@codex review` on the current PR.
 
 The request is accepted only when that exact request comment receives an `eyes` reaction from the `codex` reviewer actor.
 
-Before every external review request, the current PR head must already have green required CI or
+Before every GitHub Review request, the current PR head must already have green required CI or
 required checks.
 
 Rules:
@@ -133,18 +145,18 @@ Rules:
 - If required CI or required checks are still pending, do not post a review request yet. Stay in
   the retained lane and wait for green.
 - If required CI is red in a retained-repair class the runtime already knows how to handle, return
-  to retained repair first and request external review only after the repaired head becomes green.
+  to retained repair first and request GitHub Review only after the repaired head becomes green.
 - If required CI is red in a way the runtime cannot classify or repair without guessing, stop for
   `manual_intervention_required` instead of posting the review request anyway.
-- If no `eyes` reaction appears within one minute, resend the external review request exactly once.
+- If no `eyes` reaction appears within one minute, resend the GitHub Review request exactly once.
 - That resend is a retry of the same request, not a new review round.
-- Treat the lane as having only one outstanding external review request at a time.
+- Treat the lane as having only one outstanding GitHub Review request at a time.
 - If the resent request still does not receive `eyes` within one minute, stop for `manual_intervention_required`.
-- Once the `eyes` signal is observed, poll until external review arrives or manual intervention becomes required.
+- Once the `eyes` signal is observed, poll until GitHub Review arrives or manual intervention becomes required.
 
 ### Read surface
 
-External review processing must read all relevant GitHub review surfaces, not only inline threads:
+GitHub Review processing must read all relevant GitHub review surfaces, not only inline threads:
 
 - review summaries and overall review body
 - inline review comments and review threads
@@ -154,16 +166,16 @@ External review processing must read all relevant GitHub review surfaces, not on
 
 ### Strict pass signal
 
-External review passes only when both of these exact signals are present:
+GitHub Review passes only when both of these exact signals are present:
 
 - review content authored by the `codex` reviewer actor is exactly the standalone text `Didn't find any major issues.` after trimming surrounding whitespace
 - the PR description currently has a `thumbs-up` reaction from the `codex` reviewer actor
 
-No fuzzy fallback, semantic-equivalence check, or alternative wording is allowed. If those signals do not appear exactly, external review does not pass automatically and the lane must stop for `manual_intervention_required`.
+No fuzzy fallback, semantic-equivalence check, or alternative wording is allowed. If those signals do not appear exactly, GitHub Review does not pass automatically and the lane must stop for `manual_intervention_required`.
 
-## External repair and thread resolution
+## GitHub Review repair and thread resolution
 
-After external review returns findings:
+After GitHub Review returns findings:
 
 - validate the findings against the current lane head before changing code
 - repair only the verified issues
@@ -181,18 +193,26 @@ Pushback or clarification threads stay open.
 
 The next step after review pass depends on reviewer source.
 
-### After internal review pass
+### After Decodex Review pass
 
 - continue the normal PR-backed review handoff flow
 - create or refresh the non-draft PR for the current lane head if needed
-- when `codex.internal_review_mode = "loop"`, record `issue_review_handoff` only after the latest bounded-review result for that handoff phase and current `HEAD` is `clean`
-- when `codex.internal_review_mode = "prompt"` or `"off"`, record `issue_review_handoff` after the branch is pushed, the non-draft PR is ready, and required validation has passed
-- if `codex.external_review_enabled = false`, treat that PR-backed handoff as sufficient review input for retained landing and do not post `@codex review`
-- after a successful external-review-disabled handoff, the same top-level `decodex run` may keep draining the same retained lane through retained landing, closeout, and deterministic cleanup until the lane reaches a stable waiting state or finishes that tail work
+- when `[codex].review` is `"standard"` or `"strict"`, record `issue_review_handoff`
+  only after the latest bounded-review result for that handoff phase and current
+  `HEAD` is `clean`
+- when `[codex].review` is `"off"` or `"basic"`, record `issue_review_handoff`
+  after the branch is pushed, the non-draft PR is ready, and required validation has
+  passed
+- if `[codex].review` is not `"strict"`, treat that PR-backed handoff as sufficient
+  review input for retained landing and do not post `@codex review`
+- after a successful non-strict handoff, the same top-level `decodex run` may keep
+  draining the same retained lane through retained landing, closeout, and
+  deterministic cleanup until the lane reaches a stable waiting state or finishes
+  that tail work
 - direct runtime merge is limited to the clean path; if branch sync, conflict resolution, ambiguous mergeability, or repository-specific recovery is still required, re-enter the retained agent path first
 - if retained checks are still pending or merge visibility is not yet authoritative, stop the same run cleanly at that waiting boundary instead of busy-waiting indefinitely
 
-### After external review pass
+### After GitHub Review pass
 
 - execute the same PR's GitHub admin merge directly only on the deterministic clean path
 - do not require a separate human merge step first when the clean-path preconditions are already satisfied
@@ -233,10 +253,10 @@ Exact ownership boundaries for closeout and cleanup remain governed by [`post-re
 
 The lane must stop for `manual_intervention_required` when any of these occur:
 
-- external PR, branch, or lineage changes while review is pending
-- internal review returns an ambiguous result
-- external review acknowledgement never appears within the allowed resend budget
-- external pass signals do not match the strict required pair exactly
+- GitHub PR, branch, or lineage changes while review is pending
+- Decodex Review returns an ambiguous result
+- GitHub Review acknowledgement never appears within the allowed resend budget
+- GitHub Review pass signals do not match the strict required pair exactly
 - admin merge is unsupported for the repository
 - merged PR visibility does not arrive within the configured polling ceiling
 - architecture check concludes that repeated review churn is rooted in a non-converging architectural defect
@@ -301,7 +321,7 @@ structured architecture or convergence stop.
 
 1. Post `@codex review` on the current PR.
 2. Observe `eyes` on that exact comment within one minute.
-3. Wait for the external review result.
+3. Wait for the GitHub Review result.
 4. Confirm the review content is exactly `Didn't find any major issues.` after trimming surrounding whitespace.
 5. Confirm the PR description currently has a `thumbs-up` from the `codex` reviewer actor.
 6. Run admin merge after landing gates are satisfied.

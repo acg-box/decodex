@@ -341,9 +341,9 @@ fn run_project_once_recovers_retained_worktree_from_issue_identifier() {
 #[test]
 fn run_project_once_recovers_ready_post_review_lane_before_landing() {
 	let (temp_dir, base_config, workflow) = temp_project_layout();
-	let config = service_config_with_external_review_enabled(
+	let config = service_config_with_review_level(
 		&service_config_with_github_token_env_var(&base_config, "PATH"),
-		false,
+		ReviewLevel::Standard,
 	);
 	let issue = sample_active_issue("In Review");
 	let tracker = FakeTracker::with_refresh_snapshots(

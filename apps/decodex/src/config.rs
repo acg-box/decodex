@@ -185,24 +185,18 @@ impl ProjectGitHubConfig {
 /// Project-level Codex defaults from service configuration.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[derive(Default)]
 pub struct ProjectCodexConfig {
-	#[serde(default = "default_internal_review_mode")]
-	internal_review_mode: InternalReviewMode,
-	#[serde(default = "default_external_review_enabled")]
-	external_review_enabled: bool,
+	#[serde(default = "default_review_level")]
+	review: ReviewLevel,
 	#[serde(default = "default_goal_support_mode")]
 	goal_support: ProjectCodexGoalSupportMode,
 	accounts: Option<ProjectCodexAccountsConfig>,
 }
 impl ProjectCodexConfig {
-	/// Internal review behavior Decodex should request for agent runs.
-	pub fn internal_review_mode(&self) -> InternalReviewMode {
-		self.internal_review_mode
-	}
-
-	/// Whether Decodex should drive the retained external `@codex review` loop.
-	pub fn external_review_enabled(&self) -> bool {
-		self.external_review_enabled
+	/// Review level Decodex should apply for agent runs.
+	pub fn review_level(&self) -> ReviewLevel {
+		self.review
 	}
 
 	/// Whether app-server phase-scoped goal support is enabled for lane runs.
@@ -231,17 +225,6 @@ impl ProjectCodexConfig {
 		}
 
 		Ok(())
-	}
-}
-
-impl Default for ProjectCodexConfig {
-	fn default() -> Self {
-		Self {
-			internal_review_mode: default_internal_review_mode(),
-			external_review_enabled: default_external_review_enabled(),
-			goal_support: default_goal_support_mode(),
-			accounts: None,
-		}
 	}
 }
 
@@ -402,36 +385,49 @@ impl ServiceConfigDocument {
 	}
 }
 
-/// Internal review mode for agent runs.
+/// Review level for agent runs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum InternalReviewMode {
-	/// Use the runtime-owned independent review checkpoint loop.
-	Loop,
-	/// Add a prompt-only self-review instruction without the checkpoint loop.
-	Prompt,
-	/// Disable internal review behavior.
+pub enum ReviewLevel {
+	/// Disable review gates.
 	Off,
+	/// Require implementation self-check only.
+	Basic,
+	/// Require self-check plus the Decodex Review checkpoint gate.
+	Standard,
+	/// Require standard review plus the GitHub Review path.
+	Strict,
 }
-impl InternalReviewMode {
-	/// Config string for this mode.
+impl ReviewLevel {
+	/// Config string for this level.
 	pub const fn as_str(self) -> &'static str {
 		match self {
-			Self::Loop => "loop",
-			Self::Prompt => "prompt",
 			Self::Off => "off",
+			Self::Basic => "basic",
+			Self::Standard => "standard",
+			Self::Strict => "strict",
 		}
 	}
 
-	/// Whether this mode uses the structured checkpoint loop.
+	/// Whether this level prompts the implementation self-check.
+	pub const fn uses_self_check(self) -> bool {
+		!matches!(self, Self::Off)
+	}
+
+	/// Whether this level uses the structured Decodex Review checkpoint gate.
 	pub const fn requires_review_checkpoint(self) -> bool {
-		matches!(self, Self::Loop)
+		matches!(self, Self::Standard | Self::Strict)
+	}
+
+	/// Whether this level uses the GitHub `@codex review` path.
+	pub const fn uses_github_review(self) -> bool {
+		matches!(self, Self::Strict)
 	}
 }
 
-impl Default for InternalReviewMode {
+impl Default for ReviewLevel {
 	fn default() -> Self {
-		default_internal_review_mode()
+		default_review_level()
 	}
 }
 
@@ -500,12 +496,8 @@ pub fn checkouts_share_repository(a: &Path, b: &Path) -> Result<bool> {
 	Ok(a_common_dir.is_some() && a_common_dir == b_common_dir)
 }
 
-const fn default_external_review_enabled() -> bool {
-	true
-}
-
-const fn default_internal_review_mode() -> InternalReviewMode {
-	InternalReviewMode::Loop
+const fn default_review_level() -> ReviewLevel {
+	ReviewLevel::Strict
 }
 
 const fn default_goal_support_mode() -> ProjectCodexGoalSupportMode {
@@ -994,7 +986,7 @@ mod tests {
 	use tempfile::TempDir;
 
 	use crate::{
-		config::{self, InternalReviewMode, ProjectCodexGoalSupportMode, ServiceConfig},
+		config::{self, ProjectCodexGoalSupportMode, ReviewLevel, ServiceConfig},
 		worktree::WorktreeManager,
 	};
 
@@ -1067,8 +1059,7 @@ mod tests {
 		assert_eq!(config.workflow_path(), canonical_root.join("WORKFLOW.md"));
 		assert_eq!(config.github().token_env_var(), "HOME");
 		assert_eq!(config.github().command_path(), Some(canonical_root.join("bin/gh").as_path()));
-		assert_eq!(config.codex().internal_review_mode(), InternalReviewMode::Loop);
-		assert!(config.codex().external_review_enabled());
+		assert_eq!(config.codex().review_level(), ReviewLevel::Strict);
 	}
 
 	#[test]
@@ -1221,23 +1212,13 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_codex_review_settings() {
-		for (case_name, codex_body, expected_mode, expected_external_review) in [
-			(
-				"explicit off mode and disabled external review",
-				r#"
-				internal_review_mode = "off"
-				external_review_enabled = false"#,
-				InternalReviewMode::Off,
-				false,
-			),
-			(
-				"prompt mode keeps external review default enabled",
-				r#"
-				internal_review_mode = "prompt""#,
-				InternalReviewMode::Prompt,
-				true,
-			),
+	fn parses_codex_review_levels() {
+		for (case_name, codex_body, expected_level) in [
+			("default strict level", "", ReviewLevel::Strict),
+			("explicit off level", r#"review = "off""#, ReviewLevel::Off),
+			("explicit basic level", r#"review = "basic""#, ReviewLevel::Basic),
+			("explicit standard level", r#"review = "standard""#, ReviewLevel::Standard),
+			("explicit strict level", r#"review = "strict""#, ReviewLevel::Strict),
 		] {
 			let temp_dir = TempDir::new().expect("temp dir should exist");
 			let config_path = write_config_file(
@@ -1259,8 +1240,7 @@ mod tests {
 			);
 			let config = ServiceConfig::from_path(&config_path).expect(case_name);
 
-			assert_eq!(config.codex().internal_review_mode(), expected_mode);
-			assert_eq!(config.codex().external_review_enabled(), expected_external_review);
+			assert_eq!(config.codex().review_level(), expected_level);
 		}
 	}
 
@@ -1445,7 +1425,7 @@ mod tests {
 	}
 
 	#[test]
-	fn rejects_unknown_codex_internal_review_mode() {
+	fn rejects_unknown_codex_review_level() {
 		let temp_dir = TempDir::new().expect("temp dir should exist");
 		let config_path = write_config_file(
 			temp_dir.path(),
@@ -1459,11 +1439,11 @@ mod tests {
 				token_env_var = "HOME"
 
 				[codex]
-				internal_review_mode = "prompt_only"
+				review = "prompt_only"
 			"#,
 		);
-		let error = ServiceConfig::from_path(&config_path)
-			.expect_err("unknown internal review mode should fail");
+		let error =
+			ServiceConfig::from_path(&config_path).expect_err("unknown review level should fail");
 
 		assert!(error.to_string().contains("prompt_only"));
 	}
