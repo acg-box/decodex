@@ -1,5 +1,6 @@
 use orchestrator::HarnessOutcomeKind;
 use orchestrator::HarnessOutcomeRecordInput;
+use orchestrator::PrivateEvidenceReadback;
 
 use crate::loop_contract::DecisionContract;
 
@@ -516,7 +517,7 @@ fn private_evidence_readback_direct_lookup_uses_stored_issue_id() {
 }
 
 #[test]
-fn harness_outcome_records_validation_review_and_repair_signals() {
+fn agent_evidence_harness_outcome_records_validation_review_and_repair_signals() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 
@@ -544,38 +545,8 @@ fn harness_outcome_records_validation_review_and_repair_signals() {
 	let payload = recorded.payload();
 
 	assert_eq!(recorded.event_type(), "harness_outcome");
-	assert_eq!(payload["schema"], "decodex.harness_outcome/1");
-	assert_eq!(payload["validation"]["result"], "failed");
-	assert_eq!(payload["validation"]["failure_count"], 2);
-	assert_eq!(
-		payload["validation"]["failure_classes"],
-		serde_json::json!(["phase_goal_validation_fail", "repo_gate_verify_failed"])
-	);
-	assert_eq!(payload["repair"]["repair_attempt_observed"], true);
-	assert_eq!(payload["review"]["accepted_finding_count"], 1);
-	assert_eq!(payload["authority_boundary"]["failed_check_count"], 1);
-	assert_eq!(payload["authority_boundary"]["improvement_signal_count"], 1);
-	assert!(
-		payload["improvement_candidates"]
-			.as_array()
-			.expect("candidates should be an array")
-			.iter()
-			.any(|candidate| candidate["reason_code"] == "accepted_review_findings")
-	);
-	assert!(
-		payload["improvement_candidates"]
-			.as_array()
-			.expect("candidates should be an array")
-			.iter()
-			.any(|candidate| candidate["reason_code"] == "authority_underspecified")
-	);
-	assert!(
-		payload["improvement_candidates"]
-			.as_array()
-			.expect("candidates should be an array")
-			.iter()
-			.any(|candidate| candidate["reason_code"] == "architecture_recovery_exhausted")
-	);
+
+	assert_harness_outcome_payload(payload);
 
 	let request = EvidenceRequest {
 		config_path: None,
@@ -592,6 +563,38 @@ fn harness_outcome_records_validation_review_and_repair_signals() {
 	)
 	.expect("private evidence should read");
 
+	assert_harness_private_readback(&readback);
+}
+
+fn assert_harness_outcome_payload(payload: &Value) {
+	assert_eq!(payload["schema"], "decodex.harness_outcome/1");
+	assert_eq!(payload["validation"]["result"], "failed");
+	assert_eq!(payload["validation"]["failure_count"], 2);
+	assert_eq!(
+		payload["validation"]["failure_classes"],
+		serde_json::json!(["phase_goal_validation_fail", "repo_gate_verify_failed"])
+	);
+	assert_eq!(payload["repair"]["repair_attempt_observed"], true);
+	assert_eq!(payload["review"]["accepted_finding_count"], 1);
+	assert_eq!(payload["authority_boundary"]["failed_check_count"], 1);
+	assert_eq!(payload["authority_boundary"]["improvement_signal_count"], 1);
+
+	assert_harness_payload_candidate(payload, "accepted_review_findings");
+	assert_harness_payload_candidate(payload, "authority_underspecified");
+	assert_harness_payload_candidate(payload, "architecture_recovery_exhausted");
+}
+
+fn assert_harness_payload_candidate(payload: &Value, reason_code: &str) {
+	assert!(
+		payload["improvement_candidates"]
+			.as_array()
+			.expect("candidates should be an array")
+			.iter()
+			.any(|candidate| candidate["reason_code"] == reason_code)
+	);
+}
+
+fn assert_harness_private_readback(readback: &PrivateEvidenceReadback) {
 	assert!(
 		readback
 			.improvement_candidates
@@ -619,6 +622,27 @@ fn harness_outcome_records_validation_review_and_repair_signals() {
 				&& recovery.recovery_budget_max_attempts == Some(1)
 		})
 	);
+	assert!(readback.review_checkpoints.iter().any(|checkpoint| {
+		checkpoint.phase == "handoff"
+			&& checkpoint.status == "findings"
+			&& checkpoint.head_sha.as_deref() == Some("abc123")
+			&& checkpoint.round == Some(1)
+			&& checkpoint.accepted_finding_count == 1
+	}));
+	assert!(readback.boundary_checks.iter().any(|boundary| {
+		boundary.disposition == "requires_human"
+			&& boundary.attempted_recovery_reason.as_deref() == Some("uncovered_direction")
+			&& boundary.changed_surface_count == 1
+			&& boundary.improvement_signal_count == 1
+	}));
+
+	let rendered = orchestrator::render_private_evidence_readback(readback);
+
+	assert!(rendered.contains("Review Checkpoints"));
+	assert!(rendered.contains("Architecture Recoveries"));
+	assert!(rendered.contains("Boundary Checks"));
+	assert!(rendered.contains("status: findings"));
+	assert!(rendered.contains("disposition: requires_human"));
 	assert!(readback.events.iter().all(|event| event.payload.is_none()));
 }
 

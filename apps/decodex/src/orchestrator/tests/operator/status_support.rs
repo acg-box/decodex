@@ -264,6 +264,7 @@ fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
 				"decodex evidence PUB-101 --run-id run-1 --attempt 1 --json",
 			),
 		},
+		loop_status: None,
 		control_capability: Some(operator_status_text_control_capability()),
 		process_id: Some(1_234),
 		process_alive: Some(true),
@@ -439,6 +440,7 @@ fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus>
 		unresolved_review_threads: Some(0),
 		readback_warning: None,
 		readback_root_cause: None,
+		loop_status: None,
 	}]
 }
 
