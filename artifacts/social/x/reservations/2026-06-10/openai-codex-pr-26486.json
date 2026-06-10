@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "practical_explainer",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-pr-26486:practical_explainer",
   "reserved_at": "2026-06-10T15:54:39Z",
   "expires_at": "2026-06-10T17:54:39Z",
@@ -28,8 +28,10 @@
   ],
   "owner": {
     "automation_id": "decodex-x-publisher",
-    "branch": "codex/x-publisher-pr-26486-20260610"
+    "branch": "codex/x-publisher-pr-26486-20260610",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/298"
   },
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-11/openai-codex-pr-26486.json",
   "evidence_notes": [
     "Durable records and active reservations in the current tree have no published, blocked, or active record for this idempotency key.",
     "Open GitHub PRs checked at reservation time did not include social/x post or reservation files.",
