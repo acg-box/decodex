@@ -506,12 +506,16 @@ fn review_handoff_inspection_uses_configured_github_token() {
 	let tracker = FakeTracker::new();
 	let issue = sample_issue();
 	let workflow = sample_workflow();
+	let token_env_var = "DECODEX_TEST_REVIEW_HANDOFF_GITHUB_TOKEN";
+	let _env_guard = TestEnvVarGuard::set(token_env_var, "configured-review-token");
 	let inspector = GitHubTokenAssertingPullRequestInspector {
-		expected_token: env::var("HOME").expect("HOME should exist"),
+		expected_token: String::from("configured-review-token"),
 		response: sample_pull_request(),
 	};
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
-	let review_context = sample_review_context_in(temp_dir.path());
+	let mut review_context = sample_review_context_in(temp_dir.path());
+
+	review_context.github_token_env_var = Some(String::from(token_env_var));
 
 	write_clean_review_checkpoint(&review_context);
 

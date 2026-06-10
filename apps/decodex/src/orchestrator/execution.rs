@@ -239,7 +239,7 @@ impl RepoGatePhaseGoalController<'_> {
 				detail.unwrap_or("Run the registered canonicalize and verify commands before completing this phase.")
 			),
 			PhaseGoalKind::RepairAcceptedReviewFindings => format!(
-				"Decodex phase: {}\nRepair accepted review findings for {} on the retained PR head without widening issue scope. Do not request fresh external review before Decodex validation.",
+				"Decodex phase: {}\nRepair accepted review findings for {} on the retained PR head without widening issue scope. Do not request GitHub Review before Decodex validation.",
 				phase.as_str(),
 				self.issue_run.issue.identifier
 			),
@@ -902,7 +902,7 @@ fn build_issue_run_continuation_user_input(
 		issue_run.dispatch_mode,
 		review_context.recorded_pr_url.as_deref(),
 		workflow.frontmatter().tracker().success_state(),
-		project.codex().internal_review_mode(),
+		project.codex().review_level(),
 	)
 }
 

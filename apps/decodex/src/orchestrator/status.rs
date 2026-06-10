@@ -3044,7 +3044,7 @@ where
 		snapshot,
 		workflow,
 		review_state_inspector,
-		project.codex().external_review_enabled(),
+		project.codex().review_level().uses_github_review(),
 		Some((state_store, project.service_id())),
 	)
 }
@@ -3053,7 +3053,7 @@ fn classify_post_review_lane_with_external_review<I>(
 	snapshot: &PostReviewLaneSnapshot,
 	workflow: &WorkflowDocument,
 	review_state_inspector: &I,
-	external_review_enabled: bool,
+	github_review_enabled: bool,
 	runtime_state: Option<(&StateStore, &str)>,
 ) -> crate::prelude::Result<PostReviewLaneClassification>
 where
@@ -3073,7 +3073,7 @@ where
 	) {
 		return Ok(classification);
 	}
-		if !external_review_enabled {
+		if !github_review_enabled {
 			let orchestration_marker = load_post_review_orchestration_marker(
 				snapshot,
 				&review_state,
@@ -3085,7 +3085,7 @@ where
 			return Ok(classification);
 		}
 
-		apply_internal_review_only_post_review_classification(
+		apply_non_github_review_post_review_classification(
 			&mut classification,
 			&review_state,
 			orchestration_marker.as_ref(),
@@ -3302,7 +3302,7 @@ fn apply_pre_orchestration_post_review_classification(
 	false
 }
 
-fn apply_internal_review_only_post_review_classification(
+fn apply_non_github_review_post_review_classification(
 	classification: &mut PostReviewLaneClassification,
 	review_state: &PullRequestReviewState,
 	orchestration_marker: Option<&ReviewOrchestrationMarker>,
@@ -3322,10 +3322,10 @@ fn apply_internal_review_only_post_review_classification(
 			{
 				*classification = blocked_post_review_lane_from_state(
 					review_state,
-					"internal_review_only_merge_visibility_timeout",
+					"non_github_review_merge_visibility_timeout",
 				);
 			} else {
-				classification.reason = String::from("internal_review_only_waiting_for_merge");
+				classification.reason = String::from("non_github_review_waiting_for_merge");
 			}
 
 			return Ok(());
@@ -3335,7 +3335,7 @@ fn apply_internal_review_only_post_review_classification(
 			classification.reason = if review_state_landing_requires_agent_fallback(review_state) {
 				String::from("retained_landing_agent_fallback_required")
 			} else {
-				String::from("internal_review_only_repair_required")
+				String::from("non_github_review_repair_required")
 			};
 
 			return Ok(());
@@ -3344,12 +3344,12 @@ fn apply_internal_review_only_post_review_classification(
 
 	if review_state_clean_path_landing_gates_satisfied(review_state) {
 		classification.decision = PostReviewLaneDecision::ReadyToLand;
-		classification.reason = String::from("internal_review_only_ready_to_land");
+		classification.reason = String::from("non_github_review_ready_to_land");
 	} else if review_state_landing_requires_agent_fallback(review_state) {
 		classification.decision = PostReviewLaneDecision::NeedsReviewRepair;
 		classification.reason = String::from("retained_landing_agent_fallback_required");
 	} else {
-		classification.reason = String::from("internal_review_only_waiting_gates");
+		classification.reason = String::from("non_github_review_waiting_gates");
 	}
 
 	Ok(())
