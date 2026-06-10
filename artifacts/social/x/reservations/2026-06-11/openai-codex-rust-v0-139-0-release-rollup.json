@@ -1,0 +1,47 @@
+{
+  "schema": "social_publish_reservation/v1",
+  "slug": "openai-codex-rust-v0-139-0-release-rollup",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "release_rollup",
+  "status": "active",
+  "idempotency_key": "x:decodexspace:openai-codex-rust-v0-139-0:stable138-stable139:release_rollup",
+  "reserved_at": "2026-06-10T21:59:19Z",
+  "expires_at": "2026-06-10T23:59:18Z",
+  "day": "2026-06-11",
+  "timezone": "Asia/Shanghai",
+  "candidate_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-rust-v0-139-0-release-rollup.json"
+    ],
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.139.0",
+      "https://github.com/openai/codex/compare/rust-v0.138.0...rust-v0.139.0"
+    ]
+  },
+  "duplicate_keys": [
+    "x:decodexspace:openai-codex-rust-v0-139-0:stable138-stable139:release_rollup",
+    "openai-codex-rust-v0-139-0-release-rollup",
+    "Codex CLI 0.139.0",
+    "rust-v0.139.0",
+    "https://github.com/openai/codex/releases/tag/rust-v0.139.0",
+    "https://github.com/openai/codex/compare/rust-v0.138.0...rust-v0.139.0"
+  ],
+  "owner": {
+    "automation_id": "decodex-x-publisher",
+    "branch": "codex/x-publisher-rust-v0-139-0-20260611"
+  },
+  "evidence_notes": [
+    "Checked durable social_post/v1 records contain no published or blocked record for this idempotency key.",
+    "Checked durable social_publish_reservation/v1 records contain no active reservation for this idempotency key before this reservation.",
+    "Open GitHub PR readback found one pending 2026-06-11 publication record for openai-codex-pr-26486 and no pending record for rust-v0.139.0.",
+    "Asia/Shanghai cap day 2026-06-11 has one pending published @decodexspace post from PR #298 before this seven-post release-rollup attempt.",
+    "Live @decodexspace profile readback verified the account menu as @decodexspace and found no stable 0.139.0 lead, release URL, compare URL, candidate slug, or idempotency-subject duplicate across rendered recent profile posts.",
+    "The profile readback did find prior alpha-thread overlap for the generic feature phrase standalone web search in code mode, so final publication evidence must keep this stable release-rollup scoped to the 0.139.0 stable checkpoint."
+  ]
+}
