@@ -411,6 +411,11 @@ Worktree visibility follows the owning dashboard section:
   `pull_request_shape_read_failed`, or `lineage_validation_failed`. These diagnostic
   tokens are operator-local and must not include tokens, raw API payloads, or private
   command output.
+- `pull_request_merge_state_conflict` in `Review & Landing` means one retained
+  post-review readback looked merge-complete but direct PR merge readback did not
+  confirm that the same PR head is merged. Treat it as a readback contradiction, not a
+  closeout-ready lane: inspect the PR directly and retry status after the GitHub state
+  is consistent.
 - `Intake Queue` means queued attention still owns the path, including partial retained
   progress after retries.
 - `dependency_program_stale` in `Intake Queue` means the same open blocker fingerprint
@@ -425,11 +430,17 @@ Worktree visibility follows the owning dashboard section:
 - `Recovery Worktrees` means the path is retained local state after the authoritative
   runtime owner is gone or cannot explain it as active, review/landing, or queued
   work.
+- `retained_attention` in `Recovery Worktrees` means the durable Run Ledger final
+  outcome for the same issue is `needs_attention` or `terminal_failure`. This is a
+  human-required retained lane, not neutral cleanup hygiene. The project summary
+  `attention_count` includes it even when `queued_candidates` is empty and no active
+  or post-review lane currently owns the issue.
 
 Every operator snapshot worktree row includes `ownership`, `ownership_reason`,
 `provenance`, and optional `recovery_next_action` fields that distinguish active-lane
-ownership, post-review ownership, queued attention, post-land cleanup, and cleanup-only
-local retention. Runtime-recorded mappings report `provenance.source =
+ownership, post-review ownership, queued attention, retained attention, post-land
+cleanup, and cleanup-only local retention. Runtime-recorded mappings report
+`provenance.source =
 "runtime_recorded"` with created and refreshed Unix timestamps. Deterministically
 rebuilt mappings report `provenance.source = "runtime_recovered"` when tracker,
 retained marker, or closeout evidence proves a current owner after local state was
