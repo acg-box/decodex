@@ -1,0 +1,73 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27488",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27488",
+    "commit_shas": [
+      "a19ec71e8d73d4dbd1dfb5b34894744ee8e6ef1a",
+      "67a29aab4885be483dc7ea05ec9bce8fddbfdc00",
+      "9e25474a95a9ceb092c04ac628cbb6985f7f30eb",
+      "812afdf99973b744cc03839a08128a536df58e4c",
+      "57885a18cccf9db57602e1240e553aaf1df92da9"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Add new context window tool",
+        "url": "https://github.com/openai/codex/pull/27488",
+        "meta": "Merged 2026-06-11T03:39:08Z"
+      },
+      {
+        "kind": "commit",
+        "title": "codex: add new context window tool",
+        "url": "https://github.com/openai/codex/commit/812afdf99973b744cc03839a08128a536df58e4c"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-11T20:07:07Z",
+  "observed_change": "Codex added a direct-model-only `new_context` tool behind the under-development `token_budget` feature so a model can request a fresh context window without a compaction summary.",
+  "changed_surfaces": [
+    "token_budget feature flag and config schema",
+    "model-visible token budget context",
+    "core tool registry and direct-model-only tool exposure",
+    "new_context tool handler and tool spec",
+    "auto-compact window state",
+    "session history replacement and rollout persistence",
+    "token-budget integration tests and snapshots"
+  ],
+  "user_visible_path": "When `features.token_budget` is enabled, the model sees context-window budget metadata and can call `new_context`; Codex then starts the next same-turn follow-up with fresh initial context and no preserved conversation history.",
+  "control_plane_relevance": "High for Decodex Control Plane because retained-lane history readers, recovery logic, and context-window accounting may need to distinguish ordinary summary compaction from a no-summary context reset requested by the model.",
+  "compatibility_risk": "Medium under the `token_budget` feature: consumers that assume every compaction-like checkpoint carries a non-empty summary or preserved conversation history may misread `new_context` resets.",
+  "adoption_opportunity": "Teach Decodex diagnostics and run reconstruction to recognize no-summary `CompactedItem` checkpoints with a new window id, then decide whether retained lanes should expose or suppress `new_context` during long-running automation.",
+  "community_value": "High for Codex operators because the feature gives the model a source-backed escape hatch when the current context window is no longer useful and a summary would waste budget.",
+  "deprecated_or_breaking_notes": "The tool is gated by the under-development `token_budget` feature and exposed as direct-model-only. It intentionally drops prior window history for the follow-up request.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27488 says `new_context` is direct-model-only, gated by `Feature::TokenBudget`, and starts a no-summary compaction checkpoint containing only fresh initial context.",
+    "`codex-rs/features/src/lib.rs` adds the under-development `token_budget` feature flag with default disabled.",
+    "`codex-rs/core/src/tools/handlers/new_context_window_spec.rs` defines the `new_context` function tool with description `Start a new context window.`",
+    "`codex-rs/core/src/tools/spec_plan.rs` adds `NewContextWindowHandler` with `ToolExposure::DirectModelOnly` only when `Feature::TokenBudget` is enabled.",
+    "`Session::maybe_start_new_context_window` builds fresh initial context, replaces history, persists a `CompactedItem` with an empty message and a new window id, queues a compact session-start source, and recomputes token usage.",
+    "`codex-rs/core/tests/suite/token_budget.rs` asserts that `new_context` is exposed, the final follow-up request uses context window 1, and prior request text is absent.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27488.json` records 10 changed files for the merged PR."
+  ],
+  "caveats": "The feature is under development and disabled by default; do not claim general availability for all Codex sessions.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The no-summary context reset changes history and compaction assumptions relevant to Decodex retained-lane reconstruction."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "Operators need a concise explanation of what the `new_context` tool changes and why it matters for long sessions."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Audit Decodex run reconstruction and context diagnostics for assumptions about non-empty compaction summaries."
+    }
+  ]
+}

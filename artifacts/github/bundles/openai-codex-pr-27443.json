@@ -1,0 +1,271 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-10T19:14:29Z",
+      "message": "changes",
+      "sha": "104ce325c053cc8373b8f50f88516aaf73be0409",
+      "url": "https://github.com/openai/codex/commit/104ce325c053cc8373b8f50f88516aaf73be0409"
+    },
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-10T22:02:22Z",
+      "message": "changes",
+      "sha": "2aef9c511d253364af98fb4348683fea07aa8eef",
+      "url": "https://github.com/openai/codex/commit/2aef9c511d253364af98fb4348683fea07aa8eef"
+    },
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-10T23:17:54Z",
+      "message": "changes",
+      "sha": "5159b57cb0503bbf547d1a2c972dbe94933f0f01",
+      "url": "https://github.com/openai/codex/commit/5159b57cb0503bbf547d1a2c972dbe94933f0f01"
+    },
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-10T23:33:01Z",
+      "message": "changes",
+      "sha": "1cd7a69b77fc746d10b786dc1640bc6e542b308e",
+      "url": "https://github.com/openai/codex/commit/1cd7a69b77fc746d10b786dc1640bc6e542b308e"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "AWS",
+    "CODEX_HOME",
+    "BEDROCK_API_KEY_UNSUPPORTED_MESSAGE"
+  ],
+  "files": [
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -532,6 +532,13 @@\n             \"personalAccessToken\"\n           ],\n           \"type\": \"string\"\n+        },\n+        {\n+          \"description\": \"Amazon Bedrock bearer token managed by Codex.\",\n+          \"enum\": [\n+            \"bedrockApiKey\"\n+          ],\n+          \"type\": \"string\"\n         }\n       ]\n     },",
+      "path": "codex-rs/app-server-protocol/schema/json/ServerNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -6728,6 +6728,13 @@\n               \"personalAccessToken\"\n             ],\n             \"type\": \"string\"\n+          },\n+          {\n+            \"description\": \"Amazon Bedrock bearer token managed by Codex.\",\n+            \"enum\": [\n+              \"bedrockApiKey\"\n+            ],\n+            \"type\": \"string\"\n           }\n         ]\n       },",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1006,6 +1006,13 @@\n             \"personalAccessToken\"\n           ],\n           \"type\": \"string\"\n+        },\n+        {\n+          \"description\": \"Amazon Bedrock bearer token managed by Codex.\",\n+          \"enum\": [\n+            \"bedrockApiKey\"\n+          ],\n+          \"type\": \"string\"\n         }\n       ]\n     },",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -38,6 +38,13 @@\n             \"personalAccessToken\"\n           ],\n           \"type\": \"string\"\n+        },\n+        {\n+          \"description\": \"Amazon Bedrock bearer token managed by Codex.\",\n+          \"enum\": [\n+            \"bedrockApiKey\"\n+          ],\n+          \"type\": \"string\"\n         }\n       ]\n     },",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/AccountUpdatedNotification.json",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -5,4 +5,4 @@\n /**\n  * Authentication mode for OpenAI-backed providers.\n  */\n-export type AuthMode = \"apikey\" | \"chatgpt\" | \"chatgptAuthTokens\" | \"agentIdentity\" | \"personalAccessToken\";\n+export type AuthMode = \"apikey\" | \"chatgpt\" | \"chatgptAuthTokens\" | \"agentIdentity\" | \"personalAccessToken\" | \"bedrockApiKey\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/AuthMode.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 1,
+      "patch_excerpt": "@@ -41,14 +41,19 @@ pub enum AuthMode {\n     #[ts(rename = \"personalAccessToken\")]\n     #[strum(serialize = \"personalAccessToken\")]\n     PersonalAccessToken,\n+    /// Amazon Bedrock bearer token managed by Codex.\n+    #[serde(rename = \"bedrockApiKey\")]\n+    #[ts(rename = \"bedrockApiKey\")]\n+    #[strum(serialize = \"bedrockApiKey\")]\n+    BedrockApiKey,\n }\n \n impl AuthMode {\n     /// Returns whether this mode represents an authenticated human ChatGPT account.\n     pub fn has_chatgpt_account(self) -> bool {\n         match self {\n             Self::Chatgpt | Self::ChatgptAuthTokens | Self::PersonalAccessToken => true,\n-            Self::ApiKey | Self::AgentIdentity => false,\n+            Self::ApiKey | Self::AgentIdentity | Self::BedrockApiKey => false,\n         }\n     }\n }",
+      "path": "codex-rs/app-server-protocol/src/protocol/common.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -116,6 +116,7 @@ fn remote_control_auth_dot_json(account_id: Option<&str>) -> AuthDotJson {\n         last_refresh: Some(chrono::Utc::now()),\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     }\n }",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1842,6 +1842,7 @@ mod tests {\n             last_refresh: Some(Utc::now()),\n             agent_identity: None,\n             personal_access_token: None,\n+            bedrock_api_key: None,\n         }\n     }",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/websocket.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -165,6 +165,7 @@ pub fn write_chatgpt_auth(\n         last_refresh,\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     };\n \n     save_auth(codex_home, &auth, cli_auth_credentials_store_mode).context(\"write auth.json\")",
+      "path": "codex-rs/app-server/tests/common/auth_fixtures.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -119,6 +119,7 @@ async fn list_apps_returns_empty_with_api_key_auth() -> Result<()> {\n             last_refresh: None,\n             agent_identity: None,\n             personal_access_token: None,\n+            bedrock_api_key: None,\n         },\n         AuthCredentialsStoreMode::File,\n     )?;",
+      "path": "codex-rs/app-server/tests/suite/v2/app_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 20,
+      "deletions": 4,
+      "patch_excerpt": "@@ -1324,17 +1324,20 @@ fn stored_auth_mode(auth: &codex_login::AuthDotJson) -> &'static str {\n         codex_app_server_protocol::AuthMode::ChatgptAuthTokens => \"chatgpt_auth_tokens\",\n         codex_app_server_protocol::AuthMode::AgentIdentity => \"agent_identity\",\n         codex_app_server_protocol::AuthMode::PersonalAccessToken => \"personal_access_token\",\n+        codex_app_server_protocol::AuthMode::BedrockApiKey => \"bedrock_api_key\",\n     }\n }\n \n fn stored_auth_mode_value(auth: &AuthDotJson) -> codex_app_server_protocol::AuthMode {\n     if let Some(mode) = auth.auth_mode {\n         return mode;\n     }\n-    if auth.openai_api_key.is_some() {\n-        codex_app_server_protocol::AuthMode::ApiKey\n-    } else if auth.personal_access_token.is_some() {\n+    if auth.personal_access_token.is_some() {\n         codex_app_server_protocol::AuthMode::PersonalAccessToken\n+    } else if auth.bedrock...",
+      "path": "codex-rs/cli/src/doctor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -395,6 +395,10 @@ pub async fn run_login_status(cli_config_overrides: CliConfigOverrides) -> ! {\n                 eprintln!(\"Logged in using personal access token\");\n                 std::process::exit(0);\n             }\n+            AuthMode::BedrockApiKey => {\n+                eprintln!(\"Logged in using Amazon Bedrock API key\");\n+                std::process::exit(0);\n+            }\n         },\n         Ok(None) => {\n             eprintln!(\"Not logged in\");",
+      "path": "codex-rs/cli/src/login.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1985,7 +1985,7 @@ impl AuthRequestTelemetryContext {\n         let auth_telemetry = auth_header_telemetry(api_auth);\n         Self {\n             auth_mode: auth_mode.map(|mode| match mode {\n-                AuthMode::ApiKey => \"ApiKey\",\n+                AuthMode::ApiKey | AuthMode::BedrockApiKey => \"ApiKey\",\n                 AuthMode::Chatgpt\n                 | AuthMode::ChatgptAuthTokens\n                 | AuthMode::AgentIdentity",
+      "path": "codex-rs/core/src/client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -166,6 +166,7 @@ async fn login_with_access_token_writes_only_personal_access_token() {\n             last_refresh: None,\n             agent_identity: None,\n             personal_access_token: Some(\"at-login-test\".to_string()),\n+            bedrock_api_key: None,\n         }\n     );\n     assert_eq!(auth.resolved_mode(), AuthMode::PersonalAccessToken);\n@@ -325,6 +326,7 @@ async fn pro_account_with_no_api_key_uses_chatgpt_auth() {\n             last_refresh: Some(last_refresh),\n             agent_identity: None,\n             personal_access_token: None,\n+            bedrock_api_key: None,\n         },\n         auth_dot_json\n     );\n@@ -367,6 +369,7 @@ fn logout_removes_auth_file() -> Result<(), std::io::Error> {\n         last_refresh: None,\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     };\n     super::save_auth(dir.path(), &auth_dot...",
+      "path": "codex-rs/login/src/auth/auth_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,42 @@\n+use std::path::Path;\n+\n+use codex_config::types::AuthCredentialsStoreMode;\n+use serde::Deserialize;\n+use serde::Serialize;\n+\n+use super::manager::save_auth;\n+use super::storage::AuthDotJson;\n+use codex_app_server_protocol::AuthMode;\n+\n+/// Managed Amazon Bedrock API key persisted in `auth.json`.\n+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]\n+pub struct BedrockApiKeyAuth {\n+    pub api_key: String,\n+    pub region: String,\n+}\n+\n+/// Writes an `auth.json` that contains only the Amazon Bedrock API key auth.\n+pub fn login_with_bedrock_api_key(\n+    codex_home: &Path,\n+    api_key: &str,\n+    region: &str,\n+    auth_credentials_store_mode: AuthCredentialsStoreMode,\n+) -> std::io::Result<()> {\n+    let auth_dot_json = AuthDotJson {\n+        auth_mode: Some(AuthMode::BedrockApiKey),\n+        openai_api_key: None,\n+        tokens: None,\n+        last_refresh: ...",
+      "path": "codex-rs/login/src/auth/bedrock_api_key.rs",
+      "status": "added"
+    },
+    {
+      "additions": 162,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,162 @@\n+use codex_app_server_protocol::AuthMode;\n+use codex_config::types::AuthCredentialsStoreMode;\n+use pretty_assertions::assert_eq;\n+use tempfile::tempdir;\n+\n+use super::*;\n+use crate::auth::AuthManager;\n+use crate::auth::CodexAuth;\n+use crate::auth::storage::AuthStorageBackend;\n+use crate::auth::storage::FileAuthStorage;\n+\n+fn api_key_auth() -> AuthDotJson {\n+    AuthDotJson {\n+        auth_mode: Some(AuthMode::ApiKey),\n+        openai_api_key: Some(\"sk-test-key\".to_string()),\n+        tokens: None,\n+        last_refresh: None,\n+        agent_identity: None,\n+        personal_access_token: None,\n+        bedrock_api_key: None,\n+    }\n+}\n+\n+fn bedrock_only_auth() -> AuthDotJson {\n+    AuthDotJson {\n+        auth_mode: None,\n+        openai_api_key: None,\n+        tokens: None,\n+        last_refresh: None,\n+        agent_identity: None,\n+        personal_access_token: None,...",
+      "path": "codex-rs/login/src/auth/bedrock_api_key_tests.rs",
+      "status": "added"
+    },
+    {
+      "additions": 42,
+      "deletions": 7,
+      "patch_excerpt": "@@ -29,6 +29,7 @@ use super::access_token::classify_codex_access_token;\n use super::external_bearer::BearerTokenRefresher;\n use super::revoke::revoke_auth_tokens;\n pub use crate::auth::agent_identity::AgentIdentityAuth;\n+pub use crate::auth::bedrock_api_key::BedrockApiKeyAuth;\n pub use crate::auth::personal_access_token::PersonalAccessTokenAuth;\n pub use crate::auth::storage::AgentIdentityAuthRecord;\n pub use crate::auth::storage::AuthDotJson;\n@@ -57,12 +58,14 @@ pub enum CodexAuth {\n     ChatgptAuthTokens(ChatgptAuthTokens),\n     AgentIdentity(AgentIdentityAuth),\n     PersonalAccessToken(PersonalAccessTokenAuth),\n+    BedrockApiKey(BedrockApiKeyAuth),\n }\n \n impl PartialEq for CodexAuth {\n     fn eq(&self, other: &Self) -> bool {\n         match (self, other) {\n             (Self::PersonalAccessToken(a), Self::PersonalAccessToken(b)) => a == b,\n+            (Self::BedrockApiKey(a), Self::...",
+      "path": "codex-rs/login/src/auth/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,5 +1,6 @@\n mod access_token;\n mod agent_identity;\n+mod bedrock_api_key;\n pub mod default_client;\n pub mod error;\n mod personal_access_token;\n@@ -10,6 +11,8 @@ mod external_bearer;\n mod manager;\n mod revoke;\n \n+pub use bedrock_api_key::BedrockApiKeyAuth;\n+pub use bedrock_api_key::login_with_bedrock_api_key;\n pub use error::RefreshTokenFailedError;\n pub use error::RefreshTokenFailedReason;\n pub use manager::*;",
+      "path": "codex-rs/login/src/auth/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -18,6 +18,7 @@ use std::sync::Arc;\n use std::sync::Mutex;\n use tracing::warn;\n \n+use super::BedrockApiKeyAuth;\n use crate::token_data::TokenData;\n use codex_agent_identity::AgentIdentityJwtClaims;\n use codex_agent_identity::decode_agent_identity_jwt;\n@@ -48,6 +49,9 @@ pub struct AuthDotJson {\n \n     #[serde(default, skip_serializing_if = \"Option::is_none\")]\n     pub personal_access_token: Option<String>,\n+\n+    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n+    pub bedrock_api_key: Option<BedrockApiKeyAuth>,\n }\n \n #[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]",
+      "path": "codex-rs/login/src/auth/storage.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 0,
+      "patch_excerpt": "@@ -20,6 +20,7 @@ async fn file_storage_load_returns_auth_dot_json() -> anyhow::Result<()> {\n         last_refresh: Some(Utc::now()),\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     };\n \n     storage\n@@ -42,6 +43,7 @@ async fn file_storage_save_persists_auth_dot_json() -> anyhow::Result<()> {\n         last_refresh: Some(Utc::now()),\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     };\n \n     let file = get_auth_file(codex_home.path());\n@@ -76,6 +78,7 @@ async fn file_storage_round_trips_agent_identity_auth() -> anyhow::Result<()> {\n         last_refresh: None,\n         agent_identity: Some(agent_identity),\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     };\n \n     storage.save(&auth_dot_json)?;\n@@ -96,6 +99,7 @@ async fn file_storage_round_trips_pers...",
+      "path": "codex-rs/login/src/auth/storage_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -40,6 +40,7 @@ pub use auth::enforce_login_restrictions;\n pub use auth::load_auth_dot_json;\n pub use auth::login_with_access_token;\n pub use auth::login_with_api_key;\n+pub use auth::login_with_bedrock_api_key;\n pub use auth::logout;\n pub use auth::logout_with_revoke;\n pub use auth::read_codex_access_token_from_env;",
+      "path": "codex-rs/login/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -823,6 +823,7 @@ pub(crate) async fn persist_tokens_async(\n             last_refresh: Some(Utc::now()),\n             agent_identity: None,\n             personal_access_token: None,\n+            bedrock_api_key: None,\n         };\n         save_auth(&codex_home, &auth, auth_credentials_store_mode)?;\n         Ok::<_, io::Error>((previous_auth, auth))\n@@ -1327,6 +1328,7 @@ mod tests {\n             last_refresh: None,\n             agent_identity: None,\n             personal_access_token: None,\n+            bedrock_api_key: None,\n         }\n     }",
+      "path": "codex-rs/login/src/server.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 25,
+      "deletions": 0,
+      "patch_excerpt": "@@ -56,6 +56,7 @@ async fn refresh_token_succeeds_updates_storage() -> Result<()> {\n         last_refresh: Some(initial_last_refresh),\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     };\n     ctx.write_auth(&initial_auth).await?;\n \n@@ -121,6 +122,7 @@ async fn refresh_token_refreshes_when_auth_is_unchanged() -> Result<()> {\n         last_refresh: Some(initial_last_refresh),\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     };\n     ctx.write_auth(&initial_auth).await?;\n \n@@ -187,6 +189,7 @@ async fn auth_refreshes_when_access_token_is_near_expiry() -> Result<()> {\n         last_refresh: Some(initial_last_refresh),\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     };\n     ctx.write_auth(&initial_auth).await?;\n \n@@ -238,6 +2...",
+      "path": "codex-rs/login/tests/suite/auth_refresh.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -196,6 +196,7 @@ fn chatgpt_auth_with_refresh_token(refresh_token: &str) -> AuthDotJson {\n         last_refresh: None,\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     }\n }",
+      "path": "codex-rs/login/tests/suite/logout.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 30,
+      "deletions": 0,
+      "patch_excerpt": "@@ -8,11 +8,15 @@ use codex_api::SharedAuthProvider;\n use codex_login::AuthManager;\n use codex_login::CodexAuth;\n use codex_model_provider_info::ModelProviderInfo;\n+use codex_protocol::error::CodexErr;\n use http::HeaderMap;\n use http::HeaderValue;\n \n use crate::bearer_auth_provider::BearerAuthProvider;\n \n+const BEDROCK_API_KEY_UNSUPPORTED_MESSAGE: &str =\n+    \"Bedrock API key auth is only supported by the Amazon Bedrock model provider\";\n+\n #[derive(Clone, Debug)]\n struct AgentIdentityAuthProvider {\n     auth: codex_login::auth::AgentIdentityAuth,\n@@ -79,6 +83,12 @@ pub(crate) fn resolve_provider_auth(\n     auth: Option<&CodexAuth>,\n     provider: &ModelProviderInfo,\n ) -> codex_protocol::error::Result<SharedAuthProvider> {\n+    if matches!(auth, Some(CodexAuth::BedrockApiKey(_))) {\n+        return Err(CodexErr::UnsupportedOperation(\n+            BEDROCK_API_KEY_UNSUPPORTED_MESSAGE.to_str...",
+      "path": "codex-rs/model-provider/src/auth.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 31,
+      "deletions": 0,
+      "patch_excerpt": "@@ -51,6 +51,7 @@ pub struct ProviderAccountState {\n #[derive(Debug, Clone, Copy, PartialEq, Eq)]\n pub enum ProviderAccountError {\n     MissingChatgptAccountDetails,\n+    UnsupportedBedrockApiKeyAuth,\n }\n \n impl fmt::Display for ProviderAccountError {\n@@ -62,6 +63,12 @@ impl fmt::Display for ProviderAccountError {\n                     \"email and plan type are required for chatgpt authentication\"\n                 )\n             }\n+            Self::UnsupportedBedrockApiKeyAuth => {\n+                write!(\n+                    f,\n+                    \"Bedrock API key auth is only supported by the Amazon Bedrock model provider\"\n+                )\n+            }\n         }\n     }\n }\n@@ -232,6 +239,9 @@ impl ModelProvider for ConfiguredModelProvider {\n                 })\n                 .map(|auth| match &auth {\n                     CodexAuth::ApiKey(_) => Ok(ProviderAccount::ApiKey),\n+    ...",
+      "path": "codex-rs/model-provider/src/provider.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -212,6 +212,7 @@ c2ln\",\n         last_refresh: Some(Utc::now()),\n         agent_identity: None,\n         personal_access_token: None,\n+        bedrock_api_key: None,\n     };\n     std::fs::create_dir_all(codex_home).expect(\"codex home should be created\");\n     std::fs::write(",
+      "path": "codex-rs/models-manager/src/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -54,7 +54,8 @@ pub enum TelemetryAuthMode {\n impl From<codex_app_server_protocol::AuthMode> for TelemetryAuthMode {\n     fn from(mode: codex_app_server_protocol::AuthMode) -> Self {\n         match mode {\n-            codex_app_server_protocol::AuthMode::ApiKey => Self::ApiKey,\n+            codex_app_server_protocol::AuthMode::ApiKey\n+            | codex_app_server_protocol::AuthMode::BedrockApiKey => Self::ApiKey,\n             codex_app_server_protocol::AuthMode::Chatgpt\n             | codex_app_server_protocol::AuthMode::ChatgptAuthTokens\n             | codex_app_server_protocol::AuthMode::AgentIdentity",
+      "path": "codex-rs/otel/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1169,6 +1169,7 @@ pub(crate) fn status_account_display_from_auth_mode(\n             email: None,\n             plan: plan_type.map(plan_type_display_name),\n         }),\n+        Some(AuthMode::BedrockApiKey) => None,\n         None => None,\n     }\n }",
+      "path": "codex-rs/tui/src/app_server_session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -110,6 +110,7 @@ mod tests {\n             last_refresh: Some(Utc::now()),\n             agent_identity: None,\n             personal_access_token: None,\n+            bedrock_api_key: None,\n         };\n         save_auth(codex_home, &auth, AuthCredentialsStoreMode::File)\n             .expect(\"chatgpt auth should save\");\n@@ -158,6 +159,7 @@ mod tests {\n                 last_refresh: None,\n                 agent_identity: None,\n                 personal_access_token: None,\n+                bedrock_api_key: None,\n             },\n             AuthCredentialsStoreMode::File,\n         )",
+      "path": "codex-rs/tui/src/local_chatgpt_auth.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\r\n\r\nCodex needs to manage Amazon Bedrock API key credentials through the existing auth lifecycle instead of introducing a separate auth manager or provider-specific credential file. Treating Bedrock API key login as a primary auth mode gives it the same persistence, keyring, reload, and logout behavior as the existing OpenAI API key and ChatGPT modes.\r\n\r\nThe credential is valid only for the `amazon-bedrock` model provider. OpenAI-compatible providers must reject this auth mode rather than treating the Bedrock key as an OpenAI bearer token.\r\n\r\n## What changed\r\n\r\n- Added `bedrockApiKey` as an app-server `AuthMode` and `CodexAuth::BedrockApiKey` as a primary `AuthManager` mode.\r\n- Added `BedrockApiKeyAuth`, containing the API key and AWS region, to the existing `AuthDotJson` payload stored in `$CODEX_HOME/auth.json` or the configured keyring backend.\r\n- Added `login_with_bedrock_api_key(...)`, parallel to `login_with_api_key(...)`, which replaces the current stored login with Bedrock credentials.\r\n- Reused generic auth reload and logout behavior instead of adding a Bedrock-specific auth manager or logout path.\r\n- Updated login restrictions, status reporting, diagnostics, telemetry classification, generated app-server schemas, and auth fixtures for the new mode.\r\n- Added explicit errors when Bedrock API key auth is selected with an OpenAI-compatible model provider.\r\n\r\nThis PR establishes managed storage and auth-mode behavior. Routing the managed key and region into Amazon Bedrock requests will be in follow-up PRs.\r\n",
+    "labels": [
+      "code-reviewed"
+    ],
+    "merged_at": "2026-06-11T03:42:39Z",
+    "number": 27443,
+    "state": "merged",
+    "title": "feat: add Bedrock API key as a managed auth mode",
+    "url": "https://github.com/openai/codex/pull/27443"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
