@@ -367,6 +367,58 @@ fn build_operator_status_snapshot_with_account_mode(
 	Ok(snapshot)
 }
 
+fn build_lane_inspect_operator_runs(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &str,
+	run_id: Option<&str>,
+	limit: usize,
+) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
+	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+	let (active_runs, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
+	let project_display_name = operator_project_display_name(project);
+	let mut seen_run_ids = HashSet::new();
+	let mut runs = Vec::new();
+
+	for run in active_runs.into_iter().chain(recent_runs) {
+		if !seen_run_ids.insert(run.run_id().to_owned()) {
+			continue;
+		}
+		if !project_run_status_issue_matches(&run, issue) {
+			continue;
+		}
+		if run_id.is_some_and(|expected| expected != run.run_id()) {
+			continue;
+		}
+
+		runs.push(operator_run_status(
+			project,
+			state_store,
+			&project_display_name,
+			run,
+			now_unix_epoch,
+		)?);
+	}
+
+	Ok(runs)
+}
+
+fn project_run_status_issue_matches(run: &ProjectRunStatus, issue: &str) -> bool {
+	let issue = issue.trim();
+	let worktree_path = run.worktree_path().map(|path| path.display().to_string());
+	let issue_identifier = operator_run_issue_identifier_from_fields(
+		run.run_id(),
+		run.branch_name(),
+		worktree_path.as_deref(),
+	);
+
+	run.issue_id() == issue
+		|| issue_identifier.as_deref() == Some(issue)
+		|| issue_identifier
+			.as_ref()
+			.is_some_and(|identifier| identifier.eq_ignore_ascii_case(issue))
+}
+
 fn operator_active_run_statuses(
 	project: &ServiceConfig,
 	state_store: &StateStore,
