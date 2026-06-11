@@ -5225,6 +5225,13 @@ fn operator_run_status(
 		lifecycle.wait_reason.clone(),
 		protocol_activity.as_ref(),
 	);
+	let progress_diagnostic = operator_run_progress_diagnostic(
+		&lifecycle.phase,
+		&timing,
+		protocol_activity.as_ref(),
+		now_unix_epoch,
+		run_activity_idle_timeout(marker.as_ref()),
+	);
 	let (account, accounts) = operator_run_accounts(marker.as_ref());
 	let branch_name = run.branch_name().map(str::to_owned);
 	let worktree_path = operator_run_relative_worktree_path(project, &run);
@@ -5277,6 +5284,7 @@ fn operator_run_status(
 		idle_for_seconds: timing.idle_for_seconds,
 		protocol_idle_for_seconds: timing.protocol_idle_for_seconds,
 		suspected_stall: lifecycle.suspected_stall,
+		progress_diagnostic,
 		last_event_type: protocol_summary.last_event_type,
 		last_event_at: protocol_summary.last_event_at,
 		event_count: protocol_summary.event_count,
@@ -5955,9 +5963,13 @@ fn operator_run_timing(
 		run.last_event_at_unix(),
 		marker.and_then(RunActivityMarker::last_protocol_activity_unix_epoch),
 	);
+	let run_event_progress_unix_epoch = run
+		.last_event_type()
+		.filter(|event_type| state::protocol_event_counts_as_work_progress(event_type))
+		.and_then(|_| run.last_event_at_unix());
 	let last_progress_unix_epoch = max_optional_i64(
 		marker.and_then(RunActivityMarker::last_progress_unix_epoch),
-		last_protocol_activity_unix_epoch,
+		run_event_progress_unix_epoch,
 	);
 	let process_liveness = marker.and_then(marker_process_liveness_for_marker);
 
@@ -6326,6 +6338,51 @@ fn operator_run_is_suspected_stall(
 
 fn suspected_operator_run_stall_threshold(idle_timeout: Duration) -> Duration {
 	Duration::from_secs((idle_timeout.as_secs() / 2).max(1))
+}
+
+fn operator_run_progress_diagnostic(
+	phase: &str,
+	timing: &OperatorRunTiming,
+	protocol_activity: Option<&ProtocolActivitySummary>,
+	now_unix_epoch: i64,
+	idle_timeout: Duration,
+) -> Option<String> {
+	if phase != "executing" {
+		return None;
+	}
+
+	let protocol_activity = protocol_activity?;
+
+	if protocol_activity.waiting_reason.as_deref() != Some("model_execution")
+		|| !protocol_activity_is_non_work_only(protocol_activity)
+	{
+		return None;
+	}
+
+	let protocol_idle = timing
+		.last_protocol_activity_unix_epoch
+		.and_then(|last_protocol| observed_idle_duration(last_protocol, now_unix_epoch))?;
+
+	if protocol_idle >= idle_timeout {
+		return None;
+	}
+
+	let progress_is_stale = timing
+		.last_progress_unix_epoch
+		.and_then(|last_progress| observed_idle_duration(last_progress, now_unix_epoch))
+		.is_none_or(|idle_for| {
+			idle_for >= suspected_operator_run_stall_threshold(idle_timeout)
+		});
+
+	progress_is_stale.then(|| String::from("protocol_only_activity"))
+}
+
+fn protocol_activity_is_non_work_only(protocol_activity: &ProtocolActivitySummary) -> bool {
+	!protocol_activity.recent_events.is_empty()
+		&& protocol_activity
+			.recent_events
+			.iter()
+			.all(|event| !state::protocol_event_counts_as_work_progress(&event.event_type))
 }
 
 fn visible_operator_run_retry_schedule(
@@ -7536,7 +7593,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 	let control_capability = render_control_capability_summary(run.control_capability.as_ref());
 
 	output.push_str(&format!(
-		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
+		"- run_id: {}\n  project_id: {}\n  issue_id: {}\n  issue_identifier: {}\n  title: {}\n  attempt: {}\n  status: {}\n  attempt_status: {}\n  phase: {}\n  wait_reason: {}\n  current_operation: {}\n  active_lease: {}\n  queue_lease_state: {}\n  queue_lease: {}\n  execution_liveness: {}\n  freshness_at: {}\n  freshness_source: {}\n  timing: run_idle={} protocol_idle={} last_progress={} protocol_event={} events={}\n  account: {}\n  accounts: {}\n  child_agent_activity: {}\n  protocol_activity: {}\n  context_pressure: {}\n  private_evidence: {}\n  loop_status: {}\n  loop_review: {}\n  loop_architecture_recovery: {}\n  loop_boundary: {}\n  control_capability: {}\n  thread_id: {}\n  turn_id: {}\n  thread_status: {}\n  thread_active_flags: {}\n  interactive_requested: {}\n  continuation_pending: {}\n  branch: {}\n  worktree_path: {}\n  updated_at: {}\n  last_run_activity_at: {}\n  last_protocol_activity_at: {}\n  last_progress_at: {}\n  idle_for_seconds: {}\n  protocol_idle_for_seconds: {}\n  suspected_stall: {}\n  progress_diagnostic: {}\n  process_id: {}\n  process_alive: {}\n  process_liveness_reason: {}\n  retry_kind: {}\n  next_retry_at: {}\n  effective_model: {}\n  effective_model_provider: {}\n  effective_cwd: {}\n  effective_approval_policy: {}\n  effective_approvals_reviewer: {}\n  effective_sandbox_mode: {}\n  protocol_event: {}\n  event_count: {}\n",
 		run.run_id,
 		run.project_id,
 		run.issue_id,
@@ -7585,6 +7642,7 @@ fn append_rendered_run(output: &mut String, run: &OperatorRunStatus) {
 		idle_for_seconds,
 		protocol_idle_for_seconds,
 		if run.suspected_stall { "yes" } else { "no" },
+		run.progress_diagnostic.as_deref().unwrap_or("none"),
 		run.process_id.map_or_else(|| String::from("none"), |value| value.to_string()),
 		run.process_alive.map_or_else(
 			|| String::from("none"),
