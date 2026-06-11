@@ -1099,6 +1099,10 @@ fn apply_passive_retained_manual_attention_with_run_identity<T>(
 where
 	T: IssueTracker,
 {
+	if passive_retained_attention_blocker_was_resolved(&runtime, issue, worktree, reason)? {
+		return Ok(());
+	}
+
 	let synthetic_issue_run = IssueRunPlan {
 		issue: issue.clone(),
 		issue_state: issue.state.name.clone(),
@@ -1134,6 +1138,40 @@ where
 	)?;
 
 	Ok(())
+}
+
+fn passive_retained_attention_blocker_was_resolved<T>(
+	runtime: &PassiveRetainedAttentionRuntime<'_, T>,
+	issue: &TrackerIssue,
+	worktree: &WorktreeMapping,
+	reason: &str,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	if reason != "missing_review_handoff_record" {
+		return Ok(false);
+	}
+
+	let Some(review_handoff) = runtime.state_store.review_handoff_marker(
+		runtime.project.service_id(),
+		&issue.id,
+		worktree.branch_name(),
+	)? else {
+		return Ok(false);
+	};
+
+	tracing::info!(
+		service_id = runtime.project.service_id(),
+		issue_id = issue.id.as_str(),
+		issue = issue.identifier.as_str(),
+		branch = worktree.branch_name(),
+		pr_url = review_handoff.pr_url(),
+		pr_head_sha = review_handoff.pr_head_oid(),
+		"Skipping stale retained review attention writeback because review handoff is now rebound."
+	);
+
+	Ok(true)
 }
 
 fn passive_attention_runtime<'a, T>(

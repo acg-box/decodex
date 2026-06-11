@@ -104,6 +104,51 @@ fn successful_linear_execution_history_comments_with_cleanup(
 	comments
 }
 
+fn retained_partial_progress_linear_execution_history_comments(
+	issue: &TrackerIssue,
+) -> Vec<TrackerComment> {
+	vec![
+		linear_execution_history_comment(
+			issue,
+			"run_started",
+			"2026-06-11T09:00:00Z",
+			"run-start",
+			|record| {
+				record.branch = Some(String::from("xy/profit-pilot-xy-922"));
+				record.worktree_path = Some(String::from(".worktrees/XY-922"));
+				record.commit_sha = Some(String::from("0000000000000000000000000000000000000000"));
+				record.transport = Some(String::from("stdio://"));
+				record.summary = Some(String::from("Started the Decodex lane."));
+			},
+		),
+		linear_execution_history_comment(
+			issue,
+			"needs_attention",
+			"2026-06-11T09:08:00Z",
+			"retained-partial-progress",
+			|record| {
+				record.branch = Some(String::from("xy/profit-pilot-xy-922"));
+				record.worktree_path = Some(String::from(".worktrees/XY-922"));
+				record.summary = Some(String::from(
+					"Decodex retained validation-ready partial progress for manual review.",
+				));
+				record.error_class = Some(String::from("partial_progress_retained"));
+				record.next_action = Some(String::from(
+					"review the retained worktree diff, then commit/push/PR or mark manual disposition",
+				));
+				record.blockers = Some(vec![String::from(
+					"lane stopped before review handoff and terminal finalize",
+				)]);
+				record.evidence = Some(vec![
+					String::from("cargo make checks passed"),
+					String::from("retained worktree has tracked changes"),
+				]);
+				record.terminal_path = Some(String::from("retained_partial_progress"));
+			},
+		),
+	]
+}
+
 fn seed_local_linear_execution_events(state_store: &StateStore, comments: &[TrackerComment]) {
 	for comment in comments {
 		let record = records::parse_linear_execution_event_record(&comment.body)
