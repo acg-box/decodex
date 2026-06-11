@@ -6511,16 +6511,21 @@ fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorSt
 			.map_or_else(String::new, |warning| format!(" readback_warning={warning}"));
 
 		output.push_str(&format!(
-			"- program_id: {} source_contract_id: {} nodes={} ready={} blocked={} paused={} active={} completed={} stale={} queue_label_eligible={} mapped_issues={}{}\n",
+			"- program_id: {} source_contract_id: {} nodes={} planned={} mapped={} ready={} queued={} blocked={} held={} active={} attention={} completed={} stale={} superseded={} queue_label_eligible={} mapped_issues={}{}\n",
 			program.program_id,
 			program.source_contract_id,
 			program.node_count,
+			program.planned_count,
+			program.mapped_count,
 			program.ready_count,
+			program.queued_count,
 			program.blocked_count,
-			program.paused_count,
+			program.held_count,
 			program.active_count,
+			program.needs_attention_count,
 			program.completed_count,
 			program.stale_count,
+			program.superseded_count,
 			program.queue_label_eligible_count,
 			mapped_issues,
 			readback_warning,
