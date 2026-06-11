@@ -13,6 +13,9 @@ use libc::c_void;
 #[cfg(target_os = "macos")]
 use libc::proc_bsdinfo;
 use github::GhCommandResolution;
+use state::WORKTREE_PROVENANCE_FILESYSTEM_SCAN;
+use state::WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN;
+use state::WORKTREE_PROVENANCE_LEGACY_UNKNOWN;
 
 use crate::pull_request::{self, PullRequestLandingGateView};
 use crate::worktree;
@@ -242,6 +245,8 @@ struct OperatorIssueDisplayMetadata {
 struct WorktreeOwnership {
 	kind: &'static str,
 	reason: String,
+	next_action: Option<String>,
+	audit_required: bool,
 }
 
 pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
@@ -949,6 +954,8 @@ fn refresh_worktree_ownership(
 	for (worktree, ownership) in snapshot.worktrees.iter_mut().zip(ownership) {
 		worktree.ownership = ownership.kind.to_owned();
 		worktree.ownership_reason = ownership.reason;
+		worktree.recovery_next_action = ownership.next_action;
+		worktree.provenance.audit_required = ownership.audit_required;
 	}
 }
 
@@ -961,6 +968,8 @@ fn worktree_ownership(
 		return WorktreeOwnership {
 			kind: "active_lane",
 			reason: format!("Active lane `{}` owns this worktree.", run.run_id),
+			next_action: None,
+			audit_required: false,
 		};
 	}
 	if let Some(lane) = worktree_post_review_owner(worktree, snapshot) {
@@ -970,6 +979,8 @@ fn worktree_ownership(
 				"Review & Landing owns this worktree as `{}`.",
 				lane.classification
 			),
+			next_action: None,
+			audit_required: false,
 		};
 	}
 
@@ -979,6 +990,8 @@ fn worktree_ownership(
 			reason: String::from(
 				"Intake Queue owns this worktree because the issue needs operator attention.",
 			),
+			next_action: None,
+			audit_required: false,
 		};
 	}
 
@@ -986,12 +999,20 @@ fn worktree_ownership(
 		return WorktreeOwnership {
 			kind: "post_land_cleanup",
 			reason: hygiene.reason.clone(),
+			next_action: Some(String::from(
+				"inspect the merged worktree, preserve or discard local changes intentionally, then remove the linked worktree",
+			)),
+			audit_required: false,
 		};
 	}
+
+	let audit_required = worktree.provenance.source == WORKTREE_PROVENANCE_LEGACY_UNKNOWN;
 
 	WorktreeOwnership {
 		kind: "cleanup_only",
 		reason: worktree_cleanup_only_reason(worktree, completed_state),
+		next_action: audit_required.then(|| legacy_cleanup_next_action(worktree)),
+		audit_required,
 	}
 }
 
@@ -1043,6 +1064,12 @@ fn worktree_cleanup_only_reason(
 	worktree: &OperatorWorktreeStatus,
 	completed_state: Option<&str>,
 ) -> String {
+	if worktree.provenance.source == WORKTREE_PROVENANCE_LEGACY_UNKNOWN {
+		return String::from(
+			"Legacy worktree mapping has no durable runtime provenance; no active, queued, or post-review lane owns it, so Decodex cannot automatically prove PR or closeout lineage.",
+		);
+	}
+
 	if let (Some(issue_state), Some(completed_state)) = (worktree.issue_state.as_deref(), completed_state)
 		&& issue_state == completed_state
 	{
@@ -1053,6 +1080,15 @@ fn worktree_cleanup_only_reason(
 
 	String::from(
 		"No active lane, queued recovery, or post-review lane owns this worktree; local cleanup only.",
+	)
+}
+
+fn legacy_cleanup_next_action(worktree: &OperatorWorktreeStatus) -> String {
+	let issue = worktree.issue_identifier.as_deref().unwrap_or(&worktree.issue_id);
+
+	format!(
+		"verify tracker/PR terminal state and clean git status for `{}`, then run `decodex recover legacy-closeout {issue} --pr <MERGED_PR> --dry-run`; rerun with `--manual-authority` before removing this worktree",
+		worktree.worktree_path
 	)
 }
 
@@ -1315,6 +1351,8 @@ fn operator_status_worktrees(
 			ownership_reason: String::from(
 				"No active lane, queued recovery, or post-review lane currently owns this worktree.",
 			),
+			provenance: operator_worktree_provenance_from_mapping(&mapping),
+			recovery_next_action: None,
 			hygiene: None,
 		})
 		.collect::<Vec<_>>();
@@ -1346,6 +1384,12 @@ fn operator_status_worktrees(
 			ownership_reason: String::from(
 				"No active lane, queued recovery, or post-review lane currently owns this worktree.",
 			),
+			provenance: operator_worktree_provenance(
+				WORKTREE_PROVENANCE_FILESYSTEM_SCAN,
+				None,
+				None,
+			),
+			recovery_next_action: None,
 			hygiene: None,
 		});
 	}
@@ -1471,12 +1515,43 @@ fn operator_worktree_status_from_cleanup_debt(
 		worktree_path: relative_path,
 		ownership: String::from("post_land_cleanup"),
 		ownership_reason: reason.clone(),
+		provenance: operator_worktree_provenance(
+			WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN,
+			None,
+			None,
+		),
+		recovery_next_action: Some(String::from(
+			"inspect the merged worktree, preserve or discard local changes intentionally, then remove the linked worktree",
+		)),
 		hygiene: Some(OperatorWorktreeHygieneStatus {
 			classification: String::from(classification),
 			default_branch,
 			dirty,
 			reason,
 		}),
+	}
+}
+
+fn operator_worktree_provenance_from_mapping(
+	mapping: &WorktreeMapping,
+) -> OperatorWorktreeProvenanceStatus {
+	operator_worktree_provenance(
+		mapping.provenance().source(),
+		mapping.provenance().created_at_unix(),
+		mapping.provenance().updated_at_unix(),
+	)
+}
+
+fn operator_worktree_provenance(
+	source: &str,
+	created_at_unix: Option<i64>,
+	updated_at_unix: Option<i64>,
+) -> OperatorWorktreeProvenanceStatus {
+	OperatorWorktreeProvenanceStatus {
+		source: source.to_owned(),
+		created_at_unix,
+		updated_at_unix,
+		audit_required: false,
 	}
 }
 
@@ -4355,81 +4430,165 @@ where
 	let mut active_issues = Vec::new();
 
 	for issue in issues {
-		let worktree = worktree_manager.plan_for_issue(&issue.identifier);
-
-		if !worktree.path.exists() {
-			continue;
-		}
-
-		state_store.canonicalize_issue_identity(&issue.identifier, &issue.id)?;
-		state_store.upsert_worktree(
-			project.service_id(),
-			&issue.id,
-			&worktree.branch_name,
-			&worktree.path.display().to_string(),
-		)?;
-
-		let activity_marker = state::read_run_activity_marker_snapshot(&worktree.path)?;
-
-		if issue.state.name == workflow.frontmatter().tracker().success_state()
-			&& issue_has_service_ownership(tracker, &issue, project.service_id())?
-			&& let Some(marker) = activity_marker.as_ref()
-			&& worktree_activity_marker_is_fresh(marker, now_unix_epoch)
-		{
-			record_recovered_activity_lease(project, state_store, &issue, marker)?;
-
-			continue;
-		}
-		if issue_passes_closeout_dispatch_policy(tracker, &issue, project, workflow, state_store)?
-		{
-			match activity_marker.as_ref() {
-				Some(marker) if worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
-					record_recovered_activity_lease(project, state_store, &issue, marker)?;
-
-					continue;
-				},
-				_ => {},
-			}
-		}
-		if issue_passes_retry_dispatch_policy(
+		if let Some(active_issue) = recover_issue_runtime_state(
 			tracker,
-			&issue,
 			project,
 			workflow,
 			state_store,
-			RetryIssueStateHint::default(),
+			&worktree_manager,
+			issue,
+			now_unix_epoch,
 		)? {
-			match activity_marker.as_ref() {
-				Some(marker) if worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
-					record_recovered_activity_lease(project, state_store, &issue, marker)?;
-
-					continue;
-				},
-				Some(marker) => {
-					clear_recovered_issue_lease(
-						project.service_id(),
-						&issue.id,
-						Some(marker.run_id()),
-						state_store,
-					)?;
-				},
-				None => {
-					clear_recovered_issue_lease(
-						project.service_id(),
-						&issue.id,
-						None,
-						state_store,
-					)?;
-				},
-			}
-
-			active_issues.push(issue);
+			active_issues.push(active_issue);
 		}
 	}
 
 	active_issues.sort_by(compare_issue_candidates);
 
 	Ok(RecoveredRuntimeState { active_issues })
+}
+
+fn recover_issue_runtime_state<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	worktree_manager: &WorktreeManager,
+	issue: TrackerIssue,
+	now_unix_epoch: i64,
+) -> crate::prelude::Result<Option<TrackerIssue>>
+where
+	T: IssueTracker,
+{
+	let worktree = worktree_manager.plan_for_issue(&issue.identifier);
+
+	if !worktree.path.exists() {
+		return Ok(None);
+	}
+
+	state_store.canonicalize_issue_identity(&issue.identifier, &issue.id)?;
+
+	let activity_marker = state::read_run_activity_marker_snapshot(&worktree.path)?;
+	let existing_worktree_mapping = state_store.worktree_for_issue(&issue.id)?;
+	let recovered_service_ownership =
+		issue_has_recovered_service_ownership(tracker, &issue, project.service_id())?;
+
+	if existing_worktree_mapping.is_none() && recovered_service_ownership {
+		upsert_recovered_worktree_mapping(
+			project,
+			state_store,
+			&issue,
+			&worktree,
+			activity_marker.as_ref(),
+		)?;
+	}
+	if issue.state.name == workflow.frontmatter().tracker().success_state()
+		&& recovered_service_ownership
+		&& let Some(marker) = activity_marker.as_ref()
+		&& worktree_activity_marker_is_fresh(marker, now_unix_epoch)
+	{
+		upsert_recovered_worktree_mapping(
+			project,
+			state_store,
+			&issue,
+			&worktree,
+			activity_marker.as_ref(),
+		)?;
+		record_recovered_activity_lease(project, state_store, &issue, marker)?;
+
+		return Ok(None);
+	}
+	if issue_passes_closeout_dispatch_policy(tracker, &issue, project, workflow, state_store)? {
+		upsert_recovered_worktree_mapping(
+			project,
+			state_store,
+			&issue,
+			&worktree,
+			activity_marker.as_ref(),
+		)?;
+
+		match activity_marker.as_ref() {
+			Some(marker) if worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
+				record_recovered_activity_lease(project, state_store, &issue, marker)?;
+
+				return Ok(None);
+			},
+			_ => {},
+		}
+	}
+	if issue_passes_retry_dispatch_policy(
+		tracker,
+		&issue,
+		project,
+		workflow,
+		state_store,
+		RetryIssueStateHint::default(),
+	)? {
+		upsert_recovered_worktree_mapping(
+			project,
+			state_store,
+			&issue,
+			&worktree,
+			activity_marker.as_ref(),
+		)?;
+
+		match activity_marker.as_ref() {
+			Some(marker) if worktree_activity_marker_is_fresh(marker, now_unix_epoch) => {
+				record_recovered_activity_lease(project, state_store, &issue, marker)?;
+
+				return Ok(None);
+			},
+			Some(marker) => {
+				clear_recovered_issue_lease(
+					project.service_id(),
+					&issue.id,
+					Some(marker.run_id()),
+					state_store,
+				)?;
+			},
+			None => {
+				clear_recovered_issue_lease(
+					project.service_id(),
+					&issue.id,
+					None,
+					state_store,
+				)?;
+			},
+		}
+
+		return Ok(Some(issue));
+	}
+
+	Ok(None)
+}
+
+fn upsert_recovered_worktree_mapping(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+	worktree: &WorktreeSpec,
+	activity_marker: Option<&RunActivityMarker>,
+) -> crate::prelude::Result<()> {
+	state_store.upsert_recovered_worktree(
+		project.service_id(),
+		&issue.id,
+		&worktree.branch_name,
+		&worktree.path.display().to_string(),
+		recovered_worktree_observed_at_unix(activity_marker),
+	)
+}
+
+fn recovered_worktree_observed_at_unix(activity_marker: Option<&RunActivityMarker>) -> Option<i64> {
+	activity_marker.and_then(|marker| {
+		[
+			marker.last_activity_unix_epoch(),
+			marker.last_protocol_activity_unix_epoch(),
+			marker.last_progress_unix_epoch(),
+		]
+		.into_iter()
+		.flatten()
+		.max()
+	})
 }
 
 fn record_recovered_activity_lease(
@@ -5706,6 +5865,10 @@ fn format_optional_unix_timestamp(unix_epoch: Option<i64>) -> Option<String> {
 	})
 }
 
+fn format_optional_i64(value: Option<i64>) -> String {
+	value.map_or_else(|| String::from("none"), |value| value.to_string())
+}
+
 fn classify_operator_run_operation(phase: &str, marker_current_operation: Option<&str>) -> String {
 	match phase {
 		"retry_backoff" | "waiting_continuation" => {
@@ -6156,14 +6319,19 @@ fn append_rendered_recovery_worktrees(
 
 	for (role, worktree) in rendered_worktrees {
 		output.push_str(&format!(
-			"- issue_id: {}\n  issue: {}\n  state: {}\n  role: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n",
+			"- issue_id: {}\n  issue: {}\n  state: {}\n  role: {}\n  reason: {}\n  branch: {}\n  worktree_path: {}\n  provenance_source: {}\n  provenance_created_at_unix: {}\n  provenance_updated_at_unix: {}\n  audit_required: {}\n  recovery_next_action: {}\n",
 			worktree.issue_id,
 			worktree.issue_identifier.as_deref().unwrap_or("none"),
 			worktree.issue_state.as_deref().unwrap_or("unknown"),
 			role,
 			worktree.ownership_reason,
 			worktree.branch_name,
-			worktree.worktree_path
+			worktree.worktree_path,
+			worktree.provenance.source,
+			format_optional_i64(worktree.provenance.created_at_unix),
+			format_optional_i64(worktree.provenance.updated_at_unix),
+			worktree.provenance.audit_required,
+			worktree.recovery_next_action.as_deref().unwrap_or("none")
 		));
 	}
 }

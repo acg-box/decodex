@@ -1575,7 +1575,17 @@ struct OperatorWorktreeStatus {
 	worktree_path: String,
 	ownership: String,
 	ownership_reason: String,
+	provenance: OperatorWorktreeProvenanceStatus,
+	recovery_next_action: Option<String>,
 	hygiene: Option<OperatorWorktreeHygieneStatus>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+struct OperatorWorktreeProvenanceStatus {
+	source: String,
+	created_at_unix: Option<i64>,
+	updated_at_unix: Option<i64>,
+	audit_required: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
