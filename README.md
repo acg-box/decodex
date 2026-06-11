@@ -334,7 +334,6 @@ The tracked workspace currently keeps:
 - `docs/decisions/` as the durable design-rationale lane
 - `docs/research/` as machine-authored research artifacts used by shipped research
   tooling
-- `docs/plans/` as historical saved plan artifacts from the static-site bootstrap
 - `dev/` as local development helpers outside `dev/skills/`, such as the operator
   dashboard mock server
 - `assets/` as generated Decodex App icon source notes, Icon Composer foreground,
