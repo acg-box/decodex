@@ -1,6 +1,6 @@
 {
   "compare": {
-    "ahead_by": 87,
+    "ahead_by": 98,
     "commit_shas": [
       "dffc4bf75dc9eeb0727f668c95bb7bd72315581d",
       "14660c22d14312c28a50c52954dd77dd88f03c26",
@@ -88,7 +88,18 @@
       "ba4925b3c2240718888989664097f503ed062f80",
       "dac5f07403e048544cad6e9f9fbd52b91cb47a15",
       "598125109dd2e098486884d8fb563ebe90bc24da",
-      "ef7d9c2685a6eebb799f3eff7f5a75d459632c11"
+      "383708e74e42ac09b473633019d5f1498c18fbea",
+      "b5a718ef6742af051857ab5d3e20920dfbe66af3",
+      "8d9f33c87ca2e7cb89490703fb03f74c9a26578b",
+      "53b501974545547b26680b40ba2bb03903b2da44",
+      "a287c5dffdc96855e61a75526e86428fee6663e4",
+      "6754e77792e5cb788a8ef2b4f3c3b51d0324482a",
+      "273a4aa4f2474b9d27a2654f5803d51f65ce3f43",
+      "7b3eb8e4bcacc55cda6d5fb4d31a06b36351749b",
+      "087035224123977defc7fda6e684088395b1d0a0",
+      "e6757bba91f5cfb6c19c7e8ee383bea950d661f0",
+      "dd46ef1aac689d6ab6aa6a73c4358bff07d70a87",
+      "4a5e5db45e60208ce1e9e097a2ccda5eb9562e45"
     ],
     "pr_numbers": [
       22685,
@@ -100,6 +111,7 @@
       26409,
       26420,
       26479,
+      26513,
       26681,
       26701,
       26711,
@@ -120,9 +132,11 @@
       27071,
       27078,
       27080,
+      27082,
       27085,
       27094,
       27098,
+      27103,
       27107,
       27110,
       27111,
@@ -155,10 +169,15 @@
       27321,
       27322,
       27343,
+      27356,
       27375,
       27383,
+      27387,
+      27388,
       27391,
       27392,
+      27403,
+      27404,
       27407,
       27414,
       27421,
@@ -176,16 +195,19 @@
       27518,
       27520,
       27526,
-      27532
+      27532,
+      27569,
+      27573,
+      27585
     ],
     "status": "diverged",
-    "total_commits": 87,
-    "url": "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0-alpha.8"
+    "total_commits": 98,
+    "url": "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0-alpha.9"
   },
   "comparisons": [
     {
       "compare": {
-        "ahead_by": 87,
+        "ahead_by": 98,
         "commit_shas": [
           "dffc4bf75dc9eeb0727f668c95bb7bd72315581d",
           "14660c22d14312c28a50c52954dd77dd88f03c26",
@@ -273,7 +295,18 @@
           "ba4925b3c2240718888989664097f503ed062f80",
           "dac5f07403e048544cad6e9f9fbd52b91cb47a15",
           "598125109dd2e098486884d8fb563ebe90bc24da",
-          "ef7d9c2685a6eebb799f3eff7f5a75d459632c11"
+          "383708e74e42ac09b473633019d5f1498c18fbea",
+          "b5a718ef6742af051857ab5d3e20920dfbe66af3",
+          "8d9f33c87ca2e7cb89490703fb03f74c9a26578b",
+          "53b501974545547b26680b40ba2bb03903b2da44",
+          "a287c5dffdc96855e61a75526e86428fee6663e4",
+          "6754e77792e5cb788a8ef2b4f3c3b51d0324482a",
+          "273a4aa4f2474b9d27a2654f5803d51f65ce3f43",
+          "7b3eb8e4bcacc55cda6d5fb4d31a06b36351749b",
+          "087035224123977defc7fda6e684088395b1d0a0",
+          "e6757bba91f5cfb6c19c7e8ee383bea950d661f0",
+          "dd46ef1aac689d6ab6aa6a73c4358bff07d70a87",
+          "4a5e5db45e60208ce1e9e097a2ccda5eb9562e45"
         ],
         "pr_numbers": [
           22685,
@@ -285,6 +318,7 @@
           26409,
           26420,
           26479,
+          26513,
           26681,
           26701,
           26711,
@@ -305,9 +339,11 @@
           27071,
           27078,
           27080,
+          27082,
           27085,
           27094,
           27098,
+          27103,
           27107,
           27110,
           27111,
@@ -340,10 +376,15 @@
           27321,
           27322,
           27343,
+          27356,
           27375,
           27383,
+          27387,
+          27388,
           27391,
           27392,
+          27403,
+          27404,
           27407,
           27414,
           27421,
@@ -361,13 +402,16 @@
           27518,
           27520,
           27526,
-          27532
+          27532,
+          27569,
+          27573,
+          27585
         ],
         "status": "diverged",
-        "total_commits": 87,
-        "url": "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0-alpha.8"
+        "total_commits": 98,
+        "url": "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0-alpha.9"
       },
-      "prerelease_tag_name": "rust-v0.140.0-alpha.8",
+      "prerelease_tag_name": "rust-v0.140.0-alpha.9",
       "stable_tag_name": "rust-v0.139.0",
       "tracked_signal_slugs": []
     },
@@ -10176,22 +10220,22 @@
       ]
     }
   ],
-  "generated_at": "2026-06-11T08:42:01.181164Z",
+  "generated_at": "2026-06-11T14:34:04.510866Z",
   "prerelease": {
-    "name": "0.140.0-alpha.8",
+    "name": "0.140.0-alpha.9",
     "prerelease": true,
-    "published_at": "2026-06-11T06:12:14Z",
-    "tag_name": "rust-v0.140.0-alpha.8",
-    "url": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.8"
+    "published_at": "2026-06-11T12:59:01Z",
+    "tag_name": "rust-v0.140.0-alpha.9",
+    "url": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.9"
   },
   "release_options": {
     "preview": [
       {
-        "name": "0.140.0-alpha.8",
+        "name": "0.140.0-alpha.9",
         "prerelease": true,
-        "published_at": "2026-06-11T06:12:14Z",
-        "tag_name": "rust-v0.140.0-alpha.8",
-        "url": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.8"
+        "published_at": "2026-06-11T12:59:01Z",
+        "tag_name": "rust-v0.140.0-alpha.9",
+        "url": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.9"
       },
       {
         "name": "0.139.0-alpha.3",
