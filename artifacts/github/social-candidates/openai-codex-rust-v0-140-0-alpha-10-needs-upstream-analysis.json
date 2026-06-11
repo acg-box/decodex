@@ -1,0 +1,69 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-10-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease changes",
+  "candidate_text": [
+    "No 0.140.0-alpha.10 post handoff yet.\n\nalpha.9 -> alpha.10 has 6 ahead commits and 5 primary PR-title refs, but the release body is sparse and those PRs lack checked Decodex review/impact.\n\nSource: https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.10"
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.9",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.10",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.9...rust-v0.140.0-alpha.10",
+      "https://github.com/openai/codex/pull/27388",
+      "https://github.com/openai/codex/pull/27404",
+      "https://github.com/openai/codex/pull/27413",
+      "https://github.com/openai/codex/pull/27527",
+      "https://github.com/openai/codex/pull/27528",
+      "https://github.com/openai/codex/pull/27529",
+      "https://github.com/openai/codex/pull/27591"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.140.0-alpha.10 was published at 2026-06-11T16:48:23Z with only a sparse release body: Release 0.140.0-alpha.10.",
+    "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.9 -> rust-v0.140.0-alpha.10; GitHub compare metadata reports status=diverged, 6 ahead commits, 1 behind commit, and 6 total commits.",
+    "Primary PR-title metadata in the alpha.9 -> alpha.10 compare points to skills catalog locator authority, skills-extension decoupling, npm package publication concurrency, DotSlash publication, and release artifact download selection.",
+    "The compare commit text also references PR #27388 and PR #27404 as context behind the skills work; those context PRs are useful release-window gaps but do not source-review the alpha.10 PRs themselves.",
+    "Checked Radar review/impact artifacts are absent for all 5 primary PR-title references in the alpha.9 -> alpha.10 compare window and for the 2 context PR references in this checkout.",
+    "The checked release_delta/v1 still records stable rust-v0.139.0 -> prerelease rust-v0.140.0-alpha.9 with no tracked signal slugs; a deterministic refresh during this run returned changed=false and prerelease_tag_name=rust-v0.140.0-alpha.9 despite GitHub release metadata showing alpha.10 as newer.",
+    "Official Codex changelog readback for this run still shows Codex app 26.608, ChatGPT for iOS 1.2026.153, and Codex CLI 0.139.0 on 2026-06-09 as the newest entries; rust-v0.140.0-alpha.10 is a GitHub prerelease checkpoint, not an official changelog entry."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.140.0-alpha.10 is a sparse GitHub prerelease checkpoint after alpha.9.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.10",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.9 -> alpha.10 compare window has unreviewed primary PR-title gaps before Decodex can make behavior claims.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.9...rust-v0.140.0-alpha.10",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the alpha.10 release body is sparse and the adjacent alpha.9 -> alpha.10 compare has unreviewed primary PR-title gaps.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-10:alpha9-alpha10:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "No previous live and quote-eligible @decodexspace 0.140 prerelease post exists; alpha.2, alpha.4, alpha.7, alpha.8, and alpha.9 were also recorded as defer / needs_upstream_analysis checkpoints.",
+    "rust-v0.140.0-alpha.11 also exists as a newer public prerelease checkpoint in this run; alpha.11 should use adjacent alpha.10 -> alpha.11 lineage rather than stable-to-prerelease comparison.",
+    "Exact source-review gap list for alpha.9 -> alpha.10 primary compare PRs: #27413, #27527, #27528, #27529, #27591. Context PRs referenced by compare text and also missing checked review/impact: #27388, #27404.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.10 defer record to decodex-x-publisher.",
+    "Route the listed source-review gap PRs to codex-upstream-radar-review / codex-code-analysis before turning alpha.10 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Investigate why the deterministic release-delta refresh still selects rust-v0.140.0-alpha.9 even though GitHub release metadata lists alpha.10 and alpha.11 as newer public prereleases."
+  ]
+}
