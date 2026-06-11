@@ -147,7 +147,7 @@ impl LaneRunInspect {
 			event_count: run.event_count,
 			worktree_path: run.worktree_path.clone(),
 			soft_interrupt_available: soft_interrupt_available_for_run(run),
-			hard_interrupt_available: run.process_id.is_some() && run.process_alive != Some(false),
+			hard_interrupt_available: hard_interrupt_available_for_run(run),
 			hard_interrupt_requires_force: true,
 		}
 	}
@@ -397,6 +397,10 @@ fn soft_interrupt_allows_hard_fallback(
 	soft: &LaneSoftInterruptReport,
 	run: &OperatorRunStatus,
 ) -> bool {
+	if run.phase == "terminal_pending" {
+		return false;
+	}
+
 	match soft.status.as_str() {
 		"pending" | "failed" | "unavailable" =>
 			soft.error_class.as_deref() != Some("lane_not_active")
@@ -517,6 +521,10 @@ fn soft_interrupt_available_for_run(run: &OperatorRunStatus) -> bool {
 		&& run.thread_id.is_some()
 		&& run.turn_id.is_some()
 		&& run.control_capability.as_ref().is_some_and(|capability| capability.status == "active")
+}
+
+fn hard_interrupt_available_for_run(run: &OperatorRunStatus) -> bool {
+	run.phase != "terminal_pending" && run.process_id.is_some() && run.process_alive != Some(false)
 }
 
 fn lane_control_operator_context(run: &OperatorRunStatus) -> Value {
