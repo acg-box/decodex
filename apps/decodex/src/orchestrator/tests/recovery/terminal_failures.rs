@@ -444,6 +444,76 @@ fn duplicate_passive_retained_review_attention_event_does_not_reapply_tracker_wr
 }
 
 #[test]
+fn rebound_handoff_marker_suppresses_stale_missing_handoff_attention_writeback() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let issue = sample_issue("In Review", &[active_label.as_str()]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+	let worktree = worktree_manager
+		.ensure_worktree(&issue.identifier, false)
+		.expect("retained worktree should exist");
+	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let run_identity = RetainedReviewRunIdentity {
+		run_id: String::from("pub-101-attempt-8-123"),
+		attempt_number: 8,
+	};
+
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			&worktree.branch_name,
+			&worktree.path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+	state_store
+		.upsert_review_handoff_marker(
+			config.service_id(),
+			&issue.id,
+			&sample_review_handoff_marker(
+				&worktree.branch_name,
+				"https://github.com/hack-ink/decodex/pull/101",
+				&head_oid,
+			),
+		)
+		.expect("rebound handoff marker should record");
+
+	let worktree_mapping = state_store
+		.worktree_for_issue(&issue.id)
+		.expect("worktree mapping query should succeed")
+		.expect("worktree mapping should exist");
+	let runtime = PassiveRetainedAttentionRuntime {
+		tracker: &tracker,
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+	};
+
+	orchestrator::apply_passive_retained_manual_attention_with_run_identity(
+		runtime,
+		&issue,
+		&worktree_mapping,
+		&run_identity,
+		"missing_review_handoff_record",
+	)
+	.expect("stale passive retained attention should no-op after rebind");
+
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(
+		state_store
+			.list_linear_execution_events(config.service_id(), &issue.id)
+			.expect("linear execution events should list")
+			.is_empty()
+	);
+}
+
+#[test]
 fn review_policy_exhausted_failures_start_architecture_recovery_pre_pr() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
