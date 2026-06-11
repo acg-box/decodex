@@ -38,7 +38,10 @@ Collect evidence in this order:
    ```
 
 3. Scan checked-in docs, skills, examples, and config templates for historical review
-   config fields. The literal old field names may appear only in migration history.
+   config fields. Because this bullet names the removed keys to define the check,
+   allow `internal_review_mode` and `external_review_enabled` in this bullet and in
+   migration history only. They must not appear in active project configs, examples,
+   templates, or other release procedures.
 4. Run the registered project gate before any pushed PR head. This mirrors the
    registered `WORKFLOW.md` order: canonicalize first, then verify.
 
@@ -58,7 +61,9 @@ Collect evidence in this order:
 
 7. Run focused loop, review, config, prompt, dry-run, and recovery checks selected
    from the landed dependency changes. At minimum include review-level and config
-   coverage:
+   coverage. Text search from step 3 is not sufficient: the release evidence must
+   show the active project config parser rejects those removed fields, while the
+   current `[codex].review` model remains covered by review/config tests.
 
    ```sh
    cargo test -p decodex review --all-features -- --test-threads=1
