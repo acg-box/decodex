@@ -1,0 +1,57 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "e-provencher",
+      "committed_at": "2026-06-10T16:23:36Z",
+      "message": "preserve disabled MCP servers across runtime overlays",
+      "sha": "679f3b6b5677d685581358f37e7a3a7ddce2466d",
+      "url": "https://github.com/openai/codex/commit/679f3b6b5677d685581358f37e7a3a7ddce2466d"
+    },
+    {
+      "author": "e-provencher",
+      "committed_at": "2026-06-10T16:36:55Z",
+      "message": "Merge branch 'main' into eprovencher/fix-disabled-mcp-initialization",
+      "sha": "d1db1d33d190781ea06aa44692e9c31c4c45c683",
+      "url": "https://github.com/openai/codex/commit/d1db1d33d190781ea06aa44692e9c31c4c45c683"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP",
+    "CODEX_APPS_MCP_SERVER_NAME"
+  ],
+  "files": [
+    {
+      "additions": 11,
+      "deletions": 0,
+      "patch_excerpt": "@@ -45,6 +45,12 @@ impl McpManager {\n     /// runtime-only extension overlays.\n     pub async fn runtime_config(&self, config: &Config) -> McpConfig {\n         let mut mcp_config = config.to_mcp_config(self.plugins_manager.as_ref()).await;\n+        let disabled_server_names = mcp_config\n+            .configured_mcp_servers\n+            .iter()\n+            .filter(|(_, server)| !server.enabled)\n+            .map(|(name, _)| name.clone())\n+            .collect::<Vec<_>>();\n         if mcp_config.apps_enabled {\n             mcp_config.configured_mcp_servers.insert(\n                 CODEX_APPS_MCP_SERVER_NAME.to_string(),\n@@ -60,6 +66,11 @@ impl McpManager {\n         }\n         let contributions = self.contributions(config).await;\n         Self::apply_to_configured_servers(&contributions, &mut mcp_config.configured_mcp_servers);\n+        for name in disabled_server_names {\n+            if l...",
+      "path": "codex-rs/core/src/mcp.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 28,
+      "deletions": 0,
+      "patch_excerpt": "@@ -42,6 +42,34 @@ async fn contributes_hosted_plugin_runtime_without_an_executor() -> TestResult {\n     Ok(())\n }\n \n+#[tokio::test]\n+async fn runtime_overlay_preserves_disabled_server() -> TestResult {\n+    let codex_home = tempfile::tempdir()?;\n+    let config = ConfigBuilder::default()\n+        .codex_home(codex_home.path().to_path_buf())\n+        .fallback_cwd(Some(codex_home.path().to_path_buf()))\n+        .cli_overrides(vec![\n+            (\"features.apps\".to_string(), true.into()),\n+            (\n+                \"mcp_servers.codex_apps.url\".to_string(),\n+                \"https://example.com/mcp\".into(),\n+            ),\n+            (\"mcp_servers.codex_apps.enabled\".to_string(), false.into()),\n+        ])\n+        .build()\n+        .await?;\n+    let auth = CodexAuth::create_dummy_chatgpt_auth_for_testing();\n+    let manager = installed_manager(&config);\n+\n+    let servers = manager...",
+      "path": "codex-rs/ext/mcp/tests/hosted_apps_mcp.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nRecent MCP runtime overlay changes replace same-name configured server entries with compatibility or extension-provided configs. Those replacement configs default to enabled, so an MCP server explicitly configured with `enabled = false` could be initialized anyway.\n\nThe connection manager still filters disabled servers correctly, but the configured disabled state was lost before initialization reached that filter.\n\n## What changed\n\n- Remember MCP servers that are disabled in the configured view before applying runtime fallbacks and extension overlays.\n- Restore `enabled = false` for those servers after overlays, while leaving all other overlay fields and `Remove` precedence unchanged.\n- Add focused extension-backed regression coverage for a disabled `codex_apps` server.\n\n## Testing\n\n- `just fmt`\n- `just test -p codex-mcp-extension`\n- `just fix -p codex-core`\n- `just fix -p codex-mcp-extension`\n\nThe full workspace `just test` suite was not run.",
+    "labels": [],
+    "merged_at": "2026-06-10T20:11:20Z",
+    "number": 27414,
+    "state": "merged",
+    "title": "[codex] Preserve disabled MCP servers across runtime overlays",
+    "url": "https://github.com/openai/codex/pull/27414"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
