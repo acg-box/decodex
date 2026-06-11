@@ -334,7 +334,7 @@ struct ServeCommand {
 	#[command(flatten)]
 	project_config: ProjectConfigArgs,
 	/// Operator UI listen address.
-	#[arg(long, value_name = "ADDR", default_value = "127.0.0.1:8192")]
+	#[arg(long, value_name = "ADDR", default_value_t = orchestrator::DEFAULT_OPERATOR_LISTEN_ADDRESS.to_owned())]
 	listen_address: String,
 	/// Start the local dev endpoint without polling or dispatching projects.
 	#[arg(long, hide = true)]

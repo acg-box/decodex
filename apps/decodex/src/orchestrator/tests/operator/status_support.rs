@@ -341,8 +341,9 @@ fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
 
 fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 	vec![
-		orchestrator::OperatorQueuedIssueStatus {
-			issue_id: String::from("issue-1"),
+			orchestrator::OperatorQueuedIssueStatus {
+				project_id: String::from(TEST_SERVICE_ID),
+				issue_id: String::from("issue-1"),
 			issue_identifier: String::from("PUB-101"),
 			title: String::from("Running lane still has a backlog claim"),
 			author: Some(String::from("Yvette")),
@@ -354,8 +355,9 @@ fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 			attention: None,
 			blocker_identifiers: vec![],
 		},
-		orchestrator::OperatorQueuedIssueStatus {
-			issue_id: String::from("issue-2"),
+			orchestrator::OperatorQueuedIssueStatus {
+				project_id: String::from(TEST_SERVICE_ID),
+				issue_id: String::from("issue-2"),
 			issue_identifier: String::from("PUB-102"),
 			title: String::from("Implement backlog surface"),
 			author: Some(String::from("Yvette")),
@@ -367,8 +369,9 @@ fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 			attention: None,
 			blocker_identifiers: vec![],
 		},
-		orchestrator::OperatorQueuedIssueStatus {
-			issue_id: String::from("issue-5"),
+			orchestrator::OperatorQueuedIssueStatus {
+				project_id: String::from(TEST_SERVICE_ID),
+				issue_id: String::from("issue-5"),
 			issue_identifier: String::from("PUB-105"),
 			title: String::from("Remove stale queue label"),
 			author: Some(String::from("Yvette")),
@@ -385,8 +388,9 @@ fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 
 fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 	vec![
-		orchestrator::OperatorWorktreeStatus {
-			issue_id: String::from("issue-4"),
+			orchestrator::OperatorWorktreeStatus {
+				project_id: String::from(TEST_SERVICE_ID),
+				issue_id: String::from("issue-4"),
 			issue_identifier: Some(String::from("PUB-104")),
 			issue_state: None,
 			branch_name: String::from("x/pubfi-pub-104"),
@@ -399,8 +403,9 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 			recovery_next_action: None,
 			hygiene: None,
 		},
-		orchestrator::OperatorWorktreeStatus {
-			issue_id: String::from("issue-1"),
+			orchestrator::OperatorWorktreeStatus {
+				project_id: String::from(TEST_SERVICE_ID),
+				issue_id: String::from("issue-1"),
 			issue_identifier: Some(String::from("PUB-101")),
 			issue_state: Some(String::from("In Progress")),
 			branch_name: String::from("x/pubfi-pub-101"),
@@ -411,8 +416,9 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 			recovery_next_action: None,
 			hygiene: None,
 		},
-		orchestrator::OperatorWorktreeStatus {
-			issue_id: String::from("issue-3"),
+			orchestrator::OperatorWorktreeStatus {
+				project_id: String::from(TEST_SERVICE_ID),
+				issue_id: String::from("issue-3"),
 			issue_identifier: Some(String::from("PUB-103")),
 			issue_state: Some(String::from("In Review")),
 			branch_name: String::from("x/pubfi-pub-103"),
@@ -439,6 +445,7 @@ fn test_worktree_provenance(source: &str) -> orchestrator::OperatorWorktreeProve
 
 fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus> {
 	vec![orchestrator::OperatorPostReviewLaneStatus {
+		project_id: String::from(TEST_SERVICE_ID),
 		issue_id: String::from("issue-3"),
 		issue_identifier: String::from("PUB-103"),
 		issue_state: String::from("In Review"),
