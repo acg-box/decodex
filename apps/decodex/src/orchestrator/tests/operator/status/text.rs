@@ -500,6 +500,13 @@ fn operator_status_text_surfaces_cleanup_blocker_pr_url() {
 			ownership_reason: String::from(
 				"Review & Landing owns this worktree as `cleanup_blocked`.",
 			),
+			provenance: orchestrator::OperatorWorktreeProvenanceStatus {
+				source: String::from("runtime_recorded"),
+				created_at_unix: Some(1),
+				updated_at_unix: Some(2),
+				audit_required: false,
+			},
+			recovery_next_action: None,
 			hygiene: None,
 		}],
 		post_review_lanes: vec![orchestrator::OperatorPostReviewLaneStatus {
