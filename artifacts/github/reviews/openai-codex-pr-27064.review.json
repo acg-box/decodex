@@ -1,0 +1,71 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27064",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27064",
+    "commit_shas": [
+      "d0dcb2a19f0ed125bb8dbdfc61fdadc346667b59",
+      "c7e1523503f1e1f9f979e686d34fa31133cba194",
+      "52c6ed6ff8e71895aa6fe067bf99521f37265a89",
+      "ac05fffdb3bd224c28cb6819e288ae43b09ac1e5"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] remove blocking external agent migration flow",
+        "url": "https://github.com/openai/codex/pull/27064",
+        "meta": "Merged 2026-06-10T18:25:04Z"
+      },
+      {
+        "kind": "commit",
+        "title": "tui: remove startup external agent migration",
+        "url": "https://github.com/openai/codex/commit/d0dcb2a19f0ed125bb8dbdfc61fdadc346667b59"
+      },
+      {
+        "kind": "commit",
+        "title": "tui: preserve migration picker for stacked flow",
+        "url": "https://github.com/openai/codex/commit/52c6ed6ff8e71895aa6fe067bf99521f37265a89"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-11T08:09:15Z",
+  "observed_change": "Codex removes the startup-blocking external-agent configuration migration prompt, marks the `external_migration` feature as a removed no-op, and keeps the picker code dormant for a later deliberate import flow.",
+  "changed_surfaces": [
+    "TUI startup path",
+    "external-agent migration feature flag lifecycle",
+    "TUI app-server migration helper wrappers",
+    "external-agent migration startup module",
+    "startup bootstrap and hook prefetch sequencing"
+  ],
+  "user_visible_path": "Users with migratable external-agent configuration should no longer be interrupted by an automatic startup prompt; normal TUI startup enters Codex immediately until a later `/import` flow is wired in.",
+  "control_plane_relevance": "Moderate for Decodex because external-agent import becomes an explicit user-initiated flow rather than a startup blocker, so automation and operator guidance should not expect the old automatic migration prompt.",
+  "compatibility_risk": "Moderate for integrations or docs that depended on the `external_migration` startup prompt or TUI app-server migration wrappers; the feature key remains present only as `Stage::Removed` compatibility input.",
+  "adoption_opportunity": "Track the follow-up `/import` stack before creating Decodex user guidance, and remove any assumption that Codex startup will automatically detect and offer external-agent migration.",
+  "community_value": "Medium as startup friction reduction, but the PR is stack item 1 and intentionally defers the replacement import experience to later PRs.",
+  "deprecated_or_breaking_notes": "`external_migration` is changed from experimental to removed, `external_agent_config_migration_startup.rs` is deleted, and TUI startup no longer calls external-agent migration detection before bootstrapping.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27064 says external-agent import should be initiated deliberately instead of interrupting eligible TUI startups, and lists this PR as stack item 1 before the new picker and `/import` flow.",
+    "`codex-rs/features/src/lib.rs` changes the `ExternalMigration` feature description to a removed compatibility flag and sets its stage to `Stage::Removed`.",
+    "`codex-rs/tui/src/app.rs` removes the startup migration outcome and handler from app construction.",
+    "`codex-rs/tui/src/app_server_session.rs` removes TUI helper wrappers for external-agent detect and import requests.",
+    "`codex-rs/tui/src/external_agent_config_migration_startup.rs` is deleted, removing the startup prompt implementation.",
+    "`codex-rs/tui/src/lib.rs` no longer defers bootstrap for the migration prompt and keeps `external_agent_config_migration` behind a module-scoped dead-code allowance.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27064.json` records 6 changed files for the merged PR."
+  ],
+  "caveats": "This review covers the removal of the blocking startup flow only; the replacement picker UX and `/import` command are separate queued PRs and should supply the public try path.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The change alters external-agent migration startup assumptions and should be tracked for Control Plane guidance."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Check Decodex docs and operator prompts for references to automatic startup external-agent migration after the full import stack lands."
+    }
+  ]
+}

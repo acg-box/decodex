@@ -1,0 +1,42 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27065",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] extract external agent import picker renderer",
+        "url": "https://github.com/openai/codex/pull/27065",
+        "meta": "Merged 2026-06-10T18:48:31Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27065",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27065.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex moves external-agent migration screen rendering into a dedicated `render` module while preserving the existing picker behavior for later stack items.",
+  "public_signal_decision": "skip",
+  "control_plane_impact": "none",
+  "publisher_angle": "none",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records PR #27065 as a behavior-neutral refactor.",
+    "`external_agent_config_migration.rs` removes rendering imports and delegates rendering to a new module.",
+    "`external_agent_config_migration/render.rs` contains the extracted widget rendering implementation.",
+    "The PR body reports targeted external-agent migration tests passing."
+  ],
+  "candidate_followups": [
+    "Use this only as background for the later external-agent import stack.",
+    "Do not create a standalone public signal or Publisher candidate from this refactor."
+  ],
+  "social_notes": [
+    "No public candidate should be produced from this PR alone."
+  ],
+  "caveats": [
+    "This artifact intentionally records a no-impact outcome so downstream release and Publisher automation can skip it."
+  ]
+}
