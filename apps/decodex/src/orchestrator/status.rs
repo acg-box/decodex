@@ -336,6 +336,8 @@ fn build_operator_status_snapshot_with_account_mode(
 	let mut snapshot = OperatorStatusSnapshot {
 		project_id: project.service_id().to_owned(),
 		run_limit: limit,
+		status_source: None,
+		snapshot_age_seconds: None,
 		warnings,
 		warning_details,
 		connector_backoffs: Vec::new(),
@@ -1430,6 +1432,7 @@ fn operator_status_worktrees(
 		.list_worktrees(project.service_id())?
 		.into_iter()
 		.map(|mapping| OperatorWorktreeStatus {
+			project_id: project.service_id().to_owned(),
 			issue_id: mapping.issue_id().to_owned(),
 			issue_identifier: issue_identifier_in_text(mapping.branch_name())
 				.or_else(|| issue_identifier_in_text(&mapping.worktree_path().display().to_string())),
@@ -1464,6 +1467,7 @@ fn operator_status_worktrees(
 			.unwrap_or_else(|| issue_identifier.clone());
 
 		worktrees.push(OperatorWorktreeStatus {
+			project_id: project.service_id().to_owned(),
 			issue_identifier: Some(issue_identifier.clone()),
 			issue_id: issue_identifier,
 			issue_state: None,
@@ -1534,7 +1538,11 @@ fn append_merged_worktree_cleanup_debts(
 	for debt in debts {
 		let relative_path = relative_worktree_path_for_path(project, &debt.path);
 		let is_dirty = debt.cleanliness.is_dirty();
-		let debt_status = operator_worktree_status_from_cleanup_debt(debt, relative_path.clone());
+		let debt_status = operator_worktree_status_from_cleanup_debt(
+			project.service_id(),
+			debt,
+			relative_path.clone(),
+		);
 
 		if !seen_paths.insert(relative_path.clone()) {
 			if let Some(existing) =
@@ -1576,6 +1584,7 @@ fn worktree_hygiene_unavailable_warning_detail(
 }
 
 fn operator_worktree_status_from_cleanup_debt(
+	project_id: &str,
 	debt: MergedWorktreeCleanupDebt,
 	relative_path: String,
 ) -> OperatorWorktreeStatus {
@@ -1596,6 +1605,7 @@ fn operator_worktree_status_from_cleanup_debt(
 	let branch_name = debt.branch_name;
 
 	OperatorWorktreeStatus {
+		project_id: project_id.to_owned(),
 		issue_id: branch_name.clone(),
 		issue_identifier: issue_identifier_in_text(&branch_name)
 			.or_else(|| issue_identifier_in_text(&relative_path)),
@@ -2333,6 +2343,7 @@ where
 	)?;
 
 	Ok(OperatorQueuedIssueStatus {
+		project_id: project.service_id().to_owned(),
 		issue_id: issue.id,
 		issue_identifier: issue.identifier,
 		title: issue.title,
@@ -3075,6 +3086,7 @@ fn degraded_post_review_lane_status_from_classification(
 	)?;
 
 	Ok(OperatorPostReviewLaneStatus {
+		project_id: project.service_id().to_owned(),
 		issue_id: worktree.issue_id().to_owned(),
 		issue_identifier,
 		issue_state: String::from("tracker_readback_degraded"),
@@ -3283,6 +3295,7 @@ fn post_review_lane_status_from_classification(
 	let loop_status = operator_post_review_loop_status(project, state_store, snapshot)?;
 
 	Ok(OperatorPostReviewLaneStatus {
+		project_id: project.service_id().to_owned(),
 		issue_id: snapshot.issue.id.clone(),
 		issue_identifier: snapshot.issue.identifier.clone(),
 		issue_state: snapshot.issue.state.name.clone(),
@@ -4273,6 +4286,7 @@ fn blocked_post_review_lane_status(
 	reason: &str,
 ) -> OperatorPostReviewLaneStatus {
 	OperatorPostReviewLaneStatus {
+		project_id: project.service_id().to_owned(),
 		issue_id: issue.id.clone(),
 		issue_identifier: issue.identifier.clone(),
 		issue_state: issue.state.name.clone(),
@@ -6183,6 +6197,14 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	let mut output = String::new();
 
 	output.push_str(&format!("Project: {}\n", snapshot.project_id));
+
+	if let Some(status_source) = snapshot.status_source.as_deref() {
+		output.push_str(&format!("Status source: {status_source}\n"));
+	}
+	if let Some(snapshot_age_seconds) = snapshot.snapshot_age_seconds {
+		output.push_str(&format!("Snapshot age: {snapshot_age_seconds}s\n"));
+	}
+
 	output.push_str(&format!("Warnings: {}\n", snapshot.warnings.len()));
 
 	if !snapshot.warnings.is_empty() {

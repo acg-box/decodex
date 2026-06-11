@@ -212,6 +212,17 @@ acknowledgements. `GET /api/operator-snapshot` is the Decodex App read API over 
 same runtime database, not a browser-dashboard polling authority and not a sign that
 the dev listener owns scheduling.
 
+`decodex status` uses that same local `GET /api/operator-snapshot` as a fast read path
+when the default listener is reachable, the published snapshot is recent, includes the
+requested project, and its run limit is large enough for the requested status limit.
+The CLI projects aggregate snapshots down to the requested project before printing.
+JSON output identifies cache hits with `"status_source": "operator_snapshot_cache"` and
+`snapshot_age_seconds`. If the snapshot is missing, stale, mismatched, or too small,
+the command falls back to a direct local runtime read and emits
+`status_cached_snapshot_unavailable` in `warning_details`. `decodex status --live`
+always bypasses the cached snapshot and rebuilds status with fresh Linear/GitHub
+observers.
+
 For the lane-control rollout, active-lane UI posture is observe-only. The dashboard
 renders active-lane state, protocol activity, liveness, private-evidence references,
 local run-control capability metadata, and local acknowledgement/account controls, but
