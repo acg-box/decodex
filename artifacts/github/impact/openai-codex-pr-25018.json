@@ -1,0 +1,47 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-25018",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Add app-server `thread/delete` API",
+        "url": "https://github.com/openai/codex/pull/25018",
+        "meta": "Merged 2026-06-10T18:22:12Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/25018",
+        "meta": "artifacts/github/reviews/openai-codex-pr-25018.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex added app-server v2 `thread/delete` request and `thread/deleted` notification support for hard-deleting active or archived threads plus spawned descendants and associated local state.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records new `ThreadDelete` request and `ThreadDeleted` notification protocol wiring.",
+    "The app-server README documents hard-delete semantics for active or archived threads and spawned descendants.",
+    "Local thread-store code deletes rollout files before reporting success.",
+    "State DB deletion expands to associated goals, spawn edges, logs, dynamic tools, and agent job assignments."
+  ],
+  "candidate_followups": [
+    "Gate Decodex hard-delete UX behind explicit operator confirmation and clear archive-versus-delete wording.",
+    "Update thread list and subagent caches on `thread/deleted` notifications.",
+    "Define Decodex policy for remote thread stores before exposing a generic delete path."
+  ],
+  "social_notes": [
+    "Public copy should stress hard delete and descendant cleanup, not just a new method name.",
+    "Avoid presenting delete as reversible archive.",
+    "Mention `thread/deleted` notifications because clients must update local state."
+  ],
+  "caveats": [
+    "Remote or hosted thread-store behavior may differ until implemented.",
+    "The operation is intentionally destructive.",
+    "The PR is app-server and local-store source evidence, not an endorsement to auto-delete user threads."
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27304",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "practical_explainer",
+  "priority": "critical",
+  "audience": "Codex extension and tool authors",
+  "candidate_text": [
+    "Codex removed async_trait from ToolExecutor: handlers now return a boxed ToolExecutorFuture, extension crates reexport the alias, and direct async-trait deps were dropped from bundled extensions. PR: https://github.com/openai/codex/pull/27304"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27304.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27304.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27304"
+    ]
+  },
+  "evidence_notes": [
+    "`ToolExecutorFuture` is added to `codex-tools` and reexported by `codex-extension-api`.",
+    "`ToolExecutor` no longer uses `#[async_trait::async_trait]`.",
+    "Bundled extension crates remove direct `async-trait` dependencies.",
+    "Core handlers now return explicit boxed futures."
+  ],
+  "claims": [
+    {
+      "text": "Codex `ToolExecutor` implementations now return an explicit boxed future.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27304.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Bundled extension crates dropped direct `async-trait` dependencies for their tool executors.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27304.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The source-level migration is useful to Codex extension authors and has clear PR-backed evidence.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27304:practical_explainer"
+  },
+  "caveats": [
+    "This is a source/API change for tool implementors, not a new model-visible tool.",
+    "The PR body says the work is stacked on #27299.",
+    "The build-speed figure is author-reported in the PR body."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate.",
+    "Review #27299 if a later migration note needs full handler-outline context."
+  ]
+}

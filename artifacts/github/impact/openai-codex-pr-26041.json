@@ -1,0 +1,47 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26041",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Add app-server background terminal process APIs",
+        "url": "https://github.com/openai/codex/pull/26041",
+        "meta": "Merged 2026-06-10T18:18:09Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26041",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26041.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex added experimental app-server v2 APIs for listing and terminating background terminal processes for a loaded thread, using unified-exec process manager state as the source of truth.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "adopt_now",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records `thread/backgroundTerminals/list` and `thread/backgroundTerminals/terminate` as new experimental app-server methods.",
+    "Protocol structs include background terminal params, records, pagination, terminate params, and terminate response fields.",
+    "Unified-exec process manager state now carries metadata needed for background terminal records.",
+    "The app-server README documents the capability gate and method behavior."
+  ],
+  "candidate_followups": [
+    "Create a bounded Decodex adoption issue for app-server background terminal list and terminate support.",
+    "Prefer app-server process ids over local OS PID discovery in operator UI where the new API is available.",
+    "Preserve nullability for OS PID, CPU, RSS, and other host-dependent terminal metadata."
+  ],
+  "social_notes": [
+    "Public copy can present this as background terminal management moving into app-server protocol.",
+    "Call out that the APIs are experimental and capability-gated.",
+    "Use direct PR reference for the method names and fields."
+  ],
+  "caveats": [
+    "The methods are experimental.",
+    "The APIs apply to loaded-thread background terminals managed by unified-exec.",
+    "Some process metadata fields are nullable."
+  ]
+}

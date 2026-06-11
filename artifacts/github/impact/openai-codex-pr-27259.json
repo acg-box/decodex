@@ -1,0 +1,47 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27259",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Use latest-wins MCP manager replacement",
+        "url": "https://github.com/openai/codex/pull/27259",
+        "meta": "Merged 2026-06-10T15:33:21Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27259",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27259.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex replaced the session-owned `RwLock<McpConnectionManager>` publication path with latest-wins `ArcSwap` handles, so each MCP operation keeps the manager it loaded while refresh atomically publishes a replacement.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records the `ArcSwap<McpConnectionManager>` replacement in session services.",
+    "MCP tool, resource, elicitation, and connector paths now use `.load_full()` instead of holding an async read guard.",
+    "Session shutdown explicitly aborts startup prewarm before loading and shutting down the current MCP manager.",
+    "Regression coverage exercises pending tool-list cancellation and startup-prewarm shutdown."
+  ],
+  "candidate_followups": [
+    "Audit Decodex MCP refresh and hosted-plugin probes for assumptions that manager refresh drains in-flight calls.",
+    "Treat manager handles as per-operation snapshots when reasoning about MCP tool, resource, and elicitation behavior.",
+    "Document any Control Plane expectations around terminal shutdown interrupting MCP operations."
+  ],
+  "social_notes": [
+    "Frame this as a synchronization model change for MCP operators, not as a new MCP user command.",
+    "Mention latest-wins replacement and owned loaded handles.",
+    "Preserve the caveat that refresh is expected at turn boundaries."
+  ],
+  "caveats": [
+    "The change is internal to Codex MCP manager ownership.",
+    "The PR does not claim arbitrary mid-tool-call refresh safety beyond retained manager handles.",
+    "Shutdown may still interrupt active terminal or model work."
+  ]
+}
