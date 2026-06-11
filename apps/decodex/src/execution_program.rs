@@ -112,6 +112,11 @@ impl ProgramIntakePlan {
 		&self.plan_id
 	}
 
+	/// Service id that owns this intake plan.
+	pub(crate) fn service_id(&self) -> &str {
+		&self.service_id
+	}
+
 	/// Intake source kind.
 	pub(crate) fn intake_kind(&self) -> ProgramIntakeKind {
 		self.intake_kind
@@ -120,6 +125,16 @@ impl ProgramIntakePlan {
 	/// Accepted Decision Contract id for goal intake.
 	pub(crate) fn source_contract_id(&self) -> Option<&str> {
 		self.source_contract_id.as_deref()
+	}
+
+	/// Stable authority fingerprint for this intake boundary.
+	pub(crate) fn accepted_contract_fingerprint(&self) -> &str {
+		&self.accepted_contract_fingerprint
+	}
+
+	/// Public-safe summary suitable for operator readback.
+	pub(crate) fn public_summary(&self) -> &str {
+		&self.public_summary
 	}
 
 	fn validate(&self) -> Result<()> {
@@ -150,6 +165,14 @@ impl ProgramIntakePlan {
 			&& self.source_contract_id.as_deref().is_none_or(str::is_empty)
 		{
 			eyre::bail!("Goal intake plan `{}` must reference a source contract.", self.plan_id);
+		}
+		if self.intake_kind == ProgramIntakeKind::IssueBatchIntake
+			&& self.source_contract_id.as_deref().is_some_and(|id| !id.is_empty())
+		{
+			eyre::bail!(
+				"Issue-batch intake plan `{}` must not reference a source contract.",
+				self.plan_id
+			);
 		}
 
 		Ok(())
@@ -530,6 +553,26 @@ impl ExecutionLinearIssueMapping {
 		self.queue_label_owned_by_program_reconciler
 	}
 
+	/// Whether the service active label is currently present.
+	pub(crate) fn has_active_label(&self) -> bool {
+		self.has_active_label
+	}
+
+	/// Whether the configured opt-out label is currently present.
+	pub(crate) fn has_opt_out_label(&self) -> bool {
+		self.has_opt_out_label
+	}
+
+	/// Whether the configured human-attention label is currently present.
+	pub(crate) fn has_needs_attention_label(&self) -> bool {
+		self.has_needs_attention_label
+	}
+
+	/// Whether the issue description is usable as a generic dispatch briefing.
+	pub(crate) fn has_generic_dispatch_briefing(&self) -> bool {
+		self.has_generic_dispatch_briefing
+	}
+
 	fn validate(&self) -> Result<()> {
 		validate_required("execution program issue_mapping.issue_id", &self.issue_id)?;
 		validate_required(
@@ -749,7 +792,8 @@ pub(crate) struct ExecutionProgram {
 	record_version: u16,
 	program_id: String,
 	service_id: String,
-	source_contract_id: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	source_contract_id: Option<String>,
 	accepted_contract_fingerprint: String,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	program_intake_plan: Option<ProgramIntakePlan>,
@@ -779,13 +823,50 @@ impl ExecutionProgram {
 			record_version: EXECUTION_PROGRAM_RECORD_VERSION,
 			program_id: program_id.clone(),
 			service_id: service_id.clone(),
-			source_contract_id: contract.contract_id().to_owned(),
+			source_contract_id: Some(contract.contract_id().to_owned()),
 			accepted_contract_fingerprint: fingerprint.clone(),
 			program_intake_plan: Some(ProgramIntakePlan::goal_intake(
 				program_id,
 				service_id,
 				contract,
 				fingerprint.clone(),
+			)?),
+			nodes,
+		};
+
+		program.validate()?;
+
+		Ok(program)
+	}
+
+	/// Build an internal Execution Program from an accepted issue-batch intake boundary.
+	pub(crate) fn from_issue_batch_intake(
+		program_id: impl Into<String>,
+		service_id: impl Into<String>,
+		accepted_batch_fingerprint: impl Into<String>,
+		public_summary: impl Into<String>,
+		mut nodes: Vec<ExecutionProgramNode>,
+	) -> Result<Self> {
+		let program_id = program_id.into();
+		let service_id = service_id.into();
+		let fingerprint = accepted_batch_fingerprint.into();
+
+		for node in &mut nodes {
+			node.bind_contract_fingerprint(&fingerprint);
+		}
+
+		let program = Self {
+			schema: execution_program_schema(),
+			record_version: EXECUTION_PROGRAM_RECORD_VERSION,
+			program_id: program_id.clone(),
+			service_id: service_id.clone(),
+			source_contract_id: None,
+			accepted_contract_fingerprint: fingerprint.clone(),
+			program_intake_plan: Some(ProgramIntakePlan::issue_batch_intake(
+				program_id,
+				service_id,
+				fingerprint,
+				public_summary,
 			)?),
 			nodes,
 		};
@@ -805,9 +886,14 @@ impl ExecutionProgram {
 		&self.service_id
 	}
 
-	/// Accepted Decision Contract id that authorized this program.
-	pub(crate) fn source_contract_id(&self) -> &str {
-		&self.source_contract_id
+	/// Accepted Decision Contract id that authorized this program, for goal intake.
+	pub(crate) fn source_contract_id(&self) -> Option<&str> {
+		self.source_contract_id.as_deref()
+	}
+
+	/// Stable authority fingerprint for this program.
+	pub(crate) fn accepted_contract_fingerprint(&self) -> &str {
+		&self.accepted_contract_fingerprint
 	}
 
 	/// Durable program-intake plan metadata, when the payload is not a legacy row.
@@ -827,6 +913,41 @@ impl ExecutionProgram {
 		policy: &ExecutionWorkflowPolicy,
 		context: &ExecutionProgramReadinessContext,
 	) -> Result<ExecutionProgramEvaluation> {
+		if self.source_contract_id.as_deref().is_none() {
+			eyre::bail!(
+				"Execution program `{}` came from issue-batch intake and must be evaluated without a Decision Contract.",
+				self.program_id
+			);
+		}
+
+		let current_fingerprint = decision_contract_fingerprint(current_contract)?;
+
+		self.evaluate_with_authority(Some(current_contract), &current_fingerprint, policy, context)
+	}
+
+	/// Evaluate every node for an issue-batch intake program.
+	pub(crate) fn evaluate_issue_batch(
+		&self,
+		policy: &ExecutionWorkflowPolicy,
+		context: &ExecutionProgramReadinessContext,
+	) -> Result<ExecutionProgramEvaluation> {
+		if self.source_contract_id.as_deref().is_some() {
+			eyre::bail!(
+				"Execution program `{}` came from goal intake and must be evaluated with a Decision Contract.",
+				self.program_id
+			);
+		}
+
+		self.evaluate_with_authority(None, &self.accepted_contract_fingerprint, policy, context)
+	}
+
+	fn evaluate_with_authority(
+		&self,
+		current_contract: Option<&DecisionContract>,
+		current_fingerprint: &str,
+		policy: &ExecutionWorkflowPolicy,
+		context: &ExecutionProgramReadinessContext,
+	) -> Result<ExecutionProgramEvaluation> {
 		self.validate()?;
 
 		if self.service_id != policy.service_id {
@@ -838,7 +959,6 @@ impl ExecutionProgram {
 			);
 		}
 
-		let current_fingerprint = decision_contract_fingerprint(current_contract)?;
 		let node_lookup =
 			self.nodes.iter().map(|node| (node.node_id.as_str(), node)).collect::<BTreeMap<_, _>>();
 		let dependency_lookup = context.dependency_lookup();
@@ -850,7 +970,7 @@ impl ExecutionProgram {
 				program: self,
 				node,
 				current_contract,
-				current_fingerprint: &current_fingerprint,
+				current_fingerprint,
 				policy,
 				node_lookup: &node_lookup,
 				dependency_lookup: &dependency_lookup,
@@ -866,7 +986,10 @@ impl ExecutionProgram {
 		validate_required("execution program schema", &self.schema)?;
 		validate_required("execution program program_id", &self.program_id)?;
 		validate_required("execution program service_id", &self.service_id)?;
-		validate_required("execution program source_contract_id", &self.source_contract_id)?;
+		validate_optional(
+			"execution program source_contract_id",
+			self.source_contract_id.as_deref(),
+		)?;
 		validate_required(
 			"execution program accepted_contract_fingerprint",
 			&self.accepted_contract_fingerprint,
@@ -900,16 +1023,32 @@ impl ExecutionProgram {
 			}
 
 			if let Some(source_contract_id) = plan.source_contract_id()
-				&& source_contract_id != self.source_contract_id
+				&& Some(source_contract_id) != self.source_contract_id.as_deref()
 			{
 				eyre::bail!(
 					"Execution program `{}` belongs to source contract `{}` but intake plan belongs to `{}`.",
 					self.program_id,
-					self.source_contract_id,
+					self.source_contract_id.as_deref().unwrap_or("none"),
 					source_contract_id
 				);
 			}
 
+			if plan.intake_kind == ProgramIntakeKind::GoalIntake
+				&& self.source_contract_id.as_deref().is_none_or(str::is_empty)
+			{
+				eyre::bail!(
+					"Goal intake execution program `{}` must reference a source contract.",
+					self.program_id
+				);
+			}
+			if plan.intake_kind == ProgramIntakeKind::IssueBatchIntake
+				&& self.source_contract_id.as_deref().is_some_and(|id| !id.is_empty())
+			{
+				eyre::bail!(
+					"Issue-batch execution program `{}` must not reference a source contract.",
+					self.program_id
+				);
+			}
 			if plan.accepted_contract_fingerprint != self.accepted_contract_fingerprint {
 				eyre::bail!(
 					"Execution program `{}` has an intake plan fingerprint mismatch.",
@@ -931,16 +1070,12 @@ impl ExecutionProgram {
 				);
 			}
 		}
-		for node in &self.nodes {
-			for dependency in &node.dependencies {
-				if !node_ids.contains(dependency.dependency_id.as_str()) {
-					eyre::bail!(
-						"Execution program node `{}` depends on unknown node `{}`.",
-						node.node_id,
-						dependency.dependency_id
-					);
-				}
-			}
+
+		if self.program_intake_plan.is_none() && self.source_contract_id.as_deref().is_none() {
+			eyre::bail!(
+				"Execution program `{}` without a source contract must carry an issue-batch intake plan.",
+				self.program_id
+			);
 		}
 
 		Ok(())
@@ -1298,7 +1433,7 @@ pub(crate) struct ExecutionProgramOperatorSummary {
 struct EvaluateNodeInput<'a> {
 	program: &'a ExecutionProgram,
 	node: &'a ExecutionProgramNode,
-	current_contract: &'a DecisionContract,
+	current_contract: Option<&'a DecisionContract>,
 	current_fingerprint: &'a str,
 	policy: &'a ExecutionWorkflowPolicy,
 	node_lookup: &'a BTreeMap<&'a str, &'a ExecutionProgramNode>,
@@ -1317,22 +1452,29 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 		dependency_lookup,
 		occupied_conflicts,
 	} = input;
+	let authority_matches =
+		current_contract.map_or(program.source_contract_id.is_none(), |contract| {
+			contract.status() == DecisionContractStatus::AcceptedPromoted
+				&& Some(contract.contract_id()) == program.source_contract_id.as_deref()
+		});
 	let mut reasons = Vec::new();
 	let mut state = ExecutionReadinessState::Ready;
 	let mut lifecycle_state = None;
 
-	if current_contract.status() != DecisionContractStatus::AcceptedPromoted
-		|| current_contract.contract_id() != program.source_contract_id
+	if !authority_matches
 		|| current_fingerprint != program.accepted_contract_fingerprint
 		|| current_fingerprint != node.contract_fingerprint
 	{
 		state = ExecutionReadinessState::Stale;
-		lifecycle_state =
-			Some(if current_contract.status() == DecisionContractStatus::RejectedSuperseded {
+		lifecycle_state = Some(
+			if current_contract.is_some_and(|contract| {
+				contract.status() == DecisionContractStatus::RejectedSuperseded
+			}) {
 				ExecutionProgramNodeLifecycleState::Superseded
 			} else {
 				ExecutionProgramNodeLifecycleState::Stale
-			});
+			},
+		);
 
 		reasons.push(String::from("node no longer matches the accepted Decision Contract"));
 	} else {
