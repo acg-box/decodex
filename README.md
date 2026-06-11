@@ -120,6 +120,7 @@ cargo run -p decodex --bin decodex -- lane steer <ISSUE> --run-id <RUN_ID> --exp
 cargo run -p decodex --bin decodex -- research compile --intent "research X"
 cargo run -p decodex --bin decodex -- research compile --input research-design-run.json
 cargo run -p decodex --bin decodex -- research promote <CONTRACT_ID>
+cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --dry-run
 cargo run -p decodex --bin decodex -- radar refresh-upstream-queue
 cargo run -p decodex --bin decodex -- radar refresh-release-delta
 cargo run -p decodex --bin decodex -- radar validate

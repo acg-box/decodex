@@ -26,6 +26,7 @@ use crate::{
 		LaneSteerRequest, RunOnceRequest, ServeRequest,
 	},
 	prelude::{Result, eyre},
+	program_intake::{self, IssueBatchIntakeCommandRequest},
 	radar::{
 		self, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
 		RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
@@ -77,6 +78,7 @@ impl Cli {
 			Command::Diagnose(args) => args.run(),
 			Command::Evidence(args) => args.run(),
 			Command::Research(args) => args.run(),
+			Command::Intake(args) => args.run(),
 			Command::Recover(args) => args.run(),
 			Command::ArchiveLinear(args) => args.run(),
 			Command::Maintenance(args) => args.run(),
@@ -615,6 +617,61 @@ impl EvidenceCommand {
 			json: self.json,
 			include_payload: self.include_payload,
 		})
+	}
+}
+
+#[derive(Debug, Args)]
+struct IntakeCommand {
+	#[command(subcommand)]
+	command: IntakeSubcommand,
+}
+impl IntakeCommand {
+	fn run(&self) -> Result<()> {
+		match &self.command {
+			IntakeSubcommand::Issues(args) => args.run(),
+		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct IntakeIssuesCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
+	/// Registered Decodex service id to intake against.
+	#[arg(long, value_name = "SERVICE_ID", conflicts_with = "config")]
+	project: Option<String>,
+	/// Read tracker state and print the deterministic intake report without local persistence.
+	#[arg(long, conflicts_with = "persist", required_unless_present = "persist")]
+	dry_run: bool,
+	/// Persist only local runtime Program Intake records; never mutates Linear queue labels.
+	#[arg(long, conflicts_with = "dry_run")]
+	persist: bool,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+	/// Existing Linear issue identifiers to intake into an internal Execution Program.
+	#[arg(value_name = "ISSUE")]
+	#[arg(required = true)]
+	issues: Vec<String>,
+}
+impl IntakeIssuesCommand {
+	fn run(&self) -> Result<()> {
+		let report =
+			program_intake::run_issue_batch_intake_command(IssueBatchIntakeCommandRequest {
+				config_path: self.project_config.as_path(),
+				project_id: self.project.as_deref(),
+				issue_identifiers: self.issues.clone(),
+				dry_run: self.dry_run,
+				persist: self.persist,
+			})?;
+
+		if self.json {
+			println!("{}", serde_json::to_string_pretty(&report)?);
+		} else {
+			print!("{}", program_intake::render_issue_batch_intake_report(&report));
+		}
+
+		Ok(())
 	}
 }
 
@@ -1477,6 +1534,8 @@ enum Command {
 	Evidence(EvidenceCommand),
 	/// Compile or promote Decodex-native research/design contracts.
 	Research(ResearchCommand),
+	/// Operator issue-batch intake into internal Execution Programs, not a graph editor.
+	Intake(IntakeCommand),
 	/// Diagnose or explicitly repair supported retained-lane recovery cases.
 	Recover(RecoverCommand),
 	/// Dry-run or archive old terminal Linear issues by repo label.
@@ -1542,6 +1601,12 @@ enum ResearchSubcommand {
 	Compile(ResearchCompileCommand),
 	/// Promote an accepted Decision Contract into execution authority.
 	Promote(ResearchPromoteCommand),
+}
+
+#[derive(Debug, Subcommand)]
+enum IntakeSubcommand {
+	/// Dry-run or persist existing Linear issues as an internal program intake batch.
+	Issues(IntakeIssuesCommand),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -1708,18 +1773,19 @@ mod tests {
 
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
-		CommitCommand, DiagnoseCommand, EvidenceCommand, LandCommand, LaneCommand,
-		LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand, LaneSubcommand,
-		LegacyCloseoutRecoveryCommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
-		ProjectSubcommand, RadarBackfillReleaseRangeCommand, RadarBundleBuildCommand,
-		RadarBundleCommand, RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand,
-		RadarLedgerCommand, RadarLedgerIngestExistingCommand, RadarLedgerSubcommand,
-		RadarLedgerSummaryCommand, RadarRefreshReleaseDeltaCommand,
-		RadarRefreshUpstreamQueueCommand, RadarRenderSignalCommand, RadarSubcommand,
-		RadarValidateCommand, RecoverCommand, RecoverSubcommand, ResearchCommand,
-		ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
-		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
-		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
+		CommitCommand, DiagnoseCommand, EvidenceCommand, IntakeCommand, IntakeIssuesCommand,
+		IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand, LaneInterruptCommand,
+		LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand, ProbeCommand,
+		ProjectCommand, ProjectConfigArgs, ProjectSubcommand, RadarBackfillReleaseRangeCommand,
+		RadarBundleBuildCommand, RadarBundleCommand, RadarBundleSubcommand,
+		RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
+		RadarLedgerIngestExistingCommand, RadarLedgerSubcommand, RadarLedgerSummaryCommand,
+		RadarRefreshReleaseDeltaCommand, RadarRefreshUpstreamQueueCommand,
+		RadarRenderSignalCommand, RadarSubcommand, RadarValidateCommand, RecoverCommand,
+		RecoverSubcommand, ResearchCommand, ResearchCompileCommand, ResearchOutcomeArg,
+		ResearchPromoteCommand, ResearchSubcommand, ReviewHandoffDiagnoseCommand,
+		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
+		RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -2469,6 +2535,43 @@ mod tests {
 				&& intent == "research X"
 				&& source_issue == "XY-860"
 		));
+	}
+
+	#[test]
+	fn parses_intake_issues_dry_run_with_project() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"intake",
+			"issues",
+			"--project",
+			"decodex",
+			"XY-1",
+			"XY-2",
+			"--dry-run",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Intake(IntakeCommand {
+				command: IntakeSubcommand::Issues(IntakeIssuesCommand {
+					project: Some(_),
+					dry_run: true,
+					persist: false,
+					json: true,
+					issues,
+					..
+				})
+			}) if issues == vec![String::from("XY-1"), String::from("XY-2")]
+		));
+	}
+
+	#[test]
+	fn rejects_intake_issues_without_explicit_mode() {
+		let error = Cli::try_parse_from(["decodex", "intake", "issues", "XY-1"])
+			.expect_err("intake issues requires dry-run or persist");
+
+		assert!(error.to_string().contains("--dry-run") || error.to_string().contains("--persist"));
 	}
 
 	#[test]

@@ -125,6 +125,11 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   program-owned evidence. If the same queue label is present without matching
   ownership evidence, the label is human-owned or ownership-unknown and must be left
   in place.
+- `decodex intake issues ... --dry-run` may read tracker state for supplied issues
+  and render a local ready/held/blocked/stale/unmapped report, but it must not call
+  tracker label mutation tools or write Linear comments. `--persist` may write local
+  runtime Program Intake records and issue mappings, but it still must not apply or
+  remove `decodex:queued:<service-id>`.
 - `issue_progress_checkpoint` must accept only the normalized execution phases `probing`, `implementing`, `verifying`, `blocked`, `ready_for_review`, `review_repair`, `ready_to_land`, and `closeout`.
 - `issue_progress_checkpoint` must not replace `issue_review_checkpoint`, `issue_review_handoff`, `issue_review_repair_complete`, `issue_closeout_complete`, or `issue_terminal_finalize`.
 - `decodex` treats `issue_progress_checkpoint` as execution memory only. Checkpoint phase, focus, next action, blockers, or evidence do not by themselves authorize review handoff, repair completion, merge, closeout, or terminal success.

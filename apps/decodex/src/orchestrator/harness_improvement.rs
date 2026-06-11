@@ -117,7 +117,7 @@ struct HarnessOutcomeContract {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct HarnessOutcomeProgram {
 	program_id: String,
-	source_contract_id: String,
+	source_contract_id: Option<String>,
 	node_count: usize,
 	nodes: Vec<HarnessOutcomeProgramNode>,
 }
@@ -497,7 +497,7 @@ fn harness_outcome_program(record: &ExecutionProgramRecord) -> HarnessOutcomePro
 
 	HarnessOutcomeProgram {
 		program_id: record.program_id().to_owned(),
-		source_contract_id: record.source_contract_id().to_owned(),
+		source_contract_id: record.source_contract_id().map(str::to_owned),
 		node_count: nodes.len(),
 		nodes,
 	}

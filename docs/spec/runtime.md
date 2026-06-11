@@ -63,6 +63,13 @@ state or this state machine.
 - `decodex research compile` and `decodex research promote` are runtime-local
   Decision Contract writes. They update the SQLite `decision_contracts` surface and do
   not by themselves create Linear issues, queue intent, goals, or executable lanes.
+- `decodex intake issues <ISSUE>... --dry-run` is a tracker-read-only operator
+  surface for existing Linear issues. It classifies the supplied batch as ready,
+  held, blocked, stale, or unmapped and builds the same internal program model used
+  by later persistence, but it must not mutate Linear or write local runtime rows.
+  `--persist` writes only local runtime Program Intake and Execution Program state;
+  queue labels remain untouched until a later reconciliation surface is explicitly
+  authorized.
 
 The evidence boundary is ordered from private runtime authority to public collaboration
 mirror:
@@ -72,6 +79,9 @@ mirror:
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, recovery detail, and `decodex.harness_outcome/1` feedback records belong. |
 | Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, but the JSON payload remains the contract authority. |
 | Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads with embedded or linked `decodex.program_intake_plan/1` planning data. They hold internal node lifecycle/readiness, dependency, conflict-domain, queue-intent, drift, normal-issue mapping, and program-owned queue-label evidence; Linear issue descriptions and ledger comments are only coarse projections. |
+| Runtime SQLite `program_intake_plans` | Queryable local projection of `decodex.program_intake_plan/1` metadata, including intake kind, source contract when present, authority fingerprint, and public-safe summary. |
+| Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, queue intent, service label facts, dispatch-briefing fact, and program-owned queue-label flag. |
+| Runtime SQLite `program_queue_label_ownership` | Fail-closed evidence that program reconciliation owns a specific service queue label for one service, program, node, and issue. Queue-label removal authority must come from this table or the equivalent canonical program payload evidence. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing active lease ownership. |
 | Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating. |
 | Runtime SQLite `loop_guardrail_checkpoints` | Latest convergence checkpoint for one project, issue, and guardrail reason. It stores the fingerprint, consecutive count, run id, attempt number, and structured detail used to stop non-converging loops without replaying Linear comments. |

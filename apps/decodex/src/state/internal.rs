@@ -16,6 +16,8 @@ use libc::{
 use process::Command;
 use rusqlite::{self, Row};
 
+use crate::tracker;
+
 static RUN_ACTIVITY_MARKER_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct EffectiveRuntimeMarker<'a> {
@@ -130,6 +132,10 @@ struct StateData {
 	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
 	decision_contracts: HashMap<DecisionContractKey, DecisionContractRuntimeRecord>,
 	execution_programs: HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
+	program_intake_plans: HashMap<ProgramIntakePlanKey, ProgramIntakePlanRecord>,
+	program_issue_mappings: HashMap<ProgramIssueMappingKey, ProgramIssueMappingRecord>,
+	program_queue_label_ownership:
+		HashMap<ProgramQueueLabelOwnershipKey, ProgramQueueLabelOwnershipRecord>,
 	review_handoffs: HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
 	review_orchestrations: HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
 	review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
@@ -152,6 +158,9 @@ impl StateData {
 		self.private_execution_events = loaded.private_execution_events;
 		self.decision_contracts = loaded.decision_contracts;
 		self.execution_programs = loaded.execution_programs;
+		self.program_intake_plans = loaded.program_intake_plans;
+		self.program_issue_mappings = loaded.program_issue_mappings;
+		self.program_queue_label_ownership = loaded.program_queue_label_ownership;
 		self.review_handoffs = loaded.review_handoffs;
 		self.review_orchestrations = loaded.review_orchestrations;
 		self.review_policy_checkpoints = loaded.review_policy_checkpoints;
@@ -374,6 +383,7 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_private_execution_events_schema()?;
 		self.bootstrap_decision_contracts_schema()?;
 		self.bootstrap_execution_programs_schema()?;
+		self.bootstrap_program_intake_state_schema()?;
 		self.bootstrap_loop_guardrail_schema()?;
 		self.record_schema_version()?;
 
@@ -598,7 +608,7 @@ ON decision_contracts (project_id, status, updated_at_unix);
 CREATE TABLE IF NOT EXISTS execution_programs (
 	project_id TEXT NOT NULL,
 	program_id TEXT NOT NULL,
-	source_contract_id TEXT NOT NULL,
+	source_contract_id TEXT,
 	payload_json TEXT NOT NULL,
 	created_at TEXT NOT NULL,
 	created_at_unix INTEGER NOT NULL,
@@ -610,6 +620,145 @@ CREATE INDEX IF NOT EXISTS execution_programs_source_contract_idx
 ON execution_programs (project_id, source_contract_id, updated_at_unix);
 "#,
 		)?;
+		self.ensure_execution_program_source_contract_nullable()?;
+
+		Ok(())
+	}
+
+	fn ensure_execution_program_source_contract_nullable(&self) -> Result<()> {
+		let mut statement = self.connection.prepare("PRAGMA table_info(execution_programs)")?;
+		let columns = statement.query_map([], |row| {
+			Ok((row.get::<_, String>(1)?, row.get::<_, i64>(3)?))
+		})?;
+		let mut source_contract_not_null = false;
+
+		for column in columns {
+			let (name, not_null) = column?;
+
+			if name == "source_contract_id" {
+				source_contract_not_null = not_null != 0;
+
+				break;
+			}
+		}
+
+		if !source_contract_not_null {
+			return Ok(());
+		}
+
+		self.connection.execute_batch(
+			r#"
+ALTER TABLE execution_programs RENAME TO execution_programs_legacy_contract_required;
+CREATE TABLE execution_programs (
+	project_id TEXT NOT NULL,
+	program_id TEXT NOT NULL,
+	source_contract_id TEXT,
+	payload_json TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, program_id)
+);
+INSERT INTO execution_programs (
+	project_id, program_id, source_contract_id, payload_json, created_at, created_at_unix,
+	updated_at, updated_at_unix
+)
+SELECT project_id, program_id, source_contract_id, payload_json, created_at, created_at_unix,
+	updated_at, updated_at_unix
+FROM execution_programs_legacy_contract_required;
+DROP TABLE execution_programs_legacy_contract_required;
+CREATE INDEX IF NOT EXISTS execution_programs_source_contract_idx
+ON execution_programs (project_id, source_contract_id, updated_at_unix);
+"#,
+		)?;
+
+		Ok(())
+	}
+
+	fn bootstrap_program_intake_state_schema(&self) -> Result<()> {
+		self.connection.execute_batch(
+			r#"
+CREATE TABLE IF NOT EXISTS program_intake_plans (
+	project_id TEXT NOT NULL,
+	program_id TEXT NOT NULL,
+	plan_id TEXT NOT NULL,
+	intake_kind TEXT NOT NULL,
+	source_contract_id TEXT,
+	accepted_contract_fingerprint TEXT NOT NULL,
+	public_summary TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, program_id, plan_id)
+);
+CREATE INDEX IF NOT EXISTS program_intake_plans_project_idx
+ON program_intake_plans (project_id, intake_kind, updated_at_unix);
+CREATE TABLE IF NOT EXISTS program_issue_mappings (
+	project_id TEXT NOT NULL,
+	program_id TEXT NOT NULL,
+	node_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	issue_identifier TEXT NOT NULL,
+	issue_state TEXT NOT NULL,
+	queue_intent TEXT NOT NULL,
+	has_queue_label INTEGER NOT NULL,
+	queue_label_owned_by_program_reconciler INTEGER NOT NULL,
+	has_active_label INTEGER NOT NULL,
+	has_opt_out_label INTEGER NOT NULL,
+	has_needs_attention_label INTEGER NOT NULL,
+	has_generic_dispatch_briefing INTEGER NOT NULL,
+	created_at TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, program_id, node_id)
+);
+CREATE INDEX IF NOT EXISTS program_issue_mappings_issue_idx
+ON program_issue_mappings (project_id, issue_id, updated_at_unix);
+CREATE TABLE IF NOT EXISTS program_queue_label_ownership (
+	project_id TEXT NOT NULL,
+	program_id TEXT NOT NULL,
+	node_id TEXT NOT NULL,
+	issue_id TEXT NOT NULL,
+	issue_identifier TEXT NOT NULL,
+	label_name TEXT NOT NULL,
+	service_id TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	created_at_unix INTEGER NOT NULL,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL,
+	PRIMARY KEY (project_id, program_id, node_id, label_name)
+);
+CREATE INDEX IF NOT EXISTS program_queue_label_ownership_issue_idx
+ON program_queue_label_ownership (project_id, issue_id, label_name, updated_at_unix);
+"#,
+		)?;
+		self.backfill_program_intake_state_from_execution_programs()?;
+
+		Ok(())
+	}
+
+	fn backfill_program_intake_state_from_execution_programs(&self) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, source_contract_id, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM execution_programs \
+			 ORDER BY project_id ASC, program_id ASC",
+		)?;
+		let rows = statement.query_map([], execution_program_runtime_row_parts)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(execution_program_record_from_row_parts(row?)?);
+		}
+
+		drop(statement);
+
+		for record in records {
+			self.replace_program_intake_state(&record)?;
+		}
 
 		Ok(())
 	}
@@ -622,7 +771,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 	value TEXT NOT NULL
 );
 INSERT INTO schema_meta (key, value)
-VALUES ('schema_version', '10')
+VALUES ('schema_version', '11')
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 "#,
 		)?;
@@ -643,6 +792,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_private_execution_events(&mut state)?;
 		self.load_decision_contracts(&mut state)?;
 		self.load_execution_programs(&mut state)?;
+		self.load_program_intake_state(&mut state)?;
 		self.load_review_handoffs(&mut state)?;
 		self.load_review_orchestrations(&mut state)?;
 		self.load_review_policy_checkpoints(&mut state)?;
@@ -693,6 +843,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_private_execution_events(&transaction, state)?;
 		persist_decision_contracts(&transaction, state)?;
 		persist_execution_programs(&transaction, state)?;
+		persist_program_intake_state(&transaction, state)?;
 		persist_review_handoffs(&transaction, state)?;
 		persist_review_orchestrations(&transaction, state)?;
 		persist_review_policy_checkpoints(&transaction, state)?;
@@ -722,6 +873,18 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"DELETE FROM execution_programs WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM program_intake_plans WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM program_issue_mappings WHERE project_id = ?1",
+			params![service_id],
+		)?;
+		transaction.execute(
+			"DELETE FROM program_queue_label_ownership WHERE project_id = ?1",
 			params![service_id],
 		)?;
 		transaction.execute(
@@ -1002,7 +1165,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			params![
 				&record.project_id,
 				record.program.program_id(),
-				&record.source_contract_id,
+				record.source_contract_id.as_deref(),
 				payload_json,
 				&record.created_at,
 				record.created_at_unix,
@@ -1010,8 +1173,26 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				record.updated_at_unix,
 			],
 		)?;
+		self.replace_program_intake_state(record)?;
 
 		Ok(())
+	}
+
+	fn replace_program_intake_state(&self, record: &ExecutionProgramRuntimeRecord) -> Result<()> {
+		self.connection.execute(
+			"DELETE FROM program_intake_plans WHERE project_id = ?1 AND program_id = ?2",
+			params![&record.project_id, record.program.program_id()],
+		)?;
+		self.connection.execute(
+			"DELETE FROM program_issue_mappings WHERE project_id = ?1 AND program_id = ?2",
+			params![&record.project_id, record.program.program_id()],
+		)?;
+		self.connection.execute(
+			"DELETE FROM program_queue_label_ownership WHERE project_id = ?1 AND program_id = ?2",
+			params![&record.project_id, record.program.program_id()],
+		)?;
+
+		insert_program_intake_state(&self.connection, record)
 	}
 
 	fn delete_lease(&mut self, issue_id: &str) -> Result<()> {
@@ -1059,6 +1240,14 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"UPDATE decision_contracts SET source_issue_id = ?2 WHERE source_issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
+		transaction.execute(
+			"UPDATE program_issue_mappings SET issue_id = ?2 WHERE issue_id = ?1",
+			params![previous_issue_id, canonical_issue_id],
+		)?;
+		transaction.execute(
+			"UPDATE program_queue_label_ownership SET issue_id = ?2 WHERE issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
@@ -1973,6 +2162,169 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(records)
 	}
 
+	fn load_program_intake_state(&self, state: &mut StateData) -> Result<()> {
+		for record in self.list_all_program_intake_plans()? {
+			state.program_intake_plans.insert(
+				ProgramIntakePlanKey::new(&record.project_id, &record.program_id, &record.plan_id),
+				record,
+			);
+		}
+		for record in self.list_all_program_issue_mappings()? {
+			state.program_issue_mappings.insert(
+				ProgramIssueMappingKey::new(
+					&record.project_id,
+					&record.program_id,
+					&record.node_id,
+				),
+				record,
+			);
+		}
+		for record in self.list_all_program_queue_label_ownership()? {
+			state.program_queue_label_ownership.insert(
+				ProgramQueueLabelOwnershipKey::new(
+					&record.project_id,
+					&record.program_id,
+					&record.node_id,
+					&record.label_name,
+				),
+				record,
+			);
+		}
+
+		Ok(())
+	}
+
+	fn list_all_program_intake_plans(&self) -> Result<Vec<ProgramIntakePlanRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, plan_id, intake_kind, source_contract_id, \
+			 accepted_contract_fingerprint, public_summary, created_at, created_at_unix, \
+			 updated_at, updated_at_unix \
+			 FROM program_intake_plans \
+			 ORDER BY project_id ASC, program_id ASC, plan_id ASC",
+		)?;
+		let rows = statement.query_map([], program_intake_plan_row)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(row?);
+		}
+
+		Ok(records)
+	}
+
+	fn list_program_intake_plans(
+		&self,
+		project_id: &str,
+	) -> Result<Vec<ProgramIntakePlanRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, plan_id, intake_kind, source_contract_id, \
+			 accepted_contract_fingerprint, public_summary, created_at, created_at_unix, \
+			 updated_at, updated_at_unix \
+			 FROM program_intake_plans \
+			 WHERE project_id = ?1 \
+			 ORDER BY updated_at_unix ASC, program_id ASC, plan_id ASC",
+		)?;
+		let rows = statement.query_map(params![project_id], program_intake_plan_row)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(row?);
+		}
+
+		Ok(records)
+	}
+
+	fn list_all_program_issue_mappings(&self) -> Result<Vec<ProgramIssueMappingRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, node_id, issue_id, issue_identifier, issue_state, \
+			 queue_intent, has_queue_label, queue_label_owned_by_program_reconciler, \
+			 has_active_label, has_opt_out_label, has_needs_attention_label, \
+			 has_generic_dispatch_briefing, created_at, created_at_unix, updated_at, \
+			 updated_at_unix \
+			 FROM program_issue_mappings \
+			 ORDER BY project_id ASC, program_id ASC, node_id ASC",
+		)?;
+		let rows = statement.query_map([], program_issue_mapping_row)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(row?);
+		}
+
+		Ok(records)
+	}
+
+	fn list_program_issue_mappings(
+		&self,
+		project_id: &str,
+		program_id: &str,
+	) -> Result<Vec<ProgramIssueMappingRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, node_id, issue_id, issue_identifier, issue_state, \
+			 queue_intent, has_queue_label, queue_label_owned_by_program_reconciler, \
+			 has_active_label, has_opt_out_label, has_needs_attention_label, \
+			 has_generic_dispatch_briefing, created_at, created_at_unix, updated_at, \
+			 updated_at_unix \
+			 FROM program_issue_mappings \
+			 WHERE project_id = ?1 AND program_id = ?2 \
+			 ORDER BY updated_at_unix ASC, node_id ASC",
+		)?;
+		let rows =
+			statement.query_map(params![project_id, program_id], program_issue_mapping_row)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(row?);
+		}
+
+		Ok(records)
+	}
+
+	fn list_all_program_queue_label_ownership(
+		&self,
+	) -> Result<Vec<ProgramQueueLabelOwnershipRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, node_id, issue_id, issue_identifier, label_name, \
+			 service_id, created_at, created_at_unix, updated_at, updated_at_unix \
+			 FROM program_queue_label_ownership \
+			 ORDER BY project_id ASC, program_id ASC, node_id ASC, label_name ASC",
+		)?;
+		let rows = statement.query_map([], program_queue_label_ownership_row)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(row?);
+		}
+
+		Ok(records)
+	}
+
+	fn program_queue_label_ownership_for_issue(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		label_name: &str,
+	) -> Result<Vec<ProgramQueueLabelOwnershipRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, node_id, issue_id, issue_identifier, label_name, \
+			 service_id, created_at, created_at_unix, updated_at, updated_at_unix \
+			 FROM program_queue_label_ownership \
+			 WHERE project_id = ?1 AND issue_id = ?2 AND label_name = ?3 \
+			 ORDER BY updated_at_unix ASC, program_id ASC, node_id ASC",
+		)?;
+		let rows = statement.query_map(
+			params![project_id, issue_id, label_name],
+			program_queue_label_ownership_row,
+		)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(row?);
+		}
+
+		Ok(records)
+	}
+
 	fn load_review_handoffs(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, issue_id, branch_name, run_id, attempt_number, pr_url, \
@@ -2419,7 +2771,7 @@ impl ExecutionProgramKey {
 #[derive(Clone, Debug)]
 struct ExecutionProgramRuntimeRecord {
 	project_id: String,
-	source_contract_id: String,
+	source_contract_id: Option<String>,
 	program: ExecutionProgram,
 	created_at: String,
 	created_at_unix: i64,
@@ -2442,6 +2794,56 @@ impl ExecutionProgramRuntimeRecord {
 			created_at_unix: self.created_at_unix,
 			updated_at: self.updated_at.clone(),
 			updated_at_unix: self.updated_at_unix,
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ProgramIntakePlanKey {
+	project_id: String,
+	program_id: String,
+	plan_id: String,
+}
+impl ProgramIntakePlanKey {
+	fn new(project_id: &str, program_id: &str, plan_id: &str) -> Self {
+		Self {
+			project_id: project_id.to_owned(),
+			program_id: program_id.to_owned(),
+			plan_id: plan_id.to_owned(),
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ProgramIssueMappingKey {
+	project_id: String,
+	program_id: String,
+	node_id: String,
+}
+impl ProgramIssueMappingKey {
+	fn new(project_id: &str, program_id: &str, node_id: &str) -> Self {
+		Self {
+			project_id: project_id.to_owned(),
+			program_id: program_id.to_owned(),
+			node_id: node_id.to_owned(),
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ProgramQueueLabelOwnershipKey {
+	project_id: String,
+	program_id: String,
+	node_id: String,
+	label_name: String,
+}
+impl ProgramQueueLabelOwnershipKey {
+	fn new(project_id: &str, program_id: &str, node_id: &str, label_name: &str) -> Self {
+		Self {
+			project_id: project_id.to_owned(),
+			program_id: program_id.to_owned(),
+			node_id: node_id.to_owned(),
+			label_name: label_name.to_owned(),
 		}
 	}
 }
@@ -2691,7 +3093,7 @@ struct DecisionContractRuntimeRowParts {
 struct ExecutionProgramRuntimeRowParts {
 	project_id: String,
 	program_id: String,
-	source_contract_id: String,
+	source_contract_id: Option<String>,
 	payload_json: String,
 	created_at: String,
 	created_at_unix: i64,
@@ -3552,12 +3954,171 @@ fn persist_execution_programs(
 			params![
 				&record.project_id,
 				record.program.program_id(),
-				&record.source_contract_id,
+				record.source_contract_id.as_deref(),
 				payload_json,
 				&record.created_at,
 				record.created_at_unix,
 				&record.updated_at,
 				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
+fn persist_program_intake_state(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
+	for record in state.program_intake_plans.values() {
+		transaction.execute(
+			"INSERT OR REPLACE INTO program_intake_plans (
+					project_id, program_id, plan_id, intake_kind, source_contract_id,
+					accepted_contract_fingerprint, public_summary, created_at, created_at_unix,
+					updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+			params![
+				&record.project_id,
+				&record.program_id,
+				&record.plan_id,
+				&record.intake_kind,
+				record.source_contract_id.as_deref(),
+				&record.accepted_contract_fingerprint,
+				&record.public_summary,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+	for record in state.program_issue_mappings.values() {
+		transaction.execute(
+			"INSERT OR REPLACE INTO program_issue_mappings (
+					project_id, program_id, node_id, issue_id, issue_identifier, issue_state,
+					queue_intent, has_queue_label, queue_label_owned_by_program_reconciler,
+					has_active_label, has_opt_out_label, has_needs_attention_label,
+					has_generic_dispatch_briefing, created_at, created_at_unix, updated_at,
+					updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+			params![
+				&record.project_id,
+				&record.program_id,
+				&record.node_id,
+				&record.issue_id,
+				&record.issue_identifier,
+				&record.issue_state,
+				&record.queue_intent,
+				sqlite_bool_value(record.has_queue_label),
+				sqlite_bool_value(record.queue_label_owned_by_program_reconciler),
+				sqlite_bool_value(record.has_active_label),
+				sqlite_bool_value(record.has_opt_out_label),
+				sqlite_bool_value(record.has_needs_attention_label),
+				sqlite_bool_value(record.has_generic_dispatch_briefing),
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+	for record in state.program_queue_label_ownership.values() {
+		transaction.execute(
+			"INSERT OR REPLACE INTO program_queue_label_ownership (
+					project_id, program_id, node_id, issue_id, issue_identifier, label_name,
+					service_id, created_at, created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+			params![
+				&record.project_id,
+				&record.program_id,
+				&record.node_id,
+				&record.issue_id,
+				&record.issue_identifier,
+				&record.label_name,
+				&record.service_id,
+				&record.created_at,
+				record.created_at_unix,
+				&record.updated_at,
+				record.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
+fn insert_program_intake_state(
+	connection: &Connection,
+	record: &ExecutionProgramRuntimeRecord,
+) -> Result<()> {
+	for plan in derived_program_intake_plan_records(record) {
+		connection.execute(
+			"INSERT OR REPLACE INTO program_intake_plans (
+					project_id, program_id, plan_id, intake_kind, source_contract_id,
+					accepted_contract_fingerprint, public_summary, created_at, created_at_unix,
+					updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+			params![
+				&plan.project_id,
+				&plan.program_id,
+				&plan.plan_id,
+				&plan.intake_kind,
+				plan.source_contract_id.as_deref(),
+				&plan.accepted_contract_fingerprint,
+				&plan.public_summary,
+				&plan.created_at,
+				plan.created_at_unix,
+				&plan.updated_at,
+				plan.updated_at_unix,
+			],
+		)?;
+	}
+	for mapping in derived_program_issue_mapping_records(record) {
+		connection.execute(
+			"INSERT OR REPLACE INTO program_issue_mappings (
+					project_id, program_id, node_id, issue_id, issue_identifier, issue_state,
+					queue_intent, has_queue_label, queue_label_owned_by_program_reconciler,
+					has_active_label, has_opt_out_label, has_needs_attention_label,
+					has_generic_dispatch_briefing, created_at, created_at_unix, updated_at,
+					updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+			params![
+				&mapping.project_id,
+				&mapping.program_id,
+				&mapping.node_id,
+				&mapping.issue_id,
+				&mapping.issue_identifier,
+				&mapping.issue_state,
+				&mapping.queue_intent,
+				sqlite_bool_value(mapping.has_queue_label),
+				sqlite_bool_value(mapping.queue_label_owned_by_program_reconciler),
+				sqlite_bool_value(mapping.has_active_label),
+				sqlite_bool_value(mapping.has_opt_out_label),
+				sqlite_bool_value(mapping.has_needs_attention_label),
+				sqlite_bool_value(mapping.has_generic_dispatch_briefing),
+				&mapping.created_at,
+				mapping.created_at_unix,
+				&mapping.updated_at,
+				mapping.updated_at_unix,
+			],
+		)?;
+	}
+	for ownership in derived_program_queue_label_ownership_records(record) {
+		connection.execute(
+			"INSERT OR REPLACE INTO program_queue_label_ownership (
+					project_id, program_id, node_id, issue_id, issue_identifier, label_name,
+					service_id, created_at, created_at_unix, updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+			params![
+				&ownership.project_id,
+				&ownership.program_id,
+				&ownership.node_id,
+				&ownership.issue_id,
+				&ownership.issue_identifier,
+				&ownership.label_name,
+				&ownership.service_id,
+				&ownership.created_at,
+				ownership.created_at_unix,
+				&ownership.updated_at,
+				ownership.updated_at_unix,
 			],
 		)?;
 	}
@@ -4466,12 +5027,12 @@ fn execution_program_record_from_row_parts(
 			program.program_id()
 		);
 	}
-	if parts.source_contract_id != program.source_contract_id() {
+	if parts.source_contract_id.as_deref() != program.source_contract_id() {
 		eyre::bail!(
 			"Execution program row `{}` carried source contract `{}` but payload references `{}`.",
 			parts.program_id,
-			parts.source_contract_id,
-			program.source_contract_id()
+			parts.source_contract_id.as_deref().unwrap_or("none"),
+			program.source_contract_id().unwrap_or("none")
 		);
 	}
 
@@ -4484,6 +5045,74 @@ fn execution_program_record_from_row_parts(
 		updated_at: parts.updated_at,
 		updated_at_unix: parts.updated_at_unix,
 	})
+}
+
+fn program_intake_plan_row(
+	row: &Row<'_>,
+) -> std::result::Result<ProgramIntakePlanRecord, rusqlite::Error> {
+	Ok(ProgramIntakePlanRecord {
+		project_id: row.get(0)?,
+		program_id: row.get(1)?,
+		plan_id: row.get(2)?,
+		intake_kind: row.get(3)?,
+		source_contract_id: row.get(4)?,
+		accepted_contract_fingerprint: row.get(5)?,
+		public_summary: row.get(6)?,
+		created_at: row.get(7)?,
+		created_at_unix: row.get(8)?,
+		updated_at: row.get(9)?,
+		updated_at_unix: row.get(10)?,
+	})
+}
+
+fn program_issue_mapping_row(
+	row: &Row<'_>,
+) -> std::result::Result<ProgramIssueMappingRecord, rusqlite::Error> {
+	Ok(ProgramIssueMappingRecord {
+		project_id: row.get(0)?,
+		program_id: row.get(1)?,
+		node_id: row.get(2)?,
+		issue_id: row.get(3)?,
+		issue_identifier: row.get(4)?,
+		issue_state: row.get(5)?,
+		queue_intent: row.get(6)?,
+		has_queue_label: sqlite_bool(row, 7)?,
+		queue_label_owned_by_program_reconciler: sqlite_bool(row, 8)?,
+		has_active_label: sqlite_bool(row, 9)?,
+		has_opt_out_label: sqlite_bool(row, 10)?,
+		has_needs_attention_label: sqlite_bool(row, 11)?,
+		has_generic_dispatch_briefing: sqlite_bool(row, 12)?,
+		created_at: row.get(13)?,
+		created_at_unix: row.get(14)?,
+		updated_at: row.get(15)?,
+		updated_at_unix: row.get(16)?,
+	})
+}
+
+fn program_queue_label_ownership_row(
+	row: &Row<'_>,
+) -> std::result::Result<ProgramQueueLabelOwnershipRecord, rusqlite::Error> {
+	Ok(ProgramQueueLabelOwnershipRecord {
+		project_id: row.get(0)?,
+		program_id: row.get(1)?,
+		node_id: row.get(2)?,
+		issue_id: row.get(3)?,
+		issue_identifier: row.get(4)?,
+		label_name: row.get(5)?,
+		service_id: row.get(6)?,
+		created_at: row.get(7)?,
+		created_at_unix: row.get(8)?,
+		updated_at: row.get(9)?,
+		updated_at_unix: row.get(10)?,
+	})
+}
+
+fn sqlite_bool(row: &Row<'_>, index: usize) -> std::result::Result<bool, rusqlite::Error> {
+	Ok(row.get::<_, i64>(index)? != 0)
+}
+
+fn sqlite_bool_value(value: bool) -> i64 {
+	if value { 1 } else { 0 }
 }
 
 fn connector_backoff_from_row(row: &Row<'_>) -> std::result::Result<ConnectorBackoff, rusqlite::Error> {
@@ -4535,6 +5164,179 @@ fn compare_execution_program_runtime_records(
 	left.updated_at_unix
 		.cmp(&right.updated_at_unix)
 		.then_with(|| left.program.program_id().cmp(right.program.program_id()))
+}
+
+fn compare_program_intake_plan_records(
+	left: &ProgramIntakePlanRecord,
+	right: &ProgramIntakePlanRecord,
+) -> cmp::Ordering {
+	left.updated_at_unix
+		.cmp(&right.updated_at_unix)
+		.then_with(|| left.program_id.cmp(&right.program_id))
+		.then_with(|| left.plan_id.cmp(&right.plan_id))
+}
+
+fn compare_program_issue_mapping_records(
+	left: &ProgramIssueMappingRecord,
+	right: &ProgramIssueMappingRecord,
+) -> cmp::Ordering {
+	left.updated_at_unix
+		.cmp(&right.updated_at_unix)
+		.then_with(|| left.program_id.cmp(&right.program_id))
+		.then_with(|| left.node_id.cmp(&right.node_id))
+}
+
+fn compare_program_queue_label_ownership_records(
+	left: &ProgramQueueLabelOwnershipRecord,
+	right: &ProgramQueueLabelOwnershipRecord,
+) -> cmp::Ordering {
+	left.updated_at_unix
+		.cmp(&right.updated_at_unix)
+		.then_with(|| left.program_id.cmp(&right.program_id))
+		.then_with(|| left.node_id.cmp(&right.node_id))
+		.then_with(|| left.label_name.cmp(&right.label_name))
+}
+
+fn remove_derived_program_intake_state(
+	state: &mut StateData,
+	project_id: &str,
+	program_id: &str,
+) {
+	state
+		.program_intake_plans
+		.retain(|key, _record| key.project_id != project_id || key.program_id != program_id);
+	state
+		.program_issue_mappings
+		.retain(|key, _record| key.project_id != project_id || key.program_id != program_id);
+	state.program_queue_label_ownership.retain(|key, _record| {
+		key.project_id != project_id || key.program_id != program_id
+	});
+}
+
+fn apply_derived_program_intake_state(
+	state: &mut StateData,
+	record: &ExecutionProgramRuntimeRecord,
+) {
+	remove_derived_program_intake_state(state, &record.project_id, record.program.program_id());
+
+	for plan in derived_program_intake_plan_records(record) {
+		state.program_intake_plans.insert(
+			ProgramIntakePlanKey::new(&plan.project_id, &plan.program_id, &plan.plan_id),
+			plan,
+		);
+	}
+	for mapping in derived_program_issue_mapping_records(record) {
+		state.program_issue_mappings.insert(
+			ProgramIssueMappingKey::new(
+				&mapping.project_id,
+				&mapping.program_id,
+				&mapping.node_id,
+			),
+			mapping,
+		);
+	}
+	for ownership in derived_program_queue_label_ownership_records(record) {
+		state.program_queue_label_ownership.insert(
+			ProgramQueueLabelOwnershipKey::new(
+				&ownership.project_id,
+				&ownership.program_id,
+				&ownership.node_id,
+				&ownership.label_name,
+			),
+			ownership,
+		);
+	}
+}
+
+fn derived_program_intake_plan_records(
+	record: &ExecutionProgramRuntimeRecord,
+) -> Vec<ProgramIntakePlanRecord> {
+	record
+		.program
+		.program_intake_plan()
+		.map(|plan| {
+			vec![ProgramIntakePlanRecord {
+				project_id: record.project_id.clone(),
+				program_id: record.program.program_id().to_owned(),
+				plan_id: plan.plan_id().to_owned(),
+				intake_kind: plan.intake_kind().as_str().to_owned(),
+				source_contract_id: plan.source_contract_id().map(str::to_owned),
+				accepted_contract_fingerprint: plan.accepted_contract_fingerprint().to_owned(),
+				public_summary: plan.public_summary().to_owned(),
+				created_at: record.created_at.clone(),
+				created_at_unix: record.created_at_unix,
+				updated_at: record.updated_at.clone(),
+				updated_at_unix: record.updated_at_unix,
+			}]
+		})
+		.unwrap_or_default()
+}
+
+fn derived_program_issue_mapping_records(
+	record: &ExecutionProgramRuntimeRecord,
+) -> Vec<ProgramIssueMappingRecord> {
+	record
+		.program
+		.nodes()
+		.iter()
+		.filter_map(|node| {
+			let issue = node.linear_issue()?;
+
+			Some(ProgramIssueMappingRecord {
+				project_id: record.project_id.clone(),
+				program_id: record.program.program_id().to_owned(),
+				node_id: node.node_id().to_owned(),
+				issue_id: issue.issue_id().to_owned(),
+				issue_identifier: issue.issue_identifier().to_owned(),
+				issue_state: issue.issue_state().to_owned(),
+				queue_intent: node.queue_intent().as_str().to_owned(),
+				has_queue_label: issue.has_queue_label(),
+				queue_label_owned_by_program_reconciler: issue
+					.queue_label_owned_by_program_reconciler(),
+				has_active_label: issue.has_active_label(),
+				has_opt_out_label: issue.has_opt_out_label(),
+				has_needs_attention_label: issue.has_needs_attention_label(),
+				has_generic_dispatch_briefing: issue.has_generic_dispatch_briefing(),
+				created_at: record.created_at.clone(),
+				created_at_unix: record.created_at_unix,
+				updated_at: record.updated_at.clone(),
+				updated_at_unix: record.updated_at_unix,
+			})
+		})
+		.collect()
+}
+
+fn derived_program_queue_label_ownership_records(
+	record: &ExecutionProgramRuntimeRecord,
+) -> Vec<ProgramQueueLabelOwnershipRecord> {
+	let label_name = tracker::automation_queue_label(record.program.service_id());
+
+	record
+		.program
+		.nodes()
+		.iter()
+		.filter_map(|node| {
+			let issue = node.linear_issue()?;
+
+			if !issue.queue_label_owned_by_program_reconciler() {
+				return None;
+			}
+
+			Some(ProgramQueueLabelOwnershipRecord {
+				project_id: record.project_id.clone(),
+				program_id: record.program.program_id().to_owned(),
+				node_id: node.node_id().to_owned(),
+				issue_id: issue.issue_id().to_owned(),
+				issue_identifier: issue.issue_identifier().to_owned(),
+				label_name: label_name.clone(),
+				service_id: record.program.service_id().to_owned(),
+				created_at: record.created_at.clone(),
+				created_at_unix: record.created_at_unix,
+				updated_at: record.updated_at.clone(),
+				updated_at_unix: record.updated_at_unix,
+			})
+		})
+		.collect()
 }
 
 fn compare_project_run_status(left: &ProjectRunStatus, right: &ProjectRunStatus) -> cmp::Ordering {

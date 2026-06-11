@@ -363,6 +363,20 @@ impl StateStore {
 		{
 			record.source_issue_id = Some(canonical_issue_id.to_owned());
 		}
+		for record in state
+			.program_issue_mappings
+			.values_mut()
+			.filter(|record| record.issue_id == previous_issue_id)
+		{
+			record.issue_id = canonical_issue_id.to_owned();
+		}
+		for record in state
+			.program_queue_label_ownership
+			.values_mut()
+			.filter(|record| record.issue_id == previous_issue_id)
+		{
+			record.issue_id = canonical_issue_id.to_owned();
+		}
 
 		self.retarget_issue_identity_locked(previous_issue_id, canonical_issue_id)
 	}
@@ -1927,7 +1941,7 @@ impl StateStore {
 			});
 		let record = ExecutionProgramRuntimeRecord {
 			project_id: project_id.to_owned(),
-			source_contract_id: program.source_contract_id().to_owned(),
+			source_contract_id: program.source_contract_id().map(str::to_owned),
 			program,
 			created_at,
 			created_at_unix,
@@ -1936,6 +1950,9 @@ impl StateStore {
 		};
 
 		state.execution_programs.insert(record.key(), record.clone());
+
+		apply_derived_program_intake_state(&mut state, &record);
+
 		self.upsert_execution_program_locked(&record)?;
 
 		Ok(record.as_public())
@@ -1993,7 +2010,8 @@ impl StateStore {
 			.execution_programs
 			.values()
 			.filter(|record| {
-				record.project_id == project_id && record.source_contract_id == source_contract_id
+				record.project_id == project_id
+					&& record.source_contract_id.as_deref() == Some(source_contract_id)
 			})
 			.cloned()
 			.collect::<Vec<_>>();
@@ -2033,6 +2051,101 @@ impl StateStore {
 		records.sort_by(compare_execution_program_runtime_records);
 
 		Ok(records.into_iter().map(|record| record.as_public()).collect())
+	}
+
+	/// List local Program Intake Plan records retained for one project.
+	#[allow(dead_code)]
+	pub(crate) fn list_program_intake_plans(
+		&self,
+		project_id: &str,
+	) -> Result<Vec<ProgramIntakePlanRecord>> {
+		validate_required_execution_program_field("project_id", project_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite.list_program_intake_plans(project_id);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.program_intake_plans
+			.values()
+			.filter(|record| record.project_id == project_id)
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_program_intake_plan_records);
+
+		Ok(records)
+	}
+
+	/// List local issue mappings for one internal Execution Program.
+	#[allow(dead_code)]
+	pub(crate) fn list_program_issue_mappings(
+		&self,
+		project_id: &str,
+		program_id: &str,
+	) -> Result<Vec<ProgramIssueMappingRecord>> {
+		validate_required_execution_program_field("project_id", project_id)?;
+		validate_required_execution_program_field("program_id", program_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite.list_program_issue_mappings(project_id, program_id);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.program_issue_mappings
+			.values()
+			.filter(|record| record.project_id == project_id && record.program_id == program_id)
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_program_issue_mapping_records);
+
+		Ok(records)
+	}
+
+	/// Read program-owned queue-label evidence for one mapped issue and label.
+	#[allow(dead_code)]
+	pub(crate) fn program_queue_label_ownership_for_issue(
+		&self,
+		project_id: &str,
+		issue_id: &str,
+		label_name: &str,
+	) -> Result<Vec<ProgramQueueLabelOwnershipRecord>> {
+		validate_required_execution_program_field("project_id", project_id)?;
+		validate_required_execution_program_field("issue_id", issue_id)?;
+		validate_required_execution_program_field("label_name", label_name)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite.program_queue_label_ownership_for_issue(
+				project_id,
+				issue_id,
+				label_name,
+			);
+		}
+
+		let state = self.lock()?;
+		let mut records = state
+			.program_queue_label_ownership
+			.values()
+			.filter(|record| {
+				record.project_id == project_id
+					&& record.issue_id == issue_id
+					&& record.label_name == label_name
+			})
+			.cloned()
+			.collect::<Vec<_>>();
+
+		records.sort_by(compare_program_queue_label_ownership_records);
+
+		Ok(records)
 	}
 
 	/// Count protocol journal records for one run.

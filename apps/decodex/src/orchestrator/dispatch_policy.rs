@@ -5,6 +5,10 @@ enum CloseoutDispatchEligibility {
 	Blocked(&'static str),
 }
 
+pub(crate) fn issue_has_generic_dispatch_briefing(issue: &TrackerIssue) -> bool {
+	!description_is_machine_only_fenced_block(&issue.description)
+}
+
 fn issue_passes_dispatch_policy<T>(
 	tracker: &T,
 	issue: &TrackerIssue,
@@ -46,10 +50,6 @@ where
 	}
 
 	Ok(true)
-}
-
-fn issue_has_generic_dispatch_briefing(issue: &TrackerIssue) -> bool {
-	!description_is_machine_only_fenced_block(&issue.description)
 }
 
 fn description_is_machine_only_fenced_block(description: &str) -> bool {
