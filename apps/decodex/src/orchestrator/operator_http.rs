@@ -12,6 +12,7 @@ const OPERATOR_DASHBOARD_LOGO_ICO: &[u8] =
 const OPERATOR_DASHBOARD_LOGO_TOUCH_PNG: &[u8] =
 	include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/orchestrator/assets/logo-touch.png"));
 const OPERATOR_HTTP_READ_TIMEOUT: Duration = Duration::from_millis(250);
+const DASHBOARD_MAX_WEBSOCKET_CLIENTS: usize = 64;
 const DASHBOARD_RUN_ACTIVITY_FINGERPRINT_VOLATILE_FIELDS: &[&str] = &[
 	"idle_for_seconds",
 	"protocol_idle_for_seconds",
@@ -50,22 +51,50 @@ enum DashboardClientFrame {
 
 #[derive(Clone, Default)]
 struct DashboardEventHub {
-	clients: Arc<Mutex<Vec<Sender<DashboardBroadcastEvent>>>>,
+	clients: Arc<Mutex<Vec<DashboardClientHandle>>>,
+	last_run_activity: Arc<Mutex<Option<DashboardBroadcastEvent>>>,
+	next_client_id: Arc<Mutex<u64>>,
 }
 impl DashboardEventHub {
-	fn subscribe(&self) -> Result<Receiver<DashboardBroadcastEvent>> {
+	fn subscribe(&self) -> Result<DashboardClientRegistration> {
 		let (event_tx, event_rx) = mpsc::channel();
 		let mut clients = self
 			.clients
 			.lock()
 			.map_err(|error| eyre::eyre!("Dashboard event client lock poisoned: {error}"))?;
 
-		clients.push(event_tx);
+		if clients.len() >= DASHBOARD_MAX_WEBSOCKET_CLIENTS {
+			eyre::bail!(
+				"Dashboard websocket client limit reached ({DASHBOARD_MAX_WEBSOCKET_CLIENTS})."
+			);
+		}
 
-		Ok(event_rx)
+		let mut next_client_id = self
+			.next_client_id
+			.lock()
+			.map_err(|error| eyre::eyre!("Dashboard event client id lock poisoned: {error}"))?;
+		let id = *next_client_id;
+
+		*next_client_id = next_client_id.saturating_add(1);
+
+		clients.push(DashboardClientHandle { id, sender: event_tx });
+
+		Ok(DashboardClientRegistration {
+			id,
+			receiver: event_rx,
+			clients: Arc::clone(&self.clients),
+		})
 	}
 
 	fn broadcast(&self, event_type: &'static str, payload: Value) {
+		let event = DashboardBroadcastEvent { event_type, payload };
+
+		if event_type == "runActivity"
+			&& let Ok(mut last_run_activity) = self.last_run_activity.lock()
+		{
+			*last_run_activity = Some(event.clone());
+		}
+
 		let Ok(mut clients) = self.clients.lock() else {
 			tracing::warn!(
 				"Skipped dashboard event broadcast because the client list lock is poisoned."
@@ -73,13 +102,22 @@ impl DashboardEventHub {
 
 			return;
 		};
-		let event = DashboardBroadcastEvent { event_type, payload };
 
-		clients.retain(|client| client.send(event.clone()).is_ok());
+		clients.retain(|client| client.sender.send(event.clone()).is_ok());
 	}
 
 	fn has_clients(&self) -> bool {
 		self.clients.lock().is_ok_and(|clients| !clients.is_empty())
+	}
+
+	fn cached_run_activity_event(
+		&self,
+		subscription: &DashboardClientSubscription,
+	) -> Option<DashboardBroadcastEvent> {
+		self.last_run_activity
+			.lock()
+			.ok()
+			.and_then(|event| event.as_ref().and_then(|event| dashboard_event_for_subscription(event, subscription)))
 	}
 
 	#[cfg(test)]
@@ -88,8 +126,39 @@ impl DashboardEventHub {
 			clients.clear();
 		}
 	}
+
+	#[cfg(test)]
+	fn client_count_for_test(&self) -> usize {
+		self.clients.lock().map(|clients| clients.len()).unwrap_or_default()
+	}
 }
 
+#[derive(Debug)]
+struct DashboardClientHandle {
+	id: u64,
+	sender: Sender<DashboardBroadcastEvent>,
+}
+
+struct DashboardClientRegistration {
+	id: u64,
+	receiver: Receiver<DashboardBroadcastEvent>,
+	clients: Arc<Mutex<Vec<DashboardClientHandle>>>,
+}
+impl DashboardClientRegistration {
+	fn recv_timeout(
+		&self,
+		timeout: Duration,
+	) -> std::result::Result<DashboardBroadcastEvent, RecvTimeoutError> {
+		self.receiver.recv_timeout(timeout)
+	}
+}
+impl Drop for DashboardClientRegistration {
+	fn drop(&mut self) {
+		if let Ok(mut clients) = self.clients.lock() {
+			clients.retain(|client| client.id != self.id);
+		}
+	}
+}
 #[derive(Clone, Debug)]
 struct DashboardBroadcastEvent {
 	event_type: &'static str,
@@ -403,7 +472,7 @@ fn handle_operator_dashboard_websocket_connection(
 		write_dashboard_websocket_event(&mut stream, "snapshot", &payload)?;
 	}
 
-	write_current_dashboard_run_activity_event(&mut stream, state_store, &session.subscription);
+	write_cached_dashboard_run_activity_event(&mut stream, dashboard_events, &session.subscription);
 
 	loop {
 		for frame in read_dashboard_websocket_client_frames(&mut stream, &mut client_frame_buffer)?
@@ -421,9 +490,9 @@ fn handle_operator_dashboard_websocket_connection(
 						write_dashboard_websocket_event(&mut stream, "snapshot", &payload)?;
 					}
 					if dashboard_control_ack_should_push_run_activity(&response) {
-						write_current_dashboard_run_activity_event(
+						write_cached_dashboard_run_activity_event(
 							&mut stream,
-							state_store,
+							dashboard_events,
 							&session.subscription,
 						);
 					}
@@ -638,29 +707,22 @@ fn dashboard_control_ack_should_push_run_activity(ack: &Value) -> bool {
 		)
 }
 
-fn write_current_dashboard_run_activity_event(
+fn write_cached_dashboard_run_activity_event(
 	stream: &mut TcpStream,
-	state_store: &StateStore,
+	dashboard_events: &DashboardEventHub,
 	subscription: &DashboardClientSubscription,
 ) {
-	match build_operator_run_activity_event(state_store).and_then(|event| {
-		if let Some(event) = dashboard_event_for_subscription(&event.event, subscription) {
-			if !dashboard_run_activity_event_has_active_runs(&event) {
-				return Ok(());
+	match dashboard_events.cached_run_activity_event(subscription) {
+		Some(event) if dashboard_run_activity_event_has_active_runs(&event) => {
+			if let Err(error) = write_dashboard_websocket_event(stream, event.event_type, &event.payload)
+			{
+				tracing::warn!(
+					?error,
+					"Skipped cached dashboard run activity snapshot for a WebSocket client."
+				);
 			}
-
-			write_dashboard_websocket_event(stream, event.event_type, &event.payload)?;
-		}
-
-		Ok(())
-	}) {
-		Ok(()) => {},
-		Err(error) => {
-			tracing::warn!(
-				?error,
-				"Skipped immediate dashboard run activity snapshot for a WebSocket client."
-			);
 		},
+		Some(_) | None => {},
 	}
 }
 

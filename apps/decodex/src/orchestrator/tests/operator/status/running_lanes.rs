@@ -1414,6 +1414,162 @@ fn operator_status_snapshot_keeps_terminal_status_live_process_in_running_lanes(
 }
 
 #[test]
+fn operator_status_projects_terminal_finalized_run_as_pending_not_active() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	state_store.upsert_project(&registration).expect("project should register");
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store.update_run_thread("run-1", "thread-1").expect("thread should record");
+	state_store.update_run_turn("run-1", "turn-1").expect("turn should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, "run-1", "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+	state_store
+		.append_event("run-1", 1, "skills/changed", "{}")
+		.expect("protocol event should record");
+	state_store
+		.append_private_execution_event(
+			"pubfi",
+			&issue.id,
+			"run-1",
+			1,
+			"terminal_finalize",
+			serde_json::json!({
+				"path": "review_handoff",
+				"mode": "handoff",
+				"branch": "x/pubfi-pub-101",
+				"worktree_path": worktree_path.display().to_string(),
+			}),
+		)
+		.expect("terminal finalize event should record");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
+	let mut child = Command::new("sleep").arg("30").spawn().expect("sleep child should start");
+	let child_pid = child.id();
+
+	state::write_run_activity_marker_for_process(&worktree_path, "run-1", 1, child_pid)
+		.expect("live process marker should write");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+
+	assert_terminal_pending_status_projection(&snapshot);
+	assert_terminal_pending_lane_inspect(&state_store);
+	assert_terminal_pending_interrupt_rejects_force(&state_store);
+
+	if matches!(child.try_wait(), Ok(None)) {
+		child.kill().expect("sleep child should be killable");
+	}
+
+	child.wait().expect("sleep child should reap");
+}
+
+fn assert_terminal_pending_status_projection(snapshot: &OperatorStatusSnapshot) {
+	let project = snapshot.projects.first().expect("project summary should exist");
+	let run = snapshot
+		.recent_runs
+		.iter()
+		.find(|run| run.run_id == "run-1")
+		.expect("terminal-pending run should remain inspectable in recent runs");
+
+	assert!(
+		snapshot.active_runs.is_empty(),
+		"terminal-finalized runs must not keep presenting as active execution"
+	);
+	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.running_lane_count, 0);
+	assert_eq!(run.status, "review_handoff_pending");
+	assert_eq!(run.attempt_status, "running");
+	assert_eq!(run.phase, "terminal_pending");
+	assert_eq!(run.wait_reason.as_deref(), Some("review_handoff_writeback"));
+	assert_eq!(run.current_operation, state::RUN_OPERATION_REVIEW_WRITEBACK);
+	assert!(!run.active_lease);
+	assert_eq!(run.queue_lease_state, "not_held");
+	assert_eq!(run.execution_liveness, "not_running");
+	assert!(!run.suspected_stall);
+	assert_eq!(run.last_event_type.as_deref(), Some("skills/changed"));
+	assert_eq!(
+		run.loop_status.as_ref().map(|status| status.summary.as_str()),
+		Some("terminal lifecycle: review_handoff_pending")
+	);
+}
+
+fn assert_terminal_pending_lane_inspect(state_store: &StateStore) {
+	let response = String::from_utf8(orchestrator::build_operator_lane_inspect_http_response(
+		state_store,
+		format!(
+			"GET {}?projectId=pubfi&issue=PUB-101&runId=run-1 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+			orchestrator::OPERATOR_LANE_INSPECT_ENDPOINT_PATH
+		)
+		.as_bytes(),
+	))
+	.expect("lane inspect response should be utf-8");
+	let data = operator_status_response_json_body(&response, "lane inspect");
+
+	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+	assert_eq!(data["matchedRunCount"], 1);
+	assert_eq!(data["runs"][0]["status"], "review_handoff_pending");
+	assert_eq!(data["runs"][0]["phase"], "terminal_pending");
+	assert_eq!(data["runs"][0]["waitReason"], "review_handoff_writeback");
+	assert_eq!(data["runs"][0]["currentOperation"], state::RUN_OPERATION_REVIEW_WRITEBACK);
+	assert_eq!(data["runs"][0]["activeLease"], false);
+	assert_eq!(data["runs"][0]["executionLiveness"], "not_running");
+	assert_eq!(data["runs"][0]["softInterruptAvailable"], false);
+	assert_eq!(data["runs"][0]["hardInterruptAvailable"], false);
+}
+
+fn assert_terminal_pending_interrupt_rejects_force(state_store: &StateStore) {
+	let body = br#"{"projectId":"pubfi","issue":"PUB-101","runId":"run-1","force":true}"#;
+	let response = String::from_utf8(orchestrator::build_operator_lane_interrupt_http_response(
+		state_store,
+		format!(
+			"POST {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+			orchestrator::OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH,
+			body.len(),
+			String::from_utf8_lossy(body)
+		)
+		.as_bytes(),
+	))
+	.expect("lane interrupt response should be utf-8");
+	let data = operator_status_response_json_body(&response, "lane interrupt");
+
+	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+	assert_eq!(data["classification"], "soft_interrupt_unavailable");
+	assert_eq!(data["softInterrupt"]["errorClass"], "lane_not_active");
+	assert_eq!(data["hardInterrupt"], Value::Null);
+}
+
+fn operator_status_response_json_body(response: &str, context: &str) -> Value {
+	let body = response
+		.split_once("\r\n\r\n")
+		.map(|(_, body)| body)
+		.unwrap_or_else(|| panic!("{context} response should include body"));
+
+	serde_json::from_str(body).unwrap_or_else(|_| panic!("{context} response should be json"))
+}
+
+#[test]
 fn operator_status_snapshot_promotes_starting_after_app_server_activity() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");

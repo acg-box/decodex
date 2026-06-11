@@ -498,6 +498,13 @@ map to an operator decision.
 - `status` is the operator-facing run status. If the raw attempt is still `starting`
   after app-server thread, model, or protocol evidence exists, `status` is shown as
   `running` and `attempt_status` preserves the raw persisted attempt value.
+- When a worker has recorded `issue_terminal_finalize` but the surrounding retained
+  lifecycle has not finished writing back, the operator projection uses
+  `phase = terminal_pending`. Statuses such as `review_handoff_pending`,
+  `review_repair_pending`, `closeout_pending`, and `manual_attention_pending` mean
+  Decodex is finishing the terminal path. They are not active execution, do not hold a
+  queue lease, do not count as suspected stalls, and should not expose hard-interrupt
+  fallback as an available control.
 - Child-agent activity comes from `.decodex-run-activity` when the app-server recorder
   captured model/tool/tracker/browser/image buckets.
 - The child-agent breakdown is diagnostic. It explains where observed wall time went;
