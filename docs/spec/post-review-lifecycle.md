@@ -123,6 +123,19 @@ success path.
   path. If any audit write fails after marker creation, the command must clear the new
   markers and report failure instead of leaving a silently rebound lane.
 
+`cleanup_only` rows are outside this rebind surface. When operator status reports a
+cleanup-only worktree with `provenance_source = "legacy_unknown"`, Decodex has only an
+old local mapping and cannot prove PR or closeout lineage from the runtime store. The
+operator path is: verify the tracker issue and PR terminal state, inspect the retained
+checkout for local-only changes, run
+`decodex recover legacy-closeout <ISSUE> --pr <MERGED_PR> --dry-run`, rerun with
+`--manual-authority` only after validation passes, and only then remove the worktree.
+That fallback must stay rarer than normal closeout, explicit rebind, or deterministic
+legacy reconstruction from authoritative markers. Runtime recovery may classify a
+retained worktree as `runtime_recovered` only after tracker, retained marker, or
+closeout evidence proves a current owner; it must not silently upgrade a terminal
+cleanup-only `legacy_unknown` row.
+
 ## Phase model
 
 The post-`In Review` lifecycle is expressed in lane phases. These phases refine, but do not replace, the owned-lane action classes.
