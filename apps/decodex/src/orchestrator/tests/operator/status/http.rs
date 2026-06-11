@@ -2101,6 +2101,86 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_after_active_lease_missing()
 	assert_active_lease_missing_control_audit(&config, &state_store, &fixture, run_id);
 }
 
+#[cfg(unix)]
+#[test]
+fn operator_lane_interrupt_api_force_hard_fallbacks_after_lane_not_active_with_live_process() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let registration = ProjectRegistration::from_config(
+		config.service_id(),
+		&service_config_path(config.repo_root()),
+		&config,
+		true,
+		"test-fingerprint",
+	);
+	let issue = sample_issue("In Progress", &[]);
+	let worktree_path = config.worktree_root().join(&issue.identifier);
+	let project_id = config.service_id().to_owned();
+	let issue_identifier = issue.identifier.clone();
+	let run_id = "pub-101-attempt-1";
+	let body = format!(
+		r#"{{"projectId":"{project_id}","issue":"{issue_identifier}","runId":"{run_id}","force":true}}"#
+	);
+	let request = format!(
+		"POST {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+		orchestrator::OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH,
+			body.len(),
+			body
+		);
+	let child = Command::new("/bin/sh")
+		.args(["-c", "exec sleep 60"])
+		.spawn()
+		.expect("lane child process should start");
+	let child_process_id = child.id();
+	let mut child = child;
+
+	fs::create_dir_all(&worktree_path).expect("worktree should exist");
+	state::write_run_activity_marker_for_process(&worktree_path, run_id, 1, child_process_id)
+		.expect("activity marker should write");
+
+	state_store.upsert_project(&registration).expect("project should register");
+	state_store
+		.record_run_attempt(run_id, &issue.id, 1, "succeeded")
+		.expect("run attempt should record");
+	state_store.update_run_thread(run_id, "thread-1").expect("thread should record");
+	state_store.update_run_turn(run_id, "turn-1").expect("turn should record");
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	let response = String::from_utf8(orchestrator::build_operator_lane_interrupt_http_response(
+		&state_store,
+		request.as_bytes(),
+	))
+	.expect("lane interrupt response should be utf-8");
+	let data = operator_json_response_body(&response, "lane interrupt");
+
+	if orchestrator::process_is_alive(child_process_id) {
+		child
+			.kill()
+			.expect("lane child process should be killable after failed fallback");
+	}
+
+	child.wait().expect("lane child process should reap");
+
+	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
+	assert_eq!(data["classification"], "hard_interrupt_fallback");
+	assert_eq!(data["softInterrupt"]["status"], "unavailable");
+	assert_eq!(data["softInterrupt"]["errorClass"], "lane_not_active");
+	assert_eq!(data["hardInterrupt"]["classification"], "hard_interrupt_fallback");
+	assert_eq!(data["hardInterrupt"]["status"], "sent");
+	assert_eq!(
+		data["hardInterrupt"]["processId"].as_u64(),
+		Some(u64::from(child_process_id))
+	);
+	assert_eq!(data["hardInterrupt"]["processAliveAfter"], false);
+}
+
 #[test]
 fn operator_lane_steer_api_rejects_stale_expected_turn_id() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
