@@ -298,6 +298,7 @@ fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
 		idle_for_seconds: Some(1),
 		protocol_idle_for_seconds: Some(1),
 		suspected_stall: false,
+		progress_diagnostic: None,
 		last_event_type: Some(String::from("turn/completed")),
 		last_event_at: Some(String::from("2026-03-14 10:00:01")),
 		event_count: 4,

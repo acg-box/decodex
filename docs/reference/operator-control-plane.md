@@ -363,7 +363,12 @@ Worktree visibility follows the owning dashboard section:
   stay in the `Accounts` table; connector rate-limit backoff is surfaced as project
   and snapshot health, not repeated in each lane debug row. These high-frequency
   details remain local/operator-only and are not written to Linear except through
-  existing lifecycle summaries.
+  existing lifecycle summaries. `last_protocol_activity_at` may move for any incoming
+  protocol event, but `last_progress_at` moves only for meaningful work events. If a
+  running lane remains in model execution with fresh account, rate-limit, phase-goal,
+  or passive status traffic but stale work progress, status JSON exposes
+  `progress_diagnostic = "protocol_only_activity"` so operators can separate
+  process-alive and protocol-active from work-progressing.
 - Status JSON and the dashboard share a `loop_status` object when a row can be tied
   to a runtime run/attempt. It carries `review_level`, `autonomy`, concise `summary`
   and `next_action`, plus optional `review`, `architecture_recovery`, `boundary`, and
