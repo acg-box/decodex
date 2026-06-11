@@ -374,21 +374,6 @@ struct AccountPanelView: View {
 					help: "Open Decodex WebUI"
 				)
 
-				if hasFixedSelection {
-					PanelIconButtonView(
-						symbol: "shuffle",
-						tint: PanelPalette.actionBlue(colorScheme),
-						isActive: false,
-						action: {
-							Task {
-								await store.clearSelection()
-							}
-						},
-						help: "Restore balanced run routing"
-					)
-					.transition(.opacity.combined(with: .scale(scale: 0.96)))
-				}
-
 				PanelIconButtonView(
 					symbol: "plus",
 					tint: PanelPalette.actionBlue(colorScheme),
