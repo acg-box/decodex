@@ -1,0 +1,510 @@
+{
+  "schema": "research-run/2",
+  "run_id": "2026-06-09_decodex-loop-engineering-and-research-lane",
+  "question": "How should Decodex incorporate loop engineering, Codex goal, and a Decodex-native research lane so ambiguous user intent can flow into better decisions, execution, validation, and self-improving automation without making the human surface more complex?",
+  "success_criteria": [
+    "Explain loop engineering as an actionable product and runtime direction for Decodex, not only as a slogan.",
+    "Decide whether research should remain a separate generic skill, become a Decodex-native component, or be replaced by execution-only automation.",
+    "Define how Codex app-server goal should be used with Decodex retained lanes without giving up Decodex tracker, PR, validation, and recovery authority.",
+    "Preserve the user's natural-language-first workflow and keep DAG or loop mechanics backstage unless an operator asks for inspection.",
+    "Identify implementation priorities, correctness gates, and telemetry/eval hooks needed for future automation and self-improvement."
+  ],
+  "constraints": [
+    "Do not make everyday users learn graph, DAG, dry-run, apply, queue, or goal commands to get value.",
+    "Do not treat research output as repository authority unless it is promoted into spec, runbook, reference, or decision lanes.",
+    "Do not let Codex goal completion bypass Decodex repo gates, PR/Linear handoff, retry policy, or needs-attention handling.",
+    "Do not couple Decodex to the generic research skill in a way that prevents a Decodex-native research lane from replacing it.",
+    "Prefer capability-gated use of Codex app-server protocol rather than assumptions about a latest Codex build."
+  ],
+  "stop_rule": "Stop once the product direction, architecture split, research role, Codex goal integration boundary, implementation slices, and unresolved risks are clear enough to write specs/issues in a later delivery pass.",
+  "primary_hypothesis": "Decodex should become a natural-language-first development loop runtime: a Decodex-native Research/Decision Lane turns ambiguous intent into evidence-backed decisions, an internal Execution Program/DAG tracks dependencies, Codex goal drives inner implementation continuation where available, and Decodex owns outer validation, tracker, PR, recovery, and harness-improvement loops.",
+  "rival_hypotheses": [
+    "Keep Decodex focused on retained implementation lanes and leave research as a separate generic skill used before Decodex.",
+    "Make first-class DAG management the main product surface and ask users or agents to operate graph commands explicitly.",
+    "Use Codex goal as the whole orchestration layer and remove most Decodex continuation, retry, tracker, and validation logic.",
+    "Build a generic loop engine detached from Decodex-specific Linear/GitHub/worktree/runtime semantics."
+  ],
+  "falsifiers": [
+    "If Codex app-server does not expose goal methods or goal continuation, Decodex cannot rely on Codex goal as the inner execution primitive.",
+    "If Decodex current runtime already has equivalent goal semantics and durable decision/research state, this proposal would be redundant.",
+    "If research artifacts cannot be replayed, validated, or converted into implementation programs, research would remain a chat artifact rather than a loop component.",
+    "If users must learn new graph/loop commands for ordinary requests, the product direction violates the user's explicit workflow constraint.",
+    "If the internal Execution Program/DAG requires plan-private parsing, arbitrary workflow node types, or tracker mutation before dry-run/readback semantics are stable, the design is too broad.",
+    "If Codex goal complete can be wrong often and Decodex does not add independent validation, the integration would degrade correctness instead of improving it."
+  ],
+  "coverage": {
+    "mode": "broad_external",
+    "min_source_families": 5
+  },
+  "continuation": {
+    "mode": "auto_if_not_decision_ready",
+    "attempt": 1,
+    "max_attempts": 1,
+    "session_id": "2026-06-09_decodex-loop-engineering-and-research-lane"
+  },
+  "events": [
+    {
+      "seq": 1,
+      "type": "probe_completed",
+      "remaining_option_count": 4,
+      "independent_option_questions": [
+        "Should research remain a generic skill, or become a Decodex-native research/decision lane?",
+        "Should Codex goal own Decodex lane continuation, or should Decodex continue to use only max-turn bounded retries?",
+        "Should the execution graph/DAG be a user-facing workflow or an internal program state?",
+        "Which loop telemetry and eval hooks are required so research improves downstream automation instead of becoming a one-off report?"
+      ],
+      "external_slices": []
+    },
+    {
+      "seq": 2,
+      "type": "evidence_recorded",
+      "evidence": [
+        {
+          "id": "E1",
+          "kind": "observation",
+          "summary": "OpenAI's Harness Engineering article frames the shift as humans designing environments, specifying intent, and building feedback loops so Codex agents can work reliably; it also describes PR completion through review, feedback handling, and iterative loops.",
+          "source_family": "openai_article",
+          "source_locator": "https://openai.com/index/harness-engineering/"
+        },
+        {
+          "id": "E2",
+          "kind": "observation",
+          "summary": "OpenAI's App Server article says Codex surfaces share the same harness and app-server exposes it through a client-friendly bidirectional JSON-RPC API with thread lifecycle, config/auth, tool execution, persistence, and event streams.",
+          "source_family": "openai_article",
+          "source_locator": "https://openai.com/index/unlocking-the-codex-harness/"
+        },
+        {
+          "id": "E3",
+          "kind": "observation",
+          "summary": "OpenAI's Codex agent-loop article identifies the harness as the core loop orchestrating user input, model reasoning, tools, observations, planning, and final responses.",
+          "source_family": "openai_article",
+          "source_locator": "https://openai.com/index/unrolling-the-codex-agent-loop/"
+        },
+        {
+          "id": "E4",
+          "kind": "observation",
+          "summary": "OpenAI Symphony turns Linear into a control plane: each open issue maps to an isolated agent workspace, agents run continuously, DAG dependencies govern readiness, and agents can create follow-up work. The article also warns that rigid state-machine nodes became too limiting and teams moved toward objectives.",
+          "source_family": "openai_article",
+          "source_locator": "https://openai.com/index/open-source-codex-orchestration-symphony/"
+        },
+        {
+          "id": "E5",
+          "kind": "observation",
+          "summary": "Symphony's SPEC defines a long-running automation service that reads an issue tracker, creates isolated per-issue workspaces, runs coding-agent sessions, owns orchestrator state for dispatch/retry/reconciliation, and keeps ticket-writing business logic in prompts/tools rather than in the scheduler.",
+          "source_family": "open_source_spec",
+          "source_locator": "https://raw.githubusercontent.com/openai/symphony/main/SPEC.md"
+        },
+        {
+          "id": "E6",
+          "kind": "observation",
+          "summary": "The official openai/codex app-server README lists thread/goal/set, thread/goal/get, thread/goal/clear, thread/goal/updated, and thread/goal/cleared as protocol methods/notifications for a persisted materialized-thread goal.",
+          "source_family": "open_source_code",
+          "source_locator": "https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md"
+        },
+        {
+          "id": "E7",
+          "kind": "observation",
+          "summary": "Local Codex 0.139.0-alpha.2 reports goals as a stable enabled feature, and the local goals SQLite schema stores per-thread objective, status, token budget, tokens used, and elapsed time.",
+          "source_family": "local_env",
+          "source_locator": "codex --version; codex features list; sqlite3 /Users/x/.codex/goals_1.sqlite .schema thread_goals"
+        },
+        {
+          "id": "E8",
+          "kind": "observation",
+          "summary": "Generated local app-server JSON schema contains thread/goal/set, thread/goal/get, thread/goal/clear, thread/goal/updated, and thread/goal/cleared, proving the current local app-server protocol exposes goal methods.",
+          "source_family": "local_schema",
+          "source_locator": "codex app-server generate-json-schema --experimental --out /tmp/codex-loop-schema.rPseni"
+        },
+        {
+          "id": "E9",
+          "kind": "observation",
+          "summary": "OpenAI Codex goal runtime source calls continue_if_idle for active goals, reads the active goal from state, builds a continuation steering item, and starts another turn only if the thread is idle.",
+          "source_family": "open_source_code",
+          "source_locator": "https://github.com/openai/codex/blob/main/codex-rs/ext/goal/src/runtime.rs"
+        },
+        {
+          "id": "E10",
+          "kind": "observation",
+          "summary": "OpenAI Codex goal tool specs expose create_goal, get_goal, and update_goal; update_goal only lets the model mark a goal complete or blocked, while pause/resume, budget-limited, and usage-limited transitions remain user/system controlled.",
+          "source_family": "open_source_code",
+          "source_locator": "https://github.com/openai/codex/blob/main/codex-rs/ext/goal/src/spec.rs"
+        },
+        {
+          "id": "E11",
+          "kind": "observation",
+          "summary": "Decodex's current app-server spec is capability-gated and supports initialize, bounded preflight, thread/start, thread/resume, turn/start, thread/archive, command/exec, and dynamic tool bridge, but it does not yet include thread/goal methods in the required contract.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/app-server.md"
+        },
+        {
+          "id": "E12",
+          "kind": "observation",
+          "summary": "Decodex runtime currently runs one or more bounded turns on an app-server thread and decides after each turn whether to continue, validate, enter needs_attention, or yield to retry based on execution.max_turns and tracker state.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/runtime.md"
+        },
+        {
+          "id": "E13",
+          "kind": "observation",
+          "summary": "Decodex requires explicit terminal disposition before success writeback: review_handoff and manual_attention have required signals, forbidden co-signals, repo gate behavior, and issue_terminal_finalize; checkpoints alone are not terminal completion.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/spec/runtime.md"
+        },
+        {
+          "id": "E14",
+          "kind": "observation",
+          "summary": "Decodex documentation policy says docs/research is supporting evidence only, not runtime truth, procedure, current state, or rationale; durable guidance must be promoted into spec, runbook, reference, or decisions.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/policy.md; docs/reference/research-runs.md"
+        },
+        {
+          "id": "E15",
+          "kind": "observation",
+          "summary": "little-loops frames harness loops as FSM patterns wrapping a skill or prompt in layered quality evaluation, emphasizing that running a skill is easy while knowing output quality is hard.",
+          "source_family": "third_party_tooling",
+          "source_locator": "https://docs.little-loops.ai/guides/LOOPS_GUIDE/"
+        },
+        {
+          "id": "E16",
+          "kind": "observation",
+          "summary": "Wiggum's agent mode reads a backlog, prioritizes issues by labels and dependencies, generates specs, runs a Ralph loop per issue, reviews diffs against the spec, and auto-merges when checks pass.",
+          "source_family": "third_party_tooling",
+          "source_locator": "https://wiggum.app/"
+        },
+        {
+          "id": "E17",
+          "kind": "observation",
+          "summary": "A Wiggum Ralph Loop explainer describes phases of plan, implement, test, verify, and PR, with checkpoints and explicit verification against the original spec to catch cases where code compiles but does not satisfy requirements.",
+          "source_family": "third_party_tooling",
+          "source_locator": "https://wiggum.app/blog/what-is-the-ralph-loop/"
+        },
+        {
+          "id": "E18",
+          "kind": "observation",
+          "summary": "The AI Harness Engineering paper identifies task specification, context selection, tool access, project memory, task state, observability, failure attribution, verification, permissions, entropy auditing, and intervention recording as harness responsibilities, and reframes success as verifiably correct, attributed, maintainable change.",
+          "source_family": "research_paper",
+          "source_locator": "https://arxiv.org/abs/2605.13357"
+        },
+        {
+          "id": "E19",
+          "kind": "observation",
+          "summary": "Agentic Harness Engineering proposes a closed-loop harness evolution approach with component observability, experience observability, and decision observability so harness edits are explicit, consumable, and later verified against outcomes.",
+          "source_family": "research_paper",
+          "source_locator": "https://arxiv.org/abs/2604.25850"
+        },
+        {
+          "id": "E20",
+          "kind": "observation",
+          "summary": "HarnessFix argues failed agent trajectories require step-level provenance, failure attribution to harness layers, scoped repair operators, and regression-aware validation rather than broad final-outcome-only prompt changes.",
+          "source_family": "research_paper",
+          "source_locator": "https://arxiv.org/abs/2606.06324"
+        },
+        {
+          "id": "E21",
+          "kind": "observation",
+          "summary": "User-provided Addy Osmani X material described Loop Engineering as replacing yourself as the person who prompts the agent, with Codex/Claude primitives such as automations, worktrees, skills/plugins/connectors, subagents, memory, and goal-like persistence.",
+          "source_family": "provided_material",
+          "source_locator": "https://x.com/addyosmani/status/2064127981161959567"
+        },
+        {
+          "id": "E22",
+          "kind": "observation",
+          "summary": "User-provided Matt Van Horn X material framed a loop as a small program that prompts the coding agent, reads output, decides whether it is done, and prompts again; the newer layer is multi-agent supervision and orchestration, with verification and loop management as the hard parts.",
+          "source_family": "provided_material",
+          "source_locator": "https://x.com/mvanhorn/status/2063865685558903149"
+        },
+        {
+          "id": "E23",
+          "kind": "observation",
+          "summary": "Prior Decodex workflow discussion rejected a user-visible DAG workflow after the user said graph mechanics felt more cumbersome than the current natural-language Codex workflow, and converged on internal Decision Lane / Execution Program framing.",
+          "source_family": "conversation_memory",
+          "source_locator": "/Users/x/.codex/memories/MEMORY.md"
+        },
+        {
+          "id": "E24",
+          "kind": "missing_evidence",
+          "summary": "No current Decodex spec or implementation evidence shows a Decodex-native research lane with durable decision state, accepted-decision gates, reusable evidence packs, or automatic research-to-execution program generation.",
+          "source_family": "decodex_repo",
+          "source_path": "docs/; apps/decodex/src/; plugins/decodex/"
+        },
+        {
+          "id": "E25",
+          "kind": "observation",
+          "summary": "The valuable part of the prior DAG direction is not a user-facing graph workflow but an internal Execution Program: broad objectives still need lineage, dependencies, stage, conflict-domain, acceptance, queue intent, ready-node selection, and drift handling, while executable nodes remain ordinary Decodex-dispatchable issues.",
+          "source_family": "derived_analysis",
+          "source_locator": "synthesis from Symphony DAG evidence, Decodex runtime constraints, and interim DAG-priority analysis"
+        }
+      ]
+    },
+    {
+      "seq": 3,
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T1",
+          "summary": "Using Codex goal as Decodex's inner execution continuation primitive reduces duplicated turn-loop logic and aligns with current Codex app-server capability, but Decodex must keep independent outer validation because goal completion is a model claim, not proof of PR/Linear correctness.",
+          "supporting_evidence_ids": [
+            "E6",
+            "E7",
+            "E8",
+            "E9",
+            "E10",
+            "E12",
+            "E13"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T2",
+          "summary": "Replacing the generic research skill with a Decodex-native Research/Decision Lane improves continuity from evidence to execution and lets research artifacts feed later harness improvements, but only if research state remains validated, replayable, and promotable into authoritative docs when needed.",
+          "supporting_evidence_ids": [
+            "E14",
+            "E18",
+            "E19",
+            "E20",
+            "E23",
+            "E24"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T3",
+          "summary": "Keeping DAG/Execution Program internal preserves the user's natural-language workflow while still enabling ready-node queueing, dependency unlocking, parallelism, and later operator inspection.",
+          "supporting_evidence_ids": [
+            "E4",
+            "E5",
+            "E16",
+            "E17",
+            "E23"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T4",
+          "summary": "A user-visible loop or graph command surface would expose useful mechanics but would recreate the friction the user explicitly rejected and would compete with the existing Codex conversation surface.",
+          "supporting_evidence_ids": [
+            "E21",
+            "E22",
+            "E23"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T5",
+          "summary": "Treating research as a loop component rather than a one-off prelude increases downstream quality: better hypotheses and falsifiers become better execution programs, validators, issue slices, PR review prompts, and future harness repairs.",
+          "supporting_evidence_ids": [
+            "E1",
+            "E15",
+            "E18",
+            "E19",
+            "E20",
+            "E21",
+            "E22"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T6",
+          "summary": "A generic loop engine would be reusable, but Decodex's biggest leverage is already in Decodex-specific tracker leases, worktrees, PR/Linear handoff, repo gates, operator snapshots, and recovery semantics; detaching the loop engine would lose those invariants.",
+          "supporting_evidence_ids": [
+            "E5",
+            "E11",
+            "E12",
+            "E13",
+            "E18"
+          ],
+          "disconfirming_evidence_ids": []
+        },
+        {
+          "id": "T7",
+          "summary": "The DAG branch should be absorbed into the loop-runtime branch as backstage Execution Program semantics. This keeps the useful dependency and ready-node machinery while avoiding a second product surface and preserving the natural-language intake flow.",
+          "supporting_evidence_ids": [
+            "E4",
+            "E5",
+            "E11",
+            "E12",
+            "E13",
+            "E23",
+            "E25"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ]
+    },
+    {
+      "seq": 4,
+      "type": "judgment_candidate_created",
+      "judgment_payload": {
+        "judgment_type": "recommend",
+        "preferred_option": "decodex-loop-runtime-with-native-research-lane-and-codex-goal-inner-execution",
+        "rejected_options": [
+          "user-visible-dag-or-loop-command-surface",
+          "keep-research-as-standalone-external-skill",
+          "current-max-turns-only-without-codex-goal",
+          "generic-loop-engine-detached-from-decodex-runtime"
+        ],
+        "decision_claim": "Decodex should evolve into a natural-language-first development loop runtime. The front of the loop should be a Decodex-native Research/Decision Lane that converts ambiguous intent into evidence, options, objections, and accepted decisions. Accepted decisions feed an internal Execution Program/DAG and retained implementation lanes. The Execution Program should absorb the useful DAG semantics: objective lineage, dependencies, stage, conflict-domain, acceptance, queue intent, ready-node selection, and drift handling stored outside ordinary issue descriptions, with executable nodes still materialized as normal Decodex-dispatchable issues. When Codex app-server goal support is available, Decodex should set a thread goal and let Codex goal own inner idle continuation, while Decodex retains outer authority over tracker leases, validation, PR/Linear handoff, status, recovery, and harness-improvement feedback. Research should be treated as a high-leverage component that improves every downstream loop and should itself produce reusable evidence for future harness, skill, prompt, validator, and issue-template improvements.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6",
+          "E7",
+          "E8",
+          "E9",
+          "E10",
+          "E11",
+          "E12",
+          "E13",
+          "E14",
+          "E15",
+          "E16",
+          "E17",
+          "E18",
+          "E25"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T3",
+          "T4",
+          "T5",
+          "T6",
+          "T7"
+        ]
+      },
+      "judgment_hash": "sha256:1d6e2f771f2d0be753410808af66cc12109471759bcb75b9d1d0e366422120c0"
+    },
+    {
+      "seq": 5,
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "target_judgment_hash": "sha256:1d6e2f771f2d0be753410808af66cc12109471759bcb75b9d1d0e366422120c0",
+      "summary": "The recommendation is strong but only if Decodex treats goal as an inner primitive rather than a replacement control plane, keeps research outputs non-authoritative until promoted, exposes only natural-language intake by default, and builds evaluation/telemetry before claiming self-improvement.",
+      "objections": [
+        {
+          "id": "OBJ-001-goal-overtrust",
+          "summary": "Codex goal complete can be wrong or overconfident. Decodex must treat it as a signal to validate, not as done."
+        },
+        {
+          "id": "OBJ-002-research-authority-drift",
+          "summary": "A Decodex-native research lane can create impressive artifacts that drift into policy. Promotion into spec, runbook, reference, or decisions must remain explicit."
+        },
+        {
+          "id": "OBJ-003-ux-regression",
+          "summary": "If users need to say dry-run, apply, queue, ready, goal, graph, or DAG for normal work, the product has failed the user's core workflow constraint."
+        },
+        {
+          "id": "OBJ-004-loop-runaway",
+          "summary": "Goal-driven loops need budgets, no-progress detection, stale-state detection, and human decision gates or they can turn cost into churn."
+        },
+        {
+          "id": "OBJ-005-research-quality-illusion",
+          "summary": "Research only improves downstream automation when evidence, falsifiers, objections, and accepted decisions are machine-readable and later compared against execution outcomes."
+        },
+        {
+          "id": "OBJ-006-scope-creep",
+          "summary": "A generic loop engine would be tempting, but the first Decodex version should stay grounded in Decodex lane, tracker, worktree, PR, and repo-gate semantics."
+        }
+      ]
+    },
+    {
+      "type": "tradeoffs_recorded",
+      "tradeoffs": [
+        {
+          "id": "T8",
+          "summary": "The skeptic objections are addressed by making goal completion only a validation trigger, requiring explicit promotion for research-derived authority, keeping graph and goal mechanics backstage, enforcing budgets and no-progress/stale-state stops, measuring research-to-execution outcomes, and scoping the first implementation to Decodex lane, tracker, worktree, PR, and repo-gate semantics.",
+          "supporting_evidence_ids": [
+            "E10",
+            "E13",
+            "E14",
+            "E18",
+            "E19",
+            "E20",
+            "E23",
+            "E25"
+          ],
+          "disconfirming_evidence_ids": []
+        }
+      ],
+      "seq": 6
+    },
+    {
+      "type": "judgment_candidate_created",
+      "addresses_objection_ids": [
+        "OBJ-001-goal-overtrust",
+        "OBJ-002-research-authority-drift",
+        "OBJ-003-ux-regression",
+        "OBJ-004-loop-runaway",
+        "OBJ-005-research-quality-illusion",
+        "OBJ-006-scope-creep"
+      ],
+      "judgment_payload": {
+        "judgment_type": "recommend",
+        "preferred_option": "decodex-loop-runtime-with-native-research-lane-and-codex-goal-inner-execution",
+        "rejected_options": [
+          "user-visible-dag-or-loop-command-surface",
+          "keep-research-as-standalone-external-skill",
+          "current-max-turns-only-without-codex-goal",
+          "generic-loop-engine-detached-from-decodex-runtime"
+        ],
+        "decision_claim": "Decodex should evolve into a natural-language-first development loop runtime. The front of the loop should be a Decodex-native Research/Decision Lane that converts ambiguous intent into evidence, options, objections, and accepted decisions. Accepted decisions feed an internal Execution Program/DAG and retained implementation lanes. The Execution Program should absorb the useful DAG semantics: objective lineage, dependencies, stage, conflict-domain, acceptance, queue intent, ready-node selection, and drift handling stored outside ordinary issue descriptions, with executable nodes still materialized as normal Decodex-dispatchable issues. When Codex app-server goal support is available, Decodex should set a thread goal and let Codex goal own inner idle continuation, while Decodex retains outer authority over tracker leases, validation, PR/Linear handoff, status, recovery, and harness-improvement feedback. Research should be treated as a high-leverage component that improves every downstream loop and should itself produce reusable evidence for future harness, skill, prompt, validator, and issue-template improvements.",
+        "key_evidence_ids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4",
+          "E5",
+          "E6",
+          "E7",
+          "E8",
+          "E9",
+          "E10",
+          "E11",
+          "E12",
+          "E13",
+          "E14",
+          "E15",
+          "E16",
+          "E17",
+          "E18",
+          "E25"
+        ],
+        "key_tradeoff_ids": [
+          "T1",
+          "T2",
+          "T3",
+          "T4",
+          "T5",
+          "T6",
+          "T7",
+          "T8"
+        ]
+      },
+      "seq": 7,
+      "judgment_hash": "sha256:cf51a788d29f1e3bcc7c589cba665c214f486b0f50e882dcccf1eb1add64a447"
+    },
+    {
+      "type": "worker_completed",
+      "worker": "skeptic",
+      "summary": "The replacement judgment addresses the prior objections by binding goal completion to independent validation, research authority to explicit promotion, UX to natural-language intake, loop continuation to budget and no-progress stops, research quality to outcome telemetry, and scope to Decodex-specific runtime invariants.",
+      "objections": [],
+      "seq": 8,
+      "target_judgment_hash": "sha256:cf51a788d29f1e3bcc7c589cba665c214f486b0f50e882dcccf1eb1add64a447"
+    },
+    {
+      "type": "finalized_decision_ready",
+      "summary": "Decision-ready: build Decodex as a natural-language-first development loop runtime. Prioritize a Decodex-native Research/Decision Lane, internal Execution Program/DAG, capability-gated Codex goal integration for inner execution continuation, independent Decodex validation and handoff, and a harness-improvement loop that mines research and execution outcomes for future skills, prompts, validators, and workflow changes. The earlier DAG direction should be deleted as a separate branch and retained only as the internal Execution Program contract.",
+      "confidence": "high",
+      "missing_evidence": [
+        "No implementation spike has yet proven Decodex thread/goal/set integration against a live retained lane.",
+        "No current Decodex spec defines the Decodex-native research lane schema, accepted-decision gate, or research-to-execution-program handoff.",
+        "No current metric baseline measures whether better research improves downstream PR success, validation passes, reduced manual attention, or fewer stale follow-ups."
+      ],
+      "seq": 9,
+      "judgment_hash": "sha256:cf51a788d29f1e3bcc7c589cba665c214f486b0f50e882dcccf1eb1add64a447"
+    }
+  ]
+}
