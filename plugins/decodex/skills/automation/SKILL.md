@@ -131,6 +131,12 @@ terminal automation signal.
   that the lane is currently blocked, when the Run Ledger shows terminal closeout,
   cleanup, or landed completion and the active/backlog/recovery/post-review sections
   are empty.
+- After an owned agent records `issue_terminal_finalize`, status or lane inspect may
+  briefly project `phase = terminal_pending` with statuses such as
+  `review_handoff_pending`, `review_repair_pending`, `closeout_pending`, or
+  `manual_attention_pending`. Treat this as terminal lifecycle writeback, not active
+  execution or a stall. Do not hard-interrupt, requeue, or clear labels from that row;
+  wait for the retained review, closeout, cleanup, or manual-attention path to settle.
 - When app-server preflight mentions `skills/list`, distinguish non-blocking scan
   diagnostics from real blockers. If the run cwd is present and at least one skill is
   enabled, preserve `error_count`, `first_error_path`, and `first_error` as evidence

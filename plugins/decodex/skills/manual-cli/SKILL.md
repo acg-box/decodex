@@ -144,6 +144,11 @@ Manual commit and landing are separate narrow workflows:
   attempts under `history_lanes[].attempts` are retained for diagnosis and should not
   be read as current lane failure when the primary sections show no active, queued,
   recovery, or post-review work for that issue.
+- If `status` or `lane inspect` shows `phase = terminal_pending`, the agent already
+  called `issue_terminal_finalize` and Decodex is finishing terminal lifecycle
+  writeback. Statuses such as `review_handoff_pending`, `review_repair_pending`,
+  `closeout_pending`, and `manual_attention_pending` are not active lanes and should
+  not be interrupted, requeued, or manually cleaned up from the side.
 - Use `status --live` when the operator needs fresh Linear/GitHub observer readback
   before acting. Use `/api/accounts?refresh=1` for fresh ChatGPT account usage probes.
 - Use `run --dry-run` before live automation to validate project loading, issue

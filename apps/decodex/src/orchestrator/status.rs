@@ -210,6 +210,26 @@ struct OperatorRunProtocolSummary {
 	event_count: i64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct OperatorTerminalFinalizeProjection {
+	status: &'static str,
+	phase: &'static str,
+	wait_reason: &'static str,
+	current_operation: &'static str,
+}
+
+struct OperatorRunLifecycleProjection {
+	status: String,
+	phase: String,
+	wait_reason: Option<String>,
+	current_operation: String,
+	suspected_stall: bool,
+	execution_liveness: String,
+	active_lease: bool,
+	retry_kind: Option<String>,
+	retry_ready_at_unix_epoch: Option<i64>,
+}
+
 struct LiveOperatorStatusObserverContext<'a, T> {
 	tracker: &'a T,
 	project: &'a ServiceConfig,
@@ -4897,35 +4917,16 @@ fn operator_run_status(
 	let timing = operator_run_timing(&run, marker.as_ref(), now_unix_epoch);
 	let app_server_state = operator_run_app_server_state(&run, marker.as_ref());
 	let protocol_summary = operator_run_protocol_summary(&run, marker.as_ref());
-	let marker_current_operation = marker.as_ref().and_then(RunActivityMarker::current_operation);
-	let status = operator_run_visible_status(
-		run.status(),
+	let terminal_finalize_projection =
+		operator_run_terminal_finalize_projection(project, state_store, &run)?;
+	let lifecycle = operator_run_lifecycle_projection(
+		&run,
+		marker.as_ref(),
+		terminal_finalize_projection,
+		&timing,
 		&app_server_state,
 		&protocol_summary,
-		&timing,
-		marker_current_operation,
-	);
-	let (retry_kind, retry_ready_at_unix_epoch) = visible_operator_run_retry_schedule(
-		&status,
-		marker.as_ref().and_then(RunActivityMarker::retry_kind),
-		marker.as_ref().and_then(RunActivityMarker::retry_ready_at_unix_epoch),
 		now_unix_epoch,
-	);
-	let (phase, wait_reason) = classify_operator_run_phase(
-		&status,
-		retry_kind.as_deref(),
-		retry_ready_at_unix_epoch,
-		now_unix_epoch,
-	);
-	let current_operation = classify_operator_run_operation(
-		&phase,
-		marker_current_operation,
-	);
-	let suspected_stall = operator_run_is_suspected_stall(
-		&phase,
-		timing.last_progress_unix_epoch,
-		now_unix_epoch,
-		run_activity_idle_timeout(marker.as_ref()),
 	);
 	let child_agent_activity = operator_run_child_agent_activity(marker.as_ref(), now_unix_epoch);
 	let protocol_activity = operator_run_protocol_activity(
@@ -4933,9 +4934,13 @@ fn operator_run_status(
 		&app_server_state,
 		child_agent_activity.as_ref(),
 		timing.protocol_idle_for_seconds,
-		matches!(status.as_str(), "starting" | "running"),
+		matches!(lifecycle.status.as_str(), "starting" | "running"),
 	);
-	let wait_reason = operator_run_wait_reason(&phase, wait_reason, protocol_activity.as_ref());
+	let wait_reason = operator_run_wait_reason(
+		&lifecycle.phase,
+		lifecycle.wait_reason.clone(),
+		protocol_activity.as_ref(),
+	);
 	let (account, accounts) = operator_run_accounts(marker.as_ref());
 	let branch_name = run.branch_name().map(str::to_owned);
 	let worktree_path = operator_run_relative_worktree_path(project, &run);
@@ -4946,10 +4951,15 @@ fn operator_run_status(
 	);
 	let private_evidence = operator_run_private_evidence(project, &run, issue_identifier.as_deref());
 	let loop_status =
-		operator_run_loop_status(project, state_store, &run, &status, &phase, &current_operation)?;
+		operator_run_loop_status(
+			project,
+			state_store,
+			&run,
+			&lifecycle.status,
+			&lifecycle.phase,
+			&lifecycle.current_operation,
+		)?;
 	let control_capability = operator_run_control_capability(&run, &app_server_state);
-	let execution_liveness =
-		operator_run_execution_liveness(&status, &timing, &app_server_state, &protocol_summary);
 
 	Ok(OperatorRunStatus {
 		project_id: project.service_id().to_owned(),
@@ -4960,20 +4970,20 @@ fn operator_run_status(
 		title: None,
 		author: None,
 		attempt_number: run.attempt_number(),
-		status,
+		status: lifecycle.status,
 		attempt_status: run.status().to_owned(),
-		phase,
+		phase: lifecycle.phase,
 		wait_reason,
-		current_operation,
+		current_operation: lifecycle.current_operation,
 		thread_id: app_server_state.thread_id,
 		turn_id: app_server_state.turn_id,
 		thread_status: app_server_state.thread_status,
 		thread_active_flags: app_server_state.thread_active_flags,
 		interactive_requested: app_server_state.interactive_requested,
 		continuation_pending: app_server_state.continuation_pending,
-		active_lease: run.active_lease(),
-		queue_lease_state: operator_run_queue_lease_state(run.active_lease()),
-		execution_liveness,
+		active_lease: lifecycle.active_lease,
+		queue_lease_state: operator_run_queue_lease_state(lifecycle.active_lease),
+		execution_liveness: lifecycle.execution_liveness,
 		updated_at: run.updated_at().to_owned(),
 		last_run_activity_at: format_optional_unix_timestamp(timing.last_run_activity_unix_epoch),
 		last_protocol_activity_at: format_optional_unix_timestamp(
@@ -4982,7 +4992,7 @@ fn operator_run_status(
 		last_progress_at: format_optional_unix_timestamp(timing.last_progress_unix_epoch),
 		idle_for_seconds: timing.idle_for_seconds,
 		protocol_idle_for_seconds: timing.protocol_idle_for_seconds,
-		suspected_stall,
+		suspected_stall: lifecycle.suspected_stall,
 		last_event_type: protocol_summary.last_event_type,
 		last_event_at: protocol_summary.last_event_at,
 		event_count: protocol_summary.event_count,
@@ -4992,8 +5002,8 @@ fn operator_run_status(
 		process_id: timing.process_id,
 		process_alive: timing.process_alive,
 		process_liveness_reason: timing.process_liveness_reason,
-		retry_kind,
-		next_retry_at: format_optional_unix_timestamp(retry_ready_at_unix_epoch),
+		retry_kind: lifecycle.retry_kind,
+		next_retry_at: format_optional_unix_timestamp(lifecycle.retry_ready_at_unix_epoch),
 		effective_model: app_server_state.effective_model,
 		effective_model_provider: app_server_state.effective_model_provider,
 		effective_cwd: app_server_state.effective_cwd,
@@ -5007,6 +5017,74 @@ fn operator_run_status(
 		branch_name,
 		worktree_path,
 	})
+}
+
+fn operator_run_lifecycle_projection(
+	run: &ProjectRunStatus,
+	marker: Option<&RunActivityMarker>,
+	terminal_finalize_projection: Option<OperatorTerminalFinalizeProjection>,
+	timing: &OperatorRunTiming,
+	app_server_state: &OperatorRunAppServerState,
+	protocol_summary: &OperatorRunProtocolSummary,
+	now_unix_epoch: i64,
+) -> OperatorRunLifecycleProjection {
+	let marker_current_operation = marker.and_then(RunActivityMarker::current_operation);
+	let status = terminal_finalize_projection
+		.map(|projection| projection.status.to_owned())
+		.unwrap_or_else(|| {
+			operator_run_visible_status(
+				run.status(),
+				app_server_state,
+				protocol_summary,
+				timing,
+				marker_current_operation,
+			)
+		});
+	let (retry_kind, retry_ready_at_unix_epoch) = visible_operator_run_retry_schedule(
+		&status,
+		marker.and_then(RunActivityMarker::retry_kind),
+		marker.and_then(RunActivityMarker::retry_ready_at_unix_epoch),
+		now_unix_epoch,
+	);
+	let (phase, wait_reason) =
+		if let Some(projection) = terminal_finalize_projection {
+			(String::from(projection.phase), Some(String::from(projection.wait_reason)))
+		} else {
+			classify_operator_run_phase(
+				&status,
+				retry_kind.as_deref(),
+				retry_ready_at_unix_epoch,
+				now_unix_epoch,
+			)
+		};
+	let current_operation = terminal_finalize_projection
+		.map(|projection| projection.current_operation.to_owned())
+		.unwrap_or_else(|| classify_operator_run_operation(&phase, marker_current_operation));
+	let suspected_stall = terminal_finalize_projection.is_none()
+		&& operator_run_is_suspected_stall(
+			&phase,
+			timing.last_progress_unix_epoch,
+			now_unix_epoch,
+			run_activity_idle_timeout(marker),
+		);
+	let execution_liveness = if terminal_finalize_projection.is_some() {
+		String::from("not_running")
+	} else {
+		operator_run_execution_liveness(&status, timing, app_server_state, protocol_summary)
+	};
+	let active_lease = terminal_finalize_projection.is_none() && run.active_lease();
+
+	OperatorRunLifecycleProjection {
+		status,
+		phase,
+		wait_reason,
+		current_operation,
+		suspected_stall,
+		execution_liveness,
+		active_lease,
+		retry_kind,
+		retry_ready_at_unix_epoch,
+	}
 }
 
 fn operator_run_wait_reason(
@@ -5102,12 +5180,17 @@ fn operator_run_has_terminal_lifecycle(
 	current_operation: &str,
 ) -> bool {
 	phase == "completed"
+		|| phase == "terminal_pending"
 		|| current_operation == "ledger_outcome"
 		|| matches!(
 			status,
 			"succeeded"
 				| "failed"
 				| "interrupted"
+				| "review_handoff_pending"
+				| "review_repair_pending"
+				| "closeout_pending"
+				| "manual_attention_pending"
 				| "cleanup_complete"
 				| "closeout"
 				| "landed"
@@ -5659,6 +5742,56 @@ fn operator_run_protocol_summary(
 		last_event_at: run.last_event_at().map(str::to_owned),
 		event_count: run.event_count(),
 	}
+}
+
+fn operator_run_terminal_finalize_projection(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	run: &ProjectRunStatus,
+) -> crate::prelude::Result<Option<OperatorTerminalFinalizeProjection>> {
+	let events = state_store.list_private_execution_events(
+		project.service_id(),
+		run.issue_id(),
+		run.run_id(),
+		run.attempt_number(),
+	)?;
+	let Some(path) = events
+		.iter()
+		.rev()
+		.find(|event| event.event_type() == "terminal_finalize")
+		.and_then(|event| event.payload().get("path"))
+		.and_then(Value::as_str)
+	else {
+		return Ok(None);
+	};
+
+	Ok(match path {
+		"review_handoff" => Some(OperatorTerminalFinalizeProjection {
+			status: "review_handoff_pending",
+			phase: "terminal_pending",
+			wait_reason: "review_handoff_writeback",
+			current_operation: RUN_OPERATION_REVIEW_WRITEBACK,
+		}),
+		"review_repair" => Some(OperatorTerminalFinalizeProjection {
+			status: "review_repair_pending",
+			phase: "terminal_pending",
+			wait_reason: "review_repair_writeback",
+			current_operation: RUN_OPERATION_REVIEW_WRITEBACK,
+		}),
+		"closeout" => Some(OperatorTerminalFinalizeProjection {
+			status: "closeout_pending",
+			phase: "terminal_pending",
+			wait_reason: "closeout_writeback",
+			current_operation: RUN_OPERATION_REVIEW_WRITEBACK,
+		}),
+		"manual_attention" => Some(OperatorTerminalFinalizeProjection {
+			status: "manual_attention_pending",
+			phase: "terminal_pending",
+			wait_reason: "manual_attention_writeback",
+			current_operation: RUN_OPERATION_REVIEW_WRITEBACK,
+		}),
+		_ => None,
+	})
 }
 
 fn operator_run_visible_status(

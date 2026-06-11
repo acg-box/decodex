@@ -25,6 +25,7 @@ use std::{
 	slice,
 	sync::{
 		Arc, Mutex,
+		atomic::{AtomicU64, Ordering as AtomicOrdering},
 		mpsc::{self, Receiver, RecvTimeoutError, Sender},
 	},
 	thread::{self, JoinHandle},
