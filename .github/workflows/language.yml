@@ -57,7 +57,7 @@ jobs:
         run: cargo make fmt-rust-check
 
       - name: Run Rust style check
-        uses: hack-ink/vibe-style@d9d913b1b1f45eaf89f2bc09c661c49084f2dfaf # v0.2.1
+        uses: hack-ink/vibe-style@bfb4d2d2f5e4b5e5ce8de4ed1d708b3a2f0e61fe # v0.2.1
         with:
           language: rust
           workspace: true
