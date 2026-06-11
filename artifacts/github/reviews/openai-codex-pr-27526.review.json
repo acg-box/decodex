@@ -1,0 +1,58 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27526",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27526",
+    "commit_shas": [
+      "8a34e24ba2eb9415433cfc680d35d35112f403b8"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "tools: simplify default tool search text",
+        "url": "https://github.com/openai/codex/pull/27526",
+        "meta": "Merged 2026-06-11T03:37:26Z"
+      },
+      {
+        "kind": "commit",
+        "title": "tools: simplify default tool search text",
+        "url": "https://github.com/openai/codex/commit/8a34e24ba2eb9415433cfc680d35d35112f403b8"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-11T20:07:07Z",
+  "observed_change": "Codex now builds default tool-search text from `ToolSpec` alone, removing duplicated `ToolName` text and the non-model-visible flattened namespace/name token.",
+  "changed_surfaces": [
+    "codex-tools default search-text construction",
+    "ToolExecutor::search_info default implementation",
+    "ToolSearchInfo::from_tool_spec API shape",
+    "codex-tools public reexports",
+    "tool-search unit coverage for namespace metadata"
+  ],
+  "user_visible_path": "Models using Codex tool search should see cleaner default search text for namespace tools because namespace names, tool names, descriptions, and schema metadata remain while duplicate identity tokens are removed.",
+  "control_plane_relevance": "Moderate for Decodex Control Plane because tool-search quality affects which deferred or namespaced tools are surfaced to agents, but the change does not add a new app-server method or plugin protocol.",
+  "compatibility_risk": "Low to medium for out-of-tree Rust code that imported `default_tool_search_text` or called `ToolSearchInfo::from_tool_spec` with a `ToolName`; the helper is now private and the method no longer accepts the name argument.",
+  "adoption_opportunity": "Review Decodex tool-search expectations for namespace tools and avoid relying on flattened namespace/name tokens when authoring tool metadata.",
+  "community_value": "Medium for Codex tool authors and plugin authors because the PR explains why default search text should match model-visible metadata instead of synthetic duplicate names.",
+  "deprecated_or_breaking_notes": "`default_tool_search_text` is no longer reexported from `codex-tools`, and `ToolSearchInfo::from_tool_spec` drops the `ToolName` argument.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27526 states that default search text now derives entirely from `ToolSpec` while preserving names, descriptions, namespace metadata, and recursive schema metadata.",
+    "`codex-rs/tools/src/lib.rs` removes the public reexport of `default_tool_search_text`.",
+    "`ToolExecutor::search_info` now calls `ToolSearchInfo::from_tool_spec(spec, None)` without passing `self.tool_name()`.",
+    "`codex-rs/tools/src/tool_search.rs` removes `ToolName` from `from_tool_spec` and from `default_tool_search_text` input, then makes `default_tool_search_text` private.",
+    "`codex-rs/tools/src/tool_search_tests.rs` asserts that a namespaced `codex_app` automation tool indexes model-visible namespace, function, description, parameter, and nested schema metadata exactly once.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27526.json` records 4 changed files for the merged PR."
+  ],
+  "caveats": "This is a search-quality and source-API cleanup. Do not claim a new user-facing tool or protocol capability from this PR alone.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Decodex should track possible tool-search quality and source-API implications for deferred or namespaced tool discovery."
+    }
+  ]
+}
