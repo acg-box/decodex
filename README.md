@@ -129,11 +129,17 @@ cargo run -p decodex --bin decodex -- serve --listen-address 127.0.0.1:8192
 
 Project-scoped commands accept `--config <PROJECT_DIR>` after the subcommand when the
 operator wants to override registry-based project resolution for that command.
-`decodex status` prints the local runtime snapshot without refreshing live
-tracker, pull-request, or Codex account usage observers. Use `decodex status --live`
-when the operator needs fresh Linear/GitHub readback before acting; use the Accounts
-API refresh path, such as `GET /api/accounts?refresh=1`, when the operator needs
-fresh ChatGPT account usage probes.
+`decodex status` first tries to reuse the default local operator listener's published
+`GET /api/operator-snapshot` when the snapshot is recent, covers the requested project,
+and has at least the requested `--limit`. JSON output marks this as
+`"status_source": "operator_snapshot_cache"` and includes `snapshot_age_seconds`.
+If that cache is missing, stale, mismatched, or too small, the command falls back to a
+direct local runtime snapshot and reports `status_cached_snapshot_unavailable` in
+`warning_details`. Use `decodex status --live` when the operator needs fresh
+Linear/GitHub readback before acting; `--live` bypasses the cached snapshot path and
+marks JSON output as `"status_source": "live_observers"`. Use the Accounts API refresh
+path, such as `GET /api/accounts?refresh=1`, when the operator needs fresh ChatGPT
+account usage probes.
 `decodex serve` uses hardcoded scheduler cadences: the local control-plane loop
 publishes snapshots every 15 seconds, and Linear-backed queue/status scans run at
 most every 5 minutes per project unless an operator or agent requests an explicit
