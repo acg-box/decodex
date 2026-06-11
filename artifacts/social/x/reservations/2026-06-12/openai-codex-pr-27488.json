@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "operator_impact",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-pr-27488:operator_impact",
   "reserved_at": "2026-06-11T21:56:57Z",
   "expires_at": "2026-06-11T23:56:57Z",
@@ -37,6 +37,7 @@
     "branch": "codex/x-publisher-pr-27488-20260612",
     "pr_url": "https://github.com/hack-ink/decodex/pull/340"
   },
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-12/openai-codex-pr-27488.json",
   "evidence_notes": [
     "The social_candidate/v1 artifact has decision.worthiness = publish, priority critical, and mode operator_impact for openai-codex-pr-27488.",
     "Checked durable social_post/v1 records contained no published or blocked record for this idempotency key before reservation.",
