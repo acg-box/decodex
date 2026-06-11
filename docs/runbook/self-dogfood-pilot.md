@@ -760,11 +760,13 @@ The operator snapshot also exposes coarse liveness semantics so you do not have 
 The snapshot also adds fields that make running lanes easier to interpret:
 
 - `current_operation`: one of `idle`, `agent_run`, `repo_gate`, `review_writeback`, `waiting_external`, or `reconciliation`
-- `last_progress_at`: the latest time Decodex recorded meaningful forward progress for the current lane
+- `last_protocol_activity_at`: the latest incoming app-server protocol event, including account, rate-limit, passive status, and other non-work traffic
+- `last_progress_at`: the latest time Decodex recorded meaningful forward progress for the current lane; account, rate-limit, phase-goal, passive status, warning, model-routing, token-usage, and heartbeat-like events do not refresh it
 - `suspected_stall = true`: a soft warning that progress has been quiet for a large fraction of the idle budget, before the lane crosses the hard `stalled` threshold
+- `progress_diagnostic = protocol_only_activity`: the lane is still process/protocol-active in model execution, but recent protocol events are only non-work traffic and meaningful progress is stale or missing
 - `child_agent_activity`: when present, a shared dashboard and `status` breakdown of dynamic child-thread buckets, context pressure, largest tool output, and repeated large-output warnings
 
-When present, compare `current_operation`, `last_progress_at`, `last_run_activity_at`, `last_protocol_activity_at`, `idle_for_seconds`, and `child_agent_activity.current_bucket` before assuming a lane is stuck. Quiet work with fresh child activity is different from a lane that is still alive but already drifting toward a stall.
+When present, compare `current_operation`, `last_progress_at`, `last_run_activity_at`, `last_protocol_activity_at`, `progress_diagnostic`, `idle_for_seconds`, and `child_agent_activity.current_bucket` before assuming a lane is stuck. Quiet work with fresh child activity is different from a lane that is still alive but already drifting toward a stall; fresh account, phase-goal, or rate-limit events without fresh `last_progress_at` should be treated as protocol liveness, not proof of forward work.
 
 For the running-lane fields:
 
