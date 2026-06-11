@@ -653,6 +653,7 @@ where
 		&mut snapshot,
 	)?;
 	apply_terminal_history_ledger_outcomes(&mut snapshot);
+	suppress_terminal_attention_queue_echoes(&mut snapshot);
 	refresh_worktree_ownership(
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
@@ -972,6 +973,28 @@ fn apply_terminal_history_ledger_outcomes(snapshot: &mut OperatorStatusSnapshot)
 	});
 }
 
+fn suppress_terminal_attention_queue_echoes(snapshot: &mut OperatorStatusSnapshot) {
+	let terminal_attention_keys = snapshot
+		.history_lanes
+		.iter()
+		.filter(|lane| history_ledger_outcome_requires_attention(&lane.ledger_outcome))
+		.map(history_lane_group_key)
+		.collect::<HashSet<_>>();
+
+	if terminal_attention_keys.is_empty() {
+		return;
+	}
+
+	snapshot.queued_candidates.retain(|candidate| {
+		let candidate_key =
+			operator_issue_attention_key(&candidate.issue_id, Some(&candidate.issue_identifier));
+		let is_terminal_attention_echo =
+			candidate.reason == "issue_needs_attention" && terminal_attention_keys.contains(&candidate_key);
+
+		!is_terminal_attention_echo
+	});
+}
+
 fn history_ledger_outcome_supersedes_local_attempts(
 	outcome: &OperatorHistoryLedgerOutcome,
 ) -> bool {
@@ -1091,18 +1114,6 @@ fn worktree_ownership(
 			audit_required: false,
 		};
 	}
-
-	if worktree_has_queued_attention_owner(worktree, snapshot) {
-		return WorktreeOwnership {
-			kind: "queued_attention",
-			reason: String::from(
-				"Intake Queue owns this worktree because the issue needs operator attention.",
-			),
-			next_action: None,
-			audit_required: false,
-		};
-	}
-
 	if let Some(lane) = worktree_history_attention_owner(worktree, snapshot) {
 		return WorktreeOwnership {
 			kind: "retained_attention",
@@ -1124,6 +1135,18 @@ fn worktree_ownership(
 			audit_required: false,
 		};
 	}
+
+	if worktree_has_queued_attention_owner(worktree, snapshot) {
+		return WorktreeOwnership {
+			kind: "queued_attention",
+			reason: String::from(
+				"Intake Queue owns this worktree because the issue needs operator attention.",
+			),
+			next_action: None,
+			audit_required: false,
+		};
+	}
+
 	if let Some(hygiene) = &worktree.hygiene {
 		return WorktreeOwnership {
 			kind: "post_land_cleanup",
