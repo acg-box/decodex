@@ -3500,6 +3500,7 @@ fn resolve_turn_completion(
 	final_output: &str,
 ) -> crate::prelude::Result<Option<(bool, Option<PhaseGoalRunStatus>)>> {
 	let completion_status = classify_turn_completion(request.dynamic_tool_handler, final_output)?;
+	let terminal_completion_signal = has_terminal_completion_signal(request.dynamic_tool_handler);
 
 	if phase_goal_runtime.is_some() {
 		let observed_goal_result = {
@@ -3532,7 +3533,9 @@ fn resolve_turn_completion(
 
 			match transition {
 				PhaseGoalTransition::Continue(next_goal) => {
-					if completion_status == TurnCompletionStatus::Complete {
+					if completion_status == TurnCompletionStatus::Complete
+						&& terminal_completion_signal
+					{
 						return Ok(Some((false, Some(observed_status))));
 					}
 
@@ -3550,7 +3553,9 @@ fn resolve_turn_completion(
 					return Ok(None);
 				},
 				PhaseGoalTransition::CompleteRun => {
-					if completion_status == TurnCompletionStatus::Complete {
+					if completion_status == TurnCompletionStatus::Complete
+						&& terminal_completion_signal
+					{
 						clear_thread_phase_goal_best_effort(client, recorder, thread_id);
 
 						return Ok(Some((false, Some(observed_status))));
@@ -3562,7 +3567,7 @@ fn resolve_turn_completion(
 				},
 			}
 		}
-		if completion_status == TurnCompletionStatus::Complete {
+		if completion_status == TurnCompletionStatus::Complete && terminal_completion_signal {
 			clear_thread_phase_goal_best_effort(client, recorder, thread_id);
 
 			return Ok(Some((false, Some(observed_status))));
@@ -3822,6 +3827,10 @@ fn classify_turn_completion(
 	}
 
 	Ok(TurnCompletionStatus::Complete)
+}
+
+fn has_terminal_completion_signal(dynamic_tool_handler: Option<&dyn DynamicToolHandler>) -> bool {
+	dynamic_tool_handler.is_some_and(DynamicToolHandler::has_terminal_completion_signal)
 }
 
 fn reject_nonterminal_single_turn_completion(

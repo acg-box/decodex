@@ -132,6 +132,20 @@ pub(crate) struct IssueCommentCreateResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub(crate) struct PullRequestMergeViewResponse {
+	pub(crate) state: String,
+	#[serde(rename = "headRefOid")]
+	pub(crate) head_ref_oid: Option<String>,
+	#[serde(rename = "mergeCommit")]
+	pub(crate) merge_commit: Option<PullRequestMergeCommit>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PullRequestMergeCommit {
+	pub(crate) oid: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct PullRequestLandingStateResponse {
 	data: PullRequestLandingStateData,
 }
@@ -251,20 +265,6 @@ struct RepositoryViewOwner {
 #[derive(Debug, Deserialize)]
 struct RepositoryViewBranchRef {
 	name: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct PullRequestMergeViewResponse {
-	state: String,
-	#[serde(rename = "headRefOid")]
-	head_ref_oid: Option<String>,
-	#[serde(rename = "mergeCommit")]
-	merge_commit: Option<PullRequestMergeCommit>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PullRequestMergeCommit {
-	oid: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -620,9 +620,18 @@ pub(crate) fn pull_request_is_merged_at_head(
 	github_token: &str,
 	gh_command_path: Option<&Path>,
 ) -> Result<bool> {
-	let response = inspect_pull_request_merge_response(cwd, pr_url, github_token, gh_command_path)?;
+	let response = inspect_pull_request_merge_readback(cwd, pr_url, github_token, gh_command_path)?;
 
 	Ok(response.state == "MERGED" && response.head_ref_oid.as_deref() == Some(expected_head_sha))
+}
+
+pub(crate) fn inspect_pull_request_merge_readback(
+	cwd: &Path,
+	pr_url: &str,
+	github_token: &str,
+	gh_command_path: Option<&Path>,
+) -> Result<PullRequestMergeViewResponse> {
+	inspect_pull_request_merge_response(cwd, pr_url, github_token, gh_command_path)
 }
 
 fn gh_command_resolution_from_env(
