@@ -563,6 +563,11 @@ rate-limited, or unavailable.
 - Completed lanes without Decodex Linear execution ledger records are reported as
   `missing` / `execution_ledger_missing`. Tracker terminal state, local attempt
   success, and non-ledger comments never satisfy the Run Ledger outcome contract.
+- When a terminal Run Ledger attention record exists for an issue that still has both
+  the service queue label and `decodex:needs-attention`, the operator snapshot treats
+  the queue label as stale echo state. The issue remains visible through Run Ledger
+  attention and retained-worktree ownership instead of appearing again as intake
+  backlog.
 
 ## Current Non-Goals
 
