@@ -38,6 +38,8 @@ const REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION: &str = "review_handoff_rebi
 const REVIEW_HANDOFF_UNVERIFIED_CLASSIFICATION: &str = "review_handoff_unverified";
 const REVIEW_HANDOFF_MISMATCH_CLASSIFICATION: &str = "review_handoff_mismatch";
 const REVIEW_HANDOFF_REBIND_EVENT: &str = "review_handoff_rebind";
+const LEGACY_MANUAL_CLOSEOUT_EVENT: &str = "closeout";
+const LEGACY_MANUAL_CLOSEOUT_ANCHOR: &str = "legacy_manual_closeout";
 const REBOUND_ORCHESTRATION_PHASE: &str = "request_pending";
 const LINEAR_CONNECTOR_BACKOFF_WARNING: &str = "tracker_rate_limited";
 const LINEAR_CONNECTOR_BACKOFF_SECS: i64 = 15 * 60;
@@ -60,6 +62,19 @@ pub(crate) struct ReviewHandoffRebindRequest {
 	pub(crate) pr_url: String,
 	/// Validate without writing markers or tracker audit comments.
 	pub(crate) dry_run: bool,
+}
+
+/// Explicit legacy closeout audit request.
+#[derive(Debug)]
+pub(crate) struct LegacyCloseoutRecoveryRequest {
+	/// Issue identifier to audit.
+	pub(crate) issue: String,
+	/// Merged pull request URL that proves terminal code lineage.
+	pub(crate) pr_url: String,
+	/// Validate without writing a tracker audit comment.
+	pub(crate) dry_run: bool,
+	/// Required for non-dry-run mutation.
+	pub(crate) manual_authority: bool,
 }
 
 #[derive(Serialize)]
@@ -144,6 +159,15 @@ struct RebindValidation {
 	active_label_present: bool,
 	mode: RebindMode,
 	success_state_transition: Option<RebindSuccessStateTransition>,
+}
+
+struct LegacyCloseoutValidation {
+	issue: TrackerIssue,
+	worktree: WorktreeMapping,
+	landing_state: PullRequestLandingState,
+	local_head_oid: String,
+	merge_commit: String,
+	worktree_path_for_event: Option<String>,
 }
 
 #[derive(Debug)]
@@ -268,6 +292,50 @@ pub(crate) fn run_review_handoff_rebind(
 		landing_url(&validation.landing_state),
 		validation.local_head_oid,
 		validation.mode.evidence_value()
+	);
+
+	Ok(())
+}
+
+/// Run an explicit audited legacy closeout fallback.
+pub(crate) fn run_legacy_closeout(
+	config_path: Option<&Path>,
+	request: &LegacyCloseoutRecoveryRequest,
+) -> Result<()> {
+	let context = load_recovery_context(config_path)?;
+	let validation = validate_legacy_closeout_request(&context, request)?;
+
+	if request.dry_run {
+		println!(
+			"dry run: legacy closeout validated for project={} issue={} branch={} pr={} head={} merge_commit={} provenance={}",
+			context.config.service_id(),
+			validation.issue.identifier,
+			validation.worktree.branch_name(),
+			landing_url(&validation.landing_state),
+			validation.local_head_oid,
+			validation.merge_commit,
+			validation.worktree.provenance().source()
+		);
+
+		return Ok(());
+	}
+	if !request.manual_authority {
+		eyre::bail!(
+			"`recover legacy-closeout` writes a closeout audit and requires --manual-authority outside dry-run mode."
+		);
+	}
+
+	let event = legacy_closeout_event(&context, &validation);
+	let audit_recorded = write_legacy_closeout_audit(&context, &validation, &event)?;
+
+	println!(
+		"legacy closeout audit ok: project={} issue={} branch={} pr={} head={} merge_commit={} audit_recorded={audit_recorded}",
+		context.config.service_id(),
+		validation.issue.identifier,
+		validation.worktree.branch_name(),
+		landing_url(&validation.landing_state),
+		validation.local_head_oid,
+		validation.merge_commit,
 	);
 
 	Ok(())
@@ -915,6 +983,87 @@ fn validate_rebind_request(
 	})
 }
 
+fn validate_legacy_closeout_request(
+	context: &RecoveryContext,
+	request: &LegacyCloseoutRecoveryRequest,
+) -> Result<LegacyCloseoutValidation> {
+	let issue = load_issue_by_identifier(&context.tracker, &request.issue)?;
+
+	validate_legacy_closeout_issue_state(context.workflow.frontmatter().tracker(), &issue)?;
+
+	let worktree = legacy_closeout_worktree(context, &issue)?;
+
+	if !worktree.provenance().is_legacy_unknown() {
+		eyre::bail!(
+			"Issue `{}` worktree provenance is `{}`; legacy closeout requires `legacy_unknown` cleanup-only provenance.",
+			issue.identifier,
+			worktree.provenance().source()
+		);
+	}
+
+	let (landing_state, default_branch) = inspect_project_pull_request(context, &request.pr_url)?;
+
+	if landing_state.base_ref_name != default_branch {
+		eyre::bail!(
+			"Pull request `{}` targets `{}`, but configured default branch is `{}`.",
+			request.pr_url,
+			landing_state.base_ref_name,
+			default_branch
+		);
+	}
+	if landing_state.state != "MERGED" {
+		eyre::bail!(
+			"Pull request `{}` is `{}`; legacy closeout requires `MERGED`.",
+			request.pr_url,
+			landing_state.state
+		);
+	}
+
+	let local_head_oid = validate_legacy_closeout_worktree(&worktree, &landing_state)?;
+	let merge_commit = inspect_project_pull_request_merge_commit(context, &request.pr_url)?;
+	let worktree_path_for_event =
+		repository_relative_path(context.config.repo_root(), worktree.worktree_path());
+
+	Ok(LegacyCloseoutValidation {
+		issue,
+		worktree,
+		landing_state,
+		local_head_oid,
+		merge_commit,
+		worktree_path_for_event,
+	})
+}
+
+fn validate_legacy_closeout_issue_state(
+	tracker_policy: &WorkflowTracker,
+	issue: &TrackerIssue,
+) -> Result<()> {
+	if tracker_policy.terminal_states().iter().any(|state| state == &issue.state.name) {
+		return Ok(());
+	}
+
+	eyre::bail!(
+		"Issue `{}` is in `{}`, but legacy closeout requires a terminal state: {}.",
+		issue.identifier,
+		issue.state.name,
+		tracker_policy.terminal_states().join(", ")
+	)
+}
+
+fn legacy_closeout_worktree(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+) -> Result<WorktreeMapping> {
+	if let Some(worktree) = context.state_store.worktree_for_issue(&issue.id)? {
+		return Ok(worktree);
+	}
+	if let Some(worktree) = context.state_store.worktree_for_issue(&issue.identifier)? {
+		return Ok(worktree);
+	}
+
+	eyre::bail!("Issue `{}` has no retained worktree mapping.", issue.identifier)
+}
+
 fn load_issue_by_identifier<T>(tracker: &T, issue_identifier: &str) -> Result<TrackerIssue>
 where
 	T: IssueTracker + ?Sized,
@@ -1138,9 +1287,38 @@ fn inspect_project_pull_request(
 	Ok((landing_state, repository.default_branch))
 }
 
+fn inspect_project_pull_request_merge_commit(
+	context: &RecoveryContext,
+	pr_url: &str,
+) -> Result<String> {
+	let github_token = context.config.github().resolve_token()?;
+
+	github::inspect_pull_request_merge_commit(
+		context.config.repo_root(),
+		pr_url,
+		&github_token,
+		context.config.github().command_path(),
+	)
+}
+
 fn validate_rebind_worktree(
 	worktree: &WorktreeMapping,
 	landing_state: &PullRequestLandingState,
+) -> Result<String> {
+	validate_retained_pr_worktree(worktree, landing_state, "rebind")
+}
+
+fn validate_legacy_closeout_worktree(
+	worktree: &WorktreeMapping,
+	landing_state: &PullRequestLandingState,
+) -> Result<String> {
+	validate_retained_pr_worktree(worktree, landing_state, "legacy closeout")
+}
+
+fn validate_retained_pr_worktree(
+	worktree: &WorktreeMapping,
+	landing_state: &PullRequestLandingState,
+	action_label: &str,
 ) -> Result<String> {
 	let local_branch = worktree_checkout_branch_name(worktree.worktree_path())?
 		.ok_or_else(|| eyre::eyre!("Retained worktree is detached."))?;
@@ -1161,8 +1339,8 @@ fn validate_rebind_worktree(
 	}
 	if !worktree_is_clean(worktree.worktree_path())? {
 		eyre::bail!(
-			"Retained worktree `{}` has local changes; rebind requires a clean lane checkout.",
-			worktree.worktree_path().display()
+			"Retained worktree `{}` has local changes; {action_label} requires a clean lane checkout.",
+			worktree.worktree_path().display(),
 		);
 	}
 
@@ -1325,6 +1503,95 @@ fn write_rebind_audit(
 	)?;
 
 	Ok(())
+}
+
+fn legacy_closeout_event(
+	context: &RecoveryContext,
+	validation: &LegacyCloseoutValidation,
+) -> LinearExecutionEventRecord {
+	let pr_url = landing_url(&validation.landing_state);
+	let stable_anchor = records::stable_event_anchor(&[
+		pr_url,
+		&validation.local_head_oid,
+		&validation.merge_commit,
+		LEGACY_MANUAL_CLOSEOUT_ANCHOR,
+	]);
+	let run_id = format!("legacy-closeout-{}", validation.issue.identifier.to_ascii_lowercase());
+	let mut event = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: context.config.service_id(),
+			issue_id: &validation.issue.id,
+			issue_identifier: &validation.issue.identifier,
+			run_id: &run_id,
+			attempt_number: 1,
+		},
+		LEGACY_MANUAL_CLOSEOUT_EVENT,
+		current_timestamp(),
+		&stable_anchor,
+	);
+
+	event.branch = Some(validation.worktree.branch_name().to_owned());
+	event.worktree_path = validation.worktree_path_for_event.clone();
+	event.pr_url = Some(pr_url.to_owned());
+	event.pr_head_sha = Some(validation.local_head_oid.clone());
+	event.pr_base_ref = Some(validation.landing_state.base_ref_name.clone());
+	event.commit_sha = Some(validation.merge_commit.clone());
+	event.validation_result = Some(String::from("passed"));
+	event.target_state = Some(validation.issue.state.name.clone());
+	event.cleanup_status = Some(String::from("manual_audit_recorded"));
+	event.summary = Some(format!(
+		"Legacy manual closeout audit recorded for {} after merged PR {}.",
+		validation.issue.identifier, pr_url
+	));
+	event.evidence = Some(vec![
+		format!("issue_state={}", validation.issue.state.name),
+		format!("branch={}", validation.worktree.branch_name()),
+		format!("pr_url={pr_url}"),
+		format!("pr_head_sha={}", validation.local_head_oid),
+		format!("merge_commit={}", validation.merge_commit),
+		format!("worktree_provenance={}", validation.worktree.provenance().source()),
+		String::from("worktree_clean=true"),
+	]);
+	event.next_action = Some(String::from(
+		"remove the local worktree only after preserving or discarding local-only changes intentionally",
+	));
+
+	event
+}
+
+fn write_legacy_closeout_audit(
+	context: &RecoveryContext,
+	validation: &LegacyCloseoutValidation,
+	event: &LinearExecutionEventRecord,
+) -> Result<bool> {
+	let body = format!(
+		"Decodex legacy manual closeout audit: verified merged PR `{}` for `{}`. Runtime provenance was `{}`, so this records the manual fallback before local cleanup.",
+		landing_url(&validation.landing_state),
+		validation.issue.identifier,
+		validation.worktree.provenance().source()
+	);
+	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
+		context.config.privacy_classifier(),
+	)?;
+	let projection =
+		tracker::prepare_linear_execution_event_comment(&body, event, &privacy_classifier)?;
+	let recorded = context.state_store.record_linear_execution_event(&projection.record)?;
+
+	if !recorded {
+		return Ok(false);
+	}
+
+	if let Err(error) = tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
+		&context.tracker,
+		&validation.issue.id,
+		&projection,
+	) {
+		context.state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
+
+		return Err(error);
+	}
+
+	Ok(true)
 }
 
 fn landing_url(landing_state: &PullRequestLandingState) -> &str {

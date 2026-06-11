@@ -33,7 +33,10 @@ use crate::{
 		RadarRefreshQueueRequest, RadarRefreshReleaseDeltaRequest, RadarRenderSignalRequest,
 		RadarValidateRequest,
 	},
-	recovery::{self, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest},
+	recovery::{
+		self, LegacyCloseoutRecoveryRequest, ReviewHandoffDiagnoseRequest,
+		ReviewHandoffRebindRequest,
+	},
 	research_design::{
 		self, ResearchDesignCompileRequest, ResearchDesignOutcome, ResearchDesignPromoteRequest,
 		ResearchDesignRunInput,
@@ -749,6 +752,15 @@ impl RecoverCommand {
 	fn run(&self) -> Result<()> {
 		match &self.command {
 			RecoverSubcommand::ReviewHandoff(args) => args.run(self.project_config.as_path()),
+			RecoverSubcommand::LegacyCloseout(args) => recovery::run_legacy_closeout(
+				self.project_config.as_path(),
+				&LegacyCloseoutRecoveryRequest {
+					issue: args.issue.clone(),
+					pr_url: args.pr.clone(),
+					dry_run: args.dry_run,
+					manual_authority: args.manual_authority,
+				},
+			),
 		}
 	}
 }
@@ -799,6 +811,22 @@ struct ReviewHandoffRebindCommand {
 	/// Validate only; do not write runtime markers or tracker audit comments.
 	#[arg(long)]
 	dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+struct LegacyCloseoutRecoveryCommand {
+	/// Issue identifier for the legacy cleanup-only worktree.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Merged pull request URL that proves the lane's terminal code lineage.
+	#[arg(long, value_name = "PR_URL")]
+	pr: String,
+	/// Validate without writing a Linear execution audit event.
+	#[arg(long)]
+	dry_run: bool,
+	/// Required for non-dry-run audited legacy closeout.
+	#[arg(long)]
+	manual_authority: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1539,6 +1567,8 @@ impl From<ResearchOutcomeArg> for ResearchDesignOutcome {
 enum RecoverSubcommand {
 	/// Recover retained review lanes whose handoff marker is missing.
 	ReviewHandoff(ReviewHandoffRecoveryCommand),
+	/// Record an audited fallback closeout for a legacy cleanup-only worktree.
+	LegacyCloseout(LegacyCloseoutRecoveryCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1679,17 +1709,17 @@ mod tests {
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
 		CommitCommand, DiagnoseCommand, EvidenceCommand, LandCommand, LaneCommand,
-		LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand, LaneSubcommand, ProbeCommand,
-		ProjectCommand, ProjectConfigArgs, ProjectSubcommand, RadarBackfillReleaseRangeCommand,
-		RadarBundleBuildCommand, RadarBundleCommand, RadarBundleSubcommand,
-		RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
-		RadarLedgerIngestExistingCommand, RadarLedgerSubcommand, RadarLedgerSummaryCommand,
-		RadarRefreshReleaseDeltaCommand, RadarRefreshUpstreamQueueCommand,
-		RadarRenderSignalCommand, RadarSubcommand, RadarValidateCommand, RecoverCommand,
-		RecoverSubcommand, ResearchCommand, ResearchCompileCommand, ResearchOutcomeArg,
-		ResearchPromoteCommand, ResearchSubcommand, ReviewHandoffDiagnoseCommand,
-		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
-		RunCommand, ServeCommand, StatusCommand,
+		LaneInspectCommand, LaneInterruptCommand, LaneSteerCommand, LaneSubcommand,
+		LegacyCloseoutRecoveryCommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
+		ProjectSubcommand, RadarBackfillReleaseRangeCommand, RadarBundleBuildCommand,
+		RadarBundleCommand, RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand,
+		RadarLedgerCommand, RadarLedgerIngestExistingCommand, RadarLedgerSubcommand,
+		RadarLedgerSummaryCommand, RadarRefreshReleaseDeltaCommand,
+		RadarRefreshUpstreamQueueCommand, RadarRenderSignalCommand, RadarSubcommand,
+		RadarValidateCommand, RecoverCommand, RecoverSubcommand, ResearchCommand,
+		ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
+		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
+		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -2579,6 +2609,33 @@ mod tests {
 					command: ReviewHandoffRecoverySubcommand::Rebind(
 						ReviewHandoffRebindCommand { issue, pr, dry_run: true }
 					)
+				}),
+				..
+			}) if issue == "PUB-718"
+				&& pr == "https://github.com/hack-ink/pubfi-mono-v2/pull/14"
+		));
+	}
+
+	#[test]
+	fn parses_legacy_closeout_manual_authority() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"recover",
+			"legacy-closeout",
+			"PUB-718",
+			"--pr",
+			"https://github.com/hack-ink/pubfi-mono-v2/pull/14",
+			"--manual-authority",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Recover(RecoverCommand {
+				command: RecoverSubcommand::LegacyCloseout(LegacyCloseoutRecoveryCommand {
+					issue,
+					pr,
+					dry_run: false,
+					manual_authority: true,
 				}),
 				..
 			}) if issue == "PUB-718"

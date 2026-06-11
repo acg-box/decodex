@@ -415,13 +415,23 @@ Worktree visibility follows the owning dashboard section:
   runtime owner is gone or cannot explain it as active, review/landing, or queued
   work.
 
-Every operator snapshot worktree row includes an `ownership` and `ownership_reason`
-that distinguishes active-lane ownership, post-review ownership, queued attention, and
-cleanup-only local retention. A `Recovery Worktrees` row tells the operator to inspect
-the local path and either clean it up or recover local-only changes; it is not, by
-itself, evidence that the SQLite runtime store lost an active lane. When the tracker
-issue is already `Done` and no retained lane owns the worktree, the row is neutral
-cleanup-only state, not a blocking recovery error.
+Every operator snapshot worktree row includes `ownership`, `ownership_reason`,
+`provenance`, and optional `recovery_next_action` fields that distinguish active-lane
+ownership, post-review ownership, queued attention, post-land cleanup, and cleanup-only
+local retention. Runtime-recorded mappings report `provenance.source =
+"runtime_recorded"` with created and refreshed Unix timestamps. Deterministically
+rebuilt mappings report `provenance.source = "runtime_recovered"` when tracker,
+retained marker, or closeout evidence proves a current owner after local state was
+missing. Filesystem-only scans use scan-specific provenance such as `filesystem_scan`
+or `git_hygiene_scan`. Rows migrated from older runtime stores that had no provenance
+report `provenance.source = "legacy_unknown"` and may set
+`provenance.audit_required = true`.
+
+A `Recovery Worktrees` row tells the operator to inspect the local path and either
+clean it up or recover local-only changes; it is not, by itself, evidence that the
+SQLite runtime store lost an active lane. When the tracker issue is already `Done`,
+the row has runtime provenance, and no retained lane owns the worktree, the row is
+neutral cleanup-only state, not a blocking recovery error.
 
 When a retained worktree reports `role: cleanup_only`, treat it as local cleanup
 hygiene rather than an active lane. It does not imply that an agent, child
@@ -431,6 +441,16 @@ disk still has a retained checkout after the runtime owner is gone; once the
 operator verifies the issue or PR is terminal, `main` contains the intended work,
 and the checkout has no local-only changes that need recovery, the safe action is
 to remove that local worktree.
+
+If that same cleanup-only row reports `provenance.source = "legacy_unknown"` and
+`audit_required = true`, treat it as a legacy orphan cleanup decision rather than
+ordinary hygiene. Decodex is explicitly saying it cannot prove PR or closeout lineage
+from durable runtime records. Do not use review-handoff rebind for this state unless a
+separate diagnosis finds an open PR lane with exact lineage. Verify the tracker issue
+and PR terminal state, inspect the checkout, run
+`decodex recover legacy-closeout <ISSUE> --pr <MERGED_PR> --dry-run`, rerun with
+`--manual-authority` only after validation passes, and then remove the local worktree
+only after that evidence is understood.
 
 The expected operator path for a cleanup-only row is short:
 
