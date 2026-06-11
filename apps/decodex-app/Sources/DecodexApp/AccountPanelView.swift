@@ -279,6 +279,10 @@ struct AccountPanelView: View {
 			header
 			accountSummary
 
+			if globalActiveRuns.isEmpty == false {
+				globalRunSummary
+			}
+
 			if telemetryMatrixIsVisible {
 				AccountTelemetryMatrixView(
 					aggregate: accountProfileAggregate,
@@ -605,6 +609,9 @@ struct AccountPanelView: View {
 		if store.accountList?.usageProbeError != nil {
 			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.noticeHeight
 		}
+		if globalActiveRuns.isEmpty == false {
+			height += AccountPanelLayout.sectionSpacing + AccountRunStripLayout.globalSummaryHeight
+		}
 
 		return height
 	}
@@ -657,6 +664,30 @@ struct AccountPanelView: View {
 		return AccountPanelLayout.telemetryVerticalPadding
 			+ rows.reduce(0, +)
 			+ CGFloat(rows.count - 1) * AccountPanelLayout.telemetryRowSpacing
+	}
+
+	private var globalActiveRuns: [OperatorRunStatus] {
+		store.operatorSnapshot?.activeRuns ?? []
+	}
+
+	private var globalRunSummary: some View {
+		VStack(alignment: .leading, spacing: 6) {
+			HStack(alignment: .firstTextBaseline, spacing: 6) {
+				Image(systemName: "play.circle.fill")
+					.font(PanelFont.accountDetail)
+					.foregroundStyle(PanelPalette.routeAccent(colorScheme))
+					.frame(width: 12)
+				Text("\(globalActiveRuns.count) active")
+					.font(PanelFont.accountDetail)
+					.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				Spacer(minLength: 0)
+			}
+
+			AccountRunSummaryView(runs: globalActiveRuns, currentTime: currentTime)
+		}
+		.padding(.horizontal, 8)
+		.padding(.vertical, 7)
+		.modernGlassSurface(cornerRadius: 9, depth: .row)
 	}
 
 	private func displayName(for account: CodexAccount) -> String {
@@ -837,7 +868,7 @@ struct AccountRowView: View {
 			}
 
 			if runs.isEmpty == false {
-				AccountRunSummaryView(runs: runs)
+				AccountRunSummaryView(runs: runs, currentTime: currentTime)
 			}
 
 			if account.hasUsageSummary {
@@ -887,6 +918,7 @@ struct AccountRowView: View {
 
 struct AccountRunSummaryView: View {
 	let runs: [OperatorRunStatus]
+	let currentTime: Date
 	@State private var placementStore = AccountRunStripPlacementStore()
 	@State private var scrollProxy = AccountRunStripScrollProxy()
 	@State private var scrollMetrics = AccountRunStripMetrics()
@@ -916,7 +948,7 @@ struct AccountRunSummaryView: View {
 			) {
 				HStack(spacing: 5) {
 					ForEach(runs) { run in
-						AccountRunChipView(run: run)
+						AccountRunChipView(run: run, currentTime: currentTime)
 							.modifier(
 								AccountRunChipPlacementReporter(
 									runID: run.id,
@@ -986,6 +1018,7 @@ struct AccountRunSummaryView: View {
 }
 
 private enum AccountRunStripLayout {
+	static let globalSummaryHeight: CGFloat = 42
 	static let contentCoordinateSpace = "account-run-strip-content"
 	static let dragActivationDistance: CGFloat = 1
 	static let edgeControlSpacing: CGFloat = 4
@@ -1850,6 +1883,7 @@ private enum AccountRunChipLayout {
 
 struct AccountRunChipView: View {
 	let run: OperatorRunStatus
+	let currentTime: Date
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var isHovered = false
 	@State private var showsPopover = false
@@ -1889,7 +1923,7 @@ struct AccountRunChipView: View {
 			cancelPopover()
 		}
 		.popover(isPresented: $showsPopover, arrowEdge: .trailing) {
-			OperatorLanePopoverView(run: run)
+			OperatorLanePopoverView(run: run, currentTime: currentTime)
 				.fixedSize(horizontal: true, vertical: false)
 		}
 	}
@@ -2833,6 +2867,7 @@ struct NoticeView: View {
 
 struct OperatorLanePopoverView: View {
 	let run: OperatorRunStatus
+	let currentTime: Date
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 6) {
@@ -2846,7 +2881,7 @@ struct OperatorLanePopoverView: View {
 				OperatorLaneProgressReadoutRow(
 					title: "Model",
 					percent: bucketPercent(modelBucket),
-					elapsed: formatActivityDuration(modelBucket.wallSeconds) ?? "0s",
+					elapsed: formatActivityDuration(bucketWallSeconds(modelBucket)) ?? "0s",
 					total: formatActivityDuration(totalWallSeconds) ?? "0s",
 					barShare: bucketShare(modelBucket)
 				)
@@ -2883,6 +2918,14 @@ struct OperatorLanePopoverView: View {
 	}
 
 	private var currentSummary: String {
+		if run.processAlive == false {
+			if let idle = formatActivityDuration(run.inactiveDurationSeconds) {
+				return "Stopped · idle \(idle)"
+			}
+
+			return "Stopped"
+		}
+
 		guard let activity else {
 			return "Waiting for child activity"
 		}
@@ -2890,7 +2933,7 @@ struct OperatorLanePopoverView: View {
 		let label = panelTrimmed(activity.currentDetail)
 			?? panelTrimmed(activity.currentBucket).map(rawPanelToken)
 			?? "Active"
-		if let elapsed = formatActivityDuration(activity.currentElapsedSeconds) {
+		if let elapsed = formatActivityDuration(activity.currentElapsedSeconds(at: currentTime)) {
 			return "\(rawPanelToken(label)) · \(elapsed)"
 		}
 
@@ -2923,7 +2966,7 @@ struct OperatorLanePopoverView: View {
 		var items = [
 			OperatorLaneReadoutItem(
 				label: "wall",
-				value: formatActivityDuration(activity.wallSeconds) ?? "0s"
+				value: formatActivityDuration(activity.wallSeconds(at: currentTime)) ?? "0s"
 			),
 			OperatorLaneReadoutItem(
 				label: "events",
@@ -2956,7 +2999,11 @@ struct OperatorLanePopoverView: View {
 	}
 
 	private var modelBucket: OperatorChildAgentBucket? {
-		orderedBuckets.first { bucket in
+		guard run.processAlive != false else {
+			return nil
+		}
+
+		return orderedBuckets.first { bucket in
 			bucket.name.caseInsensitiveCompare("Model") == .orderedSame
 		}
 	}
@@ -2975,8 +3022,10 @@ struct OperatorLanePopoverView: View {
 			if leftPriority != rightPriority {
 				return leftPriority < rightPriority
 			}
-			if left.wallSeconds != right.wallSeconds {
-				return left.wallSeconds > right.wallSeconds
+			let leftWallSeconds = bucketWallSeconds(left)
+			let rightWallSeconds = bucketWallSeconds(right)
+			if leftWallSeconds != rightWallSeconds {
+				return leftWallSeconds > rightWallSeconds
 			}
 			if left.eventCount != right.eventCount {
 				return left.eventCount > right.eventCount
@@ -3040,8 +3089,8 @@ struct OperatorLanePopoverView: View {
 	private var totalWallSeconds: Int {
 		max(
 			1,
-			activity?.wallSeconds ?? 0,
-			bucketRows.reduce(0) { $0 + max(0, $1.wallSeconds) }
+			activity?.wallSeconds(at: currentTime) ?? 0,
+			bucketRows.reduce(0) { $0 + max(0, bucketWallSeconds($1)) }
 		)
 	}
 
@@ -3049,8 +3098,10 @@ struct OperatorLanePopoverView: View {
 		let normalizedName = bucket.name.lowercased()
 		var items = [OperatorLaneReadoutItem]()
 
-		if normalizedName.contains("tracker"), bucket.wallSeconds > 0 {
-			items.append(OperatorLaneReadoutItem(label: "wall", value: formatActivityDuration(bucket.wallSeconds) ?? "0s"))
+		let wallSeconds = bucketWallSeconds(bucket)
+
+		if normalizedName.contains("tracker"), wallSeconds > 0 {
+			items.append(OperatorLaneReadoutItem(label: "wall", value: formatActivityDuration(wallSeconds) ?? "0s"))
 		}
 		if bucket.eventCount > 0 {
 			items.append(OperatorLaneReadoutItem(label: "events", value: formatCompactCount(bucket.eventCount)))
@@ -3098,15 +3149,21 @@ struct OperatorLanePopoverView: View {
 	}
 
 	private func bucketShare(_ bucket: OperatorChildAgentBucket) -> CGFloat {
-		guard bucket.wallSeconds > 0 else {
+		let wallSeconds = bucketWallSeconds(bucket)
+
+		guard wallSeconds > 0 else {
 			return 0
 		}
 
-		return min(1, max(0.02, CGFloat(bucket.wallSeconds) / CGFloat(max(1, totalWallSeconds))))
+		return min(1, max(0.02, CGFloat(wallSeconds) / CGFloat(max(1, totalWallSeconds))))
 	}
 
 	private func bucketPercent(_ bucket: OperatorChildAgentBucket) -> Int {
-		Int((Double(bucket.wallSeconds) / Double(max(1, totalWallSeconds)) * 100).rounded())
+		Int((Double(bucketWallSeconds(bucket)) / Double(max(1, totalWallSeconds)) * 100).rounded())
+	}
+
+	private func bucketWallSeconds(_ bucket: OperatorChildAgentBucket) -> Int {
+		activity?.wallSeconds(for: bucket, at: currentTime) ?? bucket.wallSeconds
 	}
 }
 
