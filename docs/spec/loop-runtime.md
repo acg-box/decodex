@@ -306,8 +306,12 @@ DAG, set queue labels by hand, or operate hidden graph commands.
 The durable intake-planning payload is versioned as
 `decodex.program_intake_plan/1` with `record_version = 1`. The runtime stores it in
 runtime SQLite as part of, or directly adjacent to, the internal
-`decodex.execution_program/1` record. Linear issue descriptions, Linear comments, and
-operator summaries may expose only sparse public projections.
+`decodex.execution_program/1` record. The adjacent runtime readback rows are
+`program_intake_plans`, `program_issue_mappings`, and
+`program_queue_label_ownership`; they are derived from the versioned program payload
+and exist so operator status, reconciliation, and tests can query intake state without
+copying private graph payloads into Linear. Linear issue descriptions, Linear comments,
+and operator summaries may expose only sparse public projections.
 
 The payload carries:
 
@@ -328,6 +332,15 @@ batch boundary as the accepted authority. In both cases, dependencies and orderi
 be represented internally as a DAG, but executable work still enters Decodex as
 ordinary Linear issue lanes with generic natural-language descriptions, tracker
 states, validation expectations, and Decodex lifecycle writeback.
+
+The first operator CLI surface for existing issues is
+`decodex intake issues --project <service-id> <ISSUE>... --dry-run`, or the same
+command with `--config <PROJECT_DIR>`. Dry-run reads tracker state and prints a
+deterministic ready/held/blocked/stale/unmapped report without mutating Linear and
+without persisting local runtime rows. `--persist` is an explicit local-runtime write:
+it stores the Program Intake Plan, Execution Program payload, issue mappings, and any
+already-proven program-owned queue-label evidence, but it still must not apply or
+remove `decodex:queued:<service-id>`.
 
 ## Internal Execution Program
 
