@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Decodex",
     "shortDescription": "Use Decodex for research/design intake, planning, manual CLI work, or retained-lane automation.",
-    "longDescription": "Routes Codex agents through Decodex's natural-language-first surfaces: ordinary requests like \"research X\" enter Decodex-native research/design and produce latent Decision Contracts rather than automatic implementation; later follow-ups such as \"arrange this\", \"push this forward\", \"推进\", or \"做\" can promote accepted contracts into planning and issue shaping; planning splits accepted work into normal Linear issues and queues only ready nodes through registered project policy; manual CLI workflows such as commit, land, status, project registration, account selection, and dry runs stay explicit; and runtime-owned automation workflows such as serve, registered project contracts, Linear labels, tracker tools, review handoff, landing, closeout, and operator status keep their narrow authority. The plugin keeps graph, DAG, goal, and queue mechanics backstage for ordinary users while preserving Decodex-specific instructions with the runtime instead of duplicating them in generic playbooks.",
+    "longDescription": "Routes Codex agents through Decodex natural-language-first research/design intake, such as \"research X\", which produces latent Decision Contracts before execution. Follow-ups such as \"arrange this\" or \"推进\" can promote accepted work into planning that queues only ready nodes, while graph, DAG, goal, and queue mechanics backstage remain hidden from ordinary users.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -34,10 +34,7 @@
     "defaultPrompt": [
       "Research how Decodex should handle this.",
       "Arrange the accepted Decodex research contract into executable issues.",
-      "Use Decodex to inspect this lane.",
-      "Split this feature into Decodex-friendly independent issues.",
-      "Run the Decodex automation preflight.",
-      "Land this PR through Decodex."
+      "Use Decodex to inspect this lane."
     ],
     "brandColor": "#0F766E"
   }
