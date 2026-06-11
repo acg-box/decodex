@@ -124,6 +124,30 @@ where
 	run_result: &'a AppServerRunResult,
 }
 
+struct IssueAppServerRun<'a, T>
+where
+	T: IssueTracker,
+{
+	tracker: &'a T,
+	project: &'a ServiceConfig,
+	workflow: &'a WorkflowDocument,
+	state_store: &'a StateStore,
+	issue_run: &'a IssueRunPlan,
+	tracker_tool_bridge: &'a TrackerToolBridge<'a>,
+	review_context: &'a ReviewHandoffContext,
+	process_env: &'a AppServerProcessEnv,
+	transport: &'a str,
+	continuation_guard: &'a dyn TurnContinuationGuard,
+	decodex_tool_bridge: &'a DecodexToolBridge<'a>,
+	phase_goal_controller: &'a dyn PhaseGoalController,
+	codex_account_provider: Option<&'a dyn CodexAccountProvider>,
+}
+
+enum IssueAppServerRunOutcome {
+	Completed(AppServerRunResult),
+	Finalized(RunSummary),
+}
+
 struct RepoGatePhaseGoalController<'a> {
 	project: &'a ServiceConfig,
 	workflow: &'a WorkflowDocument,
@@ -879,60 +903,26 @@ where
 		DecodexToolBridge::new(&tracker_tool_bridge, build_decodex_run_context(workflow, issue_run));
 	let phase_goal_controller =
 		build_phase_goal_controller(project, workflow, state_store, issue_run);
-	let phase_goal_controller_ref = Some(&phase_goal_controller as &dyn PhaseGoalController);
-	let continuation_user_input =
-		build_issue_run_continuation_user_input(project, workflow, issue_run, &review_context);
-	let run_result = agent::execute_app_server_run(
-		&AppServerRunRequest {
-			project_id: project.service_id().to_owned(),
-			run_id: issue_run.run_id.clone(),
-			issue_id: issue_run.issue.id.clone(),
-			attempt_number: issue_run.attempt_number,
-			listen: transport.clone(),
-			cwd: issue_run.worktree.path.display().to_string(),
-			developer_instructions: build_run_developer_instructions(
-				tracker,
-				project,
-				workflow,
-				state_store,
-				issue_run,
-				&review_context,
-			)?,
-			user_input: build_run_user_input(
-				tracker,
-				project,
-				workflow,
-				state_store,
-				issue_run,
-				&review_context,
-			),
-			max_turns: workflow.frontmatter().execution().max_turns(),
-			timeout: ACTIVE_RUN_IDLE_TIMEOUT,
-			process_env: agent_git_credentials.process_env().clone(),
-			continuation_user_input: Some(continuation_user_input),
-			activity_marker_path: Some(issue_run.worktree.path.clone()),
-			resume_thread_id: resolve_resume_thread_id(state_store, issue_run)?,
-			ephemeral_thread: false,
-			command_exec_health_check: None,
-			dynamic_tool_handler: Some(&decodex_tool_bridge),
-			continuation_guard: Some(&continuation_guard),
-			phase_goal_controller: phase_goal_controller_ref,
-			codex_account_provider: codex_account_pool
-				.as_ref()
-				.map(|pool| pool as &dyn CodexAccountProvider),
-		},
+	let run_result = match execute_issue_app_server_run(IssueAppServerRun {
+		tracker,
+		project,
+		workflow,
 		state_store,
-	)
-	.map_err(|error| {
-		preserve_and_promote_app_server_run_failure(
-			project,
-			state_store,
-			issue_run,
-			workflow,
-			tracker_tool_bridge.completion_disposition(),
-			error,
-		)
-	})?;
+		issue_run,
+		tracker_tool_bridge: &tracker_tool_bridge,
+		review_context: &review_context,
+		process_env: agent_git_credentials.process_env(),
+		transport: &transport,
+		continuation_guard: &continuation_guard,
+		decodex_tool_bridge: &decodex_tool_bridge,
+		phase_goal_controller: &phase_goal_controller,
+		codex_account_provider: codex_account_pool
+			.as_ref()
+			.map(|pool| pool as &dyn CodexAccountProvider),
+	})? {
+		IssueAppServerRunOutcome::Completed(run_result) => run_result,
+		IssueAppServerRunOutcome::Finalized(summary) => return Ok(summary),
+	};
 
 	if run_result.continuation_pending {
 		return Ok(continuation_boundary_summary(project, workflow, issue_run, &run_result));
@@ -949,6 +939,84 @@ where
 		transport: &transport,
 		run_result: &run_result,
 	})
+}
+
+fn execute_issue_app_server_run<T>(
+	input: IssueAppServerRun<'_, T>,
+) -> Result<IssueAppServerRunOutcome>
+where
+	T: IssueTracker,
+{
+	let run_result = match agent::execute_app_server_run(
+		&AppServerRunRequest {
+			project_id: input.project.service_id().to_owned(),
+			run_id: input.issue_run.run_id.clone(),
+			issue_id: input.issue_run.issue.id.clone(),
+			attempt_number: input.issue_run.attempt_number,
+			listen: input.transport.to_owned(),
+			cwd: input.issue_run.worktree.path.display().to_string(),
+			developer_instructions: build_run_developer_instructions(
+				input.tracker,
+				input.project,
+				input.workflow,
+				input.state_store,
+				input.issue_run,
+				input.review_context,
+			)?,
+			user_input: build_run_user_input(
+				input.tracker,
+				input.project,
+				input.workflow,
+				input.state_store,
+				input.issue_run,
+				input.review_context,
+			),
+			max_turns: input.workflow.frontmatter().execution().max_turns(),
+			timeout: ACTIVE_RUN_IDLE_TIMEOUT,
+			process_env: input.process_env.clone(),
+			continuation_user_input: Some(build_issue_run_continuation_user_input(
+				input.project,
+				input.workflow,
+				input.issue_run,
+				input.review_context,
+			)),
+			activity_marker_path: Some(input.issue_run.worktree.path.clone()),
+			resume_thread_id: resolve_resume_thread_id(input.state_store, input.issue_run)?,
+			ephemeral_thread: false,
+			command_exec_health_check: None,
+			dynamic_tool_handler: Some(input.decodex_tool_bridge),
+			continuation_guard: Some(input.continuation_guard),
+			phase_goal_controller: Some(input.phase_goal_controller),
+			codex_account_provider: input.codex_account_provider,
+		},
+		input.state_store,
+	) {
+		Ok(run_result) => run_result,
+		Err(error) => {
+			if let Some(summary) = maybe_finalize_after_terminalized_app_server_failure(
+				input.tracker,
+				input.project,
+				input.workflow,
+				input.state_store,
+				input.issue_run,
+				input.tracker_tool_bridge,
+				&error,
+			)? {
+				return Ok(IssueAppServerRunOutcome::Finalized(summary));
+			}
+
+			return Err(preserve_and_promote_app_server_run_failure(
+				input.project,
+				input.state_store,
+				input.issue_run,
+				input.workflow,
+				input.tracker_tool_bridge.completion_disposition(),
+				error,
+			));
+		},
+	};
+
+	Ok(IssueAppServerRunOutcome::Completed(run_result))
 }
 
 fn build_issue_run_continuation_user_input(
@@ -979,6 +1047,65 @@ fn build_phase_goal_controller<'a>(
 		state_store,
 		issue_run,
 	}
+}
+
+fn maybe_finalize_after_terminalized_app_server_failure<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	tracker_tool_bridge: &TrackerToolBridge<'_>,
+	error: &Report,
+) -> Result<Option<RunSummary>>
+where
+	T: IssueTracker,
+{
+	let Some(disposition) = tracker_tool_bridge.finalized_completion_disposition()? else {
+		return Ok(None);
+	};
+
+	state_store.append_private_execution_event(
+		project.service_id(),
+		&issue_run.issue.id,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		"terminal_finalize_app_server_failure_recovery",
+		serde_json::json!({
+			"path": disposition.as_str(),
+			"source_error": error.to_string(),
+			"recovery": "apply_terminal_completion_writeback",
+		}),
+	)?;
+
+	tracing::warn!(
+		project_id = project.service_id(),
+		issue_id = issue_run.issue.id,
+		issue = issue_run.issue.identifier,
+		run_id = issue_run.run_id,
+		attempt = issue_run.attempt_number,
+		path = disposition.as_str(),
+		error = %error,
+		"App-server run failed after terminal finalize; applying terminal completion writeback."
+	);
+
+	apply_run_completion_disposition(
+		tracker,
+		project,
+		workflow,
+		state_store,
+		issue_run,
+		tracker_tool_bridge,
+	)?;
+
+	state_store.record_run_attempt(
+		&issue_run.run_id,
+		&issue_run.issue.id,
+		issue_run.attempt_number,
+		"succeeded",
+	)?;
+
+	Ok(Some(run_summary_from_issue_run(project.service_id(), issue_run)))
 }
 
 fn phase_goal_kind_from_str(value: &str) -> Option<PhaseGoalKind> {
