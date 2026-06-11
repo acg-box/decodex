@@ -333,7 +333,21 @@ be represented internally as a DAG, but executable work still enters Decodex as
 ordinary Linear issue lanes with generic natural-language descriptions, tracker
 states, validation expectations, and Decodex lifecycle writeback.
 
-The first operator CLI surface for existing issues is
+The operator CLI surface for promoted goals is
+`decodex intake goal --project <service-id> <CONTRACT_ID> --dry-run`, or the same
+command with `--config <PROJECT_DIR>`. Dry-run reads the promoted Decision Contract
+and existing generated-issue links, then prints the proposed normal issue briefs,
+dependencies, conflict domains, and queue plan without mutating Linear and without
+persisting local runtime rows. `--apply` is the explicit mutation boundary: it creates
+or updates generated normal Linear issue descriptions, links generated issue ids and
+node ids back to the Decision Contract, and stores the paired Program Intake Plan and
+Execution Program in runtime SQLite. Apply must not run implementation directly and
+must not apply or remove `decodex:queued:<service-id>`; later program reconciliation
+owns queue-label changes. If the contract is latent, rejected, still needs a human
+decision, carries unresolved missing decisions, or lacks proposed issue summaries,
+goal intake stops before creating executable work.
+
+The operator CLI surface for existing issues is
 `decodex intake issues --project <service-id> <ISSUE>... --dry-run`, or the same
 command with `--config <PROJECT_DIR>`. Dry-run reads tracker state and prints a
 deterministic ready/held/blocked/stale/unmapped report without mutating Linear and

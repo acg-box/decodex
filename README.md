@@ -120,6 +120,8 @@ cargo run -p decodex --bin decodex -- lane steer <ISSUE> --run-id <RUN_ID> --exp
 cargo run -p decodex --bin decodex -- research compile --intent "research X"
 cargo run -p decodex --bin decodex -- research compile --input research-design-run.json
 cargo run -p decodex --bin decodex -- research promote <CONTRACT_ID>
+cargo run -p decodex --bin decodex -- intake goal --project decodex <CONTRACT_ID> --dry-run
+cargo run -p decodex --bin decodex -- intake goal --project decodex <CONTRACT_ID> --apply
 cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --dry-run
 cargo run -p decodex --bin decodex -- radar refresh-upstream-queue
 cargo run -p decodex --bin decodex -- radar refresh-release-delta
@@ -154,6 +156,15 @@ outcomes distinguish `decision_ready`, `not_decision_ready`, `blocked`, and
 tracker state, set goals, or authorize implementation. `decodex research promote`
 records explicit acceptance for a stored contract; only promoted contracts may later
 feed issue shaping or internal Execution Program readiness.
+
+`decodex intake goal` materializes a promoted Decision Contract. `--dry-run` prints
+the proposed normal Linear issues, dependencies, conflict domains, and queue plan
+without mutating Linear or local Program Intake rows. `--apply` creates or updates the
+generated normal Linear issue briefs and persists the internal Execution Program plus
+contract/program links in runtime SQLite. Apply does not run implementation or apply
+queue labels; later reconciliation owns queue-label changes. If the contract is still
+latent, needs a decision, or lacks issue-shaping authority, intake stops before
+creating executable work.
 
 ### Install from Source
 
