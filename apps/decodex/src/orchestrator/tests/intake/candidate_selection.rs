@@ -801,7 +801,6 @@ fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visi
 			&service_config_with_github_token_env_var(&config, "PATH"),
 			ReviewLevel::Standard,
 		);
-		let (_path_guard, invocation_log_path) = install_fake_admin_merge_gh_response(&temp_dir);
 		let state_store = StateStore::open_in_memory().expect("state store should open");
 		let issue = candidate_selection_service_owned_issue("In Review");
 		let tracker = FakeTracker::with_refresh_snapshots(
@@ -818,6 +817,8 @@ fn non_github_review_retained_drain_handles_same_issue_closeout_after_merge_visi
 		let merge_subject = r#"{"schema":"decodex/commit/1","summary":"current retained handoff","authority":"PUB-101"}"#;
 		let landed_merge_subject = r#"{"schema":"decodex/commit/1","summary":"Land current retained handoff","authority":"PUB-101"}"#;
 		let head_oid = commit_worktree_change(&repo_root, "retained.txt", "ready\n", merge_subject);
+		let (_path_guard, invocation_log_path) =
+			install_fake_admin_merge_gh_response_with_merge_exit_code(&temp_dir, &head_oid, 0);
 
 		state_store
 			.upsert_worktree(
@@ -937,6 +938,11 @@ fn assert_admin_merge_invocation(
 			String::from("--body"),
 			String::new(),
 			String::from(pr_url),
+			String::from("pr"),
+			String::from("view"),
+			String::from(pr_url),
+			String::from("--json"),
+			String::from("state,headRefOid,mergeCommit"),
 		]
 	);
 }

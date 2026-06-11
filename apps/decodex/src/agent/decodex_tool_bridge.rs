@@ -84,6 +84,10 @@ impl DynamicToolHandler for DecodexToolBridge<'_> {
 		self.tracker_tools.classify_turn_completion(final_output)
 	}
 
+	fn has_terminal_completion_signal(&self) -> bool {
+		self.tracker_tools.has_terminal_completion_signal()
+	}
+
 	fn validate_turn_completion(&self, final_output: &str) -> Result<()> {
 		self.tracker_tools.validate_turn_completion(final_output)
 	}

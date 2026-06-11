@@ -71,6 +71,9 @@ pub(crate) trait DynamicToolHandler {
 
 		Ok(TurnCompletionStatus::Complete)
 	}
+	fn has_terminal_completion_signal(&self) -> bool {
+		false
+	}
 	fn validate_turn_completion(&self, _final_output: &str) -> crate::prelude::Result<()> {
 		Ok(())
 	}
@@ -440,6 +443,10 @@ impl DynamicToolHandler for TrackerToolBridge<'_> {
 				self.workflow.frontmatter().tracker().needs_attention_label()
 			),
 		}
+	}
+
+	fn has_terminal_completion_signal(&self) -> bool {
+		self.completion_disposition().is_ok()
 	}
 
 	fn validate_turn_completion(&self, _final_output: &str) -> crate::prelude::Result<()> {
