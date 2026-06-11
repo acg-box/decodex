@@ -646,14 +646,17 @@ After a process restart, recent-run history, active lease ownership, retained po
   local cleanup candidates without applying retention changes. The `--apply` mode owns
   state-aware protocol-event
   compaction, old backup pruning, local log and agent-evidence event-stream rotation,
+  deletion of rotated local logs and agent-evidence event streams older than 14 days,
   and SQLite WAL checkpointing. Operators must not delete `runtime.sqlite3-wal`
   directly.
 - `decodex serve` runs the auto-safe maintenance subset at startup and periodically
   while polling. That subset may rotate oversized local files, prune old backups,
-  compact only safe terminal protocol-event rows behind the 14-day boundary, and run a
-  passive WAL checkpoint. If SQLite is busy or protocol-event candidate detection
-  fails, the auto-safe path must record a warning and continue without blocking
-  scheduler health.
+  delete rotated local logs and agent-evidence event streams older than 14 days,
+  compact only safe terminal protocol-event rows behind the 14-day boundary, and run
+  a passive WAL checkpoint. Current local log files and current `events.jsonl` streams
+  are rotation inputs, not age-deletion candidates. If SQLite is busy or
+  protocol-event candidate detection fails, the auto-safe path must record a warning
+  and continue without blocking scheduler health.
 - Worktrees: retain while the issue is non-terminal, and also retain terminal owned lanes while authoritative post-merge closeout or deterministic cleanup is still incomplete.
 - Worktree mappings must carry durable local provenance. New runtime-recorded mappings
   use `provenance_source = "runtime_recorded"` with created and updated Unix
