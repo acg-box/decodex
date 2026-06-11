@@ -7,8 +7,8 @@ use serde_json::Value;
 use crate::{
 	prelude::{Result, eyre},
 	tracker::{
-		IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerLabel,
-		TrackerState, TrackerTeam,
+		IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerIssueBriefUpdate,
+		TrackerIssueCreate, TrackerLabel, TrackerState, TrackerTeam,
 	},
 };
 
@@ -265,6 +265,142 @@ const ISSUE_UPDATE_MUTATION: &str = r#"
 mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
   issueUpdate(id: $id, input: $input) {
     success
+  }
+}
+"#;
+const ISSUE_UPDATE_BRIEF_MUTATION: &str = r#"
+mutation UpdateIssueBrief($id: String!, $input: IssueUpdateInput!) {
+  issueUpdate(id: $id, input: $input) {
+    success
+    issue {
+      id
+      identifier
+      title
+      creator {
+        displayName
+        name
+        email
+      }
+      description
+      priority
+      createdAt
+      updatedAt
+      state {
+        id
+        name
+      }
+      team {
+        id
+        name
+        states(first: 50) {
+          nodes {
+            id
+            name
+          }
+        }
+        labels(first: 100) {
+          nodes {
+            id
+            name
+          }
+        }
+      }
+      labels(first: 50) {
+        nodes {
+          id
+          name
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+      inverseRelations(first: 50) {
+        nodes {
+          type
+          issue {
+            id
+            identifier
+            state {
+              id
+              name
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+}
+"#;
+const ISSUE_CREATE_MUTATION: &str = r#"
+mutation CreateIssue($input: IssueCreateInput!) {
+  issueCreate(input: $input) {
+    success
+    issue {
+      id
+      identifier
+      title
+      creator {
+        displayName
+        name
+        email
+      }
+      description
+      priority
+      createdAt
+      updatedAt
+      state {
+        id
+        name
+      }
+      team {
+        id
+        name
+        states(first: 50) {
+          nodes {
+            id
+            name
+          }
+        }
+        labels(first: 100) {
+          nodes {
+            id
+            name
+          }
+        }
+      }
+      labels(first: 50) {
+        nodes {
+          id
+          name
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+      inverseRelations(first: 50) {
+        nodes {
+          type
+          issue {
+            id
+            identifier
+            state {
+              id
+              name
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
   }
 }
 "#;
@@ -527,6 +663,8 @@ impl IssueTracker for LinearClient {
 			&IssueUpdateVariables {
 				id: issue_id,
 				input: IssueUpdateInput {
+					title: None,
+					description: None,
 					state_id: Some(state_id.to_owned()),
 					label_ids: None,
 					added_label_ids: None,
@@ -548,6 +686,8 @@ impl IssueTracker for LinearClient {
 			&IssueUpdateVariables {
 				id: issue_id,
 				input: IssueUpdateInput {
+					title: None,
+					description: None,
 					state_id: None,
 					label_ids: None,
 					added_label_ids: Some(label_ids.to_vec()),
@@ -569,6 +709,8 @@ impl IssueTracker for LinearClient {
 			&IssueUpdateVariables {
 				id: issue_id,
 				input: IssueUpdateInput {
+					title: None,
+					description: None,
 					state_id: None,
 					label_ids: None,
 					added_label_ids: None,
@@ -582,6 +724,65 @@ impl IssueTracker for LinearClient {
 		}
 
 		Ok(())
+	}
+
+	fn create_issue(&self, request: &TrackerIssueCreate) -> Result<TrackerIssue> {
+		let data = self.post::<_, IssueCreateData>(
+			ISSUE_CREATE_MUTATION,
+			&IssueCreateVariables {
+				input: IssueCreateInput {
+					team_id: request.team_id.clone(),
+					title: request.title.clone(),
+					description: request.description.clone(),
+					state_id: request.state_id.clone(),
+				},
+			},
+		)?;
+
+		if !data.issue_create.success {
+			eyre::bail!("Linear did not confirm the issue creation.");
+		}
+
+		let issue = data
+			.issue_create
+			.issue
+			.ok_or_else(|| eyre::eyre!("Linear issue creation response did not include issue."))?;
+		let blockers = self.resolve_issue_blockers(&issue)?;
+
+		Ok(map_issue(issue, blockers))
+	}
+
+	fn update_issue_brief(
+		&self,
+		issue_id: &str,
+		request: &TrackerIssueBriefUpdate,
+	) -> Result<TrackerIssue> {
+		let data = self.post::<_, IssueUpdateWithIssueData>(
+			ISSUE_UPDATE_BRIEF_MUTATION,
+			&IssueUpdateVariables {
+				id: issue_id,
+				input: IssueUpdateInput {
+					title: Some(request.title.clone()),
+					description: Some(request.description.clone()),
+					state_id: None,
+					label_ids: None,
+					added_label_ids: None,
+					removed_label_ids: None,
+				},
+			},
+		)?;
+
+		if !data.issue_update.success {
+			eyre::bail!("Linear did not confirm the issue brief update.");
+		}
+
+		let issue = data
+			.issue_update
+			.issue
+			.ok_or_else(|| eyre::eyre!("Linear issue update response did not include issue."))?;
+		let blockers = self.resolve_issue_blockers(&issue)?;
+
+		Ok(map_issue(issue, blockers))
 	}
 
 	fn create_comment(&self, issue_id: &str, body: &str) -> Result<()> {
@@ -809,6 +1010,10 @@ struct IssueUpdateVariables<'a> {
 
 #[derive(Serialize)]
 struct IssueUpdateInput {
+	#[serde(skip_serializing_if = "Option::is_none")]
+	title: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	description: Option<String>,
 	#[serde(rename = "stateId", skip_serializing_if = "Option::is_none")]
 	state_id: Option<String>,
 	#[serde(rename = "labelIds", skip_serializing_if = "Option::is_none")]
@@ -823,6 +1028,39 @@ struct IssueUpdateInput {
 struct IssueUpdateData {
 	#[serde(rename = "issueUpdate")]
 	issue_update: MutationSuccess,
+}
+
+#[derive(Deserialize)]
+struct IssueUpdateWithIssueData {
+	#[serde(rename = "issueUpdate")]
+	issue_update: IssueMutationWithIssue,
+}
+
+#[derive(Serialize)]
+struct IssueCreateVariables {
+	input: IssueCreateInput,
+}
+
+#[derive(Serialize)]
+struct IssueCreateInput {
+	#[serde(rename = "teamId")]
+	team_id: String,
+	title: String,
+	description: String,
+	#[serde(rename = "stateId", skip_serializing_if = "Option::is_none")]
+	state_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct IssueCreateData {
+	#[serde(rename = "issueCreate")]
+	issue_create: IssueMutationWithIssue,
+}
+
+#[derive(Deserialize)]
+struct IssueMutationWithIssue {
+	success: bool,
+	issue: Option<LinearIssue>,
 }
 
 #[derive(Serialize)]
