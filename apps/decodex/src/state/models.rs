@@ -1,3 +1,9 @@
+pub(crate) const WORKTREE_PROVENANCE_FILESYSTEM_SCAN: &str = "filesystem_scan";
+pub(crate) const WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN: &str = "git_hygiene_scan";
+pub(crate) const WORKTREE_PROVENANCE_LEGACY_UNKNOWN: &str = "legacy_unknown";
+pub(crate) const WORKTREE_PROVENANCE_RUNTIME_RECOVERED: &str = "runtime_recovered";
+pub(crate) const WORKTREE_PROVENANCE_RUNTIME_RECORDED: &str = "runtime_recorded";
+
 /// Active lease for one issue.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct IssueLease {
@@ -405,6 +411,7 @@ pub struct WorktreeMapping {
 	issue_id: String,
 	branch_name: String,
 	worktree_path: PathBuf,
+	provenance: WorktreeProvenance,
 }
 impl WorktreeMapping {
 	/// Local project identifier owning this lane.
@@ -425,6 +432,40 @@ impl WorktreeMapping {
 	/// Filesystem path to the worktree checkout.
 	pub fn worktree_path(&self) -> &Path {
 		&self.worktree_path
+	}
+
+	/// Durable provenance captured when Decodex recorded or migrated this mapping.
+	pub fn provenance(&self) -> &WorktreeProvenance {
+		&self.provenance
+	}
+}
+
+/// Durable provenance for a retained worktree mapping.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorktreeProvenance {
+	source: String,
+	created_at_unix: Option<i64>,
+	updated_at_unix: Option<i64>,
+}
+impl WorktreeProvenance {
+	/// Source that created or last classified this mapping.
+	pub fn source(&self) -> &str {
+		&self.source
+	}
+
+	/// Unix timestamp for when this mapping was first recorded, when available.
+	pub fn created_at_unix(&self) -> Option<i64> {
+		self.created_at_unix
+	}
+
+	/// Unix timestamp for when this mapping was last refreshed, when available.
+	pub fn updated_at_unix(&self) -> Option<i64> {
+		self.updated_at_unix
+	}
+
+	/// Whether this mapping was migrated from a legacy row without durable provenance.
+	pub fn is_legacy_unknown(&self) -> bool {
+		self.source == WORKTREE_PROVENANCE_LEGACY_UNKNOWN
 	}
 }
 
@@ -1298,4 +1339,12 @@ impl ReviewOrchestrationMarker {
 	pub(crate) fn auto_merge_enabled_at_unix_epoch(&self) -> Option<i64> {
 		self.auto_merge_enabled_at_unix_epoch
 	}
+}
+
+pub(crate) fn worktree_provenance(
+	source: impl Into<String>,
+	created_at_unix: Option<i64>,
+	updated_at_unix: Option<i64>,
+) -> WorktreeProvenance {
+	WorktreeProvenance { source: source.into(), created_at_unix, updated_at_unix }
 }

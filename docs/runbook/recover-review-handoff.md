@@ -84,6 +84,32 @@ The lane should leave `missing_review_handoff_record` and return to the existing
 post-review lifecycle classification such as waiting for review, ready to land, review
 repair required, or blocked for a different concrete reason.
 
+## Legacy Cleanup-Only Rows
+
+Do not use `recover review-handoff rebind` for a row that appears only under
+`Recovery Worktrees` as `role: cleanup_only`. If that row reports
+`provenance_source: legacy_unknown`, `audit_required: true`, or a dashboard
+`legacy cleanup audit` state, Decodex has found an old local worktree mapping without
+enough runtime DB provenance to reconstruct the post-review lane automatically.
+
+Use the fallback path only after the normal paths are unavailable:
+
+1. Confirm the same issue is absent from `Running Lanes`, `Intake Queue`, and
+   `Review & Landing`.
+2. Verify the tracker issue and any PR you are closing against are terminal.
+3. Inspect the retained checkout with `git -C <worktree> status --short` and preserve
+   or discard local-only changes intentionally.
+4. Run `decodex recover legacy-closeout <ISSUE> --pr <MERGED_PR> --dry-run`, then rerun
+   with `--manual-authority` only if validation passes. This records an explicit
+   manual closeout audit that names the issue, PR, branch, head, merge commit, and why
+   runtime reconstruction was not available.
+5. Remove the local worktree only after the audit and local-change decision are done.
+
+This fallback is intentionally more manual than diagnosis or rebind. It exists so an
+operator can close legacy residue honestly, but healthy lanes should still use normal
+closeout, and recoverable orphaned review lanes should still use read-only diagnosis
+plus explicit rebind before any manual cleanup.
+
 ## Active Ownership Recovery
 
 If diagnosis reports `classification: review_handoff_ownership_drift`,
