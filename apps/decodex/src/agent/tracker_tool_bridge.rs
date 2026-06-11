@@ -917,6 +917,15 @@ pub(crate) enum ReviewExecutionMode {
 	Repair,
 	Closeout,
 }
+impl ReviewExecutionMode {
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::Handoff => "handoff",
+			Self::Repair => "repair",
+			Self::Closeout => "closeout",
+		}
+	}
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TurnCompletionStatus {
@@ -932,7 +941,7 @@ pub(crate) enum RunCompletionDisposition {
 	Closeout,
 }
 impl RunCompletionDisposition {
-	fn as_str(self) -> &'static str {
+	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::ManualAttention => "manual_attention",
 			Self::ReviewHandoff => "review_handoff",
