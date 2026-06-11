@@ -1,0 +1,68 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "xl-openai",
+      "committed_at": "2026-06-11T02:32:54Z",
+      "message": "Pass auth mode to plugin manager",
+      "sha": "66d506e86e5da8691b0773563eff7f73ecff20b9",
+      "url": "https://github.com/openai/codex/commit/66d506e86e5da8691b0773563eff7f73ecff20b9"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP",
+    "API",
+    "CODEX_SANDBOX_NETWORK_DISABLED",
+    "CODEX_SANDBOX",
+    "CONFIG_TOML_FILE",
+    "MAX_CAPABILITY_SUMMARY_DESCRIPTION_LEN"
+  ],
+  "files": [
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -158,6 +158,9 @@ impl AccountRequestProcessor {\n \n     pub(crate) fn clear_external_auth(&self) {\n         self.auth_manager.clear_external_auth();\n+        self.thread_manager\n+            .plugins_manager()\n+            .set_auth_mode(self.auth_manager.get_api_auth_mode());\n     }\n \n     fn current_account_updated_notification(&self) -> AccountUpdatedNotification {\n@@ -173,6 +176,10 @@ impl AccountRequestProcessor {\n         thread_manager: &Arc<ThreadManager>,\n         auth: Option<CodexAuth>,\n     ) {\n+        thread_manager\n+            .plugins_manager()\n+            .set_auth_mode(auth.as_ref().map(CodexAuth::api_auth_mode));\n+\n         match config_manager\n             .load_latest_config(/*fallback_cwd*/ None)\n             .await",
+      "path": "codex-rs/app-server/src/request_processors/account_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 39,
+      "deletions": 5,
+      "patch_excerpt": "@@ -48,6 +48,7 @@ use crate::store::PluginInstallResult as StorePluginInstallResult;\n use crate::store::PluginStore;\n use crate::store::PluginStoreError;\n use codex_analytics::AnalyticsEventsClient;\n+use codex_app_server_protocol::AuthMode;\n use codex_config::ConfigLayerStack;\n use codex_config::clear_user_plugin;\n use codex_config::set_user_plugin_enabled;\n@@ -203,6 +204,13 @@ fn featured_plugin_ids_cache_key(\n     }\n }\n \n+fn project_plugin_load_outcome_for_auth(\n+    outcome: PluginLoadOutcome,\n+    _auth_mode: Option<AuthMode>,\n+) -> PluginLoadOutcome {\n+    outcome\n+}\n+\n #[derive(Debug, Clone, PartialEq, Eq)]\n pub struct PluginInstallRequest {\n     pub plugin_name: String,\n@@ -319,6 +327,7 @@ pub struct PluginsManager {\n     remote_installed_plugins_cache_refresh_state: RwLock<RemoteInstalledPluginsCacheRefreshState>,\n     global_remote_catalog_cache_refresh_state: RwLock<GlobalRemot...",
+      "path": "codex-rs/core-plugins/src/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 0,
+      "patch_excerpt": "@@ -17,6 +17,7 @@ use crate::test_support::load_plugins_config as load_plugins_config_input;\n use crate::test_support::write_curated_plugin_sha_with as write_curated_plugin_sha;\n use crate::test_support::write_file;\n use crate::test_support::write_openai_curated_marketplace;\n+use codex_app_server_protocol::AuthMode;\n use codex_app_server_protocol::ConfigLayerSource;\n use codex_config::AppToolApproval;\n use codex_config::CONFIG_TOML_FILE;\n@@ -47,6 +48,21 @@ use wiremock::matchers::query_param;\n \n const MAX_CAPABILITY_SUMMARY_DESCRIPTION_LEN: usize = 1024;\n \n+#[test]\n+fn plugins_manager_tracks_auth_mode() {\n+    let tmp = TempDir::new().unwrap();\n+    let manager = PluginsManager::new(tmp.path().to_path_buf());\n+\n+    assert_eq!(manager.auth_mode(), None);\n+    assert!(manager.set_auth_mode(Some(AuthMode::ApiKey)));\n+    assert_eq!(manager.auth_mode(), Some(AuthMode::ApiKey));\n+    assert!...",
+      "path": "codex-rs/core-plugins/src/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -272,6 +272,7 @@ impl ThreadManager {\n             codex_home.to_path_buf(),\n             restriction_product,\n         ));\n+        plugins_manager.set_auth_mode(auth_manager.get_api_auth_mode());\n         let mcp_manager = Arc::new(McpManager::new_with_extensions(\n             Arc::clone(&plugins_manager),\n             Arc::clone(&extensions),\n@@ -365,6 +366,7 @@ impl ThreadManager {\n             codex_home.clone(),\n             restriction_product,\n         ));\n+        plugins_manager.set_auth_mode(auth_manager.get_api_auth_mode());\n         let mcp_manager = Arc::new(McpManager::new(Arc::clone(&plugins_manager)));\n         let skills_manager = Arc::new(SkillsManager::new_with_restriction_product(\n             skills_codex_home,",
+      "path": "codex-rs/core/src/thread_manager.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n- Add auth mode state to `PluginsManager`.\n- Sync the plugin manager auth mode when `ThreadManager` is created and when account auth changes.\n- Route plugin load outcomes through an auth-aware projection hook so follow-up plugin filtering can stay inside `core-plugins`.\n\n## Motivation\nThis prepares plugin capability loading to be configured by auth mode, such as hiding or exposing app/MCP-backed plugin surfaces based on whether the user is using ChatGPT auth or API-key auth, without leaking those details outside the plugin manager.\n\n## Tests\n- `just fmt`\n- `just test -p codex-core-plugins`\n- `env -u CODEX_SANDBOX_NETWORK_DISABLED -u CODEX_SANDBOX just test -p codex-core thread_manager::tests`\n- `env -u CODEX_SANDBOX_NETWORK_DISABLED -u CODEX_SANDBOX just test -p codex-app-server`",
+    "labels": [],
+    "merged_at": "2026-06-11T03:57:35Z",
+    "number": 27517,
+    "state": "merged",
+    "title": "[codex] Pass auth mode to plugin manager",
+    "url": "https://github.com/openai/codex/pull/27517"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
