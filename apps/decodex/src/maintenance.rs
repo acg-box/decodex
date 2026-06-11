@@ -18,9 +18,9 @@ use crate::{
 };
 
 const DEFAULT_LOG_ROTATE_BYTES: u64 = 10 * 1_024 * 1_024;
-const DEFAULT_LOG_RETENTION_DAYS: u64 = 30;
+const DEFAULT_LOG_RETENTION_DAYS: u64 = 14;
 const DEFAULT_EVIDENCE_ROTATE_BYTES: u64 = 10 * 1_024 * 1_024;
-const DEFAULT_EVIDENCE_RETENTION_DAYS: u64 = 30;
+const DEFAULT_EVIDENCE_RETENTION_DAYS: u64 = 14;
 const DEFAULT_PROTOCOL_EVENT_RETENTION_DAYS: i64 = 14;
 const DEFAULT_BACKUP_KEEP_RECENT: usize = 3;
 const DEFAULT_BACKUP_RETENTION_DAYS: u64 = 7;
@@ -276,7 +276,9 @@ fn maintain_logs(
 		let metadata = entry.metadata()?;
 		let size = metadata.len();
 
-		if file_is_older_than(&metadata, system_now, policy.log_retention) {
+		if is_rotated_log_file(&path)
+			&& file_is_older_than(&metadata, system_now, policy.log_retention)
+		{
 			report.delete_candidates += 1;
 			report.delete_bytes = report.delete_bytes.saturating_add(size);
 
@@ -387,6 +389,7 @@ fn maintain_agent_evidence(
 			};
 
 			if !path.is_file()
+				|| file_name == "events.jsonl"
 				|| !file_name.starts_with("events.")
 				|| path.extension().and_then(|extension| extension.to_str()) != Some("jsonl")
 			{
@@ -817,6 +820,13 @@ fn file_is_older_than(metadata: &Metadata, system_now: SystemTime, retention: Du
 		.is_some_and(|age| age > retention)
 }
 
+fn is_rotated_log_file(path: &Path) -> bool {
+	path.file_stem()
+		.and_then(|stem| stem.to_str())
+		.and_then(|stem| stem.rsplit_once('.').map(|(_, timestamp)| timestamp))
+		.is_some_and(|timestamp| timestamp.parse::<i64>().is_ok())
+}
+
 fn collect_backup_candidates(
 	root: &Path,
 	groups: &mut BTreeMap<String, Vec<BackupCandidate>>,
@@ -913,7 +923,11 @@ fn print_prune_report(report: &MaintenanceReport) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use std::fs;
+	use std::{
+		fs::{self, FileTimes, OpenOptions},
+		path::Path,
+		time::{Duration, SystemTime},
+	};
 
 	use rusqlite::OptionalExtension as _;
 	use tempfile::TempDir;
@@ -1224,6 +1238,63 @@ mod tests {
 		);
 	}
 
+	#[test]
+	fn prune_deletes_only_rotated_logs_and_agent_evidence_after_fourteen_days() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let _home_guard =
+			TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+		let log_dir = temp_dir.path().join(".codex/decodex/logs");
+		let evidence_dir = temp_dir.path().join(".codex/decodex/agent-evidence/decodex");
+		let current_log_path = log_dir.join("decodex.log");
+		let old_log_path = log_dir.join("decodex.1.log");
+		let fresh_log_path = log_dir.join("decodex.2.log");
+		let current_events_path = evidence_dir.join("events.jsonl");
+		let old_events_path = evidence_dir.join("events.1.jsonl");
+		let fresh_events_path = evidence_dir.join("events.2.jsonl");
+		let old_time = SystemTime::now() - Duration::from_secs(15 * 24 * 60 * 60);
+		let fresh_time = SystemTime::now() - Duration::from_secs(2 * 24 * 60 * 60);
+
+		fs::create_dir_all(&log_dir).expect("log dir should create");
+		fs::create_dir_all(&evidence_dir).expect("evidence dir should create");
+
+		for path in [
+			&current_log_path,
+			&old_log_path,
+			&fresh_log_path,
+			&current_events_path,
+			&old_events_path,
+			&fresh_events_path,
+		] {
+			fs::write(path, b"event\n").expect("maintenance fixture should write");
+		}
+
+		set_file_modified(&current_log_path, old_time);
+		set_file_modified(&old_log_path, old_time);
+		set_file_modified(&fresh_log_path, fresh_time);
+		set_file_modified(&current_events_path, old_time);
+		set_file_modified(&old_events_path, old_time);
+		set_file_modified(&fresh_events_path, fresh_time);
+
+		let report = maintenance::run_prune_with_policy(
+			MaintenancePruneRequest {
+				mode: MaintenanceMode::Apply,
+				scope: MaintenanceScope::AutoSafe,
+				json: false,
+			},
+			MaintenancePolicy::default(),
+		)
+		.expect("maintenance should run");
+
+		assert_eq!(report.logs.deleted_files, 1);
+		assert_eq!(report.agent_evidence.deleted_files, 1);
+		assert!(current_log_path.exists());
+		assert!(!old_log_path.exists());
+		assert!(fresh_log_path.exists());
+		assert!(current_events_path.exists());
+		assert!(!old_events_path.exists());
+		assert!(fresh_events_path.exists());
+	}
+
 	fn insert_attempt(connection: &Connection, run_id: &str, issue_id: &str, status: &str) {
 		connection
 			.execute(
@@ -1233,6 +1304,15 @@ mod tests {
 				rusqlite::params![run_id, issue_id, status],
 			)
 			.expect("attempt should insert");
+	}
+
+	fn set_file_modified(path: &Path, modified: SystemTime) {
+		OpenOptions::new()
+			.write(true)
+			.open(path)
+			.expect("file should open for timestamp update")
+			.set_times(FileTimes::new().set_modified(modified))
+			.expect("file modified time should update");
 	}
 
 	fn bootstrap_test_runtime_db(temp_dir: &TempDir) -> Connection {
