@@ -1291,7 +1291,7 @@ struct OperatorProjectStatus {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorExecutionProgramStatus {
 	program_id: String,
-	source_contract_id: String,
+	source_contract_id: Option<String>,
 	node_count: usize,
 	planned_count: usize,
 	mapped_count: usize,
@@ -1315,7 +1315,7 @@ impl OperatorExecutionProgramStatus {
 	) -> Self {
 		Self {
 			program_id: summary.program_id,
-			source_contract_id: record.source_contract_id().to_owned(),
+			source_contract_id: record.source_contract_id().map(str::to_owned),
 			node_count: record.program().nodes().len(),
 			planned_count: summary.planned_count,
 			mapped_count: summary.mapped_count,
@@ -1339,7 +1339,7 @@ impl OperatorExecutionProgramStatus {
 
 		Self {
 			program_id: record.program_id().to_owned(),
-			source_contract_id: record.source_contract_id().to_owned(),
+			source_contract_id: record.source_contract_id().map(str::to_owned),
 			node_count,
 			planned_count: 0,
 			mapped_count: 0,
