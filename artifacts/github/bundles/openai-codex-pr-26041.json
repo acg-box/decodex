@@ -1,0 +1,290 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-03T04:51:52Z",
+      "message": "feat(app-server): add background terminal process APIs",
+      "sha": "e4cb80ffaed2e6ad90a42e0993eabd0d00ddcad3",
+      "url": "https://github.com/openai/codex/commit/e4cb80ffaed2e6ad90a42e0993eabd0d00ddcad3"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-03T07:39:32Z",
+      "message": "Simplify background terminal list API",
+      "sha": "3a5856f7ed4241b1d78aa834b47cea80b6607770",
+      "url": "https://github.com/openai/codex/commit/3a5856f7ed4241b1d78aa834b47cea80b6607770"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-03T07:44:39Z",
+      "message": "Reduce background terminal test churn",
+      "sha": "353ed1b6bb945a60e859384cf279976e9b280ecf",
+      "url": "https://github.com/openai/codex/commit/353ed1b6bb945a60e859384cf279976e9b280ecf"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-03T23:43:34Z",
+      "message": "Restore background terminal metadata fields",
+      "sha": "0d37f064d817b8f0f3aa63d8b4fc27901f6c0b5b",
+      "url": "https://github.com/openai/codex/commit/0d37f064d817b8f0f3aa63d8b4fc27901f6c0b5b"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-04T00:04:42Z",
+      "message": "Restore background terminal start time",
+      "sha": "b90d036c9c45fad1a7abf3474d0aa600e787f116",
+      "url": "https://github.com/openai/codex/commit/b90d036c9c45fad1a7abf3474d0aa600e787f116"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-04T00:25:08Z",
+      "message": "codex: address PR review feedback (#26041)",
+      "sha": "4d1537dba9be19227807e924bb8f551ba2385200",
+      "url": "https://github.com/openai/codex/commit/4d1537dba9be19227807e924bb8f551ba2385200"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-04T00:35:58Z",
+      "message": "codex: address PR review feedback (#26041)",
+      "sha": "e0f9c328df1ff2d337d3baeb029884b04fe69b35",
+      "url": "https://github.com/openai/codex/commit/e0f9c328df1ff2d337d3baeb029884b04fe69b35"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-04T00:55:54Z",
+      "message": "codex: address PR review feedback (#26041)",
+      "sha": "64dc0d2bc88f179dd3d71de57586d2a77bb86ab8",
+      "url": "https://github.com/openai/codex/commit/64dc0d2bc88f179dd3d71de57586d2a77bb86ab8"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-04T01:25:21Z",
+      "message": "codex: address PR review feedback (#26041)",
+      "sha": "cce9ca7334ae9bbb5b1086dbcfc136264226b27f",
+      "url": "https://github.com/openai/codex/commit/cce9ca7334ae9bbb5b1086dbcfc136264226b27f"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-04T01:45:52Z",
+      "message": "Merge branch 'main' into etraut/background-terminal-apis",
+      "sha": "33a8e24459749ee78aeed292adebc176724b1bcb",
+      "url": "https://github.com/openai/codex/commit/33a8e24459749ee78aeed292adebc176724b1bcb"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-04T01:47:33Z",
+      "message": "codex: stabilize background terminal termination tests",
+      "sha": "61c5d9c84bdae60c98006a819ec8d601255eb165",
+      "url": "https://github.com/openai/codex/commit/61c5d9c84bdae60c98006a819ec8d601255eb165"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-04T02:29:09Z",
+      "message": "codex: make background terminal tests deterministic",
+      "sha": "e78df1ea9d485e8b06fff4b4c075591d556be156",
+      "url": "https://github.com/openai/codex/commit/e78df1ea9d485e8b06fff4b4c075591d556be156"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-09T20:59:51Z",
+      "message": "Merge branch 'main' into etraut/background-terminal-apis",
+      "sha": "ff2201af2929455c6b826161b4f818663cfe7ebd",
+      "url": "https://github.com/openai/codex/commit/ff2201af2929455c6b826161b4f818663cfe7ebd"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-09T22:57:30Z",
+      "message": "Simplify background terminal APIs",
+      "sha": "b59232841e28b88559ec0f7d5c7cc602fbd2363a",
+      "url": "https://github.com/openai/codex/commit/b59232841e28b88559ec0f7d5c7cc602fbd2363a"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-10T00:01:33Z",
+      "message": "codex: address background terminal review feedback",
+      "sha": "b949dc3b1dbe0e25448dfcc4bba207deeb43a72a",
+      "url": "https://github.com/openai/codex/commit/b949dc3b1dbe0e25448dfcc4bba207deeb43a72a"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-10T00:30:51Z",
+      "message": "codex: simplify background terminal tests",
+      "sha": "7daf14053e74673697bca70290a4ddcee2d412d9",
+      "url": "https://github.com/openai/codex/commit/7daf14053e74673697bca70290a4ddcee2d412d9"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-10T17:29:14Z",
+      "message": "Address background terminal review comments",
+      "sha": "dcd1b73bce47bd514839ff4d71a48c12280ae413",
+      "url": "https://github.com/openai/codex/commit/dcd1b73bce47bd514839ff4d71a48c12280ae413"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-10T17:31:55Z",
+      "message": "Merge branch 'main' into etraut/background-terminal-apis",
+      "sha": "28b3f1ea589a2bc0090577c4a4d309f261318c57",
+      "url": "https://github.com/openai/codex/commit/28b3f1ea589a2bc0090577c4a4d309f261318c57"
+    },
+    {
+      "author": "etraut-openai",
+      "committed_at": "2026-06-10T17:59:29Z",
+      "message": "codex: address PR review feedback (#26041)",
+      "sha": "cac8884c2c0540a586472f35c17dfb1cbe7a2697",
+      "url": "https://github.com/openai/codex/commit/cac8884c2c0540a586472f35c17dfb1cbe7a2697"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "PID",
+    "GENERATED_TS_HEADER",
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND",
+    "IGNORED_DEFINITIONS",
+    "JSON_V1_ALLOWLIST",
+    "EXPERIMENTAL_CLIENT_METHOD_DEPENDENCY_TYPES",
+    "SPECIAL_DEFINITIONS",
+    "JSONRPCE",
+    "CODEX_THREAD_ID_ENV_VAR"
+  ],
+  "files": [
+    {
+      "additions": 5,
+      "deletions": 2,
+      "patch_excerpt": "@@ -39,8 +39,11 @@ use ts_rs::TS;\n pub(crate) const GENERATED_TS_HEADER: &str = \"// GENERATED CODE! DO NOT MODIFY BY HAND!\\n\\n\";\n const IGNORED_DEFINITIONS: &[&str] = &[\"Option<()>\"];\n const JSON_V1_ALLOWLIST: &[&str] = &[\"InitializeParams\", \"InitializeResponse\"];\n-const EXPERIMENTAL_CLIENT_METHOD_DEPENDENCY_TYPES: &[&str] =\n-    &[\"RemoteControlClient\", \"RemoteControlClientsListOrder\"];\n+const EXPERIMENTAL_CLIENT_METHOD_DEPENDENCY_TYPES: &[&str] = &[\n+    \"RemoteControlClient\",\n+    \"RemoteControlClientsListOrder\",\n+    \"ThreadBackgroundTerminal\",\n+];\n const SPECIAL_DEFINITIONS: &[&str] = &[\n     \"ClientNotification\",\n     \"ClientRequest\",",
+      "path": "codex-rs/app-server-protocol/src/export.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 60,
+      "deletions": 0,
+      "patch_excerpt": "@@ -574,6 +574,18 @@ client_request_definitions! {\n         serialization: thread_id(params.thread_id),\n         response: v2::ThreadBackgroundTerminalsCleanResponse,\n     },\n+    #[experimental(\"thread/backgroundTerminals/list\")]\n+    ThreadBackgroundTerminalsList => \"thread/backgroundTerminals/list\" {\n+        params: v2::ThreadBackgroundTerminalsListParams,\n+        serialization: thread_id(params.thread_id),\n+        response: v2::ThreadBackgroundTerminalsListResponse,\n+    },\n+    #[experimental(\"thread/backgroundTerminals/terminate\")]\n+    ThreadBackgroundTerminalsTerminate => \"thread/backgroundTerminals/terminate\" {\n+        params: v2::ThreadBackgroundTerminalsTerminateParams,\n+        serialization: thread_id(params.thread_id),\n+        response: v2::ThreadBackgroundTerminalsTerminateResponse,\n+    },\n     ThreadRollback => \"thread/rollback\" {\n         params: v2::ThreadRollback...",
+      "path": "codex-rs/app-server-protocol/src/protocol/common.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 51,
+      "deletions": 0,
+      "patch_excerpt": "@@ -935,6 +935,57 @@ pub struct ThreadBackgroundTerminalsCleanParams {\n #[ts(export_to = \"v2/\")]\n pub struct ThreadBackgroundTerminalsCleanResponse {}\n \n+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct ThreadBackgroundTerminalsListParams {\n+    pub thread_id: String,\n+    /// Opaque pagination cursor returned by a previous call.\n+    #[ts(optional = nullable)]\n+    pub cursor: Option<String>,\n+    /// Optional page size.\n+    #[ts(optional = nullable)]\n+    pub limit: Option<u32>,\n+}\n+\n+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct ThreadBackgroundTerminal {\n+    pub item_id: String,\n+    pub process_id: String,\n+    pub command: String,\n+    pub cwd: AbsolutePathBuf,\n+    pub os_pid: Op...",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 28,
+      "deletions": 0,
+      "patch_excerpt": "@@ -157,6 +157,8 @@ Example with notification opt-out:\n - `thread/compact/start` — trigger conversation history compaction for a thread; returns `{}` immediately while progress streams through standard turn/item notifications.\n - `thread/shellCommand` — run a user-initiated `!` shell command against a thread; this runs unsandboxed with full access rather than inheriting the thread sandbox policy. Returns `{}` immediately while progress streams through standard turn/item notifications and any active turn receives the formatted output in its message stream.\n - `thread/backgroundTerminals/clean` — terminate all running background terminals for a thread (experimental; requires `capabilities.experimentalApi`); returns `{}` when the cleanup request is accepted.\n+- `thread/backgroundTerminals/list` — list running background terminals for a loaded thread (experimental; requires `capabilities.exp...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1126,6 +1126,16 @@ impl MessageProcessor {\n                     .thread_background_terminals_clean(&request_id, params)\n                     .await\n             }\n+            ClientRequest::ThreadBackgroundTerminalsList { params, .. } => {\n+                self.thread_processor\n+                    .thread_background_terminals_list(params)\n+                    .await\n+            }\n+            ClientRequest::ThreadBackgroundTerminalsTerminate { params, .. } => {\n+                self.thread_processor\n+                    .thread_background_terminals_terminate(params)\n+                    .await\n+            }\n             ClientRequest::ThreadRollback { params, .. } => {\n                 self.thread_processor\n                     .thread_rollback(&request_id, params)",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -171,8 +171,13 @@ use codex_app_server_protocol::ThreadApproveGuardianDeniedActionResponse;\n use codex_app_server_protocol::ThreadArchiveParams;\n use codex_app_server_protocol::ThreadArchiveResponse;\n use codex_app_server_protocol::ThreadArchivedNotification;\n+use codex_app_server_protocol::ThreadBackgroundTerminal;\n use codex_app_server_protocol::ThreadBackgroundTerminalsCleanParams;\n use codex_app_server_protocol::ThreadBackgroundTerminalsCleanResponse;\n+use codex_app_server_protocol::ThreadBackgroundTerminalsListParams;\n+use codex_app_server_protocol::ThreadBackgroundTerminalsListResponse;\n+use codex_app_server_protocol::ThreadBackgroundTerminalsTerminateParams;\n+use codex_app_server_protocol::ThreadBackgroundTerminalsTerminateResponse;\n use codex_app_server_protocol::ThreadClosedNotification;\n use codex_app_server_protocol::ThreadCompactStartParams;\n use codex_app_server_protocol:...",
+      "path": "codex-rs/app-server/src/request_processors.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 94,
+      "deletions": 0,
+      "patch_excerpt": "@@ -569,6 +569,24 @@ impl ThreadRequestProcessor {\n             .map(|response| Some(response.into()))\n     }\n \n+    pub(crate) async fn thread_background_terminals_list(\n+        &self,\n+        params: ThreadBackgroundTerminalsListParams,\n+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {\n+        self.thread_background_terminals_list_inner(params)\n+            .await\n+            .map(|response| Some(response.into()))\n+    }\n+\n+    pub(crate) async fn thread_background_terminals_terminate(\n+        &self,\n+        params: ThreadBackgroundTerminalsTerminateParams,\n+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {\n+        self.thread_background_terminals_terminate_inner(params)\n+            .await\n+            .map(|response| Some(response.into()))\n+    }\n+\n     pub(crate) async fn thread_rollback(\n         &self,\n         request_id: &ConnectionReq...",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 59,
+      "deletions": 0,
+      "patch_excerpt": "@@ -36,6 +36,65 @@ mod thread_list_cwd_filter_tests {\n     }\n }\n \n+mod background_terminal_pagination_tests {\n+    use super::super::paginate_background_terminals;\n+    use codex_app_server_protocol::ThreadBackgroundTerminal;\n+    use codex_utils_absolute_path::AbsolutePathBuf;\n+    use pretty_assertions::assert_eq;\n+\n+    fn terminal(process_id: &str) -> ThreadBackgroundTerminal {\n+        let cwd = if cfg!(windows) { r\"C:\\tmp\" } else { \"/tmp\" };\n+\n+        ThreadBackgroundTerminal {\n+            item_id: format!(\"item-{process_id}\"),\n+            process_id: process_id.to_string(),\n+            command: format!(\"command-{process_id}\"),\n+            cwd: AbsolutePathBuf::from_absolute_path(cwd).expect(\"absolute cwd\"),\n+            os_pid: None,\n+            cpu_percent: None,\n+            rss_kb: None,\n+        }\n+    }\n+\n+    #[test]\n+    fn paginates_with_process_id_cursor() {\n+      ...",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 19,
+      "deletions": 0,
+      "patch_excerpt": "@@ -159,6 +159,14 @@ pub struct CodexThread {\n     out_of_band_elicitation_count: Mutex<u64>,\n }\n \n+#[derive(Debug, Eq, PartialEq)]\n+pub struct BackgroundTerminalInfo {\n+    pub item_id: String,\n+    pub process_id: String,\n+    pub command: String,\n+    pub cwd: AbsolutePathBuf,\n+}\n+\n /// Conduit for the bidirectional stream of messages that compose a thread\n /// (formerly called a conversation) in Codex.\n impl CodexThread {\n@@ -396,6 +404,17 @@ impl CodexThread {\n         self.codex.agent_status().await\n     }\n \n+    pub async fn list_background_terminals(&self) -> Vec<BackgroundTerminalInfo> {\n+        self.codex.session.list_background_terminals().await\n+    }\n+\n+    pub async fn terminate_background_terminal(&self, process_id: i32) -> bool {\n+        self.codex\n+            .session\n+            .terminate_background_terminal(process_id)\n+            .await\n+    }\n+\n     pub(crate) ...",
+      "path": "codex-rs/core/src/codex_thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -19,6 +19,7 @@ mod codex_thread;\n mod compact_remote;\n mod compact_remote_v2;\n mod config_lock;\n+pub use codex_thread::BackgroundTerminalInfo;\n pub use codex_thread::CodexThread;\n pub use codex_thread::CodexThreadSettingsOverrides;\n pub use codex_thread::ThreadConfigSnapshot;",
+      "path": "codex-rs/core/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 0,
+      "patch_excerpt": "@@ -21,6 +21,7 @@ use tracing::info_span;\n use tracing::trace;\n use tracing::warn;\n \n+use crate::codex_thread::BackgroundTerminalInfo;\n use crate::config::Config;\n use crate::context::ContextualUserFragment;\n use crate::hook_runtime::inspect_pending_input;\n@@ -782,6 +783,17 @@ impl Session {\n             .await;\n     }\n \n+    pub(crate) async fn list_background_terminals(&self) -> Vec<BackgroundTerminalInfo> {\n+        self.services.unified_exec_manager.list_processes().await\n+    }\n+\n+    pub(crate) async fn terminate_background_terminal(&self, process_id: i32) -> bool {\n+        self.services\n+            .unified_exec_manager\n+            .terminate_process(process_id)\n+            .await\n+    }\n+\n     async fn handle_task_abort(self: &Arc<Self>, task: RunningTask, reason: TurnAbortReason) {\n         let sub_id = task.turn_context.sub_id.clone();\n         if task.cancellation_token.is...",
+      "path": "codex-rs/core/src/tasks/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -155,6 +155,8 @@ struct ProcessEntry {\n     process: Arc<UnifiedExecProcess>,\n     call_id: String,\n     process_id: i32,\n+    cwd: AbsolutePathBuf,\n+    initial_exec_command_active: Arc<std::sync::atomic::AtomicBool>,\n     hook_command: String,\n     tty: bool,\n     network_approval: Option<DeferredNetworkApproval>,",
+      "path": "codex-rs/core/src/unified_exec/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 260,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,5 +1,6 @@\n use super::head_tail_buffer::HeadTailBuffer;\n use super::*;\n+use crate::codex_thread::BackgroundTerminalInfo;\n use crate::exec::ExecCapturePolicy;\n use crate::exec::ExecExpiration;\n use crate::sandboxing::ExecRequest;\n@@ -9,6 +10,16 @@ use crate::session::turn_context::TurnContext;\n use crate::tools::context::ExecCommandToolOutput;\n use crate::unified_exec::WriteStdinRequest;\n use crate::unified_exec::process::OutputHandles;\n+use async_trait::async_trait;\n+use codex_exec_server::ExecProcess;\n+use codex_exec_server::ExecProcessEventReceiver;\n+use codex_exec_server::ExecServerError;\n+use codex_exec_server::ProcessId;\n+use codex_exec_server::ProcessSignal;\n+use codex_exec_server::ReadResponse;\n+use codex_exec_server::StartedExecProcess;\n+use codex_exec_server::WriteResponse;\n+use codex_exec_server::WriteStatus;\n use codex_sandboxing::SandboxType;\n use codex_utils_output_tru...",
+      "path": "codex-rs/core/src/unified_exec/mod_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 23,
+      "deletions": 4,
+      "patch_excerpt": "@@ -195,9 +195,16 @@ impl UnifiedExecProcess {\n         }\n     }\n \n-    pub(super) fn terminate(&self) {\n+    fn finish_termination(&self) {\n         self.output_closed.store(true, Ordering::Release);\n         self.output_closed_notify.notify_waiters();\n+        self.cancellation_token.cancel();\n+        if let Some(output_task) = &self.output_task {\n+            output_task.abort();\n+        }\n+    }\n+\n+    pub(super) fn terminate(&self) {\n         match &self.process_handle {\n             ProcessHandle::Local(process_handle) => process_handle.terminate(),\n             ProcessHandle::ExecServer(process_handle) => {\n@@ -207,10 +214,22 @@ impl UnifiedExecProcess {\n                 });\n             }\n         }\n-        self.cancellation_token.cancel();\n-        if let Some(output_task) = &self.output_task {\n-            output_task.abort();\n+        self.finish_termination();\n+    }\n+\n+  ...",
+      "path": "codex-rs/core/src/unified_exec/process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 105,
+      "deletions": 26,
+      "patch_excerpt": "@@ -11,6 +11,7 @@ use tokio::time::Duration;\n use tokio::time::Instant;\n use tokio_util::sync::CancellationToken;\n \n+use crate::codex_thread::BackgroundTerminalInfo;\n use crate::exec_env::CODEX_THREAD_ID_ENV_VAR;\n use crate::exec_env::create_env;\n use crate::exec_policy::ExecApprovalRequest;\n@@ -175,11 +176,22 @@ struct PreparedProcessHandles {\n     pause_state: Option<watch::Receiver<bool>>,\n     session: Option<Arc<crate::session::session::Session>>,\n     network_approval: Option<DeferredNetworkApproval>,\n+    call_id: String,\n     hook_command: String,\n     process_id: i32,\n     tty: bool,\n }\n \n+struct InitialExecCommandGuard {\n+    active: Arc<AtomicBool>,\n+}\n+\n+impl Drop for InitialExecCommandGuard {\n+    fn drop(&mut self) {\n+        self.active.store(false, Ordering::Release);\n+    }\n+}\n+\n fn exec_server_process_id(process_id: i32) -> String {\n     process_id.to_string()\n }\n@@ -41...",
+      "path": "codex-rs/core/src/unified_exec/process_manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 39,
+      "deletions": 4,
+      "patch_excerpt": "@@ -22,6 +22,7 @@ struct MockExecProcess {\n     process_id: ProcessId,\n     write_response: WriteResponse,\n     read_responses: Mutex<VecDeque<ReadResponse>>,\n+    terminate_error: Option<String>,\n     wake_tx: watch::Sender<u64>,\n }\n \n@@ -69,11 +70,17 @@ impl ExecProcess for MockExecProcess {\n     }\n \n     async fn terminate(&self) -> Result<(), ExecServerError> {\n+        if let Some(message) = &self.terminate_error {\n+            return Err(ExecServerError::Protocol(message.clone()));\n+        }\n         Ok(())\n     }\n }\n \n-async fn remote_process(write_status: WriteStatus) -> UnifiedExecProcess {\n+async fn remote_process(\n+    write_status: WriteStatus,\n+    terminate_error: Option<String>,\n+) -> UnifiedExecProcess {\n     let (wake_tx, _wake_rx) = watch::channel(0);\n     let started = StartedExecProcess {\n         process: Arc::new(MockExecProcess {\n@@ -82,6 +89,7 @@ async fn remote_...",
+      "path": "codex-rs/core/src/unified_exec/process_tests.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#26041"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\r\n\r\nCodex Apps needs app-server as the source of truth for chat-started background terminals instead of guessing from local process trees.\r\n\r\nThis PR adds experimental v2 APIs to list and terminate background terminals for a loaded thread using app-server process ids, so clients can manage background terminals without local PID discovery.\r\n\r\n## Changes\r\n\r\n- `thread/backgroundTerminals/list` returns paginated background terminal records with `itemId`, app-server `processId`, `command`, `cwd`, nullable `osPid`, nullable `cpuPercent`, and nullable `rssKb`.\r\n- `thread/backgroundTerminals/terminate` terminates one running background terminal by app-server `processId` and returns whether a process was terminated.\r\n- Background terminal list and terminate operations use unified-exec process manager state as their source of truth.\r\n",
+    "labels": [],
+    "merged_at": "2026-06-10T18:18:09Z",
+    "number": 26041,
+    "state": "merged",
+    "title": "Add app-server background terminal process APIs",
+    "url": "https://github.com/openai/codex/pull/26041"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
