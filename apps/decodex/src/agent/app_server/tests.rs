@@ -411,6 +411,36 @@ impl DynamicToolHandler for ContinueTokenCompletionHandler {
 	}
 }
 
+#[derive(Default)]
+struct TerminalTokenCompletionHandler {
+	terminal_seen: RefCell<bool>,
+}
+impl DynamicToolHandler for TerminalTokenCompletionHandler {
+	fn tool_specs(&self) -> Vec<DynamicToolSpec> {
+		Vec::new()
+	}
+
+	fn handle_call(&self, _tool_name: &str, _arguments: Value) -> DynamicToolCallResponse {
+		DynamicToolCallResponse::failure(String::from("unused"))
+	}
+
+	fn classify_turn_completion(&self, final_output: &str) -> Result<TurnCompletionStatus> {
+		Ok(match final_output.trim() {
+			"CONTINUE" => TurnCompletionStatus::Continue,
+			"TERMINAL" => {
+				self.terminal_seen.replace(true);
+
+				TurnCompletionStatus::Complete
+			},
+			_ => TurnCompletionStatus::Complete,
+		})
+	}
+
+	fn has_terminal_completion_signal(&self) -> bool {
+		*self.terminal_seen.borrow()
+	}
+}
+
 struct TestPhaseGoalController {
 	initial_phase: PhaseGoalKind,
 }
@@ -966,10 +996,10 @@ fn phase_goal_get_method_is_required_after_turn_completion() {
 
 #[test]
 fn phase_goal_complete_runs_validation_transition_before_handoff_goal() {
-	let handler = ContinueTokenCompletionHandler;
+	let handler = TerminalTokenCompletionHandler::default();
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
 	let script =
-		phase_goal_fake_codex_script(&["CONTINUE", "DONE"], &["complete", "complete"], &[]);
+		phase_goal_fake_codex_script(&["DONE", "TERMINAL"], &["complete", "complete"], &[]);
 	let (result, state_store) = execute_phase_goal_fake_app_server(script, |request| {
 		request.max_turns = 3;
 		request.dynamic_tool_handler = Some(&handler);
@@ -980,7 +1010,7 @@ fn phase_goal_complete_runs_validation_transition_before_handoff_goal() {
 	let goal_set_events = private_phase_goal_events(&state_store, "phase_goal_set");
 
 	assert_eq!(result.turn_count, 2);
-	assert_eq!(result.final_output, "DONE");
+	assert_eq!(result.final_output, "TERMINAL");
 	assert_eq!(
 		result.phase_goal_status,
 		Some(super::PhaseGoalRunStatus {
@@ -997,7 +1027,7 @@ fn phase_goal_complete_runs_validation_transition_before_handoff_goal() {
 }
 
 #[test]
-fn still_active_phase_goal_continues_same_thread_until_terminal_output() {
+fn still_active_phase_goal_stops_at_max_turns_without_terminal_signal() {
 	let handler = ContinueTokenCompletionHandler;
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
 	let script = phase_goal_fake_codex_script(&["CONTINUE", "DONE"], &["active", "active"], &[]);
@@ -1011,7 +1041,7 @@ fn still_active_phase_goal_continues_same_thread_until_terminal_output() {
 	assert_eq!(result.turn_count, 2);
 	assert_eq!(result.turn_id, "turn-2");
 	assert_eq!(result.final_output, "DONE");
-	assert!(!result.continuation_pending);
+	assert!(result.continuation_pending);
 	assert_eq!(
 		result.phase_goal_status,
 		Some(super::PhaseGoalRunStatus {
@@ -1045,7 +1075,7 @@ fn still_active_phase_goal_stops_at_max_turns_with_continuation_pending() {
 }
 
 #[test]
-fn phase_goal_handoff_complete_without_terminal_completion_is_invalid() {
+fn phase_goal_handoff_continue_without_terminal_completion_is_invalid() {
 	let handler = ContinueTokenCompletionHandler;
 	let controller = TestPhaseGoalController::new(PhaseGoalKind::HandoffEvidence);
 	let script = phase_goal_fake_codex_script(&["CONTINUE"], &["complete"], &[]);
@@ -1061,6 +1091,28 @@ fn phase_goal_handoff_complete_without_terminal_completion_is_invalid() {
 
 	assert_eq!(failure.error_class(), "phase_goal_terminal_path_missing");
 	assert!(error.to_string().contains("handoff_evidence"));
+}
+
+#[test]
+fn phase_goal_handoff_final_output_without_terminal_signal_is_invalid() {
+	let handler = ContinueTokenCompletionHandler;
+	let controller = TestPhaseGoalController::new(PhaseGoalKind::ImplementToValidationReady);
+	let script = phase_goal_fake_codex_script(&["DONE", "DONE"], &["complete", "complete"], &[]);
+	let (result, state_store) = execute_phase_goal_fake_app_server(script, |request| {
+		request.max_turns = 3;
+		request.dynamic_tool_handler = Some(&handler);
+		request.phase_goal_controller = Some(&controller);
+	});
+	let error = result.expect_err("handoff goal final output cannot replace terminal path");
+	let failure = error
+		.downcast_ref::<AppServerPhaseGoalFailure>()
+		.expect("missing terminal path should be a typed phase-goal failure");
+	let goal_set_events = private_phase_goal_events(&state_store, "phase_goal_set");
+
+	assert_eq!(failure.error_class(), "phase_goal_terminal_path_missing");
+	assert!(error.to_string().contains("handoff_evidence"));
+	assert_eq!(goal_set_events.len(), 2);
+	assert_eq!(goal_set_events[1]["phase"], "handoff_evidence");
 }
 
 #[test]

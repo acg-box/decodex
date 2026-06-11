@@ -231,6 +231,12 @@ fn install_fake_merged_pr_gh_response_with_base_ref_and_delete_exit_code(
 ) -> TestEnvVarGuard {
 	let fake_gh_dir = temp_dir.path().join("fake-bin");
 	let fake_gh_path = fake_gh_dir.join("gh");
+	let fake_pr_view_response = serde_json::json!({
+		"state": "MERGED",
+		"headRefOid": head_oid,
+		"mergeCommit": { "oid": "cafebabe" }
+	})
+	.to_string();
 	let fake_gh_response = serde_json::json!({
 		"data": {
 			"repository": {
@@ -278,6 +284,10 @@ if [ \"$1\" = \"api\" ] && [ \"$2\" = \"graphql\" ]; then\n\
   printf '%s' '{}'\n\
   exit 0\n\
 fi\n\
+if [ \"$1\" = \"pr\" ] && [ \"$2\" = \"view\" ]; then\n\
+  printf '%s' '{}'\n\
+  exit 0\n\
+fi\n\
 if [ \"$1\" = \"api\" ] && [ \"$2\" = \"--method\" ] && [ \"$3\" = \"DELETE\" ]; then\n\
   if [ {delete_exit_code} -eq 0 ]; then\n\
     exit 0\n\
@@ -287,7 +297,7 @@ if [ \"$1\" = \"api\" ] && [ \"$2\" = \"--method\" ] && [ \"$3\" = \"DELETE\" ];
 fi\n\
 echo \"unexpected gh invocation: $*\" >&2\n\
 exit 1\n",
-			fake_gh_response
+			fake_gh_response, fake_pr_view_response
 		),
 	)
 	.expect("fake gh script should write");
@@ -321,11 +331,24 @@ fn install_fake_closeout_gh_responses_with_state(
 	head_oid: &str,
 	pr_state: &str,
 ) -> TestEnvVarGuard {
+	install_fake_closeout_gh_responses_with_states(
+		temp_dir, worktree, pr_url, head_oid, pr_state, pr_state,
+	)
+}
+
+fn install_fake_closeout_gh_responses_with_states(
+	temp_dir: &TempDir,
+	worktree: &WorktreeSpec,
+	pr_url: &str,
+	head_oid: &str,
+	pr_view_state: &str,
+	graphql_state: &str,
+) -> TestEnvVarGuard {
 	let fake_gh_dir = temp_dir.path().join("fake-closeout-bin");
 	let fake_gh_path = fake_gh_dir.join("gh");
 	let fake_pr_view_response = serde_json::json!({
 		"url": pr_url,
-		"state": pr_state,
+		"state": pr_view_state,
 		"isDraft": false,
 		"baseRefName": "main",
 		"headRefName": worktree.branch_name.clone(),
@@ -340,7 +363,7 @@ fn install_fake_closeout_gh_responses_with_state(
 				"mergeCommitAllowed": true,
 				"pullRequest": {
 					"url": pr_url,
-					"state": pr_state,
+					"state": graphql_state,
 					"isDraft": false,
 					"reviewDecision": "APPROVED",
 					"baseRefName": "main",

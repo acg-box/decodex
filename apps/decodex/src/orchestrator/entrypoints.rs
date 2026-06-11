@@ -1634,6 +1634,10 @@ fn build_operator_state_snapshot_without_live_observers(
 
 	hydrate_history_lanes_from_local_ledger(project, state_store, &mut snapshot)?;
 	apply_terminal_history_ledger_outcomes(&mut snapshot);
+	refresh_worktree_ownership(
+		&mut snapshot,
+		Some(workflow.frontmatter().tracker().resolved_completed_state()),
+	);
 	refresh_operator_project_summary(&mut snapshot);
 
 	Ok(snapshot)
