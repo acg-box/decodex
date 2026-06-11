@@ -650,12 +650,21 @@ After a process restart, recent-run history, active lease ownership, retained po
   while polling. That subset may rotate oversized local files, prune old backups, and
   run a passive WAL checkpoint, but it must not compact runtime protocol events.
 - Worktrees: retain while the issue is non-terminal, and also retain terminal owned lanes while authoritative post-merge closeout or deterministic cleanup is still incomplete.
+- Worktree mappings must carry durable local provenance. New runtime-recorded mappings
+  use `provenance_source = "runtime_recorded"` with created and updated Unix
+  timestamps. Mappings reconstructed from retained tracker/worktree/marker evidence
+  after local runtime state is missing use `provenance_source = "runtime_recovered"`;
+  they are recoverable runtime state, but not proof that the original runtime row was
+  still present. Rows migrated from older runtime stores that lack this information
+  must remain readable but must be classified as `provenance_source =
+  "legacy_unknown"` instead of being silently treated as a fully proven runtime-owned
+  lane.
 - Terminal issue cleanup: once the issue reaches a terminal tracker state and no authoritative post-merge tail remains pending, remove the worktree during reconciliation or startup cleanup.
 - If an issue becomes non-terminal but no longer eligible while `decodex` is still preparing the lane, keep the worktree and skip execution for that pass.
 
 ## Recovery rules
 
-- On service startup, `decodex` must inspect deterministic `.worktrees/<ISSUE>` paths together with tracker issue ids already known from local leases or worktree mappings to rebuild retained worktree mappings before starting new work.
+- On service startup, `decodex` must inspect deterministic `.worktrees/<ISSUE>` paths together with tracker issue ids already known from local leases or worktree mappings to rebuild retained worktree mappings before starting new work. This recovery must only write a recovered worktree mapping after tracker, retained marker, or closeout evidence proves that retry, active-lane, or post-review closeout state owns the worktree; a terminal cleanup-only legacy row must keep `provenance_source = "legacy_unknown"` until the operator runs the explicit legacy closeout audit path.
 - If Linear still shows a non-terminal `In Progress` issue and its retained worktree exists locally, `decodex` must treat that lane as a retry-style recovery candidate before selecting fresh `Todo` work.
 - Retry recovery must bind retained lanes to issue identity and local runtime state rather than to Linear project membership.
 - While the control plane is running an active lane, every poll tick must refresh cached tracker state for the leased issue before considering any new selection.
@@ -685,6 +694,10 @@ After a process restart, recent-run history, active lease ownership, retained po
 - If the agent Git credential preflight fails, operator status must report the retained lane as a credential failure requiring operator recovery, not as a still-running lane.
 - If retry budget or needs-attention recovery finds tracked changes in the retained worktree, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
 - If Linear still has `decodex:active:<service-id>` on an issue that also remains queued, but the local runtime cannot prove a matching active lease, status must classify the queued row as blocked with reason `linear_active_label_present`; it must not treat the issue as ready intake. If the retained marker or private execution event rows for that run are missing, status must surface `evidence_missing` in the recovery details. If the retained worktree has tracked changes, that dirty worktree remains owned by queued recovery/attention instead of being hidden as cleanup-only state.
+- Operator status snapshots must expose worktree provenance in both JSON and human text
+  output. A cleanup-only worktree with `provenance_source = "legacy_unknown"` must set
+  `audit_required = true` and provide a `decodex recover legacy-closeout` next action;
+  this is a last-resort operator audit path, not an automatic rebind or cleanup signal.
 - During an active run, operator snapshots must expose `thread_id` as soon as the Codex thread exists, plus monotonically advancing `event_count`, `last_event_type`, and `last_event_at` once protocol events are recorded. These fields may be hydrated either from the current process journal or from the active lane's `.decodex-run-activity` marker when `status` is running in a separate process.
 - `thread_id = null` is expected only before the worker creates the Codex thread for the current run. `event_count = 0`, `last_event_type = null`, and `last_event_at = null` are expected only before the first protocol event for that same run. After the thread exists and protocol activity has started, those empty values indicate missing hydration rather than normal progress.
 - Operator snapshots may expose an additive `protocol_activity` object derived from app-server structured messages for the current run. The object stays local/operator-only and should summarize turn status, waiting reason, rate-limit status, and a compact recent event list for high-value app-server activity such as `turn/started`, `turn/completed`, plan updates, diff updates, item start/completion, command output deltas, server request responses, account updates, and rate-limit updates. Missing `protocol_activity` means no structured summary was captured yet; consumers must continue to rely on the older `event_count`, `last_event_type`, `last_event_at`, thread fields, and `child_agent_activity` fields when it is absent.

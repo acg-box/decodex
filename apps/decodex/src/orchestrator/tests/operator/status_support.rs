@@ -395,6 +395,8 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 			ownership_reason: String::from(
 				"No active lane, queued recovery, or post-review lane owns this worktree; local cleanup only.",
 			),
+			provenance: test_worktree_provenance("runtime_recorded"),
+			recovery_next_action: None,
 			hygiene: None,
 		},
 		orchestrator::OperatorWorktreeStatus {
@@ -405,6 +407,8 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 			worktree_path: String::from(".worktrees/PUB-101"),
 			ownership: String::from("active_lane"),
 			ownership_reason: String::from("Active lane `run-1` owns this worktree."),
+			provenance: test_worktree_provenance("runtime_recorded"),
+			recovery_next_action: None,
 			hygiene: None,
 		},
 		orchestrator::OperatorWorktreeStatus {
@@ -417,9 +421,20 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 			ownership_reason: String::from(
 				"Review & Landing owns this worktree as `ready_to_land`.",
 			),
+			provenance: test_worktree_provenance("runtime_recorded"),
+			recovery_next_action: None,
 			hygiene: None,
 		},
 	]
+}
+
+fn test_worktree_provenance(source: &str) -> orchestrator::OperatorWorktreeProvenanceStatus {
+	orchestrator::OperatorWorktreeProvenanceStatus {
+		source: source.to_owned(),
+		created_at_unix: Some(1),
+		updated_at_unix: Some(2),
+		audit_required: false,
+	}
 }
 
 fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus> {
