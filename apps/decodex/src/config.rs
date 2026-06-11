@@ -187,15 +187,14 @@ impl ProjectGitHubConfig {
 #[serde(deny_unknown_fields)]
 #[derive(Default)]
 pub struct ProjectCodexConfig {
-	review: Option<ReviewLevel>,
-	external_review_enabled: Option<bool>,
-	internal_review_mode: Option<LegacyInternalReviewMode>,
+	#[serde(default = "default_review_level")]
+	review: ReviewLevel,
 	accounts: Option<ProjectCodexAccountsConfig>,
 }
 impl ProjectCodexConfig {
 	/// Review level Decodex should apply for agent runs.
 	pub fn review_level(&self) -> ReviewLevel {
-		self.review.unwrap_or_else(|| self.legacy_review_level())
+		self.review
 	}
 
 	/// Optional ChatGPT accounts used to seed Codex app-server auth.
@@ -219,22 +218,6 @@ impl ProjectCodexConfig {
 		}
 
 		Ok(())
-	}
-
-	fn legacy_review_level(&self) -> ReviewLevel {
-		match self.external_review_enabled {
-			Some(true) => ReviewLevel::Strict,
-			Some(false) =>
-				match self.internal_review_mode.unwrap_or(LegacyInternalReviewMode::Prompt) {
-					LegacyInternalReviewMode::Prompt => ReviewLevel::Standard,
-					LegacyInternalReviewMode::Off => ReviewLevel::Basic,
-				},
-			None => match self.internal_review_mode {
-				Some(LegacyInternalReviewMode::Prompt) => ReviewLevel::Standard,
-				Some(LegacyInternalReviewMode::Off) => ReviewLevel::Basic,
-				None => default_review_level(),
-			},
-		}
 	}
 }
 
@@ -439,13 +422,6 @@ impl Default for ReviewLevel {
 	fn default() -> Self {
 		default_review_level()
 	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum LegacyInternalReviewMode {
-	Prompt,
-	Off,
 }
 
 /// Canonical repository root for the current Git checkout.
@@ -1220,11 +1196,15 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_legacy_codex_review_fields() {
-		let temp_dir = TempDir::new().expect("temp dir should exist");
-		let config_path = write_config_file(
-			temp_dir.path(),
-			r#"
+	fn rejects_legacy_codex_review_fields() {
+		for (removed_field, removed_value) in
+			[("external_review_enabled", "false"), ("internal_review_mode", "\"prompt\"")]
+		{
+			let temp_dir = TempDir::new().expect("temp dir should exist");
+			let config_path = write_config_file(
+				temp_dir.path(),
+				&format!(
+					r#"
 				service_id = "pubfi"
 
 				[tracker]
@@ -1234,40 +1214,18 @@ mod tests {
 				token_env_var = "HOME"
 
 				[codex]
-				external_review_enabled = false
-				internal_review_mode = "prompt"
-			"#,
-		);
-		let config = ServiceConfig::from_path(&config_path)
-			.expect("legacy codex review fields should parse");
+				{removed_field} = {removed_value}
+			"#
+				),
+			);
+			let error = ServiceConfig::from_path(&config_path)
+				.expect_err("legacy codex review field should be rejected");
 
-		assert_eq!(config.codex().review_level(), ReviewLevel::Standard);
-	}
-
-	#[test]
-	fn explicit_codex_review_field_overrides_legacy_review_fields() {
-		let temp_dir = TempDir::new().expect("temp dir should exist");
-		let config_path = write_config_file(
-			temp_dir.path(),
-			r#"
-				service_id = "pubfi"
-
-				[tracker]
-				api_key_env_var = "HOME"
-
-				[github]
-				token_env_var = "HOME"
-
-				[codex]
-				review = "basic"
-				external_review_enabled = true
-				internal_review_mode = "prompt"
-			"#,
-		);
-		let config =
-			ServiceConfig::from_path(&config_path).expect("explicit review field should parse");
-
-		assert_eq!(config.codex().review_level(), ReviewLevel::Basic);
+			assert!(
+				error.to_string().contains(removed_field),
+				"error should identify removed field {removed_field}: {error:?}"
+			);
+		}
 	}
 
 	#[test]
