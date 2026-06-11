@@ -88,8 +88,8 @@ struct DecodexApp: App {
 
 		_store = StateObject(wrappedValue: accountStore)
 		Task {
-			await accountStore.refreshIfNeeded()
 			accountStore.startAutomaticRefresh()
+			await accountStore.refreshIfNeeded()
 		}
 	}
 
