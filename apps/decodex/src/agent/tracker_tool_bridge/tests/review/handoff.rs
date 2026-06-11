@@ -67,6 +67,8 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 	})]);
 	let local_repo_inspector = FakeLocalRepoInspector::new(vec![Ok(sample_local_repo())]);
 	let review_context = sample_review_context_in(temp_dir.path());
+	let run_id = review_context.run_id.clone();
+	let attempt_number = review_context.attempt_number;
 
 	write_clean_review_checkpoint(&review_context);
 
@@ -94,9 +96,29 @@ fn terminal_finalize_accepts_matching_review_handoff_path() {
 
 	assert!(review_response.success);
 	assert!(finalize_response.success);
+	assert_eq!(
+		bridge
+			.finalized_completion_disposition()
+			.expect("finalized disposition should resolve"),
+		Some(RunCompletionDisposition::ReviewHandoff)
+	);
 
 	DynamicToolHandler::validate_turn_completion(&bridge, "done")
 		.expect("matching finalization should allow the turn to complete");
+
+	let events = bridge_state_store(&bridge)
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &run_id, attempt_number)
+		.expect("private terminal events should read");
+
+	assert!(events.iter().any(|event| {
+		event.event_type() == "review_completion_intent"
+			&& event.payload()["path"] == "review_handoff"
+			&& event.payload()["pr_url"] == "https://github.com/hack-ink/decodex/pull/53"
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == "terminal_finalize"
+			&& event.payload()["path"] == "review_handoff"
+	}));
 }
 
 #[test]

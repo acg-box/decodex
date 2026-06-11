@@ -408,6 +408,33 @@ impl<'a> TrackerToolBridge<'a> {
 		}
 	}
 
+	pub(crate) fn finalized_completion_disposition(
+		&self,
+	) -> crate::prelude::Result<Option<RunCompletionDisposition>> {
+		let Some(finalized_path) = *self.finalized_completion_path.borrow() else {
+			return Ok(None);
+		};
+		let completion_path = self.completion_disposition()?;
+
+		if finalized_path != completion_path {
+			let Some(review_context) = self.review_context.as_ref() else {
+				eyre::bail!(
+					"Review handoff context is unavailable for issue `{}`.",
+					self.issue.identifier
+				);
+			};
+
+			eyre::bail!(
+				"Run `{}` finalized terminal path `{}`, but the recorded terminal path resolved to `{}` after app-server failure.",
+				review_context.run_id,
+				finalized_path.as_str(),
+				completion_path.as_str()
+			);
+		}
+
+		Ok(Some(finalized_path))
+	}
+
 	pub(crate) fn apply_review_handoff(&self) -> crate::prelude::Result<()> {
 		let Some(review_context) = self.review_context.as_ref() else {
 			eyre::bail!(

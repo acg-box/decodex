@@ -350,7 +350,7 @@ pub(super) fn interrupt_lane_with_state(
 	let run = select_interrupt_lane_run(&snapshot, issue, run_id)?;
 	let soft_interrupt =
 		attempt_soft_lane_interrupt(state_store, project, &run, force, reason, source)?;
-	let hard_interrupt = if force && soft_interrupt_allows_hard_fallback(&soft_interrupt) {
+	let hard_interrupt = if force && soft_interrupt_allows_hard_fallback(&soft_interrupt, &run) {
 		Some(attempt_hard_lane_interrupt(state_store, &run, reason)?)
 	} else {
 		None
@@ -393,10 +393,14 @@ pub(super) fn steer_lane_with_state(
 	attempt_lane_steer(state_store, project, &run, request)
 }
 
-fn soft_interrupt_allows_hard_fallback(soft: &LaneSoftInterruptReport) -> bool {
+fn soft_interrupt_allows_hard_fallback(
+	soft: &LaneSoftInterruptReport,
+	run: &OperatorRunStatus,
+) -> bool {
 	match soft.status.as_str() {
 		"pending" | "failed" | "unavailable" =>
-			soft.error_class.as_deref() != Some("lane_not_active"),
+			soft.error_class.as_deref() != Some("lane_not_active")
+				|| run.process_id.is_some() && run.process_alive != Some(false),
 		"rejected" => soft.error_class.as_deref() == Some("active_lease_missing"),
 		_ => false,
 	}
