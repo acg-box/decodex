@@ -1,0 +1,215 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "stefanstokic-oai",
+      "committed_at": "2026-06-10T19:33:22Z",
+      "message": "tui: add explicit external agent import command",
+      "sha": "ee228545d822de157518dec714dca4f13cbd3374",
+      "url": "https://github.com/openai/codex/commit/ee228545d822de157518dec714dca4f13cbd3374"
+    },
+    {
+      "author": "stefanstokic-oai",
+      "committed_at": "2026-06-10T19:35:59Z",
+      "message": "tui: make external agent import copy generic",
+      "sha": "15bbbdf663d80d399cdadefd6987bf17999faab6",
+      "url": "https://github.com/openai/codex/commit/15bbbdf663d80d399cdadefd6987bf17999faab6"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "PROMPT",
+    "CLI",
+    "TUI",
+    "API",
+    "CODEX_HOME",
+    "JSONRPCE",
+    "EXTERNAL_AGENT_CONFIG_MIGRATION_FINISHED_MESSAGE",
+    "EXTERNAL_AGENT_CONFIG_MIGRATION_NO_ITEMS_MESSAGE",
+    "UUID",
+    "JSONRPC_INVALID_REQUEST",
+    "JSONRPC_METHOD_NOT_FOUND",
+    "EXTERNAL_AGENT_CONFIG_IMPORT_IN_PROGRESS_MESSAGE",
+    "THREAD_SETTINGS_UPDATE_METHOD",
+    "EXTERNAL_AGENT_CONFIG_MIGRATION_REMOTE_UNAVAILABLE_MESSAGE",
+    "EXTERNAL_AGENT_CONFIG_MIGRATION_DAEMON_UNAVAILABLE_MESSAGE"
+  ],
+  "files": [
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -158,6 +158,7 @@ pub(crate) fn server_notification_requires_delivery(notification: &ServerNotific\n         ServerNotification::TurnCompleted(_)\n             | ServerNotification::ThreadSettingsUpdated(_)\n             | ServerNotification::ItemCompleted(_)\n+            | ServerNotification::ExternalAgentConfigImportCompleted(_)\n             | ServerNotification::AgentMessageDelta(_)\n             | ServerNotification::PlanDelta(_)\n             | ServerNotification::ReasoningSummaryTextDelta(_)\n@@ -2139,6 +2140,13 @@ mod tests {\n                 )\n             )\n         ));\n+        assert!(event_requires_delivery(\n+            &InProcessServerEvent::ServerNotification(\n+                codex_app_server_protocol::ServerNotification::ExternalAgentConfigImportCompleted(\n+                    codex_app_server_protocol::ExternalAgentConfigImportCompletedNotification {},\n+                )\n+ ...",
+      "path": "codex-rs/app-server-client/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 1,
+      "patch_excerpt": "@@ -104,7 +104,9 @@ type PendingClientRequestResponse = std::result::Result<Result, JSONRPCErrorErro\n fn server_notification_requires_delivery(notification: &ServerNotification) -> bool {\n     matches!(\n         notification,\n-        ServerNotification::TurnCompleted(_) | ServerNotification::ThreadSettingsUpdated(_)\n+        ServerNotification::TurnCompleted(_)\n+            | ServerNotification::ThreadSettingsUpdated(_)\n+            | ServerNotification::ExternalAgentConfigImportCompleted(_)\n     )\n }\n \n@@ -729,6 +731,7 @@ mod tests {\n     use super::*;\n     use codex_app_server_protocol::ClientInfo;\n     use codex_app_server_protocol::ConfigRequirementsReadResponse;\n+    use codex_app_server_protocol::ExternalAgentConfigImportCompletedNotification;\n     use codex_app_server_protocol::SessionSource as ApiSessionSource;\n     use codex_app_server_protocol::ThreadStartParams;\n     use code...",
+      "path": "codex-rs/app-server/src/in_process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2600,6 +2600,14 @@ mod tests {\n         );\n     }\n \n+    #[test]\n+    fn import_remains_an_interactive_prompt() {\n+        let cli = MultitoolCli::try_parse_from([\"codex\", \"import\"]).expect(\"parse\");\n+\n+        assert!(cli.subcommand.is_none());\n+        assert_eq!(cli.interactive.prompt.as_deref(), Some(\"import\"));\n+    }\n+\n     #[test]\n     fn profile_v2_rejects_non_plain_names_at_parse_time() {\n         assert!(",
+      "path": "codex-rs/cli/src/main.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 1,
+      "patch_excerpt": "@@ -93,16 +93,25 @@ impl App {\n                 return;\n             }\n             ServerNotification::ExternalAgentConfigImportCompleted(_) => {\n-                let cwd = self.chat_widget.config_ref().cwd.to_path_buf();\n+                let should_report_completion =\n+                    app_server_client.consume_external_agent_config_import_completion();\n                 if let Err(err) = self.refresh_in_memory_config_from_disk().await {\n                     tracing::warn!(\n                         error = %err,\n                         \"failed to refresh config after external agent config import\"\n                     );\n                 }\n+                let cwd = self.chat_widget.config_ref().cwd.to_path_buf();\n                 self.chat_widget.refresh_plugin_mentions();\n                 self.chat_widget.submit_op(AppCommand::reload_user_config());\n                 self.fetch_plug...",
+      "path": "codex-rs/tui/src/app/app_server_events.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 26,
+      "deletions": 0,
+      "patch_excerpt": "@@ -6,6 +6,7 @@\n use super::resize_reflow::trailing_run_start;\n use super::*;\n use crate::config_update::format_config_error;\n+use crate::external_agent_config_migration_flow::ExternalAgentConfigMigrationFlowOutcome;\n #[cfg(target_os = \"windows\")]\n use codex_config::types::WindowsSandboxModeToml;\n \n@@ -110,6 +111,31 @@ impl App {\n                 // Leaving alt-screen may blank the inline viewport; force a redraw either way.\n                 tui.frame_requester().schedule_frame();\n             }\n+            AppEvent::OpenExternalAgentConfigMigration => {\n+                match crate::external_agent_config_migration_flow::handle_external_agent_config_migration_prompt(\n+                    tui,\n+                    app_server,\n+                    &self.config,\n+                )\n+                .await\n+                {\n+                    Ok(ExternalAgentConfigMigrationFlowOutcome::St...",
+      "path": "codex-rs/tui/src/app/event_dispatch.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -221,6 +221,9 @@ pub(crate) enum AppEvent {\n     /// Open the resume picker inside the running TUI session.\n     OpenResumePicker,\n \n+    /// Open the external agent migration picker inside the running TUI session.\n+    OpenExternalAgentConfigMigration,\n+\n     /// Resume a thread by UUID or thread name inside the running TUI session.\n     ResumeSessionByIdOrName(String),",
+      "path": "codex-rs/tui/src/app_event.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 67,
+      "deletions": 0,
+      "patch_excerpt": "@@ -22,6 +22,11 @@ use codex_app_server_protocol::AuthMode;\n use codex_app_server_protocol::ClientRequest;\n use codex_app_server_protocol::ConfigBatchWriteParams;\n use codex_app_server_protocol::ConfigWriteResponse;\n+use codex_app_server_protocol::ExternalAgentConfigDetectParams;\n+use codex_app_server_protocol::ExternalAgentConfigDetectResponse;\n+use codex_app_server_protocol::ExternalAgentConfigImportParams;\n+use codex_app_server_protocol::ExternalAgentConfigImportResponse;\n+use codex_app_server_protocol::ExternalAgentConfigMigrationItem;\n use codex_app_server_protocol::GetAccountParams;\n use codex_app_server_protocol::GetAccountRateLimitsResponse;\n use codex_app_server_protocol::GetAccountResponse;\n@@ -123,12 +128,16 @@ use color_eyre::eyre::Result;\n use color_eyre::eyre::WrapErr;\n use std::collections::HashMap;\n use std::path::PathBuf;\n+use std::sync::atomic::AtomicBool;\n+use std::syn...",
+      "path": "codex-rs/tui/src/app_server_session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -398,6 +398,10 @@ impl ChatWidget {\n             SlashCommand::Skills => {\n                 self.open_skills_menu();\n             }\n+            SlashCommand::Import => {\n+                self.app_event_tx\n+                    .send(AppEvent::OpenExternalAgentConfigMigration);\n+            }\n             SlashCommand::Hooks => {\n                 self.add_hooks_output();\n             }\n@@ -1010,6 +1014,7 @@ impl ChatWidget {\n             | SlashCommand::Logout\n             | SlashCommand::Mention\n             | SlashCommand::Skills\n+            | SlashCommand::Import\n             | SlashCommand::Hooks\n             | SlashCommand::Title\n             | SlashCommand::Statusline",
+      "path": "codex-rs/tui/src/chatwidget/slash_dispatch.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1861,6 +1861,18 @@ async fn slash_resume_opens_picker() {\n     assert_matches!(rx.try_recv(), Ok(AppEvent::OpenResumePicker));\n }\n \n+#[tokio::test]\n+async fn slash_import_opens_claude_code_import_picker() {\n+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;\n+\n+    chat.dispatch_command(SlashCommand::Import);\n+\n+    assert_matches!(\n+        rx.try_recv(),\n+        Ok(AppEvent::OpenExternalAgentConfigMigration)\n+    );\n+}\n+\n #[tokio::test]\n async fn slash_archive_confirmation_requests_current_thread_archive() {\n     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;",
+      "path": "codex-rs/tui/src/chatwidget/tests/slash_commands.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -758,7 +758,7 @@ mod tests {\n             },\n             ExternalAgentConfigMigrationItem {\n                 item_type: ExternalAgentConfigMigrationItemType::Sessions,\n-                description: \"Migrate recent Claude Code sessions\".to_string(),\n+                description: \"Migrate recent chat sessions\".to_string(),\n                 cwd: None,\n                 details: Some(codex_app_server_protocol::MigrationDetails {\n                     sessions: vec![SessionMigration {",
+      "path": "codex-rs/tui/src/external_agent_config_migration.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 5,
+      "patch_excerpt": "@@ -80,13 +80,13 @@ impl WidgetRef for &ExternalAgentConfigMigrationScreen {\n             MigrationView::Summary => vec![\n                 Line::from(\"Bring over your setup, current project, and recent chats.\"),\n                 Line::from(\"Codex may add files to your current project folder.\"),\n-                Line::from(\"Your existing Claude Code setup will not be changed.\"),\n-                Line::from(\"Standard Claude Chat data cannot be imported.\"),\n+                Line::from(\"Your existing agent setup will not be changed.\"),\n+                Line::from(\"Cloud-hosted chat data cannot be imported.\"),\n             ],\n             MigrationView::Customize => vec![\n-                Line::from(\"Choose the Claude Code items to import.\"),\n+                Line::from(\"Choose the items to import.\"),\n                 Line::from(\"Codex may add files to your current project folder.\"),\n-       ...",
+      "path": "codex-rs/tui/src/external_agent_config_migration/render.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 125,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,125 @@\n+use crate::app_server_session::AppServerSession;\n+use crate::app_server_session::EXTERNAL_AGENT_CONFIG_IMPORT_IN_PROGRESS_MESSAGE;\n+use crate::external_agent_config_migration::ExternalAgentConfigMigrationOutcome;\n+use crate::external_agent_config_migration::run_external_agent_config_migration_prompt;\n+use crate::legacy_core::config::Config;\n+use crate::tui;\n+use codex_app_server_protocol::ExternalAgentConfigDetectParams;\n+\n+pub(crate) const EXTERNAL_AGENT_CONFIG_MIGRATION_FINISHED_MESSAGE: &str =\n+    \"Agent import finished. Run /import again to check for additional items.\";\n+pub(crate) const EXTERNAL_AGENT_CONFIG_MIGRATION_NO_ITEMS_MESSAGE: &str =\n+    \"No supported agent setup was found to import.\";\n+pub(crate) const EXTERNAL_AGENT_CONFIG_MIGRATION_REMOTE_UNAVAILABLE_MESSAGE: &str =\n+    \"Agent import is unavailable in remote sessions. Start Codex locally and run /im...",
+      "path": "codex-rs/tui/src/external_agent_config_migration_flow.rs",
+      "status": "added"
+    },
+    {
+      "additions": 21,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,21 @@\n+use super::*;\n+\n+#[test]\n+fn external_agent_config_migration_messages_snapshot() {\n+    let cases = [0, 1, 2];\n+\n+    let messages = cases\n+        .map(external_agent_config_migration_success_message)\n+        .into_iter()\n+        .chain([\n+            EXTERNAL_AGENT_CONFIG_MIGRATION_FINISHED_MESSAGE.to_string(),\n+            EXTERNAL_AGENT_CONFIG_MIGRATION_NO_ITEMS_MESSAGE.to_string(),\n+            EXTERNAL_AGENT_CONFIG_MIGRATION_REMOTE_UNAVAILABLE_MESSAGE.to_string(),\n+            EXTERNAL_AGENT_CONFIG_MIGRATION_DAEMON_UNAVAILABLE_MESSAGE.to_string(),\n+            EXTERNAL_AGENT_CONFIG_IMPORT_IN_PROGRESS_MESSAGE.to_string(),\n+        ])\n+        .collect::<Vec<_>>()\n+        .join(\"\\n\");\n+\n+    insta::assert_snapshot!(\"external_agent_config_migration_messages\", messages);\n+}",
+      "path": "codex-rs/tui/src/external_agent_config_migration_flow_tests.rs",
+      "status": "added"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -130,8 +130,8 @@ mod diff_model;\n mod diff_render;\n mod exec_cell;\n mod exec_command;\n-#[allow(dead_code)]\n mod external_agent_config_migration;\n+mod external_agent_config_migration_flow;\n mod external_agent_config_migration_model;\n mod external_editor;\n mod file_search;",
+      "path": "codex-rs/tui/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -26,6 +26,7 @@ pub enum SlashCommand {\n     AutoReview,\n     Memories,\n     Skills,\n+    Import,\n     Hooks,\n     Review,\n     Rename,\n@@ -98,6 +99,9 @@ impl SlashCommand {\n             SlashCommand::Diff => \"show git diff (including untracked files)\",\n             SlashCommand::Mention => \"mention a file\",\n             SlashCommand::Skills => \"use skills to improve how Codex performs specific tasks\",\n+            SlashCommand::Import => {\n+                \"import setup, this project, and recent chats from another coding agent\"\n+            }\n             SlashCommand::Hooks => \"view and manage lifecycle hooks\",\n             SlashCommand::Status => \"show current session configuration and token usage\",\n             SlashCommand::DebugConfig => \"show config layers and requirement sources for debugging\",\n@@ -198,6 +202,7 @@ impl SlashCommand {\n             | SlashCommand::SandboxReadRoot...",
+      "path": "codex-rs/tui/src/slash_command.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -4,14 +4,14 @@ expression: rendered\n ---\n \n   > Choose what to import\n-  Choose the Claude Code items to import.\n+  Choose the items to import.\n   Codex may add files to your current project folder.\n-  Your existing Claude Code setup will not be changed.\n+  Your existing agent setup will not be changed.\n   Home\n   › [x] Settings (settings.json -> config.toml)\n         Import /Users/alex/.claude/settings.json into /Users/alex/.codex/conf…\n     [x] Recent chat sessions\n-        Import recent Claude Code sessions\n+        Import recent chat sessions\n         1 chat session: Investigate migration UX\n \n   Current project: /workspace/project",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_customize.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -4,14 +4,14 @@ expression: rendered\n ---\n \n   > Choose what to import\n-  Choose the Claude Code items to import.\n+  Choose the items to import.\n   Codex may add files to your current project folder.\n-  Your existing Claude Code setup will not be changed.\n+  Your existing agent setup will not be changed.\n   Home\n     [x] Settings (settings.json -> config.toml)\n         Import /Users/alex/.claude/settings.json into /Users/alex/.codex/conf…\n     [x] Recent chat sessions\n-        Import recent Claude Code sessions\n+        Import recent chat sessions\n         1 chat session: Investigate migration UX\n \n   Current project: /workspace/project",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_customize_action.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -4,14 +4,14 @@ expression: rendered\n ---\n \n   > Choose what to import\n-  Choose the Claude Code items to import.\n+  Choose the items to import.\n   Codex may add files to your current project folder.\n-  Your existing Claude Code setup will not be changed.\n+  Your existing agent setup will not be changed.\n   Home\n     [x] Settings (settings.json -> config.toml)\n         Import /Users/alex/.claude/settings.json into /Users/alex/.codex/conf…\n     [x] Recent chat sessions\n-        Import recent Claude Code sessions\n+        Import recent chat sessions\n         1 chat session: Investigate migration UX\n \n   Current project: C:\\workspace\\project",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_customize_action_windows.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -4,14 +4,14 @@ expression: rendered\n ---\n \n   > Choose what to import\n-  Choose the Claude Code items to import.\n+  Choose the items to import.\n   Codex may add files to your current project folder.\n-  Your existing Claude Code setup will not be changed.\n+  Your existing agent setup will not be changed.\n   Home\n   › [x] Settings (settings.json -> config.toml)\n         Import /Users/alex/.claude/settings.json into /Users/alex/.codex/conf…\n     [x] Recent chat sessions\n-        Import recent Claude Code sessions\n+        Import recent chat sessions\n         1 chat session: Investigate migration UX\n \n   Current project: C:\\workspace\\project",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_customize_windows.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -3,11 +3,11 @@ source: tui/src/external_agent_config_migration.rs\n expression: rendered\n ---\n \n-  > Import from Claude Code\n+  > Import from another coding agent\n   Bring over your setup, current project, and recent chats.\n   Codex may add files to your current project folder.\n-  Your existing Claude Code setup will not be changed.\n-  Standard Claude Chat data cannot be imported.\n+  Your existing agent setup will not be changed.\n+  Cloud-hosted chat data cannot be imported.\n     [x] Tools & setup\n         Settings, instructions, integrations, agents, commands, and skills\n     [x] Current project",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_prompt.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -3,11 +3,11 @@ source: tui/src/external_agent_config_migration.rs\n expression: rendered\n ---\n \n-  > Import from Claude Code\n+  > Import from another coding agent\n   Bring over your setup, current project, and recent chats.\n   Codex may add files to your current project folder.\n-  Your existing Claude Code setup will not be changed.\n-  Standard Claude Chat data cannot be imported.\n+  Your existing agent setup will not be changed.\n+  Cloud-hosted chat data cannot be imported.\n     [x] Tools & setup\n         Settings, instructions, integrations, agents, commands, and skills\n     [x] Current project",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__external_agent_config_migration__tests__external_agent_config_migration_prompt_windows.snap",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,12 @@\n+---\n+source: tui/src/external_agent_config_migration_flow_tests.rs\n+expression: messages\n+---\n+Agent import started. You can keep working while it finishes. Imported setup will apply to new chats.\n+Agent import started. You can keep working while it finishes. Imported setup will apply to new chats. 1 additional item remains. After it finishes, run /import again to review it.\n+Agent import started. You can keep working while it finishes. Imported setup will apply to new chats. 2 additional items remain. After it finishes, run /import again to review them.\n+Agent import finished. Run /import again to check for additional items.\n+No supported agent setup was found to import.\n+Agent import is unavailable in remote sessions. Start Codex locally and run /import.\n+Agent import is unavailable while Codex is connected to the local app-server daemon. Stop the daemon, restart Code...",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__external_agent_config_migration_flow__tests__external_agent_config_migration_messages.snap",
+      "status": "added"
+    }
+  ],
+  "linked_issues": [
+    "#27064",
+    "#27065",
+    "#27070",
+    "#27071"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nExternal-agent import should be discoverable and deliberate without blocking startup or claiming the public `codex [PROMPT]` CLI namespace. The slash command keeps the flow local to the interactive TUI and reuses the existing app-server import API.\n\n## What changed\n\n- add the user-facing `/import` slash command\n- detect external-agent importable items only when the command is invoked\n- run imports through the embedded local app-server\n- show start and completion messages, refresh configuration, and block duplicate imports while one is pending\n- reject the flow for unsupported remote and local-daemon sessions\n\n## Validation\n\n- `just test -p codex-tui external_agent_config_migration` (10 passed)\n- manually exercised an isolated TUI fixture with existing external-agent setup and session data using a fresh `CODEX_HOME`\n- verified picker customization, plugin and session detection, import completion, repeated invocation, and imported-session resume context\n- the broader `just test -p codex-tui` run passed 2,805 tests, with 2 unrelated guardian feature-flag failures and 4 skipped tests\n\n## Draft follow-ups\n\n- review whether completion messaging should remain attached to the initiating chat if the user switches chats during an import\n- review shutdown semantics for an in-progress background import\n\n## Stack\n\n1. [#27064](https://github.com/openai/codex/pull/27064): remove the startup migration flow\n2. [#27065](https://github.com/openai/codex/pull/27065): extract the picker renderer\n3. [#27070](https://github.com/openai/codex/pull/27070): add the external-agent import picker UX\n4. [#27071](https://github.com/openai/codex/pull/27071): expose the flow through `/import`\n\n**This PR is stack item 4.** Draft while the lower stack dependencies are reviewed.",
+    "labels": [],
+    "merged_at": "2026-06-10T19:53:16Z",
+    "number": 27071,
+    "state": "merged",
+    "title": "[codex] add /import for external agents",
+    "url": "https://github.com/openai/codex/pull/27071"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

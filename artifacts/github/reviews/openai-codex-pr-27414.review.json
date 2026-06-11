@@ -1,0 +1,70 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27414",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27414",
+    "commit_shas": [
+      "679f3b6b5677d685581358f37e7a3a7ddce2466d",
+      "d1db1d33d190781ea06aa44692e9c31c4c45c683"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Preserve disabled MCP servers across runtime overlays",
+        "url": "https://github.com/openai/codex/pull/27414",
+        "meta": "Merged 2026-06-10T20:11:20Z"
+      },
+      {
+        "kind": "commit",
+        "title": "preserve disabled MCP servers across runtime overlays",
+        "url": "https://github.com/openai/codex/commit/679f3b6b5677d685581358f37e7a3a7ddce2466d"
+      },
+      {
+        "kind": "commit",
+        "title": "Merge branch 'main' into eprovencher/fix-disabled-mcp-initialization",
+        "url": "https://github.com/openai/codex/commit/d1db1d33d190781ea06aa44692e9c31c4c45c683"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-11T14:06:31Z",
+  "observed_change": "Codex preserves configured `enabled = false` MCP servers after runtime fallback and extension overlays are applied.",
+  "changed_surfaces": [
+    "core MCP runtime configuration assembly",
+    "Apps MCP runtime overlay behavior",
+    "extension-backed MCP regression tests"
+  ],
+  "user_visible_path": "Users who explicitly disable an MCP server, including `codex_apps`, should not have that server re-enabled by compatibility or extension-provided runtime overlays.",
+  "control_plane_relevance": "High for Decodex Control Plane because disabled MCP server intent is a core operator safety and compatibility boundary for plugin/app-server orchestration.",
+  "compatibility_risk": "Medium positive compatibility fix: upstream now preserves disabled server state, so Decodex should stop assuming runtime overlays may override `enabled = false` on same-name servers once this version is present.",
+  "adoption_opportunity": "Use this behavior as evidence that disabled MCP server state survives runtime overlays and simplify Decodex troubleshooting around unexpected `codex_apps` initialization.",
+  "community_value": "High for MCP and app/plugin operators because it prevents explicitly disabled servers from being initialized by overlay defaults.",
+  "deprecated_or_breaking_notes": "No MCP server is removed; the change restores disabled state after overlays while preserving `Remove` precedence and other overlay fields.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27414 says same-name runtime overlays could default replacement MCP configs to enabled and initialize a server explicitly configured with `enabled = false`.",
+    "`codex-rs/core/src/mcp.rs` records disabled server names before adding runtime fallbacks and extension overlays.",
+    "`codex-rs/core/src/mcp.rs` restores `enabled = false` for those names after overlay application when the server remains present.",
+    "`codex-rs/ext/mcp/tests/hosted_apps_mcp.rs` adds `runtime_overlay_preserves_disabled_server` for a disabled `codex_apps` server.",
+    "The PR body says the connection manager already filtered disabled servers, but the configured disabled state was lost before that filter.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27414.json` records 2 changed files for the merged PR."
+  ],
+  "caveats": "The behavior is a targeted MCP runtime-overlay fix. It does not change unrelated MCP connection filtering or remove overlay fields.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Disabled MCP server preservation is directly relevant to Control Plane safety and compatibility."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The fix has a concise operator-facing explanation for MCP users."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Audit Decodex MCP troubleshooting notes for stale warnings about runtime overlays re-enabling disabled servers."
+    }
+  ]
+}
