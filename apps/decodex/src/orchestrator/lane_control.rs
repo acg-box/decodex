@@ -306,12 +306,13 @@ pub(super) fn build_lane_inspect_report(
 	issue: &str,
 	run_id: Option<&str>,
 ) -> Result<LaneInspectReport> {
-	let snapshot = orchestrator::build_operator_status_snapshot(
+	let runs = orchestrator::build_lane_inspect_operator_runs(
 		project,
 		state_store,
+		issue,
+		run_id,
 		DEFAULT_STATUS_RUN_LIMIT,
 	)?;
-	let runs = matching_lane_runs(&snapshot, issue, run_id);
 
 	if runs.is_empty() {
 		eyre::bail!(
