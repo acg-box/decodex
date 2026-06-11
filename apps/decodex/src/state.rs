@@ -8,7 +8,7 @@ use std::{
 	cmp,
 	collections::{HashMap, HashSet},
 	fs::{self, File, OpenOptions, TryLockError},
-	io::{Error, ErrorKind, Read, Seek, SeekFrom, Write},
+	io::{ErrorKind, Read, Seek, SeekFrom, Write},
 	path::{Path, PathBuf},
 	process,
 	sync::{Mutex, MutexGuard, OnceLock},

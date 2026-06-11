@@ -16,6 +16,7 @@ use github::GhCommandResolution;
 use state::WORKTREE_PROVENANCE_FILESYSTEM_SCAN;
 use state::WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN;
 use state::WORKTREE_PROVENANCE_LEGACY_UNKNOWN;
+use state::ProjectLoopEvidenceSnapshot;
 
 use crate::pull_request::{self, PullRequestLandingGateView};
 use crate::worktree;
@@ -306,16 +307,23 @@ fn build_operator_status_snapshot_with_account_mode(
 ) -> crate::prelude::Result<OperatorStatusSnapshot> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let (leased_runs, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
+	let loop_evidence = state_store.project_loop_evidence_snapshot(project.service_id())?;
 	let project_display_name = operator_project_display_name(project);
 	let recent_runs = recent_runs
 		.into_iter()
 		.map(|run| {
-			operator_run_status(project, state_store, &project_display_name, run, now_unix_epoch)
+			operator_run_status(
+				project,
+				&loop_evidence,
+				&project_display_name,
+				run,
+				now_unix_epoch,
+			)
 		})
 		.collect::<crate::prelude::Result<Vec<_>>>()?;
 	let active_runs = operator_active_run_statuses(
 		project,
-		state_store,
+		&loop_evidence,
 		&project_display_name,
 		leased_runs,
 		&recent_runs,
@@ -376,6 +384,7 @@ fn build_lane_inspect_operator_runs(
 ) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
 	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
 	let (active_runs, recent_runs) = state_store.list_project_runs(project.service_id(), limit)?;
+	let loop_evidence = state_store.project_loop_evidence_snapshot(project.service_id())?;
 	let project_display_name = operator_project_display_name(project);
 	let mut seen_run_ids = HashSet::new();
 	let mut runs = Vec::new();
@@ -393,7 +402,7 @@ fn build_lane_inspect_operator_runs(
 
 		runs.push(operator_run_status(
 			project,
-			state_store,
+			&loop_evidence,
 			&project_display_name,
 			run,
 			now_unix_epoch,
@@ -421,7 +430,7 @@ fn project_run_status_issue_matches(run: &ProjectRunStatus, issue: &str) -> bool
 
 fn operator_active_run_statuses(
 	project: &ServiceConfig,
-	state_store: &StateStore,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	project_display_name: &str,
 	leased_runs: Vec<ProjectRunStatus>,
 	recent_runs: &[OperatorRunStatus],
@@ -429,7 +438,15 @@ fn operator_active_run_statuses(
 ) -> crate::prelude::Result<Vec<OperatorRunStatus>> {
 	let mut active_runs = leased_runs
 		.into_iter()
-		.map(|run| operator_run_status(project, state_store, project_display_name, run, now_unix_epoch))
+		.map(|run| {
+			operator_run_status(
+				project,
+				loop_evidence,
+				project_display_name,
+				run,
+				now_unix_epoch,
+			)
+		})
 		.collect::<crate::prelude::Result<Vec<_>>>()?
 		.into_iter()
 		.filter(operator_run_counts_as_active)
@@ -4960,7 +4977,7 @@ fn append_primary_account_if_missing(
 
 fn operator_run_status(
 	project: &ServiceConfig,
-	state_store: &StateStore,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	project_display_name: &str,
 	run: ProjectRunStatus,
 	now_unix_epoch: i64,
@@ -4970,7 +4987,7 @@ fn operator_run_status(
 	let app_server_state = operator_run_app_server_state(&run, marker.as_ref());
 	let protocol_summary = operator_run_protocol_summary(&run, marker.as_ref());
 	let terminal_finalize_projection =
-		operator_run_terminal_finalize_projection(project, state_store, &run)?;
+		operator_run_terminal_finalize_projection(loop_evidence, &run);
 	let lifecycle = operator_run_lifecycle_projection(
 		&run,
 		marker.as_ref(),
@@ -5005,7 +5022,7 @@ fn operator_run_status(
 	let loop_status =
 		operator_run_loop_status(
 			project,
-			state_store,
+			loop_evidence,
 			&run,
 			&lifecycle.status,
 			&lifecycle.phase,
@@ -5188,15 +5205,15 @@ fn operator_run_private_evidence(
 
 fn operator_run_loop_status(
 	project: &ServiceConfig,
-	state_store: &StateStore,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	run: &ProjectRunStatus,
 	status: &str,
 	phase: &str,
 	current_operation: &str,
 ) -> crate::prelude::Result<OperatorLoopStatus> {
-	operator_loop_status_for_run(
+	operator_loop_status_for_run_with_evidence(
 		project,
-		state_store,
+		loop_evidence,
 		run.issue_id(),
 		run.run_id(),
 		run.attempt_number(),
@@ -5260,22 +5277,38 @@ fn operator_loop_status_for_run(
 	default_review_phase: Option<&str>,
 	lifecycle_summary: Option<String>,
 ) -> crate::prelude::Result<OperatorLoopStatus> {
+	let loop_evidence = state_store.project_loop_evidence_snapshot(project.service_id())?;
+
+	operator_loop_status_for_run_with_evidence(
+		project,
+		&loop_evidence,
+		issue_id,
+		run_id,
+		attempt_number,
+		default_review_phase,
+		lifecycle_summary,
+	)
+}
+
+fn operator_loop_status_for_run_with_evidence(
+	project: &ServiceConfig,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
+	issue_id: &str,
+	run_id: &str,
+	attempt_number: i64,
+	default_review_phase: Option<&str>,
+	lifecycle_summary: Option<String>,
+) -> crate::prelude::Result<OperatorLoopStatus> {
 	let review_level = project.codex().review_level();
 	let review = operator_review_loop_status(
 		review_level,
-		state_store,
-		project.service_id(),
+		loop_evidence,
 		issue_id,
 		run_id,
 		attempt_number,
 		default_review_phase,
 	)?;
-	let events = state_store.list_private_execution_events(
-		project.service_id(),
-		issue_id,
-		run_id,
-		attempt_number,
-	)?;
+	let events = loop_evidence.private_events(issue_id, run_id, attempt_number);
 	let architecture_recovery = events
 		.iter()
 		.rev()
@@ -5320,8 +5353,7 @@ fn operator_loop_status_for_run(
 
 fn operator_review_loop_status(
 	review_level: ReviewLevel,
-	state_store: &StateStore,
-	project_id: &str,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	issue_id: &str,
 	run_id: &str,
 	attempt_number: i64,
@@ -5330,12 +5362,8 @@ fn operator_review_loop_status(
 	let latest_checkpoint = ["handoff", "repair"]
 		.into_iter()
 		.filter_map(|phase| {
-			state_store
-				.review_policy_checkpoint(project_id, issue_id, run_id, attempt_number, phase)
-				.transpose()
+			loop_evidence.review_policy_checkpoint(issue_id, run_id, attempt_number, phase)
 		})
-		.collect::<crate::prelude::Result<Vec<_>>>()?
-		.into_iter()
 		.max_by(|left, right| {
 			left.updated_at_unix()
 				.cmp(&right.updated_at_unix())
@@ -5797,27 +5825,18 @@ fn operator_run_protocol_summary(
 }
 
 fn operator_run_terminal_finalize_projection(
-	project: &ServiceConfig,
-	state_store: &StateStore,
+	loop_evidence: &ProjectLoopEvidenceSnapshot,
 	run: &ProjectRunStatus,
-) -> crate::prelude::Result<Option<OperatorTerminalFinalizeProjection>> {
-	let events = state_store.list_private_execution_events(
-		project.service_id(),
-		run.issue_id(),
-		run.run_id(),
-		run.attempt_number(),
-	)?;
-	let Some(path) = events
+) -> Option<OperatorTerminalFinalizeProjection> {
+	let events = loop_evidence.private_events(run.issue_id(), run.run_id(), run.attempt_number());
+	let path = events
 		.iter()
 		.rev()
 		.find(|event| event.event_type() == "terminal_finalize")
 		.and_then(|event| event.payload().get("path"))
-		.and_then(Value::as_str)
-	else {
-		return Ok(None);
-	};
+		.and_then(Value::as_str)?;
 
-	Ok(match path {
+	match path {
 		"review_handoff" => Some(OperatorTerminalFinalizeProjection {
 			status: "review_handoff_pending",
 			phase: "terminal_pending",
@@ -5843,7 +5862,7 @@ fn operator_run_terminal_finalize_projection(
 			current_operation: RUN_OPERATION_REVIEW_WRITEBACK,
 		}),
 		_ => None,
-	})
+	}
 }
 
 fn operator_run_visible_status(
