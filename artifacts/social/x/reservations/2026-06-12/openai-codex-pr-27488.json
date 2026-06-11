@@ -34,7 +34,8 @@
   ],
   "owner": {
     "automation_id": "decodex-x-publisher",
-    "branch": "codex/x-publisher-pr-27488-20260612"
+    "branch": "codex/x-publisher-pr-27488-20260612",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/340"
   },
   "evidence_notes": [
     "The social_candidate/v1 artifact has decision.worthiness = publish, priority critical, and mode operator_impact for openai-codex-pr-27488.",
