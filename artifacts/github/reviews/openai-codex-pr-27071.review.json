@@ -1,0 +1,74 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27071",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27071",
+    "commit_shas": [
+      "ee228545d822de157518dec714dca4f13cbd3374",
+      "15bbbdf663d80d399cdadefd6987bf17999faab6"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] add /import for external agents",
+        "url": "https://github.com/openai/codex/pull/27071",
+        "meta": "Merged 2026-06-10T19:53:16Z"
+      },
+      {
+        "kind": "commit",
+        "title": "tui: add explicit external agent import command",
+        "url": "https://github.com/openai/codex/commit/ee228545d822de157518dec714dca4f13cbd3374"
+      },
+      {
+        "kind": "commit",
+        "title": "tui: make external agent import copy generic",
+        "url": "https://github.com/openai/codex/commit/15bbbdf663d80d399cdadefd6987bf17999faab6"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-11T14:06:31Z",
+  "observed_change": "Codex added a TUI `/import` slash command that launches the external-agent import picker on demand and routes imports through the local app-server API.",
+  "changed_surfaces": [
+    "TUI slash command registry and dispatch",
+    "external-agent import flow and user-facing copy",
+    "app-server client import detect/import wrappers",
+    "app-server completion notification delivery",
+    "CLI parse behavior for `codex import`",
+    "TUI snapshots and import-flow tests"
+  ],
+  "user_visible_path": "In an interactive local Codex TUI session, users can run `/import` to detect and import setup, project items, and recent chats from another coding agent without making `codex import` a top-level CLI subcommand.",
+  "control_plane_relevance": "High for Decodex Control Plane because the import path depends on app-server delivery of `ExternalAgentConfigImportCompleted` and explicitly excludes remote and local-daemon sessions.",
+  "compatibility_risk": "Medium: integrations that mirror slash-command availability or app-server notification delivery need to account for the new import command, completion notification, and unsupported-session messages.",
+  "adoption_opportunity": "Expose the import workflow as a local-session-only operator affordance and monitor app-server completion delivery before suggesting Decodex automation around imported sessions.",
+  "community_value": "High for Codex users migrating from another coding agent because the PR documents a concrete `/import` entrypoint and safe on-demand migration behavior.",
+  "deprecated_or_breaking_notes": "`codex import` remains parsed as an interactive prompt instead of a top-level CLI subcommand; the previous startup migration flow had already been removed lower in the stack.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27071 says `/import` detects external-agent items only when invoked, runs imports through the embedded local app-server, refreshes config, blocks duplicate imports, and rejects unsupported remote and local-daemon sessions.",
+    "`codex-rs/tui/src/slash_command.rs` adds `SlashCommand::Import` with the description for importing setup, project, and recent chats from another coding agent.",
+    "`codex-rs/tui/src/chatwidget/slash_dispatch.rs` dispatches `/import` to `AppEvent::OpenExternalAgentConfigMigration`.",
+    "`codex-rs/tui/src/external_agent_config_migration_flow.rs` adds local, remote-unavailable, daemon-unavailable, no-items, in-progress, and completion messages for the flow.",
+    "`codex-rs/app-server-client/src/lib.rs` and `codex-rs/app-server/src/in_process.rs` mark `ExternalAgentConfigImportCompleted` as requiring delivery.",
+    "`codex-rs/cli/src/main.rs` adds a test proving `codex import` remains an interactive prompt rather than a parsed subcommand.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27071.json` records 18 changed files for the merged PR."
+  ],
+  "caveats": "The PR is the fourth item in an import stack and depends on prior picker and startup-flow changes. The public claim should stay scoped to local interactive TUI sessions.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The new slash command and app-server completion notification affect Decodex operator compatibility and possible migration UX."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The local `/import` entrypoint has a clear user-facing migration story with source-backed caveats."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Check whether Decodex operator docs or Control Plane status surfaces should mention local-only import availability."
+    }
+  ]
+}

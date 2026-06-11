@@ -1,0 +1,53 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27311",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex plugin operators",
+  "candidate_text": [
+    "Codex remote-plugin tool suggestions no longer read the local openai-curated marketplace first. That avoids wasted local scans and malformed local manifests in remote-catalog mode, while normal plugin/list behavior stays intact. PR: https://github.com/openai/codex/pull/27311"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27311.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27311.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27311"
+    ]
+  },
+  "evidence_notes": [
+    "Tool-suggest discovery now excludes local `openai-curated` when remote plugins are enabled.",
+    "Other marketplace listing callers still include local curated discovery.",
+    "Regression coverage verifies malformed local curated manifests are not loaded in the remote-plugin suggestion path."
+  ],
+  "claims": [
+    {
+      "text": "Remote-plugin tool-suggestion discovery skips the local curated marketplace scan.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27311.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Normal plugin/list and local curated marketplace behavior are preserved outside that remote-plugin suggestion path.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27311.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The change is operationally useful for plugin operators diagnosing remote plugin discovery behavior.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27311:operator_impact"
+  },
+  "caveats": [
+    "Do not imply `openai-curated` marketplace support was removed.",
+    "Keep the claim scoped to remote-plugin tool suggestions."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether this operator-impact candidate should be posted or deferred."
+  ]
+}
