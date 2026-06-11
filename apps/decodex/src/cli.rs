@@ -26,7 +26,7 @@ use crate::{
 		LaneSteerRequest, RunOnceRequest, ServeRequest,
 	},
 	prelude::{Result, eyre},
-	program_intake::{self, IssueBatchIntakeCommandRequest},
+	program_intake::{self, GoalIntakeCommandRequest, IssueBatchIntakeCommandRequest},
 	radar::{
 		self, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
 		RadarBundleValidateRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
@@ -628,8 +628,53 @@ struct IntakeCommand {
 impl IntakeCommand {
 	fn run(&self) -> Result<()> {
 		match &self.command {
+			IntakeSubcommand::Goal(args) => args.run(),
 			IntakeSubcommand::Issues(args) => args.run(),
 		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct IntakeGoalCommand {
+	#[command(flatten)]
+	project_config: ProjectConfigArgs,
+	/// Registered Decodex service id to intake against.
+	#[arg(long, value_name = "SERVICE_ID", conflicts_with = "config")]
+	project: Option<String>,
+	/// Read tracker state and print the deterministic goal-intake report without mutation.
+	#[arg(long, conflicts_with = "apply", required_unless_present = "apply")]
+	dry_run: bool,
+	/// Create or update generated normal Linear issues and persist local Program Intake state.
+	#[arg(long, conflicts_with = "dry_run")]
+	apply: bool,
+	/// Existing Linear issue whose team and startable state should anchor generated issues.
+	#[arg(long, value_name = "ISSUE")]
+	team_issue: Option<String>,
+	/// Emit structured JSON instead of human-readable text.
+	#[arg(long)]
+	json: bool,
+	/// Accepted Decision Contract identifier to materialize.
+	#[arg(value_name = "CONTRACT_ID")]
+	contract_id: String,
+}
+impl IntakeGoalCommand {
+	fn run(&self) -> Result<()> {
+		let report = program_intake::run_goal_intake_command(GoalIntakeCommandRequest {
+			config_path: self.project_config.as_path(),
+			project_id: self.project.as_deref(),
+			contract_id: &self.contract_id,
+			team_issue_identifier: self.team_issue.as_deref(),
+			dry_run: self.dry_run,
+			apply: self.apply,
+		})?;
+
+		if self.json {
+			println!("{}", serde_json::to_string_pretty(&report)?);
+		} else {
+			print!("{}", program_intake::render_goal_intake_report(&report));
+		}
+
+		Ok(())
 	}
 }
 
@@ -1605,6 +1650,8 @@ enum ResearchSubcommand {
 
 #[derive(Debug, Subcommand)]
 enum IntakeSubcommand {
+	/// Dry-run or apply a promoted Decision Contract as normal issue-backed goal intake.
+	Goal(IntakeGoalCommand),
 	/// Dry-run or persist existing Linear issues as an internal program intake batch.
 	Issues(IntakeIssuesCommand),
 }
@@ -1773,12 +1820,12 @@ mod tests {
 
 	use crate::cli::{
 		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
-		CommitCommand, DiagnoseCommand, EvidenceCommand, IntakeCommand, IntakeIssuesCommand,
-		IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand, LaneInterruptCommand,
-		LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand, ProbeCommand,
-		ProjectCommand, ProjectConfigArgs, ProjectSubcommand, RadarBackfillReleaseRangeCommand,
-		RadarBundleBuildCommand, RadarBundleCommand, RadarBundleSubcommand,
-		RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
+		CommitCommand, DiagnoseCommand, EvidenceCommand, IntakeCommand, IntakeGoalCommand,
+		IntakeIssuesCommand, IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand,
+		LaneInterruptCommand, LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand,
+		ProbeCommand, ProjectCommand, ProjectConfigArgs, ProjectSubcommand,
+		RadarBackfillReleaseRangeCommand, RadarBundleBuildCommand, RadarBundleCommand,
+		RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
 		RadarLedgerIngestExistingCommand, RadarLedgerSubcommand, RadarLedgerSummaryCommand,
 		RadarRefreshReleaseDeltaCommand, RadarRefreshUpstreamQueueCommand,
 		RadarRenderSignalCommand, RadarSubcommand, RadarValidateCommand, RecoverCommand,
@@ -2563,6 +2610,37 @@ mod tests {
 					..
 				})
 			}) if issues == vec![String::from("XY-1"), String::from("XY-2")]
+		));
+	}
+
+	#[test]
+	fn parses_intake_goal_apply_with_project_and_team_anchor() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"intake",
+			"goal",
+			"--project",
+			"decodex",
+			"goal-intake-contract",
+			"--apply",
+			"--team-issue",
+			"XY-852",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Intake(IntakeCommand {
+				command: IntakeSubcommand::Goal(IntakeGoalCommand {
+					project: Some(_),
+					contract_id,
+					dry_run: false,
+					apply: true,
+					team_issue: Some(team_issue),
+					json: true,
+					..
+				})
+			}) if contract_id == "goal-intake-contract" && team_issue == "XY-852"
 		));
 	}
 
