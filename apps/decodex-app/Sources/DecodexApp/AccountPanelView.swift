@@ -279,10 +279,6 @@ struct AccountPanelView: View {
 			header
 			accountSummary
 
-			if globalActiveRuns.isEmpty == false {
-				globalRunSummary
-			}
-
 			if telemetryMatrixIsVisible {
 				AccountTelemetryMatrixView(
 					aggregate: accountProfileAggregate,
@@ -609,9 +605,6 @@ struct AccountPanelView: View {
 		if store.accountList?.usageProbeError != nil {
 			height += AccountPanelLayout.sectionSpacing + AccountPanelLayout.noticeHeight
 		}
-		if globalActiveRuns.isEmpty == false {
-			height += AccountPanelLayout.sectionSpacing + AccountRunStripLayout.globalSummaryHeight
-		}
 
 		return height
 	}
@@ -664,30 +657,6 @@ struct AccountPanelView: View {
 		return AccountPanelLayout.telemetryVerticalPadding
 			+ rows.reduce(0, +)
 			+ CGFloat(rows.count - 1) * AccountPanelLayout.telemetryRowSpacing
-	}
-
-	private var globalActiveRuns: [OperatorRunStatus] {
-		store.operatorSnapshot?.activeRuns ?? []
-	}
-
-	private var globalRunSummary: some View {
-		VStack(alignment: .leading, spacing: 6) {
-			HStack(alignment: .firstTextBaseline, spacing: 6) {
-				Image(systemName: "play.circle.fill")
-					.font(PanelFont.accountDetail)
-					.foregroundStyle(PanelPalette.routeAccent(colorScheme))
-					.frame(width: 12)
-				Text("\(globalActiveRuns.count) active")
-					.font(PanelFont.accountDetail)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				Spacer(minLength: 0)
-			}
-
-			AccountRunSummaryView(runs: globalActiveRuns, currentTime: currentTime)
-		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 7)
-		.modernGlassSurface(cornerRadius: 9, depth: .row)
 	}
 
 	private func displayName(for account: CodexAccount) -> String {
@@ -1018,7 +987,6 @@ struct AccountRunSummaryView: View {
 }
 
 private enum AccountRunStripLayout {
-	static let globalSummaryHeight: CGFloat = 42
 	static let contentCoordinateSpace = "account-run-strip-content"
 	static let dragActivationDistance: CGFloat = 1
 	static let edgeControlSpacing: CGFloat = 4
@@ -2999,10 +2967,6 @@ struct OperatorLanePopoverView: View {
 	}
 
 	private var modelBucket: OperatorChildAgentBucket? {
-		guard run.processAlive != false else {
-			return nil
-		}
-
 		return orderedBuckets.first { bucket in
 			bucket.name.caseInsensitiveCompare("Model") == .orderedSame
 		}
