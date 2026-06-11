@@ -1,0 +1,47 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27488",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Add new context window tool",
+        "url": "https://github.com/openai/codex/pull/27488",
+        "meta": "Merged 2026-06-11T03:39:08Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27488",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27488.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex added a direct-model-only `new_context` tool behind the under-development `token_budget` feature so a model can request a fresh context window without a compaction summary.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "operator_impact",
+  "confidence": "confirmed",
+  "evidence": [
+    "`Feature::TokenBudget` gates token-budget context and the new `new_context` tool.",
+    "`NewContextWindowHandler` records a request and returns the message that a new context window will start without summarizing conversation history.",
+    "`maybe_start_new_context_window` replaces session history with fresh initial context and persists an empty-message compaction checkpoint with a new window id.",
+    "The integration test confirms the follow-up request no longer contains the prior request text after the tool call."
+  ],
+  "candidate_followups": [
+    "Audit Decodex rollout reconstruction for empty-message `CompactedItem` checkpoints.",
+    "Decide whether retained automation should allow direct-model-only `new_context` when feature-gated Codex builds expose it.",
+    "Add operator-facing diagnostics for no-summary context resets if Decodex starts consuming them."
+  ],
+  "social_notes": [
+    "Frame as under-development and feature-gated.",
+    "Emphasize the distinction from normal summary compaction.",
+    "Useful angle: long-running Codex sessions can ask for a fresh window instead of spending tokens on a summary."
+  ],
+  "caveats": [
+    "The feature is disabled by default in the feature registry.",
+    "The tool is direct-model-only, not an ordinary user command.",
+    "Do not imply Decodex currently supports or exposes the behavior before a Decodex audit."
+  ]
+}
