@@ -200,9 +200,10 @@ repair agents.
 oversized local logs and agent-evidence event streams, prune old backup files, compact
 old terminal-run protocol events after preserving their summary, and checkpoint the
 SQLite WAL. `decodex serve` also runs the auto-safe subset at startup and periodically
-while it is polling, including 14-day protocol-event compaction for terminal unowned
-runs after the compact summary is preserved. If the runtime database is busy or
-candidate detection fails, serve logs a warning and continues polling.
+while it is polling, including 14-day retention for rotated logs and agent-evidence
+event streams plus 14-day protocol-event compaction for terminal unowned runs after
+the compact summary is preserved. If the runtime database is busy or candidate
+detection fails, serve logs a warning and continues polling.
 
 ## Static Site
 
