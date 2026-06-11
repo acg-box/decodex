@@ -1,6 +1,6 @@
 ---
 name: decodex
-description: Use as the conductor for Decodex work whenever the user asks to use, configure, operate, debug, or author Decodex. Routes between manual CLI workflows and runtime-owned automation workflows, and keeps Decodex-specific authority in the Decodex repo rather than generic Playbook guidance.
+description: Use when the user asks to use, configure, operate, debug, or author Decodex. Routes research/design, planning, manual CLI, and runtime-owned automation workflows through Decodex-specific authority.
 ---
 
 # Decodex
