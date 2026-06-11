@@ -5,6 +5,8 @@ use orchestrator::OperatorControlRequests;
 use state::RUN_CONTROL_CHANNEL_DIR;
 use state::RUN_CONTROL_CHANNEL_TRANSPORT_LOCAL_FILE;
 use process::Child;
+use orchestrator::DASHBOARD_MAX_WEBSOCKET_CLIENTS;
+use orchestrator::DashboardClientSubscription;
 
 use crate::runtime;
 
@@ -414,6 +416,7 @@ fn operator_dashboard_websocket_sends_cached_run_activity_on_connect() {
 		},
 	)
 	.expect("account marker should write");
+
 	let run_activity =
 		orchestrator::build_operator_run_activity_event(&state_store).expect("run activity should build");
 
@@ -1260,7 +1263,7 @@ fn dashboard_event_hub_unregisters_websocket_clients_and_caps_fanout() {
 	let hub = DashboardEventHub::default();
 	let mut registrations = Vec::new();
 
-	for _ in 0..orchestrator::DASHBOARD_MAX_WEBSOCKET_CLIENTS {
+	for _ in 0..DASHBOARD_MAX_WEBSOCKET_CLIENTS {
 		registrations.push(hub.subscribe().expect("client should subscribe below cap"));
 	}
 
@@ -1318,7 +1321,7 @@ fn dashboard_event_hub_caches_and_filters_last_run_activity_event() {
 		"activeRunsComplete": true,
 		"activeRunScope": "complete",
 	});
-	let subscription = orchestrator::DashboardClientSubscription {
+	let subscription = DashboardClientSubscription {
 		project_id: Some(String::from("decodex")),
 		issue_id: Some(String::from("issue-1")),
 		run_id: None,
