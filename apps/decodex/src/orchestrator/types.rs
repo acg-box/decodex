@@ -1221,10 +1221,14 @@ struct TerminalFailureOutcome {
 	retry_guarded_by_state: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct OperatorStatusSnapshot {
 	project_id: String,
 	run_limit: usize,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	status_source: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	snapshot_age_seconds: Option<i64>,
 	warnings: Vec<String>,
 	warning_details: Vec<OperatorSnapshotWarningDetail>,
 	connector_backoffs: Vec<OperatorConnectorBackoffStatus>,
@@ -1240,7 +1244,7 @@ struct OperatorStatusSnapshot {
 	post_review_lanes: Vec<OperatorPostReviewLaneStatus>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorSnapshotWarningDetail {
 	warning: String,
 	project_id: Option<String>,
@@ -1249,7 +1253,7 @@ struct OperatorSnapshotWarningDetail {
 	next_action: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorConnectorBackoffStatus {
 	project_id: String,
 	connector: String,
@@ -1263,7 +1267,7 @@ struct OperatorConnectorBackoffStatus {
 	warning: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorProjectStatus {
 	project_id: String,
 	config_path: String,
@@ -1284,7 +1288,7 @@ struct OperatorProjectStatus {
 	warning_count: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorExecutionProgramStatus {
 	program_id: String,
 	source_contract_id: String,
@@ -1340,7 +1344,7 @@ impl OperatorExecutionProgramStatus {
 	}
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorGitHubCliAuthority {
 	command_path: String,
 	resolved_path: Option<String>,
@@ -1350,13 +1354,13 @@ struct OperatorGitHubCliAuthority {
 	next_action: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorCodexAccountControlStatus {
 	mode: String,
 	account_selector: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorHistoryLaneStatus {
 	project_id: String,
 	issue_id: String,
@@ -1370,7 +1374,7 @@ struct OperatorHistoryLaneStatus {
 	attempts: Vec<OperatorRunStatus>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorHistoryLedgerOutcome {
 	ledger_status: String,
 	final_outcome: String,
@@ -1388,7 +1392,7 @@ struct OperatorHistoryLedgerOutcome {
 	record_count: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorRunStatus {
 	project_id: String,
 	project_display_name: String,
@@ -1445,7 +1449,7 @@ struct OperatorRunStatus {
 	worktree_path: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorRunControlCapability {
 	project_id: String,
 	issue_id: String,
@@ -1460,8 +1464,9 @@ struct OperatorRunControlCapability {
 	updated_at: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorQueuedIssueStatus {
+	project_id: String,
 	issue_id: String,
 	issue_identifier: String,
 	title: String,
@@ -1475,7 +1480,7 @@ struct OperatorQueuedIssueStatus {
 	blocker_identifiers: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorQueuedIssueAttentionStatus {
 	summary: String,
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -1502,7 +1507,7 @@ struct OperatorQueuedIssueAttentionStatus {
 	worktree_has_tracked_changes: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorAuthorityDecisionRequestStatus {
 	phase: String,
 	reason: String,
@@ -1513,7 +1518,7 @@ struct OperatorAuthorityDecisionRequestStatus {
 	resume_condition: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorLoopStatus {
 	review_level: String,
 	autonomy: String,
@@ -1525,14 +1530,14 @@ struct OperatorLoopStatus {
 	decision_request: Option<OperatorAuthorityDecisionRequestStatus>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorReviewLoopStatus {
 	phase: String,
 	status: String,
 	checkpoint: Option<OperatorReviewCheckpointStatus>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorReviewCheckpointStatus {
 	head_sha: String,
 	round: i64,
@@ -1540,7 +1545,7 @@ struct OperatorReviewCheckpointStatus {
 	updated_at: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorArchitectureRecoveryStatus {
 	status: String,
 	reason_code: String,
@@ -1551,13 +1556,13 @@ struct OperatorArchitectureRecoveryStatus {
 	next_action: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorRecoveryBudgetStatus {
 	attempt: u64,
 	max_attempts: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorBoundaryStatus {
 	disposition: String,
 	reason: Option<String>,
@@ -1566,8 +1571,9 @@ struct OperatorBoundaryStatus {
 	improvement_signal_count: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorWorktreeStatus {
+	project_id: String,
 	issue_id: String,
 	issue_identifier: Option<String>,
 	issue_state: Option<String>,
@@ -1580,7 +1586,7 @@ struct OperatorWorktreeStatus {
 	hygiene: Option<OperatorWorktreeHygieneStatus>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorWorktreeProvenanceStatus {
 	source: String,
 	created_at_unix: Option<i64>,
@@ -1588,7 +1594,7 @@ struct OperatorWorktreeProvenanceStatus {
 	audit_required: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorWorktreeHygieneStatus {
 	classification: String,
 	default_branch: String,
@@ -1596,8 +1602,9 @@ struct OperatorWorktreeHygieneStatus {
 	reason: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorPostReviewLaneStatus {
+	project_id: String,
 	issue_id: String,
 	issue_identifier: String,
 	issue_state: String,

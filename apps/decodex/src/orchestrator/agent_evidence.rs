@@ -83,7 +83,7 @@ struct AgentConnectorBackoff {
 	next_action: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct AgentPrivateEvidenceRef {
 	evidence_ref: String,
 	source: String,
