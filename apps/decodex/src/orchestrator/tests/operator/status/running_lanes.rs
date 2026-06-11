@@ -1464,13 +1464,28 @@ fn operator_status_projects_terminal_finalized_run_as_pending_not_active() {
 		.expect("terminal finalize event should record");
 
 	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+
 	let mut child = Command::new("sleep").arg("30").spawn().expect("sleep child should start");
 	let child_pid = child.id();
+
 	state::write_run_activity_marker_for_process(&worktree_path, "run-1", 1, child_pid)
 		.expect("live process marker should write");
 
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
+
+	assert_terminal_pending_status_projection(&snapshot);
+	assert_terminal_pending_lane_inspect(&state_store);
+	assert_terminal_pending_interrupt_rejects_force(&state_store);
+
+	if matches!(child.try_wait(), Ok(None)) {
+		child.kill().expect("sleep child should be killable");
+	}
+
+	child.wait().expect("sleep child should reap");
+}
+
+fn assert_terminal_pending_status_projection(snapshot: &OperatorStatusSnapshot) {
 	let project = snapshot.projects.first().expect("project summary should exist");
 	let run = snapshot
 		.recent_runs
@@ -1498,9 +1513,11 @@ fn operator_status_projects_terminal_finalized_run_as_pending_not_active() {
 		run.loop_status.as_ref().map(|status| status.summary.as_str()),
 		Some("terminal lifecycle: review_handoff_pending")
 	);
+}
 
+fn assert_terminal_pending_lane_inspect(state_store: &StateStore) {
 	let response = String::from_utf8(orchestrator::build_operator_lane_inspect_http_response(
-		&state_store,
+		state_store,
 		format!(
 			"GET {}?projectId=pubfi&issue=PUB-101&runId=run-1 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
 			orchestrator::OPERATOR_LANE_INSPECT_ENDPOINT_PATH
@@ -1520,10 +1537,12 @@ fn operator_status_projects_terminal_finalized_run_as_pending_not_active() {
 	assert_eq!(data["runs"][0]["executionLiveness"], "not_running");
 	assert_eq!(data["runs"][0]["softInterruptAvailable"], false);
 	assert_eq!(data["runs"][0]["hardInterruptAvailable"], false);
+}
 
+fn assert_terminal_pending_interrupt_rejects_force(state_store: &StateStore) {
 	let body = br#"{"projectId":"pubfi","issue":"PUB-101","runId":"run-1","force":true}"#;
 	let response = String::from_utf8(orchestrator::build_operator_lane_interrupt_http_response(
-		&state_store,
+		state_store,
 		format!(
 			"POST {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
 			orchestrator::OPERATOR_LANE_INTERRUPT_ENDPOINT_PATH,
@@ -1539,10 +1558,6 @@ fn operator_status_projects_terminal_finalized_run_as_pending_not_active() {
 	assert_eq!(data["classification"], "soft_interrupt_unavailable");
 	assert_eq!(data["softInterrupt"]["errorClass"], "lane_not_active");
 	assert_eq!(data["hardInterrupt"], Value::Null);
-	if matches!(child.try_wait(), Ok(None)) {
-		child.kill().expect("sleep child should be killable");
-	}
-	child.wait().expect("sleep child should reap");
 }
 
 fn operator_status_response_json_body(response: &str, context: &str) -> Value {

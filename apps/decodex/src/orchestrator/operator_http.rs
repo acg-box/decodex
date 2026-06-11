@@ -53,34 +53,7 @@ enum DashboardClientFrame {
 struct DashboardEventHub {
 	clients: Arc<Mutex<Vec<DashboardClientHandle>>>,
 	last_run_activity: Arc<Mutex<Option<DashboardBroadcastEvent>>>,
-	next_client_id: Arc<AtomicU64>,
-}
-
-#[derive(Debug)]
-struct DashboardClientHandle {
-	id: u64,
-	sender: Sender<DashboardBroadcastEvent>,
-}
-
-struct DashboardClientRegistration {
-	id: u64,
-	receiver: Receiver<DashboardBroadcastEvent>,
-	clients: Arc<Mutex<Vec<DashboardClientHandle>>>,
-}
-impl DashboardClientRegistration {
-	fn recv_timeout(
-		&self,
-		timeout: Duration,
-	) -> std::result::Result<DashboardBroadcastEvent, RecvTimeoutError> {
-		self.receiver.recv_timeout(timeout)
-	}
-}
-impl Drop for DashboardClientRegistration {
-	fn drop(&mut self) {
-		if let Ok(mut clients) = self.clients.lock() {
-			clients.retain(|client| client.id != self.id);
-		}
-	}
+	next_client_id: Arc<Mutex<u64>>,
 }
 impl DashboardEventHub {
 	fn subscribe(&self) -> Result<DashboardClientRegistration> {
@@ -89,12 +62,20 @@ impl DashboardEventHub {
 			.clients
 			.lock()
 			.map_err(|error| eyre::eyre!("Dashboard event client lock poisoned: {error}"))?;
+
 		if clients.len() >= DASHBOARD_MAX_WEBSOCKET_CLIENTS {
 			eyre::bail!(
 				"Dashboard websocket client limit reached ({DASHBOARD_MAX_WEBSOCKET_CLIENTS})."
 			);
 		}
-		let id = self.next_client_id.fetch_add(1, AtomicOrdering::Relaxed);
+
+		let mut next_client_id = self
+			.next_client_id
+			.lock()
+			.map_err(|error| eyre::eyre!("Dashboard event client id lock poisoned: {error}"))?;
+		let id = *next_client_id;
+
+		*next_client_id = next_client_id.saturating_add(1);
 
 		clients.push(DashboardClientHandle { id, sender: event_tx });
 
@@ -107,11 +88,13 @@ impl DashboardEventHub {
 
 	fn broadcast(&self, event_type: &'static str, payload: Value) {
 		let event = DashboardBroadcastEvent { event_type, payload };
+
 		if event_type == "runActivity"
 			&& let Ok(mut last_run_activity) = self.last_run_activity.lock()
 		{
 			*last_run_activity = Some(event.clone());
 		}
+
 		let Ok(mut clients) = self.clients.lock() else {
 			tracing::warn!(
 				"Skipped dashboard event broadcast because the client list lock is poisoned."
@@ -150,6 +133,32 @@ impl DashboardEventHub {
 	}
 }
 
+#[derive(Debug)]
+struct DashboardClientHandle {
+	id: u64,
+	sender: Sender<DashboardBroadcastEvent>,
+}
+
+struct DashboardClientRegistration {
+	id: u64,
+	receiver: Receiver<DashboardBroadcastEvent>,
+	clients: Arc<Mutex<Vec<DashboardClientHandle>>>,
+}
+impl DashboardClientRegistration {
+	fn recv_timeout(
+		&self,
+		timeout: Duration,
+	) -> std::result::Result<DashboardBroadcastEvent, RecvTimeoutError> {
+		self.receiver.recv_timeout(timeout)
+	}
+}
+impl Drop for DashboardClientRegistration {
+	fn drop(&mut self) {
+		if let Ok(mut clients) = self.clients.lock() {
+			clients.retain(|client| client.id != self.id);
+		}
+	}
+}
 #[derive(Clone, Debug)]
 struct DashboardBroadcastEvent {
 	event_type: &'static str,
@@ -716,7 +725,6 @@ fn write_cached_dashboard_run_activity_event(
 		Some(_) | None => {},
 	}
 }
-
 
 fn dashboard_run_activity_event_has_active_runs(event: &DashboardBroadcastEvent) -> bool {
 	event.payload.get("activeRuns").and_then(Value::as_array).is_some_and(|runs| !runs.is_empty())
