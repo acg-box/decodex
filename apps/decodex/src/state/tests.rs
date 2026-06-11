@@ -107,7 +107,8 @@ fn sample_execution_program(contract: &DecisionContract) -> ExecutionProgram {
 	.expect("validation expectations should attach")
 	.with_linear_issue(
 		ExecutionLinearIssueMapping::new("issue-853", "XY-853", "Todo")
-			.expect("issue mapping should validate"),
+			.expect("issue mapping should validate")
+			.with_program_owned_queue_label(true),
 	)
 	.expect("issue mapping should attach");
 
@@ -3066,7 +3067,7 @@ fn execution_programs_persist_reload_and_list_by_contract() {
 
 	assert_eq!(record.project_id(), "decodex");
 	assert_eq!(record.program_id(), "program-853");
-	assert_eq!(record.source_contract_id(), "research-x-loop-contract");
+	assert_eq!(record.source_contract_id(), Some("research-x-loop-contract"));
 	assert_eq!(record.program().nodes().len(), 1);
 	assert!(record.created_at_unix() > 0);
 	assert!(record.updated_at_unix() >= record.created_at_unix());
@@ -3078,7 +3079,7 @@ fn execution_programs_persist_reload_and_list_by_contract() {
 		.expect("execution program should exist");
 
 	assert_eq!(reloaded.created_at(), record.created_at());
-	assert_eq!(reloaded.program().source_contract_id(), "research-x-loop-contract");
+	assert_eq!(reloaded.program().source_contract_id(), Some("research-x-loop-contract"));
 
 	let contract_programs = reopened
 		.list_execution_programs_for_contract("decodex", "research-x-loop-contract")
@@ -3092,6 +3093,31 @@ fn execution_programs_persist_reload_and_list_by_contract() {
 
 	assert_eq!(project_programs.len(), 1);
 	assert_eq!(project_programs[0].program_id(), "program-853");
+
+	let intake_plans =
+		reopened.list_program_intake_plans("decodex").expect("program intake plans should list");
+
+	assert_eq!(intake_plans.len(), 1);
+	assert_eq!(intake_plans[0].program_id(), "program-853");
+	assert_eq!(intake_plans[0].intake_kind(), "goal_intake");
+	assert_eq!(intake_plans[0].source_contract_id(), Some("research-x-loop-contract"));
+
+	let issue_mappings = reopened
+		.list_program_issue_mappings("decodex", "program-853")
+		.expect("program issue mappings should list");
+
+	assert_eq!(issue_mappings.len(), 1);
+	assert_eq!(issue_mappings[0].node_id(), "runtime-readiness");
+	assert_eq!(issue_mappings[0].issue_identifier(), "XY-853");
+	assert!(issue_mappings[0].queue_label_owned_by_program_reconciler());
+
+	let queue_ownership = reopened
+		.program_queue_label_ownership_for_issue("decodex", "issue-853", "decodex:queued:decodex")
+		.expect("program queue label ownership should read");
+
+	assert_eq!(queue_ownership.len(), 1);
+	assert_eq!(queue_ownership[0].program_id(), "program-853");
+	assert_eq!(queue_ownership[0].issue_identifier(), "XY-853");
 }
 
 #[test]
