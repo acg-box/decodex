@@ -2706,6 +2706,27 @@ enum GuardRetention {
 	AdoptingChild,
 }
 
+pub(crate) fn protocol_event_counts_as_work_progress(event_type: &str) -> bool {
+	let normalized = event_type.to_ascii_lowercase();
+
+	if protocol_event_is_non_work_activity(&normalized) {
+		return false;
+	}
+
+	normalized.starts_with("turn/")
+		|| normalized.starts_with("item/")
+		|| normalized == "thread/archive"
+		|| normalized.contains("plan")
+		|| normalized.contains("diff")
+		|| normalized.contains("filechange")
+		|| normalized.contains("patch")
+		|| normalized.contains("command")
+		|| normalized.contains("validation")
+		|| normalized.contains("review")
+		|| normalized.contains("pull_request")
+		|| normalized == "model/response"
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn write_run_activity_marker(
 	worktree_path: &Path,
@@ -2805,7 +2826,11 @@ pub(crate) fn write_run_protocol_activity_marker(
 
 	marker.last_activity_unix_epoch = Some(now);
 	marker.last_protocol_activity_unix_epoch = Some(now);
-	marker.last_progress_unix_epoch = Some(now);
+
+	if protocol_event_counts_as_work_progress(activity.last_event_type) {
+		marker.last_progress_unix_epoch = Some(now);
+	}
+
 	marker.current_operation = Some(RUN_OPERATION_AGENT_RUN.to_owned());
 	marker.thread_id = activity.thread_id.map(str::to_owned).or(marker.thread_id);
 	marker.turn_id = activity.turn_id.map(str::to_owned).or(marker.turn_id);
@@ -3135,6 +3160,25 @@ pub(crate) fn current_process_start_identity() -> Option<String> {
 pub(crate) fn process_start_identity(process_id: u32) -> Option<String> {
 	read_platform_process_start_identity(process_id)
 		.and_then(|identity| normalized_process_start_identity(&identity))
+}
+
+fn protocol_event_is_non_work_activity(normalized_event_type: &str) -> bool {
+	normalized_event_type.starts_with("account/")
+		|| normalized_event_type.starts_with("skills/")
+		|| normalized_event_type.starts_with("thread/goal/")
+		|| normalized_event_type.contains("ratelimit")
+		|| normalized_event_type.contains("rate_limit")
+		|| normalized_event_type == "thread/status/changed"
+		|| normalized_event_type.contains("tokenusage")
+		|| matches!(
+			normalized_event_type,
+			"deprecationnotice"
+				| "warning"
+				| "configwarning"
+				| "guardianwarning"
+				| "model/rerouted"
+				| "model/verification"
+		)
 }
 
 fn normalize_accounts(
