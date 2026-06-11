@@ -16,6 +16,145 @@ use crate::{
 
 pub(crate) const EXECUTION_PROGRAM_SCHEMA: &str = "decodex.execution_program/1";
 pub(crate) const EXECUTION_PROGRAM_RECORD_VERSION: u16 = 1;
+pub(crate) const PROGRAM_INTAKE_PLAN_SCHEMA: &str = "decodex.program_intake_plan/1";
+pub(crate) const PROGRAM_INTAKE_PLAN_RECORD_VERSION: u16 = 1;
+
+/// Source shape for a Program Intake Plan.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ProgramIntakeKind {
+	/// Natural-language goal promoted through an accepted Decision Contract.
+	GoalIntake,
+	/// Operator-supplied batch of normal issue briefs.
+	IssueBatchIntake,
+}
+impl ProgramIntakeKind {
+	/// Stable machine-readable intake kind.
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::GoalIntake => "goal_intake",
+			Self::IssueBatchIntake => "issue_batch_intake",
+		}
+	}
+}
+
+/// Durable planning metadata for first-class program intake.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub(crate) struct ProgramIntakePlan {
+	#[serde(default = "program_intake_plan_schema")]
+	schema: String,
+	#[serde(default = "program_intake_plan_record_version")]
+	record_version: u16,
+	plan_id: String,
+	service_id: String,
+	intake_kind: ProgramIntakeKind,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	source_contract_id: Option<String>,
+	accepted_contract_fingerprint: String,
+	public_summary: String,
+}
+impl ProgramIntakePlan {
+	/// Build program-intake metadata for a promoted natural-language goal.
+	pub(crate) fn goal_intake(
+		plan_id: impl Into<String>,
+		service_id: impl Into<String>,
+		contract: &DecisionContract,
+		accepted_contract_fingerprint: impl Into<String>,
+	) -> Result<Self> {
+		ensure_accepted_contract(contract)?;
+
+		let public_summary =
+			contract.accepted_authority().accepted_objectives().first().cloned().unwrap_or_else(
+				|| format!("Accepted Decision Contract `{}`.", contract.contract_id()),
+			);
+		let plan = Self {
+			schema: program_intake_plan_schema(),
+			record_version: PROGRAM_INTAKE_PLAN_RECORD_VERSION,
+			plan_id: plan_id.into(),
+			service_id: service_id.into(),
+			intake_kind: ProgramIntakeKind::GoalIntake,
+			source_contract_id: Some(contract.contract_id().to_owned()),
+			accepted_contract_fingerprint: accepted_contract_fingerprint.into(),
+			public_summary,
+		};
+
+		plan.validate()?;
+
+		Ok(plan)
+	}
+
+	/// Build program-intake metadata for an accepted issue batch.
+	#[allow(dead_code)]
+	pub(crate) fn issue_batch_intake(
+		plan_id: impl Into<String>,
+		service_id: impl Into<String>,
+		accepted_contract_fingerprint: impl Into<String>,
+		public_summary: impl Into<String>,
+	) -> Result<Self> {
+		let plan = Self {
+			schema: program_intake_plan_schema(),
+			record_version: PROGRAM_INTAKE_PLAN_RECORD_VERSION,
+			plan_id: plan_id.into(),
+			service_id: service_id.into(),
+			intake_kind: ProgramIntakeKind::IssueBatchIntake,
+			source_contract_id: None,
+			accepted_contract_fingerprint: accepted_contract_fingerprint.into(),
+			public_summary: public_summary.into(),
+		};
+
+		plan.validate()?;
+
+		Ok(plan)
+	}
+
+	/// Program intake plan id.
+	pub(crate) fn plan_id(&self) -> &str {
+		&self.plan_id
+	}
+
+	/// Intake source kind.
+	pub(crate) fn intake_kind(&self) -> ProgramIntakeKind {
+		self.intake_kind
+	}
+
+	/// Accepted Decision Contract id for goal intake.
+	pub(crate) fn source_contract_id(&self) -> Option<&str> {
+		self.source_contract_id.as_deref()
+	}
+
+	fn validate(&self) -> Result<()> {
+		validate_required("program intake plan schema", &self.schema)?;
+		validate_required("program intake plan plan_id", &self.plan_id)?;
+		validate_required("program intake plan service_id", &self.service_id)?;
+		validate_required(
+			"program intake plan accepted_contract_fingerprint",
+			&self.accepted_contract_fingerprint,
+		)?;
+		validate_required("program intake plan public_summary", &self.public_summary)?;
+
+		if self.schema != PROGRAM_INTAKE_PLAN_SCHEMA {
+			eyre::bail!(
+				"Program intake plan `{}` has unsupported schema `{}`.",
+				self.plan_id,
+				self.schema
+			);
+		}
+		if self.record_version != PROGRAM_INTAKE_PLAN_RECORD_VERSION {
+			eyre::bail!(
+				"Program intake plan `{}` has unsupported record_version `{}`.",
+				self.plan_id,
+				self.record_version
+			);
+		}
+		if self.intake_kind == ProgramIntakeKind::GoalIntake
+			&& self.source_contract_id.as_deref().is_none_or(str::is_empty)
+		{
+			eyre::bail!("Goal intake plan `{}` must reference a source contract.", self.plan_id);
+		}
+
+		Ok(())
+	}
+}
 
 /// Stage for one internal Execution Program node.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
@@ -156,6 +295,48 @@ impl ExecutionReadinessState {
 	}
 }
 
+/// Durable lifecycle state for one program node.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ExecutionProgramNodeLifecycleState {
+	/// Node exists only as an internal plan and has no normal Linear issue yet.
+	Planned,
+	/// Node is mapped to a normal Linear issue but is intentionally held.
+	Mapped,
+	/// Node is ready to receive the service queue label.
+	Ready,
+	/// Node is ready and already carries the service queue label.
+	Queued,
+	/// Node already has an active lane.
+	Active,
+	/// Node is blocked by dependency, conflict, issue, or briefing evidence.
+	Blocked,
+	/// Node is stopped on human-required issue attention.
+	NeedsAttention,
+	/// Node is terminal.
+	Completed,
+	/// Node no longer matches the accepted contract.
+	Stale,
+	/// Node belongs to a superseded contract.
+	Superseded,
+}
+impl ExecutionProgramNodeLifecycleState {
+	/// Stable machine-readable state name.
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::Planned => "planned",
+			Self::Mapped => "mapped",
+			Self::Ready => "ready",
+			Self::Queued => "queued",
+			Self::Active => "active",
+			Self::Blocked => "blocked",
+			Self::NeedsAttention => "needs_attention",
+			Self::Completed => "completed",
+			Self::Stale => "stale",
+			Self::Superseded => "superseded",
+		}
+	}
+}
+
 /// Queue-label action allowed for a mapped node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ExecutionQueueLabelAction {
@@ -250,6 +431,8 @@ pub(crate) struct ExecutionLinearIssueMapping {
 	issue_identifier: String,
 	issue_state: String,
 	has_queue_label: bool,
+	#[serde(default, skip_serializing_if = "is_false")]
+	queue_label_owned_by_program_reconciler: bool,
 	has_active_label: bool,
 	has_opt_out_label: bool,
 	has_needs_attention_label: bool,
@@ -267,6 +450,7 @@ impl ExecutionLinearIssueMapping {
 			issue_identifier: issue_identifier.into(),
 			issue_state: issue_state.into(),
 			has_queue_label: false,
+			queue_label_owned_by_program_reconciler: false,
 			has_active_label: false,
 			has_opt_out_label: false,
 			has_needs_attention_label: false,
@@ -281,6 +465,14 @@ impl ExecutionLinearIssueMapping {
 	/// Mark whether the issue currently carries the service queue label.
 	pub(crate) fn with_queue_label(mut self, present: bool) -> Self {
 		self.has_queue_label = present;
+
+		self
+	}
+
+	/// Mark that the service queue label was applied through the program reconciler.
+	pub(crate) fn with_program_owned_queue_label(mut self, present: bool) -> Self {
+		self.has_queue_label = present;
+		self.queue_label_owned_by_program_reconciler = present;
 
 		self
 	}
@@ -333,14 +525,26 @@ impl ExecutionLinearIssueMapping {
 		self.has_queue_label
 	}
 
+	/// Whether Decodex may remove the queue label as program-reconciler-owned.
+	pub(crate) fn queue_label_owned_by_program_reconciler(&self) -> bool {
+		self.queue_label_owned_by_program_reconciler
+	}
+
 	fn validate(&self) -> Result<()> {
 		validate_required("execution program issue_mapping.issue_id", &self.issue_id)?;
 		validate_required(
 			"execution program issue_mapping.issue_identifier",
 			&self.issue_identifier,
 		)?;
+		validate_required("execution program issue_mapping.issue_state", &self.issue_state)?;
 
-		validate_required("execution program issue_mapping.issue_state", &self.issue_state)
+		if self.queue_label_owned_by_program_reconciler && !self.has_queue_label {
+			eyre::bail!(
+				"Execution program issue_mapping.queue_label_owned_by_program_reconciler requires has_queue_label.",
+			);
+		}
+
+		Ok(())
 	}
 }
 
@@ -547,6 +751,8 @@ pub(crate) struct ExecutionProgram {
 	service_id: String,
 	source_contract_id: String,
 	accepted_contract_fingerprint: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	program_intake_plan: Option<ProgramIntakePlan>,
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	nodes: Vec<ExecutionProgramNode>,
 }
@@ -560,6 +766,8 @@ impl ExecutionProgram {
 	) -> Result<Self> {
 		ensure_accepted_contract(contract)?;
 
+		let program_id = program_id.into();
+		let service_id = service_id.into();
 		let fingerprint = decision_contract_fingerprint(contract)?;
 
 		for node in &mut nodes {
@@ -569,10 +777,16 @@ impl ExecutionProgram {
 		let program = Self {
 			schema: execution_program_schema(),
 			record_version: EXECUTION_PROGRAM_RECORD_VERSION,
-			program_id: program_id.into(),
-			service_id: service_id.into(),
+			program_id: program_id.clone(),
+			service_id: service_id.clone(),
 			source_contract_id: contract.contract_id().to_owned(),
-			accepted_contract_fingerprint: fingerprint,
+			accepted_contract_fingerprint: fingerprint.clone(),
+			program_intake_plan: Some(ProgramIntakePlan::goal_intake(
+				program_id,
+				service_id,
+				contract,
+				fingerprint.clone(),
+			)?),
 			nodes,
 		};
 
@@ -594,6 +808,11 @@ impl ExecutionProgram {
 	/// Accepted Decision Contract id that authorized this program.
 	pub(crate) fn source_contract_id(&self) -> &str {
 		&self.source_contract_id
+	}
+
+	/// Durable program-intake plan metadata, when the payload is not a legacy row.
+	pub(crate) fn program_intake_plan(&self) -> Option<&ProgramIntakePlan> {
+		self.program_intake_plan.as_ref()
 	}
 
 	/// Program nodes.
@@ -666,6 +885,37 @@ impl ExecutionProgram {
 				self.program_id,
 				self.record_version
 			);
+		}
+
+		if let Some(plan) = &self.program_intake_plan {
+			plan.validate()?;
+
+			if plan.service_id != self.service_id {
+				eyre::bail!(
+					"Execution program `{}` belongs to service `{}` but intake plan belongs to `{}`.",
+					self.program_id,
+					self.service_id,
+					plan.service_id
+				);
+			}
+
+			if let Some(source_contract_id) = plan.source_contract_id()
+				&& source_contract_id != self.source_contract_id
+			{
+				eyre::bail!(
+					"Execution program `{}` belongs to source contract `{}` but intake plan belongs to `{}`.",
+					self.program_id,
+					self.source_contract_id,
+					source_contract_id
+				);
+			}
+
+			if plan.accepted_contract_fingerprint != self.accepted_contract_fingerprint {
+				eyre::bail!(
+					"Execution program `{}` has an intake plan fingerprint mismatch.",
+					self.program_id
+				);
+			}
 		}
 
 		let mut node_ids = HashSet::new();
@@ -877,6 +1127,7 @@ impl ExecutionProgramReadinessContext {
 pub(crate) struct ExecutionNodeEvaluation {
 	node_id: String,
 	state: ExecutionReadinessState,
+	lifecycle_state: ExecutionProgramNodeLifecycleState,
 	reasons: Vec<String>,
 	queue_label_action: Option<ExecutionQueueLabelAction>,
 	linear_issue: Option<ExecutionLinearIssueMapping>,
@@ -890,6 +1141,11 @@ impl ExecutionNodeEvaluation {
 	/// Normalized readiness state.
 	pub(crate) fn state(&self) -> ExecutionReadinessState {
 		self.state
+	}
+
+	/// Durable lifecycle state used for operator program-intake readback.
+	pub(crate) fn lifecycle_state(&self) -> ExecutionProgramNodeLifecycleState {
+		self.lifecycle_state
 	}
 
 	/// Human-readable readiness reasons.
@@ -950,25 +1206,44 @@ impl ExecutionProgramEvaluation {
 	pub(crate) fn operator_summary(&self) -> ExecutionProgramOperatorSummary {
 		let mut summary = ExecutionProgramOperatorSummary {
 			program_id: self.program_id.clone(),
+			planned_count: 0,
+			mapped_count: 0,
 			ready_count: 0,
+			queued_count: 0,
 			blocked_count: 0,
-			paused_count: 0,
+			held_count: 0,
 			active_count: 0,
+			needs_attention_count: 0,
 			completed_count: 0,
 			stale_count: 0,
+			superseded_count: 0,
 			queue_label_eligible_count: 0,
 			mapped_issue_identifiers: Vec::new(),
 		};
 
 		for node in &self.nodes {
-			match node.state {
-				ExecutionReadinessState::Ready => summary.ready_count += 1,
-				ExecutionReadinessState::Blocked | ExecutionReadinessState::NotReady =>
-					summary.blocked_count += 1,
-				ExecutionReadinessState::Paused => summary.paused_count += 1,
-				ExecutionReadinessState::Active => summary.active_count += 1,
-				ExecutionReadinessState::Completed => summary.completed_count += 1,
-				ExecutionReadinessState::Stale => summary.stale_count += 1,
+			match node.lifecycle_state {
+				ExecutionProgramNodeLifecycleState::Planned => {
+					summary.planned_count += 1;
+					summary.held_count += 1;
+				},
+				ExecutionProgramNodeLifecycleState::Mapped => {
+					summary.mapped_count += 1;
+					summary.held_count += 1;
+				},
+				ExecutionProgramNodeLifecycleState::Ready => summary.ready_count += 1,
+				ExecutionProgramNodeLifecycleState::Queued => summary.queued_count += 1,
+				ExecutionProgramNodeLifecycleState::Blocked => summary.blocked_count += 1,
+				ExecutionProgramNodeLifecycleState::Active => {
+					summary.active_count += 1;
+					summary.held_count += 1;
+				},
+				ExecutionProgramNodeLifecycleState::NeedsAttention => {
+					summary.needs_attention_count += 1;
+				},
+				ExecutionProgramNodeLifecycleState::Completed => summary.completed_count += 1,
+				ExecutionProgramNodeLifecycleState::Stale => summary.stale_count += 1,
+				ExecutionProgramNodeLifecycleState::Superseded => summary.superseded_count += 1,
 			}
 
 			if node.queue_label_eligible() {
@@ -992,18 +1267,28 @@ impl ExecutionProgramEvaluation {
 pub(crate) struct ExecutionProgramOperatorSummary {
 	/// Program id.
 	pub(crate) program_id: String,
+	/// Count of planned nodes without a normal Linear issue mapping.
+	pub(crate) planned_count: usize,
+	/// Count of mapped nodes that are intentionally held from queueing.
+	pub(crate) mapped_count: usize,
 	/// Count of ready nodes.
 	pub(crate) ready_count: usize,
+	/// Count of queued nodes.
+	pub(crate) queued_count: usize,
 	/// Count of blocked or intentionally not-ready nodes.
 	pub(crate) blocked_count: usize,
-	/// Count of paused nodes.
-	pub(crate) paused_count: usize,
+	/// Count of held nodes that are planned, mapped, or active.
+	pub(crate) held_count: usize,
 	/// Count of active nodes.
 	pub(crate) active_count: usize,
+	/// Count of human-attention nodes.
+	pub(crate) needs_attention_count: usize,
 	/// Count of done or canceled nodes.
 	pub(crate) completed_count: usize,
 	/// Count of stale nodes.
 	pub(crate) stale_count: usize,
+	/// Count of superseded nodes.
+	pub(crate) superseded_count: usize,
 	/// Count of nodes eligible to receive or retain the service queue label.
 	pub(crate) queue_label_eligible_count: usize,
 	/// Normal Linear issue identifiers linked to the program.
@@ -1034,6 +1319,7 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 	} = input;
 	let mut reasons = Vec::new();
 	let mut state = ExecutionReadinessState::Ready;
+	let mut lifecycle_state = None;
 
 	if current_contract.status() != DecisionContractStatus::AcceptedPromoted
 		|| current_contract.contract_id() != program.source_contract_id
@@ -1041,6 +1327,12 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 		|| current_fingerprint != node.contract_fingerprint
 	{
 		state = ExecutionReadinessState::Stale;
+		lifecycle_state =
+			Some(if current_contract.status() == DecisionContractStatus::RejectedSuperseded {
+				ExecutionProgramNodeLifecycleState::Superseded
+			} else {
+				ExecutionProgramNodeLifecycleState::Stale
+			});
 
 		reasons.push(String::from("node no longer matches the accepted Decision Contract"));
 	} else {
@@ -1086,10 +1378,13 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 	}
 
 	let queue_label_action = queue_label_action_for(node, state, policy);
+	let lifecycle_state =
+		lifecycle_state.unwrap_or_else(|| lifecycle_state_for(node, state, queue_label_action));
 
 	Ok(ExecutionNodeEvaluation {
 		node_id: node.node_id.clone(),
 		state,
+		lifecycle_state,
 		reasons,
 		queue_label_action,
 		linear_issue: node.linear_issue.clone(),
@@ -1224,21 +1519,61 @@ fn queue_label_action_for(
 	let issue = node.linear_issue()?;
 
 	if state != ExecutionReadinessState::Ready {
-		return issue.has_queue_label().then_some(ExecutionQueueLabelAction::Remove);
+		return removable_program_owned_queue_label(issue);
 	}
 	if !matches!(
 		node.queue_intent(),
 		ExecutionQueueIntent::ReadyToQueue | ExecutionQueueIntent::Queued
 	) || !policy.issue_is_startable(issue)
 	{
-		return issue.has_queue_label().then_some(ExecutionQueueLabelAction::Remove);
+		return removable_program_owned_queue_label(issue);
+	}
+	if issue.has_queue_label() {
+		return issue
+			.queue_label_owned_by_program_reconciler()
+			.then_some(ExecutionQueueLabelAction::Retain);
 	}
 
-	Some(if issue.has_queue_label() {
-		ExecutionQueueLabelAction::Retain
-	} else {
-		ExecutionQueueLabelAction::Apply
-	})
+	Some(ExecutionQueueLabelAction::Apply)
+}
+
+fn removable_program_owned_queue_label(
+	issue: &ExecutionLinearIssueMapping,
+) -> Option<ExecutionQueueLabelAction> {
+	(issue.has_queue_label() && issue.queue_label_owned_by_program_reconciler())
+		.then_some(ExecutionQueueLabelAction::Remove)
+}
+
+fn lifecycle_state_for(
+	node: &ExecutionProgramNode,
+	state: ExecutionReadinessState,
+	queue_label_action: Option<ExecutionQueueLabelAction>,
+) -> ExecutionProgramNodeLifecycleState {
+	if let Some(issue) = node.linear_issue()
+		&& issue.has_needs_attention_label
+	{
+		return ExecutionProgramNodeLifecycleState::NeedsAttention;
+	}
+
+	match state {
+		ExecutionReadinessState::NotReady | ExecutionReadinessState::Paused =>
+			if node.linear_issue().is_some() {
+				ExecutionProgramNodeLifecycleState::Mapped
+			} else {
+				ExecutionProgramNodeLifecycleState::Planned
+			},
+		ExecutionReadinessState::Ready => {
+			if matches!(queue_label_action, Some(ExecutionQueueLabelAction::Retain)) {
+				ExecutionProgramNodeLifecycleState::Queued
+			} else {
+				ExecutionProgramNodeLifecycleState::Ready
+			}
+		},
+		ExecutionReadinessState::Blocked => ExecutionProgramNodeLifecycleState::Blocked,
+		ExecutionReadinessState::Active => ExecutionProgramNodeLifecycleState::Active,
+		ExecutionReadinessState::Completed => ExecutionProgramNodeLifecycleState::Completed,
+		ExecutionReadinessState::Stale => ExecutionProgramNodeLifecycleState::Stale,
+	}
 }
 
 fn ensure_accepted_contract(contract: &DecisionContract) -> Result<()> {
@@ -1272,6 +1607,14 @@ fn execution_program_record_version() -> u16 {
 	EXECUTION_PROGRAM_RECORD_VERSION
 }
 
+fn program_intake_plan_schema() -> String {
+	PROGRAM_INTAKE_PLAN_SCHEMA.to_owned()
+}
+
+fn program_intake_plan_record_version() -> u16 {
+	PROGRAM_INTAKE_PLAN_RECORD_VERSION
+}
+
 fn validate_required(name: &str, value: &str) -> Result<()> {
 	if value.trim().is_empty() {
 		eyre::bail!("{name} must not be empty.");
@@ -1292,6 +1635,10 @@ fn non_empty_optional(value: &str) -> Option<&str> {
 	if value.is_empty() { None } else { Some(value) }
 }
 
+fn is_false(value: &bool) -> bool {
+	!*value
+}
+
 fn validate_string_list(name: &str, values: &[String]) -> Result<()> {
 	for value in values {
 		validate_required(name, value)?;
@@ -1306,9 +1653,9 @@ mod tests {
 		execution_program::{
 			ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionDependencySnapshot,
 			ExecutionLinearIssueMapping, ExecutionProgram, ExecutionProgramDependency,
-			ExecutionProgramNode, ExecutionProgramNodeStage, ExecutionProgramReadinessContext,
-			ExecutionQueueIntent, ExecutionQueueLabelAction, ExecutionReadinessState,
-			ExecutionWorkflowPolicy,
+			ExecutionProgramNode, ExecutionProgramNodeLifecycleState, ExecutionProgramNodeStage,
+			ExecutionProgramReadinessContext, ExecutionQueueIntent, ExecutionQueueLabelAction,
+			ExecutionReadinessState, ExecutionWorkflowPolicy, ProgramIntakeKind,
 		},
 		loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
 	};
@@ -1410,6 +1757,35 @@ mod tests {
 	}
 
 	#[test]
+	fn accepted_contract_program_carries_goal_intake_metadata() {
+		let (contract, program) = program_with(vec![ready_node("node-ready", "XY-900")]);
+		let plan = program.program_intake_plan().expect("new programs should carry intake plan");
+
+		assert_eq!(plan.plan_id(), "program-1");
+		assert_eq!(plan.intake_kind(), ProgramIntakeKind::GoalIntake);
+		assert_eq!(plan.source_contract_id(), Some(contract.contract_id()));
+	}
+
+	#[test]
+	fn legacy_execution_program_payload_without_intake_plan_still_validates() {
+		let (_contract, program) = program_with(vec![ready_node("node-ready", "XY-900")]);
+		let mut payload =
+			serde_json::to_value(&program).expect("program payload should serialize to json");
+
+		payload
+			.as_object_mut()
+			.expect("program payload should be an object")
+			.remove("program_intake_plan");
+
+		let legacy_program: ExecutionProgram =
+			serde_json::from_value(payload).expect("legacy program should deserialize");
+
+		legacy_program.validate().expect("legacy program should validate");
+
+		assert!(legacy_program.program_intake_plan().is_none());
+	}
+
+	#[test]
 	fn dependency_blocking_respects_workflow_terminal_states() {
 		let dependent = ready_node("node-dependent", "XY-902")
 			.with_dependencies([ExecutionProgramDependency::new("node-dependency")
@@ -1491,12 +1867,19 @@ mod tests {
 	fn linear_issue_mapping_controls_apply_retain_and_remove() {
 		let apply = ready_node("node-apply", "XY-905");
 		let retain = ready_node("node-retain", "XY-906")
-			.with_linear_issue(issue("XY-906", "Todo").with_queue_label(true))
+			.with_linear_issue(issue("XY-906", "Todo").with_program_owned_queue_label(true))
+			.expect("issue should attach");
+		let ready_human_owned = ready_node("node-ready-human-owned", "XY-910")
+			.with_linear_issue(issue("XY-910", "Todo").with_queue_label(true))
 			.expect("issue should attach");
 		let remove = ready_node("node-remove", "XY-907")
-			.with_linear_issue(issue("XY-907", "In Progress").with_queue_label(true))
+			.with_linear_issue(issue("XY-907", "In Progress").with_program_owned_queue_label(true))
 			.expect("issue should attach");
-		let (contract, program) = program_with(vec![apply, retain, remove]);
+		let human_owned = ready_node("node-human-owned", "XY-909")
+			.with_linear_issue(issue("XY-909", "In Progress").with_queue_label(true))
+			.expect("issue should attach");
+		let (contract, program) =
+			program_with(vec![apply, retain, ready_human_owned, remove, human_owned]);
 		let evaluation = program
 			.evaluate(&contract, &workflow_policy(), &ExecutionProgramReadinessContext::new())
 			.expect("program should evaluate");
@@ -1511,7 +1894,9 @@ mod tests {
 
 		assert_eq!(action_for("node-apply"), Some(ExecutionQueueLabelAction::Apply));
 		assert_eq!(action_for("node-retain"), Some(ExecutionQueueLabelAction::Retain));
+		assert_eq!(action_for("node-ready-human-owned"), None);
 		assert_eq!(action_for("node-remove"), Some(ExecutionQueueLabelAction::Remove));
+		assert_eq!(action_for("node-human-owned"), None);
 		assert_eq!(
 			evaluation
 				.nodes()
@@ -1520,6 +1905,24 @@ mod tests {
 				.expect("node should exist")
 				.state(),
 			ExecutionReadinessState::Blocked
+		);
+		assert_eq!(
+			evaluation
+				.nodes()
+				.iter()
+				.find(|node| node.node_id() == "node-retain")
+				.expect("node should exist")
+				.lifecycle_state(),
+			ExecutionProgramNodeLifecycleState::Queued
+		);
+		assert_eq!(
+			evaluation
+				.nodes()
+				.iter()
+				.find(|node| node.node_id() == "node-ready-human-owned")
+				.expect("node should exist")
+				.lifecycle_state(),
+			ExecutionProgramNodeLifecycleState::Ready
 		);
 	}
 
