@@ -238,7 +238,7 @@ pub(crate) fn print_status(
 		eyre::bail!("`status --limit` must be greater than zero.");
 	}
 
-	let state_store = runtime::open_runtime_store()?;
+	let state_store = runtime::open_runtime_store_lazy()?;
 	let Some(config_path) = resolve_config_path(config_path, &state_store)? else {
 		eyre::bail!(
 			"No Decodex project config found. Pass this command's --config <PROJECT_DIR> or register one with `decodex project add <PROJECT_DIR>`."
