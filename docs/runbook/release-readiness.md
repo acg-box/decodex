@@ -38,9 +38,10 @@ Collect evidence in this order:
    ```
 
 3. Scan checked-in docs, skills, examples, and config templates for historical review
-   config fields. The literal old field names `internal_review_mode` and
-   `external_review_enabled` may appear only in migration history, and they must not
-   appear in active project configs, examples, templates, or release procedures.
+   config fields. Because this gate names the removed keys to define the check, allow
+   `internal_review_mode` and `external_review_enabled` here and in migration history
+   only. They must not appear in active project configs, examples, templates, or other
+   release procedures.
 4. Run the registered project gate before any pushed PR head. This mirrors the
    registered `WORKFLOW.md` order: canonicalize first, then verify.
 
