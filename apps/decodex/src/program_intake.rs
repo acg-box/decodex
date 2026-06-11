@@ -145,7 +145,7 @@ pub(crate) fn run_issue_batch_intake_command(
 	let config = ServiceConfig::from_path(&config_path)?;
 	let workflow = WorkflowDocument::from_path(config.workflow_path())?;
 
-	runtime::register_project_config(&state_store, &config_path, true)?;
+	register_intake_project_config_for_persist(&state_store, &config_path, request.persist)?;
 
 	let tracker = LinearClient::new(config.tracker().resolve_api_key()?)?;
 
@@ -345,6 +345,18 @@ fn resolve_intake_project_config_path(
 	})
 }
 
+fn register_intake_project_config_for_persist(
+	state_store: &StateStore,
+	config_path: &Path,
+	persist: bool,
+) -> Result<()> {
+	if persist {
+		runtime::register_project_config(state_store, config_path, true)?;
+	}
+
+	Ok(())
+}
+
 fn normalize_issue_identifiers(issue_identifiers: Vec<String>) -> Result<Vec<String>> {
 	let mut normalized = issue_identifiers
 		.into_iter()
@@ -527,36 +539,42 @@ fn issue_dependencies(
 	issue: &TrackerIssue,
 	supplied_node_ids: &BTreeMap<String, String>,
 ) -> Result<Vec<ExecutionProgramDependency>> {
-	issue
-		.blockers
-		.iter()
-		.map(|blocker| {
-			let dependency_id = supplied_node_ids
-				.get(&blocker.identifier)
-				.cloned()
-				.unwrap_or_else(|| blocker.identifier.clone());
+	let mut dependencies = BTreeMap::new();
 
-			ExecutionProgramDependency::new(dependency_id)
-		})
-		.collect()
+	for blocker in &issue.blockers {
+		let dependency_id = supplied_node_ids
+			.get(&blocker.identifier)
+			.cloned()
+			.unwrap_or_else(|| blocker.identifier.clone());
+
+		dependencies
+			.entry(dependency_id.clone())
+			.or_insert(ExecutionProgramDependency::new(dependency_id)?);
+	}
+
+	Ok(dependencies.into_values().collect())
 }
 
 fn dependency_snapshots_for(
 	issue: &TrackerIssue,
 	supplied_node_ids: &BTreeMap<String, String>,
 ) -> Result<Vec<ExecutionDependencySnapshot>> {
-	issue
-		.blockers
-		.iter()
-		.map(|blocker| {
-			let dependency_id = supplied_node_ids
-				.get(&blocker.identifier)
-				.cloned()
-				.unwrap_or_else(|| blocker.identifier.clone());
+	let mut snapshots = BTreeMap::new();
 
-			ExecutionDependencySnapshot::tracker_state(dependency_id, blocker.state.name.clone())
-		})
-		.collect()
+	for blocker in &issue.blockers {
+		let dependency_id = supplied_node_ids
+			.get(&blocker.identifier)
+			.cloned()
+			.unwrap_or_else(|| blocker.identifier.clone());
+		let snapshot = ExecutionDependencySnapshot::tracker_state(
+			dependency_id.clone(),
+			blocker.state.name.clone(),
+		)?;
+
+		snapshots.entry(dependency_id).or_insert(snapshot);
+	}
+
+	Ok(snapshots.into_values().collect())
 }
 
 fn issue_conflict_domains(issue: &TrackerIssue) -> Result<Vec<ExecutionConflictDomain>> {
@@ -584,6 +602,10 @@ fn issue_conflict_domains(issue: &TrackerIssue) -> Result<Vec<ExecutionConflictD
 		}
 	}
 
+	domains.sort_by(|left, right| {
+		left.kind().as_str().cmp(right.kind().as_str()).then_with(|| left.key().cmp(right.key()))
+	});
+
 	Ok(domains)
 }
 
@@ -602,6 +624,21 @@ fn issue_report_row(
 
 	reasons.sort();
 	reasons.dedup();
+
+	let mut blockers =
+		issue.blockers.iter().map(|blocker| blocker.identifier.clone()).collect::<Vec<_>>();
+
+	blockers.sort();
+	blockers.dedup();
+
+	let mut conflict_domains = issue_conflict_domains(issue)
+		.unwrap_or_default()
+		.into_iter()
+		.map(|domain| format!("{}:{}", domain.kind().as_str(), domain.key()))
+		.collect::<Vec<_>>();
+
+	conflict_domains.sort();
+	conflict_domains.dedup();
 	IssueBatchIntakeIssueReport {
 		issue_identifier: issue.identifier.clone(),
 		issue_id: Some(issue.id.clone()),
@@ -618,12 +655,8 @@ fn issue_report_row(
 		),
 		queue_label_action: evaluation.queue_label_action().map(queue_label_action_name),
 		reasons,
-		blockers: issue.blockers.iter().map(|blocker| blocker.identifier.clone()).collect(),
-		conflict_domains: issue_conflict_domains(issue)
-			.unwrap_or_default()
-			.into_iter()
-			.map(|domain| format!("{}:{}", domain.kind().as_str(), domain.key()))
-			.collect(),
+		blockers,
+		conflict_domains,
 	}
 }
 
@@ -709,20 +742,23 @@ fn issue_has_generic_dispatch_briefing(issue: &TrackerIssue) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
+	use std::{collections::HashMap, fs, path::Path};
+
+	use tempfile::TempDir;
 
 	use crate::{
 		program_intake::{self, IssueBatchIntakeClassification},
 		state::StateStore,
 		tracker::{
-			IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerState,
-			TrackerTeam,
+			IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker, TrackerLabel,
+			TrackerState, TrackerTeam,
 		},
 		workflow::WorkflowDocument,
 	};
 
 	trait TestIssueExt {
 		fn with_blocker(self, identifier: &str, state: &str) -> Self;
+		fn with_label(self, name: &str) -> Self;
 	}
 
 	#[derive(Default)]
@@ -813,6 +849,12 @@ mod tests {
 
 			self
 		}
+
+		fn with_label(mut self, name: &str) -> Self {
+			self.labels.push(TrackerLabel { id: format!("label-{name}"), name: name.to_owned() });
+
+			self
+		}
 	}
 
 	#[test]
@@ -824,7 +866,11 @@ mod tests {
 			issue("XY-1", "Todo"),
 			issue("XY-2", "In Progress"),
 			issue("XY-3", "Done"),
-			issue("XY-4", "Todo").with_blocker("XY-10", "Todo"),
+			issue("XY-4", "Todo")
+				.with_blocker("XY-20", "Todo")
+				.with_blocker("XY-10", "Todo")
+				.with_label("repo:zeta")
+				.with_label("repo:alpha"),
 		]);
 		let report = program_intake::run_issue_batch_intake(
 			&store,
@@ -850,9 +896,46 @@ mod tests {
 		assert_eq!(report.counts.unmapped, 1);
 		assert_eq!(report.issues[0].issue_identifier, "XY-1");
 		assert_eq!(report.issues[0].classification, IssueBatchIntakeClassification::Ready);
+
+		let blocked = report
+			.issues
+			.iter()
+			.find(|issue| issue.issue_identifier == "XY-4")
+			.expect("blocked issue should be reported");
+
+		assert_eq!(blocked.blockers, vec![String::from("XY-10"), String::from("XY-20")]);
+		assert_eq!(
+			blocked.conflict_domains,
+			vec![
+				String::from("module:alpha"),
+				String::from("module:zeta"),
+				String::from("tracker_ownership:XY-4"),
+			]
+		);
 		assert!(
 			store.list_execution_programs("decodex").expect("program list should read").is_empty()
 		);
+	}
+
+	#[test]
+	fn project_registration_is_persist_only_for_command_path() {
+		let store = StateStore::open_in_memory().expect("store should open");
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let config_path = write_project_files(temp_dir.path());
+
+		program_intake::register_intake_project_config_for_persist(&store, &config_path, false)
+			.expect("dry-run registration should no-op");
+
+		assert!(store.list_projects().expect("projects should list").is_empty());
+
+		program_intake::register_intake_project_config_for_persist(&store, &config_path, true)
+			.expect("persist registration should write");
+
+		let projects = store.list_projects().expect("projects should list");
+
+		assert_eq!(projects.len(), 1);
+		assert_eq!(projects[0].service_id(), "decodex");
+		assert!(projects[0].enabled());
 	}
 
 	#[test]
@@ -889,8 +972,11 @@ mod tests {
 	}
 
 	fn workflow() -> WorkflowDocument {
-		WorkflowDocument::parse_markdown(
-			r#"+++
+		WorkflowDocument::parse_markdown(workflow_markdown()).expect("workflow should parse")
+	}
+
+	fn workflow_markdown() -> &'static str {
+		r#"+++
 version = 1
 [tracker]
 provider = "linear"
@@ -919,9 +1005,7 @@ timeout_seconds = 60
 [context]
 read_first = []
 +++
-"#,
-		)
-		.expect("workflow should parse")
+"#
 	}
 
 	fn test_config() -> crate::config::ServiceConfig {
@@ -940,6 +1024,29 @@ worktree_root = ".worktrees"
 "#,
 		)
 		.expect("config should parse")
+	}
+
+	fn write_project_files(project_dir: &Path) -> std::path::PathBuf {
+		fs::write(project_dir.join("WORKFLOW.md"), workflow_markdown())
+			.expect("workflow should write");
+		fs::write(
+			project_dir.join("project.toml"),
+			r#"
+service_id = "decodex"
+[tracker]
+api_key_env_var = "HOME"
+[github]
+token_env_var = "HOME"
+[codex]
+review = "standard"
+[paths]
+repo_root = "."
+worktree_root = ".worktrees"
+"#,
+		)
+		.expect("project config should write");
+
+		project_dir.join("project.toml")
 	}
 
 	fn issue(identifier: &str, state: &str) -> TrackerIssue {
