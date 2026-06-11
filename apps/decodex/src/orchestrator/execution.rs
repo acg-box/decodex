@@ -397,6 +397,8 @@ struct LoopGuardrailWorktreeFingerprint {
 	head_sha: String,
 	tracked_status_hash: String,
 	tracked_diff_hash: String,
+	effective_status_hash: String,
+	effective_delta_present: bool,
 }
 
 struct FailureHandlingContext<'a, T>
@@ -1976,23 +1978,25 @@ fn retryable_failure_loop_guardrail_stop(
 				"{}:{}:{}:{}",
 				repo_gate_failure.error_class(),
 				worktree_fingerprint.head_sha.as_str(),
-				worktree_fingerprint.tracked_status_hash.as_str(),
+				worktree_fingerprint.effective_status_hash.as_str(),
 				worktree_fingerprint.tracked_diff_hash.as_str()
 			),
 			Some(repo_gate_failure.error_class()),
 		));
 	}
 
-	observations.push((
-		LoopGuardrailReason::NoEffectiveDiff,
-		format!(
-			"{}:{}:{}",
-			worktree_fingerprint.head_sha.as_str(),
-			worktree_fingerprint.tracked_status_hash.as_str(),
-			worktree_fingerprint.tracked_diff_hash.as_str()
-		),
-		retained_progress_source_error_class(error),
-	));
+	if !worktree_fingerprint.effective_delta_present {
+		observations.push((
+			LoopGuardrailReason::NoEffectiveDiff,
+			format!(
+				"{}:{}:{}",
+				worktree_fingerprint.head_sha.as_str(),
+				worktree_fingerprint.effective_status_hash.as_str(),
+				worktree_fingerprint.tracked_diff_hash.as_str()
+			),
+			retained_progress_source_error_class(error),
+		));
+	}
 
 	for (reason, fingerprint, source_error_class) in observations {
 		let checkpoint = state_store.observe_loop_guardrail_checkpoint(
@@ -2010,6 +2014,8 @@ fn retryable_failure_loop_guardrail_stop(
 					"head_sha": worktree_fingerprint.head_sha.as_str(),
 					"tracked_status_hash": worktree_fingerprint.tracked_status_hash.as_str(),
 					"tracked_diff_hash": worktree_fingerprint.tracked_diff_hash.as_str(),
+					"effective_status_hash": worktree_fingerprint.effective_status_hash.as_str(),
+					"effective_delta_present": worktree_fingerprint.effective_delta_present,
 					"threshold": LOOP_GUARDRAIL_CONVERGENCE_BUDGET,
 				})
 				.to_string(),
@@ -2051,17 +2057,43 @@ fn loop_guardrail_worktree_fingerprint(
 	else {
 		return Ok(None);
 	};
+	let Some(raw_status) = git_guardrail_output(worktree_path, &["status", "--porcelain"])? else {
+		return Ok(None);
+	};
 	let Some(tracked_diff) =
 		git_guardrail_output(worktree_path, &["diff", "--binary", "--no-ext-diff", "HEAD", "--"])?
 	else {
 		return Ok(None);
 	};
+	let effective_status = loop_guardrail_effective_status(&raw_status);
 
 	Ok(Some(LoopGuardrailWorktreeFingerprint {
 		head_sha,
 		tracked_status_hash: loop_guardrail_text_hash(&tracked_status),
 		tracked_diff_hash: loop_guardrail_text_hash(&tracked_diff),
+		effective_status_hash: loop_guardrail_text_hash(&effective_status),
+		effective_delta_present: !effective_status.trim().is_empty()
+			|| !tracked_diff.trim().is_empty(),
 	}))
+}
+
+fn loop_guardrail_effective_status(raw_status: &str) -> String {
+	let lines = raw_status
+		.lines()
+		.map(str::trim_end)
+		.filter(|line| !line.is_empty())
+		.filter(|line| !state::is_untracked_decodex_runtime_artifact_status_line(line))
+		.collect::<Vec<_>>();
+
+	if lines.is_empty() {
+		return String::new();
+	}
+
+	let mut status = lines.join("\n");
+
+	status.push('\n');
+
+	status
 }
 
 fn git_guardrail_output(worktree_path: &Path, args: &[&str]) -> Result<Option<String>> {
@@ -2502,6 +2534,8 @@ fn architecture_recovery_retained_worktree(worktree_path: &Path) -> Result<Value
 	let fingerprint = loop_guardrail_worktree_fingerprint(worktree_path)?;
 	let tracked_status =
 		git_guardrail_output(worktree_path, &["status", "--porcelain", "--untracked-files=no"])?;
+	let raw_status = git_guardrail_output(worktree_path, &["status", "--porcelain"])?;
+	let effective_status = raw_status.as_deref().map(loop_guardrail_effective_status);
 	let diff_stat =
 		git_guardrail_output(worktree_path, &["diff", "--stat", "--no-ext-diff", "HEAD", "--"])?;
 
@@ -2511,7 +2545,14 @@ fn architecture_recovery_retained_worktree(worktree_path: &Path) -> Result<Value
 			.as_ref()
 			.map(|value| value.tracked_status_hash.as_str()),
 		"tracked_diff_hash": fingerprint.as_ref().map(|value| value.tracked_diff_hash.as_str()),
+		"effective_status_hash": fingerprint
+			.as_ref()
+			.map(|value| value.effective_status_hash.as_str()),
+		"effective_delta_present": fingerprint
+			.as_ref()
+			.map(|value| value.effective_delta_present),
 		"tracked_status": tracked_status.unwrap_or_default(),
+		"effective_status": effective_status.unwrap_or_default(),
 		"diff_stat": diff_stat.unwrap_or_default(),
 	}))
 }

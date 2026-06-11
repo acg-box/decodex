@@ -71,7 +71,8 @@ cargo run -p decodex --bin decodex -- serve
   `decodex:active:<service-id>`.
 - `decodex:manual-only` opts out of automation.
 - `decodex:needs-attention` is a human-required stop that automation must not silently
-  retry.
+  retry. The only runtime-owned clear path is the explicit review-handoff rebind
+  recovery where a current same-PR same-head marker proves stale failure-state drift.
 - A lane is terminal only after exactly one terminal path is finalized:
   `review_handoff` or `manual_attention`.
 - `phase = terminal_pending` means the agent already called terminal finalize and

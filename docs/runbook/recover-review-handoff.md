@@ -53,14 +53,22 @@ worktree head matches the PR head. For a partial normal handoff where the marker
 missing, or where an already-current marker exists but the issue state was not
 advanced, the command may also move the issue from the workflow
 `tracker.in_progress_state` to `tracker.success_state` after the rebind audit
-succeeds. It does not merge the PR, queue follow-up issues, or clean worktrees.
+succeeds. If stale failure writeback already moved an already-current marker lane to
+`tracker.failure_state` and added `tracker.needs_attention_label`, rebind may clear that
+label and move the issue to `tracker.success_state`; this is only for current same-PR
+same-head markers, not for missing or stale marker recovery. It does not merge the PR,
+queue follow-up issues, or clean worktrees.
 
 The command rejects the rebind unless all of these are true:
 
-- the issue is in the workflow `tracker.success_state`, or the issue is still in
+- the issue is in the workflow `tracker.success_state`, still in
   `tracker.in_progress_state` from a partial normal handoff with a missing or
-  already-current marker
-- the issue does not have opt-out or needs-attention labels
+  already-current marker, or in `tracker.failure_state` only when an already-current
+  marker proves that stale failure writeback caused tracker state drift
+- the issue does not have the opt-out label
+- the issue does not have the needs-attention label, except for the already-current
+  marker plus `tracker.failure_state` drift case where rebind clears it after recording
+  the audit
 - the issue still has `decodex:active:<service-id>` ownership
 - the retained worktree branch matches the runtime DB worktree mapping
 - the retained worktree has no local source changes except top-level Decodex runtime

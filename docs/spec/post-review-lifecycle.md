@@ -107,8 +107,13 @@ success path.
   requires the workflow `tracker.success_state`. Partial normal handoff recovery may
   also accept the workflow `tracker.in_progress_state` when the marker is missing, or
   when an already-current marker exists but the issue state was not advanced, and the
-  validated PR plus retained worktree prove the handoff lineage; after the rebind audit
-  succeeds, Decodex must move that issue to `tracker.success_state`.
+  validated PR plus retained worktree prove the handoff lineage. If stale failure
+  writeback already moved that already-current marker lane back to
+  `tracker.failure_state` and applied `tracker.needs_attention_label`, explicit rebind
+  may clear that label and move the issue to `tracker.success_state` after the rebind
+  audit succeeds. Decodex must reject this failure-state recovery for missing or stale
+  markers because those still need explicit PR-lineage repair before tracker state can
+  be trusted.
 - If no review handoff marker exists, `rebind` restores the missing handoff and
   orchestration markers from the validated PR and retained worktree. If a marker already
   exists for the same branch and PR but its stored handoff or orchestration head is
