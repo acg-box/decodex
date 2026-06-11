@@ -1,5 +1,10 @@
 import AppKit
 import Foundation
+import OSLog
+
+private let accountStoreLog = Logger(subsystem: "ink.hack.DecodexApp", category: "AccountStore")
+private let operatorSnapshotReconnectInitialDelay: UInt64 = 1_000_000_000
+private let operatorSnapshotReconnectMaxDelay: UInt64 = 30_000_000_000
 
 @MainActor
 final class AccountStore: ObservableObject {
@@ -145,63 +150,62 @@ final class AccountStore: ObservableObject {
 			return
 		}
 
-		operatorSnapshotStreamTask = Task { [weak self] in
+		operatorSnapshotStreamTask = makeOperatorSnapshotStreamTask()
+	}
+
+	private func makeOperatorSnapshotStreamTask() -> Task<Void, Never> {
+		Task { [weak self] in
 			await self?.runOperatorSnapshotStream()
 		}
 	}
 
 	private func runOperatorSnapshotStream() async {
+		var reconnectDelay = operatorSnapshotReconnectInitialDelay
+
 		while Task.isCancelled == false {
 			do {
 				try await connectOperatorSnapshotStream()
+				reconnectDelay = operatorSnapshotReconnectInitialDelay
 			} catch {
-				liveRunActivity = nil
+				accountStoreLog.warning("Operator snapshot stream dropped: \(error.localizedDescription, privacy: .public)")
 			}
 
 			do {
-				try await Task.sleep(nanoseconds: 1_000_000_000)
+				try await Task.sleep(nanoseconds: reconnectDelay)
 			} catch {
 				return
 			}
+			reconnectDelay = min(operatorSnapshotReconnectMaxDelay, reconnectDelay * 2)
 		}
 	}
 
 	private func connectOperatorSnapshotStream() async throws {
 		let url = try await DecodexServerBridge.shared.dashboardWebSocketURL()
-		let socket = URLSession.shared.webSocketTask(with: url)
+		let socket = DashboardWebSocketConnection(url: url)
 
-		socket.resume()
-		defer {
-			socket.cancel(with: .normalClosure, reason: nil)
-		}
-
-		while Task.isCancelled == false {
-			let event = try await receiveOperatorDashboardEvent(from: socket)
-
-			applyOperatorDashboardEvent(event)
-		}
-	}
-
-	private func receiveOperatorDashboardEvent(
-		from socket: URLSessionWebSocketTask
-	) async throws -> OperatorDashboardSocketEvent {
-		let message = try await socket.receive()
-		let data: Data
-
-		switch message {
-		case .string(let text):
-			guard let textData = text.data(using: .utf8) else {
-				throw DecodexAppBridgeError.invalidResponse("dashboard WebSocket event is not UTF-8")
+		try await withTaskCancellationHandler {
+			do {
+				try await socket.connect()
+				while Task.isCancelled == false {
+					let data = try await socket.readMessageData()
+					do {
+						let event = try JSONDecoder().decode(OperatorDashboardSocketEvent.self, from: data)
+						applyOperatorDashboardEvent(event)
+					} catch {
+						accountStoreLog.debug("Skipped dashboard WebSocket message bytes=\(data.count, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+						continue
+					}
+				}
+				await socket.close()
+			} catch {
+				await socket.close()
+				throw error
 			}
-
-			data = textData
-		case .data(let binary):
-			data = binary
-		@unknown default:
-			throw DecodexAppBridgeError.invalidResponse("dashboard WebSocket event type is unsupported")
+		} onCancel: {
+			Task {
+				await socket.close()
+			}
 		}
-
-		return try JSONDecoder().decode(OperatorDashboardSocketEvent.self, from: data)
 	}
 
 	func applyOperatorDashboardEvent(_ event: OperatorDashboardSocketEvent) {
@@ -230,6 +234,8 @@ final class AccountStore: ObservableObject {
 			liveRunActivity = activity
 			if let operatorSnapshot {
 				self.operatorSnapshot = activity.merging(into: operatorSnapshot)
+			} else {
+				operatorSnapshot = OperatorSnapshotResponse.activeRunsOnly(activeRuns)
 			}
 			operatorSnapshotUpdatedAt = activity.emittedAt
 		default:

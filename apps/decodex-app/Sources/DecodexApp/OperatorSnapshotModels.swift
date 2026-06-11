@@ -137,6 +137,16 @@ struct OperatorSnapshotResponse: Decodable, Sendable {
 		)
 	}
 
+	static func activeRunsOnly(_ activeRuns: [OperatorRunStatus]) -> OperatorSnapshotResponse {
+		OperatorSnapshotResponse(
+			warnings: [],
+			projects: [],
+			activeRuns: activeRuns,
+			queuedCandidates: [],
+			postReviewLanes: []
+		)
+	}
+
 	private init(
 		warnings: [String],
 		projects: [OperatorProjectStatus],
@@ -374,12 +384,23 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			|| attemptStatus == "waiting_for_review"
 			|| status == "manual_attention"
 			|| status == "blocked"
+			|| processAlive == false
 	}
 
 	var isWaiting: Bool {
 		waitReason != nil
 			|| attemptStatus?.contains("waiting") == true
 			|| phase?.contains("waiting") == true
+	}
+
+	var inactiveDurationSeconds: Int? {
+		let candidates = [
+			idleForSeconds,
+			protocolIdleForSeconds,
+			childAgentActivity?.currentElapsedSeconds,
+		].compactMap { $0 }
+
+		return candidates.max()
 	}
 
 	func isAssigned(to account: CodexAccount) -> Bool {
@@ -649,6 +670,7 @@ struct OperatorChildAgentActivity: Decodable, Sendable {
 	let currentBucket: String?
 	let currentDetail: String?
 	let currentElapsedSeconds: Int?
+	let currentStartedUnixEpoch: Int64?
 	let eventCount: Int
 	let inputTokensCumulative: Int
 	let inputTokensCurrent: Int?
@@ -664,6 +686,7 @@ struct OperatorChildAgentActivity: Decodable, Sendable {
 		case currentBucket = "current_bucket"
 		case currentDetail = "current_detail"
 		case currentElapsedSeconds = "current_elapsed_seconds"
+		case currentStartedUnixEpoch = "current_started_unix_epoch"
 		case eventCount = "event_count"
 		case inputTokensCumulative = "input_tokens_cumulative"
 		case inputTokensCurrent = "input_tokens_current"
@@ -682,6 +705,7 @@ struct OperatorChildAgentActivity: Decodable, Sendable {
 		currentBucket = try container.decodeIfPresent(String.self, forKey: .currentBucket)
 		currentDetail = try container.decodeIfPresent(String.self, forKey: .currentDetail)
 		currentElapsedSeconds = try container.decodeIfPresent(Int.self, forKey: .currentElapsedSeconds)
+		currentStartedUnixEpoch = try container.decodeIfPresent(Int64.self, forKey: .currentStartedUnixEpoch)
 		eventCount = try container.decodeIfPresent(Int.self, forKey: .eventCount) ?? 0
 		inputTokensCumulative = try container.decodeIfPresent(Int.self, forKey: .inputTokensCumulative) ?? 0
 		inputTokensCurrent = try container.decodeIfPresent(Int.self, forKey: .inputTokensCurrent)
@@ -692,6 +716,43 @@ struct OperatorChildAgentActivity: Decodable, Sendable {
 		toolCallCount = try container.decodeIfPresent(Int.self, forKey: .toolCallCount) ?? 0
 		wallSeconds = try container.decodeIfPresent(Int.self, forKey: .wallSeconds) ?? 0
 		buckets = try container.decodeIfPresent([OperatorChildAgentBucket].self, forKey: .buckets) ?? []
+	}
+
+	func currentElapsedSeconds(at now: Date) -> Int? {
+		var candidates = [Int]()
+		if let currentElapsedSeconds {
+			candidates.append(currentElapsedSeconds)
+		}
+		if let currentStartedUnixEpoch {
+			let liveElapsed = Int(now.timeIntervalSince1970.rounded(.down)) - Int(currentStartedUnixEpoch)
+
+			candidates.append(max(0, liveElapsed))
+		}
+
+		return candidates.max()
+	}
+
+	func wallSeconds(at now: Date) -> Int {
+		wallSeconds + currentElapsedDelta(at: now)
+	}
+
+	func wallSeconds(
+		for bucket: OperatorChildAgentBucket,
+		at now: Date
+	) -> Int {
+		guard let currentBucket, bucket.name.caseInsensitiveCompare(currentBucket) == .orderedSame else {
+			return bucket.wallSeconds
+		}
+
+		return bucket.wallSeconds + currentElapsedDelta(at: now)
+	}
+
+	private func currentElapsedDelta(at now: Date) -> Int {
+		guard let baselineElapsed = currentElapsedSeconds, let liveElapsed = currentElapsedSeconds(at: now) else {
+			return 0
+		}
+
+		return max(0, liveElapsed - baselineElapsed)
 	}
 }
 
