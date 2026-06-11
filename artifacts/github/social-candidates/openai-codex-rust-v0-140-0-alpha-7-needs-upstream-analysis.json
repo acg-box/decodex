@@ -1,0 +1,94 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-7-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease changes before stable",
+  "candidate_text": [
+    "No 0.140.0-alpha.7 post handoff yet.\n\nalpha.4 -> alpha.7 has 14 commits and 17 PR-title refs, but the release body is sparse and all 17 PRs lack checked Decodex review/impact.\n\nSource: https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.7"
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.4",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.7",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.4...rust-v0.140.0-alpha.7",
+      "https://github.com/openai/codex/pull/26091",
+      "https://github.com/openai/codex/pull/26409",
+      "https://github.com/openai/codex/pull/27057",
+      "https://github.com/openai/codex/pull/27058",
+      "https://github.com/openai/codex/pull/27059",
+      "https://github.com/openai/codex/pull/27062",
+      "https://github.com/openai/codex/pull/27064",
+      "https://github.com/openai/codex/pull/27065",
+      "https://github.com/openai/codex/pull/27070",
+      "https://github.com/openai/codex/pull/27071",
+      "https://github.com/openai/codex/pull/27311",
+      "https://github.com/openai/codex/pull/27312",
+      "https://github.com/openai/codex/pull/27319",
+      "https://github.com/openai/codex/pull/27321",
+      "https://github.com/openai/codex/pull/27343",
+      "https://github.com/openai/codex/pull/27414",
+      "https://github.com/openai/codex/pull/27439"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.140.0-alpha.7 was published at 2026-06-10T22:45:37Z with only a sparse release body: Release 0.140.0-alpha.7.",
+    "GitHub release metadata has no release object for rust-v0.140.0-alpha.5 or rust-v0.140.0-alpha.6 in this run's readback, so this record treats rust-v0.140.0-alpha.7 as the next public prerelease release checkpoint after rust-v0.140.0-alpha.4.",
+    "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.4 -> rust-v0.140.0-alpha.7; GitHub compare metadata reports 14 ahead commits and 17 PR-title references.",
+    "PR-title metadata in the alpha.4 -> alpha.7 compare points to Guardian auto-review retries, external-agent import UX and /import command work, plugin install elicitation metadata, OTEL instrumentation, remote-plugin curated discovery, disabled MCP server overlay preservation, realtime assistant forwarding, release artifact staging, and release/test tooling.",
+    "Checked Radar review/impact artifacts are absent for all 17 PR-title references in the alpha.4 -> alpha.7 compare window in this checkout.",
+    "The refreshed checked release_delta/v1 records stable rust-v0.139.0 -> latest prerelease rust-v0.140.0-alpha.7 with 67 ahead commits and no tracked signal slugs.",
+    "Official Codex changelog readback for this run still shows Codex app 26.608 and ChatGPT for iOS 1.2026.153 on 2026-06-09 as the newest entries; rust-v0.140.0-alpha.7 is a GitHub prerelease checkpoint, not an official changelog entry."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.140.0-alpha.7 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.7",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.4 -> rust-v0.140.0-alpha.7.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.4...rust-v0.140.0-alpha.7",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.7 release body is sparse and does not describe user-facing behavior beyond the version checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.7",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR-title metadata in the alpha.7 compare points to Guardian, external-agent import, plugin, OTEL, MCP overlay, realtime, release-staging, and test/tooling areas.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.4...rust-v0.140.0-alpha.7",
+      "confidence": "likely"
+    },
+    {
+      "text": "Behavior claims for the alpha.7 window require upstream source review before a publishable Decodex prerelease thread.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the alpha.7 release body is sparse and the adjacent alpha.4 -> alpha.7 compare has unreviewed PR-title gaps.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-7:alpha4-alpha7:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "No previous live and quote-eligible @decodexspace 0.140 prerelease post exists; alpha.2 and alpha.4 were also recorded as defer / needs_upstream_analysis checkpoints.",
+    "Do not compare later 0.140 prereleases against stable 0.139.0 or alpha.4 if a newer public prerelease checkpoint exists; later 0.140 prereleases should use adjacent prerelease-to-prerelease lineage from alpha.7.",
+    "Exact source-review gap list for alpha.4 -> alpha.7 primary compare PRs: #26091, #26409, #27057, #27058, #27059, #27062, #27064, #27065, #27070, #27071, #27311, #27312, #27319, #27321, #27343, #27414, #27439.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.7 defer record to decodex-x-publisher.",
+    "Route the listed source-review gap PRs to codex-upstream-radar-review / codex-code-analysis before turning alpha.7 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Use the refreshed release_delta/v1 only as stable-to-latest-prerelease site metadata; use adjacent prerelease-to-prerelease lineage for future 0.140 prereleases after alpha.7."
+  ]
+}
