@@ -43,8 +43,8 @@
     "The compose dialog showed @decodexspace and the 258-character checked text before the enabled modal Post button was clicked.",
     "Home timeline readback immediately after posting showed the new @decodexspace status with the expected PR 27414 MCP overlay text and GitHub source card.",
     "Permalink readback showed the expected @decodexspace post text, Automated by @hackink attribution, GitHub PR #27414 card, and no attached image media or /photo/N link.",
-    "The status ID decodes to 2026-06-11T16:01:58.611Z.",
-    "After publication, cap accounting review found the checked-in openai-codex-rust-v0-139-0-release-rollup record counted a seven-post thread with daily_count_after = 8, and open PR #328 counted openai-codex-app-26-608 as daily_count_before = 9 and daily_count_after = 10. This record preserves the live publication and the cap-accounting blocker for operator review instead of treating the PR as landable."
+    "The status ID decodes to 2026-06-11T16:01:58.611Z, which is 2026-06-12 00:01:58 in Asia/Shanghai.",
+    "This run crossed the Asia/Shanghai cap-day boundary after the June 11 reservation was created. The terminal social_post/v1 record is stored under the June 12 cap day with daily_count_before = 0 and daily_count_after = 1."
   ],
   "claims": [
     {
@@ -69,9 +69,9 @@
     "idempotency_key": "x:decodexspace:openai-codex-pr-27414:operator_impact",
     "reason": "The PR fixes an operator-visible MCP safety boundary with clear source evidence.",
     "daily_limit": 8,
-    "daily_count_before": 10,
-    "daily_count_after": 11,
-    "day": "2026-06-11",
+    "daily_count_before": 0,
+    "daily_count_after": 1,
+    "day": "2026-06-12",
     "timezone": "Asia/Shanghai"
   },
   "publication": {
@@ -90,7 +90,7 @@
     "Do not imply all MCP overlay precedence changed.",
     "Keep codex_apps framed as the regression-covered example.",
     "No generated image was used because this was a single non-release operator-impact post with sufficient reader value from the text and source card.",
-    "Cap accounting was discovered inconsistent after publication; this PR must not be landed automatically until the operator decides whether to keep, delete, or supersede the live post and how to reconcile June 11 social records."
+    "The reservation remains in the pre-compose 2026-06-11 reservation path, while the terminal post record uses the 2026-06-12 Asia/Shanghai cap day because the live X status was created after local midnight."
   ],
   "post_lifecycle": {
     "current_state": "live",
