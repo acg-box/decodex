@@ -71,7 +71,7 @@ mirror:
 | --- | --- |
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, recovery detail, and `decodex.harness_outcome/1` feedback records belong. |
 | Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, but the JSON payload remains the contract authority. |
-| Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads derived from accepted Decision Contracts. They hold internal node readiness, dependency, conflict-domain, queue-intent, drift, and normal-issue mapping state; Linear issue descriptions and ledger comments are only coarse projections. |
+| Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads with embedded or linked `decodex.program_intake_plan/1` planning data. They hold internal node lifecycle/readiness, dependency, conflict-domain, queue-intent, drift, normal-issue mapping, and program-owned queue-label evidence; Linear issue descriptions and ledger comments are only coarse projections. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing active lease ownership. |
 | Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating. |
 | Runtime SQLite `loop_guardrail_checkpoints` | Latest convergence checkpoint for one project, issue, and guardrail reason. It stores the fingerprint, consecutive count, run id, attempt number, and structured detail used to stop non-converging loops without replaying Linear comments. |
@@ -138,9 +138,10 @@ This boundary does not create a project-local runtime database contract. The run
   is `decodex.decision_contract/1`; statuses are `draft_latent`,
   `accepted_promoted`, `rejected_superseded`, and `needs_human_decision`.
 - Execution Program: Internal loop-runtime state derived from accepted Decision
-  Contracts. The runtime-facing serialized payload is
-  `decodex.execution_program/1`. It may use DAG semantics, but normal Linear issues
-  remain the executable lanes.
+  Contracts or accepted issue-batch intake. The durable planning payload is
+  `decodex.program_intake_plan/1`, stored with or adjacent to the
+  `decodex.execution_program/1` payload. It may use DAG semantics, but normal Linear
+  issues remain the executable lanes.
 - Authority Envelope: The accepted boundary from the Decision Contract, project
   policy, issue briefing, and explicit user direction. Lane recovery may change
   implementation details inside this envelope, but product goals, accepted behavior,
@@ -571,6 +572,9 @@ The runtime database stores at least:
 - private execution events scoped by project, issue, run, and attempt
 - Decision Contracts scoped by project and contract id, with optional source issue
   linkage for later issue shaping
+- Program Intake Plans and internal Execution Programs scoped by project, with
+  lifecycle/readiness state, normal Linear issue mappings, and program-owned
+  queue-label ownership evidence
 - worktree mappings
 - retained PR and post-review state
 - review-policy checkpoints

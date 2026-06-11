@@ -120,6 +120,11 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   issue-description payloads. Queue-label mutations for generated issues must follow
   the Execution Program readiness evaluator: only ready nodes mapped to normal
   startable Linear issues may receive or retain `decodex:queued:<service-id>`.
+  Program reconciliation must record when it applied that label for a specific
+  service, program, node, and issue. It may remove only labels with matching
+  program-owned evidence. If the same queue label is present without matching
+  ownership evidence, the label is human-owned or ownership-unknown and must be left
+  in place.
 - `issue_progress_checkpoint` must accept only the normalized execution phases `probing`, `implementing`, `verifying`, `blocked`, `ready_for_review`, `review_repair`, `ready_to_land`, and `closeout`.
 - `issue_progress_checkpoint` must not replace `issue_review_checkpoint`, `issue_review_handoff`, `issue_review_repair_complete`, `issue_closeout_complete`, or `issue_terminal_finalize`.
 - `decodex` treats `issue_progress_checkpoint` as execution memory only. Checkpoint phase, focus, next action, blockers, or evidence do not by themselves authorize review handoff, repair completion, merge, closeout, or terminal success.
