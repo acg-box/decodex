@@ -9,7 +9,7 @@ use crate::{
 		ISSUE_REVIEW_HANDOFF_TOOL_NAME, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME,
 		ISSUE_TERMINAL_FINALIZE_TOOL_NAME, ISSUE_TRANSITION_TOOL_NAME, LabelArgs,
 		NormalizedProgressCheckpoint, NormalizedReviewCheckpointPayload, PendingReviewAction,
-		PendingReviewCompletion, ProgressCheckpointArgs, ReviewCheckpointArgs,
+		PendingReviewCompletion, ProgressCheckpointArgs, PullRequestDetails, ReviewCheckpointArgs,
 		ReviewCheckpointChecksArgs, ReviewCheckpointFindingArgs,
 		ReviewCheckpointRejectedFindingArgs, ReviewExecutionMode, ReviewHandoffArgs,
 		ReviewHandoffContext, ReviewPolicyPhase, ReviewPolicyStatus, RunCompletionDisposition,
@@ -29,6 +29,8 @@ use crate::{
 const COMMENT_KIND_MANUAL_ATTENTION: &str = "manual_attention";
 const MANUAL_ATTENTION_TERMINAL_PATH: &str = "manual_attention";
 const INDEPENDENT_FRESH_CONTEXT_REVIEWER: &str = "independent_fresh_context";
+const REVIEW_COMPLETION_INTENT_EVENT_TYPE: &str = "review_completion_intent";
+const TERMINAL_FINALIZE_EVENT_TYPE: &str = "terminal_finalize";
 
 #[derive(Debug)]
 struct NormalizedManualAttentionComment {
@@ -1417,6 +1419,84 @@ impl<'a> TrackerToolBridge<'a> {
 			})
 	}
 
+	fn append_review_completion_intent(
+		&self,
+		review_context: &ReviewHandoffContext,
+		path: RunCompletionDisposition,
+		pull_request: &PullRequestDetails,
+		summary: &str,
+	) -> Result<(), String> {
+		let state_store = self.state_store.ok_or_else(|| {
+			format!(
+				"`{}` requires the Decodex runtime state store for issue `{}`.",
+				self.required_pr_completion_tool_name(),
+				self.issue.identifier
+			)
+		})?;
+
+		state_store
+			.append_private_execution_event(
+				&review_context.service_id,
+				&self.issue.id,
+				&review_context.run_id,
+				review_context.attempt_number,
+				REVIEW_COMPLETION_INTENT_EVENT_TYPE,
+				serde_json::json!({
+					"path": path.as_str(),
+					"mode": review_context.mode.as_str(),
+					"branch": review_context.branch_name.as_str(),
+					"worktree_path": review_context.worktree_path.as_str(),
+					"pr_url": pull_request.url.as_str(),
+					"pr_base_ref": pull_request.base_ref_name.as_str(),
+					"pr_head_ref": pull_request.head_ref_name.as_str(),
+					"pr_head_oid": pull_request.head_ref_oid.as_str(),
+					"summary": summary,
+				}),
+			)
+			.map(|_| ())
+			.map_err(|error| {
+				format!(
+					"Failed to persist review completion intent for issue `{}`: {error}",
+					self.issue.identifier
+				)
+			})
+	}
+
+	fn append_terminal_finalize_event(
+		&self,
+		review_context: &ReviewHandoffContext,
+		path: RunCompletionDisposition,
+	) -> Result<(), String> {
+		let state_store = self.state_store.ok_or_else(|| {
+			format!(
+				"`{ISSUE_TERMINAL_FINALIZE_TOOL_NAME}` requires the Decodex runtime state store for issue `{}`.",
+				self.issue.identifier
+			)
+		})?;
+
+		state_store
+			.append_private_execution_event(
+				&review_context.service_id,
+				&self.issue.id,
+				&review_context.run_id,
+				review_context.attempt_number,
+				TERMINAL_FINALIZE_EVENT_TYPE,
+				serde_json::json!({
+					"path": path.as_str(),
+					"mode": review_context.mode.as_str(),
+					"branch": review_context.branch_name.as_str(),
+					"worktree_path": review_context.worktree_path.as_str(),
+				}),
+			)
+			.map(|_| ())
+			.map_err(|error| {
+				format!(
+					"Failed to persist terminal finalize intent for issue `{}`: {error}",
+					self.issue.identifier
+				)
+			})
+	}
+
 	fn clear_review_policy_state_after_completion(
 		&self,
 		review_context: &ReviewHandoffContext,
@@ -1512,6 +1592,14 @@ impl<'a> TrackerToolBridge<'a> {
 		) {
 			return DynamicToolCallResponse::failure(error);
 		}
+		if let Err(error) = self.append_review_completion_intent(
+			review_context,
+			RunCompletionDisposition::ReviewHandoff,
+			&pull_request,
+			&summary,
+		) {
+			return DynamicToolCallResponse::failure(error);
+		}
 
 		self.pending_review_completion.borrow_mut().replace(PendingReviewCompletion::Handoff(
 			PendingReviewAction { pr_url: pull_request.url.clone(), summary },
@@ -1584,6 +1672,14 @@ impl<'a> TrackerToolBridge<'a> {
 		) {
 			return DynamicToolCallResponse::failure(error);
 		}
+		if let Err(error) = self.append_review_completion_intent(
+			review_context,
+			RunCompletionDisposition::ReviewRepair,
+			&pull_request,
+			&summary,
+		) {
+			return DynamicToolCallResponse::failure(error);
+		}
 
 		self.pending_review_completion.borrow_mut().replace(PendingReviewCompletion::Repair(
 			PendingReviewAction { pr_url: pull_request.url.clone(), summary },
@@ -1643,6 +1739,14 @@ impl<'a> TrackerToolBridge<'a> {
 		};
 
 		if let Err(error) = self.validate_closeout_issue_completed_state() {
+			return DynamicToolCallResponse::failure(error);
+		}
+		if let Err(error) = self.append_review_completion_intent(
+			review_context,
+			RunCompletionDisposition::Closeout,
+			&pull_request,
+			&summary,
+		) {
 			return DynamicToolCallResponse::failure(error);
 		}
 
@@ -1778,6 +1882,16 @@ impl<'a> TrackerToolBridge<'a> {
 				requested_path.as_str(),
 				actual_path.as_str()
 			));
+		}
+
+		let Some(review_context) = self.review_context.as_ref() else {
+			return DynamicToolCallResponse::failure(format!(
+				"`{ISSUE_TERMINAL_FINALIZE_TOOL_NAME}` is unavailable for this run."
+			));
+		};
+
+		if let Err(error) = self.append_terminal_finalize_event(review_context, actual_path) {
+			return DynamicToolCallResponse::failure(error);
 		}
 
 		self.finalized_completion_path.replace(Some(actual_path));
