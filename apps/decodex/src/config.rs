@@ -187,11 +187,8 @@ impl ProjectGitHubConfig {
 #[serde(deny_unknown_fields)]
 #[derive(Default)]
 pub struct ProjectCodexConfig {
-	#[serde(default)]
 	review: Option<ReviewLevel>,
-	#[serde(default)]
 	external_review_enabled: Option<bool>,
-	#[serde(default)]
 	internal_review_mode: Option<LegacyInternalReviewMode>,
 	accounts: Option<ProjectCodexAccountsConfig>,
 }
@@ -239,13 +236,6 @@ impl ProjectCodexConfig {
 			},
 		}
 	}
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum LegacyInternalReviewMode {
-	Prompt,
-	Off,
 }
 
 /// Optional local-only classifier for public Linear projection text.
@@ -449,6 +439,13 @@ impl Default for ReviewLevel {
 	fn default() -> Self {
 		default_review_level()
 	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum LegacyInternalReviewMode {
+	Prompt,
+	Off,
 }
 
 /// Canonical repository root for the current Git checkout.
