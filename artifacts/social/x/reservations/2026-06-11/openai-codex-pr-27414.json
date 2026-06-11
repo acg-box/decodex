@@ -34,7 +34,8 @@
   ],
   "owner": {
     "automation_id": "decodex-x-publisher",
-    "branch": "codex/x-publisher-pr-27414-20260611"
+    "branch": "codex/x-publisher-pr-27414-20260611",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/336"
   },
   "evidence_notes": [
     "Checked-in social_post/v1 and social_publish_reservation/v1 records contain no matching PR 27414 idempotency key, slug, or source URL.",
