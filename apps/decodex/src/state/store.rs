@@ -24,6 +24,74 @@ pub(crate) struct ReviewPolicyCheckpointInput<'a> {
 	pub(crate) details_json: &'a str,
 }
 
+/// Project-scoped loop evidence cached for one operator status render.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ProjectLoopEvidenceSnapshot {
+	private_events: HashMap<(String, String, i64), Vec<PrivateExecutionEvent>>,
+	review_checkpoints: HashMap<(String, String, i64, String), ReviewPolicyCheckpoint>,
+}
+impl ProjectLoopEvidenceSnapshot {
+	fn insert_private_event(&mut self, event: PrivateExecutionEvent) {
+		self.private_events
+			.entry((
+				event.issue_id().to_owned(),
+				event.run_id().to_owned(),
+				event.attempt_number(),
+			))
+			.or_default()
+			.push(event);
+	}
+
+	fn insert_review_checkpoint(&mut self, checkpoint: ReviewPolicyCheckpoint) {
+		self.review_checkpoints.insert(
+			(
+				checkpoint.issue_id().to_owned(),
+				checkpoint.run_id().to_owned(),
+				checkpoint.attempt_number(),
+				checkpoint.phase().to_owned(),
+			),
+			checkpoint,
+		);
+	}
+
+	fn sort_private_events(&mut self) {
+		for events in self.private_events.values_mut() {
+			events.sort_by(|left, right| {
+				left.recorded_at_unix()
+					.cmp(&right.recorded_at_unix())
+					.then_with(|| left.record_id().cmp(&right.record_id()))
+			});
+		}
+	}
+
+	pub(crate) fn private_events(
+		&self,
+		issue_id: &str,
+		run_id: &str,
+		attempt_number: i64,
+	) -> &[PrivateExecutionEvent] {
+		self.private_events
+			.get(&(issue_id.to_owned(), run_id.to_owned(), attempt_number))
+			.map(Vec::as_slice)
+			.unwrap_or(&[])
+	}
+
+	pub(crate) fn review_policy_checkpoint(
+		&self,
+		issue_id: &str,
+		run_id: &str,
+		attempt_number: i64,
+		phase: &str,
+	) -> Option<&ReviewPolicyCheckpoint> {
+		self.review_checkpoints.get(&(
+			issue_id.to_owned(),
+			run_id.to_owned(),
+			attempt_number,
+			phase.to_owned(),
+		))
+	}
+}
+
 /// Input fields for recording the latest loop-guardrail checkpoint.
 pub(crate) struct LoopGuardrailCheckpointInput<'a> {
 	pub(crate) project_id: &'a str,
@@ -50,6 +118,13 @@ impl StateStore {
 		Ok(Self { inner: Mutex::new(state), sqlite: Some(Mutex::new(sqlite)) })
 	}
 
+	/// Open the local persistent runtime store without preloading durable rows.
+	pub fn open_lazy(path: impl AsRef<Path>) -> Result<Self> {
+		let sqlite = SqliteStateStore::open(path.as_ref())?;
+
+		Ok(Self { inner: Mutex::new(StateData::default()), sqlite: Some(Mutex::new(sqlite)) })
+	}
+
 	/// Open an in-memory runtime store for tests.
 	pub fn open_in_memory() -> Result<Self> {
 		Ok(Self::default())
@@ -63,7 +138,10 @@ impl StateStore {
 		&self,
 		registration: &ProjectRegistration,
 	) -> Result<ProjectRegistration> {
-		let mut state = self.lock()?;
+		let mut state = self.lock_without_refresh()?;
+
+		self.refresh_project_registry_state_locked(&mut state)?;
+
 		let mut registration = registration.clone();
 
 		if let Some(enabled) = state.projects.get(registration.service_id()).map(ProjectRegistration::enabled)
@@ -75,7 +153,7 @@ impl StateStore {
 		state
 			.projects
 			.insert(registration.service_id().to_owned(), registration.clone());
-		self.persist_runtime_state_locked(&state)?;
+		self.upsert_project_locked(&registration)?;
 
 		Ok(registration)
 	}
@@ -154,6 +232,12 @@ impl StateStore {
 		project_id: &str,
 		connector: &str,
 	) -> Result<Option<ConnectorBackoff>> {
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite.connector_backoff(project_id, connector);
+		}
+
 		let state = self.lock()?;
 
 		Ok(state
@@ -184,7 +268,7 @@ impl StateStore {
 	) -> Result<()> {
 		let slot_limit = slot_limit.into();
 		let worktree_root = worktree_root.as_ref().to_path_buf();
-		let mut state = self.lock()?;
+		let mut state = self.lock_without_refresh()?;
 
 		slot_limit.validate()?;
 
@@ -436,7 +520,7 @@ impl StateStore {
 	pub fn list_leases(&self, project_id: &str) -> Result<Vec<IssueLease>> {
 		let mut state = self.lock_without_refresh()?;
 
-		self.refresh_project_run_state_locked(&mut state, project_id)?;
+		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
 
 		let mut leases = state
 			.leases
@@ -455,7 +539,7 @@ impl StateStore {
 		let (mut leases_by_issue, dispatch_slot_config) = {
 			let mut state = self.lock_without_refresh()?;
 
-			self.refresh_project_run_state_locked(&mut state, project_id)?;
+			self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
 
 			let leases = state
 				.leases
@@ -1213,6 +1297,14 @@ impl StateStore {
 		issue_id: &str,
 		attempt_number: i64,
 	) -> Result<Option<RunAttempt>> {
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.run_attempt_for_issue_attempt(issue_id, attempt_number)
+				.map(|attempt| attempt.map(|attempt| attempt.as_public()));
+		}
+
 		let state = self.lock()?;
 		let attempt = state
 			.run_attempts
@@ -1228,6 +1320,14 @@ impl StateStore {
 
 	/// Read the latest run attempt for one issue.
 	pub fn latest_run_attempt_for_issue(&self, issue_id: &str) -> Result<Option<RunAttempt>> {
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.latest_run_attempt_for_issue(issue_id)
+				.map(|attempt| attempt.map(|attempt| attempt.as_public()));
+		}
+
 		let state = self.lock()?;
 		let attempt = state
 			.run_attempts
@@ -1241,6 +1341,17 @@ impl StateStore {
 
 	/// List all locally recorded run attempts for one issue.
 	pub fn list_run_attempts_for_issue(&self, issue_id: &str) -> Result<Vec<RunAttempt>> {
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let attempts = sqlite
+				.list_run_attempts_for_issue(issue_id)?
+				.into_iter()
+				.map(|attempt| attempt.as_public())
+				.collect();
+
+			return Ok(attempts);
+		}
+
 		let state = self.lock()?;
 		let mut attempts = state
 			.run_attempts
@@ -1273,20 +1384,7 @@ impl StateStore {
 		project_id: &str,
 		limit: usize,
 	) -> Result<Vec<ProjectRunStatus>> {
-		let mut state = self.lock_without_refresh()?;
-
-		self.refresh_project_run_state_locked(&mut state, project_id)?;
-
-		let mut runs = state
-			.run_attempts
-			.values()
-			.filter_map(|attempt| state.project_run_status(project_id, attempt))
-			.collect::<Vec<_>>();
-
-		runs.sort_by(compare_project_run_status);
-		runs.truncate(limit);
-
-		Ok(runs)
+		self.list_project_runs(project_id, limit).map(|(_active, recent)| recent)
 	}
 
 	/// List active and recent run attempts for one project from one durable snapshot.
@@ -1297,7 +1395,7 @@ impl StateStore {
 	) -> Result<(Vec<ProjectRunStatus>, Vec<ProjectRunStatus>)> {
 		let mut state = self.lock_without_refresh()?;
 
-		self.refresh_project_run_state_locked(&mut state, project_id)?;
+		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
 
 		let mut runs = state
 			.run_attempts
@@ -1313,7 +1411,37 @@ impl StateStore {
 			.cloned()
 			.collect::<Vec<_>>();
 		let recent_limit = base_recent_limit.saturating_add(active_runs.len());
-		let mut recent_runs = runs;
+		let recent_run_ids = runs
+			.iter()
+			.take(recent_limit)
+			.map(|run| run.run_id().to_owned())
+			.collect::<Vec<_>>();
+		let mut summary_run_ids = active_runs
+			.iter()
+			.map(|run| run.run_id().to_owned())
+			.collect::<Vec<_>>();
+
+		summary_run_ids.extend(recent_run_ids);
+		summary_run_ids.sort();
+		summary_run_ids.dedup();
+		self.refresh_protocol_event_summaries_for_runs_locked(&mut state, &summary_run_ids)?;
+
+		let summary_run_id_set = summary_run_ids.iter().cloned().collect::<HashSet<_>>();
+		let mut selected_runs = state
+			.run_attempts
+			.values()
+			.filter(|attempt| summary_run_id_set.contains(&attempt.run_id))
+			.filter_map(|attempt| state.project_run_status(project_id, attempt))
+			.collect::<Vec<_>>();
+
+		selected_runs.sort_by(compare_project_run_status);
+
+		let active_runs = selected_runs
+			.iter()
+			.filter(|status| status.active_lease())
+			.cloned()
+			.collect::<Vec<_>>();
+		let mut recent_runs = selected_runs;
 
 		recent_runs.truncate(recent_limit);
 
@@ -1324,11 +1452,27 @@ impl StateStore {
 	pub fn list_active_runs(&self, project_id: &str) -> Result<Vec<ProjectRunStatus>> {
 		let mut state = self.lock_without_refresh()?;
 
-		self.refresh_project_run_state_locked(&mut state, project_id)?;
+		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
 
 		let mut runs = state
 			.run_attempts
 			.values()
+			.filter_map(|attempt| {
+				let status = state.project_run_status(project_id, attempt)?;
+
+				status.active_lease.then_some(status)
+			})
+			.collect::<Vec<_>>();
+		let mut run_ids = runs.iter().map(|run| run.run_id().to_owned()).collect::<Vec<_>>();
+
+		run_ids.sort();
+		run_ids.dedup();
+		self.refresh_protocol_event_summaries_for_runs_locked(&mut state, &run_ids)?;
+
+		runs = state
+			.run_attempts
+			.values()
+			.filter(|attempt| run_ids.contains(&attempt.run_id))
 			.filter_map(|attempt| {
 				let status = state.project_run_status(project_id, attempt)?;
 
@@ -1562,6 +1706,36 @@ impl StateStore {
 		Ok(records.into_iter().map(|record| record.as_public()).collect())
 	}
 
+	/// Build one project-scoped loop evidence snapshot for operator status rendering.
+	pub(crate) fn project_loop_evidence_snapshot(
+		&self,
+		project_id: &str,
+	) -> Result<ProjectLoopEvidenceSnapshot> {
+		let mut state = self.lock_without_refresh()?;
+		let mut snapshot = ProjectLoopEvidenceSnapshot::default();
+
+		self.refresh_project_loop_evidence_state_locked(&mut state, project_id)?;
+
+		for record in state
+			.private_execution_events
+			.iter()
+			.filter(|record| record.project_id == project_id)
+		{
+			snapshot.insert_private_event(record.as_public());
+		}
+		for record in state
+			.review_policy_checkpoints
+			.values()
+			.filter(|record| record.project_id == project_id)
+		{
+			snapshot.insert_review_checkpoint(record.as_public());
+		}
+
+		snapshot.sort_private_events();
+
+		Ok(snapshot)
+	}
+
 	/// Create or replace one local Loop/Decision Contract payload.
 	#[allow(dead_code)]
 	pub(crate) fn upsert_decision_contract(
@@ -1608,6 +1782,14 @@ impl StateStore {
 		validate_required_decision_contract_field("project_id", project_id)?;
 		validate_required_decision_contract_field("contract_id", contract_id)?;
 
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.decision_contract(project_id, contract_id)
+				.map(|record| record.map(|record| record.as_public()));
+		}
+
 		let state = self.lock()?;
 
 		Ok(state
@@ -1625,6 +1807,17 @@ impl StateStore {
 	) -> Result<Vec<DecisionContractRecord>> {
 		validate_required_decision_contract_field("project_id", project_id)?;
 		validate_required_decision_contract_field("source_issue_id", source_issue_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.list_decision_contracts_for_issue(project_id, source_issue_id)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
 
 		let state = self.lock()?;
 		let mut records = state
@@ -1758,6 +1951,14 @@ impl StateStore {
 		validate_required_execution_program_field("project_id", project_id)?;
 		validate_required_execution_program_field("program_id", program_id)?;
 
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.execution_program(project_id, program_id)
+				.map(|record| record.map(|record| record.as_public()));
+		}
+
 		let state = self.lock()?;
 
 		Ok(state
@@ -1775,6 +1976,17 @@ impl StateStore {
 	) -> Result<Vec<ExecutionProgramRecord>> {
 		validate_required_execution_program_field("project_id", project_id)?;
 		validate_required_execution_program_field("source_contract_id", source_contract_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.list_execution_programs_for_contract(project_id, source_contract_id)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
 
 		let state = self.lock()?;
 		let mut records = state
@@ -1798,6 +2010,17 @@ impl StateStore {
 		project_id: &str,
 	) -> Result<Vec<ExecutionProgramRecord>> {
 		validate_required_execution_program_field("project_id", project_id)?;
+
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let records = sqlite
+				.list_execution_programs(project_id)?
+				.into_iter()
+				.map(|record| record.as_public())
+				.collect();
+
+			return Ok(records);
+		}
 
 		let state = self.lock()?;
 		let mut records = state
@@ -2198,6 +2421,14 @@ impl StateStore {
 
 	/// Read the worktree mapping for one issue.
 	pub fn worktree_for_issue(&self, issue_id: &str) -> Result<Option<WorktreeMapping>> {
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite
+				.worktree_for_issue(issue_id)
+				.map(|mapping| mapping.map(|mapping| mapping.as_public()));
+		}
+
 		let state = self.lock()?;
 
 		Ok(state.worktrees.get(issue_id).map(WorktreeMappingRecord::as_public))
@@ -2207,7 +2438,7 @@ impl StateStore {
 	pub fn list_worktrees(&self, project_id: &str) -> Result<Vec<WorktreeMapping>> {
 		let mut state = self.lock_without_refresh()?;
 
-		self.refresh_project_run_state_locked(&mut state, project_id)?;
+		self.refresh_project_run_metadata_state_locked(&mut state, project_id)?;
 
 		let mut mappings = state
 			.worktrees
@@ -2264,7 +2495,7 @@ impl StateStore {
 		Ok(())
 	}
 
-	fn refresh_project_run_state_locked(
+	fn refresh_project_run_metadata_state_locked(
 		&self,
 		state: &mut StateData,
 		project_id: &str,
@@ -2275,9 +2506,42 @@ impl StateStore {
 		let sqlite = sqlite
 			.lock()
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
-		let loaded = sqlite.load_project_run_state_for_project(project_id)?;
+		let loaded = sqlite.load_project_run_metadata_for_project(project_id)?;
 
-		state.replace_project_run_state(loaded);
+		state.replace_project_run_metadata_state(loaded);
+
+		Ok(())
+	}
+
+	fn refresh_protocol_event_summaries_for_runs_locked(
+		&self,
+		state: &mut StateData,
+		run_ids: &[String],
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.load_protocol_event_summaries_for_runs(state, run_ids)
+	}
+
+	fn refresh_project_loop_evidence_state_locked(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+		let loaded = sqlite.load_project_loop_evidence_for_project(project_id)?;
+
+		state.replace_project_loop_evidence_state(project_id, loaded);
 
 		Ok(())
 	}
@@ -2316,6 +2580,17 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.delete_project(service_id)
+	}
+
+	fn upsert_project_locked(&self, project: &ProjectRegistration) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_project(project)
 	}
 
 	fn delete_connector_backoff_locked(&self, project_id: &str, connector: &str) -> Result<()> {

@@ -14,6 +14,7 @@ use libc::{
 };
 #[cfg(target_os = "macos")]
 use process::Command;
+use rusqlite::{self, Row};
 
 static RUN_ACTIVITY_MARKER_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -158,12 +159,18 @@ impl StateData {
 		self.connector_backoffs = loaded.connector_backoffs;
 	}
 
-	fn replace_project_run_state(&mut self, loaded: Self) {
+	fn replace_project_run_metadata_state(&mut self, loaded: Self) {
 		self.leases = loaded.leases;
 		self.run_attempts = loaded.run_attempts;
 		self.control_channels = loaded.control_channels;
-		self.event_summaries = loaded.event_summaries;
 		self.worktrees = loaded.worktrees;
+	}
+
+	fn replace_project_loop_evidence_state(&mut self, project_id: &str, loaded: Self) {
+		self.private_execution_events.retain(|record| record.project_id != project_id);
+		self.private_execution_events.extend(loaded.private_execution_events);
+		self.review_policy_checkpoints.retain(|key, _record| key.project_id != project_id);
+		self.review_policy_checkpoints.extend(loaded.review_policy_checkpoints);
 	}
 
 	fn replace_project_registry_state(&mut self, loaded: Self) {
@@ -314,6 +321,8 @@ CREATE TABLE IF NOT EXISTS run_attempts (
 	updated_at TEXT NOT NULL,
 	updated_at_unix INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS run_attempts_issue_attempt_idx
+ON run_attempts (issue_id, attempt_number, updated_at_unix, run_id);
 CREATE TABLE IF NOT EXISTS protocol_events (
 	run_id TEXT NOT NULL,
 	sequence_number INTEGER NOT NULL,
@@ -341,6 +350,8 @@ CREATE TABLE IF NOT EXISTS worktrees (
 	created_at_unix INTEGER,
 	updated_at_unix INTEGER
 );
+CREATE INDEX IF NOT EXISTS worktrees_project_issue_idx
+ON worktrees (project_id, issue_id);
 CREATE TABLE IF NOT EXISTS linear_execution_events (
 	idempotency_key TEXT PRIMARY KEY NOT NULL,
 	service_id TEXT NOT NULL,
@@ -641,14 +652,22 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(state)
 	}
 
-	fn load_project_run_state_for_project(&self, project_id: &str) -> Result<StateData> {
+	fn load_project_run_metadata_for_project(&self, project_id: &str) -> Result<StateData> {
 		let mut state = StateData::default();
 
 		self.load_leases(&mut state)?;
-		self.load_run_attempts(&mut state)?;
+		self.load_run_attempts_for_project(&mut state, project_id)?;
 		self.load_worktrees(&mut state)?;
 		self.load_run_control_channels_for_project(&mut state, project_id)?;
-		self.load_protocol_event_summaries_for_project_runs(&mut state, project_id)?;
+
+		Ok(state)
+	}
+
+	fn load_project_loop_evidence_for_project(&self, project_id: &str) -> Result<StateData> {
+		let mut state = StateData::default();
+
+		self.load_private_execution_events_for_project(&mut state, project_id)?;
+		self.load_review_policy_checkpoints_for_project(&mut state, project_id)?;
 
 		Ok(state)
 	}
@@ -714,6 +733,31 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn upsert_project(&self, project: &ProjectRegistration) -> Result<()> {
+		self.connection.execute(
+			"INSERT OR REPLACE INTO projects (
+					service_id, config_path, repo_root, worktree_root, workflow_path,
+					tracker_api_key_env_var, github_token_env_var, enabled, config_fingerprint,
+					updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+			params![
+				project.service_id(),
+				project.config_path().to_string_lossy().as_ref(),
+				project.repo_root().to_string_lossy().as_ref(),
+				project.worktree_root().to_string_lossy().as_ref(),
+				project.workflow_path().to_string_lossy().as_ref(),
+				project.tracker_api_key_env_var(),
+				project.github_token_env_var(),
+				if project.enabled() { 1_i64 } else { 0_i64 },
+				project.config_fingerprint(),
+				project.updated_at(),
+				project.updated_at_unix(),
+			],
+		)?;
+
+		Ok(())
+	}
+
 	fn delete_connector_backoff(&self, project_id: &str, connector: &str) -> Result<()> {
 		self.connection.execute(
 			"DELETE FROM connector_backoffs WHERE project_id = ?1 AND connector = ?2",
@@ -721,6 +765,23 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 
 		Ok(())
+	}
+
+	fn connector_backoff(
+		&self,
+		project_id: &str,
+		connector: &str,
+	) -> Result<Option<ConnectorBackoff>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, connector, sync_phase, quota_class, reset_unix_epoch,
+			 reset_source, warning, updated_at, updated_at_unix
+			 FROM connector_backoffs
+			 WHERE project_id = ?1 AND connector = ?2
+			 LIMIT 1",
+		)?;
+		let mut rows = statement.query(params![project_id, connector])?;
+
+		Ok(rows.next()?.map(connector_backoff_from_row).transpose()?)
 	}
 
 	fn upsert_run_attempt(&self, attempt: &RunAttemptRecord) -> Result<()> {
@@ -1258,6 +1319,23 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
+	fn load_run_attempts_for_project(&self, state: &mut StateData, project_id: &str) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
+			 updated_at, updated_at_unix FROM run_attempts \
+			 WHERE project_id = ?1",
+		)?;
+		let rows = statement.query_map(params![project_id], run_attempt_record_from_row)?;
+
+		for row in rows {
+			let attempt = row?;
+
+			state.run_attempts.insert(attempt.run_id.clone(), attempt);
+		}
+
+		Ok(())
+	}
+
 	fn load_run_control_channels(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self.connection.prepare(
 			"SELECT run_id, project_id, issue_id, attempt_number, transport, channel_path, status, \
@@ -1353,6 +1431,48 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(count > 0)
 	}
 
+	fn run_attempt_for_issue_attempt(
+		&self,
+		issue_id: &str,
+		attempt_number: i64,
+	) -> Result<Option<RunAttemptRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
+			 updated_at, updated_at_unix FROM run_attempts \
+			 WHERE issue_id = ?1 AND attempt_number = ?2 \
+			 ORDER BY updated_at_unix DESC, run_id DESC \
+			 LIMIT 1",
+		)?;
+		let mut rows = statement.query(params![issue_id, attempt_number])?;
+
+		Ok(rows.next()?.map(run_attempt_record_from_row).transpose()?)
+	}
+
+	fn latest_run_attempt_for_issue(&self, issue_id: &str) -> Result<Option<RunAttemptRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
+			 updated_at, updated_at_unix FROM run_attempts \
+			 WHERE issue_id = ?1 \
+			 ORDER BY attempt_number DESC, updated_at_unix DESC, run_id DESC \
+			 LIMIT 1",
+		)?;
+		let mut rows = statement.query(params![issue_id])?;
+
+		Ok(rows.next()?.map(run_attempt_record_from_row).transpose()?)
+	}
+
+	fn list_run_attempts_for_issue(&self, issue_id: &str) -> Result<Vec<RunAttemptRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
+			 updated_at, updated_at_unix FROM run_attempts \
+			 WHERE issue_id = ?1 \
+			 ORDER BY attempt_number ASC, run_id ASC",
+		)?;
+		let rows = statement.query_map(params![issue_id], run_attempt_record_from_row)?;
+
+		rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+	}
+
 	fn load_protocol_event_summaries(&self, state: &mut StateData) -> Result<()> {
 		self.load_compacted_protocol_event_summaries(state)?;
 
@@ -1390,24 +1510,15 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
-	fn load_protocol_event_summaries_for_project_runs(
+	fn load_protocol_event_summaries_for_runs(
 		&self,
 		state: &mut StateData,
-		project_id: &str,
+		run_ids: &[String],
 	) -> Result<()> {
-		let mut run_ids = state
-			.run_attempts
-			.values()
-			.filter(|attempt| state.project_run_status(project_id, attempt).is_some())
-			.map(|attempt| attempt.run_id.clone())
-			.collect::<Vec<_>>();
-
-		run_ids.sort();
-		run_ids.dedup();
-
 		for run_id in run_ids {
-			self.load_compacted_protocol_event_summary_for_run(state, &run_id)?;
-			self.load_protocol_event_summary_for_run(state, &run_id)?;
+			state.event_summaries.remove(run_id);
+			self.load_compacted_protocol_event_summary_for_run(state, run_id)?;
+			self.load_protocol_event_summary_for_run(state, run_id)?;
 		}
 
 		Ok(())
@@ -1419,24 +1530,22 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		run_id: &str,
 	) -> Result<()> {
 		let mut statement = self.connection.prepare(
-			"SELECT totals.event_count, totals.last_sequence_number, last.event_type, \
-			 last.created_at, last.created_at_unix \
-			 FROM (
-			 SELECT COUNT(*) AS event_count, MAX(sequence_number) AS last_sequence_number \
-			 FROM protocol_events WHERE run_id = ?1
-			 ) totals \
-			 JOIN protocol_events last \
-			 ON last.run_id = ?1 \
-			 AND last.sequence_number = totals.last_sequence_number",
+			"SELECT sequence_number, event_type, created_at, created_at_unix \
+			 FROM protocol_events \
+			 WHERE run_id = ?1 \
+			 ORDER BY sequence_number DESC \
+			 LIMIT 1",
 		)?;
 		let summary = statement
 			.query_row(params![run_id], |row| {
+				let last_sequence_number = row.get(0)?;
+
 				Ok(ProtocolEventSummaryRecord {
-					event_count: row.get(0)?,
-					last_sequence_number: Some(row.get(1)?),
-					last_event_type: Some(row.get(2)?),
-					last_event_at: Some(row.get(3)?),
-					last_event_at_unix: Some(row.get(4)?),
+					event_count: last_sequence_number,
+					last_sequence_number: Some(last_sequence_number),
+					last_event_type: Some(row.get(1)?),
+					last_event_at: Some(row.get(2)?),
+					last_event_at_unix: Some(row.get(3)?),
 				})
 			})
 			.optional()?;
@@ -1512,20 +1621,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				 FROM worktrees",
 			)?;
 		let rows = statement.query_map([], |row| {
-			let issue_id: String = row.get(0)?;
+			let mapping = worktree_mapping_record_from_row(row)?;
 
-			Ok((
-				issue_id.clone(),
-				WorktreeMappingRecord {
-					issue_id,
-					project_id: row.get(1)?,
-					branch_name: row.get(2)?,
-					worktree_path: PathBuf::from(row.get::<_, String>(3)?),
-					provenance_source: row.get(4)?,
-					created_at_unix: row.get(5)?,
-					updated_at_unix: row.get(6)?,
-				},
-			))
+			Ok((mapping.issue_id.clone(), mapping))
 		})?;
 
 		for row in rows {
@@ -1535,6 +1633,19 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		}
 
 		Ok(())
+	}
+
+	fn worktree_for_issue(&self, issue_id: &str) -> Result<Option<WorktreeMappingRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT issue_id, project_id, branch_name, worktree_path,
+			 provenance_source, created_at_unix, updated_at_unix
+			 FROM worktrees
+			 WHERE issue_id = ?1
+			 LIMIT 1",
+		)?;
+		let mut rows = statement.query(params![issue_id])?;
+
+		Ok(rows.next()?.map(worktree_mapping_record_from_row).transpose()?)
 	}
 
 	fn load_linear_execution_events(&self, state: &mut StateData) -> Result<()> {
@@ -1655,22 +1766,27 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		Ok(())
 	}
 
-	fn load_decision_contracts(&self, state: &mut StateData) -> Result<()> {
+	fn load_private_execution_events_for_project(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
 		let mut statement = self.connection.prepare(
-			"SELECT project_id, contract_id, source_issue_id, status, payload_json, created_at, \
-			 created_at_unix, updated_at, updated_at_unix \
-			 FROM decision_contracts \
-			 ORDER BY project_id ASC, contract_id ASC",
+			"SELECT record_id, project_id, issue_id, run_id, attempt_number, event_type, \
+			 payload_json, recorded_at, recorded_at_unix \
+			 FROM private_execution_events \
+			 WHERE project_id = ?1 \
+			 ORDER BY record_id ASC",
 		)?;
-		let rows = statement.query_map([], |row| {
+		let rows = statement.query_map(params![project_id], |row| {
 			Ok((
-				row.get::<_, String>(0)?,
+				row.get::<_, i64>(0)?,
 				row.get::<_, String>(1)?,
-				row.get::<_, Option<String>>(2)?,
+				row.get::<_, String>(2)?,
 				row.get::<_, String>(3)?,
-				row.get::<_, String>(4)?,
+				row.get::<_, i64>(4)?,
 				row.get::<_, String>(5)?,
-				row.get::<_, i64>(6)?,
+				row.get::<_, String>(6)?,
 				row.get::<_, String>(7)?,
 				row.get::<_, i64>(8)?,
 			))
@@ -1678,51 +1794,97 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
 		for row in rows {
 			let (
+				record_id,
 				project_id,
-				contract_id,
-				source_issue_id,
-				status,
+				issue_id,
+				run_id,
+				attempt_number,
+				event_type,
 				payload_json,
-				created_at,
-				created_at_unix,
-				updated_at,
-				updated_at_unix,
+				recorded_at,
+				recorded_at_unix,
 			) = row?;
-			let contract = serde_json::from_str::<DecisionContract>(&payload_json)?;
-			let contract_status = contract.status();
+			let payload = serde_json::from_str::<Value>(&payload_json)?;
 
-			contract.validate()?;
-
-			if contract_id != contract.contract_id() {
-				eyre::bail!(
-					"Decision contract row `{contract_id}` contained payload `{}`.",
-					contract.contract_id()
-				);
-			}
-			if status != contract_status.as_str() {
-				tracing::warn!(
-					project_id = %project_id,
-					contract_id = %contract_id,
-					"decision contract status column differed from payload status"
-				);
-			}
-
-			state.decision_contracts.insert(
-				DecisionContractKey::new(&project_id, &contract_id),
-				DecisionContractRuntimeRecord {
-					project_id,
-					source_issue_id,
-					status: contract_status,
-					contract,
-					created_at,
-					created_at_unix,
-					updated_at,
-					updated_at_unix,
-				},
-			);
+			state.private_execution_events.push(PrivateExecutionEventRuntimeRecord {
+				record_id,
+				project_id,
+				issue_id,
+				run_id,
+				attempt_number,
+				event_type,
+				payload,
+				recorded_at,
+				recorded_at_unix,
+			});
 		}
 
 		Ok(())
+	}
+
+	fn load_decision_contracts(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, contract_id, source_issue_id, status, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM decision_contracts \
+			 ORDER BY project_id ASC, contract_id ASC",
+		)?;
+		let rows = statement.query_map([], decision_contract_runtime_row_parts)?;
+
+		for row in rows {
+			let record = decision_contract_record_from_row_parts(row?)?;
+
+			state.decision_contracts.insert(record.key(), record);
+		}
+
+		Ok(())
+	}
+
+	fn decision_contract(
+		&self,
+		project_id: &str,
+		contract_id: &str,
+	) -> Result<Option<DecisionContractRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, contract_id, source_issue_id, status, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM decision_contracts \
+			 WHERE project_id = ?1 AND contract_id = ?2 \
+			 LIMIT 1",
+		)?;
+		let mut rows = statement.query(params![project_id, contract_id])?;
+
+		rows
+			.next()?
+			.map(decision_contract_runtime_row_parts)
+			.transpose()?
+			.map(decision_contract_record_from_row_parts)
+			.transpose()
+	}
+
+	fn list_decision_contracts_for_issue(
+		&self,
+		project_id: &str,
+		source_issue_id: &str,
+	) -> Result<Vec<DecisionContractRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, contract_id, source_issue_id, status, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM decision_contracts \
+			 WHERE project_id = ?1 AND source_issue_id = ?2 \
+			 ORDER BY created_at_unix ASC, contract_id ASC",
+		)?;
+		let rows = statement.query_map(
+			params![project_id, source_issue_id],
+			decision_contract_runtime_row_parts,
+		)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(decision_contract_record_from_row_parts(row?)?);
+		}
+
+		Ok(records)
 	}
 
 	fn load_execution_programs(&self, state: &mut StateData) -> Result<()> {
@@ -1732,62 +1894,83 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 FROM execution_programs \
 			 ORDER BY project_id ASC, program_id ASC",
 		)?;
-		let rows = statement.query_map([], |row| {
-			Ok((
-				row.get::<_, String>(0)?,
-				row.get::<_, String>(1)?,
-				row.get::<_, String>(2)?,
-				row.get::<_, String>(3)?,
-				row.get::<_, String>(4)?,
-				row.get::<_, i64>(5)?,
-				row.get::<_, String>(6)?,
-				row.get::<_, i64>(7)?,
-			))
-		})?;
+		let rows = statement.query_map([], execution_program_runtime_row_parts)?;
 
 		for row in rows {
-			let (
-				project_id,
-				program_id,
-				source_contract_id,
-				payload_json,
-				created_at,
-				created_at_unix,
-				updated_at,
-				updated_at_unix,
-			) = row?;
-			let program = serde_json::from_str::<ExecutionProgram>(&payload_json)?;
+			let record = execution_program_record_from_row_parts(row?)?;
 
-			program.validate()?;
-
-			if program_id != program.program_id() {
-				eyre::bail!(
-					"Execution program row `{program_id}` contained payload `{}`.",
-					program.program_id()
-				);
-			}
-			if source_contract_id != program.source_contract_id() {
-				eyre::bail!(
-					"Execution program row `{program_id}` carried source contract `{source_contract_id}` but payload references `{}`.",
-					program.source_contract_id()
-				);
-			}
-
-			state.execution_programs.insert(
-				ExecutionProgramKey::new(&project_id, &program_id),
-				ExecutionProgramRuntimeRecord {
-					project_id,
-					source_contract_id,
-					program,
-					created_at,
-					created_at_unix,
-					updated_at,
-					updated_at_unix,
-				},
-			);
+			state.execution_programs.insert(record.key(), record);
 		}
 
 		Ok(())
+	}
+
+	fn execution_program(
+		&self,
+		project_id: &str,
+		program_id: &str,
+	) -> Result<Option<ExecutionProgramRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, source_contract_id, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM execution_programs \
+			 WHERE project_id = ?1 AND program_id = ?2 \
+			 LIMIT 1",
+		)?;
+		let mut rows = statement.query(params![project_id, program_id])?;
+
+		rows
+			.next()?
+			.map(execution_program_runtime_row_parts)
+			.transpose()?
+			.map(execution_program_record_from_row_parts)
+			.transpose()
+	}
+
+	fn list_execution_programs_for_contract(
+		&self,
+		project_id: &str,
+		source_contract_id: &str,
+	) -> Result<Vec<ExecutionProgramRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, source_contract_id, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM execution_programs \
+			 WHERE project_id = ?1 AND source_contract_id = ?2 \
+			 ORDER BY created_at_unix ASC, program_id ASC",
+		)?;
+		let rows = statement.query_map(
+			params![project_id, source_contract_id],
+			execution_program_runtime_row_parts,
+		)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(execution_program_record_from_row_parts(row?)?);
+		}
+
+		Ok(records)
+	}
+
+	fn list_execution_programs(
+		&self,
+		project_id: &str,
+	) -> Result<Vec<ExecutionProgramRuntimeRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, program_id, source_contract_id, payload_json, created_at, \
+			 created_at_unix, updated_at, updated_at_unix \
+			 FROM execution_programs \
+			 WHERE project_id = ?1 \
+			 ORDER BY created_at_unix ASC, program_id ASC",
+		)?;
+		let rows = statement.query_map(params![project_id], execution_program_runtime_row_parts)?;
+		let mut records = Vec::new();
+
+		for row in rows {
+			records.push(execution_program_record_from_row_parts(row?)?);
+		}
+
+		Ok(records)
 	}
 
 	fn load_review_handoffs(&self, state: &mut StateData) -> Result<()> {
@@ -1900,6 +2083,50 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			 nonclean_rounds, details_json, updated_at, updated_at_unix FROM review_policy_checkpoints",
 		)?;
 		let rows = statement.query_map([], |row| {
+			let project_id: String = row.get(0)?;
+			let issue_id: String = row.get(1)?;
+			let run_id: String = row.get(2)?;
+			let attempt_number: i64 = row.get(3)?;
+			let phase: String = row.get(4)?;
+
+			Ok((
+				ReviewPolicyKey::new(&project_id, &issue_id, &run_id, attempt_number, &phase),
+				ReviewPolicyRuntimeRecord {
+					project_id,
+					issue_id,
+					run_id,
+					attempt_number,
+					phase,
+					status: row.get(5)?,
+					head_sha: row.get(6)?,
+					nonclean_rounds: row.get(7)?,
+					details_json: row.get(8)?,
+					updated_at: row.get(9)?,
+					updated_at_unix: row.get(10)?,
+				},
+			))
+		})?;
+
+		for row in rows {
+			let (key, record) = row?;
+
+			state.review_policy_checkpoints.insert(key, record);
+		}
+
+		Ok(())
+	}
+
+	fn load_review_policy_checkpoints_for_project(
+		&self,
+		state: &mut StateData,
+		project_id: &str,
+	) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT project_id, issue_id, run_id, attempt_number, phase, status, head_sha, \
+			 nonclean_rounds, details_json, updated_at, updated_at_unix FROM review_policy_checkpoints \
+			 WHERE project_id = ?1",
+		)?;
+		let rows = statement.query_map(params![project_id], |row| {
 			let project_id: String = row.get(0)?;
 			let issue_id: String = row.get(1)?;
 			let run_id: String = row.get(2)?;
@@ -2447,6 +2674,29 @@ struct RunActivityMarkerRecord {
 	review_policy_status: Option<String>,
 	review_policy_head_sha: Option<String>,
 	review_policy_nonclean_rounds: Option<i64>,
+}
+
+struct DecisionContractRuntimeRowParts {
+	project_id: String,
+	contract_id: String,
+	source_issue_id: Option<String>,
+	status: String,
+	payload_json: String,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+
+struct ExecutionProgramRuntimeRowParts {
+	project_id: String,
+	program_id: String,
+	source_contract_id: String,
+	payload_json: String,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -4106,6 +4356,150 @@ fn compare_attempt_records(left: &RunAttemptRecord, right: &RunAttemptRecord) ->
 		.then_with(|| left.run_id.cmp(&right.run_id))
 }
 
+fn run_attempt_record_from_row(
+	row: &Row<'_>,
+) -> std::result::Result<RunAttemptRecord, rusqlite::Error> {
+	Ok(RunAttemptRecord {
+		run_id: row.get(0)?,
+		project_id: row.get(1)?,
+		issue_id: row.get(2)?,
+		attempt_number: row.get(3)?,
+		status: row.get(4)?,
+		thread_id: row.get(5)?,
+		turn_id: row.get(6)?,
+		updated_at: row.get(7)?,
+		updated_at_unix: row.get(8)?,
+	})
+}
+
+fn worktree_mapping_record_from_row(
+	row: &Row<'_>,
+) -> std::result::Result<WorktreeMappingRecord, rusqlite::Error> {
+	Ok(WorktreeMappingRecord {
+		issue_id: row.get(0)?,
+		project_id: row.get(1)?,
+		branch_name: row.get(2)?,
+		worktree_path: PathBuf::from(row.get::<_, String>(3)?),
+		provenance_source: row.get(4)?,
+		created_at_unix: row.get(5)?,
+		updated_at_unix: row.get(6)?,
+	})
+}
+
+fn decision_contract_runtime_row_parts(
+	row: &Row<'_>,
+) -> std::result::Result<DecisionContractRuntimeRowParts, rusqlite::Error> {
+	Ok(DecisionContractRuntimeRowParts {
+		project_id: row.get(0)?,
+		contract_id: row.get(1)?,
+		source_issue_id: row.get(2)?,
+		status: row.get(3)?,
+		payload_json: row.get(4)?,
+		created_at: row.get(5)?,
+		created_at_unix: row.get(6)?,
+		updated_at: row.get(7)?,
+		updated_at_unix: row.get(8)?,
+	})
+}
+
+fn decision_contract_record_from_row_parts(
+	parts: DecisionContractRuntimeRowParts,
+) -> Result<DecisionContractRuntimeRecord> {
+	let contract = serde_json::from_str::<DecisionContract>(&parts.payload_json)?;
+	let contract_status = contract.status();
+
+	contract.validate()?;
+
+	if parts.contract_id != contract.contract_id() {
+		eyre::bail!(
+			"Decision contract row `{}` contained payload `{}`.",
+			parts.contract_id,
+			contract.contract_id()
+		);
+	}
+	if parts.status != contract_status.as_str() {
+		tracing::warn!(
+			project_id = %parts.project_id,
+			contract_id = %parts.contract_id,
+			"decision contract status column differed from payload status"
+		);
+	}
+
+	Ok(DecisionContractRuntimeRecord {
+		project_id: parts.project_id,
+		source_issue_id: parts.source_issue_id,
+		status: contract_status,
+		contract,
+		created_at: parts.created_at,
+		created_at_unix: parts.created_at_unix,
+		updated_at: parts.updated_at,
+		updated_at_unix: parts.updated_at_unix,
+	})
+}
+
+fn execution_program_runtime_row_parts(
+	row: &Row<'_>,
+) -> std::result::Result<ExecutionProgramRuntimeRowParts, rusqlite::Error> {
+	Ok(ExecutionProgramRuntimeRowParts {
+		project_id: row.get(0)?,
+		program_id: row.get(1)?,
+		source_contract_id: row.get(2)?,
+		payload_json: row.get(3)?,
+		created_at: row.get(4)?,
+		created_at_unix: row.get(5)?,
+		updated_at: row.get(6)?,
+		updated_at_unix: row.get(7)?,
+	})
+}
+
+fn execution_program_record_from_row_parts(
+	parts: ExecutionProgramRuntimeRowParts,
+) -> Result<ExecutionProgramRuntimeRecord> {
+	let program = serde_json::from_str::<ExecutionProgram>(&parts.payload_json)?;
+
+	program.validate()?;
+
+	if parts.program_id != program.program_id() {
+		eyre::bail!(
+			"Execution program row `{}` contained payload `{}`.",
+			parts.program_id,
+			program.program_id()
+		);
+	}
+	if parts.source_contract_id != program.source_contract_id() {
+		eyre::bail!(
+			"Execution program row `{}` carried source contract `{}` but payload references `{}`.",
+			parts.program_id,
+			parts.source_contract_id,
+			program.source_contract_id()
+		);
+	}
+
+	Ok(ExecutionProgramRuntimeRecord {
+		project_id: parts.project_id,
+		source_contract_id: parts.source_contract_id,
+		program,
+		created_at: parts.created_at,
+		created_at_unix: parts.created_at_unix,
+		updated_at: parts.updated_at,
+		updated_at_unix: parts.updated_at_unix,
+	})
+}
+
+fn connector_backoff_from_row(row: &Row<'_>) -> std::result::Result<ConnectorBackoff, rusqlite::Error> {
+	Ok(ConnectorBackoff {
+		project_id: row.get(0)?,
+		connector: row.get(1)?,
+		sync_phase: row.get(2)?,
+		quota_class: row.get(3)?,
+		reset_unix_epoch: row.get(4)?,
+		reset_source: row.get(5)?,
+		warning: row.get(6)?,
+		updated_at: row.get(7)?,
+		updated_at_unix: row.get(8)?,
+	})
+}
+
 fn compare_linear_execution_event_runtime_records(
 	left: &LinearExecutionEventRuntimeRecord,
 	right: &LinearExecutionEventRuntimeRecord,
@@ -4158,7 +4552,7 @@ fn clear_close_on_exec(file: &File) -> Result<()> {
 	let existing_flags = unsafe { libc::fcntl(fd, F_GETFD) };
 
 	if existing_flags == -1 {
-		return Err(Error::last_os_error().into());
+		return Err(std::io::Error::last_os_error().into());
 	}
 
 	let new_flags = existing_flags & !FD_CLOEXEC;
@@ -4167,7 +4561,7 @@ fn clear_close_on_exec(file: &File) -> Result<()> {
 		let result = unsafe { libc::fcntl(fd, F_SETFD, new_flags) };
 
 		if result == -1 {
-			return Err(Error::last_os_error().into());
+			return Err(std::io::Error::last_os_error().into());
 		}
 	}
 
@@ -4180,7 +4574,7 @@ fn set_close_on_exec(file: &File) -> Result<()> {
 	let existing_flags = unsafe { libc::fcntl(fd, F_GETFD) };
 
 	if existing_flags == -1 {
-		return Err(Error::last_os_error().into());
+		return Err(std::io::Error::last_os_error().into());
 	}
 
 	let new_flags = existing_flags | FD_CLOEXEC;
@@ -4189,7 +4583,7 @@ fn set_close_on_exec(file: &File) -> Result<()> {
 		let result = unsafe { libc::fcntl(fd, F_SETFD, new_flags) };
 
 		if result == -1 {
-			return Err(Error::last_os_error().into());
+			return Err(std::io::Error::last_os_error().into());
 		}
 	}
 
