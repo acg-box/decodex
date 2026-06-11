@@ -72,7 +72,7 @@ if [[ -z "$APP_VERSION" ]]; then
 			"$WORKTREE_ROOT/Cargo.toml" | head -n 1
 	)"
 fi
-APP_VERSION="${APP_VERSION:-0.1.0}"
+APP_VERSION="${APP_VERSION:-0.2.0}"
 
 terminate_running_app() {
 	pkill -x "$EXECUTABLE_NAME" >/dev/null 2>&1 || true
