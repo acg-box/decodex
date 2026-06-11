@@ -70,6 +70,14 @@ state or this state machine.
   `--persist` writes only local runtime Program Intake and Execution Program state;
   queue labels remain untouched until a later reconciliation surface is explicitly
   authorized.
+- On each normal Linear scan tick, the control plane reconciles persisted Execution
+  Programs before normal issue selection. The reconciler refreshes mapped Linear
+  issue state, dependency observations, local active leases, retained review/landing
+  worktrees, needs-attention labels, and occupied conflict domains; then it applies
+  or removes only the service queue label decisions authorized by the Execution
+  Program readiness evaluator. It must not dispatch app-server runs directly. Any
+  newly queued issue still enters execution through the ordinary queue scan,
+  dispatch policy, lease acquisition, and scheduler path.
 
 The evidence boundary is ordered from private runtime authority to public collaboration
 mirror:
@@ -694,6 +702,14 @@ After a process restart, recent-run history, active lease ownership, retained po
 - While the control plane is supervising an active child process, stall detection must consult the child-updated `.decodex-run-activity` marker for the current `run_id` plus `attempt_number` and the persisted runtime event journal. A retained marker only proves a live process when its PID is still alive on the current host boot and the process start identity still matches; after power loss, reboot, or same-boot PID reuse, recovery must clear the reconstructed lease and re-enter the retained lane through retry-style dispatch instead of preserving the old running state.
 - Retry-style recovery prompts must tell the next agent to treat the current worktree, tracker state, runtime-store records, and protocol events as durable truth, use marker files only as diagnostic liveness breadcrumbs, inspect the branch/diff/recent validation evidence first, and continue from partial work rather than assuming prior in-memory model/tool state survived.
 - While the control plane owns a queued retry entry, that queued claim must take priority over normal candidate selection for the affected project.
+- While the control plane evaluates persisted Execution Programs, program-owned ready
+  nodes may receive `decodex:queued:<service-id>` only when their mapped Linear issue
+  is startable, non-terminal, briefed for generic dispatch, free of opt-out and
+  needs-attention labels, not already active, and not blocked by dependency or
+  occupied conflict-domain evidence. Blocked, stale, paused, terminal, active, or
+  attention-required nodes must not receive the label, and the reconciler may remove
+  the service queue label only when matching local ownership evidence identifies the
+  same service, program, node, issue, and label.
 - While the control plane is idle between lanes, it may reload the configured project `WORKFLOW.md` on each tick and immediately apply a newly valid document to future dispatch, retry, post-exit reconciliation, and prompt generation.
 - If that same configured `WORKFLOW.md` path becomes invalid after a successful load, the control plane must log the reload failure and keep the last known good document active instead of dropping the tick or clearing runtime policy.
 - If the leased issue becomes terminal during a control-plane tick, `decodex` must stop the active run, mark the attempt `terminated`, clear the lease, and then retain or clean the worktree according to the retention rules above.
