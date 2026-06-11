@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "operator_impact",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-pr-27414:operator_impact",
   "reserved_at": "2026-06-11T15:57:50Z",
   "expires_at": "2026-06-11T17:57:50Z",
@@ -37,6 +37,7 @@
     "branch": "codex/x-publisher-pr-27414-20260611",
     "pr_url": "https://github.com/hack-ink/decodex/pull/336"
   },
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-11/openai-codex-pr-27414.json",
   "evidence_notes": [
     "Checked-in social_post/v1 and social_publish_reservation/v1 records contain no matching PR 27414 idempotency key, slug, or source URL.",
     "Open publication PR readback found PR #328 for Codex app 26.608 and PR #298 for PR 26486, with no PR 27414 conflict.",
