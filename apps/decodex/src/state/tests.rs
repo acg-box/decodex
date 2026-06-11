@@ -2662,6 +2662,88 @@ fn private_execution_events_persist_reload_and_keep_append_order() {
 }
 
 #[test]
+fn project_loop_evidence_snapshot_filters_project_evidence_once() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.sqlite3");
+	let store = StateStore::open(&state_path).expect("state store should open");
+	let first = store
+		.append_private_execution_event(
+			"decodex",
+			"XY-520",
+			"run-1",
+			2,
+			"evidence_snapshot",
+			serde_json::json!({"match": true}),
+		)
+		.expect("first private event should append");
+	let second = store
+		.append_private_execution_event(
+			"decodex",
+			"XY-520",
+			"run-1",
+			2,
+			"terminal_finalize",
+			serde_json::json!({"path": "review_handoff"}),
+		)
+		.expect("second private event should append");
+
+	store
+		.append_private_execution_event(
+			"other",
+			"XY-520",
+			"run-1",
+			2,
+			"other_project",
+			serde_json::json!({"match": false}),
+		)
+		.expect("other project private event should append");
+	store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: "decodex",
+			issue_id: "XY-520",
+			run_id: "run-1",
+			attempt_number: 2,
+			phase: "handoff",
+			status: "clean",
+			head_sha: "abc123",
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("review policy checkpoint should persist");
+	store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: "other",
+			issue_id: "XY-520",
+			run_id: "run-1",
+			attempt_number: 2,
+			phase: "handoff",
+			status: "findings",
+			head_sha: "def456",
+			nonclean_rounds: 1,
+			details_json: "{}",
+		})
+		.expect("other project checkpoint should persist");
+
+	let snapshot = StateStore::open(&state_path)
+		.expect("state store should reopen")
+		.project_loop_evidence_snapshot("decodex")
+		.expect("project loop evidence should load");
+	let events = snapshot.private_events("XY-520", "run-1", 2);
+	let checkpoint = snapshot
+		.review_policy_checkpoint("XY-520", "run-1", 2, "handoff")
+		.expect("matching checkpoint should exist");
+
+	assert_eq!(
+		events.iter().map(|event| event.record_id()).collect::<Vec<_>>(),
+		vec![first.record_id(), second.record_id()],
+		"snapshot should preserve append order and exclude other projects"
+	);
+	assert_eq!(events[1].event_type(), "terminal_finalize");
+	assert_eq!(checkpoint.status(), "clean");
+	assert!(snapshot.private_events("XY-521", "run-1", 2).is_empty());
+}
+
+#[test]
 fn private_execution_events_filter_issue_run_attempt_and_stay_out_of_linear_cache() {
 	let store = StateStore::open_in_memory().expect("in-memory state store should open");
 
@@ -3044,6 +3126,68 @@ fn state_store_open_refreshes_pubfi_project_registry_across_instances() {
 		project.workflow_path(),
 		refreshed_workflow_path.as_path(),
 		"pubfi refresh should replace the stale workflow path"
+	);
+}
+
+#[test]
+fn lazy_project_registry_refresh_preserves_runtime_rows() {
+	let temp_dir = TempDir::new().expect("tempdir should create");
+	let state_path = temp_dir.path().join("runtime.db");
+	let full_store = StateStore::open(&state_path).expect("state store should open");
+	let registration = ProjectRegistration {
+		service_id: String::from("pubfi"),
+		config_path: temp_dir.path().join("project.toml"),
+		repo_root: temp_dir.path().join("repo"),
+		worktree_root: temp_dir.path().join("repo/.worktrees"),
+		workflow_path: temp_dir.path().join("repo/WORKFLOW.md"),
+		tracker_api_key_env_var: String::from("LINEAR_API_KEY_HACKINK"),
+		github_token_env_var: String::from("GITHUB_PAT_Y"),
+		enabled: true,
+		config_fingerprint: String::from("abc123"),
+		updated_at: String::from("2026-04-29T00:00:00Z"),
+		updated_at_unix: 1_777_392_000,
+	};
+	let refreshed_registration = ProjectRegistration {
+		config_fingerprint: String::from("def456"),
+		updated_at: String::from("2026-04-30T00:00:00Z"),
+		updated_at_unix: 1_777_478_400,
+		..registration.clone()
+	};
+
+	full_store.upsert_project(&registration).expect("project should persist");
+	full_store.record_run_attempt("run-1", "PUB-101", 1, "running").expect("run should record");
+	full_store
+		.append_event("run-1", 1, "item/agentMessage/delta", "{}")
+		.expect("event should append");
+	full_store
+		.upsert_worktree(
+			"pubfi",
+			"PUB-101",
+			"x/pub-101",
+			temp_dir.path().join("repo/.worktrees/PUB-101").to_string_lossy().as_ref(),
+		)
+		.expect("worktree should persist");
+
+	let lazy_store = StateStore::open_lazy(&state_path).expect("lazy state store should open");
+
+	lazy_store.upsert_project(&refreshed_registration).expect("project should refresh");
+
+	let reopened = StateStore::open(&state_path).expect("state store should reopen");
+	let attempt = reopened
+		.latest_run_attempt_for_issue("PUB-101")
+		.expect("attempt lookup should succeed")
+		.expect("attempt should survive lazy project refresh");
+	let mapping = reopened
+		.worktree_for_issue("PUB-101")
+		.expect("worktree lookup should succeed")
+		.expect("worktree should survive lazy project refresh");
+
+	assert_eq!(attempt.run_id(), "run-1");
+	assert_eq!(reopened.event_count("run-1").expect("event count should survive"), 1);
+	assert_eq!(mapping.project_id(), "pubfi");
+	assert_eq!(
+		reopened.list_projects().expect("project registry should load")[0].config_fingerprint(),
+		"def456"
 	);
 }
 
