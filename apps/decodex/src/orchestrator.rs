@@ -56,6 +56,8 @@ include!("orchestrator/operator_http.rs");
 
 include!("orchestrator/pull_request_review.rs");
 
+include!("orchestrator/program_reconciler.rs");
+
 include!("orchestrator/daemon.rs");
 
 include!("orchestrator/reconciliation.rs");

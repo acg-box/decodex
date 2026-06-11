@@ -120,11 +120,15 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   issue-description payloads. Queue-label mutations for generated issues must follow
   the Execution Program readiness evaluator: only ready nodes mapped to normal
   startable Linear issues may receive or retain `decodex:queued:<service-id>`.
-  Program reconciliation must record when it applied that label for a specific
-  service, program, node, and issue. It may remove only labels with matching
+  Program reconciliation runs as part of the normal control-plane scan path and must
+  use current tracker issue state, dependency observations, active leases,
+  review/landing ownership, attention labels, and occupied conflict domains before
+  mutating labels. It must record when it applied that label for a specific service,
+  program, node, issue, and label. It may remove only labels with matching
   program-owned evidence. If the same queue label is present without matching
   ownership evidence, the label is human-owned or ownership-unknown and must be left
-  in place.
+  in place. A reconciled label only feeds the existing scheduler queue scan; it must
+  not directly start an app-server run.
 - `decodex intake issues ... --dry-run` may read tracker state for supplied issues
   and render a local ready/held/blocked/stale/unmapped report, but it must not call
   tracker label mutation tools or write Linear comments. `--persist` may write local
