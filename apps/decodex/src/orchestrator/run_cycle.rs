@@ -1558,11 +1558,12 @@ where
 		if excluded_issue_ids.contains(&lane.issue_id.as_str()) {
 			continue;
 		}
-		if state_store.issue_has_active_shared_claim(project.service_id(), &lane.issue_id)? {
-			continue;
-		}
 
 		if let Some(issue) = issues_by_id.remove(&lane.issue_id) {
+			if closeout_lane_active_claim_blocks_dispatch(project, state_store, &issue)? {
+				continue;
+			}
+
 			let preferred_run_identity =
 				retained_closeout_preferred_run_identity(state_store, project.service_id(), &issue)?;
 
@@ -1755,14 +1756,14 @@ where
 
 		return Ok(None);
 	}
-	if !context.lease_preacquired
-		&& context
-			.state_store
-			.issue_has_active_shared_claim(context.project.service_id(), &issue_id)?
-	{
+
+	let reuses_existing_closeout_claim =
+		target_issue_reuses_existing_closeout_claim(&context, &issue_id, &issue)?;
+
+	if target_issue_active_claim_blocks_dispatch(&context, &issue_id, &issue)? {
 		return Ok(None);
 	}
-	if !context.lease_preacquired {
+	if !context.lease_preacquired && !reuses_existing_closeout_claim {
 		let concurrency = ConcurrencySnapshot::new(context.project.service_id(), context.state_store)?;
 
 		if !concurrency.has_global_capacity(context.workflow.frontmatter().execution()) {
@@ -1781,7 +1782,7 @@ where
 			state_store: context.state_store,
 			worktree_manager: &worktree_manager,
 			dry_run: context.dry_run,
-			lease_preacquired: context.lease_preacquired,
+			lease_preacquired: context.lease_preacquired || reuses_existing_closeout_claim,
 			dispatch_mode: context.dispatch_mode,
 			preferred_issue_state: context.preferred_issue_state,
 			preferred_initial_issue_state: context.preferred_initial_issue_state,
@@ -1869,6 +1870,10 @@ fn run_target_issue_once_with_inferred_dispatch<T>(
 where
 	T: IssueTracker,
 {
+	if target_issue_has_status_visible_closeout(&context)? {
+		return run_target_status_visible_closeout_once(context);
+	}
+
 	if let Some(summary) = run_target_issue_once(target_issue_run_context_with_dispatch_mode(
 		&context,
 		IssueDispatchMode::Normal,
@@ -1883,6 +1888,33 @@ where
 	}
 
 	run_target_status_visible_closeout_once(context)
+}
+
+fn target_issue_has_status_visible_closeout<T>(
+	context: &TargetIssueRunContext<'_, T>,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	let target_issue_id = resolve_target_issue_id(context.tracker, context.issue_id)?;
+	let completed_state = context.workflow.frontmatter().tracker().resolved_completed_state();
+	let review_state_inspector = GhPullRequestReviewStateInspector {
+		github_token_env_var: Some(context.project.github().token_env_var().to_owned()),
+		github_command_path: context.project.github().command_path().map(Path::to_path_buf),
+	};
+
+	Ok(build_post_review_lane_statuses(
+		context.tracker,
+		context.project,
+		context.workflow,
+		context.state_store,
+		&review_state_inspector,
+	)?
+	.into_iter()
+	.any(|lane| {
+		lane.issue_id == target_issue_id
+			&& post_review_lane_is_closeout_candidate(&lane, completed_state)
+	}))
 }
 
 fn run_target_status_visible_closeout_once<T>(
@@ -1981,17 +2013,17 @@ where
 			visible_lanes,
 		);
 	};
-
-	if state_store.issue_has_active_shared_claim(project.service_id(), &target_lane.issue_id)? {
-		return Ok(None);
-	}
-
 	let issue_ids = [target_lane.issue_id.clone()];
 	let mut issues = tracker.refresh_issues(&issue_ids)?;
 	let Some(issue_index) = issues.iter().position(|issue| issue.id == target_lane.issue_id) else {
 		return Ok(None);
 	};
 	let issue = issues.swap_remove(issue_index);
+
+	if closeout_lane_active_claim_blocks_dispatch(project, state_store, &issue)? {
+		return Ok(None);
+	}
+
 	let preferred_run_identity =
 		retained_closeout_preferred_run_identity(state_store, project.service_id(), &issue)?;
 
@@ -2000,6 +2032,79 @@ where
 		dispatch_mode: IssueDispatchMode::Closeout,
 		preferred_run_identity,
 	}))
+}
+
+fn target_issue_reuses_existing_closeout_claim<T>(
+	context: &TargetIssueRunContext<'_, T>,
+	issue_id: &str,
+	issue: &TrackerIssue,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	if context.lease_preacquired || context.dispatch_mode != IssueDispatchMode::Closeout {
+		return Ok(false);
+	}
+	if !context
+		.state_store
+		.issue_has_active_shared_claim(context.project.service_id(), issue_id)?
+	{
+		return Ok(false);
+	}
+	if context.state_store.lease_for_issue(&issue.id)?.is_none() {
+		return Ok(false);
+	}
+
+	Ok(!closeout_lane_active_claim_blocks_dispatch(
+		context.project,
+		context.state_store,
+		issue,
+	)?)
+}
+
+fn target_issue_active_claim_blocks_dispatch<T>(
+	context: &TargetIssueRunContext<'_, T>,
+	issue_id: &str,
+	issue: &TrackerIssue,
+) -> Result<bool>
+where
+	T: IssueTracker,
+{
+	if context.lease_preacquired {
+		return Ok(false);
+	}
+	if !context
+		.state_store
+		.issue_has_active_shared_claim(context.project.service_id(), issue_id)?
+	{
+		return Ok(false);
+	}
+	if context.dispatch_mode == IssueDispatchMode::Closeout {
+		return closeout_lane_active_claim_blocks_dispatch(
+			context.project,
+			context.state_store,
+			issue,
+		);
+	}
+
+	Ok(true)
+}
+
+fn closeout_lane_active_claim_blocks_dispatch(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+) -> Result<bool> {
+	if !state_store.issue_has_active_shared_claim(project.service_id(), &issue.id)? {
+		return Ok(false);
+	}
+
+	let Some(lease) = state_store.lease_for_issue(&issue.id)? else {
+		return Ok(true);
+	};
+	let now_unix_epoch = OffsetDateTime::now_utc().unix_timestamp();
+
+	retained_closeout_lease_has_fresh_activity(&lease, issue, project, now_unix_epoch)
 }
 
 fn target_issue_run_context_with_dispatch_mode<'a, T>(
