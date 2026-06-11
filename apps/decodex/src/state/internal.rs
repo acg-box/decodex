@@ -336,7 +336,10 @@ CREATE TABLE IF NOT EXISTS worktrees (
 	issue_id TEXT PRIMARY KEY NOT NULL,
 	project_id TEXT NOT NULL,
 	branch_name TEXT NOT NULL,
-	worktree_path TEXT NOT NULL
+	worktree_path TEXT NOT NULL,
+	provenance_source TEXT NOT NULL DEFAULT 'runtime_recorded',
+	created_at_unix INTEGER,
+	updated_at_unix INTEGER
 );
 CREATE TABLE IF NOT EXISTS linear_execution_events (
 	idempotency_key TEXT PRIMARY KEY NOT NULL,
@@ -353,6 +356,7 @@ CREATE INDEX IF NOT EXISTS linear_execution_events_issue_idx
 ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 "#,
 		)?;
+		self.bootstrap_worktree_schema()?;
 		self.bootstrap_review_schema()?;
 		self.bootstrap_run_control_channels_schema()?;
 		self.bootstrap_connector_backoffs_schema()?;
@@ -361,6 +365,26 @@ ON linear_execution_events (service_id, issue_id, event_unix, recorded_at_unix);
 		self.bootstrap_execution_programs_schema()?;
 		self.bootstrap_loop_guardrail_schema()?;
 		self.record_schema_version()?;
+
+		Ok(())
+	}
+
+	fn bootstrap_worktree_schema(&self) -> Result<()> {
+		self.ensure_column(
+			"worktrees",
+			"provenance_source",
+			"ALTER TABLE worktrees ADD COLUMN provenance_source TEXT NOT NULL DEFAULT 'legacy_unknown'",
+		)?;
+		self.ensure_column(
+			"worktrees",
+			"created_at_unix",
+			"ALTER TABLE worktrees ADD COLUMN created_at_unix INTEGER",
+		)?;
+		self.ensure_column(
+			"worktrees",
+			"updated_at_unix",
+			"ALTER TABLE worktrees ADD COLUMN updated_at_unix INTEGER",
+		)?;
 
 		Ok(())
 	}
@@ -768,13 +792,19 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		let transaction = self.connection.transaction()?;
 
 		transaction.execute(
-			"INSERT OR REPLACE INTO worktrees (issue_id, project_id, branch_name, worktree_path)
-			 VALUES (?1, ?2, ?3, ?4)",
+			"INSERT OR REPLACE INTO worktrees (
+				issue_id, project_id, branch_name, worktree_path,
+				provenance_source, created_at_unix, updated_at_unix
+			 )
+			 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
 			params![
 				&mapping.issue_id,
 				&mapping.project_id,
 				&mapping.branch_name,
 				mapping.worktree_path.to_string_lossy().as_ref(),
+				&mapping.provenance_source,
+				mapping.created_at_unix,
+				mapping.updated_at_unix,
 			],
 		)?;
 
@@ -944,8 +974,13 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute("DELETE FROM leases WHERE issue_id = ?1", params![previous_issue_id])?;
 		transaction.execute(
-			"INSERT OR IGNORE INTO worktrees (issue_id, project_id, branch_name, worktree_path)
-			 SELECT ?2, project_id, branch_name, worktree_path FROM worktrees WHERE issue_id = ?1",
+			"INSERT OR IGNORE INTO worktrees (
+				issue_id, project_id, branch_name, worktree_path,
+				provenance_source, created_at_unix, updated_at_unix
+			 )
+			 SELECT ?2, project_id, branch_name, worktree_path,
+				provenance_source, created_at_unix, updated_at_unix
+			 FROM worktrees WHERE issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute("DELETE FROM worktrees WHERE issue_id = ?1", params![previous_issue_id])?;
@@ -1471,7 +1506,11 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	fn load_worktrees(&self, state: &mut StateData) -> Result<()> {
 		let mut statement = self
 			.connection
-			.prepare("SELECT issue_id, project_id, branch_name, worktree_path FROM worktrees")?;
+			.prepare(
+				"SELECT issue_id, project_id, branch_name, worktree_path,
+					provenance_source, created_at_unix, updated_at_unix
+				 FROM worktrees",
+			)?;
 		let rows = statement.query_map([], |row| {
 			let issue_id: String = row.get(0)?;
 
@@ -1482,6 +1521,9 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 					project_id: row.get(1)?,
 					branch_name: row.get(2)?,
 					worktree_path: PathBuf::from(row.get::<_, String>(3)?),
+					provenance_source: row.get(4)?,
+					created_at_unix: row.get(5)?,
+					updated_at_unix: row.get(6)?,
 				},
 			))
 		})?;
@@ -2183,6 +2225,9 @@ struct WorktreeMappingRecord {
 	issue_id: String,
 	branch_name: String,
 	worktree_path: PathBuf,
+	provenance_source: String,
+	created_at_unix: Option<i64>,
+	updated_at_unix: Option<i64>,
 }
 impl WorktreeMappingRecord {
 	fn as_public(&self) -> WorktreeMapping {
@@ -2191,6 +2236,11 @@ impl WorktreeMappingRecord {
 			issue_id: self.issue_id.clone(),
 			branch_name: self.branch_name.clone(),
 			worktree_path: self.worktree_path.clone(),
+			provenance: worktree_provenance(
+				self.provenance_source.clone(),
+				self.created_at_unix,
+				self.updated_at_unix,
+			),
 		}
 	}
 }
@@ -3131,13 +3181,18 @@ fn persist_protocol_events(
 fn persist_worktrees(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for mapping in state.worktrees.values() {
 		transaction.execute(
-			"INSERT OR REPLACE INTO worktrees (issue_id, project_id, branch_name, worktree_path) \
-				 VALUES (?1, ?2, ?3, ?4)",
+			"INSERT OR REPLACE INTO worktrees (
+				issue_id, project_id, branch_name, worktree_path,
+				provenance_source, created_at_unix, updated_at_unix
+			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
 			params![
 				&mapping.issue_id,
 				&mapping.project_id,
 				&mapping.branch_name,
 				mapping.worktree_path.to_string_lossy().as_ref(),
+				&mapping.provenance_source,
+				mapping.created_at_unix,
+				mapping.updated_at_unix,
 			],
 		)?;
 	}
