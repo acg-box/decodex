@@ -487,6 +487,7 @@ fn issue_node(
 		.with_active_label(facts.has_active_label)
 		.with_opt_out_label(facts.has_opt_out_label)
 		.with_needs_attention_label(facts.has_needs_attention_label)
+		.with_open_tracker_blockers(facts.has_open_blockers)
 		.with_generic_dispatch_briefing(facts.has_generic_dispatch_briefing);
 
 	ExecutionProgramNode::new(

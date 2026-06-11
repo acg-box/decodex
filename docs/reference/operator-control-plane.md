@@ -42,6 +42,11 @@ Decodex currently runs as a local, single-machine control plane:
   active, and superseded counts may appear when the runtime has that detail. Low-level
   node edges, graph operations, and queue-label ownership records remain internal
   runtime state.
+- Persisted Execution Programs are reconciled during normal Linear scan ticks before
+  issue selection. Ready, startable, program-owned mapped nodes can receive the
+  service queue label automatically; blocked, stale, paused, terminal,
+  attention-required, active, or conflict-held nodes stay unqueued. Human-owned or
+  ownership-unknown queue labels are preserved.
 
 Decodex App is a native shell over the same local runtime and account-pool state. On
 launch it connects to an existing default local listener when one is reachable; if
@@ -126,8 +131,9 @@ registered-project table, but a service is only eligible to intake
 Linear issues labeled with its matching `decodex:queued:<service-id>` label. For
 example, a Decodex-only run intakes issues labeled `decodex:queued:decodex`; `rsnap`
 can stay enabled in the full project registry, and issues labeled `decodex:queued:rsnap`
-remain rsnap intake rather than Decodex intake. The pilot runbook owns enqueue and
-run steps.
+remain rsnap intake rather than Decodex intake. Operators may still enqueue normal
+issues manually, but program-owned queue labels are applied and removed by the runtime
+reconciler when persisted Execution Program readiness changes.
 
 When `decodex run --dry-run` or the status output has no eligible intake candidate,
 the operator hint points to the short checklist: `Todo`, the service-scoped

@@ -140,6 +140,24 @@ where
 		context.review_state_inspector,
 	)?;
 
+	let program_reconciliation = reconcile_execution_program_queue_labels(
+		context.tracker,
+		context.project,
+		context.workflow,
+		state_store,
+	)?;
+
+	if program_reconciliation.label_mutation_count() > 0 {
+		tracing::info!(
+			project_id = context.project.service_id(),
+			programs_evaluated = program_reconciliation.programs_evaluated,
+			programs_updated = program_reconciliation.programs_updated,
+			labels_applied = program_reconciliation.labels_applied,
+			labels_removed = program_reconciliation.labels_removed,
+			"Reconciled Execution Program queue labels before normal issue selection."
+		);
+	}
+
 	while context
 		.workflow
 		.frontmatter()
