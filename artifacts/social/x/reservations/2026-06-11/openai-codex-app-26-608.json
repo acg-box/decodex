@@ -1,0 +1,43 @@
+{
+  "schema": "social_publish_reservation/v1",
+  "slug": "openai-codex-app-26-608",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "release_pulse",
+  "status": "active",
+  "idempotency_key": "x:decodexspace:codex-app-26-608:release_pulse",
+  "reserved_at": "2026-06-11T09:57:19Z",
+  "expires_at": "2026-06-11T11:57:19Z",
+  "day": "2026-06-11",
+  "timezone": "Asia/Shanghai",
+  "candidate_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-app-26-608.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog"
+    ]
+  },
+  "duplicate_keys": [
+    "x:decodexspace:codex-app-26-608:release_pulse",
+    "openai-codex-app-26-608",
+    "Codex app 26.608",
+    "26.608",
+    "https://developers.openai.com/codex/changelog",
+    "Claude Code/Cowork",
+    "Plugins screen refresh"
+  ],
+  "owner": {
+    "automation_id": "decodex-x-publisher",
+    "branch": "codex/x-publisher-app-26-608-20260611"
+  },
+  "evidence_notes": [
+    "Durable social_post/v1 records in the current tree have no published or blocked record for this idempotency key.",
+    "Durable social_publish_reservation/v1 records in the current tree have no active reservation for this idempotency key.",
+    "Open GitHub PR readback with routed hackink credentials found one publication PR for openai-codex-pr-26486, not this candidate.",
+    "Asia/Shanghai cap day 2026-06-11 has 2 checked published records plus 1 pending open-PR published record before this reservation.",
+    "Chrome account readback showed @hackink active with @decodexspace available; the automation switched to @decodexspace and verified the account menu before reservation.",
+    "Live @decodexspace profile readback before reservation found no Codex app 26.608, source changelog URL, candidate slug, Claude Code/Cowork, or Plugins screen refresh duplicate across rendered recent profile posts."
+  ]
+}
