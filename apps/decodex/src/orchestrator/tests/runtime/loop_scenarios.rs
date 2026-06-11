@@ -142,9 +142,12 @@ impl LoopScenarioHarness {
 		assert_eq!(evaluation.ready_node_ids(), vec!["node-ready"]);
 		assert_eq!(evaluation.startable_node_ids(), vec!["node-ready"]);
 		assert_eq!(summary.ready_count, 1);
+		assert_eq!(summary.queued_count, 0);
 		assert_eq!(summary.blocked_count, 1);
-		assert_eq!(summary.paused_count, 1);
+		assert_eq!(summary.mapped_count, 1);
+		assert_eq!(summary.held_count, 2);
 		assert_eq!(summary.active_count, 1);
+		assert_eq!(summary.needs_attention_count, 0);
 		assert_eq!(summary.queue_label_eligible_count, 1);
 		assert_eq!(
 			loop_scenario_queue_action(evaluation, "node-ready"),
@@ -609,7 +612,7 @@ fn loop_scenario_active_node() -> crate::execution_program::ExecutionProgramNode
 	.with_linear_issue(
 		ExecutionLinearIssueMapping::new("linear-node-active", "XY-864", "Todo")
 			.expect("issue mapping should build")
-			.with_queue_label(true)
+			.with_program_owned_queue_label(true)
 			.with_active_label(true),
 	)
 	.expect("active issue should attach")
@@ -759,7 +762,7 @@ fn loop_scenario_node(
 				"Todo",
 			)
 			.expect("issue mapping should build")
-			.with_queue_label(has_queue_label),
+			.with_program_owned_queue_label(has_queue_label),
 		)
 		.expect("issue mapping should attach")
 }
