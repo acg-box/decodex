@@ -63,6 +63,14 @@ state or this state machine.
 - `decodex research compile` and `decodex research promote` are runtime-local
   Decision Contract writes. They update the SQLite `decision_contracts` surface and do
   not by themselves create Linear issues, queue intent, goals, or executable lanes.
+- `decodex intake goal <CONTRACT_ID> --dry-run` is a tracker-read-only and
+  runtime-read-only operator surface for promoted Decision Contracts. It renders the
+  proposed normal Linear issue split, dependencies, conflict domains, and queue plan
+  without mutating Linear or persisting Program Intake rows. `--apply` creates or
+  updates generated normal Linear issue briefs, links generated issue ids and internal
+  node ids back into the Decision Contract and Execution Program records, and persists
+  the local Program Intake Plan plus Execution Program state. It must not start
+  implementation directly and must not apply queue labels.
 - `decodex intake issues <ISSUE>... --dry-run` is a tracker-read-only operator
   surface for existing Linear issues. It classifies the supplied batch as ready,
   held, blocked, stale, or unmapped and builds the same internal program model used

@@ -21,6 +21,42 @@ pub(crate) trait IssueTracker {
 	fn add_issue_labels(&self, issue_id: &str, label_ids: &[String]) -> Result<()>;
 	fn remove_issue_labels(&self, issue_id: &str, label_ids: &[String]) -> Result<()>;
 	fn create_comment(&self, issue_id: &str, body: &str) -> Result<()>;
+	fn create_issue(&self, request: &TrackerIssueCreate) -> Result<TrackerIssue> {
+		let _ = request;
+
+		eyre::bail!("Issue tracker does not support creating issues.")
+	}
+	fn update_issue_brief(
+		&self,
+		issue_id: &str,
+		request: &TrackerIssueBriefUpdate,
+	) -> Result<TrackerIssue> {
+		let _ = (issue_id, request);
+
+		eyre::bail!("Issue tracker does not support updating issue briefs.")
+	}
+}
+
+/// Public-safe normal issue creation request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TrackerIssueCreate {
+	/// Linear team id that will own the issue.
+	pub(crate) team_id: String,
+	/// Public issue title.
+	pub(crate) title: String,
+	/// Natural-language public issue brief.
+	pub(crate) description: String,
+	/// Optional initial tracker state id.
+	pub(crate) state_id: Option<String>,
+}
+
+/// Public-safe normal issue brief update request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TrackerIssueBriefUpdate {
+	/// Replacement public issue title.
+	pub(crate) title: String,
+	/// Replacement natural-language public issue brief.
+	pub(crate) description: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
