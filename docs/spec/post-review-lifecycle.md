@@ -122,6 +122,11 @@ success path.
   normal `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")`
   path. If any audit write fails after marker creation, the command must clear the new
   markers and report failure instead of leaving a silently rebound lane.
+- Once a rebind or equivalent current handoff marker exists for a retained lane, stale
+  passive failure handling for the earlier `missing_review_handoff_record` observation
+  must not move the issue back to the failure state or add `decodex:needs-attention`.
+  The next scheduler/status pass must reclassify from the current marker instead of
+  applying the obsolete missing-marker writeback.
 
 `cleanup_only` rows are outside this rebind surface. When operator status reports a
 cleanup-only worktree with `provenance_source = "legacy_unknown"`, Decodex has only an
@@ -267,6 +272,11 @@ If merge succeeds, the lane progresses to `closeout`. If merge does not succeed 
 While in `closeout`:
 
 - the merge anchor is authoritative
+- operator-visible `pull_request_merged_closeout_pending` requires the PR merge state
+  readback to agree with the retained handoff head. If one readback reports a merged PR
+  while the direct PR merge readback still reports an open or mismatched head, Decodex
+  must not dispatch closeout and must surface a contradictory readback blocker instead
+  of guessing.
 - tracker closeout is Linear-only in this slice
 - the tracker issue transitions from `In Review` to the resolved `tracker.completed_state`
 - the configured local repo-root default branch fast-forwards to the authoritative landed default-branch head before deterministic tail work is considered complete
