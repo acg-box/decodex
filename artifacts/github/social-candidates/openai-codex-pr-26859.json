@@ -1,0 +1,56 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26859",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "critical",
+  "audience": "Codex desktop, CLI, and app-server operators",
+  "candidate_text": [
+    "Codex now auto-recovers from corrupted local SQLite runtime DBs: it backs up the damaged DB and sidecars, rebuilds from saved rollouts, and surfaces the recovery paths to CLI/app users. PR: https://github.com/openai/codex/pull/26859"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26859.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26859.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26859"
+    ]
+  },
+  "evidence_notes": [
+    "The PR body says Codex now auto-backs-up and rebuilds local runtime databases when corruption is recoverable.",
+    "`runtime/recovery.rs` moves only the damaged database files and sidecars into a `db-backups` folder.",
+    "The app-server path emits the warning summary `Codex rebuilt its local database.`.",
+    "The interactive CLI reports the backed-up corrupt database and new database paths."
+  ],
+  "claims": [
+    {
+      "text": "Codex can automatically back up and rebuild a recoverably corrupted local SQLite runtime database in interactive CLI and app-server entry points.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26859.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The damaged database files are moved aside instead of silently discarded.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26859.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR gives Codex operators a concrete reliability and recovery behavior with clear source-backed caveats.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26859:operator_impact"
+  },
+  "caveats": [
+    "Recovered runtime state depends on saved rollout files.",
+    "Other entry points may still require manual recovery.",
+    "Lock contention and non-corruption errors remain separate failure modes."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate.",
+    "Update Decodex recovery guidance if app-server status readback needs to expose SQLite rebuild warnings."
+  ]
+}
