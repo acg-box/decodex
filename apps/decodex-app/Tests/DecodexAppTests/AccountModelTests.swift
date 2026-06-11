@@ -92,6 +92,70 @@ final class AccountModelTests: XCTestCase {
 		XCTAssertTrue(due.accessibility.contains("reset due now"))
 	}
 
+	func testOperatorChildActivityAdvancesCurrentElapsedFromStartedAt() throws {
+		let payload = """
+		{
+		  "current_bucket": "Model",
+		  "current_detail": "model output",
+		  "current_elapsed_seconds": 5,
+		  "current_started_unix_epoch": 100,
+		  "wall_seconds": 20,
+		  "buckets": [
+		    {
+		      "name": "Model",
+		      "wall_seconds": 15
+		    },
+		    {
+		      "name": "Tool",
+		      "wall_seconds": 5
+		    }
+		  ]
+		}
+		""".data(using: .utf8)!
+
+		let activity = try JSONDecoder().decode(OperatorChildAgentActivity.self, from: payload)
+		let modelBucket = try XCTUnwrap(activity.buckets.first { $0.name == "Model" })
+		let toolBucket = try XCTUnwrap(activity.buckets.first { $0.name == "Tool" })
+		let now = Date(timeIntervalSince1970: 110)
+
+		XCTAssertEqual(activity.currentElapsedSeconds(at: now), 10)
+		XCTAssertEqual(activity.wallSeconds(at: now), 25)
+		XCTAssertEqual(activity.wallSeconds(for: modelBucket, at: now), 20)
+		XCTAssertEqual(activity.wallSeconds(for: toolBucket, at: now), 5)
+	}
+
+	func testStoppedActiveRunUsesInactiveDurationAndAttentionTone() throws {
+		let payload = """
+		{
+		  "run_id": "pub-1524-attempt-2",
+		  "issue_identifier": "PUB-1524",
+		  "status": "running",
+		  "phase": "executing",
+		  "process_alive": false,
+		  "idle_for_seconds": 20815,
+		  "protocol_idle_for_seconds": 20816,
+		  "child_agent_activity": {
+		    "current_bucket": "Model",
+		    "current_detail": "waiting after completed item",
+		    "current_elapsed_seconds": 20840,
+		    "wall_seconds": 788,
+		    "buckets": [
+		      {
+		        "name": "Model",
+		        "wall_seconds": 21389
+		      }
+		    ]
+		  }
+		}
+		""".data(using: .utf8)!
+
+		let run = try JSONDecoder().decode(OperatorRunStatus.self, from: payload)
+
+		XCTAssertFalse(run.countsAsRunning)
+		XCTAssertTrue(run.hasAttentionTone)
+		XCTAssertEqual(run.inactiveDurationSeconds, 20840)
+	}
+
 	func testOperatorSnapshotAssignsCodexAccountRunsToAccountRows() throws {
 		let assignedAccount = makeAccount(
 			status: "available",
@@ -322,6 +386,39 @@ final class AccountModelTests: XCTestCase {
 		))
 
 		XCTAssertEqual(store.operatorSnapshot?.activeRuns(for: account).map(\.runID), ["run-old"])
+	}
+
+	@MainActor
+	func testRunActivityBeforeSnapshotCreatesVisibleActiveRuns() throws {
+		let account = makeAccount(
+			status: "available",
+			email: "copy@example.com",
+			accountFingerprint: "...123456"
+		)
+		let store = AccountStore()
+
+		try store.applyOperatorDashboardEvent(dashboardEvent(
+			type: "runActivity",
+			payload: """
+			{
+			  "emittedAtUnixEpoch": 30,
+			  "activeRunsComplete": true,
+			  "activeRuns": [
+			    {
+			      "run_id": "run-live",
+			      "issue_identifier": "XY-672",
+			      "account": {
+			        "email": "copy@example.com",
+			        "account_fingerprint": "...123456"
+			      }
+			    }
+			  ]
+			}
+			"""
+		))
+
+		XCTAssertEqual(store.operatorSnapshot?.activeRuns.map(\.runID), ["run-live"])
+		XCTAssertEqual(store.operatorSnapshot?.activeRuns(for: account).map(\.runID), ["run-live"])
 	}
 
 	func testPartialRunActivityPreservesSnapshotActiveRuns() throws {
