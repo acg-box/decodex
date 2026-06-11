@@ -1,0 +1,99 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-pr-27304",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "practical_explainer",
+  "status": "published",
+  "audience": "Codex extension and tool authors",
+  "text": [
+    "Codex extension authors: ToolExecutor no longer uses async_trait. PR #27304 switches handle(...) to return ToolExecutorFuture, reexports the alias, and removes bundled extension async-trait deps.\n\nSource: https://github.com/openai/codex/pull/27304"
+  ],
+  "source_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-pr-27304.json"
+    ],
+    "reservations": [
+      "artifacts/social/x/reservations/2026-06-11/openai-codex-pr-27304.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27304.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27304.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27304",
+      "https://x.com/decodexspace/status/2064920379634962433"
+    ]
+  },
+  "evidence_notes": [
+    "The social_candidate/v1 artifact has decision.worthiness = publish, priority critical, and mode practical_explainer for openai-codex-pr-27304.",
+    "The upstream_review/v1 artifact confirms PR #27304 removes async_trait from ToolExecutor, adds the ToolExecutorFuture alias, reexports it through codex-extension-api, and converts handlers to explicit boxed futures.",
+    "The upstream_impact/v1 artifact marks the change as public_signal_decision publish, control_plane_impact compat_risk, and publisher_angle practical_explainer.",
+    "The x-post-quality-system gate passed because the post states what changed, who can act on it, and the direct source that proves it; the checked copy is 247 characters and includes a direct GitHub PR URL.",
+    "Checked durable social_post/v1 records contained no published or blocked record for this idempotency key before publication.",
+    "Checked durable social_publish_reservation/v1 records contained no active reservation for this idempotency key before the new reservation was created.",
+    "Open GitHub PR readback with routed hackink credentials found pending publication PR #298 for openai-codex-pr-26486 and no open PR touching openai-codex-pr-27304.",
+    "PR #315 made the active reservation visible before X compose; the PR diff was limited to artifacts/social/x/reservations/2026-06-11/openai-codex-pr-27304.json at reservation time.",
+    "Chrome account readback initially showed @hackink active with @decodexspace available; the automation switched to @decodexspace and verified the account menu before reservation and compose.",
+    "Live @decodexspace profile readback before reservation was readable and found no PR27304, ToolExecutor, async_trait, ToolExecutorFuture, source URL, or commit-SHA duplicate across rendered recent profile posts.",
+    "Live @decodexspace profile readback after PR-visible reservation and immediately before clicking Post again found no PR27304, ToolExecutor, async_trait, ToolExecutorFuture, source URL, or commit-SHA duplicate.",
+    "The compose dialog showed @decodexspace and the 247-character checked text before the enabled modal Post button was clicked.",
+    "Home timeline readback immediately after posting showed the new @decodexspace status with the expected PR27304 ToolExecutor migration text and GitHub source card.",
+    "Permalink readback showed the expected @decodexspace post text, Automated by @hackink attribution, GitHub PR #27304 card, and no attached image media or /photo/N link.",
+    "The status ID decodes to 2026-06-11T03:59:17.527Z."
+  ],
+  "claims": [
+    {
+      "text": "Codex ToolExecutor implementations now return an explicit ToolExecutorFuture instead of relying on async_trait.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27304.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Bundled extension crates dropped direct async-trait dependencies for their tool executors.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27304.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The PR #27304 practical-explainer post is live on @decodexspace.",
+      "evidence": "https://x.com/decodexspace/status/2064920379634962433",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "critical",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27304:practical_explainer",
+    "reason": "The source-level migration is useful to Codex extension authors and has clear PR-backed evidence.",
+    "daily_limit": 8,
+    "daily_count_before": 2,
+    "daily_count_after": 3,
+    "day": "2026-06-11",
+    "timezone": "Asia/Shanghai"
+  },
+  "publication": {
+    "posted_at": "2026-06-11T03:59:17.527Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2064920379634962433"
+    ],
+    "publisher": "chrome",
+    "account_verified": true,
+    "made_with_ai": false
+  },
+  "media_refs": [
+    "media_caveat: no generated media was attached; this non-release practical_explainer post remains valuable text-only because the source-backed extension migration note and GitHub PR card are the reader value."
+  ],
+  "caveats": [
+    "This is a source/API change for tool implementors, not a new model-visible tool.",
+    "The PR body says the work is stacked on #27299.",
+    "The build-speed figure is author-reported in the PR body.",
+    "No generated image was used because this was a single non-release practical-explainer post with sufficient reader value from the text and source card."
+  ],
+  "post_lifecycle": {
+    "current_state": "live",
+    "quote_eligible": false,
+    "reason": "This is a standalone practical-explainer post, not a prerelease quote-chain anchor."
+  }
+}
