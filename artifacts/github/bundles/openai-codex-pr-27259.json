@@ -1,0 +1,191 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "charliemarsh-oai",
+      "committed_at": "2026-06-08T23:42:05Z",
+      "message": "Abort startup prewarm during shutdown",
+      "sha": "935cbc2e7b35c10516254001991b9a0bf7c2f069",
+      "url": "https://github.com/openai/codex/commit/935cbc2e7b35c10516254001991b9a0bf7c2f069"
+    },
+    {
+      "author": "charliemarsh-oai",
+      "committed_at": "2026-06-10T13:17:51Z",
+      "message": "Use latest-wins MCP manager replacement",
+      "sha": "cc60f5411157f765bb97ece8f79ef25d3795101f",
+      "url": "https://github.com/openai/codex/commit/cc60f5411157f765bb97ece8f79ef25d3795101f"
+    },
+    {
+      "author": "charliemarsh-oai",
+      "committed_at": "2026-06-10T14:14:30Z",
+      "message": "Use ArcSwap for MCP manager publication",
+      "sha": "6adf517d65bfdf08aaac21e35e5dfa7f6ce08b19",
+      "url": "https://github.com/openai/codex/commit/6adf517d65bfdf08aaac21e35e5dfa7f6ce08b19"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP",
+    "CODEX_APPS_MCP_SERVER_NAME",
+    "REMOTE_GLOBAL_MARKETPLACE_NAME"
+  ],
+  "files": [
+    {
+      "additions": 4,
+      "deletions": 14,
+      "patch_excerpt": "@@ -348,24 +348,14 @@ impl McpConnectionManager {\n         !self.clients.is_empty()\n     }\n \n-    /// Drain all MCP clients from this manager and return a future that stops\n-    /// them and terminates their stdio server processes.\n-    pub fn begin_shutdown(&mut self) -> impl std::future::Future<Output = ()> + Send + 'static {\n+    /// Stop all MCP clients owned by this manager and terminate stdio server processes.\n+    pub async fn shutdown(&self) {\n         self.startup_cancellation_token.cancel();\n-        let clients = std::mem::take(&mut self.clients);\n-        self.server_metadata.clear();\n-        async move {\n-            for client in clients.into_values() {\n-                client.shutdown().await;\n-            }\n+        for client in self.clients.values() {\n+            client.shutdown().await;\n         }\n     }\n \n-    /// Stop all MCP clients owned by this manager and termi...",
+      "path": "codex-rs/codex-mcp/src/connection_manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 42,
+      "deletions": 0,
+      "patch_excerpt": "@@ -980,6 +980,48 @@ async fn list_all_tools_blocks_while_client_is_pending_without_cached_tool_info_\n     assert!(timeout_result.is_err());\n }\n \n+#[tokio::test]\n+async fn shutdown_cancels_pending_tool_listing() {\n+    let cancel_token = CancellationToken::new();\n+    let cancel_token_for_startup = cancel_token.clone();\n+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();\n+    let pending_client = async move {\n+        let _ = started_tx.send(());\n+        cancel_token_for_startup.cancelled().await;\n+        Err(StartupOutcomeError::Cancelled)\n+    }\n+    .boxed()\n+    .shared();\n+    let approval_policy = Constrained::allow_any(AskForApproval::OnFailure);\n+    let permission_profile = Constrained::allow_any(PermissionProfile::default());\n+    let mut manager = McpConnectionManager::new_uninitialized(\n+        &approval_policy,\n+        &permission_profile,\n+        /*pre...",
+      "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 36,
+      "patch_excerpt": "@@ -452,7 +452,7 @@ async fn delegated_mcp_guardian_abort_returns_synthetic_decline_answer() {\n }\n \n #[tokio::test]\n-async fn delegated_mcp_user_reviewer_waits_for_metadata_lookup() {\n+async fn delegated_mcp_user_reviewer_returns_none_without_metadata() {\n     let (parent_session, parent_ctx, _rx_events) =\n         crate::session::tests::make_session_and_context_with_rx().await;\n     let pending_mcp_invocations = Arc::new(Mutex::new(HashMap::from([(\n@@ -464,21 +464,6 @@ async fn delegated_mcp_user_reviewer_waits_for_metadata_lookup() {\n         },\n     )])));\n     let cancel_token = CancellationToken::new();\n-    let manager = Arc::clone(&parent_session.services.mcp_connection_manager);\n-    let (manager_locked_tx, manager_locked_rx) = std::sync::mpsc::sync_channel(0);\n-    let (release_manager_tx, release_manager_rx) = std::sync::mpsc::sync_channel(0);\n-    let manager_lock = tokio::tas...",
+      "path": "codex-rs/core/src/codex_delegate_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -287,7 +287,7 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_mcp_manager(\n     drop(rx_event);\n \n     let cancel_token = CancellationToken::new();\n-    let mut mcp_connection_manager = McpConnectionManager::new(\n+    let mcp_connection_manager = McpConnectionManager::new(\n         &mcp_servers,\n         config.mcp_oauth_credentials_store_mode,\n         auth_status_entries,",
+      "path": "codex-rs/core/src/connectors.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 28,
+      "patch_excerpt": "@@ -319,8 +319,7 @@ async fn handle_approved_mcp_tool_call(\n     let server_origin = sess\n         .services\n         .mcp_connection_manager\n-        .read()\n-        .await\n+        .load_full()\n         .server_origin(&server)\n         .map(str::to_string);\n \n@@ -606,8 +605,7 @@ async fn maybe_request_codex_apps_auth_elicitation(\n     if !sess\n         .services\n         .mcp_connection_manager\n-        .read()\n-        .await\n+        .load_full()\n         .is_host_owned_codex_apps_server(server)\n     {\n         return result;\n@@ -669,13 +667,9 @@ async fn maybe_request_codex_apps_auth_elicitation(\n     auth_elicitation_completed_result(&plan.auth_failure, result.meta)\n }\n \n-#[expect(\n-    clippy::await_holding_invalid_type,\n-    reason = \"Codex Apps cache refresh reads through the session-owned manager guard\"\n-)]\n async fn refresh_codex_apps_after_connector_auth(sess: &Session, turn...",
+      "path": "codex-rs/core/src/mcp_tool_call.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1280,7 +1280,10 @@ async fn install_host_owned_codex_apps_manager(session: &Session, turn_context:\n         /*elicitation_reviewer*/ None,\n     )\n     .await;\n-    *session.services.mcp_connection_manager.write().await = manager;\n+    session\n+        .services\n+        .mcp_connection_manager\n+        .store(Arc::new(manager));\n }\n \n #[tokio::test]",
+      "path": "codex-rs/core/src/mcp_tool_call_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 5,
+      "patch_excerpt": "@@ -580,6 +580,9 @@ pub async fn set_thread_memory_mode(sess: &Arc<Session>, sub_id: String, mode: T\n }\n \n async fn shutdown_session_runtime(sess: &Arc<Session>) {\n+    if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {\n+        startup_prewarm.abort().await;\n+    }\n     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;\n     let _ = sess.conversation.shutdown().await;\n     sess.services\n@@ -589,11 +592,11 @@ async fn shutdown_session_runtime(sess: &Arc<Session>) {\n     if let Err(err) = sess.services.code_mode_service.shutdown().await {\n         warn!(\"failed to shutdown code mode session: {err}\");\n     }\n-    let mcp_shutdown = {\n-        let mut manager = sess.services.mcp_connection_manager.write().await;\n-        manager.begin_shutdown()\n-    };\n-    mcp_shutdown.await;\n+    sess.services\n+        .mcp_connection_manager\n+        .load_full()\n+        ...",
+      "path": "codex-rs/core/src/session/handlers.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 34,
+      "patch_excerpt": "@@ -91,8 +91,7 @@ impl Session {\n         if self\n             .services\n             .mcp_connection_manager\n-            .read()\n-            .await\n+            .load_full()\n             .elicitations_auto_deny()\n         {\n             return McpServerElicitationOutcome {\n@@ -226,67 +225,47 @@ impl Session {\n \n         self.services\n             .mcp_connection_manager\n-            .read()\n-            .await\n+            .load_full()\n             .resolve_elicitation(server_name, id, response)\n             .await\n     }\n \n-    #[expect(\n-        clippy::await_holding_invalid_type,\n-        reason = \"MCP resource calls are serialized through the session-owned manager guard\"\n-    )]\n     pub async fn list_resources(\n         &self,\n         server: &str,\n         params: Option<PaginatedRequestParams>,\n     ) -> anyhow::Result<ListResourcesResult> {\n         self.services\n            ...",
+      "path": "codex-rs/core/src/session/mcp.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 6,
+      "patch_excerpt": "@@ -793,7 +793,7 @@ impl Codex {\n                 ..Default::default()\n             })\n             .await?;\n-        let mcp_connection_manager = self.session.services.mcp_connection_manager.read().await;\n+        let mcp_connection_manager = self.session.services.mcp_connection_manager.load_full();\n         mcp_connection_manager.set_elicitations_auto_deny(mcp_elicitations_auto_deny);\n         Ok(())\n     }\n@@ -2748,10 +2748,6 @@ impl Session {\n         }\n     }\n \n-    #[expect(\n-        clippy::await_holding_invalid_type,\n-        reason = \"MCP app context rendering reads through the session-owned manager guard\"\n-    )]\n     pub(crate) async fn build_initial_context(\n         &self,\n         turn_context: &TurnContext,\n@@ -2844,7 +2840,7 @@ impl Session {\n             }\n         }\n         if turn_context.config.include_apps_instructions && turn_context.apps_enabled() {\n-            l...",
+      "path": "codex-rs/core/src/session/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -981,13 +981,13 @@ impl Session {\n                 // before any MCP-related events. It is reasonable to consider\n                 // changing this to use Option or OnceCell, though the current\n                 // setup is straightforward enough and performs well.\n-                mcp_connection_manager: Arc::new(RwLock::new(\n+                mcp_connection_manager: arc_swap::ArcSwap::from_pointee(\n                     McpConnectionManager::new_uninitialized_with_permission_profile(\n                         &config.permissions.approval_policy,\n                         config.permissions.permission_profile(),\n                         config.prefix_mcp_tool_names(),\n                     ),\n-                )),\n+                ),\n                 mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),\n                 unified_exec_manager: UnifiedExecProcessManager::new(\n ...",
+      "path": "codex-rs/core/src/session/session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 12,
+      "patch_excerpt": "@@ -319,8 +319,7 @@ async fn request_mcp_server_elicitation_auto_accepts_when_auto_deny_is_enabled()\n     session\n         .services\n         .mcp_connection_manager\n-        .read()\n-        .await\n+        .load_full()\n         .set_elicitations_auto_deny(/*auto_deny*/ true);\n \n     let requested_schema: McpElicitationSchema = serde_json::from_value(json!({\n@@ -4816,13 +4815,13 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {\n     );\n \n     let services = SessionServices {\n-        mcp_connection_manager: Arc::new(RwLock::new(\n+        mcp_connection_manager: arc_swap::ArcSwap::from_pointee(\n             McpConnectionManager::new_uninitialized_with_permission_profile(\n                 &config.permissions.approval_policy,\n                 config.permissions.permission_profile(),\n                 config.prefix_mcp_tool_names(),\n             ),\n-        )),\n+ ...",
+      "path": "codex-rs/core/src/session/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 17,
+      "patch_excerpt": "@@ -432,10 +432,6 @@ async fn run_hooks_and_record_inputs(\n     blocked_input && !accepted_user_input\n }\n \n-#[expect(\n-    clippy::await_holding_invalid_type,\n-    reason = \"MCP tool listing borrows the read guard across cancellation-aware await\"\n-)]\n #[instrument(level = \"trace\", skip_all)]\n async fn build_skills_and_plugins(\n     sess: &Arc<Session>,\n@@ -473,8 +469,7 @@ async fn build_skills_and_plugins(\n         match sess\n             .services\n             .mcp_connection_manager\n-            .read()\n-            .await\n+            .load_full()\n             .list_all_tools()\n             .or_cancel(cancellation_token)\n             .await\n@@ -1078,10 +1073,6 @@ async fn run_sampling_request(\n     }\n }\n \n-#[expect(\n-    clippy::await_holding_invalid_type,\n-    reason = \"tool router construction reads through the session-owned manager guard\"\n-)]\n #[instrument(level = \"trace\",\n     ski...",
+      "path": "codex-rs/core/src/session/turn.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -724,7 +724,7 @@ impl Session {\n             .unwrap_or_else(|| session_configuration.cwd().clone());\n         let per_turn_config = Self::build_per_turn_config(&session_configuration, cwd.clone());\n         {\n-            let mcp_connection_manager = self.services.mcp_connection_manager.read().await;\n+            let mcp_connection_manager = self.services.mcp_connection_manager.load_full();\n             mcp_connection_manager.set_approval_policy(&session_configuration.approval_policy);\n             mcp_connection_manager\n                 .set_permission_profile(session_configuration.permission_profile());",
+      "path": "codex-rs/core/src/session/turn_context.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 2,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use std::time::Instant;\n \n use tokio::task::JoinHandle;\n use tokio_util::sync::CancellationToken;\n+use tokio_util::task::AbortOnDropHandle;\n use tracing::info;\n use tracing::warn;\n \n@@ -19,7 +20,7 @@ use codex_protocol::error::Result as CodexResult;\n use codex_protocol::models::BaseInstructions;\n \n pub(crate) struct SessionStartupPrewarmHandle {\n-    task: JoinHandle<CodexResult<ModelClientSession>>,\n+    task: AbortOnDropHandle<CodexResult<ModelClientSession>>,\n     started_at: Instant,\n     timeout: Duration,\n }\n@@ -40,12 +41,17 @@ impl SessionStartupPrewarmHandle {\n         timeout: Duration,\n     ) -> Self {\n         Self {\n-            task,\n+            task: AbortOnDropHandle::new(task),\n             started_at,\n             timeout,\n         }\n     }\n \n+    pub(crate) async fn abort(self) {\n+        self.task.abort();\n+        let _ = self.task.await;\n+    }\n+\n   ...",
+      "path": "codex-rs/core/src/session_startup_prewarm.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 9,
+      "patch_excerpt": "@@ -35,12 +35,12 @@ use codex_thread_store::ThreadStore;\n use std::path::PathBuf;\n use tokio::runtime::Handle;\n use tokio::sync::Mutex;\n-use tokio::sync::RwLock;\n use tokio::sync::watch;\n use tokio_util::sync::CancellationToken;\n \n pub(crate) struct SessionServices {\n-    pub(crate) mcp_connection_manager: Arc<RwLock<McpConnectionManager>>,\n+    /// The latest manager; callers retain an owned handle while performing MCP I/O.\n+    pub(crate) mcp_connection_manager: ArcSwap<McpConnectionManager>,\n     pub(crate) mcp_startup_cancellation_token: Mutex<CancellationToken>,\n     pub(crate) unified_exec_manager: UnifiedExecProcessManager,\n     #[cfg_attr(not(unix), allow(dead_code))]\n@@ -87,18 +87,13 @@ pub(crate) struct SessionServices {\n impl SessionServices {\n     /// Installs the manager before validating required servers so startup-time elicitation can\n     /// resolve through the session's...",
+      "path": "codex-rs/core/src/state/service.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 6,
+      "patch_excerpt": "@@ -40,10 +40,6 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourceTemplatesHandler {\n         true\n     }\n \n-    #[expect(\n-        clippy::await_holding_invalid_type,\n-        reason = \"MCP resource template listing reads through the session-owned manager guard\"\n-    )]\n     async fn handle(\n         &self,\n         invocation: ToolInvocation,\n@@ -107,8 +103,7 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourceTemplatesHandler {\n                 let templates = session\n                     .services\n                     .mcp_connection_manager\n-                    .read()\n-                    .await\n+                    .load_full()\n                     .list_all_resource_templates()\n                     .await;\n                 Ok(ListResourceTemplatesPayload::from_all_servers(templates))",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource/list_mcp_resource_templates.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 6,
+      "patch_excerpt": "@@ -40,10 +40,6 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourcesHandler {\n         true\n     }\n \n-    #[expect(\n-        clippy::await_holding_invalid_type,\n-        reason = \"MCP resource listing reads through the session-owned manager guard\"\n-    )]\n     async fn handle(\n         &self,\n         invocation: ToolInvocation,\n@@ -105,8 +101,7 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourcesHandler {\n                 let resources = session\n                     .services\n                     .mcp_connection_manager\n-                    .read()\n-                    .await\n+                    .load_full()\n                     .list_all_resources()\n                     .await;\n                 Ok(ListResourcesPayload::from_all_servers(resources))",
+      "path": "codex-rs/core/src/tools/handlers/mcp_resource/list_mcp_resources.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 5,
+      "patch_excerpt": "@@ -304,10 +304,6 @@ fn is_remote_plugin_install_suggestion(plugin_id: &str) -> bool {\n         .is_some_and(|(_, marketplace_name)| marketplace_name == REMOTE_GLOBAL_MARKETPLACE_NAME)\n }\n \n-#[expect(\n-    clippy::await_holding_invalid_type,\n-    reason = \"connector cache refresh reads through the session-owned manager guard\"\n-)]\n async fn refresh_missing_requested_connectors(\n     session: &crate::session::session::Session,\n     turn: &crate::session::turn_context::TurnContext,\n@@ -319,7 +315,7 @@ async fn refresh_missing_requested_connectors(\n         return Some(Vec::new());\n     }\n \n-    let manager = session.services.mcp_connection_manager.read().await;\n+    let manager = session.services.mcp_connection_manager.load_full();\n     let mcp_tools = manager.list_all_tools().await;\n     let accessible_connectors = connectors::with_app_enabled_state(\n         connectors::accessible_connect...",
+      "path": "codex-rs/core/src/tools/handlers/request_plugin_install.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 6,
+      "patch_excerpt": "@@ -95,17 +95,12 @@ fn extension_tool_test_registry() -> Arc<ExtensionRegistry<Config>> {\n }\n \n #[tokio::test]\n-#[expect(\n-    clippy::await_holding_invalid_type,\n-    reason = \"test builds a router from session-owned MCP manager state\"\n-)]\n async fn parallel_support_does_not_match_namespaced_local_tool_names() -> anyhow::Result<()> {\n     let (session, turn) = make_session_and_context().await;\n     let mcp_tools = session\n         .services\n         .mcp_connection_manager\n-        .read()\n-        .await\n+        .load_full()\n         .list_all_tools()\n         .await;\n     let router = ToolRouter::from_turn_context(",
+      "path": "codex-rs/core/src/tools/router_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 46,
+      "deletions": 0,
+      "patch_excerpt": "@@ -558,6 +558,52 @@ async fn stdio_server_round_trip() -> anyhow::Result<()> {\n     Ok(())\n }\n \n+#[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n+async fn shutdown_cancels_startup_prewarm_waiting_for_mcp_startup() -> anyhow::Result<()> {\n+    skip_if_no_network!(Ok(()));\n+\n+    let server = responses::start_websocket_server(vec![vec![vec![\n+        responses::ev_response_created(\"warm-1\"),\n+        responses::ev_completed(\"warm-1\"),\n+    ]]])\n+    .await;\n+    let pending_mcp_listener = tokio::net::TcpListener::bind(\"127.0.0.1:0\").await?;\n+    let pending_mcp_url = format!(\"http://{}/mcp\", pending_mcp_listener.local_addr()?);\n+\n+    let fixture = test_codex()\n+        .with_config(move |config| {\n+            insert_mcp_server(\n+                config,\n+                \"shutdown_prewarm\",\n+                McpServerTransportConfig::StreamableHttp {\n+                    url: p...",
+      "path": "codex-rs/core/tests/suite/rmcp_client.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n\nWe originally addressed startup prewarming holding the read side of `RwLock<McpConnectionManager>` by snapshotting tool-list state. Review feedback identified the broader ownership problem: the outer synchronization should only publish or retrieve the current manager, while MCP operations rely on the manager's internal synchronization. A follow-up preserved operation retirement with a separate gate, but further review questioned whether that synchronization was actually required and whether we could support latest-wins replacement instead.\n\nThis PR now stores the current MCP manager in `ArcSwap`. Each operation uses `load_full()` to obtain an owned `Arc<McpConnectionManager>`, then performs MCP I/O without retaining the publication mechanism. Refresh cancels obsolete startup work, constructs a replacement, and atomically publishes it. New operations see the latest manager, while operations that already loaded the previous manager retain a valid handle. Refresh happens at a turn boundary, so there should be no active user tool calls to drain.\n\nGit history supports dropping the outer `RwLock`. It was introduced in `03ffe4d595` on November 17, 2025 for non-blocking MCP startup: the session published an empty manager, startup initialized that same object while holding the write lock, and readers waited for initialization. `7cd2e84026` on February 19, 2026 removed that two-phase initialization in favor of constructing a fresh manager and swapping it in, explicitly noting that `Option` or `OnceCell` could replace the placeholder design. Hot reload later reused the existing lock to publish a replacement, but I found no indication that the lock was introduced to guarantee in-flight tool calls finish before refresh or shutdown.\n\nTerminal shutdown remains separate from refresh: it aborts startup prewarming and active tasks before shutting down the current manager, so tool calls may be interrupted and no model WebSocket work continues after shutdown. Focused regression coverage exercises pending tool-list cancellation, deferred refresh, and startup-prewarm shutdown.\n",
+    "labels": [],
+    "merged_at": "2026-06-10T15:33:21Z",
+    "number": 27259,
+    "state": "merged",
+    "title": "Use latest-wins MCP manager replacement",
+    "url": "https://github.com/openai/codex/pull/27259"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
