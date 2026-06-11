@@ -1,0 +1,92 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26041",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "26041",
+    "commit_shas": [
+      "e4cb80ffaed2e6ad90a42e0993eabd0d00ddcad3",
+      "3a5856f7ed4241b1d78aa834b47cea80b6607770",
+      "353ed1b6bb945a60e859384cf279976e9b280ecf",
+      "0d37f064d817b8f0f3aa63d8b4fc27901f6c0b5b",
+      "b90d036c9c45fad1a7abf3474d0aa600e787f116",
+      "4d1537dba9be19227807e924bb8f551ba2385200",
+      "e0f9c328df1ff2d337d3baeb029884b04fe69b35",
+      "64dc0d2bc88f179dd3d71de57586d2a77bb86ab8",
+      "cce9ca7334ae9bbb5b1086dbcfc136264226b27f",
+      "33a8e24459749ee78aeed292adebc176724b1bcb",
+      "61c5d9c84bdae60c98006a819ec8d601255eb165",
+      "e78df1ea9d485e8b06fff4b4c075591d556be156",
+      "ff2201af2929455c6b826161b4f818663cfe7ebd",
+      "b59232841e28b88559ec0f7d5c7cc602fbd2363a",
+      "b949dc3b1dbe0e25448dfcc4bba207deeb43a72a",
+      "7daf14053e74673697bca70290a4ddcee2d412d9",
+      "dcd1b73bce47bd514839ff4d71a48c12280ae413",
+      "28b3f1ea589a2bc0090577c4a4d309f261318c57",
+      "cac8884c2c0540a586472f35c17dfb1cbe7a2697"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Add app-server background terminal process APIs",
+        "url": "https://github.com/openai/codex/pull/26041",
+        "meta": "Merged 2026-06-10T18:18:09Z"
+      },
+      {
+        "kind": "commit",
+        "title": "feat(app-server): add background terminal process APIs",
+        "url": "https://github.com/openai/codex/commit/e4cb80ffaed2e6ad90a42e0993eabd0d00ddcad3"
+      },
+      {
+        "kind": "commit",
+        "title": "Restore background terminal metadata fields",
+        "url": "https://github.com/openai/codex/commit/0d37f064d817b8f0f3aa63d8b4fc27901f6c0b5b"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-11T02:06:39Z",
+  "observed_change": "Codex added experimental app-server v2 APIs for listing and terminating background terminal processes for a loaded thread, using unified-exec process manager state as the source of truth.",
+  "changed_surfaces": [
+    "app-server protocol request and TypeScript schema generation",
+    "thread background terminal list and terminate request processors",
+    "unified-exec process manager metadata and termination behavior",
+    "app-server README method documentation",
+    "background-terminal pagination and termination tests"
+  ],
+  "user_visible_path": "App-server clients with experimental API capability can call `thread/backgroundTerminals/list` to page through running background terminals and `thread/backgroundTerminals/terminate` to stop one by app-server `processId`.",
+  "control_plane_relevance": "High for Decodex Control Plane because it gives app-server clients a protocol-level way to observe and terminate background shell processes without local PID discovery.",
+  "compatibility_risk": "Low to medium: the APIs are additive and experimental, but clients must use app-server `processId` values and should not treat nullable `osPid`, CPU, or RSS fields as always available.",
+  "adoption_opportunity": "Adopt these APIs for Decodex operator views that need background-terminal inventory or targeted termination, and stop relying on host-local process tree guessing where app-server state is available.",
+  "community_value": "High for Codex app-server operators because the change exposes background process management through the same JSON-RPC surface that owns thread state.",
+  "deprecated_or_breaking_notes": "No removed method is evident. The new methods are explicitly experimental and require `capabilities.experimentalApi` according to the app-server README update.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #26041 says `thread/backgroundTerminals/list` returns paginated records with `itemId`, app-server `processId`, command, cwd, nullable OS PID, CPU, and RSS fields.",
+    "PR #26041 says `thread/backgroundTerminals/terminate` terminates one running background terminal by app-server `processId` and reports whether a process was terminated.",
+    "`codex-rs/app-server-protocol/src/protocol/common.rs` adds experimental client methods for `thread/backgroundTerminals/list` and `thread/backgroundTerminals/terminate`.",
+    "`codex-rs/app-server-protocol/src/protocol/v2/thread.rs` adds list params, terminal record data, terminate params, and response structures.",
+    "`codex-rs/app-server/src/request_processors/thread_processor.rs` adds list and terminate request handlers for background terminals.",
+    "`codex-rs/core/src/unified_exec/process_manager.rs` stores call id, cwd, active initial-command state, and process id data needed for background terminal records.",
+    "`codex-rs/app-server/README.md` documents the two new experimental methods and their capability requirement.",
+    "`codex-rs/core/src/unified_exec/mod_tests.rs` and process tests add coverage around process listing and termination behavior.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-26041.json` records 16 changed files for the merged PR."
+  ],
+  "caveats": "The APIs cover loaded-thread background terminals and are experimental; OS-level metadata may be null, and the review does not claim support for terminals outside the app-server unified-exec manager.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The protocol change creates a concrete Control Plane adoption opportunity."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "Background terminal list and terminate methods are a clear public operator-facing capability."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Decodex should evaluate replacing local process-tree guesses with app-server background terminal APIs where available."
+    }
+  ]
+}

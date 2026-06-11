@@ -1,0 +1,56 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-25018",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "critical",
+  "audience": "Codex app-server client and operator-console builders",
+  "candidate_text": [
+    "Codex added app-server thread/delete: clients can hard-delete active or archived threads, descendants, rollout files, and related state, with thread/deleted notifications. PR: https://github.com/openai/codex/pull/25018"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-25018.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-25018.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/25018"
+    ]
+  },
+  "evidence_notes": [
+    "`thread/delete` is added as an app-server request.",
+    "`thread/deleted` is added as a notification that targets affected thread ids.",
+    "Local thread-store delete removes rollout files before success.",
+    "State cleanup covers descendants, goals, spawn edges, logs, dynamic tools, and agent jobs."
+  ],
+  "claims": [
+    {
+      "text": "Codex app-server now has a protocol method for permanent thread deletion.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-25018.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "`thread/delete` removes spawned descendants and associated local state, not just the root row.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-25018.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR adds a destructive app-server lifecycle method that client builders need to handle carefully.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-25018:operator_impact"
+  },
+  "caveats": [
+    "This is hard delete, not archive.",
+    "Remote thread-store behavior may require separate implementation.",
+    "Operator UIs should require explicit confirmation before using it."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate.",
+    "Use the upstream impact record to shape Decodex hard-delete UX and cache invalidation policy."
+  ]
+}
