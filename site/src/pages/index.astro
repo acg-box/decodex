@@ -3,7 +3,6 @@ import { getCollection } from "astro:content";
 import AppcastDownloadWidget from "@/components/AppcastDownloadWidget.astro";
 import EmptyFeedState from "@/components/EmptyFeedState.astro";
 import FilterBar from "@/components/FilterBar.astro";
-import ResetStatusWidget from "@/components/ResetStatusWidget.astro";
 import SignalCard from "@/components/SignalCard.astro";
 import SignalSymphony from "@/components/SignalSymphony.astro";
 import ThemeToggle from "@/components/ThemeToggle.astro";
@@ -14,7 +13,6 @@ import {
   type ReleaseDeltaData,
 } from "@/lib/release-delta";
 import { renderMarkdownInline } from "@/lib/render-markdown";
-import { type ResetStatusData } from "@/lib/reset-status";
 import {
   FILTERS,
   formatPublishedAt,
@@ -35,7 +33,6 @@ const primaryXUrl = "https://x.com/hackink";
 const signalBotXUrl = "https://x.com/decodexspace";
 const collectionEntries = await getCollection("signals");
 const releaseDeltaEntries = await getCollection("releaseDeltas");
-const resetStatusEntries = await getCollection("resetStatus");
 const allSignals: SignalCardData[] = sortSignals(
   collectionEntries.map((entry) => ({
     id: entry.id,
@@ -47,10 +44,6 @@ const releaseDelta: ReleaseDeltaData | null =
   releaseDeltaEntries
     .map((entry) => entry.data as ReleaseDeltaData)
     .find((entry) => entry.repo === "openai/codex") ?? null;
-const resetStatus: ResetStatusData | null =
-  resetStatusEntries
-    .map((entry) => entry.data as ResetStatusData)
-    .sort((left, right) => right.generated_at.localeCompare(left.generated_at))[0] ?? null;
 
 const previewSignal: SignalCardData = {
   id: "preview-shell",
@@ -559,10 +552,6 @@ const interactionRuntimeScript = `(function () {
               </div>
               ) : null
             }
-            <div class="utility-row utility-row--reset">
-              <span class="utility-row__label">Rate limit reset</span>
-              <ResetStatusWidget status={resetStatus} variant="inline" />
-            </div>
           </div>
         </section>
       </div>

@@ -86,8 +86,6 @@ Then keep the body explicit:
   publication, block, skip, and failure records for `@decodexspace`.
 - [`site-contract.md`](./site-contract.md) defines the static-site page budget,
   homepage obligations, and card rendering contract.
-- [`reset-status.md`](./reset-status.md) defines the reset-status artifact consumed by
-  the static site.
 - [`linear-execution-ledger.md`](./linear-execution-ledger.md) defines the versioned
   Linear comment event-ledger schema for low-frequency Decodex lane transitions.
 - [`agent-evidence.md`](./agent-evidence.md) defines the local agent-readable evidence

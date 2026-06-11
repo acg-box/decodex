@@ -31,7 +31,6 @@ should not be treated as repository source.
 | `docs/reference/` | Current repository and artifact surface maps. |
 | `docs/decisions/` | Durable rationale for repository-level design choices. |
 | `docs/research/` | Machine-authored research run artifacts used by shipped research tooling. |
-| `docs/plans/` | Historical saved plan artifacts from the static-site bootstrap. These are not primary authority. |
 | `dev/` | Local development helpers outside `dev/skills/`, such as the operator dashboard mock server. |
 | `assets/` | Shared static assets that are not owned by the Astro app's generated output. Decodex App icons live under `assets/app-icon/{source,composer,generated}/`; menu bar template assets live under `assets/tray-icon/{source,generated}/`; `scripts/assets/render_decodex_app_icons.swift` regenerates the icon set. |
 | `.github/` | CI, release, Pages deployment, and content-refresh workflows. |
@@ -161,8 +160,8 @@ tracker routing, and policy.
 - Reusable agent-facing Decodex usage instructions live under `plugins/decodex/`.
 - `docs/runbook/`, `docs/reference/`, and `docs/decisions/` must not override runtime or
   workflow authority.
-- `docs/research/` and `docs/plans/` are supporting evidence only. They do not become
-  policy until their conclusions are promoted into governing docs.
+- `docs/research/` is supporting evidence only. It does not become policy until its
+  conclusions are promoted into governing docs.
 
 ## Local-only and generated directories
 

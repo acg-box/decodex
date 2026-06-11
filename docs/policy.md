@@ -37,9 +37,6 @@ This repository standardizes on four primary documentation lanes:
   shipped research tooling.
 - `docs/research/` is not a primary documentation lane and is not authoritative for
   runtime behavior, repository policy, or operator procedures.
-- `docs/plans/` is allowed for historical saved plan artifacts from the original
-  static-site bootstrap. It is not a primary documentation lane and is not authoritative
-  for runtime behavior, repository policy, or operator procedures.
 - If a research result becomes durable repository guidance, promote it into `spec`,
   `runbook`, `reference`, or `decisions` and link back to the originating artifact only
   as supporting evidence.
