@@ -1438,6 +1438,8 @@ struct OperatorRunStatus {
 	idle_for_seconds: Option<i64>,
 	protocol_idle_for_seconds: Option<i64>,
 	suspected_stall: bool,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	progress_diagnostic: Option<String>,
 	last_event_type: Option<String>,
 	last_event_at: Option<String>,
 	event_count: i64,
