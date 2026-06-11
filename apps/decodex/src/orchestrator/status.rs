@@ -673,14 +673,18 @@ fn operator_execution_program_statuses(
 	let mut statuses = Vec::new();
 
 	for record in state_store.list_execution_programs(project.service_id())? {
-		let Some(contract) =
-			state_store.decision_contract(project.service_id(), record.source_contract_id())?
-		else {
-			statuses.push(OperatorExecutionProgramStatus::missing_contract(&record));
+		let evaluation = if let Some(source_contract_id) = record.source_contract_id() {
+			let Some(contract) = state_store.decision_contract(project.service_id(), source_contract_id)?
+			else {
+				statuses.push(OperatorExecutionProgramStatus::missing_contract(&record));
 
-			continue;
+				continue;
+			};
+
+			record.program().evaluate(contract.contract(), &policy, &context)?
+		} else {
+			record.program().evaluate_issue_batch(&policy, &context)?
 		};
-		let evaluation = record.program().evaluate(contract.contract(), &policy, &context)?;
 
 		statuses.push(OperatorExecutionProgramStatus::from_summary(
 			&record,
@@ -6570,7 +6574,7 @@ fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorSt
 		output.push_str(&format!(
 			"- program_id: {} source_contract_id: {} nodes={} planned={} mapped={} ready={} queued={} blocked={} held={} active={} attention={} completed={} stale={} superseded={} queue_label_eligible={} mapped_issues={}{}\n",
 			program.program_id,
-			program.source_contract_id,
+			program.source_contract_id.as_deref().unwrap_or("none"),
 			program.node_count,
 			program.planned_count,
 			program.mapped_count,

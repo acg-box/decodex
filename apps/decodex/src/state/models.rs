@@ -595,7 +595,7 @@ impl DecisionContractRecord {
 pub(crate) struct ExecutionProgramRecord {
 	project_id: String,
 	program: ExecutionProgram,
-	source_contract_id: String,
+	source_contract_id: Option<String>,
 	created_at: String,
 	created_at_unix: i64,
 	updated_at: String,
@@ -615,8 +615,224 @@ impl ExecutionProgramRecord {
 		self.program.program_id()
 	}
 
-	pub(crate) fn source_contract_id(&self) -> &str {
-		&self.source_contract_id
+	pub(crate) fn source_contract_id(&self) -> Option<&str> {
+		self.source_contract_id.as_deref()
+	}
+
+	pub(crate) fn created_at(&self) -> &str {
+		&self.created_at
+	}
+
+	pub(crate) fn created_at_unix(&self) -> i64 {
+		self.created_at_unix
+	}
+
+	pub(crate) fn updated_at(&self) -> &str {
+		&self.updated_at
+	}
+
+	pub(crate) fn updated_at_unix(&self) -> i64 {
+		self.updated_at_unix
+	}
+}
+
+/// SQLite-backed Program Intake Plan projection retained by the local runtime.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ProgramIntakePlanRecord {
+	project_id: String,
+	program_id: String,
+	plan_id: String,
+	intake_kind: String,
+	source_contract_id: Option<String>,
+	accepted_contract_fingerprint: String,
+	public_summary: String,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+#[allow(dead_code)]
+impl ProgramIntakePlanRecord {
+	pub(crate) fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	pub(crate) fn program_id(&self) -> &str {
+		&self.program_id
+	}
+
+	pub(crate) fn plan_id(&self) -> &str {
+		&self.plan_id
+	}
+
+	pub(crate) fn intake_kind(&self) -> &str {
+		&self.intake_kind
+	}
+
+	pub(crate) fn source_contract_id(&self) -> Option<&str> {
+		self.source_contract_id.as_deref()
+	}
+
+	pub(crate) fn accepted_contract_fingerprint(&self) -> &str {
+		&self.accepted_contract_fingerprint
+	}
+
+	pub(crate) fn public_summary(&self) -> &str {
+		&self.public_summary
+	}
+
+	pub(crate) fn created_at(&self) -> &str {
+		&self.created_at
+	}
+
+	pub(crate) fn created_at_unix(&self) -> i64 {
+		self.created_at_unix
+	}
+
+	pub(crate) fn updated_at(&self) -> &str {
+		&self.updated_at
+	}
+
+	pub(crate) fn updated_at_unix(&self) -> i64 {
+		self.updated_at_unix
+	}
+}
+
+/// SQLite-backed normal Linear issue mapping for one internal program node.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ProgramIssueMappingRecord {
+	project_id: String,
+	program_id: String,
+	node_id: String,
+	issue_id: String,
+	issue_identifier: String,
+	issue_state: String,
+	queue_intent: String,
+	has_queue_label: bool,
+	queue_label_owned_by_program_reconciler: bool,
+	has_active_label: bool,
+	has_opt_out_label: bool,
+	has_needs_attention_label: bool,
+	has_generic_dispatch_briefing: bool,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+#[allow(dead_code)]
+impl ProgramIssueMappingRecord {
+	pub(crate) fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	pub(crate) fn program_id(&self) -> &str {
+		&self.program_id
+	}
+
+	pub(crate) fn node_id(&self) -> &str {
+		&self.node_id
+	}
+
+	pub(crate) fn issue_id(&self) -> &str {
+		&self.issue_id
+	}
+
+	pub(crate) fn issue_identifier(&self) -> &str {
+		&self.issue_identifier
+	}
+
+	pub(crate) fn issue_state(&self) -> &str {
+		&self.issue_state
+	}
+
+	pub(crate) fn queue_intent(&self) -> &str {
+		&self.queue_intent
+	}
+
+	pub(crate) fn has_queue_label(&self) -> bool {
+		self.has_queue_label
+	}
+
+	pub(crate) fn queue_label_owned_by_program_reconciler(&self) -> bool {
+		self.queue_label_owned_by_program_reconciler
+	}
+
+	pub(crate) fn has_active_label(&self) -> bool {
+		self.has_active_label
+	}
+
+	pub(crate) fn has_opt_out_label(&self) -> bool {
+		self.has_opt_out_label
+	}
+
+	pub(crate) fn has_needs_attention_label(&self) -> bool {
+		self.has_needs_attention_label
+	}
+
+	pub(crate) fn has_generic_dispatch_briefing(&self) -> bool {
+		self.has_generic_dispatch_briefing
+	}
+
+	pub(crate) fn created_at(&self) -> &str {
+		&self.created_at
+	}
+
+	pub(crate) fn created_at_unix(&self) -> i64 {
+		self.created_at_unix
+	}
+
+	pub(crate) fn updated_at(&self) -> &str {
+		&self.updated_at
+	}
+
+	pub(crate) fn updated_at_unix(&self) -> i64 {
+		self.updated_at_unix
+	}
+}
+
+/// SQLite-backed queue-label ownership proof for one program-owned label.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ProgramQueueLabelOwnershipRecord {
+	project_id: String,
+	program_id: String,
+	node_id: String,
+	issue_id: String,
+	issue_identifier: String,
+	label_name: String,
+	service_id: String,
+	created_at: String,
+	created_at_unix: i64,
+	updated_at: String,
+	updated_at_unix: i64,
+}
+#[allow(dead_code)]
+impl ProgramQueueLabelOwnershipRecord {
+	pub(crate) fn project_id(&self) -> &str {
+		&self.project_id
+	}
+
+	pub(crate) fn program_id(&self) -> &str {
+		&self.program_id
+	}
+
+	pub(crate) fn node_id(&self) -> &str {
+		&self.node_id
+	}
+
+	pub(crate) fn issue_id(&self) -> &str {
+		&self.issue_id
+	}
+
+	pub(crate) fn issue_identifier(&self) -> &str {
+		&self.issue_identifier
+	}
+
+	pub(crate) fn label_name(&self) -> &str {
+		&self.label_name
+	}
+
+	pub(crate) fn service_id(&self) -> &str {
+		&self.service_id
 	}
 
 	pub(crate) fn created_at(&self) -> &str {
