@@ -707,6 +707,11 @@ After a process restart, recent-run history, active lease ownership, retained po
   currently owns it. A retained worktree for that same issue must be projected as
   retained attention, not neutral cleanup-only hygiene, so monitors do not need to
   parse `history_lanes` to discover a human-required terminal outcome.
+- If that same issue still carries the service queue label plus the configured
+  `needs_attention_label`, the terminal Run Ledger attention outcome must own the
+  operator projection. Status must not also render the issue as an intake queue
+  candidate, because the queue label is then a stale echo of the retained terminal
+  lane rather than dispatchable backlog.
 - If Linear still has `decodex:active:<service-id>` on an issue that also remains queued, but the local runtime cannot prove a matching active lease, status must classify the queued row as blocked with reason `linear_active_label_present`; it must not treat the issue as ready intake. If the retained marker or private execution event rows for that run are missing, status must surface `evidence_missing` in the recovery details. If the retained worktree has tracked changes, that dirty worktree remains owned by queued recovery/attention instead of being hidden as cleanup-only state.
 - Operator status snapshots must expose worktree provenance in both JSON and human text
   output. A cleanup-only worktree with `provenance_source = "legacy_unknown"` must set
