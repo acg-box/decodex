@@ -93,6 +93,25 @@ impl DecisionContract {
 		&self.links
 	}
 
+	pub(crate) fn link_generated_execution_surfaces(
+		&mut self,
+		issue_ids: impl IntoIterator<Item = impl Into<String>>,
+		issue_identifiers: impl IntoIterator<Item = impl Into<String>>,
+		node_ids: impl IntoIterator<Item = impl Into<String>>,
+	) -> Result<()> {
+		let mut candidate = self.clone();
+
+		candidate.links.generated_issue_ids = normalized_link_values(issue_ids)?;
+		candidate.links.generated_issue_identifiers = normalized_link_values(issue_identifiers)?;
+		candidate.links.execution_program_node_ids = normalized_link_values(node_ids)?;
+
+		candidate.validate()?;
+
+		*self = candidate;
+
+		Ok(())
+	}
+
 	pub(crate) fn validate(&self) -> Result<()> {
 		validate_required("decision contract schema", &self.schema)?;
 		validate_required("decision contract contract_id", &self.contract_id)?;
@@ -367,6 +386,18 @@ impl DecisionAcceptedAuthority {
 		&self.non_goals
 	}
 
+	pub(crate) fn constraints(&self) -> &[String] {
+		&self.constraints
+	}
+
+	pub(crate) fn assumptions(&self) -> &[String] {
+		&self.assumptions
+	}
+
+	pub(crate) fn objections(&self) -> &[String] {
+		&self.objections
+	}
+
 	pub(crate) fn stop_conditions(&self) -> &[String] {
 		&self.stop_conditions
 	}
@@ -425,6 +456,18 @@ impl DecisionExecutionReadiness {
 
 	pub(crate) fn conflict_domains(&self) -> &[String] {
 		&self.conflict_domains
+	}
+
+	pub(crate) fn validation_expectations(&self) -> &[String] {
+		&self.validation_expectations
+	}
+
+	pub(crate) fn risk_notes(&self) -> &[String] {
+		&self.risk_notes
+	}
+
+	pub(crate) fn queue_intent(&self) -> &[String] {
+		&self.queue_intent
 	}
 
 	fn validate(&self, status: DecisionContractStatus) -> Result<()> {
@@ -690,6 +733,25 @@ fn validate_string_list(name: &str, values: &[String]) -> Result<()> {
 	Ok(())
 }
 
+fn normalized_link_values(
+	values: impl IntoIterator<Item = impl Into<String>>,
+) -> Result<Vec<String>> {
+	let mut normalized = Vec::new();
+
+	for value in values {
+		let value = value.into();
+		let value = value.trim();
+
+		validate_required("decision contract generated link", value)?;
+
+		if !normalized.iter().any(|existing| existing == value) {
+			normalized.push(value.to_owned());
+		}
+	}
+
+	Ok(normalized)
+}
+
 #[cfg(test)]
 mod tests {
 	use crate::loop_contract::{
@@ -823,6 +885,24 @@ mod tests {
 		contract.evidence_boundary.private_evidence_refs[0].record_id = Some(0);
 
 		assert!(contract.validate().is_err());
+	}
+
+	#[test]
+	fn generated_execution_links_are_normalized_and_validated() {
+		let mut contract = latent_research_contract_fixture();
+
+		contract
+			.link_generated_execution_surfaces(
+				[" issue-1 ", "issue-1", "issue-2"],
+				["XY-1", " XY-2 "],
+				["node-1", "node-1"],
+			)
+			.expect("links should attach");
+
+		assert_eq!(contract.links().generated_issue_ids(), &["issue-1", "issue-2"]);
+		assert_eq!(contract.links().generated_issue_identifiers(), &["XY-1", "XY-2"]);
+		assert_eq!(contract.links().execution_program_node_ids(), &["node-1"]);
+		assert!(contract.link_generated_execution_surfaces([" "], ["XY-1"], ["node-1"]).is_err());
 	}
 
 	#[test]
