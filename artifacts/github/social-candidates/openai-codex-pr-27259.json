@@ -1,0 +1,56 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27259",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "critical",
+  "audience": "Codex MCP, hosted-plugin, and Control Plane operators",
+  "candidate_text": [
+    "Codex changed MCP manager replacement to latest-wins ArcSwap: refresh publishes a new manager, existing operations keep their loaded handle, and shutdown aborts startup prewarm before MCP shutdown. PR: https://github.com/openai/codex/pull/27259"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27259.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27259.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27259"
+    ]
+  },
+  "evidence_notes": [
+    "Session services now publish the MCP manager through `ArcSwap<McpConnectionManager>`.",
+    "MCP calls load an owned manager handle with `.load_full()` before async I/O.",
+    "Shutdown aborts startup prewarm and then shuts down the currently loaded MCP manager.",
+    "The PR preserves turn-boundary refresh caveats."
+  ],
+  "claims": [
+    {
+      "text": "Codex MCP manager refresh now uses latest-wins publication.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27259.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Existing MCP operations keep the manager handle they loaded before refresh.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27259.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The change alters MCP refresh and shutdown assumptions that Codex operators can act on.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27259:operator_impact"
+  },
+  "caveats": [
+    "This is an internal synchronization model change.",
+    "Refresh is expected at turn boundaries.",
+    "Shutdown can still interrupt active runtime work."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate.",
+    "Use the upstream impact record to shape a Decodex MCP refresh audit if needed."
+  ]
+}

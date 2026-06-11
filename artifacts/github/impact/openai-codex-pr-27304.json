@@ -1,0 +1,47 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27304",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Remove async_trait from ToolExecutor",
+        "url": "https://github.com/openai/codex/pull/27304",
+        "meta": "Merged 2026-06-10T17:26:53Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27304",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27304.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex removed `async_trait` from the `ToolExecutor` trait and converted handlers to return a boxed `ToolExecutorFuture` directly.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "practical_explainer",
+  "confidence": "confirmed",
+  "evidence": [
+    "`ToolExecutorFuture<'a>` is added and exported from `codex-tools` and `codex-extension-api`.",
+    "`ToolExecutor` no longer carries the `#[async_trait::async_trait]` annotation.",
+    "Bundled extensions remove direct `async-trait` dependencies.",
+    "Tool handlers across core and extension surfaces now return explicit boxed futures."
+  ],
+  "candidate_followups": [
+    "Check Decodex-owned extension examples for old async `ToolExecutor::handle` implementations.",
+    "Update migration notes or snippets to use `ToolExecutorFuture` and `Box::pin` when relevant.",
+    "Track stacked PR #27299 if a later review needs the full handler-outline context."
+  ],
+  "social_notes": [
+    "Useful public copy should target extension authors and explain the new trait implementation shape.",
+    "Avoid implying a model-visible runtime feature was added.",
+    "Mention the PR body's build-speed motivation only as author-reported context."
+  ],
+  "caveats": [
+    "The change is source/API facing for extension and tool implementors.",
+    "The PR body says it is stacked on #27299.",
+    "No app-server method or CLI command is added by this PR alone."
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26041",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "critical",
+  "audience": "Codex app-server and operator-console builders",
+  "candidate_text": [
+    "Codex added experimental app-server APIs to list and terminate thread background terminals by app-server processId, using unified-exec as source of truth. PR: https://github.com/openai/codex/pull/26041"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26041.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26041.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26041"
+    ]
+  },
+  "evidence_notes": [
+    "`thread/backgroundTerminals/list` returns paginated background terminal records.",
+    "`thread/backgroundTerminals/terminate` targets app-server `processId` values.",
+    "Unified-exec process manager state is the source of truth for records and termination.",
+    "The README marks the methods experimental and capability-gated."
+  ],
+  "claims": [
+    {
+      "text": "Codex app-server can list loaded-thread background terminals through an experimental v2 method.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26041.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Codex app-server can terminate one background terminal by app-server `processId`.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26041.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The PR exposes a concrete app-server operator capability with direct Control Plane adoption value.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26041:operator_impact"
+  },
+  "caveats": [
+    "The methods are experimental and capability-gated.",
+    "Only loaded-thread unified-exec background terminals are in scope.",
+    "OS PID and resource metrics may be null."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or post this candidate.",
+    "Create an adoption issue if Decodex operator surfaces still infer background terminals from local process trees."
+  ]
+}

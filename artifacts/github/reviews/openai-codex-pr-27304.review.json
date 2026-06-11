@@ -1,0 +1,67 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27304",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27304",
+    "commit_shas": [
+      "fffd0036afdb23efb940be1527158f985bda5d6e"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Remove async_trait from ToolExecutor",
+        "url": "https://github.com/openai/codex/pull/27304",
+        "meta": "Merged 2026-06-10T17:26:53Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Remove async trait from tool executor",
+        "url": "https://github.com/openai/codex/commit/fffd0036afdb23efb940be1527158f985bda5d6e"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-11T02:06:39Z",
+  "observed_change": "Codex removed `async_trait` from the `ToolExecutor` trait and converted handlers to return a boxed `ToolExecutorFuture` directly.",
+  "changed_surfaces": [
+    "core tool executor trait signature",
+    "tool handler implementations across shell, patch, MCP, user-input, image, and multi-agent tools",
+    "extension API reexports",
+    "bundled extension crate dependencies",
+    "test helper executors"
+  ],
+  "user_visible_path": "Extension or internal Codex tool authors now implement `ToolExecutor::handle` as a synchronous method returning `Box::pin(async move { ... })` or another `ToolExecutorFuture` instead of relying on `#[async_trait]`.",
+  "control_plane_relevance": "Moderate for Decodex Control Plane because Decodex-adjacent extension and tool integrations may need source updates if they implement upstream Codex `ToolExecutor` directly.",
+  "compatibility_risk": "Medium for out-of-tree extension crates that still use `#[async_trait]` with the old async `handle` method shape; existing compiled integrations must adopt the explicit future return alias.",
+  "adoption_opportunity": "Remove direct `async-trait` dependencies from compatible extension crates and use the `ToolExecutorFuture` alias reexported by `codex-tools` and `codex-extension-api`.",
+  "community_value": "Medium for Codex extension contributors because the PR gives a concrete migration pattern and reports a large debug test build-speed improvement for `codex_core`.",
+  "deprecated_or_breaking_notes": "`ToolExecutor::handle` is no longer an async trait method. The PR body says it is stacked on #27299, so handler-body outlining is part of the migration context.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27304 says `ToolExecutor::handle` now returns an explicit boxed `ToolExecutorFuture` instead of using `async_trait`.",
+    "`codex-rs/tools/src/tool_executor.rs` adds the `ToolExecutorFuture<'a>` type alias and removes the `#[async_trait::async_trait]` annotation from the trait.",
+    "`codex-rs/ext/extension-api/src/lib.rs` reexports `ToolExecutorFuture` for extension authors.",
+    "`codex-rs/tools/Cargo.toml` removes the direct `async-trait` dependency from `codex-tools`.",
+    "Bundled extension crates such as goal, image-generation, memories, and web-search remove their direct `async-trait` dependencies.",
+    "Tool handlers across code mode, shell, MCP, resource, plugin, user-input, image, and multi-agent surfaces remove `#[async_trait]` and return boxed futures.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27304.json` records 56 changed files for the merged PR."
+  ],
+  "caveats": "This is primarily a source-level extension and build-performance change; it does not add a new model-visible tool or app-server method by itself.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The trait signature change affects extension and tool implementations that may sit near Decodex integration code."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The migration has a concise public explanation for Codex extension authors."
+    },
+    {
+      "type": "linear_followup",
+      "reason": "Audit any Decodex-owned upstream extension examples or generated helpers that still assume async-trait ToolExecutor implementations."
+    }
+  ]
+}
