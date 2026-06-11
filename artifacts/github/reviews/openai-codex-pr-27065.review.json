@@ -1,0 +1,55 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27065",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27065",
+    "commit_shas": [
+      "78a9d823a89350a2ab49ee0b3ea2e3bf48685ff7"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] extract external agent import picker renderer",
+        "url": "https://github.com/openai/codex/pull/27065",
+        "meta": "Merged 2026-06-10T18:48:31Z"
+      },
+      {
+        "kind": "commit",
+        "title": "tui: extract external agent migration renderer",
+        "url": "https://github.com/openai/codex/commit/78a9d823a89350a2ab49ee0b3ea2e3bf48685ff7"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-11T08:09:15Z",
+  "observed_change": "Codex moves external-agent migration screen rendering into a dedicated `render` module while preserving the existing picker behavior for later stack items.",
+  "changed_surfaces": [
+    "TUI external-agent migration rendering module",
+    "external-agent migration screen widget implementation",
+    "test coverage for external-agent migration rendering"
+  ],
+  "user_visible_path": "No confirmed new user-visible behavior in this PR; it is explicitly described as behavior-neutral preparation for a later external-agent import picker UX.",
+  "control_plane_relevance": "Low for Decodex Control Plane by itself because the PR refactors TUI presentation code without changing import authority, app-server protocol, or runtime behavior.",
+  "compatibility_risk": "Low; source compatibility is limited to upstream TUI internals around the external-agent migration screen.",
+  "adoption_opportunity": "No direct Decodex adoption action from this PR alone; consume it only as background for the later `/import` flow review.",
+  "community_value": "Low as a standalone item because the PR body states the layer is behavior-neutral and intended to make the next picker UX easier to review.",
+  "deprecated_or_breaking_notes": "No deprecated or removed user behavior is introduced by this refactor; earlier removal of the startup prompt belongs to PR #27064.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27065 states that the rendering refactor is intended to be behavior-neutral and is stack item 2 before the new picker UX.",
+    "`codex-rs/tui/src/external_agent_config_migration.rs` removes rendering imports and declares `mod render` while retaining interaction state and event handling.",
+    "`codex-rs/tui/src/external_agent_config_migration/render.rs` is added with the `WidgetRef` implementation for `ExternalAgentConfigMigrationScreen`.",
+    "The PR body reports `just test -p codex-tui external_agent_config_migration` passing 10 tests.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27065.json` records 2 changed files for the merged PR."
+  ],
+  "caveats": "This is a source-organization review, not evidence that the later external-agent import UX has shipped.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Record an explicit skip/none impact so downstream release and Publisher automation do not treat the refactor as a standalone public signal."
+    }
+  ]
+}
