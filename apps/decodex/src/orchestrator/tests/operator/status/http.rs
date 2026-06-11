@@ -357,7 +357,7 @@ fn operator_dashboard_websocket_sends_current_snapshot_on_connect() {
 }
 
 #[test]
-fn operator_dashboard_websocket_sends_current_run_activity_on_connect() {
+fn operator_dashboard_websocket_sends_cached_run_activity_on_connect() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
 	let address = listener.local_addr().expect("listener address should resolve");
@@ -414,6 +414,10 @@ fn operator_dashboard_websocket_sends_current_run_activity_on_connect() {
 		},
 	)
 	.expect("account marker should write");
+	let run_activity =
+		orchestrator::build_operator_run_activity_event(&state_store).expect("run activity should build");
+
+	dashboard_events.broadcast(run_activity.event.event_type, run_activity.event.payload);
 
 	let server = thread::spawn(move || {
 		let (stream, _) = listener.accept().expect("listener should accept a connection");
@@ -1249,6 +1253,92 @@ fn operator_dashboard_run_activity_fingerprint_ignores_volatile_timing_fields() 
 			.get("wall_seconds")
 			.is_none()
 	);
+}
+
+#[test]
+fn dashboard_event_hub_unregisters_websocket_clients_and_caps_fanout() {
+	let hub = DashboardEventHub::default();
+	let mut registrations = Vec::new();
+
+	for _ in 0..orchestrator::DASHBOARD_MAX_WEBSOCKET_CLIENTS {
+		registrations.push(hub.subscribe().expect("client should subscribe below cap"));
+	}
+
+	assert_eq!(
+		hub.client_count_for_test(),
+		orchestrator::DASHBOARD_MAX_WEBSOCKET_CLIENTS
+	);
+	assert!(
+		hub.subscribe().is_err(),
+		"client fanout should be capped instead of growing unbounded"
+	);
+
+	drop(registrations.pop());
+
+	assert_eq!(
+		hub.client_count_for_test(),
+		orchestrator::DASHBOARD_MAX_WEBSOCKET_CLIENTS - 1
+	);
+
+	let replacement = hub.subscribe().expect("slot should reopen after client drop");
+
+	assert_eq!(
+		hub.client_count_for_test(),
+		orchestrator::DASHBOARD_MAX_WEBSOCKET_CLIENTS
+	);
+
+	drop(replacement);
+	drop(registrations);
+
+	assert_eq!(hub.client_count_for_test(), 0);
+}
+
+#[test]
+fn dashboard_event_hub_caches_and_filters_last_run_activity_event() {
+	let hub = DashboardEventHub::default();
+	let payload = serde_json::json!({
+		"emittedAtUnixEpoch": 1_774_000_000,
+		"accountControl": {
+			"mode": "balanced",
+			"account_selector": null,
+		},
+		"accounts": [],
+		"activeRuns": [
+			{
+				"project_id": "decodex",
+				"issue_id": "issue-1",
+				"run_id": "run-1",
+			},
+			{
+				"project_id": "decodex",
+				"issue_id": "issue-2",
+				"run_id": "run-2",
+			},
+		],
+		"activeRunsComplete": true,
+		"activeRunScope": "complete",
+	});
+	let subscription = orchestrator::DashboardClientSubscription {
+		project_id: Some(String::from("decodex")),
+		issue_id: Some(String::from("issue-1")),
+		run_id: None,
+	};
+
+	hub.broadcast("runActivity", payload);
+	hub.broadcast("snapshot", serde_json::json!({"ignored": true}));
+
+	let event = hub
+		.cached_run_activity_event(&subscription)
+		.expect("cached run activity should remain available after other event types");
+	let active_runs = event.payload["activeRuns"]
+		.as_array()
+		.expect("filtered active runs should be an array");
+
+	assert_eq!(event.event_type, "runActivity");
+	assert_eq!(active_runs.len(), 1);
+	assert_eq!(active_runs[0]["issue_id"], "issue-1");
+	assert_eq!(event.payload["activeRunsComplete"], false);
+	assert_eq!(event.payload["activeRunScope"], "filtered");
 }
 
 #[test]
