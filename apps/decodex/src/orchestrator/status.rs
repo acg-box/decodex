@@ -13,6 +13,7 @@ use libc::c_void;
 #[cfg(target_os = "macos")]
 use libc::proc_bsdinfo;
 use github::GhCommandResolution;
+use github::PullRequestMergeViewResponse;
 use state::WORKTREE_PROVENANCE_FILESYSTEM_SCAN;
 use state::WORKTREE_PROVENANCE_GIT_HYGIENE_SCAN;
 use state::WORKTREE_PROVENANCE_LEGACY_UNKNOWN;
@@ -974,20 +975,30 @@ fn apply_terminal_history_ledger_outcomes(snapshot: &mut OperatorStatusSnapshot)
 fn history_ledger_outcome_supersedes_local_attempts(
 	outcome: &OperatorHistoryLedgerOutcome,
 ) -> bool {
+	history_ledger_outcome_is_terminal(outcome)
+}
+
+fn history_ledger_outcome_is_terminal(outcome: &OperatorHistoryLedgerOutcome) -> bool {
 	outcome.ledger_status == "present"
 		&& matches!(
 			outcome.final_outcome.as_str(),
-			"cleanup_complete" | "closeout" | "landed"
+			"cleanup_complete" | "closeout" | "landed" | "needs_attention" | "terminal_failure"
 		)
+}
+
+fn history_ledger_outcome_requires_attention(outcome: &OperatorHistoryLedgerOutcome) -> bool {
+	outcome.ledger_status == "present"
+		&& matches!(outcome.final_outcome.as_str(), "needs_attention" | "terminal_failure")
 }
 
 fn apply_terminal_history_ledger_outcome_to_latest_run(lane: &mut OperatorHistoryLaneStatus) {
 	let final_outcome = lane.ledger_outcome.final_outcome.clone();
 	let final_event_at = lane.ledger_outcome.final_event_at.clone();
+	let requires_attention = history_ledger_outcome_requires_attention(&lane.ledger_outcome);
 
 	lane.latest_run.status = final_outcome.clone();
 	lane.latest_run.attempt_status = final_outcome;
-	lane.latest_run.phase = String::from("completed");
+	lane.latest_run.phase = String::from(if requires_attention { "needs_attention" } else { "completed" });
 	lane.latest_run.wait_reason = None;
 	lane.latest_run.current_operation = String::from("ledger_outcome");
 	lane.latest_run.continuation_pending = false;
@@ -999,8 +1010,14 @@ fn apply_terminal_history_ledger_outcome_to_latest_run(lane: &mut OperatorHistor
 	lane.latest_run.next_retry_at = None;
 
 	if let Some(loop_status) = lane.latest_run.loop_status.as_mut() {
-		loop_status.summary = format!("terminal lifecycle: {}", lane.latest_run.status);
-		loop_status.next_action = None;
+		loop_status.summary = format!(
+			"terminal {}: {}",
+			if requires_attention { "attention" } else { "lifecycle" },
+			lane.latest_run.status
+		);
+		loop_status.next_action = requires_attention
+			.then(|| lane.ledger_outcome.needs_attention_reason.clone())
+			.flatten();
 
 		if loop_status
 			.review
@@ -1086,6 +1103,27 @@ fn worktree_ownership(
 		};
 	}
 
+	if let Some(lane) = worktree_history_attention_owner(worktree, snapshot) {
+		return WorktreeOwnership {
+			kind: "retained_attention",
+			reason: format!(
+				"Run Ledger owns this worktree through terminal `{}` outcome.",
+				lane.ledger_outcome.final_outcome
+			),
+			next_action: Some(
+				lane
+					.ledger_outcome
+					.needs_attention_reason
+					.clone()
+					.unwrap_or_else(|| {
+						String::from(
+							"inspect the retained worktree diff and resolve the terminal attention outcome manually",
+						)
+					}),
+			),
+			audit_required: false,
+		};
+	}
 	if let Some(hygiene) = &worktree.hygiene {
 		return WorktreeOwnership {
 			kind: "post_land_cleanup",
@@ -1148,6 +1186,21 @@ fn worktree_has_queued_attention_owner(
 				|| candidate.issue_id == worktree.issue_id
 				|| candidate.issue_identifier == worktree.issue_id
 				|| worktree.issue_identifier.as_deref() == Some(candidate.issue_identifier.as_str()))
+	})
+}
+
+fn worktree_history_attention_owner<'a>(
+	worktree: &OperatorWorktreeStatus,
+	snapshot: &'a OperatorStatusSnapshot,
+) -> Option<&'a OperatorHistoryLaneStatus> {
+	let worktree_issue_key =
+		operator_issue_attention_key(&worktree.issue_id, worktree.issue_identifier.as_deref());
+
+	snapshot.history_lanes.iter().find(|lane| {
+		history_ledger_outcome_requires_attention(&lane.ledger_outcome)
+			&& (history_lane_group_key(lane) == worktree_issue_key
+				|| lane.latest_run.worktree_path.as_deref() == Some(worktree.worktree_path.as_str())
+				|| lane.latest_run.branch_name.as_deref() == Some(worktree.branch_name.as_str()))
 	})
 }
 
@@ -1256,17 +1309,26 @@ fn queued_candidate_counts_as_waiting_intake(candidate: &OperatorQueuedIssueStat
 }
 
 fn project_attention_count(snapshot: &OperatorStatusSnapshot) -> usize {
-	let active_attention = snapshot
+	let mut attention_keys = HashSet::new();
+
+	for run in snapshot
 		.active_runs
 		.iter()
 		.filter(|run| operator_run_needs_attention(run))
-		.count();
-	let queued_attention = snapshot
+	{
+		attention_keys.insert(operator_run_group_key(run));
+	}
+	for candidate in snapshot
 		.queued_candidates
 		.iter()
 		.filter(|candidate| candidate.classification == "blocked" || candidate.attention.is_some())
-		.count();
-	let review_attention = snapshot
+	{
+		attention_keys.insert(operator_issue_attention_key(
+			&candidate.issue_id,
+			Some(&candidate.issue_identifier),
+		));
+	}
+	for lane in snapshot
 		.post_review_lanes
 		.iter()
 		.filter(|lane| {
@@ -1275,9 +1337,35 @@ fn project_attention_count(snapshot: &OperatorStatusSnapshot) -> usize {
 				"blocked" | "needs_review_repair" | "closeout_blocked"
 			)
 		})
-		.count();
+	{
+		attention_keys.insert(operator_issue_attention_key(&lane.issue_id, Some(&lane.issue_identifier)));
+	}
+	for lane in snapshot
+		.history_lanes
+		.iter()
+		.filter(|lane| history_ledger_outcome_requires_attention(&lane.ledger_outcome))
+	{
+		attention_keys.insert(history_lane_group_key(lane));
+	}
 
-	active_attention + queued_attention + review_attention
+	attention_keys.len()
+}
+
+fn operator_issue_attention_key(issue_id: &str, issue_identifier: Option<&str>) -> String {
+	let issue_id = issue_id.trim();
+
+	if !issue_id.is_empty() && !issue_id.eq_ignore_ascii_case("unknown") {
+		return issue_id.to_ascii_uppercase();
+	}
+
+	if let Some(issue_identifier) = issue_identifier
+		.map(str::trim)
+		.filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("unknown"))
+	{
+		return issue_identifier.to_ascii_uppercase();
+	}
+
+	String::from("UNKNOWN")
 }
 
 fn project_cleanup_blocked_count(snapshot: &OperatorStatusSnapshot) -> usize {
@@ -1351,7 +1439,9 @@ fn operator_run_counts_as_running(run: &OperatorRunStatus) -> bool {
 }
 
 fn operator_run_needs_attention(run: &OperatorRunStatus) -> bool {
-	run.suspected_stall
+	matches!(run.status.as_str(), "needs_attention" | "terminal_failure")
+		|| run.phase == "needs_attention"
+		|| run.suspected_stall
 		|| run.phase == "stalled"
 		|| run.process_alive == Some(false)
 			&& matches!(run.status.as_str(), "starting" | "running")
@@ -3386,13 +3476,17 @@ fn classify_post_review_lane_with_project<I>(
 where
 	I: PullRequestReviewStateInspector,
 {
-	classify_post_review_lane_with_external_review(
+	let mut classification = classify_post_review_lane_with_external_review(
 		snapshot,
 		workflow,
 		review_state_inspector,
 		project.codex().review_level().uses_github_review(),
 		Some((state_store, project.service_id())),
-	)
+	)?;
+
+	confirm_status_visible_merged_closeout(snapshot, project, &mut classification);
+
+	Ok(classification)
 }
 
 fn classify_post_review_lane_with_external_review<I>(
@@ -3533,6 +3627,90 @@ fn merged_closeout_pending_classification(
 	classification.decision == PostReviewLaneDecision::Continue
 		&& classification.reason == "pull_request_merged_closeout_pending"
 		&& classification.pr_state.as_deref() == Some("MERGED")
+}
+
+fn confirm_status_visible_merged_closeout(
+	snapshot: &PostReviewLaneSnapshot,
+	project: &ServiceConfig,
+	classification: &mut PostReviewLaneClassification,
+) {
+	if !merged_closeout_pending_classification(classification) {
+		return;
+	}
+
+	let Some(pr_url) = classification.pr_url.as_deref() else {
+		mark_merged_closeout_confirmation_conflict(classification, None, None);
+
+		return;
+	};
+	let expected_head_sha = snapshot
+		.review_handoff
+		.as_ref()
+		.map(ReviewHandoffMarker::pr_head_oid)
+		.or(classification.pr_head_sha.as_deref());
+	let Some(expected_head_sha) = expected_head_sha else {
+		mark_merged_closeout_confirmation_conflict(classification, None, None);
+
+		return;
+	};
+	let github_token = match resolve_configured_env_var(
+		"github.token_env_var",
+		Some(project.github().token_env_var()),
+	) {
+		Ok(github_token) => github_token,
+		Err(error) => {
+			let root_cause = classify_pull_request_readback_report(&error);
+
+			mark_merged_closeout_confirmation_conflict(classification, None, Some(root_cause));
+
+			return;
+		},
+	};
+	let merge_readback = match github::inspect_pull_request_merge_readback(
+		snapshot.worktree.worktree_path(),
+		pr_url,
+		&github_token,
+		project.github().command_path(),
+	) {
+		Ok(merge_readback) => merge_readback,
+		Err(error) => {
+			let root_cause = classify_pull_request_readback_report(&error);
+
+			mark_merged_closeout_confirmation_conflict(classification, None, Some(root_cause));
+
+			return;
+		},
+	};
+
+	if merge_readback.state == "MERGED"
+		&& merge_readback.head_ref_oid.as_deref() == Some(expected_head_sha)
+	{
+		return;
+	}
+
+	mark_merged_closeout_confirmation_conflict(
+		classification,
+		Some(merge_readback),
+		Some(PullRequestReadbackRootCause::LineageValidationFailed),
+	);
+}
+
+fn mark_merged_closeout_confirmation_conflict(
+	classification: &mut PostReviewLaneClassification,
+	merge_readback: Option<PullRequestMergeViewResponse>,
+	root_cause: Option<PullRequestReadbackRootCause>,
+) {
+	classification.decision = PostReviewLaneDecision::Block;
+	classification.reason = String::from("pull_request_merge_state_conflict");
+	classification.readback_warning = Some(String::from("pull_request_merge_state_conflict"));
+	classification.readback_root_cause = root_cause.map(|root_cause| root_cause.as_str().to_owned());
+
+	if let Some(merge_readback) = merge_readback {
+		classification.pr_state = Some(merge_readback.state);
+		classification.pr_head_sha = merge_readback.head_ref_oid.or_else(|| {
+			classification.pr_head_sha.clone()
+		});
+	}
 }
 
 fn retry_budget_exhausted_merged_review_state<I>(
