@@ -1,0 +1,99 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-app-26-608",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "release_pulse",
+  "status": "published",
+  "audience": "Codex app users and operators updating desktop workflows",
+  "text": [
+    "Codex app 26.608 landed in the official changelog.\n\n- Claude Code/Cowork migration flows\n- Plugins screen refresh\n- Broader Settings search\n- Goal timer, unread alert, diff ordering, and Windows 10 rendering fixes\n\nSource: https://developers.openai.com/codex/changelog"
+  ],
+  "source_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-app-26-608.json"
+    ],
+    "reservations": [
+      "artifacts/social/x/reservations/2026-06-11/openai-codex-app-26-608.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://x.com/decodexspace/status/2065011296513544297"
+    ]
+  },
+  "evidence_notes": [
+    "The social_candidate/v1 artifact has decision.worthiness = publish, priority normal, and mode release_pulse for openai-codex-app-26-608.",
+    "The official OpenAI Codex changelog lists Codex app 26.608 on 2026-06-09 and backs the migration-flow, plugins-screen, Settings-search, goal-timer, unread-alert, diff-ordering, and Windows 10 rendering claims.",
+    "The x-post-quality-system gate passed because the post states what changed, who can act on it, and the official source that proves it; the checked copy is 268 characters and uses the official OpenAI Developers changelog URL.",
+    "The release publisher gates were applied as an app changelog release_pulse, not a CLI release or prerelease quote-chain post.",
+    "Checked durable social_post/v1 records contained no published or blocked record for this idempotency key before reservation.",
+    "Checked durable social_publish_reservation/v1 records contained no active reservation for this idempotency key before the new reservation was created.",
+    "Open GitHub PR readback with routed hackink credentials found pending publication PR #298 for openai-codex-pr-26486 and no open PR touching openai-codex-app-26-608 before this reservation.",
+    "PR #328 made the active reservation visible before X compose; the PR diff was limited to artifacts/social/x/reservations/2026-06-11/openai-codex-app-26-608.json at reservation time.",
+    "Chrome account readback initially showed @hackink active with @decodexspace available; the automation switched to @decodexspace and verified the account menu before reservation and compose.",
+    "Live @decodexspace profile readback before reservation found no Codex app 26.608, source changelog URL, candidate slug, Claude Code/Cowork, or Plugins screen refresh duplicate across rendered recent profile posts.",
+    "Live @decodexspace profile readback after the PR-visible reservation again found no Codex app 26.608, source changelog URL, candidate slug, Claude Code/Cowork, or Plugins screen refresh duplicate.",
+    "Immediately before clicking Post, a separate live @decodexspace profile readback again found no Codex app 26.608, source changelog URL, candidate slug, Claude Code/Cowork, or Plugins screen refresh duplicate.",
+    "The compose dialog showed @decodexspace and the checked 268-character candidate text before the enabled modal Post button was clicked.",
+    "Home timeline readback immediately after posting showed the new @decodexspace status with the expected Codex app 26.608 changelog text and OpenAI Developers source card.",
+    "Permalink readback showed the expected @decodexspace post text, Automated by @hackink attribution, OpenAI Developers changelog card, no attached image media, and no /photo/N link.",
+    "The status ID decodes to 2026-06-11T10:00:33.800Z, which is cap day 2026-06-11 in Asia/Shanghai.",
+    "After publication, cap recount found this post should have failed closed: checked 2026-06-11 records plus open PR #298 already represented 9 individual X status URLs before this post. This record preserves the live publication truth with daily_count_before = 9 and daily_count_after = 10, and PR #328 must remain open for operator review instead of landing."
+  ],
+  "claims": [
+    {
+      "text": "Codex app 26.608 is an official Codex app changelog checkpoint.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The update adds migration flows for supported Claude Code and Claude Cowork setup imports.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The update refreshes the plugins screen, broadens Settings search, and includes UI or reliability fixes for goal timers, unread notifications, review diff ordering, and non-translucent window rendering.",
+      "evidence": "https://developers.openai.com/codex/changelog",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The Codex app 26.608 release-pulse post is live on @decodexspace.",
+      "evidence": "https://x.com/decodexspace/status/2065011296513544297",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "normal",
+    "idempotency_key": "x:decodexspace:codex-app-26-608:release_pulse",
+    "reason": "The official changelog has concrete app changes that answer what changed, who can use it, and what source proves it.",
+    "daily_limit": 8,
+    "daily_count_before": 9,
+    "daily_count_after": 10,
+    "day": "2026-06-11",
+    "timezone": "Asia/Shanghai"
+  },
+  "publication": {
+    "posted_at": "2026-06-11T10:00:33.800Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2065011296513544297"
+    ],
+    "publisher": "chrome",
+    "account_verified": true,
+    "made_with_ai": false
+  },
+  "media_refs": [
+    "media_caveat: no generated media was attached; this app release_pulse remained useful text-only because the source-backed changelog bullets and OpenAI Developers source card are the reader value."
+  ],
+  "caveats": [
+    "This candidate is based only on the official Codex changelog; do not infer CLI, GitHub prerelease, mobile, or Decodex runtime behavior from it.",
+    "No generated image was used because the official changelog card and concise release bullets carried the reader value.",
+    "Cap-policy caveat: publication should have stopped before compose once individual published_urls for the Asia/Shanghai cap day were counted. The PR is intentionally left open for operator review."
+  ],
+  "post_lifecycle": {
+    "current_state": "live",
+    "quote_eligible": false,
+    "reason": "This is a standalone app release-pulse post, not a prerelease quote-chain anchor."
+  }
+}

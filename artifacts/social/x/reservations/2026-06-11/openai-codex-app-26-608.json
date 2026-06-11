@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "release_pulse",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:codex-app-26-608:release_pulse",
   "reserved_at": "2026-06-11T09:57:19Z",
   "expires_at": "2026-06-11T11:57:19Z",
@@ -30,8 +30,10 @@
   ],
   "owner": {
     "automation_id": "decodex-x-publisher",
-    "branch": "codex/x-publisher-app-26-608-20260611"
+    "branch": "codex/x-publisher-app-26-608-20260611",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/328"
   },
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-11/openai-codex-app-26-608.json",
   "evidence_notes": [
     "Durable social_post/v1 records in the current tree have no published or blocked record for this idempotency key.",
     "Durable social_publish_reservation/v1 records in the current tree have no active reservation for this idempotency key.",
