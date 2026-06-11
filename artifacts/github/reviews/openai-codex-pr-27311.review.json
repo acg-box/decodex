@@ -1,0 +1,63 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27311",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27311",
+    "commit_shas": [
+      "a323ed156e4bf7c1ae57cb0bb2d7f7d0d8a83b75"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Skip local curated discovery for remote plugins",
+        "url": "https://github.com/openai/codex/pull/27311",
+        "meta": "Merged 2026-06-10T20:11:09Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Skip local curated discovery for remote plugins",
+        "url": "https://github.com/openai/codex/commit/a323ed156e4bf7c1ae57cb0bb2d7f7d0d8a83b75"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-11T14:06:31Z",
+  "observed_change": "Codex skips the local `openai-curated` marketplace scan when remote-plugin tool-suggestion discovery is enabled, while preserving normal marketplace listing behavior elsewhere.",
+  "changed_surfaces": [
+    "plugin marketplace discovery manager",
+    "tool-suggest discoverable plugin loading",
+    "app-server plugin request processors",
+    "plugin CLI marketplace calls",
+    "plugin install verification",
+    "core plugin manager regression tests"
+  ],
+  "user_visible_path": "Users with remote plugins enabled should see tool-suggestion discovery avoid reading the local curated marketplace, reducing wasted local scan work and avoiding malformed local curated manifests in that mode.",
+  "control_plane_relevance": "Moderate for Decodex Control Plane because plugin discovery preflights and tool-suggest inventories may become faster and less sensitive to local curated marketplace corruption when remote plugins are active.",
+  "compatibility_risk": "Low: the new `include_openai_curated` argument changes internal marketplace-listing callers, but the PR body says plugin/list behavior and local curated discovery when remote plugins are disabled are unchanged.",
+  "adoption_opportunity": "Prefer remote catalog-backed discovery for remote plugin suggestions and stop treating a bad local `openai-curated` checkout as authoritative in that mode.",
+  "community_value": "Medium for plugin operators because the change explains why remote-plugin suggestions no longer depend on local curated marketplace manifests.",
+  "deprecated_or_breaking_notes": "The local curated marketplace is excluded only before tool-suggest discovery when remote plugins are enabled; configured marketplace listing paths still include it.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27311 says tool-suggest discovery now skips local `openai-curated` marketplace loading when remote plugins are enabled, while plugin/list and other callers are preserved.",
+    "`codex-rs/core-plugins/src/discoverable.rs` calls `list_marketplaces_for_config` with `include_openai_curated` set to the inverse of `remote_plugin_enabled`.",
+    "`codex-rs/core-plugins/src/manager.rs` adds the `include_openai_curated` argument and removes the curated repository root from marketplace roots when false.",
+    "App-server plugin request processors, CLI plugin commands, and install verification pass `include_openai_curated: true` to preserve existing listing behavior.",
+    "`codex-rs/core-plugins/src/manager_tests.rs` adds coverage for skipping `openai-curated` before a malformed manifest can be loaded.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27311.json` records 7 changed files for the merged PR."
+  ],
+  "caveats": "This is a discovery-path optimization and robustness fix; it does not remove local curated marketplace support generally.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Remote plugin discovery behavior affects Decodex plugin inventory and preflight assumptions."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The remote-plugin discovery boundary is useful to plugin operators when explained with caveats."
+    }
+  ]
+}
