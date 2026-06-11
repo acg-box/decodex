@@ -7,6 +7,7 @@ use std::{
 	time::{Duration, SystemTime},
 };
 
+use color_eyre::Report;
 use rusqlite::{self, Connection};
 use serde::Serialize;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
@@ -99,6 +100,7 @@ pub(crate) struct RuntimeMaintenanceReport {
 	compacted_runs: usize,
 	compacted_events: u64,
 	actions: Vec<RuntimeMaintenanceAction>,
+	warnings: Vec<RuntimeMaintenanceWarning>,
 }
 
 #[derive(Debug, Serialize)]
@@ -107,6 +109,12 @@ pub(crate) struct WalCheckpointReport {
 	busy: i64,
 	log_frames: i64,
 	checkpointed_frames: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RuntimeMaintenanceWarning {
+	warning: &'static str,
+	reason: &'static str,
 }
 
 #[derive(Clone, Copy)]
@@ -486,11 +494,40 @@ fn maintain_runtime(
 		..RuntimeMaintenanceReport::default()
 	};
 
-	if scope == MaintenanceScope::AutoSafe || !database_path.exists() {
+	if !database_path.exists() {
 		return Ok(report);
 	}
 
-	let mut connection = Connection::open(&database_path)?;
+	let runtime_result =
+		maintain_runtime_protocol_events(&database_path, &mut report, mode, policy, generated_at);
+
+	match runtime_result {
+		Ok(()) => Ok(report),
+		Err(error) if scope == MaintenanceScope::AutoSafe => {
+			let warning = runtime_maintenance_warning_for_error(&error);
+
+			tracing::warn!(
+				warning = warning.warning,
+				reason = warning.reason,
+				"Skipped Decodex auto-safe protocol-event compaction; control-plane maintenance continued."
+			);
+
+			report.warnings.push(warning);
+
+			Ok(report)
+		},
+		Err(error) => Err(error),
+	}
+}
+
+fn maintain_runtime_protocol_events(
+	database_path: &Path,
+	report: &mut RuntimeMaintenanceReport,
+	mode: MaintenanceMode,
+	policy: MaintenancePolicy,
+	generated_at: OffsetDateTime,
+) -> Result<()> {
+	let mut connection = Connection::open(database_path)?;
 
 	connection.busy_timeout(Duration::from_secs(5))?;
 
@@ -529,7 +566,7 @@ fn maintain_runtime(
 		report.compacted_events = report.protocol_event_candidates;
 	}
 
-	Ok(report)
+	Ok(())
 }
 
 fn maintain_wal(
@@ -591,17 +628,28 @@ fn protocol_event_compaction_candidates(
 		 JOIN protocol_events last
 			ON last.run_id = totals.run_id
 			AND last.sequence_number = totals.last_sequence_number
-		 LEFT JOIN leases active_lease ON active_lease.run_id = attempts.run_id
+		 LEFT JOIN leases active_lease ON active_lease.issue_id = attempts.issue_id
 		 LEFT JOIN worktrees retained_worktree ON retained_worktree.issue_id = attempts.issue_id
 		 LEFT JOIN review_handoffs review_handoff ON review_handoff.issue_id = attempts.issue_id
 		 LEFT JOIN review_orchestrations review_orchestration
 			ON review_orchestration.issue_id = attempts.issue_id
+		 LEFT JOIN (
+			SELECT
+				issue_id,
+				json_extract(payload_json, '$.run_id') AS run_id
+			FROM linear_execution_events
+			WHERE event_type IN ('needs_attention', 'terminal_failure')
+				AND json_valid(payload_json)
+		 ) human_stop_event
+			ON human_stop_event.issue_id = attempts.issue_id
+			AND human_stop_event.run_id = attempts.run_id
 		 WHERE attempts.status IN ('succeeded', 'failed', 'interrupted', 'terminated')
 			AND totals.last_created_at_unix < ?1
-			AND active_lease.run_id IS NULL
+			AND active_lease.issue_id IS NULL
 			AND retained_worktree.issue_id IS NULL
 			AND review_handoff.issue_id IS NULL
 			AND review_orchestration.issue_id IS NULL
+			AND human_stop_event.run_id IS NULL
 		 ORDER BY totals.last_created_at_unix ASC, attempts.run_id ASC",
 	)?;
 	let rows = statement.query_map(rusqlite::params![cutoff_unix], |row| {
@@ -630,21 +678,44 @@ fn protected_protocol_run_count(connection: &Connection) -> Result<usize> {
 		"SELECT COUNT(DISTINCT attempts.run_id)
 		 FROM run_attempts attempts
 		 JOIN protocol_events events ON events.run_id = attempts.run_id
-		 LEFT JOIN leases active_lease ON active_lease.run_id = attempts.run_id
+		 LEFT JOIN leases active_lease ON active_lease.issue_id = attempts.issue_id
 		 LEFT JOIN worktrees retained_worktree ON retained_worktree.issue_id = attempts.issue_id
 		 LEFT JOIN review_handoffs review_handoff ON review_handoff.issue_id = attempts.issue_id
 		 LEFT JOIN review_orchestrations review_orchestration
 			ON review_orchestration.issue_id = attempts.issue_id
-		 WHERE active_lease.run_id IS NOT NULL
+		 LEFT JOIN (
+			SELECT
+				issue_id,
+				json_extract(payload_json, '$.run_id') AS run_id
+			FROM linear_execution_events
+			WHERE event_type IN ('needs_attention', 'terminal_failure')
+				AND json_valid(payload_json)
+		 ) human_stop_event
+			ON human_stop_event.issue_id = attempts.issue_id
+			AND human_stop_event.run_id = attempts.run_id
+		 WHERE active_lease.issue_id IS NOT NULL
 			OR retained_worktree.issue_id IS NOT NULL
 			OR review_handoff.issue_id IS NOT NULL
 			OR review_orchestration.issue_id IS NOT NULL
+			OR human_stop_event.run_id IS NOT NULL
 			OR attempts.status NOT IN ('succeeded', 'failed', 'interrupted', 'terminated')",
 		[],
 		|row| row.get::<_, i64>(0),
 	)?;
 
 	Ok(count.max(0) as usize)
+}
+
+fn runtime_maintenance_warning_for_error(error: &Report) -> RuntimeMaintenanceWarning {
+	let message = error.to_string().to_ascii_lowercase();
+	let reason =
+		if message.contains("busy") || message.contains("locked") || message.contains("sqlite") {
+			"sqlite_unavailable"
+		} else {
+			"candidate_detection_failed"
+		};
+
+	RuntimeMaintenanceWarning { warning: "auto_protocol_event_compaction_skipped", reason }
 }
 
 fn compact_protocol_events(
@@ -824,6 +895,10 @@ fn print_prune_report(report: &MaintenanceReport) -> Result<()> {
 		report.runtime.protected_run_count
 	)?;
 
+	for warning in &report.runtime.warnings {
+		writeln!(stdout, "runtime warning: {} ({})", warning.warning, warning.reason)?;
+	}
+
 	match &report.wal_checkpoint {
 		Some(checkpoint) => writeln!(
 			stdout,
@@ -956,6 +1031,8 @@ mod tests {
 		insert_event(&connection, "old-run", 2, old + 60);
 		insert_attempt(&connection, "active-run", "active-issue", "running");
 		insert_event(&connection, "active-run", 1, old);
+		insert_attempt(&connection, "old-active-issue-run", "active-issue", "succeeded");
+		insert_event(&connection, "old-active-issue-run", 1, old);
 
 		connection
 			.execute(
@@ -976,6 +1053,28 @@ mod tests {
 			)
 			.expect("retained worktree should insert");
 
+		insert_attempt(&connection, "review-handoff-run", "review-issue", "succeeded");
+		insert_event(&connection, "review-handoff-run", 1, old);
+		insert_review_handoff(&connection, "review-issue", "review-handoff-run");
+		insert_attempt(&connection, "cleanup-blocked-run", "cleanup-issue", "succeeded");
+		insert_event(&connection, "cleanup-blocked-run", 1, old);
+		insert_review_orchestration(&connection, "cleanup-issue", "cleanup-blocked-run");
+		insert_attempt(&connection, "attention-run", "attention-issue", "failed");
+		insert_event(&connection, "attention-run", 1, old);
+		insert_linear_execution_event(
+			&connection,
+			"attention-issue",
+			"attention-run",
+			"needs_attention",
+		);
+		insert_attempt(&connection, "terminal-failure-run", "failure-issue", "failed");
+		insert_event(&connection, "terminal-failure-run", 1, old);
+		insert_linear_execution_event(
+			&connection,
+			"failure-issue",
+			"terminal-failure-run",
+			"terminal_failure",
+		);
 		insert_attempt(&connection, "fresh-run", "fresh-issue", "succeeded");
 		insert_event(&connection, "fresh-run", 1, fresh);
 
@@ -994,8 +1093,84 @@ mod tests {
 		assert_eq!(protocol_event_count(&connection, "old-run"), 0);
 		assert_eq!(protocol_summary_event_count(&connection, "old-run"), Some(2));
 		assert_eq!(protocol_event_count(&connection, "active-run"), 1);
+		assert_eq!(protocol_event_count(&connection, "old-active-issue-run"), 1);
 		assert_eq!(protocol_event_count(&connection, "retained-run"), 1);
+		assert_eq!(protocol_event_count(&connection, "review-handoff-run"), 1);
+		assert_eq!(protocol_event_count(&connection, "cleanup-blocked-run"), 1);
+		assert_eq!(protocol_event_count(&connection, "attention-run"), 1);
+		assert_eq!(protocol_event_count(&connection, "terminal-failure-run"), 1);
 		assert_eq!(protocol_event_count(&connection, "fresh-run"), 1);
+	}
+
+	#[test]
+	fn auto_safe_prune_compacts_terminal_unowned_protocol_events() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let _home_guard =
+			TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+		let connection = bootstrap_test_runtime_db(&temp_dir);
+		let now = OffsetDateTime::now_utc();
+		let old = now.unix_timestamp() - 30 * 24 * 60 * 60;
+
+		insert_attempt(&connection, "old-run", "old-issue", "succeeded");
+		insert_event(&connection, "old-run", 1, old);
+
+		let report = maintenance::run_prune_with_policy(
+			MaintenancePruneRequest {
+				mode: MaintenanceMode::Apply,
+				scope: MaintenanceScope::AutoSafe,
+				json: false,
+			},
+			MaintenancePolicy { protocol_event_retention_days: 14, ..MaintenancePolicy::default() },
+		)
+		.expect("auto-safe maintenance should run");
+
+		assert_eq!(report.runtime.compacted_runs, 1);
+		assert_eq!(report.runtime.compacted_events, 1);
+		assert!(report.runtime.warnings.is_empty());
+		assert_eq!(protocol_event_count(&connection, "old-run"), 0);
+		assert_eq!(protocol_summary_event_count(&connection, "old-run"), Some(1));
+
+		let state_store =
+			crate::state::StateStore::open(temp_dir.path().join(".codex/decodex/runtime.sqlite3"))
+				.expect("state store should reopen compacted runtime DB");
+		let runs = state_store
+			.list_recent_runs("decodex", 10)
+			.expect("recent runs should load compacted summary");
+		let compacted_run = runs
+			.iter()
+			.find(|run| run.run_id() == "old-run")
+			.expect("compacted run should remain status-visible");
+
+		assert_eq!(compacted_run.event_count(), 1);
+		assert_eq!(compacted_run.last_event_type(), Some("event"));
+		assert_eq!(compacted_run.last_event_at(), Some("2026-05-01T00:00:00Z"));
+	}
+
+	#[test]
+	fn auto_safe_prune_warns_and_continues_when_runtime_candidate_detection_fails() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let _home_guard =
+			TestEnvVarGuard::set("HOME", temp_dir.path().to_str().expect("home should be utf-8"));
+		let decodex_home = temp_dir.path().join(".codex/decodex");
+
+		fs::create_dir_all(&decodex_home).expect("decodex home should create");
+		Connection::open(decodex_home.join("runtime.sqlite3"))
+			.expect("empty runtime DB should create");
+
+		let report = maintenance::run_prune_with_policy(
+			MaintenancePruneRequest {
+				mode: MaintenanceMode::Apply,
+				scope: MaintenanceScope::AutoSafe,
+				json: false,
+			},
+			MaintenancePolicy::default(),
+		)
+		.expect("auto-safe maintenance should continue after candidate detection failure");
+
+		assert_eq!(report.runtime.compacted_runs, 0);
+		assert_eq!(report.runtime.warnings.len(), 1);
+		assert_eq!(report.runtime.warnings[0].warning, "auto_protocol_event_compaction_skipped");
+		assert_eq!(report.runtime.warnings[0].reason, "candidate_detection_failed");
 	}
 
 	#[test]
@@ -1085,6 +1260,76 @@ mod tests {
 				rusqlite::params![run_id, sequence_number, created_at],
 			)
 			.expect("event should insert");
+	}
+
+	fn insert_review_handoff(connection: &Connection, issue_id: &str, run_id: &str) {
+		connection
+			.execute(
+				"INSERT INTO review_handoffs (
+					project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
+					target_base_ref_name, pr_head_ref_name, pr_head_oid, updated_at,
+					updated_at_unix
+				) VALUES (
+					'decodex', ?1, 'y/decodex-test', ?2, 1,
+					'https://github.com/hack-ink/decodex/pull/1', 'main',
+					'y/decodex-test', 'abc123', '2026-05-01T00:00:00Z', 0
+				)",
+				rusqlite::params![issue_id, run_id],
+			)
+			.expect("review handoff should insert");
+	}
+
+	fn insert_review_orchestration(connection: &Connection, issue_id: &str, run_id: &str) {
+		connection
+			.execute(
+				"INSERT INTO review_orchestrations (
+					project_id, issue_id, branch_name, run_id, attempt_number, pr_url,
+					head_sha, phase, request_comment_database_id,
+					request_created_at_unix_epoch, request_description_thumbs_up_count,
+					request_retry_count, external_round_count, auto_merge_enabled_at_unix_epoch,
+					updated_at, updated_at_unix
+				) VALUES (
+					'decodex', ?1, 'y/decodex-test', ?2, 1,
+					'https://github.com/hack-ink/decodex/pull/1', 'abc123',
+					'cleanup_blocked', NULL, NULL, NULL, 0, 0, NULL,
+					'2026-05-01T00:00:00Z', 0
+				)",
+				rusqlite::params![issue_id, run_id],
+			)
+			.expect("review orchestration should insert");
+	}
+
+	fn insert_linear_execution_event(
+		connection: &Connection,
+		issue_id: &str,
+		run_id: &str,
+		event_type: &str,
+	) {
+		let idempotency_key = format!("{event_type}-{run_id}");
+		let payload_json = serde_json::json!({
+			"type": "decodex.linear_execution_event/1",
+			"record_version": 1,
+			"event_type": event_type,
+			"event_timestamp": "2026-05-01T00:00:00Z",
+			"idempotency_key": idempotency_key,
+			"service_id": "decodex",
+			"issue_id": issue_id,
+			"issue_identifier": issue_id,
+			"run_id": run_id,
+			"attempt_number": 1
+		})
+		.to_string();
+
+		connection
+			.execute(
+				"INSERT INTO linear_execution_events (
+					idempotency_key, service_id, issue_id, event_type, event_timestamp,
+					event_unix, payload_json, recorded_at, recorded_at_unix
+				) VALUES (?1, 'decodex', ?2, ?3, '2026-05-01T00:00:00Z', 0, ?4,
+					'2026-05-01T00:00:00Z', 0)",
+				rusqlite::params![idempotency_key, issue_id, event_type, payload_json],
+			)
+			.expect("linear execution event should insert");
 	}
 
 	fn protocol_event_count(connection: &Connection, run_id: &str) -> i64 {

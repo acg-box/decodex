@@ -634,12 +634,14 @@ After a process restart, recent-run history, active lease ownership, retained po
 - Lease and session mappings: remove when the run closes.
 - Attempt records, terminal outcome, private execution events, and locally cached
   Linear execution ledger links remain runtime history. Raw protocol event rows for
-  terminal runs may be compacted by `decodex maintenance prune --apply` once the
-  latest event is at least 14 days old, but only after Decodex writes the compact run
-  summary and confirms that no active lease, retained worktree, review handoff, review
-  orchestration, or cleanup blocker still owns that run or issue. The first private
-  execution event schema has no compaction path; add one only when runtime maintenance
-  owns a concrete retention policy for that structured evidence.
+  terminal runs may be compacted by `decodex maintenance prune --apply` or by the
+  automatic `decodex serve` auto-safe maintenance path once the latest event is at
+  least 14 days old, but only after Decodex writes the compact run summary and
+  confirms that no active lease, retained worktree, review handoff, review
+  orchestration, human-attention ledger event, terminal-failure ledger event, or
+  cleanup blocker still owns that run or issue. The first private execution event
+  schema has no compaction path; add one only when runtime maintenance owns a
+  concrete retention policy for that structured evidence.
 - `decodex maintenance prune --dry-run` is the read-only retention path for inspecting
   local cleanup candidates without applying retention changes. The `--apply` mode owns
   state-aware protocol-event
@@ -647,8 +649,11 @@ After a process restart, recent-run history, active lease ownership, retained po
   and SQLite WAL checkpointing. Operators must not delete `runtime.sqlite3-wal`
   directly.
 - `decodex serve` runs the auto-safe maintenance subset at startup and periodically
-  while polling. That subset may rotate oversized local files, prune old backups, and
-  run a passive WAL checkpoint, but it must not compact runtime protocol events.
+  while polling. That subset may rotate oversized local files, prune old backups,
+  compact only safe terminal protocol-event rows behind the 14-day boundary, and run a
+  passive WAL checkpoint. If SQLite is busy or protocol-event candidate detection
+  fails, the auto-safe path must record a warning and continue without blocking
+  scheduler health.
 - Worktrees: retain while the issue is non-terminal, and also retain terminal owned lanes while authoritative post-merge closeout or deterministic cleanup is still incomplete.
 - Worktree mappings must carry durable local provenance. New runtime-recorded mappings
   use `provenance_source = "runtime_recorded"` with created and updated Unix
