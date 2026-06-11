@@ -584,16 +584,23 @@ fn build_operator_run_activity_event(
 		};
 		let (leased_runs, recent_runs) =
 			state_store.list_project_runs(project.service_id(), DEFAULT_OPERATOR_DASHBOARD_RUN_LIMIT)?;
+		let loop_evidence = state_store.project_loop_evidence_snapshot(project.service_id())?;
 		let project_display_name = operator_project_display_name(&project);
 		let recent_runs = recent_runs
 			.into_iter()
 			.map(|run| {
-				operator_run_status(&project, state_store, &project_display_name, run, now_unix_epoch)
+				operator_run_status(
+					&project,
+					&loop_evidence,
+					&project_display_name,
+					run,
+					now_unix_epoch,
+				)
 			})
 			.collect::<Result<Vec<_>>>()?;
 		let project_active_runs = operator_active_run_statuses(
 			&project,
-			state_store,
+			&loop_evidence,
 			&project_display_name,
 			leased_runs,
 			&recent_runs,

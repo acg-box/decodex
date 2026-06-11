@@ -144,6 +144,11 @@ pub(crate) fn open_runtime_store() -> Result<StateStore> {
 	StateStore::open(runtime_db_path()?)
 }
 
+/// Open the global runtime database without preloading all durable rows.
+pub(crate) fn open_runtime_store_lazy() -> Result<StateStore> {
+	StateStore::open_lazy(runtime_db_path()?)
+}
+
 /// Register or refresh one project config in the global runtime DB.
 pub(crate) fn register_project_config(
 	state_store: &StateStore,
