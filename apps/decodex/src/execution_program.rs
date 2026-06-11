@@ -459,6 +459,8 @@ pub(crate) struct ExecutionLinearIssueMapping {
 	has_active_label: bool,
 	has_opt_out_label: bool,
 	has_needs_attention_label: bool,
+	#[serde(default, skip_serializing_if = "is_false")]
+	has_open_tracker_blockers: bool,
 	has_generic_dispatch_briefing: bool,
 }
 impl ExecutionLinearIssueMapping {
@@ -477,6 +479,7 @@ impl ExecutionLinearIssueMapping {
 			has_active_label: false,
 			has_opt_out_label: false,
 			has_needs_attention_label: false,
+			has_open_tracker_blockers: false,
 			has_generic_dispatch_briefing: true,
 		};
 
@@ -517,6 +520,13 @@ impl ExecutionLinearIssueMapping {
 	/// Mark whether the issue currently carries the needs-attention label.
 	pub(crate) fn with_needs_attention_label(mut self, present: bool) -> Self {
 		self.has_needs_attention_label = present;
+
+		self
+	}
+
+	/// Mark whether the mapped issue currently has open tracker dependency blockers.
+	pub(crate) fn with_open_tracker_blockers(mut self, present: bool) -> Self {
+		self.has_open_tracker_blockers = present;
 
 		self
 	}
@@ -566,6 +576,11 @@ impl ExecutionLinearIssueMapping {
 	/// Whether the configured human-attention label is currently present.
 	pub(crate) fn has_needs_attention_label(&self) -> bool {
 		self.has_needs_attention_label
+	}
+
+	/// Whether the mapped issue currently has open dependency blockers in the tracker.
+	pub(crate) fn has_open_tracker_blockers(&self) -> bool {
+		self.has_open_tracker_blockers
 	}
 
 	/// Whether the issue description is usable as a generic dispatch briefing.
@@ -904,6 +919,15 @@ impl ExecutionProgram {
 	/// Program nodes.
 	pub(crate) fn nodes(&self) -> &[ExecutionProgramNode] {
 		&self.nodes
+	}
+
+	/// Replace program nodes after runtime reconciliation refreshes tracker issue facts.
+	pub(crate) fn with_nodes(mut self, nodes: Vec<ExecutionProgramNode>) -> Result<Self> {
+		self.nodes = nodes;
+
+		self.validate()?;
+
+		Ok(self)
 	}
 
 	/// Evaluate every node against the current contract, workflow policy, and runtime context.
@@ -1610,6 +1634,12 @@ fn collect_issue_mapping_reasons(
 			"mapped issue `{}` carries `{}`",
 			issue.issue_identifier(),
 			policy.needs_attention_label
+		));
+	}
+	if issue.has_open_tracker_blockers {
+		reasons.push(format!(
+			"mapped issue `{}` has open tracker dependency blockers",
+			issue.issue_identifier()
 		));
 	}
 	if !issue.has_generic_dispatch_briefing {
