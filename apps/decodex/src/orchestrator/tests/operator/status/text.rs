@@ -181,7 +181,7 @@ fn operator_status_text_surfaces_execution_program_summary() {
 		history_lanes: Vec::new(),
 		execution_programs: vec![OperatorExecutionProgramStatus {
 			program_id: String::from("program-853"),
-			source_contract_id: String::from("contract-852"),
+			source_contract_id: Some(String::from("contract-852")),
 			node_count: 3,
 			planned_count: 0,
 			mapped_count: 0,
