@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27517",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Pass auth mode to plugin manager",
+        "url": "https://github.com/openai/codex/pull/27517",
+        "meta": "Merged 2026-06-11T03:57:35Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27517",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27517.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex now stores the current auth mode on `PluginsManager` and projects plugin load outcomes through an auth-aware hook, preparing plugin capability filtering by login mode.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "watch",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "`PluginsManager` now stores `Option<AuthMode>` behind an `RwLock` with setter and getter methods.",
+    "ThreadManager initialization and app-server account auth changes synchronize the plugin manager auth mode.",
+    "Cached and freshly loaded plugin outcomes pass through `project_plugins_for_auth`.",
+    "`project_plugin_load_outcome_for_auth` currently returns the unchanged outcome, so visible filtering has not landed yet."
+  ],
+  "candidate_followups": [
+    "Track follow-up PRs that make plugin load outcomes differ by auth mode.",
+    "Prepare Decodex plugin discovery readbacks to include current auth mode when plugin availability differs.",
+    "Avoid publishing this as a standalone user-visible behavior change until the projection hook stops being a no-op."
+  ],
+  "social_notes": [
+    "Use only as background evidence for a later plugin-auth capability story.",
+    "A standalone post would overclaim current user-visible behavior."
+  ],
+  "caveats": [
+    "The current auth-aware projection returns the original plugin load outcome.",
+    "No plugin is hidden or exposed by auth mode in this PR alone.",
+    "Compatibility risk may rise when follow-up filtering lands."
+  ]
+}
