@@ -183,12 +183,17 @@ fn operator_status_text_surfaces_execution_program_summary() {
 			program_id: String::from("program-853"),
 			source_contract_id: String::from("contract-852"),
 			node_count: 3,
+			planned_count: 0,
+			mapped_count: 0,
 			ready_count: 1,
+			queued_count: 0,
 			blocked_count: 1,
-			paused_count: 0,
+			held_count: 0,
 			active_count: 0,
+			needs_attention_count: 0,
 			completed_count: 1,
 			stale_count: 0,
+			superseded_count: 0,
 			queue_label_eligible_count: 1,
 			mapped_issue_identifiers: vec![String::from("XY-853")],
 			readback_warning: None,
@@ -201,7 +206,7 @@ fn operator_status_text_surfaces_execution_program_summary() {
 	assert!(rendered.contains("Execution programs: 1"));
 	assert!(rendered.contains("Execution Programs"));
 	assert!(rendered.contains(
-		"program_id: program-853 source_contract_id: contract-852 nodes=3 ready=1 blocked=1 paused=0 active=0 completed=1 stale=0 queue_label_eligible=1 mapped_issues=XY-853"
+		"program_id: program-853 source_contract_id: contract-852 nodes=3 planned=0 mapped=0 ready=1 queued=0 blocked=1 held=0 active=0 attention=0 completed=1 stale=0 superseded=0 queue_label_eligible=1 mapped_issues=XY-853"
 	));
 }
 
