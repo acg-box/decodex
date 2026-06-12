@@ -1662,6 +1662,32 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
 	}
 
+	fn list_run_attempts_for_project(&self, project_id: &str) -> Result<Vec<RunAttemptRecord>> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, project_id, issue_id, attempt_number, status, thread_id, turn_id, \
+			 updated_at, updated_at_unix FROM run_attempts \
+			 WHERE project_id = ?1 \
+			 ORDER BY updated_at_unix DESC, run_id ASC",
+		)?;
+		let rows = statement.query_map(params![project_id], run_attempt_record_from_row)?;
+
+		rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+	}
+
+	fn run_has_protocol_event(&self, run_id: &str, event_type: &str) -> Result<bool> {
+		let exists = self.connection.query_row(
+			"SELECT EXISTS(
+			 SELECT 1 FROM protocol_events
+			 WHERE run_id = ?1 AND event_type = ?2
+			 LIMIT 1
+			 )",
+			params![run_id, event_type],
+			|row| row.get::<_, i64>(0),
+		)?;
+
+		Ok(exists != 0)
+	}
+
 	fn load_protocol_event_summaries(&self, state: &mut StateData) -> Result<()> {
 		self.load_compacted_protocol_event_summaries(state)?;
 
