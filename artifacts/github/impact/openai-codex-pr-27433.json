@@ -1,0 +1,46 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27433",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] remove EnvironmentPathRef",
+        "url": "https://github.com/openai/codex/pull/27433",
+        "meta": "Merged 2026-06-11T18:26:13Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27433",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27433.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex removed the exec-server `EnvironmentPathRef` wrapper and changed executor skill resource ids to store an environment id plus absolute path instead.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "none",
+  "confidence": "confirmed",
+  "evidence": [
+    "`EnvironmentPathRef` and its exec-server re-export are removed.",
+    "Skill catalog resource ids now carry an explicit environment id plus absolute path through `EnvironmentSkillResource`.",
+    "Executor skill provider code passes `environment_id` rather than cloning a filesystem-bound path reference.",
+    "The removed executor filesystem authority test shows the old same-instance read behavior no longer defines the resource identity contract.",
+    "The PR body ties the change to static host-path encoding in `PathUri` and notes it is stacked on #27454."
+  ],
+  "candidate_followups": [
+    "Audit Decodex PathUri and skill-resource handling for explicit environment-id semantics.",
+    "Avoid depending on `EnvironmentPathRef` in any Decodex-side compatibility shim.",
+    "Treat this as part of a stacked PathUri migration rather than a complete migration by itself."
+  ],
+  "social_notes": [
+    "No standalone social candidate; the change is internal and stacked, with limited public reader value."
+  ],
+  "caveats": [
+    "The PR is stacked on earlier PathUri work.",
+    "There is no direct CLI/TUI user-facing path in this PR alone.",
+    "The compatibility risk is mainly for code that consumed exec-server internals or modeled skill resources as filesystem-bound path objects."
+  ]
+}
