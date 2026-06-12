@@ -6,6 +6,8 @@ use orchestrator::{
 use orchestrator::AppServerZeroEvidenceStartFailure;
 use orchestrator::LoopGuardrailReason;
 use orchestrator::LoopGuardrailStopRequested;
+use orchestrator::RunFailureWritebackDisposition;
+use orchestrator::StalledRunNeedsAttention;
 
 fn git_config_value(
 	repo_root: &Path,
@@ -101,6 +103,150 @@ fn terminal_failure_comments_surface_actionable_error_classes() {
 		for expected_snippet in expected_snippets {
 			assert!(comment.contains(expected_snippet), "{error_class} missing {expected_snippet}");
 		}
+	}
+}
+
+#[test]
+fn failure_writeback_disposition_marks_retryable_recovery_classes() {
+	for (case_name, error, expected_disposition) in [
+		(
+			"startup transport",
+			Report::new(AppServerTransportFailure::with_phase(
+				String::from("App-server stdout disconnected before thread start."),
+				"thread/start",
+				true,
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
+			"generic turn failure",
+			Report::new(AppServerTurnFailure::new(
+				"thread-1",
+				Some(String::from("turn-1")),
+				"failed",
+				"transient model failure",
+				None,
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
+			"usage limit turn failure",
+			Report::new(AppServerTurnFailure::new(
+				"thread-1",
+				Some(String::from("turn-1")),
+				"failed",
+				"You've hit your usage limit.",
+				Some(String::from("usageLimitExceeded")),
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
+			"repo gate lock contention",
+			Report::new(orchestrator::RepoGateFailure::new(
+				RepoGateFailureKind::GitLockContention,
+				String::from("fatal: Unable to create '.git/index.lock': File exists."),
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
+			"zero-evidence app-server start failure",
+			Report::new(AppServerZeroEvidenceStartFailure::new(
+				String::from("PUB-101"),
+				String::from("pub-101-attempt-1-123"),
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
+			"app-server capability preflight timeout",
+			Report::new(AppServerCapabilityPreflightFailure::method_timed_out_for_test(
+				"plugin/list",
+				String::from("Timed out while waiting for app-server output."),
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
+			"phase goal terminal path missing",
+			Report::new(AppServerPhaseGoalFailure::missing_terminal_path_for_test(
+				PhaseGoalKind::HandoffEvidence,
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
+			"dynamic tool protocol failure",
+			Report::new(AppServerDynamicToolFailure::protocol_for_test(
+				Some(String::from("issue_comment")),
+				"dynamic tool declaration was missing input schema",
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
+			"stalled active run",
+			Report::new(StalledRunNeedsAttention {
+				issue_identifier: String::from("PUB-101"),
+				run_id: String::from("pub-101-attempt-1-123"),
+				idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+			}),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+	] {
+		assert_eq!(
+			orchestrator::run_failure_writeback_disposition(&error),
+			expected_disposition,
+			"{case_name}"
+		);
+	}
+}
+
+#[test]
+fn failure_writeback_disposition_marks_terminal_attention_classes() {
+	for (case_name, error, expected_disposition) in [
+		(
+			"turn transport",
+			Report::new(AppServerTransportFailure::with_phase(
+				String::from("App-server stdout disconnected during turn start."),
+				"turn/start",
+				false,
+			)),
+			RunFailureWritebackDisposition::TerminalAttention,
+		),
+		(
+			"operator attention turn failure",
+			Report::new(AppServerTurnFailure::new(
+				"thread-1",
+				Some(String::from("turn-1")),
+				"failed",
+				"operator attention required",
+				Some(String::from("operatorAttentionRequired")),
+			)),
+			RunFailureWritebackDisposition::TerminalAttention,
+		),
+		(
+			"app-server capability preflight blocker",
+			Report::new(AppServerCapabilityPreflightFailure::blocked_for_test(
+				"model",
+				"configured model was not present in model/list.",
+			)),
+			RunFailureWritebackDisposition::TerminalAttention,
+		),
+		(
+			"unsupported phase goal API",
+			Report::new(AppServerPhaseGoalFailure::unsupported_for_test("thread/goal/set")),
+			RunFailureWritebackDisposition::TerminalAttention,
+		),
+		(
+			"repo gate spawn failure",
+			Report::new(orchestrator::RepoGateFailure::new(
+				RepoGateFailureKind::CommandSpawnFailed,
+				String::from("Failed to spawn repo gate command `cargo make test`: missing tool"),
+			)),
+			RunFailureWritebackDisposition::TerminalAttention,
+		),
+	] {
+		assert_eq!(
+			orchestrator::run_failure_writeback_disposition(&error),
+			expected_disposition,
+			"{case_name}"
+		);
 	}
 }
 
@@ -485,6 +631,34 @@ fn repo_gate_lock_contention_retry_comments_preserve_specific_error_class() {
 }
 
 #[test]
+fn stalled_run_retry_comments_preserve_specific_error_class() {
+	let error = Report::new(StalledRunNeedsAttention {
+		issue_identifier: String::from("PUB-101"),
+		run_id: String::from("pub-101-attempt-1-123"),
+		idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+	});
+	let (error_class, next_action) = orchestrator::retry_comment_details(&error);
+
+	assert_eq!(error_class, "stalled_run_detected");
+	assert!(next_action.contains("retry the stalled lane automatically"));
+	assert!(next_action.contains("retry budget exhausts"));
+}
+
+#[test]
+fn app_server_preflight_timeout_retry_comments_preserve_specific_error_class() {
+	let error = Report::new(AppServerCapabilityPreflightFailure::method_timed_out_for_test(
+		"plugin/list",
+		String::from("Timed out while waiting for app-server output."),
+	));
+	let (error_class, next_action) = orchestrator::retry_comment_details(&error);
+
+	assert_eq!(error_class, "app_server_plugin_list_timeout");
+	assert!(next_action.contains("retry app-server preflight automatically"));
+	assert!(next_action.contains("`plugin/list` timeout"));
+	assert!(next_action.contains("retry budget exhausts"));
+}
+
+#[test]
 fn repo_gate_lock_contention_runtime_retry_writes_specific_retry_schedule_marker() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("In Progress", &[]);
@@ -524,6 +698,51 @@ fn repo_gate_lock_contention_runtime_retry_writes_specific_retry_schedule_marker
 		.expect("retry marker should exist");
 
 	assert_eq!(marker.retry_kind(), Some("git_lock_contention"));
+	assert!(
+		marker.retry_ready_at_unix_epoch().is_some_and(
+			|retry_ready_at| retry_ready_at > OffsetDateTime::now_utc().unix_timestamp()
+		)
+	);
+}
+
+#[test]
+fn app_server_preflight_timeout_runtime_retry_writes_failure_retry_schedule_marker() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: issue.state.name.clone(),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: worktree_path.clone(),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+	let error = Report::new(AppServerCapabilityPreflightFailure::method_timed_out_for_test(
+		"plugin/list",
+		String::from("Timed out while waiting for app-server output."),
+	));
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+	orchestrator::write_retry_schedule_marker_for_runtime_retry(&error, &workflow, &issue_run, 1)
+		.expect("preflight timeout should write a failure retry marker");
+
+	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
+		.expect("retry schedule should remain readable")
+		.expect("retry marker should exist");
+
+	assert_eq!(marker.retry_kind(), Some("failure"));
 	assert!(
 		marker.retry_ready_at_unix_epoch().is_some_and(
 			|retry_ready_at| retry_ready_at > OffsetDateTime::now_utc().unix_timestamp()
@@ -1091,6 +1310,13 @@ fn app_server_terminal_failures_preserve_specific_error_classes() {
 			"verify `decodex probe stdio://`",
 		),
 		(
+			Report::new(AppServerPhaseGoalFailure::missing_terminal_path_for_test(
+				PhaseGoalKind::HandoffEvidence,
+			)),
+			"phase_goal_terminal_path_missing",
+			"finish validation/review/handoff",
+		),
+		(
 			Report::new(AppServerTurnFailure::new(
 				"thread-1",
 				Some(String::from("turn-1")),
@@ -1146,7 +1372,7 @@ fn app_server_preflight_terminal_action_surfaces_first_scan_error() {
 }
 
 #[test]
-fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_evidence() {
+fn zero_evidence_app_server_start_failure_is_promoted_records_private_evidence_and_retries() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1190,7 +1416,7 @@ fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_eviden
 
 	assert!(
 		error.downcast_ref::<orchestrator::AppServerZeroEvidenceStartFailure>().is_some(),
-		"generic no-evidence startup errors should become terminal app-server start failures"
+		"generic no-evidence startup errors should become typed app-server start failures"
 	);
 
 	let events = state_store
@@ -1224,10 +1450,79 @@ fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_eviden
 	);
 
 	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
-		.expect("terminal failure handling should succeed");
+		.expect("retryable zero-evidence failure handling should succeed");
 
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
 	assert!(tracker.comments.borrow().iter().any(|comment| {
-		comment.contains("app_server_zero_evidence_start_failed")
+		comment.contains("decodex run failed and will retry")
+			&& comment.contains("app_server_zero_evidence_start_failed")
+			&& comment.contains("restart the app-server and retry automatically")
+	}));
+	assert!(
+		!tracker
+			.comments
+			.borrow()
+			.iter()
+			.any(|comment| comment.contains("decodex run failed and needs attention")),
+		"zero-evidence startup failure should not request operator attention before retry budget exhaustion"
+	);
+	assert!(
+		!tracker
+			.comments
+			.borrow()
+			.iter()
+			.any(|comment| comment.contains("retryable_execution_failure")),
+		"zero-evidence startup failure must preserve its typed retry class"
+	);
+}
+
+#[test]
+fn exhausted_zero_evidence_start_retry_budget_requires_attention_with_typed_class() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::new(vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: 3,
+		run_id: String::from("pub-101-attempt-3-123"),
+		retry_budget_base: 2,
+	};
+	let error = Report::new(AppServerZeroEvidenceStartFailure::new(
+		issue.identifier.clone(),
+		issue_run.run_id.clone(),
+	));
+
+	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("run attempt should record");
+
+	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
+		.expect("exhausted zero-evidence failure should require attention");
+
+	assert_eq!(
+		tracker.state_updates.borrow().last(),
+		Some(&(issue.id.clone(), String::from("state-todo")))
+	);
+	assert!(tracker.comments.borrow().iter().any(|comment| {
+		comment.contains("decodex run failed and needs attention")
+			&& comment.contains("app_server_zero_evidence_start_failed")
 			&& comment.contains("verify `decodex probe stdio://`")
 	}));
 	assert!(
@@ -1235,9 +1530,139 @@ fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_eviden
 			.comments
 			.borrow()
 			.iter()
-			.any(|comment| comment.contains("retryable_execution_failure")),
-		"zero-evidence startup failure must not burn retry budget as a generic retry"
+			.any(|comment| comment.contains("decodex run failed and will retry")),
+		"exhausted zero-evidence failure should not keep retrying"
 	);
+}
+
+#[test]
+fn retryable_startup_transport_failure_does_not_promote_to_zero_evidence_attention() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+
+	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("run attempt should record");
+
+	let error = orchestrator::promote_zero_evidence_app_server_start_failure(
+		&config,
+		&state_store,
+		&issue_run,
+		Report::new(AppServerTransportFailure::with_phase(
+			String::from("App-server stdout disconnected unexpectedly."),
+			"thread/start",
+			true,
+		)),
+	);
+
+	assert!(
+		error.downcast_ref::<AppServerTransportFailure>().is_some(),
+		"startup transport failures should stay retryable instead of becoming zero-evidence terminal attention"
+	);
+	assert!(
+		error
+			.downcast_ref::<orchestrator::AppServerZeroEvidenceStartFailure>()
+			.is_none()
+	);
+
+	let events = state_store
+		.list_private_execution_events(
+			config.service_id(),
+			&issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+		)
+		.expect("private evidence should list");
+
+	assert!(events.is_empty());
+}
+
+#[test]
+fn retryable_turn_failure_does_not_promote_to_zero_evidence_attention() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+
+	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("run attempt should record");
+
+	let error = orchestrator::promote_zero_evidence_app_server_start_failure(
+		&config,
+		&state_store,
+		&issue_run,
+		Report::new(AppServerTurnFailure::new(
+			"thread-1",
+			Some(String::from("turn-1")),
+			"failed",
+			"You've hit your usage limit.",
+			Some(String::from("usageLimitExceeded")),
+		)),
+	);
+
+	assert!(
+		error.downcast_ref::<AppServerTurnFailure>().is_some(),
+		"structured turn failures should stay retryable instead of becoming zero-evidence terminal attention"
+	);
+	assert!(
+		error
+			.downcast_ref::<orchestrator::AppServerZeroEvidenceStartFailure>()
+			.is_none()
+	);
+
+	let events = state_store
+		.list_private_execution_events(
+			config.service_id(),
+			&issue.id,
+			&issue_run.run_id,
+			issue_run.attempt_number,
+		)
+		.expect("private evidence should list");
+
+	assert!(events.is_empty());
 }
 
 #[test]

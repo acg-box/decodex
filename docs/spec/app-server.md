@@ -201,8 +201,11 @@ cwd and at least one enabled skill. Decodex must preserve the scan error count a
 first error details in local preflight evidence, but it must not block the lane solely
 because unrelated installed skill metadata failed to scan.
 Because `plugin/list` is observational and local-marketplace-only, Decodex may retry
-one app-server output timeout before failing the lane. If the retry is exhausted,
-the terminal failure must remain an app-server preflight failure, report
+one app-server output timeout inside the preflight request before failing that request.
+If the preflight request retry is exhausted, the lane must still enter structured
+runtime retry while workflow retry budget remains. Only after workflow retry budget
+exhaustion may the terminal failure become operator-facing attention; when that
+happens it must remain an app-server preflight failure, report
 `app_server_plugin_list_timeout`, and include the `plugin/list` timeout cause in local
 preflight evidence and operator recovery output rather than looking like a repository
 implementation failure.
@@ -236,6 +239,11 @@ project-scoped fixed account.
 Successful selection writes `last_selected_at_unix_epoch` back to the JSONL file, and
 selection holds a pool-local lock so concurrent run dispatches observe the latest
 selector state instead of all choosing from the same stale snapshot.
+If a turn later fails with `codexErrorInfo = "usageLimitExceeded"`, Decodex treats it
+as a retryable capacity failure while retry budget remains. The current turn stops
+immediately, but the next attempt re-enters normal account selection so the pool can
+refresh usage and choose another usable account. Only retry-budget exhaustion makes
+that error a human-required `app_server_usage_limit_exceeded` stop.
 
 Decodex owns token freshness for injected `chatgptAuthTokens`. It proactively refreshes
 an account before probing when the access-token JWT `exp` is expired. If no expiration
@@ -491,7 +499,17 @@ Rationale:
 
 ## Error handling
 
-- JSON-RPC transport failure before `thread/start` succeeds is a retryable startup failure.
+- JSON-RPC transport failure before a thread session is attached is a retryable
+  startup failure. This covers the client waiting on `initialize`,
+  `account/login/start`, `thread/start`, or `thread/resume`.
+- If that startup transport failure exhausts the registered retry budget, the
+  terminal failure must still preserve `app_server_transport_disconnected`.
+- JSON-RPC transport failure after a thread session is attached, including
+  `turn/start` or turn execution waits, is a human-required transport failure
+  because blind retry can duplicate turn-side effects.
+- Turn failure with `codexErrorInfo = "usageLimitExceeded"` is a retryable capacity
+  failure until the registered retry budget is exhausted, so account-pool re-selection
+  can recover without operator attention.
 - `thread/status/changed` with `systemError` is a failed run.
 - Turn completion with codex error information must be classified into:
   - retryable failure
