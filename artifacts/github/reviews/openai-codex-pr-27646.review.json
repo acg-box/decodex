@@ -1,0 +1,59 @@
+{
+  "adoption_opportunity": "Update Decodex expectations and tests so missing orchestrator skill resources are treated as current upstream behavior until the hosted skill package endpoint is restored.",
+  "caveats": "The upstream PR explicitly calls this a temporary disable while waiting for `/ps/mcp` to serve complete hosted skill packages.",
+  "changed_surfaces": [
+    "app-server extension installation",
+    "skills extension provider wiring",
+    "orchestrator skill resource read test"
+  ],
+  "community_value": "Medium for operators troubleshooting why orchestrator-only skills are absent from app-server skill resources while executor skills still work.",
+  "compatibility_risk": "Medium for Decodex Control Plane and tests that expect orchestrator skills to be listed or readable through app-server resource APIs.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "High. Decodex depends on app-server skill/resource behavior, and this PR intentionally suppresses the orchestrator skill provider while retaining executor skill support.",
+  "deprecated_or_breaking_notes": "Orchestrator-only skills are disabled behind `ORCHESTRATOR_SKILLS_ENABLED = false`; the test that reads an orchestrator skill resource is ignored until hosted skill packages are complete.",
+  "evidence": [
+    "PR #27646 says orchestrator-only skills are temporarily disabled while waiting for `/ps/mcp` to serve complete hosted skill packages.",
+    "`codex-rs/app-server/src/extensions.rs` introduces `ORCHESTRATOR_SKILLS_ENABLED: bool = false`.",
+    "The app-server now builds skill providers with the executor provider first and adds `OrchestratorSkillProvider` only when that flag is true.",
+    "`codex-rs/app-server/tests/suite/v2/mcp_resource.rs` ignores the orchestrator skill resource read test with the same hosted-package caveat.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27646.json` records the two changed app-server files."
+  ],
+  "next_actions": [
+    {
+      "reason": "Current app-server skill/resource behavior can affect Decodex Control Plane capability detection.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "This is a useful cautious public watch note for operators who expect hosted/orchestrator skills.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex temporarily disables app-server orchestrator skill providers while keeping executor-backed skills installed.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-12T14:08:14Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27646",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-11T18:20:26Z",
+        "title": "feat: disable orchestrator skills for now",
+        "url": "https://github.com/openai/codex/pull/27646"
+      },
+      {
+        "kind": "commit",
+        "title": "feat: disable orchestrator skills for now",
+        "url": "https://github.com/openai/codex/commit/fef2bbfa4c23e6144afa8c2081ca4a44cca082dc"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "fef2bbfa4c23e6144afa8c2081ca4a44cca082dc"
+    ],
+    "subject_id": "27646",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "Operators using app-server skill resources may see executor-backed skills but not orchestrator-only skills until upstream re-enables the orchestrator provider."
+}
