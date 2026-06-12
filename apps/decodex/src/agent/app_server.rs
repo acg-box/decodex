@@ -272,8 +272,22 @@ impl AppServerPhaseGoalFailure {
 		Self { kind: AppServerPhaseGoalFailureKind::Unsupported { method } }
 	}
 
+	#[cfg(test)]
+	pub(crate) fn unsupported_for_test(method: &'static str) -> Self {
+		Self::unsupported(method)
+	}
+
 	fn missing_terminal_path(phase: PhaseGoalKind) -> Self {
 		Self { kind: AppServerPhaseGoalFailureKind::MissingTerminalPath { phase } }
+	}
+
+	#[cfg(test)]
+	pub(crate) fn missing_terminal_path_for_test(phase: PhaseGoalKind) -> Self {
+		Self::missing_terminal_path(phase)
+	}
+
+	pub(crate) fn is_terminal_path_missing(&self) -> bool {
+		matches!(self.kind, AppServerPhaseGoalFailureKind::MissingTerminalPath { .. })
 	}
 
 	pub(crate) fn error_class(&self) -> &'static str {
@@ -282,6 +296,18 @@ impl AppServerPhaseGoalFailure {
 				"app_server_phase_goal_unsupported",
 			AppServerPhaseGoalFailureKind::MissingTerminalPath { .. } =>
 				"phase_goal_terminal_path_missing",
+		}
+	}
+
+	pub(crate) fn retry_next_action(&self) -> String {
+		match self.kind {
+			AppServerPhaseGoalFailureKind::Unsupported { method } => format!(
+				"select or upgrade to a Codex app-server that supports required phase-goal method `{method}`"
+			),
+			AppServerPhaseGoalFailureKind::MissingTerminalPath { phase } => format!(
+				"decodex will retry `{}` terminal-path recovery automatically; the next attempt must run the required review, handoff, closeout, or manual-attention terminal tool instead of treating phase-goal completion as issue completion",
+				phase.as_str()
+			),
 		}
 	}
 
