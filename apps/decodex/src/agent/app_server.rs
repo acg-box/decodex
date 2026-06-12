@@ -238,6 +238,13 @@ impl RequestWaitPhase {
 			Self::TurnExecution => "turn execution",
 		}
 	}
+
+	fn transport_failure_is_retryable_startup(self) -> bool {
+		matches!(
+			self,
+			Self::Initialize | Self::AccountLogin | Self::ThreadStart | Self::ThreadResume
+		)
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1312,6 +1319,26 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 	}
 
 	Ok(result)
+}
+
+fn annotate_transport_failure_phase<T>(
+	result: crate::prelude::Result<T>,
+	phase: RequestWaitPhase,
+) -> crate::prelude::Result<T> {
+	result.map_err(|error| transport_failure_at_phase(error, phase))
+}
+
+fn transport_failure_at_phase(error: Report, phase: RequestWaitPhase) -> Report {
+	let Some(transport_failure) = error.downcast_ref::<json_rpc::AppServerTransportFailure>()
+	else {
+		return error;
+	};
+
+	Report::new(json_rpc::AppServerTransportFailure::with_phase(
+		transport_failure.to_string(),
+		phase.label(),
+		phase.transport_failure_is_retryable_startup(),
+	))
 }
 
 fn running_model_execution_protocol_activity(
@@ -2515,23 +2542,26 @@ fn initialize_client_for_run(
 	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
 	expected_codex_home: &ResolvedAppServerCodexHomeEnv,
 ) -> crate::prelude::Result<InitializeResponse> {
-	let response = client.initialize_with_handler(
-		dynamic_tool_handler.is_some(),
-		|connection, wire_message, server_request| {
-			handle_server_request_while_waiting(
-				connection,
-				recorder,
-				wire_message,
-				server_request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::Initialize,
-					dynamic_tool_handler,
-					None,
-					None,
-					None,
-				),
-			)
-		},
+	let response = annotate_transport_failure_phase(
+		client.initialize_with_handler(
+			dynamic_tool_handler.is_some(),
+			|connection, wire_message, server_request| {
+				handle_server_request_while_waiting(
+					connection,
+					recorder,
+					wire_message,
+					server_request,
+					RequestDispatchContext::new(
+						RequestWaitPhase::Initialize,
+						dynamic_tool_handler,
+						None,
+						None,
+						None,
+					),
+				)
+			},
+		),
+		RequestWaitPhase::Initialize,
 	)?;
 
 	validate_initialize_codex_home(expected_codex_home, &response)?;
@@ -3260,23 +3290,26 @@ fn login_codex_account_for_run(
 
 	record_codex_account_login(recorder, account.summary())?;
 
-	let response = client.login_account_with_handler(
-		login_account_params(&account),
-		|connection, wire_message, server_request| {
-			handle_server_request_while_waiting(
-				connection,
-				recorder,
-				wire_message,
-				server_request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::AccountLogin,
-					request.dynamic_tool_handler,
-					request.codex_account_provider,
-					None,
-					None,
-				),
-			)
-		},
+	let response = annotate_transport_failure_phase(
+		client.login_account_with_handler(
+			login_account_params(&account),
+			|connection, wire_message, server_request| {
+				handle_server_request_while_waiting(
+					connection,
+					recorder,
+					wire_message,
+					server_request,
+					RequestDispatchContext::new(
+						RequestWaitPhase::AccountLogin,
+						request.dynamic_tool_handler,
+						request.codex_account_provider,
+						None,
+						None,
+					),
+				)
+			},
+		),
+		RequestWaitPhase::AccountLogin,
 	)?;
 
 	match response {
@@ -3315,23 +3348,26 @@ fn start_fresh_thread_session(
 ) -> crate::prelude::Result<ThreadSessionResponse> {
 	let thread_start_request = build_thread_start_request(request)?;
 
-	client.start_thread_with_handler(
-		thread_start_request,
-		|connection, wire_message, server_request| {
-			handle_server_request_while_waiting(
-				connection,
-				recorder,
-				wire_message,
-				server_request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::ThreadStart,
-					request.dynamic_tool_handler,
-					request.codex_account_provider,
-					None,
-					None,
-				),
-			)
-		},
+	annotate_transport_failure_phase(
+		client.start_thread_with_handler(
+			thread_start_request,
+			|connection, wire_message, server_request| {
+				handle_server_request_while_waiting(
+					connection,
+					recorder,
+					wire_message,
+					server_request,
+					RequestDispatchContext::new(
+						RequestWaitPhase::ThreadStart,
+						request.dynamic_tool_handler,
+						request.codex_account_provider,
+						None,
+						None,
+					),
+				)
+			},
+		),
+		RequestWaitPhase::ThreadStart,
 	)
 }
 
@@ -3372,7 +3408,7 @@ fn resume_existing_thread_session(
 
 			start_fresh_thread_session(client, recorder, request)
 		},
-		Err(error) => Err(error),
+		Err(error) => Err(transport_failure_at_phase(error, RequestWaitPhase::ThreadResume)),
 	}
 }
 
@@ -3468,23 +3504,26 @@ fn start_turn_for_run(
 	thread_id: &str,
 	next_input: &str,
 ) -> crate::prelude::Result<String> {
-	let turn_response = client.start_turn_with_handler(
-		build_turn_start_request(thread_id, next_input),
-		|connection, wire_message, server_request| {
-			handle_server_request_while_waiting(
-				connection,
-				recorder,
-				wire_message,
-				server_request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::TurnStart,
-					dynamic_tool_handler,
-					codex_account_provider,
-					Some(thread_id),
-					None,
-				),
-			)
-		},
+	let turn_response = annotate_transport_failure_phase(
+		client.start_turn_with_handler(
+			build_turn_start_request(thread_id, next_input),
+			|connection, wire_message, server_request| {
+				handle_server_request_while_waiting(
+					connection,
+					recorder,
+					wire_message,
+					server_request,
+					RequestDispatchContext::new(
+						RequestWaitPhase::TurnStart,
+						dynamic_tool_handler,
+						codex_account_provider,
+						Some(thread_id),
+						None,
+					),
+				)
+			},
+		),
+		RequestWaitPhase::TurnStart,
 	)?;
 
 	Ok(turn_response.turn.id)
@@ -4722,7 +4761,10 @@ fn recv_turn_wire_message(
 	wait_timeout: Duration,
 	latest_turn_failure: Option<&AppServerTurnFailure>,
 ) -> crate::prelude::Result<WireMessage> {
-	match client.recv(Some(wait_timeout)) {
+	match annotate_transport_failure_phase(
+		client.recv(Some(wait_timeout)),
+		RequestWaitPhase::TurnExecution,
+	) {
 		Ok(wire_message) => Ok(wire_message),
 		Err(error) => {
 			if error.downcast_ref::<AppServerOutputTimeout>().is_some()

@@ -2128,6 +2128,9 @@ fn promote_zero_evidence_app_server_start_failure(
 	if run_failure_requires_terminal_attention(&error) {
 		return error;
 	}
+	if run_failure_is_retryable_startup_transport(&error) {
+		return error;
+	}
 
 	match zero_evidence_app_server_start_failure_context(project, state_store, issue_run) {
 		Ok(Some(context)) => {
@@ -3109,7 +3112,9 @@ fn run_failure_requires_terminal_attention(error: &Report) -> bool {
 		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
 		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
 		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
-		|| error.downcast_ref::<AppServerTransportFailure>().is_some()
+		|| error
+			.downcast_ref::<AppServerTransportFailure>()
+			.is_some_and(|failure| !failure.is_retryable_startup())
 		|| error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some()
 		|| error
 			.downcast_ref::<AppServerTurnFailure>()
@@ -3120,6 +3125,12 @@ fn run_failure_requires_terminal_attention(error: &Report) -> bool {
 			.is_some_and(|repo_gate_failure| {
 				repo_gate_failure.disposition() == RepoGateFailureDisposition::NeedsHumanAttention
 			})
+}
+
+fn run_failure_is_retryable_startup_transport(error: &Report) -> bool {
+	error
+		.downcast_ref::<AppServerTransportFailure>()
+		.is_some_and(AppServerTransportFailure::is_retryable_startup)
 }
 
 fn handle_failure<T>(
