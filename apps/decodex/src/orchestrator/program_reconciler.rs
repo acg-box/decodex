@@ -1,6 +1,5 @@
 use crate::execution_program::{
-	ExecutionDependencySnapshot, ExecutionLinearIssueMapping, ExecutionNodeEvaluation,
-	ExecutionProgram, ExecutionQueueLabelAction,
+	ExecutionDependencySnapshot, ExecutionLinearIssueMapping, ExecutionProgram,
 };
 use crate::execution_program::ExecutionConflictDomain;
 

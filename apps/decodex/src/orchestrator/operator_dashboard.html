@@ -3603,6 +3603,18 @@
 						</div>
 					</section>
 
+					<section class="panel section-execution" id="programs-panel">
+						<div class="panel-head">
+							<div>
+								<h2 id="programs-title">Program Intake</h2>
+							</div>
+							<p class="table-meta" id="programs-meta"></p>
+						</div>
+						<div class="panel-body">
+							<div class="card-list" id="execution-programs"></div>
+						</div>
+					</section>
+
 					<section class="panel section-execution" id="queue-panel">
 						<div class="panel-head">
 							<div>
@@ -3786,6 +3798,7 @@
 					projects: document.getElementById("projects-panel"),
 					accountPool: document.getElementById("account-pool-panel"),
 					active: document.getElementById("active-panel"),
+					programs: document.getElementById("programs-panel"),
 					queue: document.getElementById("queue-panel"),
 					recent: document.getElementById("recent-panel"),
 					review: document.getElementById("review-panel"),
@@ -3804,6 +3817,8 @@
 				queuedMeta: document.getElementById("queued-meta"),
 				activeRuns: document.getElementById("active-runs"),
 				activeRunsMeta: document.getElementById("active-runs-meta"),
+				executionPrograms: document.getElementById("execution-programs"),
+				programsMeta: document.getElementById("programs-meta"),
 				recentRuns: document.getElementById("recent-runs"),
 				recentRunsMeta: document.getElementById("recent-runs-meta"),
 				reviewQueue: document.getElementById("review-queue"),
@@ -3849,12 +3864,12 @@
 			const detailAnimationTimers = new WeakMap();
 
 			const DASHBOARD_LAYOUT = {
-				primary: ["accountPool", "projects", "active", "queue", "review", "worktrees", "recent"],
+				primary: ["accountPool", "projects", "active", "programs", "queue", "review", "worktrees", "recent"],
 			};
 			const DASHBOARD_SECTION_GROUPS = [
 				{ marker: "control", panels: ["accountPool"] },
 				{ marker: "projects", panels: ["projects"] },
-				{ marker: "execution", panels: ["active", "queue"] },
+				{ marker: "execution", panels: ["active", "programs", "queue"] },
 				{ marker: "aftercare", panels: ["review", "worktrees", "recent"] },
 			];
 			const COPY = {
@@ -8656,6 +8671,7 @@
 				const activeRuns = snapshot?.active_runs ?? [];
 				const recentRuns = snapshot?.recent_runs ?? [];
 				const historyRuns = sessionHistoryRuns(snapshot);
+				const executionPrograms = snapshot?.execution_programs ?? [];
 				const postReviewLanes = snapshot?.post_review_lanes ?? [];
 				const postReviewIssueKeys = new Set(postReviewLanes.flatMap(issueIdentityKeys));
 				const activeRunByIssue = new Map();
@@ -8878,6 +8894,17 @@
 				const runningAttentionCount = attentionItems.filter((item) => item.scope === "Running").length;
 				const liveRuns = activeRuns.filter(runCountsAsRunning).length;
 				const intakeAttentionCount = queueBacklogCandidates.filter(queuedCandidateNeedsAttention).length;
+				const programAttentionCount = executionPrograms.filter((program) =>
+					["attention", "blocked", "stale"].includes(program.status),
+				).length;
+				const programReadyCount = executionPrograms.reduce(
+					(total, program) => total + Number(program.ready_count || 0),
+					0,
+				);
+				const programQueuedCount = executionPrograms.reduce(
+					(total, program) => total + Number(program.queued_count || 0),
+					0,
+				);
 
 				return {
 					projects: snapshot?.projects ?? [],
@@ -8905,6 +8932,10 @@
 					reviewBlockerCount,
 					cleanupCount,
 					runningAttentionCount,
+					executionPrograms,
+					programAttentionCount,
+					programReadyCount,
+					programQueuedCount,
 					sessionHistoryRuns: historyRuns,
 					worktrees,
 					postReviewLanes,
@@ -9521,6 +9552,181 @@
 				}
 
 				return parts.join(" · ");
+			}
+
+			function programMetaText(snapshot, derived) {
+				if (!snapshot) {
+					return "0 programs";
+				}
+
+				const parts = [pluralize(derived.executionPrograms.length, "program")];
+
+				if (derived.programReadyCount) {
+					parts.push(`${derived.programReadyCount} ready`);
+				}
+				if (derived.programQueuedCount) {
+					parts.push(`${derived.programQueuedCount} queued`);
+				}
+				if (derived.programAttentionCount) {
+					parts.push(
+						derived.programAttentionCount === 1
+							? "1 needs attention"
+							: `${derived.programAttentionCount} need attention`,
+					);
+				}
+
+				return parts.join(" · ");
+			}
+
+			function toneForProgram(program) {
+				switch (program.status) {
+					case "ready":
+					case "completed":
+						return "tone-ready";
+					case "queued":
+						return "tone-queue";
+					case "active":
+						return "tone-run";
+					case "blocked":
+					case "attention":
+					case "stale":
+						return "tone-blocked";
+					case "held":
+						return "tone-wait";
+					default:
+						return "tone-muted";
+				}
+			}
+
+			function programMappedIssues(program) {
+				const issues = program.mapped_issue_identifiers ?? [];
+
+				return issues.length ? issues.join(", ") : "NONE";
+			}
+
+			function programQueueActionSummary(program) {
+				const actions = [
+					["apply", program.queue_label_apply_count],
+					["retain", program.queue_label_retain_count],
+					["remove", program.queue_label_remove_count],
+				].filter(([, count]) => Number(count || 0) > 0);
+
+				return actions.length
+					? actions.map(([label, count]) => `${label} ${count}`).join(", ")
+					: "none";
+			}
+
+			function programProgressFacts(program) {
+				return [
+					["Ready", String(program.ready_count ?? 0)],
+					["Queued", String(program.queued_count ?? 0)],
+					["Active", String(program.active_count ?? 0)],
+					["Blocked", String(program.blocked_count ?? 0)],
+					["Held", String(program.held_count ?? 0)],
+					["Attention", String(program.needs_attention_count ?? 0)],
+					["Completed", String(program.completed_count ?? 0)],
+					["Stale", String(program.stale_count ?? 0)],
+					["Eligible", String(program.queue_label_eligible_count ?? 0)],
+				];
+			}
+
+			function programNodeReasons(node) {
+				const reasons = node.reasons ?? [];
+				if (reasons.length) {
+					return reasons.join("; ");
+				}
+
+				const reasonCodes = node.reason_codes ?? [];
+				return reasonCodes.length ? reasonCodes.map(displayToken).join(", ") : "none";
+			}
+
+			function programNodeIssue(node) {
+				return node.issue_identifier || "unmapped";
+			}
+
+			function renderProgramNodeReadbacks(program) {
+				const readbacks = program.node_readbacks ?? [];
+				if (!readbacks.length) {
+					return "";
+				}
+
+				const detailKey = `program:${program.program_id}:nodes`;
+
+				return `
+					<details data-detail-key="${escapeHtml(detailKey)}"${detailsOpenAttribute(detailKey)}>
+						<summary>${escapeHtml(pluralize(readbacks.length, "node diagnostic"))}</summary>
+						<div class="grid debug-grid">
+							${readbacks
+								.map((node) => {
+									const reasonCodes = (node.reason_codes ?? []).map(displayToken).join(", ") || "none";
+									return `
+										${field("Issue", programNodeIssue(node))}
+										${field("Lifecycle", displayToken(node.lifecycle_state || "unknown"))}
+										${field("Readiness", displayToken(node.readiness_state || "unknown"))}
+										${field("Issue state", node.issue_state || "none")}
+										${field("Queue action", node.queue_label_action || "none")}
+										${field("Reason codes", reasonCodes)}
+										${field("Reasons", programNodeReasons(node))}
+										${field("Next action", node.next_action || "none")}
+									`;
+								})
+								.join("")}
+						</div>
+					</details>
+				`;
+			}
+
+			function renderExecutionPrograms(snapshot, derived) {
+				const programs = derived.executionPrograms ?? [];
+				setPanelMeta(
+					nodes.programsMeta,
+					programMetaText(snapshot, derived),
+					derived.programAttentionCount ? "attention" : "",
+				);
+
+				if (!programs.length) {
+					renderRoutineEmptyList(nodes.executionPrograms);
+					return;
+				}
+
+				renderStableList(
+					nodes.executionPrograms,
+					programs
+						.map((program) => {
+							const tone = toneForProgram(program);
+							const mappedIssues = programMappedIssues(program);
+							const warning = program.readback_warning
+								? inlineStatusFact("Warning", displayToken(program.readback_warning))
+								: "";
+							return `
+								<article class="action-card ${tone}" data-render-key="program:${escapeHtml(program.program_id)}">
+									<div class="row-head">
+										<div class="row-title">
+											<div class="kicker">
+												<span>${escapeHtml(displayToken(program.intake_kind || "program"))}</span>
+												<span class="mono">${escapeHtml(program.program_id)}</span>
+											</div>
+											<h4>${escapeHtml(program.public_summary || program.program_id)}</h4>
+										</div>
+									</div>
+									<div class="status-line">
+										${statusLabel(displayToken(program.status || "unknown"), tone)}
+										${inlineStatusFact("Queue", programQueueActionSummary(program))}
+										${warning}
+									</div>
+									<div class="grid two card-facts">
+										${cardField("Mapped issues", mappedIssues, mappedIssues === "NONE" ? "is-muted" : "")}
+										${cardField("Source contract", program.source_contract_id || "NONE", program.source_contract_id ? "" : "is-muted")}
+										${programProgressFacts(program)
+											.map(([label, value]) => cardField(label, value))
+											.join("")}
+									</div>
+									${renderProgramNodeReadbacks(program)}
+								</article>
+							`;
+						})
+						.join(""),
+				);
 			}
 
 			function renderQueuedCandidates(container, items) {
@@ -10637,6 +10843,7 @@
 				renderProjects(snapshot, derived);
 				renderAccountPool(snapshot);
 				renderActiveRuns(snapshot, derived);
+				renderExecutionPrograms(snapshot, derived);
 				renderQueuedCandidates(
 					nodes.queuedCandidates,
 					derived.queueBacklogCandidates,
