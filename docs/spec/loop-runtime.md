@@ -482,6 +482,11 @@ Goal completion is a trigger for the next validation or review step. It is not p
 that the lane is complete, reviewed, merged, landed, or closed. Lane completion still
 requires the deterministic validation, review, PR handoff, manual-attention, landing,
 closeout, and terminal-finalization contracts owned by the lower-level specs.
+For `implement_to_validation_ready` and repair phases, completing the scoped goal is
+the only valid way to exit a satisfied phase and hand control back to Decodex's
+repo-gate transition. A progress checkpoint or final message that says the lane is
+validation-ready and waiting for the next phase is only evidence; it must not replace
+the Codex goal-complete signal.
 
 ## Validation And Review
 

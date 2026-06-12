@@ -683,6 +683,14 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 	assert!(instructions.contains(ISSUE_REVIEW_CHECKPOINT_TOOL_NAME));
 	assert!(instructions.contains(ISSUE_REVIEW_HANDOFF_TOOL_NAME));
 	assert!(instructions.contains(ISSUE_TERMINAL_FINALIZE_TOOL_NAME));
+	assert!(instructions.contains("Phase goal runtime contract"));
+	assert!(instructions.contains("Treat the active phase goal as the authoritative current contract"));
+	assert!(instructions.contains("explicitly complete the active phase goal with the Codex goal completion mechanism"));
+	assert!(
+		instructions.contains(
+			"Do not use `issue_progress_checkpoint`, final chat text, or an \"await next phase\" statement as a substitute"
+		)
+	);
 	assert!(instructions.contains("treat `issue_progress_checkpoint` as terminal completion"));
 	assert!(!instructions.contains("you may end the turn without"));
 	assert!(!instructions.contains("WORKFLOW.md\n"));
