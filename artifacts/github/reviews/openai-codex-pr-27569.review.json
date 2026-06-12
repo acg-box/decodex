@@ -1,0 +1,71 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27569",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27569",
+    "commit_shas": [
+      "168cddddc1b5c5f4fe64534acc4e31ae69474365",
+      "fe04e86efaae705d0b47e3d076e82d54b2e1dca5",
+      "92644c48f26b1f5d92892c01cd1585b86fc381f1",
+      "e13920ef12be52e892db5cbf3e0a3402d5d33f6e"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "multi-agent: move concurrency guidance into v2 usage hints",
+        "url": "https://github.com/openai/codex/pull/27569",
+        "meta": "Merged 2026-06-11T10:41:44Z"
+      },
+      {
+        "kind": "commit",
+        "title": "feat: update max concurrency message",
+        "url": "https://github.com/openai/codex/commit/168cddddc1b5c5f4fe64534acc4e31ae69474365"
+      },
+      {
+        "kind": "commit",
+        "title": "fix: derive usage hints from configured concurrency",
+        "url": "https://github.com/openai/codex/commit/e13920ef12be52e892db5cbf3e0a3402d5d33f6e"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-12T02:07:24Z",
+  "observed_change": "Codex now places multi-agent v2 shared concurrency-slot guidance in the root and subagent usage hints instead of the `spawn_agent` tool description.",
+  "changed_surfaces": [
+    "MultiAgentV2Config default usage-hint rendering",
+    "configured max-concurrency handling",
+    "spawn_agent v2 tool description",
+    "tool planning for collaboration tools",
+    "multi-agent configuration and tool-spec tests"
+  ],
+  "user_visible_path": "Root agents and subagents see guidance that the configured active-agent slots include the current agent; the `spawn_agent` description no longer repeats `max_concurrent_threads_per_session` wording.",
+  "control_plane_relevance": "Moderate for Decodex Control Plane because multi-agent orchestration quality depends on the model-visible concurrency contract, but this PR does not change the underlying slot limit or add a new protocol method.",
+  "compatibility_risk": "Low to medium for prompt snapshots, tests, or downstream tool-description checks that expected concurrency text to live inside the `spawn_agent` description.",
+  "adoption_opportunity": "Align Decodex multi-agent operator guidance with the shared active-slot model and avoid duplicating concurrency limits inside individual tool descriptions.",
+  "community_value": "Medium to high for Codex multi-agent users because it clarifies that active-agent capacity is a shared pool across the root agent and spawned agents.",
+  "deprecated_or_breaking_notes": "The redundant `max_concurrent_threads_per_session` text and plumbing are removed from the `spawn_agent` tool-spec path, while the configured concurrency value still feeds usage hints.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27569 says native Codex now tells the root agent and subagents how many active slots exist, including the current agent, and removes separate `spawn_agent` limit wording.",
+    "`codex-rs/core/src/config/mod.rs` adds `default_multi_agent_v2_usage_hint_text` that appends shared-slot guidance using the resolved max concurrency.",
+    "`MultiAgentV2Config::defaults_for_max_concurrency` keeps the complete default root and subagent usage hints in the config.",
+    "`codex-rs/core/src/tools/handlers/multi_agents_spec.rs` removes `max_concurrent_threads_per_session` from `SpawnAgentToolOptions` and the v2 description builder.",
+    "`codex-rs/core/src/tools/spec_plan.rs` removes the helper that threaded max-concurrency text into the spawn-agent tool spec.",
+    "Tests now assert the `spawn_agent` description does not contain `max_concurrent_threads_per_session` and that configured concurrency is reflected through usage hints.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27569.json` records 6 changed files for the merged PR."
+  ],
+  "caveats": "This is a model-facing guidance change, not evidence that Codex changed the actual concurrency limit or scheduling algorithm.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The change affects multi-agent prompt contracts that Decodex operators may need to mirror."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The shared-slot guidance is a useful public operator note for multi-agent users."
+    }
+  ]
+}
