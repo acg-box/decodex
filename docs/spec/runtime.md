@@ -75,9 +75,9 @@ state or this state machine.
   surface for existing Linear issues. It classifies the supplied batch as ready,
   held, blocked, stale, or unmapped and builds the same internal program model used
   by later persistence, but it must not mutate Linear or write local runtime rows.
-  `--persist` writes only local runtime Program Intake and Execution Program state;
+  `--apply` writes only local runtime Program Intake and Execution Program state;
   queue labels remain untouched until a later reconciliation surface is explicitly
-  authorized.
+  authorized. `--persist` is a legacy alias for `--apply`.
 - On each normal Linear scan tick, the control plane reconciles persisted Execution
   Programs before normal issue selection. The reconciler refreshes mapped Linear
   issue state, dependency observations, local active leases, retained review/landing
