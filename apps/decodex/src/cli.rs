@@ -35,8 +35,8 @@ use crate::{
 		RadarValidateRequest,
 	},
 	recovery::{
-		self, LegacyCloseoutRecoveryRequest, ReviewHandoffAdoptRequest,
-		ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest,
+		self, LegacyCloseoutRecoveryRequest, MergedCloseoutRecoveryRequest,
+		ReviewHandoffAdoptRequest, ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest,
 	},
 	research_design::{
 		self, ResearchDesignCompileRequest, ResearchDesignOutcome, ResearchDesignPromoteRequest,
@@ -863,6 +863,15 @@ impl RecoverCommand {
 					manual_authority: args.manual_authority,
 				},
 			),
+			RecoverSubcommand::MergedCloseout(args) => recovery::run_merged_closeout(
+				self.project_config.as_path(),
+				&MergedCloseoutRecoveryRequest {
+					issue: args.issue.clone(),
+					pr_url: args.pr.clone(),
+					dry_run: args.dry_run,
+					manual_authority: args.manual_authority,
+				},
+			),
 		}
 	}
 }
@@ -948,6 +957,22 @@ struct LegacyCloseoutRecoveryCommand {
 	#[arg(long)]
 	dry_run: bool,
 	/// Required for non-dry-run audited legacy closeout.
+	#[arg(long)]
+	manual_authority: bool,
+}
+
+#[derive(Debug, Args)]
+struct MergedCloseoutRecoveryCommand {
+	/// Issue identifier for the already-merged retained lane.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Merged pull request URL that proves the lane's terminal code lineage.
+	#[arg(long, value_name = "PR_URL")]
+	pr: String,
+	/// Validate without writing closeout or cleanup ledger events.
+	#[arg(long)]
+	dry_run: bool,
+	/// Required for non-dry-run merged closeout reconciliation.
 	#[arg(long)]
 	manual_authority: bool,
 }
@@ -1702,6 +1727,8 @@ enum RecoverSubcommand {
 	ReviewHandoff(ReviewHandoffRecoveryCommand),
 	/// Record an audited fallback closeout for a legacy cleanup-only worktree.
 	LegacyCloseout(LegacyCloseoutRecoveryCommand),
+	/// Reconcile stale retained attention after a PR is already merged and cleaned up.
+	MergedCloseout(MergedCloseoutRecoveryCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1846,16 +1873,17 @@ mod tests {
 		CommitCommand, DiagnoseCommand, EvidenceCommand, IntakeCommand, IntakeGoalCommand,
 		IntakeIssuesCommand, IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand,
 		LaneInterruptCommand, LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand,
-		ProbeCommand, ProjectCommand, ProjectConfigArgs, ProjectSubcommand,
-		RadarBackfillReleaseRangeCommand, RadarBundleBuildCommand, RadarBundleCommand,
-		RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand, RadarLedgerCommand,
-		RadarLedgerIngestExistingCommand, RadarLedgerSubcommand, RadarLedgerSummaryCommand,
-		RadarRefreshReleaseDeltaCommand, RadarRefreshUpstreamQueueCommand,
-		RadarRenderSignalCommand, RadarSubcommand, RadarValidateCommand, RecoverCommand,
-		RecoverSubcommand, ResearchCommand, ResearchCompileCommand, ResearchOutcomeArg,
-		ResearchPromoteCommand, ResearchSubcommand, ReviewHandoffAdoptCommand,
-		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
-		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
+		MergedCloseoutRecoveryCommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
+		ProjectSubcommand, RadarBackfillReleaseRangeCommand, RadarBundleBuildCommand,
+		RadarBundleCommand, RadarBundleSubcommand, RadarBundleValidateCommand, RadarCommand,
+		RadarLedgerCommand, RadarLedgerIngestExistingCommand, RadarLedgerSubcommand,
+		RadarLedgerSummaryCommand, RadarRefreshReleaseDeltaCommand,
+		RadarRefreshUpstreamQueueCommand, RadarRenderSignalCommand, RadarSubcommand,
+		RadarValidateCommand, RecoverCommand, RecoverSubcommand, ResearchCommand,
+		ResearchCompileCommand, ResearchOutcomeArg, ResearchPromoteCommand, ResearchSubcommand,
+		ReviewHandoffAdoptCommand, ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand,
+		ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand,
+		StatusCommand,
 	};
 
 	#[test]
@@ -2926,6 +2954,33 @@ mod tests {
 				..
 			}) if issue == "PUB-718"
 				&& pr == "https://github.com/hack-ink/pubfi-mono-v2/pull/14"
+		));
+	}
+
+	#[test]
+	fn parses_merged_closeout_manual_authority() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"recover",
+			"merged-closeout",
+			"PUB-1549",
+			"--pr",
+			"https://github.com/helixbox/pubfi-mono/pull/309",
+			"--manual-authority",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Recover(RecoverCommand {
+				command: RecoverSubcommand::MergedCloseout(MergedCloseoutRecoveryCommand {
+					issue,
+					pr,
+					dry_run: false,
+					manual_authority: true,
+				}),
+				..
+			}) if issue == "PUB-1549"
+				&& pr == "https://github.com/helixbox/pubfi-mono/pull/309"
 		));
 	}
 }
