@@ -183,6 +183,10 @@ Retry comments with `app_server_transport_disconnected` during `initialize`,
 the app-server under the retry budget, not asking for operator attention yet. The
 same error class becomes actionable only after retry exhaustion or when the disconnect
 occurred after a thread session was attached.
+Retry comments with `app_server_usage_limit_exceeded` mean the active Codex account
+hit a capacity limit and Decodex will re-run account selection on the next attempt.
+They are actionable only after retry exhaustion or when the operator intentionally
+pins all new runs to an exhausted fixed account.
 
 ## State Ownership
 

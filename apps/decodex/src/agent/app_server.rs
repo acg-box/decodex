@@ -4078,7 +4078,9 @@ fn handle_turn_execution_notification(
 			if let Some((failure, will_retry)) =
 				failure_from_error_notification(notification, target_thread_id, target_turn_id)?
 			{
-				if failure.requires_operator_attention() && will_retry != Some(true) {
+				if (failure.requires_operator_attention() || failure.should_stop_current_turn())
+					&& will_retry != Some(true)
+				{
 					return Err(Report::new(failure));
 				}
 
