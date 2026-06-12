@@ -201,8 +201,11 @@ cwd and at least one enabled skill. Decodex must preserve the scan error count a
 first error details in local preflight evidence, but it must not block the lane solely
 because unrelated installed skill metadata failed to scan.
 Because `plugin/list` is observational and local-marketplace-only, Decodex may retry
-one app-server output timeout before failing the lane. If the retry is exhausted,
-the terminal failure must remain an app-server preflight failure, report
+one app-server output timeout inside the preflight request before failing that request.
+If the preflight request retry is exhausted, the lane must still enter structured
+runtime retry while workflow retry budget remains. Only after workflow retry budget
+exhaustion may the terminal failure become operator-facing attention; when that
+happens it must remain an app-server preflight failure, report
 `app_server_plugin_list_timeout`, and include the `plugin/list` timeout cause in local
 preflight evidence and operator recovery output rather than looking like a repository
 implementation failure.

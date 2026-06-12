@@ -505,7 +505,9 @@ pub(crate) fn run_failure_writeback_disposition(
 		|| error.downcast_ref::<AppServerPhaseGoalFailure>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
 		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
-		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
+		|| error
+			.downcast_ref::<AppServerCapabilityPreflightFailure>()
+			.is_some_and(|failure| !failure.is_retryable_timeout())
 		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
 		|| error
 			.downcast_ref::<AppServerTransportFailure>()
@@ -525,6 +527,9 @@ pub(crate) fn run_failure_writeback_disposition(
 	} else if error
 		.downcast_ref::<AppServerZeroEvidenceStartFailure>()
 		.is_some()
+		|| error
+			.downcast_ref::<AppServerCapabilityPreflightFailure>()
+			.is_some_and(AppServerCapabilityPreflightFailure::is_retryable_timeout)
 		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
 		|| error
 		.downcast_ref::<RepoGateFailure>()
@@ -3583,6 +3588,12 @@ fn write_retry_schedule_marker_for_runtime_retry(
 	retry_budget_attempts: i64,
 ) -> Result<()> {
 	if error.downcast_ref::<StalledRunNeedsAttention>().is_some() {
+		return write_failure_retry_schedule_marker(workflow, issue_run, retry_budget_attempts);
+	}
+	if error
+		.downcast_ref::<AppServerCapabilityPreflightFailure>()
+		.is_some_and(AppServerCapabilityPreflightFailure::is_retryable_timeout)
+	{
 		return write_failure_retry_schedule_marker(workflow, issue_run, retry_budget_attempts);
 	}
 
