@@ -1,0 +1,84 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-11-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease changes before stable",
+  "candidate_text": [
+    "0.140.0-alpha.11: defer, no X handoff.\n\nAdjacent compare alpha.10 -> alpha.11 has 9 commits. PR titles point to TUI warnings, plugin analytics, app categories, and release workflow rollback, but checked source review is incomplete."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.10",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.11",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.10...rust-v0.140.0-alpha.11",
+      "https://github.com/openai/codex/pull/27490",
+      "https://github.com/openai/codex/pull/27483",
+      "https://github.com/openai/codex/pull/27417",
+      "https://github.com/openai/codex/pull/27507",
+      "https://github.com/openai/codex/pull/27420",
+      "https://github.com/openai/codex/pull/27454",
+      "https://github.com/openai/codex/pull/27415",
+      "https://github.com/openai/codex/pull/27639"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.140.0-alpha.11 was published at 2026-06-11T19:12:40Z with only a sparse release body: Release 0.140.0-alpha.11.",
+    "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.10 -> rust-v0.140.0-alpha.11; GitHub compare metadata reports status=diverged, 9 ahead commits, and 9 total commits.",
+    "PR-title metadata in the alpha.10 -> alpha.11 compare points to TUI Windows sandbox cleanup, MCP tool-call plugin analytics, fatal-exit session info, argument-comment lint behavior, plugin app categories, filesystem adapter coverage, codex exec runtime warnings, and revert of concurrent npm publishing.",
+    "Checked Decodex review/impact artifacts are absent for the 8 primary PR-title references in the alpha.10 -> alpha.11 compare window in this checkout.",
+    "The refreshed release_delta/v1 records stable rust-v0.139.0 -> latest prerelease rust-v0.140.0-alpha.13 with 130 ahead commits and no tracked signal slugs; this alpha.11 decision uses adjacent prerelease lineage instead.",
+    "Official Codex changelog readback for this run shows a 2026-06-11 Codex app update as the newest official app entry; rust-v0.140.0-alpha.11 is a GitHub prerelease checkpoint, not an official changelog entry."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.140.0-alpha.11 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.11",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.10 -> rust-v0.140.0-alpha.11.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.10...rust-v0.140.0-alpha.11",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.11 release body is sparse and does not describe user-facing behavior beyond the version checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.11",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR-title metadata in the alpha.11 compare points to TUI/runtime warnings, plugin analytics, app categories, filesystem coverage, and release-workflow rollback.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.10...rust-v0.140.0-alpha.11",
+      "confidence": "likely"
+    },
+    {
+      "text": "Behavior claims for the alpha.11 window require upstream source review before a publishable Decodex prerelease thread.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the alpha.11 release body is sparse and the adjacent alpha.10 -> alpha.11 compare has unreviewed PR-title gaps.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-11:alpha10-alpha11:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "No previous live and quote-eligible @decodexspace 0.140 prerelease post exists; earlier 0.140 prereleases in this checkout are recorded as defer / needs_upstream_analysis checkpoints.",
+    "Do not compare later 0.140 prereleases against stable 0.139.0 or alpha.10 when a newer adjacent prerelease checkpoint exists.",
+    "Exact source-review gap list for alpha.10 -> alpha.11 primary compare PRs: #27490, #27483, #27417, #27507, #27420, #27454, #27415, #27639.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.11 defer record to decodex-x-publisher.",
+    "Route the listed source-review gap PRs to codex-upstream-radar-review / codex-code-analysis before turning alpha.11 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Use adjacent prerelease-to-prerelease lineage for future 0.140 prereleases after alpha.11."
+  ]
+}
