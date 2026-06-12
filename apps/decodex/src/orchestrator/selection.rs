@@ -159,6 +159,11 @@ fn retry_comment_details(error: &Report) -> (&'static str, String) {
 	{
 		return (app_server_failure.error_class(), app_server_failure.retry_next_action());
 	}
+	if let Some(app_server_failure) = error.downcast_ref::<AppServerPhaseGoalFailure>()
+		&& app_server_failure.is_terminal_path_missing()
+	{
+		return (app_server_failure.error_class(), app_server_failure.retry_next_action());
+	}
 
 	if error.downcast_ref::<StalledRunNeedsAttention>().is_some() {
 		return (
