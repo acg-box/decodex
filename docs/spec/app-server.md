@@ -491,7 +491,14 @@ Rationale:
 
 ## Error handling
 
-- JSON-RPC transport failure before `thread/start` succeeds is a retryable startup failure.
+- JSON-RPC transport failure before a thread session is attached is a retryable
+  startup failure. This covers the client waiting on `initialize`,
+  `account/login/start`, `thread/start`, or `thread/resume`.
+- If that startup transport failure exhausts the registered retry budget, the
+  terminal failure must still preserve `app_server_transport_disconnected`.
+- JSON-RPC transport failure after a thread session is attached, including
+  `turn/start` or turn execution waits, is a human-required transport failure
+  because blind retry can duplicate turn-side effects.
 - `thread/status/changed` with `systemError` is a failed run.
 - Turn completion with codex error information must be classified into:
   - retryable failure

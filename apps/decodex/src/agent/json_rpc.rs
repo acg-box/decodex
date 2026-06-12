@@ -197,19 +197,45 @@ impl std::error::Error for AppServerOutputTimeout {}
 #[derive(Debug)]
 pub(crate) struct AppServerTransportFailure {
 	details: String,
+	phase: Option<&'static str>,
+	retryable_startup: bool,
 }
 impl AppServerTransportFailure {
 	pub(crate) fn new(details: String) -> Self {
-		Self { details }
+		Self { details, phase: None, retryable_startup: false }
+	}
+
+	pub(crate) fn with_phase(
+		details: String,
+		phase: &'static str,
+		retryable_startup: bool,
+	) -> Self {
+		Self { details, phase: Some(phase), retryable_startup }
 	}
 
 	pub(crate) fn error_class(&self) -> &'static str {
 		"app_server_transport_disconnected"
 	}
 
+	pub(crate) fn is_retryable_startup(&self) -> bool {
+		self.retryable_startup
+	}
+
+	pub(crate) fn retry_next_action(&self) -> String {
+		if let Some(phase) = self.phase {
+			format!(
+				"app-server transport disconnected during `{phase}` before a durable turn was running; decodex will restart the app-server and retry automatically"
+			)
+		} else {
+			String::from("decodex will retry the app-server transport failure automatically")
+		}
+	}
+
 	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
+		let phase = self.phase.map_or_else(String::new, |phase| format!(" during `{phase}`"));
+
 		format!(
-			"inspect the local app-server stderr tail and process exit status, resolve the Codex app-server transport failure manually, {recovery_gate}"
+			"inspect the local app-server stderr tail and process exit status, resolve the Codex app-server transport failure{phase} manually, {recovery_gate}"
 		)
 	}
 }
