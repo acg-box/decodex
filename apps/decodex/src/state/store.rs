@@ -1383,8 +1383,40 @@ impl StateStore {
 		Ok(attempts)
 	}
 
+	/// List all locally recorded run attempts for one registered project.
+	pub fn list_run_attempts_for_project(&self, project_id: &str) -> Result<Vec<RunAttempt>> {
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+			let attempts = sqlite
+				.list_run_attempts_for_project(project_id)?
+				.into_iter()
+				.map(|attempt| attempt.as_public())
+				.collect();
+
+			return Ok(attempts);
+		}
+
+		let state = self.lock()?;
+		let mut attempts = state
+			.run_attempts
+			.values()
+			.filter(|attempt| attempt.project_id.as_deref() == Some(project_id))
+			.map(RunAttemptRecord::as_public)
+			.collect::<Vec<_>>();
+
+		attempts.sort_by(|left, right| right.run_id().cmp(left.run_id()));
+
+		Ok(attempts)
+	}
+
 	/// Return whether one run already has a matching protocol event.
 	pub fn run_has_protocol_event(&self, run_id: &str, event_type: &str) -> Result<bool> {
+		if let Some(sqlite) = &self.sqlite {
+			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
+
+			return sqlite.run_has_protocol_event(run_id, event_type);
+		}
+
 		let state = self.lock()?;
 
 		Ok(state.events.get(run_id).is_some_and(|events| {

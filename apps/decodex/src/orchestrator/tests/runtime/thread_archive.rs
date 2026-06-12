@@ -75,3 +75,71 @@ fn completed_issue_thread_archive_candidates_include_prior_terminal_attempts() {
 	assert_eq!(candidates[0].sequence_number, 2);
 	assert_eq!(candidates[1].sequence_number, 2);
 }
+
+#[test]
+fn terminal_thread_archive_backlog_candidates_scan_project_terminal_runs() {
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+
+	for (project, issue_id, run_id, status, thread_id) in [
+		("decodex", "issue-succeeded", "run-succeeded", "succeeded", "thread-succeeded"),
+		("decodex", "issue-failed", "run-failed", "failed", "thread-failed"),
+		("decodex", "issue-terminated", "run-terminated", "terminated", "thread-terminated"),
+		("decodex", "issue-running", "run-running", "running", "thread-running"),
+		("other", "issue-other", "run-other", "succeeded", "thread-other"),
+		("decodex", "issue-archived", "run-archived", "succeeded", "thread-archived"),
+	] {
+		state_store
+			.try_acquire_lease(project, issue_id, run_id, "In Progress")
+			.expect("lease should record project ownership");
+		state_store
+			.record_run_attempt(run_id, issue_id, 1, status)
+			.expect("attempt should record");
+		state_store.update_run_thread(run_id, thread_id).expect("thread should attach");
+	}
+
+	state_store
+		.append_event("run-archived", 1, "thread/archive", "{}")
+		.expect("archive event should record");
+
+	let candidates = super::terminal_thread_archive_backlog_candidates(&state_store, "decodex")
+		.expect("backlog candidates should load");
+	let mut candidate_threads = candidates
+		.iter()
+		.map(|candidate| candidate.thread_id.as_str())
+		.collect::<Vec<_>>();
+
+	candidate_threads.sort_unstable();
+
+	assert_eq!(
+		candidate_threads,
+		vec!["thread-failed", "thread-succeeded", "thread-terminated"]
+	);
+}
+
+#[test]
+fn terminal_thread_archive_reconciler_records_backlog_archive_events() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_id = "issue-succeeded";
+	let run_id = "run-succeeded";
+
+	state_store
+		.try_acquire_lease(config.service_id(), issue_id, run_id, "In Progress")
+		.expect("lease should record project ownership");
+	state_store
+		.record_run_attempt(run_id, issue_id, 1, "succeeded")
+		.expect("attempt should record");
+	state_store.update_run_thread(run_id, "thread-succeeded").expect("thread should attach");
+
+	super::reconcile_terminal_thread_archive_backlog_best_effort(
+		&config,
+		&workflow,
+		&state_store,
+	);
+
+	assert!(
+		state_store
+			.run_has_protocol_event(run_id, "thread/archive")
+			.expect("archive event lookup should succeed")
+	);
+}
