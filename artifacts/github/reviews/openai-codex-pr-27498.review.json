@@ -1,0 +1,70 @@
+{
+  "adoption_opportunity": "Use turn-environment-backed reads when Decodex invokes or evaluates extension tools that consume referenced file paths, especially in sandboxed or remote filesystems.",
+  "caveats": "The PR body says the image-generation extension test target could not complete because the build exhausted disk space, although targeted checks and sandbox coverage were added.",
+  "changed_surfaces": [
+    "extension ToolCall environment payload",
+    "extension API ToolEnvironment export",
+    "core extension tool execution",
+    "image-generation extension request construction",
+    "sandbox permission handling around extension calls",
+    "extension sandbox and image-generation tests"
+  ],
+  "community_value": "High for users and extension authors who pass referenced images by path, because the behavior now respects selected turn environments and sandbox context.",
+  "compatibility_risk": "Medium for extension tests or custom callers constructing ToolCall values because ToolCall now carries an environments list and image request construction is async.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "High. Decodex Control Plane extension and environment routing should preserve the selected environment filesystem and sandbox context for referenced media reads.",
+  "deprecated_or_breaking_notes": "No user-facing image feature was removed. Source callers must handle the new ToolCall environments field and async image request helper.",
+  "evidence": [
+    "PR #27498 says image generation previously used `std::fs::read`, which did not support environment-backed filesystems or sandbox context.",
+    "`codex-rs/tools/src/tool_call.rs` adds `ToolEnvironment` with environment id, working directory, filesystem, and sandbox context.",
+    "`codex-rs/core/src/tools/handlers/extension_tools.rs` passes turn environments and applies granted turn permissions at the extension call site.",
+    "`codex-rs/ext/image-generation/src/tool.rs` builds image requests with `request_for_call_args(..., &call.environments).await`.",
+    "`codex-rs/core/tests/suite/extension_sandbox.rs` adds coverage for environment reads and sandbox behavior.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27498.json` records 14 changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "Environment-backed extension file reads can affect Decodex extension execution, sandbox routing, and remote filesystem compatibility.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "The change has a clear practical user explanation for referenced image paths in sandboxed or environment-backed Codex runs.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex image-generation extension reads referenced image paths through the selected turn environment filesystem instead of plain local filesystem reads.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-12T20:08:11Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27498",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-11T23:32:52Z",
+        "title": "Route image extension reads through turn environments v2",
+        "url": "https://github.com/openai/codex/pull/27498"
+      },
+      {
+        "kind": "commit",
+        "title": "address image sandbox review feedback",
+        "url": "https://github.com/openai/codex/commit/2feef6f6c77bcd8140bc126377410bcdf3b89915"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "27e50cfa078191d4d61f281fcb4307b3fd8d2e97",
+      "526c3e8565b00151ee29f620978650f07610e9ee",
+      "6467362a57ce5befcf5895c4df10d5bae82a92e6",
+      "2feef6f6c77bcd8140bc126377410bcdf3b89915",
+      "18126046137392d29cb21f2f734160b52cfa1ea5",
+      "f8ab6ef5dc39035114a695d5dc5952ff1aad7fa6",
+      "03f5b38cf9b4d10eb8d9f1a94ddd0d503aacd257",
+      "59544fbc520493779b297162c114ee185392c521"
+    ],
+    "subject_id": "27498",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "Users attaching referenced image paths to image-generation extension calls can now rely on the selected turn environment filesystem and sandbox context instead of only local host paths."
+}
