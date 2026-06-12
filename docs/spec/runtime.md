@@ -744,6 +744,11 @@ After a process restart, recent-run history, active lease ownership, retained po
 - Operator status snapshots may expose an additive `child_agent_activity` object when app-server protocol events have produced one for the current run. The object must stay machine-readable and dashboard/CLI shared, and should describe dynamic observed buckets rather than a fixed workflow: current child bucket and elapsed time, bucket wall/event/tool counts, current/max/cumulative input tokens, cumulative output tokens, largest tool output, and warnings for repeated large outputs. Missing `child_agent_activity` means no child breakdown was captured; existing JSON consumers must continue to work without it.
 - If the agent Git credential preflight fails, operator status must report the retained lane as a credential failure requiring operator recovery, not as a still-running lane.
 - If retry budget or needs-attention recovery finds tracked changes in the retained worktree, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
+- A retryable runtime or app-server failure that leaves tracked worktree changes must
+  stop as retained partial progress instead of writing only a generic retry comment.
+  This does not apply to repo-gate continued-repair failures, because those failures
+  still authorize bounded automatic repair against the retained patch until retry or
+  loop-guardrail limits are reached.
 - If the durable Run Ledger final outcome is `needs_attention` or
   `terminal_failure`, operator status must count that issue in project-level
   `attention_count` even when no active run, queued candidate, or post-review lane
