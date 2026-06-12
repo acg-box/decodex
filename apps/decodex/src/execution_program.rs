@@ -1511,6 +1511,17 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 		);
 
 		reasons.push(String::from("node no longer matches the accepted Decision Contract"));
+	} else if let Some(issue) = node.linear_issue()
+		&& policy.issue_is_terminal(issue)
+	{
+		state = ExecutionReadinessState::Completed;
+		lifecycle_state = Some(ExecutionProgramNodeLifecycleState::Completed);
+
+		reasons.push(format!(
+			"mapped issue `{}` is already terminal in `{}`",
+			issue.issue_identifier(),
+			issue.issue_state()
+		));
 	} else {
 		match node.queue_intent {
 			ExecutionQueueIntent::NotReady => {

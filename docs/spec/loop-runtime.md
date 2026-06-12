@@ -351,10 +351,10 @@ The operator CLI surface for existing issues is
 `decodex intake issues --project <service-id> <ISSUE>... --dry-run`, or the same
 command with `--config <PROJECT_DIR>`. Dry-run reads tracker state and prints a
 deterministic ready/held/blocked/stale/unmapped report without mutating Linear and
-without persisting local runtime rows. `--persist` is an explicit local-runtime write:
+without persisting local runtime rows. `--apply` is an explicit local-runtime write:
 it stores the Program Intake Plan, Execution Program payload, issue mappings, and any
 already-proven program-owned queue-label evidence, but it still must not apply or
-remove `decodex:queued:<service-id>`.
+remove `decodex:queued:<service-id>`. `--persist` is a legacy alias for `--apply`.
 
 ## Internal Execution Program
 

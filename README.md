@@ -123,6 +123,7 @@ cargo run -p decodex --bin decodex -- research promote <CONTRACT_ID>
 cargo run -p decodex --bin decodex -- intake goal --project decodex <CONTRACT_ID> --dry-run
 cargo run -p decodex --bin decodex -- intake goal --project decodex <CONTRACT_ID> --apply
 cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --dry-run
+cargo run -p decodex --bin decodex -- intake issues --project decodex XY-1 XY-2 --apply
 cargo run -p decodex --bin decodex -- radar refresh-upstream-queue
 cargo run -p decodex --bin decodex -- radar refresh-release-delta
 cargo run -p decodex --bin decodex -- radar validate
@@ -165,6 +166,14 @@ contract/program links in runtime SQLite. Apply does not run implementation or a
 queue labels; later reconciliation owns queue-label changes. If the contract is still
 latent, needs a decision, or lacks issue-shaping authority, intake stops before
 creating executable work.
+
+`decodex intake issues` materializes a supplied batch of existing Linear issues into
+local Program Intake state. `--dry-run` prints the deterministic ready/held/blocked
+report without mutation. `--apply` persists the local Program Intake Plan, Execution
+Program, issue mappings, and queue-label ownership evidence when already proven, but
+it still never applies or removes service queue labels directly. Program
+reconciliation owns those label changes on a later scan. `--persist` remains a legacy
+alias for `--apply`.
 
 ### Install from Source
 
