@@ -1,0 +1,78 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-10T00:19:56Z",
+      "message": "Remove EnvironmentPathRef",
+      "sha": "a8e9807f4a94cf84b288c0c9ce2678788c9d3228",
+      "url": "https://github.com/openai/codex/commit/a8e9807f4a94cf84b288c0c9ce2678788c9d3228"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "LOCAL_FS",
+    "UTF",
+    "SKILL",
+    "LOCAL_ENVIRONMENT_ID",
+    "REMOTE_ENVIRONMENT_ID",
+    "CODEX_FS_HELPER_ARG1",
+    "SKILL_CONTENTS"
+  ],
+  "files": [
+    {
+      "additions": 0,
+      "deletions": 527,
+      "patch_excerpt": "@@ -1,527 +0,0 @@\n-use std::fmt;\n-use std::hash::Hash;\n-use std::hash::Hasher;\n-use std::io;\n-use std::path::Path;\n-use std::sync::Arc;\n-\n-use codex_utils_absolute_path::AbsolutePathBuf;\n-\n-use crate::ExecutorFileSystem;\n-use crate::FileMetadata;\n-use crate::FileSystemSandboxContext;\n-use crate::LOCAL_FS;\n-use crate::ReadDirectoryEntry;\n-\n-/// Binds an absolute path to the executor filesystem that owns it.\n-#[derive(Clone)]\n-pub struct EnvironmentPathRef {\n-    file_system: Arc<dyn ExecutorFileSystem>,\n-    path: AbsolutePathBuf,\n-}\n-\n-impl EnvironmentPathRef {\n-    /// Creates a path ref bound to the filesystem that owns `path`.\n-    pub fn new(file_system: Arc<dyn ExecutorFileSystem>, path: AbsolutePathBuf) -> Self {\n-        Self { file_system, path }\n-    }\n-\n-    /// Creates a path ref bound to the shared unsandboxed local filesystem.\n-    pub fn local(path: AbsolutePathBuf) -> Self...",
+      "path": "codex-rs/exec-server/src/environment_path.rs",
+      "status": "removed"
+    },
+    {
+      "additions": 0,
+      "deletions": 2,
+      "patch_excerpt": "@@ -3,7 +3,6 @@ mod client_api;\n mod client_transport;\n mod connection;\n mod environment;\n-mod environment_path;\n mod environment_provider;\n mod environment_toml;\n mod fs_helper;\n@@ -44,7 +43,6 @@ pub use environment::Environment;\n pub use environment::EnvironmentManager;\n pub use environment::LOCAL_ENVIRONMENT_ID;\n pub use environment::REMOTE_ENVIRONMENT_ID;\n-pub use environment_path::EnvironmentPathRef;\n pub use environment_provider::DefaultEnvironmentProvider;\n pub use environment_provider::EnvironmentProvider;\n pub use fs_helper::CODEX_FS_HELPER_ARG1;",
+      "path": "codex-rs/exec-server/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 21,
+      "deletions": 6,
+      "patch_excerpt": "@@ -1,5 +1,5 @@\n use codex_core_skills::model::SkillDependencies;\n-use codex_exec_server::EnvironmentPathRef;\n+use codex_utils_absolute_path::AbsolutePathBuf;\n \n /// Source authority that owns a skill package and must be used to read it.\n #[derive(Clone, Debug, PartialEq, Eq, Hash)]\n@@ -62,7 +62,7 @@ pub struct SkillPackageId(pub String);\n #[derive(Clone, Debug, PartialEq, Eq, Hash)]\n pub struct SkillResourceId {\n     id: String,\n-    environment_path: Option<EnvironmentPathRef>,\n+    environment_path: Option<EnvironmentSkillResource>,\n }\n \n impl SkillResourceId {\n@@ -73,22 +73,37 @@ impl SkillResourceId {\n         }\n     }\n \n-    pub fn environment(id: impl Into<String>, path: EnvironmentPathRef) -> Self {\n+    pub fn environment(\n+        id: impl Into<String>,\n+        environment_id: impl Into<String>,\n+        path: AbsolutePathBuf,\n+    ) -> Self {\n         Self {\n             id: ...",
+      "path": "codex-rs/ext/skills/src/catalog.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 7,
+      "patch_excerpt": "@@ -6,7 +6,6 @@ use codex_core_skills::filter_skill_load_outcome_for_product;\n use codex_core_skills::loader::SkillRoot;\n use codex_core_skills::loader::load_skills_from_roots;\n use codex_exec_server::EnvironmentManager;\n-use codex_exec_server::EnvironmentPathRef;\n use codex_protocol::capabilities::CapabilityRootLocation;\n use codex_protocol::protocol::Product;\n use codex_protocol::protocol::SkillScope;\n@@ -99,7 +98,7 @@ impl SkillProvider for ExecutorSkillProvider {\n                         enabled,\n                         authority.clone(),\n                         &selected_root_id,\n-                        Arc::clone(&file_system),\n+                        &environment_id,\n                     ));\n                 }\n             }\n@@ -121,13 +120,19 @@ impl SkillProvider for ExecutorSkillProvider {\n                     \"executor skill resource does not match its package\",\n          ...",
+      "path": "codex-rs/ext/skills/src/provider/executor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 60,
+      "patch_excerpt": "@@ -21,10 +21,8 @@ use codex_protocol::capabilities::CapabilityRootLocation;\n use codex_protocol::capabilities::SelectedCapabilityRoot;\n use codex_protocol::protocol::SkillScope;\n use codex_skills_extension::ExecutorSkillProvider;\n-use codex_skills_extension::catalog::SkillReadResult;\n use codex_skills_extension::provider::SkillListQuery;\n use codex_skills_extension::provider::SkillProvider;\n-use codex_skills_extension::provider::SkillReadRequest;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use pretty_assertions::assert_eq;\n \n@@ -202,64 +200,6 @@ async fn skill_loading_and_reads_use_the_supplied_executor_file_system() {\n     );\n }\n \n-#[tokio::test]\n-async fn executor_provider_reads_from_the_environment_instance_used_for_listing() {\n-    let test_root = create_local_skill_root(\"bound-instance\").expect(\"create local skill root\");\n-    let root_path = test_root.to_string_lossy().into_...",
+      "path": "codex-rs/ext/skills/tests/executor_file_system_authority.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27454"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "We're switching to using a static encoding of the host path in `PathUri`. We may need a type like this again but we can add it when it's more compelling.\n\nStacked on #27454.",
+    "labels": [],
+    "merged_at": "2026-06-11T18:26:13Z",
+    "number": 27433,
+    "state": "merged",
+    "title": "[codex] remove EnvironmentPathRef",
+    "url": "https://github.com/openai/codex/pull/27433"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
