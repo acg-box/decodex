@@ -107,7 +107,7 @@ fn terminal_failure_comments_surface_actionable_error_classes() {
 }
 
 #[test]
-fn failure_writeback_disposition_separates_retryable_and_attention_classes() {
+fn failure_writeback_disposition_marks_retryable_recovery_classes() {
 	for (case_name, error, expected_disposition) in [
 		(
 			"startup transport",
@@ -165,6 +165,13 @@ fn failure_writeback_disposition_separates_retryable_and_attention_classes() {
 			RunFailureWritebackDisposition::RetryableStructuredRecovery,
 		),
 		(
+			"phase goal terminal path missing",
+			Report::new(AppServerPhaseGoalFailure::missing_terminal_path_for_test(
+				PhaseGoalKind::HandoffEvidence,
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
 			"stalled active run",
 			Report::new(StalledRunNeedsAttention {
 				issue_identifier: String::from("PUB-101"),
@@ -173,6 +180,18 @@ fn failure_writeback_disposition_separates_retryable_and_attention_classes() {
 			}),
 			RunFailureWritebackDisposition::RetryableStructuredRecovery,
 		),
+	] {
+		assert_eq!(
+			orchestrator::run_failure_writeback_disposition(&error),
+			expected_disposition,
+			"{case_name}"
+		);
+	}
+}
+
+#[test]
+fn failure_writeback_disposition_marks_terminal_attention_classes() {
+	for (case_name, error, expected_disposition) in [
 		(
 			"turn transport",
 			Report::new(AppServerTransportFailure::with_phase(
@@ -199,6 +218,11 @@ fn failure_writeback_disposition_separates_retryable_and_attention_classes() {
 				"model",
 				"configured model was not present in model/list.",
 			)),
+			RunFailureWritebackDisposition::TerminalAttention,
+		),
+		(
+			"unsupported phase goal API",
+			Report::new(AppServerPhaseGoalFailure::unsupported_for_test("thread/goal/set")),
 			RunFailureWritebackDisposition::TerminalAttention,
 		),
 		(
@@ -1276,6 +1300,13 @@ fn app_server_terminal_failures_preserve_specific_error_classes() {
 			)),
 			"app_server_zero_evidence_start_failed",
 			"verify `decodex probe stdio://`",
+		),
+		(
+			Report::new(AppServerPhaseGoalFailure::missing_terminal_path_for_test(
+				PhaseGoalKind::HandoffEvidence,
+			)),
+			"phase_goal_terminal_path_missing",
+			"finish validation/review/handoff",
 		),
 		(
 			Report::new(AppServerTurnFailure::new(

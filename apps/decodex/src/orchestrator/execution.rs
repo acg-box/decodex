@@ -502,7 +502,9 @@ pub(crate) fn run_failure_writeback_disposition(
 ) -> RunFailureWritebackDisposition {
 	if error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
-		|| error.downcast_ref::<AppServerPhaseGoalFailure>().is_some()
+		|| error
+			.downcast_ref::<AppServerPhaseGoalFailure>()
+			.is_some_and(|failure| !failure.is_terminal_path_missing())
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
 		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
 		|| error
@@ -542,6 +544,9 @@ pub(crate) fn run_failure_writeback_disposition(
 		}) || error
 		.downcast_ref::<AppServerTransportFailure>()
 		.is_some_and(AppServerTransportFailure::is_retryable_startup)
+		|| error
+			.downcast_ref::<AppServerPhaseGoalFailure>()
+			.is_some_and(AppServerPhaseGoalFailure::is_terminal_path_missing)
 		|| error.downcast_ref::<AppServerDynamicToolFailure>().is_some()
 		|| error.downcast_ref::<AppServerTurnFailure>().is_some()
 	{
@@ -3593,6 +3598,12 @@ fn write_retry_schedule_marker_for_runtime_retry(
 	if error
 		.downcast_ref::<AppServerCapabilityPreflightFailure>()
 		.is_some_and(AppServerCapabilityPreflightFailure::is_retryable_timeout)
+	{
+		return write_failure_retry_schedule_marker(workflow, issue_run, retry_budget_attempts);
+	}
+	if error
+		.downcast_ref::<AppServerPhaseGoalFailure>()
+		.is_some_and(AppServerPhaseGoalFailure::is_terminal_path_missing)
 	{
 		return write_failure_retry_schedule_marker(workflow, issue_run, retry_budget_attempts);
 	}
