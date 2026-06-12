@@ -184,6 +184,7 @@ The event type set is intentionally small and low-frequency:
 - `pr_updated`
 - `review_handoff`
 - `review_handoff_rebind`
+- `review_handoff_adopt`
 - `repair_handoff`
 - `landed`
 - `closeout`
@@ -213,6 +214,7 @@ Every event requires the record envelope. Additional required fields are listed 
 | `pr_updated` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha` | `worktree_path`, `summary` |
 | `review_handoff` | `branch`, `worktree_path`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `terminal_path` | `verification` |
 | `review_handoff_rebind` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `evidence` | `worktree_path`, `next_action` |
+| `review_handoff_adopt` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `evidence` | `worktree_path`, `next_action` |
 | `repair_handoff` | `branch`, `worktree_path`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `validation_result`, `summary`, `terminal_path` | `verification` |
 | `landed` | `branch`, `pr_url`, `pr_head_sha`, `pr_base_ref`, `commit_sha`, `summary` | `worktree_path` |
 | `closeout` | `pr_url`, `commit_sha`, `summary` | `branch`, `worktree_path`, `validation_result`, `target_state` |
@@ -253,9 +255,13 @@ omit it and use public `error_class`, `next_action`, `blockers`, and `evidence`
 instead.
 
 `review_handoff_rebind` is only for an explicit operator recovery command that restores a
-missing runtime DB review handoff marker after validating the retained worktree and PR
-lineage. It is not a normal agent terminal signal, does not imply `issue_terminal_finalize`
-ran, and must not be emitted automatically from `decodex run`.
+missing or stale runtime DB review handoff marker after validating the retained worktree
+and PR lineage. `review_handoff_adopt` is only for the explicit manual takeover command
+that adopts a human-owned PR into the retained review handoff shape after validating the
+managed clean worktree, active service ownership, exact PR head, and green landable PR
+gates. Neither event is a normal agent terminal signal, neither implies
+`issue_terminal_finalize` ran, and neither must be emitted automatically from
+`decodex run`.
 
 ## Progress checkpoint records
 
