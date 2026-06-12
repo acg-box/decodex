@@ -187,6 +187,80 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 }
 
 #[test]
+fn active_phase_goal_failure_recovery_continues_to_repair_instead_of_attention() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let repo_root = config.repo_root();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: repo_root.to_path_buf(),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1"),
+		retry_budget_base: 0,
+	};
+
+	commit_worktree_change(repo_root, "ready.txt", "before\n", "add ready file");
+
+	fs::write(repo_root.join("ready.txt"), "after\n").expect("tracked diff should write");
+
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			&issue.id,
+			&issue_run.run_id,
+			1,
+			"phase_goal_set",
+			serde_json::json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": "implement_to_validation_ready",
+				"payload": {
+					"phase": "implement_to_validation_ready",
+					"status": "active",
+				},
+			}),
+		)
+		.expect("phase goal event should record");
+
+	let summary = orchestrator::maybe_continue_after_active_phase_goal_recovery(
+		&config,
+		&workflow,
+		&state_store,
+		&issue_run,
+		&Report::msg("app server transport closed after local verification"),
+	)
+	.expect("phase goal recovery should not fail")
+	.expect("dirty active phase goal should recover to continuation");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
+		.expect("private events should load");
+
+	assert!(summary.continuation_pending);
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_transition"
+			&& event.payload()["signal"] == "validation_fail"
+			&& event.payload()["payload"]["disposition"] == "continue_repair"
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_next"
+			&& event.payload()["phase"] == "repair_validation_failures"
+	}));
+	assert!(events.iter().any(|event| {
+		event.event_type() == "phase_goal_recovery"
+			&& event.payload()["payload"]["nextPhase"] == "repair_validation_failures"
+	}));
+}
+
+#[test]
 fn implementation_phase_goal_contract_requires_explicit_goal_completion() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
