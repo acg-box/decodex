@@ -112,8 +112,9 @@ decodex recover review-handoff adopt <ISSUE> --pr <PR_URL>
 
 The command rejects the adopt unless all of these are true:
 
-- the issue has `decodex:active:<service-id>` and does not have the opt-out or
-  needs-attention labels
+- the issue either has `decodex:active:<service-id>` or the service active label
+  exists on the issue team and can be restored by live adopt after all other checks
+  pass; the issue must not have the opt-out or needs-attention labels
 - the issue is in the workflow `tracker.in_progress_state` or already in
   `tracker.success_state`
 - no conflicting retained worktree mapping exists; an existing mapping is allowed only
@@ -130,8 +131,11 @@ The command rejects the adopt unless all of these are true:
 
 The non-dry-run command writes a runtime worktree mapping, a local takeover run
 attempt, review handoff/orchestration markers, and a `review_handoff_adopt` audit
-event. If the issue was still in the workflow `tracker.in_progress_state`, the command
-moves it to `tracker.success_state` after the audit succeeds. It does not merge the PR.
+event. If the active service label was missing, live adopt restores it after local
+handoff state is written and before the audit event is recorded; if the audit write
+fails, the label restoration is rolled back. If the issue was still in the workflow
+`tracker.in_progress_state`, the command moves it to `tracker.success_state` after the
+audit succeeds. It does not merge the PR.
 
 After a successful adopt, land through the normal issue-authority path:
 
@@ -169,13 +173,16 @@ plus explicit rebind before any manual cleanup.
 
 If diagnosis reports `classification: review_handoff_ownership_drift`,
 `reason: active_ownership_label_missing`, and `active_label_present: false`, do not run
-rebind just to restore ownership. First verify the issue is still meant to continue the
-retained post-review lifecycle for this service, then restore the issue to the workflow
-success state and add `decodex:active:<service-id>`. If the issue still has
-`decodex:needs-attention`, clear that label only after the recorded blocker has been
-repaired.
+rebind just to restore ownership. If the lane has no retained handoff marker because a
+human PR needs manual takeover, run `recover review-handoff adopt --dry-run`; the dry
+run reports `would_restore_active_label=true` when live adopt can restore the active
+service label after validating the issue, managed worktree, PR branch, PR head, and
+landability gates. If the lane already has a retained handoff marker, use the ordinary
+diagnosis/rebind or post-review path instead of hand-adding labels. If the issue still
+has `decodex:needs-attention`, clear that label only after the recorded blocker has
+been repaired or an explicit recovery command says it will clear the label itself.
 
-After restoring explicit ownership, rerun:
+After an explicit recovery restores or confirms ownership, rerun:
 
 ```sh
 decodex recover review-handoff diagnose <ISSUE>
@@ -185,3 +192,40 @@ decodex status
 Continue with `decodex land` or the normal retained post-review lifecycle only when the
 diagnosis remains bound and status reports a landable or otherwise concrete
 post-review state.
+
+## Merged Closeout Reconciliation
+
+Use `recover merged-closeout` when Decodex retained a terminal
+`needs_attention`/`partial_progress_retained` ledger outcome, but a human already
+merged the PR, the tracker issue is Done, and no useful retained patch remains. This
+path reconciles Decodex lifecycle state only; it does not change business code, rerun
+the lane, merge a PR, or delete local files.
+
+Run dry-run first:
+
+```sh
+decodex recover merged-closeout <ISSUE> --pr <MERGED_PR> --dry-run
+decodex recover merged-closeout <ISSUE> --pr <MERGED_PR> --manual-authority
+```
+
+The live command writes idempotent `closeout` and `cleanup_complete` Linear execution
+ledger records, records them in the local runtime store, and clears any stale runtime
+worktree mapping for the issue only after both ledger writes succeed.
+
+The command rejects the reconciliation unless all of these are true:
+
+- the tracker issue is in the workflow completed state
+- the issue does not have the queue, active, opt-out, or needs-attention labels
+- the PR belongs to the configured repository, targets the configured default branch,
+  and is `MERGED`
+- the PR head branch matches the retained branch from runtime worktree mapping or the
+  existing execution ledger
+- the PR merge commit is reachable from the current local `origin/<default-branch>`
+- any retained worktree path that still exists is clean, on the PR head branch, and at
+  the PR head SHA
+- the retained branch can be proven from the runtime mapping or existing execution
+  ledger
+
+After a successful reconciliation, `decodex status --live` should no longer count the
+old terminal attention as current project attention; the Run Ledger should show
+`cleanup_complete` as the final lifecycle outcome.
