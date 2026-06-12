@@ -39,7 +39,6 @@ enum ExternalReviewRequestCiGate {
 	Ready,
 	WaitForGreenChecks,
 	RepairRequired,
-	ManualAttention(&'static str),
 }
 
 #[derive(Clone, Copy)]
@@ -1510,15 +1509,24 @@ fn history_lane_has_current_attention_signal(
 	snapshot: &OperatorStatusSnapshot,
 	lane: &OperatorHistoryLaneStatus,
 ) -> bool {
-	if lane.active_label_present == Some(true) || lane.needs_attention_label_present == Some(true) {
+	if lane.needs_attention_label_present == Some(true) {
 		return true;
 	}
 
 	let issue_key = history_lane_group_key(lane);
+	let has_non_attention_post_review_owner =
+		history_lane_has_current_non_attention_post_review_owner(snapshot, &issue_key);
+
+	if lane.active_label_present == Some(true) && !has_non_attention_post_review_owner {
+		return true;
+	}
 
 	snapshot.worktrees.iter().any(|worktree| {
-		operator_issue_attention_key(&worktree.issue_id, worktree.issue_identifier.as_deref())
-			== issue_key
+		!has_non_attention_post_review_owner
+			&& operator_issue_attention_key(
+				&worktree.issue_id,
+				worktree.issue_identifier.as_deref(),
+			) == issue_key
 	}) || snapshot.post_review_lanes.iter().any(|post_review_lane| {
 		post_review_lane_counts_as_attention(post_review_lane)
 			&& operator_issue_attention_key(
@@ -1529,6 +1537,19 @@ fn history_lane_has_current_attention_signal(
 		queued_candidate_counts_as_attention(candidate)
 			&& operator_issue_attention_key(&candidate.issue_id, Some(&candidate.issue_identifier))
 				== issue_key
+	})
+}
+
+fn history_lane_has_current_non_attention_post_review_owner(
+	snapshot: &OperatorStatusSnapshot,
+	issue_key: &str,
+) -> bool {
+	snapshot.post_review_lanes.iter().any(|post_review_lane| {
+		!post_review_lane_counts_as_attention(post_review_lane)
+			&& operator_issue_attention_key(
+				&post_review_lane.issue_id,
+				Some(&post_review_lane.issue_identifier),
+			) == issue_key
 	})
 }
 
@@ -4178,9 +4199,6 @@ fn apply_review_orchestration_phase_classification(
 					classification.reason =
 						String::from("external_review_request_ci_red_repair_required");
 				},
-				ExternalReviewRequestCiGate::ManualAttention(reason) => {
-					*classification = blocked_post_review_lane_from_state(review_state, reason);
-				},
 			}
 		},
 		ReviewOrchestrationPhase::WaitingForAck => {
@@ -4833,17 +4851,8 @@ fn external_review_request_ci_gate(
 	match review_state.status_check_rollup_state.as_deref() {
 		None | Some("SUCCESS") => ExternalReviewRequestCiGate::Ready,
 		Some("EXPECTED" | "PENDING") => ExternalReviewRequestCiGate::WaitForGreenChecks,
-		Some("ERROR" | "FAILURE")
-			if failed_checks_require_repair(
-				review_state.status_check_rollup_state.as_deref(),
-				&review_state.merge_state_status,
-			) =>
-		{
-			ExternalReviewRequestCiGate::RepairRequired
-		},
-		Some("ERROR" | "FAILURE") | Some(_) => ExternalReviewRequestCiGate::ManualAttention(
-			"external_review_request_ci_red_manual_attention",
-		),
+		Some("ERROR" | "FAILURE") => ExternalReviewRequestCiGate::RepairRequired,
+		Some(_) => ExternalReviewRequestCiGate::WaitForGreenChecks,
 	}
 }
 
