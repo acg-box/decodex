@@ -92,6 +92,48 @@ The lane should leave `missing_review_handoff_record` and return to the existing
 post-review lifecycle classification such as waiting for review, ready to land, review
 repair required, or blocked for a different concrete reason.
 
+## Manual PR Takeover
+
+Use `adopt` when a human-owned PR was created from a managed Decodex worktree and the
+operator wants Decodex to take over the normal issue-authority landing and tracker
+closeout path. Do not use it for retained lanes that already have a worktree mapping
+or review handoff marker; those belong to `rebind`, normal `decodex land`, or the
+retained post-review scheduler.
+
+Run it from the lane worktree, not from the repo root:
+
+```sh
+decodex recover review-handoff adopt <ISSUE> --pr <PR_URL> --dry-run
+decodex recover review-handoff adopt <ISSUE> --pr <PR_URL>
+```
+
+The command rejects the adopt unless all of these are true:
+
+- the issue has `decodex:active:<service-id>` and does not have the opt-out or
+  needs-attention labels
+- the issue is in the workflow `tracker.in_progress_state` or already in
+  `tracker.success_state`
+- no retained worktree mapping or review handoff marker already exists for the
+  issue/branch
+- the current checkout is a managed worktree under the configured `worktree_root`
+- the current worktree is clean except top-level Decodex runtime artifacts such as
+  `.decodex-run-activity` and `.decodex-run-control/`
+- the PR belongs to the configured GitHub repository, targets the configured default
+  branch, is open and non-draft, has no pending review requests or unresolved review
+  threads, and has green landable checks
+- the PR head branch and head SHA exactly match the current worktree branch and `HEAD`
+
+The non-dry-run command writes a runtime worktree mapping, a local takeover run
+attempt, review handoff/orchestration markers, and a `review_handoff_adopt` audit
+event. If the issue was still in the workflow `tracker.in_progress_state`, the command
+moves it to `tracker.success_state` after the audit succeeds. It does not merge the PR.
+
+After a successful adopt, land through the normal issue-authority path:
+
+```sh
+decodex land --authority <ISSUE> --pr <PR_URL> "<summary>"
+```
+
 ## Legacy Cleanup-Only Rows
 
 Do not use `recover review-handoff rebind` for a row that appears only under

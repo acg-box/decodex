@@ -48,6 +48,10 @@ If a project-scoped command supplies `--config <project-dir>`, read that project
   only when a current same-PR same-head handoff marker proves stale failure-state drift.
 - Humans should not normally add or clear `decodex:active:<service-id>` unless doing
   explicit recovery and the runtime-owned state has been verified.
+- For `recover review-handoff adopt`, restore `decodex:active:<service-id>` only after
+  verifying the issue, service ID, managed worktree, PR branch, and PR head belong to
+  the same manual takeover lane. Adopt must then validate the label again before it
+  writes runtime handoff state.
 
 ## Queue an Issue
 
@@ -83,6 +87,8 @@ If a project-scoped command supplies `--config <project-dir>`, read that project
 - Do not use `decodex:active:<service-id>` to mean "please start work".
 - Do not clear `decodex:needs-attention` just to silence a failed lane.
 - Do not add a service-scoped label for the wrong registered service.
+- Do not add `decodex:active:<service-id>` just to make `decodex land` pass; use it
+  only for verified retained-lane recovery or manual PR takeover adopt.
 - Do not ask ordinary users to apply queue labels, mention DAG/goal mechanics, or
   manage internal readiness state just to move from research to execution; route that
   through promotion, planning, and automation policy.

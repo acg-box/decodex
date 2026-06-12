@@ -7,7 +7,7 @@ use std::{
 	process::Command,
 };
 
-use color_eyre::Report;
+use color_eyre::{Report, eyre::WrapErr};
 use serde::Serialize;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
@@ -15,7 +15,7 @@ use crate::{
 	config::ServiceConfig,
 	github,
 	prelude::{Result, eyre},
-	pull_request::PullRequestLandingState,
+	pull_request::{self, PullRequestLandingState},
 	runtime,
 	state::{
 		self, ConnectorBackoffInput, ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore,
@@ -38,6 +38,7 @@ const REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION: &str = "review_handoff_rebi
 const REVIEW_HANDOFF_UNVERIFIED_CLASSIFICATION: &str = "review_handoff_unverified";
 const REVIEW_HANDOFF_MISMATCH_CLASSIFICATION: &str = "review_handoff_mismatch";
 const REVIEW_HANDOFF_REBIND_EVENT: &str = "review_handoff_rebind";
+const REVIEW_HANDOFF_ADOPT_EVENT: &str = "review_handoff_adopt";
 const LEGACY_MANUAL_CLOSEOUT_EVENT: &str = "closeout";
 const LEGACY_MANUAL_CLOSEOUT_ANCHOR: &str = "legacy_manual_closeout";
 const REBOUND_ORCHESTRATION_PHASE: &str = "request_pending";
@@ -61,6 +62,17 @@ pub(crate) struct ReviewHandoffRebindRequest {
 	/// Pull request URL to bind.
 	pub(crate) pr_url: String,
 	/// Validate without writing markers or tracker audit comments.
+	pub(crate) dry_run: bool,
+}
+
+/// Explicit manual PR takeover into retained review handoff state.
+#[derive(Debug)]
+pub(crate) struct ReviewHandoffAdoptRequest {
+	/// Issue identifier to adopt.
+	pub(crate) issue: String,
+	/// Pull request URL to adopt.
+	pub(crate) pr_url: String,
+	/// Validate without writing runtime markers or tracker audit comments.
 	pub(crate) dry_run: bool,
 }
 
@@ -160,6 +172,19 @@ struct RebindValidation {
 	mode: RebindMode,
 	success_state_transition: Option<RebindSuccessStateTransition>,
 	clear_needs_attention_label: bool,
+}
+
+struct AdoptValidation {
+	issue: TrackerIssue,
+	branch_name: String,
+	worktree_path: PathBuf,
+	run_id: String,
+	attempt_number: i64,
+	landing_state: PullRequestLandingState,
+	local_head_oid: String,
+	worktree_path_for_event: Option<String>,
+	active_label_present: bool,
+	success_state_transition: Option<RebindSuccessStateTransition>,
 }
 
 struct LegacyCloseoutValidation {
@@ -306,6 +331,52 @@ pub(crate) fn run_review_handoff_rebind(
 		landing_url(&validation.landing_state),
 		validation.local_head_oid,
 		validation.mode.evidence_value()
+	);
+
+	Ok(())
+}
+
+/// Run an explicit manual PR takeover into retained review handoff state.
+pub(crate) fn run_review_handoff_adopt(
+	config_path: Option<&Path>,
+	request: &ReviewHandoffAdoptRequest,
+) -> Result<()> {
+	let context = load_recovery_context(config_path)?;
+	let validation = validate_adopt_request(&context, request)?;
+
+	if request.dry_run {
+		let state_transition = validation
+			.success_state_transition
+			.as_ref()
+			.map_or("none", |transition| transition.state_name.as_str());
+
+		println!(
+			"dry run: review handoff adopt validated for project={} issue={} branch={} pr={} head={} run_id={} attempt={} active_label_present={} state_transition={}",
+			context.config.service_id(),
+			validation.issue.identifier,
+			validation.branch_name,
+			landing_url(&validation.landing_state),
+			validation.local_head_oid,
+			validation.run_id,
+			validation.attempt_number,
+			validation.active_label_present,
+			state_transition
+		);
+
+		return Ok(());
+	}
+
+	apply_review_handoff_adopt(&context, &validation)?;
+
+	println!(
+		"adopt ok: project={} issue={} branch={} pr={} head={} run_id={} attempt={}",
+		context.config.service_id(),
+		validation.issue.identifier,
+		validation.branch_name,
+		landing_url(&validation.landing_state),
+		validation.local_head_oid,
+		validation.run_id,
+		validation.attempt_number
 	);
 
 	Ok(())
@@ -998,6 +1069,58 @@ fn validate_rebind_request(
 	})
 }
 
+fn validate_adopt_request(
+	context: &RecoveryContext,
+	request: &ReviewHandoffAdoptRequest,
+) -> Result<AdoptValidation> {
+	let issue = load_issue_by_identifier(&context.tracker, &request.issue)?;
+	let label_validation = validate_adopt_issue_context(context, &issue)?;
+	let landing_state = inspect_rebind_pull_request(context, &request.pr_url)?;
+
+	validate_adopt_landing_state(&landing_state)?;
+
+	let cwd = env::current_dir()?;
+	let worktree_path = validate_adopt_current_worktree(context, &issue, &landing_state, &cwd)?;
+	let branch_name = worktree_checkout_branch_name(&worktree_path)?
+		.ok_or_else(|| eyre::eyre!("Manual takeover worktree is detached."))?;
+	let local_head_oid = worktree_head_oid(&worktree_path)?
+		.ok_or_else(|| eyre::eyre!("Manual takeover worktree has no readable HEAD."))?;
+	let existing_handoff = context.state_store.review_handoff_marker(
+		context.config.service_id(),
+		&issue.id,
+		&branch_name,
+	)?;
+
+	if existing_handoff.is_some() {
+		eyre::bail!(
+			"Issue `{}` already has a retained review handoff marker for branch `{branch_name}`; use `decodex land` or `decodex recover review-handoff rebind` instead.",
+			issue.identifier
+		);
+	}
+
+	let success_state_transition = validate_adopt_issue_state(context, &issue)?;
+	let attempt_number = context
+		.state_store
+		.latest_run_attempt_for_issue(&issue.id)?
+		.map_or(1, |attempt| attempt.attempt_number().saturating_add(1));
+	let run_id = manual_adopt_run_id(&issue.identifier, attempt_number, &local_head_oid);
+	let worktree_path_for_event =
+		repository_relative_path(context.config.repo_root(), &worktree_path);
+
+	Ok(AdoptValidation {
+		issue,
+		branch_name,
+		worktree_path,
+		run_id,
+		attempt_number,
+		landing_state,
+		local_head_oid,
+		worktree_path_for_event,
+		active_label_present: label_validation.active_label_present,
+		success_state_transition,
+	})
+}
+
 fn validate_legacy_closeout_request(
 	context: &RecoveryContext,
 	request: &LegacyCloseoutRecoveryRequest,
@@ -1444,6 +1567,216 @@ fn validate_rebind_tracker_labels(
 	)
 }
 
+fn validate_adopt_issue_context(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+) -> Result<RebindLabelValidation> {
+	let tracker_policy = context.workflow.frontmatter().tracker();
+
+	if issue.has_label(tracker_policy.opt_out_label()) {
+		eyre::bail!(
+			"Issue `{}` has opt-out label `{}`.",
+			issue.identifier,
+			tracker_policy.opt_out_label()
+		);
+	}
+
+	let active_label = tracker::automation_active_label(context.config.service_id());
+	let active_label_present =
+		tracker::issue_has_label_with_server_confirmation(&context.tracker, issue, &active_label)?;
+
+	if !active_label_present {
+		eyre::bail!(
+			"Issue `{}` is missing active automation label `{active_label}`. Restore explicit lane ownership before manual takeover adopt.",
+			issue.identifier
+		);
+	}
+
+	let needs_attention_label = tracker_policy.needs_attention_label();
+	let needs_attention_present = tracker::issue_has_label_with_server_confirmation(
+		&context.tracker,
+		issue,
+		needs_attention_label,
+	)?;
+
+	if needs_attention_present {
+		eyre::bail!(
+			"Issue `{}` has needs-attention label `{needs_attention_label}`; manual takeover adopt will not bypass a human-required stop.",
+			issue.identifier
+		);
+	}
+
+	Ok(RebindLabelValidation { active_label_present, clear_needs_attention_label: false })
+}
+
+fn validate_adopt_issue_state(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+) -> Result<Option<RebindSuccessStateTransition>> {
+	validate_adopt_issue_state_for_policy(context.workflow.frontmatter().tracker(), issue)
+}
+
+fn validate_adopt_issue_state_for_policy(
+	tracker_policy: &WorkflowTracker,
+	issue: &TrackerIssue,
+) -> Result<Option<RebindSuccessStateTransition>> {
+	let success_state = tracker_policy.success_state();
+
+	if issue.state.name == success_state {
+		return Ok(None);
+	}
+	if issue.state.name == tracker_policy.in_progress_state() {
+		let state_id = issue.state_id_for_name(success_state).ok_or_else(|| {
+			eyre::eyre!("State `{success_state}` was not found for issue `{}`.", issue.identifier)
+		})?;
+
+		return Ok(Some(RebindSuccessStateTransition {
+			state_name: success_state.to_owned(),
+			state_id: state_id.to_owned(),
+		}));
+	}
+
+	eyre::bail!(
+		"Issue `{}` is in `{}`, but manual takeover adopt requires `{}` or `{}`.",
+		issue.identifier,
+		issue.state.name,
+		tracker_policy.in_progress_state(),
+		success_state
+	)
+}
+
+fn validate_adopt_landing_state(landing_state: &PullRequestLandingState) -> Result<()> {
+	let pr_url = landing_url(landing_state);
+	let gate_view = landing_state.gate_view();
+
+	if pull_request::manual_landing_gates_satisfied(gate_view) {
+		return Ok(());
+	}
+	if gate_view.pending_review_requests > 0 {
+		eyre::bail!(
+			"Pull request `{pr_url}` still has {} pending review request(s).",
+			gate_view.pending_review_requests
+		);
+	}
+	if gate_view.unresolved_review_threads > 0 {
+		eyre::bail!(
+			"Pull request `{pr_url}` still has {} unresolved review thread(s).",
+			gate_view.unresolved_review_threads
+		);
+	}
+	if gate_view.review_decision == Some("CHANGES_REQUESTED") {
+		eyre::bail!("Pull request `{pr_url}` still has active change requests.");
+	}
+
+	if let Some(reason) = pull_request::merge_state_requires_review_repair(
+		gate_view.mergeable,
+		gate_view.merge_state_status,
+	) {
+		eyre::bail!("Pull request `{pr_url}` requires review repair: {reason}.");
+	}
+
+	if pull_request::failed_checks_require_repair(
+		gate_view.status_check_rollup_state,
+		gate_view.merge_state_status,
+	) {
+		eyre::bail!("Pull request `{pr_url}` has failed required checks that need repair.");
+	}
+
+	if let Some(other) = gate_view.status_check_rollup_state
+		&& pull_request::checks_require_wait(Some(other))
+	{
+		eyre::bail!(
+			"Pull request `{pr_url}` is still waiting on checks: statusCheckRollup=`{other}`."
+		);
+	}
+
+	if pull_request::mergeability_unknown(gate_view) {
+		eyre::bail!("Pull request `{pr_url}` mergeability is still unknown.");
+	}
+	if !pull_request::merge_state_allows_ready_to_land(gate_view.merge_state_status) {
+		eyre::bail!(
+			"Pull request `{pr_url}` is not ready to adopt: mergeStateStatus=`{}`.",
+			gate_view.merge_state_status
+		);
+	}
+	if gate_view.mergeable != "MERGEABLE" {
+		eyre::bail!(
+			"Pull request `{pr_url}` is not mergeable: mergeable=`{}`.",
+			gate_view.mergeable
+		);
+	}
+
+	match gate_view.status_check_rollup_state {
+		Some("SUCCESS") | None => Ok(()),
+		Some(other) => eyre::bail!(
+			"Pull request `{pr_url}` still has non-green checks: statusCheckRollup=`{other}`."
+		),
+	}
+}
+
+fn validate_adopt_current_worktree(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+	landing_state: &PullRequestLandingState,
+	cwd: &Path,
+) -> Result<PathBuf> {
+	if context.state_store.worktree_for_issue(&issue.id)?.is_some() {
+		eyre::bail!(
+			"Issue `{}` already has a retained worktree mapping; use review-handoff rebind instead of manual takeover adopt.",
+			issue.identifier
+		);
+	}
+
+	let worktree_path = git_toplevel_path(cwd)?;
+	let canonical_worktree = fs::canonicalize(&worktree_path).wrap_err_with(|| {
+		format!("Failed to canonicalize current worktree `{}`.", worktree_path.display())
+	})?;
+	let canonical_root = fs::canonicalize(context.config.worktree_root()).wrap_err_with(|| {
+		format!(
+			"Failed to canonicalize configured worktree root `{}`.",
+			context.config.worktree_root().display()
+		)
+	})?;
+
+	if !canonical_worktree.starts_with(&canonical_root) || canonical_worktree == canonical_root {
+		eyre::bail!(
+			"Manual takeover adopt for issue `{}` must run from a managed lane under worktree_root `{}`.",
+			issue.identifier,
+			context.config.worktree_root().display()
+		);
+	}
+
+	let local_branch = worktree_checkout_branch_name(&canonical_worktree)?
+		.ok_or_else(|| eyre::eyre!("Manual takeover worktree is detached."))?;
+
+	if local_branch != landing_state.head_ref_name {
+		eyre::bail!(
+			"Pull request `{}` points at branch `{}`, but current worktree branch is `{local_branch}`.",
+			landing_url(landing_state),
+			landing_state.head_ref_name
+		);
+	}
+	if !worktree_is_clean(&canonical_worktree)? {
+		eyre::bail!(
+			"Manual takeover worktree `{}` has local changes; adopt requires a clean lane checkout.",
+			canonical_worktree.display()
+		);
+	}
+
+	let local_head = worktree_head_oid(&canonical_worktree)?
+		.ok_or_else(|| eyre::eyre!("Manual takeover worktree has no readable HEAD."))?;
+
+	if landing_state.head_ref_oid != local_head {
+		eyre::bail!(
+			"Pull request `{}` points at head `{}`, but current worktree HEAD is `{local_head}`.",
+			landing_url(landing_state),
+			landing_state.head_ref_oid
+		);
+	}
+
+	Ok(canonical_worktree)
+}
+
 fn apply_review_handoff_rebind(
 	context: &RecoveryContext,
 	validation: &RebindValidation,
@@ -1513,6 +1846,111 @@ fn apply_review_handoff_rebind(
 	Ok(())
 }
 
+fn apply_review_handoff_adopt(
+	context: &RecoveryContext,
+	validation: &AdoptValidation,
+) -> Result<()> {
+	let handoff_marker = ReviewHandoffMarker::new(
+		validation.run_id.clone(),
+		validation.attempt_number,
+		validation.branch_name.clone(),
+		landing_url(&validation.landing_state),
+		validation.landing_state.base_ref_name.clone(),
+		validation.landing_state.head_ref_name.clone(),
+		validation.local_head_oid.clone(),
+	);
+	let orchestration_marker = ReviewOrchestrationMarker::new(
+		validation.run_id.clone(),
+		validation.attempt_number,
+		validation.branch_name.clone(),
+		landing_url(&validation.landing_state),
+		validation.local_head_oid.clone(),
+		REBOUND_ORCHESTRATION_PHASE,
+		None,
+		None,
+		None,
+		0,
+		0,
+		None,
+	);
+	let event = review_handoff_adopt_event(context, validation);
+	let worktree_path = validation.worktree_path.to_string_lossy().to_string();
+	let local_state_write = context
+		.state_store
+		.upsert_worktree(
+			context.config.service_id(),
+			&validation.issue.id,
+			&validation.branch_name,
+			&worktree_path,
+		)
+		.and_then(|()| {
+			context.state_store.record_run_attempt(
+				&validation.run_id,
+				&validation.issue.id,
+				validation.attempt_number,
+				"starting",
+			)
+		})
+		.and_then(|()| {
+			context.state_store.upsert_review_handoff_marker(
+				context.config.service_id(),
+				&validation.issue.id,
+				&handoff_marker,
+			)
+		})
+		.and_then(|()| {
+			context.state_store.upsert_review_orchestration_marker(
+				context.config.service_id(),
+				&validation.issue.id,
+				&orchestration_marker,
+			)
+		});
+
+	if let Err(error) = local_state_write {
+		mark_adopt_attempt_failed(context, validation);
+
+		context.state_store.clear_review_markers_for_handoff(
+			context.config.service_id(),
+			&validation.issue.id,
+			&handoff_marker,
+			&orchestration_marker,
+		)?;
+		context.state_store.clear_worktree(&validation.issue.id)?;
+
+		return Err(error);
+	}
+	if let Err(error) = write_adopt_audit(context, validation, &event)
+		.and_then(|()| context.state_store.record_linear_execution_event(&event))
+	{
+		mark_adopt_attempt_failed(context, validation);
+
+		context.state_store.clear_review_markers_for_handoff(
+			context.config.service_id(),
+			&validation.issue.id,
+			&handoff_marker,
+			&orchestration_marker,
+		)?;
+		context.state_store.clear_worktree(&validation.issue.id)?;
+
+		return Err(error);
+	}
+	if let Some(transition) = validation.success_state_transition.as_ref() {
+		context.tracker.update_issue_state(&validation.issue.id, &transition.state_id)?;
+	}
+
+	Ok(())
+}
+
+fn mark_adopt_attempt_failed(context: &RecoveryContext, validation: &AdoptValidation) {
+	if let Err(error) = context.state_store.update_run_status(&validation.run_id, "failed") {
+		tracing::warn!(
+			?error,
+			run_id = %validation.run_id,
+			"Failed to mark manual takeover adopt attempt failed."
+		);
+	}
+}
+
 fn review_handoff_rebind_event(
 	context: &RecoveryContext,
 	validation: &RebindValidation,
@@ -1561,6 +1999,55 @@ fn review_handoff_rebind_event(
 	event
 }
 
+fn review_handoff_adopt_event(
+	context: &RecoveryContext,
+	validation: &AdoptValidation,
+) -> LinearExecutionEventRecord {
+	let pr_url = landing_url(&validation.landing_state);
+	let stable_anchor = records::stable_event_anchor(&[
+		pr_url,
+		&validation.local_head_oid,
+		REVIEW_HANDOFF_ADOPT_EVENT,
+	]);
+	let mut event = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: context.config.service_id(),
+			issue_id: &validation.issue.id,
+			issue_identifier: &validation.issue.identifier,
+			run_id: &validation.run_id,
+			attempt_number: validation.attempt_number,
+		},
+		REVIEW_HANDOFF_ADOPT_EVENT,
+		current_timestamp(),
+		&stable_anchor,
+	);
+
+	event.branch = Some(validation.branch_name.clone());
+	event.worktree_path = validation.worktree_path_for_event.clone();
+	event.pr_url = Some(pr_url.to_owned());
+	event.pr_head_sha = Some(validation.local_head_oid.clone());
+	event.pr_base_ref = Some(validation.landing_state.base_ref_name.clone());
+	event.commit_sha = Some(validation.local_head_oid.clone());
+	event.validation_result = Some(String::from("passed"));
+	event.summary = Some(format!(
+		"Explicit operator manual takeover adopted review handoff for {}.",
+		validation.issue.identifier,
+	));
+	event.evidence = Some(vec![
+		format!("issue_state={}", validation.issue.state.name),
+		format!("branch={}", validation.branch_name),
+		format!("pr_url={pr_url}"),
+		format!("pr_head_sha={}", validation.local_head_oid),
+		format!("active_label_present={}", validation.active_label_present),
+		String::from("manual_takeover_adopt=true"),
+		String::from("existing_retained_worktree_mapping=false"),
+		String::from("existing_review_handoff_marker=false"),
+	]);
+	event.next_action = Some(String::from("continue retained post-review lifecycle"));
+
+	event
+}
+
 fn write_rebind_audit(
 	context: &RecoveryContext,
 	validation: &RebindValidation,
@@ -1571,6 +2058,31 @@ fn write_rebind_audit(
 		validation.mode.summary_action(),
 		validation.issue.identifier,
 		landing_url(&validation.landing_state)
+	);
+	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
+		context.config.privacy_classifier(),
+	)?;
+	let projection =
+		tracker::prepare_linear_execution_event_comment(&body, event, &privacy_classifier)?;
+
+	tracker::create_prepared_linear_execution_event_comment(
+		&context.tracker,
+		&validation.issue.id,
+		&projection,
+	)?;
+
+	Ok(())
+}
+
+fn write_adopt_audit(
+	context: &RecoveryContext,
+	validation: &AdoptValidation,
+	event: &LinearExecutionEventRecord,
+) -> Result<()> {
+	let body = format!(
+		"Decodex operator recovery: adopted human-owned PR `{}` for `{}` into retained review handoff state. This does not land the pull request.",
+		landing_url(&validation.landing_state),
+		validation.issue.identifier,
 	);
 	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
 		context.config.privacy_classifier(),
@@ -1680,8 +2192,35 @@ fn landing_url(landing_state: &PullRequestLandingState) -> &str {
 	&landing_state.url
 }
 
+fn manual_adopt_run_id(issue_identifier: &str, attempt_number: i64, head_oid: &str) -> String {
+	let normalized_issue = issue_identifier
+		.chars()
+		.map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+		.collect::<String>();
+	let head_prefix = head_oid.chars().take(12).collect::<String>();
+
+	format!("{normalized_issue}-manual-adopt-{attempt_number}-{head_prefix}")
+}
+
 fn current_timestamp() -> String {
 	OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp formatting should succeed")
+}
+
+fn git_toplevel_path(cwd: &Path) -> Result<PathBuf> {
+	let output =
+		Command::new("git").arg("-C").arg(cwd).args(["rev-parse", "--show-toplevel"]).output()?;
+
+	if output.status.success() {
+		return Ok(PathBuf::from(trimmed_stdout(&output.stdout)?));
+	}
+
+	let stderr = String::from_utf8_lossy(&output.stderr);
+
+	eyre::bail!(
+		"Failed to inspect current Git worktree root from `{}`: {}",
+		cwd.display(),
+		stderr.trim()
+	)
 }
 
 fn worktree_checkout_branch_name(worktree_path: &Path) -> Result<Option<String>> {
@@ -1807,8 +2346,9 @@ mod tests {
 	use crate::{
 		pull_request::PullRequestLandingState,
 		recovery::{
-			REVIEW_HANDOFF_BOUND_CLASSIFICATION, REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION,
-			REVIEW_HANDOFF_REBIND_EVENT, REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION,
+			REVIEW_HANDOFF_ADOPT_EVENT, REVIEW_HANDOFF_BOUND_CLASSIFICATION,
+			REVIEW_HANDOFF_OWNERSHIP_DRIFT_CLASSIFICATION, REVIEW_HANDOFF_REBIND_EVENT,
+			REVIEW_HANDOFF_REBIND_REQUIRED_CLASSIFICATION,
 		},
 		state::{ReviewHandoffMarker, ReviewOrchestrationMarker, StateStore, WorktreeMapping},
 		tracker::{
@@ -2098,6 +2638,62 @@ Test workflow.
 
 		assert!(error.to_string().contains("requires `In Review`"));
 		assert!(!error.to_string().contains("partial missing-marker"));
+	}
+
+	#[test]
+	fn adopt_state_allows_in_progress_or_review_only() {
+		let workflow = sample_workflow();
+		let in_progress = sample_issue("In Progress");
+		let transition = super::validate_adopt_issue_state_for_policy(
+			workflow.frontmatter().tracker(),
+			&in_progress,
+		)
+		.expect("in-progress issue should be adoptable")
+		.expect("in-progress issue should transition to review");
+
+		assert_eq!(transition.state_name, "In Review");
+		assert_eq!(transition.state_id, "state-review");
+
+		let in_review = sample_issue("In Review");
+		let no_transition = super::validate_adopt_issue_state_for_policy(
+			workflow.frontmatter().tracker(),
+			&in_review,
+		)
+		.expect("in-review issue should remain adoptable");
+
+		assert!(no_transition.is_none());
+
+		let todo = sample_issue("Todo");
+		let error =
+			super::validate_adopt_issue_state_for_policy(workflow.frontmatter().tracker(), &todo)
+				.expect_err("manual takeover should not bypass failure/start states");
+
+		assert!(error.to_string().contains("manual takeover adopt requires"));
+	}
+
+	#[test]
+	fn adopt_landing_state_rejects_pending_checks() {
+		let mut landing_state = sample_landing_state(
+			"https://github.com/hack-ink/decodex/pull/344",
+			"xy/xy-944-manual-takeover-adopt",
+			"1123456789abcdef0123456789abcdef01234567",
+		);
+
+		landing_state.status_check_rollup_state = Some(String::from("PENDING"));
+
+		let error = super::validate_adopt_landing_state(&landing_state)
+			.expect_err("manual takeover must not adopt pending checks");
+
+		assert!(error.to_string().contains("still waiting on checks"));
+	}
+
+	#[test]
+	fn manual_adopt_run_id_is_stable_for_head() {
+		let head_oid = "0123456789abcdef0123456789abcdef01234567";
+		let run_id = super::manual_adopt_run_id("XY-944", 2, head_oid);
+
+		assert_eq!(run_id, "xy-944-manual-adopt-2-0123456789ab");
+		assert_eq!(run_id, super::manual_adopt_run_id("XY-944", 2, head_oid));
 	}
 
 	#[test]
@@ -2578,6 +3174,36 @@ Test workflow.
 
 		records::validate_linear_execution_event_record(&record)
 			.expect("rebind event should validate");
+	}
+
+	#[test]
+	fn review_handoff_adopt_event_validation_accepts_required_fields() {
+		let mut record = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: "decodex",
+				issue_id: "issue-id",
+				issue_identifier: "XY-944",
+				run_id: "xy-944-manual-adopt-1",
+				attempt_number: 1,
+			},
+			REVIEW_HANDOFF_ADOPT_EVENT,
+			super::current_timestamp(),
+			"anchor",
+		);
+
+		record.branch = Some(String::from("xy/xy-944-manual-takeover-adopt"));
+		record.worktree_path = Some(String::from(".worktrees/XY-944"));
+		record.pr_url = Some(String::from("https://github.com/hack-ink/decodex/pull/344"));
+		record.pr_head_sha = Some(String::from("0123456789abcdef0123456789abcdef01234567"));
+		record.pr_base_ref = Some(String::from("main"));
+		record.commit_sha = Some(String::from("0123456789abcdef0123456789abcdef01234567"));
+		record.validation_result = Some(String::from("passed"));
+		record.summary =
+			Some(String::from("Explicit operator manual takeover adopted review handoff."));
+		record.evidence = Some(vec![String::from("manual_takeover_adopt=true")]);
+
+		records::validate_linear_execution_event_record(&record)
+			.expect("adopt event should validate");
 	}
 
 	#[test]
