@@ -298,7 +298,7 @@ pub(crate) fn run_issue_batch_intake_command(
 	request: IssueBatchIntakeCommandRequest<'_>,
 ) -> Result<IssueBatchIntakeReport> {
 	if request.dry_run == request.persist {
-		eyre::bail!("Issue-batch intake requires exactly one of --dry-run or --persist.");
+		eyre::bail!("Issue-batch intake requires exactly one of --dry-run or --apply.");
 	}
 
 	let state_store = runtime::open_runtime_store()?;
@@ -564,7 +564,7 @@ where
 
 /// Render a compact human-readable intake report.
 pub(crate) fn render_issue_batch_intake_report(report: &IssueBatchIntakeReport) -> String {
-	let mode = if report.persisted { "persist" } else { "dry-run" };
+	let mode = if report.persisted { "apply" } else { "dry-run" };
 	let mut output = format!(
 		"program intake {mode}: service={} program={} queue_label={} ready={} held={} blocked={} stale={} unmapped={}\n",
 		report.service_id,
