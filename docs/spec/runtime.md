@@ -796,10 +796,12 @@ After a process restart, recent-run history, active lease ownership, retained po
 - If the agent Git credential preflight fails, operator status must report the retained lane as a credential failure requiring operator recovery, not as a still-running lane.
 - If retry budget or needs-attention recovery finds tracked changes in the retained worktree after active phase-goal recovery has no applicable continuation path, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
 - A retryable runtime or app-server failure that leaves tracked worktree changes must
-  stop as retained partial progress instead of writing only a generic retry comment.
-  This does not apply to repo-gate continued-repair failures, because those failures
-  still authorize bounded automatic repair against the retained patch until retry or
-  loop-guardrail limits are reached.
+  keep the owned lane in automatic recovery while retry budget or loop-guardrail
+  recovery remains. The retained patch is retry context for the same worktree, not by
+  itself a human-attention signal. When that same failure class exhausts retry budget
+  or another terminal boundary applies, terminal writeback may classify the retained
+  patch as `partial_progress_retained` and preserve the runtime, app-server,
+  credential, transport, or repo-gate class as source evidence.
 - If the durable Run Ledger final outcome is `needs_attention` or
   `terminal_failure`, operator status must count that issue in project-level
   `attention_count` only when a current attention signal still exists: a retained
