@@ -174,6 +174,9 @@ fn expected_developer_instructions(
 		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/1` JSON commit message.\n- Required fields: `schema`, `summary`, and `authority`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- Optional fields: `related` and `breaking`.\n- Do not encode landing mode, CI status, closeout state, or other process-state fields in the commit message.",
 	));
 	sections.push(String::from(
+		"Phase goal runtime contract\n- Decodex may set an active phase goal that narrows the immediate turn below the full issue lifecycle checklist.\n- Treat the active phase goal as the authoritative current contract. For `implement_to_validation_ready`, `repair_validation_failures`, and `repair_accepted_review_findings`, stop at validated local work, then explicitly complete the active phase goal with the Codex goal completion mechanism so Decodex can run its repo gate and select the next phase.\n- Do not use `issue_progress_checkpoint`, final chat text, or an \"await next phase\" statement as a substitute for completing a satisfied phase goal.\n- Only the later `handoff_evidence` phase should create/update the PR and record the terminal handoff path; that phase still requires the normal review handoff plus `issue_terminal_finalize`.",
+	));
+	sections.push(String::from(
 		TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION,
 	));
 

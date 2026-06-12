@@ -187,6 +187,48 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 }
 
 #[test]
+fn implementation_phase_goal_contract_requires_explicit_goal_completion() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: String::from("In Progress"),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.repo_root().to_path_buf(),
+			reused_existing: false,
+		},
+		retry_project_slug: String::from("pubfi"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1"),
+		retry_budget_base: 0,
+	};
+	let controller = RepoGatePhaseGoalController {
+		project: &config,
+		workflow: &workflow,
+		state_store: &state_store,
+		issue_run: &issue_run,
+	};
+	let goal = controller
+		.initial_phase_goal()
+		.expect("phase goal should build")
+		.expect("normal dispatch should set an implementation phase goal");
+
+	assert_eq!(goal.phase, PhaseGoalKind::ImplementToValidationReady);
+	assert!(
+		goal.objective
+			.contains("explicitly mark the active phase goal complete with the Codex goal completion mechanism")
+	);
+	assert!(goal.objective.contains("Decodex can run its repo gate and select the next phase"));
+	assert!(goal.objective.contains("Do not end with only an `issue_progress_checkpoint`"));
+	assert!(goal.objective.contains("while the phase goal is still active"));
+}
+
+#[test]
 fn repo_gate_shell_falls_back_to_non_login_posix_sh_for_missing_absolute_shell() {
 	let (shell, shell_flag) = orchestrator::repo_gate_shell_from_env(Some(OsString::from(
 		"/definitely-missing-shell-for-tests",
