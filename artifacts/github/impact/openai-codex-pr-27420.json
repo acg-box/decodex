@@ -1,0 +1,48 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27420",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Propagate plugin app categories",
+        "url": "https://github.com/openai/codex/pull/27420",
+        "meta": "Merged 2026-06-11T17:34:41Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27420",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27420.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex app-server plugin read and install summaries now expose nullable app category metadata sourced from local `.app.json`, app metadata, branding, and remote app templates.",
+  "public_signal_decision": "publish",
+  "control_plane_impact": "candidate",
+  "publisher_angle": "practical_explainer",
+  "confidence": "confirmed",
+  "evidence": [
+    "App-server protocol schemas and generated TypeScript types add nullable `category` to app and app-template summaries.",
+    "`AppInfo::category()` implements branding-first and metadata fallback category selection.",
+    "Plugin loader and manager code now carries app category metadata from `.app.json` into app summaries.",
+    "Plugin read/install tests cover category propagation from local manifests, app metadata, and remote templates.",
+    "The plugin-creator sample validator now allows optional non-empty `.app.json` `category` values."
+  ],
+  "candidate_followups": [
+    "Adopt nullable app categories in Decodex plugin/app catalog views.",
+    "Keep category handling additive and null-safe for older or uncategorized apps.",
+    "Consider a later site signal if downstream Decodex UI consumes this field."
+  ],
+  "social_notes": [
+    "Good practical-explainer candidate for plugin authors and app-picker consumers.",
+    "Mention that the protocol addition is nullable and additive.",
+    "Avoid implying a complete marketplace taxonomy launch."
+  ],
+  "caveats": [
+    "The PR does not remove existing plugin app fields.",
+    "The category field may be null.",
+    "This is propagation and validation, not a full app-store taxonomy feature."
+  ]
+}

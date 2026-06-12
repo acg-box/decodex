@@ -1,0 +1,57 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27433",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27433",
+    "commit_shas": [
+      "a8e9807f4a94cf84b288c0c9ce2678788c9d3228"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] remove EnvironmentPathRef",
+        "url": "https://github.com/openai/codex/pull/27433",
+        "meta": "Merged 2026-06-11T18:26:13Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Remove EnvironmentPathRef",
+        "url": "https://github.com/openai/codex/commit/a8e9807f4a94cf84b288c0c9ce2678788c9d3228"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-12T08:06:51Z",
+  "observed_change": "Codex removed the exec-server `EnvironmentPathRef` wrapper and changed executor skill resource ids to store an environment id plus absolute path instead.",
+  "changed_surfaces": [
+    "exec-server public Rust API",
+    "skills catalog resource identity",
+    "executor skill provider resource reads",
+    "executor filesystem authority tests"
+  ],
+  "user_visible_path": "There is no direct CLI/TUI user path in this PR alone; it supports the broader PathUri migration by making executor skill resources carry explicit environment identity and path data rather than a filesystem-bound path wrapper.",
+  "control_plane_relevance": "High for Decodex Control Plane internals that reason about environment-bound resources, PathUri migration, or hosted skill reads. The PR reduces reliance on path objects carrying a filesystem handle.",
+  "compatibility_risk": "Medium for downstream code using `codex_exec_server::EnvironmentPathRef` or assuming skill resource ids contain a bound executor filesystem object. Wire-level user behavior is not directly changed by this PR alone.",
+  "adoption_opportunity": "Audit Decodex PathUri and skill-resource handling for explicit environment id plus path semantics instead of object identity carried by `EnvironmentPathRef`.",
+  "community_value": "Low as a standalone public item because it is internal plumbing stacked on prior PathUri work, but it matters for operators tracking environment-resource authority changes.",
+  "deprecated_or_breaking_notes": "`codex-rs/exec-server/src/environment_path.rs` and the `EnvironmentPathRef` re-export are removed. The PR body says this is stacked on #27454 and switches to static host-path encoding in `PathUri`.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27433 says Codex is switching to static host-path encoding in `PathUri` and removing `EnvironmentPathRef` for now.",
+    "`codex-rs/exec-server/src/environment_path.rs` is deleted and `codex-rs/exec-server/src/lib.rs` stops re-exporting `EnvironmentPathRef`.",
+    "`codex-rs/ext/skills/src/catalog.rs` replaces the optional `EnvironmentPathRef` inside `SkillResourceId` with an `EnvironmentSkillResource` value built from environment id and absolute path.",
+    "`codex-rs/ext/skills/src/provider/executor.rs` passes `environment_id` into resource id construction instead of cloning a filesystem-bound path reference.",
+    "`codex-rs/ext/skills/tests/executor_file_system_authority.rs` removes the test that depended on reading through the same environment filesystem instance used for listing.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27433.json` records 5 changed files for the merged PR."
+  ],
+  "caveats": "This PR is stacked on earlier PathUri work, so do not describe the full PathUri migration as completed by #27433 alone.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Environment-bound skill resource identity changes are relevant to Decodex Control Plane compatibility tracking."
+    }
+  ]
+}

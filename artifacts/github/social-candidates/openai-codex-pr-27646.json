@@ -1,0 +1,55 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27646",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "critical",
+  "audience": "Codex operators using hosted or orchestrator-provided skills",
+  "candidate_text": [
+    "Codex temporarily disabled orchestrator-only skills in app-server while `/ps/mcp` packages are incomplete. Executor-backed skills still register, but hosted/orchestrator `skill://` reads need a caveat. PR: https://github.com/openai/codex/pull/27646"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27646.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27646.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27646"
+    ]
+  },
+  "evidence_notes": [
+    "`ORCHESTRATOR_SKILLS_ENABLED` is set to false in app-server extension registration.",
+    "Executor-backed skill provider registration remains present.",
+    "The orchestrator skill resource test is ignored until `/ps/mcp` serves complete hosted skill packages."
+  ],
+  "claims": [
+    {
+      "text": "Codex app-server temporarily disables orchestrator-only skills.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27646.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Executor-backed skills are still registered by the app-server extension setup.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27646.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "The change is useful for operator awareness, but it is temporary and endpoint-dependent, so downstream Publisher should decide whether a watch note is worth posting.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27646:watch_note"
+  },
+  "caveats": [
+    "Do not claim all skills are disabled.",
+    "Do not treat the temporary disablement as a permanent removal.",
+    "Hosted skill availability depends on future `/ps/mcp` package support."
+  ],
+  "next_steps": [
+    "Let Publisher automation evaluate whether a deferred watch note is useful.",
+    "Watch upstream for the re-enable PR."
+  ]
+}
