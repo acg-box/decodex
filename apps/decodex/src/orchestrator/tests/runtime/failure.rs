@@ -172,6 +172,14 @@ fn failure_writeback_disposition_marks_retryable_recovery_classes() {
 			RunFailureWritebackDisposition::RetryableStructuredRecovery,
 		),
 		(
+			"dynamic tool protocol failure",
+			Report::new(AppServerDynamicToolFailure::protocol_for_test(
+				Some(String::from("issue_comment")),
+				"dynamic tool declaration was missing input schema",
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
 			"stalled active run",
 			Report::new(StalledRunNeedsAttention {
 				issue_identifier: String::from("PUB-101"),
