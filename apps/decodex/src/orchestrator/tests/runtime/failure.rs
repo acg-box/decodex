@@ -148,6 +148,14 @@ fn failure_writeback_disposition_separates_retryable_and_attention_classes() {
 			RunFailureWritebackDisposition::RetryableStructuredRecovery,
 		),
 		(
+			"zero-evidence app-server start failure",
+			Report::new(AppServerZeroEvidenceStartFailure::new(
+				String::from("PUB-101"),
+				String::from("pub-101-attempt-1-123"),
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
 			"turn transport",
 			Report::new(AppServerTransportFailure::with_phase(
 				String::from("App-server stdout disconnected during turn start."),
@@ -1226,7 +1234,7 @@ fn app_server_preflight_terminal_action_surfaces_first_scan_error() {
 }
 
 #[test]
-fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_evidence() {
+fn zero_evidence_app_server_start_failure_is_promoted_records_private_evidence_and_retries() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let tracker = FakeTracker::new(vec![]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -1270,7 +1278,7 @@ fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_eviden
 
 	assert!(
 		error.downcast_ref::<orchestrator::AppServerZeroEvidenceStartFailure>().is_some(),
-		"generic no-evidence startup errors should become terminal app-server start failures"
+		"generic no-evidence startup errors should become typed app-server start failures"
 	);
 
 	let events = state_store
@@ -1304,10 +1312,79 @@ fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_eviden
 	);
 
 	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
-		.expect("terminal failure handling should succeed");
+		.expect("retryable zero-evidence failure handling should succeed");
 
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
 	assert!(tracker.comments.borrow().iter().any(|comment| {
-		comment.contains("app_server_zero_evidence_start_failed")
+		comment.contains("decodex run failed and will retry")
+			&& comment.contains("app_server_zero_evidence_start_failed")
+			&& comment.contains("restart the app-server and retry automatically")
+	}));
+	assert!(
+		!tracker
+			.comments
+			.borrow()
+			.iter()
+			.any(|comment| comment.contains("decodex run failed and needs attention")),
+		"zero-evidence startup failure should not request operator attention before retry budget exhaustion"
+	);
+	assert!(
+		!tracker
+			.comments
+			.borrow()
+			.iter()
+			.any(|comment| comment.contains("retryable_execution_failure")),
+		"zero-evidence startup failure must preserve its typed retry class"
+	);
+}
+
+#[test]
+fn exhausted_zero_evidence_start_retry_budget_requires_attention_with_typed_class() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let tracker = FakeTracker::new(vec![]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("In Progress", &[]);
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: String::from("Todo"),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: config.worktree_root().join("PUB-101"),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Retry,
+		attempt_number: 3,
+		run_id: String::from("pub-101-attempt-3-123"),
+		retry_budget_base: 2,
+	};
+	let error = Report::new(AppServerZeroEvidenceStartFailure::new(
+		issue.identifier.clone(),
+		issue_run.run_id.clone(),
+	));
+
+	fs::create_dir_all(&issue_run.worktree.path).expect("worktree path should exist");
+
+	state_store
+		.record_run_attempt(&issue_run.run_id, &issue.id, issue_run.attempt_number, "failed")
+		.expect("run attempt should record");
+
+	orchestrator::handle_failure(&tracker, &config, &workflow, &state_store, &issue_run, &error)
+		.expect("exhausted zero-evidence failure should require attention");
+
+	assert_eq!(
+		tracker.state_updates.borrow().last(),
+		Some(&(issue.id.clone(), String::from("state-todo")))
+	);
+	assert!(tracker.comments.borrow().iter().any(|comment| {
+		comment.contains("decodex run failed and needs attention")
+			&& comment.contains("app_server_zero_evidence_start_failed")
 			&& comment.contains("verify `decodex probe stdio://`")
 	}));
 	assert!(
@@ -1315,8 +1392,8 @@ fn zero_evidence_app_server_start_failure_is_promoted_and_records_private_eviden
 			.comments
 			.borrow()
 			.iter()
-			.any(|comment| comment.contains("retryable_execution_failure")),
-		"zero-evidence startup failure must not burn retry budget as a generic retry"
+			.any(|comment| comment.contains("decodex run failed and will retry")),
+		"exhausted zero-evidence failure should not keep retrying"
 	);
 }
 
