@@ -1,0 +1,82 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-16-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease changes before stable",
+  "candidate_text": [
+    "0.140.0-alpha.16: defer, no X handoff.\n\nAdjacent alpha.15 -> alpha.16 has 6 commits. PR titles point to update dismissal, /goal spelling, Python SDK backend, realtime AVAS, and prompt updates. Behavior claims need source review."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.15",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.16",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.15...rust-v0.140.0-alpha.16",
+      "https://github.com/openai/codex/pull/27783",
+      "https://github.com/openai/codex/pull/27814",
+      "https://github.com/openai/codex/pull/27901",
+      "https://github.com/openai/codex/pull/27720",
+      "https://github.com/openai/codex/pull/27919"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.140.0-alpha.16 was published at 2026-06-12T19:03:37Z with only a sparse release body: Release 0.140.0-alpha.16.",
+    "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.15 -> rust-v0.140.0-alpha.16; alpha.16 is not the first prerelease after stable rust-v0.139.0.",
+    "GitHub compare metadata for alpha.15 -> alpha.16 reports status=diverged, 6 ahead commits, and 6 total commits.",
+    "PR-title metadata in the alpha.15 -> alpha.16 compare points to update dismissal persistence without cache, flexible /goal spelling, Python SDK uv build backend, realtime AVAS architecture override, and a MAv2 prompt update.",
+    "Checked Decodex review/impact artifacts are absent for all 5 primary PR-title references in the alpha.15 -> alpha.16 compare window in this checkout.",
+    "The refreshed release_delta/v1 records stable rust-v0.139.0 -> latest prerelease rust-v0.140.0-alpha.16 with 156 ahead commits and no tracked signal slugs.",
+    "Official Codex changelog readback for this run shows a 2026-06-11 Codex app update as the newest official app entry; rust-v0.140.0-alpha.16 is a GitHub prerelease checkpoint, not an official changelog entry."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.140.0-alpha.16 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.16",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.15 -> rust-v0.140.0-alpha.16.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.15...rust-v0.140.0-alpha.16",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.16 release body is sparse and does not describe user-facing behavior beyond the version checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.16",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR-title metadata in the alpha.16 compare points to update dismissal, /goal spelling, Python SDK backend, realtime AVAS, and prompt update changes.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.15...rust-v0.140.0-alpha.16",
+      "confidence": "likely"
+    },
+    {
+      "text": "Behavior claims for the alpha.16 window require upstream source review before a publishable Decodex prerelease thread.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the alpha.16 release body is sparse and the adjacent alpha.15 -> alpha.16 compare has unreviewed PR-title gaps.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-16:alpha15-alpha16:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "No previous live and quote-eligible @decodexspace 0.140 prerelease post exists; earlier 0.140 prereleases in this checkout are recorded as defer / needs_upstream_analysis checkpoints.",
+    "Do not compare alpha.16 against stable 0.139.0 for public prerelease copy; the adjacent prerelease lineage is alpha.15 -> alpha.16 because alpha.16 is not the first prerelease after stable.",
+    "Exact source-review gap list for alpha.15 -> alpha.16 primary compare PRs: #27783, #27814, #27901, #27720, #27919.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.16 defer record to decodex-x-publisher.",
+    "Route the listed source-review gap PRs to codex-upstream-radar-review / codex-code-analysis before turning alpha.16 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Use adjacent prerelease-to-prerelease lineage for future 0.140 prereleases after alpha.16."
+  ]
+}
