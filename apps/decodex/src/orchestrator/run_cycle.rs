@@ -154,6 +154,10 @@ where
 		excluded_issue_ids,
 	)?
 	else {
+		if !dry_run {
+			reconcile_terminal_thread_archive_backlog_best_effort(project, workflow, state_store);
+		}
+
 		return Ok(None);
 	};
 
@@ -2464,7 +2468,7 @@ where
 		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
 
-	if let Some(retained_summary) = drain_non_github_review_retained_tail_with_inspector(
+	let summary = if let Some(retained_summary) = drain_non_github_review_retained_tail_with_inspector(
 		tracker,
 		project,
 		workflow,
@@ -2479,8 +2483,12 @@ where
 				source_summary,
 			),
 	)? {
-		return Ok(Some(retained_summary));
-	}
+		retained_summary
+	} else {
+		summary
+	};
+
+	reconcile_terminal_thread_archive_backlog_best_effort(project, workflow, state_store);
 
 	Ok(Some(summary))
 }
