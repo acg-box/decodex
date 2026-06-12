@@ -121,7 +121,8 @@ This action is mandatory when:
 
 - retry budget is exhausted
 - the agent explicitly requests human attention
-- the lane is stalled
+- stalled reconciliation found retained tracked worktree changes that require
+  operator recovery, or stalled retry budget is exhausted
 - terminal signaling is missing or contradictory
 - required labels cannot be applied and the runtime must fall back to a guarded non-startable state
 - retained worktree, tracker state, or PR state disagree in a way that is not safely self-healing
@@ -149,7 +150,8 @@ This action requires:
 | Running lane remains eligible and activity is current | Current issue state is still active; no interrupting state transition; activity marker or session state still live | `continue` | Not applicable |
 | Clean worker exit with remaining retry budget | Retry budget remains; issue is still active; no `decodex:needs-attention` label or equivalent human-attention signal | `retry_automatically` | Yes |
 | Abnormal worker exit with remaining retry budget | Same as above, plus failure is classified as retryable | `retry_automatically` | Yes |
-| Retry exhausted, explicit human-attention signal, or stalled lane | Retry budget exhausted, or `decodex:needs-attention`, or stalled-run evidence | `manual_intervention_required` | No |
+| Stalled active run with no retained tracked changes and remaining retry budget | Issue still has active ownership; retry budget remains; worktree has no retained tracked changes requiring operator recovery | `retry_automatically` | Yes |
+| Retry exhausted, explicit human-attention signal, or retained stalled partial progress | Retry budget exhausted, or `decodex:needs-attention`, or stalled-run evidence with retained tracked changes | `manual_intervention_required` | No |
 | Human-attention label is unavailable but the failure path still must block redispatch | Failure path is human-required; label application failed; guarded retained marker recorded | `manual_intervention_required` | No |
 | Retained non-terminal lane still matches issue, branch, and owned recovery intent | Retained worktree exists; issue still belongs to the owned lane; recovery signals are consistent | `resume_retained_lane` | Yes |
 | `In Review` lane has no actionable review yet | PR still belongs to lane; no requested changes that require repair; checks or review are still pending | `wait_for_external_signal` | Yes, when new signal arrives |
@@ -217,8 +219,9 @@ exit into `manual_intervention_required`. When issue ownership still matches and
 retry budget remains, the next retry must resume the same worktree and treat the
 patch as recovery context. Retained partial progress becomes human-required only when
 the failure is non-retryable, explicit human attention was requested, retry or
-loop-recovery budget is exhausted, the lane stalled, or authoritative ownership
-signals are contradictory enough that continuing would require guessing.
+loop-recovery budget is exhausted, stalled reconciliation found retained tracked
+changes requiring operator recovery, or authoritative ownership signals are
+contradictory enough that continuing would require guessing.
 
 Examples of materially cleared signals:
 

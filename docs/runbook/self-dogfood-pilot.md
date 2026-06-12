@@ -667,7 +667,7 @@ The running-lane reconciliation rules are:
 - terminal issue: stop the lane, mark the run `terminated`, and remove the worktree
 - non-terminal issue that has left both `In Progress` and any configured startable pre-claim state: stop the lane, mark the run `interrupted`, and keep the worktree
 - issue still sitting in a startable state during early startup: leave it alone for that tick so the child can finish its initial tracker transition
-- stalled lane with no app-server activity through the idle budget: stop the lane, mark the run `stalled`, and move the issue back through the human-attention failure path for manual repair
+- stalled lane with no app-server activity through the idle budget: stop the active attempt, mark the run `stalled`, and retry the same owned lane while retry budget remains; use the human-attention failure path only after retry exhaustion, retained tracked partial progress, or another terminal boundary
 - child already exited before the next tick: still inspect persisted protocol activity so idle-timeout exits converge as `stalled`
 
 ## Worktree behavior
