@@ -178,6 +178,20 @@ failure or child exit, ran the registered repo gate itself, persisted the next p
 and scheduled continuation instead of writing `decodex:needs-attention`. It is a
 runtime recovery handoff, not final issue success; the later `handoff_evidence` phase
 still owns review, push, PR creation, and terminal finalize.
+Retry comments with `phase_goal_terminal_path_missing` mean a phase goal reached
+`complete` before the required Decodex terminal tool path was recorded. The lane is
+still runtime-owned while retry budget remains; the next attempt re-enters the
+persisted phase and must record review handoff, closeout, or manual attention before
+the issue can leave automation ownership.
+Retry comments with `app_server_transport_disconnected` during `initialize`,
+`account/login/start`, `thread/start`, or `thread/resume` mean Decodex is restarting
+the app-server under the retry budget, not asking for operator attention yet. The
+same error class becomes actionable only after retry exhaustion or when the disconnect
+occurred after a thread session was attached.
+Retry comments with `app_server_usage_limit_exceeded` mean the active Codex account
+hit a capacity limit and Decodex will re-run account selection on the next attempt.
+They are actionable only after retry exhaustion or when the operator intentionally
+pins all new runs to an exhausted fixed account.
 
 ## State Ownership
 
@@ -442,9 +456,17 @@ Worktree visibility follows the owning dashboard section:
   dashboard readback also carry `readback_root_cause` when Decodex can classify the
   local diagnostic safely, for example `missing_github_cli`, `missing_github_token`,
   `github_auth_failed`, `github_api_read_failed`, `github_response_parse_failed`,
-  `pull_request_shape_read_failed`, or `lineage_validation_failed`. These diagnostic
+  `pull_request_shape_read_failed`, or `lineage_validation_failed`. This warning is a
+  wait/retry lane, not passive manual attention, unless the post-review classification
+  decision itself is `Block`. These diagnostic
   tokens are operator-local and must not include tokens, raw API payloads, or private
   command output.
+- `worktree_checkout_branch_read_failed` and `worktree_head_read_failed` in
+  `Review & Landing` are degraded local worktree readbacks for a still-bound retained
+  lane. They may block a fresh classification for this status tick, but they must stay
+  wait/retry readback conditions and must not add `decodex:needs-attention` unless a
+  later successful readback proves a hard blocker such as a missing branch, branch
+  mismatch, missing head, or lineage mismatch.
 - `pull_request_merge_state_conflict` in `Review & Landing` means one retained
   post-review readback looked merge-complete but direct PR merge readback did not
   confirm that the same PR head is merged. Treat it as a readback contradiction, not a
@@ -471,7 +493,11 @@ Worktree visibility follows the owning dashboard section:
   state even when `queued_candidates` is empty and no active or post-review lane
   currently owns the issue. A terminal Run Ledger attention row without a retained
   worktree, queued attention row, active or needs-attention tracker label, or blocked
-  post-review lane is history-only and must not inflate current attention.
+  post-review lane is history-only and must not inflate current attention. When the
+  same issue is currently owned by a non-attention `Review & Landing` row such as
+  `wait_for_review` or `ready_to_land`, that row controls the current action summary;
+  stale active-label or worktree echoes from an older terminal ledger record stay in
+  Run Ledger history instead of reappearing as current attention.
 - If private evidence shows `phase_goal_recovery` followed by a queued continuation,
   the lane is not a retained-attention worktree even when the preceding child failed.
   Treat it as Decodex-owned re-entry into the next phase unless a later terminal Run

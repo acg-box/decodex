@@ -238,6 +238,13 @@ impl RequestWaitPhase {
 			Self::TurnExecution => "turn execution",
 		}
 	}
+
+	fn transport_failure_is_retryable_startup(self) -> bool {
+		matches!(
+			self,
+			Self::Initialize | Self::AccountLogin | Self::ThreadStart | Self::ThreadResume
+		)
+	}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -265,8 +272,22 @@ impl AppServerPhaseGoalFailure {
 		Self { kind: AppServerPhaseGoalFailureKind::Unsupported { method } }
 	}
 
+	#[cfg(test)]
+	pub(crate) fn unsupported_for_test(method: &'static str) -> Self {
+		Self::unsupported(method)
+	}
+
 	fn missing_terminal_path(phase: PhaseGoalKind) -> Self {
 		Self { kind: AppServerPhaseGoalFailureKind::MissingTerminalPath { phase } }
+	}
+
+	#[cfg(test)]
+	pub(crate) fn missing_terminal_path_for_test(phase: PhaseGoalKind) -> Self {
+		Self::missing_terminal_path(phase)
+	}
+
+	pub(crate) fn is_terminal_path_missing(&self) -> bool {
+		matches!(self.kind, AppServerPhaseGoalFailureKind::MissingTerminalPath { .. })
 	}
 
 	pub(crate) fn error_class(&self) -> &'static str {
@@ -275,6 +296,18 @@ impl AppServerPhaseGoalFailure {
 				"app_server_phase_goal_unsupported",
 			AppServerPhaseGoalFailureKind::MissingTerminalPath { .. } =>
 				"phase_goal_terminal_path_missing",
+		}
+	}
+
+	pub(crate) fn retry_next_action(&self) -> String {
+		match self.kind {
+			AppServerPhaseGoalFailureKind::Unsupported { method } => format!(
+				"select or upgrade to a Codex app-server that supports required phase-goal method `{method}`"
+			),
+			AppServerPhaseGoalFailureKind::MissingTerminalPath { phase } => format!(
+				"decodex will retry `{}` terminal-path recovery automatically; the next attempt must run the required review, handoff, closeout, or manual-attention terminal tool instead of treating phase-goal completion as issue completion",
+				phase.as_str()
+			),
 		}
 	}
 
@@ -464,6 +497,35 @@ impl AppServerCapabilityPreflightFailure {
 		}
 	}
 
+	pub(crate) fn is_retryable_timeout(&self) -> bool {
+		matches!(
+			self.kind,
+			AppServerCapabilityPreflightFailureKind::MethodFailed { timed_out: true, .. }
+		)
+	}
+
+	pub(crate) fn retry_next_action(&self) -> String {
+		match &self.kind {
+			AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method: "plugin/list",
+				timed_out: true,
+				..
+			} => String::from(
+				"decodex will retry app-server preflight automatically; inspect local app_server_preflight_failed evidence for the `plugin/list` timeout and restart `decodex serve` if the retry budget exhausts",
+			),
+			AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method,
+				timed_out: true,
+				..
+			} => format!(
+				"decodex will retry app-server preflight automatically; inspect local app_server_preflight_failed evidence for the `{method}` timeout and restart `decodex serve` if the retry budget exhausts"
+			),
+			AppServerCapabilityPreflightFailureKind::MethodFailed { .. }
+			| AppServerCapabilityPreflightFailureKind::BlockedState =>
+				String::from("app-server preflight requires operator recovery"),
+		}
+	}
+
 	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
 		match &self.kind {
 			AppServerCapabilityPreflightFailureKind::MethodFailed {
@@ -539,6 +601,16 @@ impl AppServerDynamicToolFailure {
 		Self { kind: AppServerDynamicToolFailureKind::Tool, tool, message: message.into() }
 	}
 
+	#[cfg(test)]
+	pub(crate) fn protocol_for_test(tool: Option<String>, message: impl Into<String>) -> Self {
+		Self::protocol(tool, message)
+	}
+
+	#[cfg(test)]
+	pub(crate) fn tool_for_test(tool: Option<String>, message: impl Into<String>) -> Self {
+		Self::tool(tool, message)
+	}
+
 	pub(crate) fn error_class(&self) -> &'static str {
 		match self.kind {
 			AppServerDynamicToolFailureKind::Protocol => "app_server_dynamic_tool_protocol_failure",
@@ -555,6 +627,10 @@ impl AppServerDynamicToolFailure {
 				"inspect the dynamic tool response and lane state, correct the tool call or underlying service state manually, {recovery_gate}"
 			),
 		}
+	}
+
+	pub(crate) fn retry_next_action(&self) -> String {
+		format!("decodex will retry automatically; {}", self.diagnostic_next_action())
 	}
 
 	fn diagnostic_next_action(&self) -> &'static str {
@@ -1312,6 +1388,26 @@ pub(crate) fn probe_app_server(listen: &str) -> crate::prelude::Result<AppServer
 	}
 
 	Ok(result)
+}
+
+fn annotate_transport_failure_phase<T>(
+	result: crate::prelude::Result<T>,
+	phase: RequestWaitPhase,
+) -> crate::prelude::Result<T> {
+	result.map_err(|error| transport_failure_at_phase(error, phase))
+}
+
+fn transport_failure_at_phase(error: Report, phase: RequestWaitPhase) -> Report {
+	let Some(transport_failure) = error.downcast_ref::<json_rpc::AppServerTransportFailure>()
+	else {
+		return error;
+	};
+
+	Report::new(json_rpc::AppServerTransportFailure::with_phase(
+		transport_failure.to_string(),
+		phase.label(),
+		phase.transport_failure_is_retryable_startup(),
+	))
 }
 
 fn running_model_execution_protocol_activity(
@@ -2515,23 +2611,26 @@ fn initialize_client_for_run(
 	dynamic_tool_handler: Option<&dyn DynamicToolHandler>,
 	expected_codex_home: &ResolvedAppServerCodexHomeEnv,
 ) -> crate::prelude::Result<InitializeResponse> {
-	let response = client.initialize_with_handler(
-		dynamic_tool_handler.is_some(),
-		|connection, wire_message, server_request| {
-			handle_server_request_while_waiting(
-				connection,
-				recorder,
-				wire_message,
-				server_request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::Initialize,
-					dynamic_tool_handler,
-					None,
-					None,
-					None,
-				),
-			)
-		},
+	let response = annotate_transport_failure_phase(
+		client.initialize_with_handler(
+			dynamic_tool_handler.is_some(),
+			|connection, wire_message, server_request| {
+				handle_server_request_while_waiting(
+					connection,
+					recorder,
+					wire_message,
+					server_request,
+					RequestDispatchContext::new(
+						RequestWaitPhase::Initialize,
+						dynamic_tool_handler,
+						None,
+						None,
+						None,
+					),
+				)
+			},
+		),
+		RequestWaitPhase::Initialize,
 	)?;
 
 	validate_initialize_codex_home(expected_codex_home, &response)?;
@@ -3260,23 +3359,26 @@ fn login_codex_account_for_run(
 
 	record_codex_account_login(recorder, account.summary())?;
 
-	let response = client.login_account_with_handler(
-		login_account_params(&account),
-		|connection, wire_message, server_request| {
-			handle_server_request_while_waiting(
-				connection,
-				recorder,
-				wire_message,
-				server_request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::AccountLogin,
-					request.dynamic_tool_handler,
-					request.codex_account_provider,
-					None,
-					None,
-				),
-			)
-		},
+	let response = annotate_transport_failure_phase(
+		client.login_account_with_handler(
+			login_account_params(&account),
+			|connection, wire_message, server_request| {
+				handle_server_request_while_waiting(
+					connection,
+					recorder,
+					wire_message,
+					server_request,
+					RequestDispatchContext::new(
+						RequestWaitPhase::AccountLogin,
+						request.dynamic_tool_handler,
+						request.codex_account_provider,
+						None,
+						None,
+					),
+				)
+			},
+		),
+		RequestWaitPhase::AccountLogin,
 	)?;
 
 	match response {
@@ -3315,23 +3417,26 @@ fn start_fresh_thread_session(
 ) -> crate::prelude::Result<ThreadSessionResponse> {
 	let thread_start_request = build_thread_start_request(request)?;
 
-	client.start_thread_with_handler(
-		thread_start_request,
-		|connection, wire_message, server_request| {
-			handle_server_request_while_waiting(
-				connection,
-				recorder,
-				wire_message,
-				server_request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::ThreadStart,
-					request.dynamic_tool_handler,
-					request.codex_account_provider,
-					None,
-					None,
-				),
-			)
-		},
+	annotate_transport_failure_phase(
+		client.start_thread_with_handler(
+			thread_start_request,
+			|connection, wire_message, server_request| {
+				handle_server_request_while_waiting(
+					connection,
+					recorder,
+					wire_message,
+					server_request,
+					RequestDispatchContext::new(
+						RequestWaitPhase::ThreadStart,
+						request.dynamic_tool_handler,
+						request.codex_account_provider,
+						None,
+						None,
+					),
+				)
+			},
+		),
+		RequestWaitPhase::ThreadStart,
 	)
 }
 
@@ -3372,7 +3477,7 @@ fn resume_existing_thread_session(
 
 			start_fresh_thread_session(client, recorder, request)
 		},
-		Err(error) => Err(error),
+		Err(error) => Err(transport_failure_at_phase(error, RequestWaitPhase::ThreadResume)),
 	}
 }
 
@@ -3468,23 +3573,26 @@ fn start_turn_for_run(
 	thread_id: &str,
 	next_input: &str,
 ) -> crate::prelude::Result<String> {
-	let turn_response = client.start_turn_with_handler(
-		build_turn_start_request(thread_id, next_input),
-		|connection, wire_message, server_request| {
-			handle_server_request_while_waiting(
-				connection,
-				recorder,
-				wire_message,
-				server_request,
-				RequestDispatchContext::new(
-					RequestWaitPhase::TurnStart,
-					dynamic_tool_handler,
-					codex_account_provider,
-					Some(thread_id),
-					None,
-				),
-			)
-		},
+	let turn_response = annotate_transport_failure_phase(
+		client.start_turn_with_handler(
+			build_turn_start_request(thread_id, next_input),
+			|connection, wire_message, server_request| {
+				handle_server_request_while_waiting(
+					connection,
+					recorder,
+					wire_message,
+					server_request,
+					RequestDispatchContext::new(
+						RequestWaitPhase::TurnStart,
+						dynamic_tool_handler,
+						codex_account_provider,
+						Some(thread_id),
+						None,
+					),
+				)
+			},
+		),
+		RequestWaitPhase::TurnStart,
 	)?;
 
 	Ok(turn_response.turn.id)
@@ -4039,7 +4147,9 @@ fn handle_turn_execution_notification(
 			if let Some((failure, will_retry)) =
 				failure_from_error_notification(notification, target_thread_id, target_turn_id)?
 			{
-				if failure.requires_operator_attention() && will_retry != Some(true) {
+				if (failure.requires_operator_attention() || failure.should_stop_current_turn())
+					&& will_retry != Some(true)
+				{
 					return Err(Report::new(failure));
 				}
 
@@ -4722,7 +4832,10 @@ fn recv_turn_wire_message(
 	wait_timeout: Duration,
 	latest_turn_failure: Option<&AppServerTurnFailure>,
 ) -> crate::prelude::Result<WireMessage> {
-	match client.recv(Some(wait_timeout)) {
+	match annotate_transport_failure_phase(
+		client.recv(Some(wait_timeout)),
+		RequestWaitPhase::TurnExecution,
+	) {
 		Ok(wire_message) => Ok(wire_message),
 		Err(error) => {
 			if error.downcast_ref::<AppServerOutputTimeout>().is_some()

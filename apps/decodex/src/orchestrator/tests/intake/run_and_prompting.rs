@@ -16,6 +16,30 @@ impl PromptSurfaces {
 	}
 }
 
+fn assert_manual_attention_prompt_guidance(prompt: &str, expects_handoff_guard: bool) {
+	assert!(prompt.contains(&format!(
+		"request label `decodex:needs-attention` with `{ISSUE_LABEL_ADD_TOOL_NAME}`"
+	)));
+	assert!(prompt.contains("records manual-attention label intent only"));
+	assert!(prompt.contains(
+		"Decodex applies the actual label only after that manual_attention comment validates"
+	));
+	assert!(prompt.contains("do not use runtime-owned retry/repair classes"));
+	assert!(prompt.contains("app-server timeout, transport, turn, dynamic-tool, or usage-limit"));
+	assert!(prompt.contains("stalled-run detection"));
+	assert!(prompt.contains("phase-goal terminal-path misses"));
+	assert!(prompt.contains("repo-gate canonicalize, verify, tracked-rewrite, or git-lock failures"));
+	assert!(prompt.contains("generic retryable execution failures"));
+	assert!(!prompt.contains("add label `decodex:needs-attention`"));
+	assert!(!prompt.contains("add the needs-attention label"));
+
+	if expects_handoff_guard {
+		assert!(prompt.contains(&format!(
+			"Do not call `{ISSUE_REVIEW_HANDOFF_TOOL_NAME}` in that case"
+		)));
+	}
+}
+
 fn run_and_prompting_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
@@ -697,6 +721,16 @@ fn developer_instructions_trim_workflow_body_and_preserve_required_guidance() {
 }
 
 #[test]
+fn normal_prompts_record_manual_attention_label_intent_before_label_application() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let surfaces = build_normal_prompt_surfaces(&config, &workflow);
+
+	for prompt in surfaces.all() {
+		assert_manual_attention_prompt_guidance(prompt, true);
+	}
+}
+
+#[test]
 fn review_pull_request_title_normalizes_issue_prefix() {
 	for title in [
 		"Ensure Decodex-created PR titles include issue authority prefix",
@@ -1152,6 +1186,10 @@ fn review_repair_prompts_require_same_pr_repair_completion() {
 	assert!(continuation_input.contains("In Review"));
 	assert!(continuation_input.contains("review_repair"));
 
+	for prompt in [&developer_instructions, &user_input, &continuation_input] {
+		assert_manual_attention_prompt_guidance(prompt, false);
+	}
+
 	assert_prompt_orders_thread_replies_after_push(
 		&developer_instructions,
 		"push the repaired head.",
@@ -1567,6 +1605,10 @@ fn closeout_prompts_require_retained_pr_closeout_completion() {
 		"If the issue is still in `In Review`, transition it once to `Done` with `issue_transition` before `issue_closeout_complete`"
 	));
 	assert!(continuation_input.contains("closeout"));
+
+	for prompt in [&developer_instructions, &user_input, &continuation_input] {
+		assert_manual_attention_prompt_guidance(prompt, false);
+	}
 }
 
 #[test]

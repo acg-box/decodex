@@ -241,8 +241,9 @@ Retained partial progress is a `needs_attention` event with
 `error_class = "partial_progress_retained"` and
 `terminal_path = "retained_partial_progress"`. It must describe retained tracked
 worktree changes and must not be emitted as `terminal_failure`. If the retained
-disposition absorbs a later runtime failure, the producer should preserve the source
-failure class in `evidence` instead of changing the event type or terminal path.
+terminal disposition absorbs a later runtime failure, the producer should preserve the
+source failure class in `evidence` instead of changing the event type or terminal
+path.
 
 Loop guardrail observations are private runtime evidence while autonomous architecture
 recovery is still available. A public Linear record is written only when the guardrail
