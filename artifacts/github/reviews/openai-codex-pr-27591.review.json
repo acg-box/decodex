@@ -1,0 +1,62 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27591",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27591",
+    "commit_shas": [
+      "0dd59d361fb64e7cad0641619eae8047f893a8d8"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "skills: render catalog locators by authority",
+        "url": "https://github.com/openai/codex/pull/27591",
+        "meta": "Merged 2026-06-11T11:51:04Z"
+      },
+      {
+        "kind": "commit",
+        "title": "feat: renderer",
+        "url": "https://github.com/openai/codex/commit/0dd59d361fb64e7cad0641619eae8047f893a8d8"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-12T02:07:24Z",
+  "observed_change": "Codex now renders skills catalog source locators by owning authority instead of describing every skill as a host filesystem file.",
+  "changed_surfaces": [
+    "core skills instructions text",
+    "skills-extension catalog rendering",
+    "orchestrator-resource app-server skill guidance",
+    "host-file and executor-resource skills-extension coverage"
+  ],
+  "user_visible_path": "When model context lists available skills, local skills are still shown as files, but executor, orchestrator, and custom-provider skills are labeled as resources that must be read through the appropriate authority.",
+  "control_plane_relevance": "High for Decodex Control Plane because remote and hosted skill resources must route through `skills.list` and `skills.read` instead of filesystem tools in orchestration prompts.",
+  "compatibility_risk": "Medium for prompt snapshots or agent instructions that assumed every skill entry includes `file: <path>`; the underlying discovery, provider routing, and `skills.*` tool contract are unchanged.",
+  "adoption_opportunity": "Use authority-aware locator language in Decodex skill and plugin guidance so agents do not try to open `skill://` orchestrator resources as local paths.",
+  "community_value": "High for Codex plugin and skill users because the PR fixes model-visible instructions for hosted skills introduced through opaque resource identifiers.",
+  "deprecated_or_breaking_notes": "No runtime skill discovery or invocation behavior is removed. The visible catalog wording changes from file-only paths to `file`, `environment resource`, `orchestrator resource`, or `custom resource` locators.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27591 says hosted skills introduced by PR #27388 use opaque `skill://` resource identifiers and should not send the model toward filesystem tools.",
+    "`codex-rs/core-skills/src/render.rs` changes the available-skills intro and how-to-use guidance from file-path-only wording to source-locator wording.",
+    "`codex-rs/ext/skills/src/render.rs` now renders each skill line from `SkillCatalogEntry` and `SkillSourceKind` rather than `entry.rendered_path()` alone.",
+    "`codex-rs/app-server/tests/suite/v2/mcp_resource.rs` asserts orchestrator skills render as `orchestrator resource: skill://...` and include guidance not to treat `skill://` identifiers as filesystem paths.",
+    "`codex-rs/ext/skills/tests/skills_extension.rs` adds coverage for host skills as `(file: ...)` and executor skills as environment resources.",
+    "The PR body explicitly says the scope is model-visible catalog rendering and guidance, not discovery, selection, provider routing, caching, resource validation, or the `skills.*` tool contract.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27591.json` records 4 changed files for the merged PR."
+  ],
+  "caveats": "Do not claim new skill-provider capabilities from this PR alone; it corrects source-locator rendering and usage guidance for existing provider types.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Authority-aware skill locators affect Decodex prompt and plugin-resource routing."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The change is a clear public operator note for hosted skills and `skill://` resources."
+    }
+  ]
+}
