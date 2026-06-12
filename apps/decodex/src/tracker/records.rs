@@ -483,6 +483,7 @@ fn event_requires_summary(event_type: &str) -> bool {
 			| "review_handoff"
 			| "repair_handoff"
 			| "review_handoff_rebind"
+			| "review_handoff_adopt"
 			| "landed"
 			| "closeout"
 			| "cleanup_complete"
@@ -496,8 +497,13 @@ fn event_requires_next_action(event_type: &str) -> bool {
 fn event_requires_items(event_type: &str, field_name: &str) -> bool {
 	matches!(
 		(event_type, field_name),
-		("needs_attention" | "terminal_failure" | "review_handoff_rebind", "evidence")
-			| ("needs_attention" | "terminal_failure", "blockers")
+		(
+			"needs_attention"
+				| "terminal_failure"
+				| "review_handoff_rebind"
+				| "review_handoff_adopt",
+			"evidence",
+		) | ("needs_attention" | "terminal_failure", "blockers")
 	)
 }
 
@@ -611,7 +617,7 @@ fn validate_linear_execution_event_fields(
 
 			require_string(record.terminal_path.as_deref(), "terminal_path")
 		},
-		"review_handoff_rebind" => {
+		"review_handoff_rebind" | "review_handoff_adopt" => {
 			validate_pr_event_fields(record)?;
 			require_string(record.validation_result.as_deref(), "validation_result")?;
 			require_string(record.summary.as_deref(), "summary")?;

@@ -42,10 +42,9 @@ Question this index answers: "which sequence should I execute?"
   release-asset recovery manifests checked in.
 - [`social-publishing-workflow.md`](./social-publishing-workflow.md) for turning Radar
   evidence into low-frequency `@decodexspace` X posts or blocked publication records.
-- [`recover-review-handoff.md`](./recover-review-handoff.md) for diagnosing and
-  explicitly rebinding retained review lanes blocked by a missing or stale runtime DB
-  handoff
-  marker.
+- [`recover-review-handoff.md`](./recover-review-handoff.md) for diagnosing retained
+  review lanes, explicitly rebinding missing or stale runtime DB handoff markers, and
+  adopting verified human-owned PRs into the normal Decodex landing lifecycle.
 - [`review-config-migration.md`](./review-config-migration.md) for one-time migration
   from historical review config keys to `[codex].review` levels.
 - [`release-readiness.md`](./release-readiness.md) for the v0.2.0 Loop Engineering

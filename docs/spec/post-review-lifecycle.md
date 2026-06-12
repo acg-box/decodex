@@ -100,6 +100,17 @@ success path.
   reason. A diagnostic may report a bound marker, active ownership drift, a missing
   marker, a pending issue-state transition, an unverified PR read, or a concrete field
   mismatch that requires explicit rebind.
+- `adopt` is mutating and requires an explicit issue identifier plus PR URL. It is the
+  supported manual takeover path for a human-owned PR that was created outside a
+  runtime-retained lane but should now enter Decodex's normal retained review/landing
+  lifecycle. It must run from the current managed lane worktree under the configured
+  `worktree_root`, validate active automation ownership, reject opt-out and
+  needs-attention stops, require the issue to be in `tracker.in_progress_state` or
+  already in `tracker.success_state`, require a clean current checkout, require the
+  current branch and `HEAD` to match the PR head branch and SHA, and require the PR to
+  be open, non-draft, mergeable, green, free of pending review requests, and free of
+  unresolved review threads. It must reject issues that already have retained worktree
+  mappings or review handoff markers; those belong to `rebind` or normal landing.
 - `rebind` is mutating and requires an explicit issue identifier plus PR URL. It must
   validate the configured project, tracker issue state, active automation ownership,
   retained worktree branch, clean worktree, PR repository, PR base, PR head branch, PR
@@ -121,6 +132,14 @@ success path.
   existing marker for a different PR, and it must reject a current same-branch same-PR
   marker as a no-op unless the issue is still in `tracker.in_progress_state` and only
   the success-state transition remains.
+- A successful adopt writes a runtime worktree mapping for the current managed checkout,
+  creates a local run attempt identity for the takeover, writes the same runtime DB
+  handoff and orchestration marker shapes as normal `issue_review_handoff` needs,
+  records a `review_handoff_adopt` audit event, and may move the issue from
+  `tracker.in_progress_state` to `tracker.success_state` after the audit succeeds. It
+  does not land the PR, queue follow-up work, or clear needs-attention. A subsequent
+  `decodex land --authority <ISSUE> --pr <URL>` owns merge, tracker closeout, and
+  cleanup through the normal issue-authority path.
 - A successful rebind writes the same runtime DB handoff and orchestration marker shapes
   as normal `issue_review_handoff` needs, and records a `review_handoff_rebind` audit
   event. It does not land the PR, queue follow-up work, or substitute for healthy lanes'
