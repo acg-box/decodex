@@ -807,6 +807,13 @@ After a process restart, recent-run history, active lease ownership, retained po
   or another terminal boundary applies, terminal writeback may classify the retained
   patch as `partial_progress_retained` and preserve the runtime, app-server,
   credential, transport, or repo-gate class as source evidence.
+- If a phase-scoped goal reaches `complete` without the matching Decodex terminal
+  path, such as handoff evidence finishing without review-handoff, closeout, or
+  manual-attention finalization, Decodex must treat
+  `phase_goal_terminal_path_missing` as structured retryable recovery while retry
+  budget remains. The next attempt re-enters the persisted phase goal and must finish
+  the required terminal tool path instead of turning goal completion into issue
+  success. Unsupported app-server goal methods remain hard environment blockers.
 - Retained post-review orchestration must treat local branch/head readback failures as
   transient wait conditions while the review handoff marker still owns the lane. Status
   may report `worktree_checkout_branch_read_failed` or `worktree_head_read_failed`, but
