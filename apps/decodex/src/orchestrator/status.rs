@@ -39,7 +39,6 @@ enum ExternalReviewRequestCiGate {
 	Ready,
 	WaitForGreenChecks,
 	RepairRequired,
-	ManualAttention(&'static str),
 }
 
 #[derive(Clone, Copy)]
@@ -4200,9 +4199,6 @@ fn apply_review_orchestration_phase_classification(
 					classification.reason =
 						String::from("external_review_request_ci_red_repair_required");
 				},
-				ExternalReviewRequestCiGate::ManualAttention(reason) => {
-					*classification = blocked_post_review_lane_from_state(review_state, reason);
-				},
 			}
 		},
 		ReviewOrchestrationPhase::WaitingForAck => {
@@ -4855,17 +4851,8 @@ fn external_review_request_ci_gate(
 	match review_state.status_check_rollup_state.as_deref() {
 		None | Some("SUCCESS") => ExternalReviewRequestCiGate::Ready,
 		Some("EXPECTED" | "PENDING") => ExternalReviewRequestCiGate::WaitForGreenChecks,
-		Some("ERROR" | "FAILURE")
-			if failed_checks_require_repair(
-				review_state.status_check_rollup_state.as_deref(),
-				&review_state.merge_state_status,
-			) =>
-		{
-			ExternalReviewRequestCiGate::RepairRequired
-		},
-		Some("ERROR" | "FAILURE") | Some(_) => ExternalReviewRequestCiGate::ManualAttention(
-			"external_review_request_ci_red_manual_attention",
-		),
+		Some("ERROR" | "FAILURE") => ExternalReviewRequestCiGate::RepairRequired,
+		Some(_) => ExternalReviewRequestCiGate::WaitForGreenChecks,
 	}
 }
 

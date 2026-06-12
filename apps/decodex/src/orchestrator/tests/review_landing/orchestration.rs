@@ -1465,7 +1465,7 @@ fn reconcile_post_review_orchestration_skips_issue_without_service_active_label(
 }
 
 #[test]
-fn reconcile_post_review_orchestration_blocks_unhandled_ci_red_before_requesting_external_review() {
+fn reconcile_post_review_orchestration_repairs_unhandled_ci_red_before_requesting_external_review() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = post_review_sample_service_owned_issue("In Review");
@@ -1536,16 +1536,14 @@ fn reconcile_post_review_orchestration_blocks_unhandled_ci_red_before_requesting
 	)
 	.expect("post-review orchestration should succeed");
 
-	let comments = tracker.comments.borrow();
-	let comment = comments.first().expect("manual attention comment should be written");
-	let ledger_event = records::parse_linear_execution_event_record(comment)
-		.expect("manual attention comment should include an execution ledger event");
-
-	assert_eq!(comments.len(), 1);
-	assert_eq!(
-		ledger_event.error_class.as_deref(),
-		Some("external_review_request_ci_red_manual_attention")
+	let marker = persisted_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
 	);
-	assert_eq!(tracker.label_additions.borrow().len(), 1);
-	assert_eq!(tracker.label_removals.borrow().len(), 1);
+
+	assert_eq!(marker.phase(), "repair_required");
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
 }
