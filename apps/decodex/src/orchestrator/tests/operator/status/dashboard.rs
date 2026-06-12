@@ -44,6 +44,30 @@ fn operator_dashboard_surfaces_loop_status_fields() {
 }
 
 #[test]
+fn operator_dashboard_surfaces_program_intake_panel() {
+	let response = dashboard_response();
+
+	assert!(response.contains("id=\"programs-panel\""));
+	assert!(response.contains("id=\"programs-meta\""));
+	assert!(response.contains("id=\"execution-programs\""));
+	assert!(response.contains("<h2 id=\"programs-title\">Program Intake</h2>"));
+	assert!(response.contains("programs: document.getElementById(\"programs-panel\")"));
+	assert!(response.contains("executionPrograms: document.getElementById(\"execution-programs\")"));
+	assert!(response.contains("programsMeta: document.getElementById(\"programs-meta\")"));
+	assert!(response.contains("function renderExecutionPrograms(snapshot, derived)"));
+	assert!(response.contains("function renderProgramNodeReadbacks(program)"));
+	assert!(response.contains("function programQueueActionSummary(program)"));
+	assert!(response.contains("program.node_readbacks ?? []"));
+	assert!(response.contains("program.queue_label_apply_count"));
+	assert!(response.contains("program.queue_label_remove_count"));
+	assert!(response.contains("renderExecutionPrograms(snapshot, derived);"));
+	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"active\", \"programs\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
+	assert!(response.contains("{ marker: \"execution\", panels: [\"active\", \"programs\", \"queue\"] }"));
+	assert!(!response.contains("data-program-edit"));
+	assert!(!response.contains("data-program-mutate"));
+}
+
+#[test]
 fn operator_dashboard_background_wash_stays_viewport_fixed() {
 	let response = dashboard_response();
 
@@ -544,7 +568,7 @@ fn operator_dashboard_renders_account_usage_controls() {
 	assert!(!response.contains("queue-group-count"));
 	assert!(response.contains("nodes.projectTitle.textContent = \"Decodex\""));
 	assert!(!response.contains("Decodex Operator"));
-	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"active\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
+	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"active\", \"programs\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
 	assert!(!response.contains("#account-pool-panel {"));
 	assert!(!response.contains("No accounts"));
 	assert!(response.contains("#active-panel {\n\t\t\t\tbackground: transparent;"));
