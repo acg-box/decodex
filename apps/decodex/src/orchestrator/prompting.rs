@@ -4,6 +4,25 @@ pub(crate) const TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION: &str =
 const SELF_CHECK_INSTRUCTION: &str =
 	"Review your work repeatedly and fix any logic bugs until no new issues are found.";
 
+fn build_manual_attention_guidance(
+	needs_attention: &str,
+	label_tool: &str,
+	terminal_finalize_tool: &str,
+	review_handoff_tool: Option<&str>,
+) -> String {
+	let review_handoff_guidance = review_handoff_tool
+		.map(|tool| {
+			format!(
+				" Do not call `{tool}` in that case; `decodex` will stop the lane as a human-required failure without automatic retry."
+			)
+		})
+		.unwrap_or_default();
+
+	format!(
+		"If you determine the issue needs human attention, request label `{needs_attention}` with `{label_tool}`; that records manual-attention label intent only. Then call `issue_comment` with kind `manual_attention` and structured public fields (`error_class`, `next_action`, `blockers`, `evidence`; include `failed_command` and `raw_error` only when public-safe). Decodex applies the actual label only after that manual_attention comment validates. Use a human-owned blocker class; do not use runtime-owned retry/repair classes such as app-server timeout, transport, turn, dynamic-tool, or usage-limit failures; stalled-run detection; phase-goal terminal-path misses; repo-gate canonicalize, verify, tracked-rewrite, or git-lock failures; or generic retryable execution failures. Then call `{terminal_finalize_tool}` with path `manual_attention`. Do not speculate about capabilities you did not directly verify.{review_handoff_guidance}"
+	)
+}
+
 fn build_phase_goal_runtime_contract() -> String {
 	format!(
 		"Phase goal runtime contract\n- Decodex may set an active phase goal that narrows the immediate turn below the full issue lifecycle checklist.\n- Treat the active phase goal as the authoritative current contract. For `implement_to_validation_ready`, `repair_validation_failures`, and `repair_accepted_review_findings`, stop at validated local work, then explicitly complete the active phase goal with the Codex goal completion mechanism so Decodex can run its repo gate and select the next phase.\n- Do not use `{progress_checkpoint_tool}`, final chat text, or an \"await next phase\" statement as a substitute for completing a satisfied phase goal.\n- Only the later `handoff_evidence` phase should create/update the PR and record the terminal handoff path; that phase still requires the normal review handoff plus `{terminal_finalize_tool}`.",
@@ -150,9 +169,22 @@ where
 		.tracker()
 		.resolved_completed_state();
 	let review_level = project.codex().review_level();
+	let needs_attention = workflow.frontmatter().tracker().needs_attention_label();
+	let repair_manual_attention_guidance = build_manual_attention_guidance(
+		needs_attention,
+		ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		None,
+	);
+	let handoff_manual_attention_guidance = build_manual_attention_guidance(
+		needs_attention,
+		ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		Some(ISSUE_REVIEW_HANDOFF_TOOL_NAME),
+	);
 	let tracker_contract = match issue_run.dispatch_mode {
 			IssueDispatchMode::ReviewRepair => format!(
-				"Tracker tool contract\n- You own issue-scoped tracker writes for `{issue}` on retained PR `{pr_url}`.\n- This run resumes an existing `{success}` lane. Do not move the issue back to `{in_progress}` and do not call `{review_handoff_tool}`.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n{decodex_review_guidance}- For each actionable review item on `{pr_url}`, including non-thread review summaries, validate the claim against the codebase, tests, and requirements before changing code, and keep pushback or clarification threads open until the repaired head is ready.\n- If this run was triggered by retained landing fallback, handle only the implementation-shaped blocker such as branch sync, conflict resolution, ambiguous mergeability, or repository-specific recovery. Do not merge or land the PR yourself.\n{repair_architecture_guidance}- Repair the current PR head on branch `{branch}`, run the repository validation needed to justify the repaired head, and push the repaired head.\n- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n{github_review_guidance}- After the repaired head is pushed, reply in-thread for every addressed comment and resolve only the GitHub review threads whose fixes landed and verified on the repaired head.\n{completion_guidance}- If you determine the issue needs human attention, add label `{needs_attention}` with `{label_tool}`, then call `issue_comment` with kind `manual_attention` and structured public fields (`error_class`, `next_action`, `blockers`, `evidence`; include `failed_command` and `raw_error` only when public-safe), and then call `{terminal_finalize_tool}` with path `manual_attention`. Do not speculate about capabilities you did not directly verify.\n{retained_tail_guidance}- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}\n- Never write to any other issue.",
+				"Tracker tool contract\n- You own issue-scoped tracker writes for `{issue}` on retained PR `{pr_url}`.\n- This run resumes an existing `{success}` lane. Do not move the issue back to `{in_progress}` and do not call `{review_handoff_tool}`.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n{decodex_review_guidance}- For each actionable review item on `{pr_url}`, including non-thread review summaries, validate the claim against the codebase, tests, and requirements before changing code, and keep pushback or clarification threads open until the repaired head is ready.\n- If this run was triggered by retained landing fallback, handle only the implementation-shaped blocker such as branch sync, conflict resolution, ambiguous mergeability, or repository-specific recovery. Do not merge or land the PR yourself.\n{repair_architecture_guidance}- Repair the current PR head on branch `{branch}`, run the repository validation needed to justify the repaired head, and push the repaired head.\n- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n{github_review_guidance}- After the repaired head is pushed, reply in-thread for every addressed comment and resolve only the GitHub review threads whose fixes landed and verified on the repaired head.\n{completion_guidance}- {manual_attention_guidance}\n{retained_tail_guidance}- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}\n- Never write to any other issue.",
 			issue = issue_run.issue.identifier,
 			pr_url = recorded_pr_url.unwrap_or("(missing review handoff marker)"),
 			progress_checkpoint_tool = ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
@@ -161,8 +193,7 @@ where
 			in_progress = workflow.frontmatter().tracker().in_progress_state(),
 			success = workflow.frontmatter().tracker().success_state(),
 			branch = issue_run.worktree.branch_name,
-			needs_attention = workflow.frontmatter().tracker().needs_attention_label(),
-			label_tool = ISSUE_LABEL_ADD_TOOL_NAME,
+			manual_attention_guidance = repair_manual_attention_guidance,
 			continuation_guidance = continuation_guidance,
 			repair_architecture_guidance = repair_architecture_guidance,
 			decodex_review_guidance = build_repair_review_guidance(review_level),
@@ -171,7 +202,7 @@ where
 			completion_guidance = build_repair_completion_guidance(review_level),
 		),
 		IssueDispatchMode::Closeout => format!(
-			"Tracker tool contract\n- You own issue-scoped tracker writes for `{issue}` on retained PR `{pr_url}`.\n- This run resumes a merged post-review lane for the same PR lineage. The tracker issue may still be in `{success}` or may already be in `{completed}` while deterministic closeout tail work remains. Do not move the issue back to `{in_progress}` and do not call `{review_handoff_tool}` or `{review_repair_tool}`.\n- Treat retained closeout as a short deterministic tail. Reuse the existing merged PR evidence instead of restarting broad discovery, and only rerun the minimum validation needed to justify `Done` plus cleanup.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n- If you call `{progress_checkpoint_tool}` during closeout, either omit `head_sha` and let `decodex` record the exact current lane HEAD automatically, or pass the exact full current `HEAD` SHA. Do not send an abbreviated SHA that differs from the live lane head.\n- Merge is already authoritative for `{pr_url}` before this run starts. Do not land, merge, or request review from this closeout run.\n- If the issue is still in `{success}`, transition it once to `{completed}` with `{transition_tool}` before `{closeout_tool}`. If it is already in `{completed}`, leave it there.\n- Finish the remaining Linear closeout tail work for this same merged PR lineage, then call `{closeout_tool}` with PR `{pr_url}` and a short result summary, then call `{terminal_finalize_tool}` with path `closeout`.\n- Do not end the turn without either `{closeout_tool}` plus `{terminal_finalize_tool}`, or the manual-attention path.\n- If you determine the issue needs human attention, add label `{needs_attention}` with `{label_tool}`, then call `issue_comment` with kind `manual_attention` and structured public fields (`error_class`, `next_action`, `blockers`, `evidence`; include `failed_command` and `raw_error` only when public-safe), and then call `{terminal_finalize_tool}` with path `manual_attention`. Do not speculate about capabilities you did not directly verify.\n- Keep all tracker and PR writes scoped to this retained lane. `decodex` will validate the merged PR lineage, the resolved completed state, and the later cleanup boundary.\n- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}\n- Never write to any other issue.",
+			"Tracker tool contract\n- You own issue-scoped tracker writes for `{issue}` on retained PR `{pr_url}`.\n- This run resumes a merged post-review lane for the same PR lineage. The tracker issue may still be in `{success}` or may already be in `{completed}` while deterministic closeout tail work remains. Do not move the issue back to `{in_progress}` and do not call `{review_handoff_tool}` or `{review_repair_tool}`.\n- Treat retained closeout as a short deterministic tail. Reuse the existing merged PR evidence instead of restarting broad discovery, and only rerun the minimum validation needed to justify `Done` plus cleanup.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n- If you call `{progress_checkpoint_tool}` during closeout, either omit `head_sha` and let `decodex` record the exact current lane HEAD automatically, or pass the exact full current `HEAD` SHA. Do not send an abbreviated SHA that differs from the live lane head.\n- Merge is already authoritative for `{pr_url}` before this run starts. Do not land, merge, or request review from this closeout run.\n- If the issue is still in `{success}`, transition it once to `{completed}` with `{transition_tool}` before `{closeout_tool}`. If it is already in `{completed}`, leave it there.\n- Finish the remaining Linear closeout tail work for this same merged PR lineage, then call `{closeout_tool}` with PR `{pr_url}` and a short result summary, then call `{terminal_finalize_tool}` with path `closeout`.\n- Do not end the turn without either `{closeout_tool}` plus `{terminal_finalize_tool}`, or the manual-attention path.\n- {manual_attention_guidance}\n- Keep all tracker and PR writes scoped to this retained lane. `decodex` will validate the merged PR lineage, the resolved completed state, and the later cleanup boundary.\n- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}\n- Never write to any other issue.",
 			issue = issue_run.issue.identifier,
 			pr_url = recorded_pr_url.unwrap_or("(missing review handoff marker)"),
 			progress_checkpoint_tool = ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
@@ -183,22 +214,19 @@ where
 			in_progress = workflow.frontmatter().tracker().in_progress_state(),
 			success = workflow.frontmatter().tracker().success_state(),
 			completed = completed_state,
-			needs_attention = workflow.frontmatter().tracker().needs_attention_label(),
-			label_tool = ISSUE_LABEL_ADD_TOOL_NAME,
+			manual_attention_guidance = repair_manual_attention_guidance,
 			continuation_guidance = continuation_guidance,
 		),
 			_ => format!(
-					"Tracker tool contract\n- You own issue-scoped tracker writes for `{issue}`.\n- At the start of execution, call `{transition_tool}` to move the issue to `{in_progress}`. Decodex already records the run-start Linear ledger, so do not add a separate start comment.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n{decodex_review_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- When the implementation is ready, commit the lane, push branch `{branch}`, and create or update a non-draft PR titled `{pr_title}` for that branch.\n{completion_guidance}- If you determine the issue needs human attention, add label `{needs_attention}` with `{label_tool}`, then call `issue_comment` with kind `manual_attention` and structured public fields (`error_class`, `next_action`, `blockers`, `evidence`; include `failed_command` and `raw_error` only when public-safe), and then call `{terminal_finalize_tool}` with path `manual_attention`. Do not speculate about capabilities you did not directly verify. Do not call `{review_handoff_tool}` in that case; `decodex` will stop the lane as a human-required failure without automatic retry.\n- Do not move the issue directly to `{success}` with `{transition_tool}`. `decodex` will complete the success writeback only after its own validation passes.\n- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}\n- Never write to any other issue.",
+					"Tracker tool contract\n- You own issue-scoped tracker writes for `{issue}`.\n- At the start of execution, call `{transition_tool}` to move the issue to `{in_progress}`. Decodex already records the run-start Linear ledger, so do not add a separate start comment.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n{decodex_review_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- When the implementation is ready, commit the lane, push branch `{branch}`, and create or update a non-draft PR titled `{pr_title}` for that branch.\n{completion_guidance}- {manual_attention_guidance}\n- Do not move the issue directly to `{success}` with `{transition_tool}`. `decodex` will complete the success writeback only after its own validation passes.\n- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}\n- Never write to any other issue.",
 				issue = issue_run.issue.identifier,
 				transition_tool = ISSUE_TRANSITION_TOOL_NAME,
-				label_tool = ISSUE_LABEL_ADD_TOOL_NAME,
 				progress_checkpoint_tool = ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
-				review_handoff_tool = ISSUE_REVIEW_HANDOFF_TOOL_NAME,
 				terminal_finalize_tool = ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
 				in_progress = workflow.frontmatter().tracker().in_progress_state(),
 				branch = issue_run.worktree.branch_name,
 				success = workflow.frontmatter().tracker().success_state(),
-				needs_attention = workflow.frontmatter().tracker().needs_attention_label(),
+				manual_attention_guidance = handoff_manual_attention_guidance,
 			continuation_guidance = continuation_guidance,
 			pr_title = review_pull_request_title(&issue_run.issue),
 			decodex_review_guidance = build_handoff_review_guidance(
@@ -238,6 +266,19 @@ where
 		.tracker()
 		.resolved_completed_state();
 	let review_level = project.codex().review_level();
+	let needs_attention = workflow.frontmatter().tracker().needs_attention_label();
+	let repair_manual_attention_guidance = build_manual_attention_guidance(
+		needs_attention,
+		ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		None,
+	);
+	let handoff_manual_attention_guidance = build_manual_attention_guidance(
+		needs_attention,
+		ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		Some(ISSUE_REVIEW_HANDOFF_TOOL_NAME),
+	);
 	let recovery_context = build_retry_recovery_context(issue_run.dispatch_mode)
 		.into_iter()
 		.chain(build_architecture_recovery_context(project, state_store, issue_run))
@@ -246,7 +287,7 @@ where
 
 	match issue_run.dispatch_mode {
 			IssueDispatchMode::ReviewRepair => format!(
-				"Continue retained review repair for Linear issue {identifier}: {title}\n\nDescription:\n{description}\n\nCurrent PR:\n- `{pr_url}`\n\nExecution checklist:\n- Resume from the current branch and PR state in this worktree. Do not move the issue back to `{in_progress}`.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n{decodex_review_guidance}- Read the current review feedback on `{pr_url}`, including non-thread review summaries, validate each actionable claim against the codebase, tests, and requirements, fix only the verified issues on branch `{branch}`, and keep scope limited to the outstanding retained repair.\n- If the lane is here because retained landing was not a deterministic clean path, handle only the branch sync, conflict resolution, ambiguous mergeability, or repository-specific recovery needed to make the PR clean again. Do not merge or land the PR yourself.\n- Leave pushback or clarification threads open until the repaired head is ready.\n{repair_architecture_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- Run the repository validation needed to justify the repaired head.\n- Commit the repair and push the same branch.\n{github_review_guidance}- After the repaired head is pushed, reply in-thread for every addressed comment and resolve only the GitHub review threads whose fixes landed and verified on the repaired head.\n{completion_guidance}- If the issue needs manual attention, add label `{needs_attention}` with `{label_tool}`, call `issue_comment` with kind `manual_attention` and structured public fields, and then call `{terminal_finalize_tool}` with path `manual_attention`.\n- Keep the issue in `{success}` and do not treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}",
+				"Continue retained review repair for Linear issue {identifier}: {title}\n\nDescription:\n{description}\n\nCurrent PR:\n- `{pr_url}`\n\nExecution checklist:\n- Resume from the current branch and PR state in this worktree. Do not move the issue back to `{in_progress}`.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n{decodex_review_guidance}- Read the current review feedback on `{pr_url}`, including non-thread review summaries, validate each actionable claim against the codebase, tests, and requirements, fix only the verified issues on branch `{branch}`, and keep scope limited to the outstanding retained repair.\n- If the lane is here because retained landing was not a deterministic clean path, handle only the branch sync, conflict resolution, ambiguous mergeability, or repository-specific recovery needed to make the PR clean again. Do not merge or land the PR yourself.\n- Leave pushback or clarification threads open until the repaired head is ready.\n{repair_architecture_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- Run the repository validation needed to justify the repaired head.\n- Commit the repair and push the same branch.\n{github_review_guidance}- After the repaired head is pushed, reply in-thread for every addressed comment and resolve only the GitHub review threads whose fixes landed and verified on the repaired head.\n{completion_guidance}- {manual_attention_guidance}\n- Keep the issue in `{success}` and do not treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}",
 			identifier = issue.identifier,
 			title = issue.title,
 			description = description,
@@ -255,8 +296,7 @@ where
 			branch = issue_run.worktree.branch_name,
 			progress_checkpoint_tool = ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
 			terminal_finalize_tool = ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
-			needs_attention = workflow.frontmatter().tracker().needs_attention_label(),
-			label_tool = ISSUE_LABEL_ADD_TOOL_NAME,
+			manual_attention_guidance = repair_manual_attention_guidance,
 			success = workflow.frontmatter().tracker().success_state(),
 			continuation_guidance = continuation_guidance,
 			repair_architecture_guidance = repair_architecture_guidance,
@@ -265,7 +305,7 @@ where
 			completion_guidance = build_repair_completion_guidance(review_level),
 		),
 		IssueDispatchMode::Closeout => format!(
-			"Continue retained closeout for Linear issue {identifier}: {title}\n\nDescription:\n{description}\n\nCurrent PR:\n- `{pr_url}`\n\nExecution checklist:\n- Resume from the current branch and merged PR lineage in this worktree. Do not move the issue back to `{in_progress}`.\n- Treat retained closeout as a short deterministic tail. Reuse the existing merged PR evidence instead of restarting broad discovery, and only rerun the minimum validation needed to justify `Done` plus cleanup.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n- If you call `{progress_checkpoint_tool}` during closeout, either omit `head_sha` and let `decodex` record the exact current lane HEAD automatically, or pass the exact full current `HEAD` SHA.\n- Merge is already authoritative for `{pr_url}` before this run starts. Do not land, merge, or request review from this closeout run.\n- The tracker issue may already be in `{completed}` while this deterministic tail work remains pending.\n- If the issue is still in `{success}`, move it once to `{completed}` with `{transition_tool}` before `{closeout_tool}`.\n- Call `{closeout_tool}` with `{pr_url}` and a short result summary, then call `{terminal_finalize_tool}` with path `closeout`.\n- Do not end the turn without either `{closeout_tool}` plus `{terminal_finalize_tool}`, or the manual-attention path.\n- If the issue needs manual attention, add label `{needs_attention}` with `{label_tool}`, call `issue_comment` with kind `manual_attention` and structured public fields, and then call `{terminal_finalize_tool}` with path `manual_attention`.\n- Keep the lane scoped to this retained post-review work and do not treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}",
+			"Continue retained closeout for Linear issue {identifier}: {title}\n\nDescription:\n{description}\n\nCurrent PR:\n- `{pr_url}`\n\nExecution checklist:\n- Resume from the current branch and merged PR lineage in this worktree. Do not move the issue back to `{in_progress}`.\n- Treat retained closeout as a short deterministic tail. Reuse the existing merged PR evidence instead of restarting broad discovery, and only rerun the minimum validation needed to justify `Done` plus cleanup.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n- If you call `{progress_checkpoint_tool}` during closeout, either omit `head_sha` and let `decodex` record the exact current lane HEAD automatically, or pass the exact full current `HEAD` SHA.\n- Merge is already authoritative for `{pr_url}` before this run starts. Do not land, merge, or request review from this closeout run.\n- The tracker issue may already be in `{completed}` while this deterministic tail work remains pending.\n- If the issue is still in `{success}`, move it once to `{completed}` with `{transition_tool}` before `{closeout_tool}`.\n- Call `{closeout_tool}` with `{pr_url}` and a short result summary, then call `{terminal_finalize_tool}` with path `closeout`.\n- Do not end the turn without either `{closeout_tool}` plus `{terminal_finalize_tool}`, or the manual-attention path.\n- {manual_attention_guidance}\n- Keep the lane scoped to this retained post-review work and do not treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}",
 			identifier = issue.identifier,
 			title = issue.title,
 			description = description,
@@ -277,25 +317,22 @@ where
 			terminal_finalize_tool = ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
 			success = workflow.frontmatter().tracker().success_state(),
 			completed = completed_state,
-			needs_attention = workflow.frontmatter().tracker().needs_attention_label(),
-			label_tool = ISSUE_LABEL_ADD_TOOL_NAME,
+			manual_attention_guidance = repair_manual_attention_guidance,
 			continuation_guidance = continuation_guidance,
 		),
 				_ => format!(
-					"Resolve Linear issue {identifier}: {title}\n\nDescription:\n{description}\n\n{recovery_context}Execution checklist:\n- Move the issue to `{in_progress}` with `{transition_tool}`. Decodex already records the run-start Linear ledger, so do not leave a separate start comment.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n- Keep discovery bounded to the minimal implementation files needed for this issue; defer broader docs or upstream reading unless a concrete ambiguity blocks the change.\n- Implement the fix in the current worktree.\n{decodex_review_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- Run the repository validation needed to justify a reviewable PR.\n- Commit the lane, push branch `{branch}`, and create or update a non-draft PR titled `{pr_title}` for that branch.\n{completion_guidance}- If the issue needs manual attention, add label `{needs_attention}` with `{label_tool}`, call `issue_comment` with kind `manual_attention` and structured public fields, and then call `{terminal_finalize_tool}` with path `manual_attention`. Do not call `{review_handoff_tool}` in that case; `decodex` will stop the lane as a human-required failure without automatic retry.\n- Do not move the issue directly to `{success}` with `{transition_tool}`; `decodex` will finish that writeback after its own validation passes.\n- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}",
+					"Resolve Linear issue {identifier}: {title}\n\nDescription:\n{description}\n\n{recovery_context}Execution checklist:\n- Move the issue to `{in_progress}` with `{transition_tool}`. Decodex already records the run-start Linear ledger, so do not leave a separate start comment.\n- Update `{progress_checkpoint_tool}` whenever the execution phase, focus, next action, blockers, evidence, or verification state changes materially.\n- Keep discovery bounded to the minimal implementation files needed for this issue; defer broader docs or upstream reading unless a concrete ambiguity blocks the change.\n- Implement the fix in the current worktree.\n{decodex_review_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- Run the repository validation needed to justify a reviewable PR.\n- Commit the lane, push branch `{branch}`, and create or update a non-draft PR titled `{pr_title}` for that branch.\n{completion_guidance}- {manual_attention_guidance}\n- Do not move the issue directly to `{success}` with `{transition_tool}`; `decodex` will finish that writeback after its own validation passes.\n- Do not report the run as complete or treat `{progress_checkpoint_tool}` as terminal completion until `{terminal_finalize_tool}` succeeds.{continuation_guidance}",
 					identifier = issue.identifier,
 					title = issue.title,
 					description = description,
 					recovery_context = recovery_context,
 					transition_tool = ISSUE_TRANSITION_TOOL_NAME,
-				label_tool = ISSUE_LABEL_ADD_TOOL_NAME,
 				progress_checkpoint_tool = ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
-				review_handoff_tool = ISSUE_REVIEW_HANDOFF_TOOL_NAME,
 				terminal_finalize_tool = ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
 				in_progress = workflow.frontmatter().tracker().in_progress_state(),
 				branch = issue_run.worktree.branch_name,
 				success = workflow.frontmatter().tracker().success_state(),
-				needs_attention = workflow.frontmatter().tracker().needs_attention_label(),
+				manual_attention_guidance = handoff_manual_attention_guidance,
 			continuation_guidance = continuation_guidance,
 			pr_title = review_pull_request_title(issue),
 			decodex_review_guidance = build_handoff_review_guidance(
@@ -318,13 +355,27 @@ fn build_continuation_user_input(
 		.frontmatter()
 		.tracker()
 		.resolved_completed_state();
+	let needs_attention = workflow.frontmatter().tracker().needs_attention_label();
+	let repair_manual_attention_guidance = build_manual_attention_guidance(
+		needs_attention,
+		ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		None,
+	);
+	let handoff_manual_attention_guidance = build_manual_attention_guidance(
+		needs_attention,
+		ISSUE_LABEL_ADD_TOOL_NAME,
+		ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+		Some(ISSUE_REVIEW_HANDOFF_TOOL_NAME),
+	);
 
 	match dispatch_mode {
 			IssueDispatchMode::ReviewRepair => format!(
-				"Continue retained review repair for Linear issue {identifier} in the current thread and worktree.\n\nContinuation checklist:\n- Resume from the current repository state and outstanding review feedback or retained landing fallback on `{pr_url}`.\n- Keep changes scoped to the same retained review lane and do not move the issue out of `{success}`.\n{decodex_review_guidance}- Validate each actionable review claim against the codebase, tests, and requirements before changing code, and keep pushback or clarification threads open until the repaired head is ready.\n- If the blocker is landing fallback, repair only the branch sync, conflict, ambiguous mergeability, or repository-specific recovery issue; do not merge or land the PR yourself.\n- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- If the repaired head is ready, push it.\n{github_review_guidance}- After the repaired head is pushed, reply in-thread for every addressed comment and resolve only the GitHub review threads whose fixes landed and verified on the repaired head.\n{completion_guidance}- If the issue requires manual attention, add the needs-attention label, call `issue_comment` with kind `manual_attention` and structured public fields, then finalize path `manual_attention` before ending the turn.\n- If more work still remains after this turn, you may end the turn without terminal finalization and Decodex will decide whether to continue.",
+				"Continue retained review repair for Linear issue {identifier} in the current thread and worktree.\n\nContinuation checklist:\n- Resume from the current repository state and outstanding review feedback or retained landing fallback on `{pr_url}`.\n- Keep changes scoped to the same retained review lane and do not move the issue out of `{success}`.\n{decodex_review_guidance}- Validate each actionable review claim against the codebase, tests, and requirements before changing code, and keep pushback or clarification threads open until the repaired head is ready.\n- If the blocker is landing fallback, repair only the branch sync, conflict, ambiguous mergeability, or repository-specific recovery issue; do not merge or land the PR yourself.\n- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n- If the repaired head is ready, push it.\n{github_review_guidance}- After the repaired head is pushed, reply in-thread for every addressed comment and resolve only the GitHub review threads whose fixes landed and verified on the repaired head.\n{completion_guidance}- {manual_attention_guidance}\n- If more work still remains after this turn, you may end the turn without terminal finalization and Decodex will decide whether to continue.",
 			identifier = issue.identifier,
 			pr_url = recorded_pr_url.unwrap_or("(missing review handoff marker)"),
 			success = success_state,
+			manual_attention_guidance = repair_manual_attention_guidance,
 			github_review_guidance = build_repair_github_review_guidance(review_level, ISSUE_REVIEW_REPAIR_COMPLETE_TOOL_NAME),
 			decodex_review_guidance = build_repair_continuation_review_guidance(
 				review_level
@@ -334,7 +385,7 @@ fn build_continuation_user_input(
 			),
 		),
 		IssueDispatchMode::Closeout => format!(
-			"Continue retained closeout for Linear issue {identifier} in the current thread and worktree.\n\nContinuation checklist:\n- Resume from the current repository state and merged PR lineage on `{pr_url}`.\n- Keep changes scoped to the same retained post-review lane. Do not move the issue back to implementation; the tracker may already be in `{completed}` while closeout or cleanup remains pending.\n- Treat this resumed closeout as a short deterministic tail. Reuse the existing merged PR evidence instead of restarting broad discovery, and only rerun the minimum validation needed to justify `Done` plus cleanup.\n- If you record `{progress_checkpoint_tool}` during closeout, either omit `head_sha` or pass the exact full current `HEAD` SHA.\n- Merge is already authoritative for `{pr_url}` before this run starts. Do not land, merge, or request review from this closeout run.\n- If the issue is still in `{success}`, transition it once to `{completed}` with `{transition_tool}` before `{closeout_tool}`.\n- If Linear closeout is complete, call `{closeout_tool}` and then call `{terminal_finalize_tool}` with path `closeout`.\n- Do not end the turn without either `{closeout_tool}` plus `{terminal_finalize_tool}`, or the manual-attention path.\n- If the issue requires manual attention, add the needs-attention label, call `issue_comment` with kind `manual_attention` and structured public fields, then finalize path `manual_attention` before ending the turn.",
+			"Continue retained closeout for Linear issue {identifier} in the current thread and worktree.\n\nContinuation checklist:\n- Resume from the current repository state and merged PR lineage on `{pr_url}`.\n- Keep changes scoped to the same retained post-review lane. Do not move the issue back to implementation; the tracker may already be in `{completed}` while closeout or cleanup remains pending.\n- Treat this resumed closeout as a short deterministic tail. Reuse the existing merged PR evidence instead of restarting broad discovery, and only rerun the minimum validation needed to justify `Done` plus cleanup.\n- If you record `{progress_checkpoint_tool}` during closeout, either omit `head_sha` or pass the exact full current `HEAD` SHA.\n- Merge is already authoritative for `{pr_url}` before this run starts. Do not land, merge, or request review from this closeout run.\n- If the issue is still in `{success}`, transition it once to `{completed}` with `{transition_tool}` before `{closeout_tool}`.\n- If Linear closeout is complete, call `{closeout_tool}` and then call `{terminal_finalize_tool}` with path `closeout`.\n- Do not end the turn without either `{closeout_tool}` plus `{terminal_finalize_tool}`, or the manual-attention path.\n- {manual_attention_guidance}",
 			identifier = issue.identifier,
 			pr_url = recorded_pr_url.unwrap_or("(missing review handoff marker)"),
 			progress_checkpoint_tool = ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
@@ -343,10 +394,12 @@ fn build_continuation_user_input(
 			completed = completed_state,
 			closeout_tool = ISSUE_DELIVERY_CLOSEOUT_COMPLETE_TOOL_NAME,
 			terminal_finalize_tool = ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+			manual_attention_guidance = repair_manual_attention_guidance,
 		),
 		_ => format!(
-			"Continue working on Linear issue {identifier} in the current thread and worktree.\n\nContinuation checklist:\n- Resume from the current repository state instead of restarting broad discovery.\n- Keep changes scoped to the same issue lane.\n{decodex_review_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n{completion_guidance}- If the issue requires manual attention, add the needs-attention label, call `issue_comment` with kind `manual_attention` and structured public fields, then finalize path `manual_attention` before ending the turn.\n- If more work still remains after this turn, you may end the turn without terminal finalization and Decodex will decide whether to continue.",
+			"Continue working on Linear issue {identifier} in the current thread and worktree.\n\nContinuation checklist:\n- Resume from the current repository state instead of restarting broad discovery.\n- Keep changes scoped to the same issue lane.\n{decodex_review_guidance}- Treat failures from repo-native `canonicalize_commands`, `verify_commands`, or tracked rewrites left by that repo gate as continued repair by default: keep fixing the lane and rerun the gate instead of taking `manual_attention` unless the blocker is clearly toolchain, environment, or operator-owned.\n{completion_guidance}- {manual_attention_guidance}\n- If more work still remains after this turn, you may end the turn without terminal finalization and Decodex will decide whether to continue.",
 			identifier = issue.identifier,
+			manual_attention_guidance = handoff_manual_attention_guidance,
 			decodex_review_guidance = build_handoff_continuation_review_guidance(
 				review_level
 			),
