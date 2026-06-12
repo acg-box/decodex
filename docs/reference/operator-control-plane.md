@@ -451,7 +451,9 @@ Worktree visibility follows the owning dashboard section:
   dashboard readback also carry `readback_root_cause` when Decodex can classify the
   local diagnostic safely, for example `missing_github_cli`, `missing_github_token`,
   `github_auth_failed`, `github_api_read_failed`, `github_response_parse_failed`,
-  `pull_request_shape_read_failed`, or `lineage_validation_failed`. These diagnostic
+  `pull_request_shape_read_failed`, or `lineage_validation_failed`. This warning is a
+  wait/retry lane, not passive manual attention, unless the post-review classification
+  decision itself is `Block`. These diagnostic
   tokens are operator-local and must not include tokens, raw API payloads, or private
   command output.
 - `pull_request_merge_state_conflict` in `Review & Landing` means one retained
