@@ -1,0 +1,99 @@
+{
+  "schema": "social_post/v1",
+  "slug": "openai-codex-pr-27573",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "controller_account": "hackink",
+  "mode": "operator_impact",
+  "status": "published",
+  "audience": "Codex operators running long sessions on hosted providers",
+  "text": [
+    "Codex made `remote_compaction_v2` the default for providers that already support remote compaction: OpenAI/Azure move to v2, while Bedrock/OSS stay local. Operators should treat legacy remote compaction as explicit opt-out coverage. PR: https://github.com/openai/codex/pull/27573"
+  ],
+  "source_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-pr-27573.json"
+    ],
+    "reservations": [
+      "artifacts/social/x/reservations/2026-06-12/openai-codex-pr-27573.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27573.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27573.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27573",
+      "https://x.com/decodexspace/status/2065283737991193060"
+    ]
+  },
+  "evidence_notes": [
+    "The social_candidate/v1 artifact has decision.worthiness = publish, priority critical, and mode operator_impact for openai-codex-pr-27573.",
+    "The upstream_review/v1 artifact confirms PR #27573 makes remote compaction v2 stable and default-enabled for providers that already support remote compaction.",
+    "The upstream_impact/v1 artifact marks the change as public_signal_decision publish, control_plane_impact candidate, and publisher_angle operator_impact.",
+    "The x-post-quality-system gate passed because the post states what changed, who can act on it, and the direct GitHub PR source that proves it; the checked text fit in X compose with the modal Post button enabled.",
+    "Checked durable social_post/v1 records contained no published or blocked record for this idempotency key before publication.",
+    "Checked durable social_publish_reservation/v1 records contained no active reservation for this idempotency key before the new reservation was created.",
+    "Open GitHub PR readback with routed hackink credentials found pending publication PR #328 for openai-codex-app-26-608 and PR #298 for openai-codex-pr-26486, with no open PR touching openai-codex-pr-27573.",
+    "PR #354 made the active reservation visible before X compose; remote GitHub content readback confirmed artifacts/social/x/reservations/2026-06-12/openai-codex-pr-27573.json with status active and the PR URL.",
+    "Chrome profile readback verified @decodexspace owner controls through Edit profile before reservation.",
+    "Bounded @decodexspace profile readback before reservation found no PR 27573, remote_compaction_v2, remote compaction v2, candidate slug, or source URL match.",
+    "Live @decodexspace profile readback after PR-visible reservation and immediately before clicking Post showed owner controls, rendered nine recent articles, and found no PR 27573, remote_compaction_v2, remote compaction v2, candidate slug, or source URL match.",
+    "The compose dialog showed @decodexspace active and the checked PR #27573 text before the enabled modal Post button was clicked.",
+    "Home timeline readback immediately after posting showed the new @decodexspace status with the expected remote_compaction_v2 text and GitHub source card.",
+    "Permalink readback showed the expected @decodexspace post text, Automated by @hackink attribution, GitHub PR #27573 card, and no attached image media or /photo/N link.",
+    "The status ID decodes to 2026-06-12T04:03:08.910Z, which is 2026-06-12 12:03:08 in Asia/Shanghai."
+  ],
+  "claims": [
+    {
+      "text": "Remote compaction v2 is now the default for providers that already support remote compaction.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27573.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The change does not broaden provider eligibility for remote compaction.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27573.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The PR #27573 operator-impact post is live on @decodexspace.",
+      "evidence": "https://x.com/decodexspace/status/2065283737991193060",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "priority": "critical",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27573:operator_impact",
+    "reason": "The default compaction-path change matters to operators of long hosted Codex sessions.",
+    "daily_limit": 8,
+    "daily_count_before": 2,
+    "daily_count_after": 3,
+    "day": "2026-06-12",
+    "timezone": "Asia/Shanghai"
+  },
+  "publication": {
+    "posted_at": "2026-06-12T04:03:08.910Z",
+    "published_urls": [
+      "https://x.com/decodexspace/status/2065283737991193060"
+    ],
+    "publisher": "chrome",
+    "account_verified": true,
+    "made_with_ai": false
+  },
+  "media_refs": [
+    "media_caveat: no generated media was attached; this non-release operator_impact post remains valuable text-only because the source-backed provider compaction caveat and GitHub PR card are the reader value."
+  ],
+  "caveats": [
+    "This PR does not broaden remote-compaction provider eligibility.",
+    "The legacy remote-compaction path remains available through explicit feature disablement.",
+    "Do not claim Decodex runtime support without a separate Decodex audit.",
+    "No generated image was used because this was a single non-release operator-impact post with sufficient reader value from the text and source card."
+  ],
+  "post_lifecycle": {
+    "current_state": "live",
+    "quote_eligible": false,
+    "reason": "This is a standalone operator-impact post, not a prerelease quote-chain anchor."
+  }
+}
