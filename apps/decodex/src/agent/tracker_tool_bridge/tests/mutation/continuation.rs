@@ -270,6 +270,10 @@ fn manual_attention_requires_explanatory_comment() {
 	);
 
 	assert!(response.success);
+	assert!(
+		tracker.label_additions.borrow().is_empty(),
+		"manual-attention intent alone must not mutate Linear"
+	);
 
 	let error = bridge
 		.completion_disposition()
@@ -298,26 +302,33 @@ fn failed_needs_attention_label_update_does_not_record_manual_attention() {
 		ISSUE_LABEL_ADD_TOOL_NAME,
 		serde_json::json!({ "label": "decodex:needs-attention" }),
 	);
+	let comment_response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_COMMENT_TOOL_NAME,
+		manual_attention_comment_args(),
+	);
 
-	assert!(!response.success);
+	assert!(response.success);
+	assert!(!comment_response.success);
 	assert!(tracker.label_updates.borrow().is_empty());
 	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.comments.borrow().is_empty());
 
 	let error = bridge
 		.completion_disposition()
 		.expect_err("failed label writes must not count as manual attention");
 
-	assert!(error.to_string().contains("recorded neither"));
+	assert!(error.to_string().contains("never recorded the required explanatory comment"));
 }
 
 #[test]
-fn label_add_refreshes_issue_snapshot_before_merging_label_ids() {
+fn opt_out_label_add_uses_refreshed_issue_snapshot_for_label_ids() {
 	let initial_issue = sample_issue();
 	let mut refreshed_issue = initial_issue.clone();
 
 	refreshed_issue.labels.push(TrackerLabel {
-		id: String::from("label-manual"),
-		name: String::from("decodex:manual-only"),
+		id: String::from("label-needs"),
+		name: String::from("decodex:needs-attention"),
 	});
 
 	let tracker = FakeTracker::with_refresh_snapshots(vec![vec![refreshed_issue]]);
@@ -326,11 +337,11 @@ fn label_add_refreshes_issue_snapshot_before_merging_label_ids() {
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_LABEL_ADD_TOOL_NAME,
-		serde_json::json!({ "label": "decodex:needs-attention" }),
+		serde_json::json!({ "label": "decodex:manual-only" }),
 	);
 
 	assert!(response.success);
-	assert_eq!(tracker.label_additions.borrow().as_slice(), [vec![String::from("label-needs")]]);
+	assert_eq!(tracker.label_additions.borrow().as_slice(), [vec![String::from("label-manual")]]);
 }
 
 #[test]
@@ -342,7 +353,7 @@ fn label_add_fails_when_refresh_returns_no_snapshot() {
 	let response = DynamicToolHandler::handle_call(
 		&bridge,
 		ISSUE_LABEL_ADD_TOOL_NAME,
-		serde_json::json!({ "label": "decodex:needs-attention" }),
+		serde_json::json!({ "label": "decodex:manual-only" }),
 	);
 
 	assert!(!response.success);
