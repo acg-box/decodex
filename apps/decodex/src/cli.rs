@@ -35,8 +35,8 @@ use crate::{
 		RadarValidateRequest,
 	},
 	recovery::{
-		self, LegacyCloseoutRecoveryRequest, ReviewHandoffDiagnoseRequest,
-		ReviewHandoffRebindRequest,
+		self, LegacyCloseoutRecoveryRequest, ReviewHandoffAdoptRequest,
+		ReviewHandoffDiagnoseRequest, ReviewHandoffRebindRequest,
 	},
 	research_design::{
 		self, ResearchDesignCompileRequest, ResearchDesignOutcome, ResearchDesignPromoteRequest,
@@ -888,6 +888,14 @@ impl ReviewHandoffRecoveryCommand {
 					dry_run: args.dry_run,
 				},
 			),
+			ReviewHandoffRecoverySubcommand::Adopt(args) => recovery::run_review_handoff_adopt(
+				config_path,
+				&ReviewHandoffAdoptRequest {
+					issue: args.issue.clone(),
+					pr_url: args.pr.clone(),
+					dry_run: args.dry_run,
+				},
+			),
 		}
 	}
 }
@@ -908,6 +916,19 @@ struct ReviewHandoffRebindCommand {
 	#[arg(value_name = "ISSUE")]
 	issue: String,
 	/// Pull request URL to bind after validation.
+	#[arg(long, value_name = "URL")]
+	pr: String,
+	/// Validate only; do not write runtime markers or tracker audit comments.
+	#[arg(long)]
+	dry_run: bool,
+}
+
+#[derive(Debug, Args)]
+struct ReviewHandoffAdoptCommand {
+	/// Issue identifier for the human-owned review lane.
+	#[arg(value_name = "ISSUE")]
+	issue: String,
+	/// Pull request URL to adopt after validation.
 	#[arg(long, value_name = "URL")]
 	pr: String,
 	/// Validate only; do not write runtime markers or tracker audit comments.
@@ -1689,6 +1710,8 @@ enum ReviewHandoffRecoverySubcommand {
 	Diagnose(ReviewHandoffDiagnoseCommand),
 	/// Explicitly bind a validated PR URL to one retained review lane.
 	Rebind(ReviewHandoffRebindCommand),
+	/// Adopt a verified human-owned PR into the retained review lifecycle.
+	Adopt(ReviewHandoffAdoptCommand),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1830,9 +1853,9 @@ mod tests {
 		RadarRefreshReleaseDeltaCommand, RadarRefreshUpstreamQueueCommand,
 		RadarRenderSignalCommand, RadarSubcommand, RadarValidateCommand, RecoverCommand,
 		RecoverSubcommand, ResearchCommand, ResearchCompileCommand, ResearchOutcomeArg,
-		ResearchPromoteCommand, ResearchSubcommand, ReviewHandoffDiagnoseCommand,
-		ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand,
-		RunCommand, ServeCommand, StatusCommand,
+		ResearchPromoteCommand, ResearchSubcommand, ReviewHandoffAdoptCommand,
+		ReviewHandoffDiagnoseCommand, ReviewHandoffRebindCommand, ReviewHandoffRecoveryCommand,
+		ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand, StatusCommand,
 	};
 
 	#[test]
@@ -2794,6 +2817,33 @@ mod tests {
 				..
 			}) if issue == "PUB-718"
 				&& pr == "https://github.com/hack-ink/pubfi-mono-v2/pull/14"
+		));
+	}
+
+	#[test]
+	fn parses_review_handoff_adopt_dry_run() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"recover",
+			"review-handoff",
+			"adopt",
+			"XY-944",
+			"--pr",
+			"https://github.com/hack-ink/decodex/pull/344",
+			"--dry-run",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Recover(RecoverCommand {
+				command: RecoverSubcommand::ReviewHandoff(ReviewHandoffRecoveryCommand {
+					command: ReviewHandoffRecoverySubcommand::Adopt(
+						ReviewHandoffAdoptCommand { issue, pr, dry_run: true }
+					)
+				}),
+				..
+			}) if issue == "XY-944"
+				&& pr == "https://github.com/hack-ink/decodex/pull/344"
 		));
 	}
 
