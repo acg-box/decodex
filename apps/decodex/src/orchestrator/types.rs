@@ -854,6 +854,7 @@ impl LoopGuardrailStopRequested {
 		}
 	}
 }
+
 impl Display for LoopGuardrailStopRequested {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let source = self.source_error_class.as_deref().unwrap_or("none");
@@ -1291,7 +1292,13 @@ struct OperatorProjectStatus {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct OperatorExecutionProgramStatus {
 	program_id: String,
+	#[serde(default = "operator_execution_program_unknown_status")]
+	status: String,
 	source_contract_id: Option<String>,
+
+	intake_kind: Option<String>,
+
+	public_summary: Option<String>,
 	node_count: usize,
 	planned_count: usize,
 	mapped_count: usize,
@@ -1305,17 +1312,33 @@ struct OperatorExecutionProgramStatus {
 	stale_count: usize,
 	superseded_count: usize,
 	queue_label_eligible_count: usize,
+	#[serde(default)]
+	queue_label_apply_count: usize,
+	#[serde(default)]
+	queue_label_retain_count: usize,
+	#[serde(default)]
+	queue_label_remove_count: usize,
 	mapped_issue_identifiers: Vec<String>,
+	#[serde(default)]
+	node_readbacks: Vec<OperatorExecutionProgramNodeStatus>,
 	readback_warning: Option<String>,
 }
 impl OperatorExecutionProgramStatus {
 	fn from_summary(
 		record: &ExecutionProgramRecord,
 		summary: ExecutionProgramOperatorSummary,
+		evaluation: &ExecutionProgramEvaluation,
 	) -> Self {
+		let (queue_label_apply_count, queue_label_retain_count, queue_label_remove_count) =
+			operator_execution_program_queue_label_action_counts(evaluation);
+		let program_intake_plan = record.program().program_intake_plan();
+
 		Self {
-			program_id: summary.program_id,
+			status: operator_execution_program_status(&summary, record.program().nodes().len(), None),
+			program_id: summary.program_id.clone(),
 			source_contract_id: record.source_contract_id().map(str::to_owned),
+			intake_kind: program_intake_plan.map(|plan| plan.intake_kind().as_str().to_owned()),
+			public_summary: program_intake_plan.map(|plan| plan.public_summary().to_owned()),
 			node_count: record.program().nodes().len(),
 			planned_count: summary.planned_count,
 			mapped_count: summary.mapped_count,
@@ -1329,7 +1352,16 @@ impl OperatorExecutionProgramStatus {
 			stale_count: summary.stale_count,
 			superseded_count: summary.superseded_count,
 			queue_label_eligible_count: summary.queue_label_eligible_count,
+			queue_label_apply_count,
+			queue_label_retain_count,
+			queue_label_remove_count,
 			mapped_issue_identifiers: summary.mapped_issue_identifiers,
+			node_readbacks: evaluation
+				.nodes()
+				.iter()
+				.filter(|node| operator_execution_program_node_should_render(node))
+				.map(operator_execution_program_node_readback)
+				.collect(),
 			readback_warning: None,
 		}
 	}
@@ -1339,7 +1371,16 @@ impl OperatorExecutionProgramStatus {
 
 		Self {
 			program_id: record.program_id().to_owned(),
+			status: String::from("stale"),
 			source_contract_id: record.source_contract_id().map(str::to_owned),
+			intake_kind: record
+				.program()
+				.program_intake_plan()
+				.map(|plan| plan.intake_kind().as_str().to_owned()),
+			public_summary: record
+				.program()
+				.program_intake_plan()
+				.map(|plan| plan.public_summary().to_owned()),
 			node_count,
 			planned_count: 0,
 			mapped_count: 0,
@@ -1353,10 +1394,26 @@ impl OperatorExecutionProgramStatus {
 			stale_count: node_count,
 			superseded_count: 0,
 			queue_label_eligible_count: 0,
-			mapped_issue_identifiers: Vec::new(),
+			queue_label_apply_count: 0,
+			queue_label_retain_count: 0,
+			queue_label_remove_count: 0,
+			mapped_issue_identifiers: operator_execution_program_mapped_issue_identifiers(record),
+			node_readbacks: operator_execution_program_missing_contract_nodes(record),
 			readback_warning: Some(String::from("source_decision_contract_missing")),
 		}
 	}
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorExecutionProgramNodeStatus {
+	lifecycle_state: String,
+	readiness_state: String,
+	issue_identifier: Option<String>,
+	issue_state: Option<String>,
+	queue_label_action: Option<String>,
+	reason_codes: Vec<String>,
+	reasons: Vec<String>,
+	next_action: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2163,6 +2220,279 @@ pub(crate) fn record_authority_decision_request_private_event(
 		AUTHORITY_DECISION_REQUEST_EVENT_TYPE,
 		payload,
 	)
+}
+
+fn operator_execution_program_status(
+	summary: &ExecutionProgramOperatorSummary,
+	node_count: usize,
+	readback_warning: Option<&str>,
+) -> String {
+	if readback_warning.is_some() || summary.stale_count > 0 || summary.superseded_count > 0 {
+		String::from("stale")
+	} else if summary.needs_attention_count > 0 {
+		String::from("attention")
+	} else if summary.blocked_count > 0 {
+		String::from("blocked")
+	} else if summary.active_count > 0 {
+		String::from("active")
+	} else if summary.queued_count > 0 {
+		String::from("queued")
+	} else if summary.ready_count > 0 {
+		String::from("ready")
+	} else if node_count > 0 && summary.completed_count == node_count {
+		String::from("completed")
+	} else if summary.held_count > 0 {
+		String::from("held")
+	} else {
+		String::from("idle")
+	}
+}
+
+fn operator_execution_program_unknown_status() -> String {
+	String::from("unknown")
+}
+
+fn operator_execution_program_queue_label_action_counts(
+	evaluation: &ExecutionProgramEvaluation,
+) -> (usize, usize, usize) {
+	let mut apply_count = 0;
+	let mut retain_count = 0;
+	let mut remove_count = 0;
+
+	for node in evaluation.nodes() {
+		match node.queue_label_action() {
+			Some(ExecutionQueueLabelAction::Apply) => apply_count += 1,
+			Some(ExecutionQueueLabelAction::Retain) => {
+				retain_count += 1
+			},
+			Some(ExecutionQueueLabelAction::Remove) => {
+				remove_count += 1
+			},
+			None => {},
+		}
+	}
+
+	(apply_count, retain_count, remove_count)
+}
+
+fn operator_execution_program_node_should_render(
+	node: &ExecutionNodeEvaluation,
+) -> bool {
+	node.queue_label_action().is_some()
+		|| matches!(
+			node.lifecycle_state(),
+			crate::execution_program::ExecutionProgramNodeLifecycleState::Active
+				| crate::execution_program::ExecutionProgramNodeLifecycleState::Blocked
+				| crate::execution_program::ExecutionProgramNodeLifecycleState::Mapped
+				| crate::execution_program::ExecutionProgramNodeLifecycleState::NeedsAttention
+				| crate::execution_program::ExecutionProgramNodeLifecycleState::Planned
+				| crate::execution_program::ExecutionProgramNodeLifecycleState::Stale
+				| crate::execution_program::ExecutionProgramNodeLifecycleState::Superseded
+		)
+}
+
+fn operator_execution_program_node_readback(
+	node: &ExecutionNodeEvaluation,
+) -> OperatorExecutionProgramNodeStatus {
+	let reason_codes = operator_execution_program_reason_codes(node.reasons());
+	let reasons = node
+		.reasons()
+		.iter()
+		.map(|reason| operator_execution_program_public_reason(reason))
+		.collect::<Vec<_>>();
+	let issue = node.linear_issue();
+
+	OperatorExecutionProgramNodeStatus {
+		lifecycle_state: node.lifecycle_state().as_str().to_owned(),
+		readiness_state: node.state().as_str().to_owned(),
+		issue_identifier: issue.map(|issue| issue.issue_identifier().to_owned()),
+		issue_state: issue.map(|issue| issue.issue_state().to_owned()),
+		queue_label_action: node.queue_label_action().map(|action| action.as_str().to_owned()),
+		next_action: operator_execution_program_node_next_action(node, &reason_codes),
+		reason_codes,
+		reasons,
+	}
+}
+
+fn operator_execution_program_missing_contract_nodes(
+	record: &ExecutionProgramRecord,
+) -> Vec<OperatorExecutionProgramNodeStatus> {
+	record
+		.program()
+		.nodes()
+		.iter()
+		.map(|node| {
+			let issue = node.linear_issue();
+
+			OperatorExecutionProgramNodeStatus {
+				lifecycle_state: String::from("stale"),
+				readiness_state: String::from("stale"),
+				issue_identifier: issue.map(|issue| issue.issue_identifier().to_owned()),
+				issue_state: issue.map(|issue| issue.issue_state().to_owned()),
+				queue_label_action: None,
+				reason_codes: vec![String::from("source_decision_contract_missing")],
+				reasons: vec![String::from("source Decision Contract is missing")],
+				next_action: String::from(
+					"Restore or supersede the source Decision Contract before queueing this program.",
+				),
+			}
+		})
+		.collect()
+}
+
+fn operator_execution_program_mapped_issue_identifiers(
+	record: &ExecutionProgramRecord,
+) -> Vec<String> {
+	let mut identifiers = record
+		.program()
+		.nodes()
+		.iter()
+		.filter_map(|node| node.linear_issue().map(|issue| issue.issue_identifier().to_owned()))
+		.collect::<Vec<_>>();
+
+	identifiers.sort();
+	identifiers.dedup();
+
+	identifiers
+}
+
+fn operator_execution_program_reason_codes(reasons: &[String]) -> Vec<String> {
+	let mut seen = BTreeSet::new();
+
+	for reason in reasons {
+		seen.insert(operator_execution_program_reason_code(reason).to_owned());
+	}
+
+	seen.into_iter().collect()
+}
+
+fn operator_execution_program_reason_code(reason: &str) -> &'static str {
+	if reason == "node no longer matches the accepted Decision Contract" {
+		"accepted_contract_mismatch"
+	} else if reason == "node queue intent is not-ready" {
+		"queue_intent_not_ready"
+	} else if reason == "node queue intent is paused" {
+		"queue_intent_paused"
+	} else if reason == "node already has an active lane" {
+		"active_lane_present"
+	} else if reason == "node queue intent is terminal" {
+		"queue_intent_terminal"
+	} else if reason == "node is ready for normal Linear issue execution" {
+		"ready_for_linear_execution"
+	} else if reason == "node has no acceptance expectations" {
+		"acceptance_expectations_missing"
+	} else if reason == "node has no validation expectations" {
+		"validation_expectations_missing"
+	} else if reason.starts_with("dependency `") {
+		"dependency_not_terminal"
+	} else if reason.starts_with("conflict domain `") {
+		"conflict_domain_occupied"
+	} else if reason == "node has no normal Linear issue mapping" {
+		"linear_issue_mapping_missing"
+	} else if reason.contains(" is already terminal in `") {
+		"mapped_issue_terminal"
+	} else if reason.contains(" is not in a startable state") {
+		"mapped_issue_not_startable"
+	} else if reason.contains(" already carries `") {
+		"mapped_issue_active_label_present"
+	} else if reason.contains(" carries `decodex:manual-only`") {
+		"mapped_issue_manual_only"
+	} else if reason.contains(" carries `decodex:needs-attention`") {
+		"mapped_issue_needs_attention"
+	} else if reason.contains(" has open tracker dependency blockers") {
+		"mapped_issue_open_blockers"
+	} else if reason.contains(" is missing a generic dispatch briefing") {
+		"mapped_issue_dispatch_briefing_missing"
+	} else {
+		"program_readiness_blocked"
+	}
+}
+
+fn operator_execution_program_public_reason(reason: &str) -> String {
+	if reason.starts_with("conflict domain `") {
+		String::from("another active or retained program node occupies this conflict domain")
+	} else if reason.starts_with("dependency `") {
+		String::from("a dependency has not reached a required terminal state")
+	} else {
+		reason.to_owned()
+	}
+}
+
+fn operator_execution_program_node_next_action(
+	node: &ExecutionNodeEvaluation,
+	reason_codes: &[String],
+) -> String {
+	if matches!(
+		node.lifecycle_state(),
+		crate::execution_program::ExecutionProgramNodeLifecycleState::Stale
+			| crate::execution_program::ExecutionProgramNodeLifecycleState::Superseded
+	) {
+		return String::from(
+			"Refresh or supersede the accepted Decision Contract before queueing this program.",
+		);
+	}
+	if reason_codes.iter().any(|code| code == "dependency_not_terminal") {
+		return String::from(
+			"Complete the dependency issue or refresh the Execution Program dependency plan if this remains stale.",
+		);
+	}
+	if matches!(
+		node.lifecycle_state(),
+		crate::execution_program::ExecutionProgramNodeLifecycleState::NeedsAttention
+	)
+		|| reason_codes.iter().any(|code| code == "mapped_issue_needs_attention")
+	{
+		return String::from(
+			"Resolve the mapped issue's needs-attention stop before queueing this node.",
+		);
+	}
+	if matches!(
+		node.lifecycle_state(),
+		crate::execution_program::ExecutionProgramNodeLifecycleState::Active
+	) {
+		return String::from(
+			"Wait for the active lane or recover its retained state before queueing this node.",
+		);
+	}
+	if matches!(
+		node.queue_label_action(),
+		Some(crate::execution_program::ExecutionQueueLabelAction::Remove)
+	) {
+		return String::from(
+			"Allow the program reconciler to remove its owned queue label on the next Linear scan.",
+		);
+	}
+	if matches!(
+		node.queue_label_action(),
+		Some(crate::execution_program::ExecutionQueueLabelAction::Apply)
+	) {
+		return String::from(
+			"Wait for the next Linear scan or request a targeted scan to apply the service queue label.",
+		);
+	}
+	if matches!(
+		node.queue_label_action(),
+		Some(crate::execution_program::ExecutionQueueLabelAction::Retain)
+	) {
+		return String::from("Issue is already queued by the program reconciler.");
+	}
+	if matches!(
+		node.lifecycle_state(),
+		crate::execution_program::ExecutionProgramNodeLifecycleState::Planned
+			| crate::execution_program::ExecutionProgramNodeLifecycleState::Mapped
+	) {
+		return String::from("Map, promote, or unpause this intake node before queueing it.");
+	}
+	if matches!(
+		node.lifecycle_state(),
+		crate::execution_program::ExecutionProgramNodeLifecycleState::Blocked
+	) {
+		return String::from(
+			"Repair mapped issue blockers, briefing, or program readiness before retrying.",
+		);
+	}
+
+	String::from("No operator action required.")
 }
 
 fn validate_authority_boundary_check_input(

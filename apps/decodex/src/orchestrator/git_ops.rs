@@ -139,7 +139,7 @@ mod repo_gate_failure {
 	}
 }
 
-use std::{collections::BTreeSet, process::Output};
+use std::process::Output;
 
 use repo_gate_failure::{RepoGateFailure, RepoGateFailureDisposition, RepoGateFailureKind};
 use crate::workflow::ResolvedRepoGate;
