@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27413",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "skills: decouple the skills extension from core",
+        "url": "https://github.com/openai/codex/pull/27413",
+        "meta": "Merged 2026-06-11T12:03:53Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27413",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27413.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex decoupled `codex-skills-extension` from `codex-core` by introducing a host-supplied `SkillsExtensionConfig` view and moving skills context fragments into the extension crate.",
+  "public_signal_decision": "skip",
+  "control_plane_impact": "watch",
+  "publisher_angle": "none",
+  "confidence": "confirmed",
+  "evidence": [
+    "`codex-skills-extension` removes its direct `codex-core` dependency.",
+    "`SkillsExtensionConfig` becomes the public host-supplied configuration view for skills installation.",
+    "The app-server maps its `Config` into the skills extension config at install time.",
+    "Available-skills and selected-skill context fragments move into `ext/skills` while tests assert roles, markers, and rendered bytes."
+  ],
+  "candidate_followups": [
+    "Track this as staged migration context for future hosted-skill and extension-boundary PRs.",
+    "Check out-of-tree host integrations for the new config projection if Decodex consumes this crate boundary directly."
+  ],
+  "social_notes": [
+    "Skip standalone social publishing because the PR explicitly preserves user-visible and model-visible behavior.",
+    "Use only as background if a later extension migration PR adds a visible hosted-skill capability."
+  ],
+  "caveats": [
+    "The PR body states this adds no capability.",
+    "Any source-level break is limited to host code that installs the skills extension directly.",
+    "No immediate Decodex runtime action is justified without a later behavior-changing PR."
+  ]
+}
