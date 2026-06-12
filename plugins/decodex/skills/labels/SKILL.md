@@ -44,6 +44,8 @@ If a project-scoped command supplies `--config <project-dir>`, read that project
 - Humans may add or clear `decodex:manual-only`.
 - Humans may clear `decodex:needs-attention` only after addressing the underlying
   blocker recorded by the runtime or agent.
+- `decodex recover review-handoff rebind` may clear `decodex:needs-attention` itself
+  only when a current same-PR same-head handoff marker proves stale failure-state drift.
 - Humans should not normally add or clear `decodex:active:<service-id>` unless doing
   explicit recovery and the runtime-owned state has been verified.
 
@@ -72,7 +74,8 @@ If a project-scoped command supplies `--config <project-dir>`, read that project
 
 1. Read the failure or attention comment first.
 2. Resolve the underlying blocker.
-3. Clear `decodex:needs-attention`.
+3. Clear `decodex:needs-attention`, or use `decodex recover review-handoff rebind`
+   when the blocker is verified current-marker failure-state drift.
 4. Re-add `decodex:queued:<service-id>` only when the issue should resume automation.
 
 ## Boundaries

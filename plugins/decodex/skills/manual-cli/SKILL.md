@@ -58,6 +58,9 @@ registered project's `WORKFLOW.md`.
 - Use `land` only when the user asks to land a human-driven PR through Decodex.
 - Use `run --dry-run` only as an intake/worktree-planning check. It does not prove live
   tracker writes, PR handoff, closeout, or app-server execution will succeed.
+- Use `recover review-handoff diagnose` and then `recover review-handoff rebind` for
+  retained PR handoff state drift; the live rebind owns marker refresh plus the narrow
+  current-marker failure-state label/state repair described in the runbook.
 - Use `probe stdio://` before relying on the Codex app-server boundary.
 - Use `POST /api/linear-scan` after label or issue-state changes when the scheduler
   should refresh before its next 5-minute Linear poll.
