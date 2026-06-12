@@ -1,0 +1,58 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27646",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27646",
+    "commit_shas": [
+      "fef2bbfa4c23e6144afa8c2081ca4a44cca082dc"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "feat: disable orchestrator skills for now",
+        "url": "https://github.com/openai/codex/pull/27646",
+        "meta": "Merged 2026-06-11T18:20:26Z"
+      },
+      {
+        "kind": "commit",
+        "title": "feat: disable orchestrator skills for now",
+        "url": "https://github.com/openai/codex/commit/fef2bbfa4c23e6144afa8c2081ca4a44cca082dc"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-12T08:06:51Z",
+  "observed_change": "Codex temporarily disables app-server registration of the orchestrator skill provider while keeping executor-backed skills enabled.",
+  "changed_surfaces": [
+    "app-server extension provider registration",
+    "orchestrator skill MCP resource test coverage"
+  ],
+  "user_visible_path": "Users relying on hosted or orchestrator-only skills should not expect those skills to be available through app-server skill listing/reading until the upstream `/ps/mcp` package endpoint is complete; executor-environment skills still register.",
+  "control_plane_relevance": "High for Decodex Control Plane because hosted skill resources are a runtime capability boundary and Decodex prompts or tests must not assume orchestrator skills are currently exposed.",
+  "compatibility_risk": "High for flows that require orchestrator-owned `skill://` skills through app-server. Local host skills and executor-backed environment skills are not disabled by this PR.",
+  "adoption_opportunity": "Gate Decodex hosted-skill expectations on explicit app-server capability evidence and preserve fallback or unsupported-state messaging while orchestrator skills are disabled upstream.",
+  "community_value": "Medium as a cautious watch note for operators debugging why orchestrator-only skills are absent; the temporary nature makes it weaker than a feature announcement.",
+  "deprecated_or_breaking_notes": "This is a temporary disablement, not a schema removal. The PR adds an `ORCHESTRATOR_SKILLS_ENABLED: false` constant and ignores the orchestrator resource read test until `/ps/mcp` serves complete hosted skill packages.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27646 body says orchestrator-only skills are temporarily disabled while waiting for the endpoint to be fixed.",
+    "`codex-rs/app-server/src/extensions.rs` adds `ORCHESTRATOR_SKILLS_ENABLED: bool = false` with a TODO to enable it once `/ps/mcp` serves complete hosted skill packages.",
+    "The same extension setup always starts `SkillProviders::new().with_executor_provider(executor_skill_provider)` and only adds `with_orchestrator_provider(...)` behind the disabled constant.",
+    "`codex-rs/app-server/tests/suite/v2/mcp_resource.rs` marks `orchestrator_skill_can_read_referenced_resource_without_an_executor` as ignored with the same hosted-package reason.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27646.json` records 2 changed files for the merged PR."
+  ],
+  "caveats": "Do not generalize this to all skill support. The disablement is specific to orchestrator-only skills in app-server, and the PR preserves executor-backed skill registration.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Temporary hosted-skill disablement is a Control Plane compatibility risk."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "A cautious watch-note candidate can help operators understand absent orchestrator-only skills without treating the temporary state as permanent."
+    }
+  ]
+}

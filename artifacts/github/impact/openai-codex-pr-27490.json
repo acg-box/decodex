@@ -1,0 +1,44 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27490",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Remove TUI legacy Windows sandbox dependency",
+        "url": "https://github.com/openai/codex/pull/27490",
+        "meta": "Merged 2026-06-11T16:23:08Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27490",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27490.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex moved Windows sandbox helper logic out of the app-server-client legacy facade and into the TUI, removing legacy re-exports and dead prompt fallback code while preserving the reachable Windows setup flow.",
+  "public_signal_decision": "skip",
+  "control_plane_impact": "watch",
+  "publisher_angle": "none",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR body describes the change as behavior-neutral refactoring of TUI Windows sandbox helpers.",
+    "The app-server-client legacy facade no longer re-exports Windows sandbox helpers.",
+    "The new TUI helper module documents a remaining mixed-platform remote Windows sandbox gap.",
+    "Reachable elevated and non-elevated setup flows are intended to remain unchanged."
+  ],
+  "candidate_followups": [
+    "Watch for later upstream PRs moving Windows sandbox readiness, setup, and read-root grants into app-server RPCs.",
+    "Avoid claiming Decodex mixed-platform Windows sandbox support from this refactor."
+  ],
+  "social_notes": [
+    "No standalone social candidate: the public value is mostly a caveat, not a new capability."
+  ],
+  "caveats": [
+    "The PR is not a remote Windows sandbox fix.",
+    "The mixed-platform remote gap is explicitly out of scope.",
+    "The removed fallback was dormant behind a permanently enabled switch."
+  ]
+}
