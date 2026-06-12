@@ -1,0 +1,44 @@
+{
+  "candidate_followups": [
+    "Audit Decodex skill/resource handling for assumptions that a resource keeps a filesystem object alive after listing.",
+    "Prefer environment-id readback checks when diagnosing executor skill read failures.",
+    "Group public explanation with the broader PathUri filesystem migration instead of publishing this internal cleanup alone."
+  ],
+  "caveats": [
+    "This is part of a stacked filesystem/path migration.",
+    "The PR removes an internal bound-path type, not a public app-server JSON-RPC method."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "`EnvironmentPathRef` implementation and export are removed.",
+    "`SkillResourceId` now stores environment id plus absolute path for environment resources.",
+    "Executor skill reads resolve the current environment from `EnvironmentManager` before reading.",
+    "The source review links this PR to the broader PathUri migration that follows."
+  ],
+  "observed_change": "Codex removes `EnvironmentPathRef` and represents executor skill resources as environment id plus absolute path.",
+  "public_signal_decision": "defer",
+  "publisher_angle": "watch_note",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27433",
+  "social_notes": [
+    "If this becomes public, pair it with PR #27424 so the user-facing story is PathUri migration rather than an isolated internal type removal."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-11T18:26:13Z",
+        "title": "[codex] remove EnvironmentPathRef",
+        "url": "https://github.com/openai/codex/pull/27433"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27433.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27433"
+      }
+    ]
+  }
+}

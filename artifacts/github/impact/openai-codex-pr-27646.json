@@ -1,0 +1,45 @@
+{
+  "candidate_followups": [
+    "Treat absence of orchestrator-only skills as expected upstream behavior until a follow-up PR re-enables the provider.",
+    "Keep Decodex capability probes from failing closed solely because orchestrator skill resources are missing.",
+    "Watch for the `/ps/mcp` hosted-package fix that should reverse this temporary gate."
+  ],
+  "caveats": [
+    "The disable is explicitly temporary.",
+    "Executor-backed skills remain installed through the app-server skill extension."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "`ORCHESTRATOR_SKILLS_ENABLED` is set to false in app-server extension wiring.",
+    "`OrchestratorSkillProvider` is added only when the flag is true.",
+    "The orchestrator skill resource read test is ignored until `/ps/mcp` serves complete skill packages.",
+    "The PR body frames the change as a temporary disable."
+  ],
+  "observed_change": "Codex temporarily disables app-server orchestrator skill providers while keeping executor-backed skills installed.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "watch_note",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27646",
+  "social_notes": [
+    "Use cautious language: temporary disable, not a permanent removal.",
+    "Mention executor skills still load so readers do not overgeneralize the outage."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-11T18:20:26Z",
+        "title": "feat: disable orchestrator skills for now",
+        "url": "https://github.com/openai/codex/pull/27646"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27646.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27646"
+      }
+    ]
+  }
+}
