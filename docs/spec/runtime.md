@@ -229,8 +229,8 @@ The runtime state machine is local to `decodex`. It is not a replacement for Lin
 | --- | --- | --- |
 | `discovered` | The issue was listed from Linear and passed the eligibility filter. | Acquire lease or skip on conflict. |
 | `leased` | `decodex` created the local lease and reserved the issue for one attempt. | Worktree bootstrap starts or lease fails. |
-| `worktree_ready` | The issue lane exists locally and is ready for execution. | `app-server` session starts. |
-| `running` | `decodex` has an active `app-server` thread for the issue and may start one or more bounded turns on that thread. | A terminal completion path resolves, the bounded continuation budget is exhausted, the issue becomes non-active, transport fails, or policy violation occurs. |
+| `worktree_ready` | The issue lane exists locally and is ready for execution. | `app-server` session starts, or startup transport failure enters the retry budget. |
+| `running` | `decodex` has an active `app-server` thread for the issue and may start one or more bounded turns on that thread. | A terminal completion path resolves, the bounded continuation budget is exhausted, the issue becomes non-active, post-thread transport fails, or policy violation occurs. |
 | `validating` | Agent execution finished and the repo-native gate (`canonicalize_commands`, then `verify_commands`) is running. | The repo gate passes or fails. |
 | `retry_wait` | The control plane is holding a queued retry entry for the leased lane after a clean continuation exit or a failure with remaining retry budget. | The queued retry revalidates and starts, the queued issue becomes non-active and the claim is released, or operator intervention cancels retries. |
 | `needs_attention` | Retry budget is exhausted or human intervention is required. | Human updates the issue and it becomes eligible again. |
@@ -302,6 +302,15 @@ after continued-repair validation failure), marks the attempt as
 does not apply to `handoff_evidence`, explicit manual-attention terminal intent,
 unsupported phase-goal app-server methods, repo-gate human-attention failures, or
 runs with no current active phase-goal signal.
+
+App-server JSON-RPC transport failures keep the phase where the disconnect occurred.
+Disconnects before a durable thread session is attached (`initialize`,
+`account/login/start`, `thread/start`, or `thread/resume`) are startup failures and
+must flow through the retry budget before any `decodex:needs-attention` writeback.
+If the retry budget is exhausted, the terminal failure still uses
+`app_server_transport_disconnected`. Disconnects after the thread session boundary,
+including `turn/start` and turn execution, remain human-required because automatic
+retry can duplicate turn-side effects.
 
 Phase-goal telemetry is local runtime evidence. It must distinguish
 `goal_complete`, `validation_pass`, `validation_fail`, `active_goal_recovered`,
