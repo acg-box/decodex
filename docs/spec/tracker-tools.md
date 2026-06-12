@@ -58,7 +58,9 @@ The follow-up MVP should support these issue-scoped operations:
 - `issue_review_handoff`
   - validate and record a PR-backed success handoff for the current issue
 - `issue_label_add`
-  - add a label to the current issue when workflow policy requires it
+  - add an allowlisted immediate label to the current issue when workflow policy
+    requires it, or record a run-local manual-attention label intent for the
+    configured `needs_attention_label`
 - `issue_terminal_finalize`
   - explicitly finalize the current run's terminal tracker path after the required tracker writes already exist
 
@@ -90,7 +92,9 @@ At turn completion, the issue-scoped tool bridge must leave `decodex` with exact
   - finalized by `issue_terminal_finalize(path = "review_handoff")`
   - means the lane is claiming review-ready success
 - `manual_attention`
-  - produced by adding the configured `needs_attention_label` and leaving an explanatory comment
+  - produced by requesting the configured `needs_attention_label`, leaving a
+    validated explanatory comment, and having Decodex apply the label before writing
+    the comment
   - finalized by `issue_terminal_finalize(path = "manual_attention")`
   - means the lane is explicitly handing the issue back to a human instead of asking for `In Review`
 
@@ -199,18 +203,25 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   fails the public-text guard during Decodex-owned writeback, Decodex must use fixed
   public-safe fallback summary text for the Linear comment and ledger record instead
   of failing the otherwise valid PR lifecycle transition.
-- Adding the configured `needs_attention_label` is an explicit human-required
-  failure exit for the active lane. In that case the agent must call
-  `issue_comment` with kind `manual_attention` so Decodex can render the
-  explanatory `needs_attention` ledger comment, must not also record
-  `issue_review_handoff`, and `decodex` must stop automatic retries for that
-  attempt.
+- Calling `issue_label_add` with the configured `needs_attention_label` records an
+  explicit human-required failure intent for the active lane, but it is not an
+  immediate Linear mutation. In that case the agent must call `issue_comment` with
+  kind `manual_attention` so Decodex can validate the blocker, apply the
+  `needs_attention_label`, and render the explanatory `needs_attention` ledger
+  comment. The agent must not also record `issue_review_handoff`, and `decodex` must
+  stop automatic retries for that attempt only after the paired manual-attention exit
+  validates.
 - Human-attention comments must describe the exact observed blocker through
   structured public fields: `error_class`, `next_action`, `blockers`, and
   `evidence`. `failed_command` and `raw_error` may be included only when their
   values are public-safe. The tool must reject private-looking command or error
   text before any Linear mutation. The agent must not speculate about
   capabilities or environment restrictions that it did not directly verify.
+- `manual_attention` must not use runtime-owned retry or continued-repair
+  `error_class` values such as retryable app-server, stalled-run, or repo-gate
+  validation classes. Those classes remain owned by Decodex retry, continuation, or
+  architecture-recovery policy until the runtime itself reaches a human-required
+  terminal boundary.
 - For authority-boundary stops, `manual_attention` may include a structured
   `decision_request` object. Its Linear-rendered fields are public-safe only:
   `decision_request_id`, `reason_code`, `boundary_type`, `proposed_change`,
@@ -219,7 +230,11 @@ In either invalid case, `decodex` must fail the attempt rather than infer which 
   worktree evidence, retained diff evidence, and recovery-attempt context, must be
   written to private runtime evidence before the Linear write and must not be
   rendered into the public comment.
-- The human-attention exit is not complete until the explanatory comment is successfully written after the label request. A label-only signal must be rejected as an invalid completion disposition.
+- The human-attention exit is not complete until the requested label and explanatory
+  comment are successfully written after the comment validates. A label-intent-only
+  signal must be rejected as an invalid completion disposition, and invalid,
+  private-looking, unsupported, or runtime-owned retryable comments must not leave a
+  label-only attention state behind.
 - The run is not complete until `issue_terminal_finalize` succeeds against the matching terminal path. An execution-state checkpoint or an agent summary message is not a substitute.
 - Issues that carry the configured `needs_attention_label` must remain ineligible for future automatic selection until a human clears the label.
 - `issue_review_handoff` and the human-attention exit are mutually exclusive terminal signals for the same turn.
