@@ -65,8 +65,9 @@ registered project's `WORKFLOW.md`.
   from a managed Decodex worktree and should enter normal `decodex land --authority`
   closeout. Run dry-run first from the lane worktree, then rerun live only after it
   confirms the active service label, clean worktree, exact PR branch/head match, and
-  green landable PR gates. Do not use adopt for retained lanes that already have a
-  worktree mapping or review handoff marker; use rebind or normal land there.
+  green landable PR gates. Adopt may reuse an existing worktree mapping only when it
+  points at the same current managed checkout. Do not use adopt when a retained review
+  handoff marker already exists; use rebind or normal land there.
 - Use `probe stdio://` before relying on the Codex app-server boundary.
 - Use `POST /api/linear-scan` after label or issue-state changes when the scheduler
   should refresh before its next 5-minute Linear poll.
