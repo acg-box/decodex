@@ -471,6 +471,35 @@ impl AppServerCapabilityPreflightFailure {
 		}
 	}
 
+	pub(crate) fn is_retryable_timeout(&self) -> bool {
+		matches!(
+			self.kind,
+			AppServerCapabilityPreflightFailureKind::MethodFailed { timed_out: true, .. }
+		)
+	}
+
+	pub(crate) fn retry_next_action(&self) -> String {
+		match &self.kind {
+			AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method: "plugin/list",
+				timed_out: true,
+				..
+			} => String::from(
+				"decodex will retry app-server preflight automatically; inspect local app_server_preflight_failed evidence for the `plugin/list` timeout and restart `decodex serve` if the retry budget exhausts",
+			),
+			AppServerCapabilityPreflightFailureKind::MethodFailed {
+				method,
+				timed_out: true,
+				..
+			} => format!(
+				"decodex will retry app-server preflight automatically; inspect local app_server_preflight_failed evidence for the `{method}` timeout and restart `decodex serve` if the retry budget exhausts"
+			),
+			AppServerCapabilityPreflightFailureKind::MethodFailed { .. }
+			| AppServerCapabilityPreflightFailureKind::BlockedState =>
+				String::from("app-server preflight requires operator recovery"),
+		}
+	}
+
 	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
 		match &self.kind {
 			AppServerCapabilityPreflightFailureKind::MethodFailed {

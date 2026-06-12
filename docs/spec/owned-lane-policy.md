@@ -150,6 +150,7 @@ This action requires:
 | Running lane remains eligible and activity is current | Current issue state is still active; no interrupting state transition; activity marker or session state still live | `continue` | Not applicable |
 | Clean worker exit with remaining retry budget | Retry budget remains; issue is still active; no `decodex:needs-attention` label or equivalent human-attention signal | `retry_automatically` | Yes |
 | Abnormal worker exit with remaining retry budget | Same as above, plus failure is classified as retryable | `retry_automatically` | Yes |
+| App-server capability preflight method timeout with remaining retry budget | App-server initialized; capability preflight timed out; workflow retry budget remains; no hard config/model/provider/skills/plugin/MCP blocker was observed | `retry_automatically` | Yes |
 | Stalled active run with no retained tracked changes and remaining retry budget | Issue still has active ownership; retry budget remains; worktree has no retained tracked changes requiring operator recovery | `retry_automatically` | Yes |
 | Retry exhausted, explicit human-attention signal, or retained stalled partial progress | Retry budget exhausted, or `decodex:needs-attention`, or stalled-run evidence with retained tracked changes | `manual_intervention_required` | No |
 | Human-attention label is unavailable but the failure path still must block redispatch | Failure path is human-required; label application failed; guarded retained marker recorded | `manual_intervention_required` | No |

@@ -1416,6 +1416,7 @@ fn capability_preflight_method_error_is_typed_operator_blocker() {
 	);
 
 	assert_eq!(failure.error_class(), "app_server_introspection_method_failed");
+	assert!(!failure.is_retryable_timeout());
 	assert!(failure.to_string().contains("model/list"));
 	assert!(failure.to_string().contains("Method not found"));
 	assert_eq!(failure.report().checks().len(), 1);
@@ -1467,7 +1468,7 @@ fn plugin_list_preflight_timeout_retries_once_before_success() {
 }
 
 #[test]
-fn plugin_list_preflight_timeout_failure_is_typed_operator_blocker() {
+fn plugin_list_preflight_timeout_failure_is_typed_retryable_timeout() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let mut recorder = RunRecorder::new(&state_store, "run-1", 1, None);
 	let report = AppServerCapabilityPreflightReport::new();
@@ -1493,14 +1494,11 @@ fn plugin_list_preflight_timeout_failure_is_typed_operator_blocker() {
 
 	assert_eq!(attempts, 2);
 	assert_eq!(failure.error_class(), "app_server_plugin_list_timeout");
+	assert!(failure.is_retryable_timeout());
 	assert!(failure.to_string().contains("app_server_preflight_failed"));
 	assert!(failure.to_string().contains("plugin/list"));
 	assert!(failure.to_string().contains("timed out"));
-	assert!(
-		failure
-			.terminal_next_action("clear label `decodex:needs-attention`")
-			.contains("app_server_preflight_failed evidence for the `plugin/list` timeout")
-	);
+	assert!(failure.retry_next_action().contains("retry app-server preflight automatically"));
 	assert!(failure.report().has_blockers());
 	assert_eq!(check.name, "plugins");
 	assert_eq!(check.status, super::AppServerCapabilityPreflightStatus::Blocked);

@@ -520,8 +520,9 @@ Before writing a retry comment, transitioning an issue, or applying
 disposition: generic retryable failure, structured retryable recovery, or
 human-required terminal attention. Structured retryable recovery includes typed runtime
 failures such as zero-evidence app-server startup failures, stalled active-run
-reconciliation without retained tracked changes, startup transport disconnects, turn
-failures, dynamic-tool failures, and retryable repo-gate failures;
+reconciliation without retained tracked changes, app-server capability preflight
+timeouts, startup transport disconnects, turn failures, dynamic-tool failures, and
+retryable repo-gate failures;
 those failures must not be reclassified as zero-evidence startup attention merely
 because protocol-event persistence lagged. A zero-evidence startup failure may record
 private startup diagnostics, but it remains automatic retry work while retry budget
@@ -850,6 +851,8 @@ After a process restart, recent-run history, active lease ownership, retained po
   must run the bounded app-server capability preflight defined in
   [`app-server.md`](./app-server.md). Missing config/model/provider/skills/plugin/MCP
   state is a pre-dispatch terminal blocker with an operator-readable error class, not a
-  promptable agent turn.
+  promptable agent turn. App-server capability preflight method timeouts are structured
+  retryable runtime failures while workflow retry budget remains; after retry
+  exhaustion they may terminalize with their specific app-server preflight error class.
 - If the local process crashed during a run, `decodex` must recover from the runtime database, current tracker cache or state, and retained worktree inspection.
 - If Linear shows a non-terminal state but no local lease exists, the issue may become eligible again after reconciliation or may be redispatched through the retained recovered worktree.

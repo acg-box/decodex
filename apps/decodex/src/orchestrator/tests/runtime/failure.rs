@@ -157,6 +157,14 @@ fn failure_writeback_disposition_separates_retryable_and_attention_classes() {
 			RunFailureWritebackDisposition::RetryableStructuredRecovery,
 		),
 		(
+			"app-server capability preflight timeout",
+			Report::new(AppServerCapabilityPreflightFailure::method_timed_out_for_test(
+				"plugin/list",
+				String::from("Timed out while waiting for app-server output."),
+			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
 			"stalled active run",
 			Report::new(StalledRunNeedsAttention {
 				issue_identifier: String::from("PUB-101"),
@@ -182,6 +190,14 @@ fn failure_writeback_disposition_separates_retryable_and_attention_classes() {
 				"failed",
 				"operator attention required",
 				Some(String::from("operatorAttentionRequired")),
+			)),
+			RunFailureWritebackDisposition::TerminalAttention,
+		),
+		(
+			"app-server capability preflight blocker",
+			Report::new(AppServerCapabilityPreflightFailure::blocked_for_test(
+				"model",
+				"configured model was not present in model/list.",
 			)),
 			RunFailureWritebackDisposition::TerminalAttention,
 		),
@@ -597,6 +613,20 @@ fn stalled_run_retry_comments_preserve_specific_error_class() {
 }
 
 #[test]
+fn app_server_preflight_timeout_retry_comments_preserve_specific_error_class() {
+	let error = Report::new(AppServerCapabilityPreflightFailure::method_timed_out_for_test(
+		"plugin/list",
+		String::from("Timed out while waiting for app-server output."),
+	));
+	let (error_class, next_action) = orchestrator::retry_comment_details(&error);
+
+	assert_eq!(error_class, "app_server_plugin_list_timeout");
+	assert!(next_action.contains("retry app-server preflight automatically"));
+	assert!(next_action.contains("`plugin/list` timeout"));
+	assert!(next_action.contains("retry budget exhausts"));
+}
+
+#[test]
 fn repo_gate_lock_contention_runtime_retry_writes_specific_retry_schedule_marker() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("In Progress", &[]);
@@ -636,6 +666,51 @@ fn repo_gate_lock_contention_runtime_retry_writes_specific_retry_schedule_marker
 		.expect("retry marker should exist");
 
 	assert_eq!(marker.retry_kind(), Some("git_lock_contention"));
+	assert!(
+		marker.retry_ready_at_unix_epoch().is_some_and(
+			|retry_ready_at| retry_ready_at > OffsetDateTime::now_utc().unix_timestamp()
+		)
+	);
+}
+
+#[test]
+fn app_server_preflight_timeout_runtime_retry_writes_failure_retry_schedule_marker() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: issue.state.name.clone(),
+		worktree: WorktreeSpec {
+			branch_name: String::from("x/pubfi-pub-101"),
+			issue_identifier: issue.identifier.clone(),
+			path: worktree_path.clone(),
+			reused_existing: false,
+		},
+		retry_project_slug: issue
+			.project_slug
+			.clone()
+			.expect("sample issue should carry a project slug"),
+		dispatch_mode: IssueDispatchMode::Normal,
+		attempt_number: 1,
+		run_id: String::from("pub-101-attempt-1-123"),
+		retry_budget_base: 0,
+	};
+	let error = Report::new(AppServerCapabilityPreflightFailure::method_timed_out_for_test(
+		"plugin/list",
+		String::from("Timed out while waiting for app-server output."),
+	));
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+	orchestrator::write_retry_schedule_marker_for_runtime_retry(&error, &workflow, &issue_run, 1)
+		.expect("preflight timeout should write a failure retry marker");
+
+	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
+		.expect("retry schedule should remain readable")
+		.expect("retry marker should exist");
+
+	assert_eq!(marker.retry_kind(), Some("failure"));
 	assert!(
 		marker.retry_ready_at_unix_epoch().is_some_and(
 			|retry_ready_at| retry_ready_at > OffsetDateTime::now_utc().unix_timestamp()
