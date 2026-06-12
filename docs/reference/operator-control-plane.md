@@ -471,7 +471,11 @@ Worktree visibility follows the owning dashboard section:
   state even when `queued_candidates` is empty and no active or post-review lane
   currently owns the issue. A terminal Run Ledger attention row without a retained
   worktree, queued attention row, active or needs-attention tracker label, or blocked
-  post-review lane is history-only and must not inflate current attention.
+  post-review lane is history-only and must not inflate current attention. When the
+  same issue is currently owned by a non-attention `Review & Landing` row such as
+  `wait_for_review` or `ready_to_land`, that row controls the current action summary;
+  stale active-label or worktree echoes from an older terminal ledger record stay in
+  Run Ledger history instead of reappearing as current attention.
 - If private evidence shows `phase_goal_recovery` followed by a queued continuation,
   the lane is not a retained-attention worktree even when the preceding child failed.
   Treat it as Decodex-owned re-entry into the next phase unless a later terminal Run
