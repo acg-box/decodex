@@ -81,6 +81,10 @@ null-PR blocked state. The status row must keep the issue identifier, retained b
 marker PR URL, and marker head SHA, and it may expose
 `readback_warning = "pull_request_state_read_failed"` until the next successful PR
 state refresh.
+Retained orchestration must preserve that degraded-readback classification as a wait
+state. It must not convert `pull_request_state_read_failed` or other
+`WaitForReview` classifications into passive manual attention; only classifications
+whose decision is `Block` may add `decodex:needs-attention`.
 
 When Linear issue metadata readback is degraded by connector backoff, operator status
 must still keep locally retained handoff rows visible with the marker PR URL and head

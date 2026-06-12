@@ -410,7 +410,7 @@ where
 {
 	let review_state = match load_post_review_lane_review_state(snapshot, review_state_inspector)? {
 		PostReviewLaneStateLoad::Classification(classification) =>
-			return Ok(RetainedReviewLaneReviewLoad::Blocked(classification.reason)),
+			return Ok(retained_review_lane_review_load_from_classification(classification)),
 		PostReviewLaneStateLoad::ReviewState(review_state) => Box::new(review_state),
 	};
 
@@ -429,6 +429,16 @@ where
 	}
 
 	Ok(RetainedReviewLaneReviewLoad::ReviewState(review_state))
+}
+
+fn retained_review_lane_review_load_from_classification(
+	classification: PostReviewLaneClassification,
+) -> RetainedReviewLaneReviewLoad {
+	if classification.decision == PostReviewLaneDecision::Block {
+		RetainedReviewLaneReviewLoad::Blocked(classification.reason)
+	} else {
+		RetainedReviewLaneReviewLoad::Skip
+	}
 }
 
 fn blocked_retained_review_lane(
