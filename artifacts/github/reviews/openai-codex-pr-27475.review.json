@@ -1,0 +1,66 @@
+{
+  "adoption_opportunity": "Track upstream trait signatures and dependency policy if Decodex patches or embeds Codex Rust crates that previously used async_trait-based object-safe traits.",
+  "caveats": "The PR body describes changed tests passing while broader `just test` failures were environment-sensitive and unrelated. The reviewed bundle does not show a new user-facing feature.",
+  "changed_surfaces": [
+    "workspace dependency declarations",
+    "cargo-deny policy",
+    "first-party async trait definitions",
+    "cloud tasks, thread store, file system, model provider, network proxy, and shell escalation traits",
+    "rand dependency version",
+    "Bazel and Cargo lockfiles"
+  ],
+  "community_value": "Moderate for Rust maintainers interested in native async trait migration and dependency policy, but low for everyday Codex users.",
+  "compatibility_risk": "Medium for forks, tests, or downstream crates that compile against first-party Codex traits. Low for app-server JSON clients because the bundle does not show a protocol method change.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "Moderate watch item. Decodex does not need a runtime protocol change, but source-level integrations and local patches may need to follow the new explicit Send future signatures.",
+  "deprecated_or_breaking_notes": "First-party direct `async-trait` dependencies and the workspace dependency declaration were removed. Traits now expose native return-position `impl Future + Send` or boxed Send futures where object safety is needed; `rand` moves from 0.8.5 to 0.8.6.",
+  "evidence": [
+    "PR #27475 says remaining first-party async_trait traits were replaced with native or boxed Send futures and direct first-party async-trait dependencies were removed.",
+    "`codex-rs/Cargo.toml` removes the workspace `async-trait` dependency.",
+    "`codex-rs/deny.toml` adds policy allowing async-trait only through remaining transitive wrapper crates.",
+    "`codex-rs/thread-store/src/store.rs` adds a boxed ThreadStoreFuture type and changes ThreadStore methods from async_trait methods to explicit future-returning methods.",
+    "`codex-rs/cloud-tasks-client/src/api.rs`, `codex-rs/network-proxy/src/network_policy.rs`, and `codex-rs/shell-escalation/src/unix/escalation_policy.rs` show the same explicit future migration pattern.",
+    "`codex-rs/Cargo.lock` updates rand from 0.8.5 to 0.8.6.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27475.json` records 93 changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "The change is mainly source-level compatibility and dependency-policy context for Decodex maintainers, not a public publishing candidate.",
+      "type": "upstream_impact"
+    }
+  ],
+  "observed_change": "Codex removed direct first-party async-trait usage by moving first-party async traits to explicit Send future signatures and tightening dependency policy.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-12T20:08:11Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27475",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T01:16:39Z",
+        "title": "[codex] Remove async_trait from first-party code",
+        "url": "https://github.com/openai/codex/pull/27475"
+      },
+      {
+        "kind": "commit",
+        "title": "Remove async_trait from first-party code",
+        "url": "https://github.com/openai/codex/commit/9aba4e7c68322efaf4a930336061dc4ddf22eedb"
+      },
+      {
+        "kind": "commit",
+        "title": "Ban first-party async-trait dependencies",
+        "url": "https://github.com/openai/codex/commit/4df5f02d73bd57c728ec65880b2b702825256edc"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "9aba4e7c68322efaf4a930336061dc4ddf22eedb",
+      "4df5f02d73bd57c728ec65880b2b702825256edc"
+    ],
+    "subject_id": "27475",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "No direct end-user path was identified. The observable effect is source and dependency compatibility for Codex Rust crates and maintainers."
+}

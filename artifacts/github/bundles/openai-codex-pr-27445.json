@@ -1,0 +1,436 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-10T19:26:10Z",
+      "message": "Persist remote-control desired state",
+      "sha": "c1c83d3db1c92450ee5104637673da205c3b53f1",
+      "url": "https://github.com/openai/codex/commit/c1c83d3db1c92450ee5104637673da205c3b53f1"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-10T22:24:00Z",
+      "message": "Complete durable remote-control enrollment on enable",
+      "sha": "11b7a3193c9c0b607a89154d613bf31bf9968356",
+      "url": "https://github.com/openai/codex/commit/11b7a3193c9c0b607a89154d613bf31bf9968356"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T04:01:16Z",
+      "message": "codex: fix CI failure on PR #27445",
+      "sha": "37c9a1af8e791b935a7e6b79412097349b3be23a",
+      "url": "https://github.com/openai/codex/commit/37c9a1af8e791b935a7e6b79412097349b3be23a"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T16:08:26Z",
+      "message": "codex: address PR review feedback (#27445)",
+      "sha": "2ccf773428b3e45ea0bf628f7cdc1f829acb4ec6",
+      "url": "https://github.com/openai/codex/commit/2ccf773428b3e45ea0bf628f7cdc1f829acb4ec6"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T16:23:27Z",
+      "message": "codex: address PR review feedback (#27445)",
+      "sha": "89e994bf64ee35e3e03915cea760486b67eeeddb",
+      "url": "https://github.com/openai/codex/commit/89e994bf64ee35e3e03915cea760486b67eeeddb"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T16:38:38Z",
+      "message": "Revert \"codex: address PR review feedback (#27445)\"",
+      "sha": "f06ad42c1964a93de5e96576e7c4244ac41f2e74",
+      "url": "https://github.com/openai/codex/commit/f06ad42c1964a93de5e96576e7c4244ac41f2e74"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T17:33:26Z",
+      "message": "codex: address PR review feedback (#27445)",
+      "sha": "751a2a5ffa1105ebf86c0c89507d97b1dd8a203e",
+      "url": "https://github.com/openai/codex/commit/751a2a5ffa1105ebf86c0c89507d97b1dd8a203e"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T17:44:47Z",
+      "message": "codex: fix argument comment lint on PR #27445",
+      "sha": "5d46286a8c47f23d546e431d8395861091407ac3",
+      "url": "https://github.com/openai/codex/commit/5d46286a8c47f23d546e431d8395861091407ac3"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T17:54:46Z",
+      "message": "codex: address PR review feedback (#27445)",
+      "sha": "51201c3539709dc098c33bb5d917c3f3c2c360d1",
+      "url": "https://github.com/openai/codex/commit/51201c3539709dc098c33bb5d917c3f3c2c360d1"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T18:07:10Z",
+      "message": "codex: address PR review feedback (#27445)",
+      "sha": "51c0ede50280cb2b7720ad4edc795b99f2bbff8b",
+      "url": "https://github.com/openai/codex/commit/51c0ede50280cb2b7720ad4edc795b99f2bbff8b"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T18:16:29Z",
+      "message": "codex: fix Windows clippy on PR #27445",
+      "sha": "5957b62fc0479ae8ab34b1126edbfc482536d7a1",
+      "url": "https://github.com/openai/codex/commit/5957b62fc0479ae8ab34b1126edbfc482536d7a1"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T18:25:58Z",
+      "message": "codex: address PR review feedback (#27445)",
+      "sha": "38fa3a8ac4472cf91ae78a7bcf46de916d96849a",
+      "url": "https://github.com/openai/codex/commit/38fa3a8ac4472cf91ae78a7bcf46de916d96849a"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T21:22:09Z",
+      "message": "codex: simplify remote control startup state",
+      "sha": "6d519c7361e8c5d9ea93acd5a9ee2bdf8b52d76e",
+      "url": "https://github.com/openai/codex/commit/6d519c7361e8c5d9ea93acd5a9ee2bdf8b52d76e"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T21:50:16Z",
+      "message": "codex: simplify remote control availability state",
+      "sha": "ffc649de3e5b2fb406e8fc84b26973bf375762ab",
+      "url": "https://github.com/openai/codex/commit/ffc649de3e5b2fb406e8fc84b26973bf375762ab"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-11T22:10:21Z",
+      "message": "fix remote control startup edge cases",
+      "sha": "d4c46df25f4a90a7cb75380379d58bb301bcb9af",
+      "url": "https://github.com/openai/codex/commit/d4c46df25f4a90a7cb75380379d58bb301bcb9af"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-12T00:07:56Z",
+      "message": "reject disabled transportless remote control startup",
+      "sha": "e34ec2789518918e9cd1d8b06187ce1da043b5b5",
+      "url": "https://github.com/openai/codex/commit/e34ec2789518918e9cd1d8b06187ce1da043b5b5"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "RPC",
+    "CLI",
+    "NULL",
+    "REMOTE_CONTROL_DISABLED_ENV_VAR",
+    "--listen",
+    "JSONRPCM",
+    "JSONRPCN",
+    "JSONRPCR",
+    "REMOTE_CONTROL_READY_TIMEOUT",
+    "REMOTE_CONTROL_ENABLE_REQUEST_ID",
+    "REMOTE_CONTROL_REQUEST_ID",
+    "INVALID_PARAMS_ERROR_CODE",
+    "CONTROL_SOCKET_RESPONSE_TIMEOUT",
+    "JSONRPCE",
+    "TEST_SERVER_NAME",
+    "GENERATED",
+    "CODE",
+    "NOT",
+    "MODIFY",
+    "HAND",
+    "CHANNEL_CAPACITY",
+    "CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED",
+    "SAFETY",
+    "REMOTE_CONTROL_PROTOCOL_VERSION",
+    "TEST_REMOTE_CONTROL_URL",
+    "TEST_INSTALLATION_ID",
+    "URL",
+    "POST",
+    "HTTP",
+    "TEST_REFRESHED_REMOTE_CONTROL_SERVER_TOKEN",
+    "REMOTE_CONTROL_ACCOUNT_ID_RETRY_INTERVAL",
+    "INPUT_TOO_LARGE_ERROR_CODE",
+    "LOG_FORMAT_ENV_VAR",
+    "LOG_FORMAT",
+    "OTEL_SERVICE_NAME",
+    "DISABLE_PLUGIN_STARTUP_TASKS_ARG",
+    "--disable-plugin-startup-tas",
+    "DISABLE_MANAGED_CONFIG_ENV_VAR",
+    "CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG",
+    "JSON",
+    "DEFAULT_CLIENT_NAME",
+    "DEFAULT_TIMEOUT",
+    "STARTUP_TIMEOUT",
+    "--remote-control",
+    "ALTER",
+    "TABLE",
+    "ADD",
+    "COLUMN",
+    "INTEGER",
+    "SELECT",
+    "FROM",
+    "WHERE",
+    "AND",
+    "INSERT",
+    "INTO",
+    "VALUES",
+    "CONFLICT",
+    "UPDATE",
+    "SET",
+    "STATE_MIGRATOR"
+  ],
+  "files": [
+    {
+      "additions": 18,
+      "deletions": 0,
+      "patch_excerpt": "@@ -8,6 +8,8 @@ use std::time::Duration;\n use anyhow::Context;\n use anyhow::Result;\n use anyhow::bail;\n+#[cfg(unix)]\n+use codex_app_server_transport::REMOTE_CONTROL_DISABLED_ENV_VAR;\n use serde::Deserialize;\n use serde::Serialize;\n use tokio::fs;\n@@ -164,6 +166,9 @@ impl PidBackend {\n             .stdin(Stdio::null())\n             .stdout(Stdio::null())\n             .stderr(Stdio::from(stderr_log.into_std().await));\n+        if let Some((key, value)) = self.command_env() {\n+            command.env(key, value);\n+        }\n \n         #[cfg(unix)]\n         {\n@@ -407,6 +412,19 @@ impl PidBackend {\n         }\n     }\n \n+    #[cfg(unix)]\n+    fn command_env(&self) -> Option<(&'static str, &'static str)> {\n+        match self.command_kind {\n+            PidCommandKind::AppServer {\n+                remote_control_enabled: false,\n+            } => Some((REMOTE_CONTROL_DISABLED_ENV_VAR, \"1\")),\n+   ...",
+      "path": "codex-rs/app-server-daemon/src/backend/pid.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 20,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3,6 +3,8 @@ use std::time::Duration;\n use pretty_assertions::assert_eq;\n use tempfile::TempDir;\n \n+use codex_app_server_transport::REMOTE_CONTROL_DISABLED_ENV_VAR;\n+\n use super::PidBackend;\n use super::PidCommandKind;\n use super::PidFileState;\n@@ -174,6 +176,24 @@ fn app_server_remote_control_uses_runtime_flag() {\n     );\n }\n \n+#[test]\n+fn app_server_disabled_remote_control_uses_compatible_args_and_runtime_env() {\n+    let backend = PidBackend::new(\n+        \"codex\".into(),\n+        \"app-server.pid\".into(),\n+        /*remote_control_enabled*/ false,\n+    );\n+\n+    assert_eq!(\n+        backend.command_args(),\n+        vec![\"app-server\", \"--listen\", \"unix://\"]\n+    );\n+    assert_eq!(\n+        backend.command_env(),\n+        Some((REMOTE_CONTROL_DISABLED_ENV_VAR, \"1\"))\n+    );\n+}\n+\n #[tokio::test]\n async fn read_stderr_log_tail_returns_recent_complete_lines() {\n     let temp_dir = Temp...",
+      "path": "codex-rs/app-server-daemon/src/backend/pid_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -543,6 +543,16 @@ impl Daemon {\n             } else {\n                 None\n             };\n+            if info.is_some() {\n+                match mode {\n+                    RemoteControlMode::Enabled => {\n+                        remote_control_client::enable_remote_control(&self.socket_path).await?;\n+                    }\n+                    RemoteControlMode::Disabled => {\n+                        remote_control_client::disable_remote_control(&self.socket_path).await?;\n+                    }\n+                }\n+            }\n             return Ok(self.remote_control_output(\n                 already_remote_control_status(mode),\n                 backend.map(|_| BackendKind::Pid),",
+      "path": "codex-rs/app-server-daemon/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 291,
+      "deletions": 58,
+      "patch_excerpt": "@@ -8,9 +8,13 @@ use codex_app_server_protocol::JSONRPCMessage;\n use codex_app_server_protocol::JSONRPCNotification;\n use codex_app_server_protocol::JSONRPCRequest;\n use codex_app_server_protocol::RemoteControlConnectionStatus;\n+use codex_app_server_protocol::RemoteControlDisableParams;\n+use codex_app_server_protocol::RemoteControlDisableResponse;\n+use codex_app_server_protocol::RemoteControlEnableParams;\n use codex_app_server_protocol::RemoteControlEnableResponse;\n use codex_app_server_protocol::RemoteControlStatusChangedNotification;\n use codex_app_server_protocol::RequestId;\n+use serde::de::DeserializeOwned;\n use tokio::io::AsyncRead;\n use tokio::io::AsyncWrite;\n use tokio::time::Instant;\n@@ -22,13 +26,33 @@ use crate::RemoteControlReadyStatus;\n use crate::client;\n \n const REMOTE_CONTROL_READY_TIMEOUT: Duration = Duration::from_secs(10);\n-const REMOTE_CONTROL_ENABLE_REQUEST_ID: Reques...",
+      "path": "codex-rs/app-server-daemon/src/remote_control_client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2124,6 +2124,22 @@\n         }\n       ]\n     },\n+    \"RemoteControlDisableParams\": {\n+      \"properties\": {\n+        \"ephemeral\": {\n+          \"type\": \"boolean\"\n+        }\n+      },\n+      \"type\": \"object\"\n+    },\n+    \"RemoteControlEnableParams\": {\n+      \"properties\": {\n+        \"ephemeral\": {\n+          \"type\": \"boolean\"\n+        }\n+      },\n+      \"type\": \"object\"\n+    },\n     \"RequestId\": {\n       \"anyOf\": [\n         {",
+      "path": "codex-rs/app-server-protocol/schema/json/ClientRequest.json",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 0,
+      "patch_excerpt": "@@ -13991,6 +13991,22 @@\n         ],\n         \"type\": \"string\"\n       },\n+      \"RemoteControlDisableParams\": {\n+        \"properties\": {\n+          \"ephemeral\": {\n+            \"type\": \"boolean\"\n+          }\n+        },\n+        \"type\": \"object\"\n+      },\n+      \"RemoteControlEnableParams\": {\n+        \"properties\": {\n+          \"ephemeral\": {\n+            \"type\": \"boolean\"\n+          }\n+        },\n+        \"type\": \"object\"\n+      },\n       \"RemoteControlStatusChangedNotification\": {\n         \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n         \"description\": \"Current remote-control connection status and remote identity exposed to clients.\",",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 0,
+      "patch_excerpt": "@@ -10493,6 +10493,22 @@\n       ],\n       \"type\": \"string\"\n     },\n+    \"RemoteControlDisableParams\": {\n+      \"properties\": {\n+        \"ephemeral\": {\n+          \"type\": \"boolean\"\n+        }\n+      },\n+      \"type\": \"object\"\n+    },\n+    \"RemoteControlEnableParams\": {\n+      \"properties\": {\n+        \"ephemeral\": {\n+          \"type\": \"boolean\"\n+        }\n+      },\n+      \"type\": \"object\"\n+    },\n     \"RemoteControlStatusChangedNotification\": {\n       \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n       \"description\": \"Current remote-control connection status and remote identity exposed to clients.\",",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,5 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type RemoteControlDisableParams = { ephemeral?: boolean, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/RemoteControlDisableParams.ts",
+      "status": "added"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,5 @@\n+// GENERATED CODE! DO NOT MODIFY BY HAND!\n+\n+// This file was generated by [ts-rs](https://github.com/Aleph-Alpha/ts-rs). Do not edit this file manually.\n+\n+export type RemoteControlEnableParams = { ephemeral?: boolean, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/RemoteControlEnableParams.ts",
+      "status": "added"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -325,6 +325,8 @@ export type { ReasoningSummaryPartAddedNotification } from \"./ReasoningSummaryPa\n export type { ReasoningSummaryTextDeltaNotification } from \"./ReasoningSummaryTextDeltaNotification\";\n export type { ReasoningTextDeltaNotification } from \"./ReasoningTextDeltaNotification\";\n export type { RemoteControlConnectionStatus } from \"./RemoteControlConnectionStatus\";\n+export type { RemoteControlDisableParams } from \"./RemoteControlDisableParams\";\n+export type { RemoteControlEnableParams } from \"./RemoteControlEnableParams\";\n export type { RemoteControlStatusChangedNotification } from \"./RemoteControlStatusChangedNotification\";\n export type { RequestPermissionProfile } from \"./RequestPermissionProfile\";\n export type { ResidencyRequirement } from \"./ResidencyRequirement\";",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/index.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -842,13 +842,13 @@ client_request_definitions! {\n     },\n     #[experimental(\"remoteControl/enable\")]\n     RemoteControlEnable => \"remoteControl/enable\" {\n-        params: #[ts(type = \"undefined\")] #[serde(skip_serializing_if = \"Option::is_none\")] Option<()>,\n+        params: #[serde(skip_serializing_if = \"Option::is_none\")] v2::NullableRemoteControlEnableParams,\n         serialization: global(\"remote-control\"),\n         response: v2::RemoteControlEnableResponse,\n     },\n     #[experimental(\"remoteControl/disable\")]\n     RemoteControlDisable => \"remoteControl/disable\" {\n-        params: #[ts(type = \"undefined\")] #[serde(skip_serializing_if = \"Option::is_none\")] Option<()>,\n+        params: #[serde(skip_serializing_if = \"Option::is_none\")] v2::NullableRemoteControlDisableParams,\n         serialization: global(\"remote-control\"),\n         response: v2::RemoteControlDisableResponse,\n     ...",
+      "path": "codex-rs/app-server-protocol/src/protocol/common.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 20,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3,6 +3,26 @@ use serde::Deserialize;\n use serde::Serialize;\n use ts_rs::TS;\n \n+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct RemoteControlEnableParams {\n+    #[serde(default, skip_serializing_if = \"std::ops::Not::not\")]\n+    pub ephemeral: bool,\n+}\n+\n+pub type NullableRemoteControlEnableParams = Option<RemoteControlEnableParams>;\n+\n+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema, TS)]\n+#[serde(rename_all = \"camelCase\")]\n+#[ts(export_to = \"v2/\")]\n+pub struct RemoteControlDisableParams {\n+    #[serde(default, skip_serializing_if = \"std::ops::Not::not\")]\n+    pub ephemeral: bool,\n+}\n+\n+pub type NullableRemoteControlDisableParams = Option<RemoteControlDisableParams>;\n+\n /// Current remote-control connection status and remote identity expos...",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/remote_control.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -11,8 +11,10 @@ pub use transport::AppServerTransport;\n pub use transport::AppServerTransportParseError;\n pub use transport::CHANNEL_CAPACITY;\n pub use transport::ConnectionOrigin;\n+pub use transport::REMOTE_CONTROL_DISABLED_ENV_VAR;\n pub use transport::RemoteControlHandle;\n pub use transport::RemoteControlStartConfig;\n+pub use transport::RemoteControlStartupMode;\n pub use transport::RemoteControlUnavailable;\n pub use transport::TransportEvent;\n pub use transport::acquire_app_server_startup_lock;\n@@ -24,3 +26,4 @@ pub use transport::start_control_socket_acceptor;\n pub use transport::start_remote_control;\n pub use transport::start_stdio_connection;\n pub use transport::start_websocket_acceptor;\n+pub use transport::take_remote_control_disabled_env;",
+      "path": "codex-rs/app-server-transport/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -30,10 +30,13 @@ mod unix_socket;\n mod unix_socket_tests;\n mod websocket;\n \n+pub use remote_control::REMOTE_CONTROL_DISABLED_ENV_VAR;\n pub use remote_control::RemoteControlHandle;\n pub use remote_control::RemoteControlStartConfig;\n+pub use remote_control::RemoteControlStartupMode;\n pub use remote_control::RemoteControlUnavailable;\n pub use remote_control::start_remote_control;\n+pub use remote_control::take_remote_control_disabled_env;\n pub use stdio::start_stdio_connection;\n pub use unix_socket::AppServerStartupLock;\n pub use unix_socket::acquire_app_server_startup_lock;",
+      "path": "codex-rs/app-server-transport/src/transport/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 158,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,158 @@\n+use super::RemoteControlHandle;\n+use super::RemoteControlUnavailable;\n+use super::enroll::update_persisted_remote_control_enrollment;\n+use super::protocol::normalize_remote_control_url;\n+use super::publish_current_enrollment;\n+use super::websocket::RemoteControlStatusPublisher;\n+use codex_app_server_protocol::RemoteControlStatusChangedNotification;\n+use codex_state::RemoteControlEnrollmentRecord;\n+use std::io;\n+use tokio::sync::Semaphore;\n+use tokio::sync::SemaphorePermit;\n+\n+#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n+pub(super) enum RemoteControlDesiredState {\n+    // `Unknown` exists only on plain startup before auth and enrollment scope resolve. Persisted\n+    // `1` is `Enabled { persistence_preference: Some(true) }`; `0`, `NULL`, or no row are\n+    // `Disabled`. Runtime-only enable is `Enabled { persistence_preference: None }`, so new rows\n+    // keep `NULL`;...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/desired_state.rs",
+      "status": "added"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -286,6 +286,7 @@ pub(super) async fn update_persisted_remote_control_enrollment(\n     account_id: &str,\n     app_server_client_name: Option<&str>,\n     enrollment: Option<&RemoteControlEnrollment>,\n+    remote_control_enabled: Option<bool>,\n ) -> io::Result<()> {\n     let Some(state_db) = state_db else {\n         return Err(io::Error::new(\n@@ -316,6 +317,7 @@ pub(super) async fn update_persisted_remote_control_enrollment(\n                 server_id: enrollment.server_id.clone(),\n                 environment_id: enrollment.environment_id.clone(),\n                 server_name: enrollment.server_name.clone(),\n+                remote_control_enabled,\n             })\n             .await\n             .map_err(io::Error::other)?;\n@@ -648,6 +650,7 @@ mod tests {\n             \"account-a\",\n             Some(\"desktop-client\"),\n             Some(&first_enrollment),\n+            /*remote_control_e...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/enroll.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 278,
+      "deletions": 157,
+      "patch_excerpt": "@@ -1,13 +1,16 @@\n mod auth;\n mod client_tracker;\n mod clients;\n+mod desired_state;\n mod enroll;\n mod protocol;\n mod segment;\n mod websocket;\n \n use self::auth::load_remote_control_auth;\n use self::auth::recover_remote_control_auth;\n+use self::desired_state::RemoteControlDesiredState;\n+use self::desired_state::acquire_persistence_lock;\n use self::enroll::RemoteControlEnrollment;\n use self::enroll::enroll_remote_control_server;\n use self::enroll::load_persisted_remote_control_enrollment;\n@@ -63,6 +66,26 @@ pub struct RemoteControlStartConfig {\n     pub installation_id: String,\n }\n \n+#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n+pub enum RemoteControlStartupMode {\n+    ResolvePersisted,\n+    DisabledEphemeral,\n+    EnabledEphemeral,\n+}\n+\n+/// Internal marker used by the daemon to disable remote control without requiring a new CLI flag.\n+pub const REMOTE_CONTROL_DISABLED_ENV_VAR: &str =\n+  ...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 478,
+      "deletions": 53,
+      "patch_excerpt": "@@ -9,6 +9,8 @@ use super::protocol::ClientId;\n use super::protocol::StreamId;\n use super::protocol::normalize_remote_control_url;\n use super::websocket::REMOTE_CONTROL_PROTOCOL_VERSION;\n+use super::websocket::RemoteControlWebsocket;\n+use super::websocket::RemoteControlWebsocketConfig;\n use super::*;\n use crate::outgoing_message::OutgoingMessage;\n use crate::outgoing_message::QueuedOutgoingMessage;\n@@ -33,6 +35,7 @@ use codex_login::CodexAuth;\n use codex_login::save_auth;\n use codex_login::token_data::TokenData;\n use codex_login::token_data::parse_chatgpt_jwt_claims;\n+use codex_state::RemoteControlEnrollmentRecord;\n use codex_state::StateRuntime;\n use futures::SinkExt;\n use futures::StreamExt;\n@@ -125,6 +128,137 @@ async fn remote_control_state_runtime(codex_home: &TempDir) -> Arc<StateRuntime>\n         .expect(\"state runtime should initialize\")\n }\n \n+#[tokio::test]\n+async fn plain_start...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 3,
+      "patch_excerpt": "@@ -13,17 +13,18 @@ fn client_management_handle(\n     remote_control_url: String,\n     auth_manager: Arc<AuthManager>,\n ) -> RemoteControlHandle {\n-    let (enabled_tx, _enabled_rx) = watch::channel(/*init*/ false);\n+    let desired_state_tx = watch::channel(RemoteControlDesiredState::Disabled).0;\n     let (status_tx, _status_rx) = watch::channel(RemoteControlStatusChangedNotification {\n         status: RemoteControlConnectionStatus::Disabled,\n         server_name: test_server_name(),\n         installation_id: TEST_INSTALLATION_ID.to_string(),\n         environment_id: None,\n     });\n     RemoteControlHandle {\n-        enabled_tx: Arc::new(enabled_tx),\n+        desired_state_tx: Arc::new(desired_state_tx),\n+        desired_state_rpc_lock: Arc::new(Semaphore::new(1)),\n+        desired_state_persistence_lock: Arc::new(Semaphore::new(1)),\n         status_tx: Arc::new(status_tx),\n-        sta...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests/clients_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 20,
+      "deletions": 11,
+      "patch_excerpt": "@@ -645,7 +645,9 @@ async fn remote_control_handle_disable_keeps_current_enrollment() {\n         remote_control_auth_manager(),\n     );\n \n-    remote_handle.disable();\n+    remote_handle\n+        .desired_state_tx\n+        .send_replace(RemoteControlDesiredState::Disabled);\n     assert!(\n         remote_handle.current_enrollment.lock().await.is_some(),\n         \"disabled remote control should keep the selected pairing server\"\n@@ -665,7 +667,6 @@ async fn remote_control_handle_reenrolls_after_stale_pairing_enrollment() {\n         remote_control_auth_manager_with_home(&codex_home),\n     );\n     remote_handle.state_db = Some(state_db.clone());\n-    remote_handle.disable();\n     let stale_enrollment = remote_handle\n         .current_enrollment\n         .lock()\n@@ -688,9 +689,15 @@ async fn remote_control_handle_reenrolls_after_stale_pairing_enrollment() {\n         \"account_id\",\n         /*ap...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests/pairing_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 288,
+      "deletions": 81,
+      "patch_excerpt": "@@ -1,5 +1,9 @@\n use super::CurrentRemoteControlEnrollment;\n+use super::RemoteControlEnrollmentSelection;\n use super::RemoteControlPairingPersistenceKey;\n+use super::desired_state::RemoteControlDesiredState;\n+use super::desired_state::acquire_persistence_lock;\n+use super::desired_state::desired_state_from_persisted_enrollment;\n use super::protocol::ClientEnvelope;\n use super::protocol::ClientEvent;\n use super::protocol::ClientId;\n@@ -45,6 +49,7 @@ use std::io::ErrorKind;\n use std::sync::Arc;\n use tokio::net::TcpStream;\n use tokio::sync::Mutex;\n+use tokio::sync::Semaphore;\n use tokio::sync::mpsc;\n use tokio::sync::oneshot;\n use tokio::sync::watch;\n@@ -264,7 +269,9 @@ pub(crate) struct RemoteControlWebsocket {\n     state: Arc<Mutex<WebsocketState>>,\n     server_event_rx: Arc<Mutex<mpsc::Receiver<super::QueuedServerEnvelope>>>,\n     used_rx: watch::Receiver<usize>,\n-    enabled_rx: watch::R...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/websocket.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -207,8 +207,8 @@ Example with notification opt-out:\n - `plugin/skill/read` — read remote plugin skill markdown on demand by `remoteMarketplaceName`, `remotePluginId`, and `skillName`. This lets clients preview uninstalled remote plugin skills without downloading the plugin bundle.\n - `skills/changed` — notification emitted when watched local skill files change.\n - `app/list` — list available apps.\n-- `remoteControl/enable` — experimental; enable remote control for the current app-server process and return the current remote-control status snapshot. The caller is responsible for persisting the desired setting outside app-server.\n-- `remoteControl/disable` — experimental; disable remote control for the current app-server process and return the current remote-control status snapshot. This does not revoke already enrolled controller devices.\n+- `remoteControl/enable` — experimental; enabl...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 38,
+      "deletions": 8,
+      "patch_excerpt": "@@ -106,10 +106,12 @@ mod transport;\n pub use crate::error_code::INPUT_TOO_LARGE_ERROR_CODE;\n pub use crate::error_code::INVALID_PARAMS_ERROR_CODE;\n pub use crate::transport::AppServerTransport;\n+pub use crate::transport::RemoteControlStartupMode;\n pub use crate::transport::app_server_control_socket_path;\n pub use crate::transport::auth::AppServerWebsocketAuthArgs;\n pub use crate::transport::auth::AppServerWebsocketAuthSettings;\n pub use crate::transport::auth::WebsocketAuthCliMode;\n+pub use crate::transport::take_remote_control_disabled_env;\n \n const LOG_FORMAT_ENV_VAR: &str = \"LOG_FORMAT\";\n const OTEL_SERVICE_NAME: &str = \"codex-app-server\";\n@@ -404,15 +406,15 @@ pub enum PluginStartupTasks {\n #[derive(Debug, Clone, Copy, PartialEq, Eq)]\n pub struct AppServerRuntimeOptions {\n     pub plugin_startup_tasks: PluginStartupTasks,\n-    pub remote_control_enabled: bool,\n+    pub remote_contro...",
+      "path": "codex-rs/app-server/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 9,
+      "deletions": 3,
+      "patch_excerpt": "@@ -53,13 +53,14 @@ struct AppServerArgs {\n     #[arg(long = \"disable-plugin-startup-tasks-for-tests\", hide = true)]\n     disable_plugin_startup_tasks_for_tests: bool,\n \n-    /// Enable remote control for this app-server process.\n+    /// Enable remote control for this app-server process without changing persistence.\n     #[arg(long = \"remote-control\", hide = true)]\n     remote_control: bool,\n }\n \n fn main() -> anyhow::Result<()> {\n-    arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {\n+    let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();\n+    arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {\n         let AppServerArgs {\n             config_overrides,\n             listen,\n@@ -84,7 +85,12 @@ fn main() -> anyhow::Result<()> {\n         if disable_plugin_startup_tasks_for_tests {\n             runtime_options.plugin_sta...",
+      "path": "codex-rs/app-server/src/main.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 4,
+      "patch_excerpt": "@@ -940,13 +940,21 @@ impl MessageProcessor {\n                     .experimental_feature_enablement_set(request_id.clone(), params)\n                     .await\n             }\n-            ClientRequest::RemoteControlEnable { .. } => self\n+            ClientRequest::RemoteControlEnable { params, .. } => self\n                 .remote_control_processor\n-                .enable()\n+                .enable(\n+                    params.is_some_and(|params| params.ephemeral),\n+                    app_server_client_name.as_deref(),\n+                )\n+                .await\n                 .map(|response| Some(response.into())),\n-            ClientRequest::RemoteControlDisable { .. } => self\n+            ClientRequest::RemoteControlDisable { params, .. } => self\n                 .remote_control_processor\n-                .disable()\n+                .disable(\n+                    params.is_some_a...",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 36,
+      "deletions": 7,
+      "patch_excerpt": "@@ -28,17 +28,38 @@ impl RemoteControlRequestProcessor {\n         }\n     }\n \n-    pub(crate) fn enable(&self) -> Result<RemoteControlEnableResponse, JSONRPCErrorError> {\n+    pub(crate) async fn enable(\n+        &self,\n+        ephemeral: bool,\n+        app_server_client_name: Option<&str>,\n+    ) -> Result<RemoteControlEnableResponse, JSONRPCErrorError> {\n         let handle = self.handle()?;\n-        handle\n-            .enable()\n-            .map(RemoteControlEnableResponse::from)\n-            .map_err(map_unavailable)\n+        let status = if ephemeral {\n+            handle.enable_ephemeral().map_err(map_unavailable)?\n+        } else {\n+            handle\n+                .enable(app_server_client_name)\n+                .await\n+                .map_err(map_update_error)?\n+        };\n+        Ok(RemoteControlEnableResponse::from(status))\n     }\n \n-    pub(crate) fn disable(&self) -> R...",
+      "path": "codex-rs/app-server/src/request_processors/remote_control_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -20,6 +20,7 @@ pub(crate) use codex_app_server_transport::OutgoingMessage;\n pub(crate) use codex_app_server_transport::QueuedOutgoingMessage;\n pub(crate) use codex_app_server_transport::RemoteControlHandle;\n pub(crate) use codex_app_server_transport::RemoteControlStartConfig;\n+pub use codex_app_server_transport::RemoteControlStartupMode;\n pub(crate) use codex_app_server_transport::RemoteControlUnavailable;\n pub(crate) use codex_app_server_transport::TransportEvent;\n pub(crate) use codex_app_server_transport::acquire_app_server_startup_lock;\n@@ -31,6 +32,7 @@ pub(crate) use codex_app_server_transport::start_control_socket_acceptor;\n pub(crate) use codex_app_server_transport::start_remote_control;\n pub(crate) use codex_app_server_transport::start_stdio_connection;\n pub(crate) use codex_app_server_transport::start_websocket_acceptor;\n+pub use codex_app_server_transport::take_remote_contr...",
+      "path": "codex-rs/app-server/src/transport.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 23,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,5 +1,6 @@\n use std::collections::VecDeque;\n use std::path::Path;\n+use std::process::ExitStatus;\n use std::process::Stdio;\n use std::sync::atomic::AtomicI64;\n use std::sync::atomic::Ordering;\n@@ -127,6 +128,10 @@ pub const DISABLE_PLUGIN_STARTUP_TASKS_ARG: &str = \"--disable-plugin-startup-tas\n const DISABLE_MANAGED_CONFIG_ENV_VAR: &str = \"CODEX_APP_SERVER_DISABLE_MANAGED_CONFIG\";\n \n impl TestAppServer {\n+    pub async fn wait_for_exit(&mut self) -> std::io::Result<ExitStatus> {\n+        self.process.wait().await\n+    }\n+\n     pub async fn new(codex_home: &Path) -> anyhow::Result<Self> {\n         Self::new_with_env_and_args(codex_home, &[], &[DISABLE_PLUGIN_STARTUP_TASKS_ARG]).await\n     }\n@@ -635,12 +640,30 @@ impl TestAppServer {\n             .await\n     }\n \n+    /// Send a runtime-only `remoteControl/enable` JSON-RPC request.\n+    pub async fn send_remote_control_ephemeral_enable_...",
+      "path": "codex-rs/app-server/tests/common/test_app_server.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 245,
+      "deletions": 14,
+      "patch_excerpt": "@@ -3,6 +3,7 @@ use std::time::Duration;\n use anyhow::Context;\n use anyhow::Result;\n use app_test_support::ChatGptAuthFixture;\n+use app_test_support::DEFAULT_CLIENT_NAME;\n use app_test_support::TestAppServer;\n use app_test_support::to_response;\n use app_test_support::write_chatgpt_auth;\n@@ -24,6 +25,8 @@ use codex_app_server_protocol::RemoteControlPairingStatusResponse;\n use codex_app_server_protocol::RemoteControlStatusReadResponse;\n use codex_app_server_protocol::RequestId;\n use codex_config::types::AuthCredentialsStoreMode;\n+use codex_state::RemoteControlEnrollmentRecord;\n+use codex_state::StateRuntime;\n use pretty_assertions::assert_eq;\n use tempfile::TempDir;\n use tokio::io::AsyncBufReadExt;\n@@ -37,10 +40,92 @@ use tokio::task::JoinHandle;\n use tokio::time::timeout;\n \n const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);\n+const STARTUP_TIMEOUT: Duration = Duration::from_secs(3...",
+      "path": "codex-rs/app-server/tests/suite/v2/remote_control.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 26,
+      "deletions": 5,
+      "patch_excerpt": "@@ -517,7 +517,7 @@ struct AppServerCommand {\n     #[arg(long = \"stdio\", conflicts_with = \"listen\")]\n     stdio: bool,\n \n-    /// Enable remote control for this app-server process.\n+    /// Enable remote control for this app-server process without changing persistence.\n     #[arg(long = \"remote-control\", hide = true)]\n     remote_control: bool,\n \n@@ -919,13 +919,17 @@ fn stage_str(stage: Stage) -> &'static str {\n }\n \n fn main() -> anyhow::Result<()> {\n-    arg0_dispatch_or_else(|arg0_paths: Arg0DispatchPaths| async move {\n-        cli_main(arg0_paths).await?;\n+    let remote_control_disabled = codex_app_server::take_remote_control_disabled_env();\n+    arg0_dispatch_or_else(move |arg0_paths: Arg0DispatchPaths| async move {\n+        cli_main(arg0_paths, remote_control_disabled).await?;\n         Ok(())\n     })\n }\n \n-async fn cli_main(arg0_paths: Arg0DispatchPaths) -> anyhow::Result<()> {\n+a...",
+      "path": "codex-rs/cli/src/main.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -115,7 +115,7 @@ async fn run_foreground_remote_control(\n         socket_path: socket_path.clone(),\n     };\n     let runtime_options = AppServerRuntimeOptions {\n-        remote_control_enabled: true,\n+        remote_control_startup_mode: codex_app_server::RemoteControlStartupMode::EnabledEphemeral,\n         install_shutdown_signal_handler: false,\n         ..Default::default()\n     };",
+      "path": "codex-rs/cli/src/remote_control_cmd.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,2 @@\n+ALTER TABLE remote_control_enrollments\n+ADD COLUMN remote_control_enabled INTEGER;",
+      "path": "codex-rs/state/migrations/0037_remote_control_enrollments_enabled.sql",
+      "status": "added"
+    },
+    {
+      "additions": 100,
+      "deletions": 2,
+      "patch_excerpt": "@@ -11,6 +11,7 @@ pub struct RemoteControlEnrollmentRecord {\n     pub server_id: String,\n     pub environment_id: String,\n     pub server_name: String,\n+    pub remote_control_enabled: Option<bool>,\n }\n \n fn remote_control_app_server_client_name_key(app_server_client_name: Option<&str>) -> &str {\n@@ -34,7 +35,8 @@ impl StateRuntime {\n     ) -> anyhow::Result<Option<RemoteControlEnrollmentRecord>> {\n         let row = sqlx::query(\n             r#\"\n-SELECT websocket_url, account_id, app_server_client_name, server_id, environment_id, server_name\n+SELECT websocket_url, account_id, app_server_client_name, server_id, environment_id, server_name,\n+    remote_control_enabled\n FROM remote_control_enrollments\n WHERE websocket_url = ? AND account_id = ? AND app_server_client_name = ?\n             \"#,\n@@ -56,6 +58,7 @@ WHERE websocket_url = ? AND account_id = ? AND app_server_client_name = ?\n       ...",
+      "path": "codex-rs/state/src/runtime/remote_control.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27445"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nRemote-control runtime enablement and persisted enrollment preference were represented by separate flags. That made startup rehydration, RPC persistence, and new-enrollment seeding race with one another, and it did not cleanly distinguish runtime-only CLI or daemon starts from durable app-server RPC changes.\n\n## What Changed\n\n- Replace the parallel enablement, seed, and rehydration flags with one transport-owned `RemoteControlDesiredState`.\n- Add nullable enrollment-scoped persistence and preserve existing preferences during enrollment upserts.\n- Rehydrate plain startup only after auth and client scope resolve, without overwriting a concurrent RPC transition.\n- Make ordinary `remoteControl/enable` and `remoteControl/disable` durable while retaining `ephemeral: true` for runtime-only callers.\n- Have the daemon explicitly request ephemeral enablement and regenerate the app-server schemas.\n\n## Verification\n\n- Covered migration and `NULL`/`0`/`1` persistence round trips.\n- Covered plain-start rehydration and runtime-only versus durable enrollment seeding.\n- Covered durable enable, durable disable, and ephemeral enable through app-server RPC.\n- Covered the daemon's exact `{ \"ephemeral\": true }` request payload.\n\nRelated issue: N/A (internal remote-control persistence architecture change).\n",
+    "labels": [
+      "code-reviewed"
+    ],
+    "merged_at": "2026-06-12T04:28:53Z",
+    "number": 27445,
+    "state": "merged",
+    "title": "feat(app-server): persist remote-control desired state",
+    "url": "https://github.com/openai/codex/pull/27445"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
