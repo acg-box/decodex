@@ -6197,14 +6197,29 @@ fn operator_run_visible_status(
 	{
 		return String::from("running");
 	}
+	if attempt_status == "succeeded"
+		&& operator_marker_operation_allows_terminal_status_promotion(marker_current_operation)
+		&& operator_run_has_live_process_or_thread_evidence(app_server_state, timing)
+	{
+		return String::from("running");
+	}
 	if matches!(attempt_status, "failed" | "interrupted" | "stalled")
 		&& operator_marker_operation_allows_terminal_status_promotion(marker_current_operation)
-		&& operator_run_has_live_execution_evidence(app_server_state, timing)
+		&& operator_run_has_live_execution_evidence(app_server_state, protocol_summary, timing)
 	{
 		return String::from("running");
 	}
 
 	attempt_status.to_owned()
+}
+
+fn operator_run_has_live_process_or_thread_evidence(
+	app_server_state: &OperatorRunAppServerState,
+	timing: &OperatorRunTiming,
+) -> bool {
+	timing.process_alive == Some(true)
+		|| matches!(app_server_state.thread_status.as_deref(), Some("active"))
+		|| !app_server_state.thread_active_flags.is_empty()
 }
 
 fn operator_marker_operation_allows_terminal_status_promotion(
@@ -6215,15 +6230,34 @@ fn operator_marker_operation_allows_terminal_status_promotion(
 
 fn operator_run_has_live_execution_evidence(
 	app_server_state: &OperatorRunAppServerState,
+	protocol_summary: &OperatorRunProtocolSummary,
 	timing: &OperatorRunTiming,
 ) -> bool {
-	timing.process_alive == Some(true)
-		|| matches!(app_server_state.thread_status.as_deref(), Some("active"))
-		|| !app_server_state.thread_active_flags.is_empty()
-		|| timing.protocol_idle_for_seconds.is_some_and(|idle_for| {
+	operator_run_has_live_process_or_thread_evidence(app_server_state, timing)
+		|| operator_run_has_recent_protocol_execution_evidence(protocol_summary, timing)
+}
+
+fn operator_run_has_recent_protocol_execution_evidence(
+	protocol_summary: &OperatorRunProtocolSummary,
+	timing: &OperatorRunTiming,
+) -> bool {
+	operator_protocol_event_counts_as_live_execution(protocol_summary.last_event_type.as_deref())
+		&& timing.protocol_idle_for_seconds.is_some_and(|idle_for| {
 			u64::try_from(idle_for)
 				.is_ok_and(|idle_for| idle_for < ACTIVE_RUN_IDLE_TIMEOUT.as_secs())
 		})
+}
+
+fn operator_protocol_event_counts_as_live_execution(event_type: Option<&str>) -> bool {
+	let Some(event_type) = event_type else {
+		return false;
+	};
+
+	state::protocol_event_counts_as_work_progress(event_type)
+		&& !matches!(
+			event_type.to_ascii_lowercase().as_str(),
+			"thread/archive" | "turn/completed"
+		)
 }
 
 fn operator_run_has_app_server_execution_evidence(

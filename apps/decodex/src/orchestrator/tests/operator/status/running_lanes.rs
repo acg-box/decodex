@@ -1514,6 +1514,78 @@ fn operator_status_snapshot_keeps_terminal_status_live_process_in_running_lanes(
 }
 
 #[test]
+fn operator_status_snapshot_excludes_terminal_thread_archive_from_running_lanes() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("Todo", &[]);
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "failed")
+		.expect("run attempt should record");
+	state_store
+		.append_event("run-1", 1, "thread/archive", "{}")
+		.expect("thread archive event should record");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let project = snapshot.projects.first().expect("project summary should exist");
+
+	assert!(
+		snapshot.active_runs.is_empty(),
+		"terminal archive-only protocol events must not present as active execution"
+	);
+	assert_eq!(project.active_run_count, 0);
+	assert_eq!(project.running_lane_count, 0);
+	assert!(
+		snapshot.recent_runs.iter().all(|run| run.run_id != "run-1"),
+		"archive-only terminal attempts do not need to remain operator-visible"
+	);
+}
+
+#[test]
+fn operator_status_snapshot_keeps_succeeded_status_live_process_in_running_lanes() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let issue = sample_issue("Todo", &[]);
+	let worktree_path = config.worktree_root().join("PUB-101");
+
+	state_store
+		.record_run_attempt("run-1", &issue.id, 1, "succeeded")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	fs::create_dir_all(&worktree_path).expect("worktree path should exist");
+	state::write_run_activity_marker_for_process(&worktree_path, "run-1", 1, process::id())
+		.expect("live process marker should write");
+
+	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
+		.expect("snapshot should build");
+	let run = snapshot.active_runs.first().expect("live succeeded run should remain visible");
+	let project = snapshot.projects.first().expect("project summary should exist");
+
+	assert_eq!(snapshot.active_runs.len(), 1);
+	assert_eq!(run.run_id, "run-1");
+	assert_eq!(run.status, "running");
+	assert_eq!(run.attempt_status, "succeeded");
+	assert_eq!(run.phase, "executing");
+	assert!(!run.active_lease);
+	assert_eq!(run.queue_lease_state, "not_held");
+	assert_eq!(run.execution_liveness, "process_alive");
+	assert_eq!(run.process_alive, Some(true));
+	assert_eq!(run.process_liveness_reason.as_deref(), Some("process_alive"));
+	assert_eq!(project.active_run_count, 1);
+	assert_eq!(project.running_lane_count, 1);
+	assert_eq!(project.retained_worktree_count, 0);
+}
+
+#[test]
 fn operator_status_projects_terminal_finalized_run_as_pending_not_active() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
