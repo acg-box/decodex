@@ -4,6 +4,14 @@ pub(crate) const TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION: &str =
 const SELF_CHECK_INSTRUCTION: &str =
 	"Review your work repeatedly and fix any logic bugs until no new issues are found.";
 
+fn build_phase_goal_runtime_contract() -> String {
+	format!(
+		"Phase goal runtime contract\n- Decodex may set an active phase goal that narrows the immediate turn below the full issue lifecycle checklist.\n- Treat the active phase goal as the authoritative current contract. For `implement_to_validation_ready`, `repair_validation_failures`, and `repair_accepted_review_findings`, stop at validated local work, then explicitly complete the active phase goal with the Codex goal completion mechanism so Decodex can run its repo gate and select the next phase.\n- Do not use `{progress_checkpoint_tool}`, final chat text, or an \"await next phase\" statement as a substitute for completing a satisfied phase goal.\n- Only the later `handoff_evidence` phase should create/update the PR and record the terminal handoff path; that phase still requires the normal review handoff plus `{terminal_finalize_tool}`.",
+		progress_checkpoint_tool = ISSUE_PROGRESS_CHECKPOINT_TOOL_NAME,
+		terminal_finalize_tool = ISSUE_TERMINAL_FINALIZE_TOOL_NAME,
+	)
+}
+
 fn build_retry_recovery_context(dispatch_mode: IssueDispatchMode) -> Option<String> {
 	(dispatch_mode == IssueDispatchMode::Retry).then(|| {
 		String::from(
@@ -123,6 +131,7 @@ where
 	sections.push(String::from(
 		"Commit contract\n- When you create a local commit for this lane, use a single-line `decodex/commit/1` JSON commit message.\n- Required fields: `schema`, `summary`, and `authority`.\n- `authority` must be the authoritative Linear issue identifier for this lane.\n- Optional fields: `related` and `breaking`.\n- Do not encode landing mode, CI status, closeout state, or other process-state fields in the commit message.",
 	));
+	sections.push(build_phase_goal_runtime_contract());
 	sections.push(String::from(TRACKER_PUBLIC_TEXT_BOUNDARY_INSTRUCTION));
 
 	if let Some(recovery_context) = build_retry_recovery_context(issue_run.dispatch_mode) {
