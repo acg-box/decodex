@@ -32,6 +32,13 @@ impl AppServerZeroEvidenceStartFailure {
 			self.run_id
 		)
 	}
+
+	fn retry_next_action(&self) -> String {
+		format!(
+			"restart the app-server and retry automatically for run `{}`; inspect private startup diagnostics if the retry budget exhausts",
+			self.run_id
+		)
+	}
 }
 
 impl Display for AppServerZeroEvidenceStartFailure {
@@ -495,7 +502,6 @@ pub(crate) fn run_failure_writeback_disposition(
 ) -> RunFailureWritebackDisposition {
 	if error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
-		|| error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
 		|| error.downcast_ref::<AppServerPhaseGoalFailure>().is_some()
 		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
 		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
@@ -518,6 +524,9 @@ pub(crate) fn run_failure_writeback_disposition(
 	{
 		RunFailureWritebackDisposition::TerminalAttention
 	} else if error
+		.downcast_ref::<AppServerZeroEvidenceStartFailure>()
+		.is_some()
+		|| error
 		.downcast_ref::<RepoGateFailure>()
 		.is_some_and(|repo_gate_failure| {
 			matches!(
