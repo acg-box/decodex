@@ -370,6 +370,16 @@ pub(crate) enum ExecutionQueueLabelAction {
 	/// Remove the service queue label.
 	Remove,
 }
+impl ExecutionQueueLabelAction {
+	/// Stable machine-readable queue-label action.
+	pub(crate) fn as_str(self) -> &'static str {
+		match self {
+			Self::Apply => "apply",
+			Self::Retain => "retain",
+			Self::Remove => "remove",
+		}
+	}
+}
 
 /// Conflict-domain key for one program node.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
@@ -1725,6 +1735,11 @@ fn lifecycle_state_for(
 		&& issue.has_needs_attention_label
 	{
 		return ExecutionProgramNodeLifecycleState::NeedsAttention;
+	}
+	if let Some(issue) = node.linear_issue()
+		&& issue.has_active_label
+	{
+		return ExecutionProgramNodeLifecycleState::Active;
 	}
 
 	match state {
