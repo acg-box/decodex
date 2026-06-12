@@ -98,9 +98,10 @@ Use `adopt` when a human-owned PR was created from a managed Decodex worktree an
 operator wants Decodex to take over the normal issue-authority landing and tracker
 closeout path. If that issue already has a worktree mapping, adopt accepts it only when
 the mapping points at the current managed checkout; a mapping for a different checkout
-is a fail-closed mismatch. Do not use adopt for lanes that already have a review
-handoff marker; those belong to `rebind`, normal `decodex land`, or the retained
-post-review scheduler.
+is a fail-closed mismatch. Adopt rewrites that mapping to the current PR branch only
+after every dry-run/live validation passes. Do not use adopt for lanes that already
+have a review handoff marker; those belong to `rebind`, normal `decodex land`, or the
+retained post-review scheduler.
 
 Run it from the lane worktree, not from the repo root:
 
