@@ -153,6 +153,16 @@ fn retry_comment_details(error: &Report) -> (&'static str, String) {
 	{
 		return (app_server_failure.error_class(), app_server_failure.retry_next_action());
 	}
+
+	if error.downcast_ref::<StalledRunNeedsAttention>().is_some() {
+		return (
+			"stalled_run_detected",
+			String::from(
+				"decodex will retry the stalled lane automatically; inspect the worktree and app-server activity if the retry budget exhausts",
+			),
+		);
+	}
+
 	if let Some(app_server_failure) = error.downcast_ref::<AppServerTurnFailure>()
 		&& app_server_failure.is_retryable_capacity_failure()
 	{

@@ -7,6 +7,7 @@ use orchestrator::AppServerZeroEvidenceStartFailure;
 use orchestrator::LoopGuardrailReason;
 use orchestrator::LoopGuardrailStopRequested;
 use orchestrator::RunFailureWritebackDisposition;
+use orchestrator::StalledRunNeedsAttention;
 
 fn git_config_value(
 	repo_root: &Path,
@@ -153,6 +154,15 @@ fn failure_writeback_disposition_separates_retryable_and_attention_classes() {
 				String::from("PUB-101"),
 				String::from("pub-101-attempt-1-123"),
 			)),
+			RunFailureWritebackDisposition::RetryableStructuredRecovery,
+		),
+		(
+			"stalled active run",
+			Report::new(StalledRunNeedsAttention {
+				issue_identifier: String::from("PUB-101"),
+				run_id: String::from("pub-101-attempt-1-123"),
+				idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+			}),
 			RunFailureWritebackDisposition::RetryableStructuredRecovery,
 		),
 		(
@@ -570,6 +580,20 @@ fn repo_gate_lock_contention_retry_comments_preserve_specific_error_class() {
 	assert_eq!(error_class, "repo_gate_git_lock_contention");
 	assert!(next_action.contains("`.git/index.lock`"));
 	assert!(next_action.contains("retry automatically"));
+}
+
+#[test]
+fn stalled_run_retry_comments_preserve_specific_error_class() {
+	let error = Report::new(StalledRunNeedsAttention {
+		issue_identifier: String::from("PUB-101"),
+		run_id: String::from("pub-101-attempt-1-123"),
+		idle_for: ACTIVE_RUN_IDLE_TIMEOUT + Duration::from_secs(1),
+	});
+	let (error_class, next_action) = orchestrator::retry_comment_details(&error);
+
+	assert_eq!(error_class, "stalled_run_detected");
+	assert!(next_action.contains("retry the stalled lane automatically"));
+	assert!(next_action.contains("retry budget exhausts"));
 }
 
 #[test]
