@@ -3206,9 +3206,6 @@ where
 		issue_run,
 		&worktree_path,
 	);
-	let retryable_retained_partial_progress = retained_partial_progress
-		.as_ref()
-		.filter(|_| retryable_failure_should_stop_for_retained_progress(error));
 
 	if let Some(review_policy_stop) = error.downcast_ref::<ReviewPolicyStopRequested>()
 		&& review_policy_stop.reason == ReviewPolicyStopReason::Exhausted
@@ -3241,10 +3238,7 @@ where
 		};
 	}
 
-	if !requires_terminal_attention
-		&& retry_budget_attempts < max_attempts
-		&& retryable_retained_partial_progress.is_none()
-	{
+	if !requires_terminal_attention && retry_budget_attempts < max_attempts {
 		return apply_retryable_failure_writeback(&failure_context, error, max_attempts);
 	}
 
@@ -3528,12 +3522,6 @@ fn retained_partial_progress_error(
 		worktree_path: worktree_path.to_owned(),
 		source_error_class: retained_progress_source_error_class(error).map(ToOwned::to_owned),
 	}))
-}
-
-fn retryable_failure_should_stop_for_retained_progress(error: &Report) -> bool {
-	!error.downcast_ref::<RepoGateFailure>().is_some_and(|repo_gate_failure| {
-		repo_gate_failure.disposition() == RepoGateFailureDisposition::ContinueRepair
-	})
 }
 
 fn retained_progress_should_defer_to_terminal_intent(error: &Report) -> bool {
