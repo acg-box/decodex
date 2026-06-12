@@ -312,6 +312,13 @@ If the retry budget is exhausted, the terminal failure still uses
 including `turn/start` and turn execution, remain human-required because automatic
 retry can duplicate turn-side effects.
 
+App-server turn failures with `codexErrorInfo = "usageLimitExceeded"` are runtime
+capacity failures, not immediate operator-attention requests. Decodex must stop the
+current turn, record a retry with `app_server_usage_limit_exceeded` while retry budget
+remains, and let the next attempt re-run account-pool usage probes and account
+selection. If the retry budget is exhausted, the same error class becomes a normal
+human-required attention stop.
+
 Phase-goal telemetry is local runtime evidence. It must distinguish
 `goal_complete`, `validation_pass`, `validation_fail`, `active_goal_recovered`,
 review `clean`, review `findings`, terminal `review_handoff`, and terminal
