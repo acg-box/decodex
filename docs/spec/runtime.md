@@ -398,10 +398,15 @@ and schedules a materially different recovery strategy. Otherwise it records a
 terminal recovery reason such as `contract_boundary_required`,
 `external_dependency_required`, or `architecture_recovery_exhausted` and routes the
 lane through the human-required failure path. Repo-gate failures record both
-`validation_repeat` and `remaining_delta_unchanged` observations; retryable failures
-with no changing tracked delta record `no_effective_diff`. Fingerprints use the lane
-HEAD plus the tracked worktree status and diff against `HEAD`, so retained partial
-progress remains inspectable instead of being deleted or hidden.
+`validation_repeat` and `remaining_delta_unchanged` observations. Retryable failures
+record `no_effective_diff` only when the retained worktree has no effective source
+delta: no tracked status/diff against `HEAD` and no ordinary untracked files after
+excluding Decodex runtime artifacts such as `.decodex-run-activity` and
+`.decodex-run-control/`. Dirty retained tracked patches and untracked new source files
+are retained progress, not no-effective work. Fingerprints use the lane HEAD plus the
+effective worktree status and tracked diff against `HEAD`, so retained partial progress
+remains inspectable instead of being deleted, hidden, or mislabeled as an empty-diff
+retry.
 
 When `[codex].review` is `"standard"` or `"strict"`, handoff and retained
 review-repair runs also consume the latest structured `issue_review_checkpoint`
@@ -530,9 +535,9 @@ preserves a structured failure-attribution `error_class` so operator status and
 Linear summaries can distinguish the stop class or recovery boundary:
 
 - `validation_repeat`: the same validation failure repeated three times.
-- `no_effective_diff`: retryable attempts repeated without a changed tracked delta.
-- `remaining_delta_unchanged`: validation text changed but the remaining tracked delta
-  stayed unchanged for three attempts.
+- `no_effective_diff`: retryable attempts repeated without any effective worktree delta.
+- `remaining_delta_unchanged`: validation text changed but the remaining effective
+  worktree delta stayed unchanged for three attempts.
 - `dependency_program_stale`: a queued issue kept the same open dependency blocker
   fingerprint across three status observations, indicating Execution Program readiness
   or issue decomposition is stale.

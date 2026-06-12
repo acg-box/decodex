@@ -159,6 +159,7 @@ struct RebindValidation {
 	active_label_present: bool,
 	mode: RebindMode,
 	success_state_transition: Option<RebindSuccessStateTransition>,
+	clear_needs_attention_label: bool,
 }
 
 struct LegacyCloseoutValidation {
@@ -176,6 +177,11 @@ struct RebindSuccessStateTransition {
 	state_id: String,
 }
 
+struct RebindLabelValidation {
+	active_label_present: bool,
+	clear_needs_attention_label: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RebindMode {
 	RestoreMissingHandoff,
@@ -183,6 +189,14 @@ enum RebindMode {
 	CompleteExistingHandoffState,
 }
 impl RebindMode {
+	fn allows_failure_state_drift_repair(self) -> bool {
+		self == Self::CompleteExistingHandoffState
+	}
+
+	fn allows_partial_handoff_state_completion(self) -> bool {
+		matches!(self, Self::RestoreMissingHandoff | Self::CompleteExistingHandoffState)
+	}
+
 	fn evidence_value(self) -> &'static str {
 		match self {
 			Self::RestoreMissingHandoff => "absent",
@@ -965,7 +979,7 @@ fn validate_rebind_request(
 		&local_head_oid,
 	)?;
 	let success_state_transition = validate_rebind_issue_state(context, &issue, mode)?;
-	let active_label_present = validate_rebind_tracker_labels(context, &issue)?;
+	let label_validation = validate_rebind_tracker_labels(context, &issue, mode)?;
 	let worktree_path_for_event =
 		repository_relative_path(context.config.repo_root(), worktree.worktree_path());
 
@@ -977,9 +991,10 @@ fn validate_rebind_request(
 		landing_state,
 		local_head_oid,
 		worktree_path_for_event,
-		active_label_present,
+		active_label_present: label_validation.active_label_present,
 		mode,
 		success_state_transition,
+		clear_needs_attention_label: label_validation.clear_needs_attention_label,
 	})
 }
 
@@ -1086,13 +1101,6 @@ fn validate_rebind_issue_context(
 			tracker_policy.opt_out_label()
 		);
 	}
-	if issue.has_label(tracker_policy.needs_attention_label()) {
-		eyre::bail!(
-			"Issue `{}` has needs-attention label `{}`.",
-			issue.identifier,
-			tracker_policy.needs_attention_label()
-		);
-	}
 
 	let worktree = context.state_store.worktree_for_issue(&issue.id)?.ok_or_else(|| {
 		eyre::eyre!("Issue `{}` has no retained worktree mapping.", issue.identifier)
@@ -1119,8 +1127,20 @@ fn validate_rebind_issue_state_for_policy(
 	if issue.state.name == success_state {
 		return Ok(None);
 	}
-	if matches!(mode, RebindMode::RestoreMissingHandoff | RebindMode::CompleteExistingHandoffState)
+	if mode.allows_partial_handoff_state_completion()
 		&& issue.state.name == tracker_policy.in_progress_state()
+	{
+		let state_id = issue.state_id_for_name(success_state).ok_or_else(|| {
+			eyre::eyre!("State `{success_state}` was not found for issue `{}`.", issue.identifier)
+		})?;
+
+		return Ok(Some(RebindSuccessStateTransition {
+			state_name: success_state.to_owned(),
+			state_id: state_id.to_owned(),
+		}));
+	}
+	if mode.allows_failure_state_drift_repair()
+		&& issue.state.name == tracker_policy.failure_state()
 	{
 		let state_id = issue.state_id_for_name(success_state).ok_or_else(|| {
 			eyre::eyre!("State `{success_state}` was not found for issue `{}`.", issue.identifier)
@@ -1137,11 +1157,16 @@ fn validate_rebind_issue_state_for_policy(
 		issue.identifier,
 		issue.state.name,
 		success_state,
-		if matches!(
-			mode,
-			RebindMode::RestoreMissingHandoff | RebindMode::CompleteExistingHandoffState
-		) {
-			format!(" or `{}` for a partial handoff recovery", tracker_policy.in_progress_state())
+		if mode.allows_partial_handoff_state_completion() {
+			format!(
+				" or `{}`{} for a partial handoff recovery",
+				tracker_policy.in_progress_state(),
+				if mode.allows_failure_state_drift_repair() {
+					format!(" or `{}` for state drift recovery", tracker_policy.failure_state())
+				} else {
+					String::new()
+				}
+			)
 		} else {
 			String::new()
 		}
@@ -1207,7 +1232,9 @@ fn validate_existing_handoff_refresh(
 	});
 
 	if existing_handoff.pr_head_oid() == local_head_oid && orchestration_is_current {
-		if issue.state.name == tracker_policy.in_progress_state() {
+		if issue.state.name == tracker_policy.in_progress_state()
+			|| issue.state.name == tracker_policy.failure_state()
+		{
 			return Ok((
 				existing_handoff.run_id().to_owned(),
 				existing_handoff.attempt_number(),
@@ -1358,7 +1385,11 @@ fn validate_retained_pr_worktree(
 	Ok(local_head)
 }
 
-fn validate_rebind_tracker_labels(context: &RecoveryContext, issue: &TrackerIssue) -> Result<bool> {
+fn validate_rebind_tracker_labels(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+	mode: RebindMode,
+) -> Result<RebindLabelValidation> {
 	let active_label = tracker::automation_active_label(context.config.service_id());
 	let active_label_present =
 		tracker::issue_has_label_with_server_confirmation(&context.tracker, issue, &active_label)?;
@@ -1370,7 +1401,47 @@ fn validate_rebind_tracker_labels(context: &RecoveryContext, issue: &TrackerIssu
 		);
 	}
 
-	Ok(active_label_present)
+	let tracker_policy = context.workflow.frontmatter().tracker();
+	let needs_attention_label = tracker_policy.needs_attention_label();
+	let needs_attention_present = tracker::issue_has_label_with_server_confirmation(
+		&context.tracker,
+		issue,
+		needs_attention_label,
+	)?;
+
+	if !needs_attention_present {
+		return Ok(RebindLabelValidation {
+			active_label_present,
+			clear_needs_attention_label: false,
+		});
+	}
+	if mode.allows_failure_state_drift_repair()
+		&& issue.state.name == tracker_policy.failure_state()
+	{
+		if tracker::issue_team_label_id_with_server_confirmation(
+			&context.tracker,
+			issue,
+			needs_attention_label,
+		)?
+		.is_none()
+		{
+			eyre::bail!(
+				"Issue `{}` has needs-attention label `{needs_attention_label}`, but that label was not found on the team.",
+				issue.identifier
+			);
+		}
+
+		return Ok(RebindLabelValidation {
+			active_label_present,
+			clear_needs_attention_label: true,
+		});
+	}
+
+	eyre::bail!(
+		"Issue `{}` has needs-attention label `{}`.",
+		issue.identifier,
+		needs_attention_label
+	)
 }
 
 fn apply_review_handoff_rebind(
@@ -1425,6 +1496,16 @@ fn apply_review_handoff_rebind(
 
 		return Err(error);
 	}
+
+	if validation.clear_needs_attention_label {
+		tracker::set_issue_label_presence(
+			&context.tracker,
+			&validation.issue,
+			context.workflow.frontmatter().tracker().needs_attention_label(),
+			false,
+		)?;
+	}
+
 	if let Some(transition) = validation.success_state_transition.as_ref() {
 		context.tracker.update_issue_state(&validation.issue.id, &transition.state_id)?;
 	}
@@ -1473,6 +1554,7 @@ fn review_handoff_rebind_event(
 		format!("pr_url={pr_url}"),
 		format!("pr_head_sha={}", validation.local_head_oid),
 		format!("existing_review_handoff_marker={}", validation.mode.evidence_value()),
+		format!("needs_attention_label_repair={}", validation.clear_needs_attention_label),
 	]);
 	event.next_action = Some(String::from("continue retained post-review lifecycle"));
 
@@ -1966,6 +2048,44 @@ Test workflow.
 	}
 
 	#[test]
+	fn rebind_state_allows_current_marker_failure_state_drift_recovery() {
+		let workflow = sample_workflow();
+		let issue = sample_issue("Todo");
+		let transition = super::validate_rebind_issue_state_for_policy(
+			workflow.frontmatter().tracker(),
+			&issue,
+			super::RebindMode::CompleteExistingHandoffState,
+		)
+		.expect("current-marker state completion should recover failure-state drift")
+		.expect("failure-state drift should transition to success state");
+
+		assert_eq!(transition.state_name, "In Review");
+		assert_eq!(transition.state_id, "state-review");
+	}
+
+	#[test]
+	fn rebind_state_rejects_failure_state_without_current_marker_repair_mode() {
+		let workflow = sample_workflow();
+		let issue = sample_issue("Todo");
+
+		for mode in
+			[super::RebindMode::RestoreMissingHandoff, super::RebindMode::RefreshExistingHandoff]
+		{
+			let error = super::validate_rebind_issue_state_for_policy(
+				workflow.frontmatter().tracker(),
+				&issue,
+				mode,
+			)
+			.expect_err("failure-state repair requires current-marker completion mode");
+
+			assert!(
+				error.to_string().contains("review handoff rebind requires"),
+				"unexpected error for {mode:?}: {error}"
+			);
+		}
+	}
+
+	#[test]
 	fn rebind_state_requires_success_state_for_existing_marker_refresh() {
 		let workflow = sample_workflow();
 		let issue = sample_issue("In Progress");
@@ -2249,6 +2369,47 @@ Test workflow.
 	}
 
 	#[test]
+	fn rebind_validation_rejects_stale_marker_failure_state_drift_recovery() {
+		let workflow = sample_workflow();
+		let issue = sample_issue("Todo");
+		let branch_name = "x/pubfi-pub-718";
+		let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
+		let worktree = sample_worktree(branch_name);
+		let handoff = ReviewHandoffMarker::new(
+			"pub-718-attempt-1",
+			1,
+			branch_name,
+			pr_url,
+			"main",
+			branch_name,
+			"0123456789abcdef0123456789abcdef01234567",
+		);
+		let landing_state =
+			sample_landing_state(pr_url, branch_name, "1123456789abcdef0123456789abcdef01234567");
+		let (_run_id, _attempt_number, mode) = super::validate_existing_handoff_refresh(
+			workflow.frontmatter().tracker(),
+			&issue,
+			&worktree,
+			&handoff,
+			None,
+			&landing_state,
+			"1123456789abcdef0123456789abcdef01234567",
+		)
+		.expect("stale existing marker should require marker refresh first");
+
+		assert_eq!(mode, super::RebindMode::RefreshExistingHandoff);
+
+		let error = super::validate_rebind_issue_state_for_policy(
+			workflow.frontmatter().tracker(),
+			&issue,
+			mode,
+		)
+		.expect_err("stale marker refresh must not repair failure-state drift");
+
+		assert!(error.to_string().contains("review handoff rebind requires"));
+	}
+
+	#[test]
 	fn rebind_validation_rejects_current_existing_marker_as_noop() {
 		let workflow = sample_workflow();
 		let issue = sample_issue("In Review");
@@ -2336,6 +2497,54 @@ Test workflow.
 			head_oid,
 		)
 		.expect("current marker should allow state-only handoff completion");
+
+		assert_eq!(run_id, "pub-718-attempt-1");
+		assert_eq!(attempt_number, 1);
+		assert_eq!(mode, super::RebindMode::CompleteExistingHandoffState);
+	}
+
+	#[test]
+	fn rebind_validation_completes_current_existing_marker_failure_state_drift() {
+		let workflow = sample_workflow();
+		let issue = sample_issue("Todo");
+		let branch_name = "x/pubfi-pub-718";
+		let pr_url = "https://github.com/hack-ink/pubfi-mono-v2/pull/14";
+		let head_oid = "1123456789abcdef0123456789abcdef01234567";
+		let worktree = sample_worktree(branch_name);
+		let handoff = ReviewHandoffMarker::new(
+			"pub-718-attempt-1",
+			1,
+			branch_name,
+			pr_url,
+			"main",
+			branch_name,
+			head_oid,
+		);
+		let orchestration = ReviewOrchestrationMarker::new(
+			"pub-718-attempt-1",
+			1,
+			branch_name,
+			pr_url,
+			head_oid,
+			"request_pending",
+			None,
+			None,
+			None,
+			0,
+			0,
+			None,
+		);
+		let landing_state = sample_landing_state(pr_url, branch_name, head_oid);
+		let (run_id, attempt_number, mode) = super::validate_existing_handoff_refresh(
+			workflow.frontmatter().tracker(),
+			&issue,
+			&worktree,
+			&handoff,
+			Some(&orchestration),
+			&landing_state,
+			head_oid,
+		)
+		.expect("current marker should allow failure-state drift completion");
 
 		assert_eq!(run_id, "pub-718-attempt-1");
 		assert_eq!(attempt_number, 1);
