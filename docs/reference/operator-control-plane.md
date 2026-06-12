@@ -178,6 +178,11 @@ failure or child exit, ran the registered repo gate itself, persisted the next p
 and scheduled continuation instead of writing `decodex:needs-attention`. It is a
 runtime recovery handoff, not final issue success; the later `handoff_evidence` phase
 still owns review, push, PR creation, and terminal finalize.
+Retry comments with `app_server_transport_disconnected` during `initialize`,
+`account/login/start`, `thread/start`, or `thread/resume` mean Decodex is restarting
+the app-server under the retry budget, not asking for operator attention yet. The
+same error class becomes actionable only after retry exhaustion or when the disconnect
+occurred after a thread session was attached.
 
 ## State Ownership
 
