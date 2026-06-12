@@ -1,0 +1,63 @@
+{
+  "adoption_opportunity": "Expose or preserve app category values anywhere Decodex consumes Codex plugin app summaries, especially app/catalog UI surfaces that group plugin apps.",
+  "caveats": "This is an additive nullable protocol field. Older clients that ignore unknown fields should continue working, but generated TypeScript consumers may see a type shape change.",
+  "changed_surfaces": [
+    "app-server protocol v2 AppSummary and AppTemplateSummary",
+    "plugin read and install responses",
+    "local .app.json parsing",
+    "remote app manifest category fallback",
+    "plugin read/install tests and generated schemas"
+  ],
+  "community_value": "High for plugin authors and app UI builders because it explains where plugin app categories now come from and how they appear in app-server responses.",
+  "compatibility_risk": "Low for tolerant JSON clients, but medium for strict generated clients or snapshots that assume AppSummary/AppTemplateSummary have no category field.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "Moderate. Decodex plugin/app surfaces can now consume normalized categories from Codex app-server responses instead of deriving their own grouping.",
+  "deprecated_or_breaking_notes": "No removed behavior was observed. The protocol shape expands with a nullable category on app and template summaries.",
+  "evidence": [
+    "PR #27420 says Codex parses optional `.app.json` category overrides, adds nullable category fields to app-server protocol summaries, and falls back from branding metadata to app metadata categories.",
+    "`codex-rs/app-server-protocol/src/protocol/v2/apps.rs` adds `AppInfo::category()` and a nullable `category` field on `AppSummary`.",
+    "`codex-rs/app-server-protocol/src/protocol/v2/plugin.rs` adds nullable `category` to `AppTemplateSummary`.",
+    "`codex-rs/core-plugins/src/loader.rs` parses optional app manifest categories into `PluginAppMetadata`.",
+    "`codex-rs/app-server/src/request_processors/plugins.rs` passes local and remote app categories into plugin read/install app summaries.",
+    "Tests in `plugin_install.rs` and `plugin_read.rs` assert category values for remote and local plugin app responses.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27420.json` records 16 changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "The additive app-server protocol field may affect Decodex app/catalog UI and generated protocol consumers.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "The change has a clear practical explanation for plugin authors and app UI builders.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex app-server plugin responses now include nullable app category values derived from local `.app.json`, branding metadata, or remote app metadata.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-12T14:08:14Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27420",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-11T17:34:41Z",
+        "title": "[codex] Propagate plugin app categories",
+        "url": "https://github.com/openai/codex/pull/27420"
+      },
+      {
+        "kind": "commit",
+        "title": "Propagate plugin app categories",
+        "url": "https://github.com/openai/codex/commit/2f6191ea633cd0a58580c484cc37d88191787385"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "2f6191ea633cd0a58580c484cc37d88191787385"
+    ],
+    "subject_id": "27420",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "Users or clients reading plugin details, plugin install responses, or app templates can now see a normalized category for each app when upstream data supplies one."
+}
