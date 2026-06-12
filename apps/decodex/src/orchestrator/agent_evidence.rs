@@ -1,5 +1,3 @@
-use std::collections::{self, BTreeMap};
-
 const AGENT_HANDOFF_INDEX_SCHEMA: &str = "decodex.agent_handoff_index/1";
 const AGENT_BLOCKER_SNAPSHOT_SCHEMA: &str = "decodex.blocker_snapshot/1";
 const AGENT_RUN_CAPSULE_SCHEMA: &str = "decodex.run_capsule/1";

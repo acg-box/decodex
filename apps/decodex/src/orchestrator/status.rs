@@ -669,10 +669,16 @@ fn operator_execution_program_statuses(
 	state_store: &StateStore,
 ) -> crate::prelude::Result<Vec<OperatorExecutionProgramStatus>> {
 	let policy = ExecutionWorkflowPolicy::from_workflow(project.service_id(), workflow)?;
-	let context = ExecutionProgramReadinessContext::new();
+	let records = state_store.list_execution_programs(project.service_id())?;
+	let context = operator_execution_program_readiness_context(
+		project.service_id(),
+		workflow,
+		state_store,
+		&records,
+	)?;
 	let mut statuses = Vec::new();
 
-	for record in state_store.list_execution_programs(project.service_id())? {
+	for record in records {
 		let evaluation = if let Some(source_contract_id) = record.source_contract_id() {
 			let Some(contract) = state_store.decision_contract(project.service_id(), source_contract_id)?
 			else {
@@ -689,12 +695,91 @@ fn operator_execution_program_statuses(
 		statuses.push(OperatorExecutionProgramStatus::from_summary(
 			&record,
 			evaluation.operator_summary(),
+			&evaluation,
 		));
 	}
 
 	statuses.sort_by(|left, right| left.program_id.cmp(&right.program_id));
 
 	Ok(statuses)
+}
+
+fn operator_execution_program_readiness_context(
+	service_id: &str,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	records: &[ExecutionProgramRecord],
+) -> crate::prelude::Result<ExecutionProgramReadinessContext> {
+	let dependency_snapshots = operator_execution_program_dependency_snapshots(records)?;
+	let occupied_conflict_domains =
+		operator_execution_program_occupied_conflict_domains(service_id, workflow, state_store, records)?;
+
+	Ok(ExecutionProgramReadinessContext::new()
+		.with_dependency_snapshots(dependency_snapshots)
+		.with_occupied_conflict_domains(occupied_conflict_domains))
+}
+
+fn operator_execution_program_dependency_snapshots(
+	records: &[ExecutionProgramRecord],
+) -> crate::prelude::Result<Vec<ExecutionDependencySnapshot>> {
+	let mut snapshots = BTreeMap::new();
+
+	for record in records {
+		for node in record.program().nodes() {
+			let Some(issue) = node.linear_issue() else {
+				continue;
+			};
+
+			insert_dependency_snapshot(&mut snapshots, node.node_id(), issue.issue_state())?;
+			insert_dependency_snapshot(&mut snapshots, issue.issue_identifier(), issue.issue_state())?;
+		}
+	}
+
+	Ok(snapshots.into_values().collect())
+}
+
+fn operator_execution_program_occupied_conflict_domains(
+	service_id: &str,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	records: &[ExecutionProgramRecord],
+) -> crate::prelude::Result<Vec<ExecutionConflictDomain>> {
+	let retained_issue_ids = state_store
+		.list_worktrees(service_id)?
+		.into_iter()
+		.map(|worktree| worktree.issue_id().to_owned())
+		.collect::<std::collections::BTreeSet<_>>();
+	let mut occupied = Vec::new();
+	let mut seen = std::collections::BTreeSet::new();
+
+	for record in records {
+		for node in record.program().nodes() {
+			let Some(issue) = node.linear_issue() else {
+				continue;
+			};
+			let retained_nonterminal =
+				retained_issue_ids.contains(issue.issue_id())
+					&& !state_name_is_terminal(issue.issue_state(), workflow);
+			let issue_occupies_domain = issue.has_active_label()
+				|| issue.has_needs_attention_label()
+				|| retained_nonterminal
+				|| state_store.issue_has_active_shared_claim(service_id, issue.issue_id())?;
+
+			if !issue_occupies_domain {
+				continue;
+			}
+
+			for domain in node.conflict_domains() {
+				let key = format!("{}:{}", domain.kind().as_str(), domain.key());
+
+				if seen.insert(key) {
+					occupied.push(domain.clone());
+				}
+			}
+		}
+	}
+
+	Ok(occupied)
 }
 
 fn hydrate_live_operator_external_observers<T>(
@@ -6570,11 +6655,16 @@ fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorSt
 			.readback_warning
 			.as_ref()
 			.map_or_else(String::new, |warning| format!(" readback_warning={warning}"));
+		let intake_kind = program.intake_kind.as_deref().unwrap_or("unknown");
+		let public_summary = program.public_summary.as_deref().unwrap_or("none");
 
 		output.push_str(&format!(
-			"- program_id: {} source_contract_id: {} nodes={} planned={} mapped={} ready={} queued={} blocked={} held={} active={} attention={} completed={} stale={} superseded={} queue_label_eligible={} mapped_issues={}{}\n",
+			"- program_id: {} status={} source_contract_id: {} intake_kind={} summary=\"{}\" nodes={} planned={} mapped={} ready={} queued={} blocked={} held={} active={} attention={} completed={} stale={} superseded={} queue_label_eligible={} queue_actions=apply:{} retain:{} remove:{} mapped_issues={}{}\n",
 			program.program_id,
+			program.status,
 			program.source_contract_id.as_deref().unwrap_or("none"),
+			intake_kind,
+			public_summary,
 			program.node_count,
 			program.planned_count,
 			program.mapped_count,
@@ -6588,9 +6678,40 @@ fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorSt
 			program.stale_count,
 			program.superseded_count,
 			program.queue_label_eligible_count,
+			program.queue_label_apply_count,
+			program.queue_label_retain_count,
+			program.queue_label_remove_count,
 			mapped_issues,
 			readback_warning,
 		));
+
+		for node in &program.node_readbacks {
+			let issue_identifier = node.issue_identifier.as_deref().unwrap_or("unmapped");
+			let issue_state = node.issue_state.as_deref().unwrap_or("none");
+			let queue_label_action = node.queue_label_action.as_deref().unwrap_or("none");
+			let reason_codes = if node.reason_codes.is_empty() {
+				String::from("none")
+			} else {
+				node.reason_codes.join(",")
+			};
+			let reasons = if node.reasons.is_empty() {
+				String::from("none")
+			} else {
+				node.reasons.join(" | ")
+			};
+
+			output.push_str(&format!(
+				"  - node: issue={} issue_state={} lifecycle={} readiness={} queue_label_action={} reason_codes={} reasons=\"{}\" next_action=\"{}\"\n",
+				issue_identifier,
+				issue_state,
+				node.lifecycle_state,
+				node.readiness_state,
+				queue_label_action,
+				reason_codes,
+				reasons,
+				node.next_action,
+			));
+		}
 	}
 }
 
