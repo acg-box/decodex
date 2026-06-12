@@ -1439,6 +1439,12 @@ struct OperatorHistoryLaneStatus {
 	issue_identifier: Option<String>,
 	title: Option<String>,
 	author: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	issue_state: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	active_label_present: Option<bool>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	needs_attention_label_present: Option<bool>,
 	issue_key: String,
 	attempt_count: usize,
 	ledger_outcome: OperatorHistoryLedgerOutcome,

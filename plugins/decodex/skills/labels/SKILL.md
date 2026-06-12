@@ -48,10 +48,14 @@ If a project-scoped command supplies `--config <project-dir>`, read that project
   only when a current same-PR same-head handoff marker proves stale failure-state drift.
 - Humans should not normally add or clear `decodex:active:<service-id>` unless doing
   explicit recovery and the runtime-owned state has been verified.
-- For `recover review-handoff adopt`, restore `decodex:active:<service-id>` only after
-  verifying the issue, service ID, managed worktree, PR branch, and PR head belong to
-  the same manual takeover lane. Adopt must then validate the label again before it
-  writes runtime handoff state.
+- For `recover review-handoff adopt`, do not hand-add
+  `decodex:active:<service-id>` just to satisfy the command. The dry-run reports
+  missing active ownership and whether live adopt will restore it. The live command
+  restores the active label only after validating the issue, service ID, managed
+  worktree, PR branch, and PR head belong to the same manual takeover lane.
+- For `recover merged-closeout`, queue, active, and needs-attention labels must already
+  be absent. The command reconciles stale runtime/ledger attention after merged PR
+  proof; it does not clear labels as a shortcut.
 
 ## Queue an Issue
 
