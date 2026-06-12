@@ -1446,7 +1446,7 @@ fn project_attention_count(
 	for candidate in snapshot
 		.queued_candidates
 		.iter()
-		.filter(|candidate| candidate.classification == "blocked" || candidate.attention.is_some())
+		.filter(|candidate| queued_candidate_counts_as_attention(candidate))
 	{
 		attention_keys.insert(operator_issue_attention_key(
 			&candidate.issue_id,
@@ -1456,19 +1456,14 @@ fn project_attention_count(
 	for lane in snapshot
 		.post_review_lanes
 		.iter()
-		.filter(|lane| {
-			matches!(
-				lane.classification.as_str(),
-				"blocked" | "needs_review_repair" | "closeout_blocked"
-			)
-		})
+		.filter(|lane| post_review_lane_counts_as_attention(lane))
 	{
 		attention_keys.insert(operator_issue_attention_key(&lane.issue_id, Some(&lane.issue_identifier)));
 	}
 	for lane in snapshot
 		.history_lanes
 		.iter()
-		.filter(|lane| history_lane_has_unresolved_attention(snapshot, lane, completed_state))
+		.filter(|lane| history_lane_has_current_attention(snapshot, lane, completed_state))
 	{
 		attention_keys.insert(history_lane_group_key(lane));
 	}
@@ -1476,7 +1471,29 @@ fn project_attention_count(
 	attention_keys.len()
 }
 
-fn history_lane_has_unresolved_attention(
+fn project_history_only_attention_count(snapshot: &OperatorStatusSnapshot) -> usize {
+	snapshot
+		.history_lanes
+		.iter()
+		.filter(|lane| {
+			history_ledger_outcome_requires_attention(&lane.ledger_outcome)
+				&& !history_lane_has_current_attention_signal(snapshot, lane)
+		})
+		.count()
+}
+
+fn queued_candidate_counts_as_attention(candidate: &OperatorQueuedIssueStatus) -> bool {
+	candidate.classification == "blocked" || candidate.attention.is_some()
+}
+
+fn post_review_lane_counts_as_attention(lane: &OperatorPostReviewLaneStatus) -> bool {
+	matches!(
+		lane.classification.as_str(),
+		"blocked" | "needs_review_repair" | "closeout_blocked"
+	)
+}
+
+fn history_lane_has_current_attention(
 	snapshot: &OperatorStatusSnapshot,
 	lane: &OperatorHistoryLaneStatus,
 	completed_state: Option<&str>,
@@ -1485,7 +1502,34 @@ fn history_lane_has_unresolved_attention(
 		return false;
 	}
 
-	!history_lane_attention_is_resolved_tracker_echo(snapshot, lane, completed_state)
+	history_lane_has_current_attention_signal(snapshot, lane)
+		&& !history_lane_attention_is_resolved_tracker_echo(snapshot, lane, completed_state)
+}
+
+fn history_lane_has_current_attention_signal(
+	snapshot: &OperatorStatusSnapshot,
+	lane: &OperatorHistoryLaneStatus,
+) -> bool {
+	if lane.active_label_present == Some(true) || lane.needs_attention_label_present == Some(true) {
+		return true;
+	}
+
+	let issue_key = history_lane_group_key(lane);
+
+	snapshot.worktrees.iter().any(|worktree| {
+		operator_issue_attention_key(&worktree.issue_id, worktree.issue_identifier.as_deref())
+			== issue_key
+	}) || snapshot.post_review_lanes.iter().any(|post_review_lane| {
+		post_review_lane_counts_as_attention(post_review_lane)
+			&& operator_issue_attention_key(
+				&post_review_lane.issue_id,
+				Some(&post_review_lane.issue_identifier),
+			) == issue_key
+	}) || snapshot.queued_candidates.iter().any(|candidate| {
+		queued_candidate_counts_as_attention(candidate)
+			&& operator_issue_attention_key(&candidate.issue_id, Some(&candidate.issue_identifier))
+				== issue_key
+	})
 }
 
 fn history_lane_attention_is_resolved_tracker_echo(
@@ -6706,6 +6750,7 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	output.push_str(&format!("Recovery worktrees: {}\n", recovery_worktrees.len()));
 	output.push_str(&format!("Post-review lanes: {}\n", snapshot.post_review_lanes.len()));
 
+	append_rendered_attention_summary(&mut output, snapshot);
 	append_rendered_execution_programs(&mut output, snapshot);
 
 	output.push_str("\nRunning Lanes\n");
@@ -6757,6 +6802,27 @@ fn render_operator_status(snapshot: &OperatorStatusSnapshot) -> String {
 	append_rendered_post_review_lanes(&mut output, snapshot);
 
 	output
+}
+
+fn append_rendered_attention_summary(output: &mut String, snapshot: &OperatorStatusSnapshot) {
+	let current_attention_count = snapshot
+		.projects
+		.iter()
+		.find(|project| project.project_id == snapshot.project_id)
+		.or_else(|| snapshot.projects.first())
+		.map_or_else(|| project_attention_count(snapshot, None), |project| project.attention_count);
+	let history_only_attention_count = project_history_only_attention_count(snapshot);
+
+	output.push_str(&format!("Current attention: {current_attention_count}\n"));
+	output.push_str(&format!(
+		"History-only terminal attention: {history_only_attention_count}\n"
+	));
+
+	if current_attention_count == 0 && history_only_attention_count > 0 {
+		output.push_str(
+			"Current attention action: none; terminal attention rows below are Run Ledger history only.\n",
+		);
+	}
 }
 
 fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorStatusSnapshot) {
