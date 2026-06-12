@@ -2,8 +2,6 @@ use orchestrator::HarnessOutcomeKind;
 use orchestrator::HarnessOutcomeRecordInput;
 use orchestrator::PrivateEvidenceReadback;
 
-use crate::loop_contract::DecisionContract;
-
 #[test]
 fn agent_evidence_snapshot_writes_index_blockers_capsules_and_event_stream() {
 	let temp_dir = TempDir::new().expect("temp dir should create");
