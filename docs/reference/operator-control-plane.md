@@ -456,6 +456,12 @@ Worktree visibility follows the owning dashboard section:
   decision itself is `Block`. These diagnostic
   tokens are operator-local and must not include tokens, raw API payloads, or private
   command output.
+- `worktree_checkout_branch_read_failed` and `worktree_head_read_failed` in
+  `Review & Landing` are degraded local worktree readbacks for a still-bound retained
+  lane. They may block a fresh classification for this status tick, but they must stay
+  wait/retry readback conditions and must not add `decodex:needs-attention` unless a
+  later successful readback proves a hard blocker such as a missing branch, branch
+  mismatch, missing head, or lineage mismatch.
 - `pull_request_merge_state_conflict` in `Review & Landing` means one retained
   post-review readback looked merge-complete but direct PR merge readback did not
   confirm that the same PR head is merged. Treat it as a readback contradiction, not a
