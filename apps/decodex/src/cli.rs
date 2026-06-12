@@ -686,11 +686,11 @@ struct IntakeIssuesCommand {
 	#[arg(long, value_name = "SERVICE_ID", conflicts_with = "config")]
 	project: Option<String>,
 	/// Read tracker state and print the deterministic intake report without local persistence.
-	#[arg(long, conflicts_with = "persist", required_unless_present = "persist")]
+	#[arg(long, conflicts_with = "apply", required_unless_present = "apply")]
 	dry_run: bool,
-	/// Persist only local runtime Program Intake records; never mutates Linear queue labels.
-	#[arg(long, conflicts_with = "dry_run")]
-	persist: bool,
+	/// Persist local runtime Program Intake records; never mutates Linear queue labels.
+	#[arg(long, visible_alias = "persist", conflicts_with = "dry_run")]
+	apply: bool,
 	/// Emit structured JSON instead of human-readable text.
 	#[arg(long)]
 	json: bool,
@@ -707,7 +707,7 @@ impl IntakeIssuesCommand {
 				project_id: self.project.as_deref(),
 				issue_identifiers: self.issues.clone(),
 				dry_run: self.dry_run,
-				persist: self.persist,
+				persist: self.apply,
 			})?;
 
 		if self.json {
@@ -2627,12 +2627,67 @@ mod tests {
 				command: IntakeSubcommand::Issues(IntakeIssuesCommand {
 					project: Some(_),
 					dry_run: true,
-					persist: false,
+					apply: false,
 					json: true,
 					issues,
 					..
 				})
 			}) if issues == vec![String::from("XY-1"), String::from("XY-2")]
+		));
+	}
+
+	#[test]
+	fn parses_intake_issues_apply_with_project() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"intake",
+			"issues",
+			"--project",
+			"decodex",
+			"XY-1",
+			"XY-2",
+			"--apply",
+			"--json",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Intake(IntakeCommand {
+				command: IntakeSubcommand::Issues(IntakeIssuesCommand {
+					project: Some(_),
+					dry_run: false,
+					apply: true,
+					json: true,
+					issues,
+					..
+				})
+			}) if issues == vec![String::from("XY-1"), String::from("XY-2")]
+		));
+	}
+
+	#[test]
+	fn parses_intake_issues_legacy_persist_alias() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"intake",
+			"issues",
+			"--project",
+			"decodex",
+			"XY-1",
+			"--persist",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::Intake(IntakeCommand {
+				command: IntakeSubcommand::Issues(IntakeIssuesCommand {
+					project: Some(_),
+					dry_run: false,
+					apply: true,
+					issues,
+					..
+				})
+			}) if issues == vec![String::from("XY-1")]
 		));
 	}
 
@@ -2670,9 +2725,9 @@ mod tests {
 	#[test]
 	fn rejects_intake_issues_without_explicit_mode() {
 		let error = Cli::try_parse_from(["decodex", "intake", "issues", "XY-1"])
-			.expect_err("intake issues requires dry-run or persist");
+			.expect_err("intake issues requires dry-run or apply");
 
-		assert!(error.to_string().contains("--dry-run") || error.to_string().contains("--persist"));
+		assert!(error.to_string().contains("--dry-run") || error.to_string().contains("--apply"));
 	}
 
 	#[test]
