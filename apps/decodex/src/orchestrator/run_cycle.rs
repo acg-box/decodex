@@ -504,9 +504,7 @@ where
 
 	match phase {
 		ReviewOrchestrationPhase::RequestPending => handle_request_pending_phase(
-			tracker,
 			project,
-			workflow,
 			state_store,
 			lane,
 			github_token,
@@ -621,16 +619,12 @@ where
 	)
 }
 
-fn handle_request_pending_phase<T>(
-	tracker: &T,
+fn handle_request_pending_phase(
 	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	lane: &RetainedReviewLane,
 	github_token: &mut Option<String>,
 ) -> Result<()>
-where
-	T: IssueTracker,
 {
 	match external_review_request_ci_gate(&lane.review_state) {
 		ExternalReviewRequestCiGate::Ready => {},
@@ -641,15 +635,6 @@ where
 				lane,
 				ReviewOrchestrationPhase::RepairRequired,
 				RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
-			);
-		},
-		ExternalReviewRequestCiGate::ManualAttention(reason) => {
-			return apply_passive_retained_manual_attention(
-				PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
-				&lane.snapshot.issue,
-				&lane.snapshot.worktree,
-				&lane.orchestration_marker,
-				reason,
 			);
 		},
 	}

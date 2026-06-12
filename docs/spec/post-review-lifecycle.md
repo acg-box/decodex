@@ -219,6 +219,9 @@ While in `review_wait`:
 - the retained lane remains reserved for the same issue and PR lineage
 - missing immediate review activity is not, by itself, a failure
 - review-request acknowledgement probing or bounded resend may happen as orchestration behavior without leaving `review_wait`
+- before requesting external review, pending or unknown check readback waits for a
+  later status tick, and red checks route to `review_repair`; neither case may apply
+  `decodex:needs-attention` by itself
 
 `review_wait` must not trigger code changes on its own.
 
