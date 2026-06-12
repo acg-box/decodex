@@ -64,9 +64,9 @@ but intentionally skips tracker closeout and active-label ownership checks.
   ownership label in place, wait for CI, and retry `decodex land`.
 - Use `recover review-handoff adopt` only when no retained review handoff marker exists,
   any existing worktree mapping points at the same current managed checkout, and the
-  current clean worktree exactly matches the PR head branch and SHA. If a retained
-  marker exists or the mapping points elsewhere, use normal land or
-  `recover review-handoff rebind` instead.
+  current clean worktree exactly matches the PR head branch and SHA. A stale mapping
+  branch name is repaired by adopt; if a retained marker exists or the mapping points
+  elsewhere, use normal land or `recover review-handoff rebind` instead.
 - Do not substitute `gh pr merge`, GitHub UI, merge queue, raw `git`, direct GitHub API
   mutation, or a hand-assembled merge for a failed or unavailable `decodex land`.
 - If GitHub merge already happened but `decodex land` stopped during closeout or
