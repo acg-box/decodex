@@ -128,6 +128,11 @@ fn format_retry_comment(comment: RetryComment<'_>) -> String {
 }
 
 fn retry_comment_details(error: &Report) -> (&'static str, String) {
+	debug_assert!(
+		!run_failure_writeback_disposition(error).requires_terminal_attention(),
+		"terminal-attention failures must not be formatted as retry comments"
+	);
+
 	if let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() {
 		match repo_gate_failure.disposition() {
 			RepoGateFailureDisposition::ContinueRepair
