@@ -158,6 +158,12 @@ where
 		);
 	}
 
+	reconcile_terminal_thread_archive_backlog_best_effort(
+		context.project,
+		context.workflow,
+		state_store,
+	);
+
 	while context
 		.workflow
 		.frontmatter()
