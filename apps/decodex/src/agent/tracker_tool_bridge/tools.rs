@@ -502,7 +502,7 @@ impl<'a> TrackerToolBridge<'a> {
 	pub(super) fn label_add_tool_spec(&self) -> DynamicToolSpec {
 		DynamicToolSpec::new(
 			ISSUE_LABEL_ADD_TOOL_NAME,
-			"Add an allowed workflow label to the currently leased issue.",
+			"Add an allowed workflow label to the currently leased issue. For `needs_attention_label`, this records a manual-attention intent; Decodex applies the actual label only after the paired `manual_attention` comment validates.",
 			serde_json::json!({
 				"type": "object",
 				"properties": {
@@ -892,6 +892,10 @@ impl<'a> TrackerToolBridge<'a> {
 			Err(error) => return DynamicToolCallResponse::failure(error.to_string()),
 		};
 
+		if let Err(error) = self.apply_manual_attention_label() {
+			return DynamicToolCallResponse::failure(error);
+		}
+
 		match tracker::create_prepared_linear_execution_event_comment(
 			self.tracker,
 			&self.issue.id,
@@ -936,7 +940,7 @@ impl<'a> TrackerToolBridge<'a> {
 		let decision_request =
 			parsed.decision_request.map(Self::normalize_authority_decision_request).transpose()?;
 
-		validate_public_error_class(&error_class)?;
+		validate_manual_attention_error_class(&error_class)?;
 
 		if blockers.is_empty() {
 			return Err(format!(
@@ -959,6 +963,36 @@ impl<'a> TrackerToolBridge<'a> {
 			summary,
 			decision_request,
 		})
+	}
+
+	fn apply_manual_attention_label(&self) -> Result<(), String> {
+		let label = self.workflow.frontmatter().tracker().needs_attention_label();
+		let current_issue = match self.refreshed_issue_snapshot() {
+			Ok(Some(issue)) => issue,
+			Ok(None) => {
+				return Err(format!(
+					"Failed to refresh issue `{}` before applying manual-attention label `{label}`: tracker returned no current snapshot.",
+					self.issue.identifier
+				));
+			},
+			Err(error) => {
+				return Err(format!(
+					"Failed to refresh issue `{}` before applying manual-attention label `{label}`: {error}",
+					self.issue.identifier
+				));
+			},
+		};
+
+		tracker::set_issue_label_presence(self.tracker, &current_issue, label, true).map_err(
+			|error| {
+				format!(
+					"Failed to add label `{label}` to issue `{}`: {error}",
+					self.issue.identifier
+				)
+			},
+		)?;
+
+		Ok(())
 	}
 
 	fn normalize_authority_decision_request(
@@ -1786,6 +1820,18 @@ impl<'a> TrackerToolBridge<'a> {
 			));
 		}
 
+		let manual_attention_label =
+			parsed.label == self.workflow.frontmatter().tracker().needs_attention_label();
+
+		if manual_attention_label {
+			self.manual_attention_requested.replace(true);
+
+			return DynamicToolCallResponse::success(format!(
+				"Manual-attention label intent recorded for issue `{}`. Call `{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` next so Decodex can validate the blocker and apply label `{}`.",
+				self.issue.identifier, parsed.label
+			));
+		}
+
 		let current_issue = match self.refreshed_issue_snapshot() {
 			Ok(Some(issue)) => issue,
 			Ok(None) => {
@@ -1801,8 +1847,6 @@ impl<'a> TrackerToolBridge<'a> {
 				));
 			},
 		};
-		let manual_attention_label =
-			parsed.label == self.workflow.frontmatter().tracker().needs_attention_label();
 		let label_added = match tracker::set_issue_label_presence(
 			self.tracker,
 			&current_issue,
@@ -2163,6 +2207,39 @@ fn validate_public_error_class(error_class: &str) -> Result<(), String> {
 	}
 
 	Ok(())
+}
+
+fn validate_manual_attention_error_class(error_class: &str) -> Result<(), String> {
+	validate_public_error_class(error_class)?;
+
+	if is_runtime_owned_manual_attention_error_class(error_class) {
+		return Err(format!(
+			"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` cannot use runtime-owned retryable error class `{error_class}`; keep repairing or retrying the lane, or use a human-owned blocker class only when automation cannot clear the blocker."
+		));
+	}
+
+	Ok(())
+}
+
+fn is_runtime_owned_manual_attention_error_class(error_class: &str) -> bool {
+	matches!(
+		error_class,
+		"retryable_execution_failure"
+			| "repo_gate_canonicalize_failed"
+			| "repo_gate_verify_failed"
+			| "repo_gate_tracked_rewrites_left"
+			| "repo_gate_git_lock_contention"
+			| "stalled_run_detected"
+			| "app_server_zero_evidence_start_failed"
+			| "app_server_plugin_list_timeout"
+			| "app_server_preflight_timeout"
+			| "app_server_transport_disconnected"
+			| "phase_goal_terminal_path_missing"
+			| "app_server_dynamic_tool_protocol_failure"
+			| "app_server_dynamic_tool_failed"
+			| "app_server_turn_failed"
+			| "app_server_usage_limit_exceeded"
+	)
 }
 
 fn format_manual_attention_comment(
