@@ -61,6 +61,12 @@ registered project's `WORKFLOW.md`.
 - Use `recover review-handoff diagnose` and then `recover review-handoff rebind` for
   retained PR handoff state drift; the live rebind owns marker refresh plus the narrow
   current-marker failure-state label/state repair described in the runbook.
+- Use `recover review-handoff adopt` for a verified human-owned PR that was created
+  from a managed Decodex worktree and should enter normal `decodex land --authority`
+  closeout. Run dry-run first from the lane worktree, then rerun live only after it
+  confirms the active service label, clean worktree, exact PR branch/head match, and
+  green landable PR gates. Do not use adopt for retained lanes that already have a
+  worktree mapping or review handoff marker; use rebind or normal land there.
 - Use `probe stdio://` before relying on the Codex app-server boundary.
 - Use `POST /api/linear-scan` after label or issue-state changes when the scheduler
   should refresh before its next 5-minute Linear poll.

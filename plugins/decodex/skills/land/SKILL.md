@@ -15,6 +15,8 @@ with GitHub UI, `gh pr merge`, merge queue actions, raw `git`, or direct API mut
 - The user explicitly asks to land a PR through Decodex.
 - A PR already exists and the intended merge path is `decodex land`.
 - The task asks whether another merge path is acceptable for a Decodex-owned landing.
+- A human-owned PR should be landed with issue authority after first being adopted into
+  Decodex's retained review handoff state.
 - The lane is deliberate `--manual-authority` work with no authoritative tracker issue
   but still needs Decodex-owned PR landing.
 
@@ -31,9 +33,14 @@ with GitHub UI, `gh pr merge`, merge queue actions, raw `git`, or direct API mut
 1. Confirm the PR exists, the intended base and head are the ones being landed, required
    checks are green, and the repository expects Decodex-owned landing.
 2. Run `decodex land "<summary>"`.
-3. For a deliberate non-issue lane, run
+3. If issue-authority land reports missing retained handoff state for a human-owned PR
+   created from a managed lane worktree, run
+   `decodex recover review-handoff adopt <ISSUE> --pr <URL> --dry-run` from that
+   worktree, then rerun it live only after validation passes. Retry
+   `decodex land --authority <ISSUE> --pr <URL> "<summary>"` after the adopt succeeds.
+4. For a deliberate non-issue lane, run
    `decodex land --manual-authority --pr <URL> "<summary>"`.
-4. If `decodex land` succeeds and the repo-root default branch is current, finish the
+5. If `decodex land` succeeds and the repo-root default branch is current, finish the
    cleanup tail: remove merged linked worktrees and local/remote lane branches when
    no retained automation state still owns them.
 
@@ -55,6 +62,10 @@ but intentionally skips tracker closeout and active-label ownership checks.
 - If `decodex land` reports that checks are still pending or expected, treat that as a
   wait condition: keep the tracker issue in its retained review state, keep the active
   ownership label in place, wait for CI, and retry `decodex land`.
+- Use `recover review-handoff adopt` only when no retained worktree mapping or review
+  handoff marker exists yet and the current clean managed worktree exactly matches the
+  PR head branch and SHA. If a retained mapping or marker exists, use normal land or
+  `recover review-handoff rebind` instead.
 - Do not substitute `gh pr merge`, GitHub UI, merge queue, raw `git`, direct GitHub API
   mutation, or a hand-assembled merge for a failed or unavailable `decodex land`.
 - If GitHub merge already happened but `decodex land` stopped during closeout or
