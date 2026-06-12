@@ -148,6 +148,12 @@ fn retry_comment_details(error: &Report) -> (&'static str, String) {
 	if let Some(app_server_failure) = error.downcast_ref::<AppServerZeroEvidenceStartFailure>() {
 		return (app_server_failure.error_class(), app_server_failure.retry_next_action());
 	}
+	if let Some(app_server_failure) =
+		error.downcast_ref::<AppServerCapabilityPreflightFailure>()
+		&& app_server_failure.is_retryable_timeout()
+	{
+		return (app_server_failure.error_class(), app_server_failure.retry_next_action());
+	}
 	if let Some(app_server_failure) = error.downcast_ref::<AppServerTransportFailure>()
 		&& app_server_failure.is_retryable_startup()
 	{
