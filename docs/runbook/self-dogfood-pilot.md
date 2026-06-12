@@ -369,10 +369,13 @@ wants to observe the self-bootstrap loop without reading source code.
    pinned to the shared `$HOME/.codex` Codex home and state home; do not repair this
    by assigning a per-account `CODEX_HOME` or by overriding model, sandbox, approval,
    or personality settings from project policy.
-   If the status cause is `app_server_plugin_list_timeout`, inspect the local
-   `app_server_preflight_failed` evidence for the `plugin/list` timeout, restart
-   `decodex serve` if the app-server process is stale, and run `decodex probe` until
-   plugin inventory responds before clearing `decodex:needs-attention`.
+   If the run reports retryable `app_server_plugin_list_timeout`, leave the issue in
+   its active retry state and inspect the local `app_server_preflight_failed`
+   evidence only if the retry budget exhausts or the timeout repeats. If status
+   reports `attention_cause: app_server_plugin_list_timeout`, inspect the local
+   evidence for the `plugin/list` timeout, restart `decodex serve` if the app-server
+   process is stale, and run `decodex probe` until plugin inventory responds before
+   clearing `decodex:needs-attention`.
    If preflight evidence shows `skills/list` enabled skills with scan diagnostics,
    keep the diagnostics as compatibility evidence and do not uninstall official skills
    solely to clear the scan error. Only missing cwd coverage or zero enabled skills are
@@ -793,6 +796,10 @@ repo gate commands. Linear should carry only the coarse team-visible failure sum
 ## Re-running after failure
 
 - If the run is still retryable, leave the issue in `In Progress` and let `decodex` retry.
+- If the retryable failure class is `app_server_plugin_list_timeout`, treat it as a
+  bounded app-server preflight timeout before `thread/start`: leave the active retry
+  in place and inspect/restart the local serve process only if the timeout repeats or
+  the retry budget exhausts.
 - If `execution.max_turns` is greater than `1`, one bounded worker may now reuse the same app-server thread for multiple turns before it yields.
 - Retryable control-plane retries now split into a short continuation retry after a clean nonterminal worker exit and a capped exponential failure backoff after an abnormal worker exit.
 - If `status` reports `Git credential preflight failed`, configure the env-var named by `github.token_env_var` for the routed identity before clearing `decodex:needs-attention`; the lane never reached a promptable `git push`.
@@ -804,11 +811,12 @@ repo gate commands. Linear should carry only the coarse team-visible failure sum
   login state; for home mismatches, ensure `HOME` points at the user account that
   owns the shared `$HOME/.codex` tree. Restart `decodex serve` before clearing
   `decodex:needs-attention`.
-- If status reports `attention_cause: app_server_plugin_list_timeout`, treat it as a
-  bounded app-server preflight timeout before `thread/start`: inspect the retained
-  worktree's local preflight evidence for `plugin/list`, restart `decodex serve` if
-  stale, verify `decodex probe`, then clear `decodex:needs-attention` and move the
-  issue back to a startable state only when another automated run is desired.
+- If status reports `attention_cause: app_server_plugin_list_timeout`, the workflow
+  retry budget has exhausted for a bounded app-server preflight timeout before
+  `thread/start`: inspect the retained worktree's local preflight evidence for
+  `plugin/list`, restart `decodex serve` if stale, verify `decodex probe`, then clear
+  `decodex:needs-attention` and move the issue back to a startable state only when
+  another automated run is desired.
 - If status or Linear terminal failure includes a `skills/list` preflight blocker,
   inspect the attached `first_error_path` and `first_error` details before changing
   local plugins or skills. Scan diagnostics with enabled skills are not blockers by
