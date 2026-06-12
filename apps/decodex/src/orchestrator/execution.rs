@@ -508,6 +508,7 @@ where
 					project.service_id(),
 					&issue_run.issue.id,
 				)?;
+
 				reconcile_terminal_thread_archive_backlog_best_effort(
 					project,
 					workflow,
@@ -1201,6 +1202,7 @@ fn archive_completed_issue_threads_best_effort(
 		thread_id: run_result.thread_id.clone(),
 		sequence_number: run_result.event_count.saturating_add(1),
 	};
+
 	archive_issue_threads_best_effort(
 		project,
 		state_store,
@@ -1433,7 +1435,6 @@ fn archive_completed_issue_thread_best_effort(
 		thread_id: &candidate.thread_id,
 		sequence_number: candidate.sequence_number,
 	};
-
 	#[cfg(not(test))]
 	let archive_result = agent::archive_app_server_thread_after_success(&archive_request, state_store);
 	#[cfg(test)]

@@ -96,6 +96,7 @@ fn terminal_thread_archive_backlog_candidates_scan_project_terminal_runs() {
 			.expect("attempt should record");
 		state_store.update_run_thread(run_id, thread_id).expect("thread should attach");
 	}
+
 	state_store
 		.append_event("run-archived", 1, "thread/archive", "{}")
 		.expect("archive event should record");
@@ -106,6 +107,7 @@ fn terminal_thread_archive_backlog_candidates_scan_project_terminal_runs() {
 		.iter()
 		.map(|candidate| candidate.thread_id.as_str())
 		.collect::<Vec<_>>();
+
 	candidate_threads.sort_unstable();
 
 	assert_eq!(

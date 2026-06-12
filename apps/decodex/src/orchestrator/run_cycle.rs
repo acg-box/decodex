@@ -2467,7 +2467,6 @@ where
 		github_token_env_var: Some(project.github().token_env_var().to_owned()),
 		github_command_path: project.github().command_path().map(Path::to_path_buf),
 	};
-
 	let summary = if let Some(retained_summary) = drain_non_github_review_retained_tail_with_inspector(
 		tracker,
 		project,
