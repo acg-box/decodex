@@ -601,6 +601,16 @@ impl AppServerDynamicToolFailure {
 		Self { kind: AppServerDynamicToolFailureKind::Tool, tool, message: message.into() }
 	}
 
+	#[cfg(test)]
+	pub(crate) fn protocol_for_test(tool: Option<String>, message: impl Into<String>) -> Self {
+		Self::protocol(tool, message)
+	}
+
+	#[cfg(test)]
+	pub(crate) fn tool_for_test(tool: Option<String>, message: impl Into<String>) -> Self {
+		Self::tool(tool, message)
+	}
+
 	pub(crate) fn error_class(&self) -> &'static str {
 		match self.kind {
 			AppServerDynamicToolFailureKind::Protocol => "app_server_dynamic_tool_protocol_failure",
@@ -617,6 +627,10 @@ impl AppServerDynamicToolFailure {
 				"inspect the dynamic tool response and lane state, correct the tool call or underlying service state manually, {recovery_gate}"
 			),
 		}
+	}
+
+	pub(crate) fn retry_next_action(&self) -> String {
+		format!("decodex will retry automatically; {}", self.diagnostic_next_action())
 	}
 
 	fn diagnostic_next_action(&self) -> &'static str {
