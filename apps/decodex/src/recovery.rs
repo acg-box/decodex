@@ -9,7 +9,7 @@ use std::{
 
 use color_eyre::{Report, eyre::WrapErr};
 use serde::Serialize;
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	config::ServiceConfig,
@@ -41,6 +41,8 @@ const REVIEW_HANDOFF_REBIND_EVENT: &str = "review_handoff_rebind";
 const REVIEW_HANDOFF_ADOPT_EVENT: &str = "review_handoff_adopt";
 const LEGACY_MANUAL_CLOSEOUT_EVENT: &str = "closeout";
 const LEGACY_MANUAL_CLOSEOUT_ANCHOR: &str = "legacy_manual_closeout";
+const MERGED_CLOSEOUT_CLOSEOUT_ANCHOR: &str = "merged_closeout";
+const MERGED_CLOSEOUT_CLEANUP_ANCHOR: &str = "merged_closeout_cleanup";
 const REBOUND_ORCHESTRATION_PHASE: &str = "request_pending";
 const LINEAR_CONNECTOR_BACKOFF_WARNING: &str = "tracker_rate_limited";
 const LINEAR_CONNECTOR_BACKOFF_SECS: i64 = 15 * 60;
@@ -84,6 +86,19 @@ pub(crate) struct LegacyCloseoutRecoveryRequest {
 	/// Merged pull request URL that proves terminal code lineage.
 	pub(crate) pr_url: String,
 	/// Validate without writing a tracker audit comment.
+	pub(crate) dry_run: bool,
+	/// Required for non-dry-run mutation.
+	pub(crate) manual_authority: bool,
+}
+
+/// Explicit merged PR closeout reconciliation for stale retained attention.
+#[derive(Debug)]
+pub(crate) struct MergedCloseoutRecoveryRequest {
+	/// Issue identifier to reconcile.
+	pub(crate) issue: String,
+	/// Merged pull request URL that proves terminal code lineage.
+	pub(crate) pr_url: String,
+	/// Validate without writing runtime or tracker ledger events.
 	pub(crate) dry_run: bool,
 	/// Required for non-dry-run mutation.
 	pub(crate) manual_authority: bool,
@@ -187,6 +202,11 @@ struct AdoptValidation {
 	success_state_transition: Option<RebindSuccessStateTransition>,
 	previous_worktree_mapping: Option<WorktreeMapping>,
 }
+impl AdoptValidation {
+	fn should_restore_active_label(&self) -> bool {
+		!self.active_label_present
+	}
+}
 
 struct LegacyCloseoutValidation {
 	issue: TrackerIssue,
@@ -195,6 +215,24 @@ struct LegacyCloseoutValidation {
 	local_head_oid: String,
 	merge_commit: String,
 	worktree_path_for_event: Option<String>,
+}
+
+struct MergedCloseoutValidation {
+	issue: TrackerIssue,
+	branch_name: String,
+	worktree_path_for_event: String,
+	run_id: String,
+	attempt_number: i64,
+	landing_state: PullRequestLandingState,
+	merge_commit: String,
+	worktree_mapping: Option<WorktreeMapping>,
+}
+
+struct MergedCloseoutRetainedContext {
+	branch_name: String,
+	worktree_path: String,
+	run_id: String,
+	attempt_number: i64,
 }
 
 #[derive(Debug)]
@@ -350,9 +388,10 @@ pub(crate) fn run_review_handoff_adopt(
 			.success_state_transition
 			.as_ref()
 			.map_or("none", |transition| transition.state_name.as_str());
+		let active_label = tracker::automation_active_label(context.config.service_id());
 
 		println!(
-			"dry run: review handoff adopt validated for project={} issue={} branch={} pr={} head={} run_id={} attempt={} active_label_present={} state_transition={}",
+			"dry run: review handoff adopt validated for project={} issue={} branch={} pr={} head={} run_id={} attempt={} active_label={} active_label_present={} would_restore_active_label={} state_transition={}",
 			context.config.service_id(),
 			validation.issue.identifier,
 			validation.branch_name,
@@ -360,7 +399,9 @@ pub(crate) fn run_review_handoff_adopt(
 			validation.local_head_oid,
 			validation.run_id,
 			validation.attempt_number,
+			active_label,
 			validation.active_label_present,
+			validation.should_restore_active_label(),
 			state_transition
 		);
 
@@ -422,6 +463,55 @@ pub(crate) fn run_legacy_closeout(
 		landing_url(&validation.landing_state),
 		validation.local_head_oid,
 		validation.merge_commit,
+	);
+
+	Ok(())
+}
+
+/// Run an explicit merged PR closeout reconciliation for stale retained attention.
+pub(crate) fn run_merged_closeout(
+	config_path: Option<&Path>,
+	request: &MergedCloseoutRecoveryRequest,
+) -> Result<()> {
+	let context = load_recovery_context(config_path)?;
+	let validation = validate_merged_closeout_request(&context, request)?;
+
+	if request.dry_run {
+		println!(
+			"dry run: merged closeout validated for project={} issue={} branch={} worktree_path={} pr={} head={} merge_commit={} run_id={} attempt={}",
+			context.config.service_id(),
+			validation.issue.identifier,
+			validation.branch_name,
+			validation.worktree_path_for_event,
+			landing_url(&validation.landing_state),
+			validation.landing_state.head_ref_oid,
+			validation.merge_commit,
+			validation.run_id,
+			validation.attempt_number
+		);
+
+		return Ok(());
+	}
+	if !request.manual_authority {
+		eyre::bail!(
+			"`recover merged-closeout` writes closeout and cleanup ledger records and requires --manual-authority outside dry-run mode."
+		);
+	}
+
+	let (closeout_recorded, cleanup_recorded) =
+		apply_merged_closeout_recovery(&context, &validation)?;
+
+	println!(
+		"merged closeout recovery ok: project={} issue={} branch={} worktree_path={} pr={} head={} merge_commit={} closeout_recorded={} cleanup_recorded={}",
+		context.config.service_id(),
+		validation.issue.identifier,
+		validation.branch_name,
+		validation.worktree_path_for_event,
+		landing_url(&validation.landing_state),
+		validation.landing_state.head_ref_oid,
+		validation.merge_commit,
+		closeout_recorded,
+		cleanup_recorded
 	);
 
 	Ok(())
@@ -1177,6 +1267,59 @@ fn validate_legacy_closeout_request(
 	})
 }
 
+fn validate_merged_closeout_request(
+	context: &RecoveryContext,
+	request: &MergedCloseoutRecoveryRequest,
+) -> Result<MergedCloseoutValidation> {
+	let issue = load_issue_by_identifier(&context.tracker, &request.issue)?;
+
+	validate_merged_closeout_issue_context(context, &issue)?;
+
+	let (landing_state, default_branch) = inspect_project_pull_request(context, &request.pr_url)?;
+
+	validate_merged_closeout_pull_request(context, &landing_state, &default_branch)?;
+
+	let merge_commit = inspect_project_pull_request_merge_commit(context, &request.pr_url)?;
+
+	ensure_merge_commit_reachable_from_remote_default_branch(
+		context.config.repo_root(),
+		&request.pr_url,
+		&merge_commit,
+		&default_branch,
+	)?;
+
+	let worktree_mapping = retained_worktree_mapping_for_issue(context, &issue)?;
+	let retained_context =
+		merged_closeout_retained_context(context, &issue, worktree_mapping.as_ref())?;
+
+	if landing_state.head_ref_name != retained_context.branch_name {
+		eyre::bail!(
+			"Pull request `{}` points at branch `{}`, but retained lane branch is `{}`.",
+			landing_url(&landing_state),
+			landing_state.head_ref_name,
+			retained_context.branch_name
+		);
+	}
+
+	validate_merged_closeout_worktree_mapping(
+		context,
+		&issue,
+		worktree_mapping.as_ref(),
+		&landing_state,
+	)?;
+
+	Ok(MergedCloseoutValidation {
+		issue,
+		branch_name: retained_context.branch_name,
+		worktree_path_for_event: retained_context.worktree_path,
+		run_id: retained_context.run_id,
+		attempt_number: retained_context.attempt_number,
+		landing_state,
+		merge_commit,
+		worktree_mapping,
+	})
+}
+
 fn validate_legacy_closeout_issue_state(
 	tracker_policy: &WorkflowTracker,
 	issue: &TrackerIssue,
@@ -1205,6 +1348,125 @@ fn legacy_closeout_worktree(
 	}
 
 	eyre::bail!("Issue `{}` has no retained worktree mapping.", issue.identifier)
+}
+
+fn validate_merged_closeout_issue_context(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+) -> Result<()> {
+	let tracker_policy = context.workflow.frontmatter().tracker();
+	let completed_state = tracker_policy.resolved_completed_state();
+
+	if issue.state.name != completed_state {
+		eyre::bail!(
+			"Issue `{}` is in `{}`, but merged closeout recovery requires `{completed_state}`.",
+			issue.identifier,
+			issue.state.name
+		);
+	}
+	if issue.has_label(tracker_policy.opt_out_label()) {
+		eyre::bail!(
+			"Issue `{}` has opt-out label `{}`.",
+			issue.identifier,
+			tracker_policy.opt_out_label()
+		);
+	}
+
+	for label in [
+		tracker::automation_queue_label(context.config.service_id()),
+		tracker::automation_active_label(context.config.service_id()),
+		tracker_policy.needs_attention_label().to_owned(),
+	] {
+		if tracker::issue_has_label_with_server_confirmation(&context.tracker, issue, &label)? {
+			eyre::bail!(
+				"Issue `{}` still has Linear label `{label}`; merged closeout recovery requires queue, active, and needs-attention labels to be absent.",
+				issue.identifier
+			);
+		}
+	}
+
+	Ok(())
+}
+
+fn retained_worktree_mapping_for_issue(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+) -> Result<Option<WorktreeMapping>> {
+	if let Some(worktree) = context.state_store.worktree_for_issue(&issue.id)? {
+		return Ok(Some(worktree));
+	}
+
+	context.state_store.worktree_for_issue(&issue.identifier)
+}
+
+fn merged_closeout_retained_context(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<MergedCloseoutRetainedContext> {
+	let latest_record = latest_merged_closeout_source_record(context, issue)?;
+	let branch_name = worktree_mapping
+		.map(|mapping| mapping.branch_name().to_owned())
+		.or_else(|| latest_record.as_ref().and_then(|record| record.branch.clone()))
+		.ok_or_else(|| {
+			eyre::eyre!(
+				"Issue `{}` has no retained branch in runtime state or execution ledger.",
+				issue.identifier
+			)
+		})?;
+	let worktree_path = worktree_mapping
+		.and_then(|mapping| relative_worktree_path_for_recovery(context, mapping.worktree_path()))
+		.or_else(|| latest_record.as_ref().and_then(|record| record.worktree_path.clone()))
+		.unwrap_or_else(|| format!(".worktrees/{}", issue.identifier));
+	let (run_id, attempt_number) = if let Some(record) = latest_record
+		.as_ref()
+		.filter(|record| !record.run_id.trim().is_empty() && record.attempt_number >= 1)
+	{
+		(record.run_id.clone(), record.attempt_number)
+	} else if let Some(attempt) = context.state_store.latest_run_attempt_for_issue(&issue.id)? {
+		(attempt.run_id().to_owned(), attempt.attempt_number())
+	} else {
+		(format!("merged-closeout-{}", issue.identifier.to_ascii_lowercase()), 1)
+	};
+
+	Ok(MergedCloseoutRetainedContext { branch_name, worktree_path, run_id, attempt_number })
+}
+
+fn latest_merged_closeout_source_record(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+) -> Result<Option<LinearExecutionEventRecord>> {
+	let mut records =
+		context.state_store.list_linear_execution_events(context.config.service_id(), &issue.id)?;
+
+	if issue.identifier != issue.id {
+		records.extend(
+			context
+				.state_store
+				.list_linear_execution_events(context.config.service_id(), &issue.identifier)?,
+		);
+	}
+
+	let comments = context.tracker.list_comments(&issue.id)?;
+
+	records.extend(
+		comments
+			.iter()
+			.filter_map(|comment| records::parse_linear_execution_event_record(&comment.body))
+			.filter(|record| {
+				record.service_id == context.config.service_id()
+					&& (record.issue_id == issue.id || record.issue_identifier == issue.identifier)
+			}),
+	);
+
+	Ok(records
+		.into_iter()
+		.filter(|record| record.branch.as_ref().is_some_and(|branch| !branch.trim().is_empty()))
+		.max_by(|left, right| {
+			left.event_timestamp
+				.cmp(&right.event_timestamp)
+				.then_with(|| left.idempotency_key.cmp(&right.idempotency_key))
+		}))
 }
 
 fn load_issue_by_identifier<T>(tracker: &T, issue_identifier: &str) -> Result<TrackerIssue>
@@ -1456,6 +1718,157 @@ fn inspect_project_pull_request_merge_commit(
 	)
 }
 
+fn validate_merged_closeout_pull_request(
+	context: &RecoveryContext,
+	landing_state: &PullRequestLandingState,
+	default_branch: &str,
+) -> Result<()> {
+	if landing_state.base_ref_name != default_branch {
+		eyre::bail!(
+			"Pull request `{}` targets `{}`, but configured default branch is `{default_branch}`.",
+			landing_url(landing_state),
+			landing_state.base_ref_name
+		);
+	}
+	if landing_state.state != "MERGED" {
+		eyre::bail!(
+			"Pull request `{}` is `{}`; merged closeout recovery requires `MERGED`.",
+			landing_url(landing_state),
+			landing_state.state
+		);
+	}
+	if landing_state.head_ref_name.trim().is_empty() {
+		eyre::bail!(
+			"Pull request `{}` does not expose the merged head branch required for retained lane reconciliation.",
+			landing_url(landing_state)
+		);
+	}
+	if landing_state.head_ref_name == default_branch {
+		eyre::bail!(
+			"Pull request `{}` uses default branch `{default_branch}` as its head; merged closeout recovery cannot prove retained lane identity.",
+			landing_url(landing_state)
+		);
+	}
+
+	let remote_ref = format!("refs/remotes/origin/{default_branch}");
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(context.config.repo_root())
+		.args(["rev-parse", "--verify", remote_ref.as_str()])
+		.output()?;
+
+	if !output.status.success() {
+		let stderr = String::from_utf8_lossy(&output.stderr);
+
+		eyre::bail!(
+			"Configured repo root `{}` does not expose `{remote_ref}`; sync the default branch before merged closeout recovery: {}",
+			context.config.repo_root().display(),
+			stderr.trim()
+		);
+	}
+
+	Ok(())
+}
+
+fn ensure_merge_commit_reachable_from_remote_default_branch(
+	repo_root: &Path,
+	pr_url: &str,
+	merge_commit: &str,
+	default_branch: &str,
+) -> Result<()> {
+	let remote_ref = format!("refs/remotes/origin/{default_branch}");
+	let status = Command::new("git")
+		.arg("-C")
+		.arg(repo_root)
+		.args(["merge-base", "--is-ancestor", merge_commit, remote_ref.as_str()])
+		.status()?;
+
+	if status.success() {
+		return Ok(());
+	}
+	if status.code() == Some(1) {
+		eyre::bail!(
+			"Configured repo root `{}` remote `{remote_ref}` does not contain merge commit `{merge_commit}` for `{pr_url}`.",
+			repo_root.display()
+		);
+	}
+
+	eyre::bail!(
+		"`git merge-base --is-ancestor {merge_commit} {remote_ref}` failed in `{}` with status `{status}`.",
+		repo_root.display()
+	)
+}
+
+fn validate_merged_closeout_worktree_mapping(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+	worktree_mapping: Option<&WorktreeMapping>,
+	landing_state: &PullRequestLandingState,
+) -> Result<()> {
+	if let Some(mapping) = worktree_mapping {
+		if mapping.branch_name() != landing_state.head_ref_name {
+			eyre::bail!(
+				"Issue `{}` retained worktree branch is `{}`, but merged PR head branch is `{}`.",
+				issue.identifier,
+				mapping.branch_name(),
+				landing_state.head_ref_name
+			);
+		}
+
+		return validate_merged_closeout_worktree_path(mapping.worktree_path(), landing_state);
+	}
+
+	let Some(relative_path) = latest_merged_closeout_source_record(context, issue)?
+		.and_then(|record| record.worktree_path)
+	else {
+		return Ok(());
+	};
+	let worktree_path = context.config.repo_root().join(relative_path);
+
+	validate_merged_closeout_worktree_path(&worktree_path, landing_state)
+}
+
+fn validate_merged_closeout_worktree_path(
+	worktree_path: &Path,
+	landing_state: &PullRequestLandingState,
+) -> Result<()> {
+	if !worktree_path.exists() {
+		return Ok(());
+	}
+	if !worktree_is_clean(worktree_path)? {
+		eyre::bail!(
+			"Retained worktree `{}` still has local changes; merged closeout recovery will not mark it cleanup-complete.",
+			worktree_path.display()
+		);
+	}
+
+	let local_branch = worktree_checkout_branch_name(worktree_path)?.ok_or_else(|| {
+		eyre::eyre!("Retained worktree `{}` is detached.", worktree_path.display())
+	})?;
+
+	if local_branch != landing_state.head_ref_name {
+		eyre::bail!(
+			"Retained worktree `{}` is on branch `{local_branch}`, but merged PR head branch is `{}`.",
+			worktree_path.display(),
+			landing_state.head_ref_name
+		);
+	}
+
+	let local_head = worktree_head_oid(worktree_path)?.ok_or_else(|| {
+		eyre::eyre!("Retained worktree `{}` has no readable HEAD.", worktree_path.display())
+	})?;
+
+	if local_head != landing_state.head_ref_oid {
+		eyre::bail!(
+			"Retained worktree `{}` HEAD is `{local_head}`, but merged PR head is `{}`.",
+			worktree_path.display(),
+			landing_state.head_ref_oid
+		);
+	}
+
+	Ok(())
+}
+
 fn validate_rebind_worktree(
 	worktree: &WorktreeMapping,
 	landing_state: &PullRequestLandingState,
@@ -1590,9 +2003,16 @@ fn validate_adopt_issue_context(
 	let active_label_present =
 		tracker::issue_has_label_with_server_confirmation(&context.tracker, issue, &active_label)?;
 
-	if !active_label_present {
+	if !active_label_present
+		&& tracker::issue_team_label_id_with_server_confirmation(
+			&context.tracker,
+			issue,
+			&active_label,
+		)?
+		.is_none()
+	{
 		eyre::bail!(
-			"Issue `{}` is missing active automation label `{active_label}`. Restore explicit lane ownership before manual takeover adopt.",
+			"Issue `{}` is missing active automation label `{active_label}`, and that label was not found on the team.",
 			issue.identifier
 		);
 	}
@@ -1952,7 +2372,6 @@ fn apply_review_handoff_adopt(
 		0,
 		None,
 	);
-	let event = review_handoff_adopt_event(context, validation);
 	let worktree_path = validation.worktree_path.to_string_lossy().to_string();
 	let local_state_write = context
 		.state_store
@@ -1999,6 +2418,26 @@ fn apply_review_handoff_adopt(
 
 		return Err(error);
 	}
+
+	let active_label_restored = match restore_adopt_active_label(context, validation) {
+		Ok(active_label_restored) => active_label_restored,
+		Err(error) => {
+			mark_adopt_attempt_failed(context, validation);
+
+			context.state_store.clear_review_markers_for_handoff(
+				context.config.service_id(),
+				&validation.issue.id,
+				&handoff_marker,
+				&orchestration_marker,
+			)?;
+
+			rollback_adopt_worktree_mapping(context, validation)?;
+
+			return Err(error);
+		},
+	};
+	let event = review_handoff_adopt_event(context, validation, active_label_restored);
+
 	if let Err(error) = write_adopt_audit(context, validation, &event)
 		.and_then(|()| context.state_store.record_linear_execution_event(&event))
 	{
@@ -2011,6 +2450,7 @@ fn apply_review_handoff_adopt(
 			&orchestration_marker,
 		)?;
 
+		rollback_adopt_active_label_restoration(context, validation, active_label_restored)?;
 		rollback_adopt_worktree_mapping(context, validation)?;
 
 		return Err(error);
@@ -2018,6 +2458,35 @@ fn apply_review_handoff_adopt(
 	if let Some(transition) = validation.success_state_transition.as_ref() {
 		context.tracker.update_issue_state(&validation.issue.id, &transition.state_id)?;
 	}
+
+	Ok(())
+}
+
+fn restore_adopt_active_label(
+	context: &RecoveryContext,
+	validation: &AdoptValidation,
+) -> Result<bool> {
+	if !validation.should_restore_active_label() {
+		return Ok(false);
+	}
+
+	let active_label = tracker::automation_active_label(context.config.service_id());
+
+	tracker::set_issue_label_presence(&context.tracker, &validation.issue, &active_label, true)
+}
+
+fn rollback_adopt_active_label_restoration(
+	context: &RecoveryContext,
+	validation: &AdoptValidation,
+	active_label_restored: bool,
+) -> Result<()> {
+	if !active_label_restored {
+		return Ok(());
+	}
+
+	let active_label = tracker::automation_active_label(context.config.service_id());
+
+	tracker::set_issue_label_presence(&context.tracker, &validation.issue, &active_label, false)?;
 
 	Ok(())
 }
@@ -2101,6 +2570,7 @@ fn review_handoff_rebind_event(
 fn review_handoff_adopt_event(
 	context: &RecoveryContext,
 	validation: &AdoptValidation,
+	active_label_restored: bool,
 ) -> LinearExecutionEventRecord {
 	let pr_url = landing_url(&validation.landing_state);
 	let stable_anchor = records::stable_event_anchor(&[
@@ -2138,6 +2608,7 @@ fn review_handoff_adopt_event(
 		format!("pr_url={pr_url}"),
 		format!("pr_head_sha={}", validation.local_head_oid),
 		format!("active_label_present={}", validation.active_label_present),
+		format!("active_label_restored={active_label_restored}"),
 		String::from("manual_takeover_adopt=true"),
 		format!(
 			"existing_retained_worktree_mapping={}",
@@ -2290,6 +2761,175 @@ fn write_legacy_closeout_audit(
 	Ok(true)
 }
 
+fn apply_merged_closeout_recovery(
+	context: &RecoveryContext,
+	validation: &MergedCloseoutValidation,
+) -> Result<(bool, bool)> {
+	let closeout_event = merged_closeout_event(context, validation);
+	let cleanup_event = merged_closeout_cleanup_event(context, validation);
+	let closeout_recorded = write_merged_closeout_event(
+		context,
+		validation,
+		&closeout_event,
+		"Decodex merged closeout recovery: verified the PR was merged into the current default branch and reconciled the stale retained attention closeout ledger.",
+	)?;
+	let cleanup_recorded = match write_merged_closeout_event(
+		context,
+		validation,
+		&cleanup_event,
+		"Decodex merged closeout recovery: verified retained lane cleanup is already complete and recorded cleanup_complete.",
+	) {
+		Ok(cleanup_recorded) => cleanup_recorded,
+		Err(error) => {
+			if closeout_recorded {
+				context
+					.state_store
+					.forget_linear_execution_event(&closeout_event.idempotency_key)?;
+			}
+
+			return Err(error);
+		},
+	};
+
+	if validation.worktree_mapping.is_some() {
+		context.state_store.clear_worktree(&validation.issue.id)?;
+
+		if validation.issue.identifier != validation.issue.id {
+			context.state_store.clear_worktree(&validation.issue.identifier)?;
+		}
+	}
+
+	Ok((closeout_recorded, cleanup_recorded))
+}
+
+fn write_merged_closeout_event(
+	context: &RecoveryContext,
+	validation: &MergedCloseoutValidation,
+	event: &LinearExecutionEventRecord,
+	body: &str,
+) -> Result<bool> {
+	let privacy_classifier = ConfiguredPublicProjectionPrivacyClassifier::from_config(
+		context.config.privacy_classifier(),
+	)?;
+	let projection =
+		tracker::prepare_linear_execution_event_comment(body, event, &privacy_classifier)?;
+	let recorded = context.state_store.record_linear_execution_event(&projection.record)?;
+
+	if !recorded {
+		return Ok(false);
+	}
+
+	if let Err(error) = tracker::create_prepared_linear_execution_event_comment_without_remote_scan(
+		&context.tracker,
+		&validation.issue.id,
+		&projection,
+	) {
+		context.state_store.forget_linear_execution_event(&projection.record.idempotency_key)?;
+
+		return Err(error);
+	}
+
+	Ok(true)
+}
+
+fn merged_closeout_event(
+	context: &RecoveryContext,
+	validation: &MergedCloseoutValidation,
+) -> LinearExecutionEventRecord {
+	let pr_url = landing_url(&validation.landing_state);
+	let stable_anchor = records::stable_event_anchor(&[
+		pr_url,
+		&validation.merge_commit,
+		MERGED_CLOSEOUT_CLOSEOUT_ANCHOR,
+	]);
+	let mut event = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: context.config.service_id(),
+			issue_id: &validation.issue.id,
+			issue_identifier: &validation.issue.identifier,
+			run_id: &validation.run_id,
+			attempt_number: validation.attempt_number,
+		},
+		LEGACY_MANUAL_CLOSEOUT_EVENT,
+		current_timestamp(),
+		&stable_anchor,
+	);
+
+	event.branch = Some(validation.branch_name.clone());
+	event.worktree_path = Some(validation.worktree_path_for_event.clone());
+	event.pr_url = Some(pr_url.to_owned());
+	event.pr_head_sha = Some(validation.landing_state.head_ref_oid.clone());
+	event.pr_base_ref = Some(validation.landing_state.base_ref_name.clone());
+	event.commit_sha = Some(validation.merge_commit.clone());
+	event.validation_result = Some(String::from("passed"));
+	event.target_state = Some(validation.issue.state.name.clone());
+	event.summary = Some(format!(
+		"Merged closeout recovery recorded for {} after PR {} was already merged.",
+		validation.issue.identifier, pr_url
+	));
+	event.evidence = Some(vec![
+		format!("issue_state={}", validation.issue.state.name),
+		format!("branch={}", validation.branch_name),
+		format!("pr_url={pr_url}"),
+		format!("pr_head_sha={}", validation.landing_state.head_ref_oid),
+		format!("merge_commit={}", validation.merge_commit),
+		String::from("origin_default_contains_merge_commit=true"),
+	]);
+	event.next_action = Some(String::from(
+		"Decodex will record cleanup_complete for the already-merged retained lane.",
+	));
+
+	event
+}
+
+fn merged_closeout_cleanup_event(
+	context: &RecoveryContext,
+	validation: &MergedCloseoutValidation,
+) -> LinearExecutionEventRecord {
+	let pr_url = landing_url(&validation.landing_state);
+	let stable_anchor = records::stable_event_anchor(&[
+		&validation.branch_name,
+		&validation.worktree_path_for_event,
+		&validation.merge_commit,
+		MERGED_CLOSEOUT_CLEANUP_ANCHOR,
+	]);
+	let mut event = LinearExecutionEventRecord::new(
+		LinearExecutionEventIdentity {
+			service_id: context.config.service_id(),
+			issue_id: &validation.issue.id,
+			issue_identifier: &validation.issue.identifier,
+			run_id: &validation.run_id,
+			attempt_number: validation.attempt_number,
+		},
+		"cleanup_complete",
+		timestamp_after_seconds(1),
+		&stable_anchor,
+	);
+
+	event.branch = Some(validation.branch_name.clone());
+	event.worktree_path = Some(validation.worktree_path_for_event.clone());
+	event.pr_url = Some(pr_url.to_owned());
+	event.pr_head_sha = Some(validation.landing_state.head_ref_oid.clone());
+	event.pr_base_ref = Some(validation.landing_state.base_ref_name.clone());
+	event.commit_sha = Some(validation.merge_commit.clone());
+	event.cleanup_status = Some(String::from("merged_closeout_reconciled"));
+	event.target_state = Some(validation.issue.state.name.clone());
+	event.summary = Some(format!(
+		"Merged closeout recovery marked stale retained lane {} cleanup complete.",
+		validation.issue.identifier
+	));
+	event.evidence = Some(vec![
+		format!("issue_state={}", validation.issue.state.name),
+		format!("branch={}", validation.branch_name),
+		format!("worktree_path={}", validation.worktree_path_for_event),
+		String::from("linear_queue_active_attention_labels_absent=true"),
+		String::from("retained_worktree_has_no_uncommitted_changes=true"),
+	]);
+	event.next_action = Some(String::from("No Decodex runtime action remains for this lane."));
+
+	event
+}
+
 fn landing_url(landing_state: &PullRequestLandingState) -> &str {
 	&landing_state.url
 }
@@ -2306,6 +2946,12 @@ fn manual_adopt_run_id(issue_identifier: &str, attempt_number: i64, head_oid: &s
 
 fn current_timestamp() -> String {
 	OffsetDateTime::now_utc().format(&Rfc3339).expect("timestamp formatting should succeed")
+}
+
+fn timestamp_after_seconds(seconds: i64) -> String {
+	(OffsetDateTime::now_utc() + Duration::seconds(seconds))
+		.format(&Rfc3339)
+		.expect("timestamp formatting should succeed")
 }
 
 fn git_toplevel_path(cwd: &Path) -> Result<PathBuf> {
@@ -2437,6 +3083,18 @@ fn repository_relative_path(repo_root: &Path, path: &Path) -> Option<String> {
 	let relative = canonical_path.strip_prefix(canonical_repo_root).ok()?;
 
 	Some(relative.to_string_lossy().to_string())
+}
+
+fn relative_worktree_path_for_recovery(
+	context: &RecoveryContext,
+	worktree_path: &Path,
+) -> Option<String> {
+	repository_relative_path(context.config.repo_root(), worktree_path).or_else(|| {
+		worktree_path
+			.strip_prefix(context.config.repo_root())
+			.ok()
+			.map(|relative| relative.to_string_lossy().to_string())
+	})
 }
 
 #[cfg(test)]
@@ -3406,6 +4064,61 @@ Test workflow.
 
 		records::validate_linear_execution_event_record(&record)
 			.expect("adopt event should validate");
+	}
+
+	#[test]
+	fn merged_closeout_recovery_events_validate() {
+		let mut closeout = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: "pubfi-mono",
+				issue_id: "issue-id",
+				issue_identifier: "PUB-1549",
+				run_id: "pub-1549-attempt-1-1781240781",
+				attempt_number: 1,
+			},
+			super::LEGACY_MANUAL_CLOSEOUT_EVENT,
+			super::current_timestamp(),
+			"anchor-closeout",
+		);
+
+		closeout.branch = Some(String::from("x/pubfi-mono-pub-1549"));
+		closeout.worktree_path = Some(String::from(".worktrees/PUB-1549"));
+		closeout.pr_url = Some(String::from("https://github.com/helixbox/pubfi-mono/pull/309"));
+		closeout.pr_head_sha = Some(String::from("0123456789abcdef0123456789abcdef01234567"));
+		closeout.pr_base_ref = Some(String::from("main"));
+		closeout.commit_sha = Some(String::from("1123456789abcdef0123456789abcdef01234567"));
+		closeout.validation_result = Some(String::from("passed"));
+		closeout.target_state = Some(String::from("Done"));
+		closeout.summary = Some(String::from("Merged closeout recovery recorded."));
+
+		records::validate_linear_execution_event_record(&closeout)
+			.expect("merged closeout event should validate");
+
+		let mut cleanup = LinearExecutionEventRecord::new(
+			LinearExecutionEventIdentity {
+				service_id: "pubfi-mono",
+				issue_id: "issue-id",
+				issue_identifier: "PUB-1549",
+				run_id: "pub-1549-attempt-1-1781240781",
+				attempt_number: 1,
+			},
+			"cleanup_complete",
+			super::timestamp_after_seconds(1),
+			"anchor-cleanup",
+		);
+
+		cleanup.branch = Some(String::from("x/pubfi-mono-pub-1549"));
+		cleanup.worktree_path = Some(String::from(".worktrees/PUB-1549"));
+		cleanup.pr_url = Some(String::from("https://github.com/helixbox/pubfi-mono/pull/309"));
+		cleanup.pr_head_sha = Some(String::from("0123456789abcdef0123456789abcdef01234567"));
+		cleanup.pr_base_ref = Some(String::from("main"));
+		cleanup.commit_sha = Some(String::from("1123456789abcdef0123456789abcdef01234567"));
+		cleanup.cleanup_status = Some(String::from("merged_closeout_reconciled"));
+		cleanup.target_state = Some(String::from("Done"));
+		cleanup.summary = Some(String::from("Merged closeout recovery marked cleanup complete."));
+
+		records::validate_linear_execution_event_record(&cleanup)
+			.expect("merged closeout cleanup event should validate");
 	}
 
 	#[test]
