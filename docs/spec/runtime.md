@@ -291,11 +291,24 @@ the repo gate and select the next phase. An `issue_progress_checkpoint`, final c
 text, or "await next phase" statement is evidence only; it is not a phase exit and
 must not be treated as a substitute for goal completion.
 
+If an app-server run fails or a supervised child exits unsuccessfully while the latest
+private phase-goal signal for that same run is still an `active` implementation or
+repair phase, Decodex must run the registered repo gate before converting retained
+tracked changes into human attention. When that runtime-owned gate returns a
+continuation transition, Decodex records `phase_goal_recovery`, persists the next
+phase goal (`handoff_evidence` after validation pass or `repair_validation_failures`
+after continued-repair validation failure), marks the attempt as
+`continuation_pending`, and schedules normal continuation re-entry. This recovery path
+does not apply to `handoff_evidence`, explicit manual-attention terminal intent,
+unsupported phase-goal app-server methods, repo-gate human-attention failures, or
+runs with no current active phase-goal signal.
+
 Phase-goal telemetry is local runtime evidence. It must distinguish
-`goal_complete`, `validation_pass`, `validation_fail`, review `clean`, review
-`findings`, terminal `review_handoff`, and terminal `manual_attention`. These signals
-may appear in private execution events and operator protocol activity, but Linear
-receives only the existing low-frequency lifecycle projections.
+`goal_complete`, `validation_pass`, `validation_fail`, `active_goal_recovered`,
+review `clean`, review `findings`, terminal `review_handoff`, and terminal
+`manual_attention`. These signals may appear in private execution events and operator
+protocol activity, but Linear receives only the existing low-frequency lifecycle
+projections.
 
 ## Tracker write ownership
 
@@ -750,7 +763,7 @@ After a process restart, recent-run history, active lease ownership, retained po
 - Operator status snapshots must expose structured liveness and wait-state fields derived from runtime records plus marker breadcrumbs, including current phase, optional wait reason, current operation, last run/protocol/progress times, idle age, a soft `suspected_stall` signal, optional progress diagnostics, and any queued retry kind plus due time, so operators can distinguish active execution from continuation waits, retry backoff, early stall suspicion, and genuine hard stalls without inferring progress from filesystem churn. `last_progress_at` is meaningful-work progress only: tool calls, file or diff changes, plan/model output, repo validation, PR/review/terminal lifecycle, or other explicit work events may refresh it, but account, rate-limit, phase-goal, passive status, warning, token-usage, heartbeat, or similar non-work protocol traffic must only refresh protocol liveness. When a lane remains in `model_execution` with fresh protocol activity but stale or missing work progress and the recent protocol events are only non-work traffic, status should expose `progress_diagnostic = "protocol_only_activity"` while preserving process and protocol liveness separately.
 - Operator status snapshots may expose an additive `child_agent_activity` object when app-server protocol events have produced one for the current run. The object must stay machine-readable and dashboard/CLI shared, and should describe dynamic observed buckets rather than a fixed workflow: current child bucket and elapsed time, bucket wall/event/tool counts, current/max/cumulative input tokens, cumulative output tokens, largest tool output, and warnings for repeated large outputs. Missing `child_agent_activity` means no child breakdown was captured; existing JSON consumers must continue to work without it.
 - If the agent Git credential preflight fails, operator status must report the retained lane as a credential failure requiring operator recovery, not as a still-running lane.
-- If retry budget or needs-attention recovery finds tracked changes in the retained worktree, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
+- If retry budget or needs-attention recovery finds tracked changes in the retained worktree after active phase-goal recovery has no applicable continuation path, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
 - A retryable runtime or app-server failure that leaves tracked worktree changes must
   stop as retained partial progress instead of writing only a generic retry comment.
   This does not apply to repo-gate continued-repair failures, because those failures
@@ -758,16 +771,13 @@ After a process restart, recent-run history, active lease ownership, retained po
   loop-guardrail limits are reached.
 - If the durable Run Ledger final outcome is `needs_attention` or
   `terminal_failure`, operator status must count that issue in project-level
-  `attention_count` even when no active run, queued candidate, or post-review lane
-  currently owns it. A retained worktree for that same issue must be projected as
-  retained attention, not neutral cleanup-only hygiene, so monitors do not need to
-  parse `history_lanes` to discover a human-required terminal outcome. When live
-  tracker readback proves the issue is in the configured completed state, the service
-  queue, active, and needs-attention labels are absent, no retained worktree or
-  post-review lane owns the issue, and an explicit `recover merged-closeout` path has
-  or can write `closeout` plus `cleanup_complete` records after validating the merged
-  PR lineage, that stale terminal attention is a resolved history echo rather than
-  current project attention.
+  `attention_count` only when a current attention signal still exists: a retained
+  worktree, queued attention row, active or needs-attention tracker label, or a
+  blocked post-review lane. A retained worktree for that same issue must be projected
+  as retained attention, not neutral cleanup-only hygiene, so monitors do not need to
+  parse `history_lanes` to discover a human-required terminal outcome. A bare terminal
+  Run Ledger attention row with no current owner is history-only ledger evidence; it
+  must remain visible in `history_lanes` without inflating current project attention.
 - If that same issue still carries the service queue label plus the configured
   `needs_attention_label`, the terminal Run Ledger attention outcome must own the
   operator projection. Status must not also render the issue as an intake queue
