@@ -251,7 +251,7 @@ where
 		add_operator_snapshot_warning(&mut snapshot, "external_observer_status_skipped");
 	}
 
-	refresh_operator_project_summary(&mut snapshot);
+	refresh_operator_project_summary(&mut snapshot, None);
 
 	Ok(snapshot)
 }
