@@ -222,6 +222,15 @@ Every event requires the record envelope. Additional required fields are listed 
 | `terminal_failure` | `error_class`, `next_action`, `blockers`, `evidence` | `branch`, `worktree_path`, `pr_url`, `commit_sha`, `failed_command`, `raw_error`, `summary` |
 | `cleanup_complete` | `branch`, `worktree_path`, `cleanup_status`, `summary` | `pr_url`, `commit_sha` |
 
+`recover merged-closeout` does not introduce a separate event type. After validating
+that the tracker issue is completed, labels are clear, the PR is merged into the
+configured repository default branch, the PR head branch matches the retained branch,
+and the merge commit is reachable from local `origin/<default-branch>`, it writes an
+idempotent `closeout` event followed by an idempotent `cleanup_complete` event. The
+`cleanup_complete` record uses `cleanup_status = "merged_closeout_reconciled"` and
+must sort after the companion `closeout` record so status consumers see
+`cleanup_complete` as the final lifecycle outcome.
+
 `terminal_path` values must match the runtime-owned terminal path for the tool or phase
 that writes the event. For normal review handoff this is `review_handoff`; for retained
 repair completion this is `review_repair`; for explicit human-required exits this is

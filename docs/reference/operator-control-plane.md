@@ -502,6 +502,16 @@ and PR terminal state, inspect the checkout, run
 `--manual-authority` only after validation passes, and then remove the local worktree
 only after that evidence is understood.
 
+If the row is not a real retained checkout and the issue is already completed because
+a human merged the PR outside Decodex, use the formal stale-attention reconciliation
+path instead of rerunning the lane: verify the PR URL, run
+`decodex recover merged-closeout <ISSUE> --pr <MERGED_PR> --dry-run`, then rerun with
+`--manual-authority` only after it proves the issue is completed, queue/active/attention
+labels are absent, the PR head branch matches the retained branch, and the merge commit
+is reachable from the current local `origin/<default-branch>`. Successful recovery
+writes `closeout` plus `cleanup_complete` ledger records and should remove the false
+project attention count.
+
 The expected operator path for a cleanup-only row is short:
 
 1. Verify the tracker issue and any associated PR are merged, done, or otherwise
