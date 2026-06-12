@@ -284,6 +284,13 @@ uses it only as a phase signal:
   `issue_terminal_finalize(path = "review_handoff")`, or the manual-attention pair,
   the turn is invalid and must fail rather than treating goal completion as success.
 
+The active phase goal is the authoritative current contract. When an implementation
+or repair phase has satisfied its local validation-ready objective, the agent must
+complete that phase goal with the Codex goal completion mechanism so Decodex can run
+the repo gate and select the next phase. An `issue_progress_checkpoint`, final chat
+text, or "await next phase" statement is evidence only; it is not a phase exit and
+must not be treated as a substitute for goal completion.
+
 Phase-goal telemetry is local runtime evidence. It must distinguish
 `goal_complete`, `validation_pass`, `validation_fail`, review `clean`, review
 `findings`, terminal `review_handoff`, and terminal `manual_attention`. These signals
