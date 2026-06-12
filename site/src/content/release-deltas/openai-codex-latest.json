@@ -1,6 +1,6 @@
 {
   "compare": {
-    "ahead_by": 130,
+    "ahead_by": 134,
     "commit_shas": [
       "dffc4bf75dc9eeb0727f668c95bb7bd72315581d",
       "14660c22d14312c28a50c52954dd77dd88f03c26",
@@ -131,7 +131,11 @@
       "92d90369108daefad443183379a55357e8448b1a",
       "44403dd3ddff55753af49dd9eba1351c28dc256a",
       "1829ed11228d9ffad6bf7d6db615324126065b23",
-      "36f5119afeac503d68272220b6094f540c3c2cea"
+      "5a56caf18cb773b3d1c60e66d594e9512c7f18e7",
+      "69b0f52b2a728d71f4800793c6c069956a91a2f8",
+      "16c7c79540c26e648b1d0ee09b7c6f4f916258a0",
+      "e23d4df4ff5e284cafee734e5dba6b99abec239a",
+      "9a0cdc45db4d7814e4b64b74aa5566686b5629cf"
     ],
     "pr_numbers": [
       22685,
@@ -231,6 +235,7 @@
       27450,
       27454,
       27465,
+      27475,
       27476,
       27483,
       27484,
@@ -262,16 +267,19 @@
       27663,
       27689,
       27700,
-      27711
+      27702,
+      27711,
+      27715,
+      27719
     ],
     "status": "diverged",
-    "total_commits": 130,
-    "url": "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0-alpha.13"
+    "total_commits": 134,
+    "url": "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0-alpha.14"
   },
   "comparisons": [
     {
       "compare": {
-        "ahead_by": 130,
+        "ahead_by": 134,
         "commit_shas": [
           "dffc4bf75dc9eeb0727f668c95bb7bd72315581d",
           "14660c22d14312c28a50c52954dd77dd88f03c26",
@@ -402,7 +410,11 @@
           "92d90369108daefad443183379a55357e8448b1a",
           "44403dd3ddff55753af49dd9eba1351c28dc256a",
           "1829ed11228d9ffad6bf7d6db615324126065b23",
-          "36f5119afeac503d68272220b6094f540c3c2cea"
+          "5a56caf18cb773b3d1c60e66d594e9512c7f18e7",
+          "69b0f52b2a728d71f4800793c6c069956a91a2f8",
+          "16c7c79540c26e648b1d0ee09b7c6f4f916258a0",
+          "e23d4df4ff5e284cafee734e5dba6b99abec239a",
+          "9a0cdc45db4d7814e4b64b74aa5566686b5629cf"
         ],
         "pr_numbers": [
           22685,
@@ -502,6 +514,7 @@
           27450,
           27454,
           27465,
+          27475,
           27476,
           27483,
           27484,
@@ -533,13 +546,16 @@
           27663,
           27689,
           27700,
-          27711
+          27702,
+          27711,
+          27715,
+          27719
         ],
         "status": "diverged",
-        "total_commits": 130,
-        "url": "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0-alpha.13"
+        "total_commits": 134,
+        "url": "https://github.com/openai/codex/compare/rust-v0.139.0...rust-v0.140.0-alpha.14"
       },
-      "prerelease_tag_name": "rust-v0.140.0-alpha.13",
+      "prerelease_tag_name": "rust-v0.140.0-alpha.14",
       "stable_tag_name": "rust-v0.139.0",
       "tracked_signal_slugs": []
     },
@@ -10348,22 +10364,22 @@
       ]
     }
   ],
-  "generated_at": "2026-06-12T02:25:51.625137Z",
+  "generated_at": "2026-06-12T08:27:53.918051Z",
   "prerelease": {
-    "name": "0.140.0-alpha.13",
+    "name": "0.140.0-alpha.14",
     "prerelease": true,
-    "published_at": "2026-06-12T01:28:14Z",
-    "tag_name": "rust-v0.140.0-alpha.13",
-    "url": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.13"
+    "published_at": "2026-06-12T03:42:44Z",
+    "tag_name": "rust-v0.140.0-alpha.14",
+    "url": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.14"
   },
   "release_options": {
     "preview": [
       {
-        "name": "0.140.0-alpha.13",
+        "name": "0.140.0-alpha.14",
         "prerelease": true,
-        "published_at": "2026-06-12T01:28:14Z",
-        "tag_name": "rust-v0.140.0-alpha.13",
-        "url": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.13"
+        "published_at": "2026-06-12T03:42:44Z",
+        "tag_name": "rust-v0.140.0-alpha.14",
+        "url": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.14"
       },
       {
         "name": "0.139.0-alpha.3",
