@@ -77,7 +77,8 @@ cargo run -p decodex --bin decodex -- serve
   not an automation retry path. Use it only when a verified human-owned PR from a
   managed worktree should be adopted into the retained review/landing lifecycle. It may
   reuse an existing worktree mapping only when that mapping points at the same current
-  checkout; it must not clear needs-attention or replace normal retained-lane rebind.
+  checkout; a stale mapping branch name is repaired by the successful adopt write. It
+  must not clear needs-attention or replace normal retained-lane rebind.
 - A lane is terminal only after exactly one terminal path is finalized:
   `review_handoff` or `manual_attention`.
 - `phase = terminal_pending` means the agent already called terminal finalize and
