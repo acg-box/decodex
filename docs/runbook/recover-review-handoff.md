@@ -92,6 +92,53 @@ The lane should leave `missing_review_handoff_record` and return to the existing
 post-review lifecycle classification such as waiting for review, ready to land, review
 repair required, or blocked for a different concrete reason.
 
+## Manual PR Takeover
+
+Use `adopt` when a human-owned PR was created from a managed Decodex worktree and the
+operator wants Decodex to take over the normal issue-authority landing and tracker
+closeout path. If that issue already has a worktree mapping, adopt accepts it only when
+the mapping points at the current managed checkout; a mapping for a different checkout
+is a fail-closed mismatch. Adopt rewrites that mapping to the current PR branch only
+after every dry-run/live validation passes. Do not use adopt for lanes that already
+have a review handoff marker; those belong to `rebind`, normal `decodex land`, or the
+retained post-review scheduler.
+
+Run it from the lane worktree, not from the repo root:
+
+```sh
+decodex recover review-handoff adopt <ISSUE> --pr <PR_URL> --dry-run
+decodex recover review-handoff adopt <ISSUE> --pr <PR_URL>
+```
+
+The command rejects the adopt unless all of these are true:
+
+- the issue has `decodex:active:<service-id>` and does not have the opt-out or
+  needs-attention labels
+- the issue is in the workflow `tracker.in_progress_state` or already in
+  `tracker.success_state`
+- no conflicting retained worktree mapping exists; an existing mapping is allowed only
+  when it points at the current managed checkout
+- no review handoff marker already exists for the issue's current branch or previously
+  mapped branch
+- the current checkout is a managed worktree under the configured `worktree_root`
+- the current worktree is clean except top-level Decodex runtime artifacts such as
+  `.decodex-run-activity` and `.decodex-run-control/`
+- the PR belongs to the configured GitHub repository, targets the configured default
+  branch, is open and non-draft, has no pending review requests or unresolved review
+  threads, and has green landable checks
+- the PR head branch and head SHA exactly match the current worktree branch and `HEAD`
+
+The non-dry-run command writes a runtime worktree mapping, a local takeover run
+attempt, review handoff/orchestration markers, and a `review_handoff_adopt` audit
+event. If the issue was still in the workflow `tracker.in_progress_state`, the command
+moves it to `tracker.success_state` after the audit succeeds. It does not merge the PR.
+
+After a successful adopt, land through the normal issue-authority path:
+
+```sh
+decodex land --authority <ISSUE> --pr <PR_URL> "<summary>"
+```
+
 ## Legacy Cleanup-Only Rows
 
 Do not use `recover review-handoff rebind` for a row that appears only under
