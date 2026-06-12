@@ -185,6 +185,7 @@ impl PullRequestReadbackRootCause {
 
 enum RetainedReviewLaneLoad {
 	Skip,
+	Wait(String),
 	Ready(Box<RetainedReviewLane>),
 	Blocked(Box<RetainedReviewLaneBlocked>),
 }
