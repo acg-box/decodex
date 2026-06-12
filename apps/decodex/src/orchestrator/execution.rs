@@ -279,20 +279,21 @@ impl RepoGatePhaseGoalController<'_> {
 		phase: PhaseGoalKind,
 		detail: Option<&str>,
 	) -> PhaseGoalSpec {
+		let phase_exit_contract = "Phase exit contract: when this phase objective is satisfied, explicitly mark the active phase goal complete with the Codex goal completion mechanism so Decodex can run its repo gate and select the next phase. Do not end with only an `issue_progress_checkpoint`, final text, or an \"await next phase\" statement while the phase goal is still active.";
 		let objective = match phase {
 			PhaseGoalKind::ImplementToValidationReady => format!(
-				"Decodex phase: {}\nProduce the smallest coherent implementation and documentation change for {} that is ready for the registered Decodex repo gate. Do not push, request review, or treat goal completion as issue completion.",
+				"Decodex phase: {}\nProduce the smallest coherent implementation and documentation change for {} that is ready for the registered Decodex repo gate. Do not push, request review, or treat goal completion as issue completion. {phase_exit_contract}",
 				phase.as_str(),
 				self.issue_run.issue.identifier
 			),
 			PhaseGoalKind::RepairValidationFailures => format!(
-				"Decodex phase: {}\nRepair repo-gate failures for {} in the current worktree without widening issue scope. {}",
+				"Decodex phase: {}\nRepair repo-gate failures for {} in the current worktree without widening issue scope. {} {phase_exit_contract}",
 				phase.as_str(),
 				self.issue_run.issue.identifier,
 				detail.unwrap_or("Run the registered canonicalize and verify commands before completing this phase.")
 			),
 			PhaseGoalKind::RepairAcceptedReviewFindings => format!(
-				"Decodex phase: {}\nRepair accepted review findings for {} on the retained PR head without widening issue scope. Do not request GitHub Review before Decodex validation.",
+				"Decodex phase: {}\nRepair accepted review findings for {} on the retained PR head without widening issue scope. Do not request GitHub Review before Decodex validation. {phase_exit_contract}",
 				phase.as_str(),
 				self.issue_run.issue.identifier
 			),
