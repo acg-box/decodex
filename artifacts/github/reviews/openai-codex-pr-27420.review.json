@@ -1,0 +1,64 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27420",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27420",
+    "commit_shas": [
+      "2f6191ea633cd0a58580c484cc37d88191787385"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "[codex] Propagate plugin app categories",
+        "url": "https://github.com/openai/codex/pull/27420",
+        "meta": "Merged 2026-06-11T17:34:41Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Propagate plugin app categories",
+        "url": "https://github.com/openai/codex/commit/2f6191ea633cd0a58580c484cc37d88191787385"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-12T08:06:51Z",
+  "observed_change": "Codex app-server plugin read and install summaries now expose nullable app category metadata sourced from local `.app.json`, app metadata, branding, and remote app templates.",
+  "changed_surfaces": [
+    "app-server protocol v2 schema and generated TypeScript types",
+    "plugin app manifest validation",
+    "core plugin loader and manager metadata",
+    "plugin read/install request processors",
+    "app-server plugin read/install tests"
+  ],
+  "user_visible_path": "Plugin details UI and app-server clients can show a normalized per-app category on `AppSummary` and `AppTemplateSummary` responses instead of inferring category only from raw metadata.",
+  "control_plane_relevance": "High for Decodex Control Plane plugin and app catalog surfaces because app category is now a protocol-visible field that can drive grouping, filtering, or display without parsing provider-specific metadata.",
+  "compatibility_risk": "Low because the field is additive and nullable, but generated TypeScript protocol types and strict app-server clients must accept the new `category` property on app and template summaries.",
+  "adoption_opportunity": "Use the nullable category field in Decodex plugin/app UI and preserve `null` when no branding, metadata, or template category is available.",
+  "community_value": "High for plugin authors and Codex app users because `.app.json` can now carry a category override and plugin/app pickers can present clearer app groupings.",
+  "deprecated_or_breaking_notes": "No existing field is removed. `.app.json` now accepts optional non-empty `category`; empty or non-string categories remain invalid.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27420 says the plugin details UI needs a normalized per-app category and lists `.app.json`, protocol summaries, fallback metadata, and regenerated fixtures as the intended changes.",
+    "`codex-rs/app-server-protocol/src/protocol/v2/apps.rs` adds `AppInfo::category()` with branding-first and app-metadata fallback logic.",
+    "`codex-rs/app-server-protocol/src/protocol/v2/plugin.rs` adds `category: Option<String>` to `AppTemplateSummary`, and generated JSON/TypeScript schema files add nullable `category` fields.",
+    "`codex-rs/core-plugins/src/loader.rs` adds `PluginAppMetadata` and parses optional `.app.json` `category` values.",
+    "`codex-rs/core-plugins/src/manager.rs` stores `app_category_by_id`, and `codex-rs/app-server/src/request_processors/plugins.rs` passes category maps into app summary construction.",
+    "`codex-rs/app-server/tests/suite/v2/plugin_read.rs` and `plugin_install.rs` add coverage for local app manifest categories, metadata fallback, and remote template category propagation.",
+    "`codex-rs/skills/src/assets/samples/plugin-creator/scripts/validate_plugin.py` allows `category` in `.app.json` and rejects empty or non-string values.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27420.json` records 16 changed files for the merged PR."
+  ],
+  "caveats": "Do not claim broad plugin marketplace taxonomy behavior from this PR alone; it adds per-app category propagation and validation surfaces.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Plugin app category propagation affects Decodex app catalog and protocol consumers."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "The additive protocol field is useful public guidance for plugin app authors and app-picker consumers."
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27490",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27490",
+    "commit_shas": [
+      "69b921aa666b1059422309b6ab7f4cd1a03b65c9",
+      "44494bb402287988f3faf7590d0ea284ae234657"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "Remove TUI legacy Windows sandbox dependency",
+        "url": "https://github.com/openai/codex/pull/27490",
+        "meta": "Merged 2026-06-11T16:23:08Z"
+      },
+      {
+        "kind": "commit",
+        "title": "tui: remove legacy core Windows sandbox facade",
+        "url": "https://github.com/openai/codex/commit/69b921aa666b1059422309b6ab7f4cd1a03b65c9"
+      },
+      {
+        "kind": "commit",
+        "title": "tui: document remote Windows sandbox gap",
+        "url": "https://github.com/openai/codex/commit/44494bb402287988f3faf7590d0ea284ae234657"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-12T08:06:51Z",
+  "observed_change": "Codex moved Windows sandbox helper logic out of the app-server-client legacy facade and into the TUI, removing legacy re-exports and dead prompt fallback code while preserving the reachable Windows setup flow.",
+  "changed_surfaces": [
+    "app-server-client legacy_core facade",
+    "TUI Windows sandbox helper module",
+    "TUI sandbox prompts, settings, onboarding, and telemetry call sites",
+    "remote Windows sandbox TODO documentation"
+  ],
+  "user_visible_path": "Windows TUI users should see the same reachable elevated and non-elevated sandbox setup paths; the PR explicitly documents that mixed-platform remoting, such as a Linux TUI controlling a Windows server, still has a sandbox setup gap.",
+  "control_plane_relevance": "Low to watch for Decodex Control Plane because this PR does not change app-server protocol, but it confirms Windows sandbox readiness/setup is still partly client-local and not safe to assume for mixed-platform remote operation.",
+  "compatibility_risk": "Low for current Decodex integrations unless they depended on the removed `legacy_core` Windows sandbox re-exports or assumed the TUI already handles remote Windows sandbox setup.",
+  "adoption_opportunity": "Track later upstream movement of Windows sandbox readiness, setup, and read-root grants into app-server `windowsSandbox/*` RPCs before claiming mixed-platform remote Windows support.",
+  "community_value": "Low public value as a standalone post because the PR is mostly behavior-neutral refactoring, with the useful caveat being the documented remote Windows sandbox limitation.",
+  "deprecated_or_breaking_notes": "The `legacy_core::windows_sandbox` namespace and `grant_read_root_non_elevated` re-export were removed from the app-server client facade. The dormant pre-elevation prompt fallback behind the permanently enabled switch was removed, but the PR body says reachable setup flows are unchanged.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27490 says the change removes TUI Windows sandbox symbols from the legacy core facade and is intended to be behavior-neutral.",
+    "`codex-rs/app-server-client/src/lib.rs` removes the Windows sandbox namespace and `grant_read_root_non_elevated` re-export from `legacy_core`.",
+    "`codex-rs/tui/src/windows_sandbox.rs` adds TUI-owned helpers and a TODO explaining that readiness/setup still inspect the TUI host and do not support cross-platform remote app servers.",
+    "TUI call sites now call `crate::windows_sandbox::level_from_config` and `crate::windows_sandbox::sandbox_setup_is_complete` instead of the legacy core re-export.",
+    "`codex-rs/tui/src/chatwidget/windows_sandbox_prompts.rs` removes the dormant non-elevated setup fallback while keeping the elevated setup requirement path.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27490.json` records 13 changed files for the merged PR."
+  ],
+  "caveats": "Do not frame this as a Windows sandbox feature launch or a remote Windows fix; the PR explicitly leaves mixed-platform remote Windows sandbox setup out of scope.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "The remote Windows sandbox caveat is relevant to Control Plane compatibility tracking even though the PR is mostly behavior-neutral refactoring."
+    }
+  ]
+}

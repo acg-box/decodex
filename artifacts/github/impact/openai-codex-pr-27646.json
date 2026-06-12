@@ -1,0 +1,45 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27646",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "feat: disable orchestrator skills for now",
+        "url": "https://github.com/openai/codex/pull/27646",
+        "meta": "Merged 2026-06-11T18:20:26Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27646",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27646.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex temporarily disables app-server registration of the orchestrator skill provider while keeping executor-backed skills enabled.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "The PR body says orchestrator-only skills are temporarily disabled while waiting for the endpoint to be fixed.",
+    "App-server extension setup keeps the executor skill provider but only adds the orchestrator provider behind `ORCHESTRATOR_SKILLS_ENABLED = false`.",
+    "The orchestrator skill resource test is ignored until `/ps/mcp` serves complete hosted skill packages."
+  ],
+  "candidate_followups": [
+    "Gate Decodex hosted-skill assumptions on explicit app-server capability evidence.",
+    "Keep operator diagnostics clear when orchestrator-only skills are unavailable.",
+    "Watch for the upstream re-enable PR before treating hosted skill resources as restored."
+  ],
+  "social_notes": [
+    "Potential watch-note candidate, but downstream Publisher should keep the temporary nature prominent.",
+    "Do not frame this as all skills being disabled; executor-backed skills remain registered."
+  ],
+  "caveats": [
+    "Temporary upstream state, not a permanent API removal.",
+    "Executor-backed skill resources are still installed.",
+    "The blocker named by upstream is incomplete hosted skill packages from `/ps/mcp`."
+  ]
+}
