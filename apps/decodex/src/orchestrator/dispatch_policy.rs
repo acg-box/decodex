@@ -447,7 +447,27 @@ fn retry_budget_base_for_issue_worktree(
 ) -> Result<i64> {
 	Ok(state_store
 		.retry_budget_attempt_count(issue_id)?
-		.max(state::read_run_retry_budget_attempt_count(worktree_path)?.unwrap_or(0)))
+			.max(state::read_run_retry_budget_attempt_count(worktree_path)?.unwrap_or(0)))
+}
+
+fn retry_budget_base_for_dispatch_mode(
+	state_store: &StateStore,
+	issue_id: &str,
+	worktree_path: &Path,
+	dispatch_mode: IssueDispatchMode,
+	preferred_retry_budget_base: Option<i64>,
+) -> Result<i64> {
+	let preferred_retry_budget_base = preferred_retry_budget_base.unwrap_or(0);
+
+	if dispatch_mode == IssueDispatchMode::Normal {
+		return Ok(preferred_retry_budget_base);
+	}
+
+	Ok(preferred_retry_budget_base.max(retry_budget_base_for_issue_worktree(
+		state_store,
+		issue_id,
+		worktree_path,
+	)?))
 }
 
 fn issue_retry_budget_exhausted(

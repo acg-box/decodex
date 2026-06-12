@@ -243,6 +243,15 @@ where
 			review_state_inspector,
 		)? {
 			RetainedReviewLaneLoad::Skip => continue,
+			RetainedReviewLaneLoad::Wait(reason) => {
+				tracing::info!(
+					project_id = project.service_id(),
+					reason = reason.as_str(),
+					"Retained post-review orchestration is waiting for transient readback recovery."
+				);
+
+				continue;
+			},
 			RetainedReviewLaneLoad::Blocked(blocked) => {
 				apply_passive_retained_manual_attention_with_run_identity(
 					PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
@@ -330,12 +339,9 @@ where
 	let local_branch_name = match worktree_checkout_branch_name(worktree.worktree_path()) {
 		Ok(local_branch_name) => local_branch_name,
 		Err(_error) => {
-			return Ok(blocked_retained_review_lane(
-				issue,
-				worktree,
-				Some(&review_handoff),
+			return Ok(RetainedReviewLaneLoad::Wait(String::from(
 				"worktree_checkout_branch_read_failed",
-			));
+			)));
 		},
 	};
 	let Some(local_branch_name) = local_branch_name else {
@@ -349,12 +355,9 @@ where
 	let local_head_oid = match worktree_head_oid(worktree.worktree_path()) {
 		Ok(local_head_oid) => local_head_oid,
 		Err(_error) => {
-			return Ok(blocked_retained_review_lane(
-				issue,
-				worktree,
-				Some(&review_handoff),
+			return Ok(RetainedReviewLaneLoad::Wait(String::from(
 				"worktree_head_read_failed",
-			));
+			)));
 		},
 	};
 	let Some(local_head_oid) = local_head_oid else {
@@ -410,7 +413,7 @@ where
 {
 	let review_state = match load_post_review_lane_review_state(snapshot, review_state_inspector)? {
 		PostReviewLaneStateLoad::Classification(classification) =>
-			return Ok(RetainedReviewLaneReviewLoad::Blocked(classification.reason)),
+			return Ok(retained_review_lane_review_load_from_classification(classification)),
 		PostReviewLaneStateLoad::ReviewState(review_state) => Box::new(review_state),
 	};
 
@@ -429,6 +432,16 @@ where
 	}
 
 	Ok(RetainedReviewLaneReviewLoad::ReviewState(review_state))
+}
+
+fn retained_review_lane_review_load_from_classification(
+	classification: PostReviewLaneClassification,
+) -> RetainedReviewLaneReviewLoad {
+	if classification.decision == PostReviewLaneDecision::Block {
+		RetainedReviewLaneReviewLoad::Blocked(classification.reason)
+	} else {
+		RetainedReviewLaneReviewLoad::Skip
+	}
 }
 
 fn blocked_retained_review_lane(
@@ -491,9 +504,7 @@ where
 
 	match phase {
 		ReviewOrchestrationPhase::RequestPending => handle_request_pending_phase(
-			tracker,
 			project,
-			workflow,
 			state_store,
 			lane,
 			github_token,
@@ -608,16 +619,12 @@ where
 	)
 }
 
-fn handle_request_pending_phase<T>(
-	tracker: &T,
+fn handle_request_pending_phase(
 	project: &ServiceConfig,
-	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	lane: &RetainedReviewLane,
 	github_token: &mut Option<String>,
 ) -> Result<()>
-where
-	T: IssueTracker,
 {
 	match external_review_request_ci_gate(&lane.review_state) {
 		ExternalReviewRequestCiGate::Ready => {},
@@ -628,15 +635,6 @@ where
 				lane,
 				ReviewOrchestrationPhase::RepairRequired,
 				RetainedReviewOrchestrationMarkerFields::from_marker(&lane.orchestration_marker),
-			);
-		},
-		ExternalReviewRequestCiGate::ManualAttention(reason) => {
-			return apply_passive_retained_manual_attention(
-				PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
-				&lane.snapshot.issue,
-				&lane.snapshot.worktree,
-				&lane.orchestration_marker,
-				reason,
 			);
 		},
 	}
@@ -1048,6 +1046,40 @@ fn ensure_review_orchestration_marker(
 	if let Some(marker) =
 		state_store.review_orchestration_marker(project_id, &issue.id, review_handoff)?
 	{
+		if marker.branch_name() == review_handoff.branch_name()
+			&& marker.pr_url() == review_handoff.pr_url()
+			&& marker.head_sha() != local_head_oid
+		{
+			let rebound_marker = ReviewOrchestrationMarker::new(
+				marker.run_id().to_owned(),
+				marker.attempt_number(),
+				review_handoff.branch_name().to_owned(),
+				review_handoff.pr_url().to_owned(),
+				local_head_oid.to_owned(),
+				ReviewOrchestrationPhase::RequestPending.as_str(),
+				None,
+				None,
+				None,
+				0,
+				marker.external_round_count(),
+				None,
+			);
+
+			state_store.upsert_review_orchestration_marker(project_id, &issue.id, &rebound_marker)?;
+
+			tracing::info!(
+				service_id = project_id,
+				issue_id = issue.id.as_str(),
+				branch = review_handoff.branch_name(),
+				pr_url = review_handoff.pr_url(),
+				old_head_sha = marker.head_sha(),
+				new_head_sha = local_head_oid,
+				"Rebound stale retained review orchestration marker to current PR head."
+			);
+
+			return Ok(rebound_marker);
+		}
+
 		return Ok(marker);
 	}
 
@@ -2232,12 +2264,13 @@ where
 	else {
 		return Ok(None);
 	};
-	let retry_budget_base =
-		context.preferred_retry_budget_base.unwrap_or(0).max(retry_budget_base_for_issue_worktree(
-			context.state_store,
-			&issue.id,
-			&planned_worktree.path,
-		)?);
+	let retry_budget_base = retry_budget_base_for_dispatch_mode(
+		context.state_store,
+		&issue.id,
+		&planned_worktree.path,
+		context.dispatch_mode,
+		context.preferred_retry_budget_base,
+	)?;
 	let lease_issue_id = issue.id.clone();
 	let issue_state = planned_issue_state_for_dispatch(
 		context.workflow,

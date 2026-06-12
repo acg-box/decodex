@@ -139,7 +139,7 @@ Follow the repository policy.
 }
 
 #[test]
-fn prepare_issue_run_uses_persisted_retry_budget_marker_after_restart() {
+fn prepare_issue_run_starts_fresh_retry_budget_for_normal_queue_intake() {
 	let (_temp_dir, base_config, workflow) = temp_project_layout();
 	let config = service_config_with_github_token_env_var(&base_config, "HOME");
 	let issue = sample_issue("Todo", &[]);
@@ -175,16 +175,17 @@ fn prepare_issue_run_uses_persisted_retry_budget_marker_after_restart() {
 	.expect("startable issue should prepare");
 
 	assert_eq!(
-		issue_run.retry_budget_base, 2,
-		"restart recovery should preserve retry budget from the retained worktree marker"
+		issue_run.retry_budget_base, 0,
+		"normal queue intake starts a new automatic retry episode instead of inheriting old marker attempts"
 	);
 }
 
 #[test]
-fn prepare_issue_run_keeps_persisted_retry_budget_when_preferred_base_is_stale() {
+fn prepare_issue_run_uses_persisted_retry_budget_marker_for_recovered_retry() {
 	let (_temp_dir, base_config, workflow) = temp_project_layout();
 	let config = service_config_with_github_token_env_var(&base_config, "HOME");
-	let issue = sample_issue("Todo", &[]);
+	let issue =
+		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");
@@ -205,11 +206,11 @@ fn prepare_issue_run_keeps_persisted_retry_budget_when_preferred_base_is_stale()
 			worktree_manager: &worktree_manager,
 			dry_run: false,
 			lease_preacquired: false,
-			dispatch_mode: IssueDispatchMode::Normal,
+			dispatch_mode: IssueDispatchMode::Retry,
 			preferred_issue_state: None,
 			preferred_initial_issue_state: None,
 			preferred_run_identity: None,
-			preferred_retry_budget_base: Some(0),
+			preferred_retry_budget_base: None,
 		},
 		issue,
 	)
@@ -218,7 +219,50 @@ fn prepare_issue_run_keeps_persisted_retry_budget_when_preferred_base_is_stale()
 
 	assert_eq!(
 		issue_run.retry_budget_base, 2,
-		"preferred retry-budget base should not hide retained worktree state"
+		"recovered retry dispatch should preserve retry budget from the retained worktree marker"
+	);
+}
+
+#[test]
+fn prepare_issue_run_keeps_persisted_retry_budget_when_preferred_retry_base_is_stale() {
+	let (_temp_dir, base_config, workflow) = temp_project_layout();
+	let config = service_config_with_github_token_env_var(&base_config, "HOME");
+	let issue =
+		sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+	let worktree =
+		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
+
+	state::write_run_retry_budget_attempt_count(&worktree.path, "older-run", 4, 2)
+		.expect("retry budget marker should write");
+
+	let issue_run = orchestrator::prepare_issue_run(
+		PrepareIssueRunContext {
+			tracker: &tracker,
+			project: &config,
+			workflow: &workflow,
+			state_store: &state_store,
+			worktree_manager: &worktree_manager,
+			dry_run: false,
+			lease_preacquired: false,
+			dispatch_mode: IssueDispatchMode::Retry,
+			preferred_issue_state: None,
+			preferred_initial_issue_state: None,
+			preferred_run_identity: None,
+			preferred_retry_budget_base: Some(0),
+		},
+		issue,
+	)
+	.expect("issue preparation should succeed")
+	.expect("recovered retry issue should prepare");
+
+	assert_eq!(
+		issue_run.retry_budget_base, 2,
+		"preferred retry-budget base should not hide retained retry episode state"
 	);
 }
 
