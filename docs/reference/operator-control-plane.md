@@ -172,6 +172,12 @@ and boundary disposition, reason, attempted recovery, changed-surface count, and
 improvement-signal count. These summaries are safe operator readback; raw reviewer
 finding bodies, changed-surface payloads, retained diffs, logs, and transcripts remain
 hidden unless `--include-payload` is explicitly requested for local repair.
+Private phase-goal evidence may also include `phase_goal_recovery`. That event means
+Decodex found a still-active implementation or repair phase goal after an app-server
+failure or child exit, ran the registered repo gate itself, persisted the next phase,
+and scheduled continuation instead of writing `decodex:needs-attention`. It is a
+runtime recovery handoff, not final issue success; the later `handoff_evidence` phase
+still owns review, push, PR creation, and terminal finalize.
 
 ## State Ownership
 
@@ -290,7 +296,7 @@ protocol activity durable outside the local operator surface.
 | `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. Repeated identical open dependency blockers surface as `dependency_program_stale` after the guardrail threshold so operators can distinguish a stale Execution Program/dependency plan from a newly blocked queue item. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after stalled reconciliation, failure writeback, or retries, the candidate is partial retained progress and not just a generic stalled or retry-budget hold. Human-required authority stops expose their compact decision request fields here: `phase = human_required`, reason, boundary, `decision_request_id`, and `next_action`. When queued attention still maps to a run/attempt, it also carries the same compact loop status used by running lanes. Running lanes are not repeated as normal intake work. |
 | `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. Retained lanes expose compact loop status for their bound handoff run/attempt so operators can see review repair checkpoint state, architecture recovery stops, and boundary/human-required disposition without direct SQLite inspection. |
 | `Recovery Worktrees` | Retained local worktrees that are not currently owned by `Running Lanes`, `Review & Landing`, or queued attention in `Intake Queue`. This is the cleanup or recovery inbox for recovered paths, retained PR leftovers, and cleanup-only local worktrees. Empty is the normal healthy state. |
-| `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Raw local attempts and heartbeat details stay in debug expansion. |
+| `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Terminal attention rows are history unless a current attention signal still exists. Raw local attempts and heartbeat details stay in debug expansion. |
 
 ## Private Evidence Readback
 
@@ -461,8 +467,15 @@ Worktree visibility follows the owning dashboard section:
 - `retained_attention` in `Recovery Worktrees` means the durable Run Ledger final
   outcome for the same issue is `needs_attention` or `terminal_failure`. This is a
   human-required retained lane, not neutral cleanup hygiene. The project summary
-  `attention_count` includes it even when `queued_candidates` is empty and no active
-  or post-review lane currently owns the issue.
+  `attention_count` includes it because the retained worktree is current recovery
+  state even when `queued_candidates` is empty and no active or post-review lane
+  currently owns the issue. A terminal Run Ledger attention row without a retained
+  worktree, queued attention row, active or needs-attention tracker label, or blocked
+  post-review lane is history-only and must not inflate current attention.
+- If private evidence shows `phase_goal_recovery` followed by a queued continuation,
+  the lane is not a retained-attention worktree even when the preceding child failed.
+  Treat it as Decodex-owned re-entry into the next phase unless a later terminal Run
+  Ledger row or current attention signal supersedes it.
 
 Every operator snapshot worktree row includes `ownership`, `ownership_reason`,
 `provenance`, and optional `recovery_next_action` fields that distinguish active-lane
@@ -604,8 +617,8 @@ rate-limited, or unavailable.
 - When a terminal Run Ledger attention record exists for an issue that still has both
   the service queue label and `decodex:needs-attention`, the operator snapshot treats
   the queue label as stale echo state. The issue remains visible through Run Ledger
-  attention and retained-worktree ownership instead of appearing again as intake
-  backlog.
+  attention and any retained-worktree or tracker-label attention signal instead of
+  appearing again as intake backlog.
 
 ## Current Non-Goals
 
