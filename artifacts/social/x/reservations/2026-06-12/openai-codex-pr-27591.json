@@ -5,7 +5,7 @@
   "target_account": "decodexspace",
   "controller_account": "hackink",
   "mode": "operator_impact",
-  "status": "active",
+  "status": "consumed",
   "idempotency_key": "x:decodexspace:openai-codex-pr-27591:operator_impact",
   "reserved_at": "2026-06-12T09:56:30Z",
   "expires_at": "2026-06-12T11:56:30Z",
@@ -38,6 +38,7 @@
     "branch": "codex/x-publisher-pr-27591-20260612",
     "pr_url": "https://github.com/hack-ink/decodex/pull/358"
   },
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-12/openai-codex-pr-27591.json",
   "evidence_notes": [
     "The social_candidate/v1 artifact has decision.worthiness = publish, priority critical, and mode operator_impact for openai-codex-pr-27591.",
     "The x-post-quality-system gate passed before reservation because the candidate states what changed, who can act on it, and the direct GitHub PR source that proves it.",
