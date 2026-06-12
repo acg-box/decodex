@@ -807,6 +807,13 @@ After a process restart, recent-run history, active lease ownership, retained po
   or another terminal boundary applies, terminal writeback may classify the retained
   patch as `partial_progress_retained` and preserve the runtime, app-server,
   credential, transport, or repo-gate class as source evidence.
+- Retained post-review orchestration must treat local branch/head readback failures as
+  transient wait conditions while the review handoff marker still owns the lane. Status
+  may report `worktree_checkout_branch_read_failed` or `worktree_head_read_failed`, but
+  the run-cycle path must not write passive retained manual attention or add
+  `decodex:needs-attention` for those read failures alone. A later successful readback
+  may still classify hard blockers such as missing branch, branch mismatch, missing
+  head, head mismatch, PR mismatch, or another explicit `Block` decision.
 - If the durable Run Ledger final outcome is `needs_attention` or
   `terminal_failure`, operator status must count that issue in project-level
   `attention_count` only when a current attention signal still exists: a retained

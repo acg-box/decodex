@@ -243,6 +243,15 @@ where
 			review_state_inspector,
 		)? {
 			RetainedReviewLaneLoad::Skip => continue,
+			RetainedReviewLaneLoad::Wait(reason) => {
+				tracing::info!(
+					project_id = project.service_id(),
+					reason = reason.as_str(),
+					"Retained post-review orchestration is waiting for transient readback recovery."
+				);
+
+				continue;
+			},
 			RetainedReviewLaneLoad::Blocked(blocked) => {
 				apply_passive_retained_manual_attention_with_run_identity(
 					PassiveRetainedAttentionRuntime { tracker, project, workflow, state_store },
@@ -330,12 +339,9 @@ where
 	let local_branch_name = match worktree_checkout_branch_name(worktree.worktree_path()) {
 		Ok(local_branch_name) => local_branch_name,
 		Err(_error) => {
-			return Ok(blocked_retained_review_lane(
-				issue,
-				worktree,
-				Some(&review_handoff),
+			return Ok(RetainedReviewLaneLoad::Wait(String::from(
 				"worktree_checkout_branch_read_failed",
-			));
+			)));
 		},
 	};
 	let Some(local_branch_name) = local_branch_name else {
@@ -349,12 +355,9 @@ where
 	let local_head_oid = match worktree_head_oid(worktree.worktree_path()) {
 		Ok(local_head_oid) => local_head_oid,
 		Err(_error) => {
-			return Ok(blocked_retained_review_lane(
-				issue,
-				worktree,
-				Some(&review_handoff),
+			return Ok(RetainedReviewLaneLoad::Wait(String::from(
 				"worktree_head_read_failed",
-			));
+			)));
 		},
 	};
 	let Some(local_head_oid) = local_head_oid else {
