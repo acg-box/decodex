@@ -1,0 +1,54 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27573",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "critical",
+  "audience": "Codex operators running long sessions on hosted providers",
+  "candidate_text": [
+    "Codex made `remote_compaction_v2` the default for providers that already support remote compaction: OpenAI/Azure move to v2, while Bedrock/OSS stay local. Operators should treat legacy remote compaction as explicit opt-out coverage. PR: https://github.com/openai/codex/pull/27573"
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27573.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27573.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27573"
+    ]
+  },
+  "evidence_notes": [
+    "`Feature::RemoteCompactionV2` is now stable and enabled by default.",
+    "Tests that need legacy remote compaction now explicitly disable the feature.",
+    "The PR body says OpenAI and Azure move to v2 while Bedrock and OSS keep local compaction."
+  ],
+  "claims": [
+    {
+      "text": "Remote compaction v2 is now the default for providers that already support remote compaction.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27573.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The change does not broaden provider eligibility for remote compaction.",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27573.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "The default compaction-path change matters to operators of long hosted Codex sessions.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27573:operator_impact"
+  },
+  "caveats": [
+    "Do not frame this as new Bedrock or OSS remote-compaction support.",
+    "Do not claim Decodex retained-lane support changes without a separate Decodex audit."
+  ],
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or publish this candidate.",
+    "Keep the provider caveat in any downstream post."
+  ]
+}

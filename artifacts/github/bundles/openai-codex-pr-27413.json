@@ -1,0 +1,125 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-10T16:23:04Z",
+      "message": "skills: decouple extension from core",
+      "sha": "9ff580bf7e426f19713de20aaa9a0138a4aa389f",
+      "url": "https://github.com/openai/codex/commit/9ff580bf7e426f19713de20aaa9a0138a4aa389f"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-11T11:54:59Z",
+      "message": "Merge remote-tracking branch 'origin/main' into HEAD",
+      "sha": "3eb9c5126d277d5c6e2b92dfb71a3025942a19ef",
+      "url": "https://github.com/openai/codex/commit/3eb9c5126d277d5c6e2b92dfb71a3025942a19ef"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API",
+    "HEAD",
+    "MAX_SKILL_NAME_BYTES",
+    "SKILLS_INSTRUCTIONS_CLOSE_TAG",
+    "SKILLS_INSTRUCTIONS_OPEN_TAG",
+    "MAX_AVAILABLE_SKILLS_BYTES",
+    "MAX_MAIN_PROMPT_BYTES",
+    "SKILLS_HOW_TO_USE_WITH_ABSOLUTE_PATHS",
+    "SKILLS_INTRO_WITH_ABSOLUTE_PATHS",
+    "NEXT_CODEX_HOME_ID",
+    "DEMO_SKILL_CONTENTS",
+    "SKILL"
+  ],
+  "files": [
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -3815,7 +3815,6 @@ name = \"codex-skills-extension\"\n version = \"0.0.0\"\n dependencies = [\n  \"async-trait\",\n- \"codex-core\",\n  \"codex-core-skills\",\n  \"codex-exec-server\",\n  \"codex-extension-api\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -80,6 +80,10 @@ where\n             .with_orchestrator_provider(Arc::new(\n                 codex_skills_extension::OrchestratorSkillProvider::new(),\n             )),\n+        |config: &Config| codex_skills_extension::SkillsExtensionConfig {\n+            include_instructions: config.include_skill_instructions,\n+            bundled_skills_enabled: config.bundled_skills_enabled(),\n+        },\n     );\n     Arc::new(builder.build())\n }",
+      "path": "codex-rs/app-server/src/extensions.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -14,7 +14,6 @@ doctest = false\n workspace = true\n \n [dependencies]\n-codex-core = { workspace = true }\n codex-core-skills = { workspace = true }\n codex-exec-server = { workspace = true }\n codex-extension-api = { workspace = true }",
+      "path": "codex-rs/ext/skills/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,8 @@\n+/// Host-supplied configuration used by the skills extension.\n+#[derive(Clone, Debug, Eq, PartialEq)]\n+pub struct SkillsExtensionConfig {\n+    /// Whether the available-skills catalog is included in model context.\n+    pub include_instructions: bool,\n+    /// Whether bundled skills are eligible for discovery.\n+    pub bundled_skills_enabled: bool,\n+}",
+      "path": "codex-rs/ext/skills/src/config.rs",
+      "status": "added"
+    },
+    {
+      "additions": 46,
+      "deletions": 26,
+      "patch_excerpt": "@@ -1,10 +1,7 @@\n use std::sync::Arc;\n \n-use codex_core::config::Config;\n use codex_core_skills::HostLoadedSkills;\n-use codex_core_skills::SkillInstructions;\n use codex_core_skills::injection::InjectedHostSkillPrompts;\n-use codex_core_skills::injection::SkillInjection;\n use codex_extension_api::ConfigContributor;\n use codex_extension_api::ContextContributor;\n use codex_extension_api::ContextualUserFragment;\n@@ -26,10 +23,12 @@ use codex_protocol::protocol::Event;\n use codex_protocol::protocol::EventMsg;\n use codex_protocol::protocol::WarningEvent;\n \n+use crate::SkillsExtensionConfig;\n use crate::catalog::SkillCatalog;\n use crate::catalog::SkillCatalogEntry;\n use crate::catalog::SkillReadResult;\n use crate::catalog::SkillSourceKind;\n+use crate::fragments::SkillInstructions;\n use crate::provider::HostSkillProvider;\n use crate::provider::SkillListQuery;\n use crate::provider::SkillReadReques...",
+      "path": "codex-rs/ext/skills/src/extension.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 61,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,61 @@\n+use codex_core_skills::render_available_skills_body;\n+use codex_extension_api::ContextualUserFragment;\n+use codex_protocol::protocol::SKILLS_INSTRUCTIONS_CLOSE_TAG;\n+use codex_protocol::protocol::SKILLS_INSTRUCTIONS_OPEN_TAG;\n+\n+#[derive(Clone, Debug, Eq, PartialEq)]\n+pub(crate) struct AvailableSkillsInstructions {\n+    skill_lines: Vec<String>,\n+}\n+\n+impl AvailableSkillsInstructions {\n+    pub(crate) fn from_skill_lines(skill_lines: Vec<String>) -> Self {\n+        Self { skill_lines }\n+    }\n+}\n+\n+impl ContextualUserFragment for AvailableSkillsInstructions {\n+    fn role(&self) -> &'static str {\n+        \"developer\"\n+    }\n+\n+    fn markers(&self) -> (&'static str, &'static str) {\n+        Self::type_markers()\n+    }\n+\n+    fn type_markers() -> (&'static str, &'static str) {\n+        (SKILLS_INSTRUCTIONS_OPEN_TAG, SKILLS_INSTRUCTIONS_CLOSE_TAG)\n+    }\n+\n+    fn body(&s...",
+      "path": "codex-rs/ext/skills/src/fragments.rs",
+      "status": "added"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,12 +1,15 @@\n pub mod catalog;\n+mod config;\n mod extension;\n+mod fragments;\n pub mod provider;\n mod render;\n mod selection;\n mod sources;\n mod state;\n mod tools;\n \n+pub use config::SkillsExtensionConfig;\n pub use extension::install;\n pub use extension::install_with_providers;\n pub use provider::ExecutorSkillProvider;",
+      "path": "codex-rs/ext/skills/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,9 +1,9 @@\n-use codex_core::context::AvailableSkillsInstructions;\n use codex_utils_string::take_bytes_at_char_boundary;\n \n use crate::catalog::SkillCatalog;\n use crate::catalog::SkillCatalogEntry;\n use crate::catalog::SkillSourceKind;\n+use crate::fragments::AvailableSkillsInstructions;\n \n const MAX_AVAILABLE_SKILLS_BYTES: usize = 8_000;\n const MAX_MAIN_PROMPT_BYTES: usize = 8_000;",
+      "path": "codex-rs/ext/skills/src/render.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 16,
+      "patch_excerpt": "@@ -1,28 +1,13 @@\n-use codex_core::config::Config;\n use codex_protocol::capabilities::SelectedCapabilityRoot;\n use std::future::Future;\n use std::sync::Mutex;\n use tokio::sync::OnceCell;\n \n+use crate::SkillsExtensionConfig;\n use crate::catalog::SkillCatalog;\n use crate::catalog::SkillCatalogEntry;\n use crate::catalog::SkillProviderError;\n \n-#[derive(Clone, Debug, PartialEq, Eq)]\n-pub(crate) struct SkillsExtensionConfig {\n-    pub(crate) include_instructions: bool,\n-    pub(crate) bundled_skills_enabled: bool,\n-}\n-\n-impl SkillsExtensionConfig {\n-    pub(crate) fn from_config(config: &Config) -> Self {\n-        Self {\n-            include_instructions: config.include_skill_instructions,\n-            bundled_skills_enabled: config.bundled_skills_enabled(),\n-        }\n-    }\n-}\n-\n #[derive(Debug)]\n pub(crate) struct SkillsThreadState {\n     config: Mutex<SkillsExtensionConfig>,",
+      "path": "codex-rs/ext/skills/src/state.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 67,
+      "deletions": 58,
+      "patch_excerpt": "@@ -4,11 +4,11 @@ use std::sync::Mutex;\n use std::sync::atomic::AtomicUsize;\n use std::sync::atomic::Ordering;\n \n-use codex_core::config::Config;\n-use codex_core::config::ConfigBuilder;\n use codex_core_skills::HostLoadedSkills;\n-use codex_core_skills::SkillsLoadInput;\n-use codex_core_skills::SkillsManager;\n+use codex_core_skills::SKILLS_HOW_TO_USE_WITH_ABSOLUTE_PATHS;\n+use codex_core_skills::SKILLS_INTRO_WITH_ABSOLUTE_PATHS;\n+use codex_core_skills::SkillLoadOutcome;\n+use codex_core_skills::SkillMetadata;\n use codex_core_skills::injection::InjectedHostSkillPrompts;\n use codex_extension_api::ExtensionData;\n use codex_extension_api::ExtensionEventSink;\n@@ -19,10 +19,13 @@ use codex_protocol::capabilities::CapabilityRootLocation;\n use codex_protocol::capabilities::SelectedCapabilityRoot;\n use codex_protocol::protocol::Event;\n use codex_protocol::protocol::EventMsg;\n+use codex_protocol::proto...",
+      "path": "codex-rs/ext/skills/tests/skills_extension.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27404"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\n`ext/skills` currently depends on `codex-core` for two host concerns: reading the concrete `Config` type and borrowing core-owned model-context fragment types. That coupling prevents the extension from being assembled independently above core and leaves context that belongs to the skills feature owned by core.\n\nThis stacked PR introduces the host boundary needed for the broader extension migration while intentionally preserving existing skills behavior. It is stacked on #27404.\n\n## What changed\n\n- Adds a small public `SkillsExtensionConfig` view and makes skills installation generic over the host config type.\n- Requires the host to map its config into that view; app-server supplies the current `Config` values.\n- Moves the available-skills and selected-skill context fragment implementations into `ext/skills`, preserving their roles, markers, and rendered bytes.\n- Removes the direct `codex-core` dependency from `codex-skills-extension`.\n- Keeps local discovery, invocation, side effects, and the `codex-core-skills` compatibility types unchanged for later staged PRs.\n\n## Behavior\n\nThis adds no capability and is intended to have no user-visible or model-visible behavior change. The install API and ownership boundary change internally; emitted skills context remains byte-for-byte compatible.\n\n## Validation\n\n- Updates the skills extension integration coverage to use a host-owned test config.\n- Asserts the complete rendered catalog and selected-skill fragments, including their roles and markers.\n- `just bazel-lock-check`\n- Rust tests and Clippy were not run locally per request; CI will run them.\n",
+    "labels": [],
+    "merged_at": "2026-06-11T12:03:53Z",
+    "number": 27413,
+    "state": "merged",
+    "title": "skills: decouple the skills extension from core",
+    "url": "https://github.com/openai/codex/pull/27413"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
