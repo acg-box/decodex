@@ -1,0 +1,96 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-13-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease changes before stable",
+  "candidate_text": [
+    "0.140.0-alpha.13: defer, no X handoff.\n\nAdjacent compare alpha.11 -> alpha.13 has 20 commits. PR titles point to skills, MCP, PathUri, token budget, hooks, Bedrock auth, and exec-server protocol changes; behavior claims need source review."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.11",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.13",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.11...rust-v0.140.0-alpha.13",
+      "https://github.com/openai/codex/pull/27646",
+      "https://github.com/openai/codex/pull/27323",
+      "https://github.com/openai/codex/pull/27433",
+      "https://github.com/openai/codex/pull/27424",
+      "https://github.com/openai/codex/pull/27101",
+      "https://github.com/openai/codex/pull/27634",
+      "https://github.com/openai/codex/pull/27122",
+      "https://github.com/openai/codex/pull/27450",
+      "https://github.com/openai/codex/pull/27653",
+      "https://github.com/openai/codex/pull/27663",
+      "https://github.com/openai/codex/pull/26418",
+      "https://github.com/openai/codex/pull/27689",
+      "https://github.com/openai/codex/pull/27700",
+      "https://github.com/openai/codex/pull/26426",
+      "https://github.com/openai/codex/pull/27318",
+      "https://github.com/openai/codex/pull/27498",
+      "https://github.com/openai/codex/pull/27623",
+      "https://github.com/openai/codex/pull/27619",
+      "https://github.com/openai/codex/pull/27711"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.140.0-alpha.13 was published at 2026-06-12T01:28:14Z with only a sparse release body: Release 0.140.0-alpha.13.",
+    "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.11 -> rust-v0.140.0-alpha.13; no alpha.12 release appears in the fetched GitHub release metadata for this train.",
+    "GitHub compare metadata for alpha.11 -> alpha.13 reports status=diverged, 20 ahead commits, and 20 total commits.",
+    "PR-title metadata in the alpha.11 -> alpha.13 compare points to orchestrator skills being disabled, ARM64 MinGW release compatibility, PathUri and exec-server filesystem migration, user-instruction provider injection, MCP catalog resolution, Responses API metadata consolidation, PAT workspace restrictions, token-budget context, hook deduplication and warnings, managed Bedrock auth, image extension environment reads, turn lifecycle spans, TUI hook cleanup, and image PathUri fixes.",
+    "Checked Decodex review/impact artifacts are absent for the 19 primary PR-title references in the alpha.11 -> alpha.13 compare window in this checkout.",
+    "The refreshed release_delta/v1 records stable rust-v0.139.0 -> latest prerelease rust-v0.140.0-alpha.13 with 130 ahead commits and no tracked signal slugs.",
+    "Official Codex changelog readback for this run shows a 2026-06-11 Codex app update as the newest official app entry; rust-v0.140.0-alpha.13 is a GitHub prerelease checkpoint, not an official changelog entry."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.140.0-alpha.13 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.13",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.11 -> rust-v0.140.0-alpha.13.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.11...rust-v0.140.0-alpha.13",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.13 release body is sparse and does not describe user-facing behavior beyond the version checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.13",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR-title metadata in the alpha.13 compare points to skills, MCP, PathUri, token budget, hooks, Bedrock auth, image handling, and exec-server protocol changes.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.11...rust-v0.140.0-alpha.13",
+      "confidence": "likely"
+    },
+    {
+      "text": "Behavior claims for the alpha.13 window require upstream source review before a publishable Decodex prerelease thread.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the alpha.13 release body is sparse and the adjacent alpha.11 -> alpha.13 compare has unreviewed PR-title gaps.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-13:alpha11-alpha13:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "No previous live and quote-eligible @decodexspace 0.140 prerelease post exists; earlier 0.140 prereleases in this checkout are recorded as defer / needs_upstream_analysis checkpoints.",
+    "Do not compare alpha.13 against stable 0.139.0 for public prerelease copy; the adjacent prerelease lineage is alpha.11 -> alpha.13 because alpha.13 is not the first prerelease after stable.",
+    "Exact source-review gap list for alpha.11 -> alpha.13 primary compare PRs: #27646, #27323, #27433, #27424, #27101, #27634, #27122, #27450, #27653, #27663, #26418, #27689, #27700, #26426, #27318, #27498, #27623, #27619, #27711.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.13 defer record to decodex-x-publisher.",
+    "Route the listed source-review gap PRs to codex-upstream-radar-review / codex-code-analysis before turning alpha.13 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Use adjacent prerelease-to-prerelease lineage for future 0.140 prereleases after alpha.13."
+  ]
+}
