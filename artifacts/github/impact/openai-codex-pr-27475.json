@@ -1,0 +1,45 @@
+{
+  "candidate_followups": [
+    "Watch for downstream source patches that still expect async_trait-generated trait methods.",
+    "Treat this as release-rollup maintenance context rather than a standalone Publisher candidate.",
+    "Note the rand 0.8.6 security-related bump if dependency provenance is audited later."
+  ],
+  "caveats": [
+    "No direct app-server protocol or end-user workflow change was identified.",
+    "Compatibility impact is mainly for source-level integrations and fork maintenance."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "watch",
+  "evidence": [
+    "The workspace `async-trait` dependency was removed from first-party crates.",
+    "Several first-party traits now return native `impl Future + Send` or explicit boxed Send future aliases.",
+    "cargo-deny policy now limits async-trait to remaining transitive wrapper crates.",
+    "rand was updated from 0.8.5 to 0.8.6.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27475.review.json`."
+  ],
+  "observed_change": "Codex removed direct first-party async-trait usage by moving first-party async traits to explicit Send future signatures and tightening dependency policy.",
+  "public_signal_decision": "skip",
+  "publisher_angle": "none",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27475",
+  "social_notes": [
+    "No social candidate: the source evidence is maintenance and compatibility oriented, without a concrete user-facing path."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T01:16:39Z",
+        "title": "[codex] Remove async_trait from first-party code",
+        "url": "https://github.com/openai/codex/pull/27475"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27475.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27475"
+      }
+    ]
+  }
+}
