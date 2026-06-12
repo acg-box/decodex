@@ -78,6 +78,8 @@ include!("tests/runtime/loop_scenarios.rs");
 
 include!("tests/runtime/program_reconciler.rs");
 
+include!("tests/runtime/program_intake_dogfood.rs");
+
 include!("tests/runtime/thread_archive.rs");
 
 include!("tests/recovery/reconciliation.rs");
