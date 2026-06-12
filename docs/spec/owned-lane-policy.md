@@ -212,6 +212,14 @@ default.
 
 Human intervention is not complete merely because a human observed the failure. Human intervention is complete only when the blocking signal is materially cleared.
 
+Retained tracked worktree changes do not by themselves convert a retryable abnormal
+exit into `manual_intervention_required`. When issue ownership still matches and
+retry budget remains, the next retry must resume the same worktree and treat the
+patch as recovery context. Retained partial progress becomes human-required only when
+the failure is non-retryable, explicit human attention was requested, retry or
+loop-recovery budget is exhausted, the lane stalled, or authoritative ownership
+signals are contradictory enough that continuing would require guessing.
+
 Examples of materially cleared signals:
 
 - `decodex:needs-attention` is removed and the issue is returned to a startable state
