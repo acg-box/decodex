@@ -519,9 +519,12 @@ Before writing a retry comment, transitioning an issue, or applying
 `decodex:needs-attention`, Decodex must classify the failure through one writeback
 disposition: generic retryable failure, structured retryable recovery, or
 human-required terminal attention. Structured retryable recovery includes typed runtime
-failures such as startup transport disconnects, turn failures, dynamic-tool failures,
-and retryable repo-gate failures; those failures must not be reclassified as
-zero-evidence startup attention merely because protocol-event persistence lagged.
+failures such as zero-evidence app-server startup failures, startup transport
+disconnects, turn failures, dynamic-tool failures, and retryable repo-gate failures;
+those failures must not be reclassified as zero-evidence startup attention merely
+because protocol-event persistence lagged. A zero-evidence startup failure may record
+private startup diagnostics, but it remains automatic retry work while retry budget
+remains and only becomes operator-facing attention after retry exhaustion.
 Retry scheduling, terminal writeback, and public `error_class`/`next_action` text must
 use that same classification instead of maintaining separate ad hoc failure tables.
 
