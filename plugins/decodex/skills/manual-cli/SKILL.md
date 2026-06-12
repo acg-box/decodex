@@ -64,11 +64,20 @@ registered project's `WORKFLOW.md`.
 - Use `recover review-handoff adopt` for a verified human-owned PR that was created
   from a managed Decodex worktree and should enter normal `decodex land --authority`
   closeout. Run dry-run first from the lane worktree, then rerun live only after it
-  confirms the active service label, clean worktree, exact PR branch/head match, and
-  green landable PR gates. Adopt may reuse an existing worktree mapping only when it
-  points at the same current managed checkout; a stale mapping branch name is repaired
-  during the successful adopt write. Do not use adopt when a retained review handoff
-  marker already exists; use rebind or normal land there.
+  confirms active-label state, clean worktree, exact PR branch/head match, and green
+  landable PR gates. If the active service label is missing, live adopt may restore it
+  after all other validation passes and will report that in dry-run. Adopt may reuse an
+  existing worktree mapping only when it points at the same current managed checkout; a
+  stale mapping branch name is repaired during the successful adopt write. Do not use
+  adopt when a retained review handoff marker already exists; use rebind or normal land
+  there.
+- Use `recover merged-closeout` when Decodex still reports stale retained attention
+  but the PR was already merged, the tracker issue is completed, and no real retained
+  patch remains. Run dry-run first with the merged PR URL; live recovery requires
+  `--manual-authority` and writes `closeout` plus `cleanup_complete` only after it
+  validates completed issue state, absent queue/active/attention labels, matching PR
+  head branch, merge commit containment in `origin/<default-branch>`, and clean or
+  absent retained worktree state.
 - Use `probe stdio://` before relying on the Codex app-server boundary.
 - Use `POST /api/linear-scan` after label or issue-state changes when the scheduler
   should refresh before its next 5-minute Linear poll.
