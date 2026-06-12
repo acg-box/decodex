@@ -2256,7 +2256,7 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_after_active_lease_missing()
 
 #[cfg(unix)]
 #[test]
-fn operator_lane_interrupt_api_force_hard_fallbacks_after_lane_not_active_with_live_process() {
+fn operator_lane_interrupt_api_force_hard_fallbacks_after_succeeded_status_with_live_process() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let registration = ProjectRegistration::from_config(
@@ -2323,8 +2323,8 @@ fn operator_lane_interrupt_api_force_hard_fallbacks_after_lane_not_active_with_l
 
 	assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
 	assert_eq!(data["classification"], "hard_interrupt_fallback");
-	assert_eq!(data["softInterrupt"]["status"], "unavailable");
-	assert_eq!(data["softInterrupt"]["errorClass"], "lane_not_active");
+	assert_eq!(data["softInterrupt"]["status"], "rejected");
+	assert_eq!(data["softInterrupt"]["errorClass"], "active_lease_missing");
 	assert_eq!(data["hardInterrupt"]["classification"], "hard_interrupt_fallback");
 	assert_eq!(data["hardInterrupt"]["status"], "sent");
 	assert_eq!(
