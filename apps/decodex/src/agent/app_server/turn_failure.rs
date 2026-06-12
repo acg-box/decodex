@@ -39,6 +39,14 @@ impl AppServerTurnFailure {
 	}
 
 	pub(crate) fn requires_operator_attention(&self) -> bool {
+		matches!(self.codex_error_info.as_deref(), Some("operatorAttentionRequired"))
+	}
+
+	pub(crate) fn should_stop_current_turn(&self) -> bool {
+		self.is_retryable_capacity_failure()
+	}
+
+	pub(crate) fn is_retryable_capacity_failure(&self) -> bool {
 		matches!(self.codex_error_info.as_deref(), Some("usageLimitExceeded"))
 	}
 
@@ -46,6 +54,14 @@ impl AppServerTurnFailure {
 		match self.codex_error_info.as_deref() {
 			Some("usageLimitExceeded") => "app_server_usage_limit_exceeded",
 			_ => "app_server_turn_failed",
+		}
+	}
+
+	pub(crate) fn retry_next_action(&self) -> &'static str {
+		match self.codex_error_info.as_deref() {
+			Some("usageLimitExceeded") =>
+				"decodex will retry automatically and reselect or refresh the Codex account before the next attempt",
+			_ => "decodex will retry automatically",
 		}
 	}
 
