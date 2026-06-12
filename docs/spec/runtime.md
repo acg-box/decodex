@@ -248,7 +248,9 @@ After each `app-server` turn completes, `decodex` must resolve one continuation 
   - The agent recorded a valid PR-backed review handoff and did not request human attention.
   - `decodex` proceeds into `validating`, then applies the success writeback if the repo gate passes.
 - `manual_attention`
-  - The agent explicitly requested human attention by adding `decodex:needs-attention` and did not also record review handoff.
+  - The agent explicitly requested human attention with the `decodex:needs-attention`
+    label intent, left a validated explanatory comment, and did not also record
+    review handoff.
   - `decodex` skips success writeback and the post-run repo gate, then enters the human-required failure flow immediately.
 - invalid completion signaling
   - If the turn records both signals, or records one terminal path but fails to finalize it explicitly, the attempt is invalid and must fail rather than guessing a completion path.
@@ -374,12 +376,12 @@ Before applying success or failure writeback, `decodex` must classify the finish
 | Disposition | Required agent signal | Forbidden co-signal | Runtime effect |
 | --- | --- | --- | --- |
 | `review_handoff` | `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")` | `decodex:needs-attention` | Run the repo-native gate, revalidate PR state, post completion comment, transition to `In Review`. |
-| `manual_attention` | `decodex:needs-attention` plus an explanatory public issue summary, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
+| `manual_attention` | `issue_label_add` with `decodex:needs-attention` intent, a validated explanatory public issue summary that applies that label, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
 
 If neither signal exists, or both signals exist, `decodex` must fail the attempt instead of inferring operator intent.
-If the label is recorded without the required explanatory comment, `decodex` must also fail the attempt instead of treating it as a valid `manual_attention` exit.
+If the label intent is recorded without the required explanatory comment, `decodex` must also fail the attempt instead of treating it as a valid `manual_attention` exit.
 If the resolved terminal path is not explicitly finalized through `issue_terminal_finalize`, the app-server wrapper must fail the turn before `decodex` records the attempt as successful.
-The explanatory public summary for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text only when those values are public-safe, instead of speculating about unverified capability limits.
+The explanatory public summary for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text only when those values are public-safe, instead of speculating about unverified capability limits. It must not reuse runtime-owned retry or continued-repair `error_class` values such as app-server timeout/turn failures, stalled-run detection, or repo-gate validation failure classes; those remain Decodex-owned retry, continuation, or architecture-recovery signals until the runtime itself reaches a human-required terminal boundary.
 Execution-state checkpoints are durable progress overlays only. Their phase, focus, next action, blockers, evidence, or verification fields are never a substitute for the explicit terminal-finalization call.
 After successful completion writeback, Decodex must best-effort archive every locally recorded terminal Codex thread for the issue, including earlier failed retry attempts, so old attempts do not keep the issue visible in the Codex conversation list.
 
@@ -551,7 +553,10 @@ Retry-exhausted or human-required failures:
 3. Post a structured failure comment.
 4. Finalize the terminal path with `issue_terminal_finalize(path = "manual_attention")`.
 
-If the coding agent explicitly requests human attention by adding `decodex:needs-attention`, `decodex` must stop automatic retries for that attempt, skip PR-backed success writeback, and treat the lane as a human-required failure immediately.
+If the coding agent explicitly requests human attention with a
+`decodex:needs-attention` label intent and the paired `manual_attention` comment
+validates, `decodex` must stop automatic retries for that attempt, skip PR-backed
+success writeback, and treat the lane as a human-required failure immediately.
 The paired explanatory comment must use the issue-scoped `issue_comment` allowlist,
 currently kind `manual_attention`, so the Linear-visible summary is rendered from
 structured public fields instead of an arbitrary agent-authored body. Private command
