@@ -1,0 +1,46 @@
+{
+  "candidate_followups": [
+    "Update Decodex remote-control callers to use `ephemeral: true` when they need process-only behavior.",
+    "Audit operator documentation for any statement that remoteControl/enable or disable is process-only.",
+    "Track state migration behavior for persisted remote_control_enabled enrollment values."
+  ],
+  "caveats": [
+    "The remote-control methods are still experimental upstream.",
+    "Clients that omit params remain schema-valid, but their default persistence semantics changed."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "remoteControl enable and disable params changed from undefined to nullable param objects with optional `ephemeral`.",
+    "RemoteControlDesiredState separates persisted enabled/disabled state from runtime-only enablement.",
+    "A state migration adds `remote_control_enabled` to remote-control enrollments.",
+    "Daemon and app-server tests cover durable enable, durable disable, and ephemeral enable behavior.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27445.review.json`."
+  ],
+  "observed_change": "Codex remote-control enable and disable requests now persist desired state by default while retaining `ephemeral: true` for runtime-only callers.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27445",
+  "social_notes": [
+    "Frame as a Control Plane compatibility note for app-server remote-control clients.",
+    "Emphasize that `ephemeral: true` is the runtime-only escape hatch."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T04:28:53Z",
+        "title": "feat(app-server): persist remote-control desired state",
+        "url": "https://github.com/openai/codex/pull/27445"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27445.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27445"
+      }
+    ]
+  }
+}
