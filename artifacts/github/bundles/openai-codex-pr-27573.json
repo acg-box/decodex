@@ -1,0 +1,108 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-11T09:27:06Z",
+      "message": "chore: compaction v2 default",
+      "sha": "c011f6e6809601b6cc138e055bf1bc57bf5b5d4c",
+      "url": "https://github.com/openai/codex/commit/c011f6e6809601b6cc138e055bf1bc57bf5b5d4c"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-11T09:33:33Z",
+      "message": "Merge branch 'main' into jif/compaction-v2-land",
+      "sha": "571debf6883633a51c69f6654efd10c4e13e7f26",
+      "url": "https://github.com/openai/codex/commit/571debf6883633a51c69f6654efd10c4e13e7f26"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-11T09:56:29Z",
+      "message": "test: update compaction coverage for v2 default",
+      "sha": "0b768f5016684ccf0266aef513ff7f7bdfcc5aa2",
+      "url": "https://github.com/openai/codex/commit/0b768f5016684ccf0266aef513ff7f7bdfcc5aa2"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "OSS",
+    "V2U",
+    "REMOTE_AUTO_COMPACT_LIMIT",
+    "FEATURES"
+  ],
+  "files": [
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -29,6 +29,7 @@ use codex_app_server_protocol::TurnStartParams;\n use codex_app_server_protocol::TurnStartResponse;\n use codex_app_server_protocol::UserInput as V2UserInput;\n use codex_config::types::AuthCredentialsStoreMode;\n+use codex_features::Feature;\n use codex_protocol::models::ContentItem;\n use codex_protocol::models::ResponseItem;\n use core_test_support::responses;\n@@ -150,7 +151,7 @@ async fn auto_compaction_remote_emits_started_and_completed_items() -> Result<()\n     write_mock_responses_config_toml(\n         codex_home.path(),\n         &server.uri(),\n-        &BTreeMap::default(),\n+        &BTreeMap::from([(Feature::RemoteCompactionV2, false)]),\n         REMOTE_AUTO_COMPACT_LIMIT,\n         Some(true),\n         \"mock_provider\",",
+      "path": "codex-rs/app-server/tests/suite/v2/compaction.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2015,6 +2015,7 @@ async fn auto_compact_runs_after_resume_when_token_usage_is_over_limit() {\n     let mut builder = test_codex().with_config(move |config| {\n         set_test_compact_prompt(config);\n         config.model_auto_compact_token_limit = Some(limit);\n+        let _ = config.features.disable(Feature::RemoteCompactionV2);\n     });\n     let initial = builder.build(&server).await.unwrap();\n     let home = initial.home.clone();\n@@ -2043,6 +2044,7 @@ async fn auto_compact_runs_after_resume_when_token_usage_is_over_limit() {\n     let mut resume_builder = test_codex().with_config(move |config| {\n         set_test_compact_prompt(config);\n         config.model_auto_compact_token_limit = Some(limit);\n+        let _ = config.features.disable(Feature::RemoteCompactionV2);\n     });\n     let resumed = resume_builder\n         .resume(&server, home, rollout_path)\n@@ -4023,6 +4025,7 @@ async...",
+      "path": "codex-rs/core/tests/suite/compact.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 1,
+      "patch_excerpt": "@@ -36,7 +36,7 @@ use core_test_support::responses::start_websocket_server;\n use core_test_support::skip_if_no_network;\n use core_test_support::test_codex::TestCodexBuilder;\n use core_test_support::test_codex::TestCodexHarness;\n-use core_test_support::test_codex::test_codex;\n+use core_test_support::test_codex::test_codex as base_test_codex;\n use core_test_support::test_path_buf;\n use core_test_support::wait_for_event;\n use core_test_support::wait_for_event_match;\n@@ -160,6 +160,12 @@ fn compacted_summary_only_output(summary: &str) -> Vec<ResponseItem> {\n     }]\n }\n \n+fn test_codex() -> TestCodexBuilder {\n+    base_test_codex().with_config(|config| {\n+        let _ = config.features.disable(Feature::RemoteCompactionV2);\n+    })\n+}\n+\n fn remote_realtime_test_codex_builder(\n     realtime_server: &responses::WebSocketTestServer,\n ) -> TestCodexBuilder {",
+      "path": "codex-rs/core/tests/suite/compact_remote.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -529,8 +529,8 @@ async fn build_harness_inner(\n         if hooks {\n             trust_discovered_hooks(config);\n         }\n-        if mode == Mode::V2 {\n-            let _ = config.features.enable(Feature::RemoteCompactionV2);\n+        if mode == Mode::Legacy {\n+            let _ = config.features.disable(Feature::RemoteCompactionV2);\n         }\n     }))\n     .await",
+      "path": "codex-rs/core/tests/suite/compact_remote_parity.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 30,
+      "deletions": 38,
+      "patch_excerpt": "@@ -34,7 +34,6 @@ use core_test_support::responses::ev_function_call;\n use core_test_support::responses::ev_message_item_added;\n use core_test_support::responses::ev_output_text_delta;\n use core_test_support::responses::ev_response_created;\n-use core_test_support::responses::mount_compact_json_once;\n use core_test_support::responses::mount_sse_once;\n use core_test_support::responses::mount_sse_sequence;\n use core_test_support::responses::sse;\n@@ -1441,21 +1440,32 @@ async fn resumed_thread_runs_resume_then_compact_session_start_hooks() -> Result\n     let remote_summary = \"remote compact summary\";\n     let resume_context = \"remember the resumed reef\";\n     let compact_context = \"remember the compacted reef\";\n-    let compacted_history = vec![\n-        ResponseItem::Message {\n-            id: None,\n-            role: \"assistant\".to_string(),\n-            content: vec![ContentItem::OutputTe...",
+      "path": "codex-rs/core/tests/suite/hooks.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 4,
+      "patch_excerpt": "@@ -177,10 +177,14 @@ async fn responses_lite_compact_request_uses_lite_transport_contract() -> Result\n     let compact_mock =\n         responses::mount_compact_json_once(&server, serde_json::json!({ \"output\": [] })).await;\n \n-    let mut builder = test_codex().with_model_info_override(\"gpt-5.4\", |model_info| {\n-        model_info.use_responses_lite = true;\n-        model_info.supports_parallel_tool_calls = true;\n-    });\n+    let mut builder = test_codex()\n+        .with_model_info_override(\"gpt-5.4\", |model_info| {\n+            model_info.use_responses_lite = true;\n+            model_info.supports_parallel_tool_calls = true;\n+        })\n+        .with_config(|config| {\n+            let _ = config.features.disable(Feature::RemoteCompactionV2);\n+        });\n     let test = builder.build(&server).await?;\n \n     test.submit_turn(\"Compact this conversation\").await?;",
+      "path": "codex-rs/core/tests/suite/responses_lite.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -1249,8 +1249,8 @@ pub const FEATURES: &[FeatureSpec] = &[\n     FeatureSpec {\n         id: Feature::RemoteCompactionV2,\n         key: \"remote_compaction_v2\",\n-        stage: Stage::UnderDevelopment,\n-        default_enabled: false,\n+        stage: Stage::Stable,\n+        default_enabled: true,\n     },\n     FeatureSpec {\n         id: Feature::WorkspaceDependencies,",
+      "path": "codex-rs/features/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 10,
+      "patch_excerpt": "@@ -150,16 +150,6 @@ fn request_permissions_tool_is_under_development() {\n     assert_eq!(Feature::RequestPermissionsTool.default_enabled(), false);\n }\n \n-#[test]\n-fn remote_compaction_v2_is_under_development() {\n-    assert_eq!(Feature::RemoteCompactionV2.stage(), Stage::UnderDevelopment);\n-    assert_eq!(Feature::RemoteCompactionV2.default_enabled(), false);\n-    assert_eq!(\n-        feature_for_key(\"remote_compaction_v2\"),\n-        Some(Feature::RemoteCompactionV2)\n-    );\n-}\n-\n #[test]\n fn terminal_resize_reflow_is_experimental_and_enabled_by_default() {\n     assert_eq!(",
+      "path": "codex-rs/features/src/tests.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nRemote compaction v2 is ready to become the default for providers that already support remote compaction. Leaving it behind an under-development opt-in keeps eligible sessions on the legacy remote-compaction path.\n\nThis does not broaden provider eligibility: OpenAI and Azure move to v2, while Bedrock and OSS providers retain their existing local-compaction behavior.\n\n## What changed\n\n- Mark `remote_compaction_v2` stable and enable it by default.\n- Make tests that intentionally cover legacy remote compaction explicitly disable v2.\n- Update parity coverage so v2 exercises the production default and only legacy mode opts out.\n\n## Verification\n\n- `just test -p codex-core auto_compact_runs_after_resume_when_token_usage_is_over_limit auto_compact_counts_encrypted_reasoning_before_last_user auto_compact_runs_when_reasoning_header_clears_between_turns responses_lite_compact_request_uses_lite_transport_contract`\n",
+    "labels": [],
+    "merged_at": "2026-06-11T10:07:20Z",
+    "number": 27573,
+    "state": "merged",
+    "title": "core: enable remote compaction v2 by default",
+    "url": "https://github.com/openai/codex/pull/27573"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
