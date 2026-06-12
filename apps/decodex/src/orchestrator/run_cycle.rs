@@ -2266,12 +2266,13 @@ where
 	else {
 		return Ok(None);
 	};
-	let retry_budget_base =
-		context.preferred_retry_budget_base.unwrap_or(0).max(retry_budget_base_for_issue_worktree(
-			context.state_store,
-			&issue.id,
-			&planned_worktree.path,
-		)?);
+	let retry_budget_base = retry_budget_base_for_dispatch_mode(
+		context.state_store,
+		&issue.id,
+		&planned_worktree.path,
+		context.dispatch_mode,
+		context.preferred_retry_budget_base,
+	)?;
 	let lease_issue_id = issue.id.clone();
 	let issue_state = planned_issue_state_for_dispatch(
 		context.workflow,

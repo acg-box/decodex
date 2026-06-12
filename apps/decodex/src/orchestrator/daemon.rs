@@ -757,8 +757,13 @@ fn materialize_daemon_spawn_state(
 	summary: &RunSummary,
 ) -> Result<MaterializedDaemonSpawnState> {
 	let worktree = materialize_run_summary_worktree(project, workflow, summary)?;
-	let retry_budget_base =
-		retry_budget_base_for_issue_worktree(state_store, &summary.issue_id, &worktree.path)?;
+	let retry_budget_base = retry_budget_base_for_dispatch_mode(
+		state_store,
+		&summary.issue_id,
+		&worktree.path,
+		summary.dispatch_mode,
+		None,
+	)?;
 
 	Ok(MaterializedDaemonSpawnState { worktree, retry_budget_base })
 }
