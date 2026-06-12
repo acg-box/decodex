@@ -1,0 +1,78 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-11T11:37:52Z",
+      "message": "feat: renderer",
+      "sha": "0dd59d361fb64e7cad0641619eae8047f893a8d8",
+      "url": "https://github.com/openai/codex/commit/0dd59d361fb64e7cad0641619eae8047f893a8d8"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "SKILL_NAME",
+    "SKILL_DESCRIPTION",
+    "SKILL_RESOURCE_URI",
+    "SKILL_DESCRIPTION_TRUNCATED_WARNING",
+    "SKILL_DESCRIPTION_TRUNCATED_WARNING_WITH_PERCENT",
+    "SKILL_DESCRIPTIONS_REMOVED_WARNING_PREFIX",
+    "SKILLS_INTRO_WITH_ABSOLUTE_PATHS",
+    "SKILL",
+    "SKILLS_INTRO_WITH_ALIASES",
+    "SKILLS_HOW_TO_USE_WITH_ABSOLUTE_PATHS",
+    "EOF",
+    "MAX_AVAILABLE_SKILLS_BYTES",
+    "MAX_MAIN_PROMPT_BYTES",
+    "SKILLS_INSTRUCTIONS_OPEN_TAG"
+  ],
+  "files": [
+    {
+      "additions": 8,
+      "deletions": 1,
+      "patch_excerpt": "@@ -217,7 +217,9 @@ async fn orchestrator_skill_can_read_referenced_resource_without_an_executor() -\n     assert!(first_request.tool_by_name(\"skills\", \"search\").is_none());\n \n     let developer_messages = first_request.message_input_texts(\"developer\");\n-    let catalog_line = format!(\"- {SKILL_NAME}: {SKILL_DESCRIPTION} (file: {SKILL_RESOURCE_URI})\");\n+    let catalog_line = format!(\n+        \"- {SKILL_NAME}: {SKILL_DESCRIPTION} (orchestrator resource: {SKILL_RESOURCE_URI})\"\n+    );\n     assert_eq!(\n         1,\n         developer_messages\n@@ -230,6 +232,11 @@ async fn orchestrator_skill_can_read_referenced_resource_without_an_executor() -\n             .iter()\n             .all(|text| !text.contains(\"ignored-plugin:ignored\"))\n     );\n+    assert!(\n+        developer_messages\n+            .iter()\n+            .any(|text| text.contains(\"do not treat `skill://` identifiers as filesystem path...",
+      "path": "codex-rs/app-server/tests/suite/v2/mcp_resource.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 8,
+      "patch_excerpt": "@@ -22,17 +22,17 @@ pub const SKILL_DESCRIPTION_TRUNCATED_WARNING: &str = \"Skill descriptions were s\n pub const SKILL_DESCRIPTION_TRUNCATED_WARNING_WITH_PERCENT: &str = \"Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.\";\n pub const SKILL_DESCRIPTIONS_REMOVED_WARNING_PREFIX: &str =\n     \"Exceeded skills context budget. All skill descriptions were removed and\";\n-pub const SKILLS_INTRO_WITH_ABSOLUTE_PATHS: &str = \"A skill is a set of local instructions to follow that is stored in a `SKILL.md` file. Below is the list of skills that can be used. Each entry includes a name, description, and file path so you can open the source for full instructions when using a specific skill.\";\n+pub const SKILLS_INTRO_WITH_ABSOLUTE_PATHS: &str = \"A skill i...",
+      "path": "codex-rs/core-skills/src/render.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 4,
+      "patch_excerpt": "@@ -2,6 +2,8 @@ use codex_core::context::AvailableSkillsInstructions;\n use codex_utils_string::take_bytes_at_char_boundary;\n \n use crate::catalog::SkillCatalog;\n+use crate::catalog::SkillCatalogEntry;\n+use crate::catalog::SkillSourceKind;\n \n const MAX_AVAILABLE_SKILLS_BYTES: usize = 8_000;\n const MAX_MAIN_PROMPT_BYTES: usize = 8_000;\n@@ -24,7 +26,7 @@ pub(crate) fn available_skills_fragment(\n             .short_description\n             .as_deref()\n             .unwrap_or(entry.description.as_str());\n-        let line = render_skill_line(entry.name.as_str(), description, entry.rendered_path());\n+        let line = render_skill_line(entry, description);\n         let next_bytes = total_bytes.saturating_add(line.len());\n         if next_bytes > MAX_AVAILABLE_SKILLS_BYTES {\n             omitted = omitted.saturating_add(1);\n@@ -47,11 +49,19 @@ pub(crate) fn available_skills_fragment(\n     Some...",
+      "path": "codex-rs/ext/skills/src/render.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -120,6 +120,11 @@ async fn installed_extension_loads_host_skills_from_legacy_roots() -> TestResult\n     assert_eq!(\"developer\", fragments[0].role());\n     assert!(fragments[0].render().contains(\"demo\"));\n     assert!(fragments[0].render().contains(&skill_prompt_path));\n+    assert!(\n+        fragments[0]\n+            .render()\n+            .contains(&format!(\"(file: {skill_prompt_path})\"))\n+    );\n     assert_eq!(\"user\", fragments[1].role());\n     assert!(fragments[1].render().contains(\"<name>demo</name>\"));\n     assert!(fragments[1].render().contains(\"# Demo\"));\n@@ -187,6 +192,11 @@ async fn selected_executor_catalog_is_context_and_selected_entrypoint_is_turn_in\n             .starts_with(SKILLS_INSTRUCTIONS_OPEN_TAG)\n     );\n     assert!(prompt_fragments[0].text().contains(\"lint-fix\"));\n+    assert!(\n+        prompt_fragments[0]\n+            .text()\n+            .contains(\"(environme...",
+      "path": "codex-rs/ext/skills/tests/skills_extension.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27388"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nHosted skills introduced by #27388 use opaque `skill://` resource identifiers, but the skills catalog rendered every locator as a `file` and told the model that every skill body lived on disk. That can send the model toward filesystem tools for a resource that must instead be read through its owning authority.\n\nThe catalog should describe how each source is accessed without changing the underlying discovery or invocation behavior.\n\n## What changed\n\n- Render host skills as `file`, executor-owned skills as `environment resource`, orchestrator-owned skills as `orchestrator resource`, and custom-provider skills as `custom resource`.\n- Update the shared no-alias guidance to describe source locators rather than assuming every skill is stored on the host filesystem.\n- Direct orchestrator resources through `skills.list` and `skills.read`, and explicitly tell the model not to treat `skill://` identifiers as filesystem paths.\n- Preserve the existing filesystem and alias behavior for local skills.\n\n## Scope\n\nThis PR changes only model-visible catalog rendering and guidance. It does not change skill discovery, selection, prompt injection, provider routing, catalog caching or refresh behavior, resource validation, or the `skills.*` tool contract.\n\n## Verification\n\n- Extended skills-extension coverage for host-file and executor-resource labels.\n- Extended the no-executor app-server flow to assert orchestrator-resource wording and non-filesystem guidance.\n",
+    "labels": [],
+    "merged_at": "2026-06-11T11:51:04Z",
+    "number": 27591,
+    "state": "merged",
+    "title": "skills: render catalog locators by authority",
+    "url": "https://github.com/openai/codex/pull/27591"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
