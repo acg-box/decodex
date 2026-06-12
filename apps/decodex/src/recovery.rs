@@ -1657,6 +1657,12 @@ fn validate_adopt_landing_state(landing_state: &PullRequestLandingState) -> Resu
 	if pull_request::manual_landing_gates_satisfied(gate_view) {
 		return Ok(());
 	}
+	if gate_view.state != "OPEN" {
+		eyre::bail!("Pull request `{pr_url}` is `{}`; adopt requires `OPEN`.", gate_view.state);
+	}
+	if gate_view.is_draft {
+		eyre::bail!("Pull request `{pr_url}` is still draft.");
+	}
 	if gate_view.pending_review_requests > 0 {
 		eyre::bail!(
 			"Pull request `{pr_url}` still has {} pending review request(s).",
@@ -1745,12 +1751,17 @@ fn validate_adopt_current_worktree(
 		);
 	}
 
-	if let Some(mapping) = existing_worktree_mapping {
-		validate_adopt_existing_worktree_mapping(context, issue, mapping, &canonical_worktree)?;
-	}
-
 	let local_branch = worktree_checkout_branch_name(&canonical_worktree)?
 		.ok_or_else(|| eyre::eyre!("Manual takeover worktree is detached."))?;
+
+	if let Some(mapping) = existing_worktree_mapping {
+		validate_adopt_existing_worktree_mapping(
+			context.config.service_id(),
+			issue,
+			mapping,
+			&canonical_worktree,
+		)?;
+	}
 
 	if local_branch != landing_state.head_ref_name {
 		eyre::bail!(
@@ -1781,17 +1792,17 @@ fn validate_adopt_current_worktree(
 }
 
 fn validate_adopt_existing_worktree_mapping(
-	context: &RecoveryContext,
+	service_id: &str,
 	issue: &TrackerIssue,
 	mapping: &WorktreeMapping,
 	canonical_worktree: &Path,
 ) -> Result<()> {
-	if mapping.project_id() != context.config.service_id() {
+	if mapping.project_id() != service_id {
 		eyre::bail!(
 			"Issue `{}` already has a retained worktree mapping for project `{}`, not `{}`.",
 			issue.identifier,
 			mapping.project_id(),
-			context.config.service_id()
+			service_id
 		);
 	}
 
@@ -2776,6 +2787,106 @@ Test workflow.
 			.expect_err("manual takeover must not adopt pending checks");
 
 		assert!(error.to_string().contains("still waiting on checks"));
+	}
+
+	#[test]
+	fn adopt_landing_state_rejects_closed_or_draft_prs() {
+		let mut closed = sample_landing_state(
+			"https://github.com/hack-ink/decodex/pull/344",
+			"xy/xy-944-manual-takeover-adopt",
+			"1123456789abcdef0123456789abcdef01234567",
+		);
+
+		closed.state = String::from("CLOSED");
+
+		let error = super::validate_adopt_landing_state(&closed)
+			.expect_err("manual takeover must reject closed PRs");
+
+		assert!(error.to_string().contains("adopt requires `OPEN`"));
+
+		let mut draft = sample_landing_state(
+			"https://github.com/hack-ink/decodex/pull/344",
+			"xy/xy-944-manual-takeover-adopt",
+			"1123456789abcdef0123456789abcdef01234567",
+		);
+
+		draft.is_draft = true;
+
+		let error = super::validate_adopt_landing_state(&draft)
+			.expect_err("manual takeover must reject draft PRs");
+
+		assert!(error.to_string().contains("is still draft"));
+	}
+
+	#[test]
+	fn adopt_landing_state_rejects_failed_required_checks() {
+		let mut landing_state = sample_landing_state(
+			"https://github.com/hack-ink/decodex/pull/344",
+			"xy/xy-944-manual-takeover-adopt",
+			"1123456789abcdef0123456789abcdef01234567",
+		);
+
+		landing_state.status_check_rollup_state = Some(String::from("FAILURE"));
+		landing_state.merge_state_status = String::from("BLOCKED");
+
+		let error = super::validate_adopt_landing_state(&landing_state)
+			.expect_err("manual takeover must reject failed required checks");
+
+		assert!(error.to_string().contains("failed required checks"));
+	}
+
+	#[test]
+	fn adopt_existing_worktree_mapping_accepts_same_project_and_path() {
+		let temp_dir = TempDir::new().expect("temp worktree should exist");
+		let branch_name = "x/pubfi-pub-718";
+		let issue = sample_issue("In Progress");
+		let mapping = sample_worktree_at(branch_name, temp_dir.path());
+		let canonical_worktree =
+			fs::canonicalize(temp_dir.path()).expect("temp worktree should canonicalize");
+
+		super::validate_adopt_existing_worktree_mapping(
+			"pubfi",
+			&issue,
+			&mapping,
+			&canonical_worktree,
+		)
+		.expect("matching mapping should be accepted");
+	}
+
+	#[test]
+	fn adopt_existing_worktree_mapping_accepts_stale_branch_for_same_path() {
+		let retained_dir = TempDir::new().expect("retained worktree should exist");
+		let issue = sample_issue("In Progress");
+		let mapping = sample_worktree_at("x/pubfi-pub-718-old", retained_dir.path());
+		let retained_worktree =
+			fs::canonicalize(retained_dir.path()).expect("retained worktree should canonicalize");
+
+		super::validate_adopt_existing_worktree_mapping(
+			"pubfi",
+			&issue,
+			&mapping,
+			&retained_worktree,
+		)
+		.expect("stale mapping branch should be adopted when path matches");
+	}
+
+	#[test]
+	fn adopt_existing_worktree_mapping_rejects_stale_path() {
+		let retained_dir = TempDir::new().expect("retained worktree should exist");
+		let current_dir = TempDir::new().expect("current worktree should exist");
+		let issue = sample_issue("In Progress");
+		let mapping = sample_worktree_at("x/pubfi-pub-718", retained_dir.path());
+		let current_worktree =
+			fs::canonicalize(current_dir.path()).expect("current worktree should canonicalize");
+		let error = super::validate_adopt_existing_worktree_mapping(
+			"pubfi",
+			&issue,
+			&mapping,
+			&current_worktree,
+		)
+		.expect_err("stale mapping path must be rejected");
+
+		assert!(error.to_string().contains("already has a retained worktree mapping at"));
 	}
 
 	#[test]
