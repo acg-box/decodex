@@ -346,7 +346,10 @@ pub(crate) fn run_diagnose(request: DiagnoseRequest<'_>) -> Result<()> {
 		},
 	}?;
 
-	refresh_operator_project_summary(&mut snapshot);
+	refresh_operator_project_summary(
+		&mut snapshot,
+		Some(workflow.frontmatter().tracker().resolved_completed_state()),
+	);
 
 	let results = write_agent_evidence_snapshot(
 		&snapshot,
@@ -598,7 +601,7 @@ fn project_status_snapshot_from_operator_cache(
 	project_snapshot.warnings = project_warnings_from_details(&project_snapshot.warning_details);
 
 	truncate_status_snapshot_to_limit(&mut project_snapshot, limit);
-	refresh_operator_project_summary(&mut project_snapshot);
+	refresh_operator_project_summary(&mut project_snapshot, None);
 
 	Ok(project_snapshot)
 }
@@ -613,7 +616,7 @@ fn mark_cached_status_snapshot(
 	snapshot.snapshot_age_seconds = Some(snapshot_age_seconds);
 
 	truncate_status_snapshot_to_limit(snapshot, limit);
-	refresh_operator_project_summary(snapshot);
+	refresh_operator_project_summary(snapshot, None);
 }
 
 fn truncate_status_snapshot_to_limit(snapshot: &mut OperatorStatusSnapshot, limit: usize) {
@@ -741,7 +744,10 @@ fn build_live_status_command_snapshot(
 		add_operator_snapshot_warning(&mut snapshot, &warning);
 	}
 
-	refresh_operator_project_summary(&mut snapshot);
+	refresh_operator_project_summary(
+		&mut snapshot,
+		Some(workflow.frontmatter().tracker().resolved_completed_state()),
+	);
 
 	if !snapshot
 		.connector_backoffs
@@ -959,7 +965,7 @@ fn build_operator_status_snapshot_for_tracker_backoff(
 
 	add_operator_snapshot_warning(&mut snapshot, "external_observer_status_skipped");
 	apply_terminal_history_ledger_outcomes(&mut snapshot);
-	refresh_operator_project_summary(&mut snapshot);
+	refresh_operator_project_summary(&mut snapshot, None);
 
 	Ok(snapshot)
 }
@@ -1638,7 +1644,10 @@ fn build_operator_state_snapshot_without_live_observers(
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
 	);
-	refresh_operator_project_summary(&mut snapshot);
+	refresh_operator_project_summary(
+		&mut snapshot,
+		Some(workflow.frontmatter().tracker().resolved_completed_state()),
+	);
 
 	Ok(snapshot)
 }

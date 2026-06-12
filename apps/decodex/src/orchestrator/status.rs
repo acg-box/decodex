@@ -262,6 +262,9 @@ struct OperatorIssueDisplayMetadata {
 	issue_identifier: String,
 	title: Option<String>,
 	author: Option<String>,
+	issue_state: Option<String>,
+	active_label_present: Option<bool>,
+	needs_attention_label_present: Option<bool>,
 }
 
 struct WorktreeOwnership {
@@ -373,7 +376,7 @@ fn build_operator_status_snapshot_with_account_mode(
 	};
 
 	refresh_worktree_ownership(&mut snapshot, None);
-	refresh_operator_project_summary(&mut snapshot);
+	refresh_operator_project_summary(&mut snapshot, None);
 
 	Ok(snapshot)
 }
@@ -658,7 +661,10 @@ where
 		&mut snapshot,
 		Some(workflow.frontmatter().tracker().resolved_completed_state()),
 	);
-	refresh_operator_project_summary(&mut snapshot);
+	refresh_operator_project_summary(
+		&mut snapshot,
+		Some(workflow.frontmatter().tracker().resolved_completed_state()),
+	);
 
 	Ok(snapshot)
 }
@@ -797,6 +803,7 @@ where
 			hydrate_operator_run_rows_from_tracker(
 				context.tracker,
 				context.project,
+				context.workflow,
 				snapshot,
 				context.run_issue_metadata_hydration,
 			),
@@ -1348,7 +1355,10 @@ fn legacy_cleanup_next_action(worktree: &OperatorWorktreeStatus) -> String {
 	)
 }
 
-fn refresh_operator_project_summary(snapshot: &mut OperatorStatusSnapshot) {
+fn refresh_operator_project_summary(
+	snapshot: &mut OperatorStatusSnapshot,
+	completed_state: Option<&str>,
+) {
 	let active_run_count = snapshot.active_runs.len();
 	let running_lane_count =
 		snapshot.active_runs.iter().filter(|run| operator_run_counts_as_running(run)).count();
@@ -1360,7 +1370,7 @@ fn refresh_operator_project_summary(snapshot: &mut OperatorStatusSnapshot) {
 	let post_review_lane_count = snapshot.post_review_lanes.len();
 	let retained_worktree_count = rendered_recovery_worktrees(snapshot).len();
 	let waiting_lane_count = project_waiting_lane_count(snapshot);
-	let attention_count = project_attention_count(snapshot);
+	let attention_count = project_attention_count(snapshot, completed_state);
 	let cleanup_blocked_count = project_cleanup_blocked_count(snapshot);
 	let cleanup_pending_count = project_cleanup_pending_count(snapshot);
 	let connector_state = project_connector_state(snapshot);
@@ -1420,7 +1430,10 @@ fn queued_candidate_counts_as_waiting_intake(candidate: &OperatorQueuedIssueStat
 	!matches!(candidate.classification.as_str(), "claimed" | "closed")
 }
 
-fn project_attention_count(snapshot: &OperatorStatusSnapshot) -> usize {
+fn project_attention_count(
+	snapshot: &OperatorStatusSnapshot,
+	completed_state: Option<&str>,
+) -> usize {
 	let mut attention_keys = HashSet::new();
 
 	for run in snapshot
@@ -1455,12 +1468,62 @@ fn project_attention_count(snapshot: &OperatorStatusSnapshot) -> usize {
 	for lane in snapshot
 		.history_lanes
 		.iter()
-		.filter(|lane| history_ledger_outcome_requires_attention(&lane.ledger_outcome))
+		.filter(|lane| history_lane_has_unresolved_attention(snapshot, lane, completed_state))
 	{
 		attention_keys.insert(history_lane_group_key(lane));
 	}
 
 	attention_keys.len()
+}
+
+fn history_lane_has_unresolved_attention(
+	snapshot: &OperatorStatusSnapshot,
+	lane: &OperatorHistoryLaneStatus,
+	completed_state: Option<&str>,
+) -> bool {
+	if !history_ledger_outcome_requires_attention(&lane.ledger_outcome) {
+		return false;
+	}
+
+	!history_lane_attention_is_resolved_tracker_echo(snapshot, lane, completed_state)
+}
+
+fn history_lane_attention_is_resolved_tracker_echo(
+	snapshot: &OperatorStatusSnapshot,
+	lane: &OperatorHistoryLaneStatus,
+	completed_state: Option<&str>,
+) -> bool {
+	let Some(completed_state) = completed_state else {
+		return false;
+	};
+
+	if lane.issue_state.as_deref() != Some(completed_state) {
+		return false;
+	}
+	if lane.active_label_present != Some(false)
+		|| lane.needs_attention_label_present != Some(false)
+	{
+		return false;
+	}
+
+	let issue_key = history_lane_group_key(lane);
+
+	!snapshot.worktrees.iter().any(|worktree| {
+		operator_issue_attention_key(&worktree.issue_id, worktree.issue_identifier.as_deref())
+			== issue_key
+	}) && !snapshot.post_review_lanes.iter().any(|post_review_lane| {
+		operator_issue_attention_key(
+			&post_review_lane.issue_id,
+			Some(&post_review_lane.issue_identifier),
+		) == issue_key
+	}) && !snapshot.queued_candidates.iter().any(|candidate| {
+		if candidate.classification == "closed" && candidate.attention.is_none() {
+			return false;
+		}
+
+		operator_issue_attention_key(&candidate.issue_id, Some(&candidate.issue_identifier))
+			== issue_key
+	})
 }
 
 fn operator_issue_attention_key(issue_id: &str, issue_identifier: Option<&str>) -> String {
@@ -1925,6 +1988,7 @@ fn codex_account_activity_summaries(
 fn hydrate_operator_run_rows_from_tracker<T>(
 	tracker: &T,
 	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
 	snapshot: &mut OperatorStatusSnapshot,
 	hydration: RunIssueMetadataHydration,
 ) -> TrackerObserverOutcome
@@ -1939,15 +2003,24 @@ where
 
 	match tracker.refresh_issues(&issue_ids) {
 		Ok(issues) => {
+			let active_label = crate::tracker::automation_active_label(project.service_id());
+			let needs_attention_label =
+				workflow.frontmatter().tracker().needs_attention_label().to_owned();
 			let metadata_by_issue_id = issues
 				.into_iter()
 				.map(|issue| {
+					let active_label_present = issue.has_label(&active_label);
+					let needs_attention_label_present = issue.has_label(&needs_attention_label);
+
 					(
 						issue.id,
 						OperatorIssueDisplayMetadata {
 							issue_identifier: issue.identifier,
 							title: Some(issue.title),
 							author: issue.author,
+							issue_state: Some(issue.state.name),
+							active_label_present: Some(active_label_present),
+							needs_attention_label_present: Some(needs_attention_label_present),
 						},
 					)
 				})
@@ -2060,6 +2133,19 @@ fn apply_history_lane_issue_metadata(
 	}
 	if let Some(author) = metadata.author.as_ref().filter(|author| !author.trim().is_empty()) {
 		lane.author = Some(author.clone());
+	}
+	if let Some(issue_state) = metadata
+		.issue_state
+		.as_ref()
+		.filter(|issue_state| !issue_state.trim().is_empty())
+	{
+		lane.issue_state = Some(issue_state.clone());
+	}
+	if let Some(active_label_present) = metadata.active_label_present {
+		lane.active_label_present = Some(active_label_present);
+	}
+	if let Some(needs_attention_label_present) = metadata.needs_attention_label_present {
+		lane.needs_attention_label_present = Some(needs_attention_label_present);
 	}
 }
 
@@ -2190,6 +2276,9 @@ fn hydrate_history_lane_from_ledger_records(
 		issue_identifier: record.record.issue_identifier.clone(),
 		title: None,
 		author: None,
+		issue_state: None,
+		active_label_present: None,
+		needs_attention_label_present: None,
 	};
 
 	fill_missing_history_lane_issue_metadata(lane, &metadata);
@@ -7062,6 +7151,9 @@ fn operator_history_lanes(
 			issue_identifier: run.issue_identifier.clone(),
 			title: run.title.clone(),
 			author: run.author.clone(),
+			issue_state: None,
+			active_label_present: None,
+			needs_attention_label_present: None,
 			issue_key: operator_run_issue_key(run),
 			attempt_count: 1,
 			ledger_outcome: not_loaded_history_ledger_outcome(),
