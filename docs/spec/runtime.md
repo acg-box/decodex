@@ -778,6 +778,12 @@ After a process restart, recent-run history, active lease ownership, retained po
   parse `history_lanes` to discover a human-required terminal outcome. A bare terminal
   Run Ledger attention row with no current owner is history-only ledger evidence; it
   must remain visible in `history_lanes` without inflating current project attention.
+  When a non-attention post-review lane currently owns the same issue, such as
+  `wait_for_review` or `ready_to_land`, that post-review owner controls the current
+  project attention result; any stale active label or retained worktree echo from the
+  older terminal ledger must not promote the old Run Ledger outcome back into
+  `attention_count`. A real `needs_attention_label`, blocked queued row, or blocked
+  post-review classification still counts as current attention.
 - If that same issue still carries the service queue label plus the configured
   `needs_attention_label`, the terminal Run Ledger attention outcome must own the
   operator projection. Status must not also render the issue as an intake queue
