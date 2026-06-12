@@ -185,6 +185,7 @@ struct AdoptValidation {
 	worktree_path_for_event: Option<String>,
 	active_label_present: bool,
 	success_state_transition: Option<RebindSuccessStateTransition>,
+	previous_worktree_mapping: Option<WorktreeMapping>,
 }
 
 struct LegacyCloseoutValidation {
@@ -935,8 +936,9 @@ fn rebind_required_diagnostic(
 
 fn missing_handoff_next_action(service_id: &str, issue_identifier: &str) -> String {
 	format!(
-		"Inspect PR lineage, ensure label `{}` is present, then run `decodex recover review-handoff rebind {} --pr <URL>` if the PR exactly matches this retained lane.",
+		"Inspect PR lineage and ensure label `{}` is present. Use `decodex recover review-handoff rebind {} --pr <URL>` for a retained lane PR, or `decodex recover review-handoff adopt {} --pr <URL>` from the managed worktree for a human-owned PR takeover.",
 		tracker::automation_active_label(service_id),
+		issue_identifier,
 		issue_identifier
 	)
 }
@@ -1076,27 +1078,29 @@ fn validate_adopt_request(
 	let issue = load_issue_by_identifier(&context.tracker, &request.issue)?;
 	let label_validation = validate_adopt_issue_context(context, &issue)?;
 	let landing_state = inspect_rebind_pull_request(context, &request.pr_url)?;
+	let existing_worktree_mapping = context.state_store.worktree_for_issue(&issue.id)?;
 
 	validate_adopt_landing_state(&landing_state)?;
 
 	let cwd = env::current_dir()?;
-	let worktree_path = validate_adopt_current_worktree(context, &issue, &landing_state, &cwd)?;
+	let worktree_path = validate_adopt_current_worktree(
+		context,
+		&issue,
+		&landing_state,
+		&cwd,
+		existing_worktree_mapping.as_ref(),
+	)?;
 	let branch_name = worktree_checkout_branch_name(&worktree_path)?
 		.ok_or_else(|| eyre::eyre!("Manual takeover worktree is detached."))?;
 	let local_head_oid = worktree_head_oid(&worktree_path)?
 		.ok_or_else(|| eyre::eyre!("Manual takeover worktree has no readable HEAD."))?;
-	let existing_handoff = context.state_store.review_handoff_marker(
-		context.config.service_id(),
-		&issue.id,
-		&branch_name,
-	)?;
 
-	if existing_handoff.is_some() {
-		eyre::bail!(
-			"Issue `{}` already has a retained review handoff marker for branch `{branch_name}`; use `decodex land` or `decodex recover review-handoff rebind` instead.",
-			issue.identifier
-		);
-	}
+	validate_adopt_absent_handoff_marker(
+		context,
+		&issue,
+		&branch_name,
+		existing_worktree_mapping.as_ref(),
+	)?;
 
 	let success_state_transition = validate_adopt_issue_state(context, &issue)?;
 	let attempt_number = context
@@ -1118,6 +1122,7 @@ fn validate_adopt_request(
 		worktree_path_for_event,
 		active_label_present: label_validation.active_label_present,
 		success_state_transition,
+		previous_worktree_mapping: existing_worktree_mapping,
 	})
 }
 
@@ -1719,14 +1724,8 @@ fn validate_adopt_current_worktree(
 	issue: &TrackerIssue,
 	landing_state: &PullRequestLandingState,
 	cwd: &Path,
+	existing_worktree_mapping: Option<&WorktreeMapping>,
 ) -> Result<PathBuf> {
-	if context.state_store.worktree_for_issue(&issue.id)?.is_some() {
-		eyre::bail!(
-			"Issue `{}` already has a retained worktree mapping; use review-handoff rebind instead of manual takeover adopt.",
-			issue.identifier
-		);
-	}
-
 	let worktree_path = git_toplevel_path(cwd)?;
 	let canonical_worktree = fs::canonicalize(&worktree_path).wrap_err_with(|| {
 		format!("Failed to canonicalize current worktree `{}`.", worktree_path.display())
@@ -1744,6 +1743,10 @@ fn validate_adopt_current_worktree(
 			issue.identifier,
 			context.config.worktree_root().display()
 		);
+	}
+
+	if let Some(mapping) = existing_worktree_mapping {
+		validate_adopt_existing_worktree_mapping(context, issue, mapping, &canonical_worktree)?;
 	}
 
 	let local_branch = worktree_checkout_branch_name(&canonical_worktree)?
@@ -1775,6 +1778,71 @@ fn validate_adopt_current_worktree(
 	}
 
 	Ok(canonical_worktree)
+}
+
+fn validate_adopt_existing_worktree_mapping(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+	mapping: &WorktreeMapping,
+	canonical_worktree: &Path,
+) -> Result<()> {
+	if mapping.project_id() != context.config.service_id() {
+		eyre::bail!(
+			"Issue `{}` already has a retained worktree mapping for project `{}`, not `{}`.",
+			issue.identifier,
+			mapping.project_id(),
+			context.config.service_id()
+		);
+	}
+
+	let canonical_mapping = fs::canonicalize(mapping.worktree_path()).wrap_err_with(|| {
+		format!(
+			"Failed to canonicalize retained worktree mapping `{}` for issue `{}`.",
+			mapping.worktree_path().display(),
+			issue.identifier
+		)
+	})?;
+
+	if canonical_mapping != canonical_worktree {
+		eyre::bail!(
+			"Issue `{}` already has a retained worktree mapping at `{}`, but manual takeover adopt is running from `{}`.",
+			issue.identifier,
+			mapping.worktree_path().display(),
+			canonical_worktree.display()
+		);
+	}
+
+	Ok(())
+}
+
+fn validate_adopt_absent_handoff_marker(
+	context: &RecoveryContext,
+	issue: &TrackerIssue,
+	branch_name: &str,
+	existing_worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<()> {
+	let mut branches = vec![branch_name.to_owned()];
+
+	if let Some(mapping) = existing_worktree_mapping
+		&& mapping.branch_name() != branch_name
+	{
+		branches.push(mapping.branch_name().to_owned());
+	}
+
+	for branch in branches {
+		if context
+			.state_store
+			.review_handoff_marker(context.config.service_id(), &issue.id, &branch)?
+			.is_some()
+		{
+			eyre::bail!(
+				"Issue `{}` already has a retained review handoff marker for branch `{branch}`; use `decodex land` or `decodex recover review-handoff rebind` instead.",
+				issue.identifier
+			);
+		}
+	}
+
+	Ok(())
 }
 
 fn apply_review_handoff_rebind(
@@ -1915,7 +1983,8 @@ fn apply_review_handoff_adopt(
 			&handoff_marker,
 			&orchestration_marker,
 		)?;
-		context.state_store.clear_worktree(&validation.issue.id)?;
+
+		rollback_adopt_worktree_mapping(context, validation)?;
 
 		return Err(error);
 	}
@@ -1930,7 +1999,8 @@ fn apply_review_handoff_adopt(
 			&handoff_marker,
 			&orchestration_marker,
 		)?;
-		context.state_store.clear_worktree(&validation.issue.id)?;
+
+		rollback_adopt_worktree_mapping(context, validation)?;
 
 		return Err(error);
 	}
@@ -1939,6 +2009,24 @@ fn apply_review_handoff_adopt(
 	}
 
 	Ok(())
+}
+
+fn rollback_adopt_worktree_mapping(
+	context: &RecoveryContext,
+	validation: &AdoptValidation,
+) -> Result<()> {
+	if let Some(mapping) = validation.previous_worktree_mapping.as_ref() {
+		let worktree_path = mapping.worktree_path().to_string_lossy();
+
+		return context.state_store.upsert_worktree(
+			mapping.project_id(),
+			mapping.issue_id(),
+			mapping.branch_name(),
+			&worktree_path,
+		);
+	}
+
+	context.state_store.clear_worktree(&validation.issue.id)
 }
 
 fn mark_adopt_attempt_failed(context: &RecoveryContext, validation: &AdoptValidation) {
@@ -2040,7 +2128,10 @@ fn review_handoff_adopt_event(
 		format!("pr_head_sha={}", validation.local_head_oid),
 		format!("active_label_present={}", validation.active_label_present),
 		String::from("manual_takeover_adopt=true"),
-		String::from("existing_retained_worktree_mapping=false"),
+		format!(
+			"existing_retained_worktree_mapping={}",
+			validation.previous_worktree_mapping.is_some()
+		),
 		String::from("existing_review_handoff_marker=false"),
 	]);
 	event.next_action = Some(String::from("continue retained post-review lifecycle"));

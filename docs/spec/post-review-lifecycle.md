@@ -109,8 +109,11 @@ success path.
   already in `tracker.success_state`, require a clean current checkout, require the
   current branch and `HEAD` to match the PR head branch and SHA, and require the PR to
   be open, non-draft, mergeable, green, free of pending review requests, and free of
-  unresolved review threads. It must reject issues that already have retained worktree
-  mappings or review handoff markers; those belong to `rebind` or normal landing.
+  unresolved review threads. It may reuse an existing worktree mapping only when that
+  mapping points at the current managed checkout; it must reject mappings to a different
+  checkout and must reject any existing review handoff marker for the current or
+  previously mapped branch. Those already-bound marker lanes belong to `rebind` or
+  normal landing.
 - `rebind` is mutating and requires an explicit issue identifier plus PR URL. It must
   validate the configured project, tracker issue state, active automation ownership,
   retained worktree branch, clean worktree, PR repository, PR base, PR head branch, PR
