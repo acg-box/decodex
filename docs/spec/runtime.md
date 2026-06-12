@@ -759,6 +759,12 @@ After a process restart, recent-run history, active lease ownership, retained po
 - While the control plane is running an active lane, that child must keep the workflow snapshot it started with; project `WORKFLOW.md` reloads affect later decisions without restarting the in-flight child.
 - While the control plane is supervising an active child process, stall detection must consult the child-updated `.decodex-run-activity` marker for the current `run_id` plus `attempt_number` and the persisted runtime event journal. A retained marker only proves a live process when its PID is still alive on the current host boot and the process start identity still matches; after power loss, reboot, or same-boot PID reuse, recovery must clear the reconstructed lease and re-enter the retained lane through retry-style dispatch instead of preserving the old running state.
 - Retry-style recovery prompts must tell the next agent to treat the current worktree, tracker state, runtime-store records, and protocol events as durable truth, use marker files only as diagnostic liveness breadcrumbs, inspect the branch/diff/recent validation evidence first, and continue from partial work rather than assuming prior in-memory model/tool state survived.
+- Retained retry-budget markers belong only to the same automatic recovery episode:
+  retry, review-repair, closeout, and other retry-style dispatch may inherit the
+  marker so crash/restart recovery does not mint extra attempts. Normal queued intake
+  starts a new automatic episode after a human has made the issue eligible again, so it
+  must not inherit an old retained marker's exhausted retry budget unless a caller
+  supplied an explicit preferred retry-budget base for that new run.
 - While the control plane owns a queued retry entry, that queued claim must take priority over normal candidate selection for the affected project.
 - While the control plane evaluates persisted Execution Programs, program-owned ready
   nodes may receive `decodex:queued:<service-id>` only when their mapped Linear issue
