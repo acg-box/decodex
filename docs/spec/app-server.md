@@ -74,6 +74,10 @@ required goal methods work.
 
 Goal events are phase signals only. A `complete` goal status triggers Decodex-owned
 validation or handoff policy; it never satisfies terminal issue completion by itself.
+For implementation and repair phases, agents must complete the active phase goal
+when the local validation-ready objective is satisfied. Progress checkpoints and final
+text such as "await next phase" remain evidence only; Decodex advances to repo-gate
+validation and the next phase only from the explicit goal-complete signal.
 
 To validate an upstream app-server protocol change:
 
