@@ -515,6 +515,15 @@ idempotency fields are defined by
 ### Failure writeback
 
 This path applies to retryable failures, retry exhaustion, and explicit `manual_attention` exits.
+Before writing a retry comment, transitioning an issue, or applying
+`decodex:needs-attention`, Decodex must classify the failure through one writeback
+disposition: generic retryable failure, structured retryable recovery, or
+human-required terminal attention. Structured retryable recovery includes typed runtime
+failures such as startup transport disconnects, turn failures, dynamic-tool failures,
+and retryable repo-gate failures; those failures must not be reclassified as
+zero-evidence startup attention merely because protocol-event persistence lagged.
+Retry scheduling, terminal writeback, and public `error_class`/`next_action` text must
+use that same classification instead of maintaining separate ad hoc failure tables.
 
 Retryable failures with remaining budget:
 

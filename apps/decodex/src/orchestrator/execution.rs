@@ -148,11 +148,6 @@ where
 	codex_account_provider: Option<&'a dyn CodexAccountProvider>,
 }
 
-enum IssueAppServerRunOutcome {
-	Completed(AppServerRunResult),
-	Finalized(RunSummary),
-}
-
 struct RepoGatePhaseGoalController<'a> {
 	project: &'a ServiceConfig,
 	workflow: &'a WorkflowDocument,
@@ -462,6 +457,27 @@ struct ArchitectureRecoveryTerminalEventInput<'a> {
 	recovery_attempt_number: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RunFailureWritebackDisposition {
+	RetryableGeneric,
+	RetryableStructuredRecovery,
+	TerminalAttention,
+}
+impl RunFailureWritebackDisposition {
+	fn requires_terminal_attention(self) -> bool {
+		self == Self::TerminalAttention
+	}
+
+	fn preserves_retry_through_zero_evidence(self) -> bool {
+		self == Self::RetryableStructuredRecovery
+	}
+}
+
+enum IssueAppServerRunOutcome {
+	Completed(AppServerRunResult),
+	Finalized(RunSummary),
+}
+
 enum LoopGuardrailRecoveryDecision {
 	Start(ArchitectureRecoveryStart),
 	HumanRequired(LoopGuardrailStopRequested),
@@ -472,6 +488,53 @@ enum TerminalFailureEventRecordStatus {
 	Recorded,
 	Duplicate,
 	NoLocalStore,
+}
+
+pub(crate) fn run_failure_writeback_disposition(
+	error: &Report,
+) -> RunFailureWritebackDisposition {
+	if error.downcast_ref::<ManualAttentionRequested>().is_some()
+		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
+		|| error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
+		|| error.downcast_ref::<AppServerPhaseGoalFailure>().is_some()
+		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
+		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
+		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
+		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
+		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
+		|| error
+			.downcast_ref::<AppServerTransportFailure>()
+			.is_some_and(|failure| !failure.is_retryable_startup())
+		|| error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some()
+		|| error
+			.downcast_ref::<AppServerTurnFailure>()
+			.is_some_and(AppServerTurnFailure::requires_operator_attention)
+		|| error.downcast_ref::<ReviewPolicyStopRequested>().is_some()
+		|| error
+			.downcast_ref::<RepoGateFailure>()
+			.is_some_and(|repo_gate_failure| {
+				repo_gate_failure.disposition() == RepoGateFailureDisposition::NeedsHumanAttention
+			})
+	{
+		RunFailureWritebackDisposition::TerminalAttention
+	} else if error
+		.downcast_ref::<RepoGateFailure>()
+		.is_some_and(|repo_gate_failure| {
+			matches!(
+				repo_gate_failure.disposition(),
+				RepoGateFailureDisposition::ContinueRepair
+					| RepoGateFailureDisposition::RetryAfterBackoff
+			)
+		}) || error
+		.downcast_ref::<AppServerTransportFailure>()
+		.is_some_and(AppServerTransportFailure::is_retryable_startup)
+		|| error.downcast_ref::<AppServerDynamicToolFailure>().is_some()
+		|| error.downcast_ref::<AppServerTurnFailure>().is_some()
+	{
+		RunFailureWritebackDisposition::RetryableStructuredRecovery
+	} else {
+		RunFailureWritebackDisposition::RetryableGeneric
+	}
 }
 
 fn execute_issue_run<T>(
@@ -2125,10 +2188,11 @@ fn promote_zero_evidence_app_server_start_failure(
 	issue_run: &IssueRunPlan,
 	error: Report,
 ) -> Report {
-	if run_failure_requires_terminal_attention(&error) {
-		return error;
-	}
-	if run_failure_is_retryable_startup_transport(&error) {
+	let writeback_disposition = run_failure_writeback_disposition(&error);
+
+	if writeback_disposition.requires_terminal_attention()
+		|| writeback_disposition.preserves_retry_through_zero_evidence()
+	{
 		return error;
 	}
 
@@ -3103,34 +3167,7 @@ fn architecture_recovery_goal_detail(
 }
 
 fn run_failure_requires_terminal_attention(error: &Report) -> bool {
-	error.downcast_ref::<ManualAttentionRequested>().is_some()
-		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
-		|| error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
-		|| error.downcast_ref::<AppServerPhaseGoalFailure>().is_some()
-		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
-		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
-		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
-		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
-		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
-		|| error
-			.downcast_ref::<AppServerTransportFailure>()
-			.is_some_and(|failure| !failure.is_retryable_startup())
-		|| error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some()
-		|| error
-			.downcast_ref::<AppServerTurnFailure>()
-			.is_some_and(AppServerTurnFailure::requires_operator_attention)
-		|| error.downcast_ref::<ReviewPolicyStopRequested>().is_some()
-		|| error
-			.downcast_ref::<RepoGateFailure>()
-			.is_some_and(|repo_gate_failure| {
-				repo_gate_failure.disposition() == RepoGateFailureDisposition::NeedsHumanAttention
-			})
-}
-
-fn run_failure_is_retryable_startup_transport(error: &Report) -> bool {
-	error
-		.downcast_ref::<AppServerTransportFailure>()
-		.is_some_and(AppServerTransportFailure::is_retryable_startup)
+	run_failure_writeback_disposition(error).requires_terminal_attention()
 }
 
 fn handle_failure<T>(
