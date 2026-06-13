@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Audit Decodex sandbox-context serialization and any assumptions that cwd is always a native absolute path.",
+    "Add or update Control Plane compatibility tests around remote filesystem cwd URIs if Decodex mirrors upstream app-server or exec-server behavior.",
+    "Watch for downstream failures where non-native cwd URIs now fail closed instead of falling back to local interpretation."
+  ],
+  "caveats": [
+    "This is mostly internal protocol and execution-boundary plumbing.",
+    "The public explanation should avoid implying a new CLI feature.",
+    "Exact Decodex changes need a separate implementation issue if local code still assumes native cwd paths."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "Filesystem sandbox context cwd now uses `PathUri`.",
+    "Sandbox command transforms now carry URI cwd and convert to native launch requests at the execution boundary.",
+    "Turn environments keep synchronized native and URI cwd representations.",
+    "Remote filesystem tests cover PathUri behavior.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27816.review.json`."
+  ],
+  "observed_change": "Codex migrates sandbox cwd handling to `PathUri` across core, sandboxing, filesystem, and exec-server boundaries.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27816",
+  "social_notes": [
+    "Frame this as a compatibility watch for remote and sandboxed execution boundaries.",
+    "Mention that it preserves URI semantics until host validation, not a new visible feature."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T18:38:02Z",
+        "title": "sandboxing: migrate cwd inputs to PathUri",
+        "url": "https://github.com/openai/codex/pull/27816"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27816.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27816"
+      }
+    ]
+  }
+}
