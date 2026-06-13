@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Check Decodex app-server protocol handling for realtime start params before assuming only model, modality, prompt, voice, and version fields exist.",
+    "Keep AVAS framed as opt-in and experimental unless later upstream evidence changes the rollout status.",
+    "Consider adding a Control Plane compatibility fixture for nullable realtime architecture when Decodex consumes generated app-server types."
+  ],
+  "caveats": [
+    "The default architecture remains `realtimeapi`.",
+    "The WebRTC call base URL configuration is explicitly experimental.",
+    "The PR evidence is source-backed but does not prove general AVAS availability outside supported realtime v1 WebRTC starts."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "App-server v2 `ThreadRealtimeStartParams` gains nullable `architecture`.",
+    "The protocol enum has `realtimeapi` and `avas` values.",
+    "Core realtime startup and WebRTC call creation carry the architecture choice.",
+    "Config schema adds `[realtime].architecture`.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27720.review.json`."
+  ],
+  "observed_change": "Codex adds an opt-in AVAS realtime architecture for WebRTC starts and exposes the choice through app-server realtime-start params and config.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27720",
+  "social_notes": [
+    "Frame the post for Control Plane operators watching realtime protocol changes.",
+    "Do not imply AVAS became the default or that non-WebRTC realtime paths changed."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T18:11:13Z",
+        "title": "realtime: add AVAS architecture override",
+        "url": "https://github.com/openai/codex/pull/27720"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27720.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27720"
+      }
+    ]
+  }
+}
