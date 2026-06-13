@@ -1,0 +1,85 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-18-needs-upstream-analysis",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "watch_note",
+  "priority": "normal",
+  "audience": "Codex operators tracking prerelease changes before stable",
+  "candidate_text": [
+    "0.140.0-alpha.18: defer, no X handoff.\n\nAdjacent alpha.17 -> alpha.18 has 9 commits. PR titles point to plugin auth/routes, managed remote control, Wine test support, and turn-state plumbing. Behavior claims need source review."
+  ],
+  "source_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "urls": [
+      "https://developers.openai.com/codex/changelog",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.17",
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.18",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.17...rust-v0.140.0-alpha.18",
+      "https://github.com/openai/codex/pull/27459",
+      "https://github.com/openai/codex/pull/27652",
+      "https://github.com/openai/codex/pull/27937",
+      "https://github.com/openai/codex/pull/27961",
+      "https://github.com/openai/codex/pull/27964",
+      "https://github.com/openai/codex/pull/27988",
+      "https://github.com/openai/codex/pull/27996",
+      "https://github.com/openai/codex/pull/28002"
+    ]
+  },
+  "evidence_notes": [
+    "GitHub release metadata shows rust-v0.140.0-alpha.18 was published at 2026-06-13T17:30:26Z with only a sparse release body: Release 0.140.0-alpha.18.",
+    "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.17 -> rust-v0.140.0-alpha.18; alpha.18 is not the first prerelease after stable rust-v0.139.0.",
+    "GitHub compare metadata for alpha.17 -> alpha.18 reports status=diverged, 9 ahead commits, and 9 total commits.",
+    "PR-title metadata in the alpha.17 -> alpha.18 compare points to app-based plugin suggestions limited to remote catalogs, plugin manager auth mode, plugin MCP auth-route gating, managed remote-control disablement, hermetic Wine test support, request-scoped turn state over WebSocket, and turn state through compact requests.",
+    "Checked Decodex review/impact artifacts are absent for #27459, #27652, #27937, #27961, #27964, #27988, #27996, and #28002 in this checkout.",
+    "The refreshed release_delta/v1 records stable rust-v0.139.0 -> latest prerelease rust-v0.140.0-alpha.18 with 194 ahead commits and no tracked signal slugs.",
+    "Official Codex changelog readback for this run shows a 2026-06-11 Codex app update as the newest official app entry, plus 2026-06-09 entries for ChatGPT for iOS 1.2026.153 and Codex CLI 0.139.0; rust-v0.140.0-alpha.18 is a GitHub prerelease checkpoint, not an official changelog entry."
+  ],
+  "claims": [
+    {
+      "text": "rust-v0.140.0-alpha.18 is a real OpenAI Codex prerelease checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.18",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The correct public prerelease comparison for this checkpoint is rust-v0.140.0-alpha.17 -> rust-v0.140.0-alpha.18.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.17...rust-v0.140.0-alpha.18",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "The alpha.18 release body is sparse and does not describe user-facing behavior beyond the version checkpoint.",
+      "evidence": "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.18",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "PR-title metadata in the alpha.18 compare points to plugin auth and suggestion paths, managed remote-control policy, Wine test support, and turn-state plumbing.",
+      "evidence": "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.17...rust-v0.140.0-alpha.18",
+      "confidence": "likely"
+    },
+    {
+      "text": "Behavior claims for the alpha.18 window require upstream source review before a publishable Decodex prerelease thread.",
+      "evidence": "artifacts/github/reviews/",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "defer",
+    "reason": "needs_upstream_analysis: the alpha.18 release body is sparse and the adjacent alpha.17 -> alpha.18 compare has unreviewed PR-title gaps.",
+    "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-18:alpha17-alpha18:defer"
+  },
+  "caveats": [
+    "This is a terminal defer / needs_upstream_analysis checkpoint record, not a publication request.",
+    "No previous live and quote-eligible @decodexspace 0.140 prerelease post exists; earlier 0.140 prereleases in this checkout are recorded as defer / needs_upstream_analysis checkpoints.",
+    "Do not compare alpha.18 against stable 0.139.0 for public prerelease copy; the adjacent prerelease lineage is alpha.17 -> alpha.18 because alpha.18 is not the first prerelease after stable.",
+    "Exact source-review gap list for alpha.17 -> alpha.18 primary compare PRs: #27459, #27652, #27937, #27961, #27964, #27988, #27996, #28002.",
+    "Media caveat: no generated image is attached by this downstream artifact-consumer run. If this checkpoint later becomes publishable, decodex-x-publisher should generate and verify candidate-specific media only when it adds reader value."
+  ],
+  "next_steps": [
+    "Do not hand this alpha.18 defer record to decodex-x-publisher.",
+    "Route #27459, #27652, #27937, #27961, #27964, #27988, #27996, and #28002 to codex-upstream-radar-review / codex-code-analysis before turning alpha.18 into a release_rollup, watch_note, delta_explainer, or operator_impact post.",
+    "Use adjacent prerelease-to-prerelease lineage for future 0.140 prereleases after alpha.18."
+  ]
+}
