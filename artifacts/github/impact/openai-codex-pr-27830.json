@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Audit Decodex transcript and rollout-trace readers for `AgentMessageInputContent` assumptions that only accept encrypted content.",
+    "Preserve plaintext inter-agent message metadata when summarizing retained-lane child results or memories.",
+    "Check any app-server history consumers that previously looked for assistant JSON envelopes for child-completion messages."
+  ],
+  "caveats": [
+    "Plaintext support is scoped to typed agent-message inputs and does not remove encrypted content.",
+    "This is a multi-agent protocol/history behavior change, not a general user chat message change.",
+    "Exact Decodex changes need a separate implementation issue if local readers reject plaintext agent-message content."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "AgentMessageInputContent now allows plaintext `input_text` as well as encrypted content.",
+    "Inter-agent mailbox deliveries remain structured `InterAgentCommunication` items.",
+    "Session history persists dedicated inter-agent communication rollout items and reconstructs them on resume.",
+    "Memory and rollout-trace reducers preserve plaintext and encrypted inter-agent deliveries.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27830.review.json`."
+  ],
+  "observed_change": "Codex adds plaintext `input_text` support to typed `agent_message` content and preserves inter-agent communications across history, resume, memory, and rollout-trace paths.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27830",
+  "social_notes": [
+    "Frame this for Multi-Agent v2 and transcript/tooling consumers.",
+    "Do not imply encrypted agent messages were removed."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T20:50:04Z",
+        "title": "Support plaintext agent messages",
+        "url": "https://github.com/openai/codex/pull/27830"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27830.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27830"
+      }
+    ]
+  }
+}

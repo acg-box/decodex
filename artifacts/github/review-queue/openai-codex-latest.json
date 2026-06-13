@@ -8,7 +8,7 @@
     "recent_commits_scanned": 40,
     "subjects_queued": 40
   },
-  "generated_at": "2026-06-13T02:07:18.76819Z",
+  "generated_at": "2026-06-13T18:05:12.69079Z",
   "repo": "openai/codex",
   "schema": "upstream_review_queue/v1",
   "source": {
@@ -17,38 +17,6 @@
     "signals_dir": "site/src/content/signals"
   },
   "subjects": [
-    {
-      "attention_flags": [
-        "deprecated_removed",
-        "release_packaging",
-        "security_policy"
-      ],
-      "changed_file_count": 2,
-      "commit_shas": [
-        "cb142c49ffb7b172a9da1e75854b8e5c0618715d",
-        "8050d6acbd3f4849f23abe51020d1670f4fb8226",
-        "b1d8c54465e9bf2a28dd8f845d8abd3949761b09"
-      ],
-      "committed_at": "2026-06-12T17:21:00Z",
-      "next_step": "ai_review_required",
-      "pr_number": 27901,
-      "pr_url": "https://github.com/openai/codex/pull/27901",
-      "review_priority": "critical",
-      "review_reason": "Needs AI review for deprecated_removed, release_packaging, security_policy.",
-      "sample_paths": [
-        "sdk/python/pyproject.toml",
-        "sdk/python/tests/test_artifact_workflow_and_binaries.py"
-      ],
-      "source_state": "merged",
-      "subject_id": "27901",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "config_hooks",
-        "tests_ci"
-      ],
-      "title": "Use uv as Python SDK build backend",
-      "url": "https://github.com/openai/codex/pull/27901"
-    },
     {
       "attention_flags": [
         "auth_account",
@@ -944,85 +912,52 @@
     },
     {
       "attention_flags": [
+        "auth_account",
+        "breaking_change",
+        "deprecated_removed",
         "new_feature",
         "protocol_change",
         "security_policy"
       ],
-      "changed_file_count": 12,
+      "changed_file_count": 29,
       "commit_shas": [
-        "514332328d8921a89660a83cba137ff5dd904717",
-        "5e98dd7a4f3a2cf349caec88449c400f282bde3a"
+        "a1f9d5e195dbf73c5ac756e90224f2e4af3a6adf",
+        "69a4db602847e1c1269016243061b76b0687a6da",
+        "d3918160167a6eaa5a33982ef79d9ccb63636d7b",
+        "f4ef520440ce2a1d6b9ea9dcae6bbc272c2c181c"
       ],
-      "committed_at": "2026-06-12T16:06:58Z",
+      "committed_at": "2026-06-13T03:10:12Z",
       "next_step": "ai_review_required",
-      "pr_number": 27075,
-      "pr_url": "https://github.com/openai/codex/pull/27075",
-      "review_priority": "high",
-      "review_reason": "Needs AI review for new_feature, protocol_change, security_policy.",
+      "pr_number": 27961,
+      "pr_url": "https://github.com/openai/codex/pull/27961",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, breaking_change, deprecated_removed, new_feature, protocol_change, security_policy.",
       "sample_paths": [
         "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
         "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
-        "codex-rs/app-server-protocol/schema/json/v2/ConfigReadResponse.json",
-        "codex-rs/app-server-protocol/schema/typescript/v2/AppsDefaultConfig.ts",
+        "codex-rs/app-server-protocol/schema/json/v2/ConfigRequirementsReadResponse.json",
+        "codex-rs/app-server-protocol/schema/typescript/v2/ConfigRequirements.ts",
         "codex-rs/app-server-protocol/src/protocol/v2/config.rs",
-        "codex-rs/app-server/README.md",
-        "codex-rs/app-server/tests/suite/v2/config_rpc.rs",
-        "codex-rs/config/src/types.rs",
-        "codex-rs/core/config.schema.json",
-        "codex-rs/core/src/connectors.rs",
-        "codex-rs/core/src/connectors_tests.rs",
-        "codex-rs/core/tests/suite/mcp_turn_metadata.rs"
+        "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+        "codex-rs/app-server-transport/src/lib.rs",
+        "codex-rs/app-server-transport/src/transport/mod.rs",
+        "codex-rs/app-server-transport/src/transport/remote_control/desired_state.rs",
+        "codex-rs/app-server-transport/src/transport/remote_control/mod.rs",
+        "codex-rs/app-server-transport/src/transport/remote_control/tests.rs",
+        "codex-rs/app-server-transport/src/transport/remote_control/tests/clients_tests.rs"
       ],
       "source_state": "merged",
-      "subject_id": "27075",
+      "subject_id": "27961",
       "subject_kind": "pr",
       "surface_hints": [
         "app_server_protocol",
+        "cli_tui",
         "config_hooks",
         "docs_examples",
-        "mcp_plugins",
         "tests_ci"
       ],
-      "title": "[ez][codex-rs] Support approvals reviewer in app defaults",
-      "url": "https://github.com/openai/codex/pull/27075"
-    },
-    {
-      "attention_flags": [
-        "release_packaging"
-      ],
-      "changed_file_count": 8,
-      "commit_shas": [
-        "4cda8ee60cad306ee3fd5313098d7435b1de6789",
-        "126848293a2773a2423528aa33c19bb8fff6cacd",
-        "8919a0099d65fec3af09bf4b3e7e2784142d9cf1"
-      ],
-      "committed_at": "2026-06-12T16:10:07Z",
-      "next_step": "ai_review_required",
-      "pr_number": 27538,
-      "pr_url": "https://github.com/openai/codex/pull/27538",
-      "review_priority": "high",
-      "review_reason": "Needs AI review for release_packaging.",
-      "sample_paths": [
-        ".github/workflows/python-sdk-release.yml",
-        ".github/workflows/sdk.yml",
-        "scripts/format.py",
-        "sdk/python/docs/getting-started.md",
-        "sdk/python/examples/README.md",
-        "sdk/python/pyproject.toml",
-        "sdk/python/tests/test_artifact_workflow_and_binaries.py",
-        "sdk/python/uv.lock"
-      ],
-      "source_state": "merged",
-      "subject_id": "27538",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "config_hooks",
-        "docs_examples",
-        "release_packaging",
-        "tests_ci"
-      ],
-      "title": "Use dependency groups for Python SDK tooling",
-      "url": "https://github.com/openai/codex/pull/27538"
+      "title": "feat(app-server): enforce managed remote control disable",
+      "url": "https://github.com/openai/codex/pull/27961"
     },
     {
       "attention_flags": [
@@ -1132,64 +1067,87 @@
     {
       "attention_flags": [
         "auth_account",
-        "release_packaging"
+        "new_feature",
+        "protocol_change",
+        "security_policy"
       ],
-      "changed_file_count": 4,
+      "changed_file_count": 6,
       "commit_shas": [
-        "41408389e4bd9c8b937b0ca10eb305d43ea6439b",
-        "29ac1384a5af6fb0aa9790e6af4e7aa18a8f12c0",
-        "0b508a84e79acc7bd298050f99565e9083d22323"
+        "c3f075e16a688d207f4b688c4f40f456a2377f2b"
       ],
-      "committed_at": "2026-06-12T16:26:08Z",
+      "committed_at": "2026-06-13T02:42:11Z",
       "next_step": "ai_review_required",
-      "pr_number": 27783,
-      "pr_url": "https://github.com/openai/codex/pull/27783",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for auth_account, release_packaging.",
+      "pr_number": 27459,
+      "pr_url": "https://github.com/openai/codex/pull/27459",
+      "review_priority": "high",
+      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change, security_policy.",
       "sample_paths": [
-        "codex-rs/tui/src/lib.rs",
-        "codex-rs/tui/src/updates.rs",
-        "codex-rs/tui/src/updates_cache.rs",
-        "codex-rs/tui/src/updates_cache_tests.rs"
+        "codex-rs/app-server-protocol/src/protocol/common.rs",
+        "codex-rs/core-plugins/src/manager.rs",
+        "codex-rs/core-plugins/src/manager_tests.rs",
+        "codex-rs/core/src/plugins/discoverable_tests.rs",
+        "codex-rs/core/tests/suite/plugins.rs",
+        "codex-rs/login/src/auth/manager.rs"
       ],
       "source_state": "merged",
-      "subject_id": "27783",
+      "subject_id": "27459",
       "subject_kind": "pr",
       "surface_hints": [
-        "cli_tui",
+        "app_server_protocol",
+        "auth_accounts",
+        "mcp_plugins",
         "tests_ci"
       ],
-      "title": "Persist update dismissal without cache",
-      "url": "https://github.com/openai/codex/pull/27783"
+      "title": "[codex] Gate plugin MCP servers by auth route",
+      "url": "https://github.com/openai/codex/pull/27459"
     },
     {
       "attention_flags": [
-        "auth_account",
-        "new_feature"
+        "new_feature",
+        "protocol_change",
+        "release_packaging",
+        "security_policy"
       ],
-      "changed_file_count": 2,
+      "changed_file_count": 10,
       "commit_shas": [
-        "0b53736536efdca3894f9e5f972da1b87be48e91"
+        "7ae8a2b96ff40507131cf85220c3e7d0ce8903e2",
+        "9defc3f62bababfd16dfc0c09e42d7a826c5edf8",
+        "fa4da9b809e22a9e0535bf13a69424b1c8e549bf",
+        "573477f944be51be60e7ef6c19630b4d7d1c5d92",
+        "81ce551c37fac7e15b40872f7006d9b0decfbb28",
+        "8f11fbee94dd4381c44a5fec3b3838ae63cb235e",
+        "92f022d5294f79cfafa0eabc9e4e751b2611ee12",
+        "152d97daf01d01dcc41b6a37e7ab2f9f27ca2740"
       ],
-      "committed_at": "2026-06-12T16:30:25Z",
+      "committed_at": "2026-06-13T03:20:23Z",
       "next_step": "ai_review_required",
-      "pr_number": 27814,
-      "pr_url": "https://github.com/openai/codex/pull/27814",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for auth_account, new_feature.",
+      "pr_number": 27937,
+      "pr_url": "https://github.com/openai/codex/pull/27937",
+      "review_priority": "high",
+      "review_reason": "Needs AI review for new_feature, protocol_change, release_packaging, security_policy.",
       "sample_paths": [
-        "codex-rs/tui/src/bottom_pane/slash_commands.rs",
-        "codex-rs/tui/src/chatwidget/tests/slash_commands.rs"
+        "bazel/rules/testing/wine.bzl",
+        "codex-rs/core/Cargo.toml",
+        "codex-rs/core/tests/remote_env_windows/BUILD.bazel",
+        "codex-rs/core/tests/remote_env_windows/README.md",
+        "codex-rs/core/tests/remote_env_windows/remote_env_windows_test.rs",
+        "codex-rs/exec-server/testing/BUILD.bazel",
+        "codex-rs/exec-server/testing/README.md",
+        "codex-rs/exec-server/testing/windows_exec_server.rs",
+        "scripts/list-bazel-release-targets.sh",
+        "tools/argument-comment-lint/list-bazel-targets.sh"
       ],
       "source_state": "merged",
-      "subject_id": "27814",
+      "subject_id": "27937",
       "subject_kind": "pr",
       "surface_hints": [
-        "cli_tui",
+        "config_hooks",
+        "docs_examples",
+        "release_packaging",
         "tests_ci"
       ],
-      "title": "tui: Allow extra o's in /goal command",
-      "url": "https://github.com/openai/codex/pull/27814"
+      "title": "[codex] Add hermetic Wine exec-server test",
+      "url": "https://github.com/openai/codex/pull/27937"
     },
     {
       "attention_flags": [
@@ -1574,6 +1532,75 @@
       ],
       "title": "[codex] Add hermetic Wine test support",
       "url": "https://github.com/openai/codex/pull/27964"
+    },
+    {
+      "attention_flags": [
+        "auth_account",
+        "new_feature",
+        "protocol_change",
+        "security_policy"
+      ],
+      "changed_file_count": 5,
+      "commit_shas": [
+        "00c8016dd084973c4fd2844236781872cba16120"
+      ],
+      "committed_at": "2026-06-13T07:44:39Z",
+      "next_step": "ai_review_required",
+      "pr_number": 27996,
+      "pr_url": "https://github.com/openai/codex/pull/27996",
+      "review_priority": "normal",
+      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change, security_policy.",
+      "sample_paths": [
+        "codex-rs/codex-api/src/endpoint/responses_websocket.rs",
+        "codex-rs/codex-api/src/sse/responses.rs",
+        "codex-rs/core/src/client.rs",
+        "codex-rs/core/src/client_tests.rs",
+        "codex-rs/core/tests/suite/turn_state.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "27996",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "cli_tui",
+        "tests_ci"
+      ],
+      "title": "[codex] Send request-scoped turn state over WebSocket",
+      "url": "https://github.com/openai/codex/pull/27996"
+    },
+    {
+      "attention_flags": [
+        "auth_account",
+        "new_feature",
+        "protocol_change",
+        "release_packaging",
+        "security_policy"
+      ],
+      "changed_file_count": 5,
+      "commit_shas": [
+        "a568cdbec99e2f66947cc072a8824031eeaa25dd"
+      ],
+      "committed_at": "2026-06-13T08:27:58Z",
+      "next_step": "ai_review_required",
+      "pr_number": 28002,
+      "pr_url": "https://github.com/openai/codex/pull/28002",
+      "review_priority": "normal",
+      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change, release_packaging, security_policy.",
+      "sample_paths": [
+        "codex-rs/codex-api/src/endpoint/compact.rs",
+        "codex-rs/core/src/client.rs",
+        "codex-rs/core/src/compact_remote.rs",
+        "codex-rs/core/src/session/turn.rs",
+        "codex-rs/core/tests/suite/compact_remote.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "28002",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "cli_tui",
+        "tests_ci"
+      ],
+      "title": "[codex] Send turn state through compact requests",
+      "url": "https://github.com/openai/codex/pull/28002"
     }
   ]
 }
