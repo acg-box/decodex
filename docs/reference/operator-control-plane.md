@@ -172,6 +172,26 @@ and boundary disposition, reason, attempted recovery, changed-surface count, and
 improvement-signal count. These summaries are safe operator readback; raw reviewer
 finding bodies, changed-surface payloads, retained diffs, logs, and transcripts remain
 hidden unless `--include-payload` is explicitly requested for local repair.
+Private phase-goal evidence may also include `phase_goal_recovery`. That event means
+Decodex found a still-active implementation or repair phase goal after an app-server
+failure or child exit, ran the registered repo gate itself, persisted the next phase,
+and scheduled continuation instead of writing `decodex:needs-attention`. It is a
+runtime recovery handoff, not final issue success; the later `handoff_evidence` phase
+still owns review, push, PR creation, and terminal finalize.
+Retry comments with `phase_goal_terminal_path_missing` mean a phase goal reached
+`complete` before the required Decodex terminal tool path was recorded. The lane is
+still runtime-owned while retry budget remains; the next attempt re-enters the
+persisted phase and must record review handoff, closeout, or manual attention before
+the issue can leave automation ownership.
+Retry comments with `app_server_transport_disconnected` during `initialize`,
+`account/login/start`, `thread/start`, or `thread/resume` mean Decodex is restarting
+the app-server under the retry budget, not asking for operator attention yet. The
+same error class becomes actionable only after retry exhaustion or when the disconnect
+occurred after a thread session was attached.
+Retry comments with `app_server_usage_limit_exceeded` mean the active Codex account
+hit a capacity limit and Decodex will re-run account selection on the next attempt.
+They are actionable only after retry exhaustion or when the operator intentionally
+pins all new runs to an exhausted fixed account.
 
 ## State Ownership
 
@@ -290,7 +310,7 @@ protocol activity durable outside the local operator surface.
 | `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. Repeated identical open dependency blockers surface as `dependency_program_stale` after the guardrail threshold so operators can distinguish a stale Execution Program/dependency plan from a newly blocked queue item. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after stalled reconciliation, failure writeback, or retries, the candidate is partial retained progress and not just a generic stalled or retry-budget hold. Human-required authority stops expose their compact decision request fields here: `phase = human_required`, reason, boundary, `decision_request_id`, and `next_action`. When queued attention still maps to a run/attempt, it also carries the same compact loop status used by running lanes. Running lanes are not repeated as normal intake work. |
 | `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. Retained lanes expose compact loop status for their bound handoff run/attempt so operators can see review repair checkpoint state, architecture recovery stops, and boundary/human-required disposition without direct SQLite inspection. |
 | `Recovery Worktrees` | Retained local worktrees that are not currently owned by `Running Lanes`, `Review & Landing`, or queued attention in `Intake Queue`. This is the cleanup or recovery inbox for recovered paths, retained PR leftovers, and cleanup-only local worktrees. Empty is the normal healthy state. |
-| `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Raw local attempts and heartbeat details stay in debug expansion. |
+| `Run Ledger` | Completed or non-running issue history, grouped by issue/lane. Decodex Linear execution ledger comments provide the durable completed outcome when available. If no `decodex.linear_execution_event` record exists, the row reports `missing` / `execution_ledger_missing`; the control plane does not derive a completed or landed outcome from tracker state, local attempts, or non-ledger comments. Terminal attention rows are history unless a current attention signal still exists. Raw local attempts and heartbeat details stay in debug expansion. |
 
 ## Private Evidence Readback
 
@@ -436,9 +456,17 @@ Worktree visibility follows the owning dashboard section:
   dashboard readback also carry `readback_root_cause` when Decodex can classify the
   local diagnostic safely, for example `missing_github_cli`, `missing_github_token`,
   `github_auth_failed`, `github_api_read_failed`, `github_response_parse_failed`,
-  `pull_request_shape_read_failed`, or `lineage_validation_failed`. These diagnostic
+  `pull_request_shape_read_failed`, or `lineage_validation_failed`. This warning is a
+  wait/retry lane, not passive manual attention, unless the post-review classification
+  decision itself is `Block`. These diagnostic
   tokens are operator-local and must not include tokens, raw API payloads, or private
   command output.
+- `worktree_checkout_branch_read_failed` and `worktree_head_read_failed` in
+  `Review & Landing` are degraded local worktree readbacks for a still-bound retained
+  lane. They may block a fresh classification for this status tick, but they must stay
+  wait/retry readback conditions and must not add `decodex:needs-attention` unless a
+  later successful readback proves a hard blocker such as a missing branch, branch
+  mismatch, missing head, or lineage mismatch.
 - `pull_request_merge_state_conflict` in `Review & Landing` means one retained
   post-review readback looked merge-complete but direct PR merge readback did not
   confirm that the same PR head is merged. Treat it as a readback contradiction, not a
@@ -461,8 +489,19 @@ Worktree visibility follows the owning dashboard section:
 - `retained_attention` in `Recovery Worktrees` means the durable Run Ledger final
   outcome for the same issue is `needs_attention` or `terminal_failure`. This is a
   human-required retained lane, not neutral cleanup hygiene. The project summary
-  `attention_count` includes it even when `queued_candidates` is empty and no active
-  or post-review lane currently owns the issue.
+  `attention_count` includes it because the retained worktree is current recovery
+  state even when `queued_candidates` is empty and no active or post-review lane
+  currently owns the issue. A terminal Run Ledger attention row without a retained
+  worktree, queued attention row, active or needs-attention tracker label, or blocked
+  post-review lane is history-only and must not inflate current attention. When the
+  same issue is currently owned by a non-attention `Review & Landing` row such as
+  `wait_for_review` or `ready_to_land`, that row controls the current action summary;
+  stale active-label or worktree echoes from an older terminal ledger record stay in
+  Run Ledger history instead of reappearing as current attention.
+- If private evidence shows `phase_goal_recovery` followed by a queued continuation,
+  the lane is not a retained-attention worktree even when the preceding child failed.
+  Treat it as Decodex-owned re-entry into the next phase unless a later terminal Run
+  Ledger row or current attention signal supersedes it.
 
 Every operator snapshot worktree row includes `ownership`, `ownership_reason`,
 `provenance`, and optional `recovery_next_action` fields that distinguish active-lane
@@ -604,8 +643,8 @@ rate-limited, or unavailable.
 - When a terminal Run Ledger attention record exists for an issue that still has both
   the service queue label and `decodex:needs-attention`, the operator snapshot treats
   the queue label as stale echo state. The issue remains visible through Run Ledger
-  attention and retained-worktree ownership instead of appearing again as intake
-  backlog.
+  attention and any retained-worktree or tracker-label attention signal instead of
+  appearing again as intake backlog.
 
 ## Current Non-Goals
 

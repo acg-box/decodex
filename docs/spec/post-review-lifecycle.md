@@ -75,12 +75,18 @@ If these signals disagree and the disagreement cannot be resolved without guessi
 not infer a PR lineage from branch names, current heads, PR titles, or Linear comments,
 and `decodex run` must not repair this state automatically.
 
-When the retained review handoff marker exists but a direct PR-state read fails,
-operator status must degrade the readback instead of replacing the bound lane with a
-null-PR blocked state. The status row must keep the issue identifier, retained branch,
-marker PR URL, and marker head SHA, and it may expose
-`readback_warning = "pull_request_state_read_failed"` until the next successful PR
-state refresh.
+When the retained review handoff marker exists but a direct PR-state read or local
+worktree branch/head read fails, operator status must degrade the readback instead of
+replacing the bound lane with a null-PR blocked state. The status row must keep the
+issue identifier, retained branch, marker PR URL, and marker head SHA, and it may expose
+warnings such as `readback_warning = "pull_request_state_read_failed"`,
+`worktree_checkout_branch_read_failed`, or `worktree_head_read_failed` until the next
+successful readback.
+Retained orchestration must preserve degraded readback as a wait state. It must not
+convert `pull_request_state_read_failed`, `worktree_checkout_branch_read_failed`,
+`worktree_head_read_failed`, or other `WaitForReview` classifications into passive
+manual attention; only classifications whose decision is `Block` may add
+`decodex:needs-attention`.
 
 When Linear issue metadata readback is degraded by connector backoff, operator status
 must still keep locally retained handoff rows visible with the marker PR URL and head
@@ -213,6 +219,9 @@ While in `review_wait`:
 - the retained lane remains reserved for the same issue and PR lineage
 - missing immediate review activity is not, by itself, a failure
 - review-request acknowledgement probing or bounded resend may happen as orchestration behavior without leaving `review_wait`
+- before requesting external review, pending or unknown check readback waits for a
+  later status tick, and red checks route to `review_repair`; neither case may apply
+  `decodex:needs-attention` by itself
 
 `review_wait` must not trigger code changes on its own.
 

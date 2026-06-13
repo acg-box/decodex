@@ -32,6 +32,13 @@ impl AppServerZeroEvidenceStartFailure {
 			self.run_id
 		)
 	}
+
+	fn retry_next_action(&self) -> String {
+		format!(
+			"restart the app-server and retry automatically for run `{}`; inspect private startup diagnostics if the retry budget exhausts",
+			self.run_id
+		)
+	}
 }
 
 impl Display for AppServerZeroEvidenceStartFailure {
@@ -109,6 +116,11 @@ struct ArchitectureRecoveryStart {
 	detail: String,
 }
 
+struct PhaseGoalRecoveryContinuation {
+	source_phase: PhaseGoalKind,
+	next_phase: PhaseGoalKind,
+}
+
 struct CompletedAppServerRun<'a, T>
 where
 	T: IssueTracker,
@@ -141,11 +153,6 @@ where
 	decodex_tool_bridge: &'a DecodexToolBridge<'a>,
 	phase_goal_controller: &'a dyn PhaseGoalController,
 	codex_account_provider: Option<&'a dyn CodexAccountProvider>,
-}
-
-enum IssueAppServerRunOutcome {
-	Completed(AppServerRunResult),
-	Finalized(RunSummary),
 }
 
 struct RepoGatePhaseGoalController<'a> {
@@ -457,6 +464,27 @@ struct ArchitectureRecoveryTerminalEventInput<'a> {
 	recovery_attempt_number: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RunFailureWritebackDisposition {
+	RetryableGeneric,
+	RetryableStructuredRecovery,
+	TerminalAttention,
+}
+impl RunFailureWritebackDisposition {
+	fn requires_terminal_attention(self) -> bool {
+		self == Self::TerminalAttention
+	}
+
+	fn preserves_retry_through_zero_evidence(self) -> bool {
+		self == Self::RetryableStructuredRecovery
+	}
+}
+
+enum IssueAppServerRunOutcome {
+	Completed(AppServerRunResult),
+	Finalized(RunSummary),
+}
+
 enum LoopGuardrailRecoveryDecision {
 	Start(ArchitectureRecoveryStart),
 	HumanRequired(LoopGuardrailStopRequested),
@@ -467,6 +495,65 @@ enum TerminalFailureEventRecordStatus {
 	Recorded,
 	Duplicate,
 	NoLocalStore,
+}
+
+pub(crate) fn run_failure_writeback_disposition(
+	error: &Report,
+) -> RunFailureWritebackDisposition {
+	if error.downcast_ref::<ManualAttentionRequested>().is_some()
+		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
+		|| error
+			.downcast_ref::<AppServerPhaseGoalFailure>()
+			.is_some_and(|failure| !failure.is_terminal_path_missing())
+		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
+		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
+		|| error
+			.downcast_ref::<AppServerCapabilityPreflightFailure>()
+			.is_some_and(|failure| !failure.is_retryable_timeout())
+		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
+		|| error
+			.downcast_ref::<AppServerTransportFailure>()
+			.is_some_and(|failure| !failure.is_retryable_startup())
+		|| error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some()
+		|| error
+			.downcast_ref::<AppServerTurnFailure>()
+			.is_some_and(AppServerTurnFailure::requires_operator_attention)
+		|| error.downcast_ref::<ReviewPolicyStopRequested>().is_some()
+		|| error
+			.downcast_ref::<RepoGateFailure>()
+			.is_some_and(|repo_gate_failure| {
+				repo_gate_failure.disposition() == RepoGateFailureDisposition::NeedsHumanAttention
+			})
+	{
+		RunFailureWritebackDisposition::TerminalAttention
+	} else if error
+		.downcast_ref::<AppServerZeroEvidenceStartFailure>()
+		.is_some()
+		|| error
+			.downcast_ref::<AppServerCapabilityPreflightFailure>()
+			.is_some_and(AppServerCapabilityPreflightFailure::is_retryable_timeout)
+		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
+		|| error
+		.downcast_ref::<RepoGateFailure>()
+		.is_some_and(|repo_gate_failure| {
+			matches!(
+				repo_gate_failure.disposition(),
+				RepoGateFailureDisposition::ContinueRepair
+					| RepoGateFailureDisposition::RetryAfterBackoff
+			)
+		}) || error
+		.downcast_ref::<AppServerTransportFailure>()
+		.is_some_and(AppServerTransportFailure::is_retryable_startup)
+		|| error
+			.downcast_ref::<AppServerPhaseGoalFailure>()
+			.is_some_and(AppServerPhaseGoalFailure::is_terminal_path_missing)
+		|| error.downcast_ref::<AppServerDynamicToolFailure>().is_some()
+		|| error.downcast_ref::<AppServerTurnFailure>().is_some()
+	{
+		RunFailureWritebackDisposition::RetryableStructuredRecovery
+	} else {
+		RunFailureWritebackDisposition::RetryableGeneric
+	}
 }
 
 fn execute_issue_run<T>(
@@ -1026,6 +1113,18 @@ where
 				return Ok(IssueAppServerRunOutcome::Finalized(summary));
 			}
 
+			if !input.tracker_tool_bridge.has_tracker_exit_signal()
+				&& let Some(summary) = maybe_continue_after_active_phase_goal_recovery(
+					input.project,
+					input.workflow,
+					input.state_store,
+					input.issue_run,
+					&error,
+				)?
+			{
+				return Ok(IssueAppServerRunOutcome::Finalized(summary));
+			}
+
 			return Err(preserve_and_promote_app_server_run_failure(
 				input.project,
 				input.state_store,
@@ -1127,6 +1226,185 @@ where
 	)?;
 
 	Ok(Some(run_summary_from_issue_run(project.service_id(), issue_run)))
+}
+
+fn maybe_continue_after_active_phase_goal_recovery(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	error: &Report,
+) -> Result<Option<RunSummary>> {
+	let Some(recovery) = recover_active_phase_goal_continuation(
+		project,
+		workflow,
+		state_store,
+		issue_run,
+		phase_goal_recovery_source_error_class(error),
+	)? else {
+		return Ok(None);
+	};
+	let mut summary = run_summary_from_issue_run(project.service_id(), issue_run);
+
+	summary.continuation_pending = true;
+
+	tracing::warn!(
+		project_id = project.service_id(),
+		issue_id = issue_run.issue.id,
+		issue = issue_run.issue.identifier,
+		run_id = issue_run.run_id,
+		attempt = issue_run.attempt_number,
+		source_phase = recovery.source_phase.as_str(),
+		next_phase = recovery.next_phase.as_str(),
+		error = %error,
+		"Recovered active phase goal after app-server failure; scheduling continuation."
+	);
+
+	Ok(Some(summary))
+}
+
+fn recover_active_phase_goal_continuation(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	source_error_class: &str,
+) -> Result<Option<PhaseGoalRecoveryContinuation>> {
+	if !worktree_has_tracked_changes(&issue_run.worktree.path) {
+		return Ok(None);
+	}
+
+	let Some(source_phase) = latest_active_phase_goal_recovery_candidate(
+		project,
+		state_store,
+		issue_run,
+	)? else {
+		return Ok(None);
+	};
+	let controller = RepoGatePhaseGoalController {
+		project,
+		workflow,
+		state_store,
+		issue_run,
+	};
+	let transition = controller.validate_phase_goal_output(source_phase)?;
+	let next_phase = match transition {
+		PhaseGoalTransition::Continue(next_goal) => next_goal.phase,
+		PhaseGoalTransition::CompleteRun => return Ok(None),
+	};
+
+	record_phase_goal_recovery_continuation(
+		project,
+		state_store,
+		issue_run,
+		source_phase,
+		next_phase,
+		source_error_class,
+	)?;
+
+	Ok(Some(PhaseGoalRecoveryContinuation { source_phase, next_phase }))
+}
+
+fn phase_goal_recovery_source_error_class(error: &Report) -> &'static str {
+	retained_progress_source_error_class(error).unwrap_or("app_server_run_failed")
+}
+
+fn latest_active_phase_goal_recovery_candidate(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+) -> Result<Option<PhaseGoalKind>> {
+	let events = state_store.list_private_execution_events(
+		project.service_id(),
+		&issue_run.issue.id,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+	)?;
+
+	for event in events.iter().rev() {
+		match event.event_type() {
+			"phase_goal_completed"
+			| "phase_goal_next"
+			| "phase_goal_transition"
+			| "review_completion_intent"
+			| "terminal_finalize" => return Ok(None),
+			"phase_goal_set" | "phase_goal_status" => {
+				let Some(phase) = phase_goal_event_phase(event.payload()) else {
+					return Ok(None);
+				};
+				let Some(status) = phase_goal_event_status(event.payload()) else {
+					return Ok(None);
+				};
+
+				return Ok(phase_goal_recovery_candidate_from_status(phase, status));
+			},
+			_ => {},
+		}
+	}
+
+	Ok(None)
+}
+
+fn phase_goal_event_phase(payload: &Value) -> Option<PhaseGoalKind> {
+	payload
+		.get("phase")
+		.and_then(Value::as_str)
+		.or_else(|| payload.get("payload")?.get("phase")?.as_str())
+		.and_then(phase_goal_kind_from_str)
+}
+
+fn phase_goal_event_status(payload: &Value) -> Option<&str> {
+	payload
+		.get("status")
+		.and_then(Value::as_str)
+		.or_else(|| payload.get("payload")?.get("status")?.as_str())
+}
+
+fn phase_goal_recovery_candidate_from_status(
+	phase: PhaseGoalKind,
+	status: &str,
+) -> Option<PhaseGoalKind> {
+	if status != "active" {
+		return None;
+	}
+	if matches!(
+		phase,
+		PhaseGoalKind::ImplementToValidationReady
+			| PhaseGoalKind::RepairValidationFailures
+			| PhaseGoalKind::RepairAcceptedReviewFindings
+	) {
+		Some(phase)
+	} else {
+		None
+	}
+}
+
+fn record_phase_goal_recovery_continuation(
+	project: &ServiceConfig,
+	state_store: &StateStore,
+	issue_run: &IssueRunPlan,
+	source_phase: PhaseGoalKind,
+	next_phase: PhaseGoalKind,
+	source_error_class: &str,
+) -> Result<()> {
+	state_store.append_private_execution_event(
+		project.service_id(),
+		&issue_run.issue.id,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		"phase_goal_recovery",
+		json!({
+			"schema": "decodex.phase_goal_signal/1",
+			"phase": source_phase.as_str(),
+			"signal": "active_goal_recovered",
+			"payload": {
+				"nextPhase": next_phase.as_str(),
+				"sourceErrorClass": source_error_class,
+			},
+		}),
+	)?;
+
+	Ok(())
 }
 
 fn phase_goal_kind_from_str(value: &str) -> Option<PhaseGoalKind> {
@@ -1929,7 +2207,11 @@ fn promote_zero_evidence_app_server_start_failure(
 	issue_run: &IssueRunPlan,
 	error: Report,
 ) -> Report {
-	if run_failure_requires_terminal_attention(&error) {
+	let writeback_disposition = run_failure_writeback_disposition(&error);
+
+	if writeback_disposition.requires_terminal_attention()
+		|| writeback_disposition.preserves_retry_through_zero_evidence()
+	{
 		return error;
 	}
 
@@ -2904,26 +3186,7 @@ fn architecture_recovery_goal_detail(
 }
 
 fn run_failure_requires_terminal_attention(error: &Report) -> bool {
-	error.downcast_ref::<ManualAttentionRequested>().is_some()
-		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
-		|| error.downcast_ref::<AppServerZeroEvidenceStartFailure>().is_some()
-		|| error.downcast_ref::<AppServerPhaseGoalFailure>().is_some()
-		|| error.downcast_ref::<ReviewHandoffNeedsAttention>().is_some()
-		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
-		|| error.downcast_ref::<StalledRunNeedsAttention>().is_some()
-		|| error.downcast_ref::<AppServerCapabilityPreflightFailure>().is_some()
-		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
-		|| error.downcast_ref::<AppServerTransportFailure>().is_some()
-		|| error.downcast_ref::<AgentGitCredentialsUnavailable>().is_some()
-		|| error
-			.downcast_ref::<AppServerTurnFailure>()
-			.is_some_and(AppServerTurnFailure::requires_operator_attention)
-		|| error.downcast_ref::<ReviewPolicyStopRequested>().is_some()
-		|| error
-			.downcast_ref::<RepoGateFailure>()
-			.is_some_and(|repo_gate_failure| {
-				repo_gate_failure.disposition() == RepoGateFailureDisposition::NeedsHumanAttention
-			})
+	run_failure_writeback_disposition(error).requires_terminal_attention()
 }
 
 fn handle_failure<T>(
@@ -2962,9 +3225,6 @@ where
 		issue_run,
 		&worktree_path,
 	);
-	let retryable_retained_partial_progress = retained_partial_progress
-		.as_ref()
-		.filter(|_| retryable_failure_should_stop_for_retained_progress(error));
 
 	if let Some(review_policy_stop) = error.downcast_ref::<ReviewPolicyStopRequested>()
 		&& review_policy_stop.reason == ReviewPolicyStopReason::Exhausted
@@ -2997,10 +3257,7 @@ where
 		};
 	}
 
-	if !requires_terminal_attention
-		&& retry_budget_attempts < max_attempts
-		&& retryable_retained_partial_progress.is_none()
-	{
+	if !requires_terminal_attention && retry_budget_attempts < max_attempts {
 		return apply_retryable_failure_writeback(&failure_context, error, max_attempts);
 	}
 
@@ -3286,12 +3543,6 @@ fn retained_partial_progress_error(
 	}))
 }
 
-fn retryable_failure_should_stop_for_retained_progress(error: &Report) -> bool {
-	!error.downcast_ref::<RepoGateFailure>().is_some_and(|repo_gate_failure| {
-		repo_gate_failure.disposition() == RepoGateFailureDisposition::ContinueRepair
-	})
-}
-
 fn retained_progress_should_defer_to_terminal_intent(error: &Report) -> bool {
 	error.downcast_ref::<ManualAttentionRequested>().is_some()
 		|| error.downcast_ref::<LoopGuardrailStopRequested>().is_some()
@@ -3341,12 +3592,51 @@ fn write_retry_schedule_marker_for_runtime_retry(
 	issue_run: &IssueRunPlan,
 	retry_budget_attempts: i64,
 ) -> Result<()> {
+	if error.downcast_ref::<StalledRunNeedsAttention>().is_some() {
+		return write_failure_retry_schedule_marker(workflow, issue_run, retry_budget_attempts);
+	}
+	if error
+		.downcast_ref::<AppServerCapabilityPreflightFailure>()
+		.is_some_and(AppServerCapabilityPreflightFailure::is_retryable_timeout)
+	{
+		return write_failure_retry_schedule_marker(workflow, issue_run, retry_budget_attempts);
+	}
+	if error
+		.downcast_ref::<AppServerPhaseGoalFailure>()
+		.is_some_and(AppServerPhaseGoalFailure::is_terminal_path_missing)
+	{
+		return write_failure_retry_schedule_marker(workflow, issue_run, retry_budget_attempts);
+	}
+
 	let Some(repo_gate_failure) = error.downcast_ref::<RepoGateFailure>() else {
 		return Ok(());
 	};
 	let Some(retry_kind) = repo_gate_failure.retry_schedule_kind() else {
 		return Ok(());
 	};
+
+	write_retry_schedule_marker(
+		workflow,
+		issue_run,
+		retry_budget_attempts,
+		retry_kind,
+	)
+}
+
+fn write_failure_retry_schedule_marker(
+	workflow: &WorkflowDocument,
+	issue_run: &IssueRunPlan,
+	retry_budget_attempts: i64,
+) -> Result<()> {
+	write_retry_schedule_marker(workflow, issue_run, retry_budget_attempts, "failure")
+}
+
+fn write_retry_schedule_marker(
+	workflow: &WorkflowDocument,
+	issue_run: &IssueRunPlan,
+	retry_budget_attempts: i64,
+	retry_kind: &str,
+) -> Result<()> {
 	let retry_attempt = u32::try_from(retry_budget_attempts).unwrap_or(u32::MAX).max(1);
 	let delay = retry_delay(RetryKind::Failure, retry_attempt, workflow);
 	let retry_ready_at_unix_epoch = OffsetDateTime::now_utc().unix_timestamp().saturating_add(

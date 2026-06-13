@@ -521,7 +521,7 @@ Follow the repository policy.
 }
 
 #[test]
-fn materialize_daemon_spawn_state_uses_retained_retry_budget_marker() {
+fn materialize_daemon_spawn_state_starts_fresh_budget_for_normal_queue_intake() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_issue("Todo", &[]);
 	let tracker = FakeTracker::with_refresh_snapshots(
@@ -547,8 +547,41 @@ fn materialize_daemon_spawn_state_uses_retained_retry_budget_marker() {
 
 	assert_eq!(daemon_spawn_state.worktree.path, summary.worktree_path);
 	assert_eq!(
+		daemon_spawn_state.retry_budget_base, 0,
+		"normal daemon queue intake should not inherit retry attempts from an old marker"
+	);
+}
+
+#[test]
+fn materialize_daemon_spawn_state_uses_retained_retry_budget_marker_for_recovered_retry() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_active_issue("In Progress");
+	let tracker = FakeTracker::with_refresh_snapshots(
+		vec![issue.clone()],
+		vec![vec![issue.clone()], vec![issue.clone()]],
+	);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+	let retained_worktree = worktree_manager
+		.ensure_worktree(&issue.identifier, false)
+		.expect("retained worktree should exist");
+
+	state::write_run_retry_budget_attempt_count(&retained_worktree.path, "older-run", 4, 2)
+		.expect("retry budget marker should write");
+
+	let summary = orchestrator::run_project_once(&tracker, &config, &workflow, &state_store, true)
+		.expect("dry-run planning should succeed")
+		.expect("retained lane should still be selected");
+	let daemon_spawn_state =
+		orchestrator::materialize_daemon_spawn_state(&config, &workflow, &state_store, &summary)
+			.expect("daemon parent should materialize worktree and retry budget together");
+
+	assert_eq!(summary.dispatch_mode, orchestrator::IssueDispatchMode::Retry);
+	assert_eq!(daemon_spawn_state.worktree.path, summary.worktree_path);
+	assert_eq!(
 		daemon_spawn_state.retry_budget_base, 2,
-		"daemon child handoff should preserve retry budget from the retained worktree marker"
+		"recovered retry handoff should preserve retry budget from the retained worktree marker"
 	);
 }
 
