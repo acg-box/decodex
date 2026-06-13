@@ -214,8 +214,8 @@ Use manual attention when:
 
 The valid owned-agent path is:
 
-1. add the configured `decodex:needs-attention` label
-2. call `issue_comment` with `kind = "manual_attention"` and structured public fields
+1. request the configured `decodex:needs-attention` label through `issue_label_add`
+2. call `issue_comment` with `kind = "manual_attention"` and structured public fields so Decodex can validate the blocker and apply the label
 3. call `issue_terminal_finalize(path = "manual_attention")`
 
 Keep host-local paths, private payloads, raw steer text, process diagnostics, account

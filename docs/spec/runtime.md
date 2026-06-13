@@ -229,8 +229,8 @@ The runtime state machine is local to `decodex`. It is not a replacement for Lin
 | --- | --- | --- |
 | `discovered` | The issue was listed from Linear and passed the eligibility filter. | Acquire lease or skip on conflict. |
 | `leased` | `decodex` created the local lease and reserved the issue for one attempt. | Worktree bootstrap starts or lease fails. |
-| `worktree_ready` | The issue lane exists locally and is ready for execution. | `app-server` session starts. |
-| `running` | `decodex` has an active `app-server` thread for the issue and may start one or more bounded turns on that thread. | A terminal completion path resolves, the bounded continuation budget is exhausted, the issue becomes non-active, transport fails, or policy violation occurs. |
+| `worktree_ready` | The issue lane exists locally and is ready for execution. | `app-server` session starts, or startup transport failure enters the retry budget. |
+| `running` | `decodex` has an active `app-server` thread for the issue and may start one or more bounded turns on that thread. | A terminal completion path resolves, the bounded continuation budget is exhausted, the issue becomes non-active, post-thread transport fails, or policy violation occurs. |
 | `validating` | Agent execution finished and the repo-native gate (`canonicalize_commands`, then `verify_commands`) is running. | The repo gate passes or fails. |
 | `retry_wait` | The control plane is holding a queued retry entry for the leased lane after a clean continuation exit or a failure with remaining retry budget. | The queued retry revalidates and starts, the queued issue becomes non-active and the claim is released, or operator intervention cancels retries. |
 | `needs_attention` | Retry budget is exhausted or human intervention is required. | Human updates the issue and it becomes eligible again. |
@@ -248,7 +248,9 @@ After each `app-server` turn completes, `decodex` must resolve one continuation 
   - The agent recorded a valid PR-backed review handoff and did not request human attention.
   - `decodex` proceeds into `validating`, then applies the success writeback if the repo gate passes.
 - `manual_attention`
-  - The agent explicitly requested human attention by adding `decodex:needs-attention` and did not also record review handoff.
+  - The agent explicitly requested human attention with the `decodex:needs-attention`
+    label intent, left a validated explanatory comment, and did not also record
+    review handoff.
   - `decodex` skips success writeback and the post-run repo gate, then enters the human-required failure flow immediately.
 - invalid completion signaling
   - If the turn records both signals, or records one terminal path but fails to finalize it explicitly, the attempt is invalid and must fail rather than guessing a completion path.
@@ -291,11 +293,40 @@ the repo gate and select the next phase. An `issue_progress_checkpoint`, final c
 text, or "await next phase" statement is evidence only; it is not a phase exit and
 must not be treated as a substitute for goal completion.
 
+If an app-server run fails or a supervised child exits unsuccessfully while the latest
+private phase-goal signal for that same run is still an `active` implementation or
+repair phase, Decodex must run the registered repo gate before converting retained
+tracked changes into human attention. When that runtime-owned gate returns a
+continuation transition, Decodex records `phase_goal_recovery`, persists the next
+phase goal (`handoff_evidence` after validation pass or `repair_validation_failures`
+after continued-repair validation failure), marks the attempt as
+`continuation_pending`, and schedules normal continuation re-entry. This recovery path
+does not apply to `handoff_evidence`, explicit manual-attention terminal intent,
+unsupported phase-goal app-server methods, repo-gate human-attention failures, or
+runs with no current active phase-goal signal.
+
+App-server JSON-RPC transport failures keep the phase where the disconnect occurred.
+Disconnects before a durable thread session is attached (`initialize`,
+`account/login/start`, `thread/start`, or `thread/resume`) are startup failures and
+must flow through the retry budget before any `decodex:needs-attention` writeback.
+If the retry budget is exhausted, the terminal failure still uses
+`app_server_transport_disconnected`. Disconnects after the thread session boundary,
+including `turn/start` and turn execution, remain human-required because automatic
+retry can duplicate turn-side effects.
+
+App-server turn failures with `codexErrorInfo = "usageLimitExceeded"` are runtime
+capacity failures, not immediate operator-attention requests. Decodex must stop the
+current turn, record a retry with `app_server_usage_limit_exceeded` while retry budget
+remains, and let the next attempt re-run account-pool usage probes and account
+selection. If the retry budget is exhausted, the same error class becomes a normal
+human-required attention stop.
+
 Phase-goal telemetry is local runtime evidence. It must distinguish
-`goal_complete`, `validation_pass`, `validation_fail`, review `clean`, review
-`findings`, terminal `review_handoff`, and terminal `manual_attention`. These signals
-may appear in private execution events and operator protocol activity, but Linear
-receives only the existing low-frequency lifecycle projections.
+`goal_complete`, `validation_pass`, `validation_fail`, `active_goal_recovered`,
+review `clean`, review `findings`, terminal `review_handoff`, and terminal
+`manual_attention`. These signals may appear in private execution events and operator
+protocol activity, but Linear receives only the existing low-frequency lifecycle
+projections.
 
 ## Tracker write ownership
 
@@ -345,12 +376,12 @@ Before applying success or failure writeback, `decodex` must classify the finish
 | Disposition | Required agent signal | Forbidden co-signal | Runtime effect |
 | --- | --- | --- | --- |
 | `review_handoff` | `issue_review_handoff` plus `issue_terminal_finalize(path = "review_handoff")` | `decodex:needs-attention` | Run the repo-native gate, revalidate PR state, post completion comment, transition to `In Review`. |
-| `manual_attention` | `decodex:needs-attention` plus an explanatory public issue summary, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
+| `manual_attention` | `issue_label_add` with `decodex:needs-attention` intent, a validated explanatory public issue summary that applies that label, then `issue_terminal_finalize(path = "manual_attention")` | `issue_review_handoff` | Skip PR-backed success writeback and the repo-native gate, then treat the run as a human-required failure immediately. |
 
 If neither signal exists, or both signals exist, `decodex` must fail the attempt instead of inferring operator intent.
-If the label is recorded without the required explanatory comment, `decodex` must also fail the attempt instead of treating it as a valid `manual_attention` exit.
+If the label intent is recorded without the required explanatory comment, `decodex` must also fail the attempt instead of treating it as a valid `manual_attention` exit.
 If the resolved terminal path is not explicitly finalized through `issue_terminal_finalize`, the app-server wrapper must fail the turn before `decodex` records the attempt as successful.
-The explanatory public summary for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text only when those values are public-safe, instead of speculating about unverified capability limits.
+The explanatory public summary for `manual_attention` must describe the exact observed blocker and should include the failed command plus raw error text only when those values are public-safe, instead of speculating about unverified capability limits. It must not reuse runtime-owned retry or continued-repair `error_class` values such as app-server timeout/turn failures, stalled-run detection, or repo-gate validation failure classes; those remain Decodex-owned retry, continuation, or architecture-recovery signals until the runtime itself reaches a human-required terminal boundary.
 Execution-state checkpoints are durable progress overlays only. Their phase, focus, next action, blockers, evidence, or verification fields are never a substitute for the explicit terminal-finalization call.
 After successful completion writeback, Decodex must best-effort archive every locally recorded terminal Codex thread for the issue, including earlier failed retry attempts, so old attempts do not keep the issue visible in the Codex conversation list.
 
@@ -486,6 +517,20 @@ idempotency fields are defined by
 ### Failure writeback
 
 This path applies to retryable failures, retry exhaustion, and explicit `manual_attention` exits.
+Before writing a retry comment, transitioning an issue, or applying
+`decodex:needs-attention`, Decodex must classify the failure through one writeback
+disposition: generic retryable failure, structured retryable recovery, or
+human-required terminal attention. Structured retryable recovery includes typed runtime
+failures such as zero-evidence app-server startup failures, stalled active-run
+reconciliation without retained tracked changes, app-server capability preflight
+timeouts, startup transport disconnects, turn failures, dynamic-tool failures, and
+retryable repo-gate failures;
+those failures must not be reclassified as zero-evidence startup attention merely
+because protocol-event persistence lagged. A zero-evidence startup failure may record
+private startup diagnostics, but it remains automatic retry work while retry budget
+remains and only becomes operator-facing attention after retry exhaustion.
+Retry scheduling, terminal writeback, and public `error_class`/`next_action` text must
+use that same classification instead of maintaining separate ad hoc failure tables.
 
 Retryable failures with remaining budget:
 
@@ -508,7 +553,10 @@ Retry-exhausted or human-required failures:
 3. Post a structured failure comment.
 4. Finalize the terminal path with `issue_terminal_finalize(path = "manual_attention")`.
 
-If the coding agent explicitly requests human attention by adding `decodex:needs-attention`, `decodex` must stop automatic retries for that attempt, skip PR-backed success writeback, and treat the lane as a human-required failure immediately.
+If the coding agent explicitly requests human attention with a
+`decodex:needs-attention` label intent and the paired `manual_attention` comment
+validates, `decodex` must stop automatic retries for that attempt, skip PR-backed
+success writeback, and treat the lane as a human-required failure immediately.
 The paired explanatory comment must use the issue-scoped `issue_comment` allowlist,
 currently kind `manual_attention`, so the Linear-visible summary is rendered from
 structured public fields instead of an arbitrary agent-authored body. Private command
@@ -628,7 +676,7 @@ or `stalled` while current marker, active thread, or active work-protocol eviden
 still identifies the same `run_id` and `attempt_number` as live, operator status must
 keep the lane visible with the process/protocol liveness details instead of hiding it
 as only terminal history or cleanup work.
-Post-review ownership is stored in the runtime database. Retained handoff rows record the authoritative PR URL, branch lineage, validated PR head OID, run id, and attempt number that completed the `In Review` handoff. Retained orchestration rows record the current post-review phase for that exact handoff identity. If the matching database row is missing, post-review ownership must block as unresolved instead of rebinding from branch-name, current-head, Linear comments, or other heuristics. An explicit operator manual takeover command may adopt a human-owned PR into this same retained database shape only after validating the managed clean worktree, PR repository, default-branch target, exact branch/head match, and green landable PR gates. If the active service label is missing but exists on the issue team, live adopt may restore it after all other invariants pass and must roll that restoration back if the audit write fails. If a retained review marker exists but a stored handoff or orchestration head no longer matches a clean retained worktree and matching PR head, operator status must keep the marker PR URL visible when known and recovery diagnosis must report the concrete mismatched field before any explicit rebind refresh. When retained PR readback degrades but the handoff identity is still safe to preserve, operator-local status may expose a typed `readback_root_cause` diagnostic such as missing GitHub CLI, missing GitHub token, GitHub auth failure, API/read failure, parse/shape failure, or lineage validation failure while keeping public-safe warning reasons such as `pull_request_state_read_failed` stable.
+Post-review ownership is stored in the runtime database. Retained handoff rows record the authoritative PR URL, branch lineage, validated PR head OID, run id, and attempt number that completed the `In Review` handoff. Retained orchestration rows record the current post-review phase for that exact handoff identity. If the matching database row is missing, post-review ownership must block as unresolved instead of rebinding from branch-name, current-head, Linear comments, or other heuristics. An explicit operator manual takeover command may adopt a human-owned PR into this same retained database shape only after validating the managed clean worktree, PR repository, default-branch target, exact branch/head match, and green landable PR gates. If the active service label is missing but exists on the issue team, live adopt may restore it after all other invariants pass and must roll that restoration back if the audit write fails. If a retained review marker exists but a stored handoff or orchestration head no longer matches a clean retained worktree and matching PR head, operator status must keep the marker PR URL visible when known and recovery diagnosis must report the concrete mismatched field before any explicit rebind refresh. When the retained handoff still matches the same branch and PR, and PR readback plus local worktree lineage have already accepted the current head as the current PR head, a stale retained orchestration `head_sha` may be rebound to that current head by resetting the orchestration phase to `request_pending`, clearing prior GitHub Review request metadata, and preserving round-count history. Branch, PR, handoff-lineage, or rewritten-history mismatches must continue to block or report for operator recovery instead of being silently rebound. When retained PR readback degrades but the handoff identity is still safe to preserve, operator-local status may expose a typed `readback_root_cause` diagnostic such as missing GitHub CLI, missing GitHub token, GitHub auth failure, API/read failure, parse/shape failure, or lineage validation failure while keeping public-safe warning reasons such as `pull_request_state_read_failed` stable. Retained orchestration must preserve the post-review classification decision when it converts status readback into runtime action: only a `Block` classification may write passive retained manual attention or add `decodex:needs-attention`; degraded readback classified as `WaitForReview` must remain a wait/retry status row and must not be promoted to manual attention by the run-cycle path.
 The only source-tree runtime artifacts that clean-source checks may ignore are the untracked top-level `.decodex-run-activity` heartbeat marker and `.decodex-run-control/` local control-channel directory. Durable review handoff, orchestration, review-policy checkpoints, retry, phase timing, and retained PR state belong in the Decodex runtime database, not in root-level or worktree-local review marker files. If the heartbeat marker carries similarly named fields for compatibility or operator diagnostics, those breadcrumb values cannot override runtime-store rows.
 
 ### Dispatch-slot handoff invariant
@@ -721,6 +769,12 @@ After a process restart, recent-run history, active lease ownership, retained po
 - While the control plane is running an active lane, that child must keep the workflow snapshot it started with; project `WORKFLOW.md` reloads affect later decisions without restarting the in-flight child.
 - While the control plane is supervising an active child process, stall detection must consult the child-updated `.decodex-run-activity` marker for the current `run_id` plus `attempt_number` and the persisted runtime event journal. A retained marker only proves a live process when its PID is still alive on the current host boot and the process start identity still matches; after power loss, reboot, or same-boot PID reuse, recovery must clear the reconstructed lease and re-enter the retained lane through retry-style dispatch instead of preserving the old running state.
 - Retry-style recovery prompts must tell the next agent to treat the current worktree, tracker state, runtime-store records, and protocol events as durable truth, use marker files only as diagnostic liveness breadcrumbs, inspect the branch/diff/recent validation evidence first, and continue from partial work rather than assuming prior in-memory model/tool state survived.
+- Retained retry-budget markers belong only to the same automatic recovery episode:
+  retry, review-repair, closeout, and other retry-style dispatch may inherit the
+  marker so crash/restart recovery does not mint extra attempts. Normal queued intake
+  starts a new automatic episode after a human has made the issue eligible again, so it
+  must not inherit an old retained marker's exhausted retry budget unless a caller
+  supplied an explicit preferred retry-budget base for that new run.
 - While the control plane owns a queued retry entry, that queued claim must take priority over normal candidate selection for the affected project.
 - While the control plane evaluates persisted Execution Programs, program-owned ready
   nodes may receive `decodex:queued:<service-id>` only when their mapped Linear issue
@@ -745,29 +799,48 @@ After a process restart, recent-run history, active lease ownership, retained po
 - A leased issue that is still in a configured startable state during early control-plane ticks must be treated as a lane that has not finished claiming tracker ownership yet, not as an immediate non-active interruption.
 - If a running attempt exceeds the app-server idle timeout, `decodex` must treat it as stalled, stop the active run, and mark the attempt `stalled`.
 - If stalled reconciliation finds tracked changes in the retained worktree, it must classify the lane as retained partial progress directly. This path must write a human-required `needs_attention` ledger record with `error_class = "partial_progress_retained"` and `terminal_path = "retained_partial_progress"` instead of first routing the lane through `stalled_run_detected` or `terminal_failure`.
-- If stalled reconciliation finds no tracked changes in the retained worktree, it must converge the issue through the existing human-required failure path with `error_class = "stalled_run_detected"` instead of silently retrying in this phase.
+- If stalled reconciliation finds no tracked changes in the retained worktree, it must classify the lane as structured retryable recovery with `error_class = "stalled_run_detected"` while retry budget remains. The retry must keep active ownership, write a failure retry schedule for the same worktree, and must not add `decodex:needs-attention` until retry budget exhaustion or another terminal boundary applies.
 - If the supervised child already exited before the next control-plane tick, stalled reconciliation must still inspect the just-finished lane using recorded protocol activity and retained worktree state rather than skipping directly to generic failure handling.
 - Operator status snapshots must expose structured liveness and wait-state fields derived from runtime records plus marker breadcrumbs, including current phase, optional wait reason, current operation, last run/protocol/progress times, idle age, a soft `suspected_stall` signal, optional progress diagnostics, and any queued retry kind plus due time, so operators can distinguish active execution from continuation waits, retry backoff, early stall suspicion, and genuine hard stalls without inferring progress from filesystem churn. `last_progress_at` is meaningful-work progress only: tool calls, file or diff changes, plan/model output, repo validation, PR/review/terminal lifecycle, or other explicit work events may refresh it, but account, rate-limit, phase-goal, passive status, warning, token-usage, heartbeat, or similar non-work protocol traffic must only refresh protocol liveness. When a lane remains in `model_execution` with fresh protocol activity but stale or missing work progress and the recent protocol events are only non-work traffic, status should expose `progress_diagnostic = "protocol_only_activity"` while preserving process and protocol liveness separately.
 - Operator status snapshots may expose an additive `child_agent_activity` object when app-server protocol events have produced one for the current run. The object must stay machine-readable and dashboard/CLI shared, and should describe dynamic observed buckets rather than a fixed workflow: current child bucket and elapsed time, bucket wall/event/tool counts, current/max/cumulative input tokens, cumulative output tokens, largest tool output, and warnings for repeated large outputs. Missing `child_agent_activity` means no child breakdown was captured; existing JSON consumers must continue to work without it.
 - If the agent Git credential preflight fails, operator status must report the retained lane as a credential failure requiring operator recovery, not as a still-running lane.
-- If retry budget or needs-attention recovery finds tracked changes in the retained worktree, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
+- If retry budget or needs-attention recovery finds tracked changes in the retained worktree after active phase-goal recovery has no applicable continuation path, operator status must report retained partial progress rather than only a generic retry-budget hold. Retained progress is the recovery disposition; later runtime, app-server, credential, transport, or repo-gate failure classes must be preserved as source evidence instead of overriding the retained-progress lifecycle path. The failure class may be `partial_progress_retained` when no more specific runtime error class is available. Operators should then inspect the patch, finish validation and PR handoff if it is useful, or reset the retained worktree explicitly.
 - A retryable runtime or app-server failure that leaves tracked worktree changes must
-  stop as retained partial progress instead of writing only a generic retry comment.
-  This does not apply to repo-gate continued-repair failures, because those failures
-  still authorize bounded automatic repair against the retained patch until retry or
-  loop-guardrail limits are reached.
+  keep the owned lane in automatic recovery while retry budget or loop-guardrail
+  recovery remains. The retained patch is retry context for the same worktree, not by
+  itself a human-attention signal. When that same failure class exhausts retry budget
+  or another terminal boundary applies, terminal writeback may classify the retained
+  patch as `partial_progress_retained` and preserve the runtime, app-server,
+  credential, transport, or repo-gate class as source evidence.
+- If a phase-scoped goal reaches `complete` without the matching Decodex terminal
+  path, such as handoff evidence finishing without review-handoff, closeout, or
+  manual-attention finalization, Decodex must treat
+  `phase_goal_terminal_path_missing` as structured retryable recovery while retry
+  budget remains. The next attempt re-enters the persisted phase goal and must finish
+  the required terminal tool path instead of turning goal completion into issue
+  success. Unsupported app-server goal methods remain hard environment blockers.
+- Retained post-review orchestration must treat local branch/head readback failures as
+  transient wait conditions while the review handoff marker still owns the lane. Status
+  may report `worktree_checkout_branch_read_failed` or `worktree_head_read_failed`, but
+  the run-cycle path must not write passive retained manual attention or add
+  `decodex:needs-attention` for those read failures alone. A later successful readback
+  may still classify hard blockers such as missing branch, branch mismatch, missing
+  head, head mismatch, PR mismatch, or another explicit `Block` decision.
 - If the durable Run Ledger final outcome is `needs_attention` or
   `terminal_failure`, operator status must count that issue in project-level
-  `attention_count` even when no active run, queued candidate, or post-review lane
-  currently owns it. A retained worktree for that same issue must be projected as
-  retained attention, not neutral cleanup-only hygiene, so monitors do not need to
-  parse `history_lanes` to discover a human-required terminal outcome. When live
-  tracker readback proves the issue is in the configured completed state, the service
-  queue, active, and needs-attention labels are absent, no retained worktree or
-  post-review lane owns the issue, and an explicit `recover merged-closeout` path has
-  or can write `closeout` plus `cleanup_complete` records after validating the merged
-  PR lineage, that stale terminal attention is a resolved history echo rather than
-  current project attention.
+  `attention_count` only when a current attention signal still exists: a retained
+  worktree, queued attention row, active or needs-attention tracker label, or a
+  blocked post-review lane. A retained worktree for that same issue must be projected
+  as retained attention, not neutral cleanup-only hygiene, so monitors do not need to
+  parse `history_lanes` to discover a human-required terminal outcome. A bare terminal
+  Run Ledger attention row with no current owner is history-only ledger evidence; it
+  must remain visible in `history_lanes` without inflating current project attention.
+  When a non-attention post-review lane currently owns the same issue, such as
+  `wait_for_review` or `ready_to_land`, that post-review owner controls the current
+  project attention result; any stale active label or retained worktree echo from the
+  older terminal ledger must not promote the old Run Ledger outcome back into
+  `attention_count`. A real `needs_attention_label`, blocked queued row, or blocked
+  post-review classification still counts as current attention.
 - If that same issue still carries the service queue label plus the configured
   `needs_attention_label`, the terminal Run Ledger attention outcome must own the
   operator projection. Status must not also render the issue as an intake queue
@@ -797,6 +870,8 @@ After a process restart, recent-run history, active lease ownership, retained po
   must run the bounded app-server capability preflight defined in
   [`app-server.md`](./app-server.md). Missing config/model/provider/skills/plugin/MCP
   state is a pre-dispatch terminal blocker with an operator-readable error class, not a
-  promptable agent turn.
+  promptable agent turn. App-server capability preflight method timeouts are structured
+  retryable runtime failures while workflow retry budget remains; after retry
+  exhaustion they may terminalize with their specific app-server preflight error class.
 - If the local process crashed during a run, `decodex` must recover from the runtime database, current tracker cache or state, and retained worktree inspection.
 - If Linear shows a non-terminal state but no local lease exists, the issue may become eligible again after reconciliation or may be redispatched through the retained recovered worktree.

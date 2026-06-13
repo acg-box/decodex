@@ -1,55 +1,54 @@
 {
+  "audience": "Codex app-server and skill-resource operators",
+  "candidate_text": [
+    "Codex temporarily disabled orchestrator-only skills: executor skills still load, but orchestrator skill resources wait on complete /ps/mcp packages. Treat missing orchestrator skills as expected for now. PR: https://github.com/openai/codex/pull/27646"
+  ],
+  "caveats": [
+    "This is a temporary upstream gate.",
+    "Do not imply all skills or executor-backed skill resources are disabled."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27646.review.json",
+      "text": "Orchestrator-only skills are currently disabled behind an app-server feature flag."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27646.json",
+      "text": "Executor-backed skills still load through the app-server skill extension."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27646:watch_note",
+    "reason": "The temporary gate can explain missing orchestrator skill resources for operators.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "`ORCHESTRATOR_SKILLS_ENABLED` is false.",
+    "The app-server adds `OrchestratorSkillProvider` only when that flag is true.",
+    "The orchestrator resource read test is ignored pending complete hosted skill packages."
+  ],
+  "mode": "watch_note",
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or publish this candidate.",
+    "Watch for the follow-up PR that re-enables orchestrator skill packages."
+  ],
+  "priority": "critical",
+  "repo": "openai/codex",
   "schema": "social_candidate/v1",
   "slug": "openai-codex-pr-27646",
-  "repo": "openai/codex",
-  "channel": "x",
-  "target_account": "decodexspace",
-  "mode": "watch_note",
-  "priority": "critical",
-  "audience": "Codex operators using hosted or orchestrator-provided skills",
-  "candidate_text": [
-    "Codex temporarily disabled orchestrator-only skills in app-server while `/ps/mcp` packages are incomplete. Executor-backed skills still register, but hosted/orchestrator `skill://` reads need a caveat. PR: https://github.com/openai/codex/pull/27646"
-  ],
   "source_refs": {
-    "upstream_reviews": [
-      "artifacts/github/reviews/openai-codex-pr-27646.review.json"
-    ],
     "upstream_impacts": [
       "artifacts/github/impact/openai-codex-pr-27646.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27646.review.json"
     ],
     "urls": [
       "https://github.com/openai/codex/pull/27646"
     ]
   },
-  "evidence_notes": [
-    "`ORCHESTRATOR_SKILLS_ENABLED` is set to false in app-server extension registration.",
-    "Executor-backed skill provider registration remains present.",
-    "The orchestrator skill resource test is ignored until `/ps/mcp` serves complete hosted skill packages."
-  ],
-  "claims": [
-    {
-      "text": "Codex app-server temporarily disables orchestrator-only skills.",
-      "evidence": "artifacts/github/reviews/openai-codex-pr-27646.review.json",
-      "confidence": "confirmed"
-    },
-    {
-      "text": "Executor-backed skills are still registered by the app-server extension setup.",
-      "evidence": "artifacts/github/impact/openai-codex-pr-27646.json",
-      "confidence": "confirmed"
-    }
-  ],
-  "decision": {
-    "worthiness": "defer",
-    "reason": "The change is useful for operator awareness, but it is temporary and endpoint-dependent, so downstream Publisher should decide whether a watch note is worth posting.",
-    "idempotency_key": "x:decodexspace:openai-codex-pr-27646:watch_note"
-  },
-  "caveats": [
-    "Do not claim all skills are disabled.",
-    "Do not treat the temporary disablement as a permanent removal.",
-    "Hosted skill availability depends on future `/ps/mcp` package support."
-  ],
-  "next_steps": [
-    "Let Publisher automation evaluate whether a deferred watch note is useful.",
-    "Watch upstream for the re-enable PR."
-  ]
+  "target_account": "decodexspace"
 }

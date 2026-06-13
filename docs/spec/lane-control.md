@@ -50,7 +50,7 @@ agent-facing skills must guide responsible use.
 | Hard interrupt fallback | Explicit fallback only | `decodex lane interrupt <ISSUE> --run-id <RUN_ID> --force` and `POST /api/lane/interrupt` with `"force": true` classify process signaling as `hard_interrupt_fallback` | Use only when soft interrupt is unavailable, timed out, or impossible because the process, app-server boundary, or active lease cannot be reached. A forced interrupt may signal the recorded child process after `active_lease_missing` only when inspection still identifies the same issue, run id, attempt, channel, and live process. Preserve retained worktree evidence and runtime classification. |
 | Steer active lane | Supported CLI/API control; bottom-layer method stays broad | `decodex lane steer <ISSUE> --run-id <RUN_ID> --expected-turn-id <TURN_ID> --message <TEXT>`, canonical `POST /api/lane/steer`, legacy alias `POST /api/lane-steer`, local run-control steer request/response files, app-server `turn/steer`, private `control_action` audit events, and protocol activity `turn/steer` summaries | Pass operator-supplied steer text through CLI/API to the current active turn. Require `expectedTurnId`; stale turn ids fail closed. Do not narrow the protocol to a fixed set of task-content categories. Apply policy, audit, privacy, and lifecycle guardrails above the protocol. |
 | Retained resume/retry | Supported through runtime lifecycle | `decodex run <ISSUE>`, retry scheduling, retained worktree recovery, and `thread/resume` for same-thread app-server continuation | Resume only when retained worktree, issue, branch, PR, and runtime evidence still prove the same lane. Treat ambiguous lineage as manual attention. |
-| Manual attention | Supported terminal control path | `decodex:needs-attention`, `issue_comment(kind = "manual_attention")`, and `issue_terminal_finalize(path = "manual_attention")` | Stop automation when policy requires a human decision. Explain the blocker through structured public fields and keep private evidence local. |
+| Manual attention | Supported terminal control path | `issue_label_add` intent for `decodex:needs-attention`, `issue_comment(kind = "manual_attention")`, and `issue_terminal_finalize(path = "manual_attention")` | Stop automation when policy requires a human decision. Explain the blocker through structured public fields and keep private evidence local. |
 | Task replacement | Deferred lifecycle work | No supported active-lane replacement command | Do not use steer or raw injection to replace the task silently. Treat replacement as explicit lifecycle work: pause/stop if needed, update or requeue the issue, or create a new issue/lane. |
 | Raw thread item injection | Unsupported as an operator feature | No Decodex operator path for `thread/inject_items` | Do not expose raw `thread/inject_items` to operators in this rollout. Use `turn/steer` for operator steer. |
 | Active-lane UI authoring controls | Deferred | Existing dashboard views and low-level handlers are not the CLI/API-first lane-control contract | Do not add dashboard steer, retry, or task-replacement controls in this rollout. Ship CLI/API first, then promote UI controls only after audit and policy behavior is settled. |
@@ -233,8 +233,8 @@ contract, authority decision, or retained-progress ownership decision.
 Agents must not simulate manual attention by editing tracker state directly. The valid
 agent path is:
 
-1. add the configured `decodex:needs-attention` label
-2. call `issue_comment` with `kind = "manual_attention"` and structured public fields
+1. request the configured `decodex:needs-attention` label through `issue_label_add`
+2. call `issue_comment` with `kind = "manual_attention"` and structured public fields so Decodex can validate the blocker and apply the label
 3. call `issue_terminal_finalize(path = "manual_attention")`
 
 Operators may later clear the blocker, clear the label, and requeue the lane through

@@ -408,6 +408,12 @@ impl<'a> TrackerToolBridge<'a> {
 		}
 	}
 
+	pub(crate) fn has_tracker_exit_signal(&self) -> bool {
+		*self.manual_attention_requested.borrow()
+			|| *self.manual_attention_comment_recorded.borrow()
+			|| self.pending_review_completion.borrow().is_some()
+	}
+
 	pub(crate) fn finalized_completion_disposition(
 		&self,
 	) -> crate::prelude::Result<Option<RunCompletionDisposition>> {

@@ -7,6 +7,16 @@ enum RetryEntryRetentionDecision {
 	Block,
 }
 
+struct ChildExitRetrySchedule<'a> {
+	issue_id: &'a str,
+	run_id: &'a str,
+	attempt_number: i64,
+	continuation_initial_issue_state: Option<String>,
+	dispatch_mode: IssueDispatchMode,
+	kind: RetryKind,
+	attempt: u32,
+}
+
 struct DaemonTickRuntimeContext<'a, T, I> {
 	tracker: &'a T,
 	project: &'a ServiceConfig,
@@ -747,8 +757,13 @@ fn materialize_daemon_spawn_state(
 	summary: &RunSummary,
 ) -> Result<MaterializedDaemonSpawnState> {
 	let worktree = materialize_run_summary_worktree(project, workflow, summary)?;
-	let retry_budget_base =
-		retry_budget_base_for_issue_worktree(state_store, &summary.issue_id, &worktree.path)?;
+	let retry_budget_base = retry_budget_base_for_dispatch_mode(
+		state_store,
+		&summary.issue_id,
+		&worktree.path,
+		summary.dispatch_mode,
+		None,
+	)?;
 
 	Ok(MaterializedDaemonSpawnState { worktree, retry_budget_base })
 }
@@ -1114,7 +1129,28 @@ where
 		return Ok(());
 	}
 
+	let recovered_phase_goal_continuation = if !exit_status.success() {
+		maybe_recover_child_exit_active_phase_goal_continuation(
+			&context,
+			&issue,
+			child,
+			initial_issue_state,
+			dispatch_mode,
+		)?
+	} else {
+		None
+	};
 	let (kind, attempt, continuation_initial_issue_state) = if continuation_pending {
+		(
+			RetryKind::Continuation,
+			u32::try_from(run_attempt.attempt_number()).unwrap_or(u32::MAX).max(1),
+			Some(initial_issue_state.to_owned()),
+		)
+	} else if recovered_phase_goal_continuation.is_some() {
+		context
+			.state_store
+			.update_run_status(run_attempt.run_id(), CONTINUATION_PENDING_RUN_STATUS)?;
+
 		(
 			RetryKind::Continuation,
 			u32::try_from(run_attempt.attempt_number()).unwrap_or(u32::MAX).max(1),
@@ -1125,10 +1161,8 @@ where
 
 		return Ok(());
 	} else {
-		let retry_budget_attempts =
-			child_exit_retry_budget_attempt_count(&context, &issue, child)?;
-		let retry_budget_limit =
-			child_exit_retry_budget_limit(&context, &issue, child)?;
+		let retry_budget_attempts = child_exit_retry_budget_attempt_count(&context, &issue, child)?;
+		let retry_budget_limit = child_exit_retry_budget_limit(&context, &issue, child)?;
 
 		if retry_budget_attempts >= retry_budget_limit {
 			return terminalize_exhausted_child_exit_retry(
@@ -1143,12 +1177,36 @@ where
 
 		(RetryKind::Failure, retry_budget_attempts, None)
 	};
-	let delay = retry_delay(kind, attempt.max(1), context.workflow);
+
+	queue_child_exit_retry(
+		context.retry_queue,
+		context.state_store,
+		context.workflow,
+		ChildExitRetrySchedule {
+			issue_id,
+			run_id: run_attempt.run_id(),
+			attempt_number: run_attempt.attempt_number(),
+			continuation_initial_issue_state,
+			dispatch_mode,
+			kind,
+			attempt,
+		},
+	)
+}
+
+fn queue_child_exit_retry(
+	retry_queue: &mut RetryQueue,
+	state_store: &StateStore,
+	workflow: &WorkflowDocument,
+	schedule: ChildExitRetrySchedule<'_>,
+) -> Result<()> {
+	let attempt = schedule.attempt.max(1);
+	let delay = retry_delay(schedule.kind, attempt, workflow);
 
 	tracing::info!(
-		issue_id,
-		retry_kind = ?kind,
-		retry_attempt = attempt.max(1),
+		issue_id = schedule.issue_id,
+		retry_kind = ?schedule.kind,
+		retry_attempt = attempt,
 		retry_delay_ms = delay.as_millis(),
 		"Queued retry after control-plane child exit."
 	);
@@ -1158,26 +1216,73 @@ where
 	);
 
 	write_retry_schedule_for_run(
-		context.state_store,
-		issue_id,
-		run_attempt.run_id(),
-		run_attempt.attempt_number(),
-		kind,
+		state_store,
+		schedule.issue_id,
+		schedule.run_id,
+		schedule.attempt_number,
+		schedule.kind,
 		retry_ready_at_unix_epoch,
 	)?;
 
-	context.retry_queue.upsert(RetryEntry {
-		issue_id: issue_id.to_owned(),
+	retry_queue.upsert(RetryEntry {
+		issue_id: schedule.issue_id.to_owned(),
 		#[cfg(test)]
 		retry_project_slug: String::new(),
-		continuation_initial_issue_state,
-		dispatch_mode,
-		kind,
-		attempt: attempt.max(1),
+		continuation_initial_issue_state: schedule.continuation_initial_issue_state,
+		dispatch_mode: schedule.dispatch_mode,
+		kind: schedule.kind,
+		attempt,
 		ready_at: Instant::now() + delay,
 	});
 
 	Ok(())
+}
+
+fn maybe_recover_child_exit_active_phase_goal_continuation<T>(
+	context: &ChildExitRetryContext<'_, T>,
+	issue: &TrackerIssue,
+	child: ChildRunRef<'_>,
+	initial_issue_state: &str,
+	dispatch_mode: IssueDispatchMode,
+) -> Result<Option<PhaseGoalRecoveryContinuation>>
+where
+	T: IssueTracker,
+{
+	let worktree = child_exit_worktree_spec(context, issue)?;
+	let issue_run = IssueRunPlan {
+		issue: issue.clone(),
+		issue_state: issue.state.name.clone(),
+		initial_issue_state: initial_issue_state.to_owned(),
+		worktree,
+		#[cfg(test)]
+		retry_project_slug: String::new(),
+		dispatch_mode,
+		attempt_number: child.attempt_number,
+		run_id: child.run_id.to_owned(),
+		retry_budget_base: 0,
+	};
+	let recovery = recover_active_phase_goal_continuation(
+		context.project,
+		context.workflow,
+		context.state_store,
+		&issue_run,
+		"child_exit_failed",
+	)?;
+
+	if let Some(recovery) = &recovery {
+		tracing::warn!(
+			project_id = context.project.service_id(),
+			issue_id = issue.id,
+			issue = issue.identifier,
+			run_id = child.run_id,
+			attempt = child.attempt_number,
+			source_phase = recovery.source_phase.as_str(),
+			next_phase = recovery.next_phase.as_str(),
+			"Recovered active phase goal after child exit failure; scheduling continuation."
+		);
+	}
+
+	Ok(recovery)
 }
 
 fn child_exit_retry_retention_decision<T>(

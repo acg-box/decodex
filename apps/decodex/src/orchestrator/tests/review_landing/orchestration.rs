@@ -181,6 +181,87 @@ fn reconcile_post_review_orchestration_uses_matching_handoff_record_for_current_
 }
 
 #[test]
+fn reconcile_post_review_orchestration_rebinds_stale_head_marker_after_repair_push() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let config = service_config_with_github_token_env_var(&config, "PATH");
+	let _path_guard = install_fake_post_issue_comment_gh_response(
+		&temp_dir,
+		TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID,
+		"2025-11-03T00:00:00Z",
+	);
+	let repo_root = config.repo_root().to_path_buf();
+	let issue = post_review_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
+	let marker_head_oid = git_output(&repo_root, &["rev-parse", "HEAD"]);
+	let current_head_oid =
+		commit_worktree_change(&repo_root, "repair.txt", "repair push\n", "repair push");
+
+	state_store
+		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
+		.expect("worktree should record");
+
+	seed_review_handoff_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&sample_review_handoff_marker("main", pr_url, &marker_head_oid),
+	);
+	seed_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&sample_review_orchestration_marker(
+			"main",
+			pr_url,
+			&marker_head_oid,
+			"waiting_for_result",
+			1,
+		),
+	);
+
+	let review_state = sample_pull_request_review_state(
+		pr_url,
+		"main",
+		&current_head_oid,
+		Some("APPROVED"),
+		"MERGEABLE",
+		"CLEAN",
+		Some("SUCCESS"),
+		0,
+	);
+
+	orchestrator::reconcile_post_review_orchestration_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&FakePullRequestReviewStateInspector::new(vec![Ok(review_state)]),
+	)
+	.expect("post-review orchestration should rebind stale marker without attention");
+
+	let marker = persisted_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+	);
+
+	assert_eq!(marker.phase(), "waiting_for_ack");
+	assert_eq!(marker.head_sha(), current_head_oid);
+	assert_eq!(
+		marker.request_comment_database_id(),
+		Some(TEST_EXTERNAL_REVIEW_REQUEST_COMMENT_ID)
+	);
+	assert_eq!(marker.external_round_count(), 1);
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
+}
+
+#[test]
 fn reconcile_post_review_orchestration_skips_merged_landed_lineage_without_manual_attention() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = post_review_sample_service_owned_issue("In Review");
@@ -769,6 +850,212 @@ fn reconcile_post_review_orchestration_waits_for_green_checks_before_requesting_
 }
 
 #[test]
+fn reconcile_post_review_orchestration_waits_when_pr_readback_degrades() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let repo_root = config.repo_root().to_path_buf();
+	let issue = post_review_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let head_oid = String::from_utf8(
+		Command::new("git")
+			.arg("-C")
+			.arg(&repo_root)
+			.args(["rev-parse", "HEAD"])
+			.output()
+			.expect("git rev-parse should run")
+			.stdout,
+	)
+	.expect("git output should be utf-8")
+	.trim()
+	.to_owned();
+	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
+
+	state_store
+		.upsert_worktree("pubfi", &issue.id, "main", &repo_root.display().to_string())
+		.expect("worktree should record");
+
+	seed_review_handoff_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&sample_review_handoff_marker("main", pr_url, &head_oid),
+	);
+	seed_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+		&ReviewOrchestrationMarker::new(
+			"run-1",
+			1,
+			"main",
+			pr_url,
+			&head_oid,
+			"request_pending",
+			None,
+			None,
+			None,
+			0,
+			0,
+			None,
+		),
+	);
+
+	orchestrator::reconcile_post_review_orchestration_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&FakePullRequestReviewStateInspector::new(vec![Err(color_eyre::eyre::eyre!(
+			"gh api failed"
+		))]),
+	)
+	.expect("post-review orchestration should tolerate degraded PR readback");
+
+	let marker = persisted_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
+	);
+
+	assert_eq!(marker.phase(), "request_pending");
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(tracker.label_updates.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
+}
+
+#[test]
+fn reconcile_post_review_orchestration_waits_when_worktree_head_read_fails() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = post_review_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new(config.service_id(), config.repo_root(), config.worktree_root());
+	let worktree =
+		worktree_manager.ensure_worktree(&issue.identifier, false).expect("worktree should exist");
+	let branch_ref_path =
+		config.repo_root().join(".git").join("refs").join("heads").join(&worktree.branch_name);
+	let head_oid = git_output(&worktree.path, &["rev-parse", "HEAD"]);
+	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
+
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			&worktree.branch_name,
+			&worktree.path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	seed_review_handoff_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&worktree.path,
+		&sample_review_handoff_marker(&worktree.branch_name, pr_url, &head_oid),
+	);
+	seed_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&worktree.path,
+		&ReviewOrchestrationMarker::new(
+			"run-1",
+			1,
+			&worktree.branch_name,
+			pr_url,
+			&head_oid,
+			"request_pending",
+			None,
+			None,
+			None,
+			0,
+			0,
+			None,
+		),
+	);
+
+	fs::remove_file(&branch_ref_path).expect("branch ref should remove");
+	orchestrator::reconcile_post_review_orchestration_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&FakePullRequestReviewStateInspector::new(Vec::new()),
+	)
+	.expect("post-review orchestration should tolerate local worktree readback failure");
+
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert!(tracker.label_updates.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
+	assert!(
+		state_store
+			.list_linear_execution_events(config.service_id(), &issue.id)
+			.expect("linear execution events should list")
+			.is_empty()
+	);
+}
+
+#[test]
+fn reconcile_post_review_orchestration_waits_when_worktree_branch_read_fails() {
+	let (temp_dir, config, workflow) = temp_project_layout();
+	let issue = post_review_sample_service_owned_issue("In Review");
+	let tracker =
+		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let missing_worktree_path = temp_dir.path().join("missing-retained-worktree");
+	let branch_name = "x/pubfi-pub-101";
+	let head_oid = git_output(config.repo_root(), &["rev-parse", "HEAD"]);
+	let pr_url = "https://github.com/hack-ink/decodex/pull/173";
+
+	fs::create_dir_all(&missing_worktree_path).expect("broken worktree path should exist");
+
+	state_store
+		.upsert_worktree(
+			config.service_id(),
+			&issue.id,
+			branch_name,
+			&missing_worktree_path.display().to_string(),
+		)
+		.expect("worktree should record");
+
+	seed_review_handoff_marker_value(
+		&state_store,
+		config.service_id(),
+		&issue.id,
+		&sample_review_handoff_marker(branch_name, pr_url, &head_oid),
+	);
+
+	orchestrator::reconcile_post_review_orchestration_with_inspector(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&FakePullRequestReviewStateInspector::new(Vec::new()),
+	)
+	.expect("post-review orchestration should tolerate local branch readback failure");
+
+	assert!(
+		tracker.comments.borrow().is_empty(),
+		"unexpected tracker comments: {:#?}",
+		tracker.comments.borrow()
+	);
+	assert!(tracker.state_updates.borrow().is_empty());
+	assert!(tracker.label_updates.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
+	assert!(
+		state_store
+			.list_linear_execution_events(config.service_id(), &issue.id)
+			.expect("linear execution events should list")
+			.is_empty()
+	);
+}
+
+#[test]
 fn reconcile_post_review_orchestration_routes_fixable_ci_red_to_repair_before_requesting_external_review()
  {
 	let (_temp_dir, config, workflow) = temp_project_layout();
@@ -1178,7 +1465,7 @@ fn reconcile_post_review_orchestration_skips_issue_without_service_active_label(
 }
 
 #[test]
-fn reconcile_post_review_orchestration_blocks_unhandled_ci_red_before_requesting_external_review() {
+fn reconcile_post_review_orchestration_repairs_unhandled_ci_red_before_requesting_external_review() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let repo_root = config.repo_root().to_path_buf();
 	let issue = post_review_sample_service_owned_issue("In Review");
@@ -1249,16 +1536,14 @@ fn reconcile_post_review_orchestration_blocks_unhandled_ci_red_before_requesting
 	)
 	.expect("post-review orchestration should succeed");
 
-	let comments = tracker.comments.borrow();
-	let comment = comments.first().expect("manual attention comment should be written");
-	let ledger_event = records::parse_linear_execution_event_record(comment)
-		.expect("manual attention comment should include an execution ledger event");
-
-	assert_eq!(comments.len(), 1);
-	assert_eq!(
-		ledger_event.error_class.as_deref(),
-		Some("external_review_request_ci_red_manual_attention")
+	let marker = persisted_review_orchestration_marker_for_path(
+		&state_store,
+		config.service_id(),
+		&repo_root,
 	);
-	assert_eq!(tracker.label_additions.borrow().len(), 1);
-	assert_eq!(tracker.label_removals.borrow().len(), 1);
+
+	assert_eq!(marker.phase(), "repair_required");
+	assert!(tracker.comments.borrow().is_empty());
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(tracker.label_removals.borrow().is_empty());
 }

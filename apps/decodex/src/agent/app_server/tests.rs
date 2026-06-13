@@ -1416,6 +1416,7 @@ fn capability_preflight_method_error_is_typed_operator_blocker() {
 	);
 
 	assert_eq!(failure.error_class(), "app_server_introspection_method_failed");
+	assert!(!failure.is_retryable_timeout());
 	assert!(failure.to_string().contains("model/list"));
 	assert!(failure.to_string().contains("Method not found"));
 	assert_eq!(failure.report().checks().len(), 1);
@@ -1467,7 +1468,7 @@ fn plugin_list_preflight_timeout_retries_once_before_success() {
 }
 
 #[test]
-fn plugin_list_preflight_timeout_failure_is_typed_operator_blocker() {
+fn plugin_list_preflight_timeout_failure_is_typed_retryable_timeout() {
 	let state_store = StateStore::open_in_memory().expect("state store should open");
 	let mut recorder = RunRecorder::new(&state_store, "run-1", 1, None);
 	let report = AppServerCapabilityPreflightReport::new();
@@ -1493,14 +1494,11 @@ fn plugin_list_preflight_timeout_failure_is_typed_operator_blocker() {
 
 	assert_eq!(attempts, 2);
 	assert_eq!(failure.error_class(), "app_server_plugin_list_timeout");
+	assert!(failure.is_retryable_timeout());
 	assert!(failure.to_string().contains("app_server_preflight_failed"));
 	assert!(failure.to_string().contains("plugin/list"));
 	assert!(failure.to_string().contains("timed out"));
-	assert!(
-		failure
-			.terminal_next_action("clear label `decodex:needs-attention`")
-			.contains("app_server_preflight_failed evidence for the `plugin/list` timeout")
-	);
+	assert!(failure.retry_next_action().contains("retry app-server preflight automatically"));
 	assert!(failure.report().has_blockers());
 	assert_eq!(check.name, "plugins");
 	assert_eq!(check.status, super::AppServerCapabilityPreflightStatus::Blocked);
@@ -1746,7 +1744,7 @@ fn app_server_turn_failure_classifies_operator_attention() {
 			"usage limit",
 			"You've hit your usage limit.",
 			Some(String::from("usageLimitExceeded")),
-			true,
+			false,
 			"app_server_usage_limit_exceeded",
 		),
 		("generic failure", "transient model failure", None, false, "app_server_turn_failed"),
@@ -1761,6 +1759,7 @@ fn app_server_turn_failure_classifies_operator_attention() {
 
 		assert_eq!(failure.requires_operator_attention(), requires_attention, "{case_name}");
 		assert_eq!(failure.error_class(), error_class);
+		assert_eq!(failure.should_stop_current_turn(), case_name == "usage limit", "{case_name}");
 
 		if let Some(code) = code {
 			assert!(failure.to_string().contains(&code));
@@ -2099,6 +2098,41 @@ fn dynamic_tool_call_can_validate_thread_without_fixed_turn_during_steer_rpc() {
 	assert!(dispatch.response.success);
 	assert!(dispatch.terminal_failure.is_none());
 	assert_eq!(*handler.seen_namespace.borrow(), Some(String::from("tracker")));
+}
+
+#[test]
+fn usage_limit_notification_stops_current_turn_without_operator_attention() {
+	let notification = JsonRpcNotification {
+		method: String::from("error"),
+		params: serde_json::json!({
+			"threadId": "thread-1",
+			"turnId": "turn-1",
+			"willRetry": false,
+			"error": {
+				"message": "You've hit your usage limit.",
+				"codexErrorInfo": "usageLimitExceeded"
+			}
+		}),
+	};
+	let mut final_output = String::new();
+	let mut latest_turn_failure: Option<AppServerTurnFailure> = None;
+	let error = super::handle_turn_execution_notification(
+		&notification,
+		"thread-1",
+		"turn-1",
+		&mut final_output,
+		&mut latest_turn_failure,
+	);
+	let Err(error) = error else {
+		panic!("usage limit should fail the current turn immediately");
+	};
+	let failure =
+		error.downcast_ref::<AppServerTurnFailure>().expect("error should be a turn failure");
+
+	assert_eq!(failure.error_class(), "app_server_usage_limit_exceeded");
+	assert!(failure.is_retryable_capacity_failure());
+	assert!(!failure.requires_operator_attention());
+	assert!(latest_turn_failure.is_none());
 }
 
 #[test]

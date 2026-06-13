@@ -24,7 +24,8 @@ use crate::{orchestrator::RepoGatePhaseGoalController, tracker::records};
 	use crate::agent::{
 		ACTIVE_RUN_IDLE_TIMEOUT, MODEL_EXECUTION_IDLE_TIMEOUT,
 		AppServerCapabilityPreflightFailure,
-		AppServerHomePreflightFailure, AppServerTransportFailure, AppServerTurnFailure,
+		AppServerDynamicToolFailure, AppServerHomePreflightFailure, AppServerPhaseGoalFailure,
+		AppServerTransportFailure, AppServerTurnFailure,
 		DynamicToolHandler, PhaseGoalController, PhaseGoalKind, PhaseGoalSpec,
 		PhaseGoalTransition, ReviewPolicyStopReason, ReviewPolicyStopRequested,
 		TrackerToolBridge, TurnContinuationGuard,
