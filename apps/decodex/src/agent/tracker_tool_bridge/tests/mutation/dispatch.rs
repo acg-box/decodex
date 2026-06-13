@@ -781,10 +781,16 @@ fn accepts_manual_attention_public_summary_kind() {
 		ISSUE_LABEL_ADD_TOOL_NAME,
 		serde_json::json!({ "label": "decodex:needs-attention" }),
 	);
+
+	assert!(label_response.success);
+	assert!(
+		tracker.label_additions.borrow().is_empty(),
+		"manual-attention label intent must not mutate Linear before comment validation"
+	);
+
 	let comment_response =
 		DynamicToolHandler::handle_call(&bridge, ISSUE_COMMENT_TOOL_NAME, manual_attention_comment_args());
 
-	assert!(label_response.success);
 	assert!(comment_response.success);
 
 	let comments = tracker.comments.borrow();
@@ -792,6 +798,7 @@ fn accepts_manual_attention_public_summary_kind() {
 	let record = records::parse_linear_execution_event_record(comment)
 		.expect("manual attention summary should include a ledger record");
 
+	assert_eq!(tracker.label_additions.borrow().as_slice(), [vec![String::from("label-needs")]]);
 	assert_eq!(comments.len(), 1);
 	assert!(comment.contains("decodex run needs manual attention"));
 	assert!(comment.contains("- worktree_path: `.worktrees/PUB-618`"));
@@ -1004,10 +1011,70 @@ fn rejects_manual_attention_comments_with_private_or_unsupported_fields() {
 		assert!(label_response.success);
 		assert!(!response.success, "comment should be rejected for {field_name}");
 		assert!(tracker.comments.borrow().is_empty());
+		assert!(
+			tracker.label_additions.borrow().is_empty(),
+			"rejected manual-attention comment must not leave a needs-attention label"
+		);
 		assert_eq!(
 			response.content_items,
 			vec![DynamicToolContentItem::InputText { text: String::from(expected_error) }]
 		);
+	}
+}
+
+#[test]
+fn rejects_manual_attention_comment_with_runtime_owned_retryable_error_class() {
+	for error_class in [
+		"retryable_execution_failure",
+		"repo_gate_verify_failed",
+		"repo_gate_git_lock_contention",
+		"stalled_run_detected",
+		"app_server_plugin_list_timeout",
+		"app_server_turn_failed",
+		"app_server_usage_limit_exceeded",
+		"app_server_dynamic_tool_failed",
+		"phase_goal_terminal_path_missing",
+	] {
+		let issue = sample_issue();
+		let tracker = tracker_with_current_issue_snapshot(&issue);
+		let workflow = sample_workflow();
+		let inspector = FakePullRequestInspector::new(Vec::new());
+		let local_repo_inspector = FakeLocalRepoInspector::new(Vec::new());
+		let bridge = TrackerToolBridge::with_review_handoff_for_test(
+			&tracker,
+			&issue,
+			&workflow,
+			sample_review_context(),
+			&inspector,
+			&local_repo_inspector,
+		);
+		let label_response = DynamicToolHandler::handle_call(
+			&bridge,
+			ISSUE_LABEL_ADD_TOOL_NAME,
+			serde_json::json!({ "label": "decodex:needs-attention" }),
+		);
+		let mut args = manual_attention_comment_args();
+
+		args["error_class"] = serde_json::json!(error_class);
+
+		let response = DynamicToolHandler::handle_call(&bridge, ISSUE_COMMENT_TOOL_NAME, args);
+
+		assert!(label_response.success);
+		assert!(
+			!response.success,
+			"manual attention should reject runtime-owned class {error_class}"
+		);
+		assert!(tracker.comments.borrow().is_empty());
+		assert!(
+			tracker.label_additions.borrow().is_empty(),
+			"runtime-owned class {error_class} must not leave a needs-attention label"
+		);
+		assert!(matches!(
+			response.content_items.as_slice(),
+			[DynamicToolContentItem::InputText { text }]
+				if text.contains("cannot use runtime-owned retryable error class")
+					&& text.contains(error_class)
+		));
 	}
 }
 
@@ -1046,6 +1113,10 @@ fn rejects_unsupported_issue_comment_kinds_without_mutation() {
 	assert!(label_response.success);
 	assert!(!response.success);
 	assert!(tracker.comments.borrow().is_empty());
+	assert!(
+		tracker.label_additions.borrow().is_empty(),
+		"unsupported comment kind must not leave a needs-attention label"
+	);
 	assert!(matches!(
 		response.content_items.as_slice(),
 		[DynamicToolContentItem::InputText { text }]
@@ -1109,6 +1180,10 @@ fn rejects_manual_attention_comment_with_non_public_error_class_shape() {
 	assert!(label_response.success);
 	assert!(!response.success);
 	assert!(tracker.comments.borrow().is_empty());
+	assert!(
+		tracker.label_additions.borrow().is_empty(),
+		"invalid error_class shape must not leave a needs-attention label"
+	);
 	assert_eq!(
 		response.content_items,
 		vec![DynamicToolContentItem::InputText {
@@ -1141,9 +1216,9 @@ fn rejects_legacy_public_comments_with_sensitive_or_unknown_paths() {
 }
 
 #[test]
-fn adds_allowed_workflow_label() {
+fn records_manual_attention_label_intent_without_linear_mutation() {
 	let issue = sample_issue();
-	let tracker = tracker_with_current_issue_snapshot(&issue);
+	let tracker = FakeTracker::new();
 	let workflow = sample_workflow();
 	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
 	let response = DynamicToolHandler::handle_call(
@@ -1153,7 +1228,28 @@ fn adds_allowed_workflow_label() {
 	);
 
 	assert!(response.success);
-	assert_eq!(tracker.label_additions.borrow().as_slice(), [vec![String::from("label-needs")]]);
+	assert!(tracker.label_additions.borrow().is_empty());
+	assert!(matches!(
+		response.content_items.as_slice(),
+		[DynamicToolContentItem::InputText { text }]
+			if text.contains("Manual-attention label intent recorded")
+	));
+}
+
+#[test]
+fn adds_allowed_workflow_opt_out_label() {
+	let issue = sample_issue();
+	let tracker = tracker_with_current_issue_snapshot(&issue);
+	let workflow = sample_workflow();
+	let bridge = TrackerToolBridge::new(&tracker, &issue, &workflow);
+	let response = DynamicToolHandler::handle_call(
+		&bridge,
+		ISSUE_LABEL_ADD_TOOL_NAME,
+		serde_json::json!({ "label": "decodex:manual-only" }),
+	);
+
+	assert!(response.success);
+	assert_eq!(tracker.label_additions.borrow().as_slice(), [vec![String::from("label-manual")]]);
 }
 
 #[test]

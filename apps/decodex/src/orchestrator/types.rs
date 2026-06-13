@@ -185,6 +185,7 @@ impl PullRequestReadbackRootCause {
 
 enum RetainedReviewLaneLoad {
 	Skip,
+	Wait(String),
 	Ready(Box<RetainedReviewLane>),
 	Blocked(Box<RetainedReviewLaneBlocked>),
 }
@@ -906,7 +907,7 @@ impl Display for StalledRunNeedsAttention {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(
 			f,
-			"Run `{}` for issue `{}` stalled after {:?} without app-server activity; stop automatic execution and repair manually.",
+			"Run `{}` for issue `{}` stalled after {:?} without app-server activity; reconcile through the retry budget before requiring operator attention.",
 			self.run_id, self.issue_identifier, self.idle_for
 		)
 	}

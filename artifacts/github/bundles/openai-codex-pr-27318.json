@@ -1,0 +1,126 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "wiltzius-openai",
+      "committed_at": "2026-06-10T05:26:14Z",
+      "message": "Add live thread history recorder hooks",
+      "sha": "eafa1fc84190009a6d53378565460290dba3ceb8",
+      "url": "https://github.com/openai/codex/commit/eafa1fc84190009a6d53378565460290dba3ceb8"
+    },
+    {
+      "author": "wiltzius-openai",
+      "committed_at": "2026-06-11T18:15:44Z",
+      "message": "Remove stored item open flag",
+      "sha": "682f2b9c28f8bdc54c8b48e2f1587228b81c90ed",
+      "url": "https://github.com/openai/codex/commit/682f2b9c28f8bdc54c8b48e2f1587228b81c90ed"
+    },
+    {
+      "author": "wiltzius-openai",
+      "committed_at": "2026-06-11T21:38:59Z",
+      "message": "Move raw append projection into thread stores",
+      "sha": "0b34bb09f82857993b511572569cdcfdaa9430ab",
+      "url": "https://github.com/openai/codex/commit/0b34bb09f82857993b511572569cdcfdaa9430ab"
+    },
+    {
+      "author": "wiltzius-openai",
+      "committed_at": "2026-06-11T21:54:40Z",
+      "message": "Load resume history from explicit rollout path",
+      "sha": "6b06a574cc1be682580cfce269d755e3140e39f6",
+      "url": "https://github.com/openai/codex/commit/6b06a574cc1be682580cfce269d755e3140e39f6"
+    },
+    {
+      "author": "wiltzius-openai",
+      "committed_at": "2026-06-11T22:00:22Z",
+      "message": "Keep resume path resolution inside stores",
+      "sha": "8f878400ea36dbcbc573a2f8d5bfacfe1b8c73b6",
+      "url": "https://github.com/openai/codex/commit/8f878400ea36dbcbc573a2f8d5bfacfe1b8c73b6"
+    },
+    {
+      "author": "wiltzius-openai",
+      "committed_at": "2026-06-11T22:43:05Z",
+      "message": "Remove resume history comment",
+      "sha": "d2132fbc5250d96109f5c30b05a07432afa5afd3",
+      "url": "https://github.com/openai/codex/commit/d2132fbc5250d96109f5c30b05a07432afa5afd3"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API"
+  ],
+  "files": [
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -124,6 +124,14 @@ impl ThreadHistoryBuilder {\n             .or_else(|| self.turns.last().cloned())\n     }\n \n+    pub fn turn_snapshot(&self, turn_id: &str) -> Option<Turn> {\n+        self.current_turn\n+            .as_ref()\n+            .filter(|turn| turn.id == turn_id)\n+            .map(Turn::from)\n+            .or_else(|| self.turns.iter().find(|turn| turn.id == turn_id).cloned())\n+    }\n+\n     /// Returns the index of the active turn snapshot within the finished turn list.\n     ///\n     /// When a turn is still open, this is the index it will occupy after",
+      "path": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 35,
+      "deletions": 41,
+      "patch_excerpt": "@@ -526,53 +526,47 @@ impl Session {\n             } else {\n                 let live_thread = match &initial_history {\n                     InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_) => {\n-                        LiveThread::create(\n-                            Arc::clone(&thread_store),\n-                            CreateThreadParams {\n-                                thread_id,\n-                                extra_config: config.extra_config.clone(),\n-                                forked_from_id,\n-                                parent_thread_id,\n-                                source: session_source,\n-                                thread_source: session_configuration.thread_source.clone(),\n-                                base_instructions: BaseInstructions {\n-                                    text: session_configuration.base_instructions.clone(...",
+      "path": "codex-rs/core/src/session/session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 1,
+      "patch_excerpt": "@@ -14,6 +14,7 @@ use codex_protocol::protocol::RolloutItem;\n use codex_protocol::protocol::SessionMeta;\n use codex_protocol::protocol::SessionMetaLine;\n use codex_protocol::protocol::ThreadMemoryMode;\n+use codex_rollout::persisted_rollout_items;\n \n use crate::AppendThreadItemsParams;\n use crate::ArchiveThreadParams;\n@@ -215,13 +216,17 @@ impl ThreadStore for InMemoryThreadStore {\n     }\n \n     async fn append_items(&self, params: AppendThreadItemsParams) -> ThreadStoreResult<()> {\n+        let canonical_items = persisted_rollout_items(params.items.as_slice());\n+        if canonical_items.is_empty() {\n+            return Ok(());\n+        }\n         let mut state = self.state.lock().await;\n         state.calls.append_items += 1;\n         state\n             .histories\n             .entry(params.thread_id)\n             .or_default()\n-            .extend(params.items);\n+            .extend(c...",
+      "path": "codex-rs/thread-store/src/in_memory.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -40,6 +40,7 @@ pub use types::SearchThreadsParams;\n pub use types::SortDirection;\n pub use types::StoredThread;\n pub use types::StoredThreadHistory;\n+pub use types::StoredThreadItem;\n pub use types::StoredThreadSearchResult;\n pub use types::StoredTurn;\n pub use types::StoredTurnError;",
+      "path": "codex-rs/thread-store/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 3,
+      "patch_excerpt": "@@ -116,7 +116,11 @@ impl LiveThread {\n             {\n                 Ok(history) => params.history = Some(history.items),\n                 Err(err) => {\n-                    let _ = thread_store.discard_thread(thread_id).await;\n+                    if let Err(discard_err) = thread_store.discard_thread(thread_id).await {\n+                        warn!(\n+                            \"failed to discard thread persistence after resume history load failed: {discard_err}\"\n+                        );\n+                    }\n                     return Err(err);\n                 }\n             }\n@@ -131,15 +135,18 @@ impl LiveThread {\n \n     pub async fn append_items(&self, items: &[RolloutItem]) -> ThreadStoreResult<()> {\n         let canonical_items = persisted_rollout_items(items);\n-        if canonical_items.is_empty() {\n+        if items.is_empty() {\n             return Ok(());\n         }\n ...",
+      "path": "codex-rs/thread-store/src/live_thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 1,
+      "patch_excerpt": "@@ -5,6 +5,7 @@ use codex_protocol::protocol::ThreadMemoryMode;\n use codex_rollout::RolloutConfig;\n use codex_rollout::RolloutRecorder;\n use codex_rollout::RolloutRecorderParams;\n+use codex_rollout::persisted_rollout_items;\n use tracing::warn;\n \n use super::LocalThreadStore;\n@@ -77,9 +78,13 @@ pub(super) async fn append_items(\n     store: &LocalThreadStore,\n     params: AppendThreadItemsParams,\n ) -> ThreadStoreResult<()> {\n+    let canonical_items = persisted_rollout_items(params.items.as_slice());\n+    if canonical_items.is_empty() {\n+        return Ok(());\n+    }\n     let recorder = store.live_recorder(params.thread_id).await?;\n     recorder\n-        .record_canonical_items(params.items.as_slice())\n+        .record_canonical_items(canonical_items.as_slice())\n         .await\n         .map_err(thread_store_io_error)?;\n     // LiveThread applies metadata immediately after append_items re...",
+      "path": "codex-rs/thread-store/src/local/live_writer.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 4,
+      "patch_excerpt": "@@ -36,11 +36,10 @@ pub trait ThreadStore: Any + Send + Sync {\n     /// Reopens an existing thread for live appends.\n     async fn resume_thread(&self, params: ResumeThreadParams) -> ThreadStoreResult<()>;\n \n-    /// Appends canonical rollout items to a live thread.\n+    /// Appends raw rollout items to a live thread.\n     ///\n-    /// This is the raw history API. It does not infer metadata from item contents. Callers that\n-    /// need metadata updates should call [`ThreadStore::update_thread_metadata`] with explicit\n-    /// metadata facts prepared above the store.\n+    /// Implementations should apply the shared rollout persistence policy before writing durable\n+    /// replay history and before updating any implementation-owned projections.\n     async fn append_items(&self, params: AppendThreadItemsParams) -> ThreadStoreResult<()>;\n \n     /// Materializes the thread if persistence is...",
+      "path": "codex-rs/thread-store/src/store.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 22,
+      "deletions": 4,
+      "patch_excerpt": "@@ -101,11 +101,14 @@ pub struct ResumeThreadParams {\n }\n \n /// Parameters for appending rollout items to a live thread.\n-#[derive(Clone, Debug, Serialize, Deserialize)]\n+#[derive(Clone, Debug)]\n pub struct AppendThreadItemsParams {\n     /// Thread id to append to.\n     pub thread_id: ThreadId,\n-    /// Items to append in order.\n+    /// Raw rollout items to append in order.\n+    ///\n+    /// Store implementations are responsible for applying the shared rollout persistence policy\n+    /// before writing durable replay history or any implementation-owned projections.\n     pub items: Vec<RolloutItem>,\n }\n \n@@ -297,6 +300,11 @@ pub struct StoredTurn {\n     pub turn_id: String,\n     /// Persisted rollout items associated with this turn, according to `items_view`.\n     pub items: Vec<RolloutItem>,\n+    /// Opaque serialized turn metadata supplied by a projected durable store.\n+    pub metadat...",
+      "path": "codex-rs/thread-store/src/types.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "Move the application of the persistence policy into the thread store, so thread stores can get raw append items rather than canonical append items. This will enable store-specific projections over the raw input items.",
+    "labels": [],
+    "merged_at": "2026-06-11T23:24:13Z",
+    "number": 27318,
+    "state": "merged",
+    "title": "[codex] Move persistence policy application into ThreadStore",
+    "url": "https://github.com/openai/codex/pull/27318"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
