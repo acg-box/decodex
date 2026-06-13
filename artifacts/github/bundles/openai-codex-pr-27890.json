@@ -1,0 +1,131 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "ericning-o",
+      "committed_at": "2026-06-12T15:18:37Z",
+      "message": "[plugins] expose remote plugin share URL",
+      "sha": "79e6ea4a8182b747e0329082a2b70215a70253b3",
+      "url": "https://github.com/openai/codex/commit/79e6ea4a8182b747e0329082a2b70215a70253b3"
+    },
+    {
+      "author": "ericning-o",
+      "committed_at": "2026-06-12T17:36:19Z",
+      "message": "[plugins] address share URL review feedback",
+      "sha": "f63cf1908952d8daed71bcdb63efda76bfa15ef2",
+      "url": "https://github.com/openai/codex/commit/f63cf1908952d8daed71bcdb63efda76bfa15ef2"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "JSON",
+    "URL",
+    "--all",
+    "AVAILABLE",
+    "DISABLED_BY_ADMIN",
+    "MCP",
+    "JSONRPCE",
+    "JSONRPCR",
+    "GLOBAL",
+    "ON_USE",
+    "NOT_CONFIGURED_FOR_WORKSPACE"
+  ],
+  "files": [
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12536,6 +12536,12 @@\n             },\n             \"type\": \"array\"\n           },\n+          \"shareUrl\": {\n+            \"type\": [\n+              \"string\",\n+              \"null\"\n+            ]\n+          },\n           \"skills\": {\n             \"items\": {\n               \"$ref\": \"#/definitions/v2/SkillSummary\"",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -9009,6 +9009,12 @@\n           },\n           \"type\": \"array\"\n         },\n+        \"shareUrl\": {\n+          \"type\": [\n+            \"string\",\n+            \"null\"\n+          ]\n+        },\n         \"skills\": {\n           \"items\": {\n             \"$ref\": \"#/definitions/SkillSummary\"",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -192,6 +192,12 @@\n           },\n           \"type\": \"array\"\n         },\n+        \"shareUrl\": {\n+          \"type\": [\n+            \"string\",\n+            \"null\"\n+          ]\n+        },\n         \"skills\": {\n           \"items\": {\n             \"$ref\": \"#/definitions/SkillSummary\"",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/PluginReadResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -8,4 +8,4 @@ import type { PluginHookSummary } from \"./PluginHookSummary\";\n import type { PluginSummary } from \"./PluginSummary\";\n import type { SkillSummary } from \"./SkillSummary\";\n \n-export type PluginDetail = { marketplaceName: string, marketplacePath: AbsolutePathBuf | null, summary: PluginSummary, description: string | null, skills: Array<SkillSummary>, hooks: Array<PluginHookSummary>, apps: Array<AppSummary>, appTemplates: Array<AppTemplateSummary>, mcpServers: Array<string>, };\n+export type PluginDetail = { marketplaceName: string, marketplacePath: AbsolutePathBuf | null, summary: PluginSummary, shareUrl: string | null, description: string | null, skills: Array<SkillSummary>, hooks: Array<PluginHookSummary>, apps: Array<AppSummary>, appTemplates: Array<AppTemplateSummary>, mcpServers: Array<string>, };",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/PluginDetail.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -638,6 +638,7 @@ pub struct PluginDetail {\n     pub marketplace_name: String,\n     pub marketplace_path: Option<AbsolutePathBuf>,\n     pub summary: PluginSummary,\n+    pub share_url: Option<String>,\n     pub description: Option<String>,\n     pub skills: Vec<SkillSummary>,\n     pub hooks: Vec<PluginHookSummary>,",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/plugin.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -206,7 +206,7 @@ Example with notification opt-out:\n - `marketplace/upgrade` — upgrade all configured Git plugin marketplaces, or one named marketplace when `marketplaceName` is provided. Returns selected marketplace names, upgraded roots, and per-marketplace errors.\n - `plugin/list` — list discovered plugin marketplaces and plugin state, including effective marketplace install/auth policy metadata, plugin `availability` (`AVAILABLE` by default or `DISABLED_BY_ADMIN` for remote plugins blocked upstream), fail-open `marketplaceLoadErrors` entries for marketplace files that could not be parsed or loaded, and best-effort `featuredPluginIds` for the official curated marketplace. `interface.category` uses the marketplace category when present; otherwise it falls back to the plugin manifest category (**under development; do not call from production clients yet**).\n - `plugin/installed` — li...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1070,6 +1070,7 @@ impl PluginRequestProcessor {\n                         interface: outcome.plugin.interface.map(local_plugin_interface_to_info),\n                         keywords: outcome.plugin.keywords,\n                     },\n+                    share_url: None,\n                     description: outcome.plugin.description,\n                     skills: plugin_skills_to_info(\n                         &visible_skills,\n@@ -2081,6 +2082,7 @@ fn remote_plugin_detail_to_info(\n         marketplace_name: detail.marketplace_name,\n         marketplace_path: None,\n         summary: remote_plugin_summary_to_info(detail.summary),\n+        share_url: detail.share_url,\n         description: detail.description,\n         skills: detail\n             .skills",
+      "path": "codex-rs/app-server/src/request_processors/plugins.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 57,
+      "deletions": 45,
+      "patch_excerpt": "@@ -23,6 +23,7 @@ use codex_app_server_protocol::HookEventName;\n use codex_app_server_protocol::JSONRPCError;\n use codex_app_server_protocol::JSONRPCResponse;\n use codex_app_server_protocol::PluginAuthPolicy;\n+use codex_app_server_protocol::PluginAvailability;\n use codex_app_server_protocol::PluginInstallPolicy;\n use codex_app_server_protocol::PluginReadParams;\n use codex_app_server_protocol::PluginReadResponse;\n@@ -392,7 +393,7 @@ async fn plugin_read_returns_share_context_for_shared_remote_plugin() -> Result<\n }\n \n #[tokio::test]\n-async fn plugin_read_reads_remote_plugin_details_when_remote_plugin_enabled() -> Result<()> {\n+async fn plugin_read_includes_share_url_for_admin_disabled_remote_plugin() -> Result<()> {\n     let codex_home = TempDir::new()?;\n     let server = MockServer::start().await;\n     write_remote_plugin_catalog_config(\n@@ -410,29 +411,31 @@ async fn plugin_read_reads_r...",
+      "path": "codex-rs/app-server/tests/suite/v2/plugin_read.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -163,6 +163,7 @@ pub struct RemotePluginDetail {\n     pub marketplace_name: String,\n     pub marketplace_display_name: String,\n     pub summary: RemotePluginSummary,\n+    pub share_url: Option<String>,\n     pub description: Option<String>,\n     pub release_version: Option<String>,\n     pub bundle_download_url: Option<String>,\n@@ -1048,6 +1049,7 @@ async fn build_remote_plugin_detail(\n         marketplace_name,\n         marketplace_display_name: scope.marketplace_display_name().to_string(),\n         summary: build_remote_plugin_summary(&plugin, installed_plugin.as_ref())?,\n+        share_url: plugin.share_url,\n         description: non_empty_string(Some(&plugin.release.description)),\n         release_version: plugin.release.version,\n         bundle_download_url: plugin.release.bundle_download_url,",
+      "path": "codex-rs/core-plugins/src/remote.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1421,6 +1421,7 @@ pub(super) fn plugins_test_detail(\n         marketplace_name: \"ChatGPT Marketplace\".to_string(),\n         marketplace_path: Some(plugins_test_absolute_path(\"marketplaces/chatgpt\")),\n         summary,\n+        share_url: None,\n         description: description.map(str::to_string),\n         skills: skills\n             .iter()",
+      "path": "codex-rs/tui/src/chatwidget/tests/helpers.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -803,6 +803,7 @@ async fn plugin_detail_remote_install_uses_remote_location() {\n                 marketplace_name: \"workspace-shared-with-me-private\".to_string(),\n                 marketplace_path: None,\n                 summary,\n+                share_url: None,\n                 description: Some(\"Install shared Linear plugin.\".to_string()),\n                 skills: Vec::new(),\n                 hooks: Vec::new(),\n@@ -877,6 +878,7 @@ async fn plugin_detail_remote_uninstall_uses_remote_plugin_id() {\n                 marketplace_name: \"workspace-shared-with-me-private\".to_string(),\n                 marketplace_path: None,\n                 summary,\n+                share_url: None,\n                 description: Some(\"Installed shared Linear plugin.\".to_string()),\n                 skills: Vec::new(),\n                 hooks: Vec::new(),\n@@ -949,6 +951,7 @@ async fn plugin_detail_remote_wit...",
+      "path": "codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Summary\n\n- expose the remote plugin detail endpoint's `share_url` as nullable `PluginDetail.shareUrl`\n- preserve existing `PluginSummary.shareContext` behavior for local and workspace sharing flows\n- regenerate the app-server TypeScript and JSON schema fixtures\n\n## Why\n\nThe remote plugin detail response already includes a canonical `share_url`, but that value was not surfaced by `plugin/read` for global plugins. Global plugins intentionally have no `shareContext`, so using that model for the URL would change the semantics consumed by the existing share modal.\n\n## User impact\n\nCodex clients can use `PluginDetail.shareUrl` for a remote plugin's copy-link action, including when the plugin is disabled by an administrator, without changing existing share-modal or ownership behavior.\n\n## Validation\n\n- `cargo test -p codex-app-server plugin_read_includes_share_url_for_admin_disabled_remote_plugin`\n- `cargo test -p codex-app-server-protocol typescript_schema_fixtures_match_generated`\n- `cargo test -p codex-app-server-protocol json_schema_fixtures_match_generated`\n- `cargo fmt --all`\n",
+    "labels": [],
+    "merged_at": "2026-06-12T18:53:56Z",
+    "number": 27890,
+    "state": "merged",
+    "title": "[codex] expose remote plugin share URL",
+    "url": "https://github.com/openai/codex/pull/27890"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
