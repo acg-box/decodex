@@ -194,6 +194,12 @@ pub(crate) enum PhaseGoalTransition {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AppServerThreadArchiveOutcome {
+	Archived,
+	DiscardedMissingThread,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AppServerPhaseGoalFailureKind {
 	Unsupported { method: &'static str },
 	MissingTerminalPath { phase: PhaseGoalKind },
@@ -657,6 +663,16 @@ impl Display for AppServerDynamicToolFailure {
 
 impl Error for AppServerDynamicToolFailure {}
 
+pub(crate) struct AppServerThreadArchiveRequest<'a> {
+	pub(crate) run_id: &'a str,
+	pub(crate) issue_id: &'a str,
+	pub(crate) attempt_number: i64,
+	pub(crate) listen: &'a str,
+	pub(crate) process_env: &'a AppServerProcessEnv,
+	pub(crate) thread_id: &'a str,
+	pub(crate) sequence_number: i64,
+}
+
 #[derive(Clone)]
 pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) project_id: String,
@@ -679,22 +695,6 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) continuation_guard: Option<&'a dyn TurnContinuationGuard>,
 	pub(crate) phase_goal_controller: Option<&'a dyn PhaseGoalController>,
 	pub(crate) codex_account_provider: Option<&'a dyn CodexAccountProvider>,
-}
-
-pub(crate) struct AppServerThreadArchiveRequest<'a> {
-	pub(crate) run_id: &'a str,
-	pub(crate) issue_id: &'a str,
-	pub(crate) attempt_number: i64,
-	pub(crate) listen: &'a str,
-	pub(crate) process_env: &'a AppServerProcessEnv,
-	pub(crate) thread_id: &'a str,
-	pub(crate) sequence_number: i64,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AppServerThreadArchiveOutcome {
-	Archived,
-	DiscardedMissingThread,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
