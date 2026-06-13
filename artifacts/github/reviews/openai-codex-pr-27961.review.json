@@ -1,0 +1,75 @@
+{
+  "adoption_opportunity": "Teach Decodex Control Plane and operator UI paths to read `configRequirements/read.allowRemoteControl` before attempting remote-control enrollment or RPCs, and preserve the disabled status/error as an expected managed-policy outcome.",
+  "caveats": "The policy does not delete the user's persisted remote-control preference. Removing the managed requirement and restarting restores the prior choice.",
+  "changed_surfaces": [
+    "app-server v2 `configRequirements/read` response",
+    "top-level config requirements parsing and layer precedence",
+    "remote-control transport startup policy",
+    "remote-control enrollment, refresh, connection, and persisted-preference mutation",
+    "remoteControl RPC request validation",
+    "TUI debug config requirement display",
+    "app-server protocol JSON and TypeScript schemas",
+    "remote-control and config RPC tests"
+  ],
+  "community_value": "High for managed Codex operators because the PR creates a source-backed remote-control deny gate and observable app-server requirement.",
+  "compatibility_risk": "High. App-server clients and control planes that assume remote-control RPCs can always enable transport must now handle managed-policy denial and the `allowRemoteControl` requirement field.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "High. Decodex Control Plane remote-control compatibility depends on app-server startup policy, request denial semantics, and config requirement readback.",
+  "deprecated_or_breaking_notes": "Remote control is not removed, but managed `allow_remote_control = false` forces disabled initial state and rejects `remoteControl/*` RPCs with JSON-RPC `-32600` before parameter deserialization.",
+  "evidence": [
+    "PR #27961 says managed deployments need a reliable deny gate for remote control and adds `allow_remote_control` requirements parsing plus `configRequirements/read` exposure as `allowRemoteControl`.",
+    "`codex-rs/app-server-protocol/src/protocol/v2/config.rs` adds nullable `allow_remote_control` to app-server `ConfigRequirements`.",
+    "`codex-rs/app-server/src/request_processors/config_processor.rs` maps `allow_remote_control` into the API response and adds a focused test.",
+    "`codex-rs/app-server-transport/src/transport/remote_control/mod.rs` adds `RemoteControlPolicy::DisabledByRequirements` and policy-aware handle state.",
+    "`codex-rs/app-server-transport/src/transport/remote_control/desired_state.rs` refuses enablement and persisted-state mutation when the policy disables remote control.",
+    "`codex-rs/app-server/src/request_processors/remote_control_processor.rs` maps managed-policy enable errors into JSON-RPC request errors.",
+    "`codex-rs/app-server/tests/suite/v2/remote_control.rs` adds managed-disable coverage for startup, malformed RPCs, explicit enablement, persisted preference, and disabled status notification behavior.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27961.json` records 29 changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "Managed remote-control denial directly affects Decodex app-server and Control Plane compatibility.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "The change has a clear operator-facing public angle around managed remote-control policy and app-server readback.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex adds a managed `allow_remote_control` requirement that exposes `allowRemoteControl` through app-server config requirements and blocks remote-control startup and RPCs when disabled.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-13T18:07:16Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27961",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-13T03:10:12Z",
+        "title": "feat(app-server): enforce managed remote control disable",
+        "url": "https://github.com/openai/codex/pull/27961"
+      },
+      {
+        "kind": "commit",
+        "title": "feat(app-server): enforce managed remote control disable",
+        "url": "https://github.com/openai/codex/commit/a1f9d5e195dbf73c5ac756e90224f2e4af3a6adf"
+      },
+      {
+        "kind": "commit",
+        "title": "fix(app-server): fail explicit remote control under managed disable",
+        "url": "https://github.com/openai/codex/commit/f4ef520440ce2a1d6b9ea9dcae6bbc272c2c181c"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "a1f9d5e195dbf73c5ac756e90224f2e4af3a6adf",
+      "69a4db602847e1c1269016243061b76b0687a6da",
+      "d3918160167a6eaa5a33982ef79d9ccb63636d7b",
+      "f4ef520440ce2a1d6b9ea9dcae6bbc272c2c181c"
+    ],
+    "subject_id": "27961",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "Managed Codex deployments can force remote control off with `allow_remote_control = false`; app-server clients can observe `allowRemoteControl: false` and receive explicit remote-control disabled errors instead of starting transport."
+}
