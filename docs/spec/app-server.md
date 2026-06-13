@@ -126,7 +126,7 @@ To validate an upstream app-server protocol change:
   - `turn/start`
   - `thread/archive` after successful completion writeback, for every locally
     recorded terminal attempt thread on the issue that has not already recorded a
-    successful archive event
+    terminal archive event (`thread/archive` or `thread/archive/discarded`)
 - Required notifications for the MVP:
   - `thread/started`
   - `thread/status/changed`

@@ -16,13 +16,13 @@ use crate::{
 		app_server::{
 			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerCapabilityPreflightFailure,
 			AppServerCapabilityPreflightReport, AppServerDynamicToolFailure,
-			AppServerPhaseGoalFailure, AppServerRunResult, AppServerThreadArchiveRequest,
-			AppServerTurnFailure, CommandExecHealthCheck, CommandExecResponse,
-			EffectiveThreadConfig, InitializeResponse, ModelProviderCapabilitiesReadResponse,
-			PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition,
-			PluginListResponse, ProbeDynamicToolHandler, REQUEST_TIMEOUT, RequestWaitPhase,
-			RunRecorder, RuntimeConfigSummary, SkillsListResponse, TurnContinuationGuard,
-			UserInput,
+			AppServerPhaseGoalFailure, AppServerRunResult, AppServerThreadArchiveOutcome,
+			AppServerThreadArchiveRequest, AppServerTurnFailure, CommandExecHealthCheck,
+			CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
+			ModelProviderCapabilitiesReadResponse, PhaseGoalController, PhaseGoalKind,
+			PhaseGoalSpec, PhaseGoalTransition, PluginListResponse, ProbeDynamicToolHandler,
+			REQUEST_TIMEOUT, RequestWaitPhase, RunRecorder, RuntimeConfigSummary,
+			SkillsListResponse, TurnContinuationGuard, UserInput,
 		},
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
@@ -1185,7 +1185,7 @@ for line in sys.stdin:
 		.record_run_attempt("run-1", "issue-1", 1, "succeeded")
 		.expect("run attempt should record");
 
-	super::archive_app_server_thread_after_success(
+	let outcome = super::archive_app_server_thread_after_success(
 		&AppServerThreadArchiveRequest {
 			run_id: "run-1",
 			issue_id: "issue-1",
@@ -1198,7 +1198,6 @@ for line in sys.stdin:
 		&state_store,
 	)
 	.expect("thread archive should succeed");
-
 	let invocation_log =
 		fs::read_to_string(&invocation_log_path).expect("invocation log should exist");
 
@@ -1206,7 +1205,57 @@ for line in sys.stdin:
 	assert!(invocation_log.contains(r#""--listen""#));
 	assert!(invocation_log.contains(r#""method": "thread/archive""#));
 	assert!(invocation_log.contains(r#""threadId": "thread-1""#));
+	assert_eq!(outcome, AppServerThreadArchiveOutcome::Archived);
+	assert!(
+		state_store
+			.run_has_protocol_event("run-1", "thread/archive")
+			.expect("archive event lookup should succeed")
+	);
 	assert_eq!(state_store.event_count("run-1").expect("event count should load"), 1);
+}
+
+#[test]
+fn missing_thread_archive_errors_record_discarded_terminal_event() {
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let process_env = AppServerProcessEnv::default();
+	let request = AppServerThreadArchiveRequest {
+		run_id: "run-1",
+		issue_id: "issue-1",
+		attempt_number: 1,
+		listen: "stdio://",
+		process_env: &process_env,
+		thread_id: "thread-1",
+		sequence_number: 1,
+	};
+
+	state_store
+		.record_run_attempt("run-1", "issue-1", 1, "succeeded")
+		.expect("run attempt should record");
+
+	super::record_thread_archive_result_best_effort(
+		&state_store,
+		&request,
+		Ok(&AppServerThreadArchiveOutcome::DiscardedMissingThread),
+	);
+
+	assert!(super::thread_archive_error_allows_discard(&eyre::eyre!(
+		"no rollout found for thread id thread-1"
+	)));
+	assert!(super::thread_archive_error_allows_discard(&eyre::eyre!("thread not found")));
+	assert!(super::thread_archive_error_allows_discard(&eyre::eyre!("already archived")));
+	assert!(!super::thread_archive_error_allows_discard(&eyre::eyre!(
+		"failed to load rollout from disk"
+	)));
+	assert!(
+		state_store
+			.run_has_protocol_event("run-1", "thread/archive/discarded")
+			.expect("discarded archive event lookup should succeed")
+	);
+	assert!(
+		!state_store
+			.run_has_protocol_event("run-1", "thread/archive/failed")
+			.expect("failed archive event lookup should succeed")
+	);
 }
 
 #[test]
