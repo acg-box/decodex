@@ -16,13 +16,13 @@ use crate::{
 		app_server::{
 			APP_SERVER_SCHEMA_REQUIRED_MARKERS, AppServerCapabilityPreflightFailure,
 			AppServerCapabilityPreflightReport, AppServerDynamicToolFailure,
-			AppServerPhaseGoalFailure, AppServerRunResult, AppServerThreadArchiveRequest,
-			AppServerTurnFailure, CommandExecHealthCheck, CommandExecResponse,
-			EffectiveThreadConfig, InitializeResponse, ModelProviderCapabilitiesReadResponse,
-			PhaseGoalController, PhaseGoalKind, PhaseGoalSpec, PhaseGoalTransition,
-			PluginListResponse, ProbeDynamicToolHandler, REQUEST_TIMEOUT, RequestWaitPhase,
-			RunRecorder, RuntimeConfigSummary, SkillsListResponse, TurnContinuationGuard,
-			UserInput,
+			AppServerPhaseGoalFailure, AppServerRunResult, AppServerThreadArchiveOutcome,
+			AppServerThreadArchiveRequest, AppServerTurnFailure, CommandExecHealthCheck,
+			CommandExecResponse, EffectiveThreadConfig, InitializeResponse,
+			ModelProviderCapabilitiesReadResponse, PhaseGoalController, PhaseGoalKind,
+			PhaseGoalSpec, PhaseGoalTransition, PluginListResponse, ProbeDynamicToolHandler,
+			REQUEST_TIMEOUT, RequestWaitPhase, RunRecorder, RuntimeConfigSummary,
+			SkillsListResponse, TurnContinuationGuard, UserInput,
 		},
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
@@ -1198,7 +1198,6 @@ for line in sys.stdin:
 		&state_store,
 	)
 	.expect("thread archive should succeed");
-
 	let invocation_log =
 		fs::read_to_string(&invocation_log_path).expect("invocation log should exist");
 
@@ -1206,7 +1205,7 @@ for line in sys.stdin:
 	assert!(invocation_log.contains(r#""--listen""#));
 	assert!(invocation_log.contains(r#""method": "thread/archive""#));
 	assert!(invocation_log.contains(r#""threadId": "thread-1""#));
-	assert_eq!(outcome, super::AppServerThreadArchiveOutcome::Archived);
+	assert_eq!(outcome, AppServerThreadArchiveOutcome::Archived);
 	assert!(
 		state_store
 			.run_has_protocol_event("run-1", "thread/archive")
@@ -1236,7 +1235,7 @@ fn missing_thread_archive_errors_record_discarded_terminal_event() {
 	super::record_thread_archive_result_best_effort(
 		&state_store,
 		&request,
-		Ok(&super::AppServerThreadArchiveOutcome::DiscardedMissingThread),
+		Ok(&AppServerThreadArchiveOutcome::DiscardedMissingThread),
 	);
 
 	assert!(super::thread_archive_error_allows_discard(&eyre::eyre!(
