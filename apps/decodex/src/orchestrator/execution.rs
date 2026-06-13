@@ -1,7 +1,7 @@
 use git_credentials::GitSigningConfig;
 use agent::CodexAccountPool;
 use agent::CodexAccountProvider;
-use agent::AppServerThreadArchiveRequest;
+use agent::{AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest};
 use records::LinearExecutionEventPublicProjection;
 use sha2::Digest;
 use state::DecisionContractRecord;
@@ -1681,7 +1681,7 @@ fn push_thread_archive_candidate(
 	source: ThreadArchiveCandidateSource<'_>,
 ) -> Result<()> {
 	if !seen_thread_ids.insert(source.thread_id.to_owned())
-		|| state_store.run_has_protocol_event(source.run_id, "thread/archive")?
+		|| run_has_terminal_thread_archive_event(state_store, source.run_id)?
 	{
 		return Ok(());
 	}
@@ -1698,6 +1698,16 @@ fn push_thread_archive_candidate(
 	});
 
 	Ok(())
+}
+
+fn run_has_terminal_thread_archive_event(state_store: &StateStore, run_id: &str) -> Result<bool> {
+	for event_type in ["thread/archive", "thread/archive/discarded"] {
+		if state_store.run_has_protocol_event(run_id, event_type)? {
+			return Ok(true);
+		}
+	}
+
+	Ok(false)
 }
 
 fn archive_completed_issue_thread_best_effort(
@@ -1719,20 +1729,24 @@ fn archive_completed_issue_thread_best_effort(
 	#[cfg(not(test))]
 	let archive_result = agent::archive_app_server_thread_after_success(&archive_request, state_store);
 	#[cfg(test)]
-	let archive_result = state_store.append_event(
-		archive_request.run_id,
-		archive_request.sequence_number,
-		"thread/archive",
-		&serde_json::json!({
-			"threadId": archive_request.thread_id,
-			"issueId": archive_request.issue_id,
-			"attemptNumber": archive_request.attempt_number,
-		})
-		.to_string(),
-	);
+	let archive_result = {
+		state_store
+			.append_event(
+				archive_request.run_id,
+				archive_request.sequence_number,
+				"thread/archive",
+				&serde_json::json!({
+					"threadId": archive_request.thread_id,
+					"issueId": archive_request.issue_id,
+					"attemptNumber": archive_request.attempt_number,
+				})
+				.to_string(),
+			)
+			.map(|()| AppServerThreadArchiveOutcome::Archived)
+	};
 
 	match archive_result {
-		Ok(()) => tracing::info!(
+		Ok(AppServerThreadArchiveOutcome::Archived) => tracing::info!(
 			project_id = project.service_id(),
 			issue_id = candidate.issue_id,
 			issue = candidate.issue_identifier,
@@ -1740,6 +1754,15 @@ fn archive_completed_issue_thread_best_effort(
 			attempt = candidate.attempt_number,
 			thread_id = %candidate.thread_id,
 			"Archived completed issue app-server thread."
+		),
+		Ok(AppServerThreadArchiveOutcome::DiscardedMissingThread) => tracing::info!(
+			project_id = project.service_id(),
+			issue_id = candidate.issue_id,
+			issue = candidate.issue_identifier,
+			run_id = candidate.run_id,
+			attempt = candidate.attempt_number,
+			thread_id = %candidate.thread_id,
+			"Discarded completed issue app-server thread archive because the thread is missing."
 		),
 		Err(error) => tracing::warn!(
 			?error,

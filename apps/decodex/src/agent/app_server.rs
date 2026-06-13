@@ -194,6 +194,12 @@ pub(crate) enum PhaseGoalTransition {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AppServerThreadArchiveOutcome {
+	Archived,
+	DiscardedMissingThread,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AppServerPhaseGoalFailureKind {
 	Unsupported { method: &'static str },
 	MissingTerminalPath { phase: PhaseGoalKind },
@@ -657,6 +663,16 @@ impl Display for AppServerDynamicToolFailure {
 
 impl Error for AppServerDynamicToolFailure {}
 
+pub(crate) struct AppServerThreadArchiveRequest<'a> {
+	pub(crate) run_id: &'a str,
+	pub(crate) issue_id: &'a str,
+	pub(crate) attempt_number: i64,
+	pub(crate) listen: &'a str,
+	pub(crate) process_env: &'a AppServerProcessEnv,
+	pub(crate) thread_id: &'a str,
+	pub(crate) sequence_number: i64,
+}
+
 #[derive(Clone)]
 pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) project_id: String,
@@ -679,16 +695,6 @@ pub(crate) struct AppServerRunRequest<'a> {
 	pub(crate) continuation_guard: Option<&'a dyn TurnContinuationGuard>,
 	pub(crate) phase_goal_controller: Option<&'a dyn PhaseGoalController>,
 	pub(crate) codex_account_provider: Option<&'a dyn CodexAccountProvider>,
-}
-
-pub(crate) struct AppServerThreadArchiveRequest<'a> {
-	pub(crate) run_id: &'a str,
-	pub(crate) issue_id: &'a str,
-	pub(crate) attempt_number: i64,
-	pub(crate) listen: &'a str,
-	pub(crate) process_env: &'a AppServerProcessEnv,
-	pub(crate) thread_id: &'a str,
-	pub(crate) sequence_number: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1340,10 +1346,15 @@ pub(crate) fn execute_app_server_run(
 pub(crate) fn archive_app_server_thread_after_success(
 	request: &AppServerThreadArchiveRequest<'_>,
 	state_store: &StateStore,
-) -> crate::prelude::Result<()> {
-	let result = archive_app_server_thread_after_success_inner(request);
+) -> crate::prelude::Result<AppServerThreadArchiveOutcome> {
+	let result = match archive_app_server_thread_after_success_inner(request) {
+		Ok(()) => Ok(AppServerThreadArchiveOutcome::Archived),
+		Err(error) if thread_archive_error_allows_discard(&error) =>
+			Ok(AppServerThreadArchiveOutcome::DiscardedMissingThread),
+		Err(error) => Err(error),
+	};
 
-	record_thread_archive_result_best_effort(state_store, request, result.as_ref().err());
+	record_thread_archive_result_best_effort(state_store, request, result.as_ref());
 
 	result
 }
@@ -1453,24 +1464,33 @@ fn archive_app_server_thread_after_success_inner(
 fn record_thread_archive_result_best_effort(
 	state_store: &StateStore,
 	request: &AppServerThreadArchiveRequest<'_>,
-	error: Option<&Report>,
+	result: std::result::Result<&AppServerThreadArchiveOutcome, &Report>,
 ) {
-	let (event_type, payload) = match error {
-		Some(error) => (
+	let (event_type, payload) = match result {
+		Ok(AppServerThreadArchiveOutcome::Archived) => (
+			"thread/archive",
+			serde_json::json!({
+				"threadId": request.thread_id,
+				"issueId": request.issue_id,
+				"attemptNumber": request.attempt_number,
+			}),
+		),
+		Ok(AppServerThreadArchiveOutcome::DiscardedMissingThread) => (
+			"thread/archive/discarded",
+			serde_json::json!({
+				"threadId": request.thread_id,
+				"issueId": request.issue_id,
+				"attemptNumber": request.attempt_number,
+				"reason": "missing_thread_or_rollout",
+			}),
+		),
+		Err(error) => (
 			"thread/archive/failed",
 			serde_json::json!({
 				"threadId": request.thread_id,
 				"issueId": request.issue_id,
 				"attemptNumber": request.attempt_number,
 				"error": error.to_string(),
-			}),
-		),
-		None => (
-			"thread/archive",
-			serde_json::json!({
-				"threadId": request.thread_id,
-				"issueId": request.issue_id,
-				"attemptNumber": request.attempt_number,
 			}),
 		),
 	};
@@ -1491,6 +1511,12 @@ fn record_thread_archive_result_best_effort(
 			"Failed to record app-server thread archive event."
 		);
 	}
+}
+
+fn thread_archive_error_allows_discard(error: &Report) -> bool {
+	let message = error.to_string().to_lowercase();
+
+	thread_missing_error_message_allows_discard(&message) || message.contains("already archived")
 }
 
 fn classify_child_activity_event(
@@ -5344,6 +5370,10 @@ fn normalized_home_path(path: &Path) -> PathBuf {
 fn thread_resume_error_allows_fallback(error: &Report) -> bool {
 	let message = error.to_string().to_lowercase();
 
+	thread_missing_error_message_allows_discard(&message)
+}
+
+fn thread_missing_error_message_allows_discard(message: &str) -> bool {
 	message.contains("no rollout found for thread id") || message.contains("thread not found")
 }
 
