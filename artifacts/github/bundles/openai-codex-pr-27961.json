@@ -1,0 +1,279 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-12T22:00:10Z",
+      "message": "feat(app-server): enforce managed remote control disable",
+      "sha": "a1f9d5e195dbf73c5ac756e90224f2e4af3a6adf",
+      "url": "https://github.com/openai/codex/commit/a1f9d5e195dbf73c5ac756e90224f2e4af3a6adf"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-12T22:48:50Z",
+      "message": "test(tui): snapshot debug config requirements",
+      "sha": "69a4db602847e1c1269016243061b76b0687a6da",
+      "url": "https://github.com/openai/codex/commit/69a4db602847e1c1269016243061b76b0687a6da"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-12T23:59:16Z",
+      "message": "refactor(app-server): use normal remote control request validation",
+      "sha": "d3918160167a6eaa5a33982ef79d9ccb63636d7b",
+      "url": "https://github.com/openai/codex/commit/d3918160167a6eaa5a33982ef79d9ccb63636d7b"
+    },
+    {
+      "author": "apanasenko-oai",
+      "committed_at": "2026-06-13T00:34:12Z",
+      "message": "fix(app-server): fail explicit remote control under managed disable",
+      "sha": "f4ef520440ce2a1d6b9ea9dcae6bbc272c2c181c",
+      "url": "https://github.com/openai/codex/commit/f4ef520440ce2a1d6b9ea9dcae6bbc272c2c181c"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "RPC",
+    "JSON",
+    "SQL",
+    "CHANNEL_CAPACITY",
+    "REMOTE_CONTROL_DISABLED_ENV_VAR",
+    "TEST_REMOTE_CONTROL_URL",
+    "TEST_INSTALLATION_ID",
+    "MDM",
+    "--listen",
+    "EXTERNAL_AUTH_REFRESH_TIMEOUT",
+    "CONNECTION_RPC_DRAIN_TIMEOUT",
+    "JSONRPCR",
+    "JSONRPCE",
+    "DEFAULT_READ_TIMEOUT",
+    "DEFAULT_TIMEOUT",
+    "STARTUP_TIMEOUT",
+    "REMOTE_CONTROL_DISABLED_BY_REQUIREMENTS_MESSAGE",
+    "CODEX_HOME",
+    "VSC"
+  ],
+  "files": [
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -8119,6 +8119,12 @@\n               \"null\"\n             ]\n           },\n+          \"allowRemoteControl\": {\n+            \"type\": [\n+              \"boolean\",\n+              \"null\"\n+            ]\n+          },\n           \"allowedApprovalPolicies\": {\n             \"items\": {\n               \"$ref\": \"#/definitions/v2/AskForApproval\"",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -4432,6 +4432,12 @@\n             \"null\"\n           ]\n         },\n+        \"allowRemoteControl\": {\n+          \"type\": [\n+            \"boolean\",\n+            \"null\"\n+          ]\n+        },\n         \"allowedApprovalPolicies\": {\n           \"items\": {\n             \"$ref\": \"#/definitions/AskForApproval\"",
+      "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 0,
+      "patch_excerpt": "@@ -85,6 +85,12 @@\n             \"null\"\n           ]\n         },\n+        \"allowRemoteControl\": {\n+          \"type\": [\n+            \"boolean\",\n+            \"null\"\n+          ]\n+        },\n         \"allowedApprovalPolicies\": {\n           \"items\": {\n             \"$ref\": \"#/definitions/AskForApproval\"",
+      "path": "codex-rs/app-server-protocol/schema/json/v2/ConfigRequirementsReadResponse.json",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -8,4 +8,4 @@ import type { ResidencyRequirement } from \"./ResidencyRequirement\";\n import type { SandboxMode } from \"./SandboxMode\";\n import type { WindowsSandboxSetupMode } from \"./WindowsSandboxSetupMode\";\n \n-export type ConfigRequirements = {allowedApprovalPolicies: Array<AskForApproval> | null, allowedSandboxModes: Array<SandboxMode> | null, allowedWindowsSandboxImplementations: Array<WindowsSandboxSetupMode> | null, allowedPermissionProfiles: { [key in string]?: boolean } | null, defaultPermissions: string | null, allowedWebSearchModes: Array<WebSearchMode> | null, allowManagedHooksOnly: boolean | null, allowAppshots: boolean | null, computerUse: ComputerUseRequirements | null, featureRequirements: { [key in string]?: boolean } | null, enforceResidency: ResidencyRequirement | null};\n+export type ConfigRequirements = {allowedApprovalPolicies: Array<AskForApproval> | null, allowedSa...",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ConfigRequirements.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -381,6 +381,7 @@ pub struct ConfigRequirements {\n     pub allowed_web_search_modes: Option<Vec<WebSearchMode>>,\n     pub allow_managed_hooks_only: Option<bool>,\n     pub allow_appshots: Option<bool>,\n+    pub allow_remote_control: Option<bool>,\n     pub computer_use: Option<ComputerUseRequirements>,\n     pub feature_requirements: Option<BTreeMap<String, bool>>,\n     #[experimental(\"configRequirements/read.hooks\")]",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/config.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1703,6 +1703,7 @@ fn config_requirements_granular_allowed_approval_policy_is_marked_experimental()\n             allowed_web_search_modes: None,\n             allow_managed_hooks_only: None,\n             allow_appshots: None,\n+            allow_remote_control: None,\n             computer_use: None,\n             feature_requirements: None,\n             hooks: None,",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,7 +12,10 @@ pub use transport::AppServerTransportParseError;\n pub use transport::CHANNEL_CAPACITY;\n pub use transport::ConnectionOrigin;\n pub use transport::REMOTE_CONTROL_DISABLED_ENV_VAR;\n+pub use transport::RemoteControlDisabledByRequirements;\n+pub use transport::RemoteControlEnableError;\n pub use transport::RemoteControlHandle;\n+pub use transport::RemoteControlPolicy;\n pub use transport::RemoteControlStartConfig;\n pub use transport::RemoteControlStartupMode;\n pub use transport::RemoteControlUnavailable;",
+      "path": "codex-rs/app-server-transport/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -31,7 +31,10 @@ mod unix_socket_tests;\n mod websocket;\n \n pub use remote_control::REMOTE_CONTROL_DISABLED_ENV_VAR;\n+pub use remote_control::RemoteControlDisabledByRequirements;\n+pub use remote_control::RemoteControlEnableError;\n pub use remote_control::RemoteControlHandle;\n+pub use remote_control::RemoteControlPolicy;\n pub use remote_control::RemoteControlStartConfig;\n pub use remote_control::RemoteControlStartupMode;\n pub use remote_control::RemoteControlUnavailable;",
+      "path": "codex-rs/app-server-transport/src/transport/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 2,
+      "patch_excerpt": "@@ -1,3 +1,4 @@\n+use super::RemoteControlEnableError;\n use super::RemoteControlHandle;\n use super::RemoteControlUnavailable;\n use super::enroll::update_persisted_remote_control_enrollment;\n@@ -51,6 +52,9 @@ impl RemoteControlHandle {\n         &self,\n         app_server_client_name: Option<&str>,\n     ) -> io::Result<bool> {\n+        if self.ensure_remote_control_allowed().is_err() {\n+            return Ok(false);\n+        }\n         let _transition = self\n             .desired_state_rpc_lock\n             .acquire()\n@@ -93,6 +97,8 @@ impl RemoteControlHandle {\n         &self,\n         app_server_client_name: Option<&str>,\n     ) -> io::Result<RemoteControlStatusChangedNotification> {\n+        self.ensure_remote_control_allowed()\n+            .map_err(|err| io::Error::new(io::ErrorKind::PermissionDenied, err))?;\n         let _transition = self\n             .desired_state_rpc_lock\n         ...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/desired_state.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 75,
+      "deletions": 14,
+      "patch_excerpt": "@@ -64,6 +64,14 @@ use tracing::warn;\n pub struct RemoteControlStartConfig {\n     pub remote_control_url: String,\n     pub installation_id: String,\n+    pub policy: RemoteControlPolicy,\n+}\n+\n+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]\n+pub enum RemoteControlPolicy {\n+    #[default]\n+    Allowed,\n+    DisabledByRequirements,\n }\n \n #[derive(Debug, Clone, Copy, PartialEq, Eq)]\n@@ -95,6 +103,7 @@ pub(super) struct QueuedServerEnvelope {\n \n #[derive(Clone)]\n pub struct RemoteControlHandle {\n+    policy: RemoteControlPolicy,\n     desired_state_tx: Arc<watch::Sender<RemoteControlDesiredState>>,\n     desired_state_rpc_lock: Arc<Semaphore>,\n     desired_state_persistence_lock: Arc<Semaphore>,\n@@ -195,20 +204,64 @@ impl fmt::Display for RemoteControlUnavailable {\n \n impl Error for RemoteControlUnavailable {}\n \n+#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n+pub struct RemoteControlDisabl...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 119,
+      "deletions": 1,
+      "patch_excerpt": "@@ -229,6 +229,7 @@ async fn explicit_disabled_start_ignores_persisted_enable() {\n         RemoteControlStartConfig {\n             remote_control_url: TEST_REMOTE_CONTROL_URL.to_string(),\n             installation_id: TEST_INSTALLATION_ID.to_string(),\n+            policy: RemoteControlPolicy::Allowed,\n         },\n         Some(state_db.clone()),\n         remote_control_auth_manager(),\n@@ -260,6 +261,105 @@ async fn explicit_disabled_start_ignores_persisted_enable() {\n     remote_task.await.expect(\"remote control task should join\");\n }\n \n+#[tokio::test]\n+async fn managed_disable_overrides_startup_and_persisted_enablement() {\n+    let listener = TcpListener::bind(\"127.0.0.1:0\")\n+        .await\n+        .expect(\"listener should bind\");\n+    let remote_control_url = remote_control_url_for_listener(&listener);\n+    let codex_home = TempDir::new().expect(\"temp dir should create\");\n+    let sta...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -21,6 +21,7 @@ fn client_management_handle(\n         environment_id: None,\n     });\n     RemoteControlHandle {\n+        policy: RemoteControlPolicy::Allowed,\n         desired_state_tx: Arc::new(desired_state_tx),\n         desired_state_rpc_lock: Arc::new(Semaphore::new(1)),\n         desired_state_persistence_lock: Arc::new(Semaphore::new(1)),",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests/clients_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -234,7 +234,7 @@ Example with notification opt-out:\n - `externalAgentConfig/import` — apply selected external-agent migration items by passing explicit `migrationItems` with `cwd` (`null` for home) and any plugin/session `details` returned by detect. When a request includes migration items, the server emits `externalAgentConfig/import/completed` once after the full import finishes (immediately after the response when everything completed synchronously, or after background imports finish).\n - `config/value/write` — write a single config key/value to the user's config.toml on disk; dotted paths such as `desktop.someKey` use the same generic write surface.\n - `config/batchWrite` — apply multiple config edits atomically to the user's config.toml on disk, with optional `reloadUserConfig: true` to hot-reload loaded threads, including multiple `desktop.*` edits.\n-- `configRequirements/read` ...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 35,
+      "deletions": 6,
+      "patch_excerpt": "@@ -32,6 +32,7 @@ use crate::outgoing_message::QueuedOutgoingMessage;\n use crate::transport::CHANNEL_CAPACITY;\n use crate::transport::ConnectionState;\n use crate::transport::OutboundConnectionState;\n+use crate::transport::RemoteControlPolicy;\n use crate::transport::RemoteControlStartConfig;\n use crate::transport::TransportEvent;\n use crate::transport::acquire_app_server_startup_lock;\n@@ -672,6 +673,28 @@ pub async fn run_main_with_transport_options(\n             None => error!(\"{}\", warning.summary),\n         }\n     }\n+    let remote_control_policy = if config\n+        .config_layer_stack\n+        .requirements()\n+        .allow_remote_control\n+        .as_ref()\n+        .is_some_and(|requirement| !requirement.value)\n+    {\n+        RemoteControlPolicy::DisabledByRequirements\n+    } else {\n+        RemoteControlPolicy::Allowed\n+    };\n+    let remote_control_startup_mode = runtime_option...",
+      "path": "codex-rs/app-server/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 6,
+      "patch_excerpt": "@@ -94,6 +94,17 @@ use tracing::Instrument;\n const EXTERNAL_AUTH_REFRESH_TIMEOUT: Duration = Duration::from_secs(10);\n const CONNECTION_RPC_DRAIN_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);\n \n+fn deserialize_client_request(\n+    request: &JSONRPCRequest,\n+) -> Result<ClientRequest, JSONRPCErrorError> {\n+    serde_json::to_value(request)\n+        .map_err(|err| invalid_request(format!(\"Invalid request: {err}\")))\n+        .and_then(|request_json| {\n+            serde_json::from_value(request_json)\n+                .map_err(|err| invalid_request(format!(\"Invalid request: {err}\")))\n+        })\n+}\n+\n #[derive(Clone)]\n struct ExternalAuthRefreshBridge {\n     outgoing: Arc<OutgoingMessageSender>,\n@@ -582,12 +593,7 @@ impl MessageProcessor {\n             Arc::clone(&self.outgoing),\n             request_context.clone(),\n             async {\n-                let codex_request = serde_jso...",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 0,
+      "patch_excerpt": "@@ -364,6 +364,7 @@ fn map_requirements_toml_to_api(requirements: ConfigRequirementsToml) -> ConfigR\n         }),\n         allow_managed_hooks_only: requirements.allow_managed_hooks_only,\n         allow_appshots: requirements.allow_appshots,\n+        allow_remote_control: requirements.allow_remote_control,\n         computer_use: requirements\n             .computer_use\n             .map(map_computer_use_requirements_to_api),\n@@ -618,6 +619,16 @@ mod tests {\n         assert_eq!(mapped.hooks, None);\n     }\n \n+    #[test]\n+    fn requirements_api_includes_allow_remote_control() {\n+        let mapped = map_requirements_toml_to_api(ConfigRequirementsToml {\n+            allow_remote_control: Some(false),\n+            ..ConfigRequirementsToml::default()\n+        });\n+\n+        assert_eq!(mapped.allow_remote_control, Some(false));\n+    }\n+\n     #[test]\n     fn requirements_api_includes_computer_u...",
+      "path": "codex-rs/app-server/src/request_processors/config_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 22,
+      "deletions": 5,
+      "patch_excerpt": "@@ -1,5 +1,6 @@\n use crate::error_code::internal_error;\n use crate::error_code::invalid_request;\n+use crate::transport::RemoteControlEnableError;\n use crate::transport::RemoteControlHandle;\n use crate::transport::RemoteControlUnavailable;\n use codex_app_server_protocol::JSONRPCErrorError;\n@@ -35,7 +36,7 @@ impl RemoteControlRequestProcessor {\n     ) -> Result<RemoteControlEnableResponse, JSONRPCErrorError> {\n         let handle = self.handle()?;\n         let status = if ephemeral {\n-            handle.enable_ephemeral().map_err(map_unavailable)?\n+            handle.enable_ephemeral().map_err(map_enable_error)?\n         } else {\n             handle\n                 .enable(app_server_client_name)\n@@ -88,7 +89,8 @@ impl RemoteControlRequestProcessor {\n         params: RemoteControlPairingStatusParams,\n     ) -> Result<RemoteControlPairingStatusResponse, JSONRPCErrorError> {\n         valida...",
+      "path": "codex-rs/app-server/src/request_processors/remote_control_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -18,7 +18,9 @@ pub(crate) use codex_app_server_transport::ConnectionId;\n pub(crate) use codex_app_server_transport::ConnectionOrigin;\n pub(crate) use codex_app_server_transport::OutgoingMessage;\n pub(crate) use codex_app_server_transport::QueuedOutgoingMessage;\n+pub(crate) use codex_app_server_transport::RemoteControlEnableError;\n pub(crate) use codex_app_server_transport::RemoteControlHandle;\n+pub(crate) use codex_app_server_transport::RemoteControlPolicy;\n pub(crate) use codex_app_server_transport::RemoteControlStartConfig;\n pub use codex_app_server_transport::RemoteControlStartupMode;\n pub(crate) use codex_app_server_transport::RemoteControlUnavailable;",
+      "path": "codex-rs/app-server/src/transport.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1133,6 +1133,11 @@ impl TestAppServer {\n         self.send_request(\"config/read\", params).await\n     }\n \n+    pub async fn send_config_requirements_read_request(&mut self) -> anyhow::Result<i64> {\n+        self.send_request(\"configRequirements/read\", /*params*/ None)\n+            .await\n+    }\n+\n     pub async fn send_config_value_write_request(\n         &mut self,\n         params: ConfigValueWriteParams,",
+      "path": "codex-rs/app-server/tests/common/test_app_server.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 28,
+      "deletions": 0,
+      "patch_excerpt": "@@ -14,6 +14,7 @@ use codex_app_server_protocol::ConfigEdit;\n use codex_app_server_protocol::ConfigLayerSource;\n use codex_app_server_protocol::ConfigReadParams;\n use codex_app_server_protocol::ConfigReadResponse;\n+use codex_app_server_protocol::ConfigRequirementsReadResponse;\n use codex_app_server_protocol::ConfigValueWriteParams;\n use codex_app_server_protocol::ConfigWriteResponse;\n use codex_app_server_protocol::ForcedChatgptWorkspaceIds;\n@@ -47,6 +48,33 @@ fn write_config(codex_home: &TempDir, contents: &str) -> Result<()> {\n     )?)\n }\n \n+#[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n+async fn config_requirements_read_includes_allow_remote_control() -> Result<()> {\n+    let codex_home = TempDir::new()?;\n+    std::fs::write(\n+        codex_home.path().join(\"requirements.toml\"),\n+        \"allow_remote_control = false\\n\",\n+    )?;\n+    let mut mcp = TestAppServer::new(cod...",
+      "path": "codex-rs/app-server/tests/suite/v2/config_rpc.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 235,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,3 +1,6 @@\n+use std::ffi::OsStr;\n+use std::ffi::OsString;\n+use std::io::ErrorKind;\n use std::time::Duration;\n \n use anyhow::Context;\n@@ -8,6 +11,13 @@ use app_test_support::TestAppServer;\n use app_test_support::to_response;\n use app_test_support::write_chatgpt_auth;\n use app_test_support::write_mock_responses_config_toml_with_chatgpt_base_url;\n+use codex_app_server::AppServerRuntimeOptions;\n+use codex_app_server::AppServerTransport;\n+use codex_app_server::AppServerWebsocketAuthSettings;\n+use codex_app_server::PluginStartupTasks;\n+use codex_app_server::RemoteControlStartupMode;\n+use codex_app_server::run_main_with_transport_options;\n+use codex_app_server_protocol::JSONRPCError;\n use codex_app_server_protocol::JSONRPCResponse;\n use codex_app_server_protocol::RemoteControlClient;\n use codex_app_server_protocol::RemoteControlClientsListOrder;\n@@ -22,12 +32,18 @@ use codex_app_server_pro...",
+      "path": "codex-rs/app-server/tests/suite/v2/remote_control.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 34,
+      "deletions": 0,
+      "patch_excerpt": "@@ -149,6 +149,7 @@ pub struct ConfigRequirements {\n     pub web_search_mode: ConstrainedWithSource<WebSearchMode>,\n     pub allow_managed_hooks_only: Option<Sourced<bool>>,\n     pub allow_appshots: Option<Sourced<bool>>,\n+    pub allow_remote_control: Option<Sourced<bool>>,\n     pub computer_use: Option<Sourced<ComputerUseRequirementsToml>>,\n     pub feature_requirements: Option<Sourced<FeatureRequirementsToml>>,\n     pub managed_hooks: Option<ConstrainedWithSource<ManagedHooksRequirementsToml>>,\n@@ -189,6 +190,7 @@ impl Default for ConfigRequirements {\n             ),\n             allow_managed_hooks_only: None,\n             allow_appshots: None,\n+            allow_remote_control: None,\n             computer_use: None,\n             feature_requirements: None,\n             managed_hooks: None,\n@@ -828,6 +830,7 @@ pub struct ConfigRequirementsToml {\n     pub allowed_web_search_modes: Opt...",
+      "path": "codex-rs/config/src/config_requirements.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -182,6 +182,7 @@ fn populate_merged_regular_fields_with_sources(\n         allowed_web_search_modes,\n         allow_managed_hooks_only,\n         allow_appshots,\n+        allow_remote_control,\n         computer_use,\n         windows,\n         feature_requirements,\n@@ -210,6 +211,7 @@ fn populate_merged_regular_fields_with_sources(\n     set_sourced!(allowed_web_search_modes, &[\"allowed_web_search_modes\"]);\n     set_sourced!(allow_managed_hooks_only, &[\"allow_managed_hooks_only\"]);\n     set_sourced!(allow_appshots, &[\"allow_appshots\"]);\n+    set_sourced!(allow_remote_control, &[\"allow_remote_control\"]);\n     set_sourced!(computer_use, &[\"computer_use\"]);\n     set_sourced!(windows, &[\"windows\"]);\n     set_sourced!(feature_requirements, &[\"features\", \"feature_requirements\"]);",
+      "path": "codex-rs/config/src/requirements_layers/stack.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 1,
+      "patch_excerpt": "@@ -63,6 +63,7 @@ fn top_level_values_use_toml_priority() {\n allowed_approval_policies = [\"on-request\"]\n allowed_sandbox_modes = [\"workspace-write\"]\n default_permissions = \":workspace\"\n+allow_remote_control = true\n \n [allowed_permission_profiles]\n \":read-only\" = true\n@@ -76,6 +77,7 @@ default_permissions = \":workspace\"\n allowed_approval_policies = [\"never\"]\n allowed_sandbox_modes = [\"read-only\"]\n default_permissions = \":read-only\"\n+allow_remote_control = false\n \n [allowed_permission_profiles]\n \":danger-full-access\" = false\n@@ -93,6 +95,7 @@ default_permissions = \":read-only\"\n allowed_approval_policies = [\"never\"]\n allowed_sandbox_modes = [\"read-only\"]\n default_permissions = \":read-only\"\n+allow_remote_control = false\n \n [allowed_permission_profiles]\n \":danger-full-access\" = false\n@@ -135,6 +138,7 @@ fn composition_strategy_applies_to_non_cloud_layers() {\n                 format!(\n        ...",
+      "path": "codex-rs/config/src/requirements_layers/stack_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 1,
+      "patch_excerpt": "@@ -73,14 +73,18 @@ impl LoaderOverrides {\n         }\n     }\n \n-    /// Returns overrides with host MDM disabled and managed config loaded from `managed_config_path`.\n+    /// Returns overrides with host MDM disabled and managed config loaded from\n+    /// `managed_config_path`. System requirements are loaded from a sibling\n+    /// `requirements.toml` fixture.\n     ///\n     /// This is intended for tests that supply an explicit managed config fixture.\n     pub fn with_managed_config_path_for_tests(managed_config_path: PathBuf) -> Self {\n+        let system_requirements_path = managed_config_path.with_file_name(\"requirements.toml\");\n         Self {\n             user_config_path: None,\n             user_config_profile: None,\n             managed_config_path: Some(managed_config_path),\n+            system_requirements_path: Some(system_requirements_path),\n             ..Self::without_manag...",
+      "path": "codex-rs/config/src/state.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -8304,6 +8304,7 @@ async fn test_requirements_web_search_mode_allowlist_does_not_warn_when_unset()\n         allowed_web_search_modes: Some(vec![codex_config::WebSearchModeRequirement::Cached]),\n         allow_managed_hooks_only: None,\n         allow_appshots: None,\n+        allow_remote_control: None,\n         computer_use: None,\n         windows: None,\n         feature_requirements: None,",
+      "path": "codex-rs/core/src/config/config_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -2625,6 +2625,7 @@ impl Config {\n             web_search_mode: mut constrained_web_search_mode,\n             allow_managed_hooks_only: _,\n             allow_appshots: _,\n+            allow_remote_control: _,\n             computer_use: _,\n             feature_requirements,\n             managed_hooks: _,",
+      "path": "codex-rs/core/src/config/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 23,
+      "deletions": 0,
+      "patch_excerpt": "@@ -196,6 +196,17 @@ fn render_debug_config_lines(\n         ));\n     }\n \n+    if let Some(allow_remote_control) = requirements_toml.allow_remote_control {\n+        requirement_lines.push(requirement_line(\n+            \"allow_remote_control\",\n+            allow_remote_control.to_string(),\n+            requirements\n+                .allow_remote_control\n+                .as_ref()\n+                .map(|sourced| &sourced.source),\n+        ));\n+    }\n+\n     if requirements_toml.guardian_policy_config.is_some() {\n         requirement_lines.push(requirement_line(\n             \"guardian_policy_config\",\n@@ -712,6 +723,10 @@ mod tests {\n                 /*value*/ false,\n                 RequirementSource::LegacyManagedConfigTomlFromMdm,\n             )),\n+            allow_remote_control: Some(Sourced::new(\n+                /*value*/ false,\n+                RequirementSource::LegacyManagedConfigTo...",
+      "path": "codex-rs/tui/src/debug_config.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 23,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,23 @@\n+---\n+source: tui/src/debug_config.rs\n+expression: rendered.as_str()\n+---\n+/debug-config\n+\n+Config layer stack (lowest precedence first):\n+  1. user (/home/alice/.codex/config.toml) (enabled)\n+\n+Requirements:\n+  - allowed_approval_policies: on-request (source: MDM managed_config.toml (legacy))\n+  - allowed_approvals_reviewers: auto_review (source: MDM managed_config.toml (legacy))\n+  - allowed_sandbox_modes: read-only (source: /etc/codex/requirements.toml)\n+  - allowed_web_search_modes: cached, disabled (source: MDM managed_config.toml (legacy))\n+  - allow_managed_hooks_only: true (source: MDM managed_config.toml (legacy))\n+  - allow_appshots: false (source: MDM managed_config.toml (legacy))\n+  - allow_remote_control: false (source: MDM managed_config.toml (legacy))\n+  - guardian_policy_config: configured (source: MDM managed_config.toml (legacy))\n+  - features: guardian...",
+      "path": "codex-rs/tui/src/snapshots/codex_tui__debug_config__tests__debug_config_requirement_sources.snap",
+      "status": "added"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nManaged deployments need a reliable deny gate for remote control. Persisted enablement and explicit startup requests currently remain able to start the transport, while the removed `features.remote_control` key is intentionally only a compatibility no-op.\n\nThis adds a dedicated requirement that administrators can use to force remote control off without deleting the user's persisted preference. Removing the requirement and restarting restores the prior choice.\n\n## What Changed\n\n- Added top-level `allow_remote_control` requirements parsing, sourced layer precedence, debug output, and `configRequirements/read` exposure as `allowRemoteControl`.\n- Added a typed transport policy captured from the startup requirements snapshot. Managed disable forces the initial state to disabled and prevents enrollment, refresh, connection, and persisted-preference mutation.\n- Rejected every `remoteControl/*` RPC before parameter deserialization with JSON-RPC `-32600` and `remote control is disabled by managed requirements`.\n- Preserved the existing disabled status notification and the previous behavior when the requirement is `true` or omitted.\n- Regenerated app-server protocol schemas and documented the new requirement.\n\n## Verification\n\n- Confirmed all remote-control RPCs, including a malformed request, return the managed-policy error while the initial status notification remains `disabled`.\n- Confirmed explicit ephemeral startup and persisted enablement make no backend connection and leave the SQLite preference unchanged.\n- Confirmed `allow_remote_control = true` does not enable or block remote control and `configRequirements/read` returns `allowRemoteControl: false` for the deny policy.\n\nRelated issue: N/A (managed-policy hardening).\n",
+    "labels": [],
+    "merged_at": "2026-06-13T03:10:12Z",
+    "number": 27961,
+    "state": "merged",
+    "title": "feat(app-server): enforce managed remote control disable",
+    "url": "https://github.com/openai/codex/pull/27961"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

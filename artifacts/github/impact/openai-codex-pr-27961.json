@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Add a Decodex compatibility check for `configRequirements/read.allowRemoteControl` before remote-control enrollment or RPC attempts.",
+    "Treat JSON-RPC `-32600` remote-control disabled errors as a managed-policy state, not as a transient transport failure.",
+    "Keep persisted user preferences separate from managed deny policy when explaining operator status."
+  ],
+  "caveats": [
+    "The disabled policy does not erase persisted user preference.",
+    "The PR preserves previous behavior when `allow_remote_control` is omitted or true.",
+    "Decodex implementation work still needs a separate issue if local Control Plane code assumes remote-control enablement is always requestable."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "App-server `ConfigRequirements` now exposes nullable `allow_remote_control` as `allowRemoteControl`.",
+    "Remote-control transport startup captures `RemoteControlPolicy::DisabledByRequirements`.",
+    "Managed disable forces disabled state and prevents enrollment, refresh, connection, and persisted-preference mutation.",
+    "Remote-control RPCs are rejected with JSON-RPC `-32600` under managed disable.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27961.review.json`."
+  ],
+  "observed_change": "Codex adds a managed `allow_remote_control` requirement that exposes `allowRemoteControl` through app-server config requirements and blocks remote-control startup and RPCs when disabled.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27961",
+  "social_notes": [
+    "Frame this as managed remote-control policy and app-server compatibility.",
+    "Do not imply remote control was removed or that user preference is deleted."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-13T03:10:12Z",
+        "title": "feat(app-server): enforce managed remote control disable",
+        "url": "https://github.com/openai/codex/pull/27961"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27961.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27961"
+      }
+    ]
+  }
+}
