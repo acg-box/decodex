@@ -1,0 +1,349 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-12T07:47:41Z",
+      "message": "sandboxing: migrate cwd inputs to PathUri",
+      "sha": "69a5b897facddfdb48dc4cccb173541f5349aa6f",
+      "url": "https://github.com/openai/codex/commit/69a5b897facddfdb48dc4cccb173541f5349aa6f"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-12T16:59:44Z",
+      "message": "codex: address PR review feedback (#27816)",
+      "sha": "db68524fe5280a98ae8a500448d2c7eb46b33164",
+      "url": "https://github.com/openai/codex/commit/db68524fe5280a98ae8a500448d2c7eb46b33164"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-12T18:19:33Z",
+      "message": "codex: address PR review feedback (#27816)",
+      "sha": "a57dab38147d453e05cd391eed4a3ab83a251f71",
+      "url": "https://github.com/openai/codex/commit/a57dab38147d453e05cd391eed4a3ab83a251f71"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "URI",
+    "REMOTE_ENVIRONMENT_ID",
+    "DEFAULT_OUTPUT_BYTES_CAP",
+    "LOCAL_ENVIRONMENT_ID",
+    "APPLY_PATCH_ARGUMENT_DIFF_BUFFER_INTERVAL",
+    "PROXY_ENV_KEYS",
+    "PROXY_GIT_SSH_COMMAND_ENV_KEY",
+    "CUSTOM_ENV",
+    "PTY",
+    "FS_HELPER_BAZEL_BWRAP_ENV_ALLOWLIST",
+    "TEST_WORKSPACE",
+    "JSONRPCE",
+    "JSONRPCM",
+    "JSONRPCR",
+    "INITIALIZED_METHOD",
+    "UNC",
+    "FS_READ_FILE_METHOD",
+    "STANDARD",
+    "TODO"
+  ],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -3020,7 +3020,6 @@ name = \"codex-file-system\"\n version = \"0.0.0\"\n dependencies = [\n  \"codex-protocol\",\n- \"codex-utils-absolute-path\",\n  \"codex-utils-path-uri\",\n  \"serde\",\n ]\n@@ -3755,6 +3754,7 @@ dependencies = [\n  \"codex-network-proxy\",\n  \"codex-protocol\",\n  \"codex-utils-absolute-path\",\n+ \"codex-utils-path-uri\",\n  \"dunce\",\n  \"libc\",\n  \"pretty_assertions\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -57,7 +57,7 @@ pub(crate) async fn load_project_instructions(\n             config,\n             filesystem.as_ref(),\n             &turn_environment.environment_id,\n-            &turn_environment.cwd,\n+            turn_environment.cwd(),\n         )\n         .await\n         {",
+      "path": "codex-rs/core/src/agents_md.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 8,
+      "patch_excerpt": "@@ -258,14 +258,17 @@ fn resolved_local_environments<const N: usize>(\n     ResolvedTurnEnvironments {\n         turn_environments: environments\n             .into_iter()\n-            .map(|(environment_id, cwd)| TurnEnvironment {\n-                environment_id: environment_id.to_string(),\n-                environment: Arc::new(\n-                    Environment::create_for_tests(/*exec_server_url*/ None)\n-                        .expect(\"local environment\"),\n-                ),\n-                cwd,\n-                shell: None,\n+            .map(|(environment_id, cwd)| {\n+                TurnEnvironment::new(\n+                    environment_id.to_string(),\n+                    Arc::new(\n+                        Environment::create_for_tests(/*exec_server_url*/ None)\n+                            .expect(\"local environment\"),\n+                    ),\n+                    cwd,\n+            ...",
+      "path": "codex-rs/core/src/agents_md_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -46,7 +46,7 @@ impl EnvironmentContextEnvironment {\n             .iter()\n             .map(|environment| Self {\n                 id: environment.environment_id.clone(),\n-                cwd: environment.cwd.clone(),\n+                cwd: environment.cwd().clone(),\n                 shell: environment\n                     .shell\n                     .as_ref()",
+      "path": "codex-rs/core/src/context/environment_context.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 20,
+      "deletions": 16,
+      "patch_excerpt": "@@ -58,7 +58,7 @@ impl ResolvedTurnEnvironments {\n             return None;\n         };\n \n-        (!environment.environment.is_remote()).then_some(&environment.cwd)\n+        (!environment.environment.is_remote()).then_some(environment.cwd())\n     }\n }\n \n@@ -96,12 +96,12 @@ pub(crate) async fn resolve_environment_selections(\n                 None\n             }\n         };\n-        turn_environments.push(TurnEnvironment {\n+        turn_environments.push(TurnEnvironment::new(\n             environment_id,\n             environment,\n-            cwd: selected_environment.cwd.clone(),\n+            selected_environment.cwd.clone(),\n             shell,\n-        });\n+        )?);\n     }\n     Ok(ResolvedTurnEnvironments { turn_environments })\n }\n@@ -270,22 +270,26 @@ url = \"ws://127.0.0.1:8765\"\n                 .expect(\"remote environment\"),\n         );\n         let remote = ResolvedTurnEnvironme...",
+      "path": "codex-rs/core/src/environment_selection.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 5,
+      "patch_excerpt": "@@ -44,6 +44,7 @@ use codex_sandboxing::SandboxType;\n use codex_sandboxing::SandboxablePreference;\n use codex_sandboxing::compatibility_sandbox_policy_for_permission_profile;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n use codex_utils_pty::DEFAULT_OUTPUT_BYTES_CAP;\n use codex_utils_pty::process_group::kill_child_process_group;\n \n@@ -372,6 +373,14 @@ pub fn build_exec_request(\n             \"command args are empty\",\n         ))\n     })?;\n+    let cwd = PathUri::from_abs_path(&cwd).map_err(|_| {\n+        CodexErr::InvalidRequest(\"command cwd cannot be represented as a file URI\".to_string())\n+    })?;\n+    let sandbox_policy_cwd_uri = PathUri::from_abs_path(sandbox_cwd).map_err(|_| {\n+        CodexErr::InvalidRequest(\n+            \"sandbox policy cwd cannot be represented as a file URI\".to_string(),\n+        )\n+    })?;\n \n     let manager = SandboxMa...",
+      "path": "codex-rs/core/src/exec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -743,7 +743,7 @@ async fn run_review_on_session(\n         .parent_turn\n         .environments\n         .primary()\n-        .map(|environment| environment.cwd.clone())\n+        .map(|environment| environment.cwd().clone())\n         .unwrap_or_else(|| params.parent_turn.config.cwd.clone());\n \n     let submit_result = run_before_review_deadline(",
+      "path": "codex-rs/core/src/guardian/review_session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -103,12 +103,12 @@ impl ExecRequest {\n     pub(crate) fn from_sandbox_exec_request(\n         request: SandboxExecRequest,\n         options: ExecOptions,\n-        windows_sandbox_policy_cwd: AbsolutePathBuf,\n         windows_sandbox_workspace_roots: Vec<AbsolutePathBuf>,\n     ) -> Self {\n         let SandboxExecRequest {\n             command,\n             cwd,\n+            sandbox_policy_cwd: windows_sandbox_policy_cwd,\n             mut env,\n             network,\n             sandbox,",
+      "path": "codex-rs/core/src/sandboxing/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -314,7 +314,7 @@ impl Session {\n         let mcp_runtime_context = match turn_context.environments.primary() {\n             Some(turn_environment) => McpRuntimeContext::new(\n                 Arc::clone(&self.services.environment_manager),\n-                turn_environment.cwd.to_path_buf(),\n+                turn_environment.cwd().to_path_buf(),\n             ),\n             None => McpRuntimeContext::new(\n                 Arc::clone(&self.services.environment_manager),",
+      "path": "codex-rs/core/src/session/mcp.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1135,7 +1135,7 @@ impl Session {\n             let mcp_runtime_context = match turn_environment {\n                 Some(turn_environment) => McpRuntimeContext::new(\n                     Arc::clone(&sess.services.environment_manager),\n-                    turn_environment.cwd.to_path_buf(),\n+                    turn_environment.cwd().to_path_buf(),\n                 ),\n                 None => McpRuntimeContext::new(\n                     Arc::clone(&sess.services.environment_manager),",
+      "path": "codex-rs/core/src/session/session.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 30,
+      "deletions": 21,
+      "patch_excerpt": "@@ -4035,12 +4035,15 @@ fn turn_environments_for_tests(\n     cwd: &codex_utils_absolute_path::AbsolutePathBuf,\n ) -> crate::environment_selection::ResolvedTurnEnvironments {\n     crate::environment_selection::ResolvedTurnEnvironments {\n-        turn_environments: vec![TurnEnvironment {\n-            environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),\n-            environment: Arc::clone(environment),\n-            cwd: cwd.clone(),\n-            shell: None,\n-        }],\n+        turn_environments: vec![\n+            TurnEnvironment::new(\n+                codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),\n+                Arc::clone(environment),\n+                cwd.clone(),\n+                /*shell*/ None,\n+            )\n+            .expect(\"turn environment\"),\n+        ],\n     }\n }\n \n@@ -5656,8 +5659,14 @@ async fn request_permissions_tool_resolves_relative_paths_agai...",
+      "path": "codex-rs/core/src/session/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -416,10 +416,10 @@ async fn turn_diff_display_roots(turn_context: &TurnContext) -> Vec<(String, Pat\n     for turn_environment in &turn_context.environments.turn_environments {\n         let root = get_git_repo_root_with_fs(\n             turn_environment.environment.get_filesystem().as_ref(),\n-            &turn_environment.cwd,\n+            turn_environment.cwd(),\n         )\n         .await\n-        .unwrap_or_else(|| turn_environment.cwd.clone())\n+        .unwrap_or_else(|| turn_environment.cwd().clone())\n         .into_path_buf();\n         display_roots.push((turn_environment.environment_id.clone(), root));\n     }\n@@ -630,7 +630,7 @@ async fn build_extension_turn_input_items(\n         .enumerate()\n         .map(|(index, environment)| TurnInputEnvironment {\n             environment_id: environment.environment_id.clone(),\n-            cwd: environment.cwd.as_path().to_path_buf(),\n+     ...",
+      "path": "codex-rs/core/src/session/turn.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 38,
+      "deletions": 3,
+      "patch_excerpt": "@@ -17,6 +17,7 @@ use codex_protocol::protocol::TurnEnvironmentSelection;\n use codex_sandboxing::compatibility_sandbox_policy_for_permission_profile;\n use codex_sandboxing::policy_transforms::effective_file_system_sandbox_policy;\n use codex_sandboxing::policy_transforms::effective_network_sandbox_policy;\n+use codex_utils_path_uri::PathUri;\n use std::sync::atomic::AtomicBool;\n use std::sync::atomic::Ordering;\n \n@@ -39,11 +40,45 @@ impl TurnSkillsContext {\n pub(crate) struct TurnEnvironment {\n     pub(crate) environment_id: String,\n     pub(crate) environment: Arc<Environment>,\n-    pub(crate) cwd: AbsolutePathBuf,\n+    // Keep both representations together while cwd consumers migrate to URI semantics. Keeping\n+    // them synchronized means neither representation can be exposed through a mutable reference;\n+    // updates must rebuild the validated pair through `TurnEnvironment::new`. Onc...",
+      "path": "codex-rs/core/src/session/turn_context.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 8,
+      "patch_excerpt": "@@ -648,12 +648,12 @@ async fn resume_and_fork_do_not_restore_thread_environments_from_rollout() {\n         .expect(\"build resumed turn context\");\n     assert_eq!(resumed_turn.environments.turn_environments.len(), 1);\n     assert_eq!(\n-        resumed_turn.environments.turn_environments[0].cwd,\n-        default_cwd\n+        resumed_turn.environments.turn_environments[0].cwd(),\n+        &default_cwd\n     );\n     assert_ne!(\n-        resumed_turn.environments.turn_environments[0].cwd,\n-        selected_cwd\n+        resumed_turn.environments.turn_environments[0].cwd(),\n+        &selected_cwd\n     );\n \n     let forked = manager\n@@ -675,12 +675,12 @@ async fn resume_and_fork_do_not_restore_thread_environments_from_rollout() {\n         .expect(\"build forked turn context\");\n     assert_eq!(forked_turn.environments.turn_environments.len(), 1);\n     assert_eq!(\n-        forked_turn.environments.t...",
+      "path": "codex-rs/core/src/thread_manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -312,5 +312,5 @@ fn single_local_environment_cwd(turn: &TurnContext) -> Result<&AbsolutePathBuf,\n         ));\n     }\n \n-    Ok(&turn_environment.cwd)\n+    Ok(turn_environment.cwd())\n }",
+      "path": "codex-rs/core/src/tools/handlers/agent_jobs/spawn_agents_on_csv.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 3,
+      "patch_excerpt": "@@ -52,6 +52,7 @@ use codex_sandboxing::policy_transforms::normalize_additional_permissions;\n use codex_tools::ToolName;\n use codex_tools::ToolSpec;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n \n const APPLY_PATCH_ARGUMENT_DIFF_BUFFER_INTERVAL: Duration = Duration::from_millis(500);\n /// Handles freeform `apply_patch` requests and routes verified patches to the\n@@ -358,9 +359,12 @@ impl ApplyPatchHandler {\n                 \"apply_patch is unavailable in this session\".to_string(),\n             ));\n         };\n-        let cwd = turn_environment.cwd.clone();\n+        let cwd = turn_environment.cwd().clone();\n         let fs = turn_environment.environment.get_filesystem();\n-        let sandbox = turn.file_system_sandbox_context(/*additional_permissions*/ None, &cwd);\n+        let sandbox = turn.file_system_sandbox_context(\n+            /*additional_p...",
+      "path": "codex-rs/core/src/tools/handlers/apply_patch.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 20,
+      "deletions": 5,
+      "patch_excerpt": "@@ -117,19 +117,20 @@ async fn to_extension_call(invocation: &ToolInvocation) -> ExtensionToolCall {\n         let additional_permissions = apply_granted_turn_permissions(\n             invocation.session.as_ref(),\n             &environment.environment_id,\n-            environment.cwd.as_path(),\n+            environment.cwd().as_path(),\n             SandboxPermissions::UseDefault,\n             /*additional_permissions*/ None,\n         )\n         .await\n         .additional_permissions;\n+        let file_system_sandbox_context = invocation\n+            .turn\n+            .file_system_sandbox_context(additional_permissions, environment.cwd_uri());\n         environments.push(ToolEnvironment {\n             environment_id: environment.environment_id.clone(),\n-            cwd: environment.cwd.clone(),\n+            cwd: environment.cwd().clone(),\n             file_system: environment.environment....",
+      "path": "codex-rs/core/src/tools/handlers/extension_tools.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -71,7 +71,7 @@ impl RequestPermissionsHandler {\n             ));\n         };\n         let mut args: RequestPermissionsArgs =\n-            parse_arguments_with_base_path(&arguments, &turn_environment.cwd)?;\n+            parse_arguments_with_base_path(&arguments, turn_environment.cwd())?;\n         args.permissions = normalize_additional_permissions(args.permissions.into())\n             .map(codex_protocol::request_permissions::RequestPermissionProfile::from)\n             .map_err(FunctionCallError::RespondToModel)?;",
+      "path": "codex-rs/core/src/tools/handlers/request_permissions.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -134,8 +134,8 @@ impl ExecCommandHandler {\n             .as_deref()\n             .filter(|workdir| !workdir.is_empty())\n             .map_or_else(\n-                || turn_environment.cwd.clone(),\n-                |workdir| turn_environment.cwd.join(workdir),\n+                || turn_environment.cwd().clone(),\n+                |workdir| turn_environment.cwd().join(workdir),\n             );\n         let environment = Arc::clone(&turn_environment.environment);\n         let fs = environment.get_filesystem();\n@@ -270,7 +270,7 @@ impl ExecCommandHandler {\n                     yield_time_ms,\n                     max_output_tokens,\n                     cwd,\n-                    sandbox_cwd: turn_environment.cwd.clone(),\n+                    sandbox_cwd: turn_environment.cwd().clone(),\n                     environment,\n                     shell_mode,\n                     network: context.tur...",
+      "path": "codex-rs/core/src/tools/handlers/unified_exec/exec_command.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 25,
+      "deletions": 12,
+      "patch_excerpt": "@@ -143,9 +143,12 @@ impl ViewImageHandler {\n                 \"view_image is unavailable in this session\".to_string(),\n             ));\n         };\n-        let cwd = turn_environment.cwd.clone();\n+        let cwd = turn_environment.cwd().clone();\n         let abs_path = cwd.join(path);\n-        let sandbox = turn.file_system_sandbox_context(/*additional_permissions*/ None, &cwd);\n+        let sandbox = turn.file_system_sandbox_context(\n+            /*additional_permissions*/ None,\n+            turn_environment.cwd_uri(),\n+        );\n         let fs = turn_environment.environment.get_filesystem();\n         let path_uri = PathUri::from_abs_path(&abs_path).map_err(|error| {\n             FunctionCallError::RespondToModel(format!(\n@@ -268,16 +271,34 @@ impl ToolOutput for ViewImageOutput {\n mod tests {\n     use super::*;\n     use crate::session::tests::make_session_and_context;\n+    use crat...",
+      "path": "codex-rs/core/src/tools/handlers/view_image.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 2,
+      "patch_excerpt": "@@ -39,6 +39,7 @@ use codex_protocol::protocol::NetworkPolicyRuleAction;\n use codex_protocol::protocol::ReviewDecision;\n use codex_sandboxing::SandboxManager;\n use codex_sandboxing::SandboxType;\n+use codex_utils_path_uri::PathUri;\n use std::time::Instant;\n \n pub(crate) struct ToolOrchestrator {\n@@ -239,13 +240,18 @@ impl ToolOrchestrator {\n         let use_legacy_landlock = turn_ctx.features.use_legacy_landlock();\n         #[allow(deprecated)]\n         let sandbox_cwd = tool.sandbox_cwd(req).unwrap_or(&turn_ctx.cwd);\n+        let sandbox_policy_cwd = PathUri::from_abs_path(sandbox_cwd).map_err(|_| {\n+            ToolError::Codex(CodexErr::InvalidRequest(\n+                \"sandbox policy cwd cannot be represented as a file URI\".to_string(),\n+            ))\n+        })?;\n         let workspace_roots = turn_ctx.config.effective_workspace_roots();\n         let initial_attempt = SandboxAttemp...",
+      "path": "codex-rs/core/src/tools/orchestrator.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 9,
+      "patch_excerpt": "@@ -11,16 +11,18 @@ use codex_sandboxing::SandboxManager;\n use codex_sandboxing::SandboxType;\n use codex_sandboxing::policy_transforms::effective_file_system_sandbox_policy;\n use codex_sandboxing::policy_transforms::effective_network_sandbox_policy;\n+use codex_utils_path_uri::PathUri;\n use core_test_support::PathBufExt;\n use pretty_assertions::assert_eq;\n use std::collections::HashMap;\n fn test_turn_environment(environment_id: &str) -> crate::session::turn_context::TurnEnvironment {\n-    crate::session::turn_context::TurnEnvironment {\n-        environment_id: environment_id.to_string(),\n-        environment: std::sync::Arc::new(codex_exec_server::Environment::default_for_tests()),\n-        cwd: std::env::temp_dir().abs(),\n-        shell: None,\n-    }\n+    crate::session::turn_context::TurnEnvironment::new(\n+        environment_id.to_string(),\n+        std::sync::Arc::new(codex_exec_serve...",
+      "path": "codex-rs/core/src/tools/runtimes/apply_patch_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 3,
+      "patch_excerpt": "@@ -21,10 +21,12 @@ use codex_network_proxy::PROXY_ENV_KEYS;\n use codex_network_proxy::PROXY_GIT_SSH_COMMAND_ENV_KEY;\n use codex_network_proxy::is_managed_mitm_ca_trust_bundle_path;\n use codex_protocol::config_types::WindowsSandboxLevel;\n+use codex_protocol::error::CodexErr;\n use codex_protocol::models::AdditionalPermissionProfile;\n use codex_sandboxing::SandboxCommand;\n use codex_sandboxing::SandboxType;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n use std::collections::HashMap;\n #[cfg(unix)]\n use std::path::Path;\n@@ -33,8 +35,9 @@ pub(crate) mod apply_patch;\n pub(crate) mod shell;\n pub(crate) mod unified_exec;\n \n-/// Shared helper to construct sandbox transform inputs from a tokenized command line.\n-/// Validates that at least a program is present.\n+/// Shared helper to construct sandbox transform inputs from a tokenized command line and native\n...",
+      "path": "codex-rs/core/src/tools/runtimes/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 4,
+      "patch_excerpt": "@@ -25,6 +25,7 @@ use codex_protocol::models::PermissionProfile;\n use codex_sandboxing::SandboxManager;\n use codex_sandboxing::SandboxType;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n use core_test_support::PathBufExt;\n use core_test_support::PathExt;\n use pretty_assertions::assert_eq;\n@@ -88,18 +89,21 @@ async fn test_network_proxy() -> anyhow::Result<NetworkProxy> {\n async fn explicit_escalation_prepares_exec_without_managed_network() -> anyhow::Result<()> {\n     let proxy = test_network_proxy().await?;\n     let dir = tempdir().expect(\"create temp dir\");\n-    let cwd = dir.path().abs();\n+    let command_cwd = dir.path().join(\"command\").abs();\n+    let native_sandbox_policy_cwd = dir.path().join(\"sandbox-policy\").abs();\n     let mut env = HashMap::from([(\"CUSTOM_ENV\".to_string(), \"kept\".to_string())]);\n     proxy.apply_to_env(&mut env);\n \n     l...",
+      "path": "codex-rs/core/src/tools/runtimes/mod_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -310,7 +310,7 @@ impl ToolRuntime<ShellRequest, ExecToolCallOutput> for ShellRuntime {\n         };\n         let env = attempt\n             .env_for(command, options, managed_network)\n-            .map_err(|err| ToolError::Codex(err.into()))?;\n+            .map_err(ToolError::Codex)?;\n         let out = execute_env(env, Self::stdout_stream(ctx))\n             .await\n             .map_err(ToolError::Codex)?;",
+      "path": "codex-rs/core/src/tools/runtimes/shell.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 4,
+      "patch_excerpt": "@@ -66,6 +66,7 @@ use codex_shell_escalation::ShellCommandExecutor;\n use codex_shell_escalation::ShellCommandExecutorFuture;\n use codex_shell_escalation::Stopwatch;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n use std::collections::HashMap;\n use std::path::PathBuf;\n use std::sync::Arc;\n@@ -143,7 +144,7 @@ pub(super) async fn try_run_zsh_fork(\n             options,\n             managed_network_for_sandbox_permissions(req.network.as_ref(), req.sandbox_permissions),\n         )\n-        .map_err(|err| ToolError::Codex(err.into()))?;\n+        .map_err(ToolError::Codex)?;\n     let crate::sandboxing::ExecRequest {\n         command,\n         cwd: sandbox_cwd,\n@@ -968,10 +969,19 @@ impl CoreShellCommandExecutor {\n             self.windows_sandbox_level,\n             self.network.is_some(),\n         );\n+        let cwd = PathUri::from_abs_path(workdir).map_...",
+      "path": "codex-rs/core/src/tools/runtimes/shell/unix_escalation.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 4,
+      "patch_excerpt": "@@ -326,11 +326,16 @@ impl<'a> ToolRuntime<UnifiedExecRequest, UnifiedExecProcess> for UnifiedExecRunt\n         if let UnifiedExecShellMode::ZshFork(zsh_fork_config) = &self.shell_mode {\n             let command =\n                 build_sandbox_command(&command, &req.cwd, &env, req.additional_permissions.clone())\n-                    .map_err(|_| ToolError::Rejected(\"missing command line for PTY\".to_string()))?;\n+                    .map_err(|error| match error {\n+                        ToolError::Rejected(_) => {\n+                            ToolError::Rejected(\"missing command line for PTY\".to_string())\n+                        }\n+                        error @ ToolError::Codex(_) => error,\n+                    })?;\n             let options = unified_exec_options(attempt.network_denial_cancellation_token.clone());\n             let mut exec_env = attempt\n                 .env_for(comm...",
+      "path": "codex-rs/core/src/tools/runtimes/unified_exec.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 17,
+      "patch_excerpt": "@@ -21,12 +21,12 @@ use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::ReviewDecision;\n use codex_sandboxing::SandboxCommand;\n use codex_sandboxing::SandboxManager;\n-use codex_sandboxing::SandboxTransformError;\n use codex_sandboxing::SandboxTransformRequest;\n use codex_sandboxing::SandboxType;\n use codex_sandboxing::SandboxablePreference;\n use codex_tools::ToolName;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n use futures::Future;\n use futures::future::BoxFuture;\n use serde::Serialize;\n@@ -411,7 +411,7 @@ pub(crate) struct SandboxAttempt<'a> {\n     pub permissions: &'a codex_protocol::models::PermissionProfile,\n     pub enforce_managed_network: bool,\n     pub(crate) manager: &'a SandboxManager,\n-    pub(crate) sandbox_cwd: &'a AbsolutePathBuf,\n+    pub(crate) sandbox_cwd: &'a PathUri,\n     pub(crate) workspace_roots: &'a ...",
+      "path": "codex-rs/core/src/tools/sandboxing.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 9,
+      "patch_excerpt": "@@ -573,21 +573,22 @@ async fn zsh_fork_unified_exec_keeps_shell_parameter_when_remote_environment_ava\n             .environments\n             .primary()\n             .expect(\"primary environment\")\n-            .cwd\n+            .cwd()\n             .clone();\n-        turn.environments\n-            .turn_environments\n-            .push(crate::session::turn_context::TurnEnvironment {\n-                environment_id: \"remote\".to_string(),\n-                environment: Arc::new(\n+        turn.environments.turn_environments.push(\n+            crate::session::turn_context::TurnEnvironment::new(\n+                \"remote\".to_string(),\n+                Arc::new(\n                     codex_exec_server::Environment::create_for_tests(Some(\n                         \"ws://127.0.0.1:1/remote-exec-server\".to_string(),\n                     ))\n                     .expect(\"remote test environment\"),\n     ...",
+      "path": "codex-rs/core/src/tools/spec_plan_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 81,
+      "deletions": 15,
+      "patch_excerpt": "@@ -15,6 +15,7 @@ use codex_sandboxing::SandboxTransformRequest;\n use codex_sandboxing::SandboxablePreference;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use codex_utils_absolute_path::canonicalize_preserving_symlinks;\n+use codex_utils_path_uri::PathUri;\n use tokio::io::AsyncWriteExt;\n use tokio::process::Command;\n \n@@ -39,6 +40,12 @@ const FS_HELPER_BAZEL_BWRAP_ENV_ALLOWLIST: &[&str] = &[\n     \"TEST_WORKSPACE\",\n ];\n \n+#[derive(Debug, PartialEq, Eq)]\n+struct SandboxCwd {\n+    uri: PathUri,\n+    native: AbsolutePathBuf,\n+}\n+\n #[derive(Clone, Debug)]\n pub(crate) struct FileSystemSandboxRunner {\n     runtime_paths: ExecServerRuntimePaths,\n@@ -65,23 +72,27 @@ impl FileSystemSandboxRunner {\n         } else {\n             helper_read_roots(&self.runtime_paths)\n         };\n-        add_helper_runtime_permissions(&mut file_system_policy, &helper_read_roots, cwd.as_path());\n+        add_he...",
+      "path": "codex-rs/exec-server/src/fs_sandbox.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 3,
+      "patch_excerpt": "@@ -450,6 +450,8 @@ mod base64_bytes {\n mod tests {\n     use super::FsReadFileParams;\n     use super::HttpRequestParams;\n+    use crate::FileSystemSandboxContext;\n+    use codex_protocol::models::PermissionProfile;\n     use codex_utils_path_uri::PathUri;\n     use pretty_assertions::assert_eq;\n \n@@ -458,22 +460,31 @@ mod tests {\n         let legacy_path = std::env::current_dir()\n             .expect(\"current directory\")\n             .join(\"legacy-file.txt\");\n+        let legacy_cwd = std::env::current_dir().expect(\"current directory\");\n+        let expected_sandbox = FileSystemSandboxContext::from_permission_profile_with_cwd(\n+            PermissionProfile::default(),\n+            PathUri::from_path(&legacy_cwd).expect(\"cwd URI\"),\n+        );\n+        let mut legacy_sandbox =\n+            serde_json::to_value(&expected_sandbox).expect(\"sandbox should serialize\");\n+        legacy_sandbox[\"...",
+      "path": "codex-rs/exec-server/src/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 2,
+      "patch_excerpt": "@@ -321,6 +321,7 @@ mod tests {\n     use codex_protocol::permissions::FileSystemSpecialPath;\n     use codex_protocol::permissions::NetworkSandboxPolicy;\n     use codex_utils_absolute_path::AbsolutePathBuf;\n+    use codex_utils_path_uri::PathUri;\n     use pretty_assertions::assert_eq;\n \n     use super::*;\n@@ -337,7 +338,7 @@ mod tests {\n             PermissionProfile::from_runtime_permissions(&policy, NetworkSandboxPolicy::Restricted);\n         let sandbox_context = FileSystemSandboxContext::from_permission_profile_with_cwd(\n             permissions,\n-            absolute_test_path(\"host-checkout\"),\n+            path_uri(\"host-checkout\"),\n         );\n \n         let remote_context =\n@@ -356,7 +357,7 @@ mod tests {\n         }]);\n         let permissions =\n             PermissionProfile::from_runtime_permissions(&policy, NetworkSandboxPolicy::Restricted);\n-        let cwd = absolute_test_pat...",
+      "path": "codex-rs/exec-server/src/remote_file_system.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 51,
+      "deletions": 14,
+      "patch_excerpt": "@@ -2,6 +2,13 @@\n \n use codex_app_server_protocol::JSONRPCMessage;\n use codex_app_server_protocol::JSONRPCResponse;\n+use codex_protocol::models::PermissionProfile;\n+use codex_protocol::permissions::FileSystemAccessMode;\n+use codex_protocol::permissions::FileSystemPath;\n+use codex_protocol::permissions::FileSystemSandboxEntry;\n+use codex_protocol::permissions::FileSystemSandboxPolicy;\n+use codex_protocol::permissions::FileSystemSpecialPath;\n+use codex_protocol::permissions::NetworkSandboxPolicy;\n use codex_utils_path_uri::PathUri;\n use futures::SinkExt;\n use futures::StreamExt;\n@@ -25,51 +32,72 @@ use crate::protocol::INITIALIZED_METHOD;\n use crate::protocol::InitializeResponse;\n \n #[tokio::test]\n-async fn remote_file_system_sends_path_uris_without_native_conversion() {\n-    let (websocket_url, captured_paths, server) =\n-        record_read_file_paths(/*expected_requests*/ 2).await;\n+asyn...",
+      "path": "codex-rs/exec-server/src/remote_file_system_path_uri_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 15,
+      "patch_excerpt": "@@ -189,7 +189,6 @@ fn map_fs_error(err: io::Error) -> JSONRPCErrorError {\n mod tests {\n     use codex_protocol::protocol::NetworkAccess;\n     use codex_protocol::protocol::SandboxPolicy;\n-    use codex_utils_absolute_path::AbsolutePathBuf;\n     use codex_utils_path_uri::PathUri;\n     use pretty_assertions::assert_eq;\n \n@@ -207,8 +206,14 @@ mod tests {\n         )\n         .expect(\"runtime paths\");\n         let handler = FileSystemHandler::new(runtime_paths);\n-        let sandbox_cwd =\n-            AbsolutePathBuf::from_absolute_path(temp_dir.path()).expect(\"absolute tempdir\");\n+        let sandbox_cwd = PathUri::from_path(temp_dir.path()).expect(\"tempdir URI\");\n+        let sandbox_context = |sandbox_policy| {\n+            FileSystemSandboxContext::from_legacy_sandbox_policy(\n+                sandbox_policy,\n+                sandbox_cwd.clone(),\n+            )\n+            .expect(\"sandb...",
+      "path": "codex-rs/exec-server/src/server/file_system_handler.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -9,7 +9,6 @@ workspace = true\n \n [dependencies]\n codex-protocol = { workspace = true }\n-codex-utils-absolute-path = { workspace = true }\n codex-utils-path-uri = { workspace = true }\n serde = { workspace = true, features = [\"derive\"] }",
+      "path": "codex-rs/file-system/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 13,
+      "patch_excerpt": "@@ -7,7 +7,6 @@ use codex_protocol::permissions::FileSystemSandboxPolicy;\n use codex_protocol::permissions::FileSystemSpecialPath;\n use codex_protocol::permissions::NetworkSandboxPolicy;\n use codex_protocol::protocol::SandboxPolicy;\n-use codex_utils_absolute_path::AbsolutePathBuf;\n use codex_utils_path_uri::PathUri;\n use std::future::Future;\n use std::io;\n@@ -51,7 +50,7 @@ pub struct ReadDirectoryEntry {\n pub struct FileSystemSandboxContext {\n     pub permissions: PermissionProfile,\n     #[serde(default, skip_serializing_if = \"Option::is_none\")]\n-    pub cwd: Option<AbsolutePathBuf>,\n+    pub cwd: Option<PathUri>,\n     pub windows_sandbox_level: WindowsSandboxLevel,\n     #[serde(default)]\n     pub windows_sandbox_private_desktop: bool,\n@@ -60,32 +59,35 @@ pub struct FileSystemSandboxContext {\n }\n \n impl FileSystemSandboxContext {\n-    pub fn from_legacy_sandbox_policy(sandbox_policy: San...",
+      "path": "codex-rs/file-system/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -16,6 +16,7 @@ workspace = true\n codex-network-proxy = { workspace = true }\n codex-protocol = { workspace = true }\n codex-utils-absolute-path = { workspace = true }\n+codex-utils-path-uri = { workspace = true }\n dunce = { workspace = true }\n libc = { workspace = true }\n serde_json = { workspace = true }",
+      "path": "codex-rs/sandboxing/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -33,6 +33,10 @@ pub fn system_bwrap_warning(\n impl From<SandboxTransformError> for CodexErr {\n     fn from(err: SandboxTransformError) -> Self {\n         match err {\n+            error @ SandboxTransformError::InvalidCommandCwd { .. }\n+            | error @ SandboxTransformError::InvalidSandboxPolicyCwd { .. } => {\n+                CodexErr::InvalidRequest(error.to_string())\n+            }\n             SandboxTransformError::MissingLinuxSandboxExecutable => {\n                 CodexErr::LandlockSandboxExecutableNotProvided\n             }",
+      "path": "codex-rs/sandboxing/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 58,
+      "deletions": 8,
+      "patch_excerpt": "@@ -15,8 +15,10 @@ use codex_protocol::permissions::FileSystemSandboxPolicy;\n use codex_protocol::permissions::NetworkSandboxPolicy;\n use codex_protocol::protocol::SandboxPolicy;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n use std::collections::HashMap;\n use std::ffi::OsString;\n+use std::io;\n use std::path::Path;\n \n #[derive(Clone, Copy, Debug, PartialEq, Eq)]\n@@ -86,15 +88,20 @@ pub fn with_managed_mitm_ca_readable_root(\n pub struct SandboxCommand {\n     pub program: OsString,\n     pub args: Vec<String>,\n-    pub cwd: AbsolutePathBuf,\n+    pub cwd: PathUri,\n     pub env: HashMap<String, String>,\n     pub additional_permissions: Option<AdditionalPermissionProfile>,\n }\n \n+/// A host-native launch request produced after [`SandboxManager::transform`] validates URI inputs.\n+/// Build this only at the execution boundary: in exec-server, or in its logi...",
+      "path": "codex-rs/sandboxing/src/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 8,
+      "patch_excerpt": "@@ -17,6 +17,7 @@ use codex_protocol::permissions::FileSystemSandboxPolicy;\n use codex_protocol::permissions::FileSystemSpecialPath;\n use codex_protocol::permissions::NetworkSandboxPolicy;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n use dunce::canonicalize;\n use pretty_assertions::assert_eq;\n use std::collections::HashMap;\n@@ -74,6 +75,7 @@ fn restricted_file_system_uses_platform_sandbox_without_managed_network() {\n fn transform_preserves_unrestricted_file_system_policy_for_restricted_network() {\n     let manager = SandboxManager::new();\n     let cwd = AbsolutePathBuf::current_dir().expect(\"current dir\");\n+    let cwd_uri = PathUri::from_abs_path(&cwd).expect(\"cwd URI\");\n     let permissions = PermissionProfile::from_runtime_permissions(\n         &FileSystemSandboxPolicy::unrestricted(),\n         NetworkSandboxPolicy::Restricted,\n@@ -83,22 +85,24...",
+      "path": "codex-rs/sandboxing/src/manager_tests.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27816"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nSandbox cwd values can cross app-server and exec-server host boundaries. They should retain URI semantics until the receiving host validates them instead of being interpreted early as native paths.\n\n## What\n\n- Carry `PathUri` through filesystem sandbox contexts, sandbox commands, and transform inputs.\n- Convert command and policy cwd once in `SandboxManager::transform`, then keep launch requests native.\n- Preserve sandbox cwd over remote filesystem transport and reject non-native URIs without fallback.\n- Cache paired native/URI turn-environment cwd values during migration, with immutable access to keep them synchronized.\n- Extend existing protocol, forwarding, transform, and core runtime tests.",
+    "labels": [],
+    "merged_at": "2026-06-12T18:38:02Z",
+    "number": 27816,
+    "state": "merged",
+    "title": "sandboxing: migrate cwd inputs to PathUri",
+    "url": "https://github.com/openai/codex/pull/27816"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

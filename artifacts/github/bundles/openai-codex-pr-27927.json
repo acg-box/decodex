@@ -1,0 +1,119 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-12T18:26:17Z",
+      "message": "Add size to filesystem metadata",
+      "sha": "138e4eeeeaaeed2d04a74283e13e30124a75bcd1",
+      "url": "https://github.com/openai/codex/commit/138e4eeeeaaeed2d04a74283e13e30124a75bcd1"
+    },
+    {
+      "author": "pakrym-oai",
+      "committed_at": "2026-06-12T18:34:38Z",
+      "message": "Keep filesystem size internal",
+      "sha": "d4e267882417929bfa34d49398f7043f95cddc3c",
+      "url": "https://github.com/openai/codex/commit/d4e267882417929bfa34d49398f7043f95cddc3c"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "API"
+  ],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -129,6 +129,7 @@ impl ExecutorFileSystem for SyntheticPluginFileSystem {\n                 is_directory,\n                 is_file,\n                 is_symlink: false,\n+                size: 0,\n                 created_at_ms: 0,\n                 modified_at_ms: 0,\n             })",
+      "path": "codex-rs/core-plugins/src/provider_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -233,6 +233,7 @@ pub(crate) async fn run_direct_request(\n                 is_directory: metadata.is_directory,\n                 is_file: metadata.is_file,\n                 is_symlink: metadata.is_symlink,\n+                size: metadata.size,\n                 created_at_ms: metadata.created_at_ms,\n                 modified_at_ms: metadata.modified_at_ms,\n             }))",
+      "path": "codex-rs/exec-server/src/fs_helper.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -483,6 +483,7 @@ impl DirectFileSystem {\n             is_directory: metadata.is_dir(),\n             is_file: metadata.is_file(),\n             is_symlink: symlink_metadata.file_type().is_symlink(),\n+            size: metadata.len(),\n             created_at_ms: metadata.created().ok().map_or(0, system_time_to_unix_ms),\n             modified_at_ms: metadata.modified().ok().map_or(0, system_time_to_unix_ms),\n         })",
+      "path": "codex-rs/exec-server/src/local_file_system.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -244,6 +244,7 @@ pub struct FsGetMetadataResponse {\n     pub is_directory: bool,\n     pub is_file: bool,\n     pub is_symlink: bool,\n+    pub size: u64,\n     pub created_at_ms: i64,\n     pub modified_at_ms: i64,\n }",
+      "path": "codex-rs/exec-server/src/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -132,6 +132,7 @@ impl RemoteFileSystem {\n             is_directory: response.is_directory,\n             is_file: response.is_file,\n             is_symlink: response.is_symlink,\n+            size: response.size,\n             created_at_ms: response.created_at_ms,\n             modified_at_ms: response.modified_at_ms,\n         })",
+      "path": "codex-rs/exec-server/src/remote_file_system.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -164,6 +164,7 @@ impl SandboxedFileSystem {\n             is_directory: response.is_directory,\n             is_file: response.is_file,\n             is_symlink: response.is_symlink,\n+            size: response.size,\n             created_at_ms: response.created_at_ms,\n             modified_at_ms: response.modified_at_ms,\n         })",
+      "path": "codex-rs/exec-server/src/sandboxed_file_system.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -103,6 +103,7 @@ impl FileSystemHandler {\n             is_directory: metadata.is_directory,\n             is_file: metadata.is_file,\n             is_symlink: metadata.is_symlink,\n+            size: metadata.size,\n             created_at_ms: metadata.created_at_ms,\n             modified_at_ms: metadata.modified_at_ms,\n         })",
+      "path": "codex-rs/exec-server/src/server/file_system_handler.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 7,
+      "patch_excerpt": "@@ -2,6 +2,7 @@ use anyhow::Context;\n use anyhow::Result;\n use codex_exec_server::CopyOptions;\n use codex_exec_server::CreateDirectoryOptions;\n+use codex_exec_server::FileMetadata;\n use codex_exec_server::ReadDirectoryEntry;\n use codex_exec_server::RemoveOptions;\n use codex_protocol::models::AdditionalPermissionProfile;\n@@ -65,18 +66,34 @@ async fn file_system_get_metadata_reports_files_and_directories(\n         .get_metadata(&PathUri::from_path(&file_path)?, /*sandbox*/ None)\n         .await\n         .with_context(|| format!(\"mode={implementation}\"))?;\n-    assert_eq!(file_metadata.is_directory, false);\n-    assert_eq!(file_metadata.is_file, true);\n-    assert_eq!(file_metadata.is_symlink, false);\n+    assert_eq!(\n+        file_metadata,\n+        FileMetadata {\n+            is_directory: false,\n+            is_file: true,\n+            is_symlink: false,\n+            size: 5,\n+          ...",
+      "path": "codex-rs/exec-server/tests/file_system/shared.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 23,
+      "deletions": 6,
+      "patch_excerpt": "@@ -21,6 +21,7 @@ use codex_exec_server::CopyOptions;\n use codex_exec_server::CreateDirectoryOptions;\n #[cfg(target_os = \"linux\")]\n use codex_exec_server::Environment;\n+use codex_exec_server::FileMetadata;\n use codex_exec_server::RemoveOptions;\n use codex_utils_path_uri::PathUri;\n use pretty_assertions::assert_eq;\n@@ -222,9 +223,17 @@ async fn file_system_get_metadata_reports_symlink_targets(\n         .get_metadata(&PathUri::from_path(&symlink_path)?, /*sandbox*/ None)\n         .await\n         .with_context(|| format!(\"mode={implementation}\"))?;\n-    assert_eq!(symlink_metadata.is_directory, false);\n-    assert_eq!(symlink_metadata.is_file, true);\n-    assert_eq!(symlink_metadata.is_symlink, true);\n+    assert_eq!(\n+        symlink_metadata,\n+        FileMetadata {\n+            is_directory: false,\n+            is_file: true,\n+            is_symlink: true,\n+            size: 5,\n+        ...",
+      "path": "codex-rs/exec-server/tests/file_system_unix.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -85,6 +85,7 @@ impl SyntheticFileSystem {\n             is_directory,\n             is_file,\n             is_symlink: false,\n+            size: 0,\n             created_at_ms: 0,\n             modified_at_ms: 0,\n         })",
+      "path": "codex-rs/ext/skills/tests/executor_file_system_authority.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -35,6 +35,8 @@ pub struct FileMetadata {\n     pub is_directory: bool,\n     pub is_file: bool,\n     pub is_symlink: bool,\n+    /// Size in bytes.\n+    pub size: u64,\n     pub created_at_ms: i64,\n     pub modified_at_ms: i64,\n }",
+      "path": "codex-rs/file-system/src/lib.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\n`ExecutorFileSystem::get_metadata` reports file kind and timestamps but not size. Internal callers that need to enforce a size limit therefore have to read the complete file first, which is especially wasteful for remote filesystems.\n\nThis adds the missing internal metadata so consumers can reject oversized files before transferring or buffering them. The field is named `size`, matching VS Code's `FileStat.size` filesystem convention.\n\n## What changed\n\n- add `size: u64` to internal `FileMetadata`\n- populate it from the underlying filesystem metadata\n- carry it through sandbox-helper and remote exec-server responses\n- cover files, directories, symlink targets, and sandboxed reads across local and remote filesystem implementations\n\nThe new field is intentionally not exposed through the app-server API.\n\n## Testing\n\n- `just test -p codex-exec-server get_metadata`\n- `just test -p codex-exec-server file_system_sandboxed_metadata_and_read_allow_readable_root`\n- `just test -p codex-core-plugins`\n- `just test -p codex-skills-extension`\n",
+    "labels": [],
+    "merged_at": "2026-06-12T19:12:08Z",
+    "number": 27927,
+    "state": "merged",
+    "title": "[codex] Add size to internal filesystem metadata",
+    "url": "https://github.com/openai/codex/pull/27927"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
