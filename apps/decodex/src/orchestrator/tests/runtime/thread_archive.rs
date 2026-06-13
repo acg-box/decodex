@@ -87,6 +87,7 @@ fn terminal_thread_archive_backlog_candidates_scan_project_terminal_runs() {
 		("decodex", "issue-running", "run-running", "running", "thread-running"),
 		("other", "issue-other", "run-other", "succeeded", "thread-other"),
 		("decodex", "issue-archived", "run-archived", "succeeded", "thread-archived"),
+		("decodex", "issue-discarded", "run-discarded", "succeeded", "thread-discarded"),
 	] {
 		state_store
 			.try_acquire_lease(project, issue_id, run_id, "In Progress")
@@ -100,6 +101,9 @@ fn terminal_thread_archive_backlog_candidates_scan_project_terminal_runs() {
 	state_store
 		.append_event("run-archived", 1, "thread/archive", "{}")
 		.expect("archive event should record");
+	state_store
+		.append_event("run-discarded", 1, "thread/archive/discarded", "{}")
+		.expect("discarded archive event should record");
 
 	let candidates = super::terminal_thread_archive_backlog_candidates(&state_store, "decodex")
 		.expect("backlog candidates should load");
