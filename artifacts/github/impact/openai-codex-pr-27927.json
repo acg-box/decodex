@@ -1,0 +1,45 @@
+{
+  "candidate_followups": [
+    "Evaluate whether Decodex remote-file and artifact-ingestion paths can use metadata size before reading large files.",
+    "Avoid treating the field as public app-server protocol until upstream exposes separate evidence.",
+    "Check any internal FileMetadata fixtures if Decodex mirrors upstream exec-server metadata structs."
+  ],
+  "caveats": [
+    "The upstream PR states the size field is intentionally not exposed through app-server API.",
+    "This is more useful for future implementation planning than immediate public publishing."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "candidate",
+  "evidence": [
+    "Internal `FileMetadata` adds `size: u64`.",
+    "Exec-server metadata response carries `size`.",
+    "Local, remote, and sandboxed filesystem metadata paths populate or forward the size value.",
+    "Tests cover files, directories, symlink targets, and sandboxed metadata reads.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27927.review.json`."
+  ],
+  "observed_change": "Codex adds an internal `size` field to filesystem metadata and carries it through local, remote, and sandboxed exec-server metadata paths.",
+  "public_signal_decision": "defer",
+  "publisher_angle": "none",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27927",
+  "social_notes": [
+    "Do not publish from this artifact alone; the source-backed value is internal and implementation-oriented."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T19:12:08Z",
+        "title": "[codex] Add size to internal filesystem metadata",
+        "url": "https://github.com/openai/codex/pull/27927"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27927.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27927"
+      }
+    ]
+  }
+}

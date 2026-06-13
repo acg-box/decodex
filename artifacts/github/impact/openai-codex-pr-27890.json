@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Regenerate or tolerate generated app-server plugin detail types where Decodex consumes `PluginDetail`.",
+    "Use `shareUrl` rather than `shareContext` for remote plugin copy-link affordances.",
+    "Keep local and workspace share-context semantics separate from remote canonical share URLs."
+  ],
+  "caveats": [
+    "`shareUrl` is nullable.",
+    "Existing `PluginSummary.shareContext` behavior is intentionally unchanged.",
+    "The change is app-server/plugin metadata behavior, not plugin installation policy."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "candidate",
+  "evidence": [
+    "App-server protocol `PluginDetail` adds nullable `share_url`.",
+    "Remote plugin detail conversion passes through `share_url`.",
+    "Local plugin detail sets `share_url` to null.",
+    "Plugin read tests cover admin-disabled remote plugin share URLs.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27890.review.json`."
+  ],
+  "observed_change": "Codex exposes remote plugin canonical share URLs as nullable `PluginDetail.shareUrl` while preserving existing share-context behavior.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "practical_explainer",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27890",
+  "social_notes": [
+    "Frame this as a practical remote-plugin UI affordance.",
+    "Do not imply shareContext changed or that disabled plugins become installable."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T18:53:56Z",
+        "title": "[codex] expose remote plugin share URL",
+        "url": "https://github.com/openai/codex/pull/27890"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27890.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27890"
+      }
+    ]
+  }
+}
