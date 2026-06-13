@@ -1,0 +1,53 @@
+{
+  "audience": "Control Plane operators using remote or sandboxed Codex execution",
+  "candidate_text": [
+    "Codex migrated sandbox cwd handling to `PathUri` across app-server/exec-server boundaries, so remote hosts validate cwd semantics instead of interpreting native paths early. Control Plane compatibility material. PR: https://github.com/openai/codex/pull/27816"
+  ],
+  "caveats": [
+    "This is an operator-impact note, not a new end-user command.",
+    "Do not claim Decodex has already adopted any local change."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27816.review.json",
+      "text": "Sandbox cwd values now retain PathUri semantics across host boundaries."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27816.json",
+      "text": "The migration is a Control Plane compatibility risk for sandbox and remote-filesystem assumptions."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27816:operator_impact",
+    "reason": "The source-backed change has a clear operator-impact angle for remote and sandboxed execution boundaries.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "FileSystemSandboxContext.cwd changed to PathUri.",
+    "SandboxManager validates and converts cwd at the execution boundary.",
+    "Remote filesystem PathUri tests were extended."
+  ],
+  "mode": "operator_impact",
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or publish this candidate."
+  ],
+  "priority": "critical",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27816",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27816.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27816.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27816"
+    ]
+  },
+  "target_account": "decodexspace"
+}
