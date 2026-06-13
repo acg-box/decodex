@@ -1,0 +1,67 @@
+{
+  "adoption_opportunity": "When Decodex inspects or drives MCP OAuth flows, pass the configured auth credential backend through refresh, app-server, CLI, and session paths instead of assuming file-only or legacy keyring storage.",
+  "caveats": "This PR is the fourth item in a stacked auth-storage series. It depends on earlier config, namespace, and CLI auth-storage changes, so adoption should consider the stack as a whole.",
+  "changed_surfaces": [
+    "MCP OAuth token load/save path",
+    "encrypted-local and legacy keyring OAuth credential migration",
+    "MCP CLI login flow",
+    "app-server MCP refresh configuration",
+    "app-server plugin and MCP request processors",
+    "core session MCP auth status computation",
+    "codex-mcp auth status and connection manager",
+    "rmcp-client OAuth startup tests"
+  ],
+  "community_value": "High for MCP users and plugin operators because OAuth credentials can follow the configured auth backend, including encrypted-local storage and legacy migration.",
+  "compatibility_risk": "Medium-high. Integrations that read or expect MCP OAuth credentials in a fixed legacy location may miss credentials once Codex routes them through the configured backend.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "High. Decodex plugin and MCP orchestration depends on Codex MCP auth status, refresh behavior, app-server plugin metadata, and credential backend handling.",
+  "deprecated_or_breaking_notes": "No MCP OAuth login path is removed, but credential storage moves behind the configured auth backend and includes legacy keyring migration behavior.",
+  "evidence": [
+    "PR #27541 says MCP OAuth credentials are stored in the configured auth credential backend with encrypted-local storage and legacy keyring migration.",
+    "`codex-rs/rmcp-client/src/oauth.rs` threads `AuthKeyringBackendKind` through OAuth token load/save and adds secret-manager namespace support.",
+    "`codex-rs/rmcp-client/src/perform_oauth_login.rs` and `codex-rs/cli/src/mcp_cmd.rs` pass the auth keyring backend into MCP OAuth login.",
+    "`codex-rs/app-server/src/mcp_refresh.rs` serializes the latest `auth_keyring_backend_kind` into refresh config and adds coverage for backend refresh.",
+    "`codex-rs/core/src/session/mcp.rs` and `codex-rs/codex-mcp/src/mcp/auth.rs` pass the backend into MCP auth-status computation.",
+    "`codex-rs/rmcp-client/tests/streamable_http_oauth_startup.rs` updates persisted credential tests to pass the backend kind.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27541.json` records 27 changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "MCP OAuth credential backend routing can affect Decodex plugin auth and app-server refresh compatibility.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "The change has a practical public angle for MCP OAuth credential storage and managed/plugin environments.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex routes MCP OAuth credentials through the configured auth credential backend, including encrypted-local storage support and legacy keyring migration.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-13T18:07:16Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27541",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T22:03:51Z",
+        "title": "feat: use encrypted local secrets for MCP OAuth",
+        "url": "https://github.com/openai/codex/pull/27541"
+      },
+      {
+        "kind": "commit",
+        "title": "Use encrypted local secrets for MCP OAuth",
+        "url": "https://github.com/openai/codex/commit/bc08fad8d62d48b248a86b6183ebb1ecc44d786c"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "bc08fad8d62d48b248a86b6183ebb1ecc44d786c",
+      "78daf298b0ea9ea7a5fddad51af4545cb05d2236"
+    ],
+    "subject_id": "27541",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "Users and clients using MCP OAuth can keep credentials in the configured auth backend, including encrypted-local storage, while MCP refresh, CLI login, and app-server paths preserve the backend choice."
+}
