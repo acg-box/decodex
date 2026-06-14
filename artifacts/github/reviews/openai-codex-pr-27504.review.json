@@ -1,0 +1,72 @@
+{
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27504",
+  "repo": "openai/codex",
+  "subject": {
+    "subject_kind": "pr",
+    "subject_id": "27504",
+    "commit_shas": [
+      "07d66eccd904cd15cd754c43d3f74a72d63a1980",
+      "3e3379b56006b9e877f5db4ba65009b4ad41c49c"
+    ]
+  },
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "feat: add secret auth storage configuration",
+        "url": "https://github.com/openai/codex/pull/27504",
+        "meta": "Merged 2026-06-12T19:15:22Z"
+      },
+      {
+        "kind": "commit",
+        "title": "Add secret auth storage config",
+        "url": "https://github.com/openai/codex/commit/07d66eccd904cd15cd754c43d3f74a72d63a1980"
+      },
+      {
+        "kind": "commit",
+        "title": "refactor",
+        "url": "https://github.com/openai/codex/commit/3e3379b56006b9e877f5db4ba65009b4ad41c49c"
+      }
+    ]
+  },
+  "reviewed_at": "2026-06-14T06:08:00Z",
+  "observed_change": "Codex adds a stable `secret_auth_storage` feature and `AuthKeyringBackendKind` config resolution so auth credential storage can select direct keyring or encrypted-local secrets backends, with Windows defaulting to secrets.",
+  "changed_surfaces": [
+    "stable `secret_auth_storage` feature flag",
+    "`AuthKeyringBackendKind` config type",
+    "full Config auth keyring backend resolution",
+    "bootstrap config auth keyring backend resolution",
+    "managed feature requirements for bootstrap auth resolution",
+    "generated config schema",
+    "feature and config tests"
+  ],
+  "user_visible_path": "Advanced users and managed configuration can set the stable `secret_auth_storage` feature; Windows defaults the auth keyring backend to encrypted-local secrets while other platforms default to direct OS keyring storage.",
+  "control_plane_relevance": "High. Decodex Control Plane and managed configuration flows that inspect or set Codex auth behavior need to preserve `secret_auth_storage`, account for Windows defaults, and apply managed feature requirements before auth bootstrap reads.",
+  "compatibility_risk": "Medium. This PR is a configuration base rather than the auth implementation, but config writers or auth inspectors that assume a single keyring backend may choose the wrong backend once the follow-up auth storage stack is consumed.",
+  "adoption_opportunity": "Track `secret_auth_storage` as the stack-level switch for Codex auth credential backend selection, and make Decodex auth/config tooling treat bootstrap auth backend resolution as managed-feature-aware.",
+  "community_value": "Medium as a watch item for Codex operators because it explains why Windows auth storage is moving toward encrypted local secrets, but standalone public publishing should defer until the implementation PRs are considered together.",
+  "deprecated_or_breaking_notes": "No user command or existing config key is removed. The PR adds `secret_auth_storage`, defaults it on for Windows only, and explicitly says the auth, secrets, MCP, CLI, TUI, and app-server implementation remains in follow-up PRs.",
+  "confidence": "confirmed",
+  "evidence": [
+    "PR #27504 says Windows Credential Manager limits generic credential blobs to 2,560 bytes and this PR adds the independently reviewable feature/config layer for encrypted local secrets.",
+    "`codex-rs/features/src/lib.rs` adds stable `Feature::SecretAuthStorage` with key `secret_auth_storage` and `default_enabled: cfg!(windows)`.",
+    "`codex-rs/config/src/types.rs` adds `AuthKeyringBackendKind::{Direct, Secrets}` and defaults it to `Secrets` on Windows and `Direct` elsewhere.",
+    "`codex-rs/core/src/config/auth_keyring.rs` maps full `Config` and bootstrap `ConfigTomlLoadResult` through managed feature resolution before returning the auth backend kind.",
+    "`codex-rs/core/config.schema.json` adds `secret_auth_storage` to the generated feature schema.",
+    "`codex-rs/core/src/config/auth_keyring_tests.rs` covers explicit true, explicit false, and managed feature requirement override cases for bootstrap auth backend resolution.",
+    "`codex-rs/features/src/tests.rs` verifies the feature key, stable stage, and Windows-only default.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27504.json` records 8 changed files for the merged PR."
+  ],
+  "caveats": "This is the base PR for the auth-storage stack. It does not by itself wire the CLI auth, secrets, MCP, TUI, or app-server implementation paths.",
+  "next_actions": [
+    {
+      "type": "upstream_impact",
+      "reason": "Auth backend configuration affects Decodex managed config and future Control Plane auth compatibility."
+    },
+    {
+      "type": "social_candidate",
+      "reason": "A deferred watch-note handoff can preserve the Windows auth-storage migration signal without overclaiming shipped implementation."
+    }
+  ]
+}
