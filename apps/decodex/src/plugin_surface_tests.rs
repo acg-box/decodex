@@ -63,10 +63,10 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 	assert_contains(DECODEX_SKILL, "`arrange this`");
 	assert_contains(DECODEX_SKILL, "`推进`");
 	assert_contains(DECODEX_SKILL, "Do not queue work");
-	assert_contains(DECODEX_SKILL, "Queue labels are an intake signal");
+	assert_contains(DECODEX_SKILL, "dispatches ready mapped nodes directly");
 	assert_contains(PLANNING_SKILL, "accepted Decision Contract");
 	assert_contains(PLANNING_SKILL, "Do not use planning to turn a plain `research X`");
-	assert_contains(PLANNING_SKILL, "queue only mapped issues");
+	assert_contains_normalized(PLANNING_SKILL, "scheduler directly dispatch nodes");
 	assert_contains(PLANNING_SKILL, "Promotion is a separate authority boundary");
 	assert_contains(AUTOMATION_SKILL, "Automation starts only after execution authority exists");
 	assert_contains_normalized(
@@ -74,7 +74,8 @@ fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
 		"latent research must not dispatch retained lanes",
 	);
 	assert_contains(AUTOMATION_SKILL, "accepted/promoted Decision Contract");
-	assert_contains(AUTOMATION_SKILL, "blocked, stale, paused, active, terminal");
+	assert_contains_normalized(AUTOMATION_SKILL, "directly dispatch ready mapped nodes");
+	assert_contains(AUTOMATION_SKILL, "Blocked, stale, paused, active, terminal");
 	assert_contains_normalized(LABELS_SKILL, "not the user-facing research/design workflow");
 	assert_contains(LABELS_SKILL, "accepted/promoted Decision");
 	assert_contains(LABELS_SKILL, "Do not ask ordinary users to apply queue labels");

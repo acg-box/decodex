@@ -51,6 +51,6 @@ Question this index answers: "which sequence should I execute?"
   release-candidate gate, dogfood evidence checklist, tag contract, and release note.
 - [`research-to-execution-loop.md`](./research-to-execution-loop.md) for compiling
   latent research contracts, promoting accepted results, inspecting Execution Program
-  queue shaping, and following validation, review, guardrail, and harness feedback.
+  dispatch readiness, and following validation, review, guardrail, and harness feedback.
 - [`self-dogfood-pilot.md`](./self-dogfood-pilot.md) for the retained-lane pilot run
   against `decodex` itself and the bounded live-operation sequence.

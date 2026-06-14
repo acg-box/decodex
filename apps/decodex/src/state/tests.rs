@@ -107,8 +107,7 @@ fn sample_execution_program(contract: &DecisionContract) -> ExecutionProgram {
 	.expect("validation expectations should attach")
 	.with_linear_issue(
 		ExecutionLinearIssueMapping::new("issue-853", "XY-853", "Todo")
-			.expect("issue mapping should validate")
-			.with_program_owned_queue_label(true),
+			.expect("issue mapping should validate"),
 	)
 	.expect("issue mapping should attach");
 
@@ -3212,15 +3211,8 @@ fn execution_programs_persist_reload_and_list_by_contract() {
 	assert_eq!(issue_mappings.len(), 1);
 	assert_eq!(issue_mappings[0].node_id(), "runtime-readiness");
 	assert_eq!(issue_mappings[0].issue_identifier(), "XY-853");
-	assert!(issue_mappings[0].queue_label_owned_by_program_reconciler());
-
-	let queue_ownership = reopened
-		.program_queue_label_ownership_for_issue("decodex", "issue-853", "decodex:queued:decodex")
-		.expect("program queue label ownership should read");
-
-	assert_eq!(queue_ownership.len(), 1);
-	assert_eq!(queue_ownership[0].program_id(), "program-853");
-	assert_eq!(queue_ownership[0].issue_identifier(), "XY-853");
+	assert_eq!(issue_mappings[0].queue_intent(), "ready_to_queue");
+	assert!(!issue_mappings[0].has_active_label());
 }
 
 #[test]

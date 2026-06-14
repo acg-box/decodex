@@ -6877,7 +6877,7 @@ fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorSt
 		let public_summary = program.public_summary.as_deref().unwrap_or("none");
 
 		output.push_str(&format!(
-			"- program_id: {} status={} source_contract_id: {} intake_kind={} summary=\"{}\" nodes={} planned={} mapped={} ready={} queued={} blocked={} held={} active={} attention={} completed={} stale={} superseded={} queue_label_eligible={} queue_actions=apply:{} retain:{} remove:{} mapped_issues={}{}\n",
+			"- program_id: {} status={} source_contract_id: {} intake_kind={} summary=\"{}\" nodes={} planned={} mapped={} ready={} queued={} blocked={} held={} active={} attention={} completed={} stale={} superseded={} dispatchable={} mapped_issues={}{}\n",
 			program.program_id,
 			program.status,
 			program.source_contract_id.as_deref().unwrap_or("none"),
@@ -6895,10 +6895,7 @@ fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorSt
 			program.completed_count,
 			program.stale_count,
 			program.superseded_count,
-			program.queue_label_eligible_count,
-			program.queue_label_apply_count,
-			program.queue_label_retain_count,
-			program.queue_label_remove_count,
+			program.dispatchable_count,
 			mapped_issues,
 			readback_warning,
 		));
@@ -6906,7 +6903,7 @@ fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorSt
 		for node in &program.node_readbacks {
 			let issue_identifier = node.issue_identifier.as_deref().unwrap_or("unmapped");
 			let issue_state = node.issue_state.as_deref().unwrap_or("none");
-			let queue_label_action = node.queue_label_action.as_deref().unwrap_or("none");
+			let dispatch_action = node.dispatch_action.as_deref().unwrap_or("none");
 			let reason_codes = if node.reason_codes.is_empty() {
 				String::from("none")
 			} else {
@@ -6919,12 +6916,12 @@ fn append_rendered_execution_programs(output: &mut String, snapshot: &OperatorSt
 			};
 
 			output.push_str(&format!(
-				"  - node: issue={} issue_state={} lifecycle={} readiness={} queue_label_action={} reason_codes={} reasons=\"{}\" next_action=\"{}\"\n",
+				"  - node: issue={} issue_state={} lifecycle={} readiness={} dispatch_action={} reason_codes={} reasons=\"{}\" next_action=\"{}\"\n",
 				issue_identifier,
 				issue_state,
 				node.lifecycle_state,
 				node.readiness_state,
-				queue_label_action,
+				dispatch_action,
 				reason_codes,
 				reasons,
 				node.next_action,
