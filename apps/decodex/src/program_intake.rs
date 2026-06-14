@@ -13,11 +13,10 @@ use crate::{
 	config::ServiceConfig,
 	execution_program::{
 		ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionDependencySnapshot,
-		ExecutionLinearIssueMapping, ExecutionNodeEvaluation, ExecutionProgram,
-		ExecutionProgramDependency, ExecutionProgramEvaluation, ExecutionProgramNode,
-		ExecutionProgramNodeLifecycleState, ExecutionProgramNodeStage,
-		ExecutionProgramReadinessContext, ExecutionQueueIntent, ExecutionQueueLabelAction,
-		ExecutionWorkflowPolicy,
+		ExecutionDispatchAction, ExecutionLinearIssueMapping, ExecutionNodeEvaluation,
+		ExecutionProgram, ExecutionProgramDependency, ExecutionProgramEvaluation,
+		ExecutionProgramNode, ExecutionProgramNodeLifecycleState, ExecutionProgramNodeStage,
+		ExecutionProgramReadinessContext, ExecutionQueueIntent, ExecutionWorkflowPolicy,
 	},
 	loop_contract::{DecisionContract, DecisionContractStatus},
 	orchestrator,
@@ -90,8 +89,6 @@ pub(crate) struct IssueBatchIntakeReport {
 	pub(crate) dry_run: bool,
 	/// Whether local runtime state was persisted.
 	pub(crate) persisted: bool,
-	/// Service-scoped queue label that would be used by later reconciliation.
-	pub(crate) queue_label: String,
 	/// Deterministic classification counts.
 	pub(crate) counts: IssueBatchIntakeCounts,
 	/// Per-issue classification rows.
@@ -126,8 +123,8 @@ pub(crate) struct IssueBatchIntakeIssueReport {
 	pub(crate) classification: IssueBatchIntakeClassification,
 	/// Queue intent stored on the internal program node, when available.
 	pub(crate) queue_intent: Option<String>,
-	/// Readiness-derived queue-label action for later reconciliation.
-	pub(crate) queue_label_action: Option<String>,
+	/// Readiness-derived direct dispatch action.
+	pub(crate) dispatch_action: Option<String>,
 	/// Deterministic local readback reasons.
 	pub(crate) reasons: Vec<String>,
 	/// Known blocker issue identifiers.
@@ -151,8 +148,6 @@ pub(crate) struct GoalIntakeReport {
 	pub(crate) applied: bool,
 	/// Whether local runtime Program Intake records were persisted.
 	pub(crate) persisted: bool,
-	/// Service-scoped queue label later reconciliation may apply.
-	pub(crate) queue_label: String,
 	/// Per-issue materialization rows.
 	pub(crate) issues: Vec<GoalIntakeIssueReport>,
 }
@@ -174,8 +169,8 @@ pub(crate) struct GoalIntakeIssueReport {
 	pub(crate) action: GoalIntakeIssueAction,
 	/// Queue intent stored on the internal program node.
 	pub(crate) queue_intent: String,
-	/// Queue-label action derived for the mapped node, when known.
-	pub(crate) queue_label_action: Option<String>,
+	/// Direct dispatch action derived for the mapped node, when known.
+	pub(crate) dispatch_action: Option<String>,
 	/// Dependency ids or public issue identifiers required before this node can run.
 	pub(crate) dependencies: Vec<String>,
 	/// Coarse conflict domains retained in the internal program.
@@ -190,14 +185,11 @@ pub(crate) struct GoalIntakeIssueReport {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct IssueFacts {
-	has_queue_label: bool,
-	queue_label_program_owned: bool,
 	has_active_label: bool,
 	has_opt_out_label: bool,
 	has_needs_attention_label: bool,
 	has_generic_dispatch_briefing: bool,
 	has_open_blockers: bool,
-	has_human_owned_queue_label: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -381,7 +373,6 @@ where
 
 	let program_id = goal_program_id(config.service_id(), contract.contract_id());
 	let plans = goal_issue_plans(&contract, &program_id)?;
-	let queue_label = tracker::automation_queue_label(config.service_id());
 	let linked_issues = linked_goal_issues(tracker, &contract, plans.len())?;
 	let (issues, linked_contract) = if apply {
 		let anchor = goal_intake_anchor(
@@ -435,7 +426,6 @@ where
 		dry_run,
 		applied: apply,
 		persisted: apply,
-		queue_label,
 		issues: report_issues,
 	})
 }
@@ -458,7 +448,6 @@ where
 	}
 
 	let issue_identifiers = normalize_issue_identifiers(issue_identifiers)?;
-	let queue_label = tracker::automation_queue_label(config.service_id());
 	let active_label = tracker::automation_active_label(config.service_id());
 	let policy = ExecutionWorkflowPolicy::from_workflow(config.service_id(), workflow)?;
 	let mut resolved = BTreeMap::new();
@@ -486,15 +475,7 @@ where
 
 	for identifier in &issue_identifiers {
 		if let Some(issue) = resolved.get(identifier) {
-			let facts = issue_facts(
-				tracker,
-				state_store,
-				config.service_id(),
-				workflow,
-				issue,
-				&queue_label,
-				&active_label,
-			)?;
+			let facts = issue_facts(tracker, workflow, issue, &active_label)?;
 
 			dependency_snapshots.extend(dependency_snapshots_for(issue, &supplied_node_ids)?);
 			nodes.push(issue_node(issue, &facts, workflow, &supplied_node_ids)?);
@@ -556,7 +537,6 @@ where
 		program_id,
 		dry_run,
 		persisted: persist,
-		queue_label,
 		counts,
 		issues: rows,
 	})
@@ -566,10 +546,9 @@ where
 pub(crate) fn render_issue_batch_intake_report(report: &IssueBatchIntakeReport) -> String {
 	let mode = if report.persisted { "apply" } else { "dry-run" };
 	let mut output = format!(
-		"program intake {mode}: service={} program={} queue_label={} ready={} held={} blocked={} stale={} unmapped={}\n",
+		"program intake {mode}: service={} program={} ready={} held={} blocked={} stale={} unmapped={}\n",
 		report.service_id,
 		report.program_id,
-		report.queue_label,
 		report.counts.ready,
 		report.counts.held,
 		report.counts.blocked,
@@ -579,12 +558,12 @@ pub(crate) fn render_issue_batch_intake_report(report: &IssueBatchIntakeReport) 
 
 	for row in &report.issues {
 		let state = row.issue_state.as_deref().unwrap_or("unmapped");
-		let action = row.queue_label_action.as_deref().unwrap_or("none");
+		let action = row.dispatch_action.as_deref().unwrap_or("none");
 		let reasons =
 			if row.reasons.is_empty() { String::from("none") } else { row.reasons.join("; ") };
 
 		output.push_str(&format!(
-			"- {} classification={} state={} queue_action={} reasons={}\n",
+			"- {} classification={} state={} dispatch_action={} reasons={}\n",
 			row.issue_identifier,
 			row.classification.as_str(),
 			state,
@@ -600,29 +579,28 @@ pub(crate) fn render_issue_batch_intake_report(report: &IssueBatchIntakeReport) 
 pub(crate) fn render_goal_intake_report(report: &GoalIntakeReport) -> String {
 	let mode = if report.applied { "apply" } else { "dry-run" };
 	let mut output = format!(
-		"goal intake {mode}: service={} contract={} program={} queue_label={} issues={} persisted={}\n",
+		"goal intake {mode}: service={} contract={} program={} issues={} persisted={}\n",
 		report.service_id,
 		report.contract_id,
 		report.program_id,
-		report.queue_label,
 		report.issues.len(),
 		report.persisted,
 	);
 
 	for row in &report.issues {
 		let issue = row.issue_identifier.as_deref().unwrap_or("new");
-		let queue_action = row.queue_label_action.as_deref().unwrap_or("none");
+		let dispatch_action = row.dispatch_action.as_deref().unwrap_or("none");
 		let dependencies = list_or_none(&row.dependencies);
 		let conflicts = list_or_none(&row.conflict_domains);
 		let reasons = list_or_none(&row.reasons);
 
 		output.push_str(&format!(
-			"- {} action={} issue={} queue_intent={} queue_action={} dependencies={} conflict_domains={} reasons={}\n",
+			"- {} action={} issue={} queue_intent={} dispatch_action={} dependencies={} conflict_domains={} reasons={}\n",
 			row.node_id,
 			row.action.as_str(),
 			issue,
 			row.queue_intent,
-			queue_action,
+			dispatch_action,
 			dependencies,
 			conflicts,
 			reasons,
@@ -906,12 +884,10 @@ fn goal_issue_mapping(
 	issue: &TrackerIssue,
 	workflow: &WorkflowDocument,
 ) -> Result<ExecutionLinearIssueMapping> {
-	let queue_label = tracker::automation_queue_label(service_id);
 	let active_label = tracker::automation_active_label(service_id);
 	let tracker_policy = workflow.frontmatter().tracker();
 
 	Ok(ExecutionLinearIssueMapping::new(&issue.id, &issue.identifier, &issue.state.name)?
-		.with_queue_label(issue.has_label(&queue_label))
 		.with_active_label(issue.has_label(&active_label))
 		.with_opt_out_label(issue.has_label(tracker_policy.opt_out_label()))
 		.with_needs_attention_label(issue.has_label(tracker_policy.needs_attention_label()))
@@ -939,7 +915,7 @@ fn applied_goal_issue_rows(
 				} else {
 					GoalIntakeIssueAction::Created
 				},
-				evaluation.and_then(ExecutionNodeEvaluation::queue_label_action),
+				evaluation.and_then(ExecutionNodeEvaluation::dispatch_action),
 				evaluation.map_or_else(Vec::new, |node| node.reasons().to_vec()),
 			)
 		})
@@ -977,7 +953,7 @@ fn goal_issue_report_row(
 	plan: &GoalIssuePlan,
 	issue: Option<&TrackerIssue>,
 	action: GoalIntakeIssueAction,
-	queue_label_action: Option<ExecutionQueueLabelAction>,
+	dispatch_action: Option<ExecutionDispatchAction>,
 	reasons: Vec<String>,
 ) -> GoalIntakeIssueReport {
 	GoalIntakeIssueReport {
@@ -988,7 +964,7 @@ fn goal_issue_report_row(
 		issue_identifier: issue.map(|issue| issue.identifier.clone()),
 		action,
 		queue_intent: ExecutionQueueIntent::ReadyToQueue.as_str().to_owned(),
-		queue_label_action: queue_label_action.map(queue_label_action_name),
+		dispatch_action: dispatch_action.map(dispatch_action_name),
 		dependencies: plan.dependencies.clone(),
 		conflict_domains: conflict_domain_labels(&plan.conflict_domains),
 		acceptance: plan.acceptance.clone(),
@@ -1299,7 +1275,7 @@ fn unmapped_node(identifier: &str) -> Result<ExecutionProgramNode> {
 	ExecutionProgramNode::new(
 		format!("unmapped:{identifier}"),
 		ExecutionProgramNodeStage::Runtime,
-		format!("Resolve supplied Linear issue identifier `{identifier}` before queueing."),
+		format!("Resolve supplied Linear issue identifier `{identifier}` before dispatch."),
 		ExecutionQueueIntent::NotReady,
 	)?
 	.with_acceptance_expectations([format!(
@@ -1310,23 +1286,14 @@ fn unmapped_node(identifier: &str) -> Result<ExecutionProgramNode> {
 
 fn issue_facts<T>(
 	tracker: &T,
-	state_store: &StateStore,
-	service_id: &str,
 	workflow: &WorkflowDocument,
 	issue: &TrackerIssue,
-	queue_label: &str,
 	active_label: &str,
 ) -> Result<IssueFacts>
 where
 	T: IssueTracker + ?Sized,
 {
 	let tracker_policy = workflow.frontmatter().tracker();
-	let has_queue_label =
-		tracker::issue_has_label_with_server_confirmation(tracker, issue, queue_label)?;
-	let queue_label_program_owned = has_queue_label
-		&& !state_store
-			.program_queue_label_ownership_for_issue(service_id, &issue.id, queue_label)?
-			.is_empty();
 	let has_active_label =
 		tracker::issue_has_label_with_server_confirmation(tracker, issue, active_label)?;
 	let has_opt_out_label = tracker::issue_has_label_with_server_confirmation(
@@ -1341,17 +1308,13 @@ where
 	)?;
 	let has_open_blockers =
 		issue.blockers.iter().any(|blocker| !state_name_is_terminal(&blocker.state.name, workflow));
-	let has_human_owned_queue_label = has_queue_label && !queue_label_program_owned;
 
 	Ok(IssueFacts {
-		has_queue_label,
-		queue_label_program_owned,
 		has_active_label,
 		has_opt_out_label,
 		has_needs_attention_label,
 		has_generic_dispatch_briefing: issue_has_generic_dispatch_briefing(issue),
 		has_open_blockers,
-		has_human_owned_queue_label,
 	})
 }
 
@@ -1365,11 +1328,6 @@ fn issue_node(
 	let mut mapping =
 		ExecutionLinearIssueMapping::new(&issue.id, &issue.identifier, &issue.state.name)?;
 
-	mapping = if facts.queue_label_program_owned {
-		mapping.with_program_owned_queue_label(true)
-	} else {
-		mapping.with_queue_label(facts.has_queue_label)
-	};
 	mapping = mapping
 		.with_active_label(facts.has_active_label)
 		.with_opt_out_label(facts.has_opt_out_label)
@@ -1407,7 +1365,7 @@ fn issue_queue_intent(
 	if facts.has_active_label {
 		return ExecutionQueueIntent::Active;
 	}
-	if facts.has_opt_out_label || facts.has_human_owned_queue_label {
+	if facts.has_opt_out_label {
 		return ExecutionQueueIntent::NotReady;
 	}
 	if !workflow
@@ -1506,10 +1464,6 @@ fn issue_report_row(
 	let classification = classify_issue(issue, facts, evaluation, workflow);
 	let mut reasons = evaluation.reasons().to_vec();
 
-	if facts.has_human_owned_queue_label {
-		reasons.push(String::from("service queue label is present without program-owned evidence"));
-	}
-
 	reasons.sort();
 	reasons.dedup();
 
@@ -1541,7 +1495,7 @@ fn issue_report_row(
 				.as_str()
 				.to_owned(),
 		),
-		queue_label_action: evaluation.queue_label_action().map(queue_label_action_name),
+		dispatch_action: evaluation.dispatch_action().map(dispatch_action_name),
 		reasons,
 		blockers,
 		conflict_domains,
@@ -1557,7 +1511,7 @@ fn classify_issue(
 	if state_name_is_terminal(&issue.state.name, workflow) {
 		return IssueBatchIntakeClassification::Stale;
 	}
-	if facts.has_active_label || facts.has_opt_out_label || facts.has_human_owned_queue_label {
+	if facts.has_active_label || facts.has_opt_out_label {
 		return IssueBatchIntakeClassification::Held;
 	}
 	if facts.has_needs_attention_label
@@ -1581,11 +1535,9 @@ fn classify_issue(
 	}
 }
 
-fn queue_label_action_name(action: ExecutionQueueLabelAction) -> String {
+fn dispatch_action_name(action: ExecutionDispatchAction) -> String {
 	match action {
-		ExecutionQueueLabelAction::Apply => "apply",
-		ExecutionQueueLabelAction::Retain => "retain",
-		ExecutionQueueLabelAction::Remove => "remove",
+		ExecutionDispatchAction::Dispatch => "dispatch",
 	}
 	.to_owned()
 }
@@ -1597,7 +1549,7 @@ fn unmapped_report_row(identifier: &str) -> IssueBatchIntakeIssueReport {
 		issue_state: None,
 		classification: IssueBatchIntakeClassification::Unmapped,
 		queue_intent: None,
-		queue_label_action: None,
+		dispatch_action: None,
 		reasons: vec![String::from("tracker issue identifier did not resolve")],
 		blockers: Vec::new(),
 		conflict_domains: Vec::new(),
@@ -2094,8 +2046,8 @@ mod tests {
 		assert_eq!(tracker.created_issue_count(), 1);
 		assert_eq!(report.issues[0].action, GoalIntakeIssueAction::Updated);
 		assert_eq!(report.issues[1].action, GoalIntakeIssueAction::Created);
-		assert_eq!(report.issues[0].queue_label_action.as_deref(), Some("apply"));
-		assert_eq!(report.issues[1].queue_label_action.as_deref(), Some("apply"));
+		assert_eq!(report.issues[0].dispatch_action.as_deref(), Some("dispatch"));
+		assert_eq!(report.issues[1].dispatch_action.as_deref(), Some("dispatch"));
 
 		let linked_contract = store
 			.decision_contract("decodex", "goal-intake-contract")
