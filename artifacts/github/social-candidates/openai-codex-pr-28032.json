@@ -1,0 +1,53 @@
+{
+  "audience": "Control Plane operators and remote exec-server integrators",
+  "candidate_text": [
+    "Codex exec-server now expects `process/start.cwd` as a `file:` URI, carries cwd as `PathUri`, and rejects non-native cwd before launch. Remote executor and MCP launcher clients should send target-native cwd URIs. PR: https://github.com/openai/codex/pull/28032"
+  ],
+  "caveats": [
+    "Do not imply every exec-server path-like field moved to PathUri.",
+    "Keep the claim scoped to cwd handling in exec-server process/start and remote executor plumbing."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-28032.review.json",
+      "text": "Codex exec-server now represents process/start cwd as a PathUri."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-28032.json",
+      "text": "Raw-path cwd clients or cross-host cwd mismatches are a Control Plane compatibility risk."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-28032:operator_impact",
+    "reason": "The change has a concrete remote-execution compatibility angle with direct source links.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "ExecParams.cwd changed from PathBuf to PathUri.",
+    "Core and rmcp-client producers now convert cwd to PathUri.",
+    "Local process startup rejects non-native cwd URIs before launch."
+  ],
+  "mode": "operator_impact",
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or publish this candidate."
+  ],
+  "priority": "high",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-28032",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-28032.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-28032.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/28032"
+    ]
+  },
+  "target_account": "decodexspace"
+}
