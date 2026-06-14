@@ -12,8 +12,8 @@ use crate::execution_program::ExecutionProgram;
 use crate::execution_program::ExecutionProgramEvaluation;
 use crate::execution_program::ExecutionProgramNodeStage;
 use crate::execution_program::ExecutionProgramReadinessContext;
+use crate::execution_program::ExecutionDispatchAction;
 use crate::execution_program::ExecutionQueueIntent;
-use crate::execution_program::ExecutionQueueLabelAction;
 use crate::execution_program::ExecutionWorkflowPolicy;
 use crate::loop_contract::DecisionContract;
 use crate::loop_contract::DecisionContractStatus;
@@ -131,16 +131,14 @@ impl LoopScenarioHarness {
 		(contract, policy, evaluation)
 	}
 
-	fn assert_queue_shaping(
+	fn assert_direct_dispatch_shaping(
 		&self,
-		policy: &ExecutionWorkflowPolicy,
 		evaluation: &ExecutionProgramEvaluation,
 	) {
 		let summary = evaluation.operator_summary();
 
-		assert_eq!(policy.queue_label(), "decodex:queued:decodex");
 		assert_eq!(evaluation.ready_node_ids(), vec!["node-ready"]);
-		assert_eq!(evaluation.startable_node_ids(), vec!["node-ready"]);
+		assert_eq!(evaluation.dispatchable_node_ids(), vec!["node-ready"]);
 		assert_eq!(summary.ready_count, 1);
 		assert_eq!(summary.queued_count, 0);
 		assert_eq!(summary.blocked_count, 1);
@@ -148,18 +146,18 @@ impl LoopScenarioHarness {
 		assert_eq!(summary.held_count, 2);
 		assert_eq!(summary.active_count, 1);
 		assert_eq!(summary.needs_attention_count, 0);
-		assert_eq!(summary.queue_label_eligible_count, 1);
+		assert_eq!(summary.dispatchable_count, 1);
 		assert_eq!(
-			loop_scenario_queue_action(evaluation, "node-ready"),
-			Some(ExecutionQueueLabelAction::Apply)
+			loop_scenario_dispatch_action(evaluation, "node-ready"),
+			Some(ExecutionDispatchAction::Dispatch)
 		);
 		assert_eq!(
-			loop_scenario_queue_action(evaluation, "node-uncovered-direction"),
-			Some(ExecutionQueueLabelAction::Remove)
+			loop_scenario_dispatch_action(evaluation, "node-uncovered-direction"),
+			None
 		);
 		assert_eq!(
-			loop_scenario_queue_action(evaluation, "node-active"),
-			Some(ExecutionQueueLabelAction::Remove)
+			loop_scenario_dispatch_action(evaluation, "node-active"),
+			None
 		);
 	}
 
@@ -412,9 +410,9 @@ impl LoopScenarioHarness {
 fn research_to_execution_loop_scenario_shapes_ready_work_and_records_feedback() {
 	let harness = LoopScenarioHarness::new();
 	let contract = harness.assert_latent_research_stays_non_executable();
-	let (contract, policy, evaluation) = harness.promote_and_evaluate_program(contract);
+	let (contract, _policy, evaluation) = harness.promote_and_evaluate_program(contract);
 
-	harness.assert_queue_shaping(&policy, &evaluation);
+	harness.assert_direct_dispatch_shaping(&evaluation);
 	harness.record_review_guardrail_and_assert_harness_feedback(contract);
 }
 
@@ -573,7 +571,6 @@ fn loop_scenario_program_nodes() -> Vec<crate::execution_program::ExecutionProgr
 			"Implement the accepted runtime node",
 			ExecutionQueueIntent::ReadyToQueue,
 			"XY-861",
-			false,
 		),
 		loop_scenario_node(
 			"node-blocked",
@@ -581,7 +578,6 @@ fn loop_scenario_program_nodes() -> Vec<crate::execution_program::ExecutionProgr
 			"Validate after the runtime node completes",
 			ExecutionQueueIntent::ReadyToQueue,
 			"XY-862",
-			false,
 		)
 		.with_dependencies(vec![
 			crate::execution_program::ExecutionProgramDependency::new("node-ready")
@@ -594,7 +590,6 @@ fn loop_scenario_program_nodes() -> Vec<crate::execution_program::ExecutionProgr
 			"Pause uncovered direction for contract feedback",
 			ExecutionQueueIntent::Paused,
 			"XY-863",
-			true,
 		),
 		loop_scenario_active_node(),
 	]
@@ -607,12 +602,10 @@ fn loop_scenario_active_node() -> crate::execution_program::ExecutionProgramNode
 		"Retain handoff ownership without queueing",
 		ExecutionQueueIntent::Active,
 		"XY-864",
-		true,
 	)
 	.with_linear_issue(
 		ExecutionLinearIssueMapping::new("linear-node-active", "XY-864", "Todo")
 			.expect("issue mapping should build")
-			.with_program_owned_queue_label(true)
 			.with_active_label(true),
 	)
 	.expect("active issue should attach")
@@ -735,7 +728,6 @@ fn loop_scenario_node(
 	objective: &str,
 	queue_intent: ExecutionQueueIntent,
 	issue_identifier: &str,
-	has_queue_label: bool,
 ) -> crate::execution_program::ExecutionProgramNode {
 	crate::execution_program::ExecutionProgramNode::new(node_id, stage, objective, queue_intent)
 		.expect("node should build")
@@ -762,20 +754,19 @@ fn loop_scenario_node(
 				"Todo",
 			)
 			.expect("issue mapping should build")
-			.with_program_owned_queue_label(has_queue_label),
 		)
 		.expect("issue mapping should attach")
 }
 
-fn loop_scenario_queue_action(
+fn loop_scenario_dispatch_action(
 	evaluation: &ExecutionProgramEvaluation,
 	node_id: &str,
-) -> Option<ExecutionQueueLabelAction> {
+) -> Option<ExecutionDispatchAction> {
 	evaluation
 		.nodes()
 		.iter()
 		.find(|node| node.node_id() == node_id)
 		.unwrap_or_else(|| panic!("missing node evaluation `{node_id}`"))
-		.queue_label_action()
+		.dispatch_action()
 }
 }

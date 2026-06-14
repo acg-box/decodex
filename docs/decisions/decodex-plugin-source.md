@@ -33,8 +33,8 @@ instructions.
 The plugin should own reusable agent-facing procedures and mode routing:
 
 - `decodex` for choosing manual CLI mode versus automation mode
-- `planning` for Decodex-friendly issue splitting, queue shaping, dependencies, and
-  concurrency
+- `planning` for Decodex-friendly issue splitting, dispatch readiness, dependencies,
+  and concurrency
 - `manual-cli` for operator CLI use
 - `automation` for retained-lane control-plane use
 - `commit` for human-driven `decodex commit`

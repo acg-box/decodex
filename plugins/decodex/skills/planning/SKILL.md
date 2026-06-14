@@ -1,6 +1,6 @@
 ---
 name: planning
-description: Use when shaping Decodex-friendly issue sets, queue strategy, project capacity, dependencies, or concurrency. Helps agents split work so retained lanes can run independently without overlapping ownership or bypassing registered project policy.
+description: Use when shaping Decodex-friendly issue sets, dispatch readiness, project capacity, dependencies, or concurrency. Helps agents split work so retained lanes can run independently without overlapping ownership or bypassing registered project policy.
 ---
 
 # Planning
@@ -10,9 +10,10 @@ description: Use when shaping Decodex-friendly issue sets, queue strategy, proje
 Shape work so Decodex can run the right lanes in parallel while each issue remains
 independently executable, reviewable, and recoverable.
 
-Use this before queueing a broad feature, migration, or cleanup effort into Decodex.
+Use this before shaping a broad feature, migration, or cleanup effort into Decodex.
 For durable issue text, pair this skill with the delivery plugin's `split` or `issue`
-skill, then use the `labels` skill when applying Decodex intake labels.
+skill. Use the `labels` skill only for ordinary non-Program issues that should enter
+the service-scoped tracker queue.
 
 Use this after a natural-language promotion follow-up such as `arrange this`,
 `push this forward`, `推进`, or `做` when the accepted Decision Contract is ready to
@@ -68,39 +69,44 @@ brief.
 
 - Split by ownership boundary, validation surface, or deployable behavior, not by
   arbitrary chronology.
-- Prefer several independent queued issues over one broad issue when their file sets,
+- Prefer several independent issue lanes over one broad issue when their file sets,
   contracts, and verification can be isolated.
 - Put shared contracts, schema changes, and cross-cutting migrations in a foundation
-  issue first; queue downstream slices only after the blocking contract lands or mark
-  the dependency explicitly in the tracker.
-- Avoid queueing issues that are likely to edit the same hot files, branch lineage,
+  issue first; let Program DAG dependencies hold downstream slices until the blocking
+  contract lands, or mark the dependency explicitly in the tracker for ordinary issue
+  queues.
+- Avoid dispatching issues that are likely to edit the same hot files, branch lineage,
   config authority, or generated artifacts unless the ordering is explicit.
 - Keep one issue responsible for any user-facing wording or spec contract that several
   implementation slices depend on, then link the other issues to that authority.
-- Use `decodex:queued:<service-id>` only for issues that are startable under the
-  registered `WORKFLOW.md`; the label does not bypass state, blocker, terminal-state,
-  active-lease, or capacity checks.
+- Use `decodex:queued:<service-id>` only for ordinary issues that are startable under
+  the registered `WORKFLOW.md`; the label does not bypass state, blocker,
+  terminal-state, active-lease, or capacity checks. Program DAG nodes do not need this
+  label; persisted Execution Programs dispatch ready mapped nodes directly.
 - Set `[execution] max_concurrent_agents = 0` only when the project is intentionally
   uncapped. Use a positive value when the repo, accounts, CI budget, or review surface
   needs bounded parallelism.
 
-## Queue Shaping
+## Dispatch Shaping
 
 1. Use `decodex status` or the dashboard to read active lanes, queued candidates,
-   retry waits, review waits, landing state, recovery worktrees, cleanup debt, and
-   available capacity.
+   Program Intake dispatchability, retry waits, review waits, landing state, recovery
+   worktrees, cleanup debt, and available capacity.
 2. Use `decodex run --dry-run` to confirm project loading, issue discovery,
    eligibility, dependency blockers, and worktree planning before live automation.
-3. Queue only the next independent slice set. Leave future or blocked slices unqueued
-   until the dependency is terminal or the `WORKFLOW.md` policy makes them startable.
+3. For ordinary issue queues, label only the next independent slice set. For Program
+   DAGs, persist the whole accepted graph and let dispatchability select the ready
+   subset without manual queue labels. Leave future or blocked slices held until the
+   dependency is terminal or the `WORKFLOW.md` policy makes them startable.
 4. If capacity is finite, keep the highest-value independent slices queued first
    instead of flooding the queue with dependent work.
 5. When a lane stops with `decodex:needs-attention`, resolve the recorded blocker
    before clearing the label or re-queueing.
-6. When the source is a promoted Decision Contract, queue only mapped issues whose
-   dependencies, conflict domains, acceptance, validation expectations, and registered
-   workflow state make them ready. Leave blocked, stale, paused, active, terminal, or
-   unmapped nodes unqueued.
+6. When the source is a promoted Decision Contract, do not manually queue mapped
+   Program issues. Persist the Execution Program and let the scheduler directly
+   dispatch nodes whose dependencies, conflict domains, acceptance, validation
+   expectations, and registered workflow state make them ready. Blocked, stale,
+   paused, active, terminal, or unmapped nodes stay held.
 
 ## Boundaries
 

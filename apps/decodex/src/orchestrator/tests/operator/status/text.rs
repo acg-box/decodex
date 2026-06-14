@@ -201,17 +201,14 @@ fn operator_status_text_surfaces_execution_program_summary() {
 			completed_count: 1,
 			stale_count: 0,
 			superseded_count: 0,
-			queue_label_eligible_count: 1,
-			queue_label_apply_count: 1,
-			queue_label_retain_count: 0,
-			queue_label_remove_count: 1,
+			dispatchable_count: 0,
 			mapped_issue_identifiers: vec![String::from("XY-853")],
 			node_readbacks: vec![OperatorExecutionProgramNodeStatus {
 				lifecycle_state: String::from("blocked"),
 				readiness_state: String::from("blocked"),
 				issue_identifier: Some(String::from("XY-853")),
 				issue_state: Some(String::from("Todo")),
-				queue_label_action: Some(String::from("remove")),
+				dispatch_action: None,
 				reason_codes: vec![String::from("dependency_not_terminal")],
 				reasons: vec![String::from(
 					"a dependency has not reached a required terminal state",
@@ -230,15 +227,15 @@ fn operator_status_text_surfaces_execution_program_summary() {
 	assert!(rendered.contains("Execution programs: 1"));
 	assert!(rendered.contains("Execution Programs"));
 	assert!(rendered.contains(
-		"program_id: program-853 status=blocked source_contract_id: contract-852 intake_kind=goal_intake summary=\"Resolve promoted program work.\" nodes=3 planned=0 mapped=0 ready=1 queued=0 blocked=1 held=0 active=0 attention=0 completed=1 stale=0 superseded=0 queue_label_eligible=1 queue_actions=apply:1 retain:0 remove:1 mapped_issues=XY-853"
+		"program_id: program-853 status=blocked source_contract_id: contract-852 intake_kind=goal_intake summary=\"Resolve promoted program work.\" nodes=3 planned=0 mapped=0 ready=1 queued=0 blocked=1 held=0 active=0 attention=0 completed=1 stale=0 superseded=0 dispatchable=0 mapped_issues=XY-853"
 	));
 	assert!(rendered.contains(
-		"node: issue=XY-853 issue_state=Todo lifecycle=blocked readiness=blocked queue_label_action=remove reason_codes=dependency_not_terminal reasons=\"a dependency has not reached a required terminal state\" next_action=\"Complete the dependency issue or refresh the Execution Program dependency plan if this remains stale.\""
+		"node: issue=XY-853 issue_state=Todo lifecycle=blocked readiness=blocked dispatch_action=none reason_codes=dependency_not_terminal reasons=\"a dependency has not reached a required terminal state\" next_action=\"Complete the dependency issue or refresh the Execution Program dependency plan if this remains stale.\""
 	));
 }
 
 #[test]
-fn operator_status_json_accepts_legacy_program_rows_without_new_fields() {
+fn operator_status_json_uses_direct_dispatch_program_fields() {
 	let snapshot: OperatorStatusSnapshot = serde_json::from_value(serde_json::json!({
 		"project_id": "decodex",
 		"run_limit": 10,
@@ -269,24 +266,35 @@ fn operator_status_json_accepts_legacy_program_rows_without_new_fields() {
 			"completed_count": 0,
 			"stale_count": 0,
 			"superseded_count": 0,
-			"queue_label_eligible_count": 1,
+			"dispatchable_count": 1,
 			"mapped_issue_identifiers": ["XY-853"],
+			"node_readbacks": [{
+				"lifecycle_state": "ready",
+				"readiness_state": "ready",
+				"issue_identifier": "XY-853",
+				"issue_state": "Todo",
+				"dispatch_action": "dispatch",
+				"reason_codes": ["ready_for_linear_execution"],
+				"reasons": ["node is ready for normal Linear issue execution"],
+				"next_action": "The program scheduler can dispatch this node directly."
+			}],
 			"readback_warning": null,
 		}],
 		"queued_candidates": [],
 		"worktrees": [],
 		"post_review_lanes": [],
 	}))
-	.expect("legacy operator snapshot should deserialize");
+	.expect("operator snapshot should deserialize");
 	let program = snapshot.execution_programs.first().expect("program should deserialize");
 
 	assert_eq!(program.status, "unknown");
 	assert_eq!(program.intake_kind, None);
 	assert_eq!(program.public_summary, None);
-	assert_eq!(program.queue_label_apply_count, 0);
-	assert_eq!(program.queue_label_retain_count, 0);
-	assert_eq!(program.queue_label_remove_count, 0);
-	assert!(program.node_readbacks.is_empty());
+	assert_eq!(program.dispatchable_count, 1);
+	assert_eq!(
+		program.node_readbacks[0].dispatch_action.as_deref(),
+		Some("dispatch")
+	);
 }
 
 #[test]
@@ -318,7 +326,6 @@ fn seed_program_readback_status(state_store: &StateStore, config: &ServiceConfig
 				"PUB-941",
 				"Todo",
 				ExecutionQueueIntent::ReadyToQueue,
-				false,
 			),
 			status_program_node(
 				"node-queued",
@@ -326,7 +333,6 @@ fn seed_program_readback_status(state_store: &StateStore, config: &ServiceConfig
 				"PUB-942",
 				"Todo",
 				ExecutionQueueIntent::Queued,
-				true,
 			),
 			status_program_node_with_dependency(
 				"node-blocked",
@@ -334,7 +340,6 @@ fn seed_program_readback_status(state_store: &StateStore, config: &ServiceConfig
 				"PUB-943",
 				"Todo",
 				"PUB-944",
-				true,
 			),
 			status_program_node(
 				"node-dependency",
@@ -342,7 +347,6 @@ fn seed_program_readback_status(state_store: &StateStore, config: &ServiceConfig
 				"PUB-944",
 				"Todo",
 				ExecutionQueueIntent::NotReady,
-				false,
 			),
 			status_program_active_node("node-active", "issue-active", "PUB-945", "In Progress"),
 		],
@@ -376,16 +380,13 @@ fn assert_program_readback_summary(program: &OperatorExecutionProgramStatus) {
 	assert_eq!(program.status, "blocked");
 	assert_eq!(program.intake_kind.as_deref(), Some("issue_batch_intake"));
 	assert_eq!(program.public_summary.as_deref(), Some("Coordinate status readback work."));
-	assert_eq!(program.ready_count, 1);
-	assert_eq!(program.queued_count, 1);
+	assert_eq!(program.ready_count, 2);
+	assert_eq!(program.queued_count, 0);
 	assert_eq!(program.blocked_count, 1);
 	assert_eq!(program.held_count, 2);
 	assert_eq!(program.active_count, 1);
 	assert_eq!(program.stale_count, 0);
-	assert_eq!(program.queue_label_eligible_count, 2);
-	assert_eq!(program.queue_label_apply_count, 1);
-	assert_eq!(program.queue_label_retain_count, 1);
-	assert_eq!(program.queue_label_remove_count, 1);
+	assert_eq!(program.dispatchable_count, 2);
 	assert_eq!(
 		program.mapped_issue_identifiers,
 		vec![
@@ -414,13 +415,11 @@ fn assert_program_readback_json(program_json: &Value) {
 	assert_eq!(program_json["status"], "blocked");
 	assert_eq!(program_json["intake_kind"], "issue_batch_intake");
 	assert_eq!(program_json["public_summary"], "Coordinate status readback work.");
-	assert_eq!(program_json["ready_count"], 1);
-	assert_eq!(program_json["queued_count"], 1);
+	assert_eq!(program_json["ready_count"], 2);
+	assert_eq!(program_json["queued_count"], 0);
 	assert_eq!(program_json["active_count"], 1);
 	assert_eq!(program_json["held_count"], 2);
-	assert_eq!(program_json["queue_label_apply_count"], 1);
-	assert_eq!(program_json["queue_label_retain_count"], 1);
-	assert_eq!(program_json["queue_label_remove_count"], 1);
+	assert_eq!(program_json["dispatchable_count"], 2);
 	assert!(program_json.get("contract").is_none());
 	assert!(program_json.get("graph").is_none());
 }
@@ -440,10 +439,10 @@ fn assert_program_node_readbacks(
 	let held_node = node_by_issue.get("PUB-944").expect("held node should render");
 	let active_node = node_by_issue.get("PUB-945").expect("active node should render");
 
-	assert_eq!(ready_node.queue_label_action.as_deref(), Some("apply"));
-	assert_eq!(queued_node.queue_label_action.as_deref(), Some("retain"));
+	assert_eq!(ready_node.dispatch_action.as_deref(), Some("dispatch"));
+	assert_eq!(queued_node.dispatch_action.as_deref(), Some("dispatch"));
 	assert_eq!(blocked_node.lifecycle_state, "blocked");
-	assert_eq!(blocked_node.queue_label_action.as_deref(), Some("remove"));
+	assert_eq!(blocked_node.dispatch_action.as_deref(), None);
 	assert!(blocked_node.reason_codes.contains(&String::from("dependency_not_terminal")));
 	assert_eq!(
 		blocked_node.reasons,
@@ -451,7 +450,7 @@ fn assert_program_node_readbacks(
 	);
 	assert!(blocked_node.next_action.contains("Execution Program dependency plan"));
 	assert_eq!(held_node.lifecycle_state, "mapped");
-	assert!(held_node.reason_codes.contains(&String::from("queue_intent_not_ready")));
+	assert!(held_node.reason_codes.contains(&String::from("dispatch_intent_not_ready")));
 	assert_eq!(active_node.lifecycle_state, "active");
 	assert!(active_node.reason_codes.contains(&String::from("mapped_issue_active_label_present")));
 
@@ -464,7 +463,7 @@ fn assert_program_node_readbacks(
 
 	assert_eq!(node_json["lifecycle_state"], "active");
 	assert_eq!(node_json["readiness_state"], "blocked");
-	assert_eq!(node_json["queue_label_action"], serde_json::Value::Null);
+	assert_eq!(node_json["dispatch_action"], serde_json::Value::Null);
 }
 
 #[test]
@@ -482,7 +481,6 @@ fn operator_status_json_surfaces_missing_contract_program_recovery() {
 			"PUB-946",
 			"Todo",
 			ExecutionQueueIntent::ReadyToQueue,
-			false,
 		)],
 	)
 	.expect("program should build");
@@ -530,7 +528,7 @@ fn operator_status_json_surfaces_missing_contract_program_recovery() {
 	assert_eq!(program_json["node_readbacks"][0]["reason_codes"][0], "source_decision_contract_missing");
 	assert_eq!(
 		program_json["node_readbacks"][0]["next_action"],
-		"Restore or supersede the source Decision Contract before queueing this program."
+		"Restore or supersede the source Decision Contract before dispatching this program."
 	);
 	assert!(program_json.get("contract").is_none());
 	assert!(program_json.get("decision_contract").is_none());
@@ -542,14 +540,8 @@ fn status_program_node(
 	issue_identifier: &str,
 	issue_state: &str,
 	queue_intent: ExecutionQueueIntent,
-	program_owned_queue_label: bool,
 ) -> ExecutionProgramNode {
-	let mapping = status_program_issue_mapping(
-		issue_id,
-		issue_identifier,
-		issue_state,
-		program_owned_queue_label,
-	);
+	let mapping = status_program_issue_mapping(issue_id, issue_identifier, issue_state);
 
 	ExecutionProgramNode::new(
 		node_id,
@@ -572,7 +564,6 @@ fn status_program_node_with_dependency(
 	issue_identifier: &str,
 	issue_state: &str,
 	dependency_identifier: &str,
-	program_owned_queue_label: bool,
 ) -> ExecutionProgramNode {
 	status_program_node(
 		node_id,
@@ -580,7 +571,6 @@ fn status_program_node_with_dependency(
 		issue_identifier,
 		issue_state,
 		ExecutionQueueIntent::ReadyToQueue,
-		program_owned_queue_label,
 	)
 	.with_dependencies([ExecutionProgramDependency::new(dependency_identifier)
 		.expect("dependency should build")])
@@ -591,16 +581,9 @@ fn status_program_issue_mapping(
 	issue_id: &str,
 	issue_identifier: &str,
 	issue_state: &str,
-	program_owned_queue_label: bool,
 ) -> ExecutionLinearIssueMapping {
-	let mapping = ExecutionLinearIssueMapping::new(issue_id, issue_identifier, issue_state)
-		.expect("mapping should build");
-
-	if program_owned_queue_label {
-		mapping.with_program_owned_queue_label(true)
-	} else {
-		mapping
-	}
+	ExecutionLinearIssueMapping::new(issue_id, issue_identifier, issue_state)
+		.expect("mapping should build")
 }
 
 fn status_program_active_node(
@@ -609,7 +592,7 @@ fn status_program_active_node(
 	issue_identifier: &str,
 	issue_state: &str,
 ) -> ExecutionProgramNode {
-	let mapping = status_program_issue_mapping(issue_id, issue_identifier, issue_state, false)
+	let mapping = status_program_issue_mapping(issue_id, issue_identifier, issue_state)
 		.with_active_label(true);
 
 	ExecutionProgramNode::new(

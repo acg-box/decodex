@@ -17,9 +17,10 @@ specs. Decodex has these supported use modes:
   landing, status inspection, project registration, account selection, or dry-run
   checks.
 - Automation mode: Decodex owns retained-lane execution through registered project
-  contracts, `serve`, `run`, tracker labels, issue-scoped tools, review handoff,
+  contracts, `serve`, `run`, Program Intake, tracker labels for ordinary issues,
+  issue-scoped tools, review handoff,
   landing, closeout, and operator status.
-- Planning support: agents shape Decodex-friendly issue sets, queue strategy,
+- Planning support: agents shape Decodex-friendly issue sets, dispatch readiness,
   dependency boundaries, and concurrency after a human request or accepted/promoted
   Decision Contract needs executable issue shaping.
 
@@ -44,11 +45,14 @@ Route by intent:
    of starting work.
 3. After promotion, use `planning` to convert the accepted contract into normal
    Linear issues with clear natural-language briefs, dependencies, acceptance, and
-   validation. Keep Execution Program and graph mechanics as internal readiness state.
-4. Use `labels` and `automation` only for nodes/issues that are ready under the
-   registered project policy. Queue labels are an intake signal for retained lanes,
-   not a shortcut around blockers, opt-outs, terminal states, active leases, or
-   missing briefing.
+   validation, then persist an Execution Program for direct scheduler dispatch. Keep
+   Execution Program and graph mechanics as internal readiness state.
+4. Use `automation` for Program Intake and retained execution. Persisted Program
+   Intake dispatches ready mapped nodes directly with Program dispatch mode. Use
+   `labels` only for ordinary non-Program issues that should enter service-scoped
+   tracker intake. Queue labels are not the Program DAG scheduler; they remain an
+   ordinary issue intake signal and never bypass blockers, opt-outs, terminal states,
+   active leases, or missing briefing.
 
 ## First Steps
 
@@ -60,7 +64,7 @@ Route by intent:
    directory supplied through a project-scoped command's `--config`.
 5. Use the narrow skill for the current action:
    - `manual-cli` for normal operator CLI use.
-   - `planning` for Decodex-friendly issue splitting, queue shaping, and concurrency.
+   - `planning` for Decodex-friendly issue splitting, dispatch readiness, and concurrency.
    - `automation` for retained-lane control-plane use.
    - `commit` for `decodex commit`.
    - `land` for `decodex land`.
