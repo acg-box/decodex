@@ -308,6 +308,104 @@ struct OperatorPostReviewLaneStatus: Decodable, Sendable {
 	}
 }
 
+struct OperatorLifecycleMetricBucket: Decodable, Sendable {
+	let name: String
+	let wallSeconds: Int
+	let eventCount: Int
+	let toolCallCount: Int
+	let inputTokens: Int
+	let outputTokens: Int
+	let outputBytes: Int
+
+	enum CodingKeys: String, CodingKey {
+		case name
+		case wallSeconds = "wall_seconds"
+		case eventCount = "event_count"
+		case toolCallCount = "tool_call_count"
+		case inputTokens = "input_tokens"
+		case outputTokens = "output_tokens"
+		case outputBytes = "output_bytes"
+	}
+}
+
+struct OperatorLifecycleMetricPhase: Decodable, Sendable {
+	let phase: String?
+	let label: String?
+	let attemptCount: Int
+	let runCount: Int
+	let capturedAttemptCount: Int
+	let missingAttemptCount: Int
+	let protocolEventCount: Int
+	let childEventCount: Int
+	let wallSeconds: Int
+	let toolCallCount: Int
+	let inputTokensCurrent: Int?
+	let inputTokensPeak: Int?
+	let inputTokensCumulative: Int
+	let outputTokensCumulative: Int
+	let largestToolOutputBytes: Int?
+	let largestToolOutputTool: String?
+	let buckets: [OperatorLifecycleMetricBucket]
+
+	enum CodingKeys: String, CodingKey {
+		case phase
+		case label
+		case attemptCount = "attempt_count"
+		case runCount = "run_count"
+		case capturedAttemptCount = "captured_attempt_count"
+		case missingAttemptCount = "missing_attempt_count"
+		case protocolEventCount = "protocol_event_count"
+		case childEventCount = "child_event_count"
+		case wallSeconds = "wall_seconds"
+		case toolCallCount = "tool_call_count"
+		case inputTokensCurrent = "input_tokens_current"
+		case inputTokensPeak = "input_tokens_peak"
+		case inputTokensCumulative = "input_tokens_cumulative"
+		case outputTokensCumulative = "output_tokens_cumulative"
+		case largestToolOutputBytes = "largest_tool_output_bytes"
+		case largestToolOutputTool = "largest_tool_output_tool"
+		case buckets
+	}
+}
+
+struct OperatorLifecycleMetrics: Decodable, Sendable {
+	let attemptCount: Int
+	let runCount: Int
+	let capturedAttemptCount: Int
+	let missingAttemptCount: Int
+	let protocolEventCount: Int
+	let childEventCount: Int
+	let wallSeconds: Int
+	let toolCallCount: Int
+	let inputTokensCurrent: Int?
+	let inputTokensPeak: Int?
+	let inputTokensCumulative: Int
+	let outputTokensCumulative: Int
+	let largestToolOutputBytes: Int?
+	let largestToolOutputTool: String?
+	let buckets: [OperatorLifecycleMetricBucket]
+	let phases: [OperatorLifecycleMetricPhase]
+
+	enum CodingKeys: String, CodingKey {
+		case attemptCount = "attempt_count"
+		case runCount = "run_count"
+		case capturedAttemptCount = "captured_attempt_count"
+		case missingAttemptCount = "missing_attempt_count"
+		case protocolEventCount = "protocol_event_count"
+		case childEventCount = "child_event_count"
+		case wallSeconds = "wall_seconds"
+		case toolCallCount = "tool_call_count"
+		case inputTokensCurrent = "input_tokens_current"
+		case inputTokensPeak = "input_tokens_peak"
+		case inputTokensCumulative = "input_tokens_cumulative"
+		case outputTokensCumulative = "output_tokens_cumulative"
+		case largestToolOutputBytes = "largest_tool_output_bytes"
+		case largestToolOutputTool = "largest_tool_output_tool"
+		case buckets
+		case phases
+	}
+}
+
 struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	let projectID: String?
 	let projectDisplayName: String?
@@ -335,6 +433,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 	let worktreePath: String?
 	let suspectedStall: Bool
 	let childAgentActivity: OperatorChildAgentActivity?
+	let lifecycleMetrics: OperatorLifecycleMetrics?
 	let account: OperatorRunAccountSummary?
 	let accounts: [OperatorRunAccountSummary]
 
@@ -377,6 +476,38 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		}
 
 		return "Active"
+	}
+
+	func compactActivitySummary(at now: Date) -> String? {
+		guard let activity = childAgentActivity else {
+			return nil
+		}
+
+		var parts = [String]()
+		if let modelBucket = activity.buckets.first(where: { $0.name.caseInsensitiveCompare("Model") == .orderedSame }) {
+			let modelSeconds = activity.wallSeconds(for: modelBucket, at: now)
+			if modelSeconds > 0, let formatted = formatOperatorActivityDuration(modelSeconds) {
+				parts.append("Model \(formatted)")
+			}
+		} else if activity.wallSeconds(at: now) > 0,
+			let formatted = formatOperatorActivityDuration(activity.wallSeconds(at: now))
+		{
+			parts.append("Activity \(formatted)")
+		}
+
+		if activity.inputTokensCumulative > 0 || activity.outputTokensCumulative > 0 {
+			parts.append(
+				"in \(formatOperatorCompactCount(activity.inputTokensCumulative)) / out \(formatOperatorCompactCount(activity.outputTokensCumulative))"
+			)
+		}
+		if activity.toolCallCount > 0 {
+			parts.append("\(formatOperatorCompactCount(activity.toolCallCount)) tools")
+		}
+		if let largestOutput = activity.largestToolOutputBytes, largestOutput > 0 {
+			parts.append("\(formatOperatorCompactBytes(largestOutput)) output")
+		}
+
+		return parts.isEmpty ? nil : parts.joined(separator: " · ")
 	}
 
 	var hasAttentionTone: Bool {
@@ -473,6 +604,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			worktreePath: activity.worktreePath ?? worktreePath,
 			suspectedStall: activity.suspectedStall || suspectedStall,
 			childAgentActivity: activity.childAgentActivity ?? childAgentActivity,
+			lifecycleMetrics: activity.lifecycleMetrics ?? lifecycleMetrics,
 			account: activity.account ?? account,
 			accounts: activity.accounts.isEmpty ? accounts : activity.accounts
 		)
@@ -521,6 +653,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		case worktreePath = "worktree_path"
 		case suspectedStall = "suspected_stall"
 		case childAgentActivity = "child_agent_activity"
+		case lifecycleMetrics = "lifecycle_metrics"
 		case account
 		case accounts
 		case codexAccount = "codex_account"
@@ -559,6 +692,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 			OperatorChildAgentActivity.self,
 			forKey: .childAgentActivity
 		)
+		lifecycleMetrics = try container.decodeIfPresent(OperatorLifecycleMetrics.self, forKey: .lifecycleMetrics)
 		account = try container.decodeIfPresent(OperatorRunAccountSummary.self, forKey: .account)
 			?? container.decodeIfPresent(OperatorRunAccountSummary.self, forKey: .codexAccount)
 		accounts = try container.decodeIfPresent([OperatorRunAccountSummary].self, forKey: .accounts)
@@ -593,6 +727,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		worktreePath: String?,
 		suspectedStall: Bool,
 		childAgentActivity: OperatorChildAgentActivity?,
+		lifecycleMetrics: OperatorLifecycleMetrics?,
 		account: OperatorRunAccountSummary?,
 		accounts: [OperatorRunAccountSummary]
 	) {
@@ -622,6 +757,7 @@ struct OperatorRunStatus: Decodable, Identifiable, Sendable {
 		self.worktreePath = worktreePath
 		self.suspectedStall = suspectedStall
 		self.childAgentActivity = childAgentActivity
+		self.lifecycleMetrics = lifecycleMetrics
 		self.account = account
 		self.accounts = accounts
 	}
@@ -835,6 +971,76 @@ private func trimmed(_ value: String?) -> String? {
 
 private func rawDisplayToken(_ value: String) -> String {
 	value.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+private func formatOperatorActivityDuration(_ seconds: Int?) -> String? {
+	guard let seconds else {
+		return nil
+	}
+
+	let value = max(0, seconds)
+	if value < 60 {
+		return "\(value)s"
+	}
+
+	let hours = value / 3_600
+	let minutes = (value % 3_600) / 60
+	let remainderSeconds = value % 60
+	if hours > 0 {
+		return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
+	}
+	if minutes > 0 {
+		return remainderSeconds > 0 ? "\(minutes)m \(remainderSeconds)s" : "\(minutes)m"
+	}
+
+	return "\(remainderSeconds)s"
+}
+
+private func formatOperatorCompactCount(_ value: Int) -> String {
+	let absoluteValue = abs(Double(value))
+	let sign = value < 0 ? "-" : ""
+
+	if absoluteValue >= 1_000_000_000 {
+		return "\(sign)\(formatOperatorCompactDecimal(absoluteValue / 1_000_000_000))B"
+	}
+	if absoluteValue >= 1_000_000 {
+		return "\(sign)\(formatOperatorCompactDecimal(absoluteValue / 1_000_000))M"
+	}
+	if absoluteValue >= 1_000 {
+		return "\(sign)\(formatOperatorCompactDecimal(absoluteValue / 1_000))k"
+	}
+
+	return "\(value)"
+}
+
+private func formatOperatorCompactDecimal(_ value: Double) -> String {
+	if value >= 100 {
+		return String(format: "%.0f", value)
+	}
+	if value >= 10 {
+		return String(format: "%.1f", value)
+	}
+
+	return String(format: "%.2f", value)
+}
+
+private func formatOperatorCompactBytes(_ value: Int) -> String {
+	let units = ["B", "KiB", "MiB", "GiB"]
+	var amount = Double(max(0, value))
+	var unitIndex = 0
+	while amount >= 1024, unitIndex < units.count - 1 {
+		amount /= 1024
+		unitIndex += 1
+	}
+
+	if unitIndex == 0 {
+		return "\(Int(amount))\(units[unitIndex])"
+	}
+	if amount >= 100 {
+		return "\(Int(amount.rounded()))\(units[unitIndex])"
+	}
+
+	return String(format: "%.1f%@", amount, units[unitIndex])
 }
 
 private func date(fromUnixEpoch value: Int64?) -> Date? {

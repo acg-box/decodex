@@ -1576,6 +1576,29 @@ impl StateStore {
 		Ok(())
 	}
 
+	pub(crate) fn record_run_activity_summary(
+		&self,
+		run_id: &str,
+		attempt_number: i64,
+		child_agent_activity: Option<&ChildAgentActivitySummary>,
+		protocol_activity: Option<&ProtocolActivitySummary>,
+	) -> Result<()> {
+		let now = timestamp_parts();
+		let summary = RunActivitySummaryRecord {
+			run_id: run_id.to_owned(),
+			attempt_number,
+			child_agent_activity: child_agent_activity.cloned(),
+			protocol_activity: protocol_activity.cloned(),
+			updated_at: now.text,
+			updated_at_unix: now.unix,
+		};
+		let mut state = self.lock_without_refresh()?;
+
+		state.run_activity_summaries.insert(run_id.to_owned(), summary.clone());
+
+		self.upsert_run_activity_summary_locked(&summary)
+	}
+
 	/// Persist a locally known Linear execution event in the runtime store.
 	pub(crate) fn record_linear_execution_event(
 		&self,
@@ -2769,6 +2792,17 @@ impl StateStore {
 			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
 
 		sqlite.upsert_run_control_channel(channel)
+	}
+
+	fn upsert_run_activity_summary_locked(&self, summary: &RunActivitySummaryRecord) -> Result<()> {
+		let Some(sqlite) = self.sqlite.as_ref() else {
+			return Ok(());
+		};
+		let sqlite = sqlite
+			.lock()
+			.map_err(|_| eyre::eyre!("StateStore SQLite mutex is poisoned."))?;
+
+		sqlite.upsert_run_activity_summary(summary)
 	}
 
 	fn upsert_lease_and_remember_run_project_locked(&self, lease: &IssueLease) -> Result<()> {
