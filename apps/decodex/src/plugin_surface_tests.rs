@@ -46,8 +46,8 @@ fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
 	assert_contains(long_description, "latent Decision Contracts");
 	assert_contains(long_description, "\"arrange this\"");
 	assert_contains(long_description, "\"推进\"");
-	assert_contains(long_description, "queues only ready nodes");
-	assert_contains(long_description, "graph, DAG, goal, and queue mechanics backstage");
+	assert_contains(long_description, "ready mapped nodes dispatch directly");
+	assert_contains(long_description, "graph, DAG, goal, and dispatch mechanics backstage");
 	assert_contains(&default_prompts, "Research how Decodex should handle this.");
 	assert_contains(
 		&default_prompts,
