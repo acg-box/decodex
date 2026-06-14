@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Audit Decodex remote execution and MCP launcher paths for raw cwd strings and convert them to target-native `file:` URI handling when exec-server protocol support is consumed.",
+    "Surface non-native cwd URI rejection as a cross-host path compatibility state instead of retrying process launch as a transient failure.",
+    "Keep shell path and argv0 handling separate from cwd URI migration because upstream intentionally leaves them as plain strings."
+  ],
+  "caveats": [
+    "The PR is scoped to exec-server cwd handling and does not migrate shell path or argv0 fields to PathUri.",
+    "The compatibility risk applies to clients that speak the exec-server process/start protocol directly or through remote executor plumbing.",
+    "Decodex implementation work still needs a separate issue if local Control Plane code sends raw cwd paths into an upstream exec-server bridge."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "Exec-server `ExecParams.cwd` is now a `PathUri` rather than `PathBuf`.",
+    "Core unified exec and rmcp-client executor startup both convert cwd into `PathUri` before sending exec-server params.",
+    "Local process startup rejects cwd URIs that cannot be converted to a native absolute path on the exec-server host.",
+    "Exec-server README examples now use `file:` cwd URIs in `process/start` requests.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-28032.review.json`."
+  ],
+  "observed_change": "Codex changes exec-server `process/start.cwd` from a raw path to a `PathUri`, keeps cwd URI-shaped through core and rmcp producers, and rejects non-native cwd URIs before process launch.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-28032",
+  "social_notes": [
+    "Frame this as a remote execution and cross-OS cwd compatibility change.",
+    "Do not imply all exec-server path fields are now URI-backed; the PR explicitly leaves shell path and argv0 as strings."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-13T20:56:42Z",
+        "title": "[codex] Carry exec-server cwd as PathUri",
+        "url": "https://github.com/openai/codex/pull/28032"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-28032.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/28032"
+      }
+    ]
+  }
+}
