@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Evaluate using `thread/list.parentThreadId` in Decodex Control Plane child-thread panels or recovery snapshots.",
+    "Preserve the direct-child-only caveat in operator UI copy and avoid implying recursive subtree listing.",
+    "Handle invalid parent ids as request validation errors rather than empty child lists."
+  ],
+  "caveats": [
+    "`parentThreadId` is marked experimental in the app-server protocol.",
+    "The filter returns direct spawned children, not grandchildren or Review/Guardian relationships.",
+    "Existing list callers are unaffected when the field is omitted."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "candidate",
+  "evidence": [
+    "Source-backed review recorded at `artifacts/github/reviews/openai-codex-pr-26662.review.json`.",
+    "App-server v2 `ThreadListParams` now includes experimental `parentThreadId`.",
+    "The request processor validates parent ids and passes the filter into thread listing.",
+    "State DB listing filters threads by `thread_spawn_edges.parent_thread_id`.",
+    "App-server README documents direct-child semantics and a `thread/list` example."
+  ],
+  "observed_change": "Codex adds experimental `thread/list.parentThreadId` support so app-server clients can page direct spawned child threads from persisted spawn-edge state.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-26662",
+  "social_notes": [
+    "Frame this as app-server child-thread discovery for multi-agent operators.",
+    "Do not claim recursive subtree listing or Review/Guardian inclusion."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-14T07:14:27Z",
+        "title": "feat(app-server): filter threads by parent",
+        "url": "https://github.com/openai/codex/pull/26662"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-26662.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/26662"
+      }
+    ]
+  }
+}

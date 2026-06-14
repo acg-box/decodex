@@ -1,0 +1,84 @@
+{
+  "adoption_opportunity": "Use app-server `thread/list.parentThreadId` in Decodex Control Plane views that need direct child-thread snapshots after reconnect or missed live events, instead of scanning unrelated threads or reconstructing spawn relationships from rollout history.",
+  "caveats": "The parent filter is experimental, direct-child only, and excludes Review and Guardian threads because those flows do not participate in the persisted spawn-edge lifecycle.",
+  "changed_surfaces": [
+    "app-server v2 `ThreadListParams` protocol",
+    "TypeScript protocol schema for `thread/list`",
+    "thread/list request validation and filtering",
+    "thread-store list parameters",
+    "state DB thread listing over spawn edges",
+    "app-server README and examples",
+    "thread/list tests"
+  ],
+  "community_value": "High for app-server and multi-agent clients because they can page direct spawned children from authoritative persisted state instead of maintaining their own relationship cache.",
+  "compatibility_risk": "Low. Existing `thread/list` callers keep `parentThreadId` unset; explicit callers must pass a valid thread id and account for direct-child-only semantics.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "High. Decodex Control Plane can use this to display or recover immediate subagent children for a parent thread without broader list scans.",
+  "deprecated_or_breaking_notes": "No behavior is removed. The new `parentThreadId` field is experimental and invalid parent thread ids produce a JSON-RPC invalid-request error.",
+  "evidence": [
+    "PR #26662 says clients need an authoritative snapshot of a thread's immediate spawned children and that the relationship already exists in persisted `thread_spawn_edges` state.",
+    "`codex-rs/app-server-protocol/src/protocol/v2/thread.rs` adds experimental `ThreadListParams.parent_thread_id` with marker `thread/list.parentThreadId`.",
+    "`codex-rs/app-server/src/request_processors/thread_processor.rs` parses `parent_thread_id`, validates it with `ThreadId::from_string`, and passes it through `ThreadListFilters` into `thread_store.list_threads`.",
+    "`codex-rs/state/src/runtime/threads.rs` adds `list_threads_by_parent` and filters `threads.id` through `thread_spawn_edges.parent_thread_id`.",
+    "`codex-rs/app-server/README.md` documents `parentThreadId` as a direct spawned-child filter, notes that grandchildren are excluded, and shows the `thread/list` request/response shape.",
+    "`codex-rs/app-server/tests/suite/v2/thread_list.rs` covers parent-filter pagination, direct child filtering, parent id propagation, and invalid parent id rejection.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-26662.json` records 27 changed files and 10 commits for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "The app-server parent filter is a concrete Control Plane adoption candidate for child-thread recovery and display.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "The change has a clear operator-facing public angle around direct child-thread discovery through app-server.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex adds experimental `thread/list.parentThreadId` support so app-server clients can page direct spawned child threads from persisted spawn-edge state.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-14T12:09:19Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-26662",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-14T07:14:27Z",
+        "title": "feat(app-server): filter threads by parent",
+        "url": "https://github.com/openai/codex/pull/26662"
+      },
+      {
+        "kind": "commit",
+        "title": "feat(app-server): filter threads by parent",
+        "url": "https://github.com/openai/codex/commit/68567deb6f6e9227662c9558d37ff3e280a2b377"
+      },
+      {
+        "kind": "commit",
+        "title": "refactor(app-server): source parent filter from spawn edges",
+        "url": "https://github.com/openai/codex/commit/724cd58bf6ed04ffaf8ab8520c951a5518f3161a"
+      },
+      {
+        "kind": "commit",
+        "title": "docs(app-server): clarify parent thread filter scope",
+        "url": "https://github.com/openai/codex/commit/688537c78d85337d3bc70e80a7e74fcfe11da6ce"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "68567deb6f6e9227662c9558d37ff3e280a2b377",
+      "724cd58bf6ed04ffaf8ab8520c951a5518f3161a",
+      "c2f877a1d0c5dbab82f5d7fcb4c591b90e9541f8",
+      "e06ed34720737e1657c74fdc466972c5fdda5ac4",
+      "eaeb92854e2d6da708558a8f0b81ff7cacdfd569",
+      "4c1fbf28545273cd4ba9402a4065171b646824f9",
+      "28d35a99eff66cf06742933e4a45fde47fb927d5",
+      "ba23593c751b155e4a86d2e6c24125a4b177a8c6",
+      "95d0018d71d9b15ccac883561abd1d408cf0f875",
+      "688537c78d85337d3bc70e80a7e74fcfe11da6ce"
+    ],
+    "subject_id": "26662",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "App-server clients with experimental API enabled can call `thread/list` with `parentThreadId` to page a parent thread's direct spawned children and receive each child's `parentThreadId` in the response."
+}

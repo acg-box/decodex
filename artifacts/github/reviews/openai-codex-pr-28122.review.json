@@ -1,0 +1,86 @@
+{
+  "adoption_opportunity": "Teach Decodex Control Plane remote-execution paths to preserve environment cwd as a `PathUri`, keep remote primary cwd values instead of replacing them with the local fallback, and use the selected remote environment shell when composing unified exec commands.",
+  "caveats": "The PR does not make arbitrary permission-request paths cross-host safe; upstream still falls back when request-permissions needs a cwd native to the Codex host.",
+  "changed_surfaces": [
+    "core `TurnEnvironmentSelection.cwd` representation",
+    "thread environment selection resolution",
+    "app-server thread and turn environment request conversion",
+    "unified exec command shell selection",
+    "remote Windows exec-server test coverage",
+    "Wine exec-server test support"
+  ],
+  "community_value": "High for remote executor and app-server users because the change makes cross-OS cwd and shell handling observable and test-backed instead of collapsing remote environments onto the local host cwd and shell.",
+  "compatibility_risk": "High. Control planes or app-server clients that assume selected environment cwd is always a host-native absolute path, or that build remote commands with the session shell, can route remote Windows or foreign-OS exec turns incorrectly.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "High. Decodex Control Plane remote execution depends on app-server environment selections, cwd preservation, and shell choice matching the target environment.",
+  "deprecated_or_breaking_notes": "No feature is removed, but `TurnEnvironmentSelection.cwd` is now URI-shaped and remote primary cwd values are intentionally preserved; callers should not normalize every selected environment cwd back to the local fallback.",
+  "evidence": [
+    "PR #28122 says the slice changes `TurnEnvironmentSelection.cwd` from `AbsolutePathBuf` to `PathUri`, preserves a remote primary cwd, and uses the environment native shell so a real Windows process can run.",
+    "`codex-rs/protocol/src/protocol.rs` stores `TurnEnvironmentSelection.cwd` as `PathUri` and only rewrites the primary environment cwd when the environment id is `local`.",
+    "`codex-rs/core/src/environment_selection.rs` builds default selections with `PathUri::from_abs_path`, converts selected cwd with `to_abs_path()`, and records the environment shell from `environment.info()`.",
+    "`codex-rs/app-server/src/request_processors/thread_processor.rs` and `turn_processor.rs` convert app-server environment cwd values with `PathUri::from_abs_path` before passing selections into core.",
+    "`codex-rs/core/src/tools/handlers/unified_exec/exec_command.rs` resolves commands with the selected turn environment shell, falling back to `session.user_shell()` only when no environment shell is reported.",
+    "`codex-rs/core/tests/remote_env_windows/remote_env_windows_test.rs` asserts remote Windows exec starts through `pwsh.exe`, proving the remote environment shell path is exercised.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-28122.json` records 22 changed files and 13 commits for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "Remote cwd and shell preservation directly affect Control Plane remote-exec compatibility.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "The change has a clear operator-facing public angle around cross-OS remote exec correctness.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex carries selected turn environment cwd as `PathUri`, preserves non-local primary cwd selections, and builds unified exec commands with the selected remote environment shell.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-14T12:09:19Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-28122",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-14T06:07:47Z",
+        "title": "[codex] exec-server honors remote environment cwd and shell",
+        "url": "https://github.com/openai/codex/pull/28122"
+      },
+      {
+        "kind": "commit",
+        "title": "core: carry turn environment cwd as PathUri",
+        "url": "https://github.com/openai/codex/commit/a2a917b071ce164777333349163005720c8c5e7f"
+      },
+      {
+        "kind": "commit",
+        "title": "core: honor remote environment cwd and shell",
+        "url": "https://github.com/openai/codex/commit/019ff65142c38263fd685f9692670aeeb560c5c6"
+      },
+      {
+        "kind": "commit",
+        "title": "tests: send native Windows cwd through app server",
+        "url": "https://github.com/openai/codex/commit/763357aaa79a5fb13f84a5013deb2ff284a67bd4"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "a2a917b071ce164777333349163005720c8c5e7f",
+      "019ff65142c38263fd685f9692670aeeb560c5c6",
+      "5bada3f2a4f18a252cd65d89f461d3ff3c9f4b1f",
+      "2a8b87ed44215e4bf0bcce6b778038874c720b51",
+      "310ccf29f684a7a19ae65ea790bd465cfe74cb2a",
+      "763357aaa79a5fb13f84a5013deb2ff284a67bd4",
+      "ce4102787545b9131e32619e43ed89dc0ad13f12",
+      "4f6dd50b0eb01f3548c7b1403017e74c8697ef51",
+      "f4db0780fc9ef2063e29847f851759c5bd97dbe1",
+      "25644e0ec49ebf371ab45c8ae73b3cb8fd78607e",
+      "18004b9322a89dd9efc40aea3f88643cdfc55eed",
+      "716e9e32e934a3f7b868a1bc7a327524594dc81e",
+      "1a7dbd5b4ff43cdf230f8b7062e6c1618ed458dc"
+    ],
+    "subject_id": "28122",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "Remote environment users can run unified exec commands from the selected remote cwd with the remote environment's native shell, including Windows remote environments reached through app-server."
+}

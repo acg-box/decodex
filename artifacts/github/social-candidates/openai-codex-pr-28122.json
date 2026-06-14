@@ -1,0 +1,53 @@
+{
+  "audience": "Control Plane operators and remote exec-server integrators",
+  "candidate_text": [
+    "Codex remote exec now preserves selected environment cwd as `PathUri` and uses the remote environment shell for unified exec. That matters for cross-OS app-server flows such as Windows remote exec. PR: https://github.com/openai/codex/pull/28122"
+  ],
+  "caveats": [
+    "Keep the claim scoped to selected turn environment cwd and unified exec shell selection.",
+    "Do not imply all permission-request paths are now foreign-environment aware."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-28122.review.json",
+      "text": "Codex now preserves non-local selected environment cwd as a PathUri."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-28122.json",
+      "text": "Remote unified exec shell selection is a Control Plane compatibility concern."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-28122:operator_impact",
+    "reason": "The merged PR has a concrete remote-exec compatibility angle with source-backed app-server and test evidence.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "`TurnEnvironmentSelection.cwd` is now `PathUri`.",
+    "Remote primary cwd is preserved instead of rewritten to the local fallback.",
+    "Unified exec uses the selected environment shell, with Windows test coverage through `pwsh.exe`."
+  ],
+  "mode": "operator_impact",
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or publish this candidate."
+  ],
+  "priority": "high",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-28122",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-28122.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-28122.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/28122"
+    ]
+  },
+  "target_account": "decodexspace"
+}

@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Audit Decodex app-server and remote executor paths for assumptions that selected environment cwd is always a local absolute path.",
+    "Preserve target environment shell metadata when routing remote unified exec commands.",
+    "Surface foreign-cwd conversion failures as remote environment path compatibility problems instead of generic command failures."
+  ],
+  "caveats": [
+    "The PR keeps request-permissions host-cwd limitations explicit instead of making every permission path cross-host.",
+    "The compatibility risk applies to multi-environment app-server and remote-exec integrations, not ordinary local-only CLI turns.",
+    "Decodex implementation work still needs a separate issue if local Control Plane code currently rewrites remote cwd or shell state."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "Source-backed review recorded at `artifacts/github/reviews/openai-codex-pr-28122.review.json`.",
+    "`TurnEnvironmentSelection.cwd` is now a `PathUri` and remote primary cwd values are not overwritten by the local fallback.",
+    "Environment resolution records the selected environment shell from environment info.",
+    "Unified exec command construction uses the selected turn environment shell before falling back to the session shell.",
+    "Remote Windows test coverage asserts commands start through `pwsh.exe`."
+  ],
+  "observed_change": "Codex carries selected turn environment cwd as `PathUri`, preserves non-local primary cwd selections, and builds unified exec commands with the selected remote environment shell.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-28122",
+  "social_notes": [
+    "Frame this as remote exec correctness for cross-OS app-server environments.",
+    "Do not imply request-permissions now supports arbitrary foreign-environment paths."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-14T06:07:47Z",
+        "title": "[codex] exec-server honors remote environment cwd and shell",
+        "url": "https://github.com/openai/codex/pull/28122"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-28122.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/28122"
+      }
+    ]
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "audience": "Control Plane operators and app-server client builders",
+  "candidate_text": [
+    "Codex app-server `thread/list` now has experimental `parentThreadId` filtering, so clients can page a thread's direct spawned children from persisted spawn-edge state instead of scanning unrelated threads. PR: https://github.com/openai/codex/pull/26662"
+  ],
+  "caveats": [
+    "Keep the claim scoped to direct spawned children.",
+    "Do not imply Review or Guardian threads participate in this parent filter."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26662.review.json",
+      "text": "Codex app-server thread/list now accepts experimental parentThreadId."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26662.json",
+      "text": "The parent filter is an adoption candidate for Control Plane child-thread snapshots."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26662:operator_impact",
+    "reason": "The merged PR has a concrete app-server operator workflow with source-backed docs, protocol, storage, and test evidence.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "`ThreadListParams` includes experimental `parentThreadId`.",
+    "State DB listing filters by persisted `thread_spawn_edges.parent_thread_id`.",
+    "README docs show a `thread/list` request and response for direct child threads."
+  ],
+  "mode": "operator_impact",
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or publish this candidate."
+  ],
+  "priority": "high",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26662",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26662.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26662.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26662"
+    ]
+  },
+  "target_account": "decodexspace"
+}
