@@ -127,8 +127,12 @@ Use `--dev` only for isolated local development:
 - Do not use `--dev` for operator automation, queue intake, retained-lane recovery,
   project registration refresh, or service scheduling. It is hidden from CLI help and
   intentionally rejects `--config`; `serve` has no interval override argument.
-- For browser-only dashboard UI work, use `dev/operator-dashboard-mock.mjs` instead
-  of `--dev`.
+- For browser dashboard and Decodex App preview UI work, use one
+  `dev/operator-dashboard-mock.mjs` listener instead of `--dev`. The same mock base
+  URL must serve the browser dashboard, `/api/accounts`, and the Decodex App
+  dashboard WebSocket connection; do not start a separate App mock server. When
+  `DECODEX_APP_SERVER_URL` is set, Decodex App treats that URL as authoritative and
+  does not fall back to the default `127.0.0.1:8192` runtime.
 
 Project registration is not service intake. The `Projects` dashboard section may show
 multiple enabled projects with visible work at once, and its filter can reveal the full
@@ -238,12 +242,13 @@ state is, by itself, evidence that the
 Linear tracker or GitHub connector failed; confirm the central project registry and
 service queue label before treating it as a connector problem.
 
-The browser dashboard reads the complete published state from the local
-`GET /dashboard/control` WebSocket. That socket is the dashboard authority for
-published snapshots, active-lane activity updates, and local dashboard control
-acknowledgements. `GET /api/operator-snapshot` is the Decodex App read API over the
-same runtime database, not a browser-dashboard polling authority and not a sign that
-the dev listener owns scheduling.
+The browser dashboard and Decodex App read the complete published operator state from
+the local `GET /dashboard/control` WebSocket. That socket is the dashboard/App
+authority for published snapshots, active-lane activity updates, and local dashboard
+control acknowledgements. The App still uses the same base URL's `/api/accounts`
+HTTP surface for account-pool rows and actions. `GET /api/operator-snapshot` is a
+status/cache read path over the same runtime database, not a browser-dashboard or App
+polling authority and not a sign that the dev listener owns scheduling.
 
 `decodex status` uses that same local `GET /api/operator-snapshot` as a fast read path
 when the default listener is reachable, the published snapshot is recent, includes the

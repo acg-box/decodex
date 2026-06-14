@@ -44,7 +44,8 @@ use crate::state::{
 	self, ChildAgentActivitySummary, CodexAccountActivitySummary, CodexAccountMarker,
 	EffectiveRuntimeMarker, ProjectRegistration, ProtocolActivityMarker, ProtocolActivitySummary,
 	RUN_ACTIVITY_MARKER_FILE, RUN_OPERATION_AGENT_RUN, RUN_OPERATION_GIT_CREDENTIALS,
-	RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, StateStore, WorktreeMapping,
+	RUN_OPERATION_RECONCILIATION, RUN_OPERATION_REPO_GATE, ReviewPolicyCheckpointInput,
+	StateStore, WorktreeMapping,
 };
 use crate::test_support::TestEnvVarGuard;
 #[rustfmt::skip]

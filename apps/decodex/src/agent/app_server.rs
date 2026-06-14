@@ -1158,6 +1158,13 @@ impl<'a> RunRecorder<'a> {
 		let child_activity = self.child_activity.record(event_type, payload);
 		let protocol_activity = self.protocol_activity.record(event_type, payload, &child_activity);
 
+		self.state_store.record_run_activity_summary(
+			self.run_id,
+			self.attempt_number,
+			Some(&child_activity),
+			Some(&protocol_activity),
+		)?;
+
 		if let Some(marker_path) = self.activity_marker_path {
 			let activity = state::ProtocolActivityMarker {
 				run_id: self.run_id,

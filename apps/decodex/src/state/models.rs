@@ -319,6 +319,8 @@ pub struct ProjectRunStatus {
 	last_event_at: Option<String>,
 	last_event_at_unix: Option<i64>,
 	control_channel: Option<RunControlChannel>,
+	child_agent_activity: Option<ChildAgentActivitySummary>,
+	protocol_activity: Option<ProtocolActivitySummary>,
 }
 impl ProjectRunStatus {
 	/// Stable run identifier.
@@ -389,6 +391,14 @@ impl ProjectRunStatus {
 	/// Local control capability published by this run attempt, when one exists.
 	pub fn control_channel(&self) -> Option<&RunControlChannel> {
 		self.control_channel.as_ref()
+	}
+
+	pub(crate) fn child_agent_activity(&self) -> Option<&ChildAgentActivitySummary> {
+		self.child_agent_activity.as_ref()
+	}
+
+	pub(crate) fn protocol_activity(&self) -> Option<&ProtocolActivitySummary> {
+		self.protocol_activity.as_ref()
 	}
 
 	/// Unix timestamp of the latest recorded protocol event, when one exists.
