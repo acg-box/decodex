@@ -1,0 +1,154 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-13T04:55:04Z",
+      "message": "exec-server: carry cwd as PathUri",
+      "sha": "362785f70469ae7c968c3ef49aae53772e5b9d9e",
+      "url": "https://github.com/openai/codex/commit/362785f70469ae7c968c3ef49aae53772e5b9d9e"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-13T20:50:07Z",
+      "message": "codex: fix CI failure on PR #28032",
+      "sha": "f21ad4deaed11404daa5bdb1ac210ddcb205f73c",
+      "url": "https://github.com/openai/codex/commit/f21ad4deaed11404daa5bdb1ac210ddcb205f73c"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/exec-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "URI",
+    "UNIFIED_EXEC_ENV",
+    "NO_COLOR",
+    "CALL_ID",
+    "COMMAND",
+    "WINE_BAZEL_OK",
+    "CODEX_HOME",
+    "PATH",
+    "PTY",
+    "IFS",
+    "ONLY_THIS",
+    "STANDARD",
+    "BASE64_STANDARD",
+    "JSONRPCR",
+    "DELAYED_OUTPUT_AFTER_EXIT_PARENT_ARG",
+    "INT",
+    "NUL",
+    "MCP"
+  ],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3665,6 +3665,7 @@ dependencies = [\n  \"codex-secrets\",\n  \"codex-utils-cargo-bin\",\n  \"codex-utils-home-dir\",\n+ \"codex-utils-path-uri\",\n  \"codex-utils-pty\",\n  \"futures\",\n  \"keyring\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -57,6 +57,7 @@ use codex_protocol::protocol::ExecCommandSource;\n use codex_tools::ToolName;\n use codex_utils_absolute_path::AbsolutePathBuf;\n use codex_utils_output_truncation::approx_token_count;\n+use codex_utils_path_uri::PathUri;\n \n const UNIFIED_EXEC_ENV: [(&str, &str); 10] = [\n     (\"NO_COLOR\", \"1\"),\n@@ -156,7 +157,7 @@ fn exec_server_params_for_request(\n     codex_exec_server::ExecParams {\n         process_id: exec_server_process_id(process_id).into(),\n         argv: request.command.clone(),\n-        cwd: request.cwd.to_path_buf(),\n+        cwd: PathUri::from_abs_path(&request.cwd),\n         env_policy,\n         env,\n         tty,",
+      "path": "codex-rs/core/src/unified_exec/process_manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -66,7 +66,7 @@ fn env_overlay_for_exec_server_keeps_runtime_changes_only() {\n }\n \n #[test]\n-fn exec_server_params_use_env_policy_overlay_contract() {\n+fn exec_server_params_use_path_uri_and_env_policy_overlay_contract() {\n     let cwd: codex_utils_absolute_path::AbsolutePathBuf = std::env::current_dir()\n         .expect(\"current dir\")\n         .try_into()\n@@ -115,6 +115,7 @@ fn exec_server_params_use_env_policy_overlay_contract() {\n         exec_server_params_for_request(/*process_id*/ 123, &request, /*tty*/ true);\n \n     assert_eq!(params.process_id.as_str(), \"123\");\n+    assert_eq!(params.cwd, PathUri::from_abs_path(&request.cwd));\n     assert!(params.env_policy.is_some());\n     assert_eq!(\n         params.env,",
+      "path": "codex-rs/core/src/unified_exec/process_manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 58,
+      "patch_excerpt": "@@ -7,8 +7,6 @@ use codex_features::Feature;\n use codex_protocol::models::PermissionProfile;\n use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::EventMsg;\n-use codex_protocol::protocol::ExecCommandSource;\n-use codex_protocol::protocol::ExecCommandStatus;\n use codex_protocol::protocol::Op;\n use codex_protocol::protocol::TurnEnvironmentSelection;\n use codex_protocol::protocol::TurnEnvironmentSelections;\n@@ -23,7 +21,6 @@ use core_test_support::responses::start_mock_server;\n use core_test_support::test_codex::test_codex;\n use core_test_support::test_codex::turn_permission_fields;\n use core_test_support::wait_for_event;\n-use pretty_assertions::assert_eq;\n use serde_json::json;\n use tokio::io::AsyncBufReadExt;\n use tokio::io::BufReader;\n@@ -33,7 +30,7 @@ const CALL_ID: &str = \"wine-cmd-smoke\";\n const COMMAND: &str = \"echo WINE_BAZEL_OK&&cd\";\n \n #[tokio::test(flavor =...",
+      "path": "codex-rs/core/tests/remote_env_windows/remote_env_windows_test.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 3,
+      "patch_excerpt": "@@ -157,7 +157,7 @@ Request params:\n {\n   \"processId\": \"proc-1\",\n   \"argv\": [\"bash\", \"-lc\", \"printf 'hello\\\\n'\"],\n-  \"cwd\": \"/absolute/working/directory\",\n+  \"cwd\": \"file:///absolute/working/directory\",\n   \"env\": {\n     \"PATH\": \"/usr/bin:/bin\"\n   },\n@@ -171,7 +171,7 @@ Field definitions:\n \n - `processId`: caller-chosen stable id for this process within the connection.\n - `argv`: command vector. It must be non-empty.\n-- `cwd`: absolute working directory used for the child process.\n+- `cwd`: `file:` URI for the child process working directory.\n - `env`: environment variables passed to the child process.\n - `tty`: when `true`, spawn a PTY-backed interactive process.\n - `pipeStdin`: when `true`, keep non-PTY stdin writable via `process/write`.\n@@ -409,7 +409,7 @@ Initialize:\n Start a process:\n \n ```json\n-{\"id\":2,\"method\":\"process/start\",\"params\":{\"processId\":\"proc-1\",\"argv\":[\"bash\",\"-lc\",\"pr...",
+      "path": "codex-rs/exec-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 1,
+      "patch_excerpt": "@@ -498,6 +498,7 @@ mod tests {\n     use crate::ProcessId;\n     use crate::environment_provider::EnvironmentDefault;\n     use crate::environment_provider::EnvironmentProviderSnapshot;\n+    use codex_utils_path_uri::PathUri;\n     use pretty_assertions::assert_eq;\n \n     fn test_runtime_paths() -> ExecServerRuntimePaths {\n@@ -862,7 +863,8 @@ mod tests {\n             .start(crate::ExecParams {\n                 process_id: ProcessId::from(\"default-env-proc\"),\n                 argv: vec![\"true\".to_string()],\n-                cwd: std::env::current_dir().expect(\"read current dir\"),\n+                cwd: PathUri::from_path(std::env::current_dir().expect(\"read current dir\"))\n+                    .expect(\"cwd URI\"),\n                 env_policy: None,\n                 env: Default::default(),\n                 tty: false,",
+      "path": "codex-rs/exec-server/src/environment.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 35,
+      "deletions": 4,
+      "patch_excerpt": "@@ -156,6 +156,12 @@ impl LocalProcess {\n             .argv\n             .split_first()\n             .ok_or_else(|| invalid_params(\"argv must not be empty\".to_string()))?;\n+        let native_cwd = params.cwd.to_abs_path().map_err(|err| {\n+            invalid_params(format!(\n+                \"cwd URI `{}` is not valid on this exec-server host: {err}\",\n+                params.cwd\n+            ))\n+        })?;\n \n         {\n             let mut process_map = self.inner.processes.lock().await;\n@@ -172,7 +178,7 @@ impl LocalProcess {\n             codex_utils_pty::spawn_pty_process(\n                 program,\n                 args,\n-                params.cwd.as_path(),\n+                native_cwd.as_path(),\n                 &env,\n                 &params.arg0,\n                 TerminalSize::default(),\n@@ -182,7 +188,7 @@ impl LocalProcess {\n             codex_utils_pty::spawn_pipe_process(\n   ...",
+      "path": "codex-rs/exec-server/src/local_process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 3,
+      "patch_excerpt": "@@ -1,5 +1,4 @@\n use std::collections::HashMap;\n-use std::path::PathBuf;\n \n use crate::FileSystemSandboxContext;\n use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;\n@@ -77,7 +76,8 @@ pub struct EnvironmentInfo {\n pub struct ShellInfo {\n     /// Stable shell name, for example `zsh`, `bash`, `powershell`, `sh`, or `cmd`.\n     pub name: String,\n-    /// Path the exec server would use for that shell.\n+    /// Target-native shell executable path or command name. Fallbacks such as `cmd.exe` need not\n+    /// be absolute, so this is not a [`PathUri`].\n     pub path: String,\n }\n \n@@ -88,14 +88,17 @@ pub struct ExecParams {\n     /// This is a protocol key, not an OS pid.\n     pub process_id: ProcessId,\n     pub argv: Vec<String>,\n-    pub cwd: PathBuf,\n+    /// Working directory URI, interpreted using the exec-server host's path rules at launch time.\n+    pub cwd: PathUri,\n     #[s...",
+      "path": "codex-rs/exec-server/src/protocol.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -2,6 +2,7 @@ use std::collections::HashMap;\n use std::sync::Arc;\n use std::time::Duration;\n \n+use codex_utils_path_uri::PathUri;\n use pretty_assertions::assert_eq;\n use tokio::sync::mpsc;\n use uuid::Uuid;\n@@ -26,7 +27,7 @@ fn exec_params_with_argv(process_id: &str, argv: Vec<String>) -> ExecParams {\n     ExecParams {\n         process_id: ProcessId::from(process_id),\n         argv,\n-        cwd: std::env::current_dir().expect(\"cwd\"),\n+        cwd: PathUri::from_path(std::env::current_dir().expect(\"cwd\")).expect(\"cwd URI\"),\n         env_policy: None,\n         env: inherited_path_env(),\n         tty: false,",
+      "path": "codex-rs/exec-server/src/server/handler/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -195,6 +195,7 @@ mod tests {\n     use codex_app_server_protocol::JSONRPCRequest;\n     use codex_app_server_protocol::JSONRPCResponse;\n     use codex_app_server_protocol::RequestId;\n+    use codex_utils_path_uri::PathUri;\n     use serde::Serialize;\n     use serde::de::DeserializeOwned;\n     use tokio::io::AsyncBufReadExt;\n@@ -396,7 +397,7 @@ mod tests {\n         ExecParams {\n             process_id,\n             argv: sleep_then_print_argv(),\n-            cwd: std::env::current_dir().expect(\"cwd\"),\n+            cwd: PathUri::from_path(std::env::current_dir().expect(\"cwd\")).expect(\"cwd URI\"),\n             env_policy: None,\n             env,\n             tty: false,",
+      "path": "codex-rs/exec-server/src/server/processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 13,
+      "deletions": 12,
+      "patch_excerpt": "@@ -15,6 +15,7 @@ use codex_exec_server::ProcessSignal;\n use codex_exec_server::ReadResponse;\n use codex_exec_server::StartedExecProcess;\n use codex_exec_server::WriteStatus;\n+use codex_utils_path_uri::PathUri;\n use pretty_assertions::assert_eq;\n use tempfile::TempDir;\n use test_case::test_case;\n@@ -72,7 +73,7 @@ async fn assert_exec_process_starts_and_exits(use_remote: bool) -> Result<()> {\n         .start(ExecParams {\n             process_id: ProcessId::from(\"proc-1\"),\n             argv: vec![\"true\".to_string()],\n-            cwd: std::env::current_dir()?,\n+            cwd: PathUri::from_path(std::env::current_dir()?)?,\n             env_policy: /*env_policy*/ None,\n             env: Default::default(),\n             tty: false,\n@@ -213,7 +214,7 @@ async fn assert_exec_process_streams_output(use_remote: bool) -> Result<()> {\n                 \"-c\".to_string(),\n                 \"sleep 0.05...",
+      "path": "codex-rs/exec-server/tests/exec_process.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -22,6 +22,7 @@ codex-exec-server = { workspace = true }\n codex-keyring-store = { workspace = true }\n codex-protocol = { workspace = true }\n codex-secrets = { workspace = true }\n+codex-utils-path-uri = { workspace = true }\n codex-utils-pty = { workspace = true }\n codex-utils-home-dir = { workspace = true }\n bytes = { workspace = true }",
+      "path": "codex-rs/rmcp-client/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -35,6 +35,7 @@ use codex_exec_server::ExecEnvPolicy;\n use codex_exec_server::ExecParams;\n use codex_exec_server::ExecProcess;\n use codex_protocol::config_types::ShellEnvironmentPolicyInherit;\n+use codex_utils_path_uri::PathUri;\n #[cfg(unix)]\n use codex_utils_pty::process_group::kill_process_group;\n #[cfg(unix)]\n@@ -487,6 +488,7 @@ impl ExecutorStdioServerLauncher {\n         // before sending an executor request.\n         let argv = Self::process_api_argv(&program, &args).map_err(io::Error::other)?;\n         let env = Self::process_api_env(envs).map_err(io::Error::other)?;\n+        let cwd = PathUri::from_path(cwd)?;\n         let process_id = ExecutorProcessTransport::next_process_id();\n         // Start the MCP server process on the executor with raw pipes. `tty=false`\n         // keeps stdout as a clean protocol stream, while `pipe_stdin=true` lets",
+      "path": "codex-rs/rmcp-client/src/stdio_server_launcher.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#28032"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\r\n\r\nThis is the second-to-last place in the exec-server protocol that needs to migrate to URIs to support cross-OS operation.\r\n\r\n## What\r\n\r\n- Change `ExecParams.cwd` to `PathUri`.\r\n- Keep the cwd URI-shaped through core and rmcp producers, converting it to `AbsolutePathBuf` only in `LocalProcess::start_process`.\r\n- Reject non-native cwd URIs before launch and update the affected protocol documentation and call sites.",
+    "labels": [],
+    "merged_at": "2026-06-13T20:56:42Z",
+    "number": 28032,
+    "state": "merged",
+    "title": "[codex] Carry exec-server cwd as PathUri",
+    "url": "https://github.com/openai/codex/pull/28032"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
