@@ -1,0 +1,53 @@
+{
+  "audience": "Control Plane operators and remote exec-server integrators",
+  "candidate_text": [
+    "Codex remote exec now preserves environment cwd as `PathUri` and uses the selected environment's native shell for unified exec. Integrations need cross-OS cwd handling. PR: https://github.com/openai/codex/pull/28122"
+  ],
+  "caveats": [
+    "Do not imply all foreign cwd request-permissions paths are fully supported.",
+    "Keep the claim scoped to turn environment cwd, selected shell handling, and unified exec."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-28122.review.json",
+      "text": "Codex preserves selected turn environment cwd values as PathUri."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-28122.json",
+      "text": "Remote-environment cwd and native-shell handling is a Control Plane compatibility risk."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-28122:operator_impact",
+    "reason": "The change has a concrete remote-exec compatibility angle with direct source links.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "TurnEnvironmentSelection.cwd changed to PathUri.",
+    "Unified exec now prefers the selected environment shell.",
+    "Current native-only permission boundaries reject unsupported foreign cwd values."
+  ],
+  "mode": "operator_impact",
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or publish this candidate."
+  ],
+  "priority": "high",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-28122",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-28122.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-28122.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/28122"
+    ]
+  },
+  "target_account": "decodexspace"
+}
