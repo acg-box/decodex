@@ -718,8 +718,6 @@ pub(crate) struct ProgramIssueMappingRecord {
 	issue_identifier: String,
 	issue_state: String,
 	queue_intent: String,
-	has_queue_label: bool,
-	queue_label_owned_by_program_reconciler: bool,
 	has_active_label: bool,
 	has_opt_out_label: bool,
 	has_needs_attention_label: bool,
@@ -759,14 +757,6 @@ impl ProgramIssueMappingRecord {
 		&self.queue_intent
 	}
 
-	pub(crate) fn has_queue_label(&self) -> bool {
-		self.has_queue_label
-	}
-
-	pub(crate) fn queue_label_owned_by_program_reconciler(&self) -> bool {
-		self.queue_label_owned_by_program_reconciler
-	}
-
 	pub(crate) fn has_active_label(&self) -> bool {
 		self.has_active_label
 	}
@@ -781,68 +771,6 @@ impl ProgramIssueMappingRecord {
 
 	pub(crate) fn has_generic_dispatch_briefing(&self) -> bool {
 		self.has_generic_dispatch_briefing
-	}
-
-	pub(crate) fn created_at(&self) -> &str {
-		&self.created_at
-	}
-
-	pub(crate) fn created_at_unix(&self) -> i64 {
-		self.created_at_unix
-	}
-
-	pub(crate) fn updated_at(&self) -> &str {
-		&self.updated_at
-	}
-
-	pub(crate) fn updated_at_unix(&self) -> i64 {
-		self.updated_at_unix
-	}
-}
-
-/// SQLite-backed queue-label ownership proof for one program-owned label.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ProgramQueueLabelOwnershipRecord {
-	project_id: String,
-	program_id: String,
-	node_id: String,
-	issue_id: String,
-	issue_identifier: String,
-	label_name: String,
-	service_id: String,
-	created_at: String,
-	created_at_unix: i64,
-	updated_at: String,
-	updated_at_unix: i64,
-}
-#[allow(dead_code)]
-impl ProgramQueueLabelOwnershipRecord {
-	pub(crate) fn project_id(&self) -> &str {
-		&self.project_id
-	}
-
-	pub(crate) fn program_id(&self) -> &str {
-		&self.program_id
-	}
-
-	pub(crate) fn node_id(&self) -> &str {
-		&self.node_id
-	}
-
-	pub(crate) fn issue_id(&self) -> &str {
-		&self.issue_id
-	}
-
-	pub(crate) fn issue_identifier(&self) -> &str {
-		&self.issue_identifier
-	}
-
-	pub(crate) fn label_name(&self) -> &str {
-		&self.label_name
-	}
-
-	pub(crate) fn service_id(&self) -> &str {
-		&self.service_id
 	}
 
 	pub(crate) fn created_at(&self) -> &str {

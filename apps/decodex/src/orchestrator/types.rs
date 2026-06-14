@@ -41,6 +41,7 @@ trait PullRequestReviewStateInspector {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum IssueDispatchMode {
 	Normal,
+	Program,
 	Retry,
 	ReviewRepair,
 	Closeout,
@@ -49,6 +50,7 @@ impl IssueDispatchMode {
 	fn as_str(self) -> &'static str {
 		match self {
 			Self::Normal => "normal",
+			Self::Program => "program",
 			Self::Retry => "retry",
 			Self::ReviewRepair => "review_repair",
 			Self::Closeout => "closeout",
@@ -69,6 +71,11 @@ impl IssueDispatchMode {
 				let queue_label = tracker::automation_queue_label(project.service_id());
 
 				issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, false)
+			},
+			Self::Program => {
+				let queue_label = tracker::automation_queue_label(project.service_id());
+
+				issue_passes_dispatch_policy(tracker, issue, workflow, &queue_label, true)
 			},
 			Self::Retry => issue_passes_retry_dispatch_policy(
 				tracker,
@@ -1312,13 +1319,7 @@ struct OperatorExecutionProgramStatus {
 	completed_count: usize,
 	stale_count: usize,
 	superseded_count: usize,
-	queue_label_eligible_count: usize,
-	#[serde(default)]
-	queue_label_apply_count: usize,
-	#[serde(default)]
-	queue_label_retain_count: usize,
-	#[serde(default)]
-	queue_label_remove_count: usize,
+	dispatchable_count: usize,
 	mapped_issue_identifiers: Vec<String>,
 	#[serde(default)]
 	node_readbacks: Vec<OperatorExecutionProgramNodeStatus>,
@@ -1330,8 +1331,6 @@ impl OperatorExecutionProgramStatus {
 		summary: ExecutionProgramOperatorSummary,
 		evaluation: &ExecutionProgramEvaluation,
 	) -> Self {
-		let (queue_label_apply_count, queue_label_retain_count, queue_label_remove_count) =
-			operator_execution_program_queue_label_action_counts(evaluation);
 		let program_intake_plan = record.program().program_intake_plan();
 
 		Self {
@@ -1352,10 +1351,7 @@ impl OperatorExecutionProgramStatus {
 			completed_count: summary.completed_count,
 			stale_count: summary.stale_count,
 			superseded_count: summary.superseded_count,
-			queue_label_eligible_count: summary.queue_label_eligible_count,
-			queue_label_apply_count,
-			queue_label_retain_count,
-			queue_label_remove_count,
+			dispatchable_count: summary.dispatchable_count,
 			mapped_issue_identifiers: summary.mapped_issue_identifiers,
 			node_readbacks: evaluation
 				.nodes()
@@ -1394,10 +1390,7 @@ impl OperatorExecutionProgramStatus {
 			completed_count: 0,
 			stale_count: node_count,
 			superseded_count: 0,
-			queue_label_eligible_count: 0,
-			queue_label_apply_count: 0,
-			queue_label_retain_count: 0,
-			queue_label_remove_count: 0,
+			dispatchable_count: 0,
 			mapped_issue_identifiers: operator_execution_program_mapped_issue_identifiers(record),
 			node_readbacks: operator_execution_program_missing_contract_nodes(record),
 			readback_warning: Some(String::from("source_decision_contract_missing")),
@@ -1411,7 +1404,7 @@ struct OperatorExecutionProgramNodeStatus {
 	readiness_state: String,
 	issue_identifier: Option<String>,
 	issue_state: Option<String>,
-	queue_label_action: Option<String>,
+	dispatch_action: Option<String>,
 	reason_codes: Vec<String>,
 	reasons: Vec<String>,
 	next_action: String,
@@ -2305,33 +2298,10 @@ fn operator_execution_program_unknown_status() -> String {
 	String::from("unknown")
 }
 
-fn operator_execution_program_queue_label_action_counts(
-	evaluation: &ExecutionProgramEvaluation,
-) -> (usize, usize, usize) {
-	let mut apply_count = 0;
-	let mut retain_count = 0;
-	let mut remove_count = 0;
-
-	for node in evaluation.nodes() {
-		match node.queue_label_action() {
-			Some(ExecutionQueueLabelAction::Apply) => apply_count += 1,
-			Some(ExecutionQueueLabelAction::Retain) => {
-				retain_count += 1
-			},
-			Some(ExecutionQueueLabelAction::Remove) => {
-				remove_count += 1
-			},
-			None => {},
-		}
-	}
-
-	(apply_count, retain_count, remove_count)
-}
-
 fn operator_execution_program_node_should_render(
 	node: &ExecutionNodeEvaluation,
 ) -> bool {
-	node.queue_label_action().is_some()
+	node.dispatch_action().is_some()
 		|| matches!(
 			node.lifecycle_state(),
 			crate::execution_program::ExecutionProgramNodeLifecycleState::Active
@@ -2360,7 +2330,7 @@ fn operator_execution_program_node_readback(
 		readiness_state: node.state().as_str().to_owned(),
 		issue_identifier: issue.map(|issue| issue.issue_identifier().to_owned()),
 		issue_state: issue.map(|issue| issue.issue_state().to_owned()),
-		queue_label_action: node.queue_label_action().map(|action| action.as_str().to_owned()),
+		dispatch_action: node.dispatch_action().map(|action| action.as_str().to_owned()),
 		next_action: operator_execution_program_node_next_action(node, &reason_codes),
 		reason_codes,
 		reasons,
@@ -2382,11 +2352,11 @@ fn operator_execution_program_missing_contract_nodes(
 				readiness_state: String::from("stale"),
 				issue_identifier: issue.map(|issue| issue.issue_identifier().to_owned()),
 				issue_state: issue.map(|issue| issue.issue_state().to_owned()),
-				queue_label_action: None,
+				dispatch_action: None,
 				reason_codes: vec![String::from("source_decision_contract_missing")],
 				reasons: vec![String::from("source Decision Contract is missing")],
 				next_action: String::from(
-					"Restore or supersede the source Decision Contract before queueing this program.",
+					"Restore or supersede the source Decision Contract before dispatching this program.",
 				),
 			}
 		})
@@ -2422,14 +2392,14 @@ fn operator_execution_program_reason_codes(reasons: &[String]) -> Vec<String> {
 fn operator_execution_program_reason_code(reason: &str) -> &'static str {
 	if reason == "node no longer matches the accepted Decision Contract" {
 		"accepted_contract_mismatch"
-	} else if reason == "node queue intent is not-ready" {
-		"queue_intent_not_ready"
-	} else if reason == "node queue intent is paused" {
-		"queue_intent_paused"
+	} else if reason == "node dispatch intent is not-ready" {
+		"dispatch_intent_not_ready"
+	} else if reason == "node dispatch intent is paused" {
+		"dispatch_intent_paused"
 	} else if reason == "node already has an active lane" {
 		"active_lane_present"
-	} else if reason == "node queue intent is terminal" {
-		"queue_intent_terminal"
+	} else if reason == "node dispatch intent is terminal" {
+		"dispatch_intent_terminal"
 	} else if reason == "node is ready for normal Linear issue execution" {
 		"ready_for_linear_execution"
 	} else if reason == "node has no acceptance expectations" {
@@ -2481,7 +2451,7 @@ fn operator_execution_program_node_next_action(
 			| crate::execution_program::ExecutionProgramNodeLifecycleState::Superseded
 	) {
 		return String::from(
-			"Refresh or supersede the accepted Decision Contract before queueing this program.",
+			"Refresh or supersede the accepted Decision Contract before dispatching this program.",
 		);
 	}
 	if reason_codes.iter().any(|code| code == "dependency_not_terminal") {
@@ -2496,7 +2466,7 @@ fn operator_execution_program_node_next_action(
 		|| reason_codes.iter().any(|code| code == "mapped_issue_needs_attention")
 	{
 		return String::from(
-			"Resolve the mapped issue's needs-attention stop before queueing this node.",
+			"Resolve the mapped issue's needs-attention stop before dispatching this node.",
 		);
 	}
 	if matches!(
@@ -2504,37 +2474,18 @@ fn operator_execution_program_node_next_action(
 		crate::execution_program::ExecutionProgramNodeLifecycleState::Active
 	) {
 		return String::from(
-			"Wait for the active lane or recover its retained state before queueing this node.",
+			"Wait for the active lane or recover its retained state before dispatching this node.",
 		);
 	}
-	if matches!(
-		node.queue_label_action(),
-		Some(crate::execution_program::ExecutionQueueLabelAction::Remove)
-	) {
-		return String::from(
-			"Allow the program reconciler to remove its owned queue label on the next Linear scan.",
-		);
-	}
-	if matches!(
-		node.queue_label_action(),
-		Some(crate::execution_program::ExecutionQueueLabelAction::Apply)
-	) {
-		return String::from(
-			"Wait for the next Linear scan or request a targeted scan to apply the service queue label.",
-		);
-	}
-	if matches!(
-		node.queue_label_action(),
-		Some(crate::execution_program::ExecutionQueueLabelAction::Retain)
-	) {
-		return String::from("Issue is already queued by the program reconciler.");
+	if node.dispatch_action().is_some() {
+		return String::from("The program scheduler can dispatch this node directly.");
 	}
 	if matches!(
 		node.lifecycle_state(),
 		crate::execution_program::ExecutionProgramNodeLifecycleState::Planned
 			| crate::execution_program::ExecutionProgramNodeLifecycleState::Mapped
 	) {
-		return String::from("Map, promote, or unpause this intake node before queueing it.");
+		return String::from("Map, promote, or unpause this intake node before dispatching it.");
 	}
 	if matches!(
 		node.lifecycle_state(),
