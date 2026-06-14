@@ -147,7 +147,10 @@ account usage probes.
 `decodex serve` uses hardcoded scheduler cadences: the local control-plane loop
 publishes snapshots every 15 seconds, and Linear-backed queue/status scans run at
 most every 5 minutes per project unless an operator or agent requests an explicit
-scan with `POST /api/linear-scan`.
+scan with `POST /api/linear-scan`. Persisted Execution Programs do not wait for that
+ordinary queue-label scan: the runtime keeps the Program graph in local state,
+refreshes only the mapped Linear issue facts needed for readiness, and directly
+dispatches ready DAG nodes with `program` dispatch mode.
 
 `decodex research compile` is the native Decodex research/design entrypoint. It
 accepts minimal natural-language intake or a structured research/design JSON packet,
@@ -159,21 +162,21 @@ records explicit acceptance for a stored contract; only promoted contracts may l
 feed issue shaping or internal Execution Program readiness.
 
 `decodex intake goal` materializes a promoted Decision Contract. `--dry-run` prints
-the proposed normal Linear issues, dependencies, conflict domains, and queue plan
+the proposed normal Linear issues, dependencies, conflict domains, and dispatch plan
 without mutating Linear or local Program Intake rows. `--apply` creates or updates the
 generated normal Linear issue briefs and persists the internal Execution Program plus
 contract/program links in runtime SQLite. Apply does not run implementation or apply
-queue labels; later reconciliation owns queue-label changes. If the contract is still
+queue labels; the persisted Program becomes eligible for direct graph dispatch on the
+next scheduler pass. If the contract is still
 latent, needs a decision, or lacks issue-shaping authority, intake stops before
 creating executable work.
 
 `decodex intake issues` materializes a supplied batch of existing Linear issues into
 local Program Intake state. `--dry-run` prints the deterministic ready/held/blocked
 report without mutation. `--apply` persists the local Program Intake Plan, Execution
-Program, issue mappings, and queue-label ownership evidence when already proven, but
-it still never applies or removes service queue labels directly. Program
-reconciliation owns those label changes on a later scan. `--persist` remains a legacy
-alias for `--apply`.
+Program, and issue mappings. It never applies or removes service queue labels; ready
+mapped nodes are dispatched directly by the Program scheduler instead of being
+converted into queued-label work.
 
 ### Install from Source
 

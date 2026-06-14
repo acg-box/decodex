@@ -37,21 +37,20 @@ Decodex currently runs as a local, single-machine control plane:
   [`../spec/loop-runtime.md`](../spec/loop-runtime.md), not by dashboard graph editing
   or user-visible DAG commands.
 - Program intake readback is intentionally summarized: operators may see counts of
-  ready, queued, blocked, held, stale, attention, completed, and
-  queue-label-eligible nodes plus mapped issue identifiers. Optional planned, mapped,
-  active, and superseded counts may appear when the runtime has that detail. Low-level
-  node edges, graph operations, and queue-label ownership records remain internal
-  runtime state. Status JSON may include sparse node readbacks for queue-label
-  decisions and held, blocked, stale, active, or attention-bound nodes: mapped issue
-  identifier, issue state, lifecycle/readiness state, queue-label action, public-safe
-  reason codes, public-safe reasons, and a recovery next action. It must not expose
+  ready, dispatchable, blocked, held, stale, attention, completed, and mapped issue
+  identifiers. Optional planned, mapped, active, and superseded counts may appear when
+  the runtime has that detail. Low-level node edges and graph operations remain
+  internal runtime state. Status JSON may include sparse node readbacks for direct
+  dispatch decisions and held, blocked, stale, active, or attention-bound nodes:
+  mapped issue identifier, issue state, lifecycle/readiness state, dispatch action,
+  public-safe reason codes, public-safe reasons, and a recovery next action. It must not expose
   Decision Contract payloads, raw graph edges, local paths, credentials, raw logs, or
   private runtime events.
-- Persisted Execution Programs are reconciled during normal Linear scan ticks before
-  issue selection. Ready, startable, program-owned mapped nodes can receive the
-  service queue label automatically; blocked, stale, paused, terminal,
-  attention-required, active, or conflict-held nodes stay unqueued. Human-owned or
-  ownership-unknown queue labels are preserved.
+- Persisted Execution Programs are evaluated by the Program scheduler before ordinary
+  queued-label issue selection. Ready, startable mapped nodes can be dispatched
+  directly with `program` dispatch mode; blocked, stale, paused, terminal,
+  attention-required, active, or conflict-held nodes stay held. Service queue labels
+  are not applied, removed, retained, or treated as Program ownership evidence.
 
 Decodex App is a native shell over the same local runtime and account-pool state. On
 launch it connects to an existing default local listener when one is reachable; if
@@ -96,7 +95,7 @@ decodex research promote <CONTRACT_ID>
 `research compile` writes a local Decision Contract candidate into runtime SQLite and
 returns a bounded outcome: `decision_ready`, `not_decision_ready`, `blocked`, or
 `needs_human_decision`. It may retain private evidence references, option comparisons,
-proposed issue summaries, conflict domains, and queue intent for later issue shaping,
+proposed issue summaries, conflict domains, and dispatch intent for later issue shaping,
 but it does not enqueue issues, mutate Linear state, set goals, or start lane
 execution. `research promote` records the accepted boundary for an existing contract;
 later issue generation or Execution Program readiness must consume the promoted
@@ -141,8 +140,8 @@ Linear issues labeled with its matching `decodex:queued:<service-id>` label. For
 example, a Decodex-only run intakes issues labeled `decodex:queued:decodex`; `rsnap`
 can stay enabled in the full project registry, and issues labeled `decodex:queued:rsnap`
 remain rsnap intake rather than Decodex intake. Operators may still enqueue normal
-issues manually, but program-owned queue labels are applied and removed by the runtime
-reconciler when persisted Execution Program readiness changes.
+issues manually with service-scoped queue labels, but persisted Execution Programs
+dispatch ready mapped nodes directly and do not mutate those labels.
 
 When `decodex run --dry-run` or the status output has no eligible intake candidate,
 the operator hint points to the short checklist: `Todo`, the service-scoped
@@ -201,7 +200,7 @@ pins all new runs to an exhausted fixed account.
 
 | Surface | Owns | Does Not Own |
 | --- | --- | --- |
-| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, Decision Contracts, Program Intake Plans, internal Execution Programs, program-owned queue-label evidence, worktree mappings, retry state, retained PR state, review-policy checkpoints with structured independent-review detail, loop-guardrail checkpoints, phase-goal signals, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
+| Runtime SQLite DB | active leases, attempts, run-control channels, protocol events, private execution events, Decision Contracts, Program Intake Plans, internal Execution Programs, dispatch readiness, worktree mappings, retry state, retained PR state, review-policy checkpoints with structured independent-review detail, loop-guardrail checkpoints, phase-goal signals, phase timing, connector backoff, project registry | human backlog grooming or durable team-visible issue history |
 | Central project config | `service_id`, repo root, worktree root, tracker/GitHub credential env-var names, enabled project registration | per-run state or issue ownership |
 | Project `WORKFLOW.md` | repo policy, validation gate, state names, retry/review policy | runtime ownership, queue labels, credentials, model overrides |
 | Linear | team-visible issue state, queue/active/manual-attention labels, coarse execution ledger comments, progress/failure/handoff/closeout summaries | high-frequency runtime truth, heartbeat, token pressure, raw attempts, private execution evidence, connector retry budgets |
@@ -264,8 +263,8 @@ observers.
 Operator JSON snapshots include `execution_programs[]` for Program Intake and
 Execution Program readback. Each program row carries public intake kind/summary,
 source contract id when present, the compact summary counts, mapped issue
-identifiers, queue-label action counts (`apply`, `retain`, `remove`), and sparse
-`node_readbacks[]` for queue decisions or nodes that need operator context. Dependency
+identifiers, dispatchable count, and sparse `node_readbacks[]` for direct dispatch
+decisions or nodes that need operator context. Dependency
 diagnostics use `dependency_not_terminal` with a next action to complete the
 dependency issue or refresh the Execution Program dependency plan when a stale
 dependency program is the real blocker.
@@ -311,7 +310,7 @@ protocol activity durable outside the local operator surface.
 | `Accounts` | Shared Codex account pool and usage table from `~/.codex/decodex/accounts.jsonl` when `[codex.accounts]` is enabled for a project. Account identity can be obscured from the `Account` column header eye without changing the underlying snapshot. The row weight column shows the capacity multiplier used for pool usage estimates: `pro` accounts count as `20x`, and all other plans count as `1x`. Usage probes read Codex `/wham/usage` for window capacity and `/wham/profiles/me` for profile token stats such as lifetime tokens, peak daily tokens, longest task, streaks, and daily token activity. Refresh authentication failures are persisted as `auth_failed` on the matching account, excluded from later selection, and surfaced with login recovery rather than retry-probe recovery. Selecting an account writes the global `[codex.accounts].fixed_account` selector in `~/.codex/decodex/config.toml`; clearing it returns all new account-pool runs to balanced account selection. Account display-name rerolls write `[codex.account_names.offsets]` in the same global config so Decodex App and the dashboard share the privacy-preserving names. Theme, sort, and identity-visibility preferences are client-local presentation state. The selector is global and does not pin a project to an account. |
 | `Projects` | Fleet-level project table. The section-level filter toggles between active project work and the full registry. Location is its own compact path column and can be obscured from the location header eye. `Activity` shows a relative timestamp or `-`; `Work` is `running/waiting/attention`. It should not duplicate per-lane details already shown below. |
 | `Running Lanes` | Active leased or live-executing issue lanes. A lane here is currently owned by this local control plane, or a live process/thread/protocol marker still explains active execution even when the queue lease is not held. It shows issue identity, phase, operation, attempt, queue lease state, execution liveness, thread/protocol status, child-agent activity when captured, phase-goal status when app-server reports it, timing, branch, and worktree. |
-| `Program Intake` | Read-only Program Intake and Execution Program progress. It shows each active program's public intake summary, status, mapped issue identifiers, summary counts, queue-label action counts, and sparse node diagnostics for queue decisions or held/blocked/stale/attention nodes. It does not expose graph editing, raw node-edge mutation controls, Decision Contract payloads, or private runtime evidence. |
+| `Program Intake` | Read-only Program Intake and Execution Program progress. It shows each active program's public intake summary, status, mapped issue identifiers, summary counts, dispatchable counts, and sparse node diagnostics for dispatch decisions or held/blocked/stale/attention nodes. It does not expose graph editing, raw node-edge mutation controls, Decision Contract payloads, or private runtime evidence. |
 | `Intake Queue` | Queued tracker issues before execution. Candidates are classified as `ready`, capacity-waiting, claimed without a matching local lane, blocked, or closed/stale. Repeated identical open dependency blockers surface as `dependency_program_stale` after the guardrail threshold so operators can distinguish a stale Execution Program/dependency plan from a newly blocked queue item. A blocked queued candidate can still show an attached `.worktrees/XY-*` path when the queue owns the attention state; if that worktree has tracked changes after stalled reconciliation, failure writeback, or retries, the candidate is partial retained progress and not just a generic stalled or retry-budget hold. Human-required authority stops expose their compact decision request fields here: `phase = human_required`, reason, boundary, `decision_request_id`, and `next_action`. When queued attention still maps to a run/attempt, it also carries the same compact loop status used by running lanes. Running lanes are not repeated as normal intake work. |
 | `Review & Landing` | Retained PR lanes after review handoff. This section owns post-review repair, wait-for-review, ready-to-land, closeout, cleanup, and blocked retained-lane visibility. Retained lanes expose compact loop status for their bound handoff run/attempt so operators can see review repair checkpoint state, architecture recovery stops, and boundary/human-required disposition without direct SQLite inspection. |
 | `Recovery Worktrees` | Retained local worktrees that are not currently owned by `Running Lanes`, `Review & Landing`, or queued attention in `Intake Queue`. This is the cleanup or recovery inbox for recovered paths, retained PR leftovers, and cleanup-only local worktrees. Empty is the normal healthy state. |

@@ -165,7 +165,7 @@ struct RepoGatePhaseGoalController<'a> {
 impl RepoGatePhaseGoalController<'_> {
 	fn initial_phase_goal_kind(&self) -> PhaseGoalKind {
 		match self.issue_run.dispatch_mode {
-			IssueDispatchMode::Normal | IssueDispatchMode::Retry =>
+			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::Retry =>
 				PhaseGoalKind::ImplementToValidationReady,
 			IssueDispatchMode::ReviewRepair => PhaseGoalKind::RepairAcceptedReviewFindings,
 			IssueDispatchMode::Closeout => PhaseGoalKind::HandoffEvidence,
@@ -2170,7 +2170,7 @@ fn planned_issue_state_for_dispatch(
 	preferred_issue_state: Option<&str>,
 ) -> String {
 	match dispatch_mode {
-		IssueDispatchMode::Normal =>
+		IssueDispatchMode::Normal | IssueDispatchMode::Program =>
 			workflow.frontmatter().tracker().in_progress_state().to_owned(),
 		IssueDispatchMode::Retry => preferred_issue_state
 			.filter(|state| {

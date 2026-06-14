@@ -1,5 +1,6 @@
 use crate::execution_program::{
 	ExecutionDependencySnapshot, ExecutionLinearIssueMapping, ExecutionProgram,
+	ExecutionReadinessState,
 };
 use crate::execution_program::ExecutionConflictDomain;
 
@@ -13,8 +14,6 @@ struct RefreshedExecutionProgram {
 #[derive(Clone)]
 struct ProgramIssueSnapshot {
 	issue: TrackerIssue,
-	has_queue_label: bool,
-	queue_label_owned_by_current_program: bool,
 	has_active_label: bool,
 	has_opt_out_label: bool,
 	has_needs_attention_label: bool,
@@ -22,25 +21,13 @@ struct ProgramIssueSnapshot {
 	has_generic_dispatch_briefing: bool,
 }
 impl ProgramIssueSnapshot {
-	fn linear_mapping(
-		&self,
-		has_queue_label: bool,
-		queue_label_program_owned: bool,
-	) -> Result<ExecutionLinearIssueMapping> {
-		let mut mapping = ExecutionLinearIssueMapping::new(
+	fn linear_mapping(&self) -> Result<ExecutionLinearIssueMapping> {
+		Ok(ExecutionLinearIssueMapping::new(
 			&self.issue.id,
 			&self.issue.identifier,
 			&self.issue.state.name,
-		)?;
-
-		mapping = if queue_label_program_owned {
-			mapping.with_program_owned_queue_label(true)
-		} else {
-			mapping.with_queue_label(has_queue_label)
-		};
-
-		Ok(mapping
-			.with_active_label(self.has_active_label)
+		)?
+		.with_active_label(self.has_active_label)
 			.with_opt_out_label(self.has_opt_out_label)
 			.with_needs_attention_label(self.has_needs_attention_label)
 			.with_open_tracker_blockers(self.has_open_tracker_blockers)
@@ -55,45 +42,70 @@ where
 	tracker: &'a T,
 	service_id: &'a str,
 	workflow: &'a WorkflowDocument,
-	state_store: &'a StateStore,
-	queue_label: &'a str,
-	record: &'a ExecutionProgramRecord,
-	node_id: &'a str,
 	issue: &'a TrackerIssue,
 }
 
 #[derive(Default)]
-struct ProgramReconciliationSummary {
+struct ProgramSchedulerSummary {
 	programs_evaluated: usize,
 	programs_updated: usize,
-	labels_applied: usize,
-	labels_removed: usize,
-	labels_retained: usize,
-}
-impl ProgramReconciliationSummary {
-	fn label_mutation_count(&self) -> usize {
-		self.labels_applied + self.labels_removed
-	}
+	dispatchable_nodes: usize,
 }
 
-struct ProgramQueueLabelState {
-	has_queue_label: bool,
-	program_owned: bool,
+struct ProgramSchedulerSelection {
+	selected: Option<SelectedIssueRunCandidate>,
+	summary: ProgramSchedulerSummary,
 }
 
-fn reconcile_execution_program_queue_labels<T>(
+fn select_execution_program_run_candidate<T>(
 	tracker: &T,
 	project: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
-) -> Result<ProgramReconciliationSummary>
+	excluded_issue_ids: &[&str],
+) -> Result<Option<SelectedIssueRunCandidate>>
+where
+	T: IssueTracker + ?Sized,
+{
+	let ProgramSchedulerSelection { selected, summary } =
+		select_execution_program_run_candidate_with_summary(
+			tracker,
+			project,
+			workflow,
+			state_store,
+			excluded_issue_ids,
+		)?;
+
+	if summary.dispatchable_nodes > 0 || summary.programs_updated > 0 {
+		tracing::info!(
+			project_id = project.service_id(),
+			programs_evaluated = summary.programs_evaluated,
+			programs_updated = summary.programs_updated,
+			dispatchable_nodes = summary.dispatchable_nodes,
+			"Evaluated Execution Programs for direct graph dispatch."
+		);
+	}
+
+	Ok(selected)
+}
+
+fn select_execution_program_run_candidate_with_summary<T>(
+	tracker: &T,
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	excluded_issue_ids: &[&str],
+) -> Result<ProgramSchedulerSelection>
 where
 	T: IssueTracker + ?Sized,
 {
 	let records = state_store.list_execution_programs(project.service_id())?;
 
 	if records.is_empty() {
-		return Ok(ProgramReconciliationSummary::default());
+		return Ok(ProgramSchedulerSelection {
+			selected: None,
+			summary: ProgramSchedulerSummary::default(),
+		});
 	}
 
 	let policy = ExecutionWorkflowPolicy::from_workflow(project.service_id(), workflow)?;
@@ -105,8 +117,6 @@ where
 				tracker,
 				project.service_id(),
 				workflow,
-				state_store,
-				&policy,
 				record,
 				&refreshed_issues,
 			)
@@ -118,7 +128,8 @@ where
 		state_store,
 		&refreshed_programs,
 	)?;
-	let mut summary = ProgramReconciliationSummary::default();
+	let mut summary = ProgramSchedulerSummary::default();
+	let mut candidates = Vec::new();
 
 	for refreshed in refreshed_programs {
 		let evaluation = if let Some(source_contract_id) = refreshed.record.source_contract_id() {
@@ -135,24 +146,44 @@ where
 
 		summary.programs_evaluated += 1;
 
-		let final_program = apply_execution_program_queue_actions(
-			tracker,
-			project.service_id(),
-			policy.queue_label(),
-			refreshed.program,
-			&refreshed.issues_by_node,
-			evaluation.nodes(),
-			&mut summary,
-		)?;
+		for node in evaluation.nodes() {
+			if node.state() != ExecutionReadinessState::Ready {
+				continue;
+			}
 
-		if final_program != *refreshed.record.program() {
-			state_store.upsert_execution_program(project.service_id(), final_program)?;
+			let Some(mapping) = node.linear_issue() else {
+				continue;
+			};
+
+			if excluded_issue_ids.contains(&mapping.issue_id()) {
+				continue;
+			}
+
+			let Some(snapshot) = refreshed.issues_by_node.get(node.node_id()) else {
+				continue;
+			};
+
+			summary.dispatchable_nodes += 1;
+
+			candidates.push(snapshot.issue.clone());
+		}
+
+		if refreshed.program != *refreshed.record.program() {
+			state_store.upsert_execution_program(project.service_id(), refreshed.program)?;
 
 			summary.programs_updated += 1;
 		}
 	}
 
-	Ok(summary)
+	candidates.sort_by(compare_issue_candidates);
+
+	Ok(ProgramSchedulerSelection {
+		selected: candidates
+			.into_iter()
+			.next()
+			.map(|issue| SelectedIssueRunCandidate::new(issue, IssueDispatchMode::Program)),
+		summary,
+	})
 }
 
 fn refresh_execution_program_issues<T>(
@@ -185,8 +216,6 @@ fn refresh_execution_program_tracker_facts<T>(
 	tracker: &T,
 	service_id: &str,
 	workflow: &WorkflowDocument,
-	state_store: &StateStore,
-	policy: &ExecutionWorkflowPolicy,
 	record: ExecutionProgramRecord,
 	refreshed_issues: &std::collections::BTreeMap<String, TrackerIssue>,
 ) -> Result<RefreshedExecutionProgram>
@@ -211,14 +240,9 @@ where
 			tracker,
 			service_id,
 			workflow,
-			state_store,
-			queue_label: policy.queue_label(),
-			record: &record,
-			node_id: node.node_id(),
 			issue,
 		})?;
-		let mapping =
-			snapshot.linear_mapping(snapshot.has_queue_label, snapshot.queue_label_owned_by_current_program)?;
+		let mapping = snapshot.linear_mapping()?;
 
 		refreshed_nodes.push(node.clone().with_linear_issue(mapping)?);
 		issues_by_node.insert(node.node_id().to_owned(), snapshot);
@@ -237,29 +261,9 @@ where
 		tracker,
 		service_id,
 		workflow,
-		state_store,
-		queue_label,
-		record,
-		node_id,
 		issue,
 	} = input;
 	let tracker_policy = workflow.frontmatter().tracker();
-	let has_queue_label =
-		tracker::issue_has_label_with_server_confirmation(tracker, issue, queue_label)?;
-	let ownership = state_store.program_queue_label_ownership_for_issue(
-		service_id,
-		&issue.id,
-		queue_label,
-	)?;
-	let queue_label_owned_by_current_program = has_queue_label
-		&& ownership.iter().any(|recorded| {
-			recorded.service_id() == service_id
-				&& recorded.program_id() == record.program_id()
-				&& recorded.node_id() == node_id
-				&& recorded.issue_id() == issue.id
-				&& recorded.issue_identifier() == issue.identifier
-				&& recorded.label_name() == queue_label
-		});
 	let has_active_label = tracker::issue_has_label_with_server_confirmation(
 		tracker,
 		issue,
@@ -277,8 +281,6 @@ where
 
 	Ok(ProgramIssueSnapshot {
 		issue: issue.clone(),
-		has_queue_label,
-		queue_label_owned_by_current_program,
 		has_active_label,
 		has_opt_out_label,
 		has_needs_attention_label,
@@ -404,98 +406,4 @@ fn program_issue_occupies_conflict_domain(
 		|| snapshot.has_needs_attention_label
 		|| retained_nonterminal
 		|| state_store.issue_has_active_shared_claim(service_id, &issue.id)?)
-}
-
-fn apply_execution_program_queue_actions<T>(
-	tracker: &T,
-	service_id: &str,
-	queue_label: &str,
-	program: ExecutionProgram,
-	issues_by_node: &std::collections::BTreeMap<String, ProgramIssueSnapshot>,
-	evaluations: &[ExecutionNodeEvaluation],
-	summary: &mut ProgramReconciliationSummary,
-) -> Result<ExecutionProgram>
-where
-	T: IssueTracker + ?Sized,
-{
-	let evaluations_by_node = evaluations
-		.iter()
-		.map(|evaluation| (evaluation.node_id().to_owned(), evaluation))
-		.collect::<std::collections::BTreeMap<_, _>>();
-	let mut final_nodes = Vec::with_capacity(program.nodes().len());
-
-	for node in program.nodes() {
-		let (Some(snapshot), Some(evaluation)) = (
-			issues_by_node.get(node.node_id()),
-			evaluations_by_node.get(node.node_id()),
-		) else {
-			final_nodes.push(node.clone());
-
-			continue;
-		};
-		let label_state = apply_execution_program_node_queue_action(
-			tracker,
-			service_id,
-			queue_label,
-			snapshot,
-			evaluation.queue_label_action(),
-			summary,
-		)?;
-		let mapping =
-			snapshot.linear_mapping(label_state.has_queue_label, label_state.program_owned)?;
-
-		final_nodes.push(node.clone().with_linear_issue(mapping)?);
-	}
-
-	program.with_nodes(final_nodes)
-}
-
-fn apply_execution_program_node_queue_action<T>(
-	tracker: &T,
-	service_id: &str,
-	queue_label: &str,
-	snapshot: &ProgramIssueSnapshot,
-	action: Option<ExecutionQueueLabelAction>,
-	summary: &mut ProgramReconciliationSummary,
-) -> Result<ProgramQueueLabelState>
-where
-	T: IssueTracker + ?Sized,
-{
-	match action {
-		Some(ExecutionQueueLabelAction::Apply) => {
-			if tracker::set_issue_label_presence(tracker, &snapshot.issue, queue_label, true)? {
-				summary.labels_applied += 1;
-			}
-
-			Ok(ProgramQueueLabelState { has_queue_label: true, program_owned: true })
-		},
-		Some(ExecutionQueueLabelAction::Retain) => {
-			summary.labels_retained += 1;
-
-			Ok(ProgramQueueLabelState { has_queue_label: true, program_owned: true })
-		},
-		Some(ExecutionQueueLabelAction::Remove) => {
-			if snapshot.queue_label_owned_by_current_program
-				&& tracker::set_issue_label_presence(tracker, &snapshot.issue, queue_label, false)?
-			{
-				summary.labels_removed += 1;
-			}
-
-			Ok(ProgramQueueLabelState { has_queue_label: false, program_owned: false })
-		},
-		None => {
-			if snapshot.has_queue_label && snapshot.queue_label_owned_by_current_program {
-				tracing::debug!(
-					project_id = service_id,
-					issue = snapshot.issue.identifier,
-					"Retained program-owned queue label without a readiness action."
-				);
-			}
-
-			Ok(ProgramQueueLabelState {
-				has_queue_label: snapshot.has_queue_label,
-				program_owned: snapshot.queue_label_owned_by_current_program,
-			})
-		},
-	}
 }

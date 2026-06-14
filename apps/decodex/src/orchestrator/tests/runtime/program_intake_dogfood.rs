@@ -9,7 +9,7 @@ use crate::{
 	program_intake::{self, GoalIntakeRunRequest},
 	state::StateStore,
 	tracker::{
-		self, IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker,
+		IssueTracker, TrackerComment, TrackerIssue, TrackerIssueBlocker,
 		TrackerIssueBriefUpdate, TrackerIssueCreate, TrackerLabel, TrackerState, TrackerTeam,
 	},
 	workflow::WorkflowDocument,
@@ -203,10 +203,9 @@ impl DogfoodTracker {
 }
 
 #[test]
-fn issue_batch_intake_apply_reconcile_unlock_and_status_readback_is_end_to_end() {
+fn issue_batch_intake_apply_direct_dispatch_unlock_and_status_readback_is_end_to_end() {
 	let (_temp_dir, config, workflow) = super::temp_project_layout();
 	let store = StateStore::open_in_memory().expect("state store should open");
-	let queue_label = tracker::automation_queue_label(config.service_id());
 	let dependency_todo = dogfood_issue(config.service_id(), "issue-dependency", "PUB-942A", "Todo", &[]);
 	let dependent_todo = with_blocker(
 		dogfood_issue(config.service_id(), "issue-dependent", "PUB-942B", "Todo", &[]),
@@ -253,10 +252,10 @@ fn issue_batch_intake_apply_reconcile_unlock_and_status_readback_is_end_to_end()
 		2
 	);
 
-	assert_initial_issue_batch_scan(&tracker, &config, &workflow, &store, &dependency_todo);
+	assert_initial_issue_batch_dispatch(&tracker, &config, &workflow, &store, &dependency_todo);
 
 	let mut dependency_done =
-		dogfood_issue(config.service_id(), "issue-dependency", "PUB-942A", "Done", &[queue_label.as_str()]);
+		dogfood_issue(config.service_id(), "issue-dependency", "PUB-942A", "Done", &[]);
 
 	dependency_done.id.clone_from(&dependency_todo.id);
 	tracker.upsert_issue(dependency_done);
@@ -270,25 +269,33 @@ fn issue_batch_intake_apply_reconcile_unlock_and_status_readback_is_end_to_end()
 	dependent_unblocked.id.clone_from(&dependent_todo.id);
 	tracker.upsert_issue(dependent_unblocked);
 
-	assert_unlocked_issue_batch_scan(&tracker, &config, &workflow, &store, &dependency_todo, &dependent_todo);
+	assert_unlocked_issue_batch_dispatch(&tracker, &config, &workflow, &store, &dependent_todo);
 }
 
-fn assert_initial_issue_batch_scan(
+fn assert_initial_issue_batch_dispatch(
 	tracker: &DogfoodTracker,
 	config: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	store: &StateStore,
 	dependency_todo: &TrackerIssue,
 ) {
-	let first_scan =
-		orchestrator::reconcile_execution_program_queue_labels(tracker, config, workflow, store)
-			.expect("first program reconciliation should queue only the ready node");
+	let first_selection = orchestrator::select_execution_program_run_candidate_with_summary(
+		tracker,
+		config,
+		workflow,
+		store,
+		&[],
+	)
+	.expect("first program scheduler selection should choose only the ready node");
+	let selected = first_selection
+		.selected
+		.expect("ready dependency node should be selected for direct dispatch");
 
-	assert_eq!(first_scan.labels_applied, 1);
-	assert_eq!(
-		tracker.label_additions(),
-		vec![(dependency_todo.id.clone(), vec![String::from("label-queued")])]
-	);
+	assert_eq!(first_selection.summary.dispatchable_nodes, 1);
+	assert_eq!(selected.issue.id, dependency_todo.id);
+	assert_eq!(selected.dispatch_mode, orchestrator::IssueDispatchMode::Program);
+	assert!(tracker.label_additions().is_empty());
+	assert!(tracker.label_removals().is_empty());
 
 	let first_snapshot =
 		orchestrator::build_live_operator_status_snapshot(tracker, config, workflow, store, 10)
@@ -298,7 +305,8 @@ fn assert_initial_issue_batch_scan(
 
 	assert_eq!(first_program.status, "blocked");
 	assert_eq!(first_program.intake_kind.as_deref(), Some("issue_batch_intake"));
-	assert_eq!(first_program.queued_count, 1);
+	assert_eq!(first_program.ready_count, 1);
+	assert_eq!(first_program.queued_count, 0);
 	assert_eq!(first_program.blocked_count, 1);
 	assert!(
 		first_program
@@ -308,28 +316,30 @@ fn assert_initial_issue_batch_scan(
 	);
 }
 
-fn assert_unlocked_issue_batch_scan(
+fn assert_unlocked_issue_batch_dispatch(
 	tracker: &DogfoodTracker,
 	config: &ServiceConfig,
 	workflow: &WorkflowDocument,
 	store: &StateStore,
-	dependency_todo: &TrackerIssue,
 	dependent_todo: &TrackerIssue,
 ) {
-	let second_scan =
-		orchestrator::reconcile_execution_program_queue_labels(tracker, config, workflow, store)
-			.expect("second program reconciliation should unlock the downstream node");
+	let second_selection = orchestrator::select_execution_program_run_candidate_with_summary(
+		tracker,
+		config,
+		workflow,
+		store,
+		&[],
+	)
+	.expect("second program scheduler selection should unlock the downstream node");
+	let selected = second_selection
+		.selected
+		.expect("dependent node should be selected for direct dispatch");
 
-	assert_eq!(second_scan.labels_applied, 1);
-	assert_eq!(second_scan.labels_removed, 1);
-	assert!(tracker.label_additions().contains(&(
-		dependent_todo.id.clone(),
-		vec![String::from("label-queued")]
-	)));
-	assert_eq!(
-		tracker.label_removals(),
-		vec![(dependency_todo.id.clone(), vec![String::from("label-queued")])]
-	);
+	assert_eq!(second_selection.summary.dispatchable_nodes, 1);
+	assert_eq!(selected.issue.id, dependent_todo.id);
+	assert_eq!(selected.dispatch_mode, orchestrator::IssueDispatchMode::Program);
+	assert!(tracker.label_additions().is_empty());
+	assert!(tracker.label_removals().is_empty());
 
 	let second_snapshot =
 		orchestrator::build_live_operator_status_snapshot(tracker, config, workflow, store, 10)
@@ -338,9 +348,10 @@ fn assert_unlocked_issue_batch_scan(
 		second_snapshot.execution_programs.first().expect("program status should remain visible");
 	let rendered_status = orchestrator::render_operator_status(&second_snapshot);
 
-	assert_eq!(second_program.status, "queued", "{rendered_status}");
+	assert_eq!(second_program.status, "ready", "{rendered_status}");
 	assert_eq!(second_program.completed_count, 1);
-	assert_eq!(second_program.queued_count, 1);
+	assert_eq!(second_program.ready_count, 1);
+	assert_eq!(second_program.queued_count, 0);
 	assert_eq!(second_program.blocked_count, 0);
 	assert!(rendered_status.contains("Execution Programs"));
 	assert!(rendered_status.contains("mapped_issues=PUB-942A, PUB-942B"));
@@ -348,7 +359,7 @@ fn assert_unlocked_issue_batch_scan(
 }
 
 #[test]
-fn goal_intake_rejects_latent_then_apply_reconcile_and_status_readback_is_end_to_end() {
+fn goal_intake_rejects_latent_then_apply_direct_dispatch_and_status_readback_is_end_to_end() {
 	let (_temp_dir, config, workflow) = super::temp_project_layout();
 	let store = StateStore::open_in_memory().expect("state store should open");
 	let source_issue = dogfood_issue(config.service_id(), "issue-source", "PUB-940A", "Todo", &[]);
@@ -409,11 +420,22 @@ fn goal_intake_rejects_latent_then_apply_reconcile_and_status_readback_is_end_to
 	assert_eq!(apply_report.issues.len(), 2);
 	assert!(tracker.label_additions().is_empty());
 
-	let scan =
-		orchestrator::reconcile_execution_program_queue_labels(&tracker, &config, &workflow, &store)
-			.expect("goal-intake program reconciliation should queue generated ready nodes");
+	let selection = orchestrator::select_execution_program_run_candidate_with_summary(
+		&tracker,
+		&config,
+		&workflow,
+		&store,
+		&[],
+	)
+	.expect("goal-intake program scheduler selection should find generated ready nodes");
+	let selected = selection
+		.selected
+		.expect("one generated issue should be selected for direct dispatch");
 
-	assert_eq!(scan.labels_applied, 2);
+	assert_eq!(selection.summary.dispatchable_nodes, 2);
+	assert_eq!(selected.dispatch_mode, orchestrator::IssueDispatchMode::Program);
+	assert!(tracker.label_additions().is_empty());
+	assert!(tracker.label_removals().is_empty());
 
 	let snapshot =
 		orchestrator::build_live_operator_status_snapshot(&tracker, &config, &workflow, &store, 10)
@@ -421,15 +443,15 @@ fn goal_intake_rejects_latent_then_apply_reconcile_and_status_readback_is_end_to
 	let program = snapshot.execution_programs.first().expect("goal program should surface");
 	let rendered_status = orchestrator::render_operator_status(&snapshot);
 
-	assert_eq!(program.status, "queued");
+	assert_eq!(program.status, "ready");
 	assert_eq!(program.source_contract_id.as_deref(), Some(accepted.contract_id()));
 	assert_eq!(program.intake_kind.as_deref(), Some("goal_intake"));
 	assert_eq!(
 		program.public_summary.as_deref(),
 		Some("Dogfood accepted goal intake through generated issues.")
 	);
-	assert_eq!(program.queued_count, 2);
-	assert_eq!(program.queue_label_retain_count, 2);
+	assert_eq!(program.ready_count, 2);
+	assert_eq!(program.queued_count, 0);
 	assert!(rendered_status.contains("source_contract_id: dogfood-goal-contract"));
 	assert!(!rendered_status.contains("private_evidence"));
 	assert!(!rendered_status.contains("research_evidence"));
