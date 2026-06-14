@@ -69,6 +69,73 @@ fn operator_status_history_limit_applies_after_active_runs_are_split_out() {
 	);
 }
 
+fn history_lane_child_activity(
+	wall_seconds: i64,
+	event_count: i64,
+	tool_call_count: i64,
+	input_tokens: i64,
+	output_tokens: i64,
+) -> ChildAgentActivitySummary {
+	ChildAgentActivitySummary {
+		buckets: vec![state::ChildAgentActivityBucket {
+			name: String::from("Model"),
+			wall_seconds,
+			event_count,
+			tool_call_count,
+			input_tokens,
+			output_tokens,
+			output_bytes: 0,
+		}],
+		wall_seconds,
+		event_count,
+		tool_call_count,
+		input_tokens_cumulative: input_tokens,
+		output_tokens_cumulative: output_tokens,
+		..ChildAgentActivitySummary::default()
+	}
+}
+
+fn seed_grouped_history_lane_lifecycle_metrics(state_store: &StateStore, issue_id: &str) {
+	let first_activity = history_lane_child_activity(10, 2, 1, 100, 30);
+	let second_activity = history_lane_child_activity(20, 3, 4, 200, 40);
+
+	state_store
+		.record_run_activity_summary(
+			"xy-323-attempt-1-1777361523",
+			1,
+			Some(&first_activity),
+			None,
+		)
+		.expect("first activity summary should record");
+	state_store
+		.record_run_activity_summary(
+			"xy-323-attempt-2-1777361550",
+			2,
+			Some(&second_activity),
+			None,
+		)
+		.expect("second activity summary should record");
+	state_store
+		.append_event("xy-323-attempt-2-1777361550", 1, "turn/started", "{}")
+		.expect("second protocol event should record");
+	state_store
+		.append_event("xy-323-attempt-2-1777361550", 2, "turn/completed", "{}")
+		.expect("third protocol event should record");
+	state_store
+		.upsert_review_policy_checkpoint(ReviewPolicyCheckpointInput {
+			project_id: TEST_SERVICE_ID,
+			issue_id,
+			run_id: "xy-323-attempt-2-1777361550",
+			attempt_number: 2,
+			phase: "handoff",
+			status: "clean",
+			head_sha: "2222222222222222222222222222222222222222",
+			nonclean_rounds: 0,
+			details_json: "{}",
+		})
+		.expect("second attempt review checkpoint should record");
+}
+
 #[test]
 fn operator_status_history_lanes_group_attempts_by_issue() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
@@ -116,6 +183,8 @@ fn operator_status_history_lanes_group_attempts_by_issue() {
 		)
 		.expect("second issue worktree should record");
 
+	seed_grouped_history_lane_lifecycle_metrics(&state_store, &first_issue.id);
+
 	let snapshot = orchestrator::build_operator_status_snapshot(&config, &state_store, 10)
 		.expect("snapshot should build");
 	let rendered = orchestrator::render_operator_status(&snapshot);
@@ -129,10 +198,57 @@ fn operator_status_history_lanes_group_attempts_by_issue() {
 	assert_eq!(snapshot.history_lanes.len(), 2);
 	assert_eq!(grouped_lane.attempt_count, 2);
 	assert_eq!(grouped_lane.latest_run.run_id, "xy-323-attempt-2-1777361550");
+	assert_eq!(grouped_lane.lifecycle_metrics.attempt_count, 2);
+	assert_eq!(grouped_lane.lifecycle_metrics.captured_attempt_count, 2);
+	assert_eq!(grouped_lane.lifecycle_metrics.missing_attempt_count, 0);
+	assert_eq!(grouped_lane.lifecycle_metrics.protocol_event_count, 2);
+	assert_eq!(grouped_lane.lifecycle_metrics.child_event_count, 5);
+	assert_eq!(grouped_lane.lifecycle_metrics.wall_seconds, 30);
+	assert_eq!(grouped_lane.lifecycle_metrics.tool_call_count, 5);
+	assert_eq!(grouped_lane.lifecycle_metrics.input_tokens_cumulative, 300);
+	assert_eq!(grouped_lane.lifecycle_metrics.output_tokens_cumulative, 70);
+	assert_eq!(grouped_lane.lifecycle_metrics.buckets[0].name, "Model");
+	assert_eq!(grouped_lane.lifecycle_metrics.buckets[0].wall_seconds, 30);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases.len(), 2);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].phase, "development");
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].label, "Development");
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].attempt_count, 1);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].captured_attempt_count, 1);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].protocol_event_count, 0);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].child_event_count, 2);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].wall_seconds, 10);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[0].tool_call_count, 1);
+	assert_eq!(
+		grouped_lane.lifecycle_metrics.phases[0].input_tokens_cumulative,
+		100
+	);
+	assert_eq!(
+		grouped_lane.lifecycle_metrics.phases[0].output_tokens_cumulative,
+		30
+	);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].phase, "review");
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].label, "Review");
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].attempt_count, 1);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].captured_attempt_count, 1);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].protocol_event_count, 2);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].child_event_count, 3);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].wall_seconds, 20);
+	assert_eq!(grouped_lane.lifecycle_metrics.phases[1].tool_call_count, 4);
+	assert_eq!(
+		grouped_lane.lifecycle_metrics.phases[1].input_tokens_cumulative,
+		200
+	);
+	assert_eq!(
+		grouped_lane.lifecycle_metrics.phases[1].output_tokens_cumulative,
+		40
+	);
 	assert!(rendered.contains("Run ledger shown: 2 issue lanes from 3 history attempts"));
 	assert!(rendered.contains("issue: XY-323"));
 	assert!(rendered.contains("attempts: 2"));
-	assert!(rendered.contains("attempt_timeline"));
+	assert!(rendered.contains("lifecycle_metrics: attempts=2; captured=2/2; missing=0; protocol_events=2"));
+	assert!(rendered.contains("phase_breakdown"));
+	assert!(rendered.contains("phase: development label: Development attempts: 1"));
+	assert!(rendered.contains("phase: review label: Review attempts: 1"));
 }
 
 #[test]
@@ -312,8 +428,9 @@ fn live_operator_history_lanes_prefer_linear_ledger_outcome() {
 	assert!(rendered.contains("commit_sha: 2222222222222222222222222222222222222222"));
 	assert!(rendered.contains("closeout_status: Done"));
 	assert!(rendered.contains("lifecycle_elapsed_seconds: 600"));
-	assert!(rendered.contains("attempt_timeline"));
-	assert!(rendered.contains("status: failed"));
+	assert!(rendered.contains("local_attempts: 2"));
+	assert!(rendered.contains("phase_breakdown"));
+	assert!(rendered.contains("phase: development label: Development attempts: 2"));
 	assert!(!rendered.contains("pr_url: none"));
 	assert_eq!(
 		snapshot_json["history_lanes"][0]["latest_run"]["status"],

@@ -16,7 +16,7 @@ use std::{
 };
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 

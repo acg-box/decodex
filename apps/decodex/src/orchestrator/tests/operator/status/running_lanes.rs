@@ -1995,6 +1995,11 @@ fn operator_status_snapshot_rolls_current_child_bucket_elapsed_time_into_bucket(
 
 	assert_eq!(run.wait_reason.as_deref(), Some("tool_execution"));
 	assert_eq!(protocol_activity.waiting_reason.as_deref(), Some("tool_execution"));
+	assert_eq!(run.lifecycle_metrics.attempt_count, 1);
+	assert_eq!(run.lifecycle_metrics.captured_attempt_count, 1);
+	assert_eq!(run.lifecycle_metrics.tool_call_count, 1);
+	assert_eq!(run.lifecycle_metrics.phases.len(), 1);
+	assert_eq!(run.lifecycle_metrics.phases[0].phase, "review");
 	assert!(activity.current_elapsed_seconds.is_some_and(|elapsed| elapsed >= 90));
 	assert!(
 		tracker_bucket.wall_seconds >= 90,
