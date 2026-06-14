@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Decodex",
     "shortDescription": "Use Decodex for research/design intake, planning, manual CLI work, or retained-lane automation.",
-    "longDescription": "Routes Codex agents through Decodex natural-language-first research/design intake, such as \"research X\", which produces latent Decision Contracts before execution. Follow-ups such as \"arrange this\" or \"推进\" can promote accepted work into planning that queues only ready nodes, while graph, DAG, goal, and queue mechanics backstage remain hidden from ordinary users.",
+    "longDescription": "Routes Codex agents through Decodex natural-language-first research/design intake, such as \"research X\", which produces latent Decision Contracts before execution. Follow-ups such as \"arrange this\" or \"推进\" can promote accepted work into planning and Program Intake where ready mapped nodes dispatch directly, while graph, DAG, goal, and dispatch mechanics backstage remain hidden from ordinary users.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
