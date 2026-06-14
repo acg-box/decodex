@@ -1249,14 +1249,13 @@ where
 		reconcile_post_review_orchestration(tracker, project, workflow, state_store)?;
 	}
 
-	let issues = queued_issues_for_dispatch(tracker, project, workflow, dry_run)?;
 	let Some(selected_issue) = select_project_issue_run_candidate(
 		tracker,
 		project,
 		workflow,
 		state_store,
 		recovered_state,
-		issues,
+		dry_run,
 		excluded_issue_ids,
 	)? else {
 		return Ok(None);
@@ -1340,7 +1339,7 @@ fn select_project_issue_run_candidate<T>(
 	workflow: &WorkflowDocument,
 	state_store: &StateStore,
 	recovered_state: RecoveredRuntimeState,
-	issues: Vec<TrackerIssue>,
+	dry_run: bool,
 	excluded_issue_ids: &[&str],
 ) -> Result<Option<SelectedIssueRunCandidate>>
 where
@@ -1359,6 +1358,13 @@ where
 	if let Some(candidate) = selected_retry_issue.or(selected_post_review_issue) {
 		return Ok(Some(candidate));
 	}
+	if let Some(candidate) =
+		select_execution_program_run_candidate(tracker, project, workflow, state_store, excluded_issue_ids)?
+	{
+		return Ok(Some(candidate));
+	}
+
+	let issues = queued_issues_for_dispatch(tracker, project, workflow, dry_run)?;
 
 	Ok(select_issue_candidate_with_exclusions(
 		tracker,
@@ -2572,7 +2578,7 @@ where
 		|| summary.continuation_pending
 		|| !matches!(
 			summary.dispatch_mode,
-			IssueDispatchMode::Normal | IssueDispatchMode::ReviewRepair
+			IssueDispatchMode::Normal | IssueDispatchMode::Program | IssueDispatchMode::ReviewRepair
 		)
 	{
 		return Ok(None);

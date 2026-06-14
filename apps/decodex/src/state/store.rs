@@ -370,13 +370,6 @@ impl StateStore {
 		{
 			record.issue_id = canonical_issue_id.to_owned();
 		}
-		for record in state
-			.program_queue_label_ownership
-			.values_mut()
-			.filter(|record| record.issue_id == previous_issue_id)
-		{
-			record.issue_id = canonical_issue_id.to_owned();
-		}
 
 		self.retarget_issue_identity_locked(previous_issue_id, canonical_issue_id)
 	}
@@ -2160,45 +2153,6 @@ impl StateStore {
 			.collect::<Vec<_>>();
 
 		records.sort_by(compare_program_issue_mapping_records);
-
-		Ok(records)
-	}
-
-	/// Read program-owned queue-label evidence for one mapped issue and label.
-	#[allow(dead_code)]
-	pub(crate) fn program_queue_label_ownership_for_issue(
-		&self,
-		project_id: &str,
-		issue_id: &str,
-		label_name: &str,
-	) -> Result<Vec<ProgramQueueLabelOwnershipRecord>> {
-		validate_required_execution_program_field("project_id", project_id)?;
-		validate_required_execution_program_field("issue_id", issue_id)?;
-		validate_required_execution_program_field("label_name", label_name)?;
-
-		if let Some(sqlite) = &self.sqlite {
-			let sqlite = sqlite.lock().map_err(|_| eyre::eyre!("State store lock poisoned."))?;
-
-			return sqlite.program_queue_label_ownership_for_issue(
-				project_id,
-				issue_id,
-				label_name,
-			);
-		}
-
-		let state = self.lock()?;
-		let mut records = state
-			.program_queue_label_ownership
-			.values()
-			.filter(|record| {
-				record.project_id == project_id
-					&& record.issue_id == issue_id
-					&& record.label_name == label_name
-			})
-			.cloned()
-			.collect::<Vec<_>>();
-
-		records.sort_by(compare_program_queue_label_ownership_records);
 
 		Ok(records)
 	}

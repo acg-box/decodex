@@ -56,10 +56,9 @@ fn operator_dashboard_surfaces_program_intake_panel() {
 	assert!(response.contains("programsMeta: document.getElementById(\"programs-meta\")"));
 	assert!(response.contains("function renderExecutionPrograms(snapshot, derived)"));
 	assert!(response.contains("function renderProgramNodeReadbacks(program)"));
-	assert!(response.contains("function programQueueActionSummary(program)"));
 	assert!(response.contains("program.node_readbacks ?? []"));
-	assert!(response.contains("program.queue_label_apply_count"));
-	assert!(response.contains("program.queue_label_remove_count"));
+	assert!(response.contains("program.dispatchable_count"));
+	assert!(response.contains("node.dispatch_action"));
 	assert!(response.contains("renderExecutionPrograms(snapshot, derived);"));
 	assert!(response.contains("primary: [\"accountPool\", \"projects\", \"active\", \"programs\", \"queue\", \"review\", \"worktrees\", \"recent\"]"));
 	assert!(response.contains("{ marker: \"execution\", panels: [\"active\", \"programs\", \"queue\"] }"));

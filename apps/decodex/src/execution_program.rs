@@ -216,15 +216,15 @@ impl ExecutionProgramNodeStage {
 	}
 }
 
-/// Queue intent for one internal Execution Program node.
+/// Dispatch intent for one internal Execution Program node.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ExecutionQueueIntent {
-	/// The node is intentionally not ready for queueing.
+	/// The node is intentionally not ready for dispatch.
 	NotReady,
-	/// The node is ready to receive the service queue label once mapped to a startable issue.
+	/// The node is ready for direct dispatch once mapped to a startable issue.
 	ReadyToQueue,
-	/// The node should retain the service queue label while it remains startable.
+	/// The node is retained in a ready-to-dispatch position.
 	Queued,
 	/// The node is already active in a lane.
 	Active,
@@ -236,7 +236,7 @@ pub(crate) enum ExecutionQueueIntent {
 	Canceled,
 }
 impl ExecutionQueueIntent {
-	/// Stable machine-readable queue-intent name.
+	/// Stable machine-readable dispatch-intent name.
 	pub(crate) fn as_str(self) -> &'static str {
 		match self {
 			Self::NotReady => "not_ready",
@@ -290,13 +290,13 @@ impl ExecutionConflictDomainKind {
 pub(crate) enum ExecutionReadinessState {
 	/// Node is intentionally not ready yet.
 	NotReady,
-	/// Node is startable and may be mapped to queue action.
+	/// Node is startable and may be dispatched directly.
 	Ready,
 	/// Node cannot start until a concrete blocker clears.
 	Blocked,
 	/// Node is intentionally paused.
 	Paused,
-	/// Node is already active and should not retain the queue label.
+	/// Node is already active.
 	Active,
 	/// Node is terminal.
 	Completed,
@@ -325,9 +325,9 @@ pub(crate) enum ExecutionProgramNodeLifecycleState {
 	Planned,
 	/// Node is mapped to a normal Linear issue but is intentionally held.
 	Mapped,
-	/// Node is ready to receive the service queue label.
+	/// Node is ready for direct dispatch.
 	Ready,
-	/// Node is ready and already carries the service queue label.
+	/// Node was retained in a ready-to-dispatch position.
 	Queued,
 	/// Node already has an active lane.
 	Active,
@@ -360,23 +360,17 @@ impl ExecutionProgramNodeLifecycleState {
 	}
 }
 
-/// Queue-label action allowed for a mapped node.
+/// Direct dispatch action allowed for a mapped node.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ExecutionQueueLabelAction {
-	/// Apply the service queue label.
-	Apply,
-	/// Retain the service queue label.
-	Retain,
-	/// Remove the service queue label.
-	Remove,
+pub(crate) enum ExecutionDispatchAction {
+	/// Start this mapped node directly from the Execution Program scheduler.
+	Dispatch,
 }
-impl ExecutionQueueLabelAction {
-	/// Stable machine-readable queue-label action.
+impl ExecutionDispatchAction {
+	/// Stable machine-readable direct-dispatch action.
 	pub(crate) fn as_str(self) -> &'static str {
 		match self {
-			Self::Apply => "apply",
-			Self::Retain => "retain",
-			Self::Remove => "remove",
+			Self::Dispatch => "dispatch",
 		}
 	}
 }
@@ -463,9 +457,6 @@ pub(crate) struct ExecutionLinearIssueMapping {
 	issue_id: String,
 	issue_identifier: String,
 	issue_state: String,
-	has_queue_label: bool,
-	#[serde(default, skip_serializing_if = "is_false")]
-	queue_label_owned_by_program_reconciler: bool,
 	has_active_label: bool,
 	has_opt_out_label: bool,
 	has_needs_attention_label: bool,
@@ -484,8 +475,6 @@ impl ExecutionLinearIssueMapping {
 			issue_id: issue_id.into(),
 			issue_identifier: issue_identifier.into(),
 			issue_state: issue_state.into(),
-			has_queue_label: false,
-			queue_label_owned_by_program_reconciler: false,
 			has_active_label: false,
 			has_opt_out_label: false,
 			has_needs_attention_label: false,
@@ -496,21 +485,6 @@ impl ExecutionLinearIssueMapping {
 		mapping.validate()?;
 
 		Ok(mapping)
-	}
-
-	/// Mark whether the issue currently carries the service queue label.
-	pub(crate) fn with_queue_label(mut self, present: bool) -> Self {
-		self.has_queue_label = present;
-
-		self
-	}
-
-	/// Mark that the service queue label was applied through the program reconciler.
-	pub(crate) fn with_program_owned_queue_label(mut self, present: bool) -> Self {
-		self.has_queue_label = present;
-		self.queue_label_owned_by_program_reconciler = present;
-
-		self
 	}
 
 	/// Mark whether the issue currently carries the service active label.
@@ -563,16 +537,6 @@ impl ExecutionLinearIssueMapping {
 		&self.issue_state
 	}
 
-	/// Whether the service queue label is currently present.
-	pub(crate) fn has_queue_label(&self) -> bool {
-		self.has_queue_label
-	}
-
-	/// Whether Decodex may remove the queue label as program-reconciler-owned.
-	pub(crate) fn queue_label_owned_by_program_reconciler(&self) -> bool {
-		self.queue_label_owned_by_program_reconciler
-	}
-
 	/// Whether the service active label is currently present.
 	pub(crate) fn has_active_label(&self) -> bool {
 		self.has_active_label
@@ -605,12 +569,6 @@ impl ExecutionLinearIssueMapping {
 			&self.issue_identifier,
 		)?;
 		validate_required("execution program issue_mapping.issue_state", &self.issue_state)?;
-
-		if self.queue_label_owned_by_program_reconciler && !self.has_queue_label {
-			eyre::bail!(
-				"Execution program issue_mapping.queue_label_owned_by_program_reconciler requires has_queue_label.",
-			);
-		}
 
 		Ok(())
 	}
@@ -1225,7 +1183,7 @@ impl ExecutionDependencySnapshot {
 		Ok(snapshot)
 	}
 
-	/// Observe a dependency through another internal node queue intent.
+	/// Observe a dependency through another internal node dispatch intent.
 	pub(crate) fn queue_intent(
 		dependency_id: impl Into<String>,
 		queue_intent: ExecutionQueueIntent,
@@ -1298,7 +1256,7 @@ pub(crate) struct ExecutionNodeEvaluation {
 	state: ExecutionReadinessState,
 	lifecycle_state: ExecutionProgramNodeLifecycleState,
 	reasons: Vec<String>,
-	queue_label_action: Option<ExecutionQueueLabelAction>,
+	dispatch_action: Option<ExecutionDispatchAction>,
 	linear_issue: Option<ExecutionLinearIssueMapping>,
 }
 impl ExecutionNodeEvaluation {
@@ -1322,17 +1280,14 @@ impl ExecutionNodeEvaluation {
 		&self.reasons
 	}
 
-	/// Queue-label action, if any.
-	pub(crate) fn queue_label_action(&self) -> Option<ExecutionQueueLabelAction> {
-		self.queue_label_action
+	/// Direct dispatch action, if any.
+	pub(crate) fn dispatch_action(&self) -> Option<ExecutionDispatchAction> {
+		self.dispatch_action
 	}
 
-	/// Whether this node may receive or retain the service queue label.
-	pub(crate) fn queue_label_eligible(&self) -> bool {
-		matches!(
-			self.queue_label_action,
-			Some(ExecutionQueueLabelAction::Apply | ExecutionQueueLabelAction::Retain)
-		)
+	/// Whether this node can be dispatched directly by the program scheduler.
+	pub(crate) fn dispatchable(&self) -> bool {
+		matches!(self.dispatch_action, Some(ExecutionDispatchAction::Dispatch))
 	}
 
 	/// Mapped Linear issue, when present.
@@ -1362,11 +1317,11 @@ impl ExecutionProgramEvaluation {
 			.collect()
 	}
 
-	/// Nodes that may receive or retain the service queue label.
-	pub(crate) fn startable_node_ids(&self) -> Vec<&str> {
+	/// Nodes that can be dispatched directly by the program scheduler.
+	pub(crate) fn dispatchable_node_ids(&self) -> Vec<&str> {
 		self.nodes
 			.iter()
-			.filter(|node| node.queue_label_eligible())
+			.filter(|node| node.dispatchable())
 			.map(|node| node.node_id.as_str())
 			.collect()
 	}
@@ -1386,7 +1341,7 @@ impl ExecutionProgramEvaluation {
 			completed_count: 0,
 			stale_count: 0,
 			superseded_count: 0,
-			queue_label_eligible_count: 0,
+			dispatchable_count: 0,
 			mapped_issue_identifiers: Vec::new(),
 		};
 
@@ -1415,8 +1370,8 @@ impl ExecutionProgramEvaluation {
 				ExecutionProgramNodeLifecycleState::Superseded => summary.superseded_count += 1,
 			}
 
-			if node.queue_label_eligible() {
-				summary.queue_label_eligible_count += 1;
+			if node.dispatchable() {
+				summary.dispatchable_count += 1;
 			}
 
 			if let Some(issue) = &node.linear_issue {
@@ -1458,8 +1413,8 @@ pub(crate) struct ExecutionProgramOperatorSummary {
 	pub(crate) stale_count: usize,
 	/// Count of superseded nodes.
 	pub(crate) superseded_count: usize,
-	/// Count of nodes eligible to receive or retain the service queue label.
-	pub(crate) queue_label_eligible_count: usize,
+	/// Count of nodes the program scheduler can dispatch directly.
+	pub(crate) dispatchable_count: usize,
 	/// Normal Linear issue identifiers linked to the program.
 	pub(crate) mapped_issue_identifiers: Vec<String>,
 }
@@ -1527,12 +1482,12 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 			ExecutionQueueIntent::NotReady => {
 				state = ExecutionReadinessState::NotReady;
 
-				reasons.push(String::from("node queue intent is not-ready"));
+				reasons.push(String::from("node dispatch intent is not-ready"));
 			},
 			ExecutionQueueIntent::Paused => {
 				state = ExecutionReadinessState::Paused;
 
-				reasons.push(String::from("node queue intent is paused"));
+				reasons.push(String::from("node dispatch intent is paused"));
 			},
 			ExecutionQueueIntent::Active => {
 				state = ExecutionReadinessState::Active;
@@ -1542,7 +1497,7 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 			ExecutionQueueIntent::Done | ExecutionQueueIntent::Canceled => {
 				state = ExecutionReadinessState::Completed;
 
-				reasons.push(String::from("node queue intent is terminal"));
+				reasons.push(String::from("node dispatch intent is terminal"));
 			},
 			ExecutionQueueIntent::ReadyToQueue | ExecutionQueueIntent::Queued => {
 				collect_blocking_readiness_reasons(
@@ -1564,16 +1519,15 @@ fn evaluate_node(input: EvaluateNodeInput<'_>) -> Result<ExecutionNodeEvaluation
 		reasons.push(String::from("node is ready for normal Linear issue execution"));
 	}
 
-	let queue_label_action = queue_label_action_for(node, state, policy);
-	let lifecycle_state =
-		lifecycle_state.unwrap_or_else(|| lifecycle_state_for(node, state, queue_label_action));
+	let dispatch_action = dispatch_action_for(node, state, policy);
+	let lifecycle_state = lifecycle_state.unwrap_or_else(|| lifecycle_state_for(node, state));
 
 	Ok(ExecutionNodeEvaluation {
 		node_id: node.node_id.clone(),
 		state,
 		lifecycle_state,
 		reasons,
-		queue_label_action,
+		dispatch_action,
 		linear_issue: node.linear_issue.clone(),
 	})
 }
@@ -1704,43 +1658,30 @@ fn dependency_terminal_states<'a>(
 	}
 }
 
-fn queue_label_action_for(
+fn dispatch_action_for(
 	node: &ExecutionProgramNode,
 	state: ExecutionReadinessState,
 	policy: &ExecutionWorkflowPolicy,
-) -> Option<ExecutionQueueLabelAction> {
+) -> Option<ExecutionDispatchAction> {
 	let issue = node.linear_issue()?;
 
 	if state != ExecutionReadinessState::Ready {
-		return removable_program_owned_queue_label(issue);
+		return None;
 	}
 	if !matches!(
 		node.queue_intent(),
 		ExecutionQueueIntent::ReadyToQueue | ExecutionQueueIntent::Queued
 	) || !policy.issue_is_startable(issue)
 	{
-		return removable_program_owned_queue_label(issue);
-	}
-	if issue.has_queue_label() {
-		return issue
-			.queue_label_owned_by_program_reconciler()
-			.then_some(ExecutionQueueLabelAction::Retain);
+		return None;
 	}
 
-	Some(ExecutionQueueLabelAction::Apply)
-}
-
-fn removable_program_owned_queue_label(
-	issue: &ExecutionLinearIssueMapping,
-) -> Option<ExecutionQueueLabelAction> {
-	(issue.has_queue_label() && issue.queue_label_owned_by_program_reconciler())
-		.then_some(ExecutionQueueLabelAction::Remove)
+	Some(ExecutionDispatchAction::Dispatch)
 }
 
 fn lifecycle_state_for(
 	node: &ExecutionProgramNode,
 	state: ExecutionReadinessState,
-	queue_label_action: Option<ExecutionQueueLabelAction>,
 ) -> ExecutionProgramNodeLifecycleState {
 	if let Some(issue) = node.linear_issue()
 		&& issue.has_needs_attention_label
@@ -1760,13 +1701,7 @@ fn lifecycle_state_for(
 			} else {
 				ExecutionProgramNodeLifecycleState::Planned
 			},
-		ExecutionReadinessState::Ready => {
-			if matches!(queue_label_action, Some(ExecutionQueueLabelAction::Retain)) {
-				ExecutionProgramNodeLifecycleState::Queued
-			} else {
-				ExecutionProgramNodeLifecycleState::Ready
-			}
-		},
+		ExecutionReadinessState::Ready => ExecutionProgramNodeLifecycleState::Ready,
 		ExecutionReadinessState::Blocked => ExecutionProgramNodeLifecycleState::Blocked,
 		ExecutionReadinessState::Active => ExecutionProgramNodeLifecycleState::Active,
 		ExecutionReadinessState::Completed => ExecutionProgramNodeLifecycleState::Completed,
@@ -1850,10 +1785,10 @@ mod tests {
 	use crate::{
 		execution_program::{
 			ExecutionConflictDomain, ExecutionConflictDomainKind, ExecutionDependencySnapshot,
-			ExecutionLinearIssueMapping, ExecutionProgram, ExecutionProgramDependency,
-			ExecutionProgramNode, ExecutionProgramNodeLifecycleState, ExecutionProgramNodeStage,
-			ExecutionProgramReadinessContext, ExecutionQueueIntent, ExecutionQueueLabelAction,
-			ExecutionReadinessState, ExecutionWorkflowPolicy, ProgramIntakeKind,
+			ExecutionDispatchAction, ExecutionLinearIssueMapping, ExecutionProgram,
+			ExecutionProgramDependency, ExecutionProgramNode, ExecutionProgramNodeStage,
+			ExecutionProgramReadinessContext, ExecutionQueueIntent, ExecutionReadinessState,
+			ExecutionWorkflowPolicy, ProgramIntakeKind,
 		},
 		loop_contract::{DecisionContract, DecisionPromotion, DecisionPromotionActorKind},
 	};
@@ -1945,10 +1880,10 @@ mod tests {
 			.expect("program should evaluate");
 
 		assert_eq!(evaluation.ready_node_ids(), vec!["node-ready"]);
-		assert_eq!(evaluation.startable_node_ids(), vec!["node-ready"]);
+		assert_eq!(evaluation.dispatchable_node_ids(), vec!["node-ready"]);
 		assert_eq!(
-			evaluation.nodes()[0].queue_label_action(),
-			Some(ExecutionQueueLabelAction::Apply)
+			evaluation.nodes()[0].dispatch_action(),
+			Some(ExecutionDispatchAction::Dispatch)
 		);
 		assert_eq!(evaluation.operator_summary().ready_count, 1);
 		assert_eq!(evaluation.operator_summary().blocked_count, 1);
@@ -2020,11 +1955,11 @@ mod tests {
 			.evaluate(&contract, &workflow_policy(), &ready_context)
 			.expect("program should evaluate");
 
-		assert!(ready.startable_node_ids().contains(&"node-dependent"));
+		assert!(ready.dispatchable_node_ids().contains(&"node-dependent"));
 	}
 
 	#[test]
-	fn stale_contract_drift_blocks_queue_retention() {
+	fn stale_contract_drift_blocks_direct_dispatch() {
 		let stale_node = ready_node("node-stale", "XY-903")
 			.with_contract_fingerprint("stale-contract-fingerprint")
 			.expect("fingerprint should override");
@@ -2035,8 +1970,8 @@ mod tests {
 		let node = &evaluation.nodes()[0];
 
 		assert_eq!(node.state(), ExecutionReadinessState::Stale);
-		assert_eq!(node.queue_label_action(), None);
-		assert!(evaluation.startable_node_ids().is_empty());
+		assert_eq!(node.dispatch_action(), None);
+		assert!(evaluation.dispatchable_node_ids().is_empty());
 	}
 
 	#[test]
@@ -2062,69 +1997,6 @@ mod tests {
 	}
 
 	#[test]
-	fn linear_issue_mapping_controls_apply_retain_and_remove() {
-		let apply = ready_node("node-apply", "XY-905");
-		let retain = ready_node("node-retain", "XY-906")
-			.with_linear_issue(issue("XY-906", "Todo").with_program_owned_queue_label(true))
-			.expect("issue should attach");
-		let ready_human_owned = ready_node("node-ready-human-owned", "XY-910")
-			.with_linear_issue(issue("XY-910", "Todo").with_queue_label(true))
-			.expect("issue should attach");
-		let remove = ready_node("node-remove", "XY-907")
-			.with_linear_issue(issue("XY-907", "In Progress").with_program_owned_queue_label(true))
-			.expect("issue should attach");
-		let human_owned = ready_node("node-human-owned", "XY-909")
-			.with_linear_issue(issue("XY-909", "In Progress").with_queue_label(true))
-			.expect("issue should attach");
-		let (contract, program) =
-			program_with(vec![apply, retain, ready_human_owned, remove, human_owned]);
-		let evaluation = program
-			.evaluate(&contract, &workflow_policy(), &ExecutionProgramReadinessContext::new())
-			.expect("program should evaluate");
-		let action_for = |id: &str| {
-			evaluation
-				.nodes()
-				.iter()
-				.find(|node| node.node_id() == id)
-				.expect("node should exist")
-				.queue_label_action()
-		};
-
-		assert_eq!(action_for("node-apply"), Some(ExecutionQueueLabelAction::Apply));
-		assert_eq!(action_for("node-retain"), Some(ExecutionQueueLabelAction::Retain));
-		assert_eq!(action_for("node-ready-human-owned"), None);
-		assert_eq!(action_for("node-remove"), Some(ExecutionQueueLabelAction::Remove));
-		assert_eq!(action_for("node-human-owned"), None);
-		assert_eq!(
-			evaluation
-				.nodes()
-				.iter()
-				.find(|node| node.node_id() == "node-remove")
-				.expect("node should exist")
-				.state(),
-			ExecutionReadinessState::Blocked
-		);
-		assert_eq!(
-			evaluation
-				.nodes()
-				.iter()
-				.find(|node| node.node_id() == "node-retain")
-				.expect("node should exist")
-				.lifecycle_state(),
-			ExecutionProgramNodeLifecycleState::Queued
-		);
-		assert_eq!(
-			evaluation
-				.nodes()
-				.iter()
-				.find(|node| node.node_id() == "node-ready-human-owned")
-				.expect("node should exist")
-				.lifecycle_state(),
-			ExecutionProgramNodeLifecycleState::Ready
-		);
-	}
-
-	#[test]
 	fn unmapped_ready_to_queue_node_is_blocked_from_startable_selection() {
 		let unmapped = ExecutionProgramNode::new(
 			"node-unmapped",
@@ -2145,7 +2017,7 @@ mod tests {
 
 		assert_eq!(node.state(), ExecutionReadinessState::Blocked);
 		assert!(node.reasons().iter().any(|reason| reason.contains("no normal Linear issue")));
-		assert!(evaluation.startable_node_ids().is_empty());
+		assert!(evaluation.dispatchable_node_ids().is_empty());
 	}
 
 	#[test]
