@@ -1,4 +1,5 @@
 use git_credentials::GitSigningConfig;
+use agent::CodexAccountAuthFailure;
 use agent::CodexAccountPool;
 use agent::CodexAccountProvider;
 use agent::{AppServerThreadArchiveOutcome, AppServerThreadArchiveRequest};
@@ -511,6 +512,7 @@ pub(crate) fn run_failure_writeback_disposition(
 			.downcast_ref::<AppServerCapabilityPreflightFailure>()
 			.is_some_and(|failure| !failure.is_retryable_timeout())
 		|| error.downcast_ref::<AppServerHomePreflightFailure>().is_some()
+		|| error.downcast_ref::<CodexAccountAuthFailure>().is_some()
 		|| error
 			.downcast_ref::<AppServerTransportFailure>()
 			.is_some_and(|failure| !failure.is_retryable_startup())
@@ -3573,6 +3575,7 @@ fn retained_progress_should_defer_to_terminal_intent(error: &Report) -> bool {
 		|| error.downcast_ref::<RetainedPartialProgress>().is_some()
 		|| error.downcast_ref::<RetainedReviewNeedsAttention>().is_some()
 		|| error.downcast_ref::<ReviewPolicyStopRequested>().is_some()
+		|| error.downcast_ref::<CodexAccountAuthFailure>().is_some()
 }
 
 fn retained_progress_source_error_class(error: &Report) -> Option<&'static str> {
@@ -3590,6 +3593,8 @@ fn retained_progress_source_error_class(error: &Report) -> Option<&'static str> 
 		error.downcast_ref::<AppServerHomePreflightFailure>()
 	{
 		Some(app_server_failure.error_class())
+	} else if let Some(account_failure) = error.downcast_ref::<CodexAccountAuthFailure>() {
+		Some(account_failure.error_class())
 	} else if let Some(app_server_failure) =
 		error.downcast_ref::<AppServerTransportFailure>()
 	{

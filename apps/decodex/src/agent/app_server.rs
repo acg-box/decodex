@@ -39,7 +39,7 @@ use self::protocol::{
 use crate::{
 	agent::{
 		app_server::protocol::LoginAccountResponse,
-		codex_accounts::{CodexAccountLogin, CodexAccountProvider},
+		codex_accounts::{CodexAccountAuthFailure, CodexAccountLogin, CodexAccountProvider},
 		json_rpc,
 		json_rpc::{
 			AppServerHomePreflightFailure, AppServerOutputTimeout, AppServerProcessEnv,
@@ -3386,7 +3386,14 @@ fn login_codex_account_for_run(
 	let Some(account_provider) = request.codex_account_provider else {
 		return Ok(());
 	};
-	let account = account_provider.select_account()?;
+	let account = match account_provider.select_account() {
+		Ok(account) => account,
+		Err(error) => {
+			record_codex_account_failure(recorder, "account/login/select/failed", &error);
+
+			return Err(error);
+		},
+	};
 
 	recorder.set_codex_account(account.summary(), account.account_summaries())?;
 
@@ -3429,6 +3436,31 @@ fn login_codex_account_for_run(
 	}
 
 	Ok(())
+}
+
+fn record_codex_account_failure(recorder: &mut RunRecorder<'_>, event_type: &str, error: &Report) {
+	let auth_failure = error.downcast_ref::<CodexAccountAuthFailure>();
+	let error_class =
+		auth_failure.map(CodexAccountAuthFailure::error_class).unwrap_or("codex_account_failure");
+	let account_fingerprint = auth_failure.and_then(CodexAccountAuthFailure::account_fingerprint);
+	let email = auth_failure.and_then(CodexAccountAuthFailure::email);
+	let reason =
+		auth_failure.map_or_else(|| error.to_string(), |failure| failure.reason().to_owned());
+	let payload = serde_json::json!({
+		"errorClass": error_class,
+		"accountFingerprint": account_fingerprint,
+		"email": email,
+		"reason": reason,
+	});
+
+	if let Err(record_error) = recorder.record(event_type, &payload.to_string()) {
+		tracing::warn!(
+			?record_error,
+			event_type,
+			error_class,
+			"Failed to record Codex account failure event."
+		);
+	}
 }
 
 fn start_or_resume_thread_session(
@@ -5124,7 +5156,18 @@ fn dispatch_codex_account_refresh(
 		)
 	})?;
 	let params = serde_json::from_value::<ChatgptAuthTokensRefreshParams>(request.params.clone())?;
-	let account = account_provider.refresh_account(params.previous_account_id.as_deref())?;
+	let account = match account_provider.refresh_account(params.previous_account_id.as_deref()) {
+		Ok(account) => account,
+		Err(error) => {
+			record_codex_account_failure(
+				recorder,
+				"account/chatgptAuthTokens/refresh/failed",
+				&error,
+			);
+
+			return Err(error);
+		},
+	};
 	let response = ChatgptAuthTokensRefreshResponse {
 		access_token: account.access_token().to_owned(),
 		chatgpt_account_id: account.account_id().to_owned(),

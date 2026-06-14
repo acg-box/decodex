@@ -9,6 +9,8 @@ use orchestrator::LoopGuardrailStopRequested;
 use orchestrator::RunFailureWritebackDisposition;
 use orchestrator::StalledRunNeedsAttention;
 
+use crate::agent::CodexAccountAuthFailure;
+
 fn git_config_value(
 	repo_root: &Path,
 	key: &str,
@@ -238,6 +240,15 @@ fn failure_writeback_disposition_marks_terminal_attention_classes() {
 			Report::new(orchestrator::RepoGateFailure::new(
 				RepoGateFailureKind::CommandSpawnFailed,
 				String::from("Failed to spawn repo gate command `cargo make test`: missing tool"),
+			)),
+			RunFailureWritebackDisposition::TerminalAttention,
+		),
+		(
+			"codex account auth failure",
+			Report::new(CodexAccountAuthFailure::new(
+				Some(String::from("...123456")),
+				Some(String::from("bad@example.com")),
+				"Codex account `bad@example.com` token refresh failed with HTTP 401 Unauthorized.",
 			)),
 			RunFailureWritebackDisposition::TerminalAttention,
 		),
@@ -1308,6 +1319,15 @@ fn app_server_terminal_failures_preserve_specific_error_classes() {
 			)),
 			"app_server_zero_evidence_start_failed",
 			"verify `decodex probe stdio://`",
+		),
+		(
+			Report::new(CodexAccountAuthFailure::new(
+				Some(String::from("...123456")),
+				Some(String::from("bad@example.com")),
+				"Codex account `bad@example.com` token refresh failed with HTTP 401 Unauthorized.",
+			)),
+			"codex_account_auth_failed",
+			"re-login or remove Decodex Codex account",
 		),
 		(
 			Report::new(AppServerPhaseGoalFailure::missing_terminal_path_for_test(

@@ -229,6 +229,11 @@ impl AccountStore {
 		if record.disabled {
 			eyre::bail!("Decodex account `{selector}` is disabled and cannot be used by Codex.");
 		}
+		if record.auth_failure().is_some() {
+			eyre::bail!(
+				"Decodex account `{selector}` is auth_failed and must be re-logged before Codex can use it."
+			);
+		}
 
 		record.validate_importable()?;
 
@@ -1037,6 +1042,10 @@ struct AccountPoolRecord {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	last_selected_at_unix_epoch: Option<i64>,
 	#[serde(skip_serializing_if = "Option::is_none")]
+	auth_failed_at_unix_epoch: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	auth_failure: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
 	auth_mode: Option<String>,
 	#[serde(rename = "OPENAI_API_KEY", skip_serializing_if = "Option::is_none")]
 	openai_api_key: Option<String>,
@@ -1059,6 +1068,8 @@ impl AccountPoolRecord {
 			cooldown_until_unix_epoch: None,
 			cooldown_until: None,
 			last_selected_at_unix_epoch: None,
+			auth_failed_at_unix_epoch: None,
+			auth_failure: None,
 			auth_mode: auth.auth_mode,
 			openai_api_key: auth.openai_api_key,
 			tokens: auth.tokens,
@@ -1100,6 +1111,14 @@ impl AccountPoolRecord {
 		self.email().as_deref() == Some(selector)
 			|| self.account_id() == Some(selector)
 			|| self.account_id().map(redact_account_id).as_deref() == Some(selector)
+	}
+
+	fn auth_failure(&self) -> Option<&str> {
+		self.auth_failure
+			.as_deref()
+			.map(str::trim)
+			.filter(|failure| !failure.is_empty())
+			.or_else(|| self.auth_failed_at_unix_epoch.map(|_| "authentication failed"))
 	}
 
 	fn matches_account_identity(&self, identity: &AccountIdentity) -> bool {
@@ -1170,6 +1189,8 @@ impl AccountPoolRecord {
 			.is_some();
 		let status = if self.disabled {
 			"disabled"
+		} else if self.auth_failure().is_some() {
+			"auth_failed"
 		} else if self.cooldown_until_unix_epoch.is_some_and(|cooldown_until| cooldown_until > now)
 		{
 			"cooldown"
@@ -1186,8 +1207,8 @@ impl AccountPoolRecord {
 		let recovery_action = account_recovery_action(
 			status,
 			refresh_token_present,
-			None,
-			Some("local account pool"),
+			if self.auth_failure().is_some() { Some("auth_failed") } else { None },
+			self.auth_failure().or(Some("local account pool")),
 		);
 
 		AccountSummary {
@@ -1206,7 +1227,10 @@ impl AccountPoolRecord {
 			access_token_expires_at_unix_epoch,
 			last_selected_at_unix_epoch: self.last_selected_at_unix_epoch,
 			cooldown_until_unix_epoch: self.cooldown_until_unix_epoch,
-			note: Some(String::from("local account pool")),
+			note: Some(
+				self.auth_failure()
+					.map_or_else(|| String::from("local account pool"), ToOwned::to_owned),
+			),
 			plan_type: None,
 			capacity_multiplier: DEFAULT_ACCOUNT_CAPACITY_MULTIPLIER,
 			recovery_action,
@@ -1275,6 +1299,10 @@ enum AccountPoolLine {
 		cooldown_until: Option<String>,
 		#[serde(skip_serializing_if = "Option::is_none")]
 		last_selected_at_unix_epoch: Option<i64>,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		auth_failed_at_unix_epoch: Option<i64>,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		auth_failure: Option<String>,
 		auth: AuthDotJson,
 	},
 	Flat(AccountPoolRecord),
@@ -1289,6 +1317,8 @@ impl AccountPoolLine {
 				cooldown_until_unix_epoch,
 				cooldown_until,
 				last_selected_at_unix_epoch,
+				auth_failed_at_unix_epoch,
+				auth_failure,
 				auth,
 			} => {
 				let mut record = AccountPoolRecord::from_auth(auth)?;
@@ -1298,6 +1328,8 @@ impl AccountPoolLine {
 				record.cooldown_until_unix_epoch = cooldown_until_unix_epoch;
 				record.cooldown_until = cooldown_until;
 				record.last_selected_at_unix_epoch = last_selected_at_unix_epoch;
+				record.auth_failed_at_unix_epoch = auth_failed_at_unix_epoch;
+				record.auth_failure = auth_failure;
 
 				Ok(record)
 			},
@@ -1835,6 +1867,9 @@ fn account_recovery_action(
 	if status == "disabled" || status == "cooldown" {
 		return None;
 	}
+	if status == "auth_failed" || refresh_status == "auth_failed" {
+		return Some(String::from("login"));
+	}
 	if !refresh_token_present {
 		return Some(String::from("login"));
 	}
@@ -2061,6 +2096,8 @@ mod tests {
 				cooldown_until_unix_epoch: None,
 				cooldown_until: None,
 				last_selected_at_unix_epoch: None,
+				auth_failed_at_unix_epoch: None,
+				auth_failure: None,
 				auth_mode: None,
 				openai_api_key: None,
 				tokens: Some(CodexTokenData {
@@ -2111,6 +2148,37 @@ mod tests {
 		assert_eq!(response.account.email.as_deref(), Some("copy@example.com"));
 		assert_eq!(auth.email.as_deref(), Some("copy@example.com"));
 		assert_eq!(tokens.account_id.as_deref(), Some("acct_123456"));
+	}
+
+	#[test]
+	fn use_for_codex_rejects_auth_failed_account() {
+		let temp_dir = TempDir::new().expect("temp dir should create");
+		let codex_auth_path = temp_dir.path().join(".codex/auth.json");
+		let store = AccountStore::new_with_codex_auth_path(
+			temp_dir.path().join("accounts.jsonl"),
+			temp_dir.path().join("config.toml"),
+			codex_auth_path,
+		);
+		let mut record = account_record(
+			"copy@example.com",
+			"acct_123456",
+			"header.eyJleHAiOjQxMDI0NDQ4MDB9.sig",
+			"refresh-secret",
+		);
+
+		record.auth_failed_at_unix_epoch = Some(1_800_000_000);
+		record.auth_failure = Some(String::from(
+			"Codex account `copy@example.com` token refresh failed with HTTP 401 Unauthorized.",
+		));
+
+		store.save_records(&[record]).expect("records should save");
+
+		let error = match store.use_for_codex("copy@example.com", None) {
+			Ok(_) => panic!("auth failed account should reject"),
+			Err(error) => error,
+		};
+
+		assert!(error.to_string().contains("auth_failed"));
 	}
 
 	#[test]
@@ -2513,6 +2581,8 @@ mod tests {
 			cooldown_until_unix_epoch: None,
 			cooldown_until: None,
 			last_selected_at_unix_epoch: None,
+			auth_failed_at_unix_epoch: None,
+			auth_failure: None,
 			auth_mode: None,
 			openai_api_key: None,
 			tokens: Some(CodexTokenData {

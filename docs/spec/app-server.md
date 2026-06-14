@@ -239,6 +239,11 @@ project-scoped fixed account.
 Successful selection writes `last_selected_at_unix_epoch` back to the JSONL file, and
 selection holds a pool-local lock so concurrent run dispatches observe the latest
 selector state instead of all choosing from the same stale snapshot.
+If token refresh returns an authentication or authorization rejection, Decodex writes
+`auth_failed_at_unix_epoch` and `auth_failure` to the matching JSONL record, excludes
+that account from later selection, reports `status = "auth_failed"` in account
+snapshots, and fails any active lane with `codex_account_auth_failed` instead of
+retrying through no-diff or contract-boundary recovery.
 If a turn later fails with `codexErrorInfo = "usageLimitExceeded"`, Decodex treats it
 as a retryable capacity failure while retry budget remains. The current turn stops
 immediately, but the next attempt re-enters normal account selection so the pool can
