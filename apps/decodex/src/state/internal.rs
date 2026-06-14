@@ -14,7 +14,7 @@ use libc::{
 };
 #[cfg(target_os = "macos")]
 use process::Command;
-use rusqlite::{self, Row};
+use rusqlite::{self, Row, types::Type};
 
 use crate::tracker;
 
@@ -127,6 +127,7 @@ struct StateData {
 	control_channels: HashMap<String, RunControlChannelRecord>,
 	events: HashMap<String, Vec<ProtocolEventRecord>>,
 	event_summaries: HashMap<String, ProtocolEventSummaryRecord>,
+	run_activity_summaries: HashMap<String, RunActivitySummaryRecord>,
 	worktrees: HashMap<String, WorktreeMappingRecord>,
 	linear_execution_events: HashMap<String, LinearExecutionEventRuntimeRecord>,
 	private_execution_events: Vec<PrivateExecutionEventRuntimeRecord>,
@@ -153,6 +154,7 @@ impl StateData {
 		self.control_channels = loaded.control_channels;
 		self.events = loaded.events;
 		self.event_summaries = loaded.event_summaries;
+		self.run_activity_summaries = loaded.run_activity_summaries;
 		self.worktrees = loaded.worktrees;
 		self.linear_execution_events = loaded.linear_execution_events;
 		self.private_execution_events = loaded.private_execution_events;
@@ -172,6 +174,7 @@ impl StateData {
 		self.leases = loaded.leases;
 		self.run_attempts = loaded.run_attempts;
 		self.control_channels = loaded.control_channels;
+		self.run_activity_summaries = loaded.run_activity_summaries;
 		self.worktrees = loaded.worktrees;
 	}
 
@@ -207,6 +210,7 @@ impl StateData {
 		}
 
 		let event_summary = self.protocol_event_summary(&attempt.run_id);
+		let run_activity_summary = self.run_activity_summaries.get(&attempt.run_id);
 		let control_channel = self
 			.control_channels
 			.get(&attempt.run_id)
@@ -234,6 +238,10 @@ impl StateData {
 			last_event_at: event_summary.last_event_at,
 			last_event_at_unix: event_summary.last_event_at_unix,
 			control_channel,
+			child_agent_activity: run_activity_summary
+				.and_then(|summary| summary.child_agent_activity.clone()),
+			protocol_activity: run_activity_summary
+				.and_then(|summary| summary.protocol_activity.clone()),
 		})
 	}
 
@@ -349,6 +357,14 @@ CREATE TABLE IF NOT EXISTS protocol_event_summaries (
 	last_event_at_unix INTEGER,
 	compacted_at TEXT NOT NULL,
 	compacted_at_unix INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS run_activity_summaries (
+	run_id TEXT PRIMARY KEY NOT NULL,
+	attempt_number INTEGER NOT NULL,
+	child_agent_activity_json TEXT,
+	protocol_activity_json TEXT,
+	updated_at TEXT NOT NULL,
+	updated_at_unix INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS worktrees (
 	issue_id TEXT PRIMARY KEY NOT NULL,
@@ -787,6 +803,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		self.load_run_attempts(&mut state)?;
 		self.load_run_control_channels(&mut state)?;
 		self.load_protocol_event_summaries(&mut state)?;
+		self.load_run_activity_summaries(&mut state)?;
 		self.load_worktrees(&mut state)?;
 		self.load_linear_execution_events(&mut state)?;
 		self.load_private_execution_events(&mut state)?;
@@ -807,6 +824,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
 		self.load_leases(&mut state)?;
 		self.load_run_attempts_for_project(&mut state, project_id)?;
+		self.load_run_activity_summaries_for_loaded_runs(&mut state)?;
 		self.load_worktrees(&mut state)?;
 		self.load_run_control_channels_for_project(&mut state, project_id)?;
 
@@ -838,6 +856,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		persist_run_attempts(&transaction, state)?;
 		persist_run_control_channels(&transaction, state)?;
 		persist_protocol_events(&transaction, state)?;
+		persist_run_activity_summaries(&transaction, state)?;
 		persist_worktrees(&transaction, state)?;
 		persist_linear_execution_events(&transaction, state)?;
 		persist_private_execution_events(&transaction, state)?;
@@ -987,6 +1006,36 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				channel.published_at_unix,
 				&channel.updated_at,
 				channel.updated_at_unix,
+			],
+		)?;
+
+		Ok(())
+	}
+
+	fn upsert_run_activity_summary(&self, summary: &RunActivitySummaryRecord) -> Result<()> {
+		let child_agent_activity_json = summary
+			.child_agent_activity
+			.as_ref()
+			.map(serde_json::to_string)
+			.transpose()?;
+		let protocol_activity_json = summary
+			.protocol_activity
+			.as_ref()
+			.map(serde_json::to_string)
+			.transpose()?;
+
+		self.connection.execute(
+			"INSERT OR REPLACE INTO run_activity_summaries (
+					run_id, attempt_number, child_agent_activity_json, protocol_activity_json,
+					updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			params![
+				&summary.run_id,
+				summary.attempt_number,
+				child_agent_activity_json.as_deref(),
+				protocol_activity_json.as_deref(),
+				&summary.updated_at,
+				summary.updated_at_unix,
 			],
 		)?;
 
@@ -1767,6 +1816,54 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
 		if let Some(summary) = summary {
 			state.event_summaries.insert(run_id.to_owned(), summary);
+		}
+
+		Ok(())
+	}
+
+	fn load_run_activity_summaries(&self, state: &mut StateData) -> Result<()> {
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, attempt_number, child_agent_activity_json, protocol_activity_json,
+			 updated_at, updated_at_unix FROM run_activity_summaries ORDER BY run_id",
+		)?;
+		let rows = statement.query_map([], run_activity_summary_record_from_row)?;
+
+		for row in rows {
+			let summary = row?;
+
+			state.run_activity_summaries.insert(summary.run_id.clone(), summary);
+		}
+
+		Ok(())
+	}
+
+	fn load_run_activity_summaries_for_loaded_runs(&self, state: &mut StateData) -> Result<()> {
+		let run_ids = state.run_attempts.keys().cloned().collect::<Vec<_>>();
+
+		for run_id in run_ids {
+			self.load_run_activity_summary_for_run(state, &run_id)?;
+		}
+
+		Ok(())
+	}
+
+	fn load_run_activity_summary_for_run(
+		&self,
+		state: &mut StateData,
+		run_id: &str,
+	) -> Result<()> {
+		state.run_activity_summaries.remove(run_id);
+
+		let mut statement = self.connection.prepare(
+			"SELECT run_id, attempt_number, child_agent_activity_json, protocol_activity_json,
+			 updated_at, updated_at_unix FROM run_activity_summaries WHERE run_id = ?1",
+		)?;
+		let summary = statement
+			.query_row(params![run_id], run_activity_summary_record_from_row)
+			.optional()?;
+
+		if let Some(summary) = summary {
+			state.run_activity_summaries.insert(run_id.to_owned(), summary);
 		}
 
 		Ok(())
@@ -2702,6 +2799,16 @@ impl ProtocolEventSummaryRecord {
 			self.last_event_at_unix = Some(event.created_at_unix);
 		}
 	}
+}
+
+#[derive(Clone, Debug)]
+struct RunActivitySummaryRecord {
+	run_id: String,
+	attempt_number: i64,
+	child_agent_activity: Option<ChildAgentActivitySummary>,
+	protocol_activity: Option<ProtocolActivitySummary>,
+	updated_at: String,
+	updated_at_unix: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -3900,6 +4007,41 @@ fn persist_protocol_events(
 	Ok(())
 }
 
+fn persist_run_activity_summaries(
+	transaction: &Transaction<'_>,
+	state: &StateData,
+) -> Result<()> {
+	for summary in state.run_activity_summaries.values() {
+		let child_agent_activity_json = summary
+			.child_agent_activity
+			.as_ref()
+			.map(serde_json::to_string)
+			.transpose()?;
+		let protocol_activity_json = summary
+			.protocol_activity
+			.as_ref()
+			.map(serde_json::to_string)
+			.transpose()?;
+
+		transaction.execute(
+			"INSERT OR REPLACE INTO run_activity_summaries (
+					run_id, attempt_number, child_agent_activity_json, protocol_activity_json,
+					updated_at, updated_at_unix
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+			params![
+				&summary.run_id,
+				summary.attempt_number,
+				child_agent_activity_json.as_deref(),
+				protocol_activity_json.as_deref(),
+				&summary.updated_at,
+				summary.updated_at_unix,
+			],
+		)?;
+	}
+
+	Ok(())
+}
+
 fn persist_worktrees(transaction: &Transaction<'_>, state: &StateData) -> Result<()> {
 	for mapping in state.worktrees.values() {
 		transaction.execute(
@@ -5001,6 +5143,41 @@ fn run_attempt_record_from_row(
 		updated_at: row.get(7)?,
 		updated_at_unix: row.get(8)?,
 	})
+}
+
+fn run_activity_summary_record_from_row(
+	row: &Row<'_>,
+) -> std::result::Result<RunActivitySummaryRecord, rusqlite::Error> {
+	Ok(RunActivitySummaryRecord {
+		run_id: row.get(0)?,
+		attempt_number: row.get(1)?,
+		child_agent_activity: optional_json_from_row(row, 2)?,
+		protocol_activity: optional_json_from_row(row, 3)?,
+		updated_at: row.get(4)?,
+		updated_at_unix: row.get(5)?,
+	})
+}
+
+fn optional_json_from_row<T>(
+	row: &Row<'_>,
+	index: usize,
+) -> std::result::Result<Option<T>, rusqlite::Error>
+where
+	T: DeserializeOwned,
+{
+	let value: Option<String> = row.get(index)?;
+
+	value
+		.map(|value| {
+			serde_json::from_str(&value).map_err(|error| {
+				rusqlite::Error::FromSqlConversionFailure(
+					index,
+					Type::Text,
+					Box::new(error),
+				)
+			})
+		})
+		.transpose()
 }
 
 fn worktree_mapping_record_from_row(

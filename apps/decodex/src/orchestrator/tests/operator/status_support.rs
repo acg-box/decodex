@@ -1,9 +1,12 @@
 use std::{panic, slice};
 
-use orchestrator::{OperatorPostReviewLaneStatus, OperatorQueuedIssueStatus, OperatorWorktreeStatus};
+use orchestrator::{
+	AgentPrivateEvidenceRef, OperatorLaneLifecycleMetrics, OperatorPostReviewLaneStatus,
+	OperatorQueuedIssueStatus, OperatorRunControlCapability, OperatorRunStatus,
+	OperatorWorktreeProvenanceStatus, OperatorWorktreeStatus,
+};
 use serde_json::Value;
-use orchestrator::AgentPrivateEvidenceRef;
-use orchestrator::OperatorRunControlCapability;
+use state::{ChildAgentActivityBucket, ProtocolActivityEventSummary};
 
 fn successful_linear_execution_history_comments(issue: &TrackerIssue) -> Vec<TrackerComment> {
 	vec![
@@ -264,11 +267,72 @@ fn operator_status_text_control_capability() -> OperatorRunControlCapability {
 	}
 }
 
-fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
+fn operator_status_text_child_agent_activity() -> ChildAgentActivitySummary {
+	ChildAgentActivitySummary {
+		buckets: vec![
+			ChildAgentActivityBucket {
+				name: String::from("Model"),
+				wall_seconds: 693,
+				event_count: 12,
+				tool_call_count: 0,
+				input_tokens: 4_270_000,
+				output_tokens: 12_000,
+				output_bytes: 0,
+			},
+			ChildAgentActivityBucket {
+				name: String::from("Browser/Image"),
+				wall_seconds: 41,
+				event_count: 6,
+				tool_call_count: 3,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 180_000,
+			},
+		],
+		current_bucket: Some(String::from("Model")),
+		current_detail: Some(String::from("waiting after tool output")),
+		current_started_unix_epoch: None,
+		current_elapsed_seconds: Some(652),
+		wall_seconds: 734,
+		event_count: 18,
+		tool_call_count: 3,
+		input_tokens_current: Some(105_000),
+		input_tokens_max: Some(105_000),
+		input_tokens_cumulative: 4_270_000,
+		output_tokens_cumulative: 12_000,
+		largest_tool_output_bytes: Some(180_000),
+		largest_tool_output_tool: Some(String::from("view_image")),
+		large_output_warnings: vec![String::from(
+			"view_image repeated 3 large outputs; largest 180000 bytes",
+		)],
+	}
+}
+
+fn operator_status_text_protocol_activity() -> ProtocolActivitySummary {
+	ProtocolActivitySummary {
+		turn_status: Some(String::from("completed")),
+		waiting_reason: Some(String::from("model_execution")),
+		rate_limit_status: Some(String::from("none")),
+		recent_events: vec![
+			ProtocolActivityEventSummary {
+				event_type: String::from("item/tool/call"),
+				category: String::from("item"),
+				detail: Some(String::from("view_image")),
+			},
+			ProtocolActivityEventSummary {
+				event_type: String::from("turn/completed"),
+				category: String::from("turn"),
+				detail: Some(String::from("completed")),
+			},
+		],
+	}
+}
+
+fn operator_status_text_active_run() -> OperatorRunStatus {
 	let account = operator_status_text_codex_account();
 	let backup_account = operator_status_text_backup_codex_account();
 
-	orchestrator::OperatorRunStatus {
+	OperatorRunStatus {
 		project_id: String::from("pubfi"),
 		project_display_name: String::from("hack-ink/pubfi-mono-v2"),
 		run_id: String::from("run-1"),
@@ -323,73 +387,21 @@ fn operator_status_text_active_run() -> orchestrator::OperatorRunStatus {
 		effective_approval_policy: Some(String::from("never")),
 		effective_approvals_reviewer: Some(String::from("human")),
 		effective_sandbox_mode: Some(String::from("workspaceWrite")),
-			child_agent_activity: Some(ChildAgentActivitySummary {
-				buckets: vec![
-				state::ChildAgentActivityBucket {
-					name: String::from("Model"),
-					wall_seconds: 693,
-					event_count: 12,
-					tool_call_count: 0,
-					input_tokens: 4_270_000,
-					output_tokens: 12_000,
-					output_bytes: 0,
-				},
-				state::ChildAgentActivityBucket {
-					name: String::from("Browser/Image"),
-					wall_seconds: 41,
-					event_count: 6,
-					tool_call_count: 3,
-					input_tokens: 0,
-					output_tokens: 0,
-					output_bytes: 180_000,
-				},
-			],
-			current_bucket: Some(String::from("Model")),
-			current_detail: Some(String::from("waiting after tool output")),
-			current_started_unix_epoch: None,
-			current_elapsed_seconds: Some(652),
-			wall_seconds: 734,
-			event_count: 18,
-			tool_call_count: 3,
-			input_tokens_current: Some(105_000),
-			input_tokens_max: Some(105_000),
-			input_tokens_cumulative: 4_270_000,
-			output_tokens_cumulative: 12_000,
-			largest_tool_output_bytes: Some(180_000),
-			largest_tool_output_tool: Some(String::from("view_image")),
-				large_output_warnings: vec![String::from(
-					"view_image repeated 3 large outputs; largest 180000 bytes",
-				)],
-			}),
-			protocol_activity: Some(ProtocolActivitySummary {
-				turn_status: Some(String::from("completed")),
-				waiting_reason: Some(String::from("model_execution")),
-				rate_limit_status: Some(String::from("none")),
-				recent_events: vec![
-					state::ProtocolActivityEventSummary {
-						event_type: String::from("item/tool/call"),
-						category: String::from("item"),
-						detail: Some(String::from("view_image")),
-					},
-					state::ProtocolActivityEventSummary {
-						event_type: String::from("turn/completed"),
-						category: String::from("turn"),
-						detail: Some(String::from("completed")),
-					},
-				],
-			}),
-			account: Some(account.clone()),
-			accounts: vec![account, backup_account],
-			branch_name: Some(String::from("x/pubfi-pub-101")),
-			worktree_path: Some(String::from(".worktrees/PUB-101")),
-		}
+		child_agent_activity: Some(operator_status_text_child_agent_activity()),
+		protocol_activity: Some(operator_status_text_protocol_activity()),
+		lifecycle_metrics: OperatorLaneLifecycleMetrics::default(),
+		account: Some(account.clone()),
+		accounts: vec![account, backup_account],
+		branch_name: Some(String::from("x/pubfi-pub-101")),
+		worktree_path: Some(String::from(".worktrees/PUB-101")),
+	}
 }
 
 fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 	vec![
-			orchestrator::OperatorQueuedIssueStatus {
-				project_id: String::from(TEST_SERVICE_ID),
-				issue_id: String::from("issue-1"),
+		OperatorQueuedIssueStatus {
+			project_id: String::from(TEST_SERVICE_ID),
+			issue_id: String::from("issue-1"),
 			issue_identifier: String::from("PUB-101"),
 			title: String::from("Running lane still has a backlog claim"),
 			author: Some(String::from("Yvette")),
@@ -401,9 +413,9 @@ fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 			attention: None,
 			blocker_identifiers: vec![],
 		},
-			orchestrator::OperatorQueuedIssueStatus {
-				project_id: String::from(TEST_SERVICE_ID),
-				issue_id: String::from("issue-2"),
+		OperatorQueuedIssueStatus {
+			project_id: String::from(TEST_SERVICE_ID),
+			issue_id: String::from("issue-2"),
 			issue_identifier: String::from("PUB-102"),
 			title: String::from("Implement backlog surface"),
 			author: Some(String::from("Yvette")),
@@ -415,9 +427,9 @@ fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 			attention: None,
 			blocker_identifiers: vec![],
 		},
-			orchestrator::OperatorQueuedIssueStatus {
-				project_id: String::from(TEST_SERVICE_ID),
-				issue_id: String::from("issue-5"),
+		OperatorQueuedIssueStatus {
+			project_id: String::from(TEST_SERVICE_ID),
+			issue_id: String::from("issue-5"),
 			issue_identifier: String::from("PUB-105"),
 			title: String::from("Remove stale queue label"),
 			author: Some(String::from("Yvette")),
@@ -434,9 +446,9 @@ fn operator_status_text_queued_candidates() -> Vec<OperatorQueuedIssueStatus> {
 
 fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 	vec![
-			orchestrator::OperatorWorktreeStatus {
-				project_id: String::from(TEST_SERVICE_ID),
-				issue_id: String::from("issue-4"),
+		OperatorWorktreeStatus {
+			project_id: String::from(TEST_SERVICE_ID),
+			issue_id: String::from("issue-4"),
 			issue_identifier: Some(String::from("PUB-104")),
 			issue_state: None,
 			branch_name: String::from("x/pubfi-pub-104"),
@@ -449,9 +461,9 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 			recovery_next_action: None,
 			hygiene: None,
 		},
-			orchestrator::OperatorWorktreeStatus {
-				project_id: String::from(TEST_SERVICE_ID),
-				issue_id: String::from("issue-1"),
+		OperatorWorktreeStatus {
+			project_id: String::from(TEST_SERVICE_ID),
+			issue_id: String::from("issue-1"),
 			issue_identifier: Some(String::from("PUB-101")),
 			issue_state: Some(String::from("In Progress")),
 			branch_name: String::from("x/pubfi-pub-101"),
@@ -462,9 +474,9 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 			recovery_next_action: None,
 			hygiene: None,
 		},
-			orchestrator::OperatorWorktreeStatus {
-				project_id: String::from(TEST_SERVICE_ID),
-				issue_id: String::from("issue-3"),
+		OperatorWorktreeStatus {
+			project_id: String::from(TEST_SERVICE_ID),
+			issue_id: String::from("issue-3"),
 			issue_identifier: Some(String::from("PUB-103")),
 			issue_state: Some(String::from("In Review")),
 			branch_name: String::from("x/pubfi-pub-103"),
@@ -480,8 +492,8 @@ fn operator_status_text_worktrees() -> Vec<OperatorWorktreeStatus> {
 	]
 }
 
-fn test_worktree_provenance(source: &str) -> orchestrator::OperatorWorktreeProvenanceStatus {
-	orchestrator::OperatorWorktreeProvenanceStatus {
+fn test_worktree_provenance(source: &str) -> OperatorWorktreeProvenanceStatus {
+	OperatorWorktreeProvenanceStatus {
 		source: source.to_owned(),
 		created_at_unix: Some(1),
 		updated_at_unix: Some(2),
@@ -490,7 +502,7 @@ fn test_worktree_provenance(source: &str) -> orchestrator::OperatorWorktreeProve
 }
 
 fn operator_status_text_post_review_lanes() -> Vec<OperatorPostReviewLaneStatus> {
-	vec![orchestrator::OperatorPostReviewLaneStatus {
+	vec![OperatorPostReviewLaneStatus {
 		project_id: String::from(TEST_SERVICE_ID),
 		issue_id: String::from("issue-3"),
 		issue_identifier: String::from("PUB-103"),

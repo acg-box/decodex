@@ -1864,7 +1864,7 @@ struct AccountRunChipView: View {
 				.foregroundStyle(tint.opacity(colorScheme == .dark ? 0.88 : 0.76))
 				.frame(width: AccountRunChipLayout.iconWidth)
 
-			Text(run.compactTitle)
+			Text(chipTitle)
 				.font(PanelFont.runChipTitle)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.92))
 				.lineLimit(1)
@@ -1927,6 +1927,10 @@ struct AccountRunChipView: View {
 		}
 
 		return "play.fill"
+	}
+
+	private var chipTitle: String {
+		panelTrimmed(run.issueIdentifier) ?? "Run"
 	}
 
 	private var tint: Color {
@@ -2833,45 +2837,102 @@ struct NoticeView: View {
 	}
 }
 
+private struct OperatorLaneReadoutWidthKey: PreferenceKey {
+	static let defaultValue: CGFloat = 0
+
+	static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+		value = max(value, nextValue())
+	}
+}
+
+private struct OperatorLaneReadoutWidthReader: View {
+	var body: some View {
+		GeometryReader { proxy in
+			Color.clear
+				.preference(key: OperatorLaneReadoutWidthKey.self, value: proxy.size.width)
+		}
+	}
+}
+
 struct OperatorLanePopoverView: View {
 	let run: OperatorRunStatus
 	let currentTime: Date
+	@State private var readoutWidth: CGFloat = 0
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 6) {
-			header
+		VStack(alignment: .leading, spacing: 4) {
+			VStack(alignment: .leading, spacing: 3) {
+				if let projectTitle {
+					measuredReadout {
+						OperatorLaneReadoutRow(
+							title: "Project",
+							items: [OperatorLaneReadoutItem(label: "project", value: projectTitle)]
+						)
+					}
+				}
 
-			if hasReadoutContent {
-				OperatorLaneReadoutDivider()
+				measuredReadout {
+					OperatorLaneReadoutRow(
+						title: "Activity",
+						items: [OperatorLaneReadoutItem(label: nil, value: currentSummary)]
+					)
+				}
+
+				if let modelProgress {
+					measuredReadout {
+						OperatorLaneProgressReadoutRow(
+							title: modelProgress.title,
+							percent: modelProgress.percent,
+							elapsed: modelProgress.elapsed,
+							total: modelProgress.total,
+							barShare: modelProgress.barShare
+						)
+					}
+				}
 			}
 
-			if let modelBucket {
-				OperatorLaneProgressReadoutRow(
-					title: "Model",
-					percent: bucketPercent(modelBucket),
-					elapsed: formatActivityDuration(bucketWallSeconds(modelBucket)) ?? "0s",
-					total: formatActivityDuration(totalWallSeconds) ?? "0s",
-					barShare: bucketShare(modelBucket)
-				)
-				if detailBuckets.isEmpty == false || contextReadoutRows.isEmpty == false {
+			if modelProgress != nil,
+				totalOverviewMetrics.isEmpty == false
+					|| detailBuckets.isEmpty == false
+					|| lifecycleTableRows.isEmpty == false
+			{
+				alignedReadout {
 					OperatorLaneReadoutDivider()
 				}
 			}
 
 			VStack(alignment: .leading, spacing: 3) {
-				ForEach(detailBuckets) { bucket in
-					OperatorLaneReadoutRow(title: rawPanelToken(bucket.name), items: bucketReadoutItems(bucket))
-				}
-
-				if contextReadoutRows.isEmpty == false {
-					OperatorLaneReadoutDivider()
-					ForEach(contextReadoutRows) { row in
-						OperatorLaneReadoutRow(title: row.title, items: row.items)
+				if totalOverviewMetrics.isEmpty == false {
+					measuredReadout {
+						OperatorTotalMetricsView(metrics: totalOverviewMetrics)
 					}
 				}
 
-				if detailBuckets.isEmpty, contextReadoutRows.isEmpty, fallbackRunReadoutItems.isEmpty == false {
-					OperatorLaneReadoutRow(title: "Run", items: fallbackRunReadoutItems)
+				ForEach(detailBuckets) { bucket in
+					measuredReadout {
+						OperatorLaneReadoutRow(title: rawPanelToken(bucket.name), items: bucketReadoutItems(bucket))
+					}
+				}
+
+				if lifecycleTableRows.isEmpty == false {
+					if totalOverviewMetrics.isEmpty == false || detailBuckets.isEmpty == false {
+						alignedReadout {
+							OperatorLaneReadoutDivider()
+						}
+					}
+					measuredReadout {
+						OperatorLifecycleTableView(rows: lifecycleTableRows)
+					}
+				}
+
+				if detailBuckets.isEmpty,
+					totalOverviewMetrics.isEmpty,
+					lifecycleTableRows.isEmpty,
+					fallbackRunReadoutItems.isEmpty == false
+				{
+					measuredReadout {
+						OperatorLaneReadoutRow(title: "Run", items: fallbackRunReadoutItems)
+					}
 				}
 			}
 		}
@@ -2879,6 +2940,13 @@ struct OperatorLanePopoverView: View {
 		.padding(.vertical, 7)
 		.fixedSize(horizontal: true, vertical: false)
 		.accessibilityLabel("Lane activity for \(run.compactTitle)")
+		.onPreferenceChange(OperatorLaneReadoutWidthKey.self) { width in
+			guard abs(width - readoutWidth) > 0.5 else {
+				return
+			}
+
+			readoutWidth = width
+		}
 	}
 
 	private var activity: OperatorChildAgentActivity? {
@@ -2908,21 +2976,34 @@ struct OperatorLanePopoverView: View {
 		return rawPanelToken(label)
 	}
 
-	private var header: some View {
-		OperatorLaneHeaderReadoutView(
-			status: currentSummary,
-			project: projectTitle
-		)
-	}
-
 	private var projectTitle: String? {
 		panelTrimmed(run.projectDisplayName) ?? panelTrimmed(run.projectID)
 	}
 
+	private var alignedWidth: CGFloat? {
+		readoutWidth > 0 ? readoutWidth : nil
+	}
+
+	private func measuredReadout<Content: View>(
+		@ViewBuilder _ content: () -> Content
+	) -> some View {
+		content()
+			.background(OperatorLaneReadoutWidthReader())
+			.frame(width: alignedWidth, alignment: .leading)
+	}
+
+	private func alignedReadout<Content: View>(
+		@ViewBuilder _ content: () -> Content
+	) -> some View {
+		content()
+			.frame(width: alignedWidth, alignment: .leading)
+	}
+
 	private var hasReadoutContent: Bool {
-		modelBucket != nil
+		modelProgress != nil
+			|| totalOverviewMetrics.isEmpty == false
 			|| detailBuckets.isEmpty == false
-			|| contextReadoutRows.isEmpty == false
+			|| lifecycleTableRows.isEmpty == false
 			|| fallbackRunReadoutItems.isEmpty == false
 	}
 
@@ -2949,7 +3030,7 @@ struct OperatorLanePopoverView: View {
 				value: "\(formatCompactCount(activity.outputTokensCumulative)) tok"
 			),
 			OperatorLaneReadoutItem(
-				label: "tool calls",
+				label: "tools",
 				value: formatCompactCount(activity.toolCallCount)
 			),
 		]
@@ -2957,8 +3038,11 @@ struct OperatorLanePopoverView: View {
 		if let largestOutput = activity.largestToolOutputBytes, largestOutput > 0 {
 			items.append(
 				OperatorLaneReadoutItem(
-					label: "largest output",
-					value: formatCompactBytes(largestOutput)
+					label: "max output",
+					value: formatLargestOutput(
+						bytes: largestOutput,
+						tool: activity.largestToolOutputTool
+					)
 				)
 			)
 		}
@@ -2972,11 +3056,56 @@ struct OperatorLanePopoverView: View {
 		}
 	}
 
+	private var modelProgress: OperatorModelProgressReadout? {
+		if let lifecycleMetrics = run.lifecycleMetrics,
+			let modelSeconds = lifecycleModelSeconds(lifecycleMetrics.buckets)
+		{
+			let totalSeconds = max(
+				1,
+				lifecycleMetrics.wallSeconds,
+				lifecycleMetrics.buckets.reduce(0) { $0 + max(0, $1.wallSeconds) },
+				modelSeconds
+			)
+			let share = CGFloat(modelSeconds) / CGFloat(totalSeconds)
+
+			return OperatorModelProgressReadout(
+				title: "Inference",
+				percent: Int((Double(modelSeconds) / Double(totalSeconds) * 100).rounded()),
+				elapsed: formatActivityDuration(modelSeconds) ?? "0s",
+				total: formatActivityDuration(totalSeconds) ?? "0s",
+				barShare: min(1, max(0.02, share))
+			)
+		}
+
+		guard let modelBucket else {
+			return nil
+		}
+
+		return OperatorModelProgressReadout(
+			title: "Inference",
+			percent: bucketPercent(modelBucket),
+			elapsed: formatActivityDuration(bucketWallSeconds(modelBucket)) ?? "0s",
+			total: formatActivityDuration(totalWallSeconds) ?? "0s",
+			barShare: bucketShare(modelBucket)
+		)
+	}
+
 	private var detailBuckets: [OperatorChildAgentBucket] {
-		orderedBuckets.filter { bucket in
+		guard run.lifecycleMetrics == nil else {
+			return []
+		}
+
+		return orderedBuckets.filter { bucket in
 			bucket.name.caseInsensitiveCompare("Model") != .orderedSame
+				&& detailBucketIsVisible(bucket)
 				&& bucketReadoutItems(bucket).isEmpty == false
 		}
+	}
+
+	private func detailBucketIsVisible(_ bucket: OperatorChildAgentBucket) -> Bool {
+		let normalizedName = bucket.name.lowercased()
+
+		return normalizedName.contains("protocol") || normalizedName.contains("tracker")
 	}
 
 	private var orderedBuckets: [OperatorChildAgentBucket] {
@@ -2999,51 +3128,227 @@ struct OperatorLanePopoverView: View {
 		}
 	}
 
-	private var contextReadoutRows: [OperatorLaneReadoutLine] {
-		let rows = [
-			OperatorLaneReadoutLine(title: "Context", items: contextTokenReadoutItems),
-			OperatorLaneReadoutLine(title: "Tools", items: contextToolReadoutItems),
-		]
-
-		return rows.filter { $0.items.isEmpty == false }
-	}
-
-	private var contextTokenReadoutItems: [OperatorLaneReadoutItem] {
-		guard let activity else {
+	private var totalOverviewMetrics: [OperatorTotalMetric] {
+		guard let lifecycleMetrics = run.lifecycleMetrics else {
 			return []
 		}
 
-		var items = [OperatorLaneReadoutItem]()
-		if let current = activity.inputTokensCurrent {
-			items.append(OperatorLaneReadoutItem(label: "current", value: "\(formatCompactCount(current)) tok"))
-		}
-		if let peak = activity.inputTokensMax, peak != activity.inputTokensCurrent {
-			items.append(OperatorLaneReadoutItem(label: "peak", value: "\(formatCompactCount(peak)) tok"))
-		}
-		if activity.inputTokensCumulative > 0 {
-			items.append(OperatorLaneReadoutItem(label: "input", value: "\(formatCompactCount(activity.inputTokensCumulative)) tok"))
-		}
-
-		return items
+		return [
+			contextMetric(lifecycleMetrics),
+			toolsMetric(lifecycleMetrics),
+			trackerMetric(lifecycleMetrics),
+			protocolMetric(lifecycleMetrics),
+		].compactMap { $0 }
 	}
 
-	private var contextToolReadoutItems: [OperatorLaneReadoutItem] {
-		guard let activity else {
+	private func contextMetric(_ metrics: OperatorLifecycleMetrics) -> OperatorTotalMetric? {
+		var items = [OperatorLaneReadoutItem]()
+		if metrics.inputTokensCumulative > 0 {
+			items.append(OperatorLaneReadoutItem(label: "input", value: formatCompactCount(metrics.inputTokensCumulative)))
+		}
+		if metrics.outputTokensCumulative > 0 {
+			items.append(OperatorLaneReadoutItem(label: "output", value: formatCompactCount(metrics.outputTokensCumulative)))
+		}
+
+		let current = metrics.inputTokensCurrent ?? activity?.inputTokensCurrent
+		let peak = metrics.inputTokensPeak ?? activity?.inputTokensMax
+		if let current {
+			items.append(OperatorLaneReadoutItem(label: "current window", value: formatCompactCount(current)))
+		}
+		if let peak, peak != current {
+			items.append(OperatorLaneReadoutItem(label: "peak window", value: formatCompactCount(peak)))
+		}
+
+		guard items.isEmpty == false else {
+			return nil
+		}
+
+		return OperatorTotalMetric(
+			title: "Context",
+			items: items
+		)
+	}
+
+	private func toolsMetric(_ metrics: OperatorLifecycleMetrics) -> OperatorTotalMetric? {
+		var items = [OperatorLaneReadoutItem]()
+		if metrics.toolCallCount > 0 {
+			items.append(OperatorLaneReadoutItem(label: "tools", value: formatCompactCount(metrics.toolCallCount)))
+		}
+
+		if let largestOutput = metrics.largestToolOutputBytes, largestOutput > 0 {
+			items.append(
+				OperatorLaneReadoutItem(
+					label: "max output",
+					value: formatLargestOutput(
+						bytes: largestOutput,
+						tool: metrics.largestToolOutputTool
+					)
+				)
+			)
+		}
+
+		guard items.isEmpty == false else {
+			return nil
+		}
+
+		return OperatorTotalMetric(
+			title: "Tools",
+			items: items
+		)
+	}
+
+	private func trackerMetric(_ metrics: OperatorLifecycleMetrics) -> OperatorTotalMetric? {
+		guard let bucket = lifecycleBucket(named: "Tracker", in: metrics.buckets) else {
+			return nil
+		}
+
+		var items = [OperatorLaneReadoutItem]()
+		if bucket.eventCount > 0 {
+			items.append(OperatorLaneReadoutItem(label: "events", value: formatCompactCount(bucket.eventCount)))
+		}
+		if bucket.toolCallCount > 0 {
+			items.append(OperatorLaneReadoutItem(label: "tools", value: formatCompactCount(bucket.toolCallCount)))
+		}
+		if bucket.outputBytes > 0 {
+			items.append(OperatorLaneReadoutItem(label: "output bytes", value: formatCompactBytes(bucket.outputBytes)))
+		}
+
+		guard items.isEmpty == false else {
+			return nil
+		}
+
+		return OperatorTotalMetric(
+			title: "Tracker",
+			items: items
+		)
+	}
+
+	private func protocolMetric(_ metrics: OperatorLifecycleMetrics) -> OperatorTotalMetric? {
+		guard metrics.protocolEventCount > 0 || metrics.childEventCount > 0 else {
+			return nil
+		}
+
+		var items = [OperatorLaneReadoutItem]()
+		if metrics.protocolEventCount > 0 {
+			items.append(OperatorLaneReadoutItem(label: "events", value: formatCompactCount(metrics.protocolEventCount)))
+		}
+		if metrics.childEventCount > 0 {
+			items.append(OperatorLaneReadoutItem(label: "child events", value: formatCompactCount(metrics.childEventCount)))
+		}
+
+		return OperatorTotalMetric(
+			title: "Protocol",
+			items: items
+		)
+	}
+
+	private var lifecycleTableRows: [OperatorLifecycleTableRow] {
+		guard let lifecycleMetrics = run.lifecycleMetrics else {
 			return []
 		}
 
-		var items = [OperatorLaneReadoutItem]()
-		if activity.toolCallCount > 0 {
-			items.append(OperatorLaneReadoutItem(label: "tool calls", value: formatCompactCount(activity.toolCallCount)))
+		return lifecycleMetrics.phases.map { phase in
+			lifecycleTableRow(
+				stage: panelTrimmed(phase.label)
+					?? panelTrimmed(phase.phase).map(rawPanelToken)
+					?? "Phase",
+				attemptCount: phase.attemptCount,
+				wallSeconds: phase.wallSeconds,
+				buckets: phase.buckets,
+				inputTokens: phase.inputTokensCumulative,
+				outputTokens: phase.outputTokensCumulative,
+				toolCallCount: phase.toolCallCount,
+				largestOutputBytes: phase.largestToolOutputBytes,
+				largestOutputTool: phase.largestToolOutputTool
+			)
 		}
-		if let largestOutput = activity.largestToolOutputBytes, largestOutput > 0 {
-			items.append(OperatorLaneReadoutItem(label: "largest output", value: formatCompactBytes(largestOutput)))
+	}
+
+	private func lifecycleTableRow(
+		stage: String,
+		attemptCount: Int,
+		wallSeconds: Int,
+		buckets: [OperatorLifecycleMetricBucket],
+		inputTokens: Int,
+		outputTokens: Int,
+		toolCallCount: Int,
+		largestOutputBytes: Int?,
+		largestOutputTool: String?
+	) -> OperatorLifecycleTableRow {
+		let runtimeSeconds = lifecycleModelSeconds(buckets) ?? 0
+		let runtime = runtimeShareParts(
+			seconds: runtimeSeconds,
+			totalSeconds: lifecycleWallSeconds(
+				wallSeconds: wallSeconds,
+				buckets: buckets,
+				runtimeSeconds: runtimeSeconds
+			)
+		)
+		let largestOutput = formatLargestOutput(bytes: largestOutputBytes, tool: largestOutputTool)
+
+		return OperatorLifecycleTableRow(
+			stage: stage,
+			attempts: attemptCount > 0 ? formatCompactCount(attemptCount) : "-",
+			runtime: runtime.text,
+			inputTokens: inputTokens > 0 ? formatCompactCount(inputTokens) : "-",
+			outputTokens: outputTokens > 0 ? formatCompactCount(outputTokens) : "-",
+			toolCalls: toolCallCount > 0 ? formatCompactCount(toolCallCount) : "-",
+			largestOutput: largestOutput
+		)
+	}
+
+	private func formatLargestOutput(bytes: Int?, tool: String?) -> String {
+		guard let bytes, bytes > 0 else {
+			return "-"
 		}
-		if let largestTool = panelTrimmed(activity.largestToolOutputTool) {
-			items.append(OperatorLaneReadoutItem(label: "largest tool", value: largestTool))
+		guard let tool = panelTrimmed(tool) else {
+			return formatCompactBytes(bytes)
 		}
 
-		return items
+		return "\(formatCompactBytes(bytes))(\(tool))"
+	}
+
+	private func lifecycleWallSeconds(
+		wallSeconds: Int,
+		buckets: [OperatorLifecycleMetricBucket],
+		runtimeSeconds: Int
+	) -> Int {
+		max(
+			1,
+			wallSeconds,
+			buckets.reduce(0) { $0 + max(0, $1.wallSeconds) },
+			runtimeSeconds
+		)
+	}
+
+	private func runtimeShareParts(
+		seconds: Int,
+		totalSeconds: Int
+	) -> (percent: String, elapsed: String, total: String, ratio: String, text: String) {
+		guard seconds > 0 else {
+			return ("-", "-", "-", "-", "-")
+		}
+
+		let total = max(1, totalSeconds, seconds)
+		let percent = Int((Double(seconds) / Double(total) * 100).rounded())
+		let elapsed = formatActivityDuration(seconds) ?? "0s"
+		let totalText = formatActivityDuration(total) ?? "0s"
+		let compactElapsed = elapsed.replacingOccurrences(of: " ", with: "")
+		let compactTotal = totalText.replacingOccurrences(of: " ", with: "")
+		let ratio = "\(compactElapsed)/\(compactTotal)"
+		return ("\(percent)%", elapsed, totalText, ratio, "\(ratio)(\(percent)%)")
+	}
+
+	private func lifecycleModelSeconds(_ buckets: [OperatorLifecycleMetricBucket]) -> Int? {
+		buckets.first { bucket in
+			bucket.name.caseInsensitiveCompare("Model") == .orderedSame
+		}?.wallSeconds
+	}
+
+	private func lifecycleBucket(named name: String, in buckets: [OperatorLifecycleMetricBucket]) -> OperatorLifecycleMetricBucket? {
+		buckets.first { bucket in
+			bucket.name.caseInsensitiveCompare(name) == .orderedSame
+		}
 	}
 
 	private var bucketRows: [OperatorChildAgentBucket] {
@@ -3079,7 +3384,7 @@ struct OperatorLanePopoverView: View {
 			}
 		} else {
 			if bucket.toolCallCount > 0 {
-				items.append(OperatorLaneReadoutItem(label: "tool calls", value: formatCompactCount(bucket.toolCallCount)))
+				items.append(OperatorLaneReadoutItem(label: "tools", value: formatCompactCount(bucket.toolCallCount)))
 			}
 			if bucket.outputBytes > 0 {
 				items.append(OperatorLaneReadoutItem(label: "output bytes", value: formatCompactBytes(bucket.outputBytes)))
@@ -3158,52 +3463,249 @@ struct OperatorLaneHeaderReadoutView: View {
 	}
 }
 
-struct OperatorLaneReadoutLine: Identifiable {
+struct OperatorModelProgressReadout {
+	let title: String
+	let percent: Int
+	let elapsed: String
+	let total: String
+	let barShare: CGFloat
+}
+
+struct OperatorTotalMetric: Identifiable {
 	let title: String
 	let items: [OperatorLaneReadoutItem]
 
 	var id: String {
 		title
 	}
+
+	var accessibilityText: String {
+		let itemText = items.map(\.accessibilityText).joined(separator: ", ")
+
+		return itemText.isEmpty ? title : "\(title), \(itemText)"
+	}
+}
+
+struct OperatorTotalMetricsView: View {
+	let metrics: [OperatorTotalMetric]
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		Grid(
+			alignment: .leading,
+			horizontalSpacing: OperatorLaneReadoutLayout.totalValueLabelSpacing,
+			verticalSpacing: OperatorLaneReadoutLayout.itemRowSpacing
+		) {
+			ForEach(metrics) { metric in
+				GridRow(alignment: .firstTextBaseline) {
+					OperatorLaneReadoutLabelView(title: metric.title)
+						.gridColumnAlignment(.leading)
+					ForEach(metricCells(for: metric)) { cell in
+						metricCell(cell)
+					}
+				}
+			}
+		}
+		.fixedSize(horizontal: true, vertical: false)
+		.accessibilityLabel(accessibilityText)
+	}
+
+	private var accessibilityText: String {
+		metrics.map(\.accessibilityText).joined(separator: "; ")
+	}
+
+	private func metricCells(for metric: OperatorTotalMetric) -> [OperatorTotalMetricGridCell] {
+		(0..<OperatorLaneReadoutLayout.metricColumnCount).flatMap { index in
+			let item = metric.items.indices.contains(index) ? metric.items[index] : nil
+			let placeholder = item == nil
+			return [
+				OperatorTotalMetricGridCell(
+					id: "\(metric.id)-\(index)-value",
+					slot: index,
+					text: item?.displayValue ?? "-",
+					accessibilityText: item?.accessibilityText,
+					role: .value,
+					isPlaceholder: placeholder
+				),
+				OperatorTotalMetricGridCell(
+					id: "\(metric.id)-\(index)-label",
+					slot: index,
+					text: item?.label ?? "-",
+					accessibilityText: item?.accessibilityText,
+					role: .label,
+					isPlaceholder: placeholder
+				),
+			]
+		}
+	}
+
+	@ViewBuilder
+	private func metricCell(_ cell: OperatorTotalMetricGridCell) -> some View {
+		if cell.isPlaceholder {
+			Color.clear
+				.frame(width: 1, height: 1)
+				.gridColumnAlignment(cell.role == .value ? .trailing : .leading)
+				.accessibilityHidden(true)
+		} else {
+			Text(cell.text)
+				.font(cell.role == .value ? OperatorLanePopoverStyle.valueFont : OperatorLanePopoverStyle.metaFont)
+				.foregroundStyle(cell.role == .value
+					? OperatorLanePopoverStyle.primaryText(colorScheme)
+					: OperatorLanePopoverStyle.mutedText(colorScheme))
+				.monospacedDigit()
+				.lineLimit(1)
+				.allowsTightening(true)
+				.padding(.leading, cell.role == .value && cell.slot > 0
+					? OperatorLaneReadoutLayout.totalSegmentSpacing
+					: 0)
+				.gridColumnAlignment(cell.role == .value ? .trailing : .leading)
+				.help(cell.accessibilityText ?? cell.text)
+		}
+	}
+}
+
+private struct OperatorTotalMetricGridCell: Identifiable {
+	let id: String
+	let slot: Int
+	let text: String
+	let accessibilityText: String?
+	let role: OperatorTotalMetricGridCellRole
+	let isPlaceholder: Bool
+}
+
+private enum OperatorTotalMetricGridCellRole {
+	case value
+	case label
+}
+
+struct OperatorLifecycleTableRow: Identifiable {
+	let stage: String
+	let attempts: String
+	let runtime: String
+	let inputTokens: String
+	let outputTokens: String
+	let toolCalls: String
+	let largestOutput: String
+
+	var id: String {
+		stage
+	}
+}
+
+struct OperatorLifecycleTableView: View {
+	let rows: [OperatorLifecycleTableRow]
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		Grid(
+			alignment: .leading,
+			horizontalSpacing: OperatorLaneReadoutLayout.lifecycleTableColumnSpacing,
+			verticalSpacing: OperatorLaneReadoutLayout.itemRowSpacing
+		) {
+			GridRow(alignment: .firstTextBaseline) {
+				headerCell("Stage", alignment: .leading)
+				headerCell("attempts", alignment: .trailing)
+				headerCell("inference", alignment: .trailing)
+				headerCell("input", alignment: .trailing)
+				headerCell("output", alignment: .trailing)
+				headerCell("tools", alignment: .trailing)
+				headerCell("max output", alignment: .trailing)
+			}
+			ForEach(rows) { row in
+				GridRow(alignment: .firstTextBaseline) {
+					tableCell(row.stage, alignment: .leading)
+					tableCell(row.attempts, alignment: .trailing)
+					tableCell(row.runtime, alignment: .trailing)
+					tableCell(row.inputTokens, alignment: .trailing)
+					tableCell(row.outputTokens, alignment: .trailing)
+					tableCell(row.toolCalls, alignment: .trailing)
+					tableCell(row.largestOutput, alignment: .trailing)
+				}
+			}
+		}
+		.padding(.top, 2)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.accessibilityLabel(accessibilityText)
+	}
+
+	private var accessibilityText: String {
+		rows.map { row in
+			"\(row.stage), attempts \(row.attempts), inference \(row.runtime), input \(row.inputTokens), output \(row.outputTokens), tools \(row.toolCalls), max output \(row.largestOutput)"
+		}
+		.joined(separator: "; ")
+	}
+
+	private func headerCell(
+		_ text: String,
+		alignment: HorizontalAlignment
+	) -> some View {
+		Text(text)
+			.font(OperatorLanePopoverStyle.metaFont)
+			.foregroundStyle(OperatorLanePopoverStyle.tableHeaderText(colorScheme))
+			.lineLimit(1)
+			.allowsTightening(true)
+			.gridColumnAlignment(alignment)
+	}
+
+	private func tableCell(
+		_ text: String,
+		alignment: HorizontalAlignment
+	) -> some View {
+		Text(text)
+			.font(OperatorLanePopoverStyle.metaFont)
+			.foregroundStyle(OperatorLanePopoverStyle.primaryText(colorScheme))
+			.monospacedDigit()
+			.lineLimit(1)
+			.allowsTightening(true)
+			.gridColumnAlignment(alignment)
+	}
 }
 
 private enum OperatorLaneReadoutLayout {
-	static let titleWidth: CGFloat = 62
+	static let titleWidth: CGFloat = 92
 	static let columnSpacing: CGFloat = 7
 	static let itemRowSpacing: CGFloat = 2
 	static let progressTrackWidth: CGFloat = 84
+	static let totalSegmentSpacing: CGFloat = 13
+	static let totalValueLabelSpacing: CGFloat = 4
+	static let metricColumnCount = 4
+	static let lifecycleTableColumnSpacing: CGFloat = 18
 }
 
 private enum OperatorLanePopoverStyle {
 	static let titleFont = PanelFont.laneTitle
 	static let projectFont = PanelFont.laneDetail
-	static let labelFont = PanelFont.usageLabel
-	static let valueFont = PanelFont.lanePopoverMeta
-	static let metaFont = PanelFont.tertiary
-	static let separatorFont = PanelFont.tertiary
+	static let labelFont = PanelFont.lanePopoverLabel
+	static let valueFont = PanelFont.lanePopoverValue
+	static let metaFont = PanelFont.lanePopoverMeta
+	static let separatorFont = PanelFont.lanePopoverMeta
 
 	static func primaryText(_ colorScheme: ColorScheme) -> Color {
-		Color.primary.opacity(colorScheme == .dark ? 0.82 : 0.76)
+		Color.primary.opacity(colorScheme == .dark ? 0.94 : 0.88)
 	}
 
 	static func secondaryText(_ colorScheme: ColorScheme) -> Color {
-		Color.secondary.opacity(colorScheme == .dark ? 0.76 : 0.7)
+		Color.secondary.opacity(colorScheme == .dark ? 0.92 : 0.86)
 	}
 
 	static func mutedText(_ colorScheme: ColorScheme) -> Color {
-		Color.secondary.opacity(colorScheme == .dark ? 0.55 : 0.48)
+		Color.secondary.opacity(colorScheme == .dark ? 0.78 : 0.68)
+	}
+
+	static func tableHeaderText(_ colorScheme: ColorScheme) -> Color {
+		Color.secondary.opacity(colorScheme == .dark ? 0.72 : 0.62)
 	}
 
 	static func separator(_ colorScheme: ColorScheme) -> Color {
-		Color.secondary.opacity(colorScheme == .dark ? 0.13 : 0.18)
+		Color.secondary.opacity(colorScheme == .dark ? 0.18 : 0.22)
 	}
 
 	static func progressTrack(_ colorScheme: ColorScheme) -> Color {
-		Color.secondary.opacity(colorScheme == .dark ? 0.14 : 0.16)
+		Color.secondary.opacity(colorScheme == .dark ? 0.2 : 0.22)
 	}
 
 	static func progressFill(_ colorScheme: ColorScheme) -> Color {
-		PanelPalette.routeAccent(colorScheme).opacity(colorScheme == .dark ? 0.76 : 0.68)
+		PanelPalette.routeAccent(colorScheme).opacity(colorScheme == .dark ? 0.86 : 0.76)
 	}
 }
 
@@ -3228,28 +3730,53 @@ struct OperatorLaneReadoutItem: Identifiable {
 		return value
 	}
 
+	var accessibilityText: String {
+		if let label {
+			return "\(label) \(displayValue)"
+		}
+
+		return displayValue
+	}
+
 	fileprivate var summaryRuns: [OperatorLaneReadoutTextRun] {
 		switch label?.lowercased() {
 		case "wall":
 			return [.meta("wall "), .value(displayValue)]
+		case "project":
+			return [.meta(displayValue)]
+		case "attempts":
+			return [.value(displayValue), .meta(displayValue == "1" ? " attempt" : " attempts")]
+		case "captured":
+			return [.value(displayValue), .meta(" captured")]
+		case "missing":
+			return [.value(displayValue), .meta(" missing")]
 		case "events":
 			return [.value(displayValue), .meta(" events")]
-		case "input":
+		case "child events":
+			return [.value(displayValue), .meta(" child events")]
+		case "input", "input tokens":
 			return [.value(displayValue), .meta(" input")]
-		case "output":
+		case "output", "output tokens":
 			return [.value(displayValue), .meta(" output")]
 		case "current":
 			return [.value(displayValue), .meta(" current")]
+		case "current window", "current window tokens":
+			return [.value(displayValue), .meta(" current window")]
 		case "peak":
 			return [.value(displayValue), .meta(" peak")]
-		case "tool calls":
-			return [.value(displayValue), .meta(" calls")]
+		case "peak window", "peak window tokens":
+			return [.value(displayValue), .meta(" peak window")]
+		case "tools", "tool calls":
+			return [.value(displayValue), .meta(" tools")]
 		case "output bytes":
 			return [.value(displayValue), .meta(" output")]
-		case "largest output":
-			return [.value(displayValue), .meta(" max")]
-		case "largest tool":
-			return [.value(displayValue)]
+		case "max output", "max tool output", "largest output":
+			if let source = splitLargestOutputSource(displayValue) {
+				return [.value("\(source.output)(\(source.tool))"), .meta(" max output")]
+			}
+			return [.value(displayValue), .meta(" max output")]
+		case "largest tool", "source":
+			return [.value(displayValue), .meta(" source")]
 		default:
 			if let label {
 				return [.meta("\(label) "), .value(displayValue)]
@@ -3258,9 +3785,29 @@ struct OperatorLaneReadoutItem: Identifiable {
 		}
 	}
 
+	fileprivate var summaryCharacterCount: Int {
+		summaryRuns.reduce(0) { total, run in
+			total + run.text.count
+		}
+	}
+
 	func matchesLabel(_ expected: String) -> Bool {
 		label?.caseInsensitiveCompare(expected) == .orderedSame
 	}
+}
+
+fileprivate func splitLargestOutputSource(_ value: String) -> (output: String, tool: String)? {
+	guard let range = value.range(of: " from ") else {
+		return nil
+	}
+
+	let output = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+	let tool = String(value[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+	guard output.isEmpty == false, tool.isEmpty == false else {
+		return nil
+	}
+
+	return (output, tool)
 }
 
 fileprivate enum OperatorLaneReadoutTextRole {
@@ -3333,17 +3880,19 @@ struct OperatorLaneReadoutRow: View {
 
 	private var toolSummaryFragments: [[OperatorLaneReadoutTextRun]] {
 		var fragments = [[OperatorLaneReadoutTextRun]]()
-		if let calls = value(for: "tool calls") {
-			fragments.append([.value(calls), .meta(" calls")])
+		if let calls = value(for: "tools") ?? value(for: "tool calls") {
+			fragments.append([.value(calls), .meta(" tools")])
 		}
-		if let maxOutput = value(for: "largest output") {
-			if let largestTool = value(for: "largest tool") {
-				fragments.append([.meta("max "), .value(maxOutput), .meta(" from "), .value(largestTool)])
+		if let maxOutput = value(for: "max output") ?? value(for: "max tool output") ?? value(for: "largest output") {
+			if let embeddedSource = splitLargestOutputSource(maxOutput) {
+				fragments.append([.value("\(embeddedSource.output)(\(embeddedSource.tool))"), .meta(" max output")])
+			} else if let source = value(for: "source") ?? value(for: "largest tool") {
+				fragments.append([.value("\(maxOutput)(\(source))"), .meta(" max output")])
 			} else {
-				fragments.append([.meta("max "), .value(maxOutput)])
+				fragments.append([.value(maxOutput), .meta(" max output")])
 			}
-		} else if let largestTool = value(for: "largest tool") {
-			fragments.append([.meta("largest "), .value(largestTool)])
+		} else if let source = value(for: "source") ?? value(for: "largest tool") {
+			fragments.append([.value(source), .meta(" source")])
 		}
 
 		return fragments
@@ -3354,12 +3903,7 @@ struct OperatorLaneReadoutRow: View {
 	}
 
 	private var accessibilityText: String {
-		items.map { item in
-			if let label = item.label {
-				return "\(label) \(item.value)"
-			}
-			return item.value
-		}
+		items.map(\.accessibilityText)
 		.joined(separator: ", ")
 	}
 }
@@ -3428,9 +3972,9 @@ struct OperatorLaneReadoutLabelView: View {
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: 3) {
 			Image(systemName: symbol)
-				.font(.system(size: 7.8, weight: .semibold))
+				.font(.system(size: 8.2, weight: .semibold))
 				.foregroundStyle(tint)
-				.frame(width: 9)
+				.frame(width: 9.5)
 
 			Text(title)
 				.font(OperatorLanePopoverStyle.labelFont)
@@ -3443,8 +3987,14 @@ struct OperatorLaneReadoutLabelView: View {
 
 	private var symbol: String {
 		switch title.lowercased() {
-		case "model":
+		case "model", "live model", "model time", "ai runtime", "inference":
 			return "waveform"
+		case "attempts":
+			return "number"
+		case "project":
+			return "folder"
+		case "activity":
+			return "waveform.path.ecg"
 		case "protocol":
 			return "network"
 		case "tracker":
@@ -3460,18 +4010,24 @@ struct OperatorLaneReadoutLabelView: View {
 
 	private var tint: Color {
 		switch title.lowercased() {
-		case "model":
+		case "model", "live model", "model time", "ai runtime", "inference":
 			return PanelPalette.routeAccent(colorScheme).opacity(0.78)
+		case "attempts":
+			return PanelPalette.routeAccent(colorScheme).opacity(0.68)
+		case "project":
+			return PanelPalette.landingAccent(colorScheme).opacity(0.74)
+		case "activity":
+			return PanelPalette.secondaryText(colorScheme).opacity(0.72)
 		case "protocol":
 			return PanelPalette.usageCyan(colorScheme).opacity(0.78)
 		case "tracker":
-			return PanelPalette.secondaryText(colorScheme).opacity(0.58)
+			return PanelPalette.secondaryText(colorScheme).opacity(0.68)
 		case "tool", "tools":
 			return PanelPalette.codexAccent(colorScheme).opacity(0.72)
 		case "context":
 			return PanelPalette.capacityAccent(colorScheme).opacity(0.72)
 		default:
-			return PanelPalette.secondaryText(colorScheme).opacity(0.48)
+			return PanelPalette.secondaryText(colorScheme).opacity(0.58)
 		}
 	}
 }
@@ -3489,14 +4045,14 @@ struct OperatorLaneProgressReadoutRow: View {
 			OperatorLaneReadoutLabelView(title: title)
 
 			OperatorLanePopoverProgressBar(progress: barShare)
-				.frame(width: OperatorLaneReadoutLayout.progressTrackWidth)
+				.frame(minWidth: OperatorLaneReadoutLayout.progressTrackWidth, maxWidth: .infinity)
 
 			OperatorLaneProgressTextView(percent: percent, elapsed: elapsed, total: total)
 				.lineLimit(1)
 				.fixedSize(horizontal: true, vertical: false)
 		}
 		.frame(height: 16)
-		.fixedSize(horizontal: true, vertical: false)
+		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 }
 
@@ -4071,13 +4627,13 @@ private func formatCompactCount(_ value: Int) -> String {
 private func formatCompactBytes(_ value: Int) -> String {
 	let absoluteValue = max(0, Double(value))
 	if absoluteValue >= 1_073_741_824 {
-		return "\(formatCompactDecimal(absoluteValue / 1_073_741_824))GB"
+		return "\(formatCompactDecimal(absoluteValue / 1_073_741_824))GiB"
 	}
 	if absoluteValue >= 1_048_576 {
-		return "\(formatCompactDecimal(absoluteValue / 1_048_576))MB"
+		return "\(formatCompactDecimal(absoluteValue / 1_048_576))MiB"
 	}
 	if absoluteValue >= 1_024 {
-		return "\(formatCompactDecimal(absoluteValue / 1_024))KB"
+		return "\(formatCompactDecimal(absoluteValue / 1_024))KiB"
 	}
 
 	return "\(max(0, value))B"
