@@ -1,0 +1,296 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-13T21:50:40Z",
+      "message": "core: carry turn environment cwd as PathUri",
+      "sha": "a2a917b071ce164777333349163005720c8c5e7f",
+      "url": "https://github.com/openai/codex/commit/a2a917b071ce164777333349163005720c8c5e7f"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-13T22:22:06Z",
+      "message": "core: honor remote environment cwd and shell",
+      "sha": "019ff65142c38263fd685f9692670aeeb560c5c6",
+      "url": "https://github.com/openai/codex/commit/019ff65142c38263fd685f9692670aeeb560c5c6"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-13T22:43:11Z",
+      "message": "protocol: clarify remote cwd preservation",
+      "sha": "5bada3f2a4f18a252cd65d89f461d3ff3c9f4b1f",
+      "url": "https://github.com/openai/codex/commit/5bada3f2a4f18a252cd65d89f461d3ff3c9f4b1f"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-13T23:10:56Z",
+      "message": "app-server: record foreign environment cwd rejection",
+      "sha": "2a8b87ed44215e4bf0bcce6b778038874c720b51",
+      "url": "https://github.com/openai/codex/commit/2a8b87ed44215e4bf0bcce6b778038874c720b51"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-13T23:21:08Z",
+      "message": "tests: cover app-server remote Windows cwd",
+      "sha": "310ccf29f684a7a19ae65ea790bd465cfe74cb2a",
+      "url": "https://github.com/openai/codex/commit/310ccf29f684a7a19ae65ea790bd465cfe74cb2a"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-14T01:26:27Z",
+      "message": "tests: send native Windows cwd through app server",
+      "sha": "763357aaa79a5fb13f84a5013deb2ff284a67bd4",
+      "url": "https://github.com/openai/codex/commit/763357aaa79a5fb13f84a5013deb2ff284a67bd4"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-14T01:36:48Z",
+      "message": "tests: extract Wine exec-server fixture",
+      "sha": "ce4102787545b9131e32619e43ed89dc0ad13f12",
+      "url": "https://github.com/openai/codex/commit/ce4102787545b9131e32619e43ed89dc0ad13f12"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-14T05:08:18Z",
+      "message": "codex: address PR review feedback (#28122)",
+      "sha": "4f6dd50b0eb01f3548c7b1403017e74c8697ef51",
+      "url": "https://github.com/openai/codex/commit/4f6dd50b0eb01f3548c7b1403017e74c8697ef51"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-14T05:31:28Z",
+      "message": "codex: fix CI failure on PR #28122",
+      "sha": "f4db0780fc9ef2063e29847f851759c5bd97dbe1",
+      "url": "https://github.com/openai/codex/commit/f4db0780fc9ef2063e29847f851759c5bd97dbe1"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-14T05:41:42Z",
+      "message": "codex: fix CI failure on PR #28122",
+      "sha": "25644e0ec49ebf371ab45c8ae73b3cb8fd78607e",
+      "url": "https://github.com/openai/codex/commit/25644e0ec49ebf371ab45c8ae73b3cb8fd78607e"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-14T05:49:31Z",
+      "message": "codex: fix CI failure on PR #28122",
+      "sha": "18004b9322a89dd9efc40aea3f88643cdfc55eed",
+      "url": "https://github.com/openai/codex/commit/18004b9322a89dd9efc40aea3f88643cdfc55eed"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-14T05:56:50Z",
+      "message": "tests: follow runfiles symlinks in Wine runtime",
+      "sha": "716e9e32e934a3f7b868a1bc7a327524594dc81e",
+      "url": "https://github.com/openai/codex/commit/716e9e32e934a3f7b868a1bc7a327524594dc81e"
+    },
+    {
+      "author": "anp-oai",
+      "committed_at": "2026-06-14T05:59:36Z",
+      "message": "codex: fix CI failure on PR #28122",
+      "sha": "1a7dbd5b4ff43cdf230f8b7062e6c1618ed458dc",
+      "url": "https://github.com/openai/codex/commit/1a7dbd5b4ff43cdf230f8b7062e6c1618ed458dc"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "URI",
+    "TODO",
+    "BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS",
+    "BUILT_IN_PERMISSION_PROFILE_WORKSPACE",
+    "THREAD_LIST_DEFAULT_LIMIT",
+    "THREAD_LIST_MAX_LIMIT",
+    "DIRECT_INPUT_TO_MULTI_AGENT_V2_SUBAGENT_ERROR",
+    "LOCAL_ENVIRONMENT_ID",
+    "REMOTE_ENVIRONMENT_ID",
+    "JSONRPCE",
+    "CODEX_EXEC_SERVER_URL_ENV_VAR",
+    "APP_SERVER_READ_TIMEOUT",
+    "CALL_ID",
+    "COMMAND",
+    "WINE_BAZEL_OK",
+    "INVALID_REQUEST_ERROR_CODE",
+    "CODEX_HOME",
+    "URL",
+    "COLLABORATION_MODE_CLOSE_TAG",
+    "REALTIME_CONVERSATION_OPEN_TAG",
+    "REALTIME_CONVERSATION_CLOSE_TAG",
+    "USER_MESSAGE_BEGIN"
+  ],
+  "files": [
+    {
+      "additions": 24,
+      "deletions": 12,
+      "patch_excerpt": "@@ -328,11 +328,12 @@ fn install_powershell_runtime(prefix: &Path, runtime: &Path) -> Result<()> {\n \n /// Recursively reproduces a runfiles directory in a writable Wine prefix.\n ///\n-/// Bazel runfiles may be immutable and may contain the PowerShell distribution\n-/// on a different filesystem from the temporary prefix. Hard links avoid\n-/// repeatedly copying the roughly hundred-megabyte runtime when both locations\n-/// share a filesystem; the copy fallback preserves correctness for sandbox or\n-/// remote-execution layouts where cross-device hard links are unavailable.\n+/// Bazel runfiles may be immutable, represented by a symlink forest, and may\n+/// contain the PowerShell distribution on a different filesystem from the\n+/// temporary prefix. Hard links avoid repeatedly copying the roughly\n+/// hundred-megabyte runtime when both locations share a filesystem; the copy\n+/// fallback prese...",
+      "path": "bazel/rules/testing/wine/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 22,
+      "deletions": 0,
+      "patch_excerpt": "@@ -264,6 +264,28 @@ fn powershell_runtime_is_materialized_at_the_windows_fallback_path() -> Result<(\n     Ok(())\n }\n \n+#[test]\n+fn powershell_runtime_follows_runfiles_symlinks() -> Result<()> {\n+    let prefix = TempDir::new()?;\n+    let runtime = TempDir::new()?;\n+    let backing = TempDir::new()?;\n+    let backing_file = backing.path().join(\"pwsh.exe\");\n+    fs::write(&backing_file, b\"pwsh\")?;\n+    std::os::unix::fs::symlink(&backing_file, runtime.path().join(\"pwsh.exe\"))?;\n+\n+    install_powershell_runtime(prefix.path(), runtime.path())?;\n+\n+    let installed = prefix\n+        .path()\n+        .join(\"drive_c\")\n+        .join(\"Program Files\")\n+        .join(\"PowerShell\")\n+        .join(\"7\")\n+        .join(\"pwsh.exe\");\n+    assert_eq!(fs::read(installed)?, b\"pwsh\");\n+    Ok(())\n+}\n+\n #[tokio::test]\n async fn pinned_powershell_runs_under_wine_with_a_pty() -> Result<()> {\n     // Keep th...",
+      "path": "bazel/rules/testing/wine/src/lib_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3583,6 +3583,7 @@ dependencies = [\n  \"codex-network-proxy\",\n  \"codex-utils-absolute-path\",\n  \"codex-utils-image\",\n+ \"codex-utils-path-uri\",\n  \"codex-utils-string\",\n  \"encoding_rs\",\n  \"globset\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use codex_app_server_protocol::SelectedCapabilityRoot;\n use codex_extension_api::ExtensionDataInit;\n use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;\n use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;\n+use codex_utils_path_uri::PathUri;\n \n const THREAD_LIST_DEFAULT_LIMIT: usize = 25;\n const THREAD_LIST_MAX_LIMIT: usize = 100;\n@@ -1292,7 +1293,7 @@ impl ThreadRequestProcessor {\n                 .into_iter()\n                 .map(|environment| TurnEnvironmentSelection {\n                     environment_id: environment.environment_id,\n-                    cwd: environment.cwd,\n+                    cwd: PathUri::from_abs_path(&environment.cwd),\n                 })\n                 .collect::<Vec<_>>()\n         });",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 2,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use codex_protocol::protocol::AdditionalContextKind as CoreAdditionalContextKind\n use codex_protocol::protocol::MultiAgentVersion;\n use codex_protocol::protocol::SessionSource;\n use codex_protocol::protocol::SubAgentSource;\n+use codex_utils_path_uri::PathUri;\n \n const DIRECT_INPUT_TO_MULTI_AGENT_V2_SUBAGENT_ERROR: &str =\n     \"direct app-server input is not allowed for multi-agent v2 sub-agents\";\n@@ -339,7 +340,7 @@ impl TurnRequestProcessor {\n                 .into_iter()\n                 .map(|environment| TurnEnvironmentSelection {\n                     environment_id: environment.environment_id,\n-                    cwd: environment.cwd,\n+                    cwd: PathUri::from_abs_path(&environment.cwd),\n                 })\n                 .collect::<Vec<_>>()\n         });\n@@ -523,7 +524,7 @@ impl TurnRequestProcessor {\n             environment_selections\n            ...",
+      "path": "codex-rs/app-server/src/request_processors/turn_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 21,
+      "deletions": 9,
+      "patch_excerpt": "@@ -7,6 +7,7 @@ use codex_protocol::error::CodexErr;\n use codex_protocol::error::Result as CodexResult;\n use codex_protocol::protocol::TurnEnvironmentSelection;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n \n use crate::session::turn_context::TurnEnvironment;\n use crate::shell::Shell;\n@@ -20,7 +21,7 @@ pub(crate) fn default_thread_environment_selections(\n         .into_iter()\n         .map(|environment_id| TurnEnvironmentSelection {\n             environment_id,\n-            cwd: cwd.clone(),\n+            cwd: PathUri::from_abs_path(cwd),\n         })\n         .collect()\n }\n@@ -99,7 +100,12 @@ pub(crate) async fn resolve_environment_selections(\n         turn_environments.push(TurnEnvironment::new(\n             environment_id,\n             environment,\n-            selected_environment.cwd.clone(),\n+            selected_environment.cwd.to_abs_path().m...",
+      "path": "codex-rs/core/src/environment_selection.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 36,
+      "deletions": 8,
+      "patch_excerpt": "@@ -149,6 +149,7 @@ use codex_thread_store::ResumeThreadParams;\n use codex_thread_store::ThreadPersistenceMetadata;\n use codex_thread_store::ThreadStore;\n use codex_utils_output_truncation::TruncationPolicy;\n+use codex_utils_path_uri::PathUri;\n use futures::future::BoxFuture;\n use futures::future::Shared;\n use futures::prelude::*;\n@@ -2206,6 +2207,18 @@ impl Session {\n         }\n \n         let requested_permissions = args.permissions;\n+        // TODO(anp): Migrate request_permissions to support paths from foreign environments.\n+        let Ok(native_environment_cwd) = environment.cwd.to_abs_path() else {\n+            warn!(\n+                cwd = %environment.cwd,\n+                \"request_permissions requires a cwd native to the Codex host\"\n+            );\n+            return Some(RequestPermissionsResponse {\n+                permissions: RequestPermissionProfile::default(),\n+         ...",
+      "path": "codex-rs/core/src/session/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -58,6 +58,7 @@ use codex_protocol::protocol::SandboxPolicy;\n use codex_protocol::protocol::TurnEnvironmentSelections;\n use codex_protocol::request_permissions::PermissionGrantScope;\n use codex_protocol::request_permissions::RequestPermissionProfile;\n+use codex_utils_path_uri::PathUri;\n use tracing::Span;\n \n use crate::rollout::recorder::RolloutRecorder;\n@@ -4705,7 +4706,7 @@ async fn cwd_update_rewrites_sticky_environment_cwd() {\n     assert_eq!(state.session_configuration.cwd(), &updated_cwd);\n     assert_eq!(\n         state.session_configuration.environment_selections()[0].cwd,\n-        updated_cwd\n+        PathUri::from_abs_path(&updated_cwd)\n     );\n     assert_ne!(environment_cwd, updated_cwd);\n }",
+      "path": "codex-rs/core/src/session/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -79,7 +79,7 @@ impl TurnEnvironment {\n     pub(crate) fn selection(&self) -> TurnEnvironmentSelection {\n         TurnEnvironmentSelection {\n             environment_id: self.environment_id.clone(),\n-            cwd: self.cwd.clone(),\n+            cwd: self.cwd_uri.clone(),\n         }\n     }\n }",
+      "path": "codex-rs/core/src/session/turn_context.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 2,
+      "patch_excerpt": "@@ -23,6 +23,7 @@ use codex_protocol::protocol::SessionSource;\n use codex_protocol::protocol::ThreadSource;\n use codex_protocol::protocol::TurnStartedEvent;\n use codex_protocol::protocol::UserMessageEvent;\n+use codex_utils_path_uri::PathUri;\n use core_test_support::PathBufExt;\n use core_test_support::PathExt;\n use core_test_support::responses::mount_models_once;\n@@ -331,7 +332,7 @@ async fn start_thread_rejects_explicit_local_environment_when_default_provider_i\n             parent_trace: None,\n             environments: vec![TurnEnvironmentSelection {\n                 environment_id: \"local\".to_string(),\n-                cwd: config.cwd.clone(),\n+                cwd: PathUri::from_abs_path(&config.cwd),\n             }],\n             thread_extension_init: Default::default(),\n         })\n@@ -594,7 +595,7 @@ async fn resume_and_fork_do_not_restore_thread_environments_from_rollout() {\n     ...",
+      "path": "codex-rs/core/src/thread_manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 1,
+      "patch_excerpt": "@@ -151,9 +151,16 @@ impl ExecCommandHandler {\n         let process_id = manager.allocate_process_id().await;\n         let shell_mode =\n             shell_mode_for_environment(&turn.unified_exec_shell_mode, environment.as_ref());\n+        // Remote environments may use a different OS and must build commands with their native\n+        // shell; fall back to the session shell when the environment did not report one.\n+        let shell = turn_environment\n+            .shell\n+            .clone()\n+            .map(Arc::new)\n+            .unwrap_or_else(|| session.user_shell());\n         let resolved_command = get_command(\n             &args,\n-            session.user_shell(),\n+            shell,\n             &shell_mode,\n             turn.config.permissions.allow_login_shell,\n         )",
+      "path": "codex-rs/core/src/tools/handlers/unified_exec/exec_command.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -104,7 +104,7 @@ impl UserInstructionsProvider for RecordingUserInstructionsProvider {\n pub fn local(cwd: AbsolutePathBuf) -> TurnEnvironmentSelection {\n     TurnEnvironmentSelection {\n         environment_id: codex_exec_server::LOCAL_ENVIRONMENT_ID.to_string(),\n-        cwd,\n+        cwd: PathUri::from_abs_path(&cwd),\n     }\n }",
+      "path": "codex-rs/core/tests/common/test_codex.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 2,
+      "patch_excerpt": "@@ -6,19 +6,25 @@ wine_rust_test(\n     srcs = [\"remote_env_windows_test.rs\"],\n     crate_name = \"remote_env_windows_test\",\n     crate_root = \"remote_env_windows_test.rs\",\n+    host_binaries = {\n+        \"codex-app-server\": \"//codex-rs/app-server:codex-app-server\",\n+    },\n     windows_binaries = {\n         \"wine-windows-exec-server\": \"//codex-rs/exec-server/testing:windows-exec-server\",\n     },\n     deps = [\n-        \"//bazel/rules/testing/wine:wine_test_support\",\n+        \"//codex-rs/app-server-protocol\",\n+        \"//codex-rs/app-server/tests/common\",\n         \"//codex-rs/core/tests/common\",\n         \"//codex-rs/exec-server\",\n+        \"//codex-rs/exec-server/testing:wine-exec-server-test-support\",\n         \"//codex-rs/features\",\n         \"//codex-rs/protocol\",\n-        \"//codex-rs/utils/cargo-bin\",\n+        \"//codex-rs/utils/path-uri\",\n         \"@crates//:anyhow\",\n         \"@crates//:pr...",
+      "path": "codex-rs/core/tests/remote_env_windows/BUILD.bazel",
+      "status": "modified"
+    },
+    {
+      "additions": 87,
+      "deletions": 42,
+      "patch_excerpt": "@@ -2,11 +2,16 @@\n \n use anyhow::Context;\n use anyhow::Result;\n+use app_test_support::TestAppServer;\n+use codex_app_server_protocol::JSONRPCError;\n+use codex_app_server_protocol::RequestId;\n use codex_exec_server::REMOTE_ENVIRONMENT_ID;\n+use codex_exec_server::CODEX_EXEC_SERVER_URL_ENV_VAR;\n use codex_features::Feature;\n use codex_protocol::models::PermissionProfile;\n use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::EventMsg;\n+use codex_protocol::protocol::ExecCommandStatus;\n use codex_protocol::protocol::Op;\n use codex_protocol::protocol::TurnEnvironmentSelection;\n use codex_protocol::protocol::TurnEnvironmentSelections;\n@@ -21,40 +26,27 @@ use core_test_support::responses::start_mock_server;\n use core_test_support::test_codex::test_codex;\n use core_test_support::test_codex::turn_permission_fields;\n use core_test_support::wait_for_event;\n+use codex_utils_path...",
+      "path": "codex-rs/core/tests/remote_env_windows/remote_env_windows_test.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -646,11 +646,11 @@ async fn multi_environment_thread_loads_every_project_and_keeps_creation_snapsho\n             environments: vec![\n                 TurnEnvironmentSelection {\n                     environment_id: REMOTE_ENVIRONMENT_ID.to_string(),\n-                    cwd: test.config.cwd.clone(),\n+                    cwd: PathUri::from_abs_path(&test.config.cwd),\n                 },\n                 TurnEnvironmentSelection {\n                     environment_id: LOCAL_ENVIRONMENT_ID.to_string(),\n-                    cwd: local_root.path().to_path_buf().try_into()?,\n+                    cwd: PathUri::from_path(local_root.path())?,\n                 },\n             ],\n             thread_extension_init: Default::default(),",
+      "path": "codex-rs/core/tests/suite/agents_md.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1635,7 +1635,7 @@ async fn apply_patch_turn_diff_tracks_local_and_remote_environment_paths() -> Re\n         local(shared_cwd.clone()),\n         TurnEnvironmentSelection {\n             environment_id: REMOTE_ENVIRONMENT_ID.to_string(),\n-            cwd: shared_cwd.clone(),\n+            cwd: PathUri::from_abs_path(&shared_cwd),\n         },\n     ];\n     test.codex",
+      "path": "codex-rs/core/tests/suite/apply_patch_cli.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 5,
+      "patch_excerpt": "@@ -352,7 +352,7 @@ async fn exec_command_routes_to_selected_remote_environment() -> Result<()> {\n         .await?;\n     let remote_selection = TurnEnvironmentSelection {\n         environment_id: REMOTE_ENVIRONMENT_ID.to_string(),\n-        cwd: remote_cwd.clone(),\n+        cwd: PathUri::from_abs_path(&remote_cwd),\n     };\n     let multi_env_output = exec_command_routing_output(\n         &test,\n@@ -508,7 +508,7 @@ async fn remote_request_permissions_grant_unblocks_later_remote_exec() -> Result\n             local(local_cwd.path().abs()),\n             TurnEnvironmentSelection {\n                 environment_id: REMOTE_ENVIRONMENT_ID.to_string(),\n-                cwd: remote_cwd.clone(),\n+                cwd: PathUri::from_abs_path(&remote_cwd),\n             },\n         ],\n     )\n@@ -648,7 +648,7 @@ async fn apply_patch_freeform_routes_to_selected_remote_environment() -> Result<\n             ...",
+      "path": "codex-rs/core/tests/suite/remote_env.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -624,7 +624,7 @@ async fn view_image_routes_to_selected_remote_environment() -> anyhow::Result<()\n         .await?;\n     let remote_selection = TurnEnvironmentSelection {\n         environment_id: REMOTE_ENVIRONMENT_ID.to_string(),\n-        cwd: remote_cwd.clone(),\n+        cwd: PathUri::from_abs_path(&remote_cwd),\n     };\n     let call_id = \"call-view-image-multi-env\";\n     let response_mock = mount_sse_sequence(",
+      "path": "codex-rs/core/tests/suite/view_image.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 17,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,4 +1,20 @@\n-load(\"@rules_rust//rust:defs.bzl\", \"rust_binary\")\n+load(\"@rules_rust//rust:defs.bzl\", \"rust_binary\", \"rust_library\")\n+\n+rust_library(\n+    name = \"wine-exec-server-test-support\",\n+    testonly = True,\n+    srcs = [\"wine_exec_server.rs\"],\n+    crate_name = \"wine_exec_server_test_support\",\n+    crate_root = \"wine_exec_server.rs\",\n+    target_compatible_with = [\"@platforms//os:linux\"],\n+    visibility = [\"//codex-rs/core/tests/remote_env_windows:__pkg__\"],\n+    deps = [\n+        \"//bazel/rules/testing/wine:wine_test_support\",\n+        \"//codex-rs/utils/cargo-bin\",\n+        \"@crates//:anyhow\",\n+        \"@crates//:tokio\",\n+    ],\n+)\n \n rust_binary(\n     name = \"windows-exec-server\",",
+      "path": "codex-rs/exec-server/testing/BUILD.bazel",
+      "status": "modified"
+    },
+    {
+      "additions": 43,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,43 @@\n+//! Test support for running the Windows exec-server under Wine.\n+\n+use std::future::Future;\n+\n+use anyhow::Context;\n+use anyhow::Result;\n+use tokio::io::AsyncBufReadExt;\n+use tokio::io::BufReader;\n+use wine_test_support::WineTestCommand;\n+\n+/// Runs the Windows exec-server under Wine for the duration of a scoped operation.\n+pub struct WineExecServer;\n+\n+impl WineExecServer {\n+    /// Starts the server, passes its WebSocket URL to `operation`, and tears it down afterward.\n+    pub async fn scope<T, F, Fut>(self, operation: F) -> Result<T>\n+    where\n+        F: FnOnce(String) -> Fut,\n+        Fut: Future<Output = Result<T>>,\n+    {\n+        let executable = codex_utils_cargo_bin::cargo_bin(\"wine-windows-exec-server\")?;\n+        let mut exec_server = WineTestCommand::new(executable)\n+            .env(\"CODEX_HOME\", r\"C:\\codex-home\")\n+            .spawn()?;\n+        let st...",
+      "path": "codex-rs/exec-server/testing/wine_exec_server.rs",
+      "status": "added"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -20,6 +20,7 @@ codex-execpolicy = { workspace = true }\n codex-network-proxy = { workspace = true }\n codex-utils-absolute-path = { workspace = true }\n codex-utils-image = { workspace = true }\n+codex-utils-path-uri = { workspace = true }\n codex-utils-string = { workspace = true }\n encoding_rs = { workspace = true }\n globset = { workspace = true }",
+      "path": "codex-rs/protocol/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 3,
+      "patch_excerpt": "@@ -52,6 +52,7 @@ use crate::request_permissions::RequestPermissionsResponse;\n use crate::request_user_input::RequestUserInputResponse;\n use crate::user_input::UserInput;\n use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n use schemars::JsonSchema;\n use serde::Deserialize;\n use serde::Serialize;\n@@ -105,11 +106,14 @@ pub const COLLABORATION_MODE_CLOSE_TAG: &str = \"</collaboration_mode>\";\n pub const REALTIME_CONVERSATION_OPEN_TAG: &str = \"<realtime_conversation>\";\n pub const REALTIME_CONVERSATION_CLOSE_TAG: &str = \"</realtime_conversation>\";\n pub const USER_MESSAGE_BEGIN: &str = \"## My request for Codex:\";\n+const LOCAL_ENVIRONMENT_ID: &str = \"local\";\n \n+// TODO(anp): Replace `TurnEnvironmentSelection` with `PathUri` once path URIs carry environment\n+// identifiers.\n #[derive(Debug, Clone, PartialEq)]\n pub struct TurnEnvironmentSelection {\n     pub environ...",
+      "path": "codex-rs/protocol/src/protocol.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#28122"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nNext slice needed to make progress on the `remote_env_windows` test is to support passing a Windows cwd for the remote environment and using that environment's native shell. This lets the test run a real Windows process instead of only recording an early path or shell mismatch.\n\n## What\n\n- change `TurnEnvironmentSelection.cwd` from `AbsolutePathBuf` to `PathUri`\n- convert local cwd values to URIs when constructing selections\n- preserve a remote primary cwd instead of replacing it with the local legacy fallback\n- prefer the selected environment's discovered shell for unified exec, falling back to the session shell when unavailable\n- convert back to a host-native absolute path at current native-only consumer boundaries\n- reject or deny unsupported foreign cwd values at the existing request-permissions boundary, with TODOs for its future migration\n- extend the hermetic Wine test to execute Windows PowerShell in `C:\\windows` and verify successful process completion\n- record the current app-server rejection against the same Wine-backed remote Windows fixture when its cwd is supplied as a native Windows path\n",
+    "labels": [],
+    "merged_at": "2026-06-14T06:07:47Z",
+    "number": 28122,
+    "state": "merged",
+    "title": "[codex] exec-server honors remote environment cwd and shell",
+    "url": "https://github.com/openai/codex/pull/28122"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
