@@ -17,7 +17,7 @@ pub(crate) use self::{
 		TurnContinuationGuard, execute_app_server_run, probe_app_server,
 		protocol_activity_idle_timeout,
 	},
-	codex_accounts::{CodexAccountPool, CodexAccountProvider},
+	codex_accounts::{CodexAccountAuthFailure, CodexAccountPool, CodexAccountProvider},
 	decodex_tool_bridge::{DecodexRunContext, DecodexToolBridge},
 	json_rpc::{AppServerHomePreflightFailure, AppServerProcessEnv, AppServerTransportFailure},
 	tracker_tool_bridge::{

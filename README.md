@@ -212,6 +212,9 @@ Codex profile token stats for local Accounts displays. Bounded seven-day account
 usage estimates are kept in
 `~/.codex/decodex/account-usage-history.jsonl`; the file stores daily percentage
 snapshots plus non-secret capacity weights for local display and no token material.
+Refresh authentication failures mark the account `auth_failed` in `accounts.jsonl`;
+Decodex will not select or manually activate that account again until it is re-logged
+or replaced.
 To switch the account used by the Codex CLI itself, run
 `decodex account use <selector>` or use the Decodex App row action; this overwrites
 `$CODEX_HOME/auth.json` or `~/.codex/auth.json` from the matching `accounts.jsonl`

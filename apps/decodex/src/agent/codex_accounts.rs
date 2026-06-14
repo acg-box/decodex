@@ -13,6 +13,7 @@ use std::{
 	time::Duration,
 };
 
+use color_eyre::Report;
 use reqwest::{StatusCode, blocking::Client};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -44,6 +45,69 @@ pub(crate) trait CodexAccountProvider {
 		previous_account_id: Option<&str>,
 	) -> crate::prelude::Result<CodexAccountLogin>;
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct CodexAccountAuthFailure {
+	account_fingerprint: Option<String>,
+	email: Option<String>,
+	reason: String,
+}
+impl CodexAccountAuthFailure {
+	fn from_record(record: &AccountPoolRecord, reason: impl Into<String>) -> Self {
+		Self::new(record.account_fingerprint(), record.email(), reason)
+	}
+
+	pub(crate) fn new(
+		account_fingerprint: Option<String>,
+		email: Option<String>,
+		reason: impl Into<String>,
+	) -> Self {
+		Self { account_fingerprint, email, reason: reason.into() }
+	}
+
+	pub(crate) const fn error_class(&self) -> &'static str {
+		"codex_account_auth_failed"
+	}
+
+	pub(crate) fn account_fingerprint(&self) -> Option<&str> {
+		self.account_fingerprint.as_deref()
+	}
+
+	pub(crate) fn email(&self) -> Option<&str> {
+		self.email.as_deref()
+	}
+
+	pub(crate) fn reason(&self) -> &str {
+		&self.reason
+	}
+
+	fn account_label(&self) -> String {
+		self.email
+			.clone()
+			.or_else(|| self.account_fingerprint.clone())
+			.unwrap_or_else(|| String::from("unknown account"))
+	}
+
+	pub(crate) fn terminal_next_action(&self, recovery_gate: &str) -> String {
+		format!(
+			"re-login or remove Decodex Codex account `{}`, verify `decodex account list --json` reports no `auth_failed` selected account, then {recovery_gate}",
+			self.account_label()
+		)
+	}
+}
+
+impl Display for CodexAccountAuthFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+		write!(
+			formatter,
+			"Codex account `{}` authentication failed: {}",
+			self.account_label(),
+			self.reason
+		)
+	}
+}
+
+impl Error for CodexAccountAuthFailure {}
 
 pub(crate) struct CodexAccountPool {
 	path: PathBuf,
@@ -329,6 +393,12 @@ impl CodexAccountPool {
 			self.save_records(records)?;
 		}
 		if candidates.is_empty() {
+			if let Some(auth_failure) =
+				records.iter().find_map(AccountPoolRecord::auth_failed_error)
+			{
+				return Err(Report::new(auth_failure));
+			}
+
 			eyre::bail!(
 				"No usable Codex account was available from `{}`. Skipped entries: {}",
 				self.path.display(),
@@ -369,6 +439,11 @@ impl CodexAccountPool {
 		let record_index = self.fixed_record_index(records, selector)?;
 		let now = OffsetDateTime::now_utc().unix_timestamp();
 		let mut records_changed = false;
+
+		if let Some(auth_failure) = records[record_index].auth_failed_error() {
+			return Err(Report::new(auth_failure));
+		}
+
 		let mut selected = match self.account_candidate_from_record(
 			&mut records[record_index],
 			record_index + 1,
@@ -411,6 +486,11 @@ impl CodexAccountPool {
 		if record.disabled {
 			return Ok(Err(format!("line {line_number} disabled")));
 		}
+
+		if let Some(auth_failure) = record.auth_failure() {
+			return Ok(Err(format!("line {line_number} auth failed: {auth_failure}")));
+		}
+
 		if record.cooldown_until_unix_epoch.is_some_and(|cooldown| cooldown > now) {
 			return Ok(Err(format!("line {line_number} cooling down")));
 		}
@@ -429,6 +509,11 @@ impl CodexAccountPool {
 
 				status.as_str()
 			},
+			Err(error) if error.auth_failed => {
+				*records_changed = true;
+
+				return Ok(Err(format!("{} auth failed: {}", record.display_name(), error.source)));
+			},
 			Err(error) if error.requires_skip => {
 				return Ok(Err(format!(
 					"{} proactive refresh failed: {}",
@@ -442,7 +527,20 @@ impl CodexAccountPool {
 		match self.probe_record_usage(record) {
 			Ok(usage) => Ok(Ok(record.login_from_usage(usage, refresh_status)?)),
 			Err(error) if error.unauthorized && record.refresh_token().is_some() => {
-				self.refresh_record(record)?;
+				if let Err(refresh_error) = self.refresh_record(record) {
+					if let Some(auth_failure) =
+						refresh_error.downcast_ref::<CodexAccountAuthFailure>()
+					{
+						*records_changed = true;
+
+						return Ok(Err(format!(
+							"{} auth failed: {auth_failure}",
+							record.display_name()
+						)));
+					}
+
+					return Err(refresh_error);
+				}
 
 				*records_changed = true;
 
@@ -541,6 +639,18 @@ impl CodexAccountPool {
 
 				status.as_str()
 			},
+			Err(error) if error.auth_failed => {
+				records_changed = true;
+
+				let summary = record.auth_failed_activity_summary(now);
+
+				return Ok(AccountActivityProbeResult {
+					index: input.index,
+					record,
+					summary,
+					records_changed,
+				});
+			},
 			Err(error) if error.requires_skip => {
 				let summary = record.probe_failed_activity_summary(now, "failed", &error.source);
 
@@ -567,8 +677,19 @@ impl CodexAccountPool {
 								record.probe_failed_activity_summary(now, "failed", &retry_error),
 						}
 					},
-					Err(refresh_error) =>
-						record.probe_failed_activity_summary(now, "failed", refresh_error.as_ref()),
+					Err(refresh_error) => {
+						if refresh_error.downcast_ref::<CodexAccountAuthFailure>().is_some() {
+							records_changed = true;
+
+							record.auth_failed_activity_summary(now)
+						} else {
+							record.probe_failed_activity_summary(
+								now,
+								"failed",
+								refresh_error.as_ref(),
+							)
+						}
+					},
 				}
 			},
 			Err(error) => record.probe_failed_activity_summary(now, "probe_failed", &error),
@@ -601,13 +722,17 @@ impl CodexAccountPool {
 			return Err(ProactiveRefreshError {
 				source: ReportableRefreshError::new(format!("missing refresh token for {reason}")),
 				requires_skip: reason.requires_valid_token(),
+				auth_failed: false,
 			});
 		}
 
 		self.refresh_record(record).map(|()| RefreshStatus::Succeeded).map_err(|error| {
+			let auth_failed = error.downcast_ref::<CodexAccountAuthFailure>().is_some();
+
 			ProactiveRefreshError {
 				source: ReportableRefreshError::new(error.to_string()),
 				requires_skip: reason.requires_valid_token(),
+				auth_failed,
 			}
 		})
 	}
@@ -635,7 +760,16 @@ impl CodexAccountPool {
 				})?
 		};
 
-		self.refresh_record(&mut records[record_index])?;
+		if let Some(auth_failure) = records[record_index].auth_failed_error() {
+			return Err(Report::new(auth_failure));
+		}
+		if let Err(error) = self.refresh_record(&mut records[record_index]) {
+			if error.downcast_ref::<CodexAccountAuthFailure>().is_some() {
+				self.save_records(records)?;
+			}
+
+			return Err(error);
+		}
 
 		let usage = self.probe_record_usage(&records[record_index])?;
 		let now = OffsetDateTime::now_utc().unix_timestamp();
@@ -775,10 +909,18 @@ impl CodexAccountPool {
 		let status = response.status();
 
 		if !status.is_success() {
-			eyre::bail!(
+			let reason = format!(
 				"Codex account `{}` token refresh failed with HTTP {status}.",
 				display_name
 			);
+
+			if token_refresh_auth_status(status) {
+				record.mark_auth_failed(OffsetDateTime::now_utc().unix_timestamp(), reason.clone());
+
+				return Err(Report::new(CodexAccountAuthFailure::from_record(record, reason)));
+			}
+
+			eyre::bail!("{reason}");
 		}
 
 		let refresh_response = response.json::<RefreshResponse>()?;
@@ -805,6 +947,7 @@ impl CodexAccountPool {
 
 		record.last_refresh = Some(OffsetDateTime::now_utc().format(&Rfc3339)?);
 
+		record.clear_auth_failed();
 		self.sync_codex_auth_for_refreshed_record(record)?;
 
 		Ok(())
@@ -961,6 +1104,10 @@ struct AccountPoolRecord {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	last_selected_at_unix_epoch: Option<i64>,
 	#[serde(skip_serializing_if = "Option::is_none")]
+	auth_failed_at_unix_epoch: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	auth_failure: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
 	auth_mode: Option<String>,
 	#[serde(rename = "OPENAI_API_KEY", skip_serializing_if = "Option::is_none")]
 	openai_api_key: Option<String>,
@@ -974,6 +1121,32 @@ impl AccountPoolRecord {
 		self.email()
 			.or_else(|| self.account_id().map(redact_account_id))
 			.unwrap_or_else(|| String::from("unnamed account"))
+	}
+
+	fn account_fingerprint(&self) -> Option<String> {
+		self.account_id().map(redact_account_id).or_else(|| self.email())
+	}
+
+	fn auth_failure(&self) -> Option<&str> {
+		self.auth_failure
+			.as_deref()
+			.map(str::trim)
+			.filter(|failure| !failure.is_empty())
+			.or_else(|| self.auth_failed_at_unix_epoch.map(|_| "authentication failed"))
+	}
+
+	fn auth_failed_error(&self) -> Option<CodexAccountAuthFailure> {
+		self.auth_failure().map(|reason| CodexAccountAuthFailure::from_record(self, reason))
+	}
+
+	fn mark_auth_failed(&mut self, now_unix_epoch: i64, reason: impl Into<String>) {
+		self.auth_failed_at_unix_epoch = Some(now_unix_epoch);
+		self.auth_failure = Some(reason.into());
+	}
+
+	fn clear_auth_failed(&mut self) {
+		self.auth_failed_at_unix_epoch = None;
+		self.auth_failure = None;
 	}
 
 	fn matches_account_selector(&self, selector: &str) -> bool {
@@ -1030,10 +1203,11 @@ impl AccountPoolRecord {
 		&self,
 		now_unix_epoch: i64,
 	) -> Option<CodexAccountActivitySummary> {
-		let account_fingerprint =
-			self.account_id().map(redact_account_id).or_else(|| self.email())?;
+		let account_fingerprint = self.account_fingerprint()?;
 		let status = if self.disabled {
 			"disabled"
+		} else if self.auth_failure().is_some() {
+			"auth_failed"
 		} else if self
 			.cooldown_until_unix_epoch
 			.is_some_and(|cooldown_until| cooldown_until > now_unix_epoch)
@@ -1049,9 +1223,16 @@ impl AccountPoolRecord {
 			account_fingerprint,
 			email: self.email(),
 			status: String::from(status),
-			refresh_status: String::from("not_checked"),
+			refresh_status: if self.auth_failure().is_some() {
+				String::from("auth_failed")
+			} else {
+				String::from("not_checked")
+			},
 			cooldown_until_unix_epoch: self.cooldown_until_unix_epoch,
-			note: Some(String::from("configured account")),
+			note: Some(
+				self.auth_failure()
+					.map_or_else(|| String::from("configured account"), ToOwned::to_owned),
+			),
 			..CodexAccountActivitySummary::default()
 		})
 	}
@@ -1167,6 +1348,16 @@ impl AccountPoolRecord {
 		summary
 	}
 
+	fn auth_failed_activity_summary(&self, now_unix_epoch: i64) -> CodexAccountActivitySummary {
+		let mut summary = self.configured_activity_summary(now_unix_epoch).unwrap_or_default();
+
+		summary.status = String::from("auth_failed");
+		summary.refresh_status = String::from("auth_failed");
+		summary.note = self.auth_failure().map(ToOwned::to_owned);
+
+		summary
+	}
+
 	fn proactive_refresh_reason(&self, now_unix_epoch: i64) -> Option<ProactiveRefreshReason> {
 		let tokens = self.tokens.as_ref()?;
 
@@ -1212,6 +1403,7 @@ struct RefreshResponse {
 struct ProactiveRefreshError {
 	source: ReportableRefreshError,
 	requires_skip: bool,
+	auth_failed: bool,
 }
 
 #[derive(Debug)]
@@ -1351,6 +1543,10 @@ enum AccountPoolLine {
 		cooldown_until: Option<String>,
 		#[serde(skip_serializing_if = "Option::is_none")]
 		last_selected_at_unix_epoch: Option<i64>,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		auth_failed_at_unix_epoch: Option<i64>,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		auth_failure: Option<String>,
 		auth: AuthDotJson,
 	},
 	Flat(AccountPoolRecord),
@@ -1365,6 +1561,8 @@ impl AccountPoolLine {
 				cooldown_until_unix_epoch,
 				cooldown_until,
 				last_selected_at_unix_epoch,
+				auth_failed_at_unix_epoch,
+				auth_failure,
 				auth,
 			} => AccountPoolRecord {
 				email: first_nonblank_string(email, auth.email),
@@ -1372,6 +1570,8 @@ impl AccountPoolLine {
 				cooldown_until_unix_epoch,
 				cooldown_until,
 				last_selected_at_unix_epoch,
+				auth_failed_at_unix_epoch,
+				auth_failure,
 				auth_mode: auth.auth_mode,
 				openai_api_key: auth.openai_api_key,
 				tokens: auth.tokens,
@@ -1833,6 +2033,10 @@ fn account_summary_is_limited(summary: &CodexAccountActivitySummary) -> bool {
 		|| summary.secondary_remaining_percent == Some(0)
 }
 
+fn token_refresh_auth_status(status: StatusCode) -> bool {
+	matches!(status, StatusCode::BAD_REQUEST | StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
+}
+
 fn account_summaries(
 	selected: &CodexAccountLogin,
 	candidates: &[CodexAccountLogin],
@@ -1868,9 +2072,10 @@ mod tests {
 	use tempfile::TempDir;
 
 	use crate::agent::codex_accounts::{
-		self, AccountPoolRecord, CodexAccountActivitySummary, CodexAccountLogin, CodexAccountPool,
-		CodexAccountProvider, CodexTokenData, CreditsSnapshot, DEFAULT_REFRESH_ENDPOINT, Path,
-		ProactiveRefreshReason, UsageWindow, compare_account_candidates,
+		self, AccountPoolRecord, CodexAccountActivitySummary, CodexAccountAuthFailure,
+		CodexAccountLogin, CodexAccountPool, CodexAccountProvider, CodexTokenData, CreditsSnapshot,
+		DEFAULT_REFRESH_ENDPOINT, Path, ProactiveRefreshReason, UsageWindow,
+		compare_account_candidates,
 	};
 
 	#[test]
@@ -1898,6 +2103,8 @@ mod tests {
 			cooldown_until_unix_epoch: None,
 			cooldown_until: None,
 			last_selected_at_unix_epoch: None,
+			auth_failed_at_unix_epoch: None,
+			auth_failure: None,
 			auth_mode: Some(String::from("chatgpt")),
 			openai_api_key: None,
 			tokens: Some(CodexTokenData {
@@ -1972,6 +2179,91 @@ mod tests {
 		assert_eq!(summaries[0].refresh_status, "not_checked");
 		assert_eq!(summaries[0].primary_remaining_percent, None);
 		assert_eq!(summaries[0].note.as_deref(), Some("configured account"));
+	}
+
+	#[test]
+	fn selection_marks_refresh_auth_failure_and_selects_next_account() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let accounts_path = temp_dir.path().join("accounts.jsonl");
+		let refresh_endpoint = start_codex_refresh_status_fixture_server(vec![(
+			401,
+			"Unauthorized",
+			r#"{"error":"invalid refresh token"}"#,
+		)]);
+		let usage_endpoint = start_codex_usage_fixture_server(vec![
+			r#"{"plan_type":"pro","rate_limit":{"primary_window":{"used_percent":0},"secondary_window":{"used_percent":0}}}"#,
+		]);
+
+		fs::write(
+			&accounts_path,
+			r#"{"email":"bad@example.com","auth_mode":"chatgpt","tokens":{"access_token":"x.eyJleHAiOjEwMDB9.y","refresh_token":"refresh-bad","account_id":"acct_bad"}}
+{"email":"good@example.com","auth_mode":"chatgpt","tokens":{"access_token":"access-good","refresh_token":"refresh-good","account_id":"acct_good"}}
+"#,
+		)
+		.expect("accounts fixture should write");
+
+		let pool = CodexAccountPool::new_with_fixed_account(
+			&accounts_path,
+			usage_endpoint,
+			refresh_endpoint,
+			None,
+		)
+		.expect("account pool should initialize");
+		let account = pool.select_account().expect("healthy fallback account should select");
+
+		assert_eq!(account.account_id(), "acct_good");
+
+		let records = fs::read_to_string(&accounts_path).expect("accounts should read");
+
+		assert!(records.contains(r#""auth_failed_at_unix_epoch":"#));
+		assert!(records.contains("HTTP 401 Unauthorized"));
+
+		let summaries = pool.account_activity_summaries_snapshot().expect("snapshot should load");
+		let bad_summary = summaries
+			.iter()
+			.find(|summary| summary.email.as_deref() == Some("bad@example.com"))
+			.expect("bad account summary should exist");
+
+		assert_eq!(bad_summary.status, "auth_failed");
+		assert_eq!(bad_summary.refresh_status, "auth_failed");
+		assert!(bad_summary.note.as_deref().is_some_and(|note| note.contains("HTTP 401")));
+	}
+
+	#[test]
+	fn refresh_account_marks_auth_failure_and_returns_typed_error() {
+		let temp_dir = TempDir::new().expect("temp dir should exist");
+		let accounts_path = temp_dir.path().join("accounts.jsonl");
+		let refresh_endpoint = start_codex_refresh_status_fixture_server(vec![(
+			401,
+			"Unauthorized",
+			r#"{"error":"invalid refresh token"}"#,
+		)]);
+		let usage_endpoint = start_codex_usage_fixture_server(Vec::new());
+
+		fs::write(
+			&accounts_path,
+			r#"{"email":"bad@example.com","auth_mode":"chatgpt","tokens":{"access_token":"access-bad","refresh_token":"refresh-bad","account_id":"acct_bad"}}"#,
+		)
+		.expect("accounts fixture should write");
+
+		let pool = CodexAccountPool::new_with_fixed_account(
+			&accounts_path,
+			usage_endpoint,
+			refresh_endpoint,
+			None,
+		)
+		.expect("account pool should initialize");
+		let error = match pool.refresh_account(Some("acct_bad")) {
+			Ok(_) => panic!("refresh auth failure should surface"),
+			Err(error) => error,
+		};
+
+		assert!(error.downcast_ref::<CodexAccountAuthFailure>().is_some());
+
+		let records = fs::read_to_string(&accounts_path).expect("accounts should read");
+
+		assert!(records.contains(r#""auth_failed_at_unix_epoch":"#));
+		assert!(records.contains("HTTP 401 Unauthorized"));
 	}
 
 	#[test]
@@ -2118,6 +2410,8 @@ mod tests {
 			cooldown_until_unix_epoch: None,
 			cooldown_until: None,
 			last_selected_at_unix_epoch: None,
+			auth_failed_at_unix_epoch: None,
+			auth_failure: None,
 			auth_mode: Some(String::from("chatgpt")),
 			openai_api_key: None,
 			tokens: Some(CodexTokenData {
@@ -2196,6 +2490,8 @@ mod tests {
 			cooldown_until_unix_epoch: None,
 			cooldown_until: None,
 			last_selected_at_unix_epoch: None,
+			auth_failed_at_unix_epoch: None,
+			auth_failure: None,
 			auth_mode: Some(String::from("chatgpt")),
 			openai_api_key: None,
 			tokens: Some(CodexTokenData {
@@ -2260,6 +2556,8 @@ mod tests {
 			cooldown_until_unix_epoch: None,
 			cooldown_until: None,
 			last_selected_at_unix_epoch: None,
+			auth_failed_at_unix_epoch: None,
+			auth_failure: None,
 			auth_mode: Some(String::from("chatgpt")),
 			openai_api_key: None,
 			tokens: Some(CodexTokenData {
@@ -2604,6 +2902,31 @@ mod tests {
 				let _bytes_read = stream.read(&mut buffer).expect("refresh request should read");
 				let response = format!(
 					"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+					body.len(),
+					body
+				);
+
+				stream.write_all(response.as_bytes()).expect("refresh response should write");
+			}
+		});
+
+		format!("http://{address}/oauth/token")
+	}
+
+	fn start_codex_refresh_status_fixture_server(
+		responses: Vec<(u16, &'static str, &'static str)>,
+	) -> String {
+		let listener = TcpListener::bind("127.0.0.1:0").expect("refresh fixture should bind");
+		let address = listener.local_addr().expect("refresh fixture address should resolve");
+
+		thread::spawn(move || {
+			for (status, reason, body) in responses {
+				let (mut stream, _peer) =
+					listener.accept().expect("refresh fixture should accept request");
+				let mut buffer = [0_u8; 4_096];
+				let _bytes_read = stream.read(&mut buffer).expect("refresh request should read");
+				let response = format!(
+					"HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
 					body.len(),
 					body
 				);
