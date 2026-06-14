@@ -16,8 +16,6 @@ use libc::{
 use process::Command;
 use rusqlite::{self, Row, types::Type};
 
-use crate::tracker;
-
 static RUN_ACTIVITY_MARKER_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct EffectiveRuntimeMarker<'a> {
@@ -135,8 +133,6 @@ struct StateData {
 	execution_programs: HashMap<ExecutionProgramKey, ExecutionProgramRuntimeRecord>,
 	program_intake_plans: HashMap<ProgramIntakePlanKey, ProgramIntakePlanRecord>,
 	program_issue_mappings: HashMap<ProgramIssueMappingKey, ProgramIssueMappingRecord>,
-	program_queue_label_ownership:
-		HashMap<ProgramQueueLabelOwnershipKey, ProgramQueueLabelOwnershipRecord>,
 	review_handoffs: HashMap<ReviewMarkerKey, ReviewHandoffRuntimeRecord>,
 	review_orchestrations: HashMap<ReviewOrchestrationKey, ReviewOrchestrationRuntimeRecord>,
 	review_policy_checkpoints: HashMap<ReviewPolicyKey, ReviewPolicyRuntimeRecord>,
@@ -162,7 +158,6 @@ impl StateData {
 		self.execution_programs = loaded.execution_programs;
 		self.program_intake_plans = loaded.program_intake_plans;
 		self.program_issue_mappings = loaded.program_issue_mappings;
-		self.program_queue_label_ownership = loaded.program_queue_label_ownership;
 		self.review_handoffs = loaded.review_handoffs;
 		self.review_orchestrations = loaded.review_orchestrations;
 		self.review_policy_checkpoints = loaded.review_policy_checkpoints;
@@ -711,6 +706,8 @@ CREATE TABLE IF NOT EXISTS program_intake_plans (
 );
 CREATE INDEX IF NOT EXISTS program_intake_plans_project_idx
 ON program_intake_plans (project_id, intake_kind, updated_at_unix);
+DROP TABLE IF EXISTS program_issue_mappings;
+DROP TABLE IF EXISTS program_queue_label_ownership;
 CREATE TABLE IF NOT EXISTS program_issue_mappings (
 	project_id TEXT NOT NULL,
 	program_id TEXT NOT NULL,
@@ -719,8 +716,6 @@ CREATE TABLE IF NOT EXISTS program_issue_mappings (
 	issue_identifier TEXT NOT NULL,
 	issue_state TEXT NOT NULL,
 	queue_intent TEXT NOT NULL,
-	has_queue_label INTEGER NOT NULL,
-	queue_label_owned_by_program_reconciler INTEGER NOT NULL,
 	has_active_label INTEGER NOT NULL,
 	has_opt_out_label INTEGER NOT NULL,
 	has_needs_attention_label INTEGER NOT NULL,
@@ -733,22 +728,6 @@ CREATE TABLE IF NOT EXISTS program_issue_mappings (
 );
 CREATE INDEX IF NOT EXISTS program_issue_mappings_issue_idx
 ON program_issue_mappings (project_id, issue_id, updated_at_unix);
-CREATE TABLE IF NOT EXISTS program_queue_label_ownership (
-	project_id TEXT NOT NULL,
-	program_id TEXT NOT NULL,
-	node_id TEXT NOT NULL,
-	issue_id TEXT NOT NULL,
-	issue_identifier TEXT NOT NULL,
-	label_name TEXT NOT NULL,
-	service_id TEXT NOT NULL,
-	created_at TEXT NOT NULL,
-	created_at_unix INTEGER NOT NULL,
-	updated_at TEXT NOT NULL,
-	updated_at_unix INTEGER NOT NULL,
-	PRIMARY KEY (project_id, program_id, node_id, label_name)
-);
-CREATE INDEX IF NOT EXISTS program_queue_label_ownership_issue_idx
-ON program_queue_label_ownership (project_id, issue_id, label_name, updated_at_unix);
 "#,
 		)?;
 		self.backfill_program_intake_state_from_execution_programs()?;
@@ -900,10 +879,6 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"DELETE FROM program_issue_mappings WHERE project_id = ?1",
-			params![service_id],
-		)?;
-		transaction.execute(
-			"DELETE FROM program_queue_label_ownership WHERE project_id = ?1",
 			params![service_id],
 		)?;
 		transaction.execute(
@@ -1236,10 +1211,6 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 			"DELETE FROM program_issue_mappings WHERE project_id = ?1 AND program_id = ?2",
 			params![&record.project_id, record.program.program_id()],
 		)?;
-		self.connection.execute(
-			"DELETE FROM program_queue_label_ownership WHERE project_id = ?1 AND program_id = ?2",
-			params![&record.project_id, record.program.program_id()],
-		)?;
 
 		insert_program_intake_state(&self.connection, record)
 	}
@@ -1293,10 +1264,6 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		transaction.execute(
 			"UPDATE program_issue_mappings SET issue_id = ?2 WHERE issue_id = ?1",
-			params![previous_issue_id, canonical_issue_id],
-		)?;
-		transaction.execute(
-			"UPDATE program_queue_label_ownership SET issue_id = ?2 WHERE issue_id = ?1",
 			params![previous_issue_id, canonical_issue_id],
 		)?;
 		transaction.execute(
@@ -2302,17 +2269,6 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 				record,
 			);
 		}
-		for record in self.list_all_program_queue_label_ownership()? {
-			state.program_queue_label_ownership.insert(
-				ProgramQueueLabelOwnershipKey::new(
-					&record.project_id,
-					&record.program_id,
-					&record.node_id,
-					&record.label_name,
-				),
-				record,
-			);
-		}
 
 		Ok(())
 	}
@@ -2360,8 +2316,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	fn list_all_program_issue_mappings(&self) -> Result<Vec<ProgramIssueMappingRecord>> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, program_id, node_id, issue_id, issue_identifier, issue_state, \
-			 queue_intent, has_queue_label, queue_label_owned_by_program_reconciler, \
-			 has_active_label, has_opt_out_label, has_needs_attention_label, \
+			 queue_intent, has_active_label, has_opt_out_label, has_needs_attention_label, \
 			 has_generic_dispatch_briefing, created_at, created_at_unix, updated_at, \
 			 updated_at_unix \
 			 FROM program_issue_mappings \
@@ -2384,8 +2339,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 	) -> Result<Vec<ProgramIssueMappingRecord>> {
 		let mut statement = self.connection.prepare(
 			"SELECT project_id, program_id, node_id, issue_id, issue_identifier, issue_state, \
-			 queue_intent, has_queue_label, queue_label_owned_by_program_reconciler, \
-			 has_active_label, has_opt_out_label, has_needs_attention_label, \
+			 queue_intent, has_active_label, has_opt_out_label, has_needs_attention_label, \
 			 has_generic_dispatch_briefing, created_at, created_at_unix, updated_at, \
 			 updated_at_unix \
 			 FROM program_issue_mappings \
@@ -2394,51 +2348,6 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 		)?;
 		let rows =
 			statement.query_map(params![project_id, program_id], program_issue_mapping_row)?;
-		let mut records = Vec::new();
-
-		for row in rows {
-			records.push(row?);
-		}
-
-		Ok(records)
-	}
-
-	fn list_all_program_queue_label_ownership(
-		&self,
-	) -> Result<Vec<ProgramQueueLabelOwnershipRecord>> {
-		let mut statement = self.connection.prepare(
-			"SELECT project_id, program_id, node_id, issue_id, issue_identifier, label_name, \
-			 service_id, created_at, created_at_unix, updated_at, updated_at_unix \
-			 FROM program_queue_label_ownership \
-			 ORDER BY project_id ASC, program_id ASC, node_id ASC, label_name ASC",
-		)?;
-		let rows = statement.query_map([], program_queue_label_ownership_row)?;
-		let mut records = Vec::new();
-
-		for row in rows {
-			records.push(row?);
-		}
-
-		Ok(records)
-	}
-
-	fn program_queue_label_ownership_for_issue(
-		&self,
-		project_id: &str,
-		issue_id: &str,
-		label_name: &str,
-	) -> Result<Vec<ProgramQueueLabelOwnershipRecord>> {
-		let mut statement = self.connection.prepare(
-			"SELECT project_id, program_id, node_id, issue_id, issue_identifier, label_name, \
-			 service_id, created_at, created_at_unix, updated_at, updated_at_unix \
-			 FROM program_queue_label_ownership \
-			 WHERE project_id = ?1 AND issue_id = ?2 AND label_name = ?3 \
-			 ORDER BY updated_at_unix ASC, program_id ASC, node_id ASC",
-		)?;
-		let rows = statement.query_map(
-			params![project_id, issue_id, label_name],
-			program_queue_label_ownership_row,
-		)?;
 		let mut records = Vec::new();
 
 		for row in rows {
@@ -2959,24 +2868,6 @@ impl ProgramIssueMappingKey {
 			project_id: project_id.to_owned(),
 			program_id: program_id.to_owned(),
 			node_id: node_id.to_owned(),
-		}
-	}
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-struct ProgramQueueLabelOwnershipKey {
-	project_id: String,
-	program_id: String,
-	node_id: String,
-	label_name: String,
-}
-impl ProgramQueueLabelOwnershipKey {
-	fn new(project_id: &str, program_id: &str, node_id: &str, label_name: &str) -> Self {
-		Self {
-			project_id: project_id.to_owned(),
-			program_id: program_id.to_owned(),
-			node_id: node_id.to_owned(),
-			label_name: label_name.to_owned(),
 		}
 	}
 }
@@ -4206,11 +4097,10 @@ fn persist_program_intake_state(transaction: &Transaction<'_>, state: &StateData
 		transaction.execute(
 			"INSERT OR REPLACE INTO program_issue_mappings (
 					project_id, program_id, node_id, issue_id, issue_identifier, issue_state,
-					queue_intent, has_queue_label, queue_label_owned_by_program_reconciler,
-					has_active_label, has_opt_out_label, has_needs_attention_label,
+					queue_intent, has_active_label, has_opt_out_label, has_needs_attention_label,
 					has_generic_dispatch_briefing, created_at, created_at_unix, updated_at,
 					updated_at_unix
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
 			params![
 				&record.project_id,
 				&record.program_id,
@@ -4219,33 +4109,10 @@ fn persist_program_intake_state(transaction: &Transaction<'_>, state: &StateData
 				&record.issue_identifier,
 				&record.issue_state,
 				&record.queue_intent,
-				sqlite_bool_value(record.has_queue_label),
-				sqlite_bool_value(record.queue_label_owned_by_program_reconciler),
 				sqlite_bool_value(record.has_active_label),
 				sqlite_bool_value(record.has_opt_out_label),
 				sqlite_bool_value(record.has_needs_attention_label),
 				sqlite_bool_value(record.has_generic_dispatch_briefing),
-				&record.created_at,
-				record.created_at_unix,
-				&record.updated_at,
-				record.updated_at_unix,
-			],
-		)?;
-	}
-	for record in state.program_queue_label_ownership.values() {
-		transaction.execute(
-			"INSERT OR REPLACE INTO program_queue_label_ownership (
-					project_id, program_id, node_id, issue_id, issue_identifier, label_name,
-					service_id, created_at, created_at_unix, updated_at, updated_at_unix
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
-				&record.project_id,
-				&record.program_id,
-				&record.node_id,
-				&record.issue_id,
-				&record.issue_identifier,
-				&record.label_name,
-				&record.service_id,
 				&record.created_at,
 				record.created_at_unix,
 				&record.updated_at,
@@ -4287,11 +4154,10 @@ fn insert_program_intake_state(
 		connection.execute(
 			"INSERT OR REPLACE INTO program_issue_mappings (
 					project_id, program_id, node_id, issue_id, issue_identifier, issue_state,
-					queue_intent, has_queue_label, queue_label_owned_by_program_reconciler,
-					has_active_label, has_opt_out_label, has_needs_attention_label,
+					queue_intent, has_active_label, has_opt_out_label, has_needs_attention_label,
 					has_generic_dispatch_briefing, created_at, created_at_unix, updated_at,
 					updated_at_unix
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
 			params![
 				&mapping.project_id,
 				&mapping.program_id,
@@ -4300,8 +4166,6 @@ fn insert_program_intake_state(
 				&mapping.issue_identifier,
 				&mapping.issue_state,
 				&mapping.queue_intent,
-				sqlite_bool_value(mapping.has_queue_label),
-				sqlite_bool_value(mapping.queue_label_owned_by_program_reconciler),
 				sqlite_bool_value(mapping.has_active_label),
 				sqlite_bool_value(mapping.has_opt_out_label),
 				sqlite_bool_value(mapping.has_needs_attention_label),
@@ -4310,27 +4174,6 @@ fn insert_program_intake_state(
 				mapping.created_at_unix,
 				&mapping.updated_at,
 				mapping.updated_at_unix,
-			],
-		)?;
-	}
-	for ownership in derived_program_queue_label_ownership_records(record) {
-		connection.execute(
-			"INSERT OR REPLACE INTO program_queue_label_ownership (
-					project_id, program_id, node_id, issue_id, issue_identifier, label_name,
-					service_id, created_at, created_at_unix, updated_at, updated_at_unix
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-			params![
-				&ownership.project_id,
-				&ownership.program_id,
-				&ownership.node_id,
-				&ownership.issue_id,
-				&ownership.issue_identifier,
-				&ownership.label_name,
-				&ownership.service_id,
-				&ownership.created_at,
-				ownership.created_at_unix,
-				&ownership.updated_at,
-				ownership.updated_at_unix,
 			],
 		)?;
 	}
@@ -5323,34 +5166,14 @@ fn program_issue_mapping_row(
 		issue_identifier: row.get(4)?,
 		issue_state: row.get(5)?,
 		queue_intent: row.get(6)?,
-		has_queue_label: sqlite_bool(row, 7)?,
-		queue_label_owned_by_program_reconciler: sqlite_bool(row, 8)?,
-		has_active_label: sqlite_bool(row, 9)?,
-		has_opt_out_label: sqlite_bool(row, 10)?,
-		has_needs_attention_label: sqlite_bool(row, 11)?,
-		has_generic_dispatch_briefing: sqlite_bool(row, 12)?,
-		created_at: row.get(13)?,
-		created_at_unix: row.get(14)?,
-		updated_at: row.get(15)?,
-		updated_at_unix: row.get(16)?,
-	})
-}
-
-fn program_queue_label_ownership_row(
-	row: &Row<'_>,
-) -> std::result::Result<ProgramQueueLabelOwnershipRecord, rusqlite::Error> {
-	Ok(ProgramQueueLabelOwnershipRecord {
-		project_id: row.get(0)?,
-		program_id: row.get(1)?,
-		node_id: row.get(2)?,
-		issue_id: row.get(3)?,
-		issue_identifier: row.get(4)?,
-		label_name: row.get(5)?,
-		service_id: row.get(6)?,
-		created_at: row.get(7)?,
-		created_at_unix: row.get(8)?,
-		updated_at: row.get(9)?,
-		updated_at_unix: row.get(10)?,
+		has_active_label: sqlite_bool(row, 7)?,
+		has_opt_out_label: sqlite_bool(row, 8)?,
+		has_needs_attention_label: sqlite_bool(row, 9)?,
+		has_generic_dispatch_briefing: sqlite_bool(row, 10)?,
+		created_at: row.get(11)?,
+		created_at_unix: row.get(12)?,
+		updated_at: row.get(13)?,
+		updated_at_unix: row.get(14)?,
 	})
 }
 
@@ -5433,17 +5256,6 @@ fn compare_program_issue_mapping_records(
 		.then_with(|| left.node_id.cmp(&right.node_id))
 }
 
-fn compare_program_queue_label_ownership_records(
-	left: &ProgramQueueLabelOwnershipRecord,
-	right: &ProgramQueueLabelOwnershipRecord,
-) -> cmp::Ordering {
-	left.updated_at_unix
-		.cmp(&right.updated_at_unix)
-		.then_with(|| left.program_id.cmp(&right.program_id))
-		.then_with(|| left.node_id.cmp(&right.node_id))
-		.then_with(|| left.label_name.cmp(&right.label_name))
-}
-
 fn remove_derived_program_intake_state(
 	state: &mut StateData,
 	project_id: &str,
@@ -5455,9 +5267,6 @@ fn remove_derived_program_intake_state(
 	state
 		.program_issue_mappings
 		.retain(|key, _record| key.project_id != project_id || key.program_id != program_id);
-	state.program_queue_label_ownership.retain(|key, _record| {
-		key.project_id != project_id || key.program_id != program_id
-	});
 }
 
 fn apply_derived_program_intake_state(
@@ -5480,17 +5289,6 @@ fn apply_derived_program_intake_state(
 				&mapping.node_id,
 			),
 			mapping,
-		);
-	}
-	for ownership in derived_program_queue_label_ownership_records(record) {
-		state.program_queue_label_ownership.insert(
-			ProgramQueueLabelOwnershipKey::new(
-				&ownership.project_id,
-				&ownership.program_id,
-				&ownership.node_id,
-				&ownership.label_name,
-			),
-			ownership,
 		);
 	}
 }
@@ -5537,46 +5335,10 @@ fn derived_program_issue_mapping_records(
 				issue_identifier: issue.issue_identifier().to_owned(),
 				issue_state: issue.issue_state().to_owned(),
 				queue_intent: node.queue_intent().as_str().to_owned(),
-				has_queue_label: issue.has_queue_label(),
-				queue_label_owned_by_program_reconciler: issue
-					.queue_label_owned_by_program_reconciler(),
 				has_active_label: issue.has_active_label(),
 				has_opt_out_label: issue.has_opt_out_label(),
 				has_needs_attention_label: issue.has_needs_attention_label(),
 				has_generic_dispatch_briefing: issue.has_generic_dispatch_briefing(),
-				created_at: record.created_at.clone(),
-				created_at_unix: record.created_at_unix,
-				updated_at: record.updated_at.clone(),
-				updated_at_unix: record.updated_at_unix,
-			})
-		})
-		.collect()
-}
-
-fn derived_program_queue_label_ownership_records(
-	record: &ExecutionProgramRuntimeRecord,
-) -> Vec<ProgramQueueLabelOwnershipRecord> {
-	let label_name = tracker::automation_queue_label(record.program.service_id());
-
-	record
-		.program
-		.nodes()
-		.iter()
-		.filter_map(|node| {
-			let issue = node.linear_issue()?;
-
-			if !issue.queue_label_owned_by_program_reconciler() {
-				return None;
-			}
-
-			Some(ProgramQueueLabelOwnershipRecord {
-				project_id: record.project_id.clone(),
-				program_id: record.program.program_id().to_owned(),
-				node_id: node.node_id().to_owned(),
-				issue_id: issue.issue_id().to_owned(),
-				issue_identifier: issue.issue_identifier().to_owned(),
-				label_name: label_name.clone(),
-				service_id: record.program.service_id().to_owned(),
 				created_at: record.created_at.clone(),
 				created_at_unix: record.created_at_unix,
 				updated_at: record.updated_at.clone(),

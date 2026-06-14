@@ -49,7 +49,7 @@ dependencies, set goals, mutate tracker state, or start implementation.
 
 After acceptance or promotion, the accepted Loop/Decision Contract, shortened to
 Decision Contract in this spec, becomes loop-runtime authority. The runtime may then
-shape or update normal Linear issues and queue intent, but executable work still runs
+shape or update normal Linear issues and dispatch intent, but executable work still runs
 through the lane runtime contract.
 
 ## Research/Decision Stage
@@ -71,7 +71,7 @@ A Research/Decision stage may produce a latent Loop/Decision Contract with:
 - dependency and blocker model
 - conflict domains such as `docs`, `runtime`, `site`, `tests`, or a more specific
   repository-owned domain
-- proposed issue split and queue intent
+- proposed issue split and dispatch intent
 - risk notes that decide whether independent review is required
 
 The latent contract is a candidate decision package. It becomes authoritative only
@@ -106,7 +106,7 @@ The payload carries these top-level fields:
 | `research_evidence` | Non-authoritative evidence claims retained for later review and issue shaping. |
 | `research_options` | Non-authoritative option comparisons retained with tradeoffs, selected decision notes, or rejected-option reasons. |
 | `accepted_authority` | Objectives, non-goals, constraints, assumptions, objections, and stop conditions that become authority only when status is `accepted_promoted`. |
-| `execution_readiness` | Natural-language readiness summary, missing decisions, validation expectations, risk notes, proposed issue summaries, conflict domains, and queue intent. It must not expose graph ids or require the user to operate a DAG. Accepted contracts must be ready for issue shaping and must not carry unresolved missing decisions. |
+| `execution_readiness` | Natural-language readiness summary, missing decisions, validation expectations, risk notes, proposed issue summaries, conflict domains, and dispatch intent. It must not expose graph ids or require the user to operate a DAG. Accepted contracts must be ready for issue shaping and must not carry unresolved missing decisions. |
 | `promotion` | Metadata recording who or what accepted the decision, the acceptance source, and the acceptance time. Required only for `accepted_promoted`. |
 | `links` | Generated Linear issue ids/identifiers or internal Execution Program node ids when those exist. |
 | `evidence_boundary` | Local private evidence references and sparse public projection references. |
@@ -116,7 +116,7 @@ The status is the authority boundary:
 - `draft_latent` means the research/design result is stored but cannot enqueue,
   mutate tracker state, set goals, or authorize implementation.
 - `accepted_promoted` means the payload's `accepted_authority` fields may be used by
-  the loop runtime to shape queue intent, generated issues, or internal Execution
+  the loop runtime to shape dispatch intent, generated issues, or internal Execution
   Program nodes. The payload must include promotion metadata, set
   `execution_readiness.ready_for_issue_shaping = true`, and leave
   `execution_readiness.missing_decisions` empty.
@@ -291,9 +291,10 @@ artifact contains unresolved direction, contradictory requirements, or missing
 acceptance criteria, it must request more decision authority instead of starting
 execution.
 
-Promotion may create or update normal Linear issues, dependencies, labels, or queue
-intent. It must not expose an ordinary user workflow that depends on graph ids,
-manual DAG edge editing, or hidden Codex goal state.
+Promotion may create or update normal Linear issues, dependencies, and queue intent.
+It must not apply service queue labels for Program readiness or expose an ordinary
+user workflow that depends on graph ids, manual DAG edge editing, or hidden Codex goal
+state.
 
 ## Program Intake Plan
 
@@ -307,9 +308,8 @@ The durable intake-planning payload is versioned as
 `decodex.program_intake_plan/1` with `record_version = 1`. The runtime stores it in
 runtime SQLite as part of, or directly adjacent to, the internal
 `decodex.execution_program/1` record. The adjacent runtime readback rows are
-`program_intake_plans`, `program_issue_mappings`, and
-`program_queue_label_ownership`; they are derived from the versioned program payload
-and exist so operator status, reconciliation, and tests can query intake state without
+`program_intake_plans` and `program_issue_mappings`; they are derived from the
+versioned program payload and exist so operator status, scheduling, and tests can query intake state without
 copying private graph payloads into Linear. Linear issue descriptions, Linear comments,
 and operator summaries may expose only sparse public projections.
 
@@ -318,12 +318,12 @@ The payload carries:
 | Field | Meaning |
 | --- | --- |
 | `plan_id` | Stable runtime id for this intake plan. |
-| `service_id` | Registered service that owns program reconciliation for this plan. |
+| `service_id` | Registered service that owns program scheduling for this plan. |
 | `intake_kind` | `goal_intake` for promoted natural-language goals, or `issue_batch_intake` for a supplied batch of executable issue briefs. |
 | `source_contract_id` | Accepted Decision Contract id for goal intake, when present. |
 | `accepted_contract_fingerprint` | Fingerprint used to detect drift from the accepted contract or batch boundary. |
 | `public_summary` | Public-safe objective/readiness summary suitable for status readback. |
-| `node_projection` | Optional public-safe node summary or count metadata. The full internal nodes, dependencies, conflict domains, issue mapping, queue-label ownership metadata, and lifecycle evaluation inputs live in the paired `decodex.execution_program/1` payload. |
+| `node_projection` | Optional public-safe node summary or count metadata. The full internal nodes, dependencies, conflict domains, issue mapping, dispatch readiness, and lifecycle evaluation inputs live in the paired `decodex.execution_program/1` payload. |
 
 Goal intake and issue-batch intake both materialize normal Linear issues. A goal
 intake starts from an accepted Decision Contract and shapes one or more issue briefs.
@@ -337,13 +337,13 @@ The operator CLI surface for promoted goals is
 `decodex intake goal --project <service-id> <CONTRACT_ID> --dry-run`, or the same
 command with `--config <PROJECT_DIR>`. Dry-run reads the promoted Decision Contract
 and existing generated-issue links, then prints the proposed normal issue briefs,
-dependencies, conflict domains, and queue plan without mutating Linear and without
+dependencies, conflict domains, and dispatch plan without mutating Linear and without
 persisting local runtime rows. `--apply` is the explicit mutation boundary: it creates
 or updates generated normal Linear issue descriptions, links generated issue ids and
 node ids back to the Decision Contract, and stores the paired Program Intake Plan and
-Execution Program in runtime SQLite. Apply must not run implementation directly and
-must not apply or remove `decodex:queued:<service-id>`; later program reconciliation
-owns queue-label changes. If the contract is latent, rejected, still needs a human
+Execution Program in runtime SQLite. Apply must not run implementation inline and
+must not apply or remove `decodex:queued:<service-id>`; the persisted Program is then
+eligible for direct scheduler dispatch. If the contract is latent, rejected, still needs a human
 decision, carries unresolved missing decisions, or lacks proposed issue summaries,
 goal intake stops before creating executable work.
 
@@ -352,9 +352,10 @@ The operator CLI surface for existing issues is
 command with `--config <PROJECT_DIR>`. Dry-run reads tracker state and prints a
 deterministic ready/held/blocked/stale/unmapped report without mutating Linear and
 without persisting local runtime rows. `--apply` is an explicit local-runtime write:
-it stores the Program Intake Plan, Execution Program payload, issue mappings, and any
-already-proven program-owned queue-label evidence, but it still must not apply or
-remove `decodex:queued:<service-id>`. `--persist` is a legacy alias for `--apply`.
+it stores the Program Intake Plan, Execution Program payload, and issue mappings, but
+it must not apply or remove `decodex:queued:<service-id>`. Ready mapped nodes are
+dispatched directly by the Program scheduler rather than converted into queued-label
+work.
 
 ## Internal Execution Program
 
@@ -369,7 +370,7 @@ SQLite and carries:
 | Field | Meaning |
 | --- | --- |
 | `program_id` | Stable runtime identifier for this internal program. |
-| `service_id` | Registered Decodex service that owns program reconciliation. |
+| `service_id` | Registered Decodex service that owns program scheduling. |
 | `source_contract_id` | Accepted Decision Contract that authorized the program, when the program came from goal intake. |
 | `accepted_contract_fingerprint` | Fingerprint of the accepted contract or batch authority used for drift detection. |
 | `program_intake_plan` | The embedded or linked `decodex.program_intake_plan/1` payload. |
@@ -387,17 +388,18 @@ Each program node carries:
 - acceptance expectations and validation expectations
 - runtime-derived lifecycle state: `planned`, `mapped`, `ready`, `queued`, `active`,
   `blocked`, `needs_attention`, `completed`, `stale`, or `superseded`
-- queue intent: `not_ready`, `ready_to_queue`, `queued`, `active`, `paused`, `done`,
-  or `canceled`; `paused` is legacy queue intent and renders as held lifecycle
-  readback, not as a user-facing graph state
+- dispatch intent: `not_ready`, `ready_to_queue`, `queued`, `active`, `paused`, `done`,
+  or `canceled`; `paused` renders as held lifecycle readback, not as a user-facing
+  graph state
 - linked normal Linear issue identity and startability facts when the node becomes
   executable
-- queue-label ownership metadata for labels applied by program reconciliation
+- direct dispatch readiness derived from issue state, dependency state, conflict
+  domains, and human-stop labels
 - accepted authority fingerprint used to detect node-level drift
 
 Normal Linear issues remain the executable Decodex lanes. A program node may become
 eligible only by creating or updating a normal issue with enough natural-language
-briefing for generic dispatch and by applying the configured queue policy. The
+briefing for generic dispatch and by satisfying the configured workflow policy. The
 Execution Program does not replace Linear as the team-visible backlog or the runtime
 lane model.
 
@@ -406,44 +408,40 @@ Lifecycle evaluation is runtime-owned. It classifies nodes as:
 | State | Meaning |
 | --- | --- |
 | `planned` | The node exists only inside the Program Intake Plan and has no normal Linear issue mapping yet. |
-| `mapped` | The node has a normal Linear issue mapping but is intentionally held from queueing. |
-| `ready` | Dependencies, conflicts, acceptance expectations, validation expectations, and issue mapping allow normal execution, but the queue label has not been applied or retained yet. |
-| `queued` | The node is ready and its mapped issue currently carries a program-owned service queue label. |
-| `active` | The mapped issue already has an active lane and must not retain program-owned queue labels. |
+| `mapped` | The node has a normal Linear issue mapping but is intentionally held from dispatch. |
+| `ready` | Dependencies, conflicts, acceptance expectations, validation expectations, and issue mapping allow direct Program dispatch. |
+| `queued` | Reserved for retained ready-to-dispatch state; new Program scheduling does not use service queue labels for this state. |
+| `active` | The mapped issue already has an active lane. |
 | `blocked` | A dependency, conflict domain, missing expectation, non-startable issue state, missing issue mapping, or missing briefing blocks execution. |
 | `needs_attention` | The mapped issue carries the configured human-attention label or equivalent human-required stop. |
 | `completed` | The node is done or canceled under the accepted program. |
 | `stale` | The node or program no longer matches the accepted authority fingerprint. |
 | `superseded` | A later accepted contract or batch authority replaced this node. |
 
-Queue-label action is derived from lifecycle readiness, not from graph presence alone.
-Only a `ready` node whose queue intent is `ready_to_queue` or `queued`, and whose
-mapped Linear issue is in a registered startable state with no opt-out,
-needs-attention, active-label, missing-briefing, or terminal-state blocker, may
-receive or retain `decodex:queued:<service-id>`.
+Direct dispatch eligibility is derived from lifecycle readiness, not from graph
+presence alone. Only a `ready` node whose dispatch intent is `ready_to_queue` or
+`queued`, and whose mapped Linear issue is in a registered startable state with no
+opt-out, needs-attention, active-label, missing-briefing, open blocker, or
+terminal-state blocker, may receive `dispatch_action = dispatch`.
 
-Queue-label ownership is fail-closed:
+The Program scheduler is event-driven from local runtime state:
 
-- Apply the service queue label only when the node is `ready`, the mapped issue lacks
-  the label, and program reconciliation records ownership for that node, issue, label,
-  service id, and program id.
-- Retain the label only while the node remains `ready` or `queued`, the mapped issue
-  remains startable, and the program-owned label record still matches the same node
-  and service label. A human-owned queued label may be left in place but must not be
-  converted into program-owned removal authority.
-- Remove the label only when a matching program-owned label record proves Decodex
-  applied it through program reconciliation and the node is no longer queueable, for
-  example `blocked`, `active`, `needs_attention`, `completed`, `stale`,
-  `superseded`, unmapped, terminal, or missing a generic dispatch briefing.
-- If the queue label is present but no matching program-owned ownership record exists,
-  treat it as human-owned or ownership-unknown. Do not remove it during program
-  reconciliation; surface a public-safe ownership warning or local operator reason
-  instead.
+- Persisting or refreshing an Execution Program keeps the DAG in SQLite/local runtime
+  memory; the scheduler evaluates the graph before ordinary queued-label issue
+  selection.
+- The scheduler refreshes only mapped Linear issue facts required for readiness:
+  issue state, active/manual-only/needs-attention labels, open blockers, briefing
+  presence, dependency observations, and occupied conflict domains.
+- When several nodes are dispatchable, normal issue candidate ordering chooses the
+  first lane, and project/account concurrency still gates actual execution.
+- Service queue labels are not applied, retained, removed, or treated as Program
+  ownership evidence by this path. Existing `decodex:queued:<service-id>` labels
+  remain ordinary tracker intake for non-Program issues.
 
 Operator readback must summarize program progress without exposing graph operations as
 workflow. Public-safe readback fields are: intake kind, public summary, ready count,
-queued count, blocked count, held count, stale count, attention count, completed
-count, optional planned/mapped/active/superseded counts, queue-label-eligible count,
+dispatchable count, blocked count, held count, stale count, attention count, completed
+count, optional planned/mapped/active/superseded counts, dispatch action,
 mapped issue identifiers, and coarse next action. It must not expose internal graph
 ids, edge lists, raw dependency payloads, host-local paths, transcripts, credentials,
 or private evidence references as public/team-visible status.

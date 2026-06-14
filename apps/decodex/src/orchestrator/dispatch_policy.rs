@@ -33,14 +33,14 @@ where
 	if issue.has_label(tracker_policy.needs_attention_label()) {
 		return Ok(false);
 	}
-	if issue.labels_complete {
-		if !issue.has_label(queue_label) {
+	if !queue_membership_confirmed_by_source {
+		if issue.labels_complete {
+			if !issue.has_label(queue_label) {
+				return Ok(false);
+			}
+		} else if !tracker::issue_has_label_with_server_confirmation(tracker, issue, queue_label)? {
 			return Ok(false);
 		}
-	} else if !queue_membership_confirmed_by_source
-		&& !tracker::issue_has_label_with_server_confirmation(tracker, issue, queue_label)?
-	{
-		return Ok(false);
 	}
 	if !todo_blocker_rule_passes(issue, workflow) {
 		return Ok(false);
@@ -459,7 +459,7 @@ fn retry_budget_base_for_dispatch_mode(
 ) -> Result<i64> {
 	let preferred_retry_budget_base = preferred_retry_budget_base.unwrap_or(0);
 
-	if dispatch_mode == IssueDispatchMode::Normal {
+	if matches!(dispatch_mode, IssueDispatchMode::Normal | IssueDispatchMode::Program) {
 		return Ok(preferred_retry_budget_base);
 	}
 
@@ -606,9 +606,10 @@ where
 		IssueDispatchMode::ReviewRepair => {
 			Ok(!issue_passes_review_repair_dispatch_policy(tracker, issue, project, workflow)?)
 		},
-		IssueDispatchMode::Normal | IssueDispatchMode::Retry | IssueDispatchMode::Closeout => {
-			Ok(is_issue_nonactive_for_run(issue, workflow))
-		},
+		IssueDispatchMode::Normal
+		| IssueDispatchMode::Program
+		| IssueDispatchMode::Retry
+		| IssueDispatchMode::Closeout => Ok(is_issue_nonactive_for_run(issue, workflow)),
 	}
 }
 
