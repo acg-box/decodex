@@ -1503,6 +1503,7 @@
 			}
 
 			.child-activity {
+				--child-muted-readable: color-mix(in srgb, var(--muted-strong) 62%, var(--muted));
 				margin-top: 12px;
 				padding-top: 10px;
 				border-top: 1px solid var(--line);
@@ -2674,23 +2675,27 @@
 				font-family: var(--mono);
 				font-size: var(--type-caption);
 				line-height: 1.4;
-				color: var(--muted);
+				color: var(--child-muted-readable);
 			}
 
 			.child-activity-note {
-				color: var(--muted);
+				color: var(--child-muted-readable);
 			}
 
 			.child-activity-body {
 				display: grid;
-				gap: 8px;
-				margin-top: 9px;
+				gap: 4px;
+				margin-top: 0;
 			}
 
 			.child-activity-head strong,
 			.child-context strong {
 				color: var(--text);
 				font-weight: var(--weight-label);
+			}
+
+			.child-activity-head.is-project strong {
+				color: var(--muted-strong);
 			}
 
 			.child-share-list {
@@ -2707,7 +2712,7 @@
 				min-width: 0;
 				font-family: var(--mono);
 				font-size: var(--type-caption);
-				color: var(--muted);
+				color: var(--child-muted-readable);
 			}
 
 			.child-bucket.is-event-only,
@@ -2749,6 +2754,7 @@
 				min-width: 0;
 				text-align: right;
 				overflow: visible;
+				font-variant-numeric: tabular-nums;
 			}
 
 			.child-bucket-signals {
@@ -2768,7 +2774,121 @@
 				border-top: 1px solid var(--line);
 				font-family: var(--mono);
 				font-size: var(--type-caption);
-				color: var(--muted);
+				color: var(--child-muted-readable);
+			}
+
+			.child-context-group {
+				display: grid;
+				gap: 5px;
+				width: 100%;
+				max-width: 100%;
+				padding-top: 9px;
+				border-top: 1px solid var(--line);
+			}
+
+			.child-context-group .child-context {
+				padding-top: 0;
+				border-top: 0;
+			}
+
+			.child-total-overview {
+				display: inline-grid;
+				grid-template-columns:
+					minmax(86px, max-content)
+					repeat(4, max-content max-content);
+				align-items: baseline;
+				gap: 3px 0.38em;
+				width: fit-content;
+				max-width: 100%;
+				overflow: hidden;
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				color: var(--child-muted-readable);
+			}
+
+			.child-total-label {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				color: var(--muted-strong);
+			}
+
+			.child-total-segment {
+				display: contents;
+			}
+
+			.child-total-segment.is-empty > * {
+				visibility: hidden;
+			}
+
+			.child-total-primary {
+				color: var(--text);
+				font-weight: var(--weight-label);
+				font-variant-numeric: tabular-nums;
+				justify-self: end;
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.child-total-primary[data-slot] {
+				padding-left: clamp(18px, 1.45vw, 26px);
+			}
+
+			.child-total-secondary {
+				color: var(--child-muted-readable);
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.child-phase-table {
+				display: inline-grid;
+				grid-template-columns:
+					max-content
+					max-content
+					max-content
+					max-content
+					max-content
+					max-content
+					max-content;
+				gap: 4px clamp(24px, 2vw, 34px);
+				align-items: baseline;
+				width: fit-content;
+				max-width: 100%;
+				overflow: hidden;
+				margin-top: 2px;
+				padding-top: 5px;
+				border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				color: var(--child-muted-readable);
+			}
+
+			.child-phase-table-cell {
+				min-width: 0;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+
+			.child-phase-table-cell[data-align="right"] {
+				justify-self: end;
+				text-align: right;
+			}
+
+			.child-phase-table-cell.is-header {
+				color: var(--child-muted-readable);
+				font-size: var(--type-meta);
+			}
+
+			.child-phase-table-cell.is-value {
+				color: var(--text);
+				font-weight: var(--weight-label);
+				font-variant-numeric: tabular-nums;
 			}
 
 			.child-context-label {
@@ -3056,7 +3176,7 @@
 			}
 
 			details.is-animating > .grid,
-			details.is-animating > .attempt-list,
+			details.is-animating > .phase-list,
 			details.is-animating > .panel-body {
 				overflow: hidden;
 				transform-origin: top center;
@@ -3066,37 +3186,62 @@
 					transform var(--slow) var(--ease);
 			}
 
-			.attempt-timeline {
-				margin-top: 10px;
+			.phase-timeline {
+				margin-top: 12px;
 			}
 
-			.attempt-list {
+			.phase-list {
 				display: grid;
-				gap: 1px;
-				margin-top: 10px;
-				border: 1px solid var(--line);
-				border-radius: var(--radius-sm);
-				background: var(--line);
-				overflow: hidden;
+				gap: 0;
+				margin-top: 8px;
+				border-top: 1px solid var(--line);
 			}
 
-			.attempt-row {
+			.phase-row {
 				display: grid;
-				grid-template-columns: 54px 110px minmax(150px, 0.8fr) 120px minmax(220px, 1fr);
-				gap: 12px;
-				align-items: center;
+				grid-template-columns: minmax(112px, 0.28fr) minmax(0, 1fr);
+				gap: 12px 16px;
+				align-items: start;
 				min-width: 0;
-				padding: 8px 10px;
-				background: var(--surface-muted);
-				color: var(--muted-strong);
-				font-size: var(--type-meta);
+				padding: 8px 0;
+				border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
 			}
 
-			.attempt-row span {
+			.phase-row:last-child {
+				border-bottom: 0;
+			}
+
+			.phase-name,
+			.phase-facts,
+			.phase-facts span {
 				min-width: 0;
 				overflow: hidden;
 				text-overflow: ellipsis;
 				white-space: nowrap;
+			}
+
+			.phase-name {
+				color: var(--text);
+				font-family: var(--sans);
+				font-size: var(--type-label);
+				font-weight: var(--weight-label);
+				line-height: 1.35;
+			}
+
+			.phase-facts {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 5px 14px;
+				align-items: baseline;
+				font-family: var(--mono);
+				font-size: var(--type-caption);
+				line-height: 1.45;
+				color: var(--muted);
+			}
+
+			.phase-facts strong {
+				color: var(--muted-strong);
+				font-weight: var(--weight-label);
 			}
 
 			details.fold-panel {
@@ -3343,12 +3488,9 @@
 					grid-template-columns: repeat(2, minmax(0, 1fr));
 				}
 
-				.attempt-row {
-					grid-template-columns: 48px 96px minmax(130px, 1fr);
-				}
-
-				.attempt-row span:nth-child(n + 4) {
-					display: none;
+				.phase-row {
+					grid-template-columns: 1fr;
+					gap: 4px;
 				}
 
 				.row-head {
@@ -5226,7 +5368,7 @@
 			}
 
 			function detailContent(details) {
-				return details.querySelector(":scope > .panel-body, :scope > .grid, :scope > .attempt-list");
+				return details.querySelector(":scope > .panel-body, :scope > .grid, :scope > .phase-list");
 			}
 
 			function rememberDetailOpenState(details, isOpen) {
@@ -6001,6 +6143,153 @@
 				];
 			}
 
+			function lifecycleNumber(value) {
+				const number = Number(value ?? 0);
+
+				return Number.isFinite(number) ? Math.max(0, number) : 0;
+			}
+
+			function historyLaneLifecycleMetrics(lane) {
+				const attempts = Array.isArray(lane?.attempts) && lane.attempts.length
+					? lane.attempts
+					: lane?.latest_run
+						? [lane.latest_run]
+						: [];
+				const provided = lane?.lifecycle_metrics || {};
+				const summaries = attempts.map(childAgentActivity).filter(Boolean);
+				const captured = lifecycleNumber(
+					provided.captured_attempt_count ?? summaries.length,
+				);
+				const attemptCount = lifecycleNumber(
+					provided.attempt_count ?? lane?.attempt_count ?? attempts.length,
+				);
+
+				return {
+					...provided,
+					attempt_count: attemptCount,
+					captured_attempt_count: captured,
+					missing_attempt_count: lifecycleNumber(
+						provided.missing_attempt_count ?? Math.max(0, attemptCount - captured),
+					),
+					protocol_event_count: lifecycleNumber(
+						provided.protocol_event_count ??
+							attempts.reduce((total, run) => total + lifecycleNumber(run?.event_count), 0),
+					),
+					child_event_count: lifecycleNumber(
+						provided.child_event_count ??
+							summaries.reduce((total, summary) => total + lifecycleNumber(summary.event_count), 0),
+					),
+					wall_seconds: lifecycleNumber(
+						provided.wall_seconds ??
+							summaries.reduce((total, summary) => total + lifecycleNumber(summary.wall_seconds), 0),
+					),
+					tool_call_count: lifecycleNumber(
+						provided.tool_call_count ??
+							summaries.reduce((total, summary) => total + lifecycleNumber(summary.tool_call_count), 0),
+					),
+					input_tokens_cumulative: lifecycleNumber(
+						provided.input_tokens_cumulative ??
+							summaries.reduce(
+								(total, summary) => total + lifecycleNumber(summary.input_tokens_cumulative),
+								0,
+							),
+					),
+					output_tokens_cumulative: lifecycleNumber(
+						provided.output_tokens_cumulative ??
+							summaries.reduce(
+								(total, summary) => total + lifecycleNumber(summary.output_tokens_cumulative),
+								0,
+							),
+					),
+					buckets: Array.isArray(provided.buckets) ? provided.buckets : [],
+					phases: Array.isArray(provided.phases)
+						? provided.phases.map(normalizeLifecyclePhaseMetrics)
+						: [],
+				};
+			}
+
+			function normalizeLifecyclePhaseMetrics(phase) {
+				return {
+					...phase,
+					phase: phase?.phase || "unknown",
+					label: phase?.label || displayToken(phase?.phase || "unknown"),
+					attempt_count: lifecycleNumber(phase?.attempt_count),
+					captured_attempt_count: lifecycleNumber(phase?.captured_attempt_count),
+					missing_attempt_count: lifecycleNumber(phase?.missing_attempt_count),
+					protocol_event_count: lifecycleNumber(phase?.protocol_event_count),
+					child_event_count: lifecycleNumber(phase?.child_event_count),
+					wall_seconds: lifecycleNumber(phase?.wall_seconds),
+					tool_call_count: lifecycleNumber(phase?.tool_call_count),
+					input_tokens_cumulative: lifecycleNumber(phase?.input_tokens_cumulative),
+					output_tokens_cumulative: lifecycleNumber(phase?.output_tokens_cumulative),
+					buckets: Array.isArray(phase?.buckets) ? phase.buckets : [],
+				};
+			}
+
+			function lifecycleBucket(metrics, bucketName) {
+				return (metrics?.buckets || []).find(
+					(candidate) => String(candidate?.name || "").toLowerCase() === bucketName.toLowerCase(),
+				);
+			}
+
+			function lifecycleBucketSeconds(metrics, bucketName) {
+				const bucket = lifecycleBucket(metrics, bucketName);
+
+				return lifecycleNumber(bucket?.wall_seconds);
+			}
+
+			function lifecycleWallSeconds(metrics) {
+				const buckets = Array.isArray(metrics?.buckets) ? metrics.buckets : [];
+				return Math.max(
+					1,
+					lifecycleNumber(metrics?.wall_seconds),
+					buckets.reduce((total, bucket) => total + lifecycleNumber(bucket?.wall_seconds), 0),
+				);
+			}
+
+			function formatRuntimeShare(seconds, totalSeconds) {
+				const elapsed = lifecycleNumber(seconds);
+				const total = Math.max(1, lifecycleNumber(totalSeconds), elapsed);
+				if (elapsed <= 0) {
+					return { percent: "-", elapsed: "-", total: "-", ratio: "-", text: "-" };
+				}
+
+				const percent = Math.round((elapsed / total) * 100);
+				const elapsedText = formatDuration(elapsed);
+				const totalText = formatDuration(total);
+				const ratio = `${compactRuntimeDuration(elapsedText)}/${compactRuntimeDuration(totalText)}`;
+				return {
+					percent: `${percent}%`,
+					elapsed: elapsedText,
+					total: totalText,
+					ratio,
+					text: `${ratio}(${percent}%)`,
+				};
+			}
+
+			function compactRuntimeDuration(value) {
+				return String(value || "-").replaceAll(" ", "");
+			}
+
+			function historyLifecycleTokenSummary(metrics) {
+				const input = lifecycleNumber(metrics?.input_tokens_cumulative);
+				const output = lifecycleNumber(metrics?.output_tokens_cumulative);
+
+				if (input === 0 && output === 0) {
+					return "not captured";
+				}
+
+				return `in ${formatCompactCount(input)} / out ${formatCompactCount(output)}`;
+			}
+
+			function historyLifecycleCaptureSummary(metrics) {
+				const captured = lifecycleNumber(metrics?.captured_attempt_count);
+				const attempts = lifecycleNumber(metrics?.attempt_count);
+				const missing = lifecycleNumber(metrics?.missing_attempt_count);
+
+				return missing > 0 ? `${captured}/${attempts} captured · ${missing} missing` : `${captured}/${attempts} captured`;
+			}
+
 			function activeRunTelemetryFacts(run) {
 				const facts = [];
 				const freshness = activeRunFreshness(run);
@@ -6042,6 +6331,165 @@
 
 				return facts.map(([label, value]) => renderRunMetaFact(label, value)).join("");
 			}
+
+				function activeRunLifecycleMetrics(run, summary = childAgentActivity(run)) {
+					const provided = run?.lifecycle_metrics || {};
+					const providedPhases = Array.isArray(provided.phases)
+						? provided.phases.map(normalizeLifecyclePhaseMetrics)
+						: [];
+					const fallbackCaptured = summary ? 1 : 0;
+					const attemptCount = lifecycleNumber(provided.attempt_count ?? (summary ? 1 : 0));
+					const capturedAttemptCount = lifecycleNumber(
+						provided.captured_attempt_count ?? fallbackCaptured,
+					);
+					const buckets = Array.isArray(provided.buckets) && provided.buckets.length
+						? provided.buckets
+						: childAgentBuckets(summary);
+					const metrics = {
+						...provided,
+						attempt_count: attemptCount,
+						run_count: lifecycleNumber(provided.run_count ?? attemptCount),
+						captured_attempt_count: capturedAttemptCount,
+						missing_attempt_count: lifecycleNumber(
+							provided.missing_attempt_count ??
+								Math.max(0, attemptCount - capturedAttemptCount),
+						),
+						protocol_event_count: lifecycleNumber(provided.protocol_event_count ?? run?.event_count),
+						child_event_count: lifecycleNumber(provided.child_event_count ?? summary?.event_count),
+						wall_seconds: lifecycleNumber(provided.wall_seconds ?? summary?.wall_seconds),
+						tool_call_count: lifecycleNumber(provided.tool_call_count ?? summary?.tool_call_count),
+						input_tokens_current: provided.input_tokens_current ?? summary?.input_tokens_current ?? null,
+						input_tokens_peak: provided.input_tokens_peak ?? summary?.input_tokens_max ?? null,
+						input_tokens_cumulative: lifecycleNumber(
+							provided.input_tokens_cumulative ?? summary?.input_tokens_cumulative,
+						),
+						output_tokens_cumulative: lifecycleNumber(
+							provided.output_tokens_cumulative ?? summary?.output_tokens_cumulative,
+						),
+						largest_tool_output_bytes:
+							provided.largest_tool_output_bytes ?? summary?.largest_tool_output_bytes ?? null,
+						largest_tool_output_tool:
+							provided.largest_tool_output_tool ?? summary?.largest_tool_output_tool ?? null,
+						large_output_warnings: Array.isArray(provided.large_output_warnings)
+							? provided.large_output_warnings
+							: childAgentLargeOutputWarnings(summary),
+						buckets,
+						phases: providedPhases,
+					};
+
+					if (!metrics.phases.length && summary) {
+						const phase = fallbackLifecyclePhaseForRun(run);
+						metrics.phases = [
+							normalizeLifecyclePhaseMetrics({
+								phase: phase.key,
+								label: phase.label,
+								attempt_count: attemptCount || 1,
+								run_count: 1,
+								captured_attempt_count: 1,
+								missing_attempt_count: 0,
+								protocol_event_count: lifecycleNumber(run?.event_count),
+								child_event_count: lifecycleNumber(summary.event_count),
+								wall_seconds: lifecycleNumber(summary.wall_seconds),
+								tool_call_count: lifecycleNumber(summary.tool_call_count),
+								input_tokens_current: summary.input_tokens_current ?? null,
+								input_tokens_peak: summary.input_tokens_max ?? null,
+								input_tokens_cumulative: lifecycleNumber(summary.input_tokens_cumulative),
+								output_tokens_cumulative: lifecycleNumber(summary.output_tokens_cumulative),
+								largest_tool_output_bytes: summary.largest_tool_output_bytes ?? null,
+								largest_tool_output_tool: summary.largest_tool_output_tool ?? null,
+								large_output_warnings: childAgentLargeOutputWarnings(summary),
+								buckets: childAgentBuckets(summary),
+							}),
+						];
+					}
+
+					return metrics;
+				}
+
+				function fallbackLifecyclePhaseForRun(run) {
+					const status = String(run?.status || "").toLowerCase();
+					const operation = String(run?.current_operation || "").toLowerCase();
+					const reviewPhase = String(run?.loop_status?.review?.phase || "").toLowerCase();
+
+					if (["cleanup_complete", "closeout", "closeout_pending", "landed"].includes(status)) {
+						return { key: "closeout", label: "Closeout" };
+					}
+					if (
+						["manual_attention", "manual_attention_pending", "needs_attention", "terminal_failure"].includes(status) ||
+						String(run?.phase || "").toLowerCase() === "needs_attention"
+					) {
+						return { key: "manual_attention", label: "Manual attention" };
+					}
+					if (reviewPhase === "repair" || status === "review_repair_pending") {
+						return { key: "review_repair", label: "Review repair" };
+					}
+					if (reviewPhase || status === "review_handoff_pending" || operation === "review_writeback") {
+						return { key: "review", label: "Review" };
+					}
+
+					return { key: "development", label: "Development" };
+				}
+
+				function lifecycleMetricDurationFact(metrics) {
+					const modelSeconds = lifecycleBucketSeconds(metrics, "Model");
+					const activitySeconds = modelSeconds > 0 ? modelSeconds : lifecycleNumber(metrics?.wall_seconds);
+
+					if (activitySeconds <= 0) {
+						return null;
+					}
+
+					return [modelSeconds > 0 ? "inference" : "activity", formatDuration(activitySeconds)];
+				}
+
+				function lifecycleMetricFacts(metrics, { includeAttempts = false } = {}) {
+					if (!metrics) {
+						return [];
+					}
+
+					const facts = [];
+					const durationFact = lifecycleMetricDurationFact(metrics);
+					const tokenSummary = historyLifecycleTokenSummary(metrics);
+					const attempts = lifecycleNumber(metrics.attempt_count);
+					const captured = lifecycleNumber(metrics.captured_attempt_count);
+					const missing = lifecycleNumber(metrics.missing_attempt_count);
+					const childEvents = lifecycleNumber(metrics.child_event_count);
+					const protocolEvents = lifecycleNumber(metrics.protocol_event_count);
+
+					if (includeAttempts && (attempts > 1 || missing > 0)) {
+						facts.push([
+							"attempts",
+							missing > 0 ? `${captured}/${attempts} captured` : formatCompactCount(attempts),
+						]);
+					}
+					if (durationFact) {
+						facts.push(durationFact);
+					}
+					if (tokenSummary !== "not captured") {
+						facts.push(["tokens", tokenSummary]);
+					}
+					if (lifecycleNumber(metrics.tool_call_count) > 0) {
+						facts.push(["tools", formatCompactCount(metrics.tool_call_count)]);
+					}
+					if (childEvents || protocolEvents) {
+						facts.push([
+							"events",
+							childEvents && protocolEvents
+								? `${formatCompactCount(childEvents)} child / ${formatCompactCount(protocolEvents)} protocol`
+								: formatCompactCount(childEvents || protocolEvents),
+						]);
+					}
+					if (metrics.largest_tool_output_bytes != null) {
+						facts.push([
+							"max output",
+							formatLargestOutputValue(
+								metrics.largest_tool_output_bytes,
+								metrics.largest_tool_output_tool,
+							),
+						]);
+					}
+
+					return facts;
+				}
 
 			function codexAccount(run, snapshot = null) {
 				const selected = run?.account || run?.codex_account || null;
@@ -7753,18 +8201,34 @@
 					].join("; ");
 				}
 
-				function historyLaneTimingFacts(lane) {
-					const outcome = historyLedgerOutcome(lane);
+			function historyLaneTimingFacts(lane) {
+				const outcome = historyLedgerOutcome(lane);
+				const metrics = historyLaneLifecycleMetrics(lane);
+				const modelSeconds = lifecycleBucketSeconds(metrics, "Model");
+				const activitySeconds = modelSeconds > 0
+					? modelSeconds
+					: lifecycleNumber(metrics.wall_seconds);
+				const activityLabel = modelSeconds > 0 ? "Inference" : "Activity";
 
 				if (!historyLedgerHasRecords(outcome)) {
-					return historyRunTimingFacts(lane.latest_run);
+					const run = lane.latest_run;
+
+					return [
+						["Updated", formatTimestampCompact(run.updated_at)],
+						["Attempts", String(metrics.attempt_count || lane.attempt_count || 1)],
+						[activityLabel, formatDuration(activitySeconds)],
+						["Tokens", historyLifecycleTokenSummary(metrics)],
+						["Events", formatCompactCount(metrics.protocol_event_count)],
+					];
 				}
 
 				return [
 					["Finished", formatTimestampCompact(outcome.lifecycle_finished_at || outcome.final_event_at)],
 					["Elapsed", formatDuration(outcome.lifecycle_elapsed_seconds)],
-					["Attempts", String(lane.attempt_count ?? lane.attempts?.length ?? 1)],
-					["Records", String(outcome.record_count ?? 0)],
+					["Attempts", String(metrics.attempt_count || lane.attempt_count || 1)],
+					[activityLabel, formatDuration(activitySeconds)],
+					["Tokens", historyLifecycleTokenSummary(metrics)],
+					["Events", formatCompactCount(metrics.protocol_event_count || outcome.record_count || 0)],
 				];
 			}
 
@@ -7807,42 +8271,28 @@
 				);
 			}
 
-			function childAgentContextFacts(summary) {
-				if (!summary) {
-					return [];
+				function childAgentContextFacts(summary) {
+					if (!summary) {
+						return [];
+					}
+
+					const latestInput = formatCompactCount(summary.input_tokens_current);
+					const peakInput = formatCompactCount(summary.input_tokens_max);
+					const inputWindowsMatch = childAgentInputWindowsMatch(summary);
+					const facts = [
+						["current window", latestInput, "Current context window from the latest child-agent event."],
+					];
+
+					if (!inputWindowsMatch) {
+						facts.push([
+							"peak window",
+							peakInput,
+							"Largest observed context window for this lane.",
+						]);
+					}
+
+					return facts;
 				}
-
-				const latestInput = formatCompactCount(summary.input_tokens_current);
-				const peakInput = formatCompactCount(summary.input_tokens_max);
-				const inputWindowsMatch = childAgentInputWindowsMatch(summary);
-				const facts = [
-					["current window", latestInput, "Current context window from the latest child-agent event."],
-					[
-						"cumulative input",
-						formatCompactCount(summary.input_tokens_cumulative),
-						"Total input tokens processed across child-agent events.",
-					],
-					["tool calls", String(summary.tool_call_count ?? 0)],
-				];
-
-				if (!inputWindowsMatch) {
-					facts.splice(1, 0, [
-						"peak window",
-						peakInput,
-						"Largest observed context window for this lane.",
-					]);
-				}
-
-				if (summary.largest_tool_output_bytes != null) {
-					facts.push([
-						"largest output",
-						formatCompactBytes(summary.largest_tool_output_bytes),
-						"Largest tool output; debug details show attribution.",
-					]);
-				}
-
-				return facts;
-			}
 
 			function childAgentLargeOutputWarnings(summary) {
 				return Array.isArray(summary?.large_output_warnings)
@@ -7872,7 +8322,7 @@
 					signals.push(["events", formatCompactCount(events)]);
 				}
 				if (toolCalls > 0) {
-					signals.push(["tool calls", formatCompactCount(toolCalls)]);
+					signals.push(["tools", formatCompactCount(toolCalls)]);
 				}
 				if (inputTokens > 0) {
 					signals.push(["input", `${formatCompactCount(inputTokens)} tok`]);
@@ -7895,6 +8345,10 @@
 				return signals.length
 					? signals.map(([label, value]) => `${detailLabel(label)} ${value}`).join(", ")
 					: fallback;
+			}
+
+			function childBucketDisplayName(bucket) {
+				return childBucketIsPrimaryShareBucket(bucket) ? "Inference" : displayToken(bucket?.name);
 			}
 
 			function renderChildBucketSignalList(signals) {
@@ -7965,8 +8419,22 @@
 				return `child-bucket:${bucket?.name || "unknown"}`;
 			}
 
+			function childBucketNormalizedName(bucket) {
+				return String(bucket?.name || "").toLowerCase();
+			}
+
+			function childBucketIsPrimaryShareBucket(bucket) {
+				return childBucketNormalizedName(bucket) === "model";
+			}
+
+			function childBucketIsLifecycleTotalBucket(bucket) {
+				const name = childBucketNormalizedName(bucket);
+
+				return name === "protocol" || name === "tracker";
+			}
+
 			function childDiagnosticBucketRank(bucket) {
-				const name = String(bucket?.name || "").toLowerCase();
+				const name = childBucketNormalizedName(bucket);
 				if (name.includes("protocol")) {
 					return 0;
 				}
@@ -8025,6 +8493,246 @@
 				});
 			}
 
+			function renderChildContextFacts(facts) {
+				return facts
+					.map(([label, value, title]) => {
+						const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
+
+						return `<span${titleAttribute}>${escapeHtml(detailLabel(label))} <strong>${escapeHtml(value)}</strong></span>`;
+					})
+					.join("");
+			}
+
+			function runProjectSummary(run) {
+				return displayToken(run?.project_display_name || run?.project_id || "project");
+			}
+
+			function lifecycleMetricSegment(value, label = "") {
+				if (value == null || value === "") {
+					return null;
+				}
+
+				return {
+					value: String(value),
+					label: label ? String(label) : "",
+				};
+			}
+
+			function appendLifecycleMetricSegment(segments, value, label = "") {
+				const segment = lifecycleMetricSegment(value, label);
+				if (segment) {
+					segments.push(segment);
+				}
+			}
+
+			function formatLargestOutputValue(bytes, tool = "") {
+				if (bytes == null) {
+					return "-";
+				}
+
+				const output = formatCompactBytes(bytes);
+				const source = tool ? String(tool).trim() : "";
+				return source ? `${output}(${source})` : output;
+			}
+
+				function renderLifecycleMetricSegment(segment, slotIndex) {
+					if (!segment) {
+						return `
+							<span class="child-total-segment is-empty" aria-hidden="true">
+								<strong class="child-total-primary" data-slot="${slotIndex}">-</strong>
+								<span class="child-total-secondary">-</span>
+							</span>
+						`;
+					}
+
+					const label = segment.label
+						? `<span class="child-total-secondary">${escapeHtml(segment.label)}</span>`
+						: `<span class="child-total-secondary"></span>`;
+
+					return `<span class="child-total-segment"><strong class="child-total-primary" data-slot="${slotIndex}">${escapeHtml(segment.value)}</strong>${label}</span>`;
+				}
+
+			function renderLifecycleOverviewRows(rows) {
+				const visibleRows = rows.filter((row) => row.segments.length);
+				if (!visibleRows.length) {
+					return "";
+				}
+
+				const cells = visibleRows
+					.flatMap((row) => {
+						const paddedSegments = [
+							...row.segments.slice(0, 4),
+							...Array.from({ length: Math.max(0, 4 - row.segments.length) }, () => null),
+						];
+
+							return [
+								`<span class="child-total-label">${escapeHtml(row.label)}</span>`,
+								...paddedSegments.map((segment, slotIndex) =>
+									renderLifecycleMetricSegment(segment, slotIndex),
+								),
+							];
+					})
+					.join("");
+
+				return `
+					<div class="child-total-overview" aria-label="Lifecycle total metrics">
+						${cells}
+					</div>
+				`;
+			}
+
+				function renderChildLifecycleOverview(lifecycle, contextFacts) {
+					const rows = [];
+
+					const contextSegments = [];
+					if (lifecycleNumber(lifecycle?.input_tokens_cumulative) > 0) {
+						appendLifecycleMetricSegment(
+							contextSegments,
+							formatCompactCount(lifecycle.input_tokens_cumulative),
+							"input",
+						);
+					}
+					if (lifecycleNumber(lifecycle?.output_tokens_cumulative) > 0) {
+						appendLifecycleMetricSegment(
+							contextSegments,
+							formatCompactCount(lifecycle.output_tokens_cumulative),
+							"output",
+						);
+					}
+					for (const [label, value] of contextFacts) {
+						const detail = detailLabel(label);
+						appendLifecycleMetricSegment(
+							contextSegments,
+							value,
+							detail,
+						);
+					}
+					if (contextSegments.length) {
+						rows.push({ label: "Context", segments: contextSegments });
+					}
+
+					const toolCalls = lifecycleNumber(lifecycle?.tool_call_count);
+					const largestOutput = lifecycle?.largest_tool_output_bytes;
+					const toolSegments = [];
+					if (toolCalls > 0) {
+						appendLifecycleMetricSegment(toolSegments, formatCompactCount(toolCalls), "tools");
+					}
+					if (largestOutput != null) {
+						appendLifecycleMetricSegment(
+							toolSegments,
+							formatLargestOutputValue(largestOutput, lifecycle?.largest_tool_output_tool),
+							"max output",
+						);
+					}
+					if (toolSegments.length) {
+						rows.push({ label: "Tools", segments: toolSegments });
+					}
+
+					const tracker = lifecycleBucket(lifecycle, "Tracker");
+					if (tracker) {
+						const trackerSegments = [];
+						if (lifecycleNumber(tracker.event_count) > 0) {
+							appendLifecycleMetricSegment(trackerSegments, formatCompactCount(tracker.event_count), "events");
+						}
+						if (lifecycleNumber(tracker.tool_call_count) > 0) {
+							appendLifecycleMetricSegment(trackerSegments, formatCompactCount(tracker.tool_call_count), "tools");
+						}
+						if (lifecycleNumber(tracker.output_bytes) > 0) {
+							appendLifecycleMetricSegment(trackerSegments, formatCompactBytes(tracker.output_bytes), "output bytes");
+						}
+						if (trackerSegments.length) {
+							rows.push({ label: "Tracker", segments: trackerSegments });
+						}
+					}
+
+					const protocolEvents = lifecycleNumber(lifecycle?.protocol_event_count);
+					const childEvents = lifecycleNumber(lifecycle?.child_event_count);
+					if (protocolEvents || childEvents) {
+						const protocolSegments = [];
+						if (protocolEvents) {
+							appendLifecycleMetricSegment(protocolSegments, formatCompactCount(protocolEvents), "events");
+						}
+						if (childEvents) {
+							appendLifecycleMetricSegment(protocolSegments, formatCompactCount(childEvents), "child events");
+						}
+						rows.push({ label: "Protocol", segments: protocolSegments });
+					}
+
+					return renderLifecycleOverviewRows(rows);
+				}
+
+				function renderChildLifecyclePhaseTable(phases) {
+					const rows = (phases || [])
+						.map((phase) => {
+							const modelSeconds = lifecycleBucketSeconds(phase, "Model");
+							const phaseWall = lifecycleWallSeconds(phase);
+							const runtime = formatRuntimeShare(modelSeconds, phaseWall);
+							const inputTokens = lifecycleNumber(phase.input_tokens_cumulative);
+							const outputTokens = lifecycleNumber(phase.output_tokens_cumulative);
+							const toolCalls = lifecycleNumber(phase.tool_call_count);
+							const largestOutput = phase?.largest_tool_output_bytes != null
+								? formatLargestOutputValue(
+										phase.largest_tool_output_bytes,
+										phase.largest_tool_output_tool,
+									)
+								: "-";
+
+							return [
+								phase.label || displayToken(phase.phase),
+								lifecycleNumber(phase.attempt_count) > 0
+									? formatCompactCount(phase.attempt_count)
+									: "-",
+								runtime.text,
+								inputTokens > 0 ? formatCompactCount(inputTokens) : "-",
+								outputTokens > 0 ? formatCompactCount(outputTokens) : "-",
+								toolCalls > 0 ? formatCompactCount(toolCalls) : "-",
+								largestOutput,
+							];
+						});
+
+					if (!rows.length) {
+						return "";
+					}
+
+					const header = ["Stage", "attempts", "inference", "input", "output", "tools", "max output"];
+					const alignRight = new Set([1, 2, 3, 4, 5, 6]);
+					const cells = [
+						...header.map(
+							(label, index) =>
+								`<span class="child-phase-table-cell is-header" data-align="${alignRight.has(index) ? "right" : "left"}">${escapeHtml(label)}</span>`,
+						),
+						...rows.flatMap((row) =>
+							row.map(
+								(value, index) =>
+									renderChildLifecyclePhaseCell(value, index, alignRight.has(index)),
+							),
+						),
+					].join("");
+
+					return `<div class="child-phase-table" role="table" aria-label="Lifecycle phase metrics">${cells}</div>`;
+				}
+
+				function renderChildLifecyclePhaseCell(value, index, alignRight) {
+					const align = alignRight ? "right" : "left";
+					return `<span class="child-phase-table-cell is-value" data-align="${align}">${escapeHtml(String(value))}</span>`;
+				}
+
+				function childAgentContextRows(run, summary, lifecycle = activeRunLifecycleMetrics(run, summary)) {
+					const rows = [];
+					const contextFacts = childAgentContextFacts(summary);
+					const overview = renderChildLifecycleOverview(lifecycle, contextFacts);
+					const phaseTable = renderChildLifecyclePhaseTable(lifecycle.phases || []);
+
+					if (overview) {
+						rows.push(overview);
+					}
+					if (phaseTable) {
+						rows.push(phaseTable);
+					}
+
+					return rows;
+				}
+
 			function renderChildAgentBreakdown(run) {
 				const summary = childAgentActivity(run);
 
@@ -8032,17 +8740,27 @@
 					return "";
 				}
 
-				const buckets = childAgentBuckets(summary);
+				const lifecycle = activeRunLifecycleMetrics(run, summary);
+				const buckets = (lifecycle.buckets || []).length ? lifecycle.buckets : childAgentBuckets(summary);
 				const totalWall = Math.max(
 					1,
-					Number(summary.wall_seconds || 0),
+					Number(lifecycle.wall_seconds || 0),
 					buckets.reduce((total, bucket) => total + Number(bucket.wall_seconds || 0), 0),
 				);
 				const current = childAgentCurrentSummary(summary) || "none";
-				const contextFacts = childAgentContextFacts(summary);
-				const shareBuckets = buckets.filter((bucket) => childBucketHasMeaningfulWallShare(bucket, totalWall));
+				const contextRows = childAgentContextRows(run, summary, lifecycle);
+				const shareBuckets = buckets.filter(
+					(bucket) =>
+						childBucketIsPrimaryShareBucket(bucket) &&
+						childBucketHasMeaningfulWallShare(bucket, totalWall),
+				);
 				const diagnosticBuckets = buckets
-					.filter((bucket) => !childBucketHasMeaningfulWallShare(bucket, totalWall))
+					.filter(
+						(bucket) =>
+							!childBucketIsPrimaryShareBucket(bucket) &&
+							!childBucketIsLifecycleTotalBucket(bucket) &&
+							!childBucketHasMeaningfulWallShare(bucket, totalWall),
+					)
 					.sort(
 						(left, right) =>
 							childDiagnosticBucketRank(left) - childDiagnosticBucketRank(right) ||
@@ -8051,6 +8769,10 @@
 
 				return `
 					<div class="child-activity" aria-label="Child agent timing breakdown">
+						<div class="child-activity-head is-project">
+							<span>Project</span>
+							<strong>${escapeHtml(runProjectSummary(run))}</strong>
+						</div>
 						<div class="child-activity-head">
 							<span>Activity</span>
 							<strong>${escapeHtml(current)}</strong>
@@ -8064,12 +8786,12 @@
 												.map((bucket) => {
 													const width = childBucketWidth(bucket, totalWall);
 
-													return `
-														<div class="child-bucket is-share" data-render-key="${escapeHtml(childBucketRenderKey(bucket))}" data-duration="wall-share">
-															<span class="child-bucket-name">${escapeHtml(displayToken(bucket.name))}</span>
-															<span class="child-bucket-bar" aria-hidden="true" style="--bucket-width: ${width}%"><span></span></span>
-															<span class="child-bucket-value">${escapeHtml(childBucketShareLabel(bucket, totalWall))}</span>
-														</div>
+														return `
+															<div class="child-bucket is-share" data-render-key="${escapeHtml(childBucketRenderKey(bucket))}" data-duration="wall-share">
+																<span class="child-bucket-name">${escapeHtml(childBucketDisplayName(bucket))}</span>
+																<span class="child-bucket-bar" aria-hidden="true" style="--bucket-width: ${width}%"><span></span></span>
+																<span class="child-bucket-value">${escapeHtml(childBucketShareLabel(bucket, totalWall))}</span>
+															</div>
 													`;
 												})
 												.join("")}
@@ -8105,19 +8827,10 @@
 									: ""
 							}
 							${
-								contextFacts.length
-									? `<div class="child-context">
-										<span class="child-context-label">Context</span>
-										<span class="child-context-values">
-											${contextFacts
-												.map(([label, value, title]) => {
-													const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
-
-													return `<span${titleAttribute}>${escapeHtml(detailLabel(label))} <strong>${escapeHtml(value)}</strong></span>`;
-												})
-												.join("")}
-										</span>
-									</div>`
+								contextRows.length
+									? `<div class="child-context-group" aria-label="Context lifecycle metrics">
+											${contextRows.join("")}
+										</div>`
 									: ""
 							}
 						</div>
@@ -8148,9 +8861,8 @@
 				const peakSummary = childAgentInputWindowsMatch(summary)
 					? ""
 					: `, ${peakInput} peak window`;
-				const largestTool = summary.largest_tool_output_tool ? ` by ${summary.largest_tool_output_tool}` : "";
 
-				return `input ${latestInput} current window${peakSummary}, cumulative input ${formatCompactCount(summary.input_tokens_cumulative)}, largest output ${formatCompactBytes(summary.largest_tool_output_bytes)}${largestTool}`;
+				return `input ${latestInput} current window${peakSummary}, cumulative input ${formatCompactCount(summary.input_tokens_cumulative)}, max output ${formatLargestOutputValue(summary.largest_tool_output_bytes, summary.largest_tool_output_tool)}`;
 			}
 
 			function childAgentLargeOutputSummary(summary) {
@@ -8166,10 +8878,10 @@
 				return displayToken(run.phase || run.status);
 			}
 
-			function recentRunSummary(run, lane = null) {
-				if ((lane?.attempt_count ?? 1) > 1) {
-					return `Latest attempt ${displayToken(run.status || run.phase)}; earlier attempts are in the timeline.`;
-				}
+	function recentRunSummary(run, lane = null) {
+		if ((lane?.attempt_count ?? 1) > 1) {
+			return `Latest run ${displayToken(run.status || run.phase)}; lifecycle cost is grouped by phase.`;
+		}
 				if (isSuccessfulTerminalRun(run)) {
 					return "Finished; no active lane.";
 				}
@@ -8253,6 +8965,40 @@
 
 			function renderHistoryLedgerFacts(lane) {
 				const facts = historyLedgerFacts(lane);
+
+				if (!facts.length) {
+					return "";
+				}
+
+				return `
+					<div class="grid">
+						${facts.map(([label, value]) => field(label, value)).join("")}
+					</div>
+				`;
+			}
+
+			function historyLifecycleFacts(lane) {
+				const metrics = historyLaneLifecycleMetrics(lane);
+				const facts = [
+					["Lifecycle tokens", historyLifecycleTokenSummary(metrics)],
+					["Lifecycle activity", formatDuration(lifecycleNumber(metrics.wall_seconds))],
+					["Tool calls", formatCompactCount(metrics.tool_call_count)],
+					["Captured attempts", historyLifecycleCaptureSummary(metrics)],
+				];
+
+				if (metrics.largest_tool_output_bytes != null) {
+					const tool = metrics.largest_tool_output_tool || "tool";
+					facts.push([
+						"Largest output",
+						formatLargestOutputValue(metrics.largest_tool_output_bytes, displayToken(tool)),
+					]);
+				}
+
+				return facts;
+			}
+
+			function renderHistoryLifecycleFacts(lane) {
+				const facts = historyLifecycleFacts(lane);
 
 				if (!facts.length) {
 					return "";
@@ -9936,26 +10682,29 @@
 				);
 			}
 
-			function renderAttemptTimeline(lane) {
-				const attempts = lane.attempts ?? [];
+			function renderPhaseBreakdown(lane) {
+				const phases = historyLaneLifecycleMetrics(lane).phases || [];
 
-				if (attempts.length <= 1) {
+				if (!phases.length) {
 					return "";
 				}
 
 				return `
-					<details class="attempt-timeline" data-detail-key="${escapeHtml(`history-attempts:${lane.issue_key}`)}"${detailsOpenAttribute(`history-attempts:${lane.issue_key}`)}>
-						<summary>${escapeHtml(pluralize(attempts.length, "attempt"))}</summary>
-						<div class="attempt-list">
-							${attempts
+					<details class="phase-timeline" data-detail-key="${escapeHtml(`history-phases:${lane.issue_key}`)}"${detailsOpenAttribute(`history-phases:${lane.issue_key}`)}>
+						<summary>${escapeHtml(pluralize(phases.length, "phase"))}</summary>
+						<div class="phase-list">
+							${phases
 								.map(
-									(attempt) => `
-										<div class="attempt-row">
-											<span class="mono">#${escapeHtml(attempt.attempt_number ?? "none")}</span>
-											<span>${escapeHtml(displayToken(attempt.status || attempt.phase || "unknown"))}</span>
-											<span>${escapeHtml(displayToken(attempt.current_operation || attempt.phase || "idle"))}</span>
-											<span>${escapeHtml(formatTimestampCompact(attempt.updated_at))}</span>
-											<span class="mono">${escapeHtml(attempt.run_id || "none")}</span>
+									(phase) => `
+										<div class="phase-row">
+											<span class="phase-name">${escapeHtml(phase.label)}</span>
+											<span class="phase-facts">
+												<span><strong>${escapeHtml(String(phase.attempt_count))}</strong> ${escapeHtml(phase.attempt_count === 1 ? "attempt" : "attempts")}</span>
+												<span><strong>${escapeHtml(historyLifecycleTokenSummary(phase))}</strong></span>
+												<span><strong>${escapeHtml(formatDuration(phase.wall_seconds))}</strong></span>
+												<span><strong>${escapeHtml(formatCompactCount(phase.tool_call_count))}</strong> tools</span>
+												<span><strong>${escapeHtml(formatCompactCount(phase.protocol_event_count))}</strong> events</span>
+											</span>
 										</div>
 									`,
 								)
@@ -10023,10 +10772,11 @@
 								<p class="row-summary">${escapeHtml(summary)}</p>
 								<div class="status-line">${statusBits.join("")}</div>
 								${renderHistoryTimingStrip(lane)}
+								${renderHistoryLifecycleFacts(lane)}
 								${renderHistoryLedgerFacts(lane)}
-								${renderAttemptTimeline(lane)}
+								${renderPhaseBreakdown(lane)}
 								<details data-detail-key="${escapeHtml(detailKey)}"${detailsOpenAttribute(detailKey)}>
-									<summary>Latest Attempt Details</summary>
+									<summary>Latest Run Details</summary>
 									<div class="grid debug-grid">
 										${field("Run", run.run_id)}
 										${field("Issue id", run.issue_id)}
@@ -10034,6 +10784,7 @@
 										${field("Codex thread", runThreadSummary(run))}
 										${field(COPY.protocolEvent, protocolEventSummary(run))}
 										${field("Protocol activity", protocolActivityDebugSummary(run))}
+										${field("Lifecycle totals", historyLifecycleTokenSummary(historyLaneLifecycleMetrics(lane)))}
 										${field("Branch", run.branch_name || "none")}
 										${field("Worktree", run.worktree_path || "none")}
 										${field("Model", runModelSummary(run))}
