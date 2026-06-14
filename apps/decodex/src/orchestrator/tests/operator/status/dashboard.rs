@@ -312,108 +312,245 @@ fn operator_dashboard_patches_active_run_cards_without_replacing_the_list() {
 fn operator_dashboard_child_bucket_rows_split_time_bars_from_event_diagnostics() {
 	let response = dashboard_response();
 
-	assert!(response.contains("childBucketIsSubsecond"));
-	assert!(response.contains("childBucketIsEventOnly"));
-	assert!(response.contains("childBucketEventSignals"));
-	assert!(response.contains("childBucketEventSummary"));
-	assert!(response.contains("childBucketDiagnosticSignals"));
-	assert!(response.contains("childBucketDiagnosticSummary"));
-	assert!(response.contains("renderChildBucketDiagnosticSignals"));
-	assert!(response.contains("childBucketHasMeaningfulWallShare"));
-	assert!(response.contains("childAgentLargeOutputWarnings"));
-	assert!(response.contains("childAgentLargeOutputSummary"));
-	assert!(response.contains("childBucketShareLabel"));
-	assert!(response.contains("childBucketWidth"));
-	assert!(response.contains("function renderMetricText(text)"));
-	assert!(response.contains("function setMetricText(node, text)"));
-	assert!(response.contains("function setPanelMeta(node, text, tone = \"\")"));
-	assert!(response.contains("function pluralLabel(count, singular, plural = `${singular}s`)"));
-	assert!(response.contains("return `${count} ${pluralLabel(count, singular, plural)}`;"));
-	assert!(response.contains("pluralLabel(notices.length, \"alert\")"));
-	assert!(response.contains("pluralLabel(notices.length, \"warning\")"));
-	assert!(response.contains("child-bucket is-share"));
-	assert!(response.contains("child-bucket is-diagnostic"));
-	assert!(response.contains("child-bucket is-event-only"));
-	assert!(response.contains("child-bucket-signals"));
-	assert!(response.contains("child-bucket-signal"));
-	assert!(response.contains("data-duration=\"wall-share\""));
-	assert!(response.contains("data-duration=\"event-diagnostics\""));
-	assert!(response.contains("data-duration=\"diagnostic\""));
-	assert!(response.contains("function childDiagnosticBucketRank(bucket)"));
-	assert!(response.contains("summary.current_detail"));
-	assert!(response.contains("detailLabel(displayToken(summary.current_detail || summary.current_bucket))"));
-	assert!(response.contains("return `${label} · ${formatDuration(summary.current_elapsed_seconds)}`;"));
-	assert!(response.contains("<span>Activity</span>"));
-	assert!(response.contains(".child-activity-head {\n\t\t\t\tdisplay: grid;\n\t\t\t\tgrid-template-columns: 96px minmax(0, 1fr);\n\t\t\t\talign-items: baseline;\n\t\t\t\tgap: 10px;"));
-	assert!(!response.contains("titleCaseLabel(\"agent activity\")"));
-	assert!(!response.contains("<span>agent activity</span>"));
-	assert!(!response.contains("<span>Agent Activity</span>"));
-	assert!(response.contains("const current = childAgentCurrentSummary(summary) || \"none\";"));
-	assert!(!response.contains("<span>Agent Now</span>"));
-	assert!(!response.contains("No active child bucket"));
-	assert!(response.contains("[\"current window\", latestInput"));
-	assert!(response.contains("\"peak window\","));
-	assert!(response.contains("\"cumulative input\","));
-	assert!(response.contains("[\"tool calls\", String(summary.tool_call_count ?? 0)]"));
-	assert!(response.contains("\"largest output\","));
-	assert!(response.contains("tool calls"));
-	assert!(response.contains("output bytes"));
-	assert!(response.contains("Largest tool output; debug details show attribution."));
-	assert!(response.contains("field(\"Large outputs\", childAgentLargeOutputSummary(childAgentActivity(run)))"));
-	assert!(!response.contains("events only"));
-	assert!(!response.contains("child-warning"));
-	assert!(!response.contains("${warnings.length ? `<div class=\"child-warning\">"));
-	assert!(!response.contains("warnings.join(\" · \")"));
-	assert!(!response.contains("summary.largest_tool_output_tool || \"tool\""));
-	assert!(!response.contains("child-bucket is-subsecond"));
-	assert!(!response.contains("data-duration=\"events-only\""));
-	assert!(!response.contains("child-bucket.is-event-only .child-bucket-bar::before"));
-	assert!(response.contains("--child-bucket-value-column: clamp(190px, 18vw, 230px);"));
-	assert!(response.contains("grid-template-columns: 96px minmax(64px, 1fr) var(--child-bucket-value-column);"));
-	assert!(response.contains("width: var(--child-bucket-value-column);"));
-	assert!(response.contains("runningLaneMetaText"));
-	assert!(response.contains("const parts = [`${derived.liveRuns ?? 0} running`];"));
-	assert!(response.contains("attentionCount === 1"));
-	assert!(response.contains("nodes.activeRunsMeta,"));
-	assert!(response.contains("runningLaneMetaText(derived),"));
-	assert!(!response.contains("Snapshot pending"));
-	assert!(!response.contains("COPY.waitingSnapshot"));
-	assert!(!response.contains("const parts = [`${derived.liveRuns} live`];"));
-	assert!(!response.contains("parts.push(`${derived.runningAttentionCount} stalled`)"));
-	assert!(response.contains("runStaleWithoutKnownProcessNeedsAttention"));
-	assert!(response.contains("runExecutionLivenessSummary"));
-	assert!(response.contains("runQueueLeaseSummary"));
-	assert!(response.contains("return displayToken(run.execution_liveness || \"liveness_unknown\");"));
-	assert!(!response.contains("return \"Process alive\";"));
-	assert!(!response.contains("lease <strong>not held</strong>"));
-	assert!(response.contains("field(\"Attempt status\", run.attempt_status || run.status)"));
-	assert!(response.contains("field(\"Queue lease\", runQueueLeaseSummary(run))"));
-	assert!(response.contains("field(\"Execution liveness\", runExecutionLivenessSummary(run))"));
-	assert!(response.contains("live_no_queue_lease"));
-	assert!(response.contains("return `${leaseState}; ${displayToken(run.execution_liveness || \"liveness_unknown\")}`;"));
-	assert!(!response.contains("Queue ownership"));
-	assert!(response.contains("attention.worktree_path"));
-	assert!(response.contains("candidate.attention?.attention_error_class"));
-	assert!(response.contains("facts.push([\"Cause\", displayToken(attention.attention_error_class)]);"));
-	assert!(response.contains("queued attention"));
-	assert!(response.contains("worktree.ownership_reason"));
-	assert!(response.contains("const hygiene = worktree.hygiene;"));
-	assert!(response.contains("hygiene.classification === \"merged_dirty_worktree\""));
-	assert!(response.contains("post-land cleanup blocked"));
-	assert!(response.contains("post-land cleanup"));
-	assert!(response.contains("post-review cleanup blocked"));
-	assert!(response.contains("hygiene.reason ||"));
-	assert!(response.contains("function renderWorktreeHygieneFields(worktree)"));
-	assert!(response.contains("field(\"Cleanup state\", displayToken(hygiene.classification || \"cleanup_pending\"))"));
-	assert!(response.contains("field(\"Default branch\", hygiene.default_branch || \"unknown\")"));
-	assert!(response.contains("field(\"Uncommitted changes\", hygiene.dirty ? \"yes\" : \"no\")"));
-	assert!(response.contains("local cleanup"));
-	assert!(response.contains(
-		"Owned by Intake Queue attention; recover there before cleanup."
-	));
-	assert!(response.contains(
-		"No lane owns this worktree; inspect before cleanup."
-	));
+	assert_child_bucket_contract(&response);
+	assert_child_activity_header_contract(&response);
+	assert_child_lifecycle_contract(&response);
+	assert_running_lane_meta_contract(&response);
+	assert_liveness_and_cleanup_contract(&response);
+}
+
+fn assert_contains_all(response: &str, snippets: &[&str]) {
+	for snippet in snippets {
+		assert!(
+			response.contains(snippet),
+			"dashboard response should contain {snippet:?}"
+		);
+	}
+}
+
+fn assert_excludes_all(response: &str, snippets: &[&str]) {
+	for snippet in snippets {
+		assert!(
+			!response.contains(snippet),
+			"dashboard response should not contain {snippet:?}"
+		);
+	}
+}
+
+fn assert_child_bucket_contract(response: &str) {
+	assert_contains_all(
+		response,
+		&[
+			"childBucketIsSubsecond",
+			"childBucketIsEventOnly",
+			"childBucketEventSignals",
+			"childBucketEventSummary",
+			"childBucketDiagnosticSignals",
+			"childBucketDiagnosticSummary",
+			"renderChildBucketDiagnosticSignals",
+			"childBucketHasMeaningfulWallShare",
+			"childAgentLargeOutputWarnings",
+			"childAgentLargeOutputSummary",
+			"childBucketShareLabel",
+			"childBucketWidth",
+			"function childBucketIsPrimaryShareBucket(bucket)",
+			"function childBucketIsLifecycleTotalBucket(bucket)",
+			"childBucketIsPrimaryShareBucket(bucket) &&",
+			"!childBucketIsLifecycleTotalBucket(bucket) &&",
+			"child-bucket is-share",
+			"child-bucket is-diagnostic",
+			"child-bucket is-event-only",
+			"child-bucket-signals",
+			"child-bucket-signal",
+			"data-duration=\"wall-share\"",
+			"data-duration=\"event-diagnostics\"",
+			"data-duration=\"diagnostic\"",
+			"function childDiagnosticBucketRank(bucket)",
+			"--child-bucket-value-column: clamp(190px, 18vw, 230px);",
+			"grid-template-columns: 96px minmax(64px, 1fr) var(--child-bucket-value-column);",
+			"width: var(--child-bucket-value-column);",
+		],
+	);
+	assert_excludes_all(
+		response,
+		&[
+			"events only",
+			"child-warning",
+			"${warnings.length ? `<div class=\"child-warning\">",
+			"warnings.join(\" · \")",
+			"summary.largest_tool_output_tool || \"tool\"",
+			"child-bucket is-subsecond",
+			"data-duration=\"events-only\"",
+			"child-bucket.is-event-only .child-bucket-bar::before",
+		],
+	);
+}
+
+fn assert_child_activity_header_contract(response: &str) {
+	assert_contains_all(
+		response,
+		&[
+			"function renderMetricText(text)",
+			"function setMetricText(node, text)",
+			"function setPanelMeta(node, text, tone = \"\")",
+			"function pluralLabel(count, singular, plural = `${singular}s`)",
+			"return `${count} ${pluralLabel(count, singular, plural)}`;",
+			"pluralLabel(notices.length, \"alert\")",
+			"pluralLabel(notices.length, \"warning\")",
+			"summary.current_detail",
+			"detailLabel(displayToken(summary.current_detail || summary.current_bucket))",
+			"return `${label} · ${formatDuration(summary.current_elapsed_seconds)}`;",
+			"function runProjectSummary(run)",
+			"<div class=\"child-activity-head is-project\">",
+			"<span>Project</span>",
+			"${escapeHtml(runProjectSummary(run))}",
+			"<span>Activity</span>",
+			".child-activity-head {\n\t\t\t\tdisplay: grid;\n\t\t\t\tgrid-template-columns: 96px minmax(0, 1fr);\n\t\t\t\talign-items: baseline;\n\t\t\t\tgap: 10px;",
+			"const current = childAgentCurrentSummary(summary) || \"none\";",
+			"[\"current window\", latestInput",
+			"\"peak window\",",
+		],
+	);
+	assert_excludes_all(
+		response,
+		&[
+			"titleCaseLabel(\"agent activity\")",
+			"<span>agent activity</span>",
+			"<span>Agent Activity</span>",
+			"<span>Agent Now</span>",
+			"No active child bucket",
+		],
+	);
+}
+
+fn assert_child_lifecycle_contract(response: &str) {
+	assert_contains_all(
+		response,
+		&[
+			"function renderChildLifecycleOverview(lifecycle, contextFacts)",
+			"function renderChildLifecyclePhaseTable(phases)",
+			"<div class=\"child-total-overview\" aria-label=\"Lifecycle total metrics\">",
+			"<span class=\"child-total-segment\">",
+			"repeat(4, max-content max-content);",
+			".child-total-segment {\n\t\t\t\tdisplay: contents;",
+			"<div class=\"child-phase-table\" role=\"table\" aria-label=\"Lifecycle phase metrics\">",
+			".child-phase-table {\n\t\t\t\tdisplay: inline-grid;\n\t\t\t\tgrid-template-columns:\n\t\t\t\t\tmax-content",
+			"gap: 4px clamp(24px, 2vw, 34px);",
+			"overflow: hidden;",
+			"text-overflow: ellipsis;",
+			"const header = [\"Stage\", \"attempts\", \"inference\", \"input\", \"output\", \"tools\", \"max output\"];",
+			"const alignRight = new Set([1, 2, 3, 4, 5, 6]);",
+			"width: fit-content;\n\t\t\t\tmax-width: 100%;",
+			"appendLifecycleMetricSegment(\n\t\t\t\t\t\t\ttoolSegments,\n\t\t\t\t\t\t\tformatLargestOutputValue(largestOutput, lifecycle?.largest_tool_output_tool),\n\t\t\t\t\t\t\t\"max output\",",
+			"\"tools\"",
+			"output bytes",
+			"field(\"Large outputs\", childAgentLargeOutputSummary(childAgentActivity(run)))",
+		],
+	);
+	assert_excludes_all(
+		response,
+		&[
+			"--child-total-segment-width",
+			"--child-total-column-template",
+			"child-total-control",
+			"child-total-separator",
+			".child-phase-table-cell:nth-child(7n)",
+			"input / output",
+			"tools / largest output",
+			"rows.push(renderChildContextRow(\"Total\", totalFacts, \"is-total\"));",
+			"\"cumulative input\",",
+			"[\"tool calls\", String(summary.tool_call_count ?? 0)]",
+			"[\"largest output\",",
+			"\"model time\"",
+			"\"input tokens\"",
+			"\"output tokens\"",
+		],
+	);
+}
+
+fn assert_running_lane_meta_contract(response: &str) {
+	assert_contains_all(
+		response,
+		&[
+			"runningLaneMetaText",
+			"const parts = [`${derived.liveRuns ?? 0} running`];",
+			"attentionCount === 1",
+			"nodes.activeRunsMeta,",
+			"runningLaneMetaText(derived),",
+		],
+	);
+	assert_excludes_all(
+		response,
+		&[
+			"Snapshot pending",
+			"COPY.waitingSnapshot",
+			"const parts = [`${derived.liveRuns} live`];",
+			"parts.push(`${derived.runningAttentionCount} stalled`)",
+		],
+	);
+}
+
+fn assert_liveness_and_cleanup_contract(response: &str) {
+	assert_contains_all(
+		response,
+		&[
+			"runStaleWithoutKnownProcessNeedsAttention",
+			"runExecutionLivenessSummary",
+			"runQueueLeaseSummary",
+			"return displayToken(run.execution_liveness || \"liveness_unknown\");",
+			"field(\"Attempt status\", run.attempt_status || run.status)",
+			"field(\"Queue lease\", runQueueLeaseSummary(run))",
+			"field(\"Execution liveness\", runExecutionLivenessSummary(run))",
+			"live_no_queue_lease",
+			"return `${leaseState}; ${displayToken(run.execution_liveness || \"liveness_unknown\")}`;",
+			"attention.worktree_path",
+			"candidate.attention?.attention_error_class",
+			"facts.push([\"Cause\", displayToken(attention.attention_error_class)]);",
+			"queued attention",
+			"worktree.ownership_reason",
+			"const hygiene = worktree.hygiene;",
+			"hygiene.classification === \"merged_dirty_worktree\"",
+			"post-land cleanup blocked",
+			"post-land cleanup",
+			"post-review cleanup blocked",
+			"hygiene.reason ||",
+			"function renderWorktreeHygieneFields(worktree)",
+			"field(\"Cleanup state\", displayToken(hygiene.classification || \"cleanup_pending\"))",
+			"field(\"Default branch\", hygiene.default_branch || \"unknown\")",
+			"field(\"Uncommitted changes\", hygiene.dirty ? \"yes\" : \"no\")",
+			"local cleanup",
+			"Owned by Intake Queue attention; recover there before cleanup.",
+			"No lane owns this worktree; inspect before cleanup.",
+		],
+	);
+	assert_excludes_all(
+		response,
+		&["return \"Process alive\";", "lease <strong>not held</strong>", "Queue ownership"],
+	);
+}
+
+#[test]
+fn operator_dashboard_history_lifecycle_metrics_are_grouped_by_phase() {
+	let response = dashboard_response();
+
+	assert!(response.contains("function historyLaneLifecycleMetrics(lane)"));
+	assert!(response.contains("function normalizeLifecyclePhaseMetrics(phase)"));
+	assert!(response.contains("function renderHistoryLifecycleFacts(lane)"));
+	assert!(response.contains("function renderPhaseBreakdown(lane)"));
+	assert!(response.contains("Lifecycle tokens"));
+	assert!(response.contains("Captured attempts"));
+	assert!(response.contains("${renderHistoryLifecycleFacts(lane)}"));
+	assert!(response.contains("${renderPhaseBreakdown(lane)}"));
+	assert!(response.contains("phase-timeline"));
+	assert!(response.contains("phase-list"));
+	assert!(response.contains("phase-row"));
+	assert!(response.contains("phase-name"));
+	assert!(response.contains("phase-facts"));
+	assert!(response.contains("history-phases:${lane.issue_key}"));
+	assert!(!response.contains(".phase-row span:nth-child(n + 4)"));
+	assert!(!response.contains("function renderAttemptTimeline(lane)"));
+	assert!(!response.contains("history-attempts:${lane.issue_key}"));
+	assert!(!response.contains("attempt-timeline"));
 }
 
 #[test]
@@ -1612,6 +1749,19 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(response.contains("facts.push([\"lane idle\", formatDuration(run.idle_for_seconds)]);"));
 	assert!(response.contains("facts.push([\"agent idle\", formatDuration(run.protocol_idle_for_seconds)]);"));
 	assert!(response.contains("facts.push([\"focus\", detailLabel(focus)]);"));
+	assert!(response.contains("function activeRunLifecycleMetrics(run, summary = childAgentActivity(run))"));
+	assert!(response.contains("function lifecycleMetricFacts(metrics, { includeAttempts = false } = {})"));
+	assert!(response.contains("facts.push([\"tokens\", tokenSummary]);"));
+	assert!(response.contains("facts.push([\"tools\", formatCompactCount(metrics.tool_call_count)]);"));
+	assert!(response.contains("\"max output\","));
+	assert!(response.contains("function childAgentContextRows(run, summary, lifecycle = activeRunLifecycleMetrics(run, summary))"));
+	assert!(response.contains("renderChildLifecycleOverview(lifecycle, contextFacts)"));
+	assert!(response.contains("renderChildLifecyclePhaseTable(lifecycle.phases || [])"));
+	assert!(!response.contains("rows.push(renderChildContextRow(\"Total\", totalFacts, \"is-total\"));"));
+	assert!(response.contains("<div class=\"child-context-group\" aria-label=\"Context lifecycle metrics\">"));
+	assert!(response.contains(".child-phase-table {\n\t\t\t\tdisplay: inline-grid;\n\t\t\t\tgrid-template-columns:\n\t\t\t\t\tmax-content"));
+	assert!(!response.contains("function childAgentUsageFacts(summary)"));
+	assert!(!response.contains("<span class=\"child-context-label\">Usage</span>"));
 	assert!(response.contains("renderRunMetaFact(label, value)"));
 	assert!(!response.contains("sourceLabel: \"Live Activity\""));
 	assert!(!response.contains("facts.push([\"Lane Idle\", formatDuration(run.idle_for_seconds)]);"));
@@ -1625,6 +1775,8 @@ fn operator_dashboard_active_freshness_prefers_live_activity_source() {
 	assert!(response.contains("function activeRunTelemetryFacts(run)"));
 	assert!(response.contains("function renderRunTelemetryMetaItems(run)"));
 	assert!(response.contains("function renderRunMetaFact(label, value, valueClass = \"\", title = \"\")"));
+	assert!(!response.contains("renderActiveRunActivityStrip(run)"));
+	assert!(!response.contains("run-activity-strip"));
 	assert!(!response.contains("function renderActiveTelemetryLine(run)"));
 	assert!(!response.contains("activity-line"));
 	assert!(

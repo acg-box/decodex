@@ -1449,8 +1449,52 @@ struct OperatorHistoryLaneStatus {
 	issue_key: String,
 	attempt_count: usize,
 	ledger_outcome: OperatorHistoryLedgerOutcome,
+	lifecycle_metrics: OperatorLaneLifecycleMetrics,
 	latest_run: OperatorRunStatus,
 	attempts: Vec<OperatorRunStatus>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorLaneLifecycleMetrics {
+	attempt_count: usize,
+	run_count: usize,
+	captured_attempt_count: usize,
+	missing_attempt_count: usize,
+	protocol_event_count: i64,
+	child_event_count: i64,
+	wall_seconds: i64,
+	tool_call_count: i64,
+	input_tokens_current: Option<i64>,
+	input_tokens_peak: Option<i64>,
+	input_tokens_cumulative: i64,
+	output_tokens_cumulative: i64,
+	largest_tool_output_bytes: Option<i64>,
+	largest_tool_output_tool: Option<String>,
+	large_output_warnings: Vec<String>,
+	buckets: Vec<ChildAgentActivityBucket>,
+	phases: Vec<OperatorLaneLifecyclePhaseMetrics>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+struct OperatorLaneLifecyclePhaseMetrics {
+	phase: String,
+	label: String,
+	attempt_count: usize,
+	run_count: usize,
+	captured_attempt_count: usize,
+	missing_attempt_count: usize,
+	protocol_event_count: i64,
+	child_event_count: i64,
+	wall_seconds: i64,
+	tool_call_count: i64,
+	input_tokens_current: Option<i64>,
+	input_tokens_peak: Option<i64>,
+	input_tokens_cumulative: i64,
+	output_tokens_cumulative: i64,
+	largest_tool_output_bytes: Option<i64>,
+	largest_tool_output_tool: Option<String>,
+	large_output_warnings: Vec<String>,
+	buckets: Vec<ChildAgentActivityBucket>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1521,12 +1565,14 @@ struct OperatorRunStatus {
 	effective_cwd: Option<String>,
 	effective_approval_policy: Option<String>,
 	effective_approvals_reviewer: Option<String>,
-	effective_sandbox_mode: Option<String>,
-	child_agent_activity: Option<ChildAgentActivitySummary>,
-	protocol_activity: Option<ProtocolActivitySummary>,
-	account: Option<CodexAccountActivitySummary>,
-	accounts: Vec<CodexAccountActivitySummary>,
-	branch_name: Option<String>,
+		effective_sandbox_mode: Option<String>,
+		child_agent_activity: Option<ChildAgentActivitySummary>,
+		protocol_activity: Option<ProtocolActivitySummary>,
+		#[serde(default)]
+		lifecycle_metrics: OperatorLaneLifecycleMetrics,
+		account: Option<CodexAccountActivitySummary>,
+		accounts: Vec<CodexAccountActivitySummary>,
+		branch_name: Option<String>,
 	worktree_path: Option<String>,
 }
 

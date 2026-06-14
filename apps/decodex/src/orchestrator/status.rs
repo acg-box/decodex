@@ -53,17 +53,17 @@ enum RunIssueMetadataHydration {
 	ActiveRowsOnly,
 }
 
+enum TrackerObserverOutcome {
+	Ok,
+	Unavailable,
+	RateLimited(TrackerConnectorBackoff),
+}
+
 #[derive(Clone, Copy)]
 struct LiveOperatorStatusSnapshotOptions {
 	hydrate_history_ledger: bool,
 	run_issue_metadata_hydration: RunIssueMetadataHydration,
 	account_activity_mode: AccountActivityMode,
-}
-
-enum TrackerObserverOutcome {
-	Ok,
-	Unavailable,
-	RateLimited(TrackerConnectorBackoff),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -273,6 +273,12 @@ struct WorktreeOwnership {
 	audit_required: bool,
 }
 
+struct OperatorLifecycleMetricPhase {
+	key: &'static str,
+	label: &'static str,
+	rank: u8,
+}
+
 pub(crate) fn ensure_project_has_no_merged_worktree_cleanup_debt(
 	project: &ServiceConfig,
 ) -> crate::prelude::Result<()> {
@@ -465,6 +471,8 @@ fn operator_active_run_statuses(
 			active_runs.push(run.clone());
 		}
 	}
+
+	hydrate_active_run_lifecycle_metrics(&mut active_runs, recent_runs);
 
 	Ok(active_runs)
 }
@@ -5443,9 +5451,11 @@ fn operator_run_status(
 		&protocol_summary,
 		now_unix_epoch,
 	);
-	let child_agent_activity = operator_run_child_agent_activity(marker.as_ref(), now_unix_epoch);
+	let child_agent_activity =
+		operator_run_child_agent_activity(marker.as_ref(), run.child_agent_activity(), now_unix_epoch);
 	let protocol_activity = operator_run_protocol_activity(
 		marker.as_ref(),
+		run.protocol_activity(),
 		&app_server_state,
 		child_agent_activity.as_ref(),
 		timing.protocol_idle_for_seconds,
@@ -5532,14 +5542,15 @@ fn operator_run_status(
 		effective_cwd: app_server_state.effective_cwd,
 		effective_approval_policy: app_server_state.effective_approval_policy,
 		effective_approvals_reviewer: app_server_state.effective_approvals_reviewer,
-		effective_sandbox_mode: app_server_state.effective_sandbox_mode,
-		child_agent_activity,
-		protocol_activity,
-		account,
-		accounts,
-		branch_name,
-		worktree_path,
-	})
+			effective_sandbox_mode: app_server_state.effective_sandbox_mode,
+			child_agent_activity,
+			protocol_activity,
+			lifecycle_metrics: OperatorLaneLifecycleMetrics::default(),
+			account,
+			accounts,
+			branch_name,
+			worktree_path,
+		})
 }
 
 fn operator_run_lifecycle_projection(
@@ -6464,9 +6475,13 @@ fn process_liveness_reason_is_identity_mismatch(reason: Option<&str>) -> bool {
 
 fn operator_run_child_agent_activity(
 	marker: Option<&RunActivityMarker>,
+	stored_summary: Option<&ChildAgentActivitySummary>,
 	now_unix_epoch: i64,
 ) -> Option<ChildAgentActivitySummary> {
-	let mut summary = marker.and_then(RunActivityMarker::child_agent_activity).cloned()?;
+	let mut summary = marker
+		.and_then(RunActivityMarker::child_agent_activity)
+		.or(stored_summary)
+		.cloned()?;
 
 	summary.current_elapsed_seconds =
 		summary.current_started_unix_epoch.and_then(|started_at| {
@@ -6493,12 +6508,17 @@ fn operator_run_child_agent_activity(
 
 fn operator_run_protocol_activity(
 	marker: Option<&RunActivityMarker>,
+	stored_summary: Option<&ProtocolActivitySummary>,
 	app_server_state: &OperatorRunAppServerState,
 	child_agent_activity: Option<&ChildAgentActivitySummary>,
 	protocol_idle_for_seconds: Option<i64>,
 	is_running: bool,
 ) -> Option<ProtocolActivitySummary> {
-	let mut summary = marker.and_then(RunActivityMarker::protocol_activity).cloned().unwrap_or_default();
+	let mut summary = marker
+		.and_then(RunActivityMarker::protocol_activity)
+		.or(stored_summary)
+		.cloned()
+		.unwrap_or_default();
 
 	if is_running && summary.waiting_reason.is_none() && app_server_state.interactive_requested {
 		summary.waiting_reason = Some(String::from("approval_or_user_input"));
@@ -7216,10 +7236,16 @@ fn operator_history_lanes(
 
 			lane.attempts.push(run.clone());
 
+			lane.lifecycle_metrics = operator_lane_lifecycle_metrics(&lane.attempts);
+
 			continue;
 		}
 
 		lane_indexes.insert(group_key, lanes.len());
+
+		let attempts = vec![run.clone()];
+		let lifecycle_metrics = operator_lane_lifecycle_metrics(&attempts);
+
 		lanes.push(OperatorHistoryLaneStatus {
 			project_id: run.project_id.clone(),
 			issue_id: run.issue_id.clone(),
@@ -7232,8 +7258,9 @@ fn operator_history_lanes(
 			issue_key: operator_run_issue_key(run),
 			attempt_count: 1,
 			ledger_outcome: not_loaded_history_ledger_outcome(),
+			lifecycle_metrics,
 			latest_run: run.clone(),
-			attempts: vec![run.clone()],
+			attempts,
 		});
 	}
 
@@ -7256,6 +7283,241 @@ fn hydrate_history_lane_from_run(lane: &mut OperatorHistoryLaneStatus, run: &Ope
 	if lane.author.is_none() {
 		lane.author = run.author.clone();
 	}
+}
+
+fn hydrate_active_run_lifecycle_metrics(
+	active_runs: &mut [OperatorRunStatus],
+	recent_runs: &[OperatorRunStatus],
+) {
+	for active_run in active_runs {
+		let group_key = operator_run_group_key(active_run);
+		let active_run_id = active_run.run_id.clone();
+		let active_snapshot = active_run.clone();
+		let mut attempts = Vec::new();
+		let mut captured_active_snapshot = false;
+
+		for run in recent_runs
+			.iter()
+			.filter(|run| operator_run_group_key(run) == group_key)
+		{
+			if run.run_id == active_run_id {
+				captured_active_snapshot = true;
+
+				attempts.push(active_snapshot.clone());
+			} else {
+				attempts.push(run.clone());
+			}
+		}
+
+		if !captured_active_snapshot {
+			attempts.push(active_snapshot);
+		}
+
+		active_run.lifecycle_metrics = operator_lane_lifecycle_metrics(&attempts);
+	}
+}
+
+fn operator_lane_lifecycle_metrics(
+	attempts: &[OperatorRunStatus],
+) -> OperatorLaneLifecycleMetrics {
+	let mut metrics = operator_lane_lifecycle_totals(attempts.iter());
+
+	metrics.phases = operator_lane_lifecycle_phase_metrics(attempts);
+
+	metrics
+}
+
+fn operator_lane_lifecycle_totals<'a>(
+	runs: impl IntoIterator<Item = &'a OperatorRunStatus>,
+) -> OperatorLaneLifecycleMetrics {
+	let mut bucket_totals = HashMap::<String, ChildAgentActivityBucket>::new();
+	let mut warning_set = HashSet::<String>::new();
+	let mut run_ids = HashSet::<String>::new();
+	let mut metrics = OperatorLaneLifecycleMetrics::default();
+
+	for run in runs {
+		metrics.attempt_count += 1;
+
+		run_ids.insert(run.run_id.clone());
+
+		metrics.protocol_event_count = metrics
+			.protocol_event_count
+			.saturating_add(run.event_count.max(0));
+
+		let Some(summary) = run.child_agent_activity.as_ref() else {
+			continue;
+		};
+
+		metrics.captured_attempt_count += 1;
+		metrics.child_event_count = metrics
+			.child_event_count
+			.saturating_add(summary.event_count.max(0));
+		metrics.wall_seconds = metrics.wall_seconds.saturating_add(summary.wall_seconds.max(0));
+		metrics.tool_call_count = metrics
+			.tool_call_count
+			.saturating_add(summary.tool_call_count.max(0));
+		metrics.input_tokens_current =
+			max_optional_i64(metrics.input_tokens_current, summary.input_tokens_current);
+		metrics.input_tokens_peak = max_optional_i64(metrics.input_tokens_peak, summary.input_tokens_max);
+		metrics.input_tokens_cumulative = metrics
+			.input_tokens_cumulative
+			.saturating_add(summary.input_tokens_cumulative.max(0));
+		metrics.output_tokens_cumulative = metrics
+			.output_tokens_cumulative
+			.saturating_add(summary.output_tokens_cumulative.max(0));
+
+		if summary
+			.largest_tool_output_bytes
+			.is_some_and(|bytes| metrics.largest_tool_output_bytes.is_none_or(|current| bytes > current))
+		{
+			metrics.largest_tool_output_bytes = summary.largest_tool_output_bytes;
+			metrics.largest_tool_output_tool = summary.largest_tool_output_tool.clone();
+		}
+
+		for warning in &summary.large_output_warnings {
+			if !warning.trim().is_empty() {
+				warning_set.insert(warning.clone());
+			}
+		}
+		for bucket in &summary.buckets {
+			let total = bucket_totals
+				.entry(bucket.name.clone())
+				.or_insert_with(|| ChildAgentActivityBucket {
+					name: bucket.name.clone(),
+					..ChildAgentActivityBucket::default()
+				});
+
+			total.wall_seconds = total.wall_seconds.saturating_add(bucket.wall_seconds.max(0));
+			total.event_count = total.event_count.saturating_add(bucket.event_count.max(0));
+			total.tool_call_count = total
+				.tool_call_count
+				.saturating_add(bucket.tool_call_count.max(0));
+			total.input_tokens = total.input_tokens.saturating_add(bucket.input_tokens.max(0));
+			total.output_tokens = total.output_tokens.saturating_add(bucket.output_tokens.max(0));
+			total.output_bytes = total.output_bytes.saturating_add(bucket.output_bytes.max(0));
+		}
+	}
+
+	metrics.missing_attempt_count = metrics
+		.attempt_count
+		.saturating_sub(metrics.captured_attempt_count);
+	metrics.run_count = run_ids.len();
+	metrics.large_output_warnings = warning_set.into_iter().collect();
+
+	metrics.large_output_warnings.sort();
+
+	metrics.buckets = bucket_totals.into_values().collect();
+
+	metrics.buckets.sort_by(|left, right| {
+		right
+			.wall_seconds
+			.cmp(&left.wall_seconds)
+			.then_with(|| right.event_count.cmp(&left.event_count))
+			.then_with(|| left.name.cmp(&right.name))
+	});
+
+	metrics
+}
+
+fn operator_lane_lifecycle_phase_metrics(
+	attempts: &[OperatorRunStatus],
+) -> Vec<OperatorLaneLifecyclePhaseMetrics> {
+	let mut groups = HashMap::<String, (String, u8, Vec<&OperatorRunStatus>)>::new();
+
+	for run in attempts {
+		let phase = operator_run_lifecycle_metric_phase(run);
+		let entry = groups.entry(phase.key.to_owned()).or_insert_with(|| {
+			(phase.label.to_owned(), phase.rank, Vec::new())
+		});
+
+		entry.2.push(run);
+	}
+
+	let mut phases = groups
+		.into_iter()
+		.map(|(phase, (label, rank, runs))| {
+			let totals = operator_lane_lifecycle_totals(runs);
+
+			(
+				rank,
+				OperatorLaneLifecyclePhaseMetrics {
+					phase,
+					label,
+					attempt_count: totals.attempt_count,
+					run_count: totals.run_count,
+					captured_attempt_count: totals.captured_attempt_count,
+					missing_attempt_count: totals.missing_attempt_count,
+					protocol_event_count: totals.protocol_event_count,
+					child_event_count: totals.child_event_count,
+					wall_seconds: totals.wall_seconds,
+					tool_call_count: totals.tool_call_count,
+					input_tokens_current: totals.input_tokens_current,
+					input_tokens_peak: totals.input_tokens_peak,
+					input_tokens_cumulative: totals.input_tokens_cumulative,
+					output_tokens_cumulative: totals.output_tokens_cumulative,
+					largest_tool_output_bytes: totals.largest_tool_output_bytes,
+					largest_tool_output_tool: totals.largest_tool_output_tool,
+					large_output_warnings: totals.large_output_warnings,
+					buckets: totals.buckets,
+				},
+			)
+		})
+		.collect::<Vec<_>>();
+
+	phases.sort_by(|(left_rank, left), (right_rank, right)| {
+		left_rank
+			.cmp(right_rank)
+			.then_with(|| left.phase.cmp(&right.phase))
+	});
+
+	phases.into_iter().map(|(_rank, phase)| phase).collect()
+}
+
+fn operator_run_lifecycle_metric_phase(run: &OperatorRunStatus) -> OperatorLifecycleMetricPhase {
+	if matches!(
+		run.status.as_str(),
+		"cleanup_complete" | "closeout" | "closeout_pending" | "landed"
+	) {
+		return operator_lifecycle_metric_phase("closeout", "Closeout", 30);
+	}
+	if matches!(
+		run.status.as_str(),
+		"manual_attention" | "manual_attention_pending" | "needs_attention" | "terminal_failure"
+	) || run.phase == "needs_attention"
+	{
+		return operator_lifecycle_metric_phase("manual_attention", "Manual attention", 40);
+	}
+
+	if let Some(review_phase) = run
+		.loop_status
+		.as_ref()
+		.and_then(|status| status.review.as_ref())
+		.map(|review| review.phase.as_str())
+	{
+		return match review_phase {
+			"repair" => operator_lifecycle_metric_phase("review_repair", "Review repair", 20),
+			_ => operator_lifecycle_metric_phase("review", "Review", 10),
+		};
+	}
+
+	if run.status == "review_repair_pending" {
+		return operator_lifecycle_metric_phase("review_repair", "Review repair", 20);
+	}
+	if run.status == "review_handoff_pending"
+		|| run.current_operation == RUN_OPERATION_REVIEW_WRITEBACK
+	{
+		return operator_lifecycle_metric_phase("review", "Review", 10);
+	}
+
+	operator_lifecycle_metric_phase("development", "Development", 0)
+}
+
+fn operator_lifecycle_metric_phase(
+	key: &'static str,
+	label: &'static str,
+	rank: u8,
+) -> OperatorLifecycleMetricPhase {
+	OperatorLifecycleMetricPhase { key, label, rank }
 }
 
 fn operator_run_group_key(run: &OperatorRunStatus) -> String {
@@ -7810,6 +8072,11 @@ fn append_rendered_history_lane(output: &mut String, lane: &OperatorHistoryLaneS
 
 	append_rendered_history_ledger_outcome(output, &lane.ledger_outcome);
 
+	output.push_str(&format!(
+		"  lifecycle_metrics: {}\n",
+		render_lane_lifecycle_metrics(&lane.lifecycle_metrics)
+	));
+
 	if history_ledger_outcome_has_records(&lane.ledger_outcome) {
 		output.push_str(&format!(
 			"  local_attempts: {}\n  latest_run_id: {}\n",
@@ -7818,22 +8085,44 @@ fn append_rendered_history_lane(output: &mut String, lane: &OperatorHistoryLaneS
 	} else {
 		append_rendered_run(output, &lane.latest_run);
 	}
-	if lane.attempts.len() <= 1 {
+	if lane.lifecycle_metrics.phases.is_empty() {
 		return;
 	}
 
-	output.push_str("  attempt_timeline:\n");
+	output.push_str("  phase_breakdown:\n");
 
-	for attempt in &lane.attempts {
+	for phase in &lane.lifecycle_metrics.phases {
 		output.push_str(&format!(
-			"    - run_id: {} attempt: {} status: {} phase: {} updated_at: {}\n",
-			attempt.run_id,
-			attempt.attempt_number,
-			attempt.status,
-			attempt.phase,
-			attempt.updated_at
+			"    - phase: {} label: {} attempts: {} captured: {}/{} protocol_events: {} child_events: {} wall: {} tool_calls: {} input_tokens: {} output_tokens: {}\n",
+			phase.phase,
+			phase.label,
+			phase.attempt_count,
+			phase.captured_attempt_count,
+			phase.attempt_count,
+			phase.protocol_event_count,
+			phase.child_event_count,
+			format_seconds_compact(phase.wall_seconds),
+			phase.tool_call_count,
+			phase.input_tokens_cumulative,
+			phase.output_tokens_cumulative,
 		));
 	}
+}
+
+fn render_lane_lifecycle_metrics(metrics: &OperatorLaneLifecycleMetrics) -> String {
+	format!(
+		"attempts={}; captured={}/{}; missing={}; protocol_events={}; child_events={}; wall={}; tool_calls={}; input_tokens={}; output_tokens={}",
+		metrics.attempt_count,
+		metrics.captured_attempt_count,
+		metrics.attempt_count,
+		metrics.missing_attempt_count,
+		metrics.protocol_event_count,
+		metrics.child_event_count,
+		format_seconds_compact(metrics.wall_seconds),
+		metrics.tool_call_count,
+		metrics.input_tokens_cumulative,
+		metrics.output_tokens_cumulative,
+	)
 }
 
 fn append_rendered_history_ledger_outcome(

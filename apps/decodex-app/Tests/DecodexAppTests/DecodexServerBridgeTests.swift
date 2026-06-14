@@ -13,6 +13,16 @@ final class DecodexServerBridgeTests: XCTestCase {
 		)
 	}
 
+	func testConfiguredServerURLRequiresAbsoluteHTTPURL() throws {
+		XCTAssertNil(try DecodexServerBridge.configuredServerURL(from: ""))
+		XCTAssertEqual(
+			try DecodexServerBridge.configuredServerURL(from: " http://127.0.0.1:57399 ")?.absoluteString,
+			"http://127.0.0.1:57399"
+		)
+		XCTAssertThrowsError(try DecodexServerBridge.configuredServerURL(from: "127.0.0.1:57399"))
+		XCTAssertThrowsError(try DecodexServerBridge.configuredServerURL(from: "file:///tmp/mock"))
+	}
+
 	func testDashboardWebSocketHandshakeRequestEndsWithHeaderTerminator() {
 		let request = DashboardWebSocketConnection.handshakeRequest(
 			host: "127.0.0.1",

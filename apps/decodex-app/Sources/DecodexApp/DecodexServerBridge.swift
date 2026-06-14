@@ -103,17 +103,10 @@ actor DecodexServerBridge {
 	}
 
 	private func ensureServer() async throws -> URL {
-		if let serverBaseURL, hasFreshLiveCheck(serverBaseURL) {
-			return serverBaseURL
-		}
-
-		if let serverBaseURL, await probeServer(serverBaseURL) == .live {
-			noteLive(serverBaseURL)
-
-			return serverBaseURL
-		}
-
-		if let configured = configuredServerURL() {
+		if let configured = try configuredServerURL() {
+			if serverBaseURL == configured, hasFreshLiveCheck(configured) {
+				return configured
+			}
 			switch await probeServer(configured) {
 			case .live:
 				noteLive(configured)
@@ -124,8 +117,20 @@ actor DecodexServerBridge {
 					"Decodex server at \(configured.absoluteString) is reachable but not app-compatible: \(reason)"
 				)
 			case .unreachable:
-				break
+				throw DecodexAppBridgeError.invalidResponse(
+					"Configured Decodex App server \(configured.absoluteString) is unreachable. Start that server or unset DECODEX_APP_SERVER_URL."
+				)
 			}
+		}
+
+		if let serverBaseURL, hasFreshLiveCheck(serverBaseURL) {
+			return serverBaseURL
+		}
+
+		if let serverBaseURL, await probeServer(serverBaseURL) == .live {
+			noteLive(serverBaseURL)
+
+			return serverBaseURL
 		}
 
 		switch await probeServer(defaultBaseURL) {
@@ -156,10 +161,28 @@ actor DecodexServerBridge {
 		throw DecodexAppBridgeError.launchFailed("Decodex server did not become ready on \(defaultListenAddress)")
 	}
 
-	private func configuredServerURL() -> URL? {
+	private func configuredServerURL() throws -> URL? {
 		let value = ProcessInfo.processInfo.environment["DECODEX_APP_SERVER_URL"] ?? ""
 
-		return value.isEmpty ? nil : URL(string: value)
+		return try Self.configuredServerURL(from: value)
+	}
+
+	static func configuredServerURL(from value: String) throws -> URL? {
+		let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard trimmed.isEmpty == false else {
+			return nil
+		}
+		guard let url = URL(string: trimmed),
+			let scheme = url.scheme?.lowercased(),
+			(scheme == "http" || scheme == "https"),
+			url.host != nil
+		else {
+			throw DecodexAppBridgeError.invalidResponse(
+				"DECODEX_APP_SERVER_URL must be an absolute http(s) URL"
+			)
+		}
+
+		return url
 	}
 
 	private func hasFreshLiveCheck(_ baseURL: URL) -> Bool {

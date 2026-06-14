@@ -13,7 +13,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 function parseArgs(argv) {
 	const options = {
 			authDir: null,
-			dashboardHtml: path.join(repoRoot, "src/orchestrator/operator_dashboard.html"),
+			dashboardHtml: path.join(repoRoot, "apps/decodex/src/orchestrator/operator_dashboard.html"),
 			listenAddress: DEFAULT_LISTEN_ADDRESS,
 		};
 
@@ -57,7 +57,10 @@ function requiredValue(argv, index, flag) {
 function printHelp() {
 	console.log(`Usage: node dev/operator-dashboard-mock.mjs [options]
 
-Serves the real operator dashboard HTML with mock WebSocket snapshot and activity events.
+Serves the real operator dashboard HTML, /api/accounts, and mock dashboard WebSocket
+snapshot/activity events from one local base URL. Use the same mock base URL for the
+browser dashboard and Decodex App previews; do not start a second mock server for the
+App. The dashboard authority is ws://HOST:PORT/dashboard/control.
 
 Options:
   --listen-address HOST:PORT   Bind address (default ${DEFAULT_LISTEN_ADDRESS})
@@ -300,6 +303,188 @@ function childAgentActivity() {
 	};
 }
 
+function lifecycleMetrics({
+	attemptCount,
+	capturedAttemptCount = attemptCount,
+	protocolEventCount,
+	childEventCount,
+	wallSeconds,
+	toolCallCount,
+	inputTokens,
+	outputTokens,
+	buckets = [],
+}) {
+	return {
+		attempt_count: attemptCount,
+		run_count: attemptCount,
+		captured_attempt_count: capturedAttemptCount,
+		missing_attempt_count: Math.max(0, attemptCount - capturedAttemptCount),
+		protocol_event_count: protocolEventCount,
+		child_event_count: childEventCount,
+		wall_seconds: wallSeconds,
+		tool_call_count: toolCallCount,
+		input_tokens_cumulative: inputTokens,
+		output_tokens_cumulative: outputTokens,
+		largest_tool_output_bytes: 180_000,
+		largest_tool_output_tool: "view_image",
+		buckets,
+	};
+}
+
+function lifecyclePhaseMetrics({ phase, label, ...metrics }) {
+	return {
+		phase,
+		label,
+		...lifecycleMetrics(metrics),
+	};
+}
+
+function activeRunLifecycleMetrics(childActivity, { attemptCount = 1, phase = "development", label = "Development" } = {}) {
+	if (!childActivity) {
+		return lifecycleMetrics({
+			attemptCount: 0,
+			capturedAttemptCount: 0,
+			protocolEventCount: 0,
+			childEventCount: 0,
+			wallSeconds: 0,
+			toolCallCount: 0,
+			inputTokens: 0,
+			outputTokens: 0,
+			buckets: [],
+		});
+	}
+	const phaseMetrics = lifecyclePhaseMetrics({
+		phase,
+		label,
+		attemptCount,
+		protocolEventCount: childActivity.event_count,
+		childEventCount: childActivity.event_count,
+		wallSeconds: childActivity.wall_seconds,
+		toolCallCount: childActivity.tool_call_count,
+		inputTokens: childActivity.input_tokens_cumulative,
+		outputTokens: childActivity.output_tokens_cumulative,
+		buckets: childActivity.buckets,
+	});
+	const total = {
+		...phaseMetrics,
+		phase: undefined,
+		label: undefined,
+		phases: [phaseMetrics],
+	};
+
+	total.input_tokens_current = childActivity.input_tokens_current;
+	total.input_tokens_peak = childActivity.input_tokens_max;
+	total.large_output_warnings = childActivity.large_output_warnings || [];
+	total.largest_tool_output_bytes = childActivity.largest_tool_output_bytes;
+	total.largest_tool_output_tool = childActivity.largest_tool_output_tool;
+	phaseMetrics.input_tokens_current = childActivity.input_tokens_current;
+	phaseMetrics.input_tokens_peak = childActivity.input_tokens_max;
+	phaseMetrics.large_output_warnings = childActivity.large_output_warnings || [];
+	phaseMetrics.largest_tool_output_bytes = childActivity.largest_tool_output_bytes;
+	phaseMetrics.largest_tool_output_tool = childActivity.largest_tool_output_tool;
+
+	delete total.phase;
+	delete total.label;
+
+	return total;
+}
+
+function activeReviewLifecycleMetrics(currentActivity) {
+	const developmentPhase = lifecyclePhaseMetrics({
+		phase: "development",
+		label: "Development",
+		attemptCount: 1,
+		protocolEventCount: 18,
+		childEventCount: 24,
+		wallSeconds: 910,
+		toolCallCount: 7,
+		inputTokens: 2_850_000,
+		outputTokens: 8_500,
+		buckets: [
+			{
+				name: "Model",
+				wall_seconds: 620,
+				event_count: 11,
+				tool_call_count: 0,
+				input_tokens: 2_850_000,
+				output_tokens: 8_500,
+				output_bytes: 0,
+			},
+			{
+				name: "Shell",
+				wall_seconds: 220,
+				event_count: 9,
+				tool_call_count: 5,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 34_000,
+			},
+			{
+				name: "Tracker",
+				wall_seconds: 0,
+				event_count: 4,
+				tool_call_count: 2,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 3_200,
+			},
+		],
+	});
+	developmentPhase.largest_tool_output_bytes = 34_000;
+	developmentPhase.largest_tool_output_tool = "shell";
+	developmentPhase.large_output_warnings = [];
+	const reviewPhase = activeRunLifecycleMetrics(currentActivity, {
+		attemptCount: 1,
+		phase: "review",
+		label: "Review",
+	}).phases[0];
+	const phases = [developmentPhase, reviewPhase];
+	const bucketTotals = new Map();
+
+	for (const phase of phases) {
+		for (const bucket of phase.buckets || []) {
+			const total =
+				bucketTotals.get(bucket.name) ||
+				{
+					name: bucket.name,
+					wall_seconds: 0,
+					event_count: 0,
+					tool_call_count: 0,
+					input_tokens: 0,
+					output_tokens: 0,
+					output_bytes: 0,
+				};
+			total.wall_seconds += bucket.wall_seconds || 0;
+			total.event_count += bucket.event_count || 0;
+			total.tool_call_count += bucket.tool_call_count || 0;
+			total.input_tokens += bucket.input_tokens || 0;
+			total.output_tokens += bucket.output_tokens || 0;
+			total.output_bytes += bucket.output_bytes || 0;
+			bucketTotals.set(bucket.name, total);
+		}
+	}
+
+	const total = lifecycleMetrics({
+		attemptCount: 2,
+		protocolEventCount: phases.reduce((count, phase) => count + phase.protocol_event_count, 0),
+		childEventCount: phases.reduce((count, phase) => count + phase.child_event_count, 0),
+		wallSeconds: phases.reduce((count, phase) => count + phase.wall_seconds, 0),
+		toolCallCount: phases.reduce((count, phase) => count + phase.tool_call_count, 0),
+		inputTokens: phases.reduce((count, phase) => count + phase.input_tokens_cumulative, 0),
+		outputTokens: phases.reduce((count, phase) => count + phase.output_tokens_cumulative, 0),
+		buckets: Array.from(bucketTotals.values()).sort((left, right) => right.wall_seconds - left.wall_seconds),
+	});
+
+	total.input_tokens_current = currentActivity.input_tokens_current;
+	total.input_tokens_peak = Math.max(currentActivity.input_tokens_max, 128_000);
+	total.large_output_warnings = currentActivity.large_output_warnings || [];
+	total.largest_tool_output_bytes = currentActivity.largest_tool_output_bytes;
+	total.largest_tool_output_tool = currentActivity.largest_tool_output_tool;
+	total.phases = phases;
+
+	return total;
+}
+
 function activeRun({
 	accounts,
 	accountIndex = 0,
@@ -308,17 +493,26 @@ function activeRun({
 	issue = "XY-445",
 	operation = "agent_run",
 	status = "running",
-	title = "Account pool dashboard polish",
-	processAlive = true,
-	activeLease = true,
-	childActivity = childAgentActivity(),
-}) {
+		title = "Account pool dashboard polish",
+		processAlive = true,
+		activeLease = true,
+		childActivity = childAgentActivity(),
+		lifecycleMetrics = null,
+	}) {
 	const selectedAccount =
 		assignedAccount ||
 		accounts[accountIndex] ||
 		accounts.find((item) => item.status === "selected") ||
 		accounts[0] ||
 		null;
+	const lifecyclePhase =
+		status === "review_handoff_pending" || operation === "review_writeback"
+			? { phase: "review", label: "Review" }
+			: status === "closeout_pending" || operation === "closeout"
+				? { phase: "closeout", label: "Closeout" }
+				: status === "needs_attention"
+					? { phase: "manual_attention", label: "Manual attention" }
+					: { phase: "development", label: "Development" };
 
 	return {
 		project_id: "decodex-preview",
@@ -362,12 +556,19 @@ function activeRun({
 		effective_approvals_reviewer: null,
 		effective_sandbox_mode: "danger-full-access",
 		protocol_event: `turn/completed @ ${ago(processAlive ? 16 : 185)}`,
-		codex_account: selectedAccount,
-		codex_accounts: accounts,
-		child_agent_activity: childActivity,
-		branch_name: `xy/${issue.toLowerCase()}-mock`,
-		worktree_path: `/Users/x/code/y/hack-ink/decodex/.worktrees/${issue}`,
-	};
+			codex_account: selectedAccount,
+			codex_accounts: accounts,
+			child_agent_activity: childActivity,
+			lifecycle_metrics:
+				lifecycleMetrics ||
+				activeRunLifecycleMetrics(childActivity, {
+					attemptCount: attempt,
+					phase: lifecyclePhase.phase,
+					label: lifecyclePhase.label,
+				}),
+			branch_name: `xy/${issue.toLowerCase()}-mock`,
+			worktree_path: `/Users/x/code/y/hack-ink/decodex/.worktrees/${issue}`,
+		};
 }
 
 function queuedCandidates() {
@@ -538,13 +739,176 @@ function historyLane(accounts) {
 	run.process_alive = false;
 	run.thread_status = "completed";
 
+	const developmentPhase = lifecyclePhaseMetrics({
+		phase: "development",
+		label: "Development",
+		attemptCount: 2,
+		protocolEventCount: 42,
+		childEventCount: 78,
+		wallSeconds: 2_940,
+		toolCallCount: 31,
+		inputTokens: 6_800_000,
+		outputTokens: 21_000,
+		buckets: [
+			{
+				name: "Model",
+				wall_seconds: 2_320,
+				event_count: 38,
+				tool_call_count: 0,
+				input_tokens: 6_800_000,
+				output_tokens: 21_000,
+				output_bytes: 0,
+			},
+			{
+				name: "Shell",
+				wall_seconds: 410,
+				event_count: 28,
+				tool_call_count: 24,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 58_000,
+			},
+			{
+				name: "Tracker",
+				wall_seconds: 0,
+				event_count: 12,
+				tool_call_count: 7,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 8_200,
+			},
+		],
+	});
+	const reviewPhase = lifecyclePhaseMetrics({
+		phase: "review",
+		label: "Review",
+		attemptCount: 1,
+		protocolEventCount: 16,
+		childEventCount: 24,
+		wallSeconds: 1_080,
+		toolCallCount: 9,
+		inputTokens: 2_100_000,
+		outputTokens: 8_400,
+		buckets: [
+			{
+				name: "Model",
+				wall_seconds: 820,
+				event_count: 14,
+				tool_call_count: 0,
+				input_tokens: 2_100_000,
+				output_tokens: 8_400,
+				output_bytes: 0,
+			},
+			{
+				name: "GitHub",
+				wall_seconds: 130,
+				event_count: 5,
+				tool_call_count: 4,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 11_000,
+			},
+			{
+				name: "Shell",
+				wall_seconds: 130,
+				event_count: 5,
+				tool_call_count: 5,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 16_000,
+			},
+		],
+	});
+	const closeoutPhase = lifecyclePhaseMetrics({
+		phase: "closeout",
+		label: "Closeout",
+		attemptCount: 1,
+		protocolEventCount: 8,
+		childEventCount: 12,
+		wallSeconds: 480,
+		toolCallCount: 5,
+		inputTokens: 520_000,
+		outputTokens: 2_100,
+		buckets: [
+			{
+				name: "Model",
+				wall_seconds: 300,
+				event_count: 6,
+				tool_call_count: 0,
+				input_tokens: 520_000,
+				output_tokens: 2_100,
+				output_bytes: 0,
+			},
+			{
+				name: "Shell",
+				wall_seconds: 180,
+				event_count: 6,
+				tool_call_count: 5,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 9_000,
+			},
+		],
+	});
+	const phases = [developmentPhase, reviewPhase, closeoutPhase];
+	const lifecycle = lifecycleMetrics({
+		attemptCount: 4,
+		capturedAttemptCount: 4,
+		protocolEventCount: phases.reduce((total, phase) => total + phase.protocol_event_count, 0),
+		childEventCount: phases.reduce((total, phase) => total + phase.child_event_count, 0),
+		wallSeconds: phases.reduce((total, phase) => total + phase.wall_seconds, 0),
+		toolCallCount: phases.reduce((total, phase) => total + phase.tool_call_count, 0),
+		inputTokens: phases.reduce((total, phase) => total + phase.input_tokens_cumulative, 0),
+		outputTokens: phases.reduce((total, phase) => total + phase.output_tokens_cumulative, 0),
+		buckets: [
+			{
+				name: "Model",
+				wall_seconds: 3_440,
+				event_count: 58,
+				tool_call_count: 0,
+				input_tokens: 9_420_000,
+				output_tokens: 31_500,
+				output_bytes: 0,
+			},
+			{
+				name: "Shell",
+				wall_seconds: 720,
+				event_count: 39,
+				tool_call_count: 34,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 83_000,
+			},
+			{
+				name: "GitHub",
+				wall_seconds: 130,
+				event_count: 5,
+				tool_call_count: 4,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 11_000,
+			},
+			{
+				name: "Tracker",
+				wall_seconds: 0,
+				event_count: 12,
+				tool_call_count: 7,
+				input_tokens: 0,
+				output_tokens: 0,
+				output_bytes: 8_200,
+			},
+		],
+	});
+	lifecycle.phases = phases;
+
 	return {
 		project_id: "decodex-preview",
 		issue_id: "issue-xy-430",
 		issue_identifier: "XY-430",
 		title: "Completed dashboard lane",
 		issue_key: "XY-430",
-		attempt_count: 2,
+		attempt_count: 4,
+		lifecycle_metrics: lifecycle,
 		ledger_outcome: {
 			ledger_status: "present",
 			final_outcome: "succeeded",
@@ -565,6 +929,8 @@ function historyLane(accounts) {
 		attempts: [
 			{ ...run, run_id: "xy-430-attempt-1-mock", attempt_number: 1, status: "failed" },
 			{ ...run, run_id: "xy-430-attempt-2-mock", attempt_number: 2, status: "succeeded" },
+			{ ...run, run_id: "xy-430-review-1-mock", attempt_number: 3, status: "succeeded" },
+			{ ...run, run_id: "xy-430-closeout-1-mock", attempt_number: 4, status: "succeeded" },
 		],
 	};
 }
@@ -631,8 +997,15 @@ function usageEstimate(accounts) {
 
 function buildSnapshot(accounts, fixedAccountSelector) {
 	const controlledAccounts = accountsWithSelection(accounts, fixedAccountSelector);
+	const primaryActivity = childAgentActivity();
 	const activeRuns = [
-		activeRun({ accounts: controlledAccounts, accountIndex: 0 }),
+		activeRun({
+			accounts: controlledAccounts,
+			accountIndex: 0,
+			attempt: 2,
+			childActivity: primaryActivity,
+			lifecycleMetrics: activeReviewLifecycleMetrics(primaryActivity),
+		}),
 		activeRun({
 			accounts: controlledAccounts,
 			accountIndex: Math.min(2, controlledAccounts.length - 1),
@@ -1152,7 +1525,12 @@ async function main() {
 	});
 
 	server.listen(port, host, () => {
-		console.log(`operator dashboard mock: http://${host}:${port}/dashboard`);
+		const baseUrl = `http://${host}:${port}`;
+		const webSocketUrl = `ws://${host}:${port}/dashboard/control`;
+		console.log(`operator dashboard mock: ${baseUrl}/dashboard`);
+		console.log(`operator dashboard websocket: ${webSocketUrl}`);
+		console.log(`Decodex App mock base: DECODEX_APP_SERVER_URL=${baseUrl}`);
+		console.log("preview invariant: browser dashboard and Decodex App must use this same mock server");
 		console.log(
 			options.authDir
 				? `accounts: ${options.authDir} (${staticAccounts.length} loaded)`
