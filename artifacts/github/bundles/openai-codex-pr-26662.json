@@ -1,0 +1,304 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-07T21:43:30Z",
+      "message": "feat(app-server): filter threads by parent",
+      "sha": "68567deb6f6e9227662c9558d37ff3e280a2b377",
+      "url": "https://github.com/openai/codex/commit/68567deb6f6e9227662c9558d37ff3e280a2b377"
+    },
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-07T21:43:37Z",
+      "message": "refactor(app-server): source parent filter from spawn edges",
+      "sha": "724cd58bf6ed04ffaf8ab8520c951a5518f3161a",
+      "url": "https://github.com/openai/codex/commit/724cd58bf6ed04ffaf8ab8520c951a5518f3161a"
+    },
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-07T22:49:09Z",
+      "message": "codex: fix CI failure on PR #26662",
+      "sha": "c2f877a1d0c5dbab82f5d7fcb4c591b90e9541f8",
+      "url": "https://github.com/openai/codex/commit/c2f877a1d0c5dbab82f5d7fcb4c591b90e9541f8"
+    },
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-07T22:28:34Z",
+      "message": "docs(app-server): clarify parent thread listing",
+      "sha": "e06ed34720737e1657c74fdc466972c5fdda5ac4",
+      "url": "https://github.com/openai/codex/commit/e06ed34720737e1657c74fdc466972c5fdda5ac4"
+    },
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-08T01:24:47Z",
+      "message": "fix(app-server): preserve explicit thread list filters",
+      "sha": "eaeb92854e2d6da708558a8f0b81ff7cacdfd569",
+      "url": "https://github.com/openai/codex/commit/eaeb92854e2d6da708558a8f0b81ff7cacdfd569"
+    },
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-10T06:42:04Z",
+      "message": "fix(app-server): address parent thread listing feedback",
+      "sha": "4c1fbf28545273cd4ba9402a4065171b646824f9",
+      "url": "https://github.com/openai/codex/commit/4c1fbf28545273cd4ba9402a4065171b646824f9"
+    },
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-11T16:47:37Z",
+      "message": "fix(state): preserve indexed thread pagination",
+      "sha": "28d35a99eff66cf06742933e4a45fde47fb927d5",
+      "url": "https://github.com/openai/codex/commit/28d35a99eff66cf06742933e4a45fde47fb927d5"
+    },
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-12T16:02:02Z",
+      "message": "Address thread list review feedback",
+      "sha": "ba23593c751b155e4a86d2e6c24125a4b177a8c6",
+      "url": "https://github.com/openai/codex/commit/ba23593c751b155e4a86d2e6c24125a4b177a8c6"
+    },
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-12T19:49:25Z",
+      "message": "Revert thread list tuple pagination",
+      "sha": "95d0018d71d9b15ccac883561abd1d408cf0f875",
+      "url": "https://github.com/openai/codex/commit/95d0018d71d9b15ccac883561abd1d408cf0f875"
+    },
+    {
+      "author": "btraut-openai",
+      "committed_at": "2026-06-14T06:47:26Z",
+      "message": "docs(app-server): clarify parent thread filter scope",
+      "sha": "688537c78d85337d3bc70e80a7e74fcfe11da6ce",
+      "url": "https://github.com/openai/codex/commit/688537c78d85337d3bc70e80a7e74fcfe11da6ce"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "SQL",
+    "JSONL",
+    "JSONRPCR",
+    "DEFAULT_READ_TIMEOUT",
+    "JSONRPCE",
+    "CONFLICT",
+    "NOTHING",
+    "FROM",
+    "AND",
+    "SELECT",
+    "WHERE"
+  ],
+  "files": [
+    {
+      "additions": 11,
+      "deletions": 21,
+      "patch_excerpt": "@@ -5,50 +5,40 @@ import type { SortDirection } from \"./SortDirection\";\n import type { ThreadSortKey } from \"./ThreadSortKey\";\n import type { ThreadSourceKind } from \"./ThreadSourceKind\";\n \n-export type ThreadListParams = {\n-/**\n+export type ThreadListParams = {/**\n  * Opaque pagination cursor returned by a previous call.\n  */\n-cursor?: string | null,\n-/**\n+cursor?: string | null, /**\n  * Optional page size; defaults to a reasonable server-side value.\n  */\n-limit?: number | null,\n-/**\n+limit?: number | null, /**\n  * Optional sort key; defaults to created_at.\n  */\n-sortKey?: ThreadSortKey | null,\n-/**\n+sortKey?: ThreadSortKey | null, /**\n  * Optional sort direction; defaults to descending (newest first).\n  */\n-sortDirection?: SortDirection | null,\n-/**\n+sortDirection?: SortDirection | null, /**\n  * Optional provider filter; when set, only sessions recorded under these\n  * providers are re...",
+      "path": "codex-rs/app-server-protocol/schema/typescript/v2/ThreadListParams.ts",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -603,6 +603,7 @@ client_request_definitions! {\n     },\n     ThreadList => \"thread/list\" {\n         params: v2::ThreadListParams,\n+        inspect_params: true,\n         serialization: None,\n         response: v2::ThreadListResponse,\n     },",
+      "path": "codex-rs/app-server-protocol/src/protocol/common.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1022,7 +1022,7 @@ pub struct ThreadRollbackResponse {\n     pub thread: Thread,\n }\n \n-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]\n+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]\n #[serde(rename_all = \"camelCase\")]\n #[ts(export_to = \"v2/\")]\n pub struct ThreadListParams {\n@@ -1062,6 +1062,10 @@ pub struct ThreadListParams {\n     /// Optional substring filter for the extracted thread title.\n     #[ts(optional = nullable)]\n     pub search_term: Option<String>,\n+    /// Optional direct parent thread filter.\n+    #[experimental(\"thread/list.parentThreadId\")]\n+    #[ts(optional = nullable)]\n+    pub parent_thread_id: Option<String>,\n }\n \n #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]",
+      "path": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1129,6 +1129,7 @@ async fn thread_list(endpoint: &Endpoint, config_overrides: &[String], limit: u3\n             model_providers: None,\n             source_kinds: None,\n             archived: None,\n+            parent_thread_id: None,\n             cwd: None,\n             use_state_db_only: false,\n             search_term: None,",
+      "path": "codex-rs/app-server-test-client/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 19,
+      "deletions": 1,
+      "patch_excerpt": "@@ -134,7 +134,7 @@ Example with notification opt-out:\n - `thread/resume` — reopen an existing thread by id so subsequent `turn/start` calls append to it. Accepts the same permission override rules as `thread/start`.\n - `thread/fork` — fork an existing thread into a new thread id by copying the stored history; if the source thread is currently mid-turn, the fork records the same interruption marker as `turn/interrupt` instead of inheriting an unmarked partial turn suffix. The returned `thread.forkedFromId` points at the source thread when known. Accepts `ephemeral: true` for an in-memory temporary fork, emits `thread/started` (including the current `thread.status`), and auto-subscribes you to turn/item events for the new thread. Experimental clients can pass `excludeTurns: true` when they plan to page fork history via `thread/turns/list` instead of receiving the full turn array immediate...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 17,
+      "deletions": 1,
+      "patch_excerpt": "@@ -15,6 +15,7 @@ struct ThreadListFilters {\n     cwd_filters: Option<Vec<PathBuf>>,\n     search_term: Option<String>,\n     use_state_db_only: bool,\n+    parent_thread_id: Option<ThreadId>,\n }\n \n fn collect_resume_override_mismatches(\n@@ -1874,8 +1875,14 @@ impl ThreadRequestProcessor {\n             cwd,\n             use_state_db_only,\n             search_term,\n+            parent_thread_id,\n         } = params;\n         let cwd_filters = normalize_thread_list_cwd_filters(cwd)?;\n+        let parent_thread_id = parent_thread_id\n+            .as_deref()\n+            .map(ThreadId::from_string)\n+            .transpose()\n+            .map_err(|err| invalid_request(format!(\"invalid parent thread id: {err}\")))?;\n \n         let requested_page_size = limit\n             .map(|value| value as usize)\n@@ -1899,6 +1906,7 @@ impl ThreadRequestProcessor {\n                     cwd_filters,\n             ...",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -338,6 +338,7 @@ async fn external_agent_config_import_creates_session_rollouts() -> Result<()> {\n             cwd: None,\n             use_state_db_only: false,\n             search_term: None,\n+            parent_thread_id: None,\n         })\n         .await?;\n     let response: JSONRPCResponse = timeout(\n@@ -514,6 +515,7 @@ required = true\n             cwd: None,\n             use_state_db_only: false,\n             search_term: None,\n+            parent_thread_id: None,\n         })\n         .await?;\n     let response: JSONRPCResponse = timeout(\n@@ -601,6 +603,7 @@ async fn external_agent_config_import_accepts_detected_session_payload_after_res\n             cwd: None,\n             use_state_db_only: false,\n             search_term: None,\n+            parent_thread_id: None,\n         })\n         .await?;\n     let response: JSONRPCResponse = timeout(\n@@ -688,6 +691,7 @@ async fn external_...",
+      "path": "codex-rs/app-server/tests/suite/v2/external_agent_config.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -132,6 +132,7 @@ async fn thread_delete_with_non_local_thread_store_does_not_create_local_persist\n                 cwd: None,\n                 use_state_db_only: false,\n                 search_term: None,\n+                parent_thread_id: None,\n             },\n         })\n         .await?",
+      "path": "codex-rs/app-server/tests/suite/v2/remote_thread_store.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -71,6 +71,7 @@ async fn list_threads(mcp: &mut TestAppServer) -> Result<ThreadListResponse> {\n             cwd: None,\n             use_state_db_only: false,\n             search_term: None,\n+            parent_thread_id: None,\n         })\n         .await?;\n     let list_resp: JSONRPCResponse = timeout(",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_fork.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 197,
+      "deletions": 0,
+      "patch_excerpt": "@@ -35,6 +35,7 @@ use codex_protocol::protocol::RolloutItem;\n use codex_protocol::protocol::RolloutLine;\n use codex_protocol::protocol::SessionSource as CoreSessionSource;\n use codex_protocol::protocol::SubAgentSource;\n+use codex_state::DirectionalThreadSpawnEdgeStatus;\n use core_test_support::responses;\n use pretty_assertions::assert_eq;\n use std::cmp::Reverse;\n@@ -95,6 +96,7 @@ async fn list_threads_with_sort(\n             cwd: None,\n             use_state_db_only: false,\n             search_term: None,\n+            parent_thread_id: None,\n         })\n         .await?;\n     let resp: JSONRPCResponse = timeout(\n@@ -105,6 +107,37 @@ async fn list_threads_with_sort(\n     to_response::<ThreadListResponse>(resp)\n }\n \n+async fn list_threads_for_parent(\n+    mcp: &mut TestAppServer,\n+    parent_thread_id: ThreadId,\n+    cursor: Option<String>,\n+    limit: u32,\n+    model_providers: Option<Vec...",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -566,6 +566,7 @@ async fn thread_list_includes_store_thread_without_rollout_path() -> Result<()>\n                 cwd: None,\n                 use_state_db_only: false,\n                 search_term: None,\n+                parent_thread_id: None,\n             },\n         })\n         .await?\n@@ -960,6 +961,7 @@ async fn thread_name_set_is_reflected_in_read_list_and_resume() -> Result<()> {\n             cwd: None,\n             use_state_db_only: false,\n             search_term: None,\n+            parent_thread_id: None,\n         })\n         .await?;\n     let list_resp: JSONRPCResponse = timeout(",
+      "path": "codex-rs/app-server/tests/suite/v2/thread_read.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -88,6 +88,7 @@ async fn has_threads(store: &LocalThreadStore, archived: bool) -> io::Result<boo\n             allowed_sources: Vec::new(),\n             model_providers: None,\n             cwd_filters: None,\n+            parent_thread_id: None,\n             archived,\n             search_term: None,\n             use_state_db_only: false,",
+      "path": "codex-rs/core/src/personality_migration.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -136,6 +136,7 @@ async fn load_recent_threads(sess: &Session) -> Vec<StoredThread> {\n             allowed_sources: Vec::new(),\n             model_providers: None,\n             cwd_filters: None,\n+            parent_thread_id: None,\n             archived: false,\n             search_term: None,\n             use_state_db_only: false,",
+      "path": "codex-rs/core/src/realtime_context.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1444,6 +1444,7 @@ async fn resolve_resume_thread_id(\n                         model_providers: model_providers.clone(),\n                         source_kinds: Some(all_thread_source_kinds()),\n                         archived: Some(false),\n+                        parent_thread_id: None,\n                         cwd: None,\n                         use_state_db_only: false,\n                         search_term: None,\n@@ -1509,6 +1510,7 @@ async fn resolve_resume_thread_id(\n                     model_providers: model_providers.clone(),\n                     source_kinds: Some(all_thread_source_kinds()),\n                     archived: Some(false),\n+                    parent_thread_id: None,\n                     cwd: None,\n                     use_state_db_only: false,\n                     search_term: Some(session_id.to_string()),",
+      "path": "codex-rs/exec/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -376,6 +376,7 @@ impl RolloutRecorder {\n                 allowed_sources,\n                 model_providers,\n                 cwd_filters,\n+                /*parent_thread_id*/ None,\n                 archived,\n                 search_term,\n             )\n@@ -484,6 +485,7 @@ impl RolloutRecorder {\n             allowed_sources,\n             model_providers,\n             cwd_filters,\n+            /*parent_thread_id*/ None,\n             archived,\n             search_term,\n         )\n@@ -512,6 +514,7 @@ impl RolloutRecorder {\n                     allowed_sources,\n                     model_providers,\n                     cwd_filters,\n+                    /*parent_thread_id*/ None,\n                     archived,\n                     search_term,\n                 )\n@@ -608,6 +611,7 @@ impl RolloutRecorder {\n                     allowed_sources,\n                     model_providers,\n          ...",
+      "path": "codex-rs/rollout/src/recorder.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 29,
+      "deletions": 22,
+      "patch_excerpt": "@@ -363,6 +363,7 @@ pub async fn list_threads_db(\n     allowed_sources: &[SessionSource],\n     model_providers: Option<&[String]>,\n     cwd_filters: Option<&[PathBuf]>,\n+    parent_thread_id: Option<ThreadId>,\n     archived: bool,\n     search_term: Option<&str>,\n ) -> Option<codex_state::ThreadsPage> {\n@@ -391,29 +392,35 @@ pub async fn list_threads_db(\n             .map(|cwd| normalize_cwd_for_state_db(cwd))\n             .collect::<Vec<_>>()\n     });\n-    match ctx\n-        .list_threads(\n-            page_size,\n-            codex_state::ThreadFilterOptions {\n-                archived_only: archived,\n-                allowed_sources: allowed_sources.as_slice(),\n-                model_providers: model_providers.as_deref(),\n-                cwd_filters: normalized_cwd_filters.as_deref(),\n-                anchor: anchor.as_ref(),\n-                sort_key: match sort_key {\n-               ...",
+      "path": "codex-rs/rollout/src/state_db.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 123,
+      "deletions": 1,
+      "patch_excerpt": "@@ -398,11 +398,32 @@ ON CONFLICT(child_thread_id) DO NOTHING\n         &self,\n         page_size: usize,\n         filters: ThreadFilterOptions<'_>,\n+    ) -> anyhow::Result<crate::ThreadsPage> {\n+        self.list_threads_matching(page_size, filters, /*parent_thread_id*/ None)\n+            .await\n+    }\n+\n+    /// List direct children of `parent_thread_id` using persisted spawn edges.\n+    pub async fn list_threads_by_parent(\n+        &self,\n+        page_size: usize,\n+        parent_thread_id: ThreadId,\n+        filters: ThreadFilterOptions<'_>,\n+    ) -> anyhow::Result<crate::ThreadsPage> {\n+        self.list_threads_matching(page_size, filters, Some(parent_thread_id))\n+            .await\n+    }\n+\n+    async fn list_threads_matching(\n+        &self,\n+        page_size: usize,\n+        filters: ThreadFilterOptions<'_>,\n+        parent_thread_id: Option<ThreadId>,\n     ) -> anyhow::Resul...",
+      "path": "codex-rs/state/src/runtime/threads.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 75,
+      "deletions": 2,
+      "patch_excerpt": "@@ -48,6 +48,10 @@ mod tests {\n     use crate::ListTurnsParams;\n     use crate::SortDirection;\n     use crate::StoredTurnItemsView;\n+    use crate::ThreadPersistenceMetadata;\n+    use crate::ThreadSortKey;\n+    use codex_protocol::models::BaseInstructions;\n+    use codex_protocol::protocol::SessionSource;\n \n     #[tokio::test]\n     async fn default_turn_pagination_methods_return_unsupported() {\n@@ -90,6 +94,68 @@ mod tests {\n             }\n         ));\n     }\n+\n+    #[tokio::test]\n+    async fn list_threads_filters_by_parent_thread_id() {\n+        let store = InMemoryThreadStore::default();\n+        let parent_thread_id = ThreadId::default();\n+        let child_thread_id =\n+            ThreadId::from_string(\"00000000-0000-0000-0000-000000000001\").expect(\"valid thread id\");\n+        let unrelated_thread_id =\n+            ThreadId::from_string(\"00000000-0000-0000-0000-000000000002\").expect...",
+      "path": "codex-rs/thread-store/src/in_memory.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -110,6 +110,7 @@ mod tests {\n                 cwd_filters: None,\n                 archived: true,\n                 search_term: None,\n+                parent_thread_id: None,\n                 use_state_db_only: false,\n             })\n             .await",
+      "path": "codex-rs/thread-store/src/local/archive_thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 4,
+      "patch_excerpt": "@@ -25,7 +25,7 @@ pub(super) async fn create_thread(\n         model_provider_id: params.metadata.model_provider.clone(),\n         generate_memories: matches!(params.metadata.memory_mode, ThreadMemoryMode::Enabled),\n     };\n-    let recorder = RolloutRecorder::new(\n+    RolloutRecorder::new(\n         &config,\n         RolloutRecorderParams::new(\n             params.thread_id,\n@@ -41,7 +41,5 @@ pub(super) async fn create_thread(\n     .await\n     .map_err(|err| ThreadStoreError::Internal {\n         message: format!(\"failed to initialize local thread recorder: {err}\"),\n-    })?;\n-\n-    Ok(recorder)\n+    })\n }",
+      "path": "codex-rs/thread-store/src/local/create_thread.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 32,
+      "deletions": 0,
+      "patch_excerpt": "@@ -116,6 +116,32 @@ pub(super) async fn list_rollout_threads(\n     sort_key: codex_rollout::ThreadSortKey,\n     sort_direction: codex_rollout::SortDirection,\n ) -> ThreadStoreResult<codex_rollout::ThreadsPage> {\n+    if let Some(parent_thread_id) = params.parent_thread_id {\n+        let page = codex_rollout::state_db::list_threads_db(\n+            state_db.as_deref(),\n+            config.codex_home.as_path(),\n+            params.page_size,\n+            cursor,\n+            sort_key,\n+            sort_direction,\n+            params.allowed_sources.as_slice(),\n+            params.model_providers.as_deref(),\n+            params.cwd_filters.as_deref(),\n+            Some(parent_thread_id),\n+            params.archived,\n+            params.search_term.as_deref(),\n+        )\n+        .await\n+        .ok_or_else(|| ThreadStoreError::Internal {\n+            message: \"state DB unavailable for par...",
+      "path": "codex-rs/thread-store/src/local/list_threads.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -93,6 +93,7 @@ pub(super) async fn search_threads(\n         cwd_filters: None,\n         archived: params.archived,\n         search_term: None,\n+        parent_thread_id: None,\n         use_state_db_only: state_db.is_some(),\n     };\n     let mut remaining_rollouts = matching_rollouts;",
+      "path": "codex-rs/thread-store/src/local/search_threads.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1476,6 +1476,7 @@ mod tests {\n                 cwd_filters: Some(vec![workspace]),\n                 archived: false,\n                 search_term: None,\n+                parent_thread_id: None,\n                 use_state_db_only: true,\n             })\n             .await",
+      "path": "codex-rs/thread-store/src/local/update_thread_metadata.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -195,6 +195,8 @@ pub struct ListThreadsParams {\n     pub archived: bool,\n     /// Optional substring/full-text search term for thread title/preview.\n     pub search_term: Option<String>,\n+    /// Optional direct parent thread filter.\n+    pub parent_thread_id: Option<ThreadId>,\n     /// Return directly from the state DB without scanning JSONL rollouts to repair metadata.\n     pub use_state_db_only: bool,\n }",
+      "path": "codex-rs/thread-store/src/types.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -696,6 +696,7 @@ async fn lookup_session_target_by_name_with_app_server(\n                 model_providers: None,\n                 source_kinds: Some(vec![ThreadSourceKind::Cli, ThreadSourceKind::VsCode]),\n                 archived: Some(false),\n+                parent_thread_id: None,\n                 cwd: None,\n                 use_state_db_only: false,\n                 search_term: Some(name.to_string()),\n@@ -808,6 +809,7 @@ fn latest_session_lookup_params(\n         },\n         source_kinds: Some(resume_source_kinds(include_non_interactive)),\n         archived: Some(false),\n+        parent_thread_id: None,\n         cwd: cwd_filter.map(|cwd| ThreadListCwdFilter::One(cwd.to_string_lossy().to_string())),\n         use_state_db_only: match lookup_mode {\n             LatestSessionLookupMode::StateDbOnly => true,",
+      "path": "codex-rs/tui/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1821,6 +1821,7 @@ fn thread_list_params(\n         },\n         source_kinds: Some(crate::resume_source_kinds(include_non_interactive)),\n         archived: Some(false),\n+        parent_thread_id: None,\n         cwd: cwd_filter.map(|cwd| ThreadListCwdFilter::One(cwd.to_string_lossy().into_owned())),\n         use_state_db_only: false,\n         search_term: None,",
+      "path": "codex-rs/tui/src/resume_picker.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -177,6 +177,7 @@ async fn lookup_session_by_exact_name(\n                         /*include_non_interactive*/ false,\n                     )),\n                     archived: Some(archived),\n+                    parent_thread_id: None,\n                     cwd: None,\n                     use_state_db_only: false,\n                     search_term: search_term.map(str::to_string),",
+      "path": "codex-rs/tui/src/session_archive_commands.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#25112",
+    "#26662"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nClients that display or coordinate spawned subagents need an authoritative snapshot of a thread's immediate spawned children when they connect to app-server or recover after missing live events. `thread/list` cannot query by parent, so clients must otherwise scan unrelated threads or reconstruct relationships from rollout history and transient events.\n\nThe direct spawn relationship already exists in persisted `thread_spawn_edges` state. Review and Guardian threads do not participate in that lifecycle and are intentionally outside this filter's scope.\n\n## What changed\n\nThis adds an experimental `parentThreadId` filter to `thread/list`. Parent-filtered requests return direct spawned children from persisted state while preserving the existing response shape, explicit filters, sorting, and timestamp-only cursor behavior. The lookup does not read rollout transcripts or recursively return descendants.\n\nSupersedes #25112 with the narrower `thread/list` filter approach.\n\n## How it works\n\n1. An experimental client passes a valid thread ID as `parentThreadId`.\n2. App-server routes the list through the existing thread-store and state-database boundaries.\n3. SQLite selects threads whose IDs have a direct persisted spawn edge from that parent.\n4. Omitted provider and source filters include all values; explicit filters keep ordinary `thread/list` semantics.\n5. Grandchildren, Review threads, and Guardian threads are excluded.\n\n## Verification\n\nState (144 tests), rollout (69 tests), and focused app-server thread-list (31 tests) suites passed. Scoped Clippy checks and repository formatting also passed. Coverage includes direct spawned children, omitted grandchildren, pagination, malformed IDs, mixed source kinds, explicit filters, and operation without rollout files.",
+    "labels": [
+      "code-reviewed"
+    ],
+    "merged_at": "2026-06-14T07:14:27Z",
+    "number": 26662,
+    "state": "merged",
+    "title": "feat(app-server): filter threads by parent",
+    "url": "https://github.com/openai/codex/pull/26662"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

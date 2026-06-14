@@ -1,0 +1,53 @@
+{
+  "audience": "Control Plane operators and app-server client builders",
+  "candidate_text": [
+    "Codex app-server adds experimental `thread/list.parentThreadId`: clients can list direct spawned child threads from persisted spawn edges without scanning rollout history. Useful for subagent UIs and recovery flows. PR: https://github.com/openai/codex/pull/26662"
+  ],
+  "caveats": [
+    "Do not imply recursive thread-tree listing.",
+    "Keep the claim scoped to experimental direct spawned-child listing from persisted state."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-26662.review.json",
+      "text": "Codex app-server adds an experimental parentThreadId filter to thread/list."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-26662.json",
+      "text": "Parent-filtered thread listing is a Decodex Control Plane adoption opportunity."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-26662:operator_impact",
+    "reason": "The change has a concrete subagent recovery and operator-UI angle with direct source links.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "ThreadListParams adds experimental parentThreadId.",
+    "Parent-filtered listing uses persisted spawn edges.",
+    "Tests cover direct children, omitted grandchildren, filters, pagination, and malformed IDs."
+  ],
+  "mode": "operator_impact",
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or publish this candidate."
+  ],
+  "priority": "high",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-26662",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-26662.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-26662.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/26662"
+    ]
+  },
+  "target_account": "decodexspace"
+}
