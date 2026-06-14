@@ -301,11 +301,24 @@ dashboard controls flow through the `/dashboard/control` WebSocket. The HTTP sur
 kept to dashboard pages/assets, `GET /livez`, and the local account-control API used by
 Decodex App.
 
-For dashboard UI development, use the mock operator dashboard server:
+For dashboard UI development, use one mock operator dashboard server for both the
+browser dashboard and Decodex App preview:
 
 ```sh
 node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399
 node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-codex-auth
+```
+
+That single mock listener serves `GET /dashboard`, `GET /api/accounts`, and the
+dashboard authority WebSocket at `ws://127.0.0.1:57399/dashboard/control`. When
+previewing Decodex App against the mock, point the App at the same base URL with
+`DECODEX_APP_SERVER_URL=http://127.0.0.1:57399`; do not start a second mock server for
+the App. This environment variable is authoritative: when it is set, Decodex App
+connects only to that server and reports an error instead of falling back to the
+default `127.0.0.1:8192` runtime.
+
+```sh
+DECODEX_APP_SERVER_URL=http://127.0.0.1:57399 open -n target/decodex-app/Decodex.app
 ```
 
 Use hidden `decodex serve --dev --listen-address <ADDR>` only when
@@ -314,8 +327,9 @@ avoiding scheduler activity. Dev mode deliberately does not register projects, p
 Linear, dispatch work, or accept `--config`. Decodex App's normal
 fallback server is ordinary `decodex serve --listen-address 127.0.0.1:8192`; the CLI
 owns the default scheduler cadences. App launch connects to an
-existing live default listener instead of starting a duplicate server. For
-dashboard-only UI work, prefer the mock server above.
+existing live default listener instead of starting a duplicate server only when
+`DECODEX_APP_SERVER_URL` is unset. For dashboard and App preview UI work, prefer the
+single mock server above.
 
 The dashboard semantics and local-vs-external state boundary live in
 `docs/reference/operator-control-plane.md`.
