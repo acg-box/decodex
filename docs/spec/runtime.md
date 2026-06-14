@@ -21,7 +21,7 @@ Contracts, internal Execution Programs, phase-scoped goals, unattended execution
 behavior, and loop guardrails.
 
 This document owns the lower-level lane runtime. A promoted Execution Program may
-shape queue intent and normal Linear issues, but executable work still enters this
+shape dispatch intent and normal Linear issues, but executable work still enters this
 runtime as ordinary issue lanes with leases, attempts, validation, review handoff, and
 tracker writeback. The internal program graph is not a replacement for Linear workflow
 state or this state machine.
@@ -65,27 +65,25 @@ state or this state machine.
   not by themselves create Linear issues, queue intent, goals, or executable lanes.
 - `decodex intake goal <CONTRACT_ID> --dry-run` is a tracker-read-only and
   runtime-read-only operator surface for promoted Decision Contracts. It renders the
-  proposed normal Linear issue split, dependencies, conflict domains, and queue plan
+  proposed normal Linear issue split, dependencies, conflict domains, and dispatch plan
   without mutating Linear or persisting Program Intake rows. `--apply` creates or
   updates generated normal Linear issue briefs, links generated issue ids and internal
   node ids back into the Decision Contract and Execution Program records, and persists
   the local Program Intake Plan plus Execution Program state. It must not start
-  implementation directly and must not apply queue labels.
+  implementation inline and must not apply queue labels; direct Program dispatch is
+  performed by the scheduler after the Program is persisted.
 - `decodex intake issues <ISSUE>... --dry-run` is a tracker-read-only operator
   surface for existing Linear issues. It classifies the supplied batch as ready,
   held, blocked, stale, or unmapped and builds the same internal program model used
   by later persistence, but it must not mutate Linear or write local runtime rows.
-  `--apply` writes only local runtime Program Intake and Execution Program state;
-  queue labels remain untouched until a later reconciliation surface is explicitly
-  authorized. `--persist` is a legacy alias for `--apply`.
-- On each normal Linear scan tick, the control plane reconciles persisted Execution
-  Programs before normal issue selection. The reconciler refreshes mapped Linear
-  issue state, dependency observations, local active leases, retained review/landing
-  worktrees, needs-attention labels, and occupied conflict domains; then it applies
-  or removes only the service queue label decisions authorized by the Execution
-  Program readiness evaluator. It must not dispatch app-server runs directly. Any
-  newly queued issue still enters execution through the ordinary queue scan,
-  dispatch policy, lease acquisition, and scheduler path.
+  `--apply` writes only local runtime Program Intake and Execution Program state.
+- Each scheduler pass evaluates persisted Execution Programs before ordinary queued
+  issue selection. The Program scheduler refreshes mapped Linear issue state,
+  dependency observations, local active leases, retained review/landing worktrees,
+  needs-attention labels, and occupied conflict domains; then it directly selects
+  dispatchable ready nodes with `program` dispatch mode. It must not apply or remove
+  service queue labels, and Program readiness must not wait for the ordinary
+  Linear-backed queue scan interval.
 
 The evidence boundary is ordered from private runtime authority to public collaboration
 mirror:
@@ -94,10 +92,9 @@ mirror:
 | --- | --- |
 | Runtime SQLite `private_execution_events` | Structured private execution evidence for the local Decodex installation. This is where full checkpoint payloads, verification notes, local head evidence, recovery detail, and `decodex.harness_outcome/1` feedback records belong. |
 | Runtime SQLite `decision_contracts` | Versioned `decodex.decision_contract/1` payloads produced by research/design and later promoted into execution authority. The row status is indexed for local runtime lookup, but the JSON payload remains the contract authority. |
-| Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads with embedded or linked `decodex.program_intake_plan/1` planning data. They hold internal node lifecycle/readiness, dependency, conflict-domain, queue-intent, drift, normal-issue mapping, and program-owned queue-label evidence; Linear issue descriptions and ledger comments are only coarse projections. |
+| Runtime SQLite `execution_programs` | Versioned `decodex.execution_program/1` payloads with embedded or linked `decodex.program_intake_plan/1` planning data. They hold internal node lifecycle/readiness, dependency, conflict-domain, dispatch intent, drift, and normal-issue mapping; Linear issue descriptions and ledger comments are only coarse projections. |
 | Runtime SQLite `program_intake_plans` | Queryable local projection of `decodex.program_intake_plan/1` metadata, including intake kind, source contract when present, authority fingerprint, and public-safe summary. |
-| Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, queue intent, service label facts, dispatch-briefing fact, and program-owned queue-label flag. |
-| Runtime SQLite `program_queue_label_ownership` | Fail-closed evidence that program reconciliation owns a specific service queue label for one service, program, node, and issue. Queue-label removal authority must come from this table or the equivalent canonical program payload evidence. |
+| Runtime SQLite `program_issue_mappings` | Queryable local projection of each internal program node's mapped Linear issue, tracker state, dispatch intent, active/manual/attention facts, and dispatch-briefing fact. |
 | Runtime SQLite `run_control_channels` | Local control capability metadata for active run attempts. It records the project, issue, run id, attempt, transport, local channel path, channel status, and publish/update timestamps needed to route future control requests without bypassing active lease ownership. |
 | Runtime SQLite `review_policy_checkpoints` | Latest bounded-review checkpoint state for one project, issue, run, attempt, and phase, including structured independent-review detail. This row is the authority for review handoff and retained repair gating. |
 | Runtime SQLite `loop_guardrail_checkpoints` | Latest convergence checkpoint for one project, issue, and guardrail reason. It stores the fingerprint, consecutive count, run id, attempt number, and structured detail used to stop non-converging loops without replaying Linear comments. |
@@ -659,8 +656,8 @@ The runtime database stores at least:
 - Decision Contracts scoped by project and contract id, with optional source issue
   linkage for later issue shaping
 - Program Intake Plans and internal Execution Programs scoped by project, with
-  lifecycle/readiness state, normal Linear issue mappings, and program-owned
-  queue-label ownership evidence
+  lifecycle/readiness state, normal Linear issue mappings, and dispatchable-node
+  readback
 - worktree mappings
 - retained PR and post-review state
 - review-policy checkpoints
@@ -776,14 +773,13 @@ After a process restart, recent-run history, active lease ownership, retained po
   must not inherit an old retained marker's exhausted retry budget unless a caller
   supplied an explicit preferred retry-budget base for that new run.
 - While the control plane owns a queued retry entry, that queued claim must take priority over normal candidate selection for the affected project.
-- While the control plane evaluates persisted Execution Programs, program-owned ready
-  nodes may receive `decodex:queued:<service-id>` only when their mapped Linear issue
-  is startable, non-terminal, briefed for generic dispatch, free of opt-out and
-  needs-attention labels, not already active, and not blocked by dependency or
-  occupied conflict-domain evidence. Blocked, stale, paused, terminal, active, or
-  attention-required nodes must not receive the label, and the reconciler may remove
-  the service queue label only when matching local ownership evidence identifies the
-  same service, program, node, issue, and label.
+- While the control plane evaluates persisted Execution Programs, ready nodes may be
+  selected for `program` dispatch only when their mapped Linear issue is startable,
+  non-terminal, briefed for generic dispatch, free of opt-out and needs-attention
+  labels, not already active, and not blocked by dependency or occupied
+  conflict-domain evidence. Blocked, stale, paused, terminal, active, or
+  attention-required nodes stay held, and this path must not mutate service queue
+  labels.
 - While the control plane is idle between lanes, it may reload the configured project `WORKFLOW.md` on each tick and immediately apply a newly valid document to future dispatch, retry, post-exit reconciliation, and prompt generation.
 - If that same configured `WORKFLOW.md` path becomes invalid after a successful load, the control plane must log the reload failure and keep the last known good document active instead of dropping the tick or clearing runtime policy.
 - If the leased issue becomes terminal during a control-plane tick, `decodex` must stop the active run, mark the attempt `terminated`, clear the lease, and then retain or clean the worktree according to the retention rules above.

@@ -9647,8 +9647,8 @@
 					(total, program) => total + Number(program.ready_count || 0),
 					0,
 				);
-				const programQueuedCount = executionPrograms.reduce(
-					(total, program) => total + Number(program.queued_count || 0),
+				const programDispatchableCount = executionPrograms.reduce(
+					(total, program) => total + Number(program.dispatchable_count || 0),
 					0,
 				);
 
@@ -9681,7 +9681,7 @@
 					executionPrograms,
 					programAttentionCount,
 					programReadyCount,
-					programQueuedCount,
+					programDispatchableCount,
 					sessionHistoryRuns: historyRuns,
 					worktrees,
 					postReviewLanes,
@@ -10310,8 +10310,8 @@
 				if (derived.programReadyCount) {
 					parts.push(`${derived.programReadyCount} ready`);
 				}
-				if (derived.programQueuedCount) {
-					parts.push(`${derived.programQueuedCount} queued`);
+				if (derived.programDispatchableCount) {
+					parts.push(`${derived.programDispatchableCount} dispatchable`);
 				}
 				if (derived.programAttentionCount) {
 					parts.push(
@@ -10350,29 +10350,17 @@
 				return issues.length ? issues.join(", ") : "NONE";
 			}
 
-			function programQueueActionSummary(program) {
-				const actions = [
-					["apply", program.queue_label_apply_count],
-					["retain", program.queue_label_retain_count],
-					["remove", program.queue_label_remove_count],
-				].filter(([, count]) => Number(count || 0) > 0);
-
-				return actions.length
-					? actions.map(([label, count]) => `${label} ${count}`).join(", ")
-					: "none";
-			}
-
 			function programProgressFacts(program) {
 				return [
 					["Ready", String(program.ready_count ?? 0)],
 					["Queued", String(program.queued_count ?? 0)],
+					["Dispatchable", String(program.dispatchable_count ?? 0)],
 					["Active", String(program.active_count ?? 0)],
 					["Blocked", String(program.blocked_count ?? 0)],
 					["Held", String(program.held_count ?? 0)],
 					["Attention", String(program.needs_attention_count ?? 0)],
 					["Completed", String(program.completed_count ?? 0)],
 					["Stale", String(program.stale_count ?? 0)],
-					["Eligible", String(program.queue_label_eligible_count ?? 0)],
 				];
 			}
 
@@ -10410,7 +10398,7 @@
 										${field("Lifecycle", displayToken(node.lifecycle_state || "unknown"))}
 										${field("Readiness", displayToken(node.readiness_state || "unknown"))}
 										${field("Issue state", node.issue_state || "none")}
-										${field("Queue action", node.queue_label_action || "none")}
+										${field("Dispatch action", node.dispatch_action || "none")}
 										${field("Reason codes", reasonCodes)}
 										${field("Reasons", programNodeReasons(node))}
 										${field("Next action", node.next_action || "none")}
@@ -10457,7 +10445,7 @@
 									</div>
 									<div class="status-line">
 										${statusLabel(displayToken(program.status || "unknown"), tone)}
-										${inlineStatusFact("Queue", programQueueActionSummary(program))}
+										${inlineStatusFact("Dispatchable", String(program.dispatchable_count ?? 0))}
 										${warning}
 									</div>
 									<div class="grid two card-facts">

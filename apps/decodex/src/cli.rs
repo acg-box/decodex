@@ -688,8 +688,8 @@ struct IntakeIssuesCommand {
 	/// Read tracker state and print the deterministic intake report without local persistence.
 	#[arg(long, conflicts_with = "apply", required_unless_present = "apply")]
 	dry_run: bool,
-	/// Persist local runtime Program Intake records; never mutates Linear queue labels.
-	#[arg(long, visible_alias = "persist", conflicts_with = "dry_run")]
+	/// Persist local runtime Program Intake records for direct Program dispatch.
+	#[arg(long, conflicts_with = "dry_run")]
 	apply: bool,
 	/// Emit structured JSON instead of human-readable text.
 	#[arg(long)]
@@ -1576,6 +1576,7 @@ impl From<AttemptDispatchMode> for IssueDispatchMode {
 	fn from(value: AttemptDispatchMode) -> Self {
 		match value {
 			AttemptDispatchMode::Normal => Self::Normal,
+			AttemptDispatchMode::Program => Self::Program,
 			AttemptDispatchMode::Retry => Self::Retry,
 			AttemptDispatchMode::ReviewRepair => Self::ReviewRepair,
 			AttemptDispatchMode::Closeout => Self::Closeout,
@@ -1587,6 +1588,7 @@ impl From<AttemptDispatchMode> for IssueDispatchMode {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum AttemptDispatchMode {
 	Normal,
+	Program,
 	Retry,
 	ReviewRepair,
 	Closeout,
@@ -1595,6 +1597,7 @@ impl From<IssueDispatchMode> for AttemptDispatchMode {
 	fn from(value: IssueDispatchMode) -> Self {
 		match value {
 			IssueDispatchMode::Normal => Self::Normal,
+			IssueDispatchMode::Program => Self::Program,
 			IssueDispatchMode::Retry => Self::Retry,
 			IssueDispatchMode::ReviewRepair => Self::ReviewRepair,
 			IssueDispatchMode::Closeout => Self::Closeout,
@@ -2690,32 +2693,6 @@ mod tests {
 					..
 				})
 			}) if issues == vec![String::from("XY-1"), String::from("XY-2")]
-		));
-	}
-
-	#[test]
-	fn parses_intake_issues_legacy_persist_alias() {
-		let cli = Cli::parse_from([
-			"decodex",
-			"intake",
-			"issues",
-			"--project",
-			"decodex",
-			"XY-1",
-			"--persist",
-		]);
-
-		assert!(matches!(
-			cli.command,
-			Command::Intake(IntakeCommand {
-				command: IntakeSubcommand::Issues(IntakeIssuesCommand {
-					project: Some(_),
-					dry_run: false,
-					apply: true,
-					issues,
-					..
-				})
-			}) if issues == vec![String::from("XY-1")]
 		));
 	}
 

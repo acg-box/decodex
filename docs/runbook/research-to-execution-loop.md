@@ -4,12 +4,12 @@ Purpose: Operate and inspect the natural-language research-to-execution loop wit
 turning latent research into automatic execution.
 
 Read this when: A user asks Decodex to research something, promotes the result, or
-needs to inspect why only part of the resulting work queued.
+needs to inspect why only part of the resulting work is dispatchable.
 
 Not this document: The normative schema or runtime invariants. Use
 [`../spec/loop-runtime.md`](../spec/loop-runtime.md) for the authority contract.
 
-Covers: Latent research contracts, promotion, Execution Program queue shaping,
+Covers: Latent research contracts, promotion, Execution Program dispatch readiness,
 phase-goal validation, independent review, guardrails, and harness improvement
 evidence.
 
@@ -39,8 +39,8 @@ evidence.
    ```
 
    Promotion records the accepted Decision Contract. It authorizes the runtime to
-   shape an internal Execution Program, but it is still not a request to queue every
-   possible node.
+   shape an internal Execution Program, but it is still not a request to dispatch
+   every possible node.
 
 3. Inspect Execution Program readiness.
 
@@ -50,8 +50,9 @@ evidence.
 
    Check the execution-program summary for ready, blocked, paused, active, and
    completed counts. Only ready nodes mapped to startable issues, without active,
-   opt-out, needs-attention, terminal-state, dependency, or conflict blockers may
-   receive or retain `decodex:queued:decodex`.
+   opt-out, needs-attention, terminal-state, dependency, or conflict blockers become
+   directly dispatchable by the Program scheduler. Program readiness must not apply,
+   retain, remove, or depend on `decodex:queued:decodex`.
 
 4. Treat phase-goal completion as a validation boundary.
 
@@ -92,7 +93,7 @@ flow when the lane evidence shows all of the following:
 
 - research output stays latent until promotion;
 - promotion creates an internal source of truth for execution shape;
-- only ready nodes get the service queue label;
+- only ready mapped nodes become directly dispatchable by the Program scheduler;
 - child-goal completion triggers validation and review instead of terminal success;
 - repair churn has bounded guardrails;
 - harness telemetry produces at least one concrete fixture, prompt, or contract

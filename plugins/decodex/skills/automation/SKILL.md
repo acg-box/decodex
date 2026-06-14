@@ -11,7 +11,7 @@ Operate Decodex as the retained-lane control plane for automatic development.
 
 Automation starts only after execution authority exists. Natural-language `research X`
 may create a latent Decision Contract, but latent research must not dispatch retained
-lanes, set Codex goals, mutate tracker state, or apply queue labels until a later
+lanes, set Codex goals, mutate tracker state, or create Program/queue intake until a later
 promotion request clearly accepts the contract.
 
 ## Read First
@@ -32,12 +32,14 @@ promotion request clearly accepts the contract.
    request, or normal issue brief that grants implementation authority.
 2. Inspect current state with `decodex status`, `decodex status --json`, or
    `decodex lane inspect <ISSUE>` before mutating anything.
-3. Queue only ready issues with `decodex:queued:<service-id>`. Use the `labels` skill
-   for Decodex Linear labels.
-   blocked, stale, paused, active, terminal, or unmapped internal nodes remain
-   unqueued.
-4. Request `POST /api/linear-scan` after creating or relabeling queued work when the
-   scheduler should observe it before the next 5-minute poll.
+3. For accepted Program work, use Program Intake (`decodex intake goal --apply` or
+   `decodex intake issues --apply`) and let the scheduler directly dispatch ready
+   mapped nodes. Blocked, stale, paused, active, terminal, or unmapped internal nodes
+   remain held.
+4. For ordinary non-Program issues, queue only ready issues with
+   `decodex:queued:<service-id>` and use the `labels` skill for Decodex Linear labels.
+   Request `POST /api/linear-scan` only when ordinary tracker label changes should be
+   observed before the next poll.
 5. Let retained lanes finish through runtime-owned review, repair, handoff, landing,
    closeout, and cleanup unless the operator explicitly moves the lane to a manual
    path.
@@ -67,8 +69,11 @@ cargo run -p decodex --bin decodex -- serve
 
 ## Required Signals
 
-- Intake starts from `decodex:queued:<service-id>` and active ownership uses
-  `decodex:active:<service-id>`.
+- Ordinary issue intake starts from `decodex:queued:<service-id>` and active ownership
+  uses `decodex:active:<service-id>`.
+- Program Intake starts from persisted Execution Programs. Ready mapped nodes dispatch
+  directly with `program` dispatch mode; the scheduler does not apply, retain, or
+  remove service queue labels for Program readiness.
 - `decodex:manual-only` opts out of automation.
 - `decodex:needs-attention` is a human-required stop that automation must not silently
   retry. The only runtime-owned clear path is the explicit review-handoff rebind
@@ -94,7 +99,7 @@ cargo run -p decodex --bin decodex -- serve
 
 ## Boundaries
 
-- Do not expose graph ids, DAG edge editing, hidden goal ids, or queue-label mechanics
+- Do not expose graph ids, DAG edge editing, hidden goal ids, or Program dispatch mechanics
   as the ordinary user workflow.
 - Do not directly edit runtime DB rows, kill hidden `_attempt` children, or mutate
   Linear state to simulate lane controls.
