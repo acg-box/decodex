@@ -1,0 +1,47 @@
+{
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27504",
+  "repo": "openai/codex",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "title": "feat: add secret auth storage configuration",
+        "url": "https://github.com/openai/codex/pull/27504",
+        "meta": "Merged 2026-06-12T19:15:22Z"
+      },
+      {
+        "kind": "pull_request",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27504",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27504.review.json"
+      }
+    ]
+  },
+  "observed_change": "Codex adds a stable `secret_auth_storage` feature and `AuthKeyringBackendKind` config resolution so auth credential storage can select direct keyring or encrypted-local secrets backends, with Windows defaulting to secrets.",
+  "public_signal_decision": "defer",
+  "control_plane_impact": "compat_risk",
+  "publisher_angle": "watch_note",
+  "confidence": "confirmed",
+  "evidence": [
+    "The upstream review records `secret_auth_storage`, `AuthKeyringBackendKind`, bootstrap resolution, managed feature requirements, schema updates, and tests.",
+    "The PR body says this is the independently reviewable configuration layer before auth and secrets implementation follow-ups.",
+    "The feature is stable, defaults on for Windows, and maps to the encrypted-local secrets backend when enabled.",
+    "Bootstrap auth backend resolution applies managed feature requirements before a full Config exists.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27504.review.json`."
+  ],
+  "candidate_followups": [
+    "Audit Decodex managed config and auth-inspection paths for assumptions that Codex auth always uses direct OS keyring storage.",
+    "Preserve `secret_auth_storage` when reading or writing Codex feature configuration, especially for Windows and managed-requirement contexts.",
+    "Evaluate the auth-storage stack as a whole with PRs #27535, #27539, and #27541 before filing implementation work."
+  ],
+  "social_notes": [
+    "Use deferred watch-note framing because PR #27504 is only the configuration layer.",
+    "Do not imply CLI auth, MCP OAuth, TUI, or app-server secret storage behavior shipped in this PR alone.",
+    "Combine with later source-backed auth-storage reviews for any stronger public explanation."
+  ],
+  "caveats": [
+    "The PR explicitly says auth, secrets, MCP, CLI, TUI, and app-server implementation remains in follow-ups.",
+    "The compatibility risk becomes concrete when downstream code consumes the follow-up auth-storage implementation."
+  ]
+}
