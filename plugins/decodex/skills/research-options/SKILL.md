@@ -1,44 +1,15 @@
 ---
 name: research-options
-description: Use after Decodex research evidence collection to compare realistic implementation, architecture, or policy options with evidence-grounded tradeoffs before judgment.
+description: Use when research needs option comparison.
 ---
 
 # Decodex Research Options
 
-## Goal
+Force a real choice. Read `../../references/research-method.md` for the full option
+checklist.
 
-Force a real choice. A Decodex research answer is not decision-ready merely because one
-plan sounds plausible.
-
-## Option Comparison
-
-Include realistic options such as:
-
-- keep current behavior or status quo
-- minimal patch
-- architecture-level redesign
-- staged migration
-- explicit no-go or defer outcome
-
-For each option, record:
-
-- what changes
-- evidence supporting it
-- tradeoffs and risks
-- what it would make easier
-- what it would make harder
-- why it is selected or rejected
-
-## Decision Contract Mapping
-
-Use `research_options` for option records. A `decision_ready` result must have at least
-one realistic option comparison and should preserve rejected alternatives when they
-would otherwise be rediscovered later.
-
-## Boundaries
-
+- Compare realistic options such as status quo, minimal patch, redesign, migration,
+  or no-go/defer.
+- State what changes, evidence, risks, tradeoffs, and selected/rejected rationale.
 - Do not compare straw-man options.
-- Do not select an option without tying the decision to evidence or explicit
-  assumptions.
-- Do not expand into executable issue briefs until the selected option survives
-  judgment and challenge.
+- Do not write executable briefs before judgment and challenge.
