@@ -1,0 +1,63 @@
+{
+  "candidate_refs": {
+    "release_deltas": [
+      "site/src/content/release-deltas/openai-codex-latest.json"
+    ],
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-rust-v0-140-0-alpha-19-operator-thread.json"
+    ],
+    "source_urls": [
+      "https://github.com/openai/codex/releases/tag/rust-v0.140.0-alpha.19",
+      "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.18...rust-v0.140.0-alpha.19",
+      "https://github.com/openai/codex/pull/28032",
+      "https://github.com/openai/codex/pull/27607"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-28001.json",
+      "artifacts/github/impact/openai-codex-pr-28032.json",
+      "artifacts/github/impact/openai-codex-pr-27607.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-28001.review.json",
+      "artifacts/github/reviews/openai-codex-pr-28032.review.json",
+      "artifacts/github/reviews/openai-codex-pr-27607.review.json"
+    ]
+  },
+  "channel": "x",
+  "controller_account": "hackink",
+  "day": "2026-06-15",
+  "duplicate_keys": [
+    "x:decodexspace:openai-codex-rust-v0-140-0-alpha-19:alpha18-alpha19:thread",
+    "openai-codex-rust-v0-140-0-alpha-19-operator-thread",
+    "rust-v0.140.0-alpha.19",
+    "0.140.0-alpha.19",
+    "alpha.18 -> alpha.19",
+    "https://github.com/openai/codex/compare/rust-v0.140.0-alpha.18...rust-v0.140.0-alpha.19",
+    "https://github.com/openai/codex/pull/28032",
+    "https://github.com/openai/codex/pull/27607",
+    "PathUri",
+    "dual App/MCP plugin routing"
+  ],
+  "evidence_notes": [
+    "Checked social_post/v1 records contain one published 2026-06-15 post for @decodexspace and no published or blocked record for this idempotency key.",
+    "Checked social_publish_reservation/v1 records contain no active reservation for this idempotency key.",
+    "Open GitHub PR scan found no active publication PR touching this candidate or idempotency key after PR #386 landed.",
+    "Chrome account readback showed active X account @decodexspace before reservation.",
+    "Chrome profile readback for @decodexspace showed no alpha.19, PathUri, PR #28032, PR #27607, or alpha.18 -> alpha.19 duplicate in recent profile posts.",
+    "Supporting X search for from:decodexspace alpha.19 / PathUri / 28032 / 27607 returned no results; profile readback remains the primary duplicate evidence."
+  ],
+  "expires_at": "2026-06-15T15:01:41Z",
+  "idempotency_key": "x:decodexspace:openai-codex-rust-v0-140-0-alpha-19:alpha18-alpha19:thread",
+  "mode": "thread",
+  "owner": {
+    "automation_id": "decodex-x-publisher",
+    "branch": "automation/x-publisher-20260615-alpha19",
+    "run_started_at": "2026-06-15T13:01:41Z"
+  },
+  "reserved_at": "2026-06-15T13:01:41Z",
+  "schema": "social_publish_reservation/v1",
+  "slug": "openai-codex-rust-v0-140-0-alpha-19-operator-thread",
+  "status": "active",
+  "target_account": "decodexspace",
+  "timezone": "Asia/Shanghai"
+}
