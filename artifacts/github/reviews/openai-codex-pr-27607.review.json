@@ -1,0 +1,71 @@
+{
+  "adoption_opportunity": "Audit Decodex plugin and MCP routing assumptions so App declarations, connector IDs, and MCP server names stay distinct when deciding which surfaces to expose under ChatGPT/SIWC auth.",
+  "caveats": "The PR intentionally preserves existing public effective App outputs as deduped connector IDs; the compatibility-sensitive detail is the retained App declaration name used for MCP conflict checks.",
+  "changed_surfaces": [
+    "plugin App metadata model",
+    "core plugin manager auth projection",
+    "app-server plugin install filtering",
+    "explicit plugin mention behavior under ChatGPT/SIWC auth",
+    "plugin capability summary generation",
+    "plugin App/MCP regression tests"
+  ],
+  "community_value": "High for plugin authors and operator tooling because dual App/MCP plugins can keep non-conflicting MCP servers available while ChatGPT/SIWC prefers the App route for matching names.",
+  "compatibility_risk": "Moderate for clients or Control Plane code that assumed plugin Apps were only connector IDs or that ChatGPT/SIWC auth hides every MCP server from a plugin that also declares an App.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "High. Decodex tracks plugin, MCP, and app-route behavior, and this changes the source identity needed to reason about App-vs-MCP conflicts.",
+  "deprecated_or_breaking_notes": "Upstream changes `LoadedPlugin.apps` from connector IDs to `AppDeclaration` records internally; callers that need connector IDs must derive them explicitly.",
+  "evidence": [
+    "PR #27607 says ChatGPT/SIWC sessions should use an App route only when a plugin exposes an App and MCP route for the same name, while a separate MCP server such as `foo2` remains available.",
+    "`codex-rs/plugin/src/lib.rs` adds `AppDeclaration` with `name`, `connector_id`, and `category`, plus `app_connector_ids_from_declarations` for existing connector-id projections.",
+    "`codex-rs/plugin/src/load_outcome.rs` changes `LoadedPlugin.apps` from `Vec<AppConnectorId>` to `Vec<AppDeclaration>`.",
+    "`codex-rs/app-server/src/request_processors/plugins.rs` loads App declarations, derives connector IDs for existing app auth checks, and keeps declaration names available for install filtering.",
+    "`codex-rs/core-plugins/src/manager.rs` switches auth projection from `load_plugin_app_metadata` to declaration-aware `load_plugin_apps`.",
+    "`codex-rs/core/tests/suite/plugins.rs` adds `explicit_plugin_mentions_keep_non_conflicting_mcp_for_chatgpt_auth`, covering the non-conflicting MCP path.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27607.json` records 7 changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "The App declaration versus MCP server-name split affects Decodex plugin and Control Plane compatibility assumptions.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "The change has a concrete public operator angle for dual App/MCP plugin behavior under ChatGPT/SIWC auth.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex now preserves plugin App declaration names and suppresses only matching-name plugin MCP servers for ChatGPT/SIWC auth instead of hiding all MCP servers from a dual App/MCP plugin.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-15T12:08:04Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27607",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-14T00:53:09Z",
+        "title": "[codex] Dedupe plugin MCPs by app declaration name",
+        "url": "https://github.com/openai/codex/pull/27607"
+      },
+      {
+        "kind": "commit",
+        "title": "Dedupe plugin MCPs by app declaration name",
+        "url": "https://github.com/openai/codex/commit/6090e9d2498277d9f8720d860e6e89142d9e45a9"
+      },
+      {
+        "kind": "commit",
+        "title": "Use app declarations for plugin app parsing",
+        "url": "https://github.com/openai/codex/commit/97a3f22d9eaa499ee384674a4f47788a2c0e219e"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "6090e9d2498277d9f8720d860e6e89142d9e45a9",
+      "97a3f22d9eaa499ee384674a4f47788a2c0e219e",
+      "8235bab021b5b77dd1999487ab3082fafca3069a"
+    ],
+    "subject_id": "27607",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "For a dual-surface plugin under ChatGPT/SIWC auth, matching App and MCP route names prefer the App route, while separate MCP server names remain available."
+}
