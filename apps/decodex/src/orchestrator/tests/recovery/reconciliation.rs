@@ -1,3 +1,15 @@
+use serde::Serialize;
+
+struct StalledPhaseGoalOutcome {
+	run_status: String,
+	retry_kind: Option<String>,
+	retry_ready_at: Option<i64>,
+	comments: Vec<String>,
+	label_additions_empty: bool,
+	event_types: Vec<String>,
+	handoff_next_recorded: bool,
+}
+
 fn reconciliation_sample_service_owned_issue(state_name: &str) -> TrackerIssue {
 	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
 
@@ -804,6 +816,343 @@ fn active_run_reconciliation_allows_running_model_execution_until_model_timeout(
 				ActiveRunDisposition::Stalled{ idle_for }
 					if idle_for >= MODEL_EXECUTION_IDLE_TIMEOUT
 			)
+		}));
+}
+
+#[test]
+fn active_run_reconciliation_defers_live_repo_gate_even_with_dirty_worktree() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let run_id = "run-live-repo-gate";
+	let worktree_path = config.worktree_root().join("PUB-101-repo-gate");
+
+	git_status_success(
+		config.repo_root(),
+		&[
+			"worktree",
+			"add",
+			"-b",
+			"x/pubfi-pub-101-repo-gate",
+			".worktrees/PUB-101-repo-gate",
+			"main",
+		],
+	);
+
+	fs::write(worktree_path.join("README.md"), "repo gate is still running\n")
+		.expect("tracked worktree file should change");
+
+	state_store
+		.record_run_attempt(run_id, &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, run_id, "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101-repo-gate",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	state::write_run_operation_marker_for_process(
+		&worktree_path,
+		run_id,
+		1,
+		process::id(),
+		RUN_OPERATION_REPO_GATE,
+	)
+	.expect("live repo-gate marker should write");
+
+	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
+		.expect("marker should load")
+		.expect("marker should exist");
+	let last_activity = marker.last_activity_unix_epoch().expect("marker should record activity");
+	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		None,
+		last_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+	)
+	.expect("active run inspection should succeed");
+
+	assert!(
+		actions.is_empty(),
+		"live repo gate operation should retain scheduler ownership instead of attention"
+	);
+
+	state::write_run_operation_marker_for_process(
+		&worktree_path,
+		run_id,
+		1,
+		u32::MAX,
+		RUN_OPERATION_REPO_GATE,
+	)
+	.expect("stopped repo-gate marker should write");
+
+	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
+		.expect("marker should reload")
+		.expect("marker should exist");
+	let last_activity = marker.last_activity_unix_epoch().expect("marker should record activity");
+	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		None,
+		last_activity + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+	)
+	.expect("active run inspection should succeed");
+
+	assert!(actions.iter().any(|action| {
+		action.issue.id == issue.id
+			&& matches!(
+				action.disposition,
+				ActiveRunDisposition::StalledRetainedPartialProgress{ idle_for }
+					if idle_for >= ACTIVE_RUN_IDLE_TIMEOUT
+			)
+	}));
+}
+
+#[test]
+fn exited_child_reconciliation_defers_dirty_worktree_with_retry_marker() {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let active_label = tracker::automation_active_label(TEST_SERVICE_ID);
+	let issue = sample_issue("In Progress", &[active_label.as_str()]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let run_id = "run-failed-with-retry-marker";
+	let worktree_path = config.worktree_root().join("PUB-101-retry-marker");
+
+	git_status_success(
+		config.repo_root(),
+		&[
+			"worktree",
+			"add",
+			"-b",
+			"x/pubfi-pub-101-retry-marker",
+			".worktrees/PUB-101-retry-marker",
+			"main",
+		],
+	);
+
+	fs::write(worktree_path.join("README.md"), "retry still owns this patch\n")
+		.expect("tracked worktree file should change");
+
+	state_store
+		.record_run_attempt(run_id, &issue.id, 1, "failed")
+		.expect("run attempt should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101-retry-marker",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	state::write_run_retry_schedule(&worktree_path, run_id, 1, "failure", 1)
+		.expect("retry schedule marker should write");
+
+	state_store
+		.append_event(run_id, 1, "turn/completed", "{\"status\":\"completed\"}")
+		.expect("protocol event should record");
+
+	let actions = orchestrator::inspect_exited_daemon_child_reconciliation_at(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		&issue.id,
+		run_id,
+		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1,
+	)
+	.expect("exited child reconciliation should evaluate");
+
+	assert!(
+		actions.is_empty(),
+		"retry marker should keep failed dirty worktree under retry scheduler ownership"
+	);
+}
+
+fn record_active_validation_ready_phase_goal_progress(
+	state_store: &StateStore,
+	issue_id: &str,
+	run_id: &str,
+	progress_phase: &str,
+	blockers: impl Serialize,
+) {
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			issue_id,
+			run_id,
+			1,
+			"phase_goal_set",
+			serde_json::json!({
+				"schema": "decodex.phase_goal_signal/1",
+				"phase": "implement_to_validation_ready",
+				"payload": {
+					"phase": "implement_to_validation_ready",
+					"status": "active",
+				},
+			}),
+		)
+		.expect("phase goal should record");
+	state_store
+		.append_private_execution_event(
+			TEST_SERVICE_ID,
+			issue_id,
+			run_id,
+			1,
+			"progress_checkpoint",
+			serde_json::json!({
+				"phase": progress_phase,
+				"blockers": blockers,
+				"verification": ["cargo make check"],
+			}),
+		)
+		.expect("progress checkpoint should record");
+}
+
+fn apply_stalled_phase_goal_reconciliation(
+	progress_phase: &str,
+	blockers: impl Serialize,
+) -> StalledPhaseGoalOutcome {
+	let (_temp_dir, config, workflow) = temp_project_layout();
+	let issue = sample_issue("In Progress", &[]);
+	let tracker = FakeTracker::new(vec![issue.clone()]);
+	let state_store = StateStore::open_in_memory().expect("state store should open");
+	let worktree_manager =
+		WorktreeManager::new("pubfi", config.repo_root(), config.worktree_root());
+	let run_id = "run-stalled-phase-goal";
+	let worktree_path = config.worktree_root().join("PUB-101-phase-goal");
+
+	git_status_success(
+		config.repo_root(),
+		&[
+			"worktree",
+			"add",
+			"-b",
+			"x/pubfi-pub-101-phase-goal",
+			".worktrees/PUB-101-phase-goal",
+			"main",
+		],
+	);
+
+	fs::write(worktree_path.join("README.md"), "validation-ready retained patch\n")
+		.expect("tracked worktree file should change");
+
+	state_store
+		.record_run_attempt(run_id, &issue.id, 1, "running")
+		.expect("run attempt should record");
+	state_store
+		.upsert_lease("pubfi", &issue.id, run_id, "In Progress")
+		.expect("lease should record");
+	state_store
+		.upsert_worktree(
+			"pubfi",
+			&issue.id,
+			"x/pubfi-pub-101-phase-goal",
+			&worktree_path.display().to_string(),
+		)
+		.expect("worktree mapping should record");
+
+	record_active_validation_ready_phase_goal_progress(
+		&state_store,
+		&issue.id,
+		run_id,
+		progress_phase,
+		blockers,
+	);
+
+	state_store
+		.append_event(run_id, 1, "turn/diff/updated", "{\"changes\":1}")
+		.expect("stalled dirty issue protocol event should record");
+
+	let now =
+		OffsetDateTime::now_utc().unix_timestamp() + ACTIVE_RUN_IDLE_TIMEOUT.as_secs() as i64 + 1;
+	let actions = orchestrator::inspect_active_run_reconciliation_at(
+		&tracker,
+		&config,
+		&workflow,
+		&state_store,
+		None,
+		now,
+	)
+	.expect("stalled phase-goal inspection should succeed");
+
+	assert_eq!(actions.len(), 1);
+	assert!(matches!(
+		actions[0].disposition,
+		ActiveRunDisposition::StalledRetainedPartialProgress { .. }
+	));
+
+	orchestrator::apply_active_run_reconciliation(
+		&tracker,
+		&config,
+		&state_store,
+		&worktree_manager,
+		actions,
+	)
+	.expect("phase-goal reconciliation should apply");
+
+	let run_status = state_store
+		.run_attempt(run_id)
+		.expect("run attempt lookup should succeed")
+		.expect("run attempt should exist")
+		.status()
+		.to_owned();
+	let marker = state::read_run_activity_marker_snapshot(&worktree_path)
+		.expect("activity marker should load")
+		.expect("activity marker should exist");
+	let events = state_store
+		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, run_id, 1)
+		.expect("private events should load");
+
+	StalledPhaseGoalOutcome {
+		run_status,
+		retry_kind: marker.retry_kind().map(str::to_owned),
+		retry_ready_at: marker.retry_ready_at_unix_epoch(),
+		comments: tracker.comments.borrow().clone(),
+		label_additions_empty: tracker.label_additions.borrow().is_empty(),
+		event_types: events.iter().map(|event| event.event_type().to_owned()).collect(),
+		handoff_next_recorded: events.iter().any(|event| {
+			event.event_type() == "phase_goal_next"
+				&& event.payload()["phase"] == "handoff_evidence"
+		}),
+	}
+}
+
+#[test]
+fn stalled_retained_phase_goal_reconciliation_schedules_continuation_without_attention() {
+	let outcome = apply_stalled_phase_goal_reconciliation("verifying", serde_json::json!([]));
+
+	assert_eq!(outcome.run_status, CONTINUATION_PENDING_RUN_STATUS);
+	assert_eq!(outcome.retry_kind.as_deref(), Some("continuation"));
+	assert!(outcome.retry_ready_at.is_some());
+	assert!(outcome.comments.is_empty());
+	assert!(outcome.label_additions_empty);
+	assert!(outcome.event_types.iter().any(|event| event == "phase_goal_recovery"));
+	assert!(outcome.handoff_next_recorded);
+}
+
+#[test]
+fn stalled_retained_phase_goal_reconciliation_preserves_attention_when_blocked() {
+	let outcome = apply_stalled_phase_goal_reconciliation(
+		"blocked",
+		serde_json::json!(["external evidence is missing"]),
+	);
+
+	assert_ne!(outcome.retry_kind.as_deref(), Some("continuation"));
+	assert!(outcome.comments.iter().any(|comment| {
+		comment.contains("decodex retained partial progress and needs attention")
+			&& comment.contains("partial_progress_retained")
 	}));
 }
 

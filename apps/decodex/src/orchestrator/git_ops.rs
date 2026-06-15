@@ -615,14 +615,81 @@ fn ensure_repo_gate_left_no_tracked_changes(cwd: &Path, phase: &str) -> Result<(
 	Ok(())
 }
 
+fn read_repo_gate_tracked_diff(cwd: &Path, phase: &str) -> Result<String> {
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(cwd)
+		.args(["diff", "--no-ext-diff", "--binary", "HEAD", "--"])
+		.output()
+		.map_err(|error| {
+			Report::new(RepoGateFailure::new(
+				RepoGateFailureKind::CommandSpawnFailed,
+				format!(
+					"Failed to spawn tracked-file diff check after repo gate {phase} in `{}`: {error}",
+					cwd.display()
+				),
+			))
+		})?;
+
+	if !output.status.success() {
+		let output_text = repo_gate_output_text(&output);
+
+		return Err(Report::new(RepoGateFailure::new(
+			repo_gate_failure_kind_for_output(
+				RepoGateFailureKind::CleanlinessCheckFailed,
+				&output_text,
+			),
+			format!(
+				"Failed to inspect tracked-file diff after repo gate {phase} in `{}`: {}",
+				cwd.display(),
+				output_text
+			),
+		)));
+	}
+
+	Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn ensure_repo_gate_preserved_tracked_diff(
+	cwd: &Path,
+	phase: &str,
+	before_diff: &str,
+) -> Result<()> {
+	let after_diff = read_repo_gate_tracked_diff(cwd, phase)?;
+
+	if after_diff == before_diff {
+		return Ok(());
+	}
+
+	let output = run_repo_gate_cleanliness_check_with_git(std::ffi::OsStr::new("git"), cwd)?;
+	let output_text = repo_gate_output_text(&output);
+	let dirty_entries = output_text.trim();
+
+	Err(Report::new(RepoGateFailure::new(
+		RepoGateFailureKind::TrackedRewritesLeft,
+		format!(
+			"Repo gate {phase} rewrote tracked files in `{}`; commit or revert these changes before continuing:\n{}",
+			cwd.display(),
+			dirty_entries
+		),
+	)))
+}
+
 fn run_repo_gate_commands(
 	canonicalize_commands: &[String],
 	verify_commands: &[String],
 	cwd: &Path,
 ) -> Result<()> {
+	let baseline_tracked_diff = read_repo_gate_tracked_diff(cwd, "baseline")?;
+
 	run_canonicalize_commands(canonicalize_commands, cwd)?;
 	run_verify_commands(verify_commands, cwd)?;
-	ensure_repo_gate_left_no_tracked_changes(cwd, "verification")?;
+
+	if baseline_tracked_diff.is_empty() {
+		ensure_repo_gate_left_no_tracked_changes(cwd, "verification")?;
+	} else {
+		ensure_repo_gate_preserved_tracked_diff(cwd, "verification", &baseline_tracked_diff)?;
+	}
 
 	Ok(())
 }

@@ -290,17 +290,18 @@ the repo gate and select the next phase. An `issue_progress_checkpoint`, final c
 text, or "await next phase" statement is evidence only; it is not a phase exit and
 must not be treated as a substitute for goal completion.
 
-If an app-server run fails or a supervised child exits unsuccessfully while the latest
-private phase-goal signal for that same run is still an `active` implementation or
-repair phase, Decodex must run the registered repo gate before converting retained
-tracked changes into human attention. When that runtime-owned gate returns a
-continuation transition, Decodex records `phase_goal_recovery`, persists the next
-phase goal (`handoff_evidence` after validation pass or `repair_validation_failures`
-after continued-repair validation failure), marks the attempt as
-`continuation_pending`, and schedules normal continuation re-entry. This recovery path
-does not apply to `handoff_evidence`, explicit manual-attention terminal intent,
-unsupported phase-goal app-server methods, repo-gate human-attention failures, or
-runs with no current active phase-goal signal.
+If an app-server run fails, a supervised child exits unsuccessfully, or active-run
+reconciliation finds a stalled retained lane while the latest private phase-goal signal
+for that same run is still an `active` implementation or repair phase, Decodex must
+run the registered repo gate before converting retained tracked changes into human
+attention. When that runtime-owned gate returns a continuation transition, Decodex
+records `phase_goal_recovery`, persists the next phase goal (`handoff_evidence` after
+validation pass or `repair_validation_failures` after continued-repair validation
+failure), marks the attempt as `continuation_pending`, and schedules normal
+continuation re-entry. This recovery path does not apply to `handoff_evidence`,
+explicit manual-attention terminal intent, unsupported phase-goal app-server methods,
+repo-gate human-attention failures, runs with no current active phase-goal signal,
+authority decision requests, or newer progress checkpoints that record blockers.
 
 App-server JSON-RPC transport failures keep the phase where the disconnect occurred.
 Disconnects before a durable thread session is attached (`initialize`,
@@ -417,10 +418,12 @@ When `decodex` runs the repo-native gate during `validating`, it must preserve t
 
 - `canonicalize_commands` non-zero exit: continued repair in the retained lane
 - `verify_commands` non-zero exit: continued repair in the retained lane
-- repo gate leaves tracked-file rewrites behind after its commands complete: retained partial progress that requires operator attention
+- repo gate changes the tracked-file diff from the pre-gate implementation baseline
+  after its commands complete: retained partial progress that requires operator
+  attention
 - repo-gate command spawn failures or tracked-file cleanliness inspection failures: human-attention failure path immediately
 
-The continued-repair classes above are ordinary bounded churn: the coding agent should keep repairing code and rerun the repo gate rather than requesting `manual_attention` just because the gate has not passed yet. A tracked-rewrite residue after the gate commands have completed is different: Decodex must not infer repository file meaning, generated-artifact ownership, or fixture policy. It must preserve the retained worktree, write `error_class = "partial_progress_retained"` with the repo-gate source class in evidence, and stop until an operator decides whether to finish validation and handoff or reset the patch. Human-attention exits also remain reserved for environment, toolchain, or operator-owned blockers that the coding agent cannot clear from the retained worktree alone.
+The continued-repair classes above are ordinary bounded churn: the coding agent should keep repairing code and rerun the repo gate rather than requesting `manual_attention` just because the gate has not passed yet. A tracked-rewrite residue after the gate commands have changed the pre-gate implementation diff is different: Decodex must not infer repository file meaning, generated-artifact ownership, or fixture policy. It must preserve the retained worktree, write `error_class = "partial_progress_retained"` with the repo-gate source class in evidence, and stop until an operator decides whether to finish validation and handoff or reset the patch. Human-attention exits also remain reserved for environment, toolchain, or operator-owned blockers that the coding agent cannot clear from the retained worktree alone.
 
 Continued repair is still bounded by loop guardrails. For each retryable failure,
 Decodex records local `loop_guardrail_checkpoint` evidence and updates the
@@ -796,7 +799,17 @@ After a process restart, recent-run history, active lease ownership, retained po
   budget must not force a synthetic closeout attempt number.
 - A leased issue that is still in a configured startable state during early control-plane ticks must be treated as a lane that has not finished claiming tracker ownership yet, not as an immediate non-active interruption.
 - If a running attempt exceeds the app-server idle timeout, `decodex` must treat it as stalled, stop the active run, and mark the attempt `stalled`.
-- If stalled reconciliation finds tracked changes in the retained worktree, it must classify the lane as retained partial progress directly. This path must write a human-required `needs_attention` ledger record with `error_class = "partial_progress_retained"` and `terminal_path = "retained_partial_progress"` instead of first routing the lane through `stalled_run_detected` or `terminal_failure`.
+- If stalled reconciliation finds tracked changes in the retained worktree, it must
+  first preserve current runtime ownership. A current retry marker leaves the retry
+  scheduler in charge, and a live `repo_gate` operation leaves the repo gate in
+  charge. If the lane still has an active implementation or repair phase goal and the
+  latest private progress evidence has no blockers or decision request, reconciliation
+  must run phase-goal recovery, mark the attempt `continuation_pending`, and schedule
+  continuation instead of writing human attention. Only retained tracked changes with
+  no current retry owner, no live repo gate, and no applicable phase-goal recovery
+  path are classified as retained partial progress with a human-required
+  `needs_attention` ledger record using `error_class = "partial_progress_retained"`
+  and `terminal_path = "retained_partial_progress"`.
 - If stalled reconciliation finds no tracked changes in the retained worktree, it must classify the lane as structured retryable recovery with `error_class = "stalled_run_detected"` while retry budget remains. The retry must keep active ownership, write a failure retry schedule for the same worktree, and must not add `decodex:needs-attention` until retry budget exhaustion or another terminal boundary applies.
 - If the supervised child already exited before the next control-plane tick, stalled reconciliation must still inspect the just-finished lane using recorded protocol activity and retained worktree state rather than skipping directly to generic failure handling.
 - Operator status snapshots must expose structured liveness and wait-state fields derived from runtime records plus marker breadcrumbs, including current phase, optional wait reason, current operation, last run/protocol/progress times, idle age, a soft `suspected_stall` signal, optional progress diagnostics, and any queued retry kind plus due time, so operators can distinguish active execution from continuation waits, retry backoff, early stall suspicion, and genuine hard stalls without inferring progress from filesystem churn. `last_progress_at` is meaningful-work progress only: tool calls, file or diff changes, plan/model output, repo validation, PR/review/terminal lifecycle, or other explicit work events may refresh it, but account, rate-limit, phase-goal, passive status, warning, token-usage, heartbeat, or similar non-work protocol traffic must only refresh protocol liveness. When a lane remains in `model_execution` with fresh protocol activity but stale or missing work progress and the recent protocol events are only non-work traffic, status should expose `progress_diagnostic = "protocol_only_activity"` while preserving process and protocol liveness separately.

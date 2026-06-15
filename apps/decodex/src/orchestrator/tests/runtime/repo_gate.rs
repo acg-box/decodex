@@ -29,6 +29,23 @@ fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
 }
 
 #[test]
+fn repo_gate_allows_existing_tracked_diff_when_commands_preserve_it() {
+	let (_temp_dir, config, _workflow) = temp_project_layout();
+	let repo_root = config.repo_root();
+
+	commit_worktree_change(repo_root, "tracked.txt", "before\n", "add tracked file");
+
+	fs::write(repo_root.join("tracked.txt"), "after\n")
+		.expect("tracked implementation diff should write");
+	orchestrator::run_repo_gate_commands(
+		&[],
+		&[String::from("grep -qx 'after' tracked.txt")],
+		repo_root,
+	)
+	.expect("repo gate should allow an existing implementation diff");
+}
+
+#[test]
 fn repo_gate_cleanliness_check_spawn_failures_require_human_attention() {
 	let (_temp_dir, config, _workflow) = temp_project_layout();
 	let repo_root = config.repo_root();
@@ -188,7 +205,18 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 
 #[test]
 fn active_phase_goal_tracked_rewrites_stop_instead_of_repair_continuation() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
+		&sample_workflow_markdown(
+			"pubfi",
+			&[],
+			"Phase goal validation policy.\n",
+			1,
+		)
+		.replace(
+			"canonicalize_commands = []",
+			"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
+		),
+	);
 	let repo_root = config.repo_root();
 	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
 	let state_store = StateStore::open_in_memory().expect("state store should open");

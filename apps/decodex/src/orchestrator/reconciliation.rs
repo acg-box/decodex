@@ -423,10 +423,40 @@ where
 		"Reconciling stalled run with retained partial progress."
 	);
 
+	let issue_run = stalled_reconciliation_issue_run(state_store, worktree_manager, action)?;
+	let recovered = match try_recover_stalled_retained_phase_goal(
+		project,
+		&action.workflow,
+		state_store,
+		&action.issue,
+		&issue_run,
+	) {
+		Ok(recovered) => recovered,
+		Err(error) if run_failure_requires_terminal_attention(&error) => {
+			state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
+			state_store.clear_lease(&action.issue.id)?;
+
+			handle_failure(
+				tracker,
+				project,
+				&action.workflow,
+				state_store,
+				&issue_run,
+				&error,
+			)?;
+
+			return Ok(());
+		},
+		Err(error) => return Err(error),
+	};
+
+	if recovered {
+		return Ok(());
+	}
+
 	state_store.update_run_status(action.run_attempt.run_id(), "stalled")?;
 	state_store.clear_lease(&action.issue.id)?;
 
-	let issue_run = stalled_reconciliation_issue_run(state_store, worktree_manager, action)?;
 	let worktree_path = relative_worktree_path(project, &issue_run.worktree);
 
 	write_reconciliation_operation_marker_best_effort(
@@ -450,6 +480,71 @@ where
 	)?;
 
 	Ok(())
+}
+
+fn try_recover_stalled_retained_phase_goal(
+	project: &ServiceConfig,
+	workflow: &WorkflowDocument,
+	state_store: &StateStore,
+	issue: &TrackerIssue,
+	issue_run: &IssueRunPlan,
+) -> Result<bool> {
+	write_reconciliation_operation_marker_best_effort(
+		&issue_run.worktree.path,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		RUN_OPERATION_RECONCILIATION,
+	);
+
+	let recovery = recover_active_phase_goal_continuation(
+		project,
+		workflow,
+		state_store,
+		issue_run,
+		"stalled_run_detected",
+	)?;
+	let Some(recovery) = recovery else {
+		return Ok(false);
+	};
+
+	state_store.update_run_status(&issue_run.run_id, CONTINUATION_PENDING_RUN_STATUS)?;
+	state_store.clear_lease(&issue.id)?;
+
+	write_stalled_phase_goal_continuation_retry_marker(state_store, workflow, issue_run)?;
+
+	tracing::warn!(
+		project_id = project.service_id(),
+		issue_id = issue.id,
+		issue = issue.identifier,
+		run_id = issue_run.run_id,
+		attempt = issue_run.attempt_number,
+		source_phase = recovery.source_phase.as_str(),
+		next_phase = recovery.next_phase.as_str(),
+		"Recovered stalled retained phase goal; scheduling continuation instead of manual attention."
+	);
+
+	Ok(true)
+}
+
+fn write_stalled_phase_goal_continuation_retry_marker(
+	state_store: &StateStore,
+	workflow: &WorkflowDocument,
+	issue_run: &IssueRunPlan,
+) -> Result<()> {
+	let attempt = u32::try_from(issue_run.attempt_number).unwrap_or(u32::MAX).max(1);
+	let delay = retry_delay(RetryKind::Continuation, attempt, workflow);
+	let retry_ready_at_unix_epoch = OffsetDateTime::now_utc().unix_timestamp().saturating_add(
+		i64::try_from((delay.as_millis().saturating_add(999)) / 1_000).unwrap_or(i64::MAX),
+	);
+
+	write_retry_schedule_for_run(
+		state_store,
+		&issue_run.issue.id,
+		&issue_run.run_id,
+		issue_run.attempt_number,
+		RetryKind::Continuation,
+		retry_ready_at_unix_epoch,
+	)
 }
 
 fn stalled_reconciliation_issue_run(
@@ -590,6 +685,9 @@ fn stalled_idle_duration(
 	if !matches!(run_attempt.status(), "starting" | "running") {
 		return Ok(None);
 	}
+	if stalled_reconciliation_deferred_by_marker(run_attempt, worktree_mapping)? {
+		return Ok(None);
+	}
 
 	let Some(last_activity) =
 		last_observed_run_activity_unix_epoch(state_store, run_attempt, worktree_mapping)?
@@ -660,6 +758,10 @@ fn stalled_protocol_idle_duration(
 	worktree_mapping: Option<&WorktreeMapping>,
 	now_unix_epoch: i64,
 ) -> Result<Option<Duration>> {
+	if stalled_reconciliation_deferred_by_marker(run_attempt, worktree_mapping)? {
+		return Ok(None);
+	}
+
 	let Some(last_activity) =
 		last_observed_protocol_activity_unix_epoch(state_store, run_attempt, worktree_mapping)?
 	else {
@@ -704,4 +806,41 @@ fn observed_idle_duration(last_activity_unix_epoch: i64, now_unix_epoch: i64) ->
 		.checked_sub(last_activity_unix_epoch)
 		.and_then(|idle_seconds| u64::try_from(idle_seconds).ok())
 		.map(Duration::from_secs)
+}
+
+fn stalled_reconciliation_deferred_by_marker(
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<bool> {
+	let Some(marker) = current_run_activity_marker(run_attempt, worktree_mapping)? else {
+		return Ok(false);
+	};
+
+	if marker.retry_kind().is_some() {
+		return Ok(true);
+	}
+
+	Ok(marker.current_operation() == Some(RUN_OPERATION_REPO_GATE)
+		&& marker_process_is_alive(&marker))
+}
+
+fn current_run_activity_marker(
+	run_attempt: &RunAttempt,
+	worktree_mapping: Option<&WorktreeMapping>,
+) -> Result<Option<RunActivityMarker>> {
+	let Some(worktree_mapping) = worktree_mapping else {
+		return Ok(None);
+	};
+	let Some(marker) = state::read_run_activity_marker_snapshot(worktree_mapping.worktree_path())?
+	else {
+		return Ok(None);
+	};
+
+	if marker.run_id() == run_attempt.run_id()
+		&& marker.attempt_number() == run_attempt.attempt_number()
+	{
+		return Ok(Some(marker));
+	}
+
+	Ok(None)
 }
