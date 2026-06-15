@@ -15,15 +15,16 @@ results.
 
 ## Status of `docs/research/`
 
-- `docs/research/` is the persistence root for the shipped research tooling.
+- `docs/research/` is the legacy persistence root for the earlier external research
+  tooling and remains a supporting evidence lane.
 - Files in `docs/research/` are machine-authored run artifacts, not primary
   documentation lanes.
 - A research run may contain useful evidence, alternatives, and objections, but it does
   not by itself define repository truth.
-- For Decodex-specific loop-runtime work, `decodex research compile` supersedes this
-  artifact lane as the runtime-owned path. It stores a
-  `decodex.decision_contract/1` payload in local runtime SQLite and leaves the result
-  latent until explicit promotion.
+- For Decodex-specific loop-runtime work, the Decodex `research*` skills plus
+  `decodex research compile` supersede this artifact lane as the runtime-owned path.
+  They store a `decodex.decision_contract/1` payload in local runtime SQLite and leave
+  the result latent until explicit promotion.
 
 ## Promotion rules
 
@@ -41,6 +42,8 @@ results.
 
 ## Practical reading rule
 
-- Read `docs/research/` when you need the original evidence trail.
+- Read `docs/research/` when you need an older evidence trail.
 - Read one of the four primary documentation lanes when you need current repository
   guidance.
+- Use Decodex `research*` skills and Decision Contracts for new bounded Decodex
+  research.
