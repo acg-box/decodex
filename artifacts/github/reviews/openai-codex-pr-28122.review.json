@@ -1,0 +1,88 @@
+{
+  "adoption_opportunity": "Update Decodex Control Plane remote-exec and multi-environment handling to preserve selected environment cwd as a `PathUri`, use the selected environment's discovered native shell when present, and classify unsupported foreign cwd permission requests as a cross-host path boundary instead of a transient exec failure.",
+  "caveats": "This PR improves remote-environment cwd and shell selection, but it still leaves some native-only request-permissions boundaries in place and falls back to the session shell when the remote environment has not reported a shell.",
+  "changed_surfaces": [
+    "core `TurnEnvironmentSelection.cwd` representation",
+    "app-server thread and turn request processors",
+    "core environment-selection resolution",
+    "session request-permissions cwd handling",
+    "unified exec command shell selection",
+    "remote Windows exec-server Wine test fixture",
+    "core protocol and remote-environment tests"
+  ],
+  "community_value": "High for remote executor and multi-environment users because the change moves Codex closer to target-native cwd and shell handling instead of forcing local-host assumptions onto remote environments.",
+  "compatibility_risk": "High. Integrations that construct `TurnEnvironmentSelection` or reason about remote-environment cwd as a host-local absolute path must now preserve `PathUri` values and handle explicit native-only rejection at permission boundaries.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "High. Decodex Control Plane remote execution depends on selecting the right environment cwd and shell, especially when the executor host differs from the operator host.",
+  "deprecated_or_breaking_notes": "`TurnEnvironmentSelection.cwd` changes from `AbsolutePathBuf` to `PathUri`; app-server request processors convert local cwd values with `PathUri::from_abs_path`, and core converts back to native absolute paths only at native-only consumer boundaries.",
+  "evidence": [
+    "PR #28122 says Codex changes `TurnEnvironmentSelection.cwd` from `AbsolutePathBuf` to `PathUri`, preserves remote primary cwd, prefers the selected environment's discovered shell, and rejects unsupported foreign cwd values at request-permissions boundaries.",
+    "`codex-rs/protocol/src/protocol.rs` changes the turn environment selection cwd field to `PathUri` and adds local-environment conversion logic.",
+    "`codex-rs/app-server/src/request_processors/thread_processor.rs` and `turn_processor.rs` convert app-server local environment cwd values with `PathUri::from_abs_path` before creating `TurnEnvironmentSelection` values.",
+    "`codex-rs/core/src/environment_selection.rs` resolves selected cwd values through `to_abs_path()` only where the current consumer still requires a native host path.",
+    "`codex-rs/core/src/tools/handlers/unified_exec/exec_command.rs` now chooses the turn environment shell when available and falls back to the session shell otherwise.",
+    "`codex-rs/core/src/session/mod.rs` returns a default permission response and warning when request permissions receive a cwd URI that is not native to the Codex host.",
+    "`codex-rs/core/tests/remote_env_windows/remote_env_windows_test.rs` extends the Wine-backed remote Windows fixture to run PowerShell in `C:\\windows` and records app-server rejection for native Windows cwd at current boundaries.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-28122.json` records 22 changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "Remote-environment cwd and shell semantics directly affect Decodex app-server and Control Plane compatibility.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "The change has a clear operator-facing public angle around cross-OS remote execution and native shell/cwd handling.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex changes turn environment cwd handling to preserve `PathUri` values and makes unified exec prefer the selected remote environment's native shell.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-14T18:08:07Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-28122",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-14T06:07:47Z",
+        "title": "[codex] exec-server honors remote environment cwd and shell",
+        "url": "https://github.com/openai/codex/pull/28122"
+      },
+      {
+        "kind": "commit",
+        "title": "core: carry turn environment cwd as PathUri",
+        "url": "https://github.com/openai/codex/commit/a2a917b071ce164777333349163005720c8c5e7f"
+      },
+      {
+        "kind": "commit",
+        "title": "core: honor remote environment cwd and shell",
+        "url": "https://github.com/openai/codex/commit/019ff65142c38263fd685f9692670aeeb560c5c6"
+      },
+      {
+        "kind": "commit",
+        "title": "tests: send native Windows cwd through app server",
+        "url": "https://github.com/openai/codex/commit/763357aaa79a5fb13f84a5013deb2ff284a67bd4"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "a2a917b071ce164777333349163005720c8c5e7f",
+      "019ff65142c38263fd685f9692670aeeb560c5c6",
+      "5bada3f2a4f18a252cd65d89f461d3ff3c9f4b1f",
+      "2a8b87ed44215e4bf0bcce6b778038874c720b51",
+      "310ccf29f684a7a19ae65ea790bd465cfe74cb2a",
+      "763357aaa79a5fb13f84a5013deb2ff284a67bd4",
+      "ce4102787545b9131e32619e43ed89dc0ad13f12",
+      "4f6dd50b0eb01f3548c7b1403017e74c8697ef51",
+      "f4db0780fc9ef2063e29847f851759c5bd97dbe1",
+      "25644e0ec49ebf371ab45c8ae73b3cb8fd78607e",
+      "18004b9322a89dd9efc40aea3f88643cdfc55eed",
+      "716e9e32e934a3f7b868a1bc7a327524594dc81e",
+      "1a7dbd5b4ff43cdf230f8b7062e6c1618ed458dc"
+    ],
+    "subject_id": "28122",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "Remote-environment unified exec can use the selected environment's cwd URI and native shell; app-server and Control Plane clients must preserve cwd URI shape and handle current native-only permission-boundary rejection for unsupported foreign cwd values."
+}

@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Audit Decodex Control Plane paths that construct or consume `TurnEnvironmentSelection` and preserve `PathUri` instead of normalizing everything to local absolute paths.",
+    "Use selected remote-environment shell information when bridging unified exec into remote executor sessions.",
+    "Expose unsupported foreign cwd request-permissions responses as cross-host path compatibility states instead of retrying them as transient process failures."
+  ],
+  "caveats": [
+    "The PR does not make every request-permissions path foreign-host aware; native-only boundaries remain explicit.",
+    "Unified exec falls back to the session shell when the selected environment does not report a shell.",
+    "Decodex implementation work still needs a separate issue if local Control Plane code assumes selected environment cwd is always host-native."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "`TurnEnvironmentSelection.cwd` changed from `AbsolutePathBuf` to `PathUri`.",
+    "App-server thread and turn processors convert local cwd values into `PathUri` selections.",
+    "Core environment selection converts cwd URI values back to absolute paths only at native-only consumer boundaries.",
+    "Unified exec now prefers the selected environment shell and falls back to the session shell when absent.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-28122.review.json`."
+  ],
+  "observed_change": "Codex changes turn environment cwd handling to preserve `PathUri` values and makes unified exec prefer the selected remote environment's native shell.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-28122",
+  "social_notes": [
+    "Frame this as remote-exec cwd and native-shell compatibility for Control Plane integrations.",
+    "Do not imply all foreign cwd request-permissions paths are fully supported; the PR records current native-only rejection."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-14T06:07:47Z",
+        "title": "[codex] exec-server honors remote environment cwd and shell",
+        "url": "https://github.com/openai/codex/pull/28122"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-28122.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/28122"
+      }
+    ]
+  }
+}
