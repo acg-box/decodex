@@ -1023,7 +1023,7 @@ fn rejects_manual_attention_comments_with_private_or_unsupported_fields() {
 }
 
 #[test]
-fn rejects_manual_attention_comment_with_runtime_owned_retryable_error_class() {
+fn rejects_manual_attention_comment_with_runtime_owned_error_class() {
 	for error_class in [
 		"retryable_execution_failure",
 		"repo_gate_verify_failed",
@@ -1072,7 +1072,7 @@ fn rejects_manual_attention_comment_with_runtime_owned_retryable_error_class() {
 		assert!(matches!(
 			response.content_items.as_slice(),
 			[DynamicToolContentItem::InputText { text }]
-				if text.contains("cannot use runtime-owned retryable error class")
+				if text.contains("cannot use runtime-owned error class")
 					&& text.contains(error_class)
 		));
 	}
