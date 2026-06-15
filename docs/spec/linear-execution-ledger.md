@@ -245,6 +245,13 @@ terminal disposition absorbs a later runtime failure, the producer should preser
 source failure class in `evidence` instead of changing the event type or terminal
 path.
 
+Producers must not emit `partial_progress_retained` while the current run is still
+owned by a retry schedule, a live repo-gate operation, or recoverable phase-goal
+continuation. Active phase-goal retained work is recoverable when the latest private
+progress evidence has no blockers and no authority decision request has been recorded;
+in that case the runtime records phase-goal recovery evidence and schedules
+continuation instead of a public needs-attention ledger event.
+
 Loop guardrail observations are private runtime evidence while autonomous architecture
 recovery is still available. A public Linear record is written only when the guardrail
 has terminalized into a human-required or terminal-failure outcome, with the
