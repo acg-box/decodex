@@ -1,0 +1,335 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-11T04:13:11Z",
+      "message": "Use encrypted local secrets for CLI auth",
+      "sha": "24a0cd4c2b9a14f672691335af172ce3462aeb79",
+      "url": "https://github.com/openai/codex/commit/24a0cd4c2b9a14f672691335af172ce3462aeb79"
+    },
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-12T20:34:22Z",
+      "message": "merge conflict",
+      "sha": "77343b8909e8a8ef9c6b65476c547f8681eb1554",
+      "url": "https://github.com/openai/codex/commit/77343b8909e8a8ef9c6b65476c547f8681eb1554"
+    },
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-12T20:58:06Z",
+      "message": "changes",
+      "sha": "d43079bc45170d8d8abf051718a446a592728416",
+      "url": "https://github.com/openai/codex/commit/d43079bc45170d8d8abf051718a446a592728416"
+    },
+    {
+      "author": "celia-oai",
+      "committed_at": "2026-06-12T21:12:45Z",
+      "message": "Fix device login auth cleanup backend",
+      "sha": "0dc3b430c878be6d9d5a7f19e72dd6567adc6933",
+      "url": "https://github.com/openai/codex/commit/0dc3b430c878be6d9d5a7f19e72dd6567adc6933"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "CLI",
+    "MCP",
+    "TUI",
+    "CLIENT_ID",
+    "REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR",
+    "API",
+    "LOGIN_SUCCESS_MESSAGE",
+    "CHATGPT_LOGIN_DISABLED_MESSAGE",
+    "OSS",
+    "WORKSPACE_ID_ALLOWED",
+    "CODEX_HOME",
+    "CODEX_AUTH_SECRET_NAME",
+    "CODEX_AUTH",
+    "KEYRING_SERVICE",
+    "URL_SAFE_NO_PAD",
+    "WORKSPACE_ID_SECOND_ALLOWED",
+    "CODEX_ACCESS_TOKEN_ENV_VAR",
+    "REFRESH_TOKEN"
+  ],
+  "files": [
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3221,6 +3221,7 @@ dependencies = [\n  \"codex-model-provider-info\",\n  \"codex-otel\",\n  \"codex-protocol\",\n+ \"codex-secrets\",\n  \"codex-terminal-detection\",\n  \"codex-utils-template\",\n  \"core_test_support\",",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -30,6 +30,7 @@ use codex_config::types::AuthCredentialsStoreMode;\n use codex_core::test_support::auth_manager_from_auth;\n use codex_core::test_support::auth_manager_from_auth_with_home;\n use codex_login::AuthDotJson;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::AuthManager;\n use codex_login::CodexAuth;\n use codex_login::save_auth;\n@@ -933,6 +934,7 @@ async fn remote_control_start_allows_missing_auth_when_enabled() {\n         /*enable_codex_api_key_env*/ false,\n         AuthCredentialsStoreMode::File,\n         /*chatgpt_base_url*/ None,\n+        AuthKeyringBackendKind::default(),\n     )\n     .await;\n     let (transport_event_tx, _transport_event_rx) =\n@@ -1744,6 +1746,7 @@ async fn remote_control_waits_for_account_id_before_enrolling() {\n         codex_home.path(),\n         &remote_control_auth_dot_json(/*account_id*/ None),\n         AuthCredentialsStoreMode::File,\n+    ...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -7,6 +7,7 @@ use codex_app_server_protocol::RemoteControlClientsListParams;\n use codex_app_server_protocol::RemoteControlClientsListResponse;\n use codex_app_server_protocol::RemoteControlClientsRevokeParams;\n use codex_app_server_protocol::RemoteControlClientsRevokeResponse;\n+use codex_login::AuthKeyringBackendKind;\n use pretty_assertions::assert_eq;\n \n fn client_management_handle(\n@@ -173,13 +174,15 @@ async fn list_remote_control_clients_recovers_auth_after_unauthorized() {\n         codex_home.path(),\n         &stale_auth,\n         AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n     )\n     .expect(\"stale auth should save\");\n     let auth_manager = AuthManager::shared(\n         codex_home.path().to_path_buf(),\n         /*enable_codex_api_key_env*/ false,\n         AuthCredentialsStoreMode::File,\n         /*chatgpt_base_url*/ None,\n+        AuthKeyringBacke...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests/clients_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,6 +1,7 @@\n use super::super::protocol::RemoteControlPairingStatusRequest;\n use super::super::protocol::StartRemoteControlPairingRequest;\n use super::*;\n+use codex_login::AuthKeyringBackendKind;\n use pretty_assertions::assert_eq;\n use std::io;\n \n@@ -528,13 +529,15 @@ async fn remote_control_handle_recovers_auth_before_refreshing_pairing() {\n         codex_home.path(),\n         &stale_auth,\n         AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n     )\n     .expect(\"stale auth should save\");\n     let auth_manager = AuthManager::shared(\n         codex_home.path().to_path_buf(),\n         /*enable_codex_api_key_env*/ false,\n         AuthCredentialsStoreMode::File,\n         /*chatgpt_base_url*/ None,\n+        AuthKeyringBackendKind::default(),\n     )\n     .await;\n     let mut fresh_auth = remote_control_auth_dot_json(Some(\"account_id\"));\n@@ -547,6 +550,7 @@ a...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/tests/pairing_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1821,6 +1821,7 @@ mod tests {\n     use codex_config::types::AuthCredentialsStoreMode;\n     use codex_core::test_support::auth_manager_from_auth;\n     use codex_login::AuthDotJson;\n+    use codex_login::AuthKeyringBackendKind;\n     use codex_login::CodexAuth;\n     use codex_login::save_auth;\n     use codex_login::token_data::TokenData;\n@@ -2202,6 +2203,7 @@ mod tests {\n             codex_home.path(),\n             &remote_control_auth_dot_json(\"stale-token\"),\n             AuthCredentialsStoreMode::File,\n+            AuthKeyringBackendKind::default(),\n         )\n         .expect(\"stale auth should save\");\n         let state_db = remote_control_state_runtime(&codex_home).await;\n@@ -2210,6 +2212,7 @@ mod tests {\n             /*enable_codex_api_key_env*/ false,\n             AuthCredentialsStoreMode::File,\n             /*chatgpt_base_url*/ None,\n+            AuthKeyringBackendKind::default(...",
+      "path": "codex-rs/app-server-transport/src/transport/remote_control/websocket.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -293,6 +293,7 @@ impl AccountRequestProcessor {\n             &self.config.codex_home,\n             &params.api_key,\n             self.config.cli_auth_credentials_store_mode,\n+            self.config.auth_keyring_backend_kind(),\n         ) {\n             Ok(()) => {\n                 self.auth_manager.reload().await;\n@@ -341,6 +342,7 @@ impl AccountRequestProcessor {\n                 CLIENT_ID.to_string(),\n                 config.forced_chatgpt_workspace_id.clone(),\n                 config.cli_auth_credentials_store_mode,\n+                config.auth_keyring_backend_kind(),\n             )\n         };\n         #[cfg(debug_assertions)]",
+      "path": "codex-rs/app-server/src/request_processors/account_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 1,
+      "patch_excerpt": "@@ -9,6 +9,7 @@ use chrono::Utc;\n use codex_app_server_protocol::AuthMode;\n use codex_config::types::AuthCredentialsStoreMode;\n use codex_login::AuthDotJson;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::save_auth;\n use codex_login::token_data::TokenData;\n use codex_login::token_data::parse_chatgpt_jwt_claims;\n@@ -168,5 +169,11 @@ pub fn write_chatgpt_auth(\n         bedrock_api_key: None,\n     };\n \n-    save_auth(codex_home, &auth, cli_auth_credentials_store_mode).context(\"write auth.json\")\n+    save_auth(\n+        codex_home,\n+        &auth,\n+        cli_auth_credentials_store_mode,\n+        AuthKeyringBackendKind::default(),\n+    )\n+    .context(\"write auth.json\")\n }",
+      "path": "codex-rs/app-server/tests/common/auth_fixtures.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -33,6 +33,7 @@ use codex_app_server_protocol::ServerRequest;\n use codex_app_server_protocol::TurnCompletedNotification;\n use codex_app_server_protocol::TurnStatus;\n use codex_config::types::AuthCredentialsStoreMode;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;\n use codex_login::login_with_api_key;\n use codex_protocol::account::PlanType as AccountPlanType;\n@@ -198,6 +199,7 @@ async fn logout_account_removes_auth_and_notifies() -> Result<()> {\n         codex_home.path(),\n         \"sk-test-key\",\n         AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n     )?;\n     assert!(codex_home.path().join(\"auth.json\").exists());",
+      "path": "codex-rs/app-server/tests/suite/v2/account.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -35,6 +35,7 @@ use codex_app_server_protocol::ThreadStartParams;\n use codex_app_server_protocol::ThreadStartResponse;\n use codex_config::types::AuthCredentialsStoreMode;\n use codex_login::AuthDotJson;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::save_auth;\n use pretty_assertions::assert_eq;\n use rmcp::handler::server::ServerHandler;\n@@ -122,6 +123,7 @@ async fn list_apps_returns_empty_with_api_key_auth() -> Result<()> {\n             bedrock_api_key: None,\n         },\n         AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n     )?;\n \n     let mut mcp = TestAppServer::new(codex_home.path()).await?;",
+      "path": "codex-rs/app-server/tests/suite/v2/app_list.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 5,
+      "patch_excerpt": "@@ -1196,7 +1196,11 @@ fn auth_check(config: &Config) -> DoctorCheck {\n         return check;\n     }\n \n-    match load_auth_dot_json(&config.codex_home, config.cli_auth_credentials_store_mode) {\n+    match load_auth_dot_json(\n+        &config.codex_home,\n+        config.cli_auth_credentials_store_mode,\n+        config.auth_keyring_backend_kind(),\n+    ) {\n         Ok(Some(auth)) => {\n             details.push(format!(\"stored auth mode: {}\", stored_auth_mode(&auth)));\n             details.push(format!(\"stored API key: {}\", auth.openai_api_key.is_some()));\n@@ -2528,10 +2532,13 @@ impl ProviderAuthReachabilityMode {\n }\n \n fn provider_reachability_plan(config: &Config) -> ReachabilityPlan {\n-    let stored_auth =\n-        load_auth_dot_json(&config.codex_home, config.cli_auth_credentials_store_mode)\n-            .ok()\n-            .flatten();\n+    let stored_auth = load_auth_dot_json(\n+     ...",
+      "path": "codex-rs/cli/src/doctor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 56,
+      "deletions": 10,
+      "patch_excerpt": "@@ -10,6 +10,7 @@\n use codex_app_server_protocol::AuthMode;\n use codex_config::types::AuthCredentialsStoreMode;\n use codex_core::config::Config;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::CLIENT_ID;\n use codex_login::CodexAuth;\n use codex_login::ServerOptions;\n@@ -117,8 +118,15 @@ fn print_login_server_start(actual_port: u16, auth_url: &str) {\n async fn clear_existing_auth_before_login(\n     codex_home: &Path,\n     auth_credentials_store_mode: AuthCredentialsStoreMode,\n+    auth_keyring_backend_kind: AuthKeyringBackendKind,\n ) {\n-    if let Err(err) = logout_with_revoke(codex_home, auth_credentials_store_mode).await {\n+    if let Err(err) = logout_with_revoke(\n+        codex_home,\n+        auth_credentials_store_mode,\n+        auth_keyring_backend_kind,\n+    )\n+    .await\n+    {\n         tracing::warn!(\"failed to clear existing auth before login: {err}\");\n     }\n }\n@@ -1...",
+      "path": "codex-rs/cli/src/login.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 3,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5,6 +5,7 @@ use codex_config::CloudConfigBundleLoadError;\n use codex_config::CloudConfigBundleLoadErrorCode;\n use codex_config::CloudConfigBundleLoader;\n use codex_config::types::AuthCredentialsStoreMode;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::AuthManager;\n use std::path::PathBuf;\n use std::sync::Arc;\n@@ -55,13 +56,15 @@ pub async fn cloud_config_bundle_loader_for_storage(\n     codex_home: PathBuf,\n     enable_codex_api_key_env: bool,\n     credentials_store_mode: AuthCredentialsStoreMode,\n+    keyring_backend_kind: AuthKeyringBackendKind,\n     chatgpt_base_url: String,\n ) -> CloudConfigBundleLoader {\n     let auth_manager = AuthManager::shared(\n         codex_home.clone(),\n         enable_codex_api_key_env,\n         credentials_store_mode,\n         Some(chatgpt_base_url.clone()),\n+        keyring_backend_kind,\n     )\n     .await;\n     cloud_config_bundle_loader(a...",
+      "path": "codex-rs/cloud-config/src/bundle_loader.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 0,
+      "patch_excerpt": "@@ -16,6 +16,7 @@ use codex_config::CloudConfigTomlBundle;\n use codex_config::CloudRequirementsFragment;\n use codex_config::CloudRequirementsTomlBundle;\n use codex_config::types::AuthCredentialsStoreMode;\n+use codex_login::AuthKeyringBackendKind;\n use pretty_assertions::assert_eq;\n use serde_json::json;\n use std::collections::VecDeque;\n@@ -48,6 +49,7 @@ async fn auth_manager_with_api_key() -> Arc<AuthManager> {\n             /*enable_codex_api_key_env*/ false,\n             AuthCredentialsStoreMode::File,\n             /*chatgpt_base_url*/ None,\n+            AuthKeyringBackendKind::default(),\n         )\n         .await,\n     )\n@@ -76,6 +78,7 @@ async fn auth_manager_with_plan_and_identity(\n             /*enable_codex_api_key_env*/ false,\n             AuthCredentialsStoreMode::File,\n             /*chatgpt_base_url*/ None,\n+            AuthKeyringBackendKind::default(),\n         )\n         .a...",
+      "path": "codex-rs/cloud-config/src/service_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -49,7 +49,8 @@ pub async fn load_auth_manager(chatgpt_base_url: Option<String>) -> Option<AuthM\n             config.codex_home.to_path_buf(),\n             /*enable_codex_api_key_env*/ false,\n             config.cli_auth_credentials_store_mode,\n-            chatgpt_base_url.or(Some(config.chatgpt_base_url)),\n+            chatgpt_base_url.or(Some(config.chatgpt_base_url.clone())),\n+            config.auth_keyring_backend_kind(),\n         )\n         .await,\n     )",
+      "path": "codex-rs/cloud-tasks/src/util.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,6 +12,7 @@ pub use codex_config::config_toml::ProjectConfig;\n pub use codex_config::config_toml::RealtimeAudioConfig;\n pub use codex_config::config_toml::RealtimeConfig;\n pub use codex_config::types::AuthCredentialsStoreMode;\n+pub use codex_config::types::AuthKeyringBackendKind;\n pub use codex_config::types::History;\n pub use codex_config::types::MemoriesConfig;\n pub use codex_config::types::ModelAvailabilityNuxConfig;",
+      "path": "codex-rs/core-api/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 0,
+      "patch_excerpt": "@@ -36,6 +36,7 @@ use codex_config::permissions_toml::PermissionsToml;\n use codex_config::sandbox_mode_requirement_for_permission_profile;\n use codex_config::types::ApprovalsReviewer;\n use codex_config::types::AuthCredentialsStoreMode;\n+use codex_config::types::AuthKeyringBackendKind;\n use codex_config::types::History;\n use codex_config::types::McpServerConfig;\n use codex_config::types::McpServerDisabledReason;\n@@ -1121,6 +1122,10 @@ impl AuthManagerConfig for Config {\n         self.cli_auth_credentials_store_mode\n     }\n \n+    fn auth_keyring_backend_kind(&self) -> AuthKeyringBackendKind {\n+        Config::auth_keyring_backend_kind(self)\n+    }\n+\n     fn forced_chatgpt_workspace_id(&self) -> Option<Vec<String>> {\n         self.forced_chatgpt_workspace_id.clone()\n     }",
+      "path": "codex-rs/core/src/config/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -9,6 +9,7 @@ use codex_core::resolve_installation_id;\n use codex_core::thread_store_from_config;\n use codex_extension_api::empty_extension_registry;\n use codex_features::Feature;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::AuthManager;\n use codex_login::CodexAuth;\n use codex_login::default_client::originator;\n@@ -1178,6 +1179,7 @@ async fn prefers_apikey_when_config_prefers_apikey_even_with_chatgpt_tokens() {\n         codex_home.path(),\n         AuthCredentialsStoreMode::File,\n         /*chatgpt_base_url*/ None,\n+        AuthKeyringBackendKind::default(),\n     )\n     .await\n     {",
+      "path": "codex-rs/core/tests/suite/client.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 14,
+      "deletions": 9,
+      "patch_excerpt": "@@ -62,8 +62,10 @@ use codex_core::check_execpolicy_for_warnings;\n use codex_core::config::Config;\n use codex_core::config::ConfigBuilder;\n use codex_core::config::ConfigOverrides;\n+use codex_core::config::ConfigTomlLoadResult;\n use codex_core::config::find_codex_home;\n-use codex_core::config::load_config_as_toml_with_cli_and_load_options;\n+use codex_core::config::load_config_toml_with_layer_stack;\n+use codex_core::config::resolve_bootstrap_auth_keyring_backend_kind;\n use codex_core::config::resolve_oss_provider;\n use codex_core::config::resolve_profile_v2_config_path;\n use codex_core::find_thread_meta_by_name_str;\n@@ -331,7 +333,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result\n         ..Default::default()\n     };\n \n-    let bootstrap_config_toml = load_config_toml_or_exit(\n+    let bootstrap_config = load_bootstrap_config_or_exit(\n         &codex_ho...",
+      "path": "codex-rs/exec/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -18,6 +18,7 @@ codex-keyring-store = { workspace = true }\n codex-model-provider-info = { workspace = true }\n codex-otel = { workspace = true }\n codex-protocol = { workspace = true }\n+codex-secrets = { workspace = true }\n codex-terminal-detection = { workspace = true }\n codex-utils-template = { workspace = true }\n once_cell = { workspace = true }",
+      "path": "codex-rs/login/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 62,
+      "deletions": 8,
+      "patch_excerpt": "@@ -43,6 +43,7 @@ async fn refresh_without_id_token() {\n     let storage = create_auth_storage(\n         codex_home.path().to_path_buf(),\n         AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n     );\n     let updated = super::persist_tokens(\n         &storage,\n@@ -77,8 +78,13 @@ fn login_with_api_key_overwrites_existing_auth_json() {\n     )\n     .unwrap();\n \n-    super::login_with_api_key(dir.path(), \"sk-new\", AuthCredentialsStoreMode::File)\n-        .expect(\"login_with_api_key should succeed\");\n+    super::login_with_api_key(\n+        dir.path(),\n+        \"sk-new\",\n+        AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n+    )\n+    .expect(\"login_with_api_key should succeed\");\n \n     let storage = FileAuthStorage::new(dir.path().to_path_buf());\n     let auth = storage\n@@ -110,6 +116,7 @@ async fn login_with_access_token_writes_...",
+      "path": "codex-rs/login/src/auth/auth_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 1,
+      "patch_excerpt": "@@ -6,6 +6,7 @@ use serde::Serialize;\n \n use super::manager::save_auth;\n use super::storage::AuthDotJson;\n+use super::storage::AuthKeyringBackendKind;\n use codex_app_server_protocol::AuthMode;\n \n /// Managed Amazon Bedrock API key persisted in `auth.json`.\n@@ -21,6 +22,7 @@ pub fn login_with_bedrock_api_key(\n     api_key: &str,\n     region: &str,\n     auth_credentials_store_mode: AuthCredentialsStoreMode,\n+    keyring_backend_kind: AuthKeyringBackendKind,\n ) -> std::io::Result<()> {\n     let auth_dot_json = AuthDotJson {\n         auth_mode: Some(AuthMode::BedrockApiKey),\n@@ -34,7 +36,12 @@ pub fn login_with_bedrock_api_key(\n             region: region.to_string(),\n         }),\n     };\n-    save_auth(codex_home, &auth_dot_json, auth_credentials_store_mode)\n+    save_auth(\n+        codex_home,\n+        &auth_dot_json,\n+        auth_credentials_store_mode,\n+        keyring_backend_kind,\n+  ...",
+      "path": "codex-rs/login/src/auth/bedrock_api_key.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -5,6 +5,7 @@ use serial_test::serial;\n use tempfile::tempdir;\n \n use super::*;\n+use crate::auth::AuthKeyringBackendKind;\n use crate::auth::AuthManager;\n use crate::auth::CodexAuth;\n use crate::auth::storage::AuthStorageBackend;\n@@ -52,13 +53,15 @@ async fn login_with_bedrock_api_key_replaces_openai_auth() -> anyhow::Result<()>\n         \"bedrock-api-key-test\",\n         \"us-east-1\",\n         AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n     )?;\n \n     let auth_manager = AuthManager::new(\n         codex_home.path().to_path_buf(),\n         /*enable_codex_api_key_env*/ false,\n         AuthCredentialsStoreMode::File,\n         /*chatgpt_base_url*/ None,\n+        AuthKeyringBackendKind::default(),\n     )\n     .await;\n \n@@ -98,12 +101,14 @@ async fn logout_removes_bedrock_auth() -> anyhow::Result<()> {\n         \"bedrock-api-key-test\",\n         \"us-east-1\",\n      ...",
+      "path": "codex-rs/login/src/auth/bedrock_api_key_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 118,
+      "deletions": 15,
+      "patch_excerpt": "@@ -34,6 +34,7 @@ pub use crate::auth::bedrock_api_key::BedrockApiKeyAuth;\n pub use crate::auth::personal_access_token::PersonalAccessTokenAuth;\n pub use crate::auth::storage::AgentIdentityAuthRecord;\n pub use crate::auth::storage::AuthDotJson;\n+pub use crate::auth::storage::AuthKeyringBackendKind;\n use crate::auth::storage::AuthStorageBackend;\n use crate::auth::storage::create_auth_storage;\n use crate::auth::util::try_parse_error_message;\n@@ -215,6 +216,7 @@ impl CodexAuth {\n         auth_dot_json: AuthDotJson,\n         auth_credentials_store_mode: AuthCredentialsStoreMode,\n         chatgpt_base_url: Option<&str>,\n+        keyring_backend_kind: AuthKeyringBackendKind,\n     ) -> std::io::Result<Self> {\n         let auth_mode = auth_dot_json.resolved_mode();\n         let client = create_client();\n@@ -257,7 +259,11 @@ impl CodexAuth {\n \n         match auth_mode {\n             ApiAuthMode::...",
+      "path": "codex-rs/login/src/auth/manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 133,
+      "deletions": 10,
+      "patch_excerpt": "@@ -24,9 +24,15 @@ use codex_agent_identity::AgentIdentityJwtClaims;\n use codex_agent_identity::decode_agent_identity_jwt;\n use codex_app_server_protocol::AuthMode;\n use codex_config::types::AuthCredentialsStoreMode;\n+pub use codex_config::types::AuthKeyringBackendKind;\n use codex_keyring_store::DefaultKeyringStore;\n use codex_keyring_store::KeyringStore;\n use codex_protocol::account::PlanType as AccountPlanType;\n+use codex_secrets::LocalSecretsNamespace;\n+use codex_secrets::SecretName;\n+use codex_secrets::SecretScope;\n+use codex_secrets::SecretsBackendKind;\n+use codex_secrets::SecretsManager;\n use once_cell::sync::Lazy;\n \n /// Expected structure for $CODEX_HOME/auth.json.\n@@ -164,6 +170,11 @@ impl AuthStorageBackend for FileAuthStorage {\n     }\n }\n \n+static CODEX_AUTH_SECRET_NAME: Lazy<SecretName> =\n+    Lazy::new(|| match SecretName::new(\"CODEX_AUTH\") {\n+        Ok(name) => name,\n+    ...",
+      "path": "codex-rs/login/src/auth/storage.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 237,
+      "deletions": 68,
+      "patch_excerpt": "@@ -2,6 +2,11 @@ use super::*;\n use crate::token_data::IdTokenInfo;\n use anyhow::Context;\n use base64::Engine;\n+use codex_secrets::LocalSecretsNamespace;\n+use codex_secrets::SecretScope;\n+use codex_secrets::SecretsBackendKind;\n+use codex_secrets::SecretsManager;\n+use codex_secrets::compute_keyring_account;\n use pretty_assertions::assert_eq;\n use serde_json::json;\n use tempfile::tempdir;\n@@ -152,7 +157,11 @@ fn file_storage_delete_removes_auth_file() -> anyhow::Result<()> {\n         personal_access_token: None,\n         bedrock_api_key: None,\n     };\n-    let storage = create_auth_storage(dir.path().to_path_buf(), AuthCredentialsStoreMode::File);\n+    let storage = create_auth_storage(\n+        dir.path().to_path_buf(),\n+        AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n+    );\n     storage.save(&auth_dot_json)?;\n     assert!(dir.path().join(\"auth.json\")....",
+      "path": "codex-rs/login/src/auth/storage_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -217,6 +217,7 @@ pub async fn complete_device_code_login(\n         tokens.access_token,\n         tokens.refresh_token,\n         opts.cli_auth_credentials_store_mode,\n+        opts.auth_keyring_backend_kind,\n     )\n     .await\n }",
+      "path": "codex-rs/login/src/device_code_auth.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -19,6 +19,7 @@ pub use server::run_login_server;\n \n pub use auth::AuthConfig;\n pub use auth::AuthDotJson;\n+pub use auth::AuthKeyringBackendKind;\n pub use auth::AuthManager;\n pub use auth::AuthManagerConfig;\n pub use auth::CLIENT_ID;",
+      "path": "codex-rs/login/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 12,
+      "deletions": 1,
+      "patch_excerpt": "@@ -25,6 +25,7 @@ use std::thread;\n use std::time::Duration;\n \n use crate::auth::AuthDotJson;\n+use crate::auth::AuthKeyringBackendKind;\n use crate::auth::save_auth;\n use crate::default_client::originator;\n use crate::pkce::PkceCodes;\n@@ -69,6 +70,7 @@ pub struct ServerOptions {\n     pub forced_chatgpt_workspace_id: Option<Vec<String>>,\n     pub codex_streamlined_login: bool,\n     pub cli_auth_credentials_store_mode: AuthCredentialsStoreMode,\n+    pub auth_keyring_backend_kind: AuthKeyringBackendKind,\n }\n \n impl ServerOptions {\n@@ -78,6 +80,7 @@ impl ServerOptions {\n         client_id: String,\n         forced_chatgpt_workspace_id: Option<Vec<String>>,\n         cli_auth_credentials_store_mode: AuthCredentialsStoreMode,\n+        auth_keyring_backend_kind: AuthKeyringBackendKind,\n     ) -> Self {\n         Self {\n             codex_home,\n@@ -89,6 +92,7 @@ impl ServerOptions {\n             for...",
+      "path": "codex-rs/login/src/server.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 17,
+      "deletions": 3,
+      "patch_excerpt": "@@ -6,6 +6,7 @@ use chrono::Utc;\n use codex_app_server_protocol::AuthMode;\n use codex_config::types::AuthCredentialsStoreMode;\n use codex_login::AuthDotJson;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::AuthManager;\n use codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;\n use codex_login::RefreshTokenError;\n@@ -297,6 +298,7 @@ async fn refresh_token_skips_refresh_when_auth_changed() -> Result<()> {\n         ctx.codex_home.path(),\n         &disk_auth,\n         AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n     )?;\n \n     ctx.auth_manager\n@@ -367,6 +369,7 @@ async fn refresh_token_errors_on_account_mismatch() -> Result<()> {\n         ctx.codex_home.path(),\n         &disk_auth,\n         AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n     )?;\n \n     let err = ctx\n@@ -543,6 +546,7 @@ async fn auth_reloads_disk_auth_when_c...",
+      "path": "codex-rs/login/tests/suite/auth_refresh.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 36,
+      "deletions": 12,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use anyhow::Context;\n use base64::Engine;\n use base64::engine::general_purpose::URL_SAFE_NO_PAD;\n use codex_config::types::AuthCredentialsStoreMode;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::ServerOptions;\n use codex_login::auth::load_auth_dot_json;\n use codex_login::run_device_code_login;\n@@ -110,6 +111,7 @@ fn server_opts(\n         \"client-id\".to_string(),\n         /*forced_chatgpt_workspace_id*/ None,\n         cli_auth_credentials_store_mode,\n+        AuthKeyringBackendKind::default(),\n     );\n     opts.issuer = issuer;\n     opts.open_browser = false;\n@@ -147,9 +149,13 @@ async fn device_code_login_integration_succeeds() -> anyhow::Result<()> {\n         .await\n         .expect(\"device code login integration should succeed\");\n \n-    let auth = load_auth_dot_json(codex_home.path(), AuthCredentialsStoreMode::File)\n-        .context(\"auth.json should load...",
+      "path": "codex-rs/login/tests/suite/device_code_login.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -9,6 +9,7 @@ use std::time::Duration;\n use anyhow::Result;\n use base64::Engine;\n use codex_config::types::AuthCredentialsStoreMode;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::ServerOptions;\n use codex_login::run_login_server;\n use core_test_support::skip_if_no_network;\n@@ -128,6 +129,7 @@ async fn end_to_end_login_flow_persists_auth_json() -> Result<()> {\n         force_state: Some(state),\n         forced_chatgpt_workspace_id: Some(vec![chatgpt_account_id.to_string()]),\n         codex_streamlined_login: false,\n+        auth_keyring_backend_kind: AuthKeyringBackendKind::Direct,\n     };\n     let server = run_login_server(opts)?;\n     assert!(\n@@ -190,6 +192,7 @@ async fn creates_missing_codex_home_dir() -> Result<()> {\n         force_state: Some(state),\n         forced_chatgpt_workspace_id: None,\n         codex_streamlined_login: false,\n+        auth_keyring_backend_kin...",
+      "path": "codex-rs/login/tests/suite/login_server_e2e.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 25,
+      "deletions": 3,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use base64::Engine;\n use codex_app_server_protocol::AuthMode;\n use codex_config::types::AuthCredentialsStoreMode;\n use codex_login::AuthDotJson;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::AuthManager;\n use codex_login::CLIENT_ID;\n use codex_login::CODEX_ACCESS_TOKEN_ENV_VAR;\n@@ -51,9 +52,15 @@ async fn logout_with_revoke_revokes_refresh_token_then_removes_auth() -> Result<\n         codex_home.path(),\n         &chatgpt_auth(),\n         AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n     )?;\n \n-    let removed = logout_with_revoke(codex_home.path(), AuthCredentialsStoreMode::File).await?;\n+    let removed = logout_with_revoke(\n+        codex_home.path(),\n+        AuthCredentialsStoreMode::File,\n+        AuthKeyringBackendKind::default(),\n+    )\n+    .await?;\n \n     assert!(removed);\n     assert!(!codex_home.path().join(\"auth.jso...",
+      "path": "codex-rs/login/tests/suite/logout.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3,6 +3,7 @@ use crate::ModelsManagerConfig;\n use chrono::Utc;\n use codex_app_server_protocol::AuthMode;\n use codex_login::AuthCredentialsStoreMode;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::AuthManager;\n use codex_login::CodexAuth;\n use codex_login::ExternalAuth;\n@@ -230,6 +231,7 @@ c2ln\",\n         codex_home,\n         AuthCredentialsStoreMode::File,\n         /*chatgpt_base_url*/ None,\n+        AuthKeyringBackendKind::default(),\n     )\n     .await\n     .expect(\"auth should load\")",
+      "path": "codex-rs/models-manager/src/manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 15,
+      "deletions": 9,
+      "patch_excerpt": "@@ -7,7 +7,9 @@ use crate::legacy_core::check_execpolicy_for_warnings;\n use crate::legacy_core::config::Config;\n use crate::legacy_core::config::ConfigBuilder;\n use crate::legacy_core::config::ConfigOverrides;\n-use crate::legacy_core::config::load_config_as_toml_with_cli_and_load_options;\n+use crate::legacy_core::config::ConfigTomlLoadResult;\n+use crate::legacy_core::config::load_config_toml_with_layer_stack;\n+use crate::legacy_core::config::resolve_bootstrap_auth_keyring_backend_kind;\n use crate::legacy_core::config::resolve_oss_provider;\n use crate::legacy_core::config::resolve_profile_v2_config_path;\n use crate::legacy_core::format_exec_policy_error_with_source;\n@@ -1012,7 +1014,7 @@ pub async fn run_main(\n         loader_overrides.user_config_profile = Some(profile_v2.clone());\n     }\n \n-    let bootstrap_config_toml = load_config_toml_or_exit(\n+    let bootstrap_config = load_bootst...",
+      "path": "codex-rs/tui/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 5,
+      "patch_excerpt": "@@ -4,6 +4,7 @@ use std::path::Path;\n \n use codex_app_server_protocol::AuthMode;\n use codex_config::types::AuthCredentialsStoreMode;\n+use codex_login::AuthKeyringBackendKind;\n use codex_login::load_auth_dot_json;\n \n #[derive(Debug, Clone, PartialEq, Eq)]\n@@ -18,9 +19,13 @@ pub(crate) fn load_local_chatgpt_auth(\n     auth_credentials_store_mode: AuthCredentialsStoreMode,\n     forced_chatgpt_workspace_id: Option<&[String]>,\n ) -> Result<LocalChatgptAuth, String> {\n-    let auth = load_auth_dot_json(codex_home, auth_credentials_store_mode)\n-        .map_err(|err| format!(\"failed to load local auth: {err}\"))?\n-        .ok_or_else(|| \"no local auth available\".to_string())?;\n+    let auth = load_auth_dot_json(\n+        codex_home,\n+        auth_credentials_store_mode,\n+        AuthKeyringBackendKind::default(),\n+    )\n+    .map_err(|err| format!(\"failed to load local auth: {err}\"))?\n+    .ok_o...",
+      "path": "codex-rs/tui/src/local_chatgpt_auth.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1014,6 +1014,7 @@ mod tests {\n     use codex_arg0::Arg0DispatchPaths;\n     use codex_cloud_config::cloud_config_bundle_loader_for_storage;\n     use codex_config::types::AuthCredentialsStoreMode;\n+    use codex_login::AuthKeyringBackendKind;\n \n     use pretty_assertions::assert_eq;\n     use std::sync::Arc;\n@@ -1037,6 +1038,7 @@ mod tests {\n                 codex_home_path.clone(),\n                 /*enable_codex_api_key_env*/ false,\n                 AuthCredentialsStoreMode::File,\n+                AuthKeyringBackendKind::default(),\n                 \"https://chatgpt.com/backend-api/\".to_string(),\n             )\n             .await,",
+      "path": "codex-rs/tui/src/onboarding/auth.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 3,
+      "patch_excerpt": "@@ -11,7 +11,8 @@ use crate::Cli;\n use crate::app_server_session::AppServerSession;\n use crate::legacy_core::config::ConfigBuilder;\n use crate::legacy_core::config::ConfigOverrides;\n-use crate::legacy_core::config::load_config_as_toml_with_cli_and_load_options;\n+use crate::legacy_core::config::load_config_toml_with_layer_stack;\n+use crate::legacy_core::config::resolve_bootstrap_auth_keyring_backend_kind;\n use crate::legacy_core::config::resolve_oss_provider;\n use crate::legacy_core::config::resolve_profile_v2_config_path;\n use codex_app_server_protocol::Thread as AppServerThread;\n@@ -310,7 +311,7 @@ async fn start_app_server_for_archive_command(\n         loader_overrides.user_config_profile = Some(profile_v2.clone());\n     }\n \n-    let config_toml = load_config_as_toml_with_cli_and_load_options(\n+    let bootstrap_config = load_config_toml_with_layer_stack(\n         codex_home.as_path(),...",
+      "path": "codex-rs/tui/src/session_archive_commands.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27504",
+    "#27535"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\nWindows Credential Manager limits generic credential blobs to 2,560 bytes. Large serialized ChatGPT auth payloads can exceed that limit, so keyring-mode CLI auth needs a backend that keeps only the encryption key in the OS keyring and stores the payload in Codex's encrypted local-secrets file.\n\nThis is the third PR in the encrypted-auth stack:\n\n1. #27504 — feature and config selection\n2. #27535 — auth-specific local-secrets namespaces\n3. This PR — CLI auth implementation and activation\n4. MCP OAuth implementation and activation\n\n## What Changed\n\n- Added encrypted CLI-auth storage using the `CliAuth` secrets namespace.\n- Preserved direct keyring storage for platforms/configurations where it remains selected.\n- Selected the backend consistently for login, logout, refresh, device-code login, auth loading, and login restrictions.\n- Threaded resolved bootstrap/full config through CLI, exec, TUI, app-server account handling, cloud config, and cloud tasks.\n- Removed stale `auth.json` fallback data after successful encrypted saves and removed encrypted, direct-keyring, and fallback data during logout.\n- Added storage and integration coverage for both direct and encrypted keyring modes.\n\nMCP OAuth persistence is intentionally left to the next PR.\n\n## Validation\n\n- `just test -p codex-login` — 131 passed\n- `just test -p codex-cli` — 280 passed\n- `just test -p codex-app-server v2::account` — 25 passed\n- `just test -p codex-cloud-config service` — 21 passed, 7 skipped\n- `just fix -p codex-login`\n- `just fix -p codex-cli`\n- `just fmt`\n",
+    "labels": [],
+    "merged_at": "2026-06-12T21:23:50Z",
+    "number": 27539,
+    "state": "merged",
+    "title": "feat: use encrypted local secrets for CLI auth",
+    "url": "https://github.com/openai/codex/pull/27539"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
