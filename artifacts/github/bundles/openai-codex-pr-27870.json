@@ -1,0 +1,150 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T14:21:48Z",
+      "message": "Resolve selected plugin MCP registrations",
+      "sha": "8489afd8e3f3a547b47d569cfc91a389af125b34",
+      "url": "https://github.com/openai/codex/commit/8489afd8e3f3a547b47d569cfc91a389af125b34"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T15:16:17Z",
+      "message": "Use selected MCP winner approval policy",
+      "sha": "a7578adf4ccdae18f4cc9d3085d5aac15a431a3d",
+      "url": "https://github.com/openai/codex/commit/a7578adf4ccdae18f4cc9d3085d5aac15a431a3d"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T14:23:19Z",
+      "message": "Discover MCP servers in selected executor plugins",
+      "sha": "8b78cf44bc9452427916b53c2a7c1b99a2b89434",
+      "url": "https://github.com/openai/codex/commit/8b78cf44bc9452427916b53c2a7c1b99a2b89434"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T15:18:40Z",
+      "message": "Narrow executor plugin access to its filesystem",
+      "sha": "b7180839381890e258ba75bfbf2b825b5064a41f",
+      "url": "https://github.com/openai/codex/commit/b7180839381890e258ba75bfbf2b825b5064a41f"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T09:33:11Z",
+      "message": "Merge main into jif/selected-executor-plugin-mcp-registration",
+      "sha": "a5453ca8f4c3c24b473c031811c1e36c3185efb8",
+      "url": "https://github.com/openai/codex/commit/a5453ca8f4c3c24b473c031811c1e36c3185efb8"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP",
+    "HTTP",
+    "DEFAULT_MCP_CONFIG_FILE",
+    "MCP_CONFIG_CONTENTS",
+    "CODEX_APPS_MCP_SERVER_NAME",
+    "LOCAL_ENVIRONMENT_ID"
+  ],
+  "files": [
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -3268,13 +3268,21 @@ dependencies = [\n  \"codex-config\",\n  \"codex-core\",\n  \"codex-core-plugins\",\n+ \"codex-exec-server\",\n  \"codex-extension-api\",\n  \"codex-features\",\n  \"codex-login\",\n  \"codex-mcp\",\n+ \"codex-plugin\",\n+ \"codex-protocol\",\n+ \"codex-utils-absolute-path\",\n+ \"codex-utils-path-uri\",\n  \"pretty_assertions\",\n+ \"serde_json\",\n  \"tempfile\",\n+ \"thiserror 2.0.18\",\n  \"tokio\",\n+ \"tracing\",\n ]\n \n [[package]]",
+      "path": "codex-rs/Cargo.lock",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -45,3 +45,4 @@ pub use marketplace_upgrade::ConfiguredMarketplaceUpgradeError as PluginMarketpl\n pub use marketplace_upgrade::ConfiguredMarketplaceUpgradeOutcome as PluginMarketplaceUpgradeOutcome;\n pub use provider::ExecutorPluginProvider;\n pub use provider::ExecutorPluginProviderError;\n+pub use provider::ResolvedExecutorPlugin;",
+      "path": "codex-rs/core-plugins/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 8,
+      "patch_excerpt": "@@ -662,14 +662,7 @@ async fn load_plugin(\n             restriction_product,\n             skill_config_rules,\n         } => {\n-            loaded_plugin.manifest_name = manifest\n-                .interface\n-                .as_ref()\n-                .and_then(|interface| interface.display_name.as_deref())\n-                .map(str::trim)\n-                .filter(|display_name| !display_name.is_empty())\n-                .map(str::to_string)\n-                .or_else(|| Some(manifest.name.clone()));\n+            loaded_plugin.manifest_name = Some(manifest.display_name().to_string());\n             loaded_plugin.manifest_description = manifest.description.clone();\n             loaded_plugin.skill_roots = plugin_skill_roots(&plugin_root, manifest_paths);\n             let resolved_skills = load_plugin_skills(",
+      "path": "codex-rs/core-plugins/src/loader.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 40,
+      "deletions": 7,
+      "patch_excerpt": "@@ -77,22 +77,38 @@ pub struct ExecutorPluginProvider {\n     environment_manager: Arc<EnvironmentManager>,\n }\n \n+/// A resolved plugin paired with the concrete filesystem used to read it.\n+#[derive(Clone)]\n+pub struct ResolvedExecutorPlugin {\n+    plugin: ResolvedPlugin,\n+    file_system: Arc<dyn ExecutorFileSystem>,\n+}\n+\n+impl ResolvedExecutorPlugin {\n+    /// Returns the source-neutral plugin descriptor.\n+    pub fn plugin(&self) -> &ResolvedPlugin {\n+        &self.plugin\n+    }\n+\n+    /// Returns the concrete filesystem that resolved the descriptor.\n+    pub fn file_system(&self) -> &dyn ExecutorFileSystem {\n+        self.file_system.as_ref()\n+    }\n+}\n+\n impl ExecutorPluginProvider {\n     /// Creates a provider backed by the active execution environments.\n     pub fn new(environment_manager: Arc<EnvironmentManager>) -> Self {\n         Self {\n             environment_manager,\n        ...",
+      "path": "codex-rs/core-plugins/src/provider.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 11,
+      "deletions": 3,
+      "patch_excerpt": "@@ -7,21 +7,29 @@ version.workspace = true\n [lib]\n name = \"codex_mcp_extension\"\n path = \"src/lib.rs\"\n-test = false\n doctest = false\n \n [lints]\n workspace = true\n \n [dependencies]\n codex-core = { workspace = true }\n+codex-core-plugins = { workspace = true }\n+codex-config = { workspace = true }\n+codex-exec-server = { workspace = true }\n codex-extension-api = { workspace = true }\n codex-features = { workspace = true }\n codex-mcp = { workspace = true }\n+codex-plugin = { workspace = true }\n+codex-protocol = { workspace = true }\n+codex-utils-absolute-path = { workspace = true }\n+codex-utils-path-uri = { workspace = true }\n+serde_json = { workspace = true }\n+thiserror = { workspace = true }\n+tracing = { workspace = true }\n+tokio = { workspace = true, features = [\"sync\"] }\n \n [dev-dependencies]\n-codex-config = { workspace = true }\n-codex-core-plugins = { workspace = true }\n codex-login = { works...",
+      "path": "codex-rs/ext/mcp/Cargo.toml",
+      "status": "modified"
+    },
+    {
+      "additions": 139,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,139 @@\n+use codex_core::config::Config;\n+use codex_core_plugins::ExecutorPluginProvider;\n+use codex_exec_server::EnvironmentManager;\n+use codex_extension_api::ExtensionDataInit;\n+use codex_extension_api::ExtensionFuture;\n+use codex_extension_api::McpServerContribution;\n+use codex_extension_api::McpServerContributionContext;\n+use codex_extension_api::McpServerContributor;\n+use codex_protocol::capabilities::SelectedCapabilityRoot;\n+use std::collections::HashMap;\n+use std::sync::Arc;\n+use tokio::sync::OnceCell;\n+\n+use self::provider::ExecutorPluginMcpProvider;\n+\n+mod provider;\n+\n+/// Frozen MCP declarations for one selected package.\n+///\n+/// Each server config retains the stable logical environment ID. Reconnection may replace the\n+/// concrete environment instance without changing that authority.\n+#[derive(Clone)]\n+struct SelectedPluginMcpServers {\n+    plugin_id: String,\n+    ...",
+      "path": "codex-rs/ext/mcp/src/executor_plugin.rs",
+      "status": "added"
+    },
+    {
+      "additions": 120,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,120 @@\n+use codex_config::McpServerConfig;\n+use codex_config::McpServerTransportConfig;\n+use codex_core_plugins::ResolvedExecutorPlugin;\n+use codex_exec_server::ExecutorFileSystem;\n+use codex_mcp::PluginMcpServerPlacement;\n+use codex_mcp::parse_plugin_mcp_config;\n+use codex_plugin::PluginResourceLocator;\n+use codex_plugin::ResolvedPlugin;\n+use codex_plugin::ResolvedPluginLocation;\n+use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n+use std::io;\n+use thiserror::Error;\n+\n+const DEFAULT_MCP_CONFIG_FILE: &str = \".mcp.json\";\n+\n+/// Loads MCP declarations from resolved plugins through their owning executor.\n+#[derive(Clone, Copy, Debug, Default)]\n+pub(super) struct ExecutorPluginMcpProvider;\n+\n+/// Failure to load an executor plugin's MCP declarations.\n+#[derive(Debug, Error)]\n+pub(super) enum ExecutorPluginMcpProviderError {\n+    #[error(\"failed to...",
+      "path": "codex-rs/ext/mcp/src/executor_plugin/provider.rs",
+      "status": "added"
+    },
+    {
+      "additions": 266,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,266 @@\n+use super::DEFAULT_MCP_CONFIG_FILE;\n+use super::ExecutorPluginMcpProviderError;\n+use super::load_from_file_system;\n+use codex_config::McpServerConfig;\n+use codex_config::McpServerTransportConfig;\n+use codex_exec_server::CopyOptions;\n+use codex_exec_server::CreateDirectoryOptions;\n+use codex_exec_server::ExecutorFileSystem;\n+use codex_exec_server::ExecutorFileSystemFuture;\n+use codex_exec_server::FileMetadata;\n+use codex_exec_server::FileSystemResult;\n+use codex_exec_server::FileSystemSandboxContext;\n+use codex_exec_server::ReadDirectoryEntry;\n+use codex_exec_server::RemoveOptions;\n+use codex_plugin::ResolvedPlugin;\n+use codex_plugin::manifest::PluginManifest;\n+use codex_plugin::manifest::PluginManifestPaths;\n+use codex_utils_absolute_path::AbsolutePathBuf;\n+use codex_utils_path_uri::PathUri;\n+use pretty_assertions::assert_eq;\n+use std::collections::HashMap;\n+use std::i...",
+      "path": "codex-rs/ext/mcp/src/executor_plugin/provider_tests.rs",
+      "status": "added"
+    },
+    {
+      "additions": 19,
+      "deletions": 0,
+      "patch_excerpt": "@@ -7,6 +7,8 @@ use codex_extension_api::McpServerContributor;\n use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;\n use codex_mcp::hosted_plugin_runtime_mcp_server_config;\n \n+mod executor_plugin;\n+\n struct HostedPluginRuntimeExtension;\n \n impl McpServerContributor<Config> for HostedPluginRuntimeExtension {\n@@ -39,3 +41,20 @@ impl McpServerContributor<Config> for HostedPluginRuntimeExtension {\n pub fn install(builder: &mut ExtensionRegistryBuilder<Config>) {\n     builder.mcp_server_contributor(std::sync::Arc::new(HostedPluginRuntimeExtension));\n }\n+\n+/// Installs discovery for MCP servers declared by thread-selected executor plugins.\n+pub fn install_executor_plugins(\n+    builder: &mut ExtensionRegistryBuilder<Config>,\n+    environment_manager: std::sync::Arc<codex_exec_server::EnvironmentManager>,\n+) {\n+    builder.mcp_server_contributor(std::sync::Arc::new(\n+        executor_plugin::SelectedExe...",
+      "path": "codex-rs/ext/mcp/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 139,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,139 @@\n+use codex_config::test_support::CloudConfigBundleFixture;\n+use codex_core::config::Config;\n+use codex_core::config::ConfigBuilder;\n+use codex_exec_server::EnvironmentManager;\n+use codex_exec_server::LOCAL_ENVIRONMENT_ID;\n+use codex_extension_api::ExtensionDataInit;\n+use codex_extension_api::ExtensionRegistryBuilder;\n+use codex_extension_api::McpServerContribution;\n+use codex_extension_api::McpServerContributionContext;\n+use codex_protocol::capabilities::CapabilityRootLocation;\n+use codex_protocol::capabilities::SelectedCapabilityRoot;\n+use pretty_assertions::assert_eq;\n+use std::sync::Arc;\n+\n+type TestResult = Result<(), Box<dyn std::error::Error>>;\n+\n+#[derive(Debug, PartialEq, Eq)]\n+struct ContributionSummary {\n+    name: String,\n+    plugin_id: String,\n+    plugin_display_name: String,\n+    selection_order: usize,\n+    enabled: bool,\n+}\n+\n+#[tokio::test]\n+async fn s...",
+      "path": "codex-rs/ext/mcp/tests/executor_plugin_mcp.rs",
+      "status": "added"
+    },
+    {
+      "additions": 10,
+      "deletions": 0,
+      "patch_excerpt": "@@ -71,6 +71,16 @@ impl<Resource> Default for PluginManifestInterface<Resource> {\n }\n \n impl<Resource> PluginManifest<Resource> {\n+    /// Returns the model- and UI-facing package name, falling back to the manifest name.\n+    pub fn display_name(&self) -> &str {\n+        self.interface\n+            .as_ref()\n+            .and_then(|interface| interface.display_name.as_deref())\n+            .map(str::trim)\n+            .filter(|display_name| !display_name.is_empty())\n+            .unwrap_or(&self.name)\n+    }\n+\n     pub(crate) fn try_map_resources<Mapped, Error>(\n         self,\n         mut map: impl FnMut(Resource) -> Result<Mapped, Error>,",
+      "path": "codex-rs/plugin/src/manifest.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27884",
+    "#27863"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\n**In short:** this PR discovers MCP registrations by reading a selected plugin's `.mcp.json` on its executor. #27884 then resolves those registrations in the shared catalog.\n\n`thread/start.selectedCapabilityRoots` can select a plugin root owned by an executor, and Codex can resolve that package through the executor filesystem. MCP declarations inside the selected plugin are still ignored.\n\nThis PR adds the source-specific discovery layer on top of the selected-plugin catalog boundary in #27884:\n\n```text\nselected capability root\n        |\n        v\nresolve the plugin through its executor filesystem\n        |\n        v\nread and normalize its MCP config through the same filesystem\n        |\n        v\ncontribute stdio registrations bound to that environment ID\n```\n\nThe existing MCP launcher and connection manager remain unchanged. MCP config parsing is shared with local plugins through #27863.\n\n## What changed\n\n- Added an executor plugin MCP provider in the MCP extension.\n- Retained only the exact filesystem capability used for package resolution and reused it for the selected plugin's MCP config, with no host-filesystem fallback or unrelated process/HTTP authority.\n- Read either the manifest-declared MCP config or the default `.mcp.json`; a missing default file means the plugin has no MCP servers.\n- Accepted stdio servers only for this first vertical. Executor-owned HTTP declarations are skipped with a warning until their placement semantics are defined.\n- Normalized stdio registrations with the owning environment's stable logical ID and plugin-root working directory.\n- Resolved environment-variable names on the owning executor and rejected explicit local forwarding for non-local plugins.\n- Froze discovered declarations once per active thread runtime, then applied current managed plugin and MCP requirements when contributing them.\n- Carried the selected root ID, display name, and selection order into the catalog contribution defined by #27884.\n\n## Behavior and scope\n\nThere is intentionally no production behavior change yet. This PR provides the executor provider and contribution boundary, but app-server does not install it in this change. Existing local plugin MCP loading is unchanged, and no MCP process is launched by this PR alone.\n\n## Assumptions\n\n- The selected root ID is the plugin policy identity; the manifest display name is presentation metadata.\n- An environment ID is a stable logical authority. Reconnection or replacement under the same ID does not change ownership.\n- Selected plugin packages and their manifests are trusted inputs.\n- The selected package and MCP discovery snapshot remain frozen for the active thread runtime.\n\n## Follow-up\n\nThe next PR installs this contributor in app-server and adds an end-to-end test proving that a selected plugin MCP tool launches on its owning executor, can be called by the model, survives an explicit MCP refresh, and is invisible when its root was not selected.\n\nResume, fork, environment removal or ID changes, dynamic catalog reload, and executor-owned HTTP MCP placement remain separate lifecycle decisions.\n\n## Verification\n\nFocused tests cover executor-only filesystem reads, missing and malformed config, stdio filtering and normalization, managed requirements, package attribution, and selection order. CI owns execution of the test suite.\n",
+    "labels": [
+      "code-reviewed"
+    ],
+    "merged_at": "2026-06-15T09:52:06Z",
+    "number": 27870,
+    "state": "merged",
+    "title": "Discover stdio MCP servers from selected executor plugins",
+    "url": "https://github.com/openai/codex/pull/27870"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}
