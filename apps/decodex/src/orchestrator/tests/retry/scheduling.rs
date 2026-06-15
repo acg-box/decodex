@@ -820,7 +820,7 @@ fn schedule_retry_after_child_exit_records_continuation_retry_for_clean_exit() {
 }
 
 #[test]
-fn schedule_retry_after_child_exit_recovers_active_phase_goal_before_terminal_attention() {
+fn schedule_retry_after_child_exit_terminalizes_active_phase_goal_tracked_rewrites() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
@@ -883,9 +883,8 @@ fn schedule_retry_after_child_exit_recovers_active_phase_goal_before_terminal_at
 		IssueDispatchMode::Retry,
 		exit_status,
 	)
-	.expect("active phase goal should recover into continuation");
+	.expect("active phase goal tracked rewrites should terminalize cleanly");
 
-	let entry = retry_queue.entries.get(&issue.id).expect("retry entry should exist for the issue");
 	let run_attempt = state_store
 		.run_attempt(run_id)
 		.expect("run attempt lookup should succeed")
@@ -893,14 +892,20 @@ fn schedule_retry_after_child_exit_recovers_active_phase_goal_before_terminal_at
 	let events = state_store
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, run_id, 3)
 		.expect("private events should load");
+	let comments = tracker.comments.borrow();
 
-	assert_eq!(entry.kind, orchestrator::RetryKind::Continuation);
-	assert_eq!(entry.attempt, 3);
-	assert_eq!(run_attempt.status(), CONTINUATION_PENDING_RUN_STATUS);
-	assert!(tracker.comments.borrow().is_empty());
+	assert!(!retry_queue.entries.contains_key(&issue.id));
+	assert_eq!(run_attempt.status(), "failed");
 	assert!(events.iter().any(|event| {
-		event.event_type() == "phase_goal_recovery"
-			&& event.payload()["payload"]["sourceErrorClass"] == "child_exit_failed"
+		event.event_type() == "phase_goal_transition"
+			&& event.payload()["signal"] == "validation_fail"
+			&& event.payload()["payload"]["disposition"] == "needs_human_attention"
+	}));
+	assert!(events.iter().all(|event| event.event_type() != "phase_goal_recovery"));
+	assert!(comments.iter().any(|comment| {
+		comment.contains("decodex retained partial progress and needs attention")
+			&& comment.contains("partial_progress_retained")
+			&& comment.contains("Source failure class `repo_gate_tracked_rewrites_left`")
 	}));
 }
 

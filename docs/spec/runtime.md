@@ -417,10 +417,10 @@ When `decodex` runs the repo-native gate during `validating`, it must preserve t
 
 - `canonicalize_commands` non-zero exit: continued repair in the retained lane
 - `verify_commands` non-zero exit: continued repair in the retained lane
-- repo gate leaves tracked-file rewrites behind after its commands complete: continued repair in the retained lane
+- repo gate leaves tracked-file rewrites behind after its commands complete: retained partial progress that requires operator attention
 - repo-gate command spawn failures or tracked-file cleanliness inspection failures: human-attention failure path immediately
 
-The continued-repair classes above are ordinary bounded churn: the coding agent should keep repairing code and rerun the repo gate rather than requesting `manual_attention` just because the gate has not passed yet. Human-attention exits remain reserved for environment, toolchain, or operator-owned blockers that the coding agent cannot clear from the retained worktree alone.
+The continued-repair classes above are ordinary bounded churn: the coding agent should keep repairing code and rerun the repo gate rather than requesting `manual_attention` just because the gate has not passed yet. A tracked-rewrite residue after the gate commands have completed is different: Decodex must not infer repository file meaning, generated-artifact ownership, or fixture policy. It must preserve the retained worktree, write `error_class = "partial_progress_retained"` with the repo-gate source class in evidence, and stop until an operator decides whether to finish validation and handoff or reset the patch. Human-attention exits also remain reserved for environment, toolchain, or operator-owned blockers that the coding agent cannot clear from the retained worktree alone.
 
 Continued repair is still bounded by loop guardrails. For each retryable failure,
 Decodex records local `loop_guardrail_checkpoint` evidence and updates the
@@ -432,8 +432,10 @@ the bounded recovery budget remains, Decodex records `architecture_recovery_star
 and schedules a materially different recovery strategy. Otherwise it records a
 terminal recovery reason such as `contract_boundary_required`,
 `external_dependency_required`, or `architecture_recovery_exhausted` and routes the
-lane through the human-required failure path. Repo-gate failures record both
-`validation_repeat` and `remaining_delta_unchanged` observations. Retryable failures
+lane through the human-required failure path. Retryable repo-gate command failures
+record both `validation_repeat` and `remaining_delta_unchanged` observations.
+Tracked rewrites left by a completed repo gate bypass architecture recovery and are
+retained for operator convergence instead. Retryable failures
 record `no_effective_diff` only when the retained worktree has no effective source
 delta: no tracked status/diff against `HEAD` and no ordinary untracked files after
 excluding Decodex runtime artifacts such as `.decodex-run-activity` and
