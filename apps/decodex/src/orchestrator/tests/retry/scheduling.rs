@@ -821,7 +821,18 @@ fn schedule_retry_after_child_exit_records_continuation_retry_for_clean_exit() {
 
 #[test]
 fn schedule_retry_after_child_exit_terminalizes_active_phase_goal_tracked_rewrites() {
-	let (_temp_dir, config, workflow) = temp_project_layout();
+	let (_temp_dir, config, workflow) = temp_project_layout_with_workflow_markdown(
+		&sample_workflow_markdown(
+			"pubfi",
+			&[],
+			"Phase goal validation policy.\n",
+			1,
+		)
+		.replace(
+			"canonicalize_commands = []",
+			"canonicalize_commands = [\"printf 'rewritten\\\\n' > ready.txt\"]",
+		),
+	);
 	let issue = sample_service_owned_issue("In Progress");
 	let tracker =
 		FakeTracker::with_refresh_snapshots(vec![issue.clone()], vec![vec![issue.clone()]]);
