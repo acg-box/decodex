@@ -26,15 +26,15 @@ This repository standardizes on four primary documentation lanes:
 - `runbook` defines procedure, not truth, current state, or rationale.
 - `reference` defines current state, not truth, procedure, or rationale.
 - `decisions` defines rationale, not truth, procedure, or current state.
-- `research` is supporting evidence only. It does not own repository truth, procedure,
-  current state, or rationale.
+- `docs/research/` is supporting evidence only. It does not own repository truth,
+  procedure, current state, or rationale.
 - If a document starts answering a second question type, split it and link to the
   authoritative lane instead of stretching one document across lanes.
 
 ## Artifact lanes
 
-- `docs/research/` is allowed for machine-authored research run artifacts produced by the
-  shipped research tooling.
+- `docs/research/` is allowed for legacy or supporting machine-authored research run
+  artifacts.
 - `docs/research/` is not a primary documentation lane and is not authoritative for
   runtime behavior, repository policy, or operator procedures.
 - If a research result becomes durable repository guidance, promote it into `spec`,
