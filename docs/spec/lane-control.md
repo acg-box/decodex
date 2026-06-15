@@ -213,6 +213,15 @@ the next lane action from authoritative signals. It is also the correct route wh
 requested control would overwrite useful partial work, hide a blocker, or require
 guessing human intent.
 
+Retained partial progress is not a manual-attention stop while another runtime owner
+is still authoritative for the same run. If the current run activity marker records a
+retry schedule, the retry scheduler owns the next action. If the marker records a live
+`repo_gate` operation, that gate remains the active owner until the process exits or a
+later marker changes ownership. If stalled retained work still has an active phase
+goal and the latest progress evidence has no blockers or decision request, Decodex
+must try phase-goal recovery and schedule the next continuation instead of writing
+`partial_progress_retained`.
+
 Loop guardrail outcomes are not active-lane controls. They first stop the current
 ineffective strategy. Engineering convergence reasons such as `validation_repeat`,
 `no_effective_diff`, `remaining_delta_unchanged`, or `review_churn` may then enter

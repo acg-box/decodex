@@ -1330,6 +1330,9 @@ fn latest_active_phase_goal_recovery_candidate(
 			| "phase_goal_transition"
 			| "review_completion_intent"
 			| "terminal_finalize" => return Ok(None),
+			AUTHORITY_DECISION_REQUEST_EVENT_TYPE => return Ok(None),
+			"progress_checkpoint" if progress_checkpoint_has_blockers(event.payload()) =>
+				return Ok(None),
 			"phase_goal_set" | "phase_goal_status" => {
 				let Some(phase) = phase_goal_event_phase(event.payload()) else {
 					return Ok(None);
@@ -1345,6 +1348,14 @@ fn latest_active_phase_goal_recovery_candidate(
 	}
 
 	Ok(None)
+}
+
+fn progress_checkpoint_has_blockers(payload: &Value) -> bool {
+	payload.get("blockers").is_some_and(|blockers| match blockers {
+		Value::Array(items) => !items.is_empty(),
+		Value::Null => false,
+		_ => true,
+	})
 }
 
 fn phase_goal_event_phase(payload: &Value) -> Option<PhaseGoalKind> {

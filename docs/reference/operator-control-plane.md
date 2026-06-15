@@ -510,9 +510,11 @@ Worktree visibility follows the owning dashboard section:
   stale active-label or worktree echoes from an older terminal ledger record stay in
   Run Ledger history instead of reappearing as current attention.
 - If private evidence shows `phase_goal_recovery` followed by a queued continuation,
-  the lane is not a retained-attention worktree even when the preceding child failed.
-  Treat it as Decodex-owned re-entry into the next phase unless a later terminal Run
-  Ledger row or current attention signal supersedes it.
+  the lane is not a retained-attention worktree even when the preceding child failed
+  or stalled reconciliation first found retained dirty progress. Treat it as
+  Decodex-owned re-entry into the next phase unless a later terminal Run Ledger row,
+  current attention signal, authority decision request, or blocker checkpoint
+  supersedes it.
 
 Every operator snapshot worktree row includes `ownership`, `ownership_reason`,
 `provenance`, and optional `recovery_next_action` fields that distinguish active-lane
