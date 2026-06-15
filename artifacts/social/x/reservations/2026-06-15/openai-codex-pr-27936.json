@@ -1,0 +1,47 @@
+{
+  "candidate_refs": {
+    "social_candidates": [
+      "artifacts/github/social-candidates/openai-codex-pr-27936.json"
+    ],
+    "source_urls": [
+      "https://github.com/openai/codex/pull/27936"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27936.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27936.review.json"
+    ]
+  },
+  "channel": "x",
+  "controller_account": "hackink",
+  "day": "2026-06-15",
+  "duplicate_keys": [
+    "x:decodexspace:openai-codex-pr-27936:operator_impact",
+    "openai-codex-pr-27936",
+    "https://github.com/openai/codex/pull/27936",
+    "thread/realtime/appendText",
+    "role: \"user\" | \"developer\""
+  ],
+  "evidence_notes": [
+    "Checked social_post/v1 records contain no published or blocked record for the idempotency key.",
+    "Checked social_publish_reservation/v1 records contain no active reservation for the idempotency key.",
+    "Open GitHub PR scan found no publication PR touching this candidate or social/x records.",
+    "Chrome readback showed active account @decodexspace before reservation.",
+    "Chrome profile scan and exact X searches for 27936 and appendText found no duplicate post."
+  ],
+  "expires_at": "2026-06-15T09:04:54Z",
+  "idempotency_key": "x:decodexspace:openai-codex-pr-27936:operator_impact",
+  "mode": "operator_impact",
+  "owner": {
+    "automation_id": "decodex-x-publisher",
+    "branch": "automation/x-publisher-20260615-pr27936",
+    "run_started_at": "2026-06-15T07:04:54Z"
+  },
+  "reserved_at": "2026-06-15T07:04:54Z",
+  "schema": "social_publish_reservation/v1",
+  "slug": "openai-codex-pr-27936",
+  "status": "active",
+  "target_account": "decodexspace",
+  "timezone": "Asia/Shanghai"
+}
