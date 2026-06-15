@@ -12,7 +12,7 @@ Use `research-probe`, `research-evidence`, `research-options`, `research-judgmen
 `research-challenge`, and `research-decision` in order. Use `research-promote` only
 after explicit acceptance.
 
-- Do not route Decodex research through legacy `$research`.
+- Do not route Decodex research through the legacy external `$research`.
 - Do not treat `docs/research/` artifacts as current authority.
 - Do not queue work, mutate Linear, set Codex goals, implement, or dispatch Program
   nodes from research alone.
