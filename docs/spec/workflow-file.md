@@ -259,9 +259,9 @@ The runtime-owned failure model for this repo gate must distinguish at least the
 - a `verify_commands` entry failed
 - the repo gate completed its commands but left tracked-file rewrites behind
 
-Those three classes are explicit continued-repair outcomes in normal retained-lane policy: the retained lane stays in implementation or review-repair flow until the coding agent repairs the worktree and reruns the gate, or until retry policy is exhausted. They are not, by themselves, automatic human-attention exits.
+The first two classes are explicit continued-repair outcomes in normal retained-lane policy: the retained lane stays in implementation or review-repair flow until the coding agent repairs the worktree and reruns the gate, or until retry policy is exhausted. The tracked-rewrite residue class is a retained-partial-progress stop. Decodex must preserve the source repo-gate class as evidence, but it must not add project-specific artifact, generated-file, fixture, or snapshot semantics to decide which tracked rewrites are acceptable.
 
-Human-attention exits are reserved for repo-gate failures that the coding agent cannot reasonably repair from the worktree alone, such as command-spawn failures, missing runtime prerequisites, or inability to inspect tracked-file cleanliness. When the runtime takes that path, prompts and tracker comments should preserve the repo-gate failure class instead of collapsing it into vague generic wording.
+Human-attention exits are reserved for repo-gate failures that the coding agent cannot reasonably repair from the worktree alone, such as command-spawn failures, missing runtime prerequisites, inability to inspect tracked-file cleanliness, or tracked rewrites left after the gate completed. When the runtime takes that path, prompts and tracker comments should preserve the repo-gate source failure class instead of collapsing it into vague generic wording.
 
 Landing policy is no longer repository-configurable in the machine-readable workflow contract for this repo surface. For retained review landing, `decodex` applies a fixed strict policy: require green checks, require an up-to-date base branch, preserve commit-level history, use merge commits, and never squash or rebase.
 
