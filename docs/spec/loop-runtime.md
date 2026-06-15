@@ -3,16 +3,16 @@
 Purpose: Define the natural-language-first Decodex loop-runtime contract that sits
 above individual issue lanes.
 Status: normative
-Read this when: You are implementing or reviewing Decodex-native research,
-decision promotion, internal execution planning, phase-scoped Codex goals, unattended
-loop behavior, or loop guardrails.
+Read this when: You are implementing or reviewing Decodex-native research method
+gates, decision promotion, internal execution planning, phase-scoped Codex goals,
+unattended loop behavior, or loop guardrails.
 Not this document: The issue-lane state machine, low-level `app-server` protocol,
 post-`In Review` phases, operator lane-control commands, or the concrete research
-method.
+run artifact format.
 Defines: The user surface, Research/Decision stage, latent Loop/Decision Contract,
-internal Execution Program, promotion boundary, phase-scoped goal rules, validation
-and review boundary, unattended execution behavior, loop stop conditions, and harness
-improvement loop.
+research method gates, internal Execution Program, promotion boundary, phase-scoped
+goal rules, validation and review boundary, unattended execution behavior, loop stop
+conditions, and harness improvement loop.
 
 ## Scope
 
@@ -57,9 +57,26 @@ through the lane runtime contract.
 Decodex owns a native Research/Decision compiler for Decodex work. That stage accepts
 natural-language intent such as `research X` plus bounded research/design evidence
 when available, then stores a local Decision Contract candidate. It supersedes the
-external research skill for Decodex runtime authority: the old external
-`docs/research/` artifact lane remains supporting evidence and inspiration for method,
-but it is not the authority surface for Decodex loop state.
+external research skill for Decodex runtime authority: Decodex plugin `research*`
+skills are the current agent-facing method, and the old external `docs/research/`
+artifact lane remains legacy or supporting evidence that can be imported into a
+Decision Contract. It is not the authority surface for Decodex loop state.
+
+The native research method has these ordered gates:
+
+1. Probe frames the decision question, scope, success criteria, constraints, stop rule,
+   primary hypothesis, rival hypotheses, and falsifiers before broad evidence
+   collection.
+2. Evidence records an auditable ledger of observations, source references,
+   contradictions, inferences, and missing evidence. No evidence, no claim.
+3. Options compare realistic choices, including status quo or explicit no-go when
+   relevant, with evidence-grounded tradeoffs.
+4. Judgment creates a challenge-ready recommendation or explicitly states that the run
+   is not decision-ready.
+5. Challenge attacks the judgment with skeptic objections. Material unresolved
+   objections become missing decisions, evidence gaps, risk notes, or blockers.
+6. Decision ends the run with exactly one outcome and preserves the latent promotion
+   boundary.
 
 A Research/Decision stage may produce a latent Loop/Decision Contract with:
 
@@ -81,7 +98,7 @@ Native research/design compiler outcomes are:
 
 | Outcome | Contract status | Meaning |
 | --- | --- | --- |
-| `decision_ready` | `draft_latent` | Bounded evidence, option comparison, assumptions, objections, and proposed issue-readiness data are sufficient for downstream issue shaping after promotion. It is still not execution authority while latent. |
+| `decision_ready` | `draft_latent` | Bounded evidence, option comparison, challenge/objection records, validation expectations, assumptions, and proposed issue-readiness data are sufficient for downstream issue shaping after promotion. It is still not execution authority while latent. |
 | `not_decision_ready` | `draft_latent` | The run preserved useful evidence or objections, but missing evidence or unresolved direction means it must not become implementation work. |
 | `blocked` | `draft_latent` | The run cannot finish its bounded research/design pass because a non-decision blocker must be resolved first. |
 | `needs_human_decision` | `needs_human_decision` | The package needs explicit human direction before promotion or execution can be considered. |

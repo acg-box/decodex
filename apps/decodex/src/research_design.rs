@@ -484,6 +484,17 @@ impl NormalizedResearchDesignInput {
 		if self.evidence.is_empty() {
 			eyre::bail!("decision-ready research requires at least one evidence claim.");
 		}
+		if self.options.is_empty() {
+			eyre::bail!("decision-ready research requires at least one option comparison.");
+		}
+		if self.objections.is_empty() {
+			eyre::bail!(
+				"decision-ready research requires at least one recorded challenge objection or objection note."
+			);
+		}
+		if self.validation_expectations.is_empty() {
+			eyre::bail!("decision-ready research requires validation expectations.");
+		}
 		if self.proposed_issue_summaries.is_empty() {
 			eyre::bail!(
 				"decision-ready research requires at least one proposed issue summary for downstream shaping."
@@ -1010,6 +1021,45 @@ mod tests {
 			Some(String::from("User asked to push this forward.")),
 		)
 		.expect("sample promotion should validate")
+	}
+
+	#[test]
+	fn decision_ready_research_requires_method_gates() {
+		let mut missing_options = decision_ready_input();
+
+		missing_options.options.clear();
+
+		let missing_options_error =
+			match research_design::compile_research_design_run(missing_options, "decodex") {
+				Ok(_) => panic!("decision-ready research should require option comparison"),
+				Err(error) => error,
+			};
+
+		assert!(missing_options_error.to_string().contains("at least one option comparison"));
+
+		let mut missing_challenge = decision_ready_input();
+
+		missing_challenge.objections.clear();
+
+		let missing_challenge_error =
+			match research_design::compile_research_design_run(missing_challenge, "decodex") {
+				Ok(_) => panic!("decision-ready research should require a challenge note"),
+				Err(error) => error,
+			};
+
+		assert!(missing_challenge_error.to_string().contains("recorded challenge objection"));
+
+		let mut missing_validation = decision_ready_input();
+
+		missing_validation.validation_expectations.clear();
+
+		let missing_validation_error =
+			match research_design::compile_research_design_run(missing_validation, "decodex") {
+				Ok(_) => panic!("decision-ready research should require validation expectations"),
+				Err(error) => error,
+			};
+
+		assert!(missing_validation_error.to_string().contains("requires validation expectations"));
 	}
 
 	#[test]

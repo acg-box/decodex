@@ -11,8 +11,9 @@ Route agent work through the right Decodex surface without duplicating the runti
 specs. Decodex has these supported use modes:
 
 - Research/design mode: natural-language requests such as `research X` enter the
-  Decodex-native Research/Decision path. The result is a latent Decision Contract,
-  not execution authority.
+  Decodex-native bounded research method. Probe, evidence, options, judgment,
+  challenge, and final decision all feed a latent Decision Contract, not execution
+  authority.
 - Manual CLI mode: a human is driving local development, commits, PR preparation,
   landing, status inspection, project registration, account selection, or dry-run
   checks.
@@ -33,16 +34,17 @@ commands.
 Route by intent:
 
 1. If the user says `research X`, asks for a design investigation, or asks Decodex to
-   figure out what should be done before implementation, treat it as research/design
-   intake. Produce or update a latent Decision Contract with evidence, assumptions,
-   options, objections, non-goals, acceptance criteria, stop conditions, readiness,
-   and open decisions. Do not queue work, create execution authority, mutate tracker
-   state, or start implementation from the research request alone.
+   figure out what should be done before implementation, use `research` plus its phase
+   skills: `research-probe`, `research-evidence`, `research-options`,
+   `research-judgment`, `research-challenge`, and `research-decision`. Produce or
+   update a latent Decision Contract with evidence, assumptions, options, objections,
+   non-goals, acceptance criteria, stop conditions, readiness, and open decisions. Do
+   not queue work, create execution authority, mutate tracker state, or start
+   implementation from the research request alone.
 2. If the user later says `arrange this`, `push this forward`, `推进`, `做`, or an
-   equivalent follow-up that clearly accepts or promotes the prior contract, treat that
-   as promotion to execution authority. Preserve the accepted contract boundary; if
-   direction is still missing or contradictory, ask for the missing decision instead
-   of starting work.
+   equivalent follow-up that clearly accepts or promotes the prior contract, use
+   `research-promote`. Preserve the accepted contract boundary; if direction is still
+   missing or contradictory, ask for the missing decision instead of starting work.
 3. After promotion, use `planning` to convert the accepted contract into normal
    Linear issues with clear natural-language briefs, dependencies, acceptance, and
    validation, then persist an Execution Program for direct scheduler dispatch. Keep
@@ -63,6 +65,14 @@ Route by intent:
    `WORKFLOW.md` under `~/.codex/decodex/projects/<service-id>/` or the project
    directory supplied through a project-scoped command's `--config`.
 5. Use the narrow skill for the current action:
+   - `research` for bounded Decodex research/design intake.
+   - `research-probe` for framing decisions, hypotheses, falsifiers, and stop rules.
+   - `research-evidence` for auditable evidence ledgers and missing-evidence tracking.
+   - `research-options` for evidence-grounded option comparison.
+   - `research-judgment` for challenge-ready recommendations.
+   - `research-challenge` for skeptic objections before finalization.
+   - `research-decision` for the terminal decision-ready/not-ready/blocked/human gate.
+   - `research-promote` for accepted research-to-execution authority.
    - `manual-cli` for normal operator CLI use.
    - `planning` for Decodex-friendly issue splitting, dispatch readiness, and concurrency.
    - `automation` for retained-lane control-plane use.
@@ -79,8 +89,10 @@ boundary without making the user learn the commands.
 
 - Runtime behavior belongs to `apps/decodex/src/` and `docs/spec/`.
 - Decodex-native research/design behavior belongs to `apps/decodex/src/research_design.rs`
-  and `docs/spec/loop-runtime.md`; external research artifacts are supporting
-  evidence only for Decodex runtime semantics.
+  and `docs/spec/loop-runtime.md`. The Decodex plugin's `research*` skills are the
+  default agent-facing method for bounded research. The legacy external `$research`
+  skill and `docs/research/` artifacts are supporting evidence or import material only
+  for Decodex runtime semantics.
 - Harness-improvement recommendations from `decodex evidence` are advisory runtime
   feedback. Treat them as candidates for an explicit accepted improvement path; do not
   auto-edit prompts, skills, validators, issue templates, or loop policies solely

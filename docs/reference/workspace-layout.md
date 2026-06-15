@@ -30,7 +30,7 @@ should not be treated as repository source.
 | `docs/runbook/` | Operator procedures, validation sequences, deployment steps, and content workflows. |
 | `docs/reference/` | Current repository and artifact surface maps. |
 | `docs/decisions/` | Durable rationale for repository-level design choices. |
-| `docs/research/` | Machine-authored research run artifacts used by shipped research tooling. |
+| `docs/research/` | Legacy or supporting machine-authored research run artifacts; current Decodex research authority is runtime-local Decision Contracts. |
 | `dev/` | Local development helpers outside `dev/skills/`, such as the operator dashboard mock server. |
 | `assets/` | Shared static assets that are not owned by the Astro app's generated output. Decodex App icons live under `assets/app-icon/{source,composer,generated}/`; menu bar template assets live under `assets/tray-icon/{source,generated}/`; `scripts/assets/render_decodex_app_icons.swift` regenerates the icon set. |
 | `.github/` | CI, release, Pages deployment, and content-refresh workflows. |
