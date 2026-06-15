@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Track selected capability root MCP servers as executor-owned, not host-local, in Decodex Control Plane design.",
+    "Reject assumptions that selected plugin MCP env vars can be forwarded from local config when the upstream owner is a non-local executor.",
+    "Wait for app-server installation evidence before creating a Decodex adoption issue for live selected executor plugin MCPs."
+  ],
+  "caveats": [
+    "PR #27870 says app-server does not install this provider in this change.",
+    "Only stdio selected executor plugin MCP declarations are accepted in this first vertical.",
+    "Executor-owned HTTP MCP placement, resume, fork, environment removal, dynamic reload, and ID-change behavior remain separate lifecycle decisions."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "candidate",
+  "evidence": [
+    "PR #27870 defines selected plugin MCP discovery through the owning executor filesystem.",
+    "The provider reads manifest-declared MCP config or default `.mcp.json` and skips missing default config as no MCP servers.",
+    "The provider accepts stdio servers and skips executor-owned HTTP declarations with a warning.",
+    "Selected declarations are frozen once per active thread runtime and normalized with the owning environment ID.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27870.review.json`."
+  ],
+  "observed_change": "Codex adds an executor plugin MCP provider that reads selected plugin MCP declarations through the owning executor filesystem and contributes stdio registrations bound to that environment.",
+  "public_signal_decision": "defer",
+  "publisher_angle": "watch_note",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27870",
+  "social_notes": [
+    "A public note should emphasize this is provider groundwork, not live app-server behavior yet.",
+    "The durable public angle is executor-owned selected plugin MCP authority, especially no host-filesystem fallback."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-15T09:52:06Z",
+        "title": "Discover stdio MCP servers from selected executor plugins",
+        "url": "https://github.com/openai/codex/pull/27870"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27870.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27870"
+      }
+    ]
+  }
+}

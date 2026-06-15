@@ -1,0 +1,179 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T14:21:48Z",
+      "message": "Resolve selected plugin MCP registrations",
+      "sha": "8489afd8e3f3a547b47d569cfc91a389af125b34",
+      "url": "https://github.com/openai/codex/commit/8489afd8e3f3a547b47d569cfc91a389af125b34"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T15:16:17Z",
+      "message": "Use selected MCP winner approval policy",
+      "sha": "a7578adf4ccdae18f4cc9d3085d5aac15a431a3d",
+      "url": "https://github.com/openai/codex/commit/a7578adf4ccdae18f4cc9d3085d5aac15a431a3d"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T15:28:43Z",
+      "message": "Merge branch 'main' into jif/selected-plugin-mcp-catalog",
+      "sha": "fa026aaac9fd3a6ed649544c7c22df2fb600f9c4",
+      "url": "https://github.com/openai/codex/commit/fa026aaac9fd3a6ed649544c7c22df2fb600f9c4"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T08:40:43Z",
+      "message": "nits",
+      "sha": "947796d1630c443c43a45727dd8b2150b5dc00d6",
+      "url": "https://github.com/openai/codex/commit/947796d1630c443c43a45727dd8b2150b5dc00d6"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T08:45:30Z",
+      "message": "Merge main into jif/selected-plugin-mcp-catalog",
+      "sha": "e6b462681a96488861b6e2197327a5d0b01cc6f2",
+      "url": "https://github.com/openai/codex/commit/e6b462681a96488861b6e2197327a5d0b01cc6f2"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP",
+    "CODEX_APPS_MCP_SERVER_NAME",
+    "LEGACY_CODEX_APPS_REGISTRATION_ID"
+  ],
+  "files": [
+    {
+      "additions": 83,
+      "deletions": 12,
+      "patch_excerpt": "@@ -5,18 +5,58 @@ use std::collections::HashMap;\n \n use codex_config::McpServerConfig;\n \n+/// Plugin identity retained with an MCP registration for tool attribution.\n+#[derive(Clone, Debug, PartialEq, Eq)]\n+pub struct McpPluginAttribution {\n+    plugin_id: String,\n+    display_name: String,\n+}\n+\n+impl McpPluginAttribution {\n+    pub fn new(plugin_id: String, display_name: String) -> Self {\n+        Self {\n+            plugin_id,\n+            display_name,\n+        }\n+    }\n+\n+    pub fn plugin_id(&self) -> &str {\n+        &self.plugin_id\n+    }\n+\n+    pub fn display_name(&self) -> &str {\n+        &self.display_name\n+    }\n+}\n+\n /// The component that declared an MCP server registration.\n #[derive(Clone, Debug, PartialEq, Eq)]\n pub enum McpServerSource {\n-    Plugin { plugin_id: String },\n+    /// A plugin discovered through the process-wide legacy plugin manager.\n+    Plugin(McpPluginAtt...",
+      "path": "codex-rs/codex-mcp/src/catalog.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 151,
+      "deletions": 13,
+      "patch_excerpt": "@@ -8,6 +8,7 @@ use codex_config::McpServerToolConfig;\n use codex_config::McpServerTransportConfig;\n use pretty_assertions::assert_eq;\n \n+use super::McpPluginAttribution;\n use super::McpServerConflict;\n use super::McpServerConflictAction;\n use super::McpServerRegistration;\n@@ -44,10 +45,16 @@ fn server(url: &str) -> McpServerConfig {\n     }\n }\n \n+fn plugin(plugin_id: &str) -> McpPluginAttribution {\n+    McpPluginAttribution::new(plugin_id.to_string(), plugin_id.to_string())\n+}\n+\n fn plugin_source(plugin_id: &str) -> McpServerSource {\n-    McpServerSource::Plugin {\n-        plugin_id: plugin_id.to_string(),\n-    }\n+    McpServerSource::Plugin(plugin(plugin_id))\n+}\n+\n+fn selected_plugin_source(plugin_id: &str) -> McpServerSource {\n+    McpServerSource::SelectedPlugin(plugin(plugin_id))\n }\n \n fn compatibility_source(id: &str) -> McpServerSource {\n@@ -69,8 +76,8 @@ fn remove(source: McpServe...",
+      "path": "codex-rs/codex-mcp/src/catalog_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 16,
+      "deletions": 0,
+      "patch_excerpt": "@@ -381,6 +381,22 @@ impl McpConnectionManager {\n             .plugin_id_for_mcp_server_name(server_name)\n     }\n \n+    pub fn is_selected_plugin_mcp_server(&self, server_name: &str) -> bool {\n+        self.tool_plugin_provenance\n+            .is_selected_plugin_mcp_server(server_name)\n+    }\n+\n+    pub fn tool_approval_mode(\n+        &self,\n+        server_name: &str,\n+        tool_name: &str,\n+    ) -> codex_config::AppToolApproval {\n+        self.server_metadata\n+            .get(server_name)\n+            .map(|metadata| metadata.tool_approval_mode(tool_name))\n+            .unwrap_or_default()\n+    }\n+\n     pub fn is_host_owned_codex_apps_server(&self, server_name: &str) -> bool {\n         self.host_owned_codex_apps_enabled && server_name == CODEX_APPS_MCP_SERVER_NAME\n     }",
+      "path": "codex-rs/codex-mcp/src/connection_manager.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 28,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,14 +12,18 @@ use crate::elicitation::elicitation_is_rejected_by_policy;\n use crate::rmcp_client::AsyncManagedClient;\n use crate::rmcp_client::ManagedClient;\n use crate::rmcp_client::StartupOutcomeError;\n+use crate::server::EffectiveMcpServer;\n+use crate::server::McpServerMetadata;\n use crate::server::McpServerOrigin;\n use crate::tools::ToolFilter;\n use crate::tools::ToolInfo;\n use crate::tools::filter_tools;\n use crate::tools::normalize_tools_for_model_with_prefix;\n use crate::tools::tool_with_model_visible_input_schema;\n+use codex_config::AppToolApproval;\n use codex_config::Constrained;\n use codex_config::McpServerConfig;\n+use codex_config::McpServerToolConfig;\n use codex_config::types::AuthKeyringBackendKind;\n use codex_exec_server::EnvironmentManager;\n use codex_protocol::ToolName;\n@@ -1128,6 +1132,8 @@ async fn list_all_tools_adds_server_metadata_to_cached_tools() {\n          ...",
+      "path": "codex-rs/codex-mcp/src/connection_manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,6 +12,7 @@ pub use runtime::SandboxState;\n pub use tools::ToolInfo;\n \n pub use catalog::McpCatalogBuilder;\n+pub use catalog::McpPluginAttribution;\n pub use catalog::McpServerConflict;\n pub use catalog::McpServerConflictAction;\n pub use catalog::McpServerRegistration;",
+      "path": "codex-rs/codex-mcp/src/lib.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 30,
+      "deletions": 13,
+      "patch_excerpt": "@@ -12,6 +12,7 @@ pub use auth::should_retry_without_scopes;\n pub(crate) mod auth;\n \n use std::collections::HashMap;\n+use std::collections::HashSet;\n use std::env;\n use std::path::PathBuf;\n use std::time::Duration;\n@@ -141,7 +142,8 @@ pub struct McpConfig {\n     pub client_elicitation_capability: ElicitationCapability,\n     /// Resolved MCP registrations keyed by logical server name.\n     pub mcp_server_catalog: ResolvedMcpCatalog,\n-    /// Plugin metadata used to attribute MCP tools/connectors to plugin display names.\n+    /// Plugin metadata used to attribute connector tools to plugin display names.\n+    /// MCP registrations retain their own package attribution in the catalog.\n     pub plugin_capability_summaries: Vec<PluginCapabilitySummary>,\n }\n \n@@ -150,6 +152,7 @@ pub struct ToolPluginProvenance {\n     plugin_display_names_by_connector_id: HashMap<String, Vec<String>>,\n     plugin...",
+      "path": "codex-rs/codex-mcp/src/mcp/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 45,
+      "deletions": 1,
+      "patch_excerpt": "@@ -1,4 +1,5 @@\n use super::*;\n+use crate::McpPluginAttribution;\n use crate::McpServerRegistration;\n use codex_config::Constrained;\n use codex_config::types::AppToolApproval;\n@@ -13,6 +14,7 @@ use codex_protocol::protocol::AskForApproval;\n use codex_protocol::protocol::GranularApprovalConfig;\n use pretty_assertions::assert_eq;\n use std::collections::HashMap;\n+use std::collections::HashSet;\n use std::path::PathBuf;\n \n fn test_mcp_config(codex_home: PathBuf) -> McpConfig {\n@@ -127,7 +129,7 @@ fn tool_plugin_provenance_collects_app_and_mcp_sources() {\n     let mut catalog = ResolvedMcpCatalog::builder();\n     catalog.register(McpServerRegistration::from_plugin(\n         \"alpha\".to_string(),\n-        \"alpha@test\".to_string(),\n+        McpPluginAttribution::new(\"alpha@test\".to_string(), \"alpha-plugin\".to_string()),\n         /*plugin_order*/ 0,\n         codex_apps_mcp_server_config(\"https://al...",
+      "path": "codex-rs/codex-mcp/src/mcp/mod_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 25,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1,3 +1,6 @@\n+use std::collections::HashMap;\n+\n+use codex_config::AppToolApproval;\n use codex_config::McpServerConfig;\n use codex_config::McpServerTransportConfig;\n \n@@ -75,6 +78,18 @@ pub(crate) struct McpServerMetadata {\n     pub pollutes_memory: bool,\n     pub origin: Option<McpServerOrigin>,\n     pub supports_parallel_tool_calls: bool,\n+    pub default_tools_approval_mode: Option<AppToolApproval>,\n+    pub tool_approval_modes: HashMap<String, AppToolApproval>,\n+}\n+\n+impl McpServerMetadata {\n+    pub fn tool_approval_mode(&self, tool_name: &str) -> AppToolApproval {\n+        self.tool_approval_modes\n+            .get(tool_name)\n+            .copied()\n+            .or(self.default_tools_approval_mode)\n+            .unwrap_or_default()\n+    }\n }\n \n impl From<&EffectiveMcpServer> for McpServerMetadata {\n@@ -84,6 +99,16 @@ impl From<&EffectiveMcpServer> for McpServerMetadata {\n        ...",
+      "path": "codex-rs/codex-mcp/src/server.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 39,
+      "deletions": 4,
+      "patch_excerpt": "@@ -4357,8 +4357,13 @@ async fn rebuild_preserving_session_layers_refreshes_plugin_derived_mcp_config()\n         Some(&http_mcp(\"https://sample.example/mcp\"))\n     );\n     assert_eq!(\n-        mcp_config.mcp_server_catalog.plugin_ids_by_server_name(),\n-        HashMap::from([(\"sample\".to_string(), \"sample@test\".to_string())])\n+        mcp_config\n+            .mcp_server_catalog\n+            .plugin_attributions_by_server_name(),\n+        HashMap::from([(\n+            \"sample\".to_string(),\n+            McpPluginAttribution::new(\"sample@test\".to_string(), \"sample\".to_string()),\n+        )])\n     );\n \n     Ok(())\n@@ -4416,15 +4421,15 @@ enabled = true\n     assert!(\n         mcp_config\n             .mcp_server_catalog\n-            .plugin_ids_by_server_name()\n+            .plugin_attributions_by_server_name()\n             .is_empty()\n     );\n \n     Ok(())\n }\n \n #[tokio::test]\n-async fn to_mc...",
+      "path": "codex-rs/core/src/config/config_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 41,
+      "deletions": 12,
+      "patch_excerpt": "@@ -70,6 +70,7 @@ use codex_git_utils::resolve_root_git_project_for_trust;\n use codex_install_context::InstallContext;\n use codex_login::AuthManagerConfig;\n use codex_mcp::McpConfig;\n+use codex_mcp::McpPluginAttribution;\n use codex_mcp::McpServerRegistration;\n use codex_mcp::ResolvedMcpCatalog;\n use codex_memories_read::memory_root;\n@@ -1396,41 +1397,69 @@ impl Config {\n         )\n     }\n \n-    pub async fn to_mcp_config(\n+    /// Applies managed MCP requirements to servers supplied by one plugin.\n+    pub fn apply_plugin_mcp_server_requirements(\n         &self,\n-        plugins_manager: &codex_core_plugins::PluginsManager,\n-    ) -> McpConfig {\n-        let plugins_input = self.plugins_config_input();\n-        let loaded_plugins = plugins_manager.plugins_for_config(&plugins_input).await;\n-        let mut catalog = ResolvedMcpCatalog::builder();\n+        plugin_id: &str,\n+        mcp_ser...",
+      "path": "codex-rs/core/src/config/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 85,
+      "deletions": 23,
+      "patch_excerpt": "@@ -12,13 +12,28 @@ use codex_login::CodexAuth;\n use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;\n use codex_mcp::EffectiveMcpServer;\n use codex_mcp::McpConfig;\n+use codex_mcp::McpPluginAttribution;\n use codex_mcp::McpServerRegistration;\n use codex_mcp::codex_apps_mcp_server_config;\n use codex_mcp::configured_mcp_servers;\n use codex_mcp::effective_mcp_servers;\n \n const LEGACY_CODEX_APPS_REGISTRATION_ID: &str = \"legacy_codex_apps\";\n \n+enum OrderedMcpOverlay {\n+    Set {\n+        contributor_id: &'static str,\n+        contribution_order: usize,\n+        name: String,\n+        config: Box<McpServerConfig>,\n+    },\n+    Remove {\n+        contributor_id: &'static str,\n+        contribution_order: usize,\n+        name: String,\n+    },\n+}\n+\n #[derive(Clone)]\n pub struct McpManager {\n     plugins_manager: Arc<PluginsManager>,\n@@ -65,7 +80,58 @@ impl McpManager {\n         config: &Config,\n         thre...",
+      "path": "codex-rs/core/src/mcp.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 19,
+      "deletions": 2,
+      "patch_excerpt": "@@ -166,6 +166,15 @@ pub(crate) async fn handle_mcp_tool_call(\n     };\n     let approval_mode = if server == CODEX_APPS_MCP_SERVER_NAME {\n         app_tool_policy.approval\n+    } else if let Some(approval_mode) = {\n+        // Selected-plugin registrations are absent from config.toml and the legacy plugin manager,\n+        // so their resolved catalog entry is the authoritative source for tool approval policy.\n+        let manager = sess.services.mcp_connection_manager.load();\n+        manager\n+            .is_selected_plugin_mcp_server(&server)\n+            .then(|| manager.tool_approval_mode(&server, &tool_name))\n+    } {\n+        approval_mode\n     } else {\n         custom_mcp_tool_approval_mode(sess.as_ref(), turn_context.as_ref(), &server, &tool_name)\n             .await\n@@ -1168,8 +1177,16 @@ async fn maybe_request_mcp_tool_approval(\n     }\n \n     let session_approval_key = session...",
+      "path": "codex-rs/core/src/mcp_tool_call.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 6,
+      "deletions": 2,
+      "patch_excerpt": "@@ -448,8 +448,12 @@ async fn start_thread_seeds_extension_data_for_mcp_and_lifecycle_contributors()\n                     &selected_root.location;\n                 server.environment_id = environment_id.clone();\n                 server.enabled = false;\n-                vec![codex_extension_api::McpServerContribution::Set {\n-                    name: selected_root.id,\n+                let plugin_id = selected_root.id;\n+                vec![codex_extension_api::McpServerContribution::SelectedPlugin {\n+                    name: plugin_id.clone(),\n+                    plugin_display_name: plugin_id.clone(),\n+                    plugin_id,\n+                    selection_order: 0,\n                     config: Box::new(server),\n                 }]\n             })",
+      "path": "codex-rs/core/src/thread_manager_tests.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 2,
+      "patch_excerpt": "@@ -49,8 +49,8 @@ pub type ExtensionFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;\n /// Thread-scoped resolution exposes the host-seeded thread inputs; global\n /// resolution exposes none and must not imply a local fallback. Thread inputs\n /// are frozen for the runtime and do not include lifecycle-contributor state.\n-/// Plugin-owned servers and their provenance continue to be resolved by the\n-/// plugin manager until that ownership moves into an extension explicitly.\n+/// Auto-discovered plugin servers are resolved by the plugin manager. A\n+/// thread-selected plugin contribution must carry its own package provenance.\n pub trait McpServerContributor<C: Sync>: Send + Sync {\n     /// Stable identity used for registration provenance and conflict diagnostics.\n     fn id(&self) -> &'static str;",
+      "path": "codex-rs/ext/extension-api/src/contributors.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 8,
+      "deletions": 0,
+      "patch_excerpt": "@@ -58,6 +58,14 @@ pub enum McpServerContribution {\n         name: String,\n         config: Box<McpServerConfig>,\n     },\n+    /// Registers a server declared by a plugin selected for this thread.\n+    SelectedPlugin {\n+        name: String,\n+        plugin_id: String,\n+        plugin_display_name: String,\n+        selection_order: usize,\n+        config: Box<McpServerConfig>,\n+    },\n     /// Removes a named MCP server.\n     Remove { name: String },\n }",
+      "path": "codex-rs/ext/extension-api/src/contributors/mcp.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 5,
+      "deletions": 4,
+      "patch_excerpt": "@@ -34,6 +34,10 @@ impl<M> LoadedPlugin<M> {\n     pub fn is_active(&self) -> bool {\n         self.enabled && self.error.is_none()\n     }\n+\n+    pub fn display_name(&self) -> &str {\n+        self.manifest_name.as_deref().unwrap_or(&self.config_name)\n+    }\n }\n \n fn plugin_capability_summary_from_loaded<M>(\n@@ -48,10 +52,7 @@ fn plugin_capability_summary_from_loaded<M>(\n \n     let summary = PluginCapabilitySummary {\n         config_name: plugin.config_name.clone(),\n-        display_name: plugin\n-            .manifest_name\n-            .clone()\n-            .unwrap_or_else(|| plugin.config_name.clone()),\n+        display_name: plugin.display_name().to_string(),\n         description: prompt_safe_plugin_description(plugin.manifest_description.as_deref()),\n         has_skills: plugin.has_enabled_skills,\n         mcp_server_names,",
+      "path": "codex-rs/plugin/src/load_outcome.rs",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27870"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\n**In short:** this PR resolves already-discovered MCP registrations. It does not read selected plugins or discover their MCP servers.\n\nThe resolved MCP catalog currently builds config and auto-discovered plugin registrations before runtime contributors are applied. A thread-selected plugin needs a distinct precedence tier in that same initial resolution pass: otherwise a disabled lower-precedence winner can leave stale name-level state behind, and the winning MCP tools cannot be attributed to the selected package reliably.\n\nThis PR adds that catalog boundary before executor discovery is connected.\n\n## What changed\n\n- Added an explicit selected-plugin registration tier between auto-discovered plugins and explicit config.\n- Collected selected-plugin contributions before the initial catalog build, while leaving compatibility and generic extension overlays in their existing runtime phase.\n- Retained the winning plugin ID and display name directly on plugin-owned catalog registrations.\n- Derived MCP tool provenance from the winning catalog entry instead of joining against local-only plugin summaries.\n- Retained the winning selected server's tool approval policy in the running connection manager, so a selected registration cannot inherit approval behavior from a losing local plugin.\n- Kept remembered approval session-scoped for selected plugins until there is an authority-aware persistence contract; Codex will not write approval back to an unrelated local plugin.\n- Preserved existing name-level disabled vetoes for discovered plugins and config, while keeping a selected package's own disabled registration scoped to that registration.\n- Preserved deterministic selection order and existing config, compatibility, and extension precedence.\n\nThe resulting order is:\n\n```text\nauto-discovered plugin\n  < selected plugin\n  < explicit config\n  < compatibility registration\n  < extension overlay\n```\n\n## Behavior and scope\n\nThis is a catalog and provenance change only. No production host contributes selected-plugin MCP registrations yet, so existing local MCP behavior remains unchanged.\n\nThe stacked follow-up, #27870, installs the executor plugin provider that produces these registrations. App-server activation remains a separate final step.\n\n## Verification\n\nFocused tests cover precedence, deterministic selected-plugin conflicts, disabled-veto behavior across catalog phases, managed requirements before selected-plugin resolution, winning-server approval policy, and attribution when local and selected packages share an ID or server name. CI owns execution of the test suite.\n",
+    "labels": [],
+    "merged_at": "2026-06-15T09:10:52Z",
+    "number": 27884,
+    "state": "merged",
+    "title": "Add selected-plugin precedence and attribution to the MCP catalog",
+    "url": "https://github.com/openai/codex/pull/27884"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

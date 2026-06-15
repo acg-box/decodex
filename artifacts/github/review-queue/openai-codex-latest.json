@@ -1,14 +1,14 @@
 {
   "counts": {
-    "critical": 19,
+    "critical": 20,
     "high": 5,
     "low": 0,
-    "normal": 16,
+    "normal": 15,
     "published_subjects_seen": 0,
     "recent_commits_scanned": 40,
     "subjects_queued": 40
   },
-  "generated_at": "2026-06-14T18:06:03.813491Z",
+  "generated_at": "2026-06-15T12:06:27.560195Z",
   "repo": "openai/codex",
   "schema": "upstream_review_queue/v1",
   "source": {
@@ -17,53 +17,6 @@
     "signals_dir": "site/src/content/signals"
   },
   "subjects": [
-    {
-      "attention_flags": [
-        "auth_account",
-        "breaking_change",
-        "deprecated_removed",
-        "new_feature",
-        "protocol_change",
-        "release_packaging",
-        "security_policy"
-      ],
-      "changed_file_count": 11,
-      "commit_shas": [
-        "07d66eccd904cd15cd754c43d3f74a72d63a1980",
-        "3e3379b56006b9e877f5db4ba65009b4ad41c49c",
-        "e026ff2133ba7c2e740eee1ecf0cc0ec5a7479a8",
-        "30f6722a49e562b8d8fccbaf221aa278d39ab30c"
-      ],
-      "committed_at": "2026-06-12T19:52:49Z",
-      "next_step": "ai_review_required",
-      "pr_number": 27535,
-      "pr_url": "https://github.com/openai/codex/pull/27535",
-      "review_priority": "critical",
-      "review_reason": "Needs AI review for auth_account, breaking_change, deprecated_removed, new_feature, protocol_change, release_packaging, security_policy.",
-      "sample_paths": [
-        "codex-rs/config/src/types.rs",
-        "codex-rs/core/config.schema.json",
-        "codex-rs/core/src/config/auth_keyring.rs",
-        "codex-rs/core/src/config/auth_keyring_tests.rs",
-        "codex-rs/core/src/config/config_tests.rs",
-        "codex-rs/core/src/config/mod.rs",
-        "codex-rs/features/src/lib.rs",
-        "codex-rs/features/src/tests.rs",
-        "codex-rs/keyring-store/src/lib.rs",
-        "codex-rs/secrets/src/lib.rs",
-        "codex-rs/secrets/src/local.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "27535",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "auth_accounts",
-        "config_hooks",
-        "tests_ci"
-      ],
-      "title": "feat: add auth-specific encrypted secret namespaces",
-      "url": "https://github.com/openai/codex/pull/27535"
-    },
     {
       "attention_flags": [
         "deprecated_removed",
@@ -891,35 +844,97 @@
     {
       "attention_flags": [
         "auth_account",
+        "deprecated_removed",
         "new_feature",
         "protocol_change",
         "security_policy"
       ],
-      "changed_file_count": 4,
+      "changed_file_count": 16,
       "commit_shas": [
-        "d8961dbcec304ece82efc081a64c5a165a376bb7"
+        "8489afd8e3f3a547b47d569cfc91a389af125b34",
+        "a7578adf4ccdae18f4cc9d3085d5aac15a431a3d",
+        "fa026aaac9fd3a6ed649544c7c22df2fb600f9c4",
+        "947796d1630c443c43a45727dd8b2150b5dc00d6",
+        "e6b462681a96488861b6e2197327a5d0b01cc6f2"
       ],
-      "committed_at": "2026-06-12T20:23:22Z",
+      "committed_at": "2026-06-15T09:10:51Z",
       "next_step": "ai_review_required",
-      "pr_number": 27926,
-      "pr_url": "https://github.com/openai/codex/pull/27926",
-      "review_priority": "high",
-      "review_reason": "Needs AI review for auth_account, new_feature, protocol_change, security_policy.",
+      "pr_number": 27884,
+      "pr_url": "https://github.com/openai/codex/pull/27884",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, deprecated_removed, new_feature, protocol_change, security_policy.",
       "sample_paths": [
-        "codex-rs/Cargo.lock",
-        "codex-rs/core-skills/Cargo.toml",
-        "codex-rs/core-skills/src/invocation_utils.rs",
-        "codex-rs/core-skills/src/invocation_utils_tests.rs"
+        "codex-rs/codex-mcp/src/catalog.rs",
+        "codex-rs/codex-mcp/src/catalog_tests.rs",
+        "codex-rs/codex-mcp/src/connection_manager.rs",
+        "codex-rs/codex-mcp/src/connection_manager_tests.rs",
+        "codex-rs/codex-mcp/src/lib.rs",
+        "codex-rs/codex-mcp/src/mcp/mod.rs",
+        "codex-rs/codex-mcp/src/mcp/mod_tests.rs",
+        "codex-rs/codex-mcp/src/server.rs",
+        "codex-rs/core/src/config/config_tests.rs",
+        "codex-rs/core/src/config/mod.rs",
+        "codex-rs/core/src/mcp.rs",
+        "codex-rs/core/src/mcp_tool_call.rs"
       ],
       "source_state": "merged",
-      "subject_id": "27926",
+      "subject_id": "27884",
       "subject_kind": "pr",
       "surface_hints": [
         "config_hooks",
+        "mcp_plugins",
         "tests_ci"
       ],
-      "title": "[codex] Align implicit skill reads with parser",
-      "url": "https://github.com/openai/codex/pull/27926"
+      "title": "Add selected-plugin precedence and attribution to the MCP catalog",
+      "url": "https://github.com/openai/codex/pull/27884"
+    },
+    {
+      "attention_flags": [
+        "auth_account",
+        "deprecated_removed",
+        "new_feature",
+        "protocol_change",
+        "release_packaging",
+        "security_policy"
+      ],
+      "changed_file_count": 11,
+      "commit_shas": [
+        "8489afd8e3f3a547b47d569cfc91a389af125b34",
+        "a7578adf4ccdae18f4cc9d3085d5aac15a431a3d",
+        "8b78cf44bc9452427916b53c2a7c1b99a2b89434",
+        "b7180839381890e258ba75bfbf2b825b5064a41f",
+        "a5453ca8f4c3c24b473c031811c1e36c3185efb8"
+      ],
+      "committed_at": "2026-06-15T09:52:05Z",
+      "next_step": "ai_review_required",
+      "pr_number": 27870,
+      "pr_url": "https://github.com/openai/codex/pull/27870",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, deprecated_removed, new_feature, protocol_change, release_packaging, security_policy.",
+      "sample_paths": [
+        "codex-rs/Cargo.lock",
+        "codex-rs/core-plugins/src/lib.rs",
+        "codex-rs/core-plugins/src/loader.rs",
+        "codex-rs/core-plugins/src/provider.rs",
+        "codex-rs/ext/mcp/Cargo.toml",
+        "codex-rs/ext/mcp/src/executor_plugin.rs",
+        "codex-rs/ext/mcp/src/executor_plugin/provider.rs",
+        "codex-rs/ext/mcp/src/executor_plugin/provider_tests.rs",
+        "codex-rs/ext/mcp/src/lib.rs",
+        "codex-rs/ext/mcp/tests/executor_plugin_mcp.rs",
+        "codex-rs/plugin/src/manifest.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "27870",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "config_hooks",
+        "mcp_plugins",
+        "model_provider",
+        "tests_ci"
+      ],
+      "title": "Discover stdio MCP servers from selected executor plugins",
+      "url": "https://github.com/openai/codex/pull/27870"
     },
     {
       "attention_flags": [
@@ -1089,30 +1104,34 @@
     },
     {
       "attention_flags": [
-        "new_feature",
-        "protocol_change"
+        "new_feature"
       ],
-      "changed_file_count": 1,
+      "changed_file_count": 4,
       "commit_shas": [
-        "1b73843628fdfbb3968f89427fc272b8add483b0"
+        "24984b53cfed8bea45870dc5fe57a5ea6e796c61",
+        "888be7d90b2129e93bf28eb0070660601fa0ce77"
       ],
-      "committed_at": "2026-06-12T20:00:21Z",
+      "committed_at": "2026-06-15T10:21:02Z",
       "next_step": "ai_review_required",
-      "pr_number": 27939,
-      "pr_url": "https://github.com/openai/codex/pull/27939",
-      "review_priority": "normal",
-      "review_reason": "Needs AI review for new_feature, protocol_change.",
+      "pr_number": 28283,
+      "pr_url": "https://github.com/openai/codex/pull/28283",
+      "review_priority": "high",
+      "review_reason": "Needs AI review for new_feature.",
       "sample_paths": [
-        "AGENTS.md"
+        "codex-rs/core/src/config/config_tests.rs",
+        "codex-rs/core/src/config/mod.rs",
+        "codex-rs/core/src/tools/handlers/multi_agents_spec.rs",
+        "codex-rs/core/src/tools/spec_plan_tests.rs"
       ],
       "source_state": "merged",
-      "subject_id": "27939",
+      "subject_id": "28283",
       "subject_kind": "pr",
       "surface_hints": [
-        "internal_churn"
+        "config_hooks",
+        "tests_ci"
       ],
-      "title": "[codex] Add crate API surface review rule",
-      "url": "https://github.com/openai/codex/pull/27939"
+      "title": "[codex] update multi-agent v2 prompts",
+      "url": "https://github.com/openai/codex/pull/28283"
     },
     {
       "attention_flags": [

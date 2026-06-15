@@ -1,0 +1,59 @@
+{
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27607",
+  "repo": "openai/codex",
+  "channel": "x",
+  "target_account": "decodexspace",
+  "mode": "operator_impact",
+  "priority": "high",
+  "audience": "Codex plugin authors and Control Plane operators",
+  "candidate_text": [
+    "Codex PR #27607 narrows ChatGPT/SIWC plugin routing: a plugin MCP server is hidden only when its server name matches an App declaration; non-conflicting MCP servers stay available. https://github.com/openai/codex/pull/27607",
+    "Control-plane takeaway: preserve App declaration names separately from connector IDs. App-vs-MCP routing now depends on the declared App name, not only the connector ID list."
+  ],
+  "source_refs": {
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27607.review.json"
+    ],
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27607.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27607"
+    ]
+  },
+  "evidence_notes": [
+    "PR #27607 says ChatGPT/SIWC should prefer the App route only for matching App/MCP names and keep separate MCP names available.",
+    "`LoadedPlugin.apps` now stores App declarations, and app-server derives connector IDs from those declarations for existing callers.",
+    "The checked upstream review and impact artifacts classify this as a Decodex plugin/MCP compatibility-risk item."
+  ],
+  "claims": [
+    {
+      "text": "Codex now preserves plugin App declaration names separately from connector IDs.",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27607.review.json",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "For ChatGPT/SIWC auth, only plugin MCP servers whose names match declared App names are suppressed.",
+      "evidence": "https://github.com/openai/codex/pull/27607",
+      "confidence": "confirmed"
+    },
+    {
+      "text": "Non-conflicting MCP servers from the same dual-surface plugin remain available.",
+      "evidence": "artifacts/github/bundles/openai-codex-pr-27607.json",
+      "confidence": "confirmed"
+    }
+  ],
+  "decision": {
+    "worthiness": "publish",
+    "reason": "Source-backed operator-impact change for dual App/MCP plugin routing under ChatGPT/SIWC auth.",
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27607:operator-impact"
+  },
+  "caveats": [
+    "Do not present this as removal of plugin MCP support.",
+    "The PR preserves effective App connector ID output for callers that only need connector IDs."
+  ],
+  "next_steps": [
+    "Let Publisher decide whether to post; this automation must not write social_post/v1 or publish to X."
+  ]
+}
