@@ -25,6 +25,7 @@
   },
   "channel": "x",
   "controller_account": "hackink",
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-15/openai-codex-rust-v0-140-0-alpha-19-operator-thread.json",
   "day": "2026-06-15",
   "duplicate_keys": [
     "x:decodexspace:openai-codex-rust-v0-140-0-alpha-19:alpha18-alpha19:thread",
@@ -58,7 +59,7 @@
   "reserved_at": "2026-06-15T13:01:41Z",
   "schema": "social_publish_reservation/v1",
   "slug": "openai-codex-rust-v0-140-0-alpha-19-operator-thread",
-  "status": "active",
+  "status": "consumed",
   "target_account": "decodexspace",
   "timezone": "Asia/Shanghai"
 }
