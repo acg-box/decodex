@@ -1,0 +1,207 @@
+{
+  "analysis_mode": "pr_first",
+  "commits": [
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T14:21:48Z",
+      "message": "Resolve selected plugin MCP registrations",
+      "sha": "8489afd8e3f3a547b47d569cfc91a389af125b34",
+      "url": "https://github.com/openai/codex/commit/8489afd8e3f3a547b47d569cfc91a389af125b34"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T15:16:17Z",
+      "message": "Use selected MCP winner approval policy",
+      "sha": "a7578adf4ccdae18f4cc9d3085d5aac15a431a3d",
+      "url": "https://github.com/openai/codex/commit/a7578adf4ccdae18f4cc9d3085d5aac15a431a3d"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T14:23:19Z",
+      "message": "Discover MCP servers in selected executor plugins",
+      "sha": "8b78cf44bc9452427916b53c2a7c1b99a2b89434",
+      "url": "https://github.com/openai/codex/commit/8b78cf44bc9452427916b53c2a7c1b99a2b89434"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T15:18:40Z",
+      "message": "Narrow executor plugin access to its filesystem",
+      "sha": "b7180839381890e258ba75bfbf2b825b5064a41f",
+      "url": "https://github.com/openai/codex/commit/b7180839381890e258ba75bfbf2b825b5064a41f"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-12T15:33:26Z",
+      "message": "Activate selected executor plugin MCPs in app-server",
+      "sha": "06dc0abb32835ccf054f291294a84a63617e31d8",
+      "url": "https://github.com/openai/codex/commit/06dc0abb32835ccf054f291294a84a63617e31d8"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T10:02:14Z",
+      "message": "Merge remote-tracking branch 'origin/main' into jif/app-server-executor-plugin-mcp",
+      "sha": "3964452256ff004a84e64a9299c041bce345b78b",
+      "url": "https://github.com/openai/codex/commit/3964452256ff004a84e64a9299c041bce345b78b"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T10:21:09Z",
+      "message": "Merge branch 'main' into jif/app-server-executor-plugin-mcp",
+      "sha": "191de6246942e5413e22b5087e4c8be6c185db9f",
+      "url": "https://github.com/openai/codex/commit/191de6246942e5413e22b5087e4c8be6c185db9f"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T10:50:27Z",
+      "message": "Enable hosted orchestrator skills",
+      "sha": "fa0e82f1affe6653756a662114361be0f640b634",
+      "url": "https://github.com/openai/codex/commit/fa0e82f1affe6653756a662114361be0f640b634"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T11:03:18Z",
+      "message": "Skip executor MCP helpers on Windows CI",
+      "sha": "b62eff83f23faf457c6f5072af70af7446b3bce1",
+      "url": "https://github.com/openai/codex/commit/b62eff83f23faf457c6f5072af70af7446b3bce1"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T11:10:45Z",
+      "message": "Revert unsupported Bazel select in app-server BUILD",
+      "sha": "cf3b08f03d6598c0edd7f60403bf5f92f3a0ca4b",
+      "url": "https://github.com/openai/codex/commit/cf3b08f03d6598c0edd7f60403bf5f92f3a0ca4b"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T13:01:58Z",
+      "message": "Remove executor MCP app-server E2E test",
+      "sha": "3d139253da3a4725655a0d1641a60f08c7b17903",
+      "url": "https://github.com/openai/codex/commit/3d139253da3a4725655a0d1641a60f08c7b17903"
+    },
+    {
+      "author": "jif-oai",
+      "committed_at": "2026-06-15T13:57:35Z",
+      "message": "Restore executor MCP E2E on non-Windows",
+      "sha": "2d6589027994b9539faa03d958b02a9cff616dd4",
+      "url": "https://github.com/openai/codex/commit/2d6589027994b9539faa03d958b02a9cff616dd4"
+    }
+  ],
+  "default_branch": "main",
+  "docs_refs": [
+    "codex-rs/app-server/README.md"
+  ],
+  "examples_refs": [],
+  "extracted_flags": [
+    "MCP",
+    "E2E",
+    "HTTP",
+    "BUILD",
+    "API",
+    "TODO",
+    "ORCHESTRATOR_SKILLS_ENABLED",
+    "DEFAULT_READ_TIMEOUT",
+    "MCP_SERVER_NAME",
+    "EXECUTOR_ENV_NAME",
+    "MCP_EXECUTOR_MARKER",
+    "EXECUTOR_ENV_VALUE",
+    "EXECUTOR_ID",
+    "REFRESH_PROBE_SERVER_NAME",
+    "TOOL_CALL_ID",
+    "--listen",
+    "ECHOING",
+    "CARGO_BIN_EXE_",
+    "WINDOWS_GNULLVM_INCOMPATIBLE",
+    "--remap-path-prefix",
+    "WINDOWS_RUSTC_LINK_FLAGS",
+    "WINDOWS_GNULLVM_ONLY"
+  ],
+  "files": [
+    {
+      "additions": 4,
+      "deletions": 0,
+      "patch_excerpt": "@@ -6,6 +6,10 @@ codex_rust_crate(\n     extra_binaries = [\n         \"//codex-rs/bwrap:bwrap\",\n     ],\n+    extra_binaries_non_windows = [\n+        \"//codex-rs/cli:codex\",\n+        \"//codex-rs/rmcp-client:test_stdio_server\",\n+    ],\n     integration_test_timeout = \"long\",\n     test_shard_counts = {\n         # Note app-server-all-test has a large number of integration tests, so",
+      "path": "codex-rs/app-server/BUILD.bazel",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 1,
+      "patch_excerpt": "@@ -130,7 +130,7 @@ Example with notification opt-out:\n \n ## API Overview\n \n-- `thread/start` — create a new thread; emits `thread/started` (including the current `thread.status`) and auto-subscribes you to turn/item events for that thread. When the request includes a `cwd` and the resolved sandbox is `workspace-write` or full access, app-server also marks that project as trusted in the user `config.toml`. Pass `sessionStartSource: \"clear\"` when starting a replacement thread after clearing the current session so `SessionStart` hooks receive `source: \"clear\"` instead of the default `\"startup\"`. Experimental `runtimeWorkspaceRoots` replaces the thread-scoped runtime workspace roots used to materialize `:workspace_roots`; paths must be absolute. For permissions, prefer experimental `permissions` profile selection by id; the legacy `sandbox` shorthand is still accepted but cannot be combined...",
+      "path": "codex-rs/app-server/README.md",
+      "status": "modified"
+    },
+    {
+      "additions": 7,
+      "deletions": 8,
+      "patch_excerpt": "@@ -9,6 +9,7 @@ use codex_core::NewThread;\n use codex_core::StartThreadOptions;\n use codex_core::ThreadManager;\n use codex_core::config::Config;\n+use codex_exec_server::EnvironmentManager;\n use codex_extension_api::AgentSpawnFuture;\n use codex_extension_api::AgentSpawner;\n use codex_extension_api::ExtensionEventSink;\n@@ -27,16 +28,14 @@ use crate::outgoing_message::OutgoingMessageSender;\n use crate::thread_state::ThreadListenerCommand;\n use crate::thread_state::ThreadStateManager;\n \n-// TODO(jif): Enable once /ps/mcp serves complete hosted skill packages.\n-const ORCHESTRATOR_SKILLS_ENABLED: bool = false;\n-\n pub(crate) struct ThreadExtensionDependencies {\n     pub(crate) event_sink: Arc<dyn ExtensionEventSink>,\n     pub(crate) auth_manager: Arc<AuthManager>,\n     pub(crate) state_db: Option<StateDbHandle>,\n     pub(crate) analytics_events_client: AnalyticsEventsClient,\n     pub(crate) thr...",
+      "path": "codex-rs/app-server/src/extensions.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -237,6 +237,7 @@ mod tests {\n                         analytics_events_client: codex_analytics::AnalyticsEventsClient::disabled(),\n                         thread_manager: thread_manager.clone(),\n                         goal_service: Arc::new(codex_goal_extension::GoalService::new()),\n+                        environment_manager: Arc::clone(&environment_manager),\n                         executor_skill_provider: Arc::clone(&executor_skill_provider),\n                         thread_store: Arc::clone(&thread_store),\n                     },",
+      "path": "codex-rs/app-server/src/mcp_refresh.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 1,
+      "patch_excerpt": "@@ -329,7 +329,7 @@ impl MessageProcessor {\n         let restriction_product = session_source.restriction_product();\n         let executor_skill_provider: Arc<dyn codex_skills_extension::SkillProvider> = Arc::new(\n             codex_skills_extension::ExecutorSkillProvider::new_with_restriction_product(\n-                environment_manager_for_extensions,\n+                Arc::clone(&environment_manager_for_extensions),\n                 restriction_product,\n             ),\n         );\n@@ -352,6 +352,7 @@ impl MessageProcessor {\n                         analytics_events_client: analytics_events_client.clone(),\n                         thread_manager: thread_manager.clone(),\n                         goal_service: Arc::clone(&goal_service),\n+                        environment_manager: Arc::clone(&environment_manager_for_extensions),\n                         executor_skill_provider: Arc::clo...",
+      "path": "codex-rs/app-server/src/message_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 1,
+      "deletions": 0,
+      "patch_excerpt": "@@ -1096,6 +1096,7 @@ impl ThreadRequestProcessor {\n         let mut thread_extension_init = ExtensionDataInit::new();\n         if !selected_capability_roots.is_empty() {\n             thread_extension_init.insert(selected_capability_roots);\n+            codex_mcp_extension::initialize_executor_plugin_thread_data(&mut thread_extension_init);\n         }\n         let create_thread_started_at = std::time::Instant::now();\n         let NewThread {",
+      "path": "codex-rs/app-server/src/request_processors/thread_processor.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 264,
+      "deletions": 0,
+      "patch_excerpt": "@@ -0,0 +1,264 @@\n+use anyhow::Result;\n+use app_test_support::TestAppServer;\n+use app_test_support::to_response;\n+use app_test_support::write_mock_responses_config_toml;\n+use codex_app_server_protocol::CapabilityRootLocation;\n+use codex_app_server_protocol::ListMcpServerStatusParams;\n+use codex_app_server_protocol::ListMcpServerStatusResponse;\n+use codex_app_server_protocol::McpServerToolCallParams;\n+use codex_app_server_protocol::McpServerToolCallResponse;\n+use codex_app_server_protocol::RequestId;\n+use codex_app_server_protocol::SelectedCapabilityRoot;\n+use codex_app_server_protocol::ThreadStartParams;\n+use codex_app_server_protocol::ThreadStartResponse;\n+use codex_app_server_protocol::TurnStartParams;\n+use codex_app_server_protocol::UserInput;\n+use core_test_support::responses;\n+use core_test_support::stdio_server_bin;\n+use pretty_assertions::assert_eq;\n+use serde_json::json;\n+use std...",
+      "path": "codex-rs/app-server/tests/suite/v2/executor_mcp.rs",
+      "status": "added"
+    },
+    {
+      "additions": 0,
+      "deletions": 1,
+      "patch_excerpt": "@@ -124,7 +124,6 @@ async fn mcp_resource_read_returns_resource_contents() -> Result<()> {\n }\n \n #[tokio::test(flavor = \"multi_thread\", worker_threads = 2)]\n-#[ignore = \"orchestrator skills are disabled until /ps/mcp serves complete skill packages\"]\n async fn orchestrator_skill_can_read_referenced_resource_without_an_executor() -> Result<()> {\n     let responses_server = responses::start_mock_server().await;\n     let (apps_server_url, apps_server_handle) = start_resource_apps_mcp_server().await?;",
+      "path": "codex-rs/app-server/tests/suite/v2/mcp_resource.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 2,
+      "deletions": 0,
+      "patch_excerpt": "@@ -12,6 +12,8 @@ mod connection_handling_websocket;\n #[cfg(unix)]\n mod connection_handling_websocket_unix;\n mod dynamic_tools;\n+#[cfg(not(target_os = \"windows\"))]\n+mod executor_mcp;\n mod executor_skills;\n mod experimental_api;\n mod experimental_feature_list;",
+      "path": "codex-rs/app-server/tests/suite/v2/mod.rs",
+      "status": "modified"
+    },
+    {
+      "additions": 39,
+      "deletions": 9,
+      "patch_excerpt": "@@ -187,7 +187,8 @@ def codex_rust_crate(\n         test_shard_counts = {},\n         test_tags = [],\n         unit_test_timeout = None,\n-        extra_binaries = []):\n+        extra_binaries = [],\n+        extra_binaries_non_windows = []):\n     \"\"\"Defines a Rust crate with library, binaries, and tests wired for Bazel + Cargo parity.\n \n     The macro mirrors Cargo conventions: it builds a library when `src/` exists,\n@@ -232,6 +233,9 @@ def codex_rust_crate(\n             generated from `src/**/*.rs`.\n         extra_binaries: Additional binary labels to surface as test data and\n             `CARGO_BIN_EXE_*` environment variables. These are only needed for binaries from a different crate.\n+        extra_binaries_non_windows: Like `extra_binaries`, but omitted from\n+            Windows test data and environment variables. Tests using these\n+            binaries must be excluded when targeting...",
+      "path": "defs.bzl",
+      "status": "modified"
+    }
+  ],
+  "linked_issues": [
+    "#27870"
+  ],
+  "notes": [
+    "Built from GitHub pull-request, commits, files, and repo endpoints."
+  ],
+  "primary_pr": {
+    "body": "## Why\n\n#27870 teaches the MCP extension how to discover stdio MCP servers declared by a selected executor plugin, but app-server does not yet install that contributor or initialize its per-thread state. As a result, `thread/start.selectedCapabilityRoots` can select the plugin while its MCP servers remain inactive.\n\nThis PR closes that app-server wiring gap:\n\n```text\nthread/start(selectedCapabilityRoots)\n    -> initialize the thread's selected-plugin MCP snapshot\n    -> read the selected plugin's .mcp.json through its environment\n    -> start declared stdio servers in that environment\n    -> expose their tools only on the selected thread\n```\n\n## What changed\n\n- Install the selected-executor-plugin MCP contributor in app-server using the existing shared `EnvironmentManager`.\n- Initialize its frozen thread snapshot when `thread/start` includes selected capability roots.\n- Document that selected plugin stdio MCPs are activated in their owning environment.\n- Add an app-server E2E covering the complete selection-to-tool-call path.\n\nThe E2E verifies that:\n\n- the selected MCP process receives an executor-only environment value, proving the tool runs through the selected environment;\n- the MCP tool is advertised to the model and can be called;\n- a normal MCP config reload does not discard the thread's frozen selected-plugin registration;\n- another thread without the selected root does not see the MCP server.\n\n## Scope\n\n- Existing sessions without `selectedCapabilityRoots` are unchanged.\n- Only stdio MCP declarations are activated. HTTP declarations remain inactive.\n- This does not change selected-root persistence across resume/fork or add hosted-plugin behavior.\n\n## Verification\n\n- Focused app-server E2E: `selected_executor_plugin_exposes_its_stdio_mcp_only_to_that_thread`\n\n## Stack\n\nStacked on #27870.\n",
+    "labels": [],
+    "merged_at": "2026-06-15T14:23:37Z",
+    "number": 27893,
+    "state": "merged",
+    "title": "Activate selected executor plugin MCPs in app-server",
+    "url": "https://github.com/openai/codex/pull/27893"
+  },
+  "repo": "openai/codex",
+  "schema": "github_change_bundle/v1"
+}

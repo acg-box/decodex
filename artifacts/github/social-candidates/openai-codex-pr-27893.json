@@ -1,0 +1,55 @@
+{
+  "audience": "Codex app-server, plugin, and MCP operators",
+  "candidate_text": [
+    "Codex PR #27893 makes selected capability roots activate thread-scoped stdio MCP servers from selected executor plugins through app-server. HTTP MCP declarations stay inactive. https://github.com/openai/codex/pull/27893"
+  ],
+  "caveats": [
+    "Only stdio MCP declarations are active in this PR.",
+    "Do not claim resume/fork persistence or hosted-plugin behavior changed beyond the source-backed review."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27893.review.json",
+      "text": "Selected capability roots can now activate selected plugin stdio MCP servers through app-server."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27893.json",
+      "text": "Selected plugin MCP tools are scoped to the selected thread and owning environment."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/bundles/openai-codex-pr-27893.json",
+      "text": "HTTP MCP declarations remain inactive for selected plugin activation in this PR."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27893:operator-impact:publish",
+    "reason": "The merged app-server behavior has clear operator value and source-backed tests.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "PR #27893 states selected plugin stdio MCP servers start in the selected environment and are exposed only on the selected thread.",
+    "The source review records README, extension registration, thread initialization, and E2E evidence.",
+    "The impact artifact classifies this as a Control Plane candidate with an operator-impact public angle."
+  ],
+  "mode": "operator_impact",
+  "priority": "critical",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27893",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27893.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27893.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27893"
+    ]
+  },
+  "target_account": "decodexspace"
+}
