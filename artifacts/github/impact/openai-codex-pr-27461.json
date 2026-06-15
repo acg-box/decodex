@@ -1,0 +1,46 @@
+{
+  "candidate_followups": [
+    "Model plugin OAuth prompts in Decodex as auth-route dependent rather than a static function of declared MCP servers.",
+    "When summarizing plugin capabilities, distinguish same-name App routes suppressed under Codex-backend auth from MCP servers still available under API-key/direct auth.",
+    "Use PR #27602 and PR #27607 review artifacts alongside this one when explaining the full plugin auth-routing stack."
+  ],
+  "caveats": [
+    "The filter applies when `AuthMode::uses_codex_backend`; direct/API-key-style auth remains MCP-visible.",
+    "The conflict key is the App declaration name matching an MCP server name, not the broader plugin package name."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "PR #27461 says install-time MCP OAuth and plugin detail metadata should reflect MCP servers available for the current auth route.",
+    "App-server passes the current auth mode into plugin MCP loading before starting install-time MCP OAuth.",
+    "The core plugin loader removes same-name MCP server declarations only for Codex-backend auth after reading plugin App declarations.",
+    "Tests cover both app-server install behavior and plugin manager metadata filtering.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27461.review.json`."
+  ],
+  "observed_change": "Codex plugin MCP loading is now auth-aware: ChatGPT/SIWC auth filters same-name MCP servers when a plugin App route exists, while API-key/direct auth keeps plugin MCP servers visible and OAuth-capable.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "practical_explainer",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27461",
+  "social_notes": [
+    "A public note should emphasize this avoids duplicate OAuth for dual App/MCP plugins under ChatGPT/SIWC.",
+    "Do not claim MCP servers are globally hidden; API-key/direct auth keeps them visible."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-15T13:04:01Z",
+        "title": "[codex] Skip plugin MCP OAuth for matching app routes",
+        "url": "https://github.com/openai/codex/pull/27461"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27461.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27461"
+      }
+    ]
+  }
+}
