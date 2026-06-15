@@ -127,6 +127,14 @@ typed reason such as `contract_boundary_required`, `external_dependency_required
 | `uncovered_direction` | The missing requirement, decision, or research gap named in public/private evidence. | A research or Decision Contract captures the missing direction and the issue is updated or requeued from that authority. |
 | `ambiguous_retained_progress` | Retained worktree diff, ownership markers, PR lineage if present, private evidence, and boundary disposition. | A human chooses one path: resume same lane, finish manual repair, or reset/discard the retained patch explicitly. |
 
+Before treating retained progress as human-owned, check the current run activity
+marker. A `retry_kind` marker means retry scheduling still owns the run. A live
+`current_operation=repo_gate` marker means the repository gate still owns the run.
+For active phase-goal lanes, inspect the latest private progress and decision
+evidence: no blockers or decision request means Decodex should recover the phase goal
+and schedule continuation; concrete blockers or decision requests keep the normal
+manual-attention path.
+
 For every human-required guardrail stop, keep `decodex:needs-attention` until the
 blocker above is resolved. If the issue returns to automation, request a Linear scan
 or let the next scheduled scan observe the corrected tracker state; do not bypass the
