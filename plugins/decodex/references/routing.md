@@ -28,7 +28,12 @@ labels, retained automation, commit, or landing boundaries.
 - For runtime semantics, prefer `docs/spec/` and `docs/runbook/` over global host
   policy.
 
-## Research To Execution
+## Natural-Language Research Routing
+
+Keep Decodex natural-language-first. Requests such as `research X` route through
+`research`, `research-probe`, `research-evidence`, `research-options`,
+`research-judgment`, `research-challenge`, and `research-decision` before any
+promotion.
 
 1. A natural-language research request never queues work, mutates Linear, starts
    implementation, creates Codex goals, or dispatches Program nodes.
