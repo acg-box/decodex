@@ -52,6 +52,7 @@
   "owner": {
     "automation_id": "decodex-x-publisher",
     "branch": "automation/x-publisher-20260615-alpha19",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/389",
     "run_started_at": "2026-06-15T13:01:41Z"
   },
   "reserved_at": "2026-06-15T13:01:41Z",
