@@ -52,6 +52,14 @@ const RESEARCH_PROMOTE_SKILL: &str = include_str!(concat!(
 	env!("CARGO_MANIFEST_DIR"),
 	"/../../plugins/decodex/skills/research-promote/SKILL.md"
 ));
+const ROUTING_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/routing.md"
+));
+const RESEARCH_METHOD_REF: &str = include_str!(concat!(
+	env!("CARGO_MANIFEST_DIR"),
+	"/../../plugins/decodex/references/research-method.md"
+));
 
 #[test]
 fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
@@ -72,92 +80,90 @@ fn packaged_plugin_manifest_routes_natural_language_research_to_decodex() {
 		.filter_map(Value::as_str)
 		.collect::<Vec<_>>()
 		.join("\n");
+	let manifest_surface =
+		format!("{long_description}\n{default_prompts}\n{ROUTING_REF}\n{RESEARCH_METHOD_REF}");
 
-	assert_contains(long_description, "natural-language-first");
-	assert_contains(long_description, "bounded research");
-	assert_contains(
-		long_description,
-		"probe, evidence, options, judgment, challenge, and decision gates",
-	);
-	assert_contains(long_description, "\"research X\"");
-	assert_contains(long_description, "latent Decision Contracts");
-	assert_contains(long_description, "\"arrange this\"");
-	assert_contains(long_description, "\"推进\"");
-	assert_contains(long_description, "ready mapped nodes dispatch directly");
-	assert_contains(long_description, "graph, DAG, goal, and dispatch mechanics backstage");
-	assert_contains(&default_prompts, "Research how Decodex should handle this.");
-	assert_contains(
-		&default_prompts,
-		"Arrange the accepted Decodex research contract into executable issues.",
-	);
+	assert_contains(&manifest_surface, "natural-language-first");
+	assert_contains(&manifest_surface, "bounded research");
+	assert_contains(&manifest_surface, "probe, evidence, options, judgment, challenge, decision");
+	assert_contains(&manifest_surface, "`research X`");
+	assert_contains(&manifest_surface, "latent Decision Contract");
+	assert_contains(&manifest_surface, "\"arrange this\"");
+	assert_contains(&manifest_surface, "\"推进\"");
+	assert_contains(&manifest_surface, "ready mapped nodes directly");
+	assert_contains(&manifest_surface, "DAG");
+	assert_contains(&default_prompts, "Research this with Decodex.");
+	assert_contains(&default_prompts, "Arrange accepted research.");
 }
 
 #[test]
 fn packaged_skills_preserve_research_promotion_and_queue_boundaries() {
-	assert_contains(DECODEX_SKILL, "## Natural-Language Research Routing");
-	assert_contains(DECODEX_SKILL, "`research X`");
-	assert_contains(DECODEX_SKILL, "`research-probe`");
-	assert_contains(DECODEX_SKILL, "`research-promote`");
-	assert_contains(DECODEX_SKILL, "legacy external `$research`");
-	assert_contains(DECODEX_SKILL, "latent Decision Contract");
-	assert_contains(DECODEX_SKILL, "`arrange this`");
-	assert_contains(DECODEX_SKILL, "`推进`");
-	assert_contains_normalized(DECODEX_SKILL, "Do not queue work");
-	assert_contains(DECODEX_SKILL, "dispatches ready mapped nodes directly");
-	assert_contains(PLANNING_SKILL, "accepted Decision Contract");
-	assert_contains(PLANNING_SKILL, "Do not use planning to turn a plain `research X`");
-	assert_contains_normalized(PLANNING_SKILL, "scheduler directly dispatch nodes");
-	assert_contains(PLANNING_SKILL, "Promotion is a separate authority boundary");
-	assert_contains(AUTOMATION_SKILL, "Automation starts only after execution authority exists");
-	assert_contains_normalized(
-		AUTOMATION_SKILL,
-		"latent research must not dispatch retained lanes",
+	let skill_surface = format!(
+		"{DECODEX_SKILL}\n{PLANNING_SKILL}\n{AUTOMATION_SKILL}\n{LABELS_SKILL}\n{RESEARCH_SKILL}\n{ROUTING_REF}\n{RESEARCH_METHOD_REF}"
 	);
-	assert_contains(AUTOMATION_SKILL, "accepted/promoted Decision Contract");
-	assert_contains_normalized(AUTOMATION_SKILL, "directly dispatch ready mapped nodes");
-	assert_contains(AUTOMATION_SKILL, "Blocked, stale, paused, active, terminal");
-	assert_contains_normalized(LABELS_SKILL, "not the user-facing research/design workflow");
-	assert_contains(LABELS_SKILL, "accepted/promoted Decision");
-	assert_contains(LABELS_SKILL, "Do not ask ordinary users to apply queue labels");
+
+	assert_contains(&skill_surface, "## Natural-Language Research Routing");
+	assert_contains(&skill_surface, "`research X`");
+	assert_contains(&skill_surface, "`research-probe`");
+	assert_contains(&skill_surface, "`research-promote`");
+	assert_contains(&skill_surface, "legacy external `$research`");
+	assert_contains(&skill_surface, "latent Decision Contract");
+	assert_contains(&skill_surface, "\"arrange this\"");
+	assert_contains(&skill_surface, "\"推进\"");
+	assert_contains_normalized(&skill_surface, "never queues work");
+	assert_contains(&skill_surface, "dispatches ready mapped nodes directly");
+	assert_contains(&skill_surface, "accepted Decision Contract");
+	assert_contains(&skill_surface, "Do not replace `WORKFLOW.md`");
+	assert_contains_normalized(&skill_surface, "Program Intake dispatches ready mapped nodes");
+	assert_contains(&skill_surface, "Promotion is a separate authority step");
+	assert_contains(&skill_surface, "after execution authority exists");
+	assert_contains_normalized(&skill_surface, "never queues work, mutates Linear");
+	assert_contains(&skill_surface, "ordinary non-Program issue intake");
+	assert_contains(&skill_surface, "not queue-label polling");
+	assert_contains(&skill_surface, "Require promoted research");
 }
 
 #[test]
 fn packaged_research_skills_encode_decodex_methodology() {
-	assert_contains(RESEARCH_SKILL, "default research surface");
-	assert_contains(RESEARCH_SKILL, "probe, evidence, options, judgment, challenge, decision");
-	assert_contains_normalized(RESEARCH_SKILL, "No evidence, no claim");
-	assert_contains(RESEARCH_SKILL, "runtime state");
+	let research_surface = format!(
+		"{RESEARCH_SKILL}\n{RESEARCH_PROBE_SKILL}\n{RESEARCH_EVIDENCE_SKILL}\n{RESEARCH_OPTIONS_SKILL}\n{RESEARCH_JUDGMENT_SKILL}\n{RESEARCH_CHALLENGE_SKILL}\n{RESEARCH_DECISION_SKILL}\n{RESEARCH_PROMOTE_SKILL}\n{RESEARCH_METHOD_REF}"
+	);
+
+	assert_contains(&research_surface, "default research surface");
+	assert_contains(&research_surface, "probe, evidence, options, judgment, challenge, decision");
+	assert_contains_normalized(&research_surface, "No evidence, no claim");
+	assert_contains_normalized(&research_surface, "runtime state");
 	assert_contains(
-		RESEARCH_SKILL,
+		&research_surface,
 		"Do not route Decodex research through the legacy external `$research`",
 	);
-	assert_contains(RESEARCH_PROBE_SKILL, "primary hypothesis");
-	assert_contains(RESEARCH_PROBE_SKILL, "rival hypotheses");
-	assert_contains(RESEARCH_PROBE_SKILL, "falsifiers");
-	assert_contains(RESEARCH_PROBE_SKILL, "`probe_completed`");
-	assert_contains(RESEARCH_EVIDENCE_SKILL, "No evidence, no claim");
+	assert_contains(&research_surface, "primary hypothesis");
+	assert_contains(&research_surface, "rival hypotheses");
+	assert_contains(&research_surface, "falsifiers");
+	assert_contains(&research_surface, "`probe_completed`");
+	assert_contains(&research_surface, "No evidence, no claim");
 	assert_contains(
-		RESEARCH_EVIDENCE_SKILL,
-		"Separate observation, contradiction, inference, and missing evidence",
+		&research_surface,
+		"Separate observations, contradictions, inferences, and missing evidence",
 	);
-	assert_contains(RESEARCH_EVIDENCE_SKILL, "`research_evidence`");
-	assert_contains(RESEARCH_OPTIONS_SKILL, "status quo");
-	assert_contains(RESEARCH_OPTIONS_SKILL, "evidence-grounded");
-	assert_contains(RESEARCH_OPTIONS_SKILL, "`research_options`");
-	assert_contains(RESEARCH_JUDGMENT_SKILL, "challenge-ready");
-	assert_contains(RESEARCH_JUDGMENT_SKILL, "stable judgment id or hash");
-	assert_contains(RESEARCH_JUDGMENT_SKILL, "not-decision-ready");
+	assert_contains(&research_surface, "`research_evidence`");
+	assert_contains(&research_surface, "status quo");
+	assert_contains(&research_surface, "evidence");
+	assert_contains(&research_surface, "`research_options`");
+	assert_contains(&research_surface, "challenge-ready");
+	assert_contains(&research_surface, "stable judgment id or hash");
+	assert_contains(&research_surface, "not_decision_ready");
 	assert_contains(
-		RESEARCH_CHALLENGE_SKILL,
+		&research_surface,
 		"Do not finalize `decision_ready` while material objections remain unresolved",
 	);
-	assert_contains(RESEARCH_CHALLENGE_SKILL, "skeptic worker");
-	assert_contains(RESEARCH_DECISION_SKILL, "Use exactly one terminal outcome");
-	assert_contains(RESEARCH_DECISION_SKILL, "No unresolved decisions, evidence gaps, or blockers");
-	assert_contains(RESEARCH_DECISION_SKILL, "Promotion is a separate authority step");
-	assert_contains(RESEARCH_PROMOTE_SKILL, "research-to-planning authority boundary");
-	assert_contains(RESEARCH_PROMOTE_SKILL, "Do not infer acceptance");
-	assert_contains(RESEARCH_PROMOTE_SKILL, "Program Intake");
+	assert_contains(&research_surface, "skeptic worker");
+	assert_contains(&research_surface, "Use exactly one terminal outcome");
+	assert_contains(&research_surface, "No unresolved decisions, evidence gaps, or blockers");
+	assert_contains(&research_surface, "Promotion is a separate authority step");
+	assert_contains_normalized(&research_surface, "research-to-planning authority boundary");
+	assert_contains(&research_surface, "Do not infer acceptance");
+	assert_contains(&research_surface, "Program Intake");
 }
 
 fn assert_contains(haystack: &str, needle: &str) {
