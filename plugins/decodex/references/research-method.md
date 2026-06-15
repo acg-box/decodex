@@ -1,6 +1,7 @@
 # Decodex Research Method Reference
 
 Use this reference when Decodex research needs the full Decision Contract protocol.
+Decodex is the default research surface for bounded technical investigation.
 
 ## Loop
 
@@ -17,6 +18,9 @@ Run the same decision-quality loop for bounded research:
 6. Decision: finish as exactly one terminal status.
 7. Promote: only after explicit acceptance.
 
+The compact phase order is: probe, evidence, options, judgment, challenge, decision,
+promote.
+
 ## Probe Checklist
 
 Record these before broad search or implementation:
@@ -31,6 +35,8 @@ Record these before broad search or implementation:
 - falsifiers for the primary hypothesis
 - initial evidence plan
 
+The first durable event for machine-authored runs is `probe_completed`.
+
 ## Evidence Rules
 
 - No evidence, no claim.
@@ -40,6 +46,7 @@ Record these before broad search or implementation:
   state.
 - Preserve conflicting evidence and name what would resolve it.
 - Use private evidence refs for local, sensitive, or runtime-private proof.
+- Map supported claims into `research_evidence`.
 
 ## Option Rules
 
@@ -53,6 +60,7 @@ For each option, record:
 
 Do not compare straw-man options or select an option without evidence or explicit
 assumptions.
+Map option records into `research_options`.
 
 ## Judgment Rules
 
@@ -67,6 +75,8 @@ A challenge-ready judgment includes:
 - expected validation if promoted
 
 Do not call the judgment final before challenge.
+For replayable machine-authored runs, assign a stable judgment id or hash over the
+normalized conclusion and cited evidence.
 
 ## Challenge Rules
 
@@ -83,6 +93,7 @@ Challenge the judgment against:
 
 Record each objection as resolved, unresolved, or out of scope. Unresolved material
 objections block `decision_ready`.
+Use a bounded skeptic worker only when it materially improves independence.
 
 ## Decision Statuses
 
@@ -96,6 +107,7 @@ Use exactly one terminal outcome:
 - `needs_human_decision`: remaining uncertainty is a human/product/authority choice.
 
 Never use `decision_ready` because budget ended.
+No unresolved decisions, evidence gaps, or blockers may remain for `decision_ready`.
 
 ## Decision Contract Shape
 
@@ -115,6 +127,8 @@ state. In chat, present the same shape plainly:
 
 Research output is latent. Promotion requires explicit acceptance or an equivalent
 follow-up such as "arrange this", "push this forward", "推进", or "做".
+Promotion is a separate authority step and the research-to-planning authority
+boundary.
 
 When promoting:
 
