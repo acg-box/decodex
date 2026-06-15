@@ -8,7 +8,7 @@
     "recent_commits_scanned": 40,
     "subjects_queued": 40
   },
-  "generated_at": "2026-06-14T06:06:44.836542Z",
+  "generated_at": "2026-06-14T18:06:03.813491Z",
   "repo": "openai/codex",
   "schema": "upstream_review_queue/v1",
   "source": {
@@ -17,91 +17,6 @@
     "signals_dir": "site/src/content/signals"
   },
   "subjects": [
-    {
-      "attention_flags": [
-        "auth_account",
-        "breaking_change",
-        "deprecated_removed",
-        "new_feature",
-        "protocol_change",
-        "security_policy"
-      ],
-      "changed_file_count": 8,
-      "commit_shas": [
-        "07d66eccd904cd15cd754c43d3f74a72d63a1980",
-        "3e3379b56006b9e877f5db4ba65009b4ad41c49c"
-      ],
-      "committed_at": "2026-06-12T19:15:21Z",
-      "next_step": "ai_review_required",
-      "pr_number": 27504,
-      "pr_url": "https://github.com/openai/codex/pull/27504",
-      "review_priority": "critical",
-      "review_reason": "Needs AI review for auth_account, breaking_change, deprecated_removed, new_feature, protocol_change, security_policy.",
-      "sample_paths": [
-        "codex-rs/config/src/types.rs",
-        "codex-rs/core/config.schema.json",
-        "codex-rs/core/src/config/auth_keyring.rs",
-        "codex-rs/core/src/config/auth_keyring_tests.rs",
-        "codex-rs/core/src/config/config_tests.rs",
-        "codex-rs/core/src/config/mod.rs",
-        "codex-rs/features/src/lib.rs",
-        "codex-rs/features/src/tests.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "27504",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "auth_accounts",
-        "config_hooks",
-        "tests_ci"
-      ],
-      "title": "feat: add secret auth storage configuration",
-      "url": "https://github.com/openai/codex/pull/27504"
-    },
-    {
-      "attention_flags": [
-        "auth_account",
-        "deprecated_removed",
-        "new_feature",
-        "protocol_change",
-        "security_policy"
-      ],
-      "changed_file_count": 9,
-      "commit_shas": [
-        "bfd992f6dbf9acffcbdafbcee3c092d729725759",
-        "94185dff59cd43d21450db876ab4b595383ae959",
-        "f45d36dc66dfe7eba7478c6921a69ced53a92c07",
-        "21c45654a19f658a83b37ada768ab8e109f06955"
-      ],
-      "committed_at": "2026-06-12T19:38:30Z",
-      "next_step": "ai_review_required",
-      "pr_number": 27674,
-      "pr_url": "https://github.com/openai/codex/pull/27674",
-      "review_priority": "critical",
-      "review_reason": "Needs AI review for auth_account, deprecated_removed, new_feature, protocol_change, security_policy.",
-      "sample_paths": [
-        "codex-rs/Cargo.lock",
-        "codex-rs/cli/Cargo.toml",
-        "codex-rs/cli/src/login.rs",
-        "codex-rs/cli/tests/login.rs",
-        "codex-rs/login/src/auth/manager.rs",
-        "codex-rs/login/src/auth/mod.rs",
-        "codex-rs/login/src/auth/revoke.rs",
-        "codex-rs/login/src/server.rs",
-        "codex-rs/login/tests/suite/logout.rs"
-      ],
-      "source_state": "merged",
-      "subject_id": "27674",
-      "subject_kind": "pr",
-      "surface_hints": [
-        "auth_accounts",
-        "cli_tui",
-        "config_hooks",
-        "tests_ci"
-      ],
-      "title": "[login] revoke existing auth before starting login",
-      "url": "https://github.com/openai/codex/pull/27674"
-    },
     {
       "attention_flags": [
         "auth_account",
@@ -860,6 +775,118 @@
       ],
       "title": "build: run buildifier from just fmt",
       "url": "https://github.com/openai/codex/pull/28125"
+    },
+    {
+      "attention_flags": [
+        "auth_account",
+        "breaking_change",
+        "new_feature",
+        "protocol_change",
+        "release_packaging",
+        "security_policy"
+      ],
+      "changed_file_count": 22,
+      "commit_shas": [
+        "a2a917b071ce164777333349163005720c8c5e7f",
+        "019ff65142c38263fd685f9692670aeeb560c5c6",
+        "5bada3f2a4f18a252cd65d89f461d3ff3c9f4b1f",
+        "2a8b87ed44215e4bf0bcce6b778038874c720b51",
+        "310ccf29f684a7a19ae65ea790bd465cfe74cb2a",
+        "763357aaa79a5fb13f84a5013deb2ff284a67bd4",
+        "ce4102787545b9131e32619e43ed89dc0ad13f12",
+        "4f6dd50b0eb01f3548c7b1403017e74c8697ef51",
+        "f4db0780fc9ef2063e29847f851759c5bd97dbe1",
+        "25644e0ec49ebf371ab45c8ae73b3cb8fd78607e",
+        "18004b9322a89dd9efc40aea3f88643cdfc55eed",
+        "716e9e32e934a3f7b868a1bc7a327524594dc81e",
+        "1a7dbd5b4ff43cdf230f8b7062e6c1618ed458dc"
+      ],
+      "committed_at": "2026-06-14T06:07:46Z",
+      "next_step": "ai_review_required",
+      "pr_number": 28122,
+      "pr_url": "https://github.com/openai/codex/pull/28122",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, breaking_change, new_feature, protocol_change, release_packaging, security_policy.",
+      "sample_paths": [
+        "bazel/rules/testing/wine/src/lib.rs",
+        "bazel/rules/testing/wine/src/lib_tests.rs",
+        "codex-rs/Cargo.lock",
+        "codex-rs/app-server/src/request_processors/thread_processor.rs",
+        "codex-rs/app-server/src/request_processors/turn_processor.rs",
+        "codex-rs/core/src/environment_selection.rs",
+        "codex-rs/core/src/session/mod.rs",
+        "codex-rs/core/src/session/tests.rs",
+        "codex-rs/core/src/session/turn_context.rs",
+        "codex-rs/core/src/thread_manager_tests.rs",
+        "codex-rs/core/src/tools/handlers/unified_exec/exec_command.rs",
+        "codex-rs/core/tests/common/test_codex.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "28122",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "app_server_protocol",
+        "cli_tui",
+        "config_hooks",
+        "tests_ci"
+      ],
+      "title": "[codex] exec-server honors remote environment cwd and shell",
+      "url": "https://github.com/openai/codex/pull/28122"
+    },
+    {
+      "attention_flags": [
+        "auth_account",
+        "breaking_change",
+        "deprecated_removed",
+        "new_feature",
+        "protocol_change",
+        "security_policy"
+      ],
+      "changed_file_count": 27,
+      "commit_shas": [
+        "68567deb6f6e9227662c9558d37ff3e280a2b377",
+        "724cd58bf6ed04ffaf8ab8520c951a5518f3161a",
+        "c2f877a1d0c5dbab82f5d7fcb4c591b90e9541f8",
+        "e06ed34720737e1657c74fdc466972c5fdda5ac4",
+        "eaeb92854e2d6da708558a8f0b81ff7cacdfd569",
+        "4c1fbf28545273cd4ba9402a4065171b646824f9",
+        "28d35a99eff66cf06742933e4a45fde47fb927d5",
+        "ba23593c751b155e4a86d2e6c24125a4b177a8c6",
+        "95d0018d71d9b15ccac883561abd1d408cf0f875",
+        "688537c78d85337d3bc70e80a7e74fcfe11da6ce"
+      ],
+      "committed_at": "2026-06-14T07:14:26Z",
+      "next_step": "ai_review_required",
+      "pr_number": 26662,
+      "pr_url": "https://github.com/openai/codex/pull/26662",
+      "review_priority": "critical",
+      "review_reason": "Needs AI review for auth_account, breaking_change, deprecated_removed, new_feature, protocol_change, security_policy.",
+      "sample_paths": [
+        "codex-rs/app-server-protocol/schema/typescript/v2/ThreadListParams.ts",
+        "codex-rs/app-server-protocol/src/protocol/common.rs",
+        "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
+        "codex-rs/app-server-test-client/src/lib.rs",
+        "codex-rs/app-server/README.md",
+        "codex-rs/app-server/src/request_processors/thread_processor.rs",
+        "codex-rs/app-server/tests/suite/v2/external_agent_config.rs",
+        "codex-rs/app-server/tests/suite/v2/remote_thread_store.rs",
+        "codex-rs/app-server/tests/suite/v2/thread_fork.rs",
+        "codex-rs/app-server/tests/suite/v2/thread_list.rs",
+        "codex-rs/app-server/tests/suite/v2/thread_read.rs",
+        "codex-rs/core/src/personality_migration.rs"
+      ],
+      "source_state": "merged",
+      "subject_id": "26662",
+      "subject_kind": "pr",
+      "surface_hints": [
+        "app_server_protocol",
+        "cli_tui",
+        "config_hooks",
+        "docs_examples",
+        "tests_ci"
+      ],
+      "title": "feat(app-server): filter threads by parent",
+      "url": "https://github.com/openai/codex/pull/26662"
     },
     {
       "attention_flags": [
