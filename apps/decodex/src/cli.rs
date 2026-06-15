@@ -68,6 +68,7 @@ pub(crate) struct Cli {
 impl Cli {
 	pub(crate) fn run(&self) -> Result<()> {
 		match &self.command {
+			Command::App(args) => args.run(),
 			Command::Commit(args) => args.run(),
 			Command::Land(args) => args.run(),
 			Command::Run(args) => args.run(),
@@ -119,6 +120,21 @@ struct ProjectConfigArgs {
 impl ProjectConfigArgs {
 	fn as_path(&self) -> Option<&Path> {
 		self.config.as_deref()
+	}
+}
+
+#[derive(Debug, Args)]
+struct AppCommand {
+	/// Open this Decodex app bundle instead of the installed `Decodex` app.
+	#[arg(long, value_name = "APP_BUNDLE")]
+	bundle: Option<PathBuf>,
+	/// Ask LaunchServices to open a new app instance.
+	#[arg(short = 'n', long)]
+	new: bool,
+}
+impl AppCommand {
+	fn run(&self) -> Result<()> {
+		open_decodex_app(self.bundle.as_deref(), self.new)
 	}
 }
 
@@ -1608,6 +1624,8 @@ impl From<IssueDispatchMode> for AttemptDispatchMode {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
+	/// Open the native Decodex App.
+	App(AppCommand),
 	/// Create a signed local commit with a `decodex/commit/1` message.
 	Commit(CommitCommand),
 	/// Land the current reviewed lane with a GitHub admin merge commit.
@@ -1865,15 +1883,55 @@ fn styles() -> Styles {
 		.placeholder(AnsiColor::Green.on_default())
 }
 
+#[cfg(any(target_os = "macos", test))]
+fn decodex_app_open_args(bundle: Option<&Path>, new: bool) -> Vec<std::ffi::OsString> {
+	let mut args = Vec::new();
+
+	if new {
+		args.push(std::ffi::OsString::from("-n"));
+	}
+
+	if let Some(bundle) = bundle {
+		args.push(bundle.as_os_str().to_owned());
+	} else {
+		args.push(std::ffi::OsString::from("-a"));
+		args.push(std::ffi::OsString::from("Decodex"));
+	}
+
+	args
+}
+
+#[cfg(target_os = "macos")]
+fn open_decodex_app(bundle: Option<&Path>, new: bool) -> Result<()> {
+	let args = decodex_app_open_args(bundle, new);
+	let status = std::process::Command::new("/usr/bin/open")
+		.args(args)
+		.status()
+		.map_err(|error| eyre::eyre!("Failed to start `open` for Decodex App: {error}"))?;
+
+	if !status.success() {
+		eyre::bail!("Failed to open Decodex App: `open` exited with {status}");
+	}
+
+	println!("Opened Decodex App.");
+
+	Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn open_decodex_app(_bundle: Option<&Path>, _new: bool) -> Result<()> {
+	eyre::bail!("`decodex app` is only supported on macOS");
+}
+
 #[cfg(test)]
 mod tests {
-	use std::path::Path;
+	use std::{ffi::OsString, path::Path};
 
 	use clap::Parser;
 
 	use crate::cli::{
-		AccountCommand, AccountSubcommand, AccountUseCommand, AttemptCommand, Cli, Command,
-		CommitCommand, DiagnoseCommand, EvidenceCommand, IntakeCommand, IntakeGoalCommand,
+		AccountCommand, AccountSubcommand, AccountUseCommand, AppCommand, AttemptCommand, Cli,
+		Command, CommitCommand, DiagnoseCommand, EvidenceCommand, IntakeCommand, IntakeGoalCommand,
 		IntakeIssuesCommand, IntakeSubcommand, LandCommand, LaneCommand, LaneInspectCommand,
 		LaneInterruptCommand, LaneSteerCommand, LaneSubcommand, LegacyCloseoutRecoveryCommand,
 		MergedCloseoutRecoveryCommand, ProbeCommand, ProjectCommand, ProjectConfigArgs,
@@ -1888,6 +1946,47 @@ mod tests {
 		ReviewHandoffRecoveryCommand, ReviewHandoffRecoverySubcommand, RunCommand, ServeCommand,
 		StatusCommand,
 	};
+
+	#[test]
+	fn parses_app_command() {
+		let cli = Cli::parse_from(["decodex", "app"]);
+
+		assert!(matches!(cli.command, Command::App(AppCommand { bundle: None, new: false })));
+	}
+
+	#[test]
+	fn parses_app_bundle_and_new_instance() {
+		let cli = Cli::parse_from([
+			"decodex",
+			"app",
+			"--bundle",
+			"target/decodex-app/Decodex.app",
+			"--new",
+		]);
+
+		assert!(matches!(
+			cli.command,
+			Command::App(AppCommand {
+				bundle: Some(bundle),
+				new: true,
+			}) if bundle == Path::new("target/decodex-app/Decodex.app")
+		));
+	}
+
+	#[test]
+	fn builds_macos_open_arguments_for_decodex_app() {
+		assert_eq!(
+			super::decodex_app_open_args(None, false),
+			vec![OsString::from("-a"), OsString::from("Decodex")]
+		);
+		assert_eq!(
+			super::decodex_app_open_args(Some(Path::new("target/decodex-app/Decodex.app")), true),
+			vec![
+				OsString::from("-n"),
+				Path::new("target/decodex-app/Decodex.app").as_os_str().to_owned(),
+			]
+		);
+	}
 
 	#[test]
 	fn parses_commit_with_authority_related_and_breaking() {
