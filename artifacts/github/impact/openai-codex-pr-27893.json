@@ -1,0 +1,50 @@
+{
+  "candidate_followups": [
+    "Update Decodex Control Plane capability modeling so selected capability roots can contribute thread-scoped MCP tools, not only skills.",
+    "Preserve selected-root MCP provenance as environment-owned and thread-local when displaying MCP status or deciding tool availability.",
+    "Track the secondary hosted orchestrator skill provider enablement separately if Decodex exposes app-server skill inventory details."
+  ],
+  "caveats": [
+    "Only stdio MCP declarations are activated; HTTP MCP declarations remain inactive.",
+    "The PR body says existing sessions without selectedCapabilityRoots are unchanged.",
+    "Selected-root persistence across resume/fork and hosted-plugin behavior are explicitly outside the PR scope.",
+    "The same PR also enables hosted orchestrator skills; this impact record centers on the selected-plugin MCP activation path."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "candidate",
+  "evidence": [
+    "PR #27893 describes the app-server flow from `thread/start(selectedCapabilityRoots)` to selected plugin `.mcp.json` discovery, stdio server startup in the selected environment, and thread-only tool exposure.",
+    "The app-server README now documents selected plugin stdio MCP activation and inactive HTTP declarations.",
+    "App-server extension registration installs the selected executor plugin MCP contributor with the shared `EnvironmentManager`.",
+    "Thread start seeds executor-plugin MCP state when selected capability roots are present.",
+    "The E2E verifies selected-thread MCP visibility, tool call behavior, executor-only environment value propagation, reload isolation, and absence from another thread.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27893.review.json`."
+  ],
+  "observed_change": "Codex app-server now activates stdio MCP servers declared by selected executor plugins when `thread/start` includes `selectedCapabilityRoots`, using the selected environment and exposing those tools only to that thread.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27893",
+  "social_notes": [
+    "Public copy should emphasize thread-scoped selected-plugin MCP activation through app-server, not just provider groundwork.",
+    "Include caveats that only stdio declarations are active and HTTP declarations remain inactive.",
+    "Avoid overclaiming resume/fork or hosted-plugin persistence because the PR body excludes those."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-15T14:23:37Z",
+        "title": "Activate selected executor plugin MCPs in app-server",
+        "url": "https://github.com/openai/codex/pull/27893"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27893.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27893"
+      }
+    ]
+  }
+}

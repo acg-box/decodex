@@ -1,0 +1,64 @@
+{
+  "adoption_opportunity": "Update Decodex plugin install and capability modeling to treat dual App/MCP plugins as auth-routed surfaces, where ChatGPT/SIWC auth suppresses same-name MCP OAuth but API-key/direct auth preserves MCP visibility.",
+  "changed_surfaces": [
+    "plugin MCP declaration loading",
+    "plugin install-time MCP OAuth startup",
+    "marketplace plugin metadata",
+    "auth-mode-specific App/MCP conflict filtering",
+    "plugin manager detail readback",
+    "plugin install and manager tests"
+  ],
+  "community_value": "High for plugin authors because the change explains why same-name App and MCP routes do not both ask for OAuth under ChatGPT/SIWC auth while direct/API-key auth still exposes MCP servers.",
+  "compatibility_risk": "Moderate to high for Control Plane or plugin tooling that expected plugin MCP OAuth to start for every declared MCP server regardless of auth route or same-name App declarations.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "High. Decodex needs to preserve Codex's auth-mode-specific App/MCP routing so plugin OAuth prompts and capability summaries match the currently usable surface.",
+  "deprecated_or_breaking_notes": "No public schema was removed. The install-time behavior changes for Codex-backend auth: MCP servers with names matching plugin App declarations are filtered before MCP OAuth startup and plugin metadata readback.",
+  "evidence": [
+    "PR #27461 says `load_plugin_mcp_servers` becomes auth-aware and filters same-name MCP servers for Codex-backend auth while preserving API-key/direct auth behavior.",
+    "`codex-rs/app-server/src/request_processors/plugins.rs` passes the current `CodexAuth` auth mode into `load_plugin_mcp_servers` before calling `start_plugin_mcp_oauth_logins`.",
+    "`codex-rs/core-plugins/src/loader.rs` loads plugin App declarations under `AuthMode::uses_codex_backend` and retains only MCP servers whose names do not match App declaration names.",
+    "`codex-rs/core-plugins/src/manager.rs` uses the auth-aware loader for plugin detail metadata and available MCP server names.",
+    "`codex-rs/app-server/tests/suite/v2/plugin_install.rs` adds install coverage for skipping MCP OAuth on a ChatGPT dual-surface plugin.",
+    "`codex-rs/core-plugins/src/manager_tests.rs` adds `read_plugin_for_config_filters_mcp_servers_for_codex_backend_auth` coverage.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27461.json` records 5 changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "Auth-mode-specific plugin MCP OAuth filtering affects Decodex Control Plane compatibility and plugin capability summaries.",
+      "type": "upstream_impact"
+    },
+    {
+      "reason": "The change has a clear public explanation path for dual App/MCP plugin auth behavior.",
+      "type": "social_candidate"
+    }
+  ],
+  "observed_change": "Codex plugin MCP loading is now auth-aware: ChatGPT/SIWC auth filters same-name MCP servers when a plugin App route exists, while API-key/direct auth keeps plugin MCP servers visible and OAuth-capable.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-15T18:07:41Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27461",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-15T13:04:01Z",
+        "title": "[codex] Skip plugin MCP OAuth for matching app routes",
+        "url": "https://github.com/openai/codex/pull/27461"
+      },
+      {
+        "kind": "commit",
+        "title": "Skip plugin MCP OAuth when app route is available",
+        "url": "https://github.com/openai/codex/commit/9d5edd7c670d178062a8bee9f194ba41fc4072be"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "9d5edd7c670d178062a8bee9f194ba41fc4072be",
+      "3c9aaf348048ec81f41bdb1d7dcfa8c45aabbe49"
+    ],
+    "subject_id": "27461",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "When installing or reading a dual App/MCP plugin, ChatGPT/SIWC auth avoids duplicate MCP OAuth for same-name App routes, while API-key/direct auth still sees and can start plugin MCP servers."
+}
