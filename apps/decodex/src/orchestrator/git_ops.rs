@@ -41,8 +41,8 @@ mod repo_gate_failure {
 		fn disposition(self) -> RepoGateFailureDisposition {
 			match self {
 				Self::CanonicalizeCommandFailed
-				| Self::VerifyCommandFailed
-				| Self::TrackedRewritesLeft => RepoGateFailureDisposition::ContinueRepair,
+				| Self::VerifyCommandFailed => RepoGateFailureDisposition::ContinueRepair,
+				Self::TrackedRewritesLeft => RepoGateFailureDisposition::NeedsHumanAttention,
 				Self::GitLockContention => RepoGateFailureDisposition::RetryAfterBackoff,
 				Self::CommandSpawnFailed | Self::CleanlinessCheckFailed => {
 					RepoGateFailureDisposition::NeedsHumanAttention
@@ -59,7 +59,7 @@ mod repo_gate_failure {
 					"additional agent repair is required before repo verification can pass; decodex will retry automatically"
 				},
 				Self::TrackedRewritesLeft => {
-					"additional agent repair is required to reconcile repo-gate tracked rewrites before handoff; decodex will retry automatically"
+					"automatic retry is stopped because the repo gate left tracked rewrites after completing; inspect the retained worktree manually"
 				},
 				Self::GitLockContention => {
 					"another Git process appears to hold `.git/index.lock`; decodex will wait briefly, refresh lane state, and retry automatically"
@@ -82,7 +82,7 @@ mod repo_gate_failure {
 					"inspect the worktree, repair the repo verification failure manually, {recovery_gate}"
 				),
 				Self::TrackedRewritesLeft => format!(
-					"inspect the worktree, reconcile the tracked rewrites left by the repo gate manually, {recovery_gate}"
+					"inspect the retained worktree, decide whether the tracked rewrites are in scope, then finish validation and PR handoff or reset the patch manually, {recovery_gate}"
 				),
 				Self::GitLockContention => format!(
 					"inspect the worktree for an active or stale `.git/index.lock` holder, clear the Git lock contention manually, {recovery_gate}"
