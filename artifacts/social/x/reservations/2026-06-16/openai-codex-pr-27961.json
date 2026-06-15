@@ -30,7 +30,8 @@
     "Checked social_publish_reservation/v1 records contain no active reservation for the idempotency key.",
     "Open GitHub PR scan found no publication PR touching this candidate or social/x records.",
     "Chrome readback showed active account @decodexspace before reservation.",
-    "Chrome profile scan and focused X search for 27961, allowRemoteControl, allow_remote_control, and remoteControl found no duplicate post."
+    "Chrome profile scan and focused X search for 27961, allowRemoteControl, allow_remote_control, and remoteControl found no duplicate post.",
+    "PR #393 made this active reservation visible before X compose."
   ],
   "expires_at": "2026-06-15T20:56:31Z",
   "idempotency_key": "x:decodexspace:openai-codex-pr-27961:operator_impact",
@@ -38,6 +39,7 @@
   "owner": {
     "automation_id": "decodex-x-publisher",
     "branch": "automation/x-publisher-pr27961-20260616",
+    "pr_url": "https://github.com/hack-ink/decodex/pull/393",
     "run_started_at": "2026-06-15T18:56:31Z"
   },
   "reserved_at": "2026-06-15T18:56:31Z",
