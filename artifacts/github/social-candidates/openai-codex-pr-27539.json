@@ -1,0 +1,54 @@
+{
+  "audience": "Control Plane operators and Codex account tooling maintainers",
+  "candidate_text": [
+    "Codex CLI auth now has an encrypted local-secrets backend for large ChatGPT auth payloads, selected through `secret_auth_storage`. Control-plane account tools should stop assuming auth.json is the only auth source. PR: https://github.com/openai/codex/pull/27539"
+  ],
+  "caveats": [
+    "Do not imply direct keyring storage is removed.",
+    "Keep the claim scoped to keyring-mode CLI auth that resolves to the encrypted local-secrets backend.",
+    "Do not claim MCP OAuth storage is activated by this PR."
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27539.review.json",
+      "text": "Codex can store CLI auth payloads in encrypted local secrets when the selected keyring backend is `Secrets`."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27539.json",
+      "text": "File-only `auth.json` assumptions are a Control Plane compatibility risk."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27539:operator_impact",
+    "reason": "The change has a concrete account-tooling compatibility angle with direct source links.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "PR #27539 activates encrypted local-secrets storage for CLI auth on the selected backend.",
+    "The app-server account processor passes `config.auth_keyring_backend_kind()` through account save/login paths.",
+    "The PR removes stale `auth.json` fallback data after encrypted saves and removes all auth storage variants during logout."
+  ],
+  "mode": "operator_impact",
+  "next_steps": [
+    "Let Publisher automation decide whether to reserve or publish this candidate."
+  ],
+  "priority": "high",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27539",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27539.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27539.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27539"
+    ]
+  },
+  "target_account": "decodexspace"
+}

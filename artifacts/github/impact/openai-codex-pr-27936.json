@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Update any Decodex app-server realtime client or generated protocol bindings to include the optional `role` field.",
+    "Use developer role only for trusted app-provided context such as memory or durable operator instructions.",
+    "Keep ordinary operator/user input on the default `user` role."
+  ],
+  "caveats": [
+    "The field defaults to `user`, so this is primarily an adoption opportunity rather than a hard break for JSON clients.",
+    "Developer-role text changes authority semantics; integrations should not route arbitrary user text through it."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "candidate",
+  "evidence": [
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27936.review.json`.",
+    "`ThreadRealtimeAppendTextParams` now carries `role: ConversationTextRole` with serde defaulting.",
+    "`ConversationTextRole` serializes as `user` or `developer` and defaults to user.",
+    "The app-server request processor forwards the role into realtime conversation text params.",
+    "Realtime websocket outbound conversation item creation serializes the selected role."
+  ],
+  "observed_change": "Codex adds an optional `role` field to `thread/realtime/appendText` so realtime text can be sent as `user` or `developer`, defaulting omitted roles to `user`.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27936",
+  "social_notes": [
+    "Frame the post around protocol-level authority for realtime app-provided context.",
+    "Make the backward-compatible default explicit.",
+    "Avoid implying that arbitrary user text should be upgraded to developer role."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T22:05:38Z",
+        "title": "[codex] add roles to realtime append text",
+        "url": "https://github.com/openai/codex/pull/27936"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27936.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27936"
+      }
+    ]
+  }
+}
