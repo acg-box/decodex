@@ -2214,7 +2214,7 @@ fn validate_manual_attention_error_class(error_class: &str) -> Result<(), String
 
 	if is_runtime_owned_manual_attention_error_class(error_class) {
 		return Err(format!(
-			"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` cannot use runtime-owned retryable error class `{error_class}`; keep repairing or retrying the lane, or use a human-owned blocker class only when automation cannot clear the blocker."
+			"`{ISSUE_COMMENT_TOOL_NAME}` kind `{COMMENT_KIND_MANUAL_ATTENTION}` cannot use runtime-owned error class `{error_class}`; keep repairing, retrying, or letting Decodex retain the lane, and use a human-owned blocker class only when automation cannot clear the blocker."
 		));
 	}
 
