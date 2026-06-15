@@ -57,8 +57,11 @@ The split below is by question type, not by human-versus-agent audience.
   `docs/runbook/radar-artifact-archive.md`
 - Need historical upstream commit trace, skipped-candidate state, or local Radar ledger
   behavior -> `docs/spec/radar-ledger.md`
-- Need the raw machine-authored research run artifacts used by shipped research tooling
-  -> `docs/research/`
+- Need older machine-authored research run artifacts or supporting evidence trails ->
+  `docs/research/`
+- Need new Decodex bounded research, design investigation, or research-to-execution
+  promotion -> `plugins/decodex/skills/research*/` and
+  `docs/spec/loop-runtime.md`
 - Need reusable agent-facing Decodex usage instructions -> `plugins/decodex/`
 - Need repo-local Radar skills for upstream Codex triage, code analysis, release
   analysis, GitHub signal drafting, or X publishing -> `dev/skills/` plus
@@ -90,5 +93,5 @@ The split below is by question type, not by human-versus-agent audience.
   when to read it, and what it does not cover.
 - Keep links explicit and stable.
 - Treat `docs/research/` as supporting evidence, not as a primary authority lane.
-- Treat research output as latent until accepted or promoted through the loop-runtime
-  contract in `docs/spec/loop-runtime.md`.
+- Treat Decodex research output as latent until accepted or promoted through the
+  loop-runtime contract in `docs/spec/loop-runtime.md`.

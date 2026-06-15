@@ -154,8 +154,10 @@ dispatches ready DAG nodes with `program` dispatch mode.
 
 `decodex research compile` is the native Decodex research/design entrypoint. It
 accepts minimal natural-language intake or a structured research/design JSON packet,
-then persists a `decodex.decision_contract/1` payload in local runtime SQLite. Compile
-outcomes distinguish `decision_ready`, `not_decision_ready`, `blocked`, and
+then persists a `decodex.decision_contract/1` payload in local runtime SQLite. The
+Decodex research method frames the question first, records evidence, compares
+realistic options, forms a challenge-ready judgment, resolves skeptic objections, and
+then ends as `decision_ready`, `not_decision_ready`, `blocked`, or
 `needs_human_decision`. A compiled contract is latent and cannot queue work, mutate
 tracker state, set goals, or authorize implementation. `decodex research promote`
 records explicit acceptance for a stored contract; only promoted contracts may later
@@ -382,8 +384,8 @@ The tracked workspace currently keeps:
   and content workflow lane
 - `docs/reference/` as the current repository and artifact surface map lane
 - `docs/decisions/` as the durable design-rationale lane
-- `docs/research/` as machine-authored research artifacts used by shipped research
-  tooling
+- `docs/research/` as legacy or supporting machine-authored research artifacts; current
+  Decodex research authority flows through runtime-local Decision Contracts
 - `dev/` as local development helpers outside `dev/skills/`, such as the operator
   dashboard mock server
 - `assets/` as generated Decodex App icon source notes, Icon Composer foreground,

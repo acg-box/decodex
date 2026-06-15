@@ -70,7 +70,7 @@ After any review arrives:
   the explicit independent reviewer source, checklist notes, accepted findings,
   rejected findings, non-empty evidence, and repair guidance
 
-The current repository's bounded review method is defined in the registered project `WORKFLOW.md`. This spec does not replace that method; it defines how review requests and review outcomes are orchestrated around it.
+The current repository's bounded review method is defined in the registered project `WORKFLOW.md`. This spec does not replace that method; it defines how review requests and review outcomes are orchestrated around it. When review reveals missing direction rather than a repairable finding, route the gap through Decodex-native research and Decision Contract update, not the legacy external research artifact lane.
 
 ## Review round accounting
 
