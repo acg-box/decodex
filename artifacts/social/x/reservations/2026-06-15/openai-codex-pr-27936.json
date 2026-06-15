@@ -15,6 +15,7 @@
   },
   "channel": "x",
   "controller_account": "hackink",
+  "consumed_by_social_post": "artifacts/social/x/posts/2026-06-15/openai-codex-pr-27936.json",
   "day": "2026-06-15",
   "duplicate_keys": [
     "x:decodexspace:openai-codex-pr-27936:operator_impact",
@@ -42,7 +43,7 @@
   "reserved_at": "2026-06-15T07:04:54Z",
   "schema": "social_publish_reservation/v1",
   "slug": "openai-codex-pr-27936",
-  "status": "active",
+  "status": "consumed",
   "target_account": "decodexspace",
   "timezone": "Asia/Shanghai"
 }
