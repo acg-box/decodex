@@ -53,7 +53,7 @@ cargo nextest list --workspace --all-targets --all-features 2>/dev/null \
 | Git, worktree, landing, and recovery helpers | 120 | `worktree::tests`, `manual::tests`, `commit_message::tests`, `github::tests`, `default_branch_sync::tests`, `pull_request::tests`, `recovery::tests`, `git_credentials::tests` | Git/worktree behavior, manual landing, GitHub/PR helpers, recovery commands, commit-message policy |
 | Radar content validation | 33 | `radar::tests` | Upstream Radar schemas, bundles, signal rendering, social publication ledgers |
 | Account, CLI, archive, and tracker integration | 84 | `accounts::tests`, `agent::codex_accounts::tests`, `agent::decodex_tool_bridge::tests`, `app_bridge::tests`, `cli::tests`, `archive_hygiene::tests`, `tracker::*::tests` | User-facing commands, account pools, app bridge parsing, archive hygiene, direct tracker adapter and public-text behavior |
-| Loop contract and research surfaces | 21 | `loop_contract::tests`, `execution_program::tests`, `research_design::tests`, `plugin_surface_tests` | Decision Contract schema, Execution Program readiness, research compile/promote, and plugin trigger behavior |
+| Loop contract and research surfaces | 25 | `loop_contract::tests`, `execution_program::tests`, `research_design::tests`, `plugin_surface_tests` | Decision Contract schema, Execution Program readiness, research compile/promote, and plugin trigger behavior |
 
 ## Orchestrator Inventory
 
