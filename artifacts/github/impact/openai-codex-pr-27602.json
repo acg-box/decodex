@@ -1,0 +1,46 @@
+{
+  "candidate_followups": [
+    "Audit Decodex app and connector presentation so plugin-provided Apps are included only when Codex auth mode makes those Apps usable.",
+    "Keep plugin App connector ids distinct from ordinary remote directory connectors when building Control Plane capability inventories.",
+    "Use the source-backed review before promoting this into any site signal or implementation issue."
+  ],
+  "caveats": [
+    "The change is auth-route specific; API-key-style auth intentionally does not surface plugin Apps in connector listings.",
+    "This PR is part of a plugin auth-routing stack and should be read with PRs #27607 and #27461 for dual App/MCP behavior."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "PR #27602 says ChatGPT/SIWC users should see plugin-provided Apps in Apps and connector picker surfaces, while API-key users should not see Apps they cannot use.",
+    "App-server app listing now computes effective plugin Apps from `PluginsManager` and supplies them to connector listing helpers.",
+    "Connector listing helpers now merge caller-supplied plugin App ids into the connector directory result before disallowed-connector filtering.",
+    "The app-server test suite adds ChatGPT-auth coverage for plugin Apps in app listing.",
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27602.review.json`."
+  ],
+  "observed_change": "Codex app-server now merges effective plugin Apps into Apps and connector listings for ChatGPT/SIWC auth while keeping API-key-style auth from surfacing plugin Apps it cannot use.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "practical_explainer",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27602",
+  "social_notes": [
+    "A public note should frame this as auth-aware plugin App visibility, not a general connector directory change.",
+    "Mention ChatGPT/SIWC and API-key behavior separately to avoid implying all auth modes see the same App set."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-15T12:50:08Z",
+        "title": "[codex] Preserve plugin apps in connector listings",
+        "url": "https://github.com/openai/codex/pull/27602"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27602.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27602"
+      }
+    ]
+  }
+}
