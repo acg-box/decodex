@@ -1,0 +1,69 @@
+{
+  "adoption_opportunity": "Prepare Decodex auth and MCP credential tooling to treat Codex encrypted local secrets as namespaced stores (`local.age`, `codex_auth.age`, and `mcp_oauth.age`) instead of one shared secrets file.",
+  "caveats": "PR #27535 is foundational plumbing only. Its PR body explicitly says it does not activate either auth backend or change existing credential behavior; activation arrives in follow-up PRs such as #27539 and the MCP OAuth stack.",
+  "changed_surfaces": [
+    "config `AuthKeyringBackendKind` type",
+    "core config bootstrap auth-keyring resolution",
+    "core config schema feature flags",
+    "features crate `secret_auth_storage` feature",
+    "local secrets namespace selection",
+    "keyring store cloneability",
+    "auth-keyring and local-secrets tests"
+  ],
+  "community_value": "Medium. The change is useful context for upcoming encrypted auth storage behavior, especially on Windows, but it is not a standalone user-visible feature yet.",
+  "compatibility_risk": "Low for existing behavior because the PR does not activate the auth backend. Medium for future Decodex account tooling if it assumes all local encrypted secrets share one file or that CLI auth cannot move into a namespaced local-secrets file.",
+  "confidence": "confirmed",
+  "control_plane_relevance": "Medium. Decodex account and MCP credential management need to track Codex's move toward auth-specific encrypted secret namespaces before relying on file-only auth assumptions.",
+  "deprecated_or_breaking_notes": "No behavior is removed or activated by this PR. It adds the `secret_auth_storage` feature/config path and new namespace filenames for later auth and MCP OAuth storage.",
+  "evidence": [
+    "PR #27535 states that CLI auth and MCP OAuth credentials should use separate encrypted files while sharing the existing local-secrets implementation, and also states that it does not activate either auth backend or change existing credential behavior.",
+    "`codex-rs/config/src/types.rs` adds `AuthKeyringBackendKind` with `Direct` and `Secrets` variants, defaulting to `Secrets` on Windows and `Direct` elsewhere.",
+    "`codex-rs/features/src/lib.rs` adds stable feature `secret_auth_storage`, default-enabled only on Windows.",
+    "`codex-rs/secrets/src/local.rs` adds `LocalSecretsNamespace` variants for managed secrets, Codex auth, and MCP OAuth, with filenames `local.age`, `codex_auth.age`, and `mcp_oauth.age`.",
+    "`codex-rs/secrets/src/lib.rs` adds namespaced `SecretsManager` construction.",
+    "`codex-rs/core/src/config/auth_keyring.rs` resolves bootstrap/full config auth keyring backend selection from the `secret_auth_storage` feature.",
+    "The normalized bundle `artifacts/github/bundles/openai-codex-pr-27535.json` records 11 changed files for the merged PR."
+  ],
+  "next_actions": [
+    {
+      "reason": "The namespace and feature/config plumbing affects how later encrypted auth storage should be interpreted by Decodex account and MCP tooling.",
+      "type": "upstream_impact"
+    }
+  ],
+  "observed_change": "Codex adds auth-specific encrypted local-secrets namespaces and a `secret_auth_storage` config/feature path, without activating new credential storage behavior yet.",
+  "repo": "openai/codex",
+  "reviewed_at": "2026-06-15T06:07:50Z",
+  "schema": "upstream_review/v1",
+  "slug": "openai-codex-pr-27535",
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T19:52:50Z",
+        "title": "feat: add auth-specific encrypted secret namespaces",
+        "url": "https://github.com/openai/codex/pull/27535"
+      },
+      {
+        "kind": "commit",
+        "title": "Add secret auth storage config",
+        "url": "https://github.com/openai/codex/commit/07d66eccd904cd15cd754c43d3f74a72d63a1980"
+      },
+      {
+        "kind": "commit",
+        "title": "Add auth-specific secret namespaces",
+        "url": "https://github.com/openai/codex/commit/e026ff2133ba7c2e740eee1ecf0cc0ec5a7479a8"
+      }
+    ]
+  },
+  "subject": {
+    "commit_shas": [
+      "07d66eccd904cd15cd754c43d3f74a72d63a1980",
+      "3e3379b56006b9e877f5db4ba65009b4ad41c49c",
+      "e026ff2133ba7c2e740eee1ecf0cc0ec5a7479a8",
+      "30f6722a49e562b8d8fccbaf221aa278d39ab30c"
+    ],
+    "subject_id": "27535",
+    "subject_kind": "pr"
+  },
+  "user_visible_path": "No immediate user-visible path in this PR. It prepares the feature/config and local encrypted secret namespace model that later CLI auth and MCP OAuth storage use."
+}

@@ -1,0 +1,47 @@
+{
+  "candidate_followups": [
+    "Audit Decodex App account switching and local account-pool refresh logic for file-only `$CODEX_HOME/auth.json` assumptions.",
+    "Prefer app-server/account APIs or upstream auth-manager semantics when validating active Codex auth after this upstream change.",
+    "Treat missing `auth.json` as inconclusive when `secret_auth_storage` can route CLI auth into encrypted local secrets."
+  ],
+  "caveats": [
+    "Direct keyring storage still exists where selected.",
+    "The encrypted local-secrets backend depends on the resolved `AuthKeyringBackendKind`; PR #27535 makes the `secret_auth_storage` default Windows-specific.",
+    "This PR leaves MCP OAuth persistence to a separate activation PR."
+  ],
+  "confidence": "confirmed",
+  "control_plane_impact": "compat_risk",
+  "evidence": [
+    "The source-backed review is recorded at `artifacts/github/reviews/openai-codex-pr-27539.review.json`.",
+    "PR #27539 describes encrypted CLI-auth storage using the `CliAuth` secrets namespace for large serialized ChatGPT auth payloads.",
+    "`codex-rs/login/src/auth/storage.rs` wires auth storage to local secrets and `AuthKeyringBackendKind`.",
+    "`codex-rs/app-server/src/request_processors/account_processor.rs` passes `config.auth_keyring_backend_kind()` for API-key save and login-server account handling.",
+    "The PR body says stale `auth.json` fallback data is removed after encrypted saves and that logout removes encrypted, direct-keyring, and fallback data."
+  ],
+  "observed_change": "Codex activates encrypted local-secrets storage for CLI auth payloads when keyring-mode auth resolves to the `Secrets` backend.",
+  "public_signal_decision": "publish",
+  "publisher_angle": "operator_impact",
+  "repo": "openai/codex",
+  "schema": "upstream_impact/v1",
+  "slug": "openai-codex-pr-27539",
+  "social_notes": [
+    "Frame this as an auth-storage assumption change for operators, not as a broad auth UX redesign.",
+    "Mention that large ChatGPT auth payloads can move out of direct keyring blobs and that `auth.json` may no longer be the sole durable source."
+  ],
+  "source_refs": {
+    "items": [
+      {
+        "kind": "pull_request",
+        "meta": "Merged 2026-06-12T21:23:50Z",
+        "title": "feat: use encrypted local secrets for CLI auth",
+        "url": "https://github.com/openai/codex/pull/27539"
+      },
+      {
+        "kind": "pull_request",
+        "meta": "artifacts/github/reviews/openai-codex-pr-27539.review.json",
+        "title": "Source-backed Decodex upstream review",
+        "url": "https://github.com/openai/codex/pull/27539"
+      }
+    ]
+  }
+}
