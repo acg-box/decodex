@@ -1,0 +1,51 @@
+{
+  "audience": "Codex plugin authors and operators tracking auth-aware App listings",
+  "candidate_text": [
+    "Codex PR #27602 keeps plugin-provided Apps visible in app and connector listings for ChatGPT/SIWC auth, while API-key auth avoids Apps it cannot use. https://github.com/openai/codex/pull/27602"
+  ],
+  "channel": "x",
+  "claims": [
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/reviews/openai-codex-pr-27602.review.json",
+      "text": "Codex app-server now includes effective plugin Apps in app and connector listing paths for ChatGPT/SIWC auth."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/impact/openai-codex-pr-27602.json",
+      "text": "API-key-style auth does not surface plugin Apps that route through ChatGPT/SIWC."
+    },
+    {
+      "confidence": "confirmed",
+      "evidence": "artifacts/github/bundles/openai-codex-pr-27602.json",
+      "text": "The behavior is backed by app-server app-list and connector-listing source changes."
+    }
+  ],
+  "decision": {
+    "idempotency_key": "x:decodexspace:openai-codex-pr-27602:practical-explainer:publish",
+    "reason": "Source-backed auth-aware plugin App listing is useful to plugin authors and app-server operators.",
+    "worthiness": "publish"
+  },
+  "evidence_notes": [
+    "PR #27602 states ChatGPT/SIWC users should still see plugin-provided Apps in Apps and connector picker surfaces.",
+    "The source review records the app-server path that passes effective plugin Apps into connector listing.",
+    "The impact artifact classifies this as a Control Plane compatibility risk with a practical public angle."
+  ],
+  "mode": "practical_explainer",
+  "priority": "high",
+  "repo": "openai/codex",
+  "schema": "social_candidate/v1",
+  "slug": "openai-codex-pr-27602",
+  "source_refs": {
+    "upstream_impacts": [
+      "artifacts/github/impact/openai-codex-pr-27602.json"
+    ],
+    "upstream_reviews": [
+      "artifacts/github/reviews/openai-codex-pr-27602.review.json"
+    ],
+    "urls": [
+      "https://github.com/openai/codex/pull/27602"
+    ]
+  },
+  "target_account": "decodexspace"
+}
