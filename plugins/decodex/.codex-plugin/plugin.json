@@ -1,7 +1,7 @@
 {
   "name": "decodex",
   "version": "0.2.0",
-  "description": "Agent-facing workflows for Decodex bounded research, Decision Contract promotion, planning, manual CLI use, and runtime-owned automation.",
+  "description": "Decodex agent workflows.",
   "author": {
     "name": "hack-ink",
     "email": "hi@hack.ink",
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Decodex",
-    "shortDescription": "Use Decodex for bounded research, Decision Contract promotion, planning, manual CLI work, or retained-lane automation.",
-    "longDescription": "Routes Codex agents through Decodex natural-language-first bounded research, such as \"research X\", with probe, evidence, options, judgment, challenge, and decision gates that produce latent Decision Contracts before execution. Follow-ups such as \"arrange this\" or \"推进\" can promote accepted work into planning and Program Intake where ready mapped nodes dispatch directly, while graph, DAG, goal, and dispatch mechanics backstage remain hidden from ordinary users.",
+    "shortDescription": "Research, plan, and operate Decodex.",
+    "longDescription": "Routes Decodex research, promotion, planning, CLI, labels, commit, landing, and automation.",
     "developerName": "hack-ink",
     "category": "Development",
     "capabilities": [
@@ -32,9 +32,9 @@
     "privacyPolicyURL": "https://github.com/hack-ink/decodex",
     "termsOfServiceURL": "https://github.com/hack-ink/decodex",
     "defaultPrompt": [
-      "Research how Decodex should handle this.",
-      "Arrange the accepted Decodex research contract into executable issues.",
-      "Use Decodex to inspect this lane."
+      "Research this with Decodex.",
+      "Arrange accepted research.",
+      "Inspect this Decodex lane."
     ],
     "brandColor": "#0F766E"
   }
