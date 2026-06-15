@@ -63,6 +63,10 @@ for future dispatch, uses the CLI-owned default cadences, and serves the dashboa
 account APIs, `GET /api/operator-snapshot`,
 `POST /api/linear-scan`, `GET /api/lane/inspect`, and `POST /api/lane/interrupt` from
 the single local listener.
+Use `decodex app` to open the installed macOS app from the CLI; use
+`decodex app --bundle <APP_BUNDLE> --new` for a staged app bundle. The launch preserves
+the caller's environment, so `DECODEX_APP_SERVER_URL` remains an explicit App preview
+override when set.
 
 `decodex serve` has two hardcoded scheduler cadences:
 
