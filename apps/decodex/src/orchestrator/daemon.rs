@@ -7,6 +7,12 @@ enum RetryEntryRetentionDecision {
 	Block,
 }
 
+enum ChildExitPhaseGoalRecovery {
+	None,
+	Continuation(PhaseGoalRecoveryContinuation),
+	Terminalized,
+}
+
 struct ChildExitRetrySchedule<'a> {
 	issue_id: &'a str,
 	run_id: &'a str,
@@ -1045,7 +1051,7 @@ where
 }
 
 fn schedule_retry_after_child_exit<T>(
-	context: ChildExitRetryContext<'_, T>,
+	mut context: ChildExitRetryContext<'_, T>,
 	child: ChildRunRef<'_>,
 	#[cfg(test)]
 	_retry_project_slug: &str,
@@ -1087,8 +1093,7 @@ where
 
 		return Ok(());
 	};
-	let continuation_pending =
-		exit_status.success() && run_attempt.status() == CONTINUATION_PENDING_RUN_STATUS;
+	let continuation_pending = exit_status.success() && run_attempt.status() == CONTINUATION_PENDING_RUN_STATUS;
 
 	if !exit_status.success() && run_attempt.status() != "failed" {
 		clear_retry_schedule_and_release(context.retry_queue, context.state_store, issue_id)?;
@@ -1110,16 +1115,18 @@ where
 		return Ok(());
 	}
 
-	let recovered_phase_goal_continuation = if !exit_status.success() {
-		maybe_recover_child_exit_active_phase_goal_continuation(
-			&context,
-			&issue,
-			child,
-			initial_issue_state,
-			dispatch_mode,
-		)?
-	} else {
-		None
+	let recovered_phase_goal_continuation = match recover_child_exit_phase_goal(
+		&mut context,
+		&issue,
+		child,
+		issue_id,
+		initial_issue_state,
+		dispatch_mode,
+		exit_status.success(),
+	)? {
+		ChildExitPhaseGoalRecovery::None => None,
+		ChildExitPhaseGoalRecovery::Continuation(recovery) => Some(recovery),
+		ChildExitPhaseGoalRecovery::Terminalized => return Ok(()),
 	};
 	let (kind, attempt, continuation_initial_issue_state) = if continuation_pending {
 		(
@@ -1219,13 +1226,44 @@ fn queue_child_exit_retry(
 	Ok(())
 }
 
+fn recover_child_exit_phase_goal<T>(
+	context: &mut ChildExitRetryContext<'_, T>,
+	issue: &TrackerIssue,
+	child: ChildRunRef<'_>,
+	issue_id: &str,
+	initial_issue_state: &str,
+	dispatch_mode: IssueDispatchMode,
+	exit_success: bool,
+) -> Result<ChildExitPhaseGoalRecovery>
+where
+	T: IssueTracker,
+{
+	if exit_success {
+		return Ok(ChildExitPhaseGoalRecovery::None);
+	}
+
+	let recovery = maybe_recover_child_exit_active_phase_goal_continuation(
+		context,
+		issue,
+		child,
+		initial_issue_state,
+		dispatch_mode,
+	)?;
+
+	if matches!(recovery, ChildExitPhaseGoalRecovery::Terminalized) {
+		clear_retry_schedule_and_release(context.retry_queue, context.state_store, issue_id)?;
+	}
+
+	Ok(recovery)
+}
+
 fn maybe_recover_child_exit_active_phase_goal_continuation<T>(
 	context: &ChildExitRetryContext<'_, T>,
 	issue: &TrackerIssue,
 	child: ChildRunRef<'_>,
 	initial_issue_state: &str,
 	dispatch_mode: IssueDispatchMode,
-) -> Result<Option<PhaseGoalRecoveryContinuation>>
+) -> Result<ChildExitPhaseGoalRecovery>
 where
 	T: IssueTracker,
 {
@@ -1242,13 +1280,28 @@ where
 		run_id: child.run_id.to_owned(),
 		retry_budget_base: 0,
 	};
-	let recovery = recover_active_phase_goal_continuation(
+	let recovery = match recover_active_phase_goal_continuation(
 		context.project,
 		context.workflow,
 		context.state_store,
 		&issue_run,
 		"child_exit_failed",
-	)?;
+	) {
+		Ok(recovery) => recovery,
+		Err(error) if run_failure_requires_terminal_attention(&error) => {
+			handle_failure(
+				context.tracker,
+				context.project,
+				context.workflow,
+				context.state_store,
+				&issue_run,
+				&error,
+			)?;
+
+			return Ok(ChildExitPhaseGoalRecovery::Terminalized);
+		},
+		Err(error) => return Err(error),
+	};
 
 	if let Some(recovery) = &recovery {
 		tracing::warn!(
@@ -1263,7 +1316,9 @@ where
 		);
 	}
 
-	Ok(recovery)
+	Ok(recovery.map_or(ChildExitPhaseGoalRecovery::None, |recovery| {
+		ChildExitPhaseGoalRecovery::Continuation(recovery)
+	}))
 }
 
 fn child_exit_retry_retention_decision<T>(

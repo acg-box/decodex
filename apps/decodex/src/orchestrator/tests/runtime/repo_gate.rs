@@ -22,7 +22,7 @@ fn repo_gate_rejects_dirty_tracked_files_left_by_canonicalize_commands() {
 	assert_eq!(repo_gate_failure.error_class(), "repo_gate_tracked_rewrites_left");
 	assert_eq!(
 		repo_gate_failure.disposition(),
-		orchestrator::RepoGateFailureDisposition::ContinueRepair
+		orchestrator::RepoGateFailureDisposition::NeedsHumanAttention
 	);
 	assert_eq!(tracked_contents, "after\n");
 	assert!(tracked_status.contains("tracked.txt"));
@@ -187,7 +187,7 @@ fn phase_goal_completion_runs_repo_gate_and_persists_handoff_phase() {
 }
 
 #[test]
-fn active_phase_goal_failure_recovery_continues_to_repair_instead_of_attention() {
+fn active_phase_goal_tracked_rewrites_stop_instead_of_repair_continuation() {
 	let (_temp_dir, config, workflow) = temp_project_layout();
 	let repo_root = config.repo_root();
 	let issue = sample_issue("In Progress", &[tracker::automation_active_label(TEST_SERVICE_ID).as_str()]);
@@ -231,33 +231,33 @@ fn active_phase_goal_failure_recovery_continues_to_repair_instead_of_attention()
 		)
 		.expect("phase goal event should record");
 
-	let summary = orchestrator::maybe_continue_after_active_phase_goal_recovery(
+	let error = orchestrator::maybe_continue_after_active_phase_goal_recovery(
 		&config,
 		&workflow,
 		&state_store,
 		&issue_run,
 		&Report::msg("app server transport closed after local verification"),
 	)
-	.expect("phase goal recovery should not fail")
-	.expect("dirty active phase goal should recover to continuation");
+	.expect_err("tracked repo-gate rewrites should stop phase-goal continuation");
 	let events = state_store
 		.list_private_execution_events(TEST_SERVICE_ID, &issue.id, &issue_run.run_id, 1)
 		.expect("private events should load");
+	let repo_gate_failure = error
+		.downcast_ref::<RepoGateFailure>()
+		.expect("phase goal recovery should preserve repo-gate failure");
 
-	assert!(summary.continuation_pending);
+	assert_eq!(repo_gate_failure.error_class(), "repo_gate_tracked_rewrites_left");
+	assert_eq!(
+		repo_gate_failure.disposition(),
+		orchestrator::RepoGateFailureDisposition::NeedsHumanAttention
+	);
 	assert!(events.iter().any(|event| {
 		event.event_type() == "phase_goal_transition"
 			&& event.payload()["signal"] == "validation_fail"
-			&& event.payload()["payload"]["disposition"] == "continue_repair"
+			&& event.payload()["payload"]["disposition"] == "needs_human_attention"
 	}));
-	assert!(events.iter().any(|event| {
-		event.event_type() == "phase_goal_next"
-			&& event.payload()["phase"] == "repair_validation_failures"
-	}));
-	assert!(events.iter().any(|event| {
-		event.event_type() == "phase_goal_recovery"
-			&& event.payload()["payload"]["nextPhase"] == "repair_validation_failures"
-	}));
+	assert!(events.iter().all(|event| event.event_type() != "phase_goal_next"));
+	assert!(events.iter().all(|event| event.event_type() != "phase_goal_recovery"));
 }
 
 #[test]
